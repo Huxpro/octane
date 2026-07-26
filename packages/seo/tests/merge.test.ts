@@ -226,6 +226,67 @@ describe('overriding a repeatable link', () => {
 	});
 });
 
+// Social fill-in across registrations: when a root <Seo> sets an Open Graph or
+// Twitter shell and a page <Seo> sets title/description, the social tags must
+// still be synthesized even though they were never in the same expandSeo call.
+describe('cross-registration social fill-in', () => {
+	it('synthesizes og:title and og:description from a page title when root sets the shell', () => {
+		// Root sets the OG shell, page sets title/description.
+		const root = expandSeo({ openGraph: { type: 'website', siteName: 'Site' } });
+		const page = expandSeo({ title: 'Hello', description: 'Desc' });
+		const merged = applyConfig(mergeDescriptors([...root, ...page]), {});
+		const content = (key: string) => merged.find((d) => d.key === key)?.attrs.content;
+		expect(content('meta:property=og:type')).toBe('website');
+		expect(content('meta:property=og:title')).toBe('Hello');
+		expect(content('meta:property=og:description')).toBe('Desc');
+	});
+
+	it('synthesizes twitter:title and twitter:description from a page title when root sets the shell', () => {
+		const root = expandSeo({ twitter: { card: 'summary_large_image' } });
+		const page = expandSeo({ title: 'Hello', description: 'Desc' });
+		const merged = applyConfig(mergeDescriptors([...root, ...page]), {});
+		const content = (key: string) => merged.find((d) => d.key === key)?.attrs.content;
+		expect(content('meta:name=twitter:card')).toBe('summary_large_image');
+		expect(content('meta:name=twitter:title')).toBe('Hello');
+		expect(content('meta:name=twitter:description')).toBe('Desc');
+	});
+
+	it('synthesizes og:url from canonical when root sets the shell', () => {
+		const root = expandSeo({ openGraph: { type: 'website' } });
+		const page = expandSeo({ canonical: '/about' });
+		const merged = applyConfig(mergeDescriptors([...root, ...page]), { site: 'https://x.dev' });
+		expect(merged.find((d) => d.key === 'meta:property=og:url')?.attrs.content).toBe(
+			'https://x.dev/about',
+		);
+	});
+
+	it('does not duplicate social tags when page provides its own', () => {
+		const root = expandSeo({ openGraph: { type: 'website' } });
+		const page = expandSeo({ title: 'Hello', openGraph: { title: 'Social Hello' } });
+		const merged = applyConfig(mergeDescriptors([...root, ...page]), {});
+		const ogTitles = merged.filter((d) => d.key === 'meta:property=og:title');
+		expect(ogTitles).toHaveLength(1);
+		expect(ogTitles[0].attrs.content).toBe('Social Hello');
+	});
+
+	it('uses the raw title for social fill-in, not the templated version', () => {
+		const root = expandSeo({ openGraph: { type: 'website' } });
+		const page = expandSeo({ title: 'Hello' });
+		const merged = applyConfig(mergeDescriptors([...root, ...page]), {
+			titleTemplate: '%s · Site',
+		});
+		expect(merged.find((d) => d.tag === 'title')?.text).toBe('Hello · Site');
+		expect(merged.find((d) => d.key === 'meta:property=og:title')?.attrs.content).toBe('Hello');
+	});
+
+	it('does not synthesize social tags when there is no shell', () => {
+		const page = expandSeo({ title: 'Hello', description: 'Desc' });
+		const merged = applyConfig(mergeDescriptors(page), {});
+		expect(merged.find((d) => d.key === 'meta:property=og:title')).toBeUndefined();
+		expect(merged.find((d) => d.key === 'meta:name=twitter:title')).toBeUndefined();
+	});
+});
+
 // `%s` substitution must treat the title as DATA. `String.replace` with a string
 // replacement expands `$&`, `` $` ``, `$'` and `$1` against the match, so an
 // author-controlled title could rewrite itself in the served document title.

@@ -58,14 +58,97 @@ function urlAttribute(descriptor: SeoDescriptor): string | null {
  * Apply app-level config to the merged set. Deferred to emit time because a page
  * registers its title and canonical before, or without ever seeing, the root's
  * `site` and `titleTemplate`.
+ *
+ * Also synthesizes social fill-in tags across registrations: when a root `<Seo>`
+ * sets an Open Graph or Twitter shell (og:type, twitter:card, etc.) and a page
+ * `<Seo>` sets title/description, the social tags must still be synthesized even
+ * though they were never in the same `expandSeo` call.
  */
 export function applyConfig(
 	descriptors: readonly SeoDescriptor[],
 	config: SeoConfig,
 ): SeoDescriptor[] {
 	const { site, titleTemplate } = config;
-	if (site === undefined && titleTemplate === undefined) return descriptors as SeoDescriptor[];
-	return descriptors.map((descriptor) => {
+
+	// Index existing descriptors for social fill-in detection.
+	const byKey = new Map<string, SeoDescriptor>();
+	for (const d of descriptors) byKey.set(d.key, d);
+
+	// Detect social shells and missing fill-in targets.
+	const hasOgShell =
+		byKey.has('meta:property=og:type') ||
+		byKey.has('meta:property=og:site_name') ||
+		byKey.has('meta:property=og:locale') ||
+		[...byKey.keys()].some((k) => k.startsWith('meta:property=og:image'));
+	const hasTwitterShell =
+		byKey.has('meta:name=twitter:card') ||
+		byKey.has('meta:name=twitter:site') ||
+		byKey.has('meta:name=twitter:creator') ||
+		byKey.has('meta:name=twitter:image');
+
+	// Extract fill-in sources from the merged set.
+	const titleDescriptor = byKey.get('title');
+	const titleText =
+		titleDescriptor?.text !== undefined && titleDescriptor.text !== ''
+			? titleDescriptor.text
+			: undefined;
+	const descriptionContent = byKey.get('meta:name=description')?.attrs.content;
+	const descriptionText =
+		typeof descriptionContent === 'string' && descriptionContent !== ''
+			? descriptionContent
+			: undefined;
+	const canonicalHref = byKey.get('link:canonical')?.attrs.href;
+	const canonicalUrl =
+		typeof canonicalHref === 'string' && canonicalHref !== '' ? canonicalHref : undefined;
+
+	// Synthesize missing social tags.
+	const synthesized: SeoDescriptor[] = [];
+	if (hasOgShell) {
+		if (!byKey.has('meta:property=og:title') && titleText !== undefined) {
+			synthesized.push({
+				tag: 'meta',
+				key: 'meta:property=og:title',
+				attrs: { property: 'og:title', content: titleText },
+			});
+		}
+		if (!byKey.has('meta:property=og:description') && descriptionText !== undefined) {
+			synthesized.push({
+				tag: 'meta',
+				key: 'meta:property=og:description',
+				attrs: { property: 'og:description', content: descriptionText },
+			});
+		}
+		if (!byKey.has('meta:property=og:url') && canonicalUrl !== undefined) {
+			synthesized.push({
+				tag: 'meta',
+				key: 'meta:property=og:url',
+				attrs: { property: 'og:url', content: resolveUrl(canonicalUrl, site) },
+			});
+		}
+	}
+	if (hasTwitterShell) {
+		if (!byKey.has('meta:name=twitter:title') && titleText !== undefined) {
+			synthesized.push({
+				tag: 'meta',
+				key: 'meta:name=twitter:title',
+				attrs: { name: 'twitter:title', content: titleText },
+			});
+		}
+		if (!byKey.has('meta:name=twitter:description') && descriptionText !== undefined) {
+			synthesized.push({
+				tag: 'meta',
+				key: 'meta:name=twitter:description',
+				attrs: { name: 'twitter:description', content: descriptionText },
+			});
+		}
+	}
+
+	// Fast path: no config and no synthesis needed.
+	if (site === undefined && titleTemplate === undefined && synthesized.length === 0) {
+		return descriptors as SeoDescriptor[];
+	}
+
+	const out = descriptors.map((descriptor) => {
 		if (
 			titleTemplate !== undefined &&
 			descriptor.tag === 'title' &&
@@ -93,6 +176,10 @@ export function applyConfig(
 		}
 		return descriptor;
 	});
+
+	// Append synthesized social tags at the end.
+	if (synthesized.length > 0) out.push(...synthesized);
+	return out;
 }
 
 /**
