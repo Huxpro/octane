@@ -90,13 +90,32 @@ export function applyConfig(
 }
 
 /**
- * `<link>` rels that legitimately repeat with different targets. `canonical`
- * must collapse to one; `alternate` (hreflang), `icon` (sizes), and preloads
- * must not, so their identity includes the attributes that distinguish them.
+ * How a `<link>`'s identity is derived. It has to differ by `rel`, because
+ * `href` is sometimes the value being set and sometimes the thing being
+ * identified, and getting that backwards breaks overrides in one direction or
+ * drops tags in the other.
+ *
+ * - **Singleton**: one per document, so `rel` alone is the identity.
+ * - **Slot-keyed**: the listed attributes name a slot and `href` is its value.
+ *   A page replacing a layout's German alternate, or the same-sized icon, must
+ *   win, so `href` is deliberately NOT part of the key.
+ * - **URL-keyed** (everything else): the target IS the identity, so two font
+ *   preloads or two stylesheets coexist. Unknown rels default here on purpose,
+ *   since dropping someone's tag is worse than emitting two.
  */
-const MULTI_VALUE_LINK_ATTRS = ['hreflang', 'media', 'sizes', 'type', 'as', 'href'] as const;
+const SINGLETON_LINK_RELS = new Set(['canonical', 'manifest', 'author', 'license', 'prev', 'next']);
 
-const SINGLETON_LINK_RELS = new Set(['canonical', 'manifest', 'author', 'license']);
+const SLOT_KEYED_LINK_RELS = new Map<string, readonly string[]>([
+	['alternate', ['hreflang', 'type', 'media', 'title']],
+	['icon', ['sizes', 'type', 'media']],
+	['shortcut icon', ['sizes', 'type']],
+	['apple-touch-icon', ['sizes', 'type']],
+	['apple-touch-icon-precomposed', ['sizes', 'type']],
+	['mask-icon', ['color']],
+	['search', ['type', 'title']],
+]);
+
+const URL_KEYED_LINK_ATTRS = ['href', 'as', 'media', 'type', 'hreflang', 'sizes'] as const;
 
 function attrString(attrs: MetaAttributes, name: string): string | null {
 	const value = attrs[name];
@@ -126,8 +145,22 @@ export function metaKey(attrs: MetaAttributes): string {
 export function linkKey(attrs: MetaAttributes): string {
 	const rel = attrString(attrs, 'rel') ?? '';
 	if (SINGLETON_LINK_RELS.has(rel)) return 'link:' + rel;
+	const slotAttrs = SLOT_KEYED_LINK_RELS.get(rel);
 	let key = 'link:' + rel;
-	for (const name of MULTI_VALUE_LINK_ATTRS) {
+	if (slotAttrs !== undefined) {
+		let named = false;
+		for (const name of slotAttrs) {
+			const value = attrString(attrs, name);
+			if (value !== null) {
+				key += '|' + name + '=' + value;
+				named = true;
+			}
+		}
+		// A slot-keyed rel carrying none of its discriminators names no slot, so
+		// fall through to the URL rather than collapsing unrelated tags together.
+		if (named) return key;
+	}
+	for (const name of URL_KEYED_LINK_ATTRS) {
 		const value = attrString(attrs, name);
 		if (value !== null) key += '|' + name + '=' + value;
 	}

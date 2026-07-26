@@ -92,3 +92,34 @@ export function AppLevelConfig() @{
 		</>
 	</Head>
 }
+
+/**
+ * A layout's language alternates and icon, then a page moving both to new URLs.
+ * The page must replace them rather than adding a second of each.
+ */
+function RelocatedPage() @{
+	<Head>
+		<>
+			<Link rel="alternate" hreflang="de" href="/de/page" />
+			<Link rel="icon" sizes="32x32" href="/new-icon.png" />
+		</>
+	</Head>
+}
+
+export function LinkOverride() @{
+	<Head>
+		<>
+			<Head>
+				<>
+					<Link rel="alternate" hreflang="de" href="/de/layout" />
+					<Link rel="alternate" hreflang="fr" href="/fr/layout" />
+					<Link rel="icon" sizes="32x32" href="/old-icon.png" />
+					<Link rel="icon" sizes="16x16" href="/small.png" />
+					<Link rel="preload" as="font" href="/a.woff2" />
+					<Link rel="preload" as="font" href="/b.woff2" />
+				</>
+			</Head>
+			<RelocatedPage />
+		</>
+	</Head>
+}

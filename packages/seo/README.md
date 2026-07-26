@@ -47,11 +47,22 @@ other way, with app defaults written before page specifics, so simply emitting
 both would let the generic value win every time. Registrations are therefore
 keyed by identity and the **last** one wins.
 
-Identity is what the tag names, not the tag type: `meta[name]`,
-`meta[property]`, and `meta[http-equiv]` are separate channels, `link[rel]`
-collapses for `canonical`/`manifest` but stays distinct per `hreflang`/`sizes`
-for `alternate`/`icon`, and JSON-LD is keyed by `@type` (plus `@id`), so an
-`Article` replaces an `Article` while a `BreadcrumbList` sits alongside it.
+Identity is what the tag names, not the tag type. `meta[name]`,
+`meta[property]`, and `meta[http-equiv]` are separate channels. JSON-LD is keyed
+by `@type` (plus `@id`), so an `Article` replaces an `Article` while a
+`BreadcrumbList` sits alongside it.
+
+`<link>` needs three rules, because `href` is sometimes the value being set and
+sometimes the thing being identified:
+
+| rel | identity | effect |
+| --- | --- | --- |
+| `canonical`, `manifest`, `author`, `license`, `prev`, `next` | `rel` alone | one per document |
+| `alternate` (`hreflang`/`type`/`media`/`title`), `icon` and `apple-touch-icon` (`sizes`/`type`), `mask-icon`, `search` | the named slot, **not** `href` | a page moving the German alternate or the 32×32 icon replaces it |
+| everything else, including `preload`, `prefetch`, `preconnect`, `modulepreload`, `stylesheet`, and any rel not listed above | the target URL | two font preloads or two stylesheets coexist |
+
+Unknown rels fall in the last group deliberately: emitting two tags is a smaller
+mistake than silently dropping one.
 
 ## `<Head>`, and where to put it
 

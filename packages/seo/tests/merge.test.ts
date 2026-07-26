@@ -165,3 +165,62 @@ describe('expandSeo', () => {
 		expect(replaced[0].text).toContain('"headline":"B"');
 	});
 });
+
+// A layout declares a language alternate or an icon and a page replaces it with
+// a different URL. `href` is the VALUE being set, not part of the slot's
+// identity, so folding it into the key would keep both and the platform would
+// use the layout's.
+describe('overriding a repeatable link', () => {
+	it('replaces an hreflang alternate that differs only in href', () => {
+		const merged = mergeDescriptors([
+			{
+				tag: 'link',
+				key: linkKey({ rel: 'alternate', hreflang: 'de', href: '/de/layout' }),
+				attrs: { rel: 'alternate', hreflang: 'de', href: '/de/layout' },
+			},
+			{
+				tag: 'link',
+				key: linkKey({ rel: 'alternate', hreflang: 'de', href: '/de/page' }),
+				attrs: { rel: 'alternate', hreflang: 'de', href: '/de/page' },
+			},
+		]);
+		expect(merged).toHaveLength(1);
+		expect(merged[0].attrs.href).toBe('/de/page');
+	});
+
+	it('replaces an icon of the same size that differs only in href', () => {
+		const merged = mergeDescriptors([
+			{
+				tag: 'link',
+				key: linkKey({ rel: 'icon', sizes: '32x32', href: '/old.png' }),
+				attrs: { rel: 'icon', sizes: '32x32', href: '/old.png' },
+			},
+			{
+				tag: 'link',
+				key: linkKey({ rel: 'icon', sizes: '32x32', href: '/new.png' }),
+				attrs: { rel: 'icon', sizes: '32x32', href: '/new.png' },
+			},
+		]);
+		expect(merged).toHaveLength(1);
+		expect(merged[0].attrs.href).toBe('/new.png');
+	});
+
+	it('keeps resource hints with different targets, where the URL IS the identity', () => {
+		// Two font preloads share rel and `as` and differ only in href. Collapsing
+		// these would silently drop a preload.
+		const a = linkKey({ rel: 'preload', as: 'font', href: '/a.woff2' });
+		const b = linkKey({ rel: 'preload', as: 'font', href: '/b.woff2' });
+		expect(a).not.toBe(b);
+		const sheetA = linkKey({ rel: 'stylesheet', href: '/a.css' });
+		const sheetB = linkKey({ rel: 'stylesheet', href: '/b.css' });
+		expect(sheetA).not.toBe(sheetB);
+	});
+
+	it('keeps feed alternates distinct by type rather than href', () => {
+		const rss = linkKey({ rel: 'alternate', type: 'application/rss+xml', href: '/rss' });
+		const atom = linkKey({ rel: 'alternate', type: 'application/atom+xml', href: '/atom' });
+		expect(rss).not.toBe(atom);
+		const moved = linkKey({ rel: 'alternate', type: 'application/rss+xml', href: '/feed.xml' });
+		expect(moved).toBe(rss);
+	});
+});

@@ -2,7 +2,14 @@
 // metadata, so where a block sits cannot change the result. These pin that.
 import { describe, it, expect } from 'vitest';
 import { prerender } from 'octane/static';
-import { AppLevelConfig, Bare, Grouped, Nested, RawScript } from '../_fixtures/head-block.tsrx';
+import {
+	AppLevelConfig,
+	Bare,
+	Grouped,
+	LinkOverride,
+	Nested,
+	RawScript,
+} from '../_fixtures/head-block.tsrx';
 
 async function render(Component: any) {
 	const { html, head } = await prerender(Component, undefined, { headChannel: 'separate' });
@@ -58,5 +65,27 @@ describe('app-level site and titleTemplate', () => {
 	it('applies the template exactly once', async () => {
 		const { head } = await render(AppLevelConfig);
 		expect(head.match(/· Wayfinder/g)).toHaveLength(1);
+	});
+});
+
+describe('repeatable link overrides', () => {
+	it('replaces a language alternate and an icon rather than duplicating them', async () => {
+		const { head } = await render(LinkOverride);
+		// The German alternate and the 32x32 icon moved; each must appear once, at
+		// the page's URL.
+		expect(head.match(/hreflang="de"/g)).toHaveLength(1);
+		expect(head).toContain('href="/de/page"');
+		expect(head).not.toContain('/de/layout');
+		expect(head.match(/sizes="32x32"/g)).toHaveLength(1);
+		expect(head).toContain('href="/new-icon.png"');
+		expect(head).not.toContain('/old-icon.png');
+
+		// Untouched slots survive.
+		expect(head).toContain('href="/fr/layout"');
+		expect(head).toContain('href="/small.png"');
+
+		// Resource hints are keyed by target, so both font preloads remain.
+		expect(head).toContain('href="/a.woff2"');
+		expect(head).toContain('href="/b.woff2"');
 	});
 });
