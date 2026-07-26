@@ -97,7 +97,13 @@ export function expandSeo(input: SeoInput): SeoDescriptor[] {
 			input.titleTemplate !== undefined
 				? input.titleTemplate.replace('%s', input.title)
 				: input.title;
-		out.push({ tag: 'title', key: 'title', attrs: {}, text });
+		out.push({
+			tag: 'title',
+			key: 'title',
+			attrs: {},
+			text,
+			templated: input.titleTemplate !== undefined,
+		});
 	}
 	if (input.description !== undefined) {
 		out.push(meta({ name: 'description', content: input.description }));

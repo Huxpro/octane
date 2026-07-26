@@ -13,11 +13,18 @@
  * render order, which is why the outlet emits the same sequence on the server
  * and the client and hydration adoption stays positional.
  */
-import { mergeDescriptors, type SeoDescriptor } from './descriptors.js';
+import {
+	applyConfig,
+	mergeDescriptors,
+	type SeoConfig,
+	type SeoDescriptor,
+} from './descriptors.js';
 
 export interface SeoRegistry {
 	/** Record (or replace) one source's descriptors. Called during render. */
 	register(sourceId: number, descriptors: readonly SeoDescriptor[]): void;
+	/** Record app-level settings from one source; merged last-wins like metadata. */
+	configure(sourceId: number, config: SeoConfig): void;
 	remove(sourceId: number): void;
 	/** Allocate a stable id for a component instance. */
 	nextSourceId(): number;
@@ -45,6 +52,7 @@ function sameDescriptors(a: readonly SeoDescriptor[], b: readonly SeoDescriptor[
 
 export function createSeoRegistry(): SeoRegistry {
 	const sources = new Map<number, readonly SeoDescriptor[]>();
+	const configs = new Map<number, SeoConfig>();
 	const listeners = new Set<() => void>();
 	let nextId = 1;
 	let snapshot: readonly SeoDescriptor[] | null = null;
@@ -68,14 +76,32 @@ export function createSeoRegistry(): SeoRegistry {
 			sources.set(sourceId, descriptors);
 			invalidate();
 		},
+		configure(sourceId, config) {
+			const previous = configs.get(sourceId);
+			if (
+				previous !== undefined &&
+				previous.site === config.site &&
+				previous.titleTemplate === config.titleTemplate
+			) {
+				return;
+			}
+			configs.set(sourceId, config);
+			invalidate();
+		},
 		remove(sourceId) {
-			if (sources.delete(sourceId)) invalidate();
+			const had = sources.delete(sourceId);
+			if (configs.delete(sourceId) || had) invalidate();
 		},
 		getSnapshot() {
 			if (snapshot === null) {
 				const flat: SeoDescriptor[] = [];
 				for (const descriptors of sources.values()) flat.push(...descriptors);
-				snapshot = mergeDescriptors(flat);
+				const effective: SeoConfig = {};
+				for (const config of configs.values()) {
+					if (config.site !== undefined) effective.site = config.site;
+					if (config.titleTemplate !== undefined) effective.titleTemplate = config.titleTemplate;
+				}
+				snapshot = applyConfig(mergeDescriptors(flat), effective);
 			}
 			return snapshot;
 		},

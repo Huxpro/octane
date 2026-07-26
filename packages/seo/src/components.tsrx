@@ -194,8 +194,14 @@ export function JsonLd(props: { data: unknown; seoKey?: string }) {
 	return null;
 }
 
-/** The whole metadata object in one element; expands to the tags above. */
+/**
+ * The whole metadata object in one element; expands to the tags above.
+ *
+ * `site` and `titleTemplate` are app-level: they merge last-wins like everything
+ * else and apply to every page's title and URLs, so setting them once near the
+ * root is enough. A page that names its own still overrides them.
+ */
 export function Seo(props: SeoInput) {
-	useRegisterSeo(expandSeo(props));
+	useRegisterSeo(expandSeo(props), { site: props.site, titleTemplate: props.titleTemplate });
 	return null;
 }

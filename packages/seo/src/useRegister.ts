@@ -13,9 +13,9 @@
  */
 import { useContext, useEffect, useRef } from 'octane';
 import { SeoContext } from './context.js';
-import type { SeoDescriptor } from './descriptors.js';
+import type { SeoConfig, SeoDescriptor } from './descriptors.js';
 
-export function useRegisterSeo(descriptors: readonly SeoDescriptor[]): void {
+export function useRegisterSeo(descriptors: readonly SeoDescriptor[], config?: SeoConfig): void {
 	const registry = useContext(SeoContext);
 	if (registry === null) {
 		throw new Error(
@@ -25,6 +25,7 @@ export function useRegisterSeo(descriptors: readonly SeoDescriptor[]): void {
 	const idRef = useRef<number>(0);
 	if (idRef.current === 0) idRef.current = registry.nextSourceId();
 	registry.register(idRef.current, descriptors);
+	if (config !== undefined) registry.configure(idRef.current, config);
 
 	// Two effects, and they must stay separate.
 	//
@@ -36,6 +37,7 @@ export function useRegisterSeo(descriptors: readonly SeoDescriptor[]): void {
 	// nothing unless something actually changed.
 	useEffect(() => {
 		registry.register(idRef.current, descriptors);
+		if (config !== undefined) registry.configure(idRef.current, config);
 		registry.flush();
 	});
 

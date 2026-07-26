@@ -2,7 +2,7 @@
 // metadata, so where a block sits cannot change the result. These pin that.
 import { describe, it, expect } from 'vitest';
 import { prerender } from 'octane/static';
-import { Bare, Grouped, Nested, RawScript } from '../_fixtures/head-block.tsrx';
+import { AppLevelConfig, Bare, Grouped, Nested, RawScript } from '../_fixtures/head-block.tsrx';
 
 async function render(Component: any) {
 	const { html, head } = await prerender(Component, undefined, { headChannel: 'separate' });
@@ -42,5 +42,21 @@ describe('<Head> grouping', () => {
 		const { html } = await render(RawScript);
 		expect(html).toContain('type="text/plain"');
 		expect(html).toContain('hello');
+	});
+});
+
+describe('app-level site and titleTemplate', () => {
+	it('reach a page that declares neither', async () => {
+		// Both are set once near the root while the page names only its own title
+		// and a relative canonical, which is how apps actually configure them.
+		const { head } = await render(AppLevelConfig);
+		expect(head).toContain('<title>Lisbon · Wayfinder</title>');
+		expect(head).toContain('href="https://x.dev/trips/lisbon"');
+		expect(head).toContain('content="https://x.dev/og/lisbon.png"');
+	});
+
+	it('applies the template exactly once', async () => {
+		const { head } = await render(AppLevelConfig);
+		expect(head.match(/· Wayfinder/g)).toHaveLength(1);
 	});
 });

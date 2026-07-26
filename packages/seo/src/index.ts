@@ -16,8 +16,8 @@
  * emitted.
  */
 export { Head, Title, Meta, Link, Script, JsonLd, Seo } from './components.tsrx';
-export { mergeDescriptors, metaKey, linkKey, resolveUrl } from './descriptors.js';
-export type { SeoDescriptor, MetaAttributes } from './descriptors.js';
+export { applyConfig, mergeDescriptors, metaKey, linkKey, resolveUrl } from './descriptors.js';
+export type { SeoConfig, SeoDescriptor, MetaAttributes } from './descriptors.js';
 export { expandSeo, formatRobots, jsonLdDescriptor } from './expand.js';
 export type {
 	SeoInput,

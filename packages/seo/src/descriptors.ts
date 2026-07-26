@@ -24,6 +24,69 @@ export interface SeoDescriptor {
 	attrs: MetaAttributes;
 	/** Text content, for `<title>` and for script bodies. */
 	text?: string;
+	/** A title that already had a template applied, so it is not templated twice. */
+	templated?: boolean;
+}
+
+/**
+ * Settings that belong to the app rather than to one declaration. They are
+ * registered like any other metadata and merged last-wins, so setting them once
+ * near the root applies them to every page's title and URLs.
+ */
+export interface SeoConfig {
+	/** Origin used to absolute-ise canonical, og:url, and image URLs. */
+	site?: string;
+	/** `%s` is replaced by the page title, e.g. `'%s · Acme'`. */
+	titleTemplate?: string;
+}
+
+/**
+ * Attributes holding a URL that scrapers will not resolve relative to the page,
+ * so they are absolute-ised against the configured origin at emit time, once the
+ * whole tree's config is known.
+ */
+function urlAttribute(descriptor: SeoDescriptor): string | null {
+	if (descriptor.tag === 'link') return 'href';
+	if (descriptor.tag !== 'meta') return null;
+	const property = descriptor.attrs.property;
+	if (property === 'og:url' || property === 'og:image') return 'content';
+	if (descriptor.attrs.name === 'twitter:image') return 'content';
+	return null;
+}
+
+/**
+ * Apply app-level config to the merged set. Deferred to emit time because a page
+ * registers its title and canonical before, or without ever seeing, the root's
+ * `site` and `titleTemplate`.
+ */
+export function applyConfig(
+	descriptors: readonly SeoDescriptor[],
+	config: SeoConfig,
+): SeoDescriptor[] {
+	const { site, titleTemplate } = config;
+	if (site === undefined && titleTemplate === undefined) return descriptors as SeoDescriptor[];
+	return descriptors.map((descriptor) => {
+		if (
+			titleTemplate !== undefined &&
+			descriptor.tag === 'title' &&
+			descriptor.templated !== true &&
+			descriptor.text !== undefined &&
+			descriptor.text !== ''
+		) {
+			return { ...descriptor, text: titleTemplate.replace('%s', descriptor.text), templated: true };
+		}
+		const attr = site === undefined ? null : urlAttribute(descriptor);
+		if (attr !== null) {
+			const value = descriptor.attrs[attr];
+			if (typeof value === 'string') {
+				const resolved = resolveUrl(value, site);
+				if (resolved !== value) {
+					return { ...descriptor, attrs: { ...descriptor.attrs, [attr]: resolved } };
+				}
+			}
+		}
+		return descriptor;
+	});
 }
 
 /**

@@ -1,4 +1,4 @@
-import { Head, Link, Meta, Script, Title } from '@octanejs/seo';
+import { Head, Link, Meta, Script, Seo, Title } from '@octanejs/seo';
 
 /** One provider, tags grouped in a <Head> block. */
 export function Grouped() @{
@@ -67,6 +67,28 @@ export function RawScript() @{
 				<Script type="text/plain" seoKey="notes" text="hello & goodbye" />
 			</Head>
 			<main>raw</main>
+		</>
+	</Head>
+}
+
+/**
+ * `site` and `titleTemplate` declared once near the root, with the page naming
+ * only its own title and a relative canonical. This is how apps actually set
+ * them, and the page must inherit both.
+ */
+function InheritingPage() @{
+	<Head>
+		<Seo title="Lisbon" canonical="/trips/lisbon" openGraph={{ images: ['/og/lisbon.png'] }} />
+	</Head>
+}
+
+export function AppLevelConfig() @{
+	<Head>
+		<>
+			<Seo site="https://x.dev" titleTemplate="%s · Wayfinder" />
+			<section>
+				<InheritingPage />
+			</section>
 		</>
 	</Head>
 }
