@@ -1,0 +1,104 @@
+/**
+ * Metadata descriptors and the merge that decides precedence.
+ *
+ * Renderer-free on purpose: server and client both merge with this exact code,
+ * so the two emit the identical set and hydration adopts instead of duplicating.
+ *
+ * WHY A MERGE EXISTS AT ALL. The platform resolves duplicates by taking the
+ * FIRST occurrence in tree order, `document.title` is defined as the first
+ * `<title>` element in the document, and a crawler reads the first
+ * `<meta name="description">`. Authoring order runs the other way: defaults come
+ * from the outer layout and the specific value from the inner page, so appending
+ * both would let the generic one win every time. Registrations are therefore
+ * keyed by identity and the LAST one wins, which is the precedence every SEO
+ * system uses and the one authors expect.
+ */
+
+export type MetaAttributes = Record<string, string | number | boolean | null | undefined>;
+
+/** One head element to render, plus the identity that decides what it replaces. */
+export interface SeoDescriptor {
+	tag: 'title' | 'meta' | 'link' | 'script';
+	/** Identity key: a later descriptor with the same key replaces this one. */
+	key: string;
+	attrs: MetaAttributes;
+	/** Text content, for `<title>` and for script bodies. */
+	text?: string;
+}
+
+/**
+ * `<link>` rels that legitimately repeat with different targets. `canonical`
+ * must collapse to one; `alternate` (hreflang), `icon` (sizes), and preloads
+ * must not, so their identity includes the attributes that distinguish them.
+ */
+const MULTI_VALUE_LINK_ATTRS = ['hreflang', 'media', 'sizes', 'type', 'as', 'href'] as const;
+
+const SINGLETON_LINK_RELS = new Set(['canonical', 'manifest', 'author', 'license']);
+
+function attrString(attrs: MetaAttributes, name: string): string | null {
+	const value = attrs[name];
+	if (value === null || value === undefined || value === false) return null;
+	return String(value);
+}
+
+/**
+ * Identity for a `<meta>`: whichever naming attribute it uses. Open Graph uses
+ * `property`, most others use `name`, and `http-equiv` is its own namespace, so
+ * `og:title` and a `name="og:title"` never collide by accident.
+ */
+export function metaKey(attrs: MetaAttributes): string {
+	if (attrs.charSet !== undefined || attrs.charset !== undefined) return 'meta:charset';
+	for (const naming of ['name', 'property', 'http-equiv', 'httpEquiv', 'itemprop']) {
+		const value = attrString(attrs, naming);
+		if (value !== null) {
+			const channel = naming === 'httpEquiv' ? 'http-equiv' : naming;
+			return 'meta:' + channel + '=' + value;
+		}
+	}
+	// No naming attribute: keep every such tag by giving it a content-derived
+	// identity rather than silently collapsing unrelated tags together.
+	return 'meta:raw=' + JSON.stringify(attrs);
+}
+
+export function linkKey(attrs: MetaAttributes): string {
+	const rel = attrString(attrs, 'rel') ?? '';
+	if (SINGLETON_LINK_RELS.has(rel)) return 'link:' + rel;
+	let key = 'link:' + rel;
+	for (const name of MULTI_VALUE_LINK_ATTRS) {
+		const value = attrString(attrs, name);
+		if (value !== null) key += '|' + name + '=' + value;
+	}
+	return key;
+}
+
+/**
+ * Merge registrations into the set to render, last-wins per identity.
+ *
+ * Insertion order is preserved for keys that survive: replacing a descriptor
+ * updates it in place rather than moving it to the end, so server and client
+ * produce the same order and hydration adoption stays positional. That also
+ * makes the merge idempotent across SSR suspense passes, where the same
+ * component re-registers the same key on every pass.
+ */
+export function mergeDescriptors(registrations: readonly SeoDescriptor[]): SeoDescriptor[] {
+	const byKey = new Map<string, number>();
+	const out: SeoDescriptor[] = [];
+	for (const descriptor of registrations) {
+		const at = byKey.get(descriptor.key);
+		if (at === undefined) {
+			byKey.set(descriptor.key, out.length);
+			out.push(descriptor);
+		} else {
+			out[at] = descriptor;
+		}
+	}
+	return out;
+}
+
+/** Absolute-ise a canonical/og:url style value against the configured site origin. */
+export function resolveUrl(value: string, site: string | undefined): string {
+	if (site === undefined || /^[a-z][a-z0-9+.-]*:/i.test(value) || value.startsWith('//')) {
+		return value;
+	}
+	return site.replace(/\/+$/, '') + (value.startsWith('/') ? value : '/' + value);
+}

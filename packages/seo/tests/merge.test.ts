@@ -1,0 +1,167 @@
+// The merge decides precedence, and precedence is the whole reason this package
+// exists: the platform takes the FIRST duplicate in tree order, while authoring
+// order puts layout defaults first, so without this the generic value wins.
+import { describe, it, expect } from 'vitest';
+import {
+	expandSeo,
+	formatRobots,
+	linkKey,
+	mergeDescriptors,
+	metaKey,
+	resolveUrl,
+	type SeoDescriptor,
+} from '@octanejs/seo';
+
+const meta = (attrs: Record<string, string>, text?: string): SeoDescriptor => ({
+	tag: 'meta',
+	key: metaKey(attrs),
+	attrs,
+	text,
+});
+
+describe('mergeDescriptors', () => {
+	it('lets the last registration win per identity', () => {
+		const merged = mergeDescriptors([
+			{ tag: 'title', key: 'title', attrs: {}, text: 'layout' },
+			{ tag: 'title', key: 'title', attrs: {}, text: 'page' },
+		]);
+		expect(merged).toHaveLength(1);
+		expect(merged[0].text).toBe('page');
+	});
+
+	it('keeps the position of a replaced descriptor', () => {
+		// Order must not depend on when a value was overridden, or the server and
+		// client could emit different sequences and hydration adoption would drift.
+		const merged = mergeDescriptors([
+			{ tag: 'title', key: 'title', attrs: {}, text: 'layout' },
+			meta({ name: 'description', content: 'layout' }),
+			{ tag: 'title', key: 'title', attrs: {}, text: 'page' },
+		]);
+		expect(merged.map((d) => d.key)).toEqual(['title', 'meta:name=description']);
+		expect(merged[0].text).toBe('page');
+	});
+
+	it('is idempotent, so an SSR suspense re-pass cannot duplicate anything', () => {
+		const once = [
+			{ tag: 'title' as const, key: 'title', attrs: {}, text: 'x' },
+			meta({ name: 'description', content: 'y' }),
+		];
+		expect(mergeDescriptors([...once, ...once])).toEqual(mergeDescriptors(once));
+	});
+
+	it('keeps distinct naming channels apart', () => {
+		const merged = mergeDescriptors([
+			meta({ name: 'og:title', content: 'by-name' }),
+			meta({ property: 'og:title', content: 'by-property' }),
+			meta({ 'http-equiv': 'og:title', content: 'by-http-equiv' }),
+		]);
+		expect(merged).toHaveLength(3);
+	});
+
+	it('does not collapse unrelated meta tags that carry no naming attribute', () => {
+		const merged = mergeDescriptors([meta({ content: 'a' }), meta({ content: 'b' })]);
+		expect(merged).toHaveLength(2);
+	});
+});
+
+describe('link identity', () => {
+	it('collapses rels that must be unique', () => {
+		expect(linkKey({ rel: 'canonical', href: '/a' })).toBe(
+			linkKey({ rel: 'canonical', href: '/b' }),
+		);
+	});
+
+	it('keeps repeatable rels distinct by what distinguishes them', () => {
+		const de = linkKey({ rel: 'alternate', hreflang: 'de', href: '/de' });
+		const fr = linkKey({ rel: 'alternate', hreflang: 'fr', href: '/fr' });
+		expect(de).not.toBe(fr);
+
+		const small = linkKey({ rel: 'icon', sizes: '16x16', href: '/a.png' });
+		const large = linkKey({ rel: 'icon', sizes: '32x32', href: '/b.png' });
+		expect(small).not.toBe(large);
+	});
+});
+
+describe('resolveUrl', () => {
+	it('absolute-ises relative values against the site origin', () => {
+		expect(resolveUrl('/a', 'https://x.dev')).toBe('https://x.dev/a');
+		expect(resolveUrl('a', 'https://x.dev/')).toBe('https://x.dev/a');
+	});
+
+	it('leaves already-absolute and protocol-relative values alone', () => {
+		expect(resolveUrl('https://y.dev/a', 'https://x.dev')).toBe('https://y.dev/a');
+		expect(resolveUrl('//y.dev/a', 'https://x.dev')).toBe('//y.dev/a');
+		expect(resolveUrl('/a', undefined)).toBe('/a');
+	});
+});
+
+describe('formatRobots', () => {
+	it('passes a string through and builds a directive list from an object', () => {
+		expect(formatRobots('noindex')).toBe('noindex');
+		expect(formatRobots({})).toBe('index, follow');
+		expect(formatRobots({ index: false })).toBe('noindex, follow');
+		expect(formatRobots({ follow: false, maxImagePreview: 'large' })).toBe(
+			'index, nofollow, max-image-preview:large',
+		);
+	});
+});
+
+describe('expandSeo', () => {
+	it('falls back to the page title and description for social tags', () => {
+		const out = expandSeo({
+			title: 'Hello',
+			description: 'Desc',
+			openGraph: { type: 'article' },
+			twitter: { card: 'summary' },
+		});
+		const content = (key: string) => out.find((d) => d.key === key)?.attrs.content;
+		expect(content('meta:property=og:title')).toBe('Hello');
+		expect(content('meta:property=og:description')).toBe('Desc');
+		expect(content('meta:name=twitter:title')).toBe('Hello');
+	});
+
+	it('lets an explicit social value override the fallback', () => {
+		const out = expandSeo({
+			title: 'Hello',
+			openGraph: { title: 'Social title' },
+		});
+		expect(out.find((d) => d.key === 'meta:property=og:title')?.attrs.content).toBe('Social title');
+	});
+
+	it('applies the title template only to the title', () => {
+		const out = expandSeo({ title: 'Hello', titleTemplate: '%s · Site', description: 'Desc' });
+		expect(out.find((d) => d.tag === 'title')?.text).toBe('Hello · Site');
+	});
+
+	it('absolute-ises image urls, which scrapers do not resolve themselves', () => {
+		const out = expandSeo({
+			site: 'https://x.dev',
+			openGraph: { images: [{ url: '/og.png', alt: 'A', width: 1200, height: 630 }] },
+		});
+		expect(out.find((d) => d.key === 'meta:property=og:image[0]')?.attrs.content).toBe(
+			'https://x.dev/og.png',
+		);
+		expect(out.find((d) => d.key === 'meta:property=og:image:alt[0]')?.attrs.content).toBe('A');
+	});
+
+	it('keeps multiple images rather than collapsing them', () => {
+		const out = expandSeo({ openGraph: { images: ['/a.png', '/b.png'] } });
+		const merged = mergeDescriptors(out);
+		const images = merged.filter((d) => d.attrs.property === 'og:image');
+		expect(images.map((d) => d.attrs.content)).toEqual(['/a.png', '/b.png']);
+	});
+
+	it('gives JSON-LD an identity per @type so different graphs coexist', () => {
+		const article = expandSeo({ jsonLd: { '@type': 'Article', headline: 'A' } });
+		const crumbs = expandSeo({ jsonLd: { '@type': 'BreadcrumbList' } });
+		const merged = mergeDescriptors([...article, ...crumbs]);
+		expect(merged.filter((d) => d.key.startsWith('jsonLd:'))).toHaveLength(2);
+
+		const replaced = mergeDescriptors([
+			...expandSeo({ jsonLd: { '@type': 'Article', headline: 'A' } }),
+			...expandSeo({ jsonLd: { '@type': 'Article', headline: 'B' } }),
+		]);
+		expect(replaced.filter((d) => d.key.startsWith('jsonLd:'))).toHaveLength(1);
+		expect(replaced[0].text).toContain('"headline":"B"');
+	});
+});
