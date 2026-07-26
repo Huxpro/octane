@@ -60,6 +60,16 @@ export interface SeoInput {
 	jsonLd?: unknown;
 }
 
+/**
+ * Substitute `%s` treating the title as DATA. A string replacement would expand
+ * `$&`, `` $` ``, `$'` and `$1` in an author-controlled title against the match,
+ * rewriting the served document title; a function replacement is inserted
+ * verbatim.
+ */
+export function applyTitleTemplate(template: string, title: string): string {
+	return template.replace('%s', () => title);
+}
+
 function meta(attrs: Record<string, string>): SeoDescriptor {
 	return { tag: 'meta', key: metaKey(attrs), attrs };
 }
@@ -95,7 +105,7 @@ export function expandSeo(input: SeoInput): SeoDescriptor[] {
 	if (input.title !== undefined) {
 		const text =
 			input.titleTemplate !== undefined
-				? input.titleTemplate.replace('%s', input.title)
+				? applyTitleTemplate(input.titleTemplate, input.title)
 				: input.title;
 		out.push({
 			tag: 'title',

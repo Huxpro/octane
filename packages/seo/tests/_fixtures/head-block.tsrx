@@ -123,3 +123,19 @@ export function LinkOverride() @{
 		</>
 	</Head>
 }
+
+/** An author-controlled title carrying regex replacement patterns. */
+function HostileTitlePage() @{
+	<Head>
+		<Seo title="Deals: 50% off $& and $' plus $1" />
+	</Head>
+}
+
+export function HostileTitle() @{
+	<Head>
+		<>
+			<Seo titleTemplate="%s · Shop" />
+			<HostileTitlePage />
+		</>
+	</Head>
+}

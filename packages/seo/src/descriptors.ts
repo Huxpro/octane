@@ -73,7 +73,13 @@ export function applyConfig(
 			descriptor.text !== undefined &&
 			descriptor.text !== ''
 		) {
-			return { ...descriptor, text: titleTemplate.replace('%s', descriptor.text), templated: true };
+			// Function replacement: see applyTitleTemplate. The title is data, so its
+			// dollar patterns must not expand against the `%s` match.
+			return {
+				...descriptor,
+				text: titleTemplate.replace('%s', () => descriptor.text as string),
+				templated: true,
+			};
 		}
 		const attr = site === undefined ? null : urlAttribute(descriptor);
 		if (attr !== null) {

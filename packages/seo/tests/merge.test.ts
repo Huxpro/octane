@@ -3,6 +3,7 @@
 // order puts layout defaults first, so without this the generic value wins.
 import { describe, it, expect } from 'vitest';
 import {
+	applyConfig,
 	expandSeo,
 	formatRobots,
 	linkKey,
@@ -222,5 +223,29 @@ describe('overriding a repeatable link', () => {
 		expect(rss).not.toBe(atom);
 		const moved = linkKey({ rel: 'alternate', type: 'application/rss+xml', href: '/feed.xml' });
 		expect(moved).toBe(rss);
+	});
+});
+
+// `%s` substitution must treat the title as DATA. `String.replace` with a string
+// replacement expands `$&`, `` $` ``, `$'` and `$1` against the match, so an
+// author-controlled title could rewrite itself in the served document title.
+describe('title templating treats the title as data', () => {
+	const HOSTILE = "Deals: 50% off $& and $' and $` and $1";
+
+	it('preserves dollar patterns when the template is on the same <Seo>', () => {
+		const out = expandSeo({ title: HOSTILE, titleTemplate: '%s · Shop' });
+		expect(out.find((d) => d.tag === 'title')?.text).toBe(HOSTILE + ' · Shop');
+	});
+
+	it('preserves dollar patterns when the template is app-level', () => {
+		const merged = applyConfig(mergeDescriptors(expandSeo({ title: HOSTILE })), {
+			titleTemplate: '%s · Shop',
+		});
+		expect(merged.find((d) => d.tag === 'title')?.text).toBe(HOSTILE + ' · Shop');
+	});
+
+	it('leaves a template containing dollar patterns alone', () => {
+		const out = expandSeo({ title: 'Widgets', titleTemplate: '%s — $100 & up' });
+		expect(out.find((d) => d.tag === 'title')?.text).toBe('Widgets — $100 & up');
 	});
 });

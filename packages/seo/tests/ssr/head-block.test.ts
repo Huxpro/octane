@@ -6,6 +6,7 @@ import {
 	AppLevelConfig,
 	Bare,
 	Grouped,
+	HostileTitle,
 	LinkOverride,
 	Nested,
 	RawScript,
@@ -87,5 +88,13 @@ describe('repeatable link overrides', () => {
 		// Resource hints are keyed by target, so both font preloads remain.
 		expect(head).toContain('href="/a.woff2"');
 		expect(head).toContain('href="/b.woff2"');
+	});
+});
+
+describe('titles carrying regex replacement patterns', () => {
+	it('reach the served document title verbatim', async () => {
+		const { head } = await render(HostileTitle);
+		// Escaped for HTML, but not rewritten by `%s` substitution.
+		expect(head).toContain("<title>Deals: 50% off $&amp; and $' plus $1 · Shop</title>");
 	});
 });
