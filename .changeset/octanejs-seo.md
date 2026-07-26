@@ -7,6 +7,11 @@ served HTML.
 
 ```tsx
 <Head>
+  <App />
+</Head>
+
+// …and again anywhere below, in any component
+<Head>
   <Title text={product.name} />
   <Meta name="description" content={product.blurb} />
   <Link rel="canonical" href={'/p/' + product.slug} />
@@ -14,10 +19,11 @@ served HTML.
 </Head>
 ```
 
-There is no provider to install. `<Head>` owns the metadata when it is
-outermost and is pure grouping when nested, so a page can carry its own. For two
-`<Head>` blocks to merge one must contain the other; siblings each emit
-separately and warn in development. `<Seo>` takes the same information as a
+`<Head>` is the only component. The outermost one owns the merge; every block
+below it is grouping, and where those sit carries no meaning, so two blocks merge
+whether one contains the other or they are siblings in unrelated components. The
+outer one has to exist because a string renderer emits in document order and the
+merge must see every registration first. `<Seo>` takes the same information as a
 single object and fills in Open Graph and Twitter from `title`/`description`.
 
 Registrations are keyed by identity and the **last** one wins, so a page
@@ -29,5 +35,6 @@ Metadata registers during render rather than in an effect, because effects never
 run on the server and an effect-based approach hands crawlers nothing. On the
 client the server's elements are adopted rather than duplicated, updated in
 place, and removed when their page unmounts, so navigation cannot accumulate
-stale canonicals or `og:image` tags. Misuse is loud: a tag with no enclosing
-`<Head>` throws, and sibling owning blocks warn in development.
+stale canonicals or `og:image` tags. Misuse is loud: a tag with no `<Head>` above
+it throws, and two `<Head>` elements where neither contains the other are
+reported in development, since that arrangement makes one of them ineffective.

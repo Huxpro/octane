@@ -1,6 +1,6 @@
 import { Head, Title } from '@octanejs/seo';
 
-/** A tag with no enclosing <Head>: must fail loudly, not silently do nothing. */
+/** A tag with no <Head> at all: must fail loudly, not silently do nothing. */
 export function NoHead() @{
 	<>
 		<Title text="Orphan" />
@@ -8,8 +8,11 @@ export function NoHead() @{
 	</>
 }
 
-/** Two <Head> blocks, neither containing the other: works, but warns. */
-export function SiblingOwners() @{
+/**
+ * Two outermost <Head> elements, neither containing the other. Each owns and
+ * emits, so the document gets duplicate tags and the first wins. Reported.
+ */
+export function StrayOwners() @{
 	<>
 		<Head>
 			<Title text="Outer" />
@@ -17,6 +20,6 @@ export function SiblingOwners() @{
 		<Head>
 			<Title text="Inner" />
 		</Head>
-		<main>siblings</main>
+		<main>stray</main>
 	</>
 }

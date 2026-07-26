@@ -17,8 +17,10 @@ export function SuspensePage(props: { value: Promise<string> }) @{
 	<Head>
 		<>
 			<Head>
-				<Title text="Suspense page" />
-				<Meta name="description" content="static description" />
+				<>
+					<Title text="Suspense page" />
+					<Meta name="description" content="static description" />
+				</>
 			</Head>
 			@try {
 				<Deferred value={props.value} />

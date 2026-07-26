@@ -1,12 +1,12 @@
 /**
  * `@octanejs/seo`, declarative document metadata for Octane.
  *
- * `<Head>` is the only thing to learn. Put one wherever metadata belongs and
- * fill it with `<Title>`, `<Meta>`, `<Link>`, `<Script>`, `<JsonLd>`, or the
- * all-in-one `<Seo>`. There is no provider to install: the outermost `<Head>`
- * owns the metadata, and any `<Head>` nested inside one is grouping. Metadata is
- * merged last-wins per identity, server-rendered into `<head>`, and adopted on
- * hydration rather than duplicated.
+ * `<Head>` is the only component to learn. Wrap the app in one, then use it
+ * again wherever metadata belongs, filled with `<Title>`, `<Meta>`, `<Link>`,
+ * `<Script>`, `<JsonLd>`, or the all-in-one `<Seo>`. Blocks merge wherever they
+ * sit, siblings included, last-wins per identity, so a page overrides a layout
+ * simply by rendering later. Metadata is server-rendered into `<head>` and
+ * adopted on hydration rather than duplicated.
  *
  * Why the merge matters: the platform takes the FIRST duplicate in tree order
  * (`document.title` is the first `<title>` in the document, and a crawler reads

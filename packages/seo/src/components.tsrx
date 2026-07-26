@@ -5,7 +5,7 @@ import { createSeoRegistry, type SeoRegistry } from './registry.ts';
 import { linkKey, metaKey, type MetaAttributes, type SeoDescriptor } from './descriptors.ts';
 import { expandSeo, jsonLdDescriptor, type SeoInput } from './expand.ts';
 import { useRegisterSeo } from './useRegister.ts';
-import { useOwnershipWarning } from './useOwnershipWarning.ts';
+import { useStrayOwnerDiagnostic } from './useStrayOwnerDiagnostic.ts';
 
 /**
  * One rendered head element.
@@ -104,9 +104,15 @@ export function Link(props: MetaAttributes & { seoKey?: string }) {
 }
 
 /**
- * Groups metadata for readability:
+ * The one component. Wrap the app in it once, then use it again wherever
+ * metadata belongs:
  *
  * ```tsx
+ * <Head>
+ *   <App />
+ * </Head>
+ *
+ * // …anywhere below, in any component
  * <Head>
  *   <Title text="Post title" />
  *   <Meta name="description" content="…" />
@@ -115,40 +121,26 @@ export function Link(props: MetaAttributes & { seoKey?: string }) {
  * </Head>
  * ```
  *
- * There is nothing else to set up: no provider, no root wrapper. `<Head>` adapts
- * to where it sits.
+ * The OUTERMOST one owns the metadata: it holds the registry and renders the
+ * merged tags after its children. Every `<Head>` below it is grouping only, and
+ * where those blocks sit carries no meaning. Two of them merge whether one
+ * contains the other or they are siblings in unrelated components, and
+ * precedence does not depend on nesting depth: the LAST registration of a given
+ * identity wins, so a page overrides a layout simply by rendering later.
  *
- * - **Outermost** it owns the metadata: it creates the registry and renders the
- *   merged tags after its children. A page can therefore carry its own `<Head>`
- *   and work on its own.
- * - **Nested** inside another `<Head>` it is pure grouping.
+ * That is why the outer one has to exist. The merge must see every registration
+ * before it emits anything, and a string renderer emits in document order, so
+ * blocks that owned their own metadata would each emit a set and the platform's
+ * first-wins rule would hand the page to whichever rendered first.
  *
- * To let defaults merge with overrides, nest them the way the UI already nests:
- * a layout's `<Head>` contains the page, so the page's `<Head>` is grouping and
- * both contribute to one merged set.
- *
- * ```tsx
- * function Layout(props: { children?: OctaneNode }) @{
- *   <Head>
- *     <>
- *       <Title text="Acme" />
- *       {props.children}
- *     </>
- *   </Head>
- * }
- * ```
- *
- * Precedence never depends on nesting depth: the LAST registration of a given
- * identity wins wherever it was written.
+ * The registry lives here rather than in module scope, so concurrent server
+ * renders cannot see each other's metadata.
  */
 export function Head(props: { children?: OctaneNode }) @{
-	// Reads any enclosing registry; this component has not supplied one yet.
 	const outer = useContext(SeoContext);
 	const registryRef = useRef<SeoRegistry | null>(null);
-	// The registry lives here rather than in module scope so concurrent server
-	// renders cannot see each other's metadata.
 	if (outer === null && registryRef.current === null) registryRef.current = createSeoRegistry();
-	useOwnershipWarning(outer === null);
+	useStrayOwnerDiagnostic(outer === null);
 	@if (outer === null) {
 		<SeoContext.Provider value={registryRef.current}>
 			{props.children}

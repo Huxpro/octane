@@ -4,13 +4,17 @@ Declarative document metadata for Octane: server-rendered into `<head>`, adopted
 on hydration, and merged so the most specific declaration wins.
 
 ```tsx
-import { Head, Title, Meta, Link, Script } from '@octanejs/seo';
+import { Head, Link, Meta, Script, Title } from '@octanejs/seo';
 
 function App() @{
 	<Head>
 		<>
-			<Title text="Acme" />
-			<Meta name="description" content="Widgets for everyone" />
+			<Head>
+				<>
+					<Title text="Acme" />
+					<Meta name="description" content="Widgets for everyone" />
+				</>
+			</Head>
 			<Router />
 		</>
 	</Head>
@@ -49,46 +53,41 @@ collapses for `canonical`/`manifest` but stays distinct per `hreflang`/`sizes`
 for `alternate`/`icon`, and JSON-LD is keyed by `@type` (plus `@id`), so an
 `Article` replaces an `Article` while a `BreadcrumbList` sits alongside it.
 
-## `<Head>` and where to put it
+## `<Head>`, and where to put it
 
-There is no provider to install. `<Head>` adapts to where it sits:
-
-- **Outermost** it owns the metadata: it creates the registry and renders the
-  merged tags after its children.
-- **Nested** inside another `<Head>` it is pure grouping.
-
-A page can therefore carry its own `<Head>` and work on its own. Tags outside any
-`<Head>` throw with an actionable message rather than silently doing nothing.
-
-**The one rule that matters:** for two `<Head>` blocks to merge, one must
-*contain* the other. Nesting follows the tree, not the file, so this works:
+Wrap the app in one:
 
 ```tsx
-function Layout(props: { children?: OctaneNode }) @{
-	<Head>
-		<>
-			<Title text="Acme" />
-			{props.children}          {/* the page's <Head> is now nested */}
-		</>
-	</Head>
-}
+<Head>
+	<App />
+</Head>
 ```
 
-and this does **not**:
+Then use `<Head>` again wherever metadata belongs. **Position carries no
+meaning.** Two blocks merge whether one contains the other or they sit in
+unrelated components, and precedence never depends on nesting depth: the last
+registration of a given identity wins, so a page overrides a layout simply by
+rendering later. Tags written bare under the outer `<Head>`, with no block around
+them, behave identically.
+
+The outermost `<Head>` is what makes that true. The merge has to see every
+registration before it emits anything, and a string renderer emits in document
+order, so blocks that owned their own metadata would each emit a set and the
+platform's first-wins rule would hand the page to whichever rendered first. This
+would then quietly break:
 
 ```tsx
-function Layout(props: { children?: OctaneNode }) @{
+function Page() @{
 	<>
-		<Head><Title text="Acme" /></Head>
-		{props.children}              {/* a sibling, it owns separately */}
+		<Head><Title text="Listing" /></Head>
+		<Detail />                    {/* its own <Head> is a SIBLING */}
 	</>
 }
 ```
 
-Two `<Head>` blocks where neither contains the other each emit their own merged
-set, so the document gets duplicate tags and the platform keeps the **first**,
-which means the outer, more generic value wins and the page's is ignored.
-Development warns when it happens.
+With an outer `<Head>` around the app, `<Detail>` wins as written. A tag with no
+`<Head>` above it throws, and two `<Head>` elements where neither contains the
+other are reported in development.
 
 ## Components
 
