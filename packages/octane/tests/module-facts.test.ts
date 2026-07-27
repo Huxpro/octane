@@ -121,6 +121,25 @@ describe('module facts — what stays unproven', () => {
 		).toEqual({});
 	});
 
+	it('leaves a locally defined hook that merely SPELLS useCallback unproven', () => {
+		// Proving this stable would be a wrong fact, and so a missed dependency.
+		expect(
+			factsOf(`
+        function useCallback(fn, deps) { return () => fn(deps); }
+        export function useNoop(v) { const cb = useCallback(() => v, []); return cb; }
+      `),
+		).toEqual({});
+	});
+
+	it('proves an Octane hook that was aliased away from its own name', () => {
+		expect(
+			factsOf(`
+        import { useCallback as memo } from 'octane';
+        export function useNoop() { const cb = memo(() => {}, []); return cb; }
+      `),
+		).toEqual({ useNoop: 'stable' });
+	});
+
 	it('leaves a hook with disagreeing return paths unproven', () => {
 		expect(
 			factsOf(`
@@ -148,7 +167,7 @@ describe('module facts — what stays unproven', () => {
 });
 
 describe('module facts — candidate pre-scan', () => {
-	it('finds only imported hooks whose result is bound', () => {
+	it('finds imported hook-shaped names and ignores everything else', () => {
 		expect(
 			findFactCandidates(
 				`
@@ -176,6 +195,34 @@ describe('module facts — candidate pre-scan', () => {
 
 	it('costs nothing for a module with no candidates', () => {
 		expect(findFactCandidates(`export const a = 1;`, 'a.ts')).toEqual([]);
+	});
+
+	it('sees a hook behind the unstable_ staging prefix', () => {
+		// `isHookName` accepts the prefix, so the cheap gate in front of the scan
+		// has to accept it too, or those imports are silently never looked up.
+		expect(findFactCandidates(`import { unstable_useThing } from '@fake/store';`, 'a.tsx')).toEqual(
+			[{ request: '@fake/store', imported: 'unstable_useThing' }],
+		);
+	});
+
+	it('reads a clause split across lines', () => {
+		expect(
+			findFactCandidates(
+				`import {\n  useDispatch,\n  useStoreRef as ref,\n} from '@fake/store';`,
+				'a.tsx',
+			),
+		).toEqual([
+			{ request: '@fake/store', imported: 'useDispatch' },
+			{ request: '@fake/store', imported: 'useStoreRef' },
+		]);
+	});
+
+	it('does not parse the module', () => {
+		// The scan runs on every module the bundler transforms, so it must stay
+		// lexical. Syntactically invalid source still yields its imports.
+		expect(
+			findFactCandidates(`import { useThing } from '@fake/store'; function ( {{{`, 'a.tsx'),
+		).toEqual([{ request: '@fake/store', imported: 'useThing' }]);
 	});
 });
 
@@ -243,6 +290,22 @@ describe('module facts — resolver graph walk', () => {
 		await resolver.factFor('/store.js', 'useStoreRef', '/app.tsx');
 		await resolver.factFor('/store.js', 'useSelected', '/app.tsx');
 		expect(resolver.analysedFileCount).toBe(1);
+	});
+
+	it('resolves a forwarded specifier against the module that forwards it', async () => {
+		// The importer changes as the walk follows a re-export. Resolving every hop
+		// against the ORIGINAL module would read a different file for a relative
+		// specifier, and prove stability from the wrong source.
+		const importers: string[] = [];
+		const resolver = createFactResolver({
+			resolve: async (request, importer) => {
+				importers.push(importer);
+				return request in moduleGraph ? request : null;
+			},
+			readFile: async (path) => moduleGraph[path] ?? null,
+		});
+		await resolver.factFor('/reexport.js', 'useDispatch', '/app.tsx');
+		expect(importers).toEqual(['/app.tsx', '/reexport.js']);
 	});
 
 	it('returns null for an unresolvable or unreadable dependency', async () => {

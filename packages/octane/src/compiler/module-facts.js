@@ -59,7 +59,10 @@ const STABLE_TUPLE_SLOTS = new Map([
 
 const MAX_DEPTH = 4;
 
-const HOOK_IMPORT_HINT = /\bimport\b[^;]*\buse[A-Z]/;
+const HOOK_IMPORT_HINT = /\bimport\b[^;]*\b(?:unstable_)?use[A-Z]/;
+
+/** `import <clause> from '<request>'`, tolerant of newlines inside the clause. */
+const IMPORT_STATEMENT = /\bimport\s+([^;'"]*?)\s*from\s*['"]([^'"]+)['"]/g;
 
 function unwrap(node) {
 	while (
@@ -86,70 +89,45 @@ function exportedDeclarationName(node) {
 
 /**
  * The cheap pre-scan an importer runs on its OWN source: which imported names
- * are used in a position where a cross-module fact could change the answer?
+ * could a cross-module fact say something about?
  *
- * Only `use*` calls whose result is bound by a `const` qualify today — that is
- * the shape whose stability feeds dependency inference. Returning `[]` here is
- * the common case and costs the caller nothing beyond this parse.
+ * Deliberately a lexical scan and NOT a parse. This runs on every module the
+ * bundler transforms, and parsing here would be a SECOND full parse of the
+ * whole program — measured at +27% on top of compile, of which ~97% was the
+ * parse itself. A candidate list only has to be a superset: precision comes
+ * later, from actually reading the dependency.
+ *
+ * So over-matching is free — an extra dependency gets resolved and analysed
+ * once per build, and yields no fact. Under-matching silently loses an
+ * optimisation but can never produce a wrong answer, because a missing fact
+ * means "assume nothing". Both error directions are safe, which is what makes
+ * a lexical scan the right tool.
  *
  * @param {string} source
  * @param {string} id
  * @returns {{ request: string, imported: string }[]}
  */
 export function findFactCandidates(source, id) {
-	// The overwhelming majority of modules import no custom hook at all. A
-	// substring gate keeps them off the parse path entirely — this pre-scan is a
-	// SECOND parse of every module, so it has to cost nothing when it finds
-	// nothing. Over-matching is free (the parse then finds no candidates);
-	// under-matching would silently lose facts, so the pattern stays loose.
 	if (!HOOK_IMPORT_HINT.test(source)) return [];
-	let ast;
-	try {
-		ast = parseModule(source, id);
-	} catch {
-		return [];
-	}
-	// local name -> { request, imported }
-	const imports = new Map();
-	for (const node of ast.body || []) {
-		if (node.type !== 'ImportDeclaration') continue;
-		const request = node.source?.value;
-		if (typeof request !== 'string' || request === 'octane') continue;
-		for (const specifier of node.specifiers || []) {
-			const local = specifier.local?.name;
-			const imported = specifier.imported?.name ?? 'default';
-			// Either spelling may carry the hook shape: `import { useX as x }`
-			// aliases away the convention, and the local name is what the call
-			// site uses.
-			if (local && (isHookName(local) || isHookName(imported))) {
-				imports.set(local, { request, imported });
-			}
-		}
-	}
-	if (imports.size === 0) return [];
-
 	const found = new Map();
-	const visit = (node) => {
-		if (!node || typeof node !== 'object') return;
-		if (Array.isArray(node)) {
-			for (const child of node) visit(child);
-			return;
-		}
-		if (node.type === 'VariableDeclarator') {
-			const init = unwrap(node.init);
-			const callee = init?.type === 'CallExpression' ? unwrap(init.callee) : null;
-			if (callee?.type === 'Identifier') {
-				const hit = imports.get(callee.name);
-				if (hit) found.set(`${hit.request}\0${hit.imported}`, hit);
+	IMPORT_STATEMENT.lastIndex = 0;
+	let statement;
+	while ((statement = IMPORT_STATEMENT.exec(source)) !== null) {
+		const request = statement[2];
+		if (request === 'octane') continue;
+		const braces = statement[1].match(/\{([\s\S]*?)\}/);
+		if (braces === null) continue;
+		for (const entry of braces[1].split(',')) {
+			const parts = entry.trim().split(/\s+as\s+/);
+			const imported = parts[0]?.trim();
+			const local = (parts[1] ?? parts[0])?.trim();
+			if (!imported || !isHookName(imported)) {
+				// An alias may carry the hook shape when the export does not.
+				if (!local || !isHookName(local)) continue;
 			}
+			found.set(`${request}\0${imported}`, { request, imported });
 		}
-		for (const key in node) {
-			if (key === 'loc' || key === 'start' || key === 'end' || key === 'range') continue;
-			if (key === 'parent') continue;
-			visit(node[key]);
-		}
-	};
-	visit(ast.body);
+	}
 	return [...found.values()];
 }
 
@@ -192,8 +170,11 @@ function markEmptyDepsStable(ast, analysis) {
 		if (kind !== 'const' || decl.id.type !== 'Identifier') continue;
 		const init = unwrap(decl.init);
 		if (init?.type !== 'CallExpression') continue;
-		const callee = unwrap(init.callee);
-		if (callee?.type !== 'Identifier' || !EMPTY_DEPS_STABLE_HOOKS.has(callee.name)) continue;
+		// Resolve the call to the hook it ACTUALLY is, never the name it is
+		// spelled with. A local helper named `useMemo` would otherwise be proven
+		// stable — a wrong fact, and so a missed dependency — while an Octane
+		// import aliased to another name would never be proven at all.
+		if (!EMPTY_DEPS_STABLE_HOOKS.has(analysis.trustedHookNames.get(init))) continue;
 		const deps = unwrap(init.arguments?.[1]);
 		if (deps?.type !== 'ArrayExpression' || (deps.elements?.length ?? 0) !== 0) continue;
 		const binding = bindings[0]?.binding;

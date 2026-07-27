@@ -92,16 +92,21 @@ async function resolveClientOnlyImports(context, compiler, source, id) {
  */
 function hookStabilityFor(context, candidates, id) {
 	const resolver = context.getResolve({ dependencyType: 'esm' });
-	const issuer = dirname(cleanModuleId(id));
 	return resolveHookStability(candidates, id, {
-		resolve: async (request) => {
+		// The importer is NOT always this module: following a transparent
+		// re-export resolves the next specifier against the module that forwarded
+		// it. Ignoring that would resolve a relative specifier from the wrong
+		// directory and read a different file than Vite does — which, for a fact
+		// that feeds dependency inference, means proving stability from the wrong
+		// source.
+		resolve: async (request, importer) => {
 			let resolved;
 			try {
-				resolved = await resolver(issuer, request);
+				resolved = await resolver(dirname(cleanModuleId(importer)), request);
 			} catch {
 				return null;
 			}
-			return typeof resolved === 'string' && resolved !== cleanModuleId(id) ? resolved : null;
+			return typeof resolved === 'string' && resolved !== cleanModuleId(importer) ? resolved : null;
 		},
 		readFile: async (path) => {
 			try {
@@ -215,8 +220,7 @@ export default function octaneLoader(source, inputSourceMap) {
 			asyncCallback(error instanceof Error ? error : new Error(String(error)));
 		// Hook facts apply to both environments, so they resolve first and are
 		// threaded through whichever path this module takes.
-		// SPIKE GATE — see the same note in octane/compiler/vite.js. Off until the
-		// duplicate-parse and watch-invalidation problems are solved.
+		// SPIKE GATE — see the same note in octane/compiler/vite.js.
 		const factCandidates =
 			options.unstable_crossModuleHookFacts === true && typeof this.getResolve === 'function'
 				? findFactCandidates(String(source), id)

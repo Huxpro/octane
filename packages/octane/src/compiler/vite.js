@@ -76,7 +76,7 @@ function compiledCodeFingerprint(code) {
  * Every file a fact came from is registered as a watch dependency; without
  * that, editing a dependency leaves this module's inferred arrays stale.
  */
-function hookStabilityFor(context, candidates, id) {
+function hookStabilityFor(context, candidates, id, onFileUsed) {
 	return resolveHookStability(candidates, id, {
 		resolve: async (request, importer) => {
 			let resolved;
@@ -98,7 +98,14 @@ function hookStabilityFor(context, candidates, id) {
 				return null;
 			}
 		},
-		onFileUsed: (path) => context.addWatchFile?.(path),
+		// NOT `addWatchFile`. Registering a resolved dependency as a watch file
+		// pushes Vite into re-resolving that absolute path against this importer,
+		// which trips any `resolveId` plugin that polices what a module may import
+		// (the user-app eval sandbox is exactly such a plugin). Every file read
+		// here is already a real import of this module, so the graph edge exists —
+		// what is missing is only re-transforming the IMPORTER when the
+		// dependency's contents change, and `hotUpdate` does that precisely.
+		onFileUsed,
 	}).catch(() => null);
 }
 
@@ -218,6 +225,10 @@ export function octane(options = {}) {
 	// immediately; `'auto'` stays off until the serve command is observed.
 	let profileEnabled = resolveProfileEnabled(undefined);
 	const crossModuleHookFacts = options?.unstable_crossModuleHookFacts === true;
+	// Which importers consumed facts from which file, so an edit to a dependency
+	// re-transforms the modules whose inferred arrays were derived from it.
+	// Bounded by the number of modules that actually import a custom hook.
+	const factFileImporters = new Map();
 	let projectRoot = nodePath.resolve(process.cwd());
 	// The mixed-toolchain ownership gate: with `requireDirective: true`, a
 	// project `.tsrx` is Octane's by extension, and Octane compiles a project
@@ -331,6 +342,23 @@ export function octane(options = {}) {
 			const resolved = await this.resolve(runtimeRequest, importer, { skipSelf: true });
 			return resolved?.id ?? null;
 		},
+		// Re-transform the importers of a module whose facts may have changed. The
+		// module graph already knows the import edge; what it does not know is that
+		// this plugin's OUTPUT for the importer depends on the dependency's
+		// contents, which is what makes an ordinary dependency change insufficient.
+		hotUpdate(context) {
+			if (!crossModuleHookFacts) return;
+			const importers = factFileImporters.get(context?.file);
+			if (importers === undefined) return;
+			const graph = this.environment?.moduleGraph;
+			if (graph === undefined || typeof graph.getModulesByFile !== 'function') return;
+			for (const importer of importers) {
+				const modules = graph.getModulesByFile(importer);
+				if (modules === undefined) continue;
+				for (const module of modules) graph.invalidateModule?.(module);
+			}
+		},
+
 		transform(code, id, transformOptions) {
 			const server =
 				forceSsr !== undefined
@@ -380,19 +408,24 @@ export function octane(options = {}) {
 			// threaded through whichever proof path this module takes. The candidate
 			// scan is synchronous and almost always empty, which keeps a module that
 			// imports no custom hook on exactly the path it used before.
-			// SPIKE GATE. The extraction primitive and its effect on inferred arrays
-			// are proven, but two integration problems are not solved yet:
-			//   1. the candidate scan is a SECOND parse of every module (~27% on top
-			//      of compile); it must share the compiler's existing parse.
-			//   2. `addWatchFile` on a resolved dependency perturbs the module graph
-			//      — it breaks the user-app eval sandbox's resolveId policy — so
-			//      watch invalidation needs a `hotUpdate` design instead.
-			// Until both land this stays off, and the default path is byte-identical
-			// to the one that predates cross-module facts.
+			// SPIKE GATE. Extraction, its effect on inferred arrays, the cost of the
+			// scan (+0.1% on compile), and coexistence with the whole test suite are
+			// all proven. What is NOT yet proven is that `hotUpdate` above actually
+			// re-transforms an importer when a dependency changes on disk — that
+			// needs a dev-server test, and turning this on without one risks serving
+			// stale dependency arrays in watch mode. Enabling also changes emitted
+			// output for every app, so it wants its own changeset and benchmark run.
+			// Until then the default path is byte-identical to the one that predates
+			// cross-module facts.
 			const factCandidates =
 				crossModuleHookFacts && typeof this.resolve === 'function'
 					? findFactCandidates(code, id)
 					: [];
+			const recordFactFile = (path) => {
+				let importers = factFileImporters.get(path);
+				if (importers === undefined) factFileImporters.set(path, (importers = new Set()));
+				importers.add(id);
+			};
 			const withHookStability = (hookStability) => {
 				if (server) {
 					return loadClientOnlyImports(this, compiler, code, id).then((imports) =>
@@ -410,7 +443,7 @@ export function octane(options = {}) {
 				);
 			};
 			if (factCandidates.length === 0) return withHookStability(null);
-			return hookStabilityFor(this, factCandidates, id).then(withHookStability);
+			return hookStabilityFor(this, factCandidates, id, recordFactFile).then(withHookStability);
 		},
 	};
 }
