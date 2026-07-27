@@ -5342,6 +5342,7 @@ function compileInternal(source, filename, options, analyzedAst, mode, bundlerMe
 			options,
 			rendererBoundaryPreparation?.universalUnits,
 		),
+		importedHookStability: options?.importedHookStability,
 	});
 	const hmrOption = options && options.hmr;
 	const hmrDialect = hmrOption === true ? 'vite' : hmrOption || false;
@@ -6387,6 +6388,7 @@ function compileServer(source, filename, options, analyzedAst = null) {
 	ast = applyHookDependencies(ast, {
 		filename,
 		hookRuntimeModules: hookRuntimeModulesForCompile(options),
+		importedHookStability: options?.importedHookStability,
 	});
 	const ctx = {
 		filename,

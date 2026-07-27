@@ -20,6 +20,8 @@ import {
 	CLIENT_REFERENCE_MANIFEST_FILENAME,
 	cleanModuleId,
 	createClientReferenceManifest,
+	findFactCandidates,
+	resolveHookStability,
 	createOctaneCompiler,
 	discoverOctaneSourceDependencies,
 	findVoidComponentImports,
@@ -63,6 +65,41 @@ function voidImportKey(request, imported) {
 
 function compiledCodeFingerprint(code) {
 	return nodeCrypto.createHash('sha256').update(code).digest('base64url');
+}
+
+/**
+ * Cross-module hook facts for one importer, using Rollup's resolver and the
+ * filesystem. Deliberately NOT `context.load` + module-graph `meta`: reading
+ * source text is the one primitive every bundler we target can supply, so the
+ * rspack loader runs the identical analysis.
+ *
+ * Every file a fact came from is registered as a watch dependency; without
+ * that, editing a dependency leaves this module's inferred arrays stale.
+ */
+function hookStabilityFor(context, candidates, id) {
+	return resolveHookStability(candidates, id, {
+		resolve: async (request, importer) => {
+			let resolved;
+			try {
+				resolved = await context.resolve(request, importer, { skipSelf: true });
+			} catch {
+				return null;
+			}
+			if (resolved == null || resolved.external === true || resolved.external === 'absolute') {
+				return null;
+			}
+			const path = cleanModuleId(resolved.id);
+			return path === cleanModuleId(importer) ? null : path;
+		},
+		readFile: async (path) => {
+			try {
+				return await nodeFs.promises.readFile(path, 'utf8');
+			} catch {
+				return null;
+			}
+		},
+		onFileUsed: (path) => context.addWatchFile?.(path),
+	}).catch(() => null);
 }
 
 async function loadVoidComponentImports(context, imports, importer) {
@@ -180,6 +217,7 @@ export function octane(options = {}) {
 	// Conservative pre-command default: explicit `profile: true` is honored
 	// immediately; `'auto'` stays off until the serve command is observed.
 	let profileEnabled = resolveProfileEnabled(undefined);
+	const crossModuleHookFacts = options?.unstable_crossModuleHookFacts === true;
 	let projectRoot = nodePath.resolve(process.cwd());
 	// The mixed-toolchain ownership gate: with `requireDirective: true`, a
 	// project `.tsrx` is Octane's by extension, and Octane compiles a project
@@ -298,8 +336,9 @@ export function octane(options = {}) {
 				forceSsr !== undefined
 					? forceSsr
 					: transformOptions?.ssr === true || this.environment?.config?.consumer === 'server';
-			const transformWithProof = (proven, clientOnlyImports = []) => {
+			const transformWithProof = (proven, clientOnlyImports = [], hookStability = null) => {
 				const result = compiler.transform(code, id, {
+					...(hookStability !== null ? { importedHookStability: hookStability } : null),
 					environment: server ? 'server' : 'client',
 					hmr: !server && hmrEnabled ? 'vite' : false,
 					// DEV server transforms also carry SSR-only diagnostics. HMR itself
@@ -337,18 +376,41 @@ export function octane(options = {}) {
 				};
 			};
 
-			if (server) {
-				return loadClientOnlyImports(this, compiler, code, id).then((imports) =>
-					transformWithProof(null, imports),
-				);
-			}
-
-			const voidImports =
-				specializeProductionRoots && !server && !hmrEnabled && !profileEnabled
-					? findVoidComponentImports(code, id)
+			// Hook facts apply to both environments, so they are resolved first and
+			// threaded through whichever proof path this module takes. The candidate
+			// scan is synchronous and almost always empty, which keeps a module that
+			// imports no custom hook on exactly the path it used before.
+			// SPIKE GATE. The extraction primitive and its effect on inferred arrays
+			// are proven, but two integration problems are not solved yet:
+			//   1. the candidate scan is a SECOND parse of every module (~27% on top
+			//      of compile); it must share the compiler's existing parse.
+			//   2. `addWatchFile` on a resolved dependency perturbs the module graph
+			//      — it breaks the user-app eval sandbox's resolveId policy — so
+			//      watch invalidation needs a `hotUpdate` design instead.
+			// Until both land this stays off, and the default path is byte-identical
+			// to the one that predates cross-module facts.
+			const factCandidates =
+				crossModuleHookFacts && typeof this.resolve === 'function'
+					? findFactCandidates(code, id)
 					: [];
-			if (voidImports.length === 0) return transformWithProof(null);
-			return loadVoidComponentImports(this, voidImports, id).then(transformWithProof);
+			const withHookStability = (hookStability) => {
+				if (server) {
+					return loadClientOnlyImports(this, compiler, code, id).then((imports) =>
+						transformWithProof(null, imports, hookStability),
+					);
+				}
+
+				const voidImports =
+					specializeProductionRoots && !server && !hmrEnabled && !profileEnabled
+						? findVoidComponentImports(code, id)
+						: [];
+				if (voidImports.length === 0) return transformWithProof(null, [], hookStability);
+				return loadVoidComponentImports(this, voidImports, id).then((proven) =>
+					transformWithProof(proven, [], hookStability),
+				);
+			};
+			if (factCandidates.length === 0) return withHookStability(null);
+			return hookStabilityFor(this, factCandidates, id).then(withHookStability);
 		},
 	};
 }

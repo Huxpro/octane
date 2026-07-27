@@ -49,6 +49,8 @@ function declareName(scope, name, details = null) {
 			name,
 			scope,
 			imported: false,
+			importRequest: null,
+			importedName: null,
 			dependencyInvariant: false,
 			moduleImmutable: false,
 			reassigned: false,
@@ -60,6 +62,8 @@ function declareName(scope, name, details = null) {
 		scope.bindings.set(name, binding);
 	}
 	if (details?.imported) binding.imported = true;
+	if (details?.importRequest) binding.importRequest = details.importRequest;
+	if (details?.importedName) binding.importedName = details.importedName;
 	if (details?.moduleImmutable) binding.moduleImmutable = true;
 	if (details?.octaneImport) binding.octaneImport = details.octaneImport;
 	if (details?.octaneNamespace) binding.octaneNamespace = true;
@@ -126,6 +130,9 @@ function predeclareDirect(statements, scope, hookRuntimeModules) {
 				const imported = specifier.imported?.name;
 				declareName(scope, specifier.local.name, {
 					imported: true,
+					importRequest: original.source?.value ?? null,
+					importedName:
+						imported ?? (specifier.type === 'ImportDefaultSpecifier' ? 'default' : null),
 					octaneImport: isOctane ? imported : null,
 					octaneNamespace: isOctane && specifier.type === 'ImportNamespaceSpecifier',
 					hookRuntimeImport: isHookRuntime ? imported : null,
@@ -723,7 +730,22 @@ function isInvariantInitializer(node) {
 	return isInvariantLiteral(node);
 }
 
-function markDependencyInvariantBindings(analysis) {
+/**
+ * The origin of an imported callee, when the call is `importedHook(...)`.
+ * Returns null for anything else, including a namespace member call — a fact is
+ * keyed by (specifier, exported name) and a namespace access does not name one
+ * unambiguously enough to be worth proving.
+ */
+function importedCalleeOrigin(call, scope) {
+	const callee = unwrapValue(call?.callee);
+	if (callee?.type !== 'Identifier') return null;
+	const binding = resolveBinding(scope, callee.name);
+	if (binding === null || !binding.imported) return null;
+	if (binding.importRequest === null || binding.importedName === null) return null;
+	return { request: binding.importRequest, imported: binding.importedName };
+}
+
+function markDependencyInvariantBindings(analysis, importedHookStability) {
 	// Seed the lattice with the bindings whose identity is fixed for the
 	// program's lifetime, so the `const alias = original` propagation below
 	// carries them into component scope for free.
@@ -746,6 +768,16 @@ function markDependencyInvariantBindings(analysis) {
 			const callName =
 				init?.type === 'CallExpression' ? (analysis.trustedHookNames.get(init) ?? null) : null;
 
+			// A cross-module fact answers for an imported custom hook exactly what
+			// OMITTED_DEPENDENCY_RESULT_HOOKS and STABLE_TUPLE_RESULTS answer for a
+			// built-in one. A null fact means "assume nothing", which is the
+			// behaviour that predates facts entirely.
+			let fact = null;
+			if (importedHookStability !== undefined && init?.type === 'CallExpression') {
+				const origin = importedCalleeOrigin(init, scope);
+				if (origin !== null) fact = importedHookStability(origin.request, origin.imported) ?? null;
+			}
+
 			if (decl.id.type === 'Identifier') {
 				let dependencyInvariant =
 					callName !== null && OMITTED_DEPENDENCY_RESULT_HOOKS.has(callName);
@@ -753,6 +785,7 @@ function markDependencyInvariantBindings(analysis) {
 					dependencyInvariant = resolveBinding(scope, init.name)?.dependencyInvariant === true;
 				}
 				if (!dependencyInvariant) dependencyInvariant = isInvariantInitializer(init);
+				if (!dependencyInvariant) dependencyInvariant = fact?.stableResult === true;
 				if (dependencyInvariant && bindings[0] && !bindings[0].binding.dependencyInvariant) {
 					bindings[0].binding.dependencyInvariant = true;
 					changed = true;
@@ -760,8 +793,13 @@ function markDependencyInvariantBindings(analysis) {
 				continue;
 			}
 
-			if (decl.id.type === 'ArrayPattern' && callName !== null) {
-				const stableIndices = STABLE_TUPLE_RESULTS.get(callName);
+			if (decl.id.type === 'ArrayPattern') {
+				const stableIndices =
+					callName !== null
+						? STABLE_TUPLE_RESULTS.get(callName)
+						: Array.isArray(fact?.stableTupleSlots)
+							? fact.stableTupleSlots
+							: undefined;
 				if (!stableIndices) continue;
 				for (const index of stableIndices) {
 					const element = decl.id.elements?.[index];
@@ -1070,11 +1108,29 @@ function cloneDependency(node) {
 }
 
 /** @param {any} ast @param {{ onlyImported?: boolean, hookRuntimeModules?: readonly string[], filename?: string }} options */
+/**
+ * The scope walk and invariance lattice on their own, with no dependency
+ * inference. Cross-module fact extraction reuses them so a hook's return value
+ * is judged by exactly the rules a capture inside the same module would be.
+ *
+ * @param {any} ast
+ * @param {{ hookRuntimeModules?: readonly string[] }} [options]
+ */
+export function analyzeBindings(ast, options = {}) {
+	const analysis = buildScopes(
+		ast,
+		false,
+		new Set(['octane', ...(options.hookRuntimeModules || [])]),
+	);
+	markDependencyInvariantBindings(analysis);
+	return analysis;
+}
+
 function analyzeInternal(ast, options) {
 	const onlyImported = options.onlyImported === true;
 	const hookRuntimeModules = new Set(['octane', ...(options.hookRuntimeModules || [])]);
 	const analysis = buildScopes(ast, onlyImported, hookRuntimeModules);
-	markDependencyInvariantBindings(analysis);
+	markDependencyInvariantBindings(analysis, options.importedHookStability);
 	const inferred = new Map();
 
 	for (const candidate of analysis.candidates) {

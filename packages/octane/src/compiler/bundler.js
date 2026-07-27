@@ -39,6 +39,12 @@ import {
 } from './client-only-server.js';
 
 export { findVoidComponentImports, findVoidRootImports };
+export {
+	createFactResolver,
+	extractModuleFacts,
+	findFactCandidates,
+	resolveHookStability,
+} from './module-facts.js';
 export { HYDRATE_QUERY_PARAM } from './hydrate-boundaries.js';
 export {
 	CLIENT_REFERENCE_MANIFEST_FILENAME,
@@ -906,6 +912,11 @@ class OctaneBundlerCompiler {
 				...(clientOnlyImports.length > 0 ? { clientOnlyImports } : null),
 				...(environment === 'client' && typeof options.isVoidComponentImport === 'function'
 					? { isVoidComponentImport: options.isVoidComponentImport }
+					: null),
+				// Cross-module hook facts apply to both environments: an inferred
+				// dependency array is emitted by the server compile too.
+				...(typeof options.importedHookStability === 'function'
+					? { importedHookStability: options.importedHookStability }
 					: null),
 			};
 			const collectVoidComponentExports =

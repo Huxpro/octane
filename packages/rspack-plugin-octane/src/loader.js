@@ -1,7 +1,13 @@
-import { realpathSync } from 'node:fs';
+import { promises as fsPromises, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import remapping from '@jridgewell/remapping';
-import { canonicalModuleId, cleanModuleId, createOctaneCompiler } from 'octane/compiler/bundler';
+import {
+	canonicalModuleId,
+	cleanModuleId,
+	createOctaneCompiler,
+	findFactCandidates,
+	resolveHookStability,
+} from 'octane/compiler/bundler';
 import {
 	inferRspackEnvironment,
 	normalizeLoaderOptions,
@@ -77,6 +83,38 @@ async function resolveClientOnlyImports(context, compiler, source, id) {
 }
 
 /**
+ * Cross-module hook facts, using Rspack's resolver and the filesystem.
+ *
+ * This is the same analysis the Vite plugin runs, unchanged: the shared helper
+ * asks only for `resolve` and `readFile`, which is why it ports across bundlers
+ * with different module-graph models at all. Files a fact was read from become
+ * loader dependencies so an edit to a dependency rebuilds this module.
+ */
+function hookStabilityFor(context, candidates, id) {
+	const resolver = context.getResolve({ dependencyType: 'esm' });
+	const issuer = dirname(cleanModuleId(id));
+	return resolveHookStability(candidates, id, {
+		resolve: async (request) => {
+			let resolved;
+			try {
+				resolved = await resolver(issuer, request);
+			} catch {
+				return null;
+			}
+			return typeof resolved === 'string' && resolved !== cleanModuleId(id) ? resolved : null;
+		},
+		readFile: async (path) => {
+			try {
+				return await fsPromises.readFile(path, 'utf8');
+			} catch {
+				return null;
+			}
+		},
+		onFileUsed: (path) => context.addDependency?.(path),
+	}).catch(() => null);
+}
+
+/**
  * Rspack's ESM loader entry. A compiler instance is intentionally scoped to
  * one invocation: Rspack owns output caching and invalidates it from the file
  * and missing-file dependencies registered below, while a fresh neutral
@@ -124,7 +162,7 @@ export default function octaneLoader(source, inputSourceMap) {
 			warn: (message) => this.emitWarning?.(new Error(message)),
 		});
 		const id = realModuleId(this.resource ?? this.resourcePath);
-		const finish = (clientOnlyImports, callback) => {
+		const finish = (clientOnlyImports, callback, hookStability = null) => {
 			try {
 				const result = compiler.transform(String(source), id, {
 					environment,
@@ -132,6 +170,7 @@ export default function octaneLoader(source, inputSourceMap) {
 					dev,
 					profile,
 					...(clientOnlyImports.length > 0 ? { clientOnlyImports } : null),
+					...(hookStability !== null ? { importedHookStability: hookStability } : null),
 				});
 
 				if (result === null) {
@@ -171,22 +210,36 @@ export default function octaneLoader(source, inputSourceMap) {
 			environment === 'server' && typeof compiler.clientReferenceForFile === 'function'
 				? compiler.clientReferenceForFile(id)
 				: null;
-		if (
-			environment === 'server' &&
-			currentReference === null &&
-			typeof this.getResolve === 'function'
-		) {
-			const requests = compiler.findServerImportRequests(String(source), id);
-			if (requests.length > 0) {
-				const asyncCallback = this.async?.() ?? callback;
-				resolveClientOnlyImports(this, compiler, source, id).then(
-					(imports) => finish(imports, asyncCallback),
-					(error) => asyncCallback(error instanceof Error ? error : new Error(String(error))),
-				);
-				return;
+		const asyncCallback = this.async?.() ?? callback;
+		const fail = (error) =>
+			asyncCallback(error instanceof Error ? error : new Error(String(error)));
+		// Hook facts apply to both environments, so they resolve first and are
+		// threaded through whichever path this module takes.
+		// SPIKE GATE — see the same note in octane/compiler/vite.js. Off until the
+		// duplicate-parse and watch-invalidation problems are solved.
+		const factCandidates =
+			options.unstable_crossModuleHookFacts === true && typeof this.getResolve === 'function'
+				? findFactCandidates(String(source), id)
+				: [];
+		const withHookStability = (hookStability) => {
+			if (
+				environment === 'server' &&
+				currentReference === null &&
+				typeof this.getResolve === 'function'
+			) {
+				const requests = compiler.findServerImportRequests(String(source), id);
+				if (requests.length > 0) {
+					resolveClientOnlyImports(this, compiler, source, id).then(
+						(imports) => finish(imports, asyncCallback, hookStability),
+						fail,
+					);
+					return;
+				}
 			}
-		}
-		finish([], callback);
+			finish([], asyncCallback, hookStability);
+		};
+		if (factCandidates.length === 0) withHookStability(null);
+		else hookStabilityFor(this, factCandidates, id).then(withHookStability, fail);
 	} catch (error) {
 		this.callback(error instanceof Error ? error : new Error(String(error)));
 	}
