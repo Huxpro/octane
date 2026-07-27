@@ -140,6 +140,29 @@ describe('module facts — what stays unproven', () => {
 		).toEqual({ useNoop: 'stable' });
 	});
 
+	it('leaves a shadowed octane hook name unproven', () => {
+		// The parameter shadows the import at the call site, so the returned value
+		// is whatever the CALLER passed — proving it stable would be a wrong fact.
+		expect(
+			factsOf(`
+        import { useRef } from 'octane';
+        export function useThing(useRef) { return useRef(); }
+      `),
+		).toEqual({});
+	});
+
+	it('leaves a shadowed third-party hook name un-forwarded', () => {
+		expect(
+			factsOf(`
+        import { useDispatch } from '@fake/store';
+        export function useThing() {
+          const useDispatch = () => ({ fresh: true });
+          return useDispatch();
+        }
+      `),
+		).toEqual({});
+	});
+
 	it('leaves a hook with disagreeing return paths unproven', () => {
 		expect(
 			factsOf(`

@@ -40,9 +40,11 @@ import {
 
 export { findVoidComponentImports, findVoidRootImports };
 export {
+	createFactCache,
 	createFactResolver,
 	extractModuleFacts,
 	findFactCandidates,
+	invalidateFactCache,
 	resolveHookStability,
 } from './module-facts.js';
 export { HYDRATE_QUERY_PARAM } from './hydrate-boundaries.js';

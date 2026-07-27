@@ -80,6 +80,12 @@ export interface OctaneVitePluginOptions {
 	 * @default false
 	 */
 	requireDirective?: boolean;
+	/**
+	 * Read hook stability across module boundaries. Off by default: resolving
+	 * and reading dependencies costs build time most projects will not earn
+	 * back. Applies to dev and build alike, so the two never diverge.
+	 */
+	crossModuleHookFacts?: boolean;
 	/** @experimental Declarative renderer selection for this compiler instance. */
 	renderers?: OctaneRendererConfigOptions;
 }

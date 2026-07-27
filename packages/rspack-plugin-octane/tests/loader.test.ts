@@ -11,6 +11,11 @@ vi.mock('octane/compiler/bundler', () => ({
 	canonicalModuleId: mocks.canonicalModuleId,
 	cleanModuleId: mocks.cleanModuleId,
 	createOctaneCompiler: mocks.createOctaneCompiler,
+	// Cross-module facts are opt-in, so the loader never calls these here; they
+	// exist because the module is imported at load time.
+	createFactCache: () => ({ files: new Map(), resolved: new Map() }),
+	findFactCandidates: () => [],
+	resolveHookStability: async () => null,
 }));
 
 import octaneLoader from '../src/loader.js';

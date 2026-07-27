@@ -20,7 +20,9 @@ import {
 	CLIENT_REFERENCE_MANIFEST_FILENAME,
 	cleanModuleId,
 	createClientReferenceManifest,
+	createFactCache,
 	findFactCandidates,
+	invalidateFactCache,
 	resolveHookStability,
 	createOctaneCompiler,
 	discoverOctaneSourceDependencies,
@@ -76,8 +78,9 @@ function compiledCodeFingerprint(code) {
  * Every file a fact came from is registered as a watch dependency; without
  * that, editing a dependency leaves this module's inferred arrays stale.
  */
-function hookStabilityFor(context, candidates, id, onFileUsed) {
+function hookStabilityFor(context, candidates, id, onFileUsed, cache) {
 	return resolveHookStability(candidates, id, {
+		cache,
 		resolve: async (request, importer) => {
 			let resolved;
 			try {
@@ -224,11 +227,24 @@ export function octane(options = {}) {
 	// Conservative pre-command default: explicit `profile: true` is honored
 	// immediately; `'auto'` stays off until the serve command is observed.
 	let profileEnabled = resolveProfileEnabled(undefined);
-	const crossModuleHookFacts = options?.unstable_crossModuleHookFacts === true;
+	// OPT-IN, on measurement rather than principle. On the website build this
+	// costs +14% (17.5s -> 20.0s) and proves 2 facts out of 315 candidates —
+	// roughly half that cost is the transform having to go async at all, the
+	// other half the resolve/read/parse. Until a synchronous fast path over the
+	// build-scoped cache brings it down, a default-on version would tax every
+	// Octane build for a benefit almost no app collects.
+	//
+	// It is one setting for the whole project, so dev and build always agree;
+	// `hotUpdate` is what keeps a long-lived dev server from drifting away from
+	// what a fresh production build would infer.
+	const crossModuleHookFacts = options?.crossModuleHookFacts === true;
 	// Which importers consumed facts from which file, so an edit to a dependency
 	// re-transforms the modules whose inferred arrays were derived from it.
 	// Bounded by the number of modules that actually import a custom hook.
 	const factFileImporters = new Map();
+	// Shared for the whole build: dependencies are read and parsed once, not once
+	// per importer that asks about them.
+	let factCache = createFactCache();
 	let projectRoot = nodePath.resolve(process.cwd());
 	// The mixed-toolchain ownership gate: with `requireDirective: true`, a
 	// project `.tsrx` is Octane's by extension, and Octane compiles a project
@@ -348,6 +364,8 @@ export function octane(options = {}) {
 		// contents, which is what makes an ordinary dependency change insufficient.
 		hotUpdate(context) {
 			if (!crossModuleHookFacts) return;
+			// Drop what was derived from this file before anything re-reads it.
+			invalidateFactCache(factCache, context?.file);
 			const importers = factFileImporters.get(context?.file);
 			if (importers === undefined) return;
 			const graph = this.environment?.moduleGraph;
@@ -408,15 +426,6 @@ export function octane(options = {}) {
 			// threaded through whichever proof path this module takes. The candidate
 			// scan is synchronous and almost always empty, which keeps a module that
 			// imports no custom hook on exactly the path it used before.
-			// SPIKE GATE. Extraction, its effect on inferred arrays, the cost of the
-			// scan (+0.1% on compile), and coexistence with the whole test suite are
-			// all proven. What is NOT yet proven is that `hotUpdate` above actually
-			// re-transforms an importer when a dependency changes on disk — that
-			// needs a dev-server test, and turning this on without one risks serving
-			// stale dependency arrays in watch mode. Enabling also changes emitted
-			// output for every app, so it wants its own changeset and benchmark run.
-			// Until then the default path is byte-identical to the one that predates
-			// cross-module facts.
 			const factCandidates =
 				crossModuleHookFacts && typeof this.resolve === 'function'
 					? findFactCandidates(code, id)
@@ -443,7 +452,9 @@ export function octane(options = {}) {
 				);
 			};
 			if (factCandidates.length === 0) return withHookStability(null);
-			return hookStabilityFor(this, factCandidates, id, recordFactFile).then(withHookStability);
+			return hookStabilityFor(this, factCandidates, id, recordFactFile, factCache).then(
+				withHookStability,
+			);
 		},
 	};
 }

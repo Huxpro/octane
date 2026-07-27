@@ -5,6 +5,7 @@ import {
 	canonicalModuleId,
 	cleanModuleId,
 	createOctaneCompiler,
+	createFactCache,
 	findFactCandidates,
 	resolveHookStability,
 } from 'octane/compiler/bundler';
@@ -90,9 +91,15 @@ async function resolveClientOnlyImports(context, compiler, source, id) {
  * with different module-graph models at all. Files a fact was read from become
  * loader dependencies so an edit to a dependency rebuilds this module.
  */
+// One cache per loader process: dependencies are parsed once, not once per
+// importer. Rspack reruns the loader for a changed module, and `addDependency`
+// on each fact file rebuilds the importers that read it.
+const rspackFactCache = createFactCache();
+
 function hookStabilityFor(context, candidates, id) {
 	const resolver = context.getResolve({ dependencyType: 'esm' });
 	return resolveHookStability(candidates, id, {
+		cache: rspackFactCache,
 		// The importer is NOT always this module: following a transparent
 		// re-export resolves the next specifier against the module that forwarded
 		// it. Ignoring that would resolve a relative specifier from the wrong
@@ -220,9 +227,9 @@ export default function octaneLoader(source, inputSourceMap) {
 			asyncCallback(error instanceof Error ? error : new Error(String(error)));
 		// Hook facts apply to both environments, so they resolve first and are
 		// threaded through whichever path this module takes.
-		// SPIKE GATE — see the same note in octane/compiler/vite.js.
+		// Opt-in — see the measurement note in octane/compiler/vite.js.
 		const factCandidates =
-			options.unstable_crossModuleHookFacts === true && typeof this.getResolve === 'function'
+			options.crossModuleHookFacts === true && typeof this.getResolve === 'function'
 				? findFactCandidates(String(source), id)
 				: [];
 		const withHookStability = (hookStability) => {

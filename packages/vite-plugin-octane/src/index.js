@@ -221,7 +221,7 @@ function collect_hydrate_module_paths(config) {
  * it). An explicit `profile` (true or false) always takes precedence over
  * `devtools`.
  *
- * @param {{ hmr?: boolean, profile?: boolean, devtools?: boolean, exclude?: string[], requireDirective?: boolean, renderers?: import('@octanejs/app-core').ExperimentalRendererConfigOptions }} [inlineOptions]
+ * @param {{ hmr?: boolean, profile?: boolean, devtools?: boolean, exclude?: string[], requireDirective?: boolean, crossModuleHookFacts?: boolean, renderers?: import('@octanejs/app-core').ExperimentalRendererConfigOptions }} [inlineOptions]
  * @returns {Plugin[]}
  */
 export function octane(inlineOptions = {}) {
@@ -883,6 +883,7 @@ export function octane(inlineOptions = {}) {
 	 *   profile?: boolean | 'auto',
 	 *   exclude?: string[],
 	 *   requireDirective?: boolean,
+	 *   crossModuleHookFacts?: boolean,
 	 *   renderers?: import('@octanejs/app-core').ExperimentalRendererConfigOptions,
 	 * }}
 	 */
@@ -897,6 +898,9 @@ export function octane(inlineOptions = {}) {
 		compilerOptions.requireDirective = inlineOptions.requireDirective;
 	}
 	if (inlineOptions.renderers !== undefined) compilerOptions.renderers = inlineOptions.renderers;
+	if (inlineOptions.crossModuleHookFacts !== undefined) {
+		compilerOptions.crossModuleHookFacts = inlineOptions.crossModuleHookFacts;
+	}
 	const compilerPlugin = /** @type {Plugin} */ (octaneCompiler(compilerOptions));
 	const compilerConfigHook = compilerPlugin.config;
 	if (typeof compilerConfigHook === 'function') {

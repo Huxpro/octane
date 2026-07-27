@@ -53,6 +53,21 @@ within the module. This does not guess from a `use*` name alone: plain
 `.ts`/`.js` modules, imported custom hooks, method hooks, and wrappers that
 transform or inspect those parameters require an explicit dependency argument.
 
+Stability can also be read across module boundaries, behind
+`crossModuleHookFacts: true` on the Vite or Rspack plugin. When a hook is imported, the
+compiler resolves and analyses the module that defines it, and omits the result
+if that module's own source proves the identity fixed — a returned ref, a state
+updater, a `useMemo`/`useCallback` with an empty list, a module-scope constant,
+or a tuple slot holding one of those. Transparent re-exports are followed. This
+is a proof, not a convention: a hook whose result cannot be proven stable stays
+a dependency, so an unanalysable or unresolvable dependency simply behaves as it
+did before. Editing the defining module re-infers the arrays that depended on it.
+
+It is off by default: resolving and reading dependencies costs build time that
+most projects will not earn back, so it is worth turning on only where hooks
+from binding packages are used heavily. The setting applies to dev and build
+alike, so the two never infer different arrays.
+
 An explicit array is authoritative and retains React's exact behavior. Pass
 `null` to opt out of tracking and run an effect—or recompute a memo—after every
 render. Opaque callback creation such as `useEffect(makeEffect())` requires an

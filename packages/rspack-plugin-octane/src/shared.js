@@ -43,6 +43,7 @@ const LOADER_OPTION_KEYS = new Set([
 	'exclude',
 	'renderers',
 	'requireDirective',
+	'crossModuleHookFacts',
 	'universalRuntime',
 	'layerSpecializations',
 ]);
@@ -178,6 +179,7 @@ function normalizeOptions(value, plugin) {
 	assertBooleanOption(options, 'dev');
 	assertBooleanOption(options, 'profile');
 	assertBooleanOption(options, 'requireDirective');
+	assertBooleanOption(options, 'crossModuleHookFacts');
 	if (
 		options.exclude !== undefined &&
 		(!Array.isArray(options.exclude) || options.exclude.some((entry) => typeof entry !== 'string'))
@@ -203,6 +205,9 @@ function normalizeOptions(value, plugin) {
 		...(options.requireDirective === undefined
 			? null
 			: { requireDirective: options.requireDirective }),
+		...(options.crossModuleHookFacts === undefined
+			? null
+			: { crossModuleHookFacts: options.crossModuleHookFacts }),
 		...(plugin && options.transpile !== undefined ? { transpile: options.transpile } : null),
 		...(plugin && options.runtime !== undefined ? { runtime: options.runtime } : null),
 	};

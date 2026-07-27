@@ -509,6 +509,79 @@ export default { compiler: { renderers } };
 		}
 	});
 
+	it('re-infers dependency arrays when an imported hook stops being stable', async () => {
+		// Cross-module facts make a module's OUTPUT depend on a dependency's
+		// CONTENTS, which the import edge alone does not express. Without
+		// invalidation the importer keeps its first answer for the life of the dev
+		// server, so this is the contract that makes the feature safe in watch mode.
+		const root = await realpath(await mkdtemp(join(tmpdir(), 'octane-vite-hook-facts-')));
+		let server: Awaited<ReturnType<typeof createServer>> | null = null;
+		const hookFile = join(root, 'src/useThing.ts');
+		try {
+			await mkdir(join(root, 'src'), { recursive: true });
+			await mkdir(join(root, 'node_modules'), { recursive: true });
+			await symlink(join(REPO_ROOT, 'packages/octane'), join(root, 'node_modules/octane'), 'dir');
+			await writeFile(
+				join(root, 'package.json'),
+				JSON.stringify({
+					name: 'hook-facts-consumer',
+					private: true,
+					type: 'module',
+					dependencies: { octane: '0.0.0' },
+				}),
+			);
+			// Stable to begin with: the result is a ref, so it cannot change identity.
+			await writeFile(
+				hookFile,
+				"import { useRef } from 'octane';\n" +
+					'export function useThing() { const r = useRef(null); return r; }\n',
+			);
+			await writeFile(
+				join(root, 'src/App.tsrx'),
+				"import { useEffect } from 'octane';\n" +
+					"import { useThing } from './useThing.ts';\n" +
+					'export function App(props) @{\n' +
+					'  const thing = useThing();\n' +
+					'  useEffect(() => { props.log(thing); });\n' +
+					'  <div />\n' +
+					'}\n',
+			);
+
+			server = await createServer({
+				root,
+				configFile: false,
+				logLevel: 'silent',
+				appType: 'custom',
+				plugins: [octane({ crossModuleHookFacts: true })],
+				server: { middlewareMode: true },
+			});
+			// The SSR environment runs the same plugin transform without pulling in
+			// client dependency optimisation, which this fixture has no need of.
+			const env = server.environments.ssr;
+			const first = await env.transformRequest('/src/App.tsrx');
+			expect(first?.code).toBeTypeOf('string');
+			// Proven stable across the module boundary, so it is not a dependency.
+			expect(first?.code).not.toMatch(/\[[^\]]*\bthing\b/);
+
+			// Now make the same hook return a freshly allocated object every call.
+			await writeFile(
+				hookFile,
+				"import { useState } from 'octane';\n" +
+					'export function useThing() { const [n] = useState(0); return { n }; }\n',
+			);
+			server.watcher.emit('change', hookFile);
+			await new Promise((resolve) => setTimeout(resolve, 50));
+
+			const second = await env.transformRequest('/src/App.tsrx');
+			expect(second?.code).toBeTypeOf('string');
+			// No longer provable, so the capture must come back as a dependency.
+			expect(second?.code).toMatch(/\[[^\]]*\bthing\b/);
+		} finally {
+			await server?.close();
+			await rm(root, { recursive: true, force: true });
+		}
+	}, 30000);
+
 	it('SSR-loads a manifest-discovered raw binding without app build shims', async () => {
 		const root = await mkdtemp(join(tmpdir(), 'octane-vite-raw-binding-'));
 		let server: Awaited<ReturnType<typeof createServer>> | null = null;
