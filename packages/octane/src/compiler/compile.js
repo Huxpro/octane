@@ -3228,7 +3228,10 @@ function wrapCapturingHookCallbacks(ast, options = {}) {
 				// considered fresh. An explicit `null` is the author's "re-run every
 				// render" escape hatch, so memoizing the callback beneath it could
 				// hand the hook a stale closure.
-				const next = n.arguments[index + 1];
+				// Peeled: `null as any` and `[dep] satisfies T` are the same escape
+				// hatch as the bare forms, and a type wrapper hiding one of them is
+				// exactly the stale-closure case this guard exists to prevent.
+				const next = unwrapTsExpr(n.arguments[index + 1]);
 				if (
 					next &&
 					(next.type === 'ArrayExpression' ||

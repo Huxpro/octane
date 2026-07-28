@@ -169,4 +169,24 @@ describe('data-callback hooks', () => {
 		).code;
 		expect(wraps(code)).toBe(1);
 	});
+
+	it('sees the dependency escape hatch through a type wrapper', () => {
+		// `null as any` and `[dep] as const` are the same author intent as the bare
+		// forms. A type wrapper hiding one is exactly the stale-closure case the
+		// escape hatch exists to prevent.
+		for (const deps of ['null as any', '(null)', '[props.id] as const', '[props.id]!']) {
+			const code = compile(
+				`
+          import { useSelector } from '@octanejs/tanstack-store';
+          export function App(props) @{
+            const v = useSelector(props.store, (s) => s.items[props.id], ${deps});
+            <p>{v as string}</p>
+          }
+        `,
+				'ts-wrapped-deps.tsrx',
+				{ ...PROD, dataCallbackHooks: DECLARED },
+			).code;
+			expect(wraps(code), `deps written as \`${deps}\``).toBe(0);
+		}
+	});
 });
