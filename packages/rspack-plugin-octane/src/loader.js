@@ -91,15 +91,25 @@ async function resolveClientOnlyImports(context, compiler, source, id) {
  * with different module-graph models at all. Files a fact was read from become
  * loader dependencies so an edit to a dependency rebuilds this module.
  */
-// One cache per loader process: dependencies are parsed once, not once per
-// importer. Rspack reruns the loader for a changed module, and `addDependency`
-// on each fact file rebuilds the importers that read it.
-const rspackFactCache = createFactCache();
+// One cache per COMPILATION, not per process. `addDependency` rebuilds the
+// importers when a fact file changes, but a process-scoped cache would hand
+// those rebuilds the previous extraction — so a hook that stopped being stable
+// would keep proving stable, and its callers would keep dropping a live
+// capture. A watch rebuild is a new compilation, which gets a new cache; the
+// WeakMap lets a finished compilation be collected.
+const factCachesByCompilation = new WeakMap();
+
+function factCacheFor(compilation) {
+	if (compilation === undefined || compilation === null) return createFactCache();
+	let cache = factCachesByCompilation.get(compilation);
+	if (cache === undefined) factCachesByCompilation.set(compilation, (cache = createFactCache()));
+	return cache;
+}
 
 function hookStabilityFor(context, candidates, id) {
 	const resolver = context.getResolve({ dependencyType: 'esm' });
 	return resolveHookStability(candidates, id, {
-		cache: rspackFactCache,
+		cache: factCacheFor(context._compilation),
 		// The importer is NOT always this module: following a transparent
 		// re-export resolves the next specifier against the module that forwarded
 		// it. Ignoring that would resolve a relative specifier from the wrong

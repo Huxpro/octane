@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { compile } from 'octane/compiler';
 import {
+	createFactCache,
 	createFactResolver,
 	extractModuleFacts,
 	findFactCandidates,
+	invalidateFactCache,
 } from '../src/compiler/module-facts.js';
 
 // Cross-module facts let a single-module compile answer a question about an
@@ -329,6 +331,43 @@ describe('module facts — resolver graph walk', () => {
 		});
 		await resolver.factFor('/reexport.js', 'useDispatch', '/app.tsx');
 		expect(importers).toEqual(['/app.tsx', '/reexport.js']);
+	});
+
+	it('re-reads a file after its cache entry is invalidated', async () => {
+		// The cache is shared across a build so a dependency is parsed once rather
+		// than once per importer. That makes pruning it the ONLY thing standing
+		// between a changed dependency and a stale fact — a hook that stops being
+		// stable would otherwise keep proving stable, and its callers would keep
+		// dropping a live capture. Both plugins depend on this contract: Vite from
+		// `hotUpdate` and `watchChange`, Rspack by scoping the cache per
+		// compilation.
+		const files: Record<string, string> = {
+			'/hook.js': `
+        import { useRef } from 'octane';
+        export function useThing() { const r = useRef(null); return r; }
+      `,
+		};
+		const cache = createFactCache();
+		const make = () =>
+			createFactResolver({
+				cache,
+				resolve: async (request) => (request in files ? request : null),
+				readFile: async (path) => files[path] ?? null,
+			});
+
+		expect((await make().factFor('/hook.js', 'useThing', '/app.tsx'))?.stableResult).toBe(true);
+
+		// The same hook now allocates a fresh object on every call.
+		files['/hook.js'] = `
+      import { useState } from 'octane';
+      export function useThing() { const [n] = useState(0); return { n }; }
+    `;
+
+		// A fresh resolver over the SAME cache still answers from the old parse.
+		expect((await make().factFor('/hook.js', 'useThing', '/app.tsx'))?.stableResult).toBe(true);
+
+		invalidateFactCache(cache, '/hook.js');
+		expect(await make().factFor('/hook.js', 'useThing', '/app.tsx')).toBeNull();
 	});
 
 	it('returns null for an unresolvable or unreadable dependency', async () => {

@@ -340,6 +340,10 @@ export function octane(options = {}) {
 		},
 		watchChange(id) {
 			compiler.invalidate(id);
+			// `hotUpdate` covers the dev server; this covers `build --watch`. A
+			// fact cache pruned in only one of the two modes is the same stale-output
+			// bug in the other, so both entry points drop the file here.
+			invalidateFactCache(factCache, id);
 		},
 		generateBundle(_outputOptions, bundle) {
 			if (!emitClientReferenceManifest) return;
