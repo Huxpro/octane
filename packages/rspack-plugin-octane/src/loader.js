@@ -232,9 +232,6 @@ export default function octaneLoader(source, inputSourceMap) {
 			environment === 'server' && typeof compiler.clientReferenceForFile === 'function'
 				? compiler.clientReferenceForFile(id)
 				: null;
-		const asyncCallback = this.async?.() ?? callback;
-		const fail = (error) =>
-			asyncCallback(error instanceof Error ? error : new Error(String(error)));
 		// Hook facts apply to both environments, so they resolve first and are
 		// threaded through whichever path this module takes.
 		// Opt-in — see the measurement note in octane/compiler/vite.js.
@@ -242,20 +239,26 @@ export default function octaneLoader(source, inputSourceMap) {
 			options.crossModuleHookFacts === true && typeof this.getResolve === 'function'
 				? findFactCandidates(String(source), id)
 				: [];
+		const needsClientOnlyImports =
+			environment === 'server' &&
+			currentReference === null &&
+			typeof this.getResolve === 'function' &&
+			compiler.findServerImportRequests(String(source), id).length > 0;
+		if (factCandidates.length === 0 && !needsClientOnlyImports) {
+			finish([], callback);
+			return;
+		}
+
+		const asyncCallback = this.async?.() ?? callback;
+		const fail = (error) =>
+			asyncCallback(error instanceof Error ? error : new Error(String(error)));
 		const withHookStability = (hookStability) => {
-			if (
-				environment === 'server' &&
-				currentReference === null &&
-				typeof this.getResolve === 'function'
-			) {
-				const requests = compiler.findServerImportRequests(String(source), id);
-				if (requests.length > 0) {
-					resolveClientOnlyImports(this, compiler, source, id).then(
-						(imports) => finish(imports, asyncCallback, hookStability),
-						fail,
-					);
-					return;
-				}
+			if (needsClientOnlyImports) {
+				resolveClientOnlyImports(this, compiler, source, id).then(
+					(imports) => finish(imports, asyncCallback, hookStability),
+					fail,
+				);
+				return;
 			}
 			finish([], asyncCallback, hookStability);
 		};

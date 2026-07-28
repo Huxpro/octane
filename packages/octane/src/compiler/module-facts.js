@@ -385,7 +385,12 @@ export function createFactResolver(io) {
 	async function factsForFile(path) {
 		let cached = cache.files.get(path);
 		if (cached !== undefined) return cached;
+		const generation = cache.generation;
 		const source = await io.readFile(path);
+		// An invalidation that happens while the read is in flight must win.
+		// Returning no facts fails closed for this lookup and leaves the next
+		// lookup to read the changed file.
+		if (cache.generation !== generation) return new Map();
 		cached = source === null ? new Map() : extractModuleFacts(source, path);
 		cache.files.set(path, cached);
 		return cached;
@@ -395,11 +400,13 @@ export function createFactResolver(io) {
 		const key = `${request}\0${importer}`;
 		let path = cache.resolved.get(key);
 		if (path !== undefined) return path;
+		const generation = cache.generation;
 		try {
 			path = await io.resolve(request, importer);
 		} catch {
 			path = null;
 		}
+		if (cache.generation !== generation) return null;
 		cache.resolved.set(key, path);
 		return path;
 	}
@@ -458,7 +465,7 @@ export function createFactResolver(io) {
  * @returns {Promise<((request: string, imported: string) => any) | null>}
  */
 export function createFactCache() {
-	return { files: new Map(), resolved: new Map() };
+	return { files: new Map(), resolved: new Map(), generation: 0 };
 }
 
 /**
@@ -470,6 +477,7 @@ export function createFactCache() {
  * @param {string} path
  */
 export function invalidateFactCache(cache, path) {
+	cache.generation++;
 	cache.files.delete(path);
 	cache.resolved.clear();
 }

@@ -370,6 +370,97 @@ describe('module facts — resolver graph walk', () => {
 		expect(await make().factFor('/hook.js', 'useThing', '/app.tsx')).toBeNull();
 	});
 
+	it('does not restore a stale fact after invalidation races an in-flight read', async () => {
+		const stableSource = `
+      import { useRef } from 'octane';
+      export function useThing() { const r = useRef(null); return r; }
+    `;
+		const reactiveSource = `
+      import { useState } from 'octane';
+      export function useThing() { const [n] = useState(0); return { n }; }
+    `;
+		let source = stableSource;
+		let releaseRead!: () => void;
+		const readReleased = new Promise<void>((resolve) => {
+			releaseRead = resolve;
+		});
+		let reportReadStarted!: () => void;
+		const readStarted = new Promise<void>((resolve) => {
+			reportReadStarted = resolve;
+		});
+		let reads = 0;
+		const cache = createFactCache();
+		const make = () =>
+			createFactResolver({
+				cache,
+				resolve: async () => '/hook.js',
+				readFile: async () => {
+					reads++;
+					const captured = source;
+					if (reads === 1) {
+						reportReadStarted();
+						await readReleased;
+					}
+					return captured;
+				},
+			});
+
+		const staleLookup = make().factFor('/hook.js', 'useThing', '/app.tsx');
+		await readStarted;
+		source = reactiveSource;
+		invalidateFactCache(cache, '/hook.js');
+		releaseRead();
+
+		expect(await staleLookup).toBeNull();
+		expect(await make().factFor('/hook.js', 'useThing', '/app.tsx')).toBeNull();
+		expect(reads).toBe(2);
+	});
+
+	it('does not restore a stale resolution after invalidation races an in-flight resolve', async () => {
+		let resolvedPath = '/old-hook.js';
+		let releaseResolve!: () => void;
+		const resolveReleased = new Promise<void>((resolve) => {
+			releaseResolve = resolve;
+		});
+		let reportResolveStarted!: () => void;
+		const resolveStarted = new Promise<void>((resolve) => {
+			reportResolveStarted = resolve;
+		});
+		let resolves = 0;
+		const readPaths: string[] = [];
+		const cache = createFactCache();
+		const make = () =>
+			createFactResolver({
+				cache,
+				resolve: async () => {
+					resolves++;
+					const captured = resolvedPath;
+					if (resolves === 1) {
+						reportResolveStarted();
+						await resolveReleased;
+					}
+					return captured;
+				},
+				readFile: async (path) => {
+					readPaths.push(path);
+					return path === '/old-hook.js'
+						? `import { useRef } from 'octane';
+               export function useThing() { return useRef(null); }`
+						: `export function useThing() { return {}; }`;
+				},
+			});
+
+		const staleLookup = make().factFor('./hook.js', 'useThing', '/app.tsx');
+		await resolveStarted;
+		resolvedPath = '/new-hook.js';
+		invalidateFactCache(cache, '/new-hook.js');
+		releaseResolve();
+
+		expect(await staleLookup).toBeNull();
+		expect(await make().factFor('./hook.js', 'useThing', '/app.tsx')).toBeNull();
+		expect(readPaths).toEqual(['/new-hook.js']);
+	});
+
 	it('returns null for an unresolvable or unreadable dependency', async () => {
 		const resolver = makeResolver();
 		expect(await resolver.factFor('/nope.js', 'useThing', '/app.tsx')).toBeNull();

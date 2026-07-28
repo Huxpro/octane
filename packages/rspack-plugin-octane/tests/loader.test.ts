@@ -13,7 +13,7 @@ vi.mock('octane/compiler/bundler', () => ({
 	createOctaneCompiler: mocks.createOctaneCompiler,
 	// Cross-module facts are opt-in, so the loader never calls these here; they
 	// exist because the module is imported at load time.
-	createFactCache: () => ({ files: new Map(), resolved: new Map() }),
+	createFactCache: () => ({ files: new Map(), resolved: new Map(), generation: 0 }),
 	findFactCandidates: () => [],
 	resolveHookStability: async () => null,
 }));
@@ -50,6 +50,9 @@ function runLoader({
 	const dependencies: string[] = [];
 	const missingDependencies: string[] = [];
 	let result: LoaderResult | undefined;
+	const callback = (error: Error | null, content?: string | Buffer, map?: unknown) => {
+		result = { error, content, map };
+	};
 	const context = {
 		rootContext: '/project',
 		resource,
@@ -63,9 +66,8 @@ function runLoader({
 		getOptions: () => options,
 		addDependency: (dependency: string) => dependencies.push(dependency),
 		addMissingDependency: (dependency: string) => missingDependencies.push(dependency),
-		callback: (error: Error | null, content?: string | Buffer, map?: unknown) => {
-			result = { error, content, map };
-		},
+		callback,
+		async: vi.fn(() => callback),
 	};
 	octaneLoader.call(context, source, inputSourceMap);
 	return { context, dependencies, missingDependencies, module, result: result! };
@@ -79,6 +81,17 @@ describe('octane Rspack loader', () => {
 		mocks.createOctaneCompiler.mockReset().mockImplementation(() => ({
 			transform: mocks.transform,
 		}));
+	});
+
+	it.each([
+		['cross-module facts are disabled', {}],
+		['the candidate scan is empty', { crossModuleHookFacts: true }],
+	])('keeps the loader synchronous when %s', (_label, options) => {
+		mocks.transform.mockReturnValue(null);
+		const { context, result } = runLoader({ options });
+
+		expect(context.async).not.toHaveBeenCalled();
+		expect(result.error).toBeNull();
 	});
 
 	it('uses webpack HMR, forwards maps, watches manifests, and emits build metadata', () => {
