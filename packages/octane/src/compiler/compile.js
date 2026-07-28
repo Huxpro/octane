@@ -2952,6 +2952,7 @@ function hookOwnsCallbackIdentity(call) {
  * in (`this`, `arguments`, JSX, a nested hook) has to stay exactly where it is.
  */
 function isMovableHookCallback(fn) {
+	fn = unwrapTsExpr(fn);
 	if (!fn || (fn.type !== 'ArrowFunctionExpression' && fn.type !== 'FunctionExpression'))
 		return false;
 	// A JSX code-block body is a subtemplate with its own compile pass.
