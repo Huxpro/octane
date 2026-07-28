@@ -13,8 +13,10 @@ compile(source, filename, {
 })
 ```
 
-Entries are `module#hookName`, matched against the call site's import, or a bare
-`hookName` for a hook declared in the module being compiled.
+Entries are `module#hookName`, matched against the call site's import — including
+a namespace import, matched against the namespace's own module — or a bare
+`hookName` for a hook declared in the module being compiled. A default or
+namespace import from elsewhere never matches a bare entry.
 
 This closes the other half of the capture-free callback lift. A callback that
 captures nothing is lifted to module scope and keeps one identity forever; a

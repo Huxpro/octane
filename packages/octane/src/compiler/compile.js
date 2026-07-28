@@ -3126,22 +3126,36 @@ function buildDataCallbackHookIndex(entries) {
 	return { byModule, bareNames };
 }
 
-/** Local name -> `{ module, imported }` for every named import in the module. */
+/**
+ * How each imported local name entered the module. Bare declarations mean "a
+ * hook declared HERE", so every import form has to be recognised — otherwise a
+ * default or namespace import from another package falls through and silently
+ * matches a bare entry.
+ */
 function collectImportOrigins(ast) {
-	const origins = new Map();
+	/** local -> { module, imported } */
+	const named = new Map();
+	/** local -> module, for `import * as NS` */
+	const namespaces = new Map();
+	/** locals bound by a default import: opaque, never declarable */
+	const opaque = new Set();
 	for (const statement of ast.body || []) {
 		if (statement?.type !== 'ImportDeclaration') continue;
 		const moduleName = statement.source?.value;
 		if (typeof moduleName !== 'string') continue;
 		for (const spec of statement.specifiers || []) {
-			if (spec.type !== 'ImportSpecifier' || spec.local?.type !== 'Identifier') continue;
-			origins.set(spec.local.name, {
-				module: moduleName,
-				imported: spec.imported?.name ?? spec.local.name,
-			});
+			const local = spec.local?.name;
+			if (typeof local !== 'string') continue;
+			if (spec.type === 'ImportSpecifier') {
+				named.set(local, { module: moduleName, imported: spec.imported?.name ?? local });
+			} else if (spec.type === 'ImportNamespaceSpecifier') {
+				namespaces.set(local, moduleName);
+			} else {
+				opaque.add(local);
+			}
 		}
 	}
-	return origins;
+	return { named, namespaces, opaque };
 }
 
 function wrapCapturingHookCallbacks(ast, options = {}) {
@@ -3153,14 +3167,31 @@ function wrapCapturingHookCallbacks(ast, options = {}) {
 
 	/** Whether THIS call site's hook declared its callback is data. */
 	const hookDeclaresDataCallback = (call) => {
-		const name = hookShapedCalleeName(call);
-		if (name === null) return false;
-		const origin = importOrigins.get(name);
-		if (origin !== undefined) {
-			return declared.byModule.get(origin.module)?.has(origin.imported) === true;
+		const callee = call.callee;
+		if (callee?.type === 'Identifier') {
+			const origin = importOrigins.named.get(callee.name);
+			if (origin !== undefined) {
+				return declared.byModule.get(origin.module)?.has(origin.imported) === true;
+			}
+			// A namespace or default import is not a module-local declaration, and
+			// its origin module cannot be attributed to this name.
+			if (importOrigins.namespaces.has(callee.name) || importOrigins.opaque.has(callee.name)) {
+				return false;
+			}
+			return declared.bareNames.has(callee.name);
 		}
-		// Not an import: a hook declared in this module.
-		return declared.bareNames.has(name);
+		// `NS.useThing(...)` is declarable only against the namespace's module.
+		if (
+			callee?.type === 'MemberExpression' &&
+			!callee.computed &&
+			callee.object?.type === 'Identifier' &&
+			callee.property?.type === 'Identifier'
+		) {
+			const moduleName = importOrigins.namespaces.get(callee.object.name);
+			if (moduleName === undefined) return false;
+			return declared.byModule.get(moduleName)?.has(callee.property.name) === true;
+		}
+		return false;
 	};
 
 	// Calls whose OWN dependency list the compiler infers — `useMemo(fn)` and,
@@ -3202,10 +3233,7 @@ function wrapCapturingHookCallbacks(ast, options = {}) {
 					next &&
 					(next.type === 'ArrayExpression' ||
 						(next.type === 'Literal' && next.value === null) ||
-						next.type === 'NullLiteral' ||
-						// `undefined` parses as an Identifier, and passing it explicitly
-						// means the same as omitting the list.
-						(next.type === 'Identifier' && next.name === 'undefined'))
+						next.type === 'NullLiteral')
 				) {
 					return walked;
 				}

@@ -105,4 +105,68 @@ describe('data-callback hooks', () => {
 			expect(wraps(code)).toBe(0);
 		}
 	});
+
+	it('does not treat an imported hook as module-local for a bare declaration', () => {
+		// A bare entry declares a hook written in THIS module. A default or
+		// namespace import from some other package must not fall through into it,
+		// or a hook that never opted in gets its callbacks dep-keyed.
+		const asDefault = compile(
+			`
+        import useSelector from 'some-other-package';
+        export function App(props) @{
+          const v = useSelector(props.store, (s) => s.items[props.id]);
+          <p>{v as string}</p>
+        }
+      `,
+			'default-import.tsrx',
+			{ ...PROD, dataCallbackHooks: ['useSelector'] },
+		).code;
+		expect(wraps(asDefault)).toBe(0);
+
+		const viaNamespace = compile(
+			`
+        import * as Store from 'some-other-package';
+        export function App(props) @{
+          const v = Store.useSelector(props.store, (s) => s.items[props.id]);
+          <p>{v as string}</p>
+        }
+      `,
+			'namespace-import.tsrx',
+			{ ...PROD, dataCallbackHooks: ['useSelector'] },
+		).code;
+		expect(wraps(viaNamespace)).toBe(0);
+	});
+
+	it('matches a namespace-imported hook against its own module', () => {
+		const code = compile(
+			`
+        import * as Store from '@octanejs/tanstack-store';
+        export function App(props) @{
+          const v = Store.useSelector(props.store, (s) => s.items[props.id]);
+          <p>{v as string}</p>
+        }
+      `,
+			'namespace-declared.tsrx',
+			{ ...PROD, dataCallbackHooks: DECLARED },
+		).code;
+		expect(wraps(code)).toBe(1);
+	});
+
+	it('keys a callback whose call passes an explicit undefined', () => {
+		// `undefined` is not a deliberate dependency list — it is what an omitted
+		// optional argument looks like, and omitted is exactly when a capturing
+		// callback should be keyed.
+		const code = compile(
+			`
+        import { useSelector } from '@octanejs/tanstack-store';
+        export function App(props) @{
+          const v = useSelector(props.store, (s) => s.items[props.id], undefined);
+          <p>{v as string}</p>
+        }
+      `,
+			'explicit-undefined.tsrx',
+			{ ...PROD, dataCallbackHooks: DECLARED },
+		).code;
+		expect(wraps(code)).toBe(1);
+	});
 });
