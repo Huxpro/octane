@@ -1,5 +1,22 @@
 # @octanejs/docusaurus
 
+## 0.0.4
+
+### Patch Changes
+
+- 4c896b7: Add lazy client routing over the Docusaurus manifest, including browser and
+  memory router factories, nested route rendering and context, and a Vite virtual
+  module with statically analyzable route imports.
+- 7551059: Add static route prerendering and client hydration over the lazy Docusaurus
+  route graph, with matched-branch loading and adoptable Octane server markup.
+- Updated dependencies [c6370b6]
+- Updated dependencies [c151b71]
+- Updated dependencies [a57c32a]
+- Updated dependencies [ae6811d]
+  - octane@0.1.20
+  - @octanejs/mdx@0.1.17
+  - @octanejs/remix-router@0.1.16
+
 ## 0.0.3
 
 ### Patch Changes

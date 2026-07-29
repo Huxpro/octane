@@ -1,5 +1,23 @@
 # @octanejs/vite-plugin
 
+## 0.1.20
+
+### Patch Changes
+
+- c151b71: Add optional Strong mode for clearer state and ref behavior. Enable it across an
+  application with `compiler: { strong: true }`, in one module with `"use strong"`,
+  or through the Vite, Rspack, and Rsbuild plugin options. Strong modules reject
+  state updates during render, direct state updates while setting up an effect, and
+  render-time writes to refs, with `useLinkedState` available for state that
+  should follow another value.
+- Updated dependencies [c6370b6]
+- Updated dependencies [0a0b813]
+- Updated dependencies [c151b71]
+- Updated dependencies [a57c32a]
+- Updated dependencies [ae6811d]
+  - octane@0.1.20
+  - @octanejs/app-core@0.0.16
+
 ## 0.1.19
 
 ### Patch Changes
