@@ -111,6 +111,34 @@ export interface Context {
 	state: Map<string, unknown>;
 	/** Request-scoped bindings supplied by the active platform integration. */
 	platform?: unknown;
+	/**
+	 * The `module server` export this request targets, present only on an RPC
+	 * request. Set before the middleware chain runs, so a policy can authorize
+	 * per function instead of per endpoint.
+	 */
+	rpc?: RpcTarget;
+}
+
+/**
+ * Identifies the `module server` export an RPC request targets.
+ *
+ * `module` and `export` are `null` when the integration supplies no
+ * {@link RpcRequestOptions.describeFunction}. A policy that matches on them then
+ * matches nothing and allows the request, so an integration that hand-rolls the
+ * RPC boundary must supply it before writing per-function authorization. Both
+ * first-party integrations (the Vite plugin and the production handler) do.
+ */
+export interface RpcTarget {
+	/**
+	 * Compiler-assigned function id, taken from the request path. Stable only for
+	 * a given build: it is a hash of the declaring module and export name, so it
+	 * changes on rename. Authorize on `module`/`export`, not on this.
+	 */
+	id: string;
+	/** Module that declared the export, or `null` when the integration cannot name it. */
+	module: string | null;
+	/** Exported function name, or `null` when the integration cannot name it. */
+	export: string | null;
 }
 
 export type NextFunction = () => Promise<Response>;
@@ -142,6 +170,13 @@ export function is_rpc_request(pathname: string): boolean;
 /** Security policy and execution dependencies for a server-function request. */
 export interface RpcRequestOptions {
 	resolveFunction: (hash: string) => Function | null | Promise<Function | null>;
+	/**
+	 * Name the export a function id refers to, without loading its module. Called
+	 * once per RPC request, before middleware, to populate {@link Context.rpc}.
+	 * Synchronous by contract: both first-party integrations already hold the
+	 * mapping, and the middleware chain must not wait on it.
+	 */
+	describeFunction?: (hash: string) => { module: string; export: string } | null;
 	executeServerFunction: (fn: Function, body: string) => Promise<string>;
 	asyncContext: AsyncContext<{ origin?: string; platform?: unknown; context?: Context }>;
 	trustProxy?: boolean;

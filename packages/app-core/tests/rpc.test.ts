@@ -481,6 +481,44 @@ describe('server-function HTTP security', () => {
 		expect(tryGetRequestContext()).toBeNull();
 	});
 
+	it('names the target function for middleware before the action runs', async () => {
+		let target: unknown;
+		const middleware: Middleware = async (context, next) => {
+			target = context.rpc;
+			return next();
+		};
+		const { action, handler } = createRpcHandler({ middlewares: [middleware] });
+		const response = await handler(rpcRequest());
+
+		expect(response.status).toBe(200);
+		expect(action).toHaveBeenCalledOnce();
+		expect(target).toEqual({ id: 'deadbeef', module: '/src/actions.ts', export: 'action' });
+	});
+
+	it('lets middleware authorize a single server function', async () => {
+		const middleware: Middleware = async (context, next) =>
+			context.rpc?.export === 'action' ? new Response('Forbidden', { status: 403 }) : next();
+		const { action, handler } = createRpcHandler({ middlewares: [middleware] });
+		const response = await handler(rpcRequest());
+
+		expect(response.status).toBe(403);
+		expect(action).not.toHaveBeenCalled();
+	});
+
+	it('names an unknown function id as null rather than inventing a target', async () => {
+		let target: unknown;
+		const middleware: Middleware = async (context, next) => {
+			target = context.rpc;
+			return next();
+		};
+		const { action, handler } = createRpcHandler({ middlewares: [middleware] });
+		const response = await handler(rpcRequest({ hash: 'aaaaaaaa' }));
+
+		expect(response.status).toBe(404);
+		expect(action).not.toHaveBeenCalled();
+		expect(target).toEqual({ id: 'aaaaaaaa', module: null, export: null });
+	});
+
 	it('does not disclose server-action exception messages', async () => {
 		const secret = 'private database password';
 		const loggedError = vi.spyOn(console, 'error').mockImplementation(() => {});
