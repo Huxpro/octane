@@ -122,6 +122,24 @@ the first:
    discarding hook state. Moves and inserts journal fine (`node`, `parent`, `nextSibling`),
    but removals need disposals collected during the render and executed only on commit.
 
+   **This one is NOT blocked by the pending cue, and it is the most visible of the two.** A
+   keyed list between the `@try` and the suspending component sits inside the boundary's own
+   journal window, so it needs no attempt-level widening. Reproduced 2026-07-29: a list of
+   `a, b, c` inside a boundary, a transition moving to `c, a, d` where `d` is what suspends,
+   leaves the held boundary showing `a, c` — row `b` is disposed and gone from a list the
+   boundary is supposed to be holding frozen. Its DOM, its hook state and its cleanups are
+   all already destroyed by the time the hold is decided.
+
+   The shape of the fix: a removal cannot defer its DOM detach, because the reconciler needs
+   the node gone to finish and the hold is only decided afterwards. So the detach is
+   journaled (`node`, `parent`, `nextSibling`) and undoable, while the SCOPE TEARDOWN —
+   `unmountScope`, the `disposed` stamp and the user cleanups — is what defers to commit.
+   `unmountBlock` is the single choke point (three call sites in the reconciler plus
+   `batchClearItems`), but it is on every removal path in the runtime, so the deferral has to
+   be gated tightly on an armed window. The `@for` bookkeeping travels with it: `head`,
+   `tail`, `size`, the key→block map and the intrusive `nextSibling` chain all need
+   snapshotting before the reconcile, the same way a binding bag does.
+
 Effects are the third piece: a rolled-back region outside a boundary would otherwise run
 effects against DOM that was reverted underneath them, so that region needs the same
 capture-and-splice treatment the resume path already uses.
