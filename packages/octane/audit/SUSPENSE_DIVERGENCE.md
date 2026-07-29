@@ -126,6 +126,30 @@ Effects are the third piece: a rolled-back region outside a boundary would other
 effects against DOM that was reverted underneath them, so that region needs the same
 capture-and-splice treatment the resume path already uses.
 
+**Attempted 2026-07-29, and the blocker is `isPending`.** A whole-drain "transition attempt"
+was built — journal armed for the queued transition render, live effect/ref/store queues
+marked and rewound, effect dependency cells restored, and the reveal replaying from the
+block the attempt started at rather than from the boundary. Everything held together except
+one thing: rolling the attempt back also reverted `isPending`, turning the pending cue
+straight back off. Fifteen existing transition tests caught it.
+
+The cause is deliberate and is spelled out at `startTransition` in runtime.ts: the priority
+flag is raised BEFORE `tickTransitionCount`, *"so any scheduleRender calls fired by the
+listener notification (and by fn itself) are tagged as transition"*. The pending cue is
+therefore transition-priority work in the same block as the content it describes, and in
+octane both are one render pass. Skipping urgent writes inside an attempt does not help,
+because the cue render is not urgent. Re-rendering after the unwind to restore the cue
+re-applies the content it was supposed to hold.
+
+React does not have this problem: `isPending` commits in a separate pass at a different
+priority from the transition itself.
+
+So the prerequisite is not the journal or deferred destruction — it is decoupling the
+pending cue from the transition render, so `useTransition` listeners publish at a priority
+an attempt does not unwind. That reverses the intent of the comment above and changes
+documented scheduling behaviour, so it needs its own design and its own change. The
+deferred-commit work sits behind it.
+
 The async Action batching in #6 prevents the shell tear while an Action is in flight, but
 does not close the synchronous case. Fallback-visible retries are capture-safe and never had
 this limitation.
