@@ -118,9 +118,16 @@ the first:
    re-renders the try block only, so a restored bag outside it is never re-patched and the
    content stays on the old value permanently. The hold would have to record the block the
    transition originated from and re-render that instead.
-2. *Destruction is not undoable.* A keyed removal disposes blocks, running user cleanups and
-   discarding hook state. Moves and inserts journal fine (`node`, `parent`, `nextSibling`),
-   but removals need disposals collected during the render and executed only on commit.
+2. *Destruction is not undoable* — ✅ CLOSED for keyed lists (2026-07-29). A keyed removal
+   used to dispose the row outright before the hold was decided, so a held boundary could
+   show a list with a row missing — DOM, hook state and cleanups already gone. Removals now
+   split: the DOM detach happens immediately (the reconciler needs the nodes out of the way)
+   but the nodes are kept and the scope teardown is PARKED. A rollback re-inserts the rows
+   with their state intact and their cleanups never having run; a commit flushes the parked
+   teardowns when the last journal window closes. The list restores as a whole — chain, key
+   map, counts and the `@empty` branch together — so moved survivors return to position
+   alongside dropped rows. `transitions.test.ts` pins the drop, the state survival, the
+   cleanup timing, and both directions of the `@empty` swap.
 
    **This one is NOT blocked by the pending cue, and it is the most visible of the two.** A
    keyed list between the `@try` and the suspending component sits inside the boundary's own

@@ -21,6 +21,8 @@ import {
 	TransitionNamespacedAttr,
 	TransitionControlledInput,
 	TransitionRadioGroup,
+	TransitionKeyedRemoval,
+	TransitionListToEmpty,
 } from './_fixtures/transitions.tsrx';
 
 interface Deferred<T> {
@@ -759,6 +761,70 @@ describe('useTransition — the old screen stays whole', () => {
 		});
 		expect(a.checked).toBe(true);
 		expect(b.checked).toBe(false);
+		r.unmount();
+	});
+
+	it('brings back a keyed row the transition dropped before the boundary held', async () => {
+		// Step 0 is a pre-fulfilled thenable so the FIRST mount commits without
+		// suspending: the rows' effects must actually mount for the cleanup
+		// assertion below to mean anything. (A first mount that suspends loses
+		// those mount effects today — that is a separate pre-existing bug.)
+		const step1 = deferred<string>();
+		const fulfilled = { status: 'fulfilled', value: 'zero', then: (cb: any) => cb('zero') };
+		const load = (step: number) => (step === 0 ? fulfilled : step1.promise);
+		const log = createLog();
+		const ids = () => r.findAll('#list li').map((li) => li.id);
+
+		const r = mount(TransitionKeyedRemoval, { load, log: log.push });
+		await act(() => {});
+		expect(ids()).toEqual(['row-a', 'row-b', 'row-c']);
+		expect(r.find('#row-b').textContent).toBe('b!');
+		expect(log.drain()).toEqual(['mount:a', 'mount:b', 'mount:c']);
+
+		// The list drops b, then the sibling suspends and the boundary holds. The
+		// row has to come back, keep the state it had, and not have torn down.
+		r.click('#bump');
+		expect(r.findAll('#fallback')).toHaveLength(0);
+		expect(ids()).toEqual(['row-a', 'row-b', 'row-c']);
+		expect(r.find('#row-b').textContent).toBe('b!');
+		expect(log.drain()).toEqual([]);
+
+		// Once the sibling settles the removal goes through for real.
+		await act(() => {
+			step1.resolve('one');
+		});
+		expect(ids()).toEqual(['row-a', 'row-c']);
+		await act(() => {});
+		expect(log.drain()).toEqual(['cleanup:b']);
+		r.unmount();
+	});
+
+	it('holds a list that emptied, and swaps to @empty only on commit', async () => {
+		const step1 = deferred<string>();
+		const fulfilled = { status: 'fulfilled', value: 'zero', then: (cb: any) => cb('zero') };
+		const load = (step: number) => (step === 0 ? fulfilled : step1.promise);
+		const log = createLog();
+
+		const r = mount(TransitionListToEmpty, { load, log: log.push });
+		await act(() => {});
+		expect(r.findAll('#list li').map((li) => li.id)).toEqual(['row-a', 'row-b']);
+		expect(log.drain()).toEqual(['mount:a', 'mount:b']);
+
+		// The whole list clears and @empty mounts, then the sibling suspends. The
+		// rows come back and the empty branch goes — with no cleanups run.
+		r.click('#bump');
+		expect(r.findAll('#fallback')).toHaveLength(0);
+		expect(r.findAll('#list li').map((li) => li.id)).toEqual(['row-a', 'row-b']);
+		expect(r.findAll('#empty')).toHaveLength(0);
+		expect(log.drain()).toEqual([]);
+
+		await act(() => {
+			step1.resolve('one');
+		});
+		expect(r.findAll('#list li').map((li) => li.id)).toEqual(['empty']);
+		expect(r.find('#empty').textContent).toBe('nothing');
+		await act(() => {});
+		expect(log.drain()).toEqual(['cleanup:a', 'cleanup:b']);
 		r.unmount();
 	});
 });

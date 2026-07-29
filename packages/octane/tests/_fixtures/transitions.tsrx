@@ -1,5 +1,6 @@
 import {
 	use,
+	useEffect,
 	useReducer,
 	useState,
 	useTransition,
@@ -513,6 +514,65 @@ export function TransitionRadioGroup(props) @{
 			<>
 				<input id="r-a" type="radio" name="pick-group" checked={step === 1} onChange={() => {}} />
 				<input id="r-b" type="radio" name="pick-group" checked={step === 0} onChange={() => {}} />
+				<ControlledValue load={props.load} step={step} />
+			</>
+		} @pending {
+			<span id="fallback">{'fallback'}</span>
+		}
+	</div>
+}
+
+// ---------------------------------------------------------------------------
+// A keyed list inside a boundary, with a suspending sibling after it. The
+// transition drops a row and then the sibling suspends, so the list reconciles
+// first and the boundary decides to hold second. The dropped row has to come
+// back — DOM, its own state, and without having run its cleanup.
+// ---------------------------------------------------------------------------
+function RemovalRow(props) @{
+	const [seen] = useState(props.id + '!');
+	useEffect(() => {
+		props.log('mount:' + props.id);
+		return () => props.log('cleanup:' + props.id);
+	}, []);
+	<li id={'row-' + props.id}>{seen as string}</li>
+}
+
+export function TransitionKeyedRemoval(props) @{
+	const [step, setStep] = useState(0);
+	const items =
+		step === 0 ? ['a', 'b', 'c'] : ['a', 'c'];
+	<div>
+		<button id="bump" onClick={() => startTransition(() => setStep(1))}>{'bump'}</button>
+		@try {
+			<>
+				<ul id="list">
+					@for (const id of items; key id) {
+						<RemovalRow id={id} log={props.log} />
+					}
+				</ul>
+				<ControlledValue load={props.load} step={step} />
+			</>
+		} @pending {
+			<span id="fallback">{'fallback'}</span>
+		}
+	</div>
+}
+
+export function TransitionListToEmpty(props) @{
+	const [step, setStep] = useState(0);
+	const items =
+		step === 0 ? ['a', 'b'] : [];
+	<div>
+		<button id="bump" onClick={() => startTransition(() => setStep(1))}>{'bump'}</button>
+		@try {
+			<>
+				<ul id="list">
+					@for (const id of items; key id) {
+						<RemovalRow id={id} log={props.log} />
+					} @empty {
+						<li id="empty">{'nothing'}</li>
+					}
+				</ul>
 				<ControlledValue load={props.load} step={step} />
 			</>
 		} @pending {
