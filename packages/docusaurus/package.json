@@ -1,6 +1,6 @@
 {
   "name": "@octanejs/docusaurus",
-  "version": "0.0.2",
+  "version": "0.0.5",
   "description": "Docusaurus content and MDX integration for Octane",
   "license": "MIT",
   "type": "module",
@@ -42,6 +42,26 @@
       "import": "./src/mdx.js",
       "default": "./src/mdx.js"
     },
+    "./client": {
+      "types": "./types/client.d.ts",
+      "import": "./src/client.js",
+      "default": "./src/client.js"
+    },
+    "./hydrate": {
+      "types": "./types/hydrate.d.ts",
+      "import": "./src/hydrate.js",
+      "default": "./src/hydrate.js"
+    },
+    "./server": {
+      "types": "./types/server.d.ts",
+      "import": "./src/server.js",
+      "default": "./src/server.js"
+    },
+    "./theme": {
+      "types": "./types/theme.d.ts",
+      "import": "./src/theme.js",
+      "default": "./src/theme.js"
+    },
     "./vite": {
       "types": "./types/vite.d.ts",
       "import": "./src/vite.js",
@@ -54,6 +74,8 @@
   },
   "dependencies": {
     "@octanejs/mdx": "workspace:*",
+    "@octanejs/remix-router": "workspace:*",
+    "@octanejs/seo": "workspace:*",
     "github-slugger": "1.5.0"
   },
   "peerDependencies": {

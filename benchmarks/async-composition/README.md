@@ -127,3 +127,35 @@ Every independent request starts before the first 50ms network wave settles;
 `owner` alone waits for `project.ownerId`. The remaining single mixed update
 signature is transition atomicity work rather than an async-discovery waterfall,
 and stays visible under its tightened one-state ceiling.
+
+## Atomic transitions (2026-07-29)
+
+The last mixed signature is gone. It was the held boundary replaying its body:
+`project`, `viewer`, and `badge` had arrived and patched their nodes, then
+`owner` suspended again behind its data dependency, leaving three v1 values
+beside five v0 ones.
+
+A suspended attempt now undoes its own binding writes, so the boundary holds
+whole. Both the waves and the exposed states are level with React:
+
+| target | update | waves (init / update) | calls (init / update) | observed mixed update states |
+| --- | ---: | ---: | ---: | ---: |
+| octane-tsrx | 2 waves | 2 / 2 | 8 / 8 | 0 |
+| React | 3 waves | 6 / 3 | 35 / 25 | 0 |
+
+The update ceiling is now zero, so any reintroduced tear fails the suite.
+
+## Transition-atomicity guard (2026-07-29)
+
+The dashboard carries a synchronous "board" inside the held boundary: keyed
+rows that reorder, drop one member and gain one every version, with per-version
+text, plus a controlled input. None of it fetches, so the wave and call
+ceilings are untouched — but all of it joins the dashboard signature, and the
+board validates as one atomic unit (whole-old or whole-new; anything else is a
+tear).
+
+This pins the hold-and-rollback machinery end to end in a real browser on
+production compiles: binding writes, controlled value projection, and keyed
+removals/insertions/moves all have to move with the fetched panels in one step.
+Disabling the runtime's transition journal makes the update gate fail with
+`mixedStates regressed to 1 (ceiling 0)`; React records zero as the reference.

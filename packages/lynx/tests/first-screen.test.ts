@@ -1,4 +1,6 @@
 import { installLynxTestingEnv, uninstallLynxTestingEnv } from '@lynx-js/testing-environment';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { JSDOM } from 'jsdom';
 import {
 	defineUniversalComponent,
@@ -9,10 +11,11 @@ import {
 	useLayoutEffect,
 	type UniversalComponent,
 } from 'octane/universal/native';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createLynxRoot, type LynxRoot } from '../src/index.js';
 import { root as firstScreenRoot } from '../src/first-screen.js';
 import { installLynxMainThread, type LynxMainThreadController } from '../src/main-thread.js';
+import * as firstScreenRenderer from '../src/main-renderer.js';
 import {
 	defineUniversalComponent as defineFirstScreenComponent,
 	firstScreenEvent,
@@ -81,6 +84,89 @@ const MainSingleHost = defineFirstScreenComponent('lynx', (props: { readonly id:
 	firstScreenValue(mainPlan, [firstScreenProps([['set', 'id', props.id]])]),
 );
 
+interface FirstScreenLinkedRuntime {
+	useLinkedState?<Source, Value>(
+		source: Source,
+		reconcile: (source: Source, previous: { source: Source; value: Value } | undefined) => Value,
+		options?:
+			| {
+					sourceEqual?: (previous: Source, next: Source) => boolean;
+					valueEqual?: (previous: Value, next: Value) => boolean;
+			  }
+			| symbol
+			| string
+			| number,
+		slot?: unknown,
+	): [Value, (next: Value | ((previous: Value) => Value)) => void];
+	__useLinkedStateWithGetter?<Source, Value>(
+		source: Source,
+		reconcile: (source: Source, previous: { source: Source; value: Value } | undefined) => Value,
+		options?:
+			| {
+					sourceEqual?: (previous: Source, next: Source) => boolean;
+					valueEqual?: (previous: Value, next: Value) => boolean;
+			  }
+			| symbol
+			| string
+			| number,
+		slot?: unknown,
+	): [Value, (next: Value | ((previous: Value) => Value)) => void, () => Value];
+}
+
+const firstScreenLinkedRuntime = firstScreenRenderer as FirstScreenLinkedRuntime;
+
+function compiledFirstScreenHookImports(observeGetter: boolean): Set<string> {
+	const tuple = observeGetter ? '[value, setValue, getValue]' : '[value, setValue]';
+	const output = observeGetter ? 'getValue()' : 'value';
+	const source = `
+			import { useLinkedState } from 'octane';
+			export function LinkedFirstScreen(props) @{
+				const ${tuple} = useLinkedState(props.source, (source) => source.label);
+				<view id={${output}} />
+			}
+		`;
+	const repository = fileURLToPath(new URL('../../../', import.meta.url));
+	const result = execFileSync(
+		process.execPath,
+		[
+			'--input-type=module',
+			'-e',
+			`import { createRequire } from 'node:module';
+import { compile } from './packages/octane/src/compiler/compile.js';
+import { lynxMainThreadRenderer } from './packages/lynx/src/config.runtime.js';
+const compilerRequire = createRequire(new URL('./packages/octane/package.json', import.meta.url));
+const { parseModule } = await import(compilerRequire.resolve('@tsrx/core'));
+let source = '';
+for await (const chunk of process.stdin) source += chunk;
+const { code } = compile(source, '/src/linked-first-screen.lynx.tsrx', {
+	hmr: false,
+	inlineHookMemo: false,
+	renderer: { ...lynxMainThreadRenderer, id: 'lynx' },
+	universalRuntime: { runtime: 'lynx', thread: 'main-thread' },
+});
+const imports = [];
+for (const statement of parseModule(code, '/compiled/linked-first-screen.js').body ?? []) {
+	if (
+		statement.type !== 'ImportDeclaration' ||
+		statement.source?.value !== '@octanejs/lynx/main-renderer'
+	) continue;
+	for (const specifier of statement.specifiers ?? []) {
+		if (specifier.type === 'ImportSpecifier') {
+			imports.push(specifier.imported?.name ?? specifier.imported?.value);
+		}
+	}
+}
+process.stdout.write(JSON.stringify(imports));`,
+		],
+		{
+			cwd: repository,
+			input: source,
+			encoding: 'utf8',
+		},
+	);
+	return new Set(JSON.parse(result) as string[]);
+}
+
 const backgroundPlan = universalPlan('lynx', {
 	kind: 'host',
 	type: 'view',
@@ -130,6 +216,7 @@ function backgroundContext(): LynxContextProxy {
 
 function installEnvironment(
 	configurePAPI?: (target: Record<string, unknown>) => void,
+	installOptions?: Partial<Parameters<typeof installLynxMainThread>[0]>,
 ): InstalledEnvironment {
 	const dom = new JSDOM('<!doctype html><html><body></body></html>');
 	installLynxTestingEnv(globalThis, {
@@ -149,7 +236,11 @@ function installEnvironment(
 		registrations.push(Object.freeze({ listener }));
 		addEvent(node, kind, name, listener);
 	};
-	const main = installLynxMainThread({ firstScreen: true, firstScreenSync: 'manual' });
+	const main = installLynxMainThread({
+		firstScreen: true,
+		firstScreenSync: 'manual',
+		...installOptions,
+	});
 	return (installed = { dom, main, registrations });
 }
 
@@ -172,6 +263,70 @@ afterEach(async () => {
 });
 
 describe.sequential('Lynx synchronous first-screen adoption', () => {
+	it('compiles linked-state pairs for the main renderer and paints their one-shot initial value', () => {
+		expect(compiledFirstScreenHookImports(false).has('useLinkedState')).toBe(true);
+		const { dom } = installEnvironment();
+		let update!: (next: string) => void;
+		const initialValues: Array<{ source: { label: string }; value: string } | undefined> = [];
+		const LinkedScene = defineFirstScreenComponent(
+			'lynx',
+			(props: { source: { label: string } }) => {
+				const [value, setValue] = firstScreenLinkedRuntime.useLinkedState!(
+					props.source,
+					(source, previous) => {
+						initialValues.push(previous);
+						return `linked-${source.label}`;
+					},
+					Symbol('linked-first-screen'),
+				);
+				update = setValue;
+				return firstScreenValue(mainPlan, [firstScreenProps([['set', 'id', value]])]);
+			},
+		);
+
+		firstScreenRoot.render(LinkedScene, { source: { label: 'main' } });
+		expect(dom.window.document.querySelector('#linked-main')).not.toBeNull();
+		expect(initialValues).toEqual([undefined]);
+
+		update('ignored-update');
+		expect(dom.window.document.querySelector('#linked-main')).not.toBeNull();
+		expect(dom.window.document.querySelector('#ignored-update')).toBeNull();
+	});
+
+	it('compiles observed linked getters and exposes the original one-shot value after inert updates', () => {
+		expect(compiledFirstScreenHookImports(true).has('__useLinkedStateWithGetter')).toBe(true);
+		const { dom } = installEnvironment();
+		const sourceEqual = vi.fn(() => false);
+		const valueEqual = vi.fn(() => false);
+		let getValue!: () => string;
+		let setValue!: (next: string) => void;
+		const LinkedGetterScene = defineFirstScreenComponent(
+			'lynx',
+			(props: { source: { label: string } }) => {
+				const [value, update, read] = firstScreenLinkedRuntime.__useLinkedStateWithGetter!(
+					props.source,
+					(source, previous) => {
+						expect(previous).toBeUndefined();
+						return `getter-${source.label}`;
+					},
+					{ sourceEqual, valueEqual },
+					Symbol('linked-getter-first-screen'),
+				);
+				getValue = read;
+				setValue = update;
+				return firstScreenValue(mainPlan, [firstScreenProps([['set', 'id', value]])]);
+			},
+		);
+
+		firstScreenRoot.render(LinkedGetterScene, { source: { label: 'main' } });
+		expect(dom.window.document.querySelector('#getter-main')).not.toBeNull();
+		expect(getValue()).toBe('getter-main');
+		setValue('ignored-update');
+		expect(getValue()).toBe('getter-main');
+		expect(sourceEqual).not.toHaveBeenCalled();
+		expect(valueEqual).not.toHaveBeenCalled();
+	});
+
 	it('paints synchronously, gates background startup, adopts node identity, and replays events', async () => {
 		const { dom, main, registrations } = installEnvironment();
 		const inbound: LynxBackgroundInboundMessage[] = [];
@@ -250,6 +405,53 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 			firstTree: { root: 1, version: 1 },
 		});
 		expect((ready[0] as { request: number }).request).toBeGreaterThan(0);
+	});
+
+	it('defers an engine-mode first screen until __RenderPage arrives', () => {
+		// Native installs the decoded PageConfig on the ElementManager only after
+		// main-thread script evaluation, so an engine-mode receiver must not
+		// create elements during evaluation; the render runs when the engine's
+		// __RenderPage lifecycle proves evaluation has finished.
+		const engineListeners = new Map<string, Set<(event: LynxContextProxyEvent) => void>>();
+		const engineContext: LynxContextProxy = {
+			dispatchEvent(event) {
+				for (const listener of [...(engineListeners.get(event.type) ?? [])]) listener(event);
+			},
+			addEventListener(type, listener) {
+				let entries = engineListeners.get(type);
+				if (entries === undefined) engineListeners.set(type, (entries = new Set()));
+				entries.add(listener);
+			},
+			removeEventListener(type, listener) {
+				engineListeners.get(type)?.delete(listener);
+			},
+		};
+		const { dom, main } = installEnvironment(
+			(target) => {
+				(target.lynx as Record<string, unknown>).getEngine = () => engineContext;
+			},
+			{ firstScreenRender: 'engine' },
+		);
+		const props: SceneProps = {
+			id: 'engine-mode',
+			items: ['a'],
+			onTap() {},
+			onEffect() {},
+		};
+
+		const deferred = firstScreenRoot.render(MainScene as UniversalComponent<SceneProps>, props);
+		expect(deferred).toBeNull();
+		expect(dom.window.document.querySelector('#engine-mode')).toBeNull();
+
+		main.markFirstScreenSyncReady();
+		expect(dom.window.document.querySelector('#engine-mode')).toBeNull();
+		expect(main.firstScreenSnapshot()).toBeNull();
+
+		engineContext.dispatchEvent({ type: '__RenderPage', data: [{}, {}] });
+		expect(dom.window.document.querySelector('#engine-mode')).not.toBeNull();
+		expect(dom.window.document.querySelector('#a')).not.toBeNull();
+		expect(main.firstScreenSnapshot()).toMatchObject({ root: 1, version: 1 });
+		expect(main.diagnostics()).toEqual([]);
 	});
 
 	it('repairs a nondeterministic first tree and reports the typed mismatch', () => {

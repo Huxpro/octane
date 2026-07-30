@@ -31,6 +31,7 @@ const UNIVERSAL_RUNTIME_IMPORTS = new Set([
 	'useImperativeHandle',
 	'useInsertionEffect',
 	'useLayoutEffect',
+	'useLinkedState',
 	'useMemo',
 	'useOptimistic',
 	'useReducer',
@@ -657,7 +658,7 @@ function createLexicalAnalysis(ast) {
 			return;
 		}
 		if (node.type === 'TSModuleDeclaration') {
-			if (node.declare === true || node.global === true) {
+			if (node.declare === true || node.kind === 'global') {
 				if (node.id) declarePattern(node.id, null);
 				return;
 			}
@@ -3021,6 +3022,7 @@ function emitComponentAst(shape, state) {
 
 export const UNIVERSAL_COMPILER_RUNTIME_IMPORTS = new Set([
 	...UNIVERSAL_RUNTIME_IMPORTS,
+	'__useLinkedStateWithGetter',
 	'__useReducerWithGetter',
 	'__useStateWithGetter',
 	'hookSlots',
@@ -3139,7 +3141,17 @@ function hmrHandoffStatements(state, hot, origin) {
 	for (const component of state.hmrComponents) {
 		const componentOrigin = component.origin ?? origin;
 		const existing = b.member(hmrComponentStore(hot, componentOrigin), component.name);
-		const test = b.logical('&&', hmrComponentStore(hot, componentOrigin), existing);
+		// Webpack/rspack leave `hot.data` undefined until a previous instance of
+		// the module has disposed, so first evaluation must guard the bag itself.
+		const test = b.logical(
+			'&&',
+			b.logical(
+				'&&',
+				memberPath(hot, ['data'], componentOrigin),
+				hmrComponentStore(hot, componentOrigin),
+			),
+			existing,
+		);
 		const update = b.stmt(
 			b.call(
 				b.member(b.member(existing, b.id(state.helpers.hmrSymbol), true), 'update'),
@@ -3386,6 +3398,7 @@ export function lowerUniversalRendererRegionAst(
 		Object.fromEntries(
 			[
 				'__useStateWithGetter',
+				'__useLinkedStateWithGetter',
 				'__useReducerWithGetter',
 				'useMemo',
 				'useBatch',

@@ -17,3 +17,5 @@ export {
 	runMiddlewareChain,
 } from './middleware.js';
 export { handleRpcRequest } from './server/rpc.js';
+export { getRequestContext, tryGetRequestContext } from './server/request-context.js';
+export { createRpcRegistry } from './server/rpc-registry.js';

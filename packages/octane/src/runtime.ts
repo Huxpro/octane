@@ -996,6 +996,17 @@ function flushTransitionActionBatch(batch: TransitionActionBatch): void {
 			);
 		scheduleRender(block);
 	}
+	// Retain the applied updates for the drain this flush schedules: a render
+	// that suspends into a hold reverts these cells to their baseValues and
+	// promotes them when the data arrives (deferred transition commit, P1).
+	// Consumed by endTransitionAttempt; cleared when the flush completes.
+	if (batch.updates.size > 0) {
+		const retained: Array<TransitionActionUpdate<any>> = [];
+		for (const update of batch.updates.values()) {
+			if (!update.block.disposed) retained.push(update);
+		}
+		if (retained.length > 0) FLUSHED_TRANSITION_UPDATES.push(retained);
+	}
 	batch.updates.clear();
 	if (IN_FLIGHT_TRANSITION_ACTION_BATCH === batch) {
 		IN_FLIGHT_TRANSITION_ACTION_BATCH = null;
@@ -1049,6 +1060,760 @@ const HELD_TRANSITIONS = new Set<TrySlot>();
 const STAGED_REVEALS = new Set<TrySlot>();
 let flushingStagedReveals = false;
 let deferringStagedRevealEffects = false;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Deferred transition commit (docs/transition-deferred-commit-plan.md, P1).
+//
+// A synchronous transition stages its setters into a TransitionActionBatch and
+// flushes it before startTransition returns, so by the time the drain renders,
+// the cells already hold the new values. If that render suspends into a hold,
+// the screen must stay whole — including everything OUTSIDE the boundary the
+// same render patched on the way past. The attempt makes the render undoable:
+// journal window over the origin's whole render, live-queue checkpoints for the
+// work it enqueued, the flushed cells reverted to the recorded baseValues, and
+// the parallel-use entries it replaced swapped back.
+//
+// The pending cue needs no special treatment: `slotRef.isPending` was flipped
+// by the listener pass and survives the unwind. Re-rendering the origin at
+// urgent priority with the reverted cells re-publishes exactly the cue-derived
+// bindings — every other binding no-ops on its restored bag guard, and old
+// cells render previously committed (cached) content, so it cannot suspend.
+//
+// On settle the hold PROMOTES: parallel-use entries swap forward, cells write
+// forward, and an ordinary transition drain commits the whole screen in one
+// flush — or suspends on a later dependency and goes around again. Warm-walk
+// creations are carried on the hold as an episode-agnostic HARVEST, because
+// each round's drain mints a fresh warm episode and could otherwise never
+// adopt the fetches the attempt already started.
+//
+// P1 scope: single-origin transitions (every flushed update targets the block
+// the attempt wrapped). A flush whose updates span several blocks — or one
+// whose transition is driven by state the batch never staged, like an external
+// store — falls back to today's per-boundary behavior untouched.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface TransitionAttempt {
+	origin: Block;
+	journalCheckpoint: number;
+	effects: [number, number, number];
+	effectEvents: number;
+	effectEventActions: number;
+	stores: number;
+	refAttach: number;
+	refDetach: number;
+	effectDeps: EffectDepsSnapshot;
+	heldSlots: Set<TrySlot> | null;
+	/** [hooksMap, slot, previousEntry, nextEntry] — undone on hold, redone on promotion. */
+	puSwaps: Array<[Map<HookSlot, unknown>, HookSlot, unknown, unknown]> | null;
+}
+
+let ACTIVE_TRANSITION_ATTEMPT: TransitionAttempt | null = null;
+
+/** Flushed sync-transition updates retained for the drain, one group per batch. */
+let FLUSHED_TRANSITION_UPDATES: Array<Array<TransitionActionUpdate<any>>> = [];
+
+interface WarmHarvestEntry {
+	slot: HookSlot;
+	deps: any[];
+	value: any;
+	taken: boolean;
+}
+
+/** The reverted state of a held transition, waiting for promotion on settle. */
+let HELD_SYNC_TRANSITION: {
+	origin: Block;
+	entries: Array<TransitionActionUpdate<any>>;
+	puSwaps: Array<[Map<HookSlot, unknown>, HookSlot, unknown, unknown]> | null;
+	/** Values the attempt's warm walk created, adoptable in ANY later round's
+	 * episode. `taken` resets on each re-revert so every round can adopt. */
+	warmHarvest: WarmHarvestEntry[] | null;
+	holders: Set<TrySlot>;
+} | null = null;
+
+/**
+ * Swaps a promotion applied forward, pending the promoted round's outcome. A
+ * held transition can take several rounds — each settle promotes, renders, and
+ * may suspend on a LATER dependency. The next round's unwind must swap back
+ * everything promoted so far, not just that round's own publishes, or the cue
+ * re-render dep-misses the earlier slots and re-creates old-version requests.
+ * Cleared when a promoted round commits or the transition is discarded.
+ */
+let PROMOTED_PU_SWAPS: Array<[Map<HookSlot, unknown>, HookSlot, unknown, unknown]> | null = null;
+/** The harvest survives promotion the same way, for the round after next. */
+let PROMOTED_WARM_HARVEST: WarmHarvestEntry[] | null = null;
+
+function beginTransitionAttempt(block: Block): TransitionAttempt | null {
+	if (block.pendingMode !== 'transition' || ACTIVE_TRANSITION_ATTEMPT !== null) return null;
+	TRANSITION_JOURNAL ??= [];
+	TRANSITION_JOURNAL_BAGS ??= new Set();
+	TRANSITION_JOURNAL_DEPTH++;
+	// Marks in the live queues rather than a capture that reroutes them: a
+	// transition that completes — the overwhelmingly common case — behaves
+	// exactly as before, effects and refs included; only one that ends up held
+	// pays anything, by rewinding the queues to these marks.
+	const attempt: TransitionAttempt = {
+		origin: block,
+		journalCheckpoint: TRANSITION_JOURNAL.length,
+		effects: [effectQueues[0].length, effectQueues[1].length, effectQueues[2].length],
+		effectEvents: effectEventQueue.length,
+		effectEventActions: effectEventCommitActions.length,
+		stores: storeSyncQueue.length,
+		refAttach: refAttachQueue.length,
+		refDetach: refDetachQueue.length,
+		effectDeps: snapshotSubtreeEffectDeps(block),
+		heldSlots: null,
+		puSwaps: null,
+	};
+	ACTIVE_TRANSITION_ATTEMPT = attempt;
+	return attempt;
+}
+
+function endTransitionAttempt(attempt: TransitionAttempt | null): void {
+	if (attempt === null) return;
+	ACTIVE_TRANSITION_ATTEMPT = null;
+	const held = attempt.heldSlots;
+	// A promoted round that ran to commit makes its forward state canon.
+	if (held === null || held.size === 0) {
+		PROMOTED_PU_SWAPS = null;
+		PROMOTED_WARM_HARVEST = null;
+	}
+	// The unwind is only sound when the driving cells can be reverted with it:
+	// single-origin groups from the flushed batch (P1). A transition driven by
+	// something the batch never staged — an external store, or updates spanning
+	// several blocks — keeps today's per-boundary behavior untouched, because
+	// unwinding the render without reverting its inputs would erase the pending
+	// cue with no way to re-publish it.
+	let entries: Array<TransitionActionUpdate<any>> | null = null;
+	if (held !== null && held.size > 0) {
+		entries = [];
+		for (let i = FLUSHED_TRANSITION_UPDATES.length - 1; i >= 0; i--) {
+			const group = FLUSHED_TRANSITION_UPDATES[i];
+			let single = true;
+			for (let k = 0; k < group.length; k++) {
+				if (group[k].block !== attempt.origin) {
+					single = false;
+					break;
+				}
+			}
+			if (!single) continue;
+			for (let k = 0; k < group.length; k++) entries.push(group[k]);
+			FLUSHED_TRANSITION_UPDATES.splice(i, 1);
+		}
+	}
+	if (held !== null && held.size > 0 && entries !== null && entries.length > 0) {
+		// Unwind everything the attempt did: bindings and structure via the
+		// journal, then the work it queued, then the effect cells it advanced.
+		rollbackTransitionJournal(attempt.journalCheckpoint);
+		for (let phase = 0; phase < 3; phase++) {
+			effectQueues[phase].length = attempt.effects[phase];
+		}
+		effectEventQueue.length = attempt.effectEvents;
+		effectEventCommitActions.length = attempt.effectEventActions;
+		for (let i = attempt.stores; i < storeSyncQueue.length; i++) {
+			storeSyncQueue[i].queued = false;
+		}
+		storeSyncQueue.length = attempt.stores;
+		refAttachQueue.length = attempt.refAttach;
+		refDetachQueue.length = attempt.refDetach;
+		restoreSubtreeEffectDeps(attempt.origin, attempt.effectDeps);
+		// FIRST hold of a transition: swap the parallel-use entries back so the
+		// cue re-render dep-hits the old creations instead of re-fetching them,
+		// and schedule that cue re-render below. A CONTINUING round (a promoted
+		// render suspending on a later dependency) needs neither: the old screen
+		// and the cue bindings were re-established in round one and the journal
+		// rollback above just restored them — so the parallel-use entries stay
+		// monotonically FORWARD, and every later round dep-hits them outright.
+		const continuing = PROMOTED_PU_SWAPS !== null || PROMOTED_WARM_HARVEST !== null;
+		let puSwaps = attempt.puSwaps;
+		if (continuing) {
+			if (PROMOTED_PU_SWAPS !== null) {
+				puSwaps = puSwaps === null ? PROMOTED_PU_SWAPS : PROMOTED_PU_SWAPS.concat(puSwaps);
+				PROMOTED_PU_SWAPS = null;
+			}
+		} else if (puSwaps !== null) {
+			for (let i = puSwaps.length - 1; i >= 0; i--) {
+				const [hooks, slot, prev] = puSwaps[i];
+				if (prev === undefined) hooks.delete(slot);
+				else hooks.set(slot, prev);
+			}
+		}
+		for (let i = 0; i < entries.length; i++) {
+			entries[i].slot.value = entries[i].baseValue;
+		}
+		// Harvest the warm walk's creations off this round's episode caches
+		// (block-attached, so they outlive the plans), carrying earlier rounds'
+		// harvest forward with availability reset: the fetches are in flight and
+		// must be adopted — never re-created — by every later round's render,
+		// whatever episode it mints.
+		let warmHarvest: WarmHarvestEntry[] | null = PROMOTED_WARM_HARVEST;
+		PROMOTED_WARM_HARVEST = null;
+		if (warmHarvest !== null) {
+			for (let i = 0; i < warmHarvest.length; i++) warmHarvest[i].taken = false;
+		}
+		const harvest = (scope: Scope): void => {
+			const cache = (scope.block as any).__warmCache as Map<HookSlot, WarmEntry[]> | undefined;
+			if (cache !== undefined) {
+				for (const [slot, list] of cache) {
+					for (let i = 0; i < list.length; i++) {
+						const entry = list[i];
+						if (entry.available) {
+							(warmHarvest ??= []).push({
+								slot,
+								deps: entry.deps,
+								value: entry.value,
+								taken: false,
+							});
+						}
+					}
+				}
+			}
+			forEachSubtreeChild(scope, harvest);
+		};
+		harvest(attempt.origin);
+		HELD_SYNC_TRANSITION = {
+			origin: attempt.origin,
+			entries,
+			puSwaps,
+			warmHarvest,
+			holders: new Set(held),
+		};
+		// Re-publish the cue on the FIRST hold: the origin re-renders at urgent
+		// priority in this same drain. Cells and bags both hold the old values,
+		// so only the isPending-derived bindings actually write. Continuing
+		// rounds re-established nothing cue-visible, so they skip it.
+		if (!continuing) scheduleRender(attempt.origin);
+	}
+	if (--TRANSITION_JOURNAL_DEPTH === 0) {
+		TRANSITION_JOURNAL = null;
+		TRANSITION_JOURNAL_BAGS = null;
+		flushParkedItems();
+	}
+}
+
+/**
+ * Record a parallel-use memo entry the attempt replaces, with both directions.
+ * The cue re-render renders the OLD inputs and must dep-hit the old entries —
+ * a miss would re-create old-version requests against data sources that have
+ * moved on. The PROMOTED render renders the NEW inputs and must dep-hit the
+ * entries the attempt already created. Publish sites replace the entry object
+ * wholesale, so swapping references swaps deps and value together.
+ * Attempt-owned: the per-boundary journal windows predate this and keep their
+ * pinned replay behavior.
+ */
+function journalPuEntry(scope: Scope, slot: HookSlot, next: unknown): void {
+	const attempt = ACTIVE_TRANSITION_ATTEMPT;
+	if (attempt === null) return;
+	const hooks = ensureHooks(scope);
+	(attempt.puSwaps ??= []).push([hooks, slot, hooks.get(slot), next]);
+}
+
+/** True while the held cells are untouched — an in-place boundary success under
+ * a held sync transition is then the cue re-render, not an urgent supersede. */
+function heldSyncCellsIntact(state: TrySlot): boolean {
+	const held = HELD_SYNC_TRANSITION;
+	if (held === null || !held.holders.has(state)) return false;
+	for (let i = 0; i < held.entries.length; i++) {
+		const entry = held.entries[i];
+		if (!Object.is(entry.slot.value, entry.baseValue)) return false;
+	}
+	return true;
+}
+
+/** Write the held transition forward and schedule its transition renders. */
+function promoteHeldSyncTransition(): boolean {
+	const held = HELD_SYNC_TRANSITION;
+	if (held === null) return false;
+	HELD_SYNC_TRANSITION = null;
+	// Swap the attempt's parallel-use creations forward BEFORE the renders run,
+	// so the promoted pass dep-hits everything the attempt already started.
+	const puSwaps = held.puSwaps;
+	if (puSwaps !== null) {
+		for (let i = 0; i < puSwaps.length; i++) {
+			const [hooks, slot, , next] = puSwaps[i];
+			hooks.set(slot, next);
+		}
+		PROMOTED_PU_SWAPS = PROMOTED_PU_SWAPS === null ? puSwaps : PROMOTED_PU_SWAPS.concat(puSwaps);
+	}
+	// The harvest stays adoptable for this round's renders and, via the
+	// carrier, for the round after a re-suspend.
+	PROMOTED_WARM_HARVEST = held.warmHarvest;
+	const promoted: Array<TransitionActionUpdate<any>> = [];
+	TRANSITION_DEPTH++;
+	try {
+		for (let i = 0; i < held.entries.length; i++) {
+			const entry = held.entries[i];
+			// A cell an urgent write superseded keeps the urgent value — the
+			// pinned synchronous discard semantics.
+			if (!Object.is(entry.slot.value, entry.baseValue)) continue;
+			entry.slot.value = entry.value;
+			if (!entry.block.disposed) {
+				promoted.push(entry);
+				scheduleRender(entry.block);
+			}
+		}
+	} finally {
+		TRANSITION_DEPTH--;
+	}
+	// The promoted round is itself an attempt: if it suspends on a LATER
+	// dependency, the hold must revert these same cells back to the
+	// still-committed old screen (baseValue is untouched) and go around again.
+	if (promoted.length > 0) FLUSHED_TRANSITION_UPDATES.push(promoted);
+	return true;
+}
+
+/** Drop a held sync transition when its last holder stops holding. */
+function discardHeldSyncTransition(state: TrySlot): void {
+	const held = HELD_SYNC_TRANSITION;
+	if (held === null || !held.holders.delete(state)) return;
+	if (held.holders.size === 0) {
+		HELD_SYNC_TRANSITION = null;
+		PROMOTED_PU_SWAPS = null;
+		PROMOTED_WARM_HARVEST = null;
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Transition binding journal.
+//
+// Rendering and mutating happen in one walk, so a transition render patches a
+// boundary's own bindings on the way down and only afterwards discovers that a
+// descendant suspends. The boundary then holds its prior content, but those
+// earlier patches have already landed — the boundary shows part of the new
+// screen next to the old one. React renders the whole tree off the current one
+// and commits in a single step, so its boundary stays whole.
+//
+// While a VISIBLE try body re-renders and a hold is possible, each binding write
+// records what it replaced. If the body suspends and the boundary holds, the log
+// is replayed backwards to the checkpoint taken when that body started, leaving
+// the boundary exactly as it was. This all happens inside the flush that made
+// the change, so nothing reached the screen in between: there is no visible
+// rollback, only a boundary that never split.
+//
+// The log is scoped to the boundary, not the flush, so anything the same render
+// patched OUTSIDE the boundary keeps its new value. That is what lets the
+// `isPending` cue turn on while the content it describes stays put — React gets
+// the same result from a separate urgent render. Content outside a boundary that
+// belongs to the transition itself does still update early; holding that too
+// needs the global work-in-progress tree octane deliberately does not have
+// (SUSPENSE_DIVERGENCE.md #4).
+//
+// Compiled bindings guard on a cached copy of the last value (`if (_b.d !== _v)`)
+// and never read the DOM, so restoring a node without restoring that cache would
+// leave the guard convinced the node is already current and the value would
+// never reappear. The first write into a bag therefore snapshots the whole bag
+// next to the DOM entry.
+//
+// Controlled `value`/`checked`/`selected` are covered too, but need more than the
+// node: each carries a `default*` mirror and a per-element record of what was
+// last projected. All three go back together — restoring the node alone would
+// leave the record believing it had already projected the new value, so
+// re-projecting it on resume would be skipped as unchanged.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const JOURNAL_TEXT = 0;
+const JOURNAL_ATTR = 1;
+const JOURNAL_BAG = 2;
+const JOURNAL_PROP = 3;
+const JOURNAL_FOR = 4;
+/** Flat undo log, four slots per entry: kind, target, a, b. */
+let TRANSITION_JOURNAL: any[] | null = null;
+/** Bags already captured in the open window, so each is snapshotted once. */
+let TRANSITION_JOURNAL_BAGS: Set<object> | null = null;
+/** Open windows. Boundaries nest, and only the outermost may drop the log. */
+let TRANSITION_JOURNAL_DEPTH = 0;
+
+/**
+ * Snapshot the rendering scope's binding bag the first time it is written in the
+ * open window. Called from the binding helpers, which the compiler always emits
+ * BEFORE the matching `_b.x = _v`, so the captured values are the pre-render
+ * ones.
+ *
+ * Slot 0 only holds a bag when the body has a template root; a body made purely
+ * of control flow puts its first block slot there instead (`tryBlock(__s, 0, …)`).
+ * Every runtime slot is tagged with `__kind` and no compiler bag is, so that tag
+ * is the discriminator — restoring a boundary's own `branch`/`transitionHeld`
+ * from a "bag" snapshot would corrupt the very state driving the hold.
+ */
+function journalBag(): void {
+	const scope = CURRENT_SCOPE;
+	if (scope === null) return;
+	const bag = scope.slots[0];
+	if (bag === null || typeof bag !== 'object' || (bag as any).__kind !== undefined) return;
+	journalObjectOnce(bag);
+}
+
+/** Record every own value of `obj`, once per window, so it can be put back. */
+function journalObjectOnce(obj: object): void {
+	const seen = TRANSITION_JOURNAL_BAGS!;
+	if (seen.has(obj)) return;
+	seen.add(obj);
+	const keys = Object.keys(obj);
+	const values: any[] = [];
+	for (let i = 0; i < keys.length; i++) values.push((obj as any)[keys[i]]);
+	TRANSITION_JOURNAL!.push(JOURNAL_BAG, obj, keys, values);
+}
+
+/**
+ * A controlled input keeps three things in step: the live DOM property, the
+ * `default*` mirror that form.reset() and SSR compare against, and the
+ * per-element record of what was last projected. Undoing one without the others
+ * would leave the record and the node disagreeing about what the user last
+ * typed, so all three go into the log together.
+ *
+ * Called once the element is armed (so the record exists) and before the write
+ * touches any of them.
+ */
+function journalControlled(el: Element, prop: string, defaultProp: string): void {
+	const log = TRANSITION_JOURNAL!;
+	log.push(JOURNAL_PROP, el, prop, (el as any)[prop]);
+	log.push(JOURNAL_PROP, el, defaultProp, (el as any)[defaultProp]);
+	const ctrl = (el as any).$$ctrl;
+	if (ctrl !== undefined) journalObjectOnce(ctrl);
+	const input = el as HTMLInputElement;
+	if (prop === 'checked' && input.type === 'radio' && input.name !== '') journalRadioCousins(input);
+	journalBag();
+}
+
+/**
+ * Record the cousin a radio write is about to clear.
+ *
+ * Checking a radio makes the platform uncheck its same-name siblings as a side
+ * effect, so a cousin cannot record its own prior state: by the time its binding
+ * runs it has already been cleared, and an uncontrolled cousin never records at
+ * all. Only a currently-checked cousin can be cleared, and a well-formed group
+ * has at most one, so this scans the group but adds at most one entry.
+ *
+ * Group scope mirrors restoreRadioCousins: same non-empty name, same form owner
+ * when there is one. Re-recording a cousin across several writes in one window
+ * is harmless — the replay runs newest-first, so the earliest value is the one
+ * left standing.
+ */
+function journalRadioCousins(input: HTMLInputElement): void {
+	const name = input.name;
+	const group: ArrayLike<Node> =
+		input.form !== null
+			? input.form.elements
+			: typeof document !== 'undefined'
+				? document.getElementsByName(name)
+				: [];
+	for (let i = 0; i < group.length; i++) {
+		const other = group[i] as HTMLInputElement;
+		if (
+			other === input ||
+			!other.checked ||
+			other.localName !== 'input' ||
+			other.type !== 'radio' ||
+			other.name !== name
+		) {
+			continue;
+		}
+		TRANSITION_JOURNAL!.push(JOURNAL_PROP, other, 'checked', true);
+	}
+}
+
+function journalControlledOption(option: HTMLOptionElement, withDefault: boolean): void {
+	TRANSITION_JOURNAL!.push(JOURNAL_PROP, option, 'selected', option.selected);
+	if (withDefault)
+		TRANSITION_JOURNAL!.push(JOURNAL_PROP, option, 'defaultSelected', option.defaultSelected);
+}
+
+/**
+ * Item blocks a keyed list dropped while a hold was still possible.
+ *
+ * A removal cannot wait for the hold decision: the reconciler needs the nodes
+ * out of the way to finish, and whether the boundary holds is only known once
+ * the render is further along. So the DOM detach happens immediately and is
+ * undoable, while the part that CANNOT be undone — the scope teardown, the user
+ * cleanups, the `disposed` stamp — is what waits here. If the attempt survives,
+ * these tear down for real; if it unwinds, the rows go back with their state and
+ * their cleanups never having run.
+ */
+interface ParkedItem {
+	block: Block;
+	nodes: Node[];
+}
+let PARKED_ITEMS: ParkedItem[] | null = null;
+
+/** Detach an item's node range without touching its scope, keeping the nodes. */
+function parkItemForHold(block: Block): void {
+	const nodes: Node[] = [];
+	const start = block.startMarker;
+	const end = block.endMarker;
+	if (start && end) {
+		const parent = start.parentNode;
+		if (parent !== null) {
+			const exclusive = block.exclusiveMarkers;
+			let n: Node | null = exclusive ? start.nextSibling : start;
+			const stop = exclusive ? end : end.nextSibling;
+			while (n !== null && n !== stop) {
+				const next: Node | null = getNextSibling(n);
+				parent.removeChild(n);
+				nodes.push(n);
+				n = next;
+			}
+		}
+	}
+	(PARKED_ITEMS ??= []).push({ block, nodes });
+}
+
+/** True while a keyed removal must be undoable rather than final. */
+function itemRemovalDefers(): boolean {
+	return TRANSITION_JOURNAL !== null;
+}
+
+/**
+ * True when rows removed from `state` may defer their teardown for a possible
+ * hold. Parking is only sound when this list's shape went into the journal:
+ * restoreForSlot is the only thing that brings parked rows back, and it can
+ * only find them through a JOURNAL_FOR entry. A caller tearing rows down
+ * OUTSIDE the journal's knowledge — a value-position slot leaving array mode
+ * discards the slot itself — must remove immediately, as it always did:
+ * parking there would strand the rows as deferred-but-unrestorable and push
+ * their cleanups past the rest of the attempt.
+ */
+function forSlotParkable(state: ForSlot): boolean {
+	return TRANSITION_JOURNAL !== null && TRANSITION_JOURNAL_BAGS!.has(state);
+}
+
+/**
+ * Record a keyed list's shape before a reconcile that may have to be undone.
+ *
+ * The list is restored as a whole rather than per operation: the chain, the key
+ * map and the counts all move together, and rebuilding the DOM from the restored
+ * chain puts moved survivors back as well as dropped rows. Once per list per
+ * window — the first record is the pre-render one, which is the one to go back
+ * to.
+ */
+function journalForSlot(state: ForSlot): void {
+	const seen = TRANSITION_JOURNAL_BAGS!;
+	if (seen.has(state)) return;
+	seen.add(state);
+	const chain: Array<[Block, Block | null, Block | null]> = [];
+	for (let b: Block | null = state.head; b !== null; b = b.nextSibling) {
+		chain.push([b, b.nextSibling, b.prevSibling]);
+	}
+	TRANSITION_JOURNAL!.push(
+		JOURNAL_FOR,
+		state,
+		{
+			head: state.head,
+			tail: state.tail,
+			size: state.size,
+			empty: state.emptyBlock,
+			entries: [...state.items],
+		},
+		chain,
+	);
+}
+
+/** Put a keyed list back the way it was, rows and order together. */
+function restoreForSlot(
+	state: ForSlot,
+	snapshot: any,
+	chain: Array<[Block, Block | null, Block | null]>,
+): void {
+	// Rows the aborted attempt freshly mounted are not in the snapshot, so
+	// restoring the old chain would simply forget them. Their DOM goes with the
+	// range clear below, but the scope has to go NOW, before the overwrite makes
+	// them unreachable: the disposed stamp is what keeps their queued mount
+	// effects and ref attaches from firing for a row that never reached the
+	// screen, and it runs the render-time cleanups they registered. Parked rows
+	// are never on the chain, so this reaches exactly the fresh mounts.
+	const kept = new Set<Block>();
+	for (let i = 0; i < chain.length; i++) kept.add(chain[i][0]);
+	for (let b: Block | null = state.head; b !== null; b = b.nextSibling) {
+		if (!kept.has(b)) unmountBlock(b, false);
+	}
+	// Those teardowns dispatch their cleanup errors immediately, and an error
+	// routed to the enclosing boundary flips it to @catch — disposing this
+	// slot's whole range out from under the restore. Same mid-render teardown
+	// invariant as renderReturnedValue's disposed check: stop here, and let
+	// flushParkedItems finish off whatever stayed parked.
+	if (state.end.parentNode === null) return;
+	state.head = snapshot.head;
+	state.tail = snapshot.tail;
+	state.size = snapshot.size;
+	state.items.clear();
+	for (let i = 0; i < snapshot.entries.length; i++) {
+		state.items.set(snapshot.entries[i][0], snapshot.entries[i][1]);
+	}
+	for (let i = 0; i < chain.length; i++) {
+		chain[i][0].nextSibling = chain[i][1];
+		chain[i][0].prevSibling = chain[i][2];
+	}
+	// Collect each row's nodes BEFORE touching the DOM: a dropped row has them
+	// parked, a surviving one still has them in place, and clearing first would
+	// throw the survivors away.
+	const parent = state.end.parentNode!;
+	const ranges: Node[][] = [];
+	for (let b: Block | null = state.head; b !== null; b = b.nextSibling) {
+		ranges.push(takeParkedItem(b) ?? collectBlockRange(b));
+	}
+	// Anything the aborted render left between the markers goes, including rows
+	// it created that the list no longer contains.
+	let n: Node | null = state.start.nextSibling;
+	while (n !== null && n !== state.end) {
+		const next: Node | null = n.nextSibling;
+		parent.removeChild(n);
+		n = next;
+	}
+	// One walk in chain order restores membership and order together, so moved
+	// survivors come back to where they were as well as dropped rows.
+	for (let i = 0; i < ranges.length; i++) {
+		const nodes = ranges[i];
+		for (let k = 0; k < nodes.length; k++) parent.insertBefore(nodes[k], state.end);
+	}
+	// The @empty branch swaps with the rows, so it rolls back with them. A
+	// branch the aborted render mounted is scope-only torn down (its DOM went
+	// with the range clear above); one it parked comes back like a row.
+	if (state.emptyBlock !== snapshot.empty) {
+		if (state.emptyBlock !== null) unmountBlock(state.emptyBlock, false);
+		state.emptyBlock = snapshot.empty;
+	}
+	// The @empty teardown above can dispose the range the same way the orphan
+	// walk can; re-check before inserting into it.
+	if (snapshot.empty !== null && state.end.parentNode !== null) {
+		const parkedEmpty = takeParkedItem(snapshot.empty);
+		const nodes = parkedEmpty ?? collectBlockRange(snapshot.empty);
+		for (let k = 0; k < nodes.length; k++) parent.insertBefore(nodes[k], state.end);
+	}
+}
+
+/** Remove and return a block's parked nodes, or null if it is not parked. */
+function takeParkedItem(block: Block): Node[] | null {
+	const parked = PARKED_ITEMS;
+	if (parked === null) return null;
+	for (let i = 0; i < parked.length; i++) {
+		if (parked[i].block === block) {
+			const nodes = parked[i].nodes;
+			parked.splice(i, 1);
+			return nodes;
+		}
+	}
+	return null;
+}
+
+/** The nodes a still-attached block currently owns, in order. */
+function collectBlockRange(block: Block): Node[] {
+	const nodes: Node[] = [];
+	const start = block.startMarker;
+	const end = block.endMarker;
+	if (!start || !end || start.parentNode === null) return nodes;
+	const exclusive = block.exclusiveMarkers;
+	let n: Node | null = exclusive ? start.nextSibling : start;
+	const stop = exclusive ? end : end.nextSibling;
+	while (n !== null && n !== stop) {
+		nodes.push(n);
+		n = getNextSibling(n);
+	}
+	return nodes;
+}
+
+function journalText(node: Text): void {
+	TRANSITION_JOURNAL!.push(JOURNAL_TEXT, node, node.nodeValue, null);
+	journalBag();
+}
+
+function journalAttr(el: Element, name: string): void {
+	TRANSITION_JOURNAL!.push(JOURNAL_ATTR, el, name, el.getAttribute(name));
+	journalBag();
+}
+
+/**
+ * Open a journal window for a visible try body that is about to re-render, and
+ * return the checkpoint to roll back to. `-1` means "not journaling": either the
+ * boundary cannot hold (nothing committed to keep) or no transition is in play,
+ * which is the overwhelmingly common case and costs one comparison.
+ *
+ * The arming test mirrors handleSuspense's hold conditions. The body inherits
+ * its mode from the block currently rendering it (renderBlockInner walks
+ * `pendingMode ?? parent's mode`), so the ambient block answers "is this a
+ * transition" before the body runs. `transitionHeld` covers the boundary that is
+ * already holding and re-suspends at urgent priority — the useSuspenseQuery
+ * shape, where the observer notifies a macrotask after the transition window
+ * closed and handleSuspense continues the hold regardless of priority.
+ */
+function armTransitionJournal(state: TrySlot): number {
+	if (
+		!state.hasResolved ||
+		state.hiddenDom !== null ||
+		!(
+			state.transitionHeld ||
+			(state.tryBlock?.pendingMode ?? CURRENT_BLOCK?.currentRenderMode) === 'transition'
+		)
+	)
+		return -1;
+	TRANSITION_JOURNAL ??= [];
+	TRANSITION_JOURNAL_BAGS ??= new Set();
+	TRANSITION_JOURNAL_DEPTH++;
+	return TRANSITION_JOURNAL.length;
+}
+
+/**
+ * Close the window opened by `armTransitionJournal`.
+ *
+ * A committed inner boundary deliberately LEAVES its entries in the log: an
+ * enclosing boundary that suspends later still has to undo them, because its
+ * content includes everything the inner boundary just wrote. Only the outermost
+ * window drops the log — before that there is always someone left who might need
+ * to replay it.
+ */
+function disarmTransitionJournal(checkpoint: number): void {
+	if (checkpoint < 0) return;
+	if (--TRANSITION_JOURNAL_DEPTH === 0) {
+		TRANSITION_JOURNAL = null;
+		TRANSITION_JOURNAL_BAGS = null;
+		flushParkedItems();
+	}
+}
+
+/**
+ * Tear down the rows still parked when the last window closes. Anything a
+ * rollback put back has already been taken off this list, so what is left is
+ * genuinely gone and its cleanups are due. The DOM is already detached, so the
+ * teardown is scope-only.
+ */
+function flushParkedItems(): void {
+	const parked = PARKED_ITEMS;
+	if (parked === null) return;
+	PARKED_ITEMS = null;
+	for (let i = 0; i < parked.length; i++) unmountBlock(parked[i].block, false);
+}
+
+/** Undo every binding write recorded since `checkpoint`, newest first. */
+function rollbackTransitionJournal(checkpoint: number): void {
+	if (checkpoint < 0) return;
+	const log = TRANSITION_JOURNAL;
+	if (log === null) return;
+	for (let i = log.length - 4; i >= checkpoint; i -= 4) {
+		const target = log[i + 1];
+		const a = log[i + 2];
+		const b = log[i + 3];
+		switch (log[i]) {
+			case JOURNAL_TEXT:
+				(target as Text).nodeValue = a;
+				break;
+			case JOURNAL_ATTR:
+				if (b === null) (target as Element).removeAttribute(a);
+				else (target as Element).setAttribute(a, b);
+				break;
+			case JOURNAL_PROP:
+				(target as any)[a] = b;
+				break;
+			case JOURNAL_FOR:
+				restoreForSlot(target as ForSlot, a, b);
+				TRANSITION_JOURNAL_BAGS!.delete(target);
+				break;
+			default:
+				for (let k = 0; k < a.length; k++) target[a[k]] = b[k];
+				// This bag is back to its pre-window values, so a later write in an
+				// enclosing window has to snapshot it again rather than trust the
+				// entry that just got replayed.
+				TRANSITION_JOURNAL_BAGS!.delete(target);
+		}
+	}
+	log.length = checkpoint;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // View Transitions (docs/view-transitions-plan.md, Phase 1).
@@ -2049,7 +2814,12 @@ function drainQueue(): { err: any } | null {
 				block.drainStamp = drainId;
 				block.drainRenders = 1;
 			}
-			renderBlock(block);
+			const attempt = beginTransitionAttempt(block);
+			try {
+				renderBlock(block);
+			} finally {
+				endTransitionAttempt(attempt);
+			}
 		} catch (err) {
 			try {
 				handleRenderError(block, err);
@@ -2106,6 +2876,9 @@ function flush(): void {
  */
 function flushWork(): void {
 	inFlush = true;
+	// Any retained sync-transition updates belong to the drain below. Whatever
+	// a hold did not consume is finished with once the flush completes.
+	const clearRetainedTransitionUpdates = FLUSHED_TRANSITION_UPDATES.length > 0;
 	// addTransitionType types belong to the transition batch this drain commits:
 	// an UNWRAPPED drain (no boundary, no startViewTransition, flushSync) that
 	// contains transition work consumes them too — they must not leak into a
@@ -2126,6 +2899,8 @@ function flushWork(): void {
 		if (pendingError !== null) throw pendingError.err;
 	} finally {
 		inFlush = false;
+		if (clearRetainedTransitionUpdates || FLUSHED_TRANSITION_UPDATES.length > 0)
+			FLUSHED_TRANSITION_UPDATES.length = 0;
 		if (typeof __OCTANE_PROFILE_ENABLED__ !== 'undefined' && __OCTANE_PROFILE_ENABLED__)
 			__devtoolsNotifyFlush();
 		if (clearViewTransitionTypes) viewTransitionDriver!.clearTypes();
@@ -4341,6 +5116,277 @@ export function __useStateWithGetter<T>(initial: T | (() => T), slot?: HookSlot)
 	return [pair[0], pair[1], getter];
 }
 
+/** The last successfully published source and its locally editable value. */
+export interface LinkedStatePrevious<Source, Value> {
+	source: Source;
+	value: Value;
+}
+
+/** Equality customizations for a source-linked local state cell. */
+export interface LinkedStateOptions<Source, Value> {
+	sourceEqual?: (previous: Source, next: Source) => boolean;
+	valueEqual?: (previous: Value, next: Value) => boolean;
+}
+
+interface LinkedStateSlot<Source, Value> {
+	source: Source;
+	value: Value;
+	setter: StateSetter<Value>;
+	getter?: () => Value;
+	valueEqual?: (previous: Value, next: Value) => boolean;
+	pendingActionBatch?: TransitionActionBatch;
+	pendingActionValue?: Value;
+	/** A source draft is visible to its rendering owner, never to committed readers. */
+	renderPending?: boolean;
+	renderSource?: Source;
+	renderValue?: Value;
+	renderValueEqual?: (previous: Value, next: Value) => boolean;
+	renderSourceChanged?: boolean;
+	/** Preserve only drafts explicitly edited by their rendering owner. */
+	renderUpdated?: boolean;
+	/** A completed draft is parked only after its hidden boundary defers publication. */
+	renderParked?: boolean;
+	/** Refresh the revealed owner after an outside update changed its parked draft. */
+	renderNeedsRefresh?: boolean;
+	renderPublish?: () => void;
+	renderVersion?: number;
+}
+
+type LinkedStateTuple<Value> = [Value, StateSetter<Value>, () => Value];
+
+// A sibling may finish rendering before another sibling suspends their shared
+// boundary. Keep its finished linked-state publication with that boundary: its
+// body may bail when the preserved primary reveals, so relying on a fresh hook
+// call would leave its committed getter behind the already-rendered DOM.
+let LINKED_STATE_REVEAL_ACTIONS: WeakMap<TrySlot, Array<() => void>> | null = null;
+
+function deferLinkedStateReveal(boundary: TrySlot, action: () => void): void {
+	const deferred = (LINKED_STATE_REVEAL_ACTIONS ??= new WeakMap());
+	const actions = deferred.get(boundary);
+	if (actions === undefined) deferred.set(boundary, [action]);
+	else actions.push(action);
+}
+
+function publishLinkedStateReveal(boundary: TrySlot): void {
+	const actions = LINKED_STATE_REVEAL_ACTIONS?.get(boundary);
+	if (actions === undefined) return;
+	LINKED_STATE_REVEAL_ACTIONS!.delete(boundary);
+	for (let i = 0; i < actions.length; i++) enqueueEffectEventCommitAction(actions[i]);
+}
+
+/**
+ * Local editable state linked to an external source. Source changes reconcile in
+ * the same render instead of scheduling a render-phase setter/effect replay.
+ * Publication uses the existing render/WIP transaction so a suspended subtree
+ * cannot leak a speculative source or value into the previously committed tree.
+ */
+export function useLinkedState<Source, Value>(
+	source: Source,
+	reconcile: (source: Source, previous: LinkedStatePrevious<Source, Value> | undefined) => Value,
+	options?: LinkedStateOptions<Source, Value>,
+	slot?: symbol,
+): LinkedStateTuple<Value>;
+export function useLinkedState<Source, Value>(
+	source: Source,
+	reconcile: (source: Source, previous: LinkedStatePrevious<Source, Value> | undefined) => Value,
+	options?: LinkedStateOptions<Source, Value> | symbol,
+	slot?: HookSlot,
+): LinkedStateTuple<Value> {
+	// A plain compiled module appends its Symbol in the omitted options slot;
+	// numeric-slot builds reserve that position and append the numeric fourth arg.
+	if (typeof options === 'symbol') {
+		if (slot === undefined) slot = options;
+		options = undefined;
+	}
+	slot = resolveSlot(slot);
+	if (slot === undefined) missingSlot('useLinkedState');
+	const scope = CURRENT_SCOPE!;
+	const block = CURRENT_BLOCK!;
+	const equalValue = options?.valueEqual;
+	let state = scope.hooks?.get(slot) as LinkedStateSlot<Source, Value> | undefined;
+	if (state === undefined) {
+		const value = reconcile(source, undefined);
+		state = {
+			source,
+			value,
+			valueEqual: equalValue,
+			setter: (next) => {
+				const renderingDraft = CURRENT_BLOCK === block && state!.renderPending === true;
+				let updatingParkedDraft = false;
+				if (
+					!renderingDraft &&
+					state!.renderPending === true &&
+					transitionActionBatchForUpdate() === null
+				) {
+					updatingParkedDraft = state!.renderParked === true;
+					if (!updatingParkedDraft && (block as any).__thenableDone === true) {
+						const hiddenBoundary = findSuspenseHiddenTry(block);
+						const publish = state!.renderPublish;
+						if (hiddenBoundary !== null && publish !== undefined) {
+							state!.renderParked = true;
+							deferLinkedStateReveal(hiddenBoundary, publish);
+							updatingParkedDraft = true;
+						}
+					}
+				}
+				const updatingDraft = renderingDraft || updatingParkedDraft;
+				const previous = updatingDraft
+					? (state!.renderValue as Value)
+					: stagedTransitionValue(state!);
+				const operation =
+					typeof next === 'function' ? (next as (value: Value) => Value) : () => next;
+				const computed = operation(previous);
+				const equal = updatingDraft ? state!.renderValueEqual : state!.valueEqual;
+				if ((equal ?? Object.is)(previous, computed)) return;
+				if (updatingDraft) {
+					state!.renderValue = computed;
+					state!.renderUpdated = true;
+					if (updatingParkedDraft) state!.renderNeedsRefresh = true;
+					else scheduleRender(block);
+					return;
+				}
+				if (stageTransitionValue(state!, block, operation, computed)) {
+					if (typeof __OCTANE_PROFILE_ENABLED__ !== 'undefined' && __OCTANE_PROFILE_ENABLED__) {
+						const update = state!.pendingActionBatch?.updates.get(state!) as
+							TransitionActionUpdate<Value> | undefined;
+						if (update !== undefined) {
+							update.profileType = 'state';
+							update.profileSlot = slot;
+						}
+					}
+					return;
+				}
+				state!.value = computed;
+				if (
+					!block.disposed &&
+					typeof __OCTANE_PROFILE_ENABLED__ !== 'undefined' &&
+					__OCTANE_PROFILE_ENABLED__
+				)
+					__profileSchedule(block, 'state', slot);
+				scheduleRender(block);
+			},
+		};
+		ensureHooks(scope).set(slot, state);
+		return [value, state.setter] as unknown as LinkedStateTuple<Value>;
+	}
+
+	const equalSource = options?.sourceEqual ?? Object.is;
+	const sourceChanged = !equalSource(state.source, source);
+	const reuseUpdatedDraft =
+		state.renderPending === true &&
+		state.renderUpdated === true &&
+		state.renderSourceChanged === sourceChanged &&
+		equalSource(state.renderSource as Source, source);
+	if (!reuseUpdatedDraft && !sourceChanged && state.valueEqual === equalValue) {
+		// A previous failed render can have left a private draft behind. It was
+		// never published, so a committed-source replay must discard it explicitly.
+		state.renderPending = false;
+		state.renderUpdated = false;
+		state.renderSourceChanged = false;
+		state.renderParked = false;
+		state.renderNeedsRefresh = false;
+		state.renderPublish = undefined;
+		return [state.value, state.setter] as unknown as LinkedStateTuple<Value>;
+	}
+
+	const reuseParkedDraft = reuseUpdatedDraft && state.renderParked === true;
+	let value = reuseUpdatedDraft ? (state.renderValue as Value) : state.value;
+	if (sourceChanged && !reuseUpdatedDraft) {
+		const previous = { source: state.source, value: state.value };
+		const reconciled = reconcile(source, previous);
+		if (!(equalValue ?? Object.is)(state.value, reconciled)) value = reconciled;
+	}
+	state.renderPending = true;
+	state.renderSource = reuseUpdatedDraft
+		? state.renderSource
+		: sourceChanged
+			? source
+			: state.source;
+	state.renderValue = value;
+	state.renderValueEqual = equalValue;
+	state.renderSourceChanged = sourceChanged;
+	state.renderUpdated = reuseUpdatedDraft;
+	state.renderParked = reuseParkedDraft;
+	if (!reuseParkedDraft) state.renderNeedsRefresh = false;
+	// A hidden retry can suspend and discard its fresh commit action. Keep the
+	// original parked reveal action valid until this source draft is replaced.
+	const version = reuseParkedDraft
+		? (state.renderVersion as number)
+		: (state.renderVersion = (state.renderVersion ?? 0) + 1);
+	const current = state;
+	const publish = () => {
+		if (current.renderPending !== true || current.renderVersion !== version || block.disposed)
+			return;
+		// A setter staged for the old source belongs to its previous generation.
+		// Discard it before parking too: otherwise it can flush into the committed
+		// value while Suspense still hides the replacement source.
+		if (sourceChanged) {
+			const pendingBatch = current.pendingActionBatch;
+			if (pendingBatch !== undefined) {
+				pendingBatch.updates.delete(current);
+				current.pendingActionBatch = undefined;
+				current.pendingActionValue = undefined;
+			}
+		}
+		const hiddenBoundary = findSuspenseHiddenTry(block);
+		if (hiddenBoundary !== null) {
+			current.renderParked = true;
+			deferLinkedStateReveal(hiddenBoundary, publish);
+			return;
+		}
+		current.source = current.renderSource as Source;
+		current.value = current.renderValue as Value;
+		current.valueEqual = current.renderValueEqual;
+		const refresh = current.renderNeedsRefresh === true;
+		current.renderPending = false;
+		current.renderSourceChanged = false;
+		current.renderUpdated = false;
+		current.renderParked = false;
+		current.renderNeedsRefresh = false;
+		current.renderPublish = undefined;
+		if (refresh) scheduleRender(block);
+	};
+	state.renderPublish = publish;
+	enqueueEffectEventCommitAction(publish);
+	return [value, state.setter] as unknown as LinkedStateTuple<Value>;
+}
+
+/** Compiler-selected linked-state variant when the current-value getter is observed. */
+export function __useLinkedStateWithGetter<Source, Value>(
+	source: Source,
+	reconcile: (source: Source, previous: LinkedStatePrevious<Source, Value> | undefined) => Value,
+	options?: LinkedStateOptions<Source, Value>,
+	slot?: symbol,
+): LinkedStateTuple<Value>;
+export function __useLinkedStateWithGetter<Source, Value>(
+	source: Source,
+	reconcile: (source: Source, previous: LinkedStatePrevious<Source, Value> | undefined) => Value,
+	options?: LinkedStateOptions<Source, Value> | symbol,
+	slot?: HookSlot,
+): LinkedStateTuple<Value> {
+	if (typeof options === 'symbol') {
+		if (slot === undefined) slot = options;
+		options = undefined;
+	}
+	const pair = (useLinkedState as any)(source, reconcile, options, slot) as LinkedStateTuple<Value>;
+	const resolved = resolveSlot(slot);
+	if (resolved === undefined) missingSlot('useLinkedState');
+	const state = CURRENT_SCOPE!.hooks!.get(resolved) as LinkedStateSlot<Source, Value>;
+	const block = CURRENT_BLOCK!;
+	const getter =
+		state.getter ??
+		(state.getter = () => {
+			if (CURRENT_BLOCK === block && state.renderPending === true) {
+				return state.renderValue as Value;
+			}
+			const batch = state.pendingActionBatch;
+			if (batch === undefined) return state.value;
+			const update = batch.updates.get(state) as TransitionActionUpdate<Value> | undefined;
+			return update === undefined ? state.value : rebaseTransitionActionUpdate(update);
+		});
+	return [pair[0], pair[1], getter];
+}
+
 interface ReducerSlot<S, A> {
 	value: S;
 	dispatch: (action: A) => void;
@@ -4706,11 +5752,13 @@ export function useMemo<T>(
 	if (WARM_EVER && d !== undefined) {
 		const adopted = adoptWarmValue(s, d);
 		if (adopted !== WARM_MISS) {
-			ensureHooks(scope).set(s, {
+			const adoptedEntry = {
 				deps: d,
-				value: adopted,
+				value: adopted as T,
 				warmEpisode: CURRENT_WARM_EPISODE,
-			});
+			};
+			if (ACTIVE_TRANSITION_ATTEMPT !== null) journalPuEntry(scope, s, adoptedEntry);
+			ensureHooks(scope).set(s, adoptedEntry);
 			return adopted as T;
 		}
 	}
@@ -4720,6 +5768,10 @@ export function useMemo<T>(
 	// eslint-disable-next-line prefer-spread
 	const value = compute.apply(null, (d ?? []) as []);
 	const entry: { deps: any[] | undefined; value: T; warmEpisode?: number } = { deps: d, value };
+	// The attempt records the replacement both ways: the cue re-render must
+	// dep-hit the old entry (never re-create old-version requests), and the
+	// promoted render must dep-hit this one (never create twice).
+	if (ACTIVE_TRANSITION_ATTEMPT !== null) journalPuEntry(scope, s, entry);
 	ensureHooks(scope).set(s, entry);
 	if (d !== undefined && recordRealWarmMemo(s, d, entry)) {
 		entry.warmEpisode = CURRENT_WARM_EPISODE;
@@ -5227,6 +6279,15 @@ function childrenAsBody(children: unknown): ComponentBody {
 	return (_p, s) => {
 		childSlot(s, 0, s.block.parentNode, children, s.block.endMarker);
 	};
+}
+
+// Descriptor children remain inspectable values, but a scoped JSX descriptor
+// resolves them only after its represented boundary enters its try body. Reading
+// the accessor while constructing that body would move throws and suspension
+// outside the boundary, recreating the eager-JSX ownership bug.
+function scopedChildrenAsBody(props: { children: unknown }): ComponentBody {
+	if (!SCOPED_ELEMENT_PROPS.has(props)) return childrenAsBody(props.children);
+	return (_props, scope, extra) => childrenAsBody(props.children)(undefined, scope, extra);
 }
 
 /**
@@ -6348,7 +7409,7 @@ export const Suspense: ComponentBody<{ fallback?: unknown; children: unknown }> 
 				scope,
 				0,
 				block.parentNode,
-				childrenAsBody(props.children),
+				scopedChildrenAsBody(props),
 				null,
 				pendingBody,
 				block.endMarker,
@@ -6391,11 +7452,13 @@ export const ViewTransition: ComponentBody<ViewTransitionProps> =
  */
 export const ErrorBoundary: ComponentBody<{
 	fallback?: unknown | ((error: unknown, reset: () => void) => unknown);
+	resetRef?: { current: (() => void) | null };
 	// Renderable, not ComponentBody — same reasoning as Suspense above.
 	children: unknown;
 }> = /* @__PURE__ */ markComponentFlags<
 	ComponentBody<{
 		fallback?: unknown | ((error: unknown, reset: () => void) => unknown);
+		resetRef?: { current: (() => void) | null };
 		children: unknown;
 	}>
 >(
@@ -6411,17 +7474,23 @@ export const ErrorBoundary: ComponentBody<{
 					: props.fallback;
 			childSlot(s, 1, s.block.parentNode, fb, s.block.endMarker);
 		};
-		tryBlock(
+		const reset = tryBlock(
 			scope,
 			0,
 			block.parentNode,
-			childrenAsBody(props.children),
+			scopedChildrenAsBody(props),
 			catchBody,
 			null,
 			block.endMarker,
 			undefined,
 			true,
 		);
+		const previousResetRef = scope.slots[1] as { current: (() => void) | null } | undefined;
+		if (previousResetRef !== props.resetRef) {
+			if (previousResetRef?.current === reset) previousResetRef.current = null;
+			scope.slots[1] = props.resetRef;
+		}
+		if (props.resetRef) props.resetRef.current = reset;
 	},
 	COMPONENT_FLAG_BOUNDARY,
 	'ErrorBoundary',
@@ -7326,6 +8395,20 @@ function adoptWarmValue(slot: HookSlot, deps: any[]): any {
 		}
 		b = b.parentBlock;
 	}
+	// Held-transition fallback: the attempt's harvest is episode-agnostic, so a
+	// later round's render (whatever episode it minted) still adopts the fetch
+	// the warm walk already started instead of creating it again. Consulted for
+	// the round in flight via the promoted carrier as well as the live hold.
+	const harvestList = HELD_SYNC_TRANSITION?.warmHarvest ?? PROMOTED_WARM_HARVEST;
+	if (harvestList !== null && harvestList !== undefined) {
+		for (let i = 0; i < harvestList.length; i++) {
+			const entry = harvestList[i];
+			if (!entry.taken && entry.slot === slot && !depsChanged(entry.deps, deps)) {
+				entry.taken = true;
+				return entry.value;
+			}
+		}
+	}
 	return WARM_MISS;
 }
 
@@ -7365,11 +8448,13 @@ function puHit(slot: HookSlot, entry: PuMemoEntry): any {
 function puAdopt(slot: HookSlot, deps: any[]): any {
 	const adopted = adoptWarmValue(slot, deps);
 	if (adopted === WARM_MISS) return puMiss;
-	ensureHooks(CURRENT_SCOPE!).set(slot, {
+	const adoptedEntry: PuMemoEntry = {
 		deps,
 		value: adopted,
 		warmEpisode: CURRENT_WARM_EPISODE,
-	});
+	};
+	if (ACTIVE_TRANSITION_ATTEMPT !== null) journalPuEntry(CURRENT_SCOPE!, slot, adoptedEntry);
+	ensureHooks(CURRENT_SCOPE!).set(slot, adoptedEntry);
 	return adopted;
 }
 
@@ -7443,6 +8528,7 @@ export function puTake4(slot: HookSlot, d0: any, d1: any, d2: any, d3: any): any
 
 export function puPub(slot: HookSlot, value: any, ...deps: any[]): any {
 	const entry: PuMemoEntry = { deps, value };
+	if (ACTIVE_TRANSITION_ATTEMPT !== null) journalPuEntry(CURRENT_SCOPE!, slot, entry);
 	ensureHooks(CURRENT_SCOPE!).set(slot, entry);
 	if (recordRealWarmMemo(slot, deps, entry)) entry.warmEpisode = CURRENT_WARM_EPISODE;
 	return value;
@@ -8512,7 +9598,43 @@ function parseSeedJson(raw: string): unknown[] | null {
 	}
 }
 
+// A mapped-list fallback owns its host through the descriptor reconciler. On
+// the first transition to the compiled item body, let that body's existing
+// clone() mount adopt the same host and initialize its ordinary binding bag.
+// Armed only around that one mapped survivor render; all other clones see null.
+let MAPPED_ITEM_ADOPTION: { node: Node | null } | null = null;
+
 export function clone<T extends Node>(node: T, loc?: string): T {
+	if (MAPPED_ITEM_ADOPTION !== null && MAPPED_ITEM_ADOPTION.node !== null) {
+		const adopted = MAPPED_ITEM_ADOPTION.node;
+		MAPPED_ITEM_ADOPTION.node = null;
+		const lazy =
+			(node as any).nodeType === undefined
+				? ((node as any)[LAZY_TEMPLATE] as LazyTemplateRecord | undefined)
+				: undefined;
+		const expected = lazy === undefined ? node : resolveLazyTemplate(lazy);
+		if (
+			(adopted as Element).localName === (expected as Element).localName &&
+			(adopted as Element).namespaceURI === (expected as Element).namespaceURI
+		) {
+			for (let child = adopted.firstChild; child !== null; child = child.nextSibling) {
+				detachDeoptTreeRefs(child, null);
+			}
+			(adopted as Element).replaceChildren();
+			for (let child = expected.firstChild; child !== null; child = child.nextSibling) {
+				adopted.appendChild(child.cloneNode(true));
+			}
+			return adopted as T;
+		}
+		const replacement = expected.cloneNode(true);
+		const block = CURRENT_SCOPE!.block;
+		detachDeoptTreeRefs(adopted, null);
+		adopted.parentNode!.replaceChild(replacement, adopted);
+		if (block.startMarker === adopted) block.startMarker = replacement;
+		if (block.endMarker === adopted) block.endMarker = replacement;
+		block.deoptNode = null;
+		return replacement as T;
+	}
 	// Compiler templates are inert module-scope tokens. Parse each concrete
 	// namespace on its first real mount, then clone the cached node thereafter.
 	// Non-compiler callers can still hand clone() an ordinary DOM Node directly.
@@ -8836,6 +9958,7 @@ export function setText(node: Text, value: any): void {
 	// mutation choke point AND is prev-guarded (only ACTUAL changes reach it).
 	// The optional driver marks the innermost boundary only during a wrapped drain.
 	VIEW_TRANSITION_DRIVER?.markDirty();
+	if (TRANSITION_JOURNAL !== null) journalText(node);
 	//
 	// Write via `nodeValue` (a `Node`-level accessor) rather than `data` (which
 	// lives on `CharacterData` one prototype hop deeper) — it's measurably faster
@@ -9849,6 +10972,7 @@ export function setAttribute(el: Element, name: string, value: any): void {
 	const hydration = activeHydration();
 	if (hydration !== null && !hydration.allowAttribute(el, name, next)) return;
 	const ns = attrNamespace(name);
+	if (TRANSITION_JOURNAL !== null) journalAttr(el, name);
 	if (next === null) {
 		if (ns) {
 			const colon = name.indexOf(':');
@@ -9924,6 +11048,7 @@ export function setStringData(el: Element, name: string, value: unknown): void {
 	}
 	const hydration = activeHydration();
 	if (hydration !== null && !hydration.allowAttribute(el, name, next)) return;
+	if (TRANSITION_JOURNAL !== null) journalAttr(el, name);
 	if (next === null) el.removeAttribute(name);
 	else el.setAttribute(name, next);
 }
@@ -9940,6 +11065,7 @@ export function setBooleanAttribute(el: Element, name: string, value: unknown): 
 	const next = !value || type === 'function' || type === 'symbol' ? null : '';
 	const hydration = activeHydration();
 	if (hydration !== null && !hydration.allowAttribute(el, name, next)) return;
+	if (TRANSITION_JOURNAL !== null) journalAttr(el, name);
 	if (next === null) el.removeAttribute(name);
 	else el.setAttribute(name, next);
 }
@@ -9954,6 +11080,7 @@ export function setAriaAttribute(el: Element, name: string, value: unknown): voi
 	const next = value == null ? null : String(value);
 	const hydration = activeHydration();
 	if (hydration !== null && !hydration.allowAttribute(el, name, next)) return;
+	if (TRANSITION_JOURNAL !== null) journalAttr(el, name);
 	if (next === null) el.removeAttribute(name);
 	else el.setAttribute(name, next);
 }
@@ -10127,6 +11254,7 @@ export function setClassName(el: Element, value: unknown): void {
 	// an empty STRING still writes `class=""` — the differential rig pins that
 	// distinction against React). Same raw-value rule as setClassAttr: composition
 	// erases the null-vs-'' difference, so the check must be on `value`.
+	if (TRANSITION_JOURNAL !== null) journalAttr(el, 'class');
 	if (value == null || value === false) el.removeAttribute('class');
 	else (el as any).className = cls;
 }
@@ -10144,6 +11272,7 @@ export function setClassAttr(el: Element, value: unknown): void {
 		hydration.queueClass(el, cls, false, true, cls === null);
 		return;
 	}
+	if (TRANSITION_JOURNAL !== null) journalAttr(el, 'class');
 	if (cls === null) el.removeAttribute('class');
 	else el.setAttribute('class', cls);
 }
@@ -10178,6 +11307,9 @@ export function setStyle(el: HTMLElement | SVGElement, value: any, prev: any): v
 	// `suppressHydrationWarning` keeps the complete server style unchanged.
 	const hydration = activeHydration();
 	if (hydration !== null && hydration.applyStyle(el, value, prev)) return;
+	// The whole style attribute, not the individual declarations applyStyleValue
+	// is about to touch: restoring the attribute text restores every one of them.
+	if (TRANSITION_JOURNAL !== null) journalAttr(el, 'style');
 	applyStyleValue(style, value, prev);
 }
 
@@ -12182,6 +13314,7 @@ function setNativeChangeDiagnosticMetadata(el: Element, value: unknown): void {
 export function setValue(el: Element, value: unknown): void {
 	const input = el as HTMLInputElement | HTMLTextAreaElement;
 	const ctrl = armControlled(el);
+	if (TRANSITION_JOURNAL !== null) journalControlled(el, 'value', 'defaultValue');
 	const first = !ctrl.sawV;
 	ctrl.sawV = true;
 	if (value == null) {
@@ -12290,7 +13423,9 @@ function inActivationWindow(input: HTMLInputElement): boolean {
 }
 
 export function setChecked(el: Element, value: unknown): void {
-	setCheckedState(el as HTMLInputElement, value, armControlled(el));
+	const ctrl = armControlled(el);
+	if (TRANSITION_JOURNAL !== null) journalControlled(el, 'checked', 'defaultChecked');
+	setCheckedState(el as HTMLInputElement, value, ctrl);
 }
 
 /**
@@ -12299,7 +13434,9 @@ export function setChecked(el: Element, value: unknown): void {
  * and event restoration contract, but cannot need text-composition listeners.
  */
 export function setCheckedCheckable(el: Element, value: unknown): void {
-	setCheckedState(el as HTMLInputElement, value, armControlledBase(el));
+	const ctrl = armControlledBase(el);
+	if (TRANSITION_JOURNAL !== null) journalControlled(el, 'checked', 'defaultChecked');
+	setCheckedState(el as HTMLInputElement, value, ctrl);
 }
 
 /**
@@ -12312,6 +13449,10 @@ export function setCheckedCheckable(el: Element, value: unknown): void {
 export function setSelectValue(el: Element, value: unknown): void {
 	const sel = el as HTMLSelectElement;
 	const ctrl = armControlled(el);
+	if (TRANSITION_JOURNAL !== null) {
+		journalObjectOnce(ctrl);
+		journalBag();
+	}
 	const first = !ctrl.sawV;
 	ctrl.sawV = true;
 	if (value == null) {
@@ -12373,6 +13514,13 @@ function projectSelectValue(
 	setDefaultSelected: boolean,
 ): void {
 	const options = sel.options;
+	// The selection lives on the options, not the select, so each one that can
+	// move has to be recorded before the projection walks over it.
+	if (TRANSITION_JOURNAL !== null) {
+		for (let i = 0; i < options.length; i++) {
+			journalControlledOption(options[i], setDefaultSelected);
+		}
+	}
 	if (typeof sv !== 'string') {
 		for (let i = 0; i < options.length; i++) {
 			const selected = sv.has(options[i].value);
@@ -13140,6 +14288,10 @@ function elementKeyWasProvided(descriptor: ElementDescriptor): boolean {
 // missing-key validation state out of band so rebasing an unkeyed element from
 // a dynamic collection does not accidentally silence the renderer warning.
 const ELEMENTS_MISSING_LIST_KEY = new WeakSet<object>();
+// Only compiler-authored descriptors with a deferred child body enter this
+// collection. Ordinary createElement calls retain their exact public shape and
+// allocation path.
+const SCOPED_ELEMENT_PROPS = new WeakSet<object>();
 export interface ElementDescriptor<P = any> {
 	$$kind: typeof ELEMENT_TAG;
 	// A compiled ComponentBody (the fast/common case, e.g. `root.render(<App/>)`)
@@ -13207,6 +14359,138 @@ function finalizeElementDescriptor<P>(descriptor: ElementDescriptor<P>): Element
 	}
 	return descriptor;
 }
+
+const SCOPED_VALUE_RECORD: unique symbol = Symbol('octane.scopedValue');
+
+type ScopedValueDescriptor<P> = ElementDescriptor<P> & {
+	readonly [SCOPED_VALUE_RECORD]?: () => ElementDescriptor<P>;
+};
+
+/**
+ * Preserve an inspectable JSX descriptor while deferring its complete record.
+ *
+ * The marker stays eagerly available to public element checks, while inspecting
+ * any actual field resolves type, props, key, ref, and children together in the
+ * current render scope. A shared value is rebuilt when its provider scope or
+ * context epoch changes, just like a scoped element's deferred children.
+ *
+ * @internal
+ */
+export function createScopedValue<P>(
+	readElement: () => ElementDescriptor<P>,
+): ElementDescriptor<P> {
+	let resolved: ElementDescriptor<P> | undefined;
+	let resolvedScope: Scope | null = null;
+	let resolvedEpoch = 0;
+
+	const resolve = (): ElementDescriptor<P> => {
+		const scope = CURRENT_SCOPE;
+		const epoch = COMPILER_CACHE_CONTEXT_EPOCH;
+		if (resolved === undefined || resolvedScope !== scope || resolvedEpoch !== epoch) {
+			const next = readElement();
+			if (next.key === null && KEYED_ELEMENT_DESCRIPTORS.has(next)) {
+				KEYED_ELEMENT_DESCRIPTORS.add(descriptor);
+			}
+			resolvedScope = scope;
+			resolvedEpoch = epoch;
+			resolved = next;
+		}
+		return resolved;
+	};
+
+	const descriptor: ElementDescriptor<P> = {
+		$$kind: ELEMENT_TAG,
+		get type() {
+			return resolve().type;
+		},
+		get props() {
+			return resolve().props;
+		},
+		get key() {
+			return resolve().key;
+		},
+		get ref() {
+			return resolve().ref;
+		},
+		get children() {
+			return resolve().children;
+		},
+	};
+	Object.defineProperty(descriptor, SCOPED_VALUE_RECORD, { value: resolve });
+	if (process.env.NODE_ENV !== 'production') Object.freeze(descriptor);
+	return descriptor;
+}
+
+/**
+ * Compiler-only JSX descriptor whose child tree resolves in its rendered scope.
+ *
+ * Matching accessors preserve the ordinary descriptor type, props, key, ref, and
+ * synchronously inspectable children without introducing component boundaries or
+ * hydration markers. Scope/context-aware memoization prevents one module-level
+ * element from retaining another provider's children or stale context values.
+ *
+ * @internal
+ */
+export function createScopedElement<P>(
+	type: ComponentBody<P> | string | typeof Fragment,
+	props: P | undefined,
+	readChildren: () => unknown,
+): ElementDescriptor<P> {
+	const src = (props ?? null) as any;
+	const hasKey = hasElementConfigKey(src);
+	const key = hasKey ? '' + src.key : null;
+	const copiedProps = copyElementConfig(src);
+	applyElementDefaultProps(type, copiedProps);
+
+	let resolved = false;
+	let resolvedScope: Scope | null = null;
+	let resolvedEpoch = 0;
+	let resolvedChildren: unknown;
+	const children = (): unknown => {
+		const scope = CURRENT_SCOPE;
+		const epoch = COMPILER_CACHE_CONTEXT_EPOCH;
+		const sameScope =
+			resolvedScope === scope ||
+			(resolvedScope !== null && scope !== null && scope.block.parentBlock === resolvedScope.block);
+		if (!resolved || !sameScope || resolvedEpoch !== epoch) {
+			const nextChildren = readChildren();
+			resolvedScope = scope;
+			resolvedEpoch = epoch;
+			resolvedChildren = nextChildren;
+			resolved = true;
+		} else if (resolvedScope !== scope) {
+			// Host classification previews scoped children in the parent block before
+			// hostElementBody immediately renders them in its direct child block.
+			// Reuse that same-context preview once, then move ownership to the child
+			// so sibling/provider scopes cannot inherit another subtree's values.
+			resolvedScope = scope;
+		}
+		return resolvedChildren;
+	};
+	const childProperty = { configurable: true, enumerable: true, get: children };
+	Object.defineProperty(copiedProps, 'children', childProperty);
+	SCOPED_ELEMENT_PROPS.add(copiedProps);
+
+	const descriptor: ElementDescriptor<P> = {
+		$$kind: ELEMENT_TAG,
+		type,
+		props: copiedProps as P,
+		key,
+		ref: copiedProps.ref !== undefined ? copiedProps.ref : null,
+		children: null,
+	};
+	Object.defineProperty(descriptor, 'children', childProperty);
+	if (
+		key === null &&
+		src != null &&
+		(typeof src === 'object' || typeof src === 'function') &&
+		'key' in src
+	) {
+		KEYED_ELEMENT_DESCRIPTORS.add(descriptor);
+	}
+	return finalizeElementDescriptor(descriptor);
+}
+
 // React-shape `createElement(type, props, ...children)`. Two-arg calls
 // (`createElement(Comp, props)`) stay the component-value form the compiler emits
 // for `{<Comp/>}`. With a string `type` and/or explicit children it produces a
@@ -13305,9 +14589,23 @@ export function cloneElement<P>(
 	if (!isElementDescriptor(element)) {
 		throw new Error(formatClientError(4));
 	}
-	const props = copyElementConfig(element.props);
+	let scopedChildren: (() => unknown) | undefined;
+	let props: any;
+	if (SCOPED_ELEMENT_PROPS.has(element.props as object)) {
+		// Copy a scoped descriptor's child accessor without evaluating it in the caller's scope.
+		scopedChildren = Object.getOwnPropertyDescriptor(element, 'children')!.get;
+		props = {};
+		for (const name in element.props) {
+			if (name !== 'key' && name !== 'children' && hasOwnProp.call(element.props, name)) {
+				props[name] = (element.props as any)[name];
+			}
+		}
+	} else {
+		props = copyElementConfig(element.props);
+	}
 	let key = element.key;
 	let hasKeyOverride = false;
+	let replacedChildren = false;
 	if (config != null) {
 		hasKeyOverride = hasElementConfigKey(config);
 		if (hasKeyOverride) key = '' + config.key;
@@ -13316,16 +14614,25 @@ export function cloneElement<P>(
 			// React 19 keeps refs as props, but cloneElement treats an explicitly
 			// undefined ref as absent for backwards compatibility.
 			if (name === 'ref' && config.ref === undefined) continue;
-			if (hasOwnProp.call(config, name)) props[name] = config[name];
+			if (hasOwnProp.call(config, name)) {
+				props[name] = config[name];
+				if (name === 'children') replacedChildren = true;
+			}
 		}
 	}
 	const n = children.length;
 	let kids: any;
+	let childProperty: PropertyDescriptor | undefined;
 	if (n === 1) {
 		kids = children[0];
 	} else if (n > 1) {
 		POSITIONAL_CHILDREN.add(children);
 		kids = children;
+	} else if (scopedChildren !== undefined && !replacedChildren) {
+		childProperty = { configurable: true, enumerable: true, get: scopedChildren };
+		Object.defineProperty(props, 'children', childProperty);
+		SCOPED_ELEMENT_PROPS.add(props);
+		kids = null;
 	} else {
 		// No new children: reuse `config.children` (now merged into props) or the original.
 		kids = 'children' in props ? props.children : element.children;
@@ -13339,6 +14646,7 @@ export function cloneElement<P>(
 		ref: props.ref !== undefined ? props.ref : null,
 		children: kids ?? null,
 	};
+	if (childProperty !== undefined) Object.defineProperty(descriptor, 'children', childProperty);
 	// Only a nullish result key needs the out-of-band record (see createElement).
 	if (
 		key === null &&
@@ -13357,14 +14665,22 @@ export function cloneElement<P>(
 }
 
 function cloneAndReplaceElementKey(element: ElementDescriptor, key: string): ElementDescriptor {
+	const scoped = SCOPED_ELEMENT_PROPS.has(element.props);
 	const descriptor: ElementDescriptor = {
 		$$kind: ELEMENT_TAG,
 		type: element.type,
 		props: element.props,
 		key,
 		ref: element.ref,
-		children: element.children,
+		children: scoped ? null : element.children,
 	};
+	if (scoped) {
+		Object.defineProperty(descriptor, 'children', {
+			configurable: true,
+			enumerable: true,
+			get: Object.getOwnPropertyDescriptor(element, 'children')!.get!,
+		});
+	}
 	// `key` is a real (non-null) string here, so presence is already implied.
 	if (ELEMENTS_MISSING_LIST_KEY.has(element)) ELEMENTS_MISSING_LIST_KEY.add(descriptor);
 	return finalizeElementDescriptor(descriptor);
@@ -14401,6 +15717,14 @@ function clearChildContent(state: ChildSlot): void {
 			host.removeChild(n);
 			n = next;
 		}
+		// An owns-parent slot has no markers in any value regime EXCEPT a live
+		// array, whose lazily-minted ForSlot pair sits INSIDE the host — so the
+		// sweep above just detached it. Forget the pair: the array branch re-mints
+		// on re-entry, and every other regime expects the markerless baseline.
+		// Stale refs here would anchor the next mount (ForSlot, createBlock, or an
+		// offscreen swap) on detached comments and insert into a null parent.
+		state.start = null;
+		state.end = null;
 	} else if (state.start !== null) {
 		// Component (or hydrated) range: sweep everything between the markers —
 		// covers a multi-node component body as well as any leftover text node.
@@ -14836,7 +16160,13 @@ function getDeoptDesc(n: Node): ElementDescriptor | undefined {
 	return (n as Node & DeoptStamped)[DEOPT_DESC];
 }
 function setDeoptDesc(el: Element, d: ElementDescriptor): void {
-	(el as Element & DeoptStamped)[DEOPT_DESC] = d;
+	// Preserve the record committed to this DOM node. A deferred JSX shell can
+	// resolve differently after a Provider update; stamping the shell itself
+	// would make both sides of the next prop diff observe the new record and
+	// would run user code outside render while Suspense detaches subtree refs.
+	const resolveScopedRecord = (d as ScopedValueDescriptor<any>)[SCOPED_VALUE_RECORD];
+	(el as Element & DeoptStamped)[DEOPT_DESC] =
+		resolveScopedRecord === undefined ? d : resolveScopedRecord();
 }
 
 type DeoptWrapperKind = 'array' | 'fragment';
@@ -15399,7 +16729,11 @@ function deoptItemBody(item: any, scope: Scope): void {
 	}
 	// Switching Blocks → pure: unmount the childSlot content the Blocks path mounted
 	// (effect cleanups + DOM) by reconciling it to null. Idempotent once cleared.
-	if (scope.slots[0] !== undefined && scope.slots[0] !== null) {
+	if (
+		scope.slots[0] !== undefined &&
+		scope.slots[0] !== null &&
+		(scope.slots[0] as any).__kind === 'childSlot'
+	) {
 		childSlot(scope, 0, block.parentNode, null, block.endMarker);
 	}
 	// Pure host/text item → reconcile in place, REUSING the item's existing node so
@@ -15436,6 +16770,58 @@ function deoptItemBody(item: any, scope: Scope): void {
 		}
 	}
 	block.deoptNode = node;
+}
+
+// Guarded native maps invoke componentSlot directly from their compiled item
+// body. Keep that same slot ownership when a custom map returns the matching
+// component descriptors, so switching dispatch modes preserves the component
+// Block, its hooks/effects, and its DOM without aliasing it as a ChildSlot.
+function mappedDeoptItemBody(item: any, scope: Scope): void {
+	const state = scope.slots[0] as CompSlot | ChildSlot | undefined;
+	const block = scope.block;
+	if (isElementDescriptor(item) && typeof item.type === 'function') {
+		if (state === undefined || state.__kind === 'componentSlotSlot') {
+			const stale = block.deoptNode;
+			if (stale !== null) {
+				detachDeoptTreeRefs(stale, null);
+				if (stale.parentNode === block.parentNode) block.parentNode.removeChild(stale);
+				block.deoptNode = null;
+			}
+			componentSlot(
+				scope,
+				0,
+				block.parentNode,
+				item.type,
+				item.props,
+				block.endMarker,
+				undefined,
+				true,
+				true,
+			);
+			return;
+		}
+	} else if (state?.__kind === 'componentSlotSlot') {
+		// An exotic map may replace a keyed component with a host or empty value.
+		// Preserve the item's boundaries before disposing its self-marked child;
+		// the ordinary descriptor reconciler can then fill that same keyed range.
+		const root = block.startMarker;
+		if (
+			root !== null &&
+			root === block.endMarker &&
+			root.nodeType !== 8 &&
+			root.parentNode !== null
+		) {
+			const start = document.createComment('it');
+			const end = document.createComment('/it');
+			root.parentNode.insertBefore(start, root);
+			root.parentNode.insertBefore(end, root.nextSibling);
+			block.startMarker = start;
+			block.endMarker = end;
+		}
+		disposeReturnSlot(block, state);
+		block.deoptNode = null;
+	}
+	deoptItemBody(item, scope);
 }
 
 // True when `value` (a descriptor, an array, or a primitive) contains a COMPONENT
@@ -15797,6 +17183,164 @@ function isPortalTarget(block: Block, domParent: Node): boolean {
 	return false;
 }
 
+const NATIVE_ARRAY_MAP = Array.prototype.map;
+const NATIVE_REFLECT_APPLY = Reflect.apply;
+const NATIVE_ARRAY_SPECIES_GETTER = Object.getOwnPropertyDescriptor(Array, Symbol.species)?.get;
+// Components hand the reconciler immutable array snapshots. Memoizing indexed
+// accessor classification by snapshot identity avoids a descriptor allocation
+// per row on every unchanged parent render; holes and intrinsic overrides are
+// still rechecked each time. Mutating an existing data index into an accessor
+// without changing the snapshot identity/length is outside that contract.
+const NATIVE_ARRAY_ACCESSORS = new WeakMap<object, { length: number; accessor: boolean }>();
+
+/** Shared compiler ABI: native-array eligibility query plus stable keyed map dispatch. */
+export function mapSlot(
+	scopeOrItems: any,
+	slotOrMethod: any,
+	domParent?: Node,
+	items?: any,
+	method?: any,
+	native?: boolean | ((...args: any[]) => any),
+	callback?: (...args: any[]) => any,
+	getKey?: (item: any, index: number) => any,
+	itemBody?: (item: any, scope: Scope) => void,
+	flags?: number,
+	deps?: any[],
+	anchor?: Node | null,
+	ownEnd?: boolean | 1,
+): boolean | void {
+	if (arguments.length === 2) {
+		const receiver = scopeOrItems;
+		if (
+			!Array.isArray(receiver) ||
+			Object.getPrototypeOf(receiver) !== Array.prototype ||
+			slotOrMethod !== NATIVE_ARRAY_MAP ||
+			Object.prototype.hasOwnProperty.call(receiver, 'constructor') ||
+			Object.getOwnPropertyDescriptor(Array.prototype, 'constructor')?.value !== Array ||
+			Object.getOwnPropertyDescriptor(Array, Symbol.species)?.get !== NATIVE_ARRAY_SPECIES_GETTER
+		) {
+			return false;
+		}
+		const length = receiver.length;
+		let accessor = NATIVE_ARRAY_ACCESSORS.get(receiver);
+		if (accessor === undefined || accessor.length !== length) {
+			let found = false;
+			for (let index = 0; index < length; index++) {
+				const descriptor = Object.getOwnPropertyDescriptor(receiver, index);
+				if (descriptor === undefined || descriptor.get !== undefined) {
+					found = true;
+					break;
+				}
+			}
+			accessor = { length, accessor: found };
+			NATIVE_ARRAY_ACCESSORS.set(receiver, accessor);
+		}
+		if (accessor.accessor) return false;
+		for (let index = 0; index < length; index++) {
+			if (!(index in receiver)) return false;
+		}
+		return true;
+	}
+	// Unmemoized mapped regions do not need the eligibility answer separately.
+	// Accept their compact one-call ABI and run the same guard exactly once.
+	if (typeof native === 'function') {
+		ownEnd = anchor as boolean | 1 | undefined;
+		anchor = deps as Node | null | undefined;
+		deps = flags as any[] | undefined;
+		flags = itemBody as unknown as number | undefined;
+		itemBody = getKey as unknown as (item: any, scope: Scope) => void;
+		getKey = callback as (item: any, index: number) => any;
+		callback = native;
+		native = mapSlot(items, method) as boolean;
+	}
+	if (ownEnd === 1) ownEnd = true;
+	if (native === true) {
+		const previous = ((scopeOrItems as Scope).slots[slotOrMethod] as ChildSlot | undefined)
+			?.forSlot;
+		if (
+			previous?.mappedNative === false &&
+			previous.head !== null &&
+			(previous.head.slots[0] as CompSlot | undefined)?.__kind === 'componentSlotSlot'
+		) {
+			// A custom receiver may have reordered keyed component survivors. Its
+			// first native successor must still execute the authored map callback in
+			// ascending source order, before the reconciler walks the prior order.
+			const mapped = NATIVE_REFLECT_APPLY(method, items, [callback]);
+			childSlot(
+				scopeOrItems,
+				slotOrMethod,
+				domParent!,
+				mapped,
+				anchor,
+				ownEnd,
+				undefined,
+				false,
+				true,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				true,
+			);
+			const next = (scopeOrItems as Scope).slots[slotOrMethod] as ChildSlot;
+			if (next.forSlot !== null) next.forSlot.mappedNative = true;
+			return;
+		}
+		childSlot(
+			scopeOrItems,
+			slotOrMethod,
+			domParent!,
+			items,
+			anchor,
+			ownEnd,
+			undefined,
+			false,
+			true,
+			itemBody,
+			getKey,
+			flags,
+			deps,
+		);
+	} else {
+		let mapped = NATIVE_REFLECT_APPLY(method, items, [callback]);
+		if (Array.isArray(mapped)) {
+			let packed: any[] | null = null;
+			for (let index = 0; index < mapped.length; index++) {
+				if (!(index in mapped)) {
+					packed = [];
+					break;
+				}
+			}
+			if (packed !== null) {
+				for (let index = 0; index < mapped.length; index++) {
+					if (index in mapped) packed.push(mapped[index]);
+				}
+				mapped = packed;
+			}
+		}
+		childSlot(
+			scopeOrItems,
+			slotOrMethod,
+			domParent!,
+			mapped,
+			anchor,
+			ownEnd,
+			undefined,
+			false,
+			true,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			true,
+		);
+		const state = (scopeOrItems as Scope).slots[slotOrMethod] as ChildSlot | undefined;
+		if (state?.forSlot !== null && state?.forSlot !== undefined) {
+			state.forSlot.mappedNative = false;
+		}
+	}
+}
+
 export function childSlot(
 	parentScope: Scope,
 	slotKey: number,
@@ -15820,6 +17364,11 @@ export function childSlot(
 	// nested child slot must render the descriptor directly rather than wrap it
 	// in another one-item list.
 	includeKeyedSingle: boolean = true,
+	compiledMapBody?: (item: any, scope: Scope) => void,
+	compiledMapKey?: (item: any, index: number) => any,
+	compiledMapFlags?: number,
+	compiledMapDeps?: any[],
+	mappedFallback?: boolean,
 ): void {
 	// Reading the host's tag costs two DOM accessors and this runs for every
 	// renderable hole on every render, so lead with the cheap facts. A de-opt list
@@ -15857,6 +17406,11 @@ export function childSlot(
 				ownsHost,
 				compactable,
 				includeKeyedSingle,
+				compiledMapBody,
+				compiledMapKey,
+				compiledMapFlags,
+				compiledMapDeps,
+				mappedFallback,
 			),
 		);
 		return;
@@ -15893,7 +17447,10 @@ export function childSlot(
 		)?.[HYDRATION_RANGE_BOUNDARY] !== 'owner';
 	const iterable = iterableChildArray(value);
 	if (iterable !== null) value = iterable;
-	const preparedList = prepareDeoptList(value, false, includeKeyedSingle);
+	const preparedList =
+		compiledMapBody !== undefined
+			? { items: value as any[], keys: null }
+			: prepareDeoptList(value, false, includeKeyedSingle);
 	// A LONE PURE-HOST descriptor (host/text-only subtree — no components, no
 	// portals, no render functions). Computed once per call: the slot init below
 	// uses it to pick the ANCHORLESS regime, the promotion after it to detect a
@@ -15943,6 +17500,11 @@ export function childSlot(
 				ownsHost,
 				compactable,
 				includeKeyedSingle,
+				compiledMapBody,
+				compiledMapKey,
+				compiledMapFlags,
+				compiledMapDeps,
+				mappedFallback,
 			);
 			return;
 		}
@@ -16109,6 +17671,13 @@ export function childSlot(
 			// blocks upgrade adopts the SAME way (the element's raw children ARE the
 			// incoming items), so it must not sweep either.
 			if (hydration === null && !upgradeArmed) clearChildContent(state);
+			// A text-mode sole-child write wiped the host wholesale and took the
+			// minted markers with it. Anchoring the new list on those detached
+			// comments would insert into a null parent — drop them and re-mint.
+			if (state.end !== null && state.end.parentNode === null) {
+				state.end = null;
+				state.start = null;
+			}
 			if (state.end === null) {
 				// OWNS-PARENT slot entering array mode: ForSlot requires a real
 				// marker pair (reconcileKeyed anchors on it) — mint it lazily,
@@ -16142,16 +17711,140 @@ export function childSlot(
 			}
 		}
 		const { items, keys } = preparedList;
-		const getKey = (_item: any, i: number) => keys[i];
+		const markerlessMappedFallback =
+			mappedFallback === true && hydration !== null && !hydration.isOpen(hydration.node);
+		const getKey = compiledMapKey
+			? (item: any, index: number) => 'k' + String(compiledMapKey(item, index))
+			: (_item: any, i: number) => keys![i];
+		const wasMappedNative = state.forSlot.mappedNative === true;
+		let body =
+			compiledMapBody || (mappedFallback === true ? mappedDeoptItemBody : (deoptItemBody as any));
+		if (compiledMapBody === undefined && wasMappedNative && state.forSlot.size > 0) {
+			for (let index = 0; index < items.length; index++) {
+				const item = items[index];
+				if (!isHostDescriptor(item)) continue;
+				const block = state.forSlot.items.get(getKey(item, index));
+				if (
+					block !== undefined &&
+					block.startMarker !== null &&
+					block.startMarker === block.endMarker &&
+					block.startMarker.nodeType === 1 &&
+					(block.startMarker as Element).localName === item.type
+				) {
+					const root = block.startMarker as Element;
+					const text = root.firstChild;
+					if (text?.nodeType === 3 && text.nextSibling === null) {
+						const children = Object.getOwnPropertyDescriptor(item, 'children');
+						const primitive =
+							children !== undefined &&
+							'value' in children &&
+							(typeof children.value === 'string' ||
+								typeof children.value === 'number' ||
+								typeof children.value === 'bigint');
+						if (primitive) {
+							(text as any).$$deoptKey = 0;
+						} else if (children?.get !== undefined) {
+							// Scoped JSX descriptors defer children until their represented
+							// render scope. Prove this node came from the compiled binding bag
+							// without invoking that scope-sensitive accessor in the parent.
+							const bag = block.slots[0];
+							if (bag !== null && bag !== undefined) {
+								for (const field in bag) {
+									if (bag[field] === text) {
+										(text as any).$$deoptKey = 0;
+										break;
+									}
+								}
+							}
+						}
+					}
+					block.deoptNode = block.startMarker;
+				}
+			}
+		}
+		if (compiledMapBody !== undefined) {
+			if (state.forSlot.mappedNative === false) {
+				body = (item: any, scope: Scope, extra?: any[]): void => {
+					const adopted = scope.slots[0] === undefined ? scope.block.deoptNode : null;
+					if (adopted === null || adopted.nodeType !== 1) {
+						(compiledMapBody as any)(item, scope, extra);
+						return;
+					}
+					const previous = MAPPED_ITEM_ADOPTION;
+					const adoption = { node: adopted };
+					MAPPED_ITEM_ADOPTION = adoption;
+					try {
+						(compiledMapBody as any)(item, scope, extra);
+						if (adoption.node === null) scope.block.deoptNode = null;
+					} finally {
+						MAPPED_ITEM_ADOPTION = previous;
+					}
+				};
+			}
+			state.forSlot.mappedNative = true;
+		}
+		if (markerlessMappedFallback) {
+			const descriptorBody = body;
+			body = (item: any, scope: Scope): void => {
+				const root = scope.block.startMarker;
+				if (
+					root !== null &&
+					root === scope.block.endMarker &&
+					root.nodeType === 1 &&
+					scope.block.deoptNode === null
+				) {
+					scope.block.deoptNode = root;
+				}
+				descriptorBody(item, scope);
+			};
+		}
+		const fastFlags = compiledMapFlags || 0;
+		const ssrMarkerless =
+			compiledMapBody === undefined ? markerlessMappedFallback : (fastFlags & 16) !== 0;
+		let pure = (fastFlags & 1) !== 0;
+		let lite = false;
+		if (compiledMapBody !== undefined) {
+			state.forSlot.env = compiledMapDeps;
+			if ((fastFlags & 4) !== 0 && compiledMapDeps !== undefined) {
+				if (
+					state.forSlot.cachedDeps !== null &&
+					depsEqual(state.forSlot.cachedDeps, compiledMapDeps)
+				) {
+					pure = true;
+				} else {
+					lite = true;
+				}
+				state.forSlot.cachedDeps = compiledMapDeps;
+			}
+		}
 		// singleRoot=2 (marker-elision M4): pure single-element items self-mark —
 		// no `it` pair per item — resolved per item value in mountItem; shape
 		// flips promote to a minted pair in place (deoptItemBody).
 		// First fill dispatches to the linear pass directly (see mountItemsLinear)
 		// so a de-opt list's hydration adopt skips the full reconciler too.
 		if (state.forSlot.size === 0) {
-			mountItemsLinear(parentBlock, state.forSlot, items, getKey, deoptItemBody as any, 2, false);
+			mountItemsLinear(
+				parentBlock,
+				state.forSlot,
+				items,
+				getKey,
+				body,
+				compiledMapBody === undefined ? 2 : (fastFlags & 2) !== 0,
+				ssrMarkerless,
+			);
 		} else {
-			reconcileKeyed(parentBlock, state.forSlot, items, getKey, deoptItemBody as any, false, 2);
+			reconcileKeyed(
+				parentBlock,
+				state.forSlot,
+				items,
+				getKey,
+				body,
+				pure,
+				compiledMapBody === undefined ? 2 : (fastFlags & 2) !== 0,
+				lite,
+				(fastFlags & 8) !== 0,
+				ssrMarkerless,
+			);
 		}
 		// Upgrade adoption: nodes the empty→fill mount didn't consume (old
 		// children whose keys have no new item) are orphans inside the range —
@@ -17196,6 +18889,8 @@ interface TrySlot {
 	idState: RootIdState;
 	/** Logical boundary above a selected hydration-container owner. */
 	passthrough: boolean;
+	/** Stable boundary reset dispatcher; remains safe after unmount. */
+	reset: () => void;
 }
 
 // Single mutation point for `TrySlot.branch`. The bare assignment is the hot
@@ -17239,7 +18934,7 @@ function mountPassthroughCatch(state: TrySlot, error: unknown): void {
 		null,
 		null,
 		state.catchBody,
-		{ err: error, reset: () => requestReset(state) },
+		{ err: error, reset: state.reset },
 		state.env,
 	);
 	state.block = block;
@@ -17276,7 +18971,7 @@ function mountPassthroughPending(state: TrySlot, thenable: TrackedThenable<unkno
 function renderPassthroughTry(state: TrySlot): void {
 	if (state.branch === 0 && state.block !== null) {
 		state.block.body = state.catchBody!;
-		state.block.props = { err: state.err, reset: () => requestReset(state) };
+		state.block.props = { err: state.err, reset: state.reset };
 		state.block.extra = state.env;
 		renderBlock(state.block);
 		return;
@@ -17348,7 +19043,7 @@ export function tryBlock(
 	env?: any[],
 	// JSX ErrorBoundary must not become a catch-only Suspense boundary.
 	propagateSuspense = false,
-): void {
+): () => void {
 	// A committed Suspense primary needs the same off-screen swap capability for
 	// urgent branch replacements as transitions use: probe the replacement before
 	// disposing browser-owned state, then either commit it or show @pending while
@@ -17384,7 +19079,8 @@ export function tryBlock(
 			domParent.insertBefore(start, anchor ?? null);
 			domParent.insertBefore(end, anchor ?? null);
 		}
-		const newState: TrySlot = {
+		let newState: TrySlot;
+		newState = {
 			__kind: 'trySlotSlot',
 			start,
 			end,
@@ -17409,6 +19105,7 @@ export function tryBlock(
 			parentBlock,
 			idState: parentBlock.idState,
 			passthrough,
+			reset: () => requestReset(newState),
 		};
 		parentScope.slots[slotKey] = newState;
 		registerSlot(parentScope, newState);
@@ -17423,12 +19120,12 @@ export function tryBlock(
 	const s = state;
 	if (s.passthrough) {
 		renderPassthroughTry(s);
-		return;
+		return s.reset;
 	}
 	if (s.branch === 0) {
 		// Already showing catch — re-render with current err (props identity unchanged).
 		s.block!.body = s.catchBody!;
-		s.block!.props = { err: s.err, reset: () => requestReset(s) };
+		s.block!.props = { err: s.err, reset: s.reset };
 		s.block!.extra = s.env;
 		renderBlock(s.block!);
 	} else if (s.branch === 2 && s.tryBlock && !s.tryBlock.disposed && s.hiddenDom) {
@@ -17452,6 +19149,9 @@ export function tryBlock(
 		// whether to preserve the DOM (keep) or swap to pending (default).
 		s.tryBlock.body = s.tryBody;
 		s.tryBlock.extra = s.env;
+		// Everything this body patches is undoable until it either commits or
+		// suspends into a hold, so the boundary can never be left half-updated.
+		const journalCheckpoint = armTransitionJournal(s);
 		try {
 			renderBlock(s.tryBlock);
 			// Successful commit — this supersedes any in-flight transition
@@ -17459,8 +19159,14 @@ export function tryBlock(
 			// invalidate the pending retry so the eventual .then callback no-ops.
 			// Matches React's "urgent setState while transition is suspended
 			// discards the transition" semantics (ReactUse-test.js:1631).
-			releaseHeldTransition(s);
-			s.pendingThenable = null;
+			// A cue re-render under a held sync transition re-renders this body
+			// with the reverted (old) cells and succeeds — that is the held screen
+			// re-asserting itself, not an urgent supersede. Keep holding; the
+			// promotion on settle is what ends this hold.
+			if (!heldSyncCellsIntact(s)) {
+				releaseHeldTransition(s);
+				s.pendingThenable = null;
+			}
 		} catch (err) {
 			// §6.3 control signal — never an application failure: pass it through
 			// so the renderer-region owner (handleRenderError) receives it; a
@@ -17468,12 +19174,15 @@ export function tryBlock(
 			if (isHostContextRequest(err)) throw err;
 			if (isSuspenseException(err)) {
 				if (s.propagateSuspense) throw err;
-				handleSuspense(s, err.thenable, s.tryBlock);
+				handleSuspense(s, err.thenable, s.tryBlock, journalCheckpoint);
 			} else switchToCatch(s, err);
+		} finally {
+			disarmTransitionJournal(journalCheckpoint);
 		}
 	} else {
 		mountTry(s);
 	}
+	return s.reset;
 }
 
 function mountTry(state: TrySlot): void {
@@ -17739,6 +19448,10 @@ function showTryBlock(state: TrySlot): void {
  * No-op if no hold is currently held.
  */
 function releaseHeldTransition(state: TrySlot): void {
+	// An urgent supersede (or error/unmount) ends this boundary's hold; when the
+	// last holder goes, the reverted cells stay reverted and the staged values
+	// are dropped — the pinned synchronous discard semantics.
+	discardHeldSyncTransition(state);
 	if (state.transitionHeld) {
 		state.transitionHeld = false;
 		tickTransitionCount(-1);
@@ -17755,7 +19468,15 @@ function releaseHeldTransition(state: TrySlot): void {
 	}
 }
 
-function handleSuspense(state: TrySlot, thenable: TrackedThenable<any>, sourceBlock: Block): void {
+function handleSuspense(
+	state: TrySlot,
+	thenable: TrackedThenable<any>,
+	sourceBlock: Block,
+	// Journal position to restore if this suspend turns into a hold. `-1` from
+	// every caller that renders outside an armed window (a fresh mount or a
+	// retry, neither of which has committed content to keep whole).
+	journalCheckpoint = -1,
+): void {
 	// Transition-priority suspends on an ALREADY-committed try block keep the
 	// prior DOM visible — matches React's `useTransition` contract that the
 	// previous screen stays mounted until the new tree is fully ready. We also
@@ -17813,6 +19534,16 @@ function handleSuspense(state: TrySlot, thenable: TrackedThenable<any>, sourceBl
 		state.branch === 1 &&
 		state.hiddenDom === null
 	) {
+		// The body got part of the way through patching this boundary before the
+		// suspend, so put back what it changed. Nothing has been painted since —
+		// the render and this undo are the same synchronous flush — so the
+		// boundary simply never shows half of the new screen.
+		rollbackTransitionJournal(journalCheckpoint);
+		// A whole-drain attempt is in flight: this hold makes it unwind, and the
+		// boundary joins the held set so promotion and discard can find it.
+		if (ACTIVE_TRANSITION_ATTEMPT !== null) {
+			(ACTIVE_TRANSITION_ATTEMPT.heldSlots ??= new Set()).add(state);
+		}
 		if (!state.transitionHeld) {
 			state.transitionHeld = true;
 			tickTransitionCount(+1);
@@ -18040,6 +19771,13 @@ function refreshPendingBody(state: TrySlot): void {
  */
 function swapToPendingFallback(state: TrySlot): void {
 	if (!state.pendingBody || state.branch !== 1 || !state.tryBlock) return;
+	// Once the fallback shows, the held-whole contract is over for this
+	// boundary: write the staged screen forward now so the shell commits the
+	// new values alongside the fallback (what React shows after its own
+	// timeout), and the hidden primary retries against the data in flight.
+	if (HELD_SYNC_TRANSITION !== null && HELD_SYNC_TRANSITION.holders.has(state)) {
+		promoteHeldSyncTransition();
+	}
 	hideTryContentAndMountPending(state);
 }
 
@@ -18123,6 +19861,12 @@ function commitResumeInner(state: TrySlot): void {
 				// Mark the replay window: useThenable's fresh-thenable reuse leniency
 				// and the waterfall diagnostic apply only while a resolved suspension
 				// is being replayed (ordinary updates must keep replacing thenables).
+				// A held boundary replaying its body is the other way it can end up
+				// half-updated: the resources that just resolved patch their nodes,
+				// and then a still-pending one behind a data dependency suspends
+				// again. The effects and refs of that attempt are already discarded
+				// below; its DOM writes need the same treatment.
+				const journalCheckpoint = armTransitionJournal(state);
 				const resumeCapture = createOffscreenCapture();
 				const effectDeps = snapshotSubtreeEffectDeps(tryBlock);
 				const previousCapture = WIP_CAPTURE;
@@ -18144,6 +19888,10 @@ function commitResumeInner(state: TrySlot): void {
 				} finally {
 					WIP_CAPTURE = previousCapture;
 					RESUME_REPLAY = prevReplay;
+					// A completed replay has nothing to undo, so close its window here
+					// where the unwind is already guaranteed. A suspended one keeps it
+					// open: handleSuspense below is what replays it.
+					if (!didThrow) disarmTransitionJournal(journalCheckpoint);
 				}
 				if (!didThrow) {
 					if (state.detachedRefs !== null) {
@@ -18153,18 +19901,27 @@ function commitResumeInner(state: TrySlot): void {
 					spliceOffscreenCapture(resumeCapture);
 					state.hasResolved = true;
 				} else {
-					refDetachQueue.splice(refDetachCheckpoint);
-					restoreSubtreeEffectDeps(tryBlock, effectDeps);
-					discardOffscreenCapture(resumeCapture);
-					if (isSuspenseException(renderError)) {
-						handleSuspense(state, renderError.thenable, tryBlock);
-					} else {
-						switchToCatch(state, renderError);
+					// The journal has to outlive handleSuspense, which is what replays it,
+					// so it is closed here rather than around the render — in a finally, or
+					// a throw out of switchToCatch would strand the window open and let the
+					// next boundary undo more than its own writes.
+					try {
+						refDetachQueue.splice(refDetachCheckpoint);
+						restoreSubtreeEffectDeps(tryBlock, effectDeps);
+						discardOffscreenCapture(resumeCapture);
+						if (isSuspenseException(renderError)) {
+							handleSuspense(state, renderError.thenable, tryBlock, journalCheckpoint);
+						} else {
+							switchToCatch(state, renderError);
+						}
+					} finally {
+						disarmTransitionJournal(journalCheckpoint);
 					}
 					if (state.parentBlock.disposed) return;
 				}
 			}
 			if (state.branch === 1) {
+				publishLinkedStateReveal(state);
 				// Reveal: re-attach the host refs detached on hide (same preserved nodes),
 				// before commitEffects fires recreated layout effects. Enumerating now
 				// ensures an aborted A→B hidden retry never resurrects stale ref A.
@@ -18487,6 +20244,7 @@ function attemptHiddenReveal(state: TrySlot, scheduledMode?: 'urgent' | 'transit
 		// settles, its retry sees a mismatched pendingThenable and no-ops.
 		state.pendingThenable = null;
 		spliceOffscreenCapture(hiddenCapture);
+		publishLinkedStateReveal(state);
 		queueCurrentHiddenRefs(state);
 		if (state.transitionTimeoutId !== null) {
 			clearTimeout(state.transitionTimeoutId);
@@ -18562,6 +20320,25 @@ function rebaseOffscreenCaptureSeq(capture: OffscreenCapture): void {
 
 function flushStagedReveals(): void {
 	if (flushingStagedReveals) return; // re-entrancy guard (a reveal may abandon a sibling)
+	// Deferred commit: when the barrier is satisfied for a held sync transition
+	// whose boundaries are all still visible, the reveal IS the promotion — the
+	// staged screen writes forward and ordinary transition renders re-drive the
+	// origin and every held boundary in one flush. A boundary the timeout
+	// already hid keeps the existing hidden-retry path instead.
+	if (HELD_SYNC_TRANSITION !== null) {
+		let allVisible = true;
+		for (const holder of HELD_SYNC_TRANSITION.holders) {
+			if (holder.hiddenDom !== null) {
+				allVisible = false;
+				break;
+			}
+		}
+		if (allVisible && promoteHeldSyncTransition()) {
+			STAGED_REVEALS.clear();
+			flush();
+			return;
+		}
+	}
 	flushingStagedReveals = true;
 	try {
 		const run = (): void => {
@@ -19223,6 +21000,7 @@ export function useDeferredValue<T>(value: T, ...rest: any[]): T {
 }
 
 function requestReset(state: TrySlot): void {
+	if (state.parentBlock.disposed || state.branch !== 0) return;
 	// React parity for catch reset(): don't synchronously re-run the try body.
 	// Rewind slot state and schedule the parent — sibling setState calls in
 	// the SAME event handler then batch into one commit, so when mountTry
@@ -19771,10 +21549,39 @@ function renderBranchSlot(
 				let bStart: Node;
 				let bEnd: Node;
 				let borrowed = false;
+				let rebuild = false;
+				let inner: Comment | null = null;
+				let innerEnd: Comment | null = null;
 				if (hydration !== null && hydration.isOpen(state.start.nextSibling)) {
-					bStart = state.start.nextSibling as Comment;
-					bEnd = hydration.close(bStart);
-					hydration.node = bStart.nextSibling;
+					inner = state.start.nextSibling as Comment;
+					innerEnd = hydration.close(inner);
+					if (innerEnd !== state.end && innerEnd.nextSibling !== state.end) {
+						// The first nested pair does not SPAN the slot's adopted range, so it
+						// cannot be this branch's own range — the server encoded this slot
+						// differently (e.g. a legacy value-hole list: an outer pair plus one
+						// pair per item). Adopting the prefix pair would strand the rest of
+						// the server content outside the branch: the next swap leaves it on
+						// screen and later re-entries insert against detached anchors.
+						// STRUCTURAL mismatch — discard the server range and client-build the
+						// branch fresh into the borrowed slot markers below.
+						if (process.env.NODE_ENV !== 'production') {
+							const mmLoc = siteLoc(parentScope, slotKey);
+							if (mmLoc)
+								hydration.warnStructural(
+									mmLoc,
+									'a single branch range',
+									hydration.describe(innerEnd.nextSibling),
+								);
+						}
+						removeRange(state.start.nextSibling, state.end);
+						inner = null;
+						rebuild = true;
+					}
+				}
+				if (inner !== null) {
+					bStart = inner;
+					bEnd = innerEnd as Comment;
+					hydration!.node = inner.nextSibling;
 				} else {
 					bStart = state.start;
 					bEnd = state.end as Node;
@@ -19798,7 +21605,17 @@ function renderBranchSlot(
 				);
 				if (borrowed) b.exclusiveMarkers = true;
 				state.block = b;
-				renderBlock(b);
+				if (rebuild) {
+					// The discarded range left nothing to adopt, but the cursor still sits
+					// inside the live document. Suspend hydration for the whole branch
+					// subtree so cursor-greedy adoption (e.g. a keyed list's markerless item
+					// path) client-builds instead of claiming the slot's own close marker,
+					// then park the cursor after the slot for the next sibling.
+					hydration!.suspend(() => renderBlock(b));
+					hydration!.node = (state.end as Node).nextSibling;
+				} else {
+					renderBlock(b);
+				}
 			} else if (hydration !== null && state.start.nextSibling !== state.end) {
 				// EMPTY client branch, but the server rendered content in this slot (e.g. an
 				// `@else` with content on the server, empty `@if` on the client). Discard the
@@ -20341,10 +22158,12 @@ function detachDeoptTreeRefs(
  * slots so the setups re-fire on reactivation. Used by activityBlock on hide
  * AND by the tryBlock suspense-hide path (hideTryContentAndMountPending):
  * Activity disconnects layout + passive effects. Suspense passes
- * `disconnectPassive=false`: layout effects disconnect, while passive effects
- * remain subscribed until actual deletion, matching React's hidden-primary
- * lifetime. State, DOM, and blocks stay alive in either case. Refs remain
- * attached for Activity; Suspense cycles them separately via detachSubtreeRefs.
+ * `disconnectPassive=false`: layout effects disconnect, while CONNECTED passive
+ * effects remain subscribed until actual deletion, matching React's
+ * hidden-primary lifetime. A passive effect that never connected is not part of
+ * that hidden primary and resets like a layout one (see below). State, DOM, and
+ * blocks stay alive in either case. Refs remain attached for Activity; Suspense
+ * cycles them separately via detachSubtreeRefs.
  */
 function deactivateScope(scope: Scope, disconnectPassive: boolean = true): void {
 	const hooks = scope.hooks;
@@ -20357,7 +22176,24 @@ function deactivateScope(scope: Scope, disconnectPassive: boolean = true): void 
 				// reveal re-render doesn't re-fire them. They own injected styles
 				// that must persist while a tree is merely hidden; only a real
 				// unmount (unmountScope's effect-slot walk) tears them down.
-				if (e.phase === INSERTION || (!disconnectPassive && e.phase === PASSIVE)) continue;
+				//
+				// Suspense's `disconnectPassive=false` spares passive effects for the
+				// same reason — but only ones that ACTUALLY connected. `connectedFn` is
+				// set exclusively by runEffectBody, so a null one has never run: it
+				// belongs to a subtree the boundary rendered but never committed —
+				// siblings ahead of the call that suspended, or children introduced by a
+				// later attempt. There is no subscription to preserve, and its deps are
+				// already stamped from that aborted attempt, so sparing it would let the
+				// reveal re-render compare equal deps and skip the enqueue, stranding the
+				// mount effect — and its cleanup — forever. React fires every mount effect
+				// in the subtree when a suspended mount finally commits, so an
+				// unconnected passive slot resets exactly like a layout one.
+				if (
+					e.phase === INSERTION ||
+					(!disconnectPassive && e.phase === PASSIVE && e.connectedFn !== null)
+				) {
+					continue;
+				}
 				if (typeof e.cleanup === 'function') {
 					const cleanup = e.cleanup;
 					// Clear it BEFORE firing so unmountScope's effect-slot walk sees
@@ -20492,6 +22328,9 @@ interface ForSlot {
 	// focus, input state survive — React parity) instead of rebuilding.
 	// Consumed and nulled within the same render.
 	adopt: Array<{ key: any; node: Node }> | null;
+	// Present only on a childSlot owned by the compiler's guarded map ABI.
+	// Keeps descriptor↔compiled adoption off every ordinary descriptor list.
+	mappedNative?: boolean;
 }
 
 export function forBlock<T>(
@@ -20648,7 +22487,12 @@ export function forBlock<T>(
 	// mounted, tear it down before reconciling so its DOM doesn't sit alongside
 	// the freshly-mounted items.
 	if (state.emptyBlock) {
-		unmountBlock(state.emptyBlock);
+		// While a hold is possible the swap has to be reversible, exactly like a
+		// row removal: keep the branch's nodes and defer its teardown.
+		if (itemRemovalDefers()) {
+			journalForSlot(state);
+			parkItemForHold(state.emptyBlock);
+		} else unmountBlock(state.emptyBlock);
 		state.emptyBlock = null;
 	}
 	// Hydrating + the SERVER rendered the @empty body (the node right after `start` is NOT an
@@ -20867,6 +22711,12 @@ function mountItemsLinear<T>(
 ): void {
 	const newLen = items.length;
 	if (newLen === 0) return;
+	// Every 0 -> N fill funnels through here (forBlock, the value-position array
+	// path, and reconcileKeyed's own empty branch). An empty list is still a
+	// shape to go back to: a fill during a render that may yet hold must come
+	// back out — rows, scopes and queued effects together — or the held boundary
+	// shows fresh rows with their bindings half rolled back underneath them.
+	if (TRANSITION_JOURNAL !== null) journalForSlot(state);
 	const oldItems = state.items;
 	const parentNode = state.end.parentNode!;
 	// Pure-host → blocks upgrade adoption (childSlot arms `state.adopt`): the
@@ -20951,6 +22801,11 @@ function reconcileKeyed<T>(
 	const oldSize = state.size;
 	const newLen = items.length;
 	const parentNode = state.end.parentNode!;
+	// Record the list's shape while a hold is still possible, so a boundary that
+	// suspends later in this render can put it back whole. The 0 -> N fast path
+	// journals inside mountItemsLinear, which also covers the callers that
+	// dispatch to it directly.
+	if (oldSize > 0 && TRANSITION_JOURNAL !== null) journalForSlot(state);
 
 	// Fast path: empty → fill — the linear first-fill pass (callers on the
 	// first-mount path dispatch to it directly and skip this function entirely).
@@ -21058,7 +22913,8 @@ function reconcileKeyed<T>(
 		let removed = 0;
 		while (cur !== afterMiddle) {
 			const next: Block | null = cur!.nextSibling!;
-			unmountBlock(cur!);
+			if (itemRemovalDefers()) parkItemForHold(cur!);
+			else unmountBlock(cur!);
 			oldItems.delete(cur!.key);
 			cur = next;
 			removed++;
@@ -21145,7 +23001,8 @@ function reconcileKeyed<T>(
 		const next: Block | null = cur!.nextSibling!;
 		const newRelIdx = newKeysToIdx.get(cur!.key);
 		if (newRelIdx === undefined) {
-			unmountBlock(cur!);
+			if (itemRemovalDefers()) parkItemForHold(cur!);
+			else unmountBlock(cur!);
 			oldItems.delete(cur!.key);
 			state.size--;
 		} else {
@@ -21426,6 +23283,20 @@ const RANGE_CLEAR_MIN_ITEMS = 512;
  * template rows (the common bulk-clear case) hit only the three-field guard.
  */
 function batchClearItems(state: ForSlot, oldItems: Map<any, Block>): void {
+	// The bulk paths below drop the nodes wholesale, which cannot be undone.
+	// While a hold is still possible AND this list's shape is journaled (see
+	// forSlotParkable — reconcileKeyed and the @empty flip journal before they
+	// clear; teardownChildForSlot never does), take each row individually so
+	// its nodes are kept and its teardown waits for the outcome.
+	if (forSlotParkable(state)) {
+		let next: Block | null;
+		for (let b: Block | null = state.head; b !== null; b = next) {
+			next = b.nextSibling;
+			parkItemForHold(b);
+		}
+		oldItems.clear();
+		return;
+	}
 	const p = state.start.parentNode!;
 	if (state.start.previousSibling === null && state.end.nextSibling === null) {
 		// forBlock owns the parent — nuke everything in one DOM op, then re-add markers.

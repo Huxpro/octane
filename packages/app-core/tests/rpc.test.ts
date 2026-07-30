@@ -3,11 +3,14 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Context, Middleware } from '@octanejs/app-core';
 import { createHandler } from '../src/server/production.js';
+import { getRequestContext, tryGetRequestContext } from '../src/server/request-context.js';
+import { createRpcRegistry } from '../src/server/rpc-registry.js';
 
 const TEMPLATE = `<!doctype html>
 <html><head><!--ssr-head--></head><body><div id="root"><!--ssr-body--></div>
 <script type="module" data-octane-hydrate src="/assets/hydrate.js"></script></body></html>`;
 const FETCH_COORDINATOR_KEY = Symbol.for('octane.app-core.fetch-coordinator');
+const REQUEST_CONTEXT_KEY = Symbol.for('octane.app-core.request-context');
 const originalFetch = globalThis.fetch;
 
 interface RpcTestOptions {
@@ -16,6 +19,7 @@ interface RpcTestOptions {
 	middlewares?: Middleware[];
 	trustProxy?: boolean;
 	action?: (...args: unknown[]) => unknown;
+	rpcModules?: Record<string, Record<string, Function>>;
 }
 
 function createRpcHandler(options: RpcTestOptions = {}) {
@@ -32,7 +36,7 @@ function createRpcHandler(options: RpcTestOptions = {}) {
 				...(options.allowedOrigins === undefined ? {} : { allowedOrigins: options.allowedOrigins }),
 				...(options.maxBodyBytes === undefined ? {} : { maxBodyBytes: options.maxBodyBytes }),
 			},
-			rpcModules: { '/src/actions.ts': { action } },
+			rpcModules: options.rpcModules ?? { '/src/actions.ts': { action } },
 			runtime: {
 				hash: () => 'deadbeef',
 				createAsyncContext: <T>() => {
@@ -95,6 +99,7 @@ function rpcPreflight(origin: string, options: { method?: string; requestHeaders
 afterEach(() => {
 	globalThis.fetch = originalFetch;
 	delete (globalThis as typeof globalThis & Record<symbol, unknown>)[FETCH_COORDINATOR_KEY];
+	delete (globalThis as typeof globalThis & Record<symbol, unknown>)[REQUEST_CONTEXT_KEY];
 	vi.restoreAllMocks();
 });
 
@@ -425,6 +430,105 @@ describe('server-function HTTP security', () => {
 		await expect(response.json()).resolves.toEqual({ value: platform });
 	});
 
+	it('gives a server action the same context instance its middleware saw', async () => {
+		let contextFromMiddleware: Context | undefined;
+		let contextFromAction: Context | undefined;
+		const middleware: Middleware = async (context, next) => {
+			context.state.set('user', { id: 'u1' });
+			contextFromMiddleware = context;
+			return next();
+		};
+		const { action, handler } = createRpcHandler({
+			middlewares: [middleware],
+			action: () => {
+				contextFromAction = getRequestContext();
+				return contextFromAction.state.get('user');
+			},
+		});
+		const response = await handler(rpcRequest());
+
+		expect(response.status).toBe(200);
+		expect(action).toHaveBeenCalledOnce();
+		await expect(response.json()).resolves.toEqual({ value: { id: 'u1' } });
+		expect(contextFromAction).toBe(contextFromMiddleware);
+	});
+
+	it('exposes the request headers but a consumed body to a server action', async () => {
+		let cookie: string | null = null;
+		let bodyUsed: boolean | undefined;
+		const { handler } = createRpcHandler({
+			action: () => {
+				const { request } = getRequestContext();
+				cookie = request.headers.get('cookie');
+				bodyUsed = request.bodyUsed;
+				return 'ok';
+			},
+		});
+		const response = await handler(rpcRequest({ headers: { Cookie: 'session=abc' } }));
+
+		expect(response.status).toBe(200);
+		expect(cookie).toBe('session=abc');
+		expect(bodyUsed).toBe(true);
+	});
+
+	it('reports no request context outside of a request', () => {
+		expect(tryGetRequestContext()).toBeNull();
+		expect(() => getRequestContext()).toThrow(/outside of a request/);
+	});
+
+	it('does not leak a request context after the response settles', async () => {
+		const { handler } = createRpcHandler();
+		await handler(rpcRequest());
+
+		expect(tryGetRequestContext()).toBeNull();
+	});
+
+	it('names the target function for middleware before the action runs', async () => {
+		let target: unknown;
+		const middleware: Middleware = async (context, next) => {
+			target = context.rpc;
+			return next();
+		};
+		const { action, handler } = createRpcHandler({ middlewares: [middleware] });
+		const response = await handler(rpcRequest());
+
+		expect(response.status).toBe(200);
+		expect(action).toHaveBeenCalledOnce();
+		expect(target).toEqual({ id: 'deadbeef', module: '/src/actions.ts', export: 'action' });
+	});
+
+	it('lets middleware authorize a single server function', async () => {
+		const middleware: Middleware = async (context, next) =>
+			context.rpc?.export === 'action' ? new Response('Forbidden', { status: 403 }) : next();
+		const { action, handler } = createRpcHandler({ middlewares: [middleware] });
+		const response = await handler(rpcRequest());
+
+		expect(response.status).toBe(403);
+		expect(action).not.toHaveBeenCalled();
+	});
+
+	it('names an unknown function id as null rather than inventing a target', async () => {
+		let target: unknown;
+		const middleware: Middleware = async (context, next) => {
+			target = context.rpc;
+			return next();
+		};
+		const { action, handler } = createRpcHandler({ middlewares: [middleware] });
+		const response = await handler(rpcRequest({ hash: 'aaaaaaaa' }));
+
+		expect(response.status).toBe(404);
+		expect(action).not.toHaveBeenCalled();
+		expect(target).toEqual({ id: 'aaaaaaaa', module: null, export: null });
+	});
+
+	it('refuses to boot when two server functions share an id', () => {
+		expect(() =>
+			createRpcHandler({
+				rpcModules: { '/src/actions.ts': { first: () => 'a', second: () => 'b' } },
+			}),
+		).toThrow(/share the id "deadbeef"/);
+	});
+
 	it('does not disclose server-action exception messages', async () => {
 		const secret = 'private database password';
 		const loggedError = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -457,5 +561,25 @@ describe('server-function HTTP security', () => {
 		expect(await response.text()).not.toContain(secret);
 		expect(action).not.toHaveBeenCalled();
 		expect(loggedError).toHaveBeenCalledOnce();
+	});
+});
+
+describe('server-function id registry', () => {
+	it('rejects a second declaration under an id another export already took', () => {
+		const registry = createRpcRegistry();
+		registry.set('deadbeef', ['/src/a.ts', 'run']);
+
+		expect(() => registry.set('deadbeef', ['/src/b.ts', 'run'])).toThrow(
+			/Two server functions share the id "deadbeef"/,
+		);
+		expect(registry.get('deadbeef')).toEqual(['/src/a.ts', 'run']);
+	});
+
+	it('accepts re-registering the same export across a module reload', () => {
+		const registry = createRpcRegistry();
+		registry.set('deadbeef', ['/src/a.ts', 'run']);
+
+		expect(() => registry.set('deadbeef', ['/src/a.ts', 'run'])).not.toThrow();
+		expect(registry.get('deadbeef')).toEqual(['/src/a.ts', 'run']);
 	});
 });

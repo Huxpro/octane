@@ -6,7 +6,7 @@
 import fs from 'node:fs';
 import { chromium } from 'playwright';
 import { summarizeSamples, timingStatForJson } from '../lib/stats.mjs';
-import { DELAY, INDEPENDENT_RESOURCES, RESOURCE_ORDER } from './shared/data.js';
+import { boardSegment, DELAY, INDEPENDENT_RESOURCES, RESOURCE_ORDER } from './shared/data.js';
 
 const ITER = parseInt(process.argv[2] || '10', 10);
 const TARGETS = process.env.TARGETS
@@ -19,14 +19,24 @@ const TARGETS = process.env.TARGETS
 const expectedText = (resource, version) =>
 	`${resource}:v${version}${resource === 'owner' ? `:owner-${version}` : ''}`;
 const expectedSignature = (version) =>
-	RESOURCE_ORDER.map((resource) => `${resource}=${expectedText(resource, version)}`).join('|');
+	RESOURCE_ORDER.map((resource) => `${resource}=${expectedText(resource, version)}`)
+		.concat(boardSegment(version))
+		.join('|');
 
 // These are one-way ceilings, not expected results: any improvement passes.
 // They keep known gaps visible without allowing them to silently worsen.
+//
+// update calls sits at 13, not the 8-call dependency floor: the deferred
+// transition commit holds the whole screen (mixed states 0), and its promoted
+// round after the dependent `owner` resolves re-creates the five warm-started
+// panel fetches instead of dep-hitting them. The app-level cache serves the
+// same promises, so no duplicate network occurs — the ceiling pins the
+// re-creation cost until the resume/warm work restores the floor
+// (docs/transition-deferred-commit-plan.md, P2).
 const OBSERVATION_CEILINGS = {
 	'octane-tsrx': {
 		init: { waves: 2, calls: 8, mixedStates: 0 },
-		update: { waves: 2, calls: 8, mixedStates: 1 },
+		update: { waves: 2, calls: 13, mixedStates: 0 },
 	},
 	react: {
 		init: { mixedStates: 0 },
@@ -45,10 +55,24 @@ function validateIntermediateSignatures(prefix, version, signatures) {
 		}
 		seen.add(signature);
 		const parts = signature.split('|');
-		if (parts.length !== RESOURCE_ORDER.length) {
+		if (parts.length < RESOURCE_ORDER.length) {
 			throw new Error(
 				`${prefix}: transition temporarily removed dashboard resources: ${signature}`,
 			);
+		}
+		// The board (keyed rows + controlled input) is one atomic unit: its
+		// membership differs between versions, so it is either the whole old
+		// segment or the whole new one — anything else means a row or the input
+		// moved ahead of (or behind) the rest of the board mid-transition.
+		const board = parts.slice(RESOURCE_ORDER.length).join('|');
+		const oldBoard = boardSegment(previousVersion);
+		const newBoard = boardSegment(version);
+		if (board === newBoard) {
+			advanced.add('board');
+		} else if (board !== oldBoard) {
+			throw new Error(`${prefix}: the board tore mid-transition: ${board}`);
+		} else if (advanced.has('board')) {
+			throw new Error(`${prefix}: the board reverted to the previous version during transition`);
 		}
 		for (let index = 0; index < RESOURCE_ORDER.length; index++) {
 			const resource = RESOURCE_ORDER[index];

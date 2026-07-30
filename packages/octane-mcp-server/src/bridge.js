@@ -6,14 +6,19 @@ import { join, resolve } from 'node:path';
 // expected union from the workspace manifests, so publishing a new binding
 // without registering it in either catalog fails the mcp-server tests.
 export const KNOWN_BINDINGS = {
+	'usehooks-ts': '@octanejs/usehooks-ts',
 	zustand: '@octanejs/zustand',
 	valtio: '@octanejs/valtio',
 	jotai: '@octanejs/jotai',
+	'@mantine/hooks': '@octanejs/mantine-hooks',
+	'mobx-react-lite': '@octanejs/mobx',
+	'mobx-react': '@octanejs/mobx',
 	'@apollo/client': '@octanejs/apollo-client',
 	'@tanstack/ai-react': '@octanejs/tanstack-ai',
 	'@tanstack/react-devtools': '@octanejs/tanstack-devtools',
 	'@tanstack/react-form': '@octanejs/tanstack-form',
 	'@tanstack/react-query': '@octanejs/tanstack-query',
+	wagmi: '@octanejs/wagmi',
 	'@tanstack/react-router': '@octanejs/tanstack-router',
 	'@tanstack/react-store': '@octanejs/tanstack-store',
 	'@tanstack/react-router-ssr-query': '@octanejs/tanstack-router-ssr-query',
@@ -41,6 +46,7 @@ export const KNOWN_BINDINGS = {
 	'@base-ui-components/react': '@octanejs/base-ui',
 	'@dnd-kit/react': '@octanejs/dnd-kit',
 	sonner: '@octanejs/sonner',
+	'react-error-boundary': '@octanejs/react-error-boundary',
 	shadcn: '@octanejs/shadcn',
 	recharts: '@octanejs/recharts',
 	'@react-three/fiber': '@octanejs/three',
@@ -118,6 +124,7 @@ export const KNOWN_BINDING_PACKAGE_DIRS = new Set(
 export const KNOWN_VANILLA_CORES = {
 	'@apollo/client': '@apollo/client',
 	'@tanstack/react-query': '@tanstack/query-core',
+	wagmi: '@wagmi/core',
 	'@tanstack/react-table': '@tanstack/table-core',
 	'@tanstack/react-virtual': '@tanstack/virtual-core',
 	'@tanstack/react-form': '@tanstack/form-core',

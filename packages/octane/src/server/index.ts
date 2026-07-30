@@ -43,9 +43,13 @@ export {
 
 	// Hooks (server semantics)
 	useState,
+	useLinkedState,
 	useReducer,
 	__useStateWithGetter,
+	__useLinkedStateWithGetter,
 	__useReducerWithGetter,
+	type LinkedStatePrevious,
+	type LinkedStateOptions,
 	useEffect,
 	useLayoutEffect,
 	useInsertionEffect,
@@ -103,6 +107,8 @@ export {
 	// Compiler-emitted codegen helpers (private ABI — see module doc)
 	markChildrenBlock,
 	createElement,
+	createScopedValue,
+	createScopedElement,
 	positionalChildren,
 	escapeHtml,
 	escapeAttr,
@@ -140,6 +146,7 @@ export {
 	ssrBlock,
 	ssrActivity,
 	ssrForBlock,
+	mapSlot,
 	ssrControl,
 	ssrArm,
 	ssrTry,

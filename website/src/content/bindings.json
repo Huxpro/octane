@@ -1,11 +1,12 @@
 [
   {
     "title": "Shared state",
-    "description": "Small stores, atoms, Redux, RTK Query, and TanStack Store.",
+    "description": "Small stores, atoms, observable state, Redux, RTK Query, and TanStack Store.",
     "packages": [
       "@octanejs/zustand",
       "@octanejs/valtio",
       "@octanejs/jotai",
+      "@octanejs/mobx",
       "@octanejs/redux",
       "@octanejs/redux-toolkit",
       "@octanejs/tanstack-store"
@@ -26,19 +27,27 @@
     ]
   },
   {
+    "title": "Web3",
+    "description": "Wallet connection, chain state, contract reads, signing, and transactions.",
+    "packages": ["@octanejs/wagmi"]
+  },
+  {
     "title": "UI and interaction",
-    "description": "Primitives, positioning, motion, drag and drop, toasts, command menus, icons, keyboard shortcuts, and event pacing.",
+    "description": "Primitives, browser hooks, positioning, motion, drag and drop, toasts, command menus, icons, keyboard shortcuts, and event pacing.",
     "packages": [
       "@octanejs/radix",
       "@octanejs/base-ui",
       "@octanejs/aria",
+      "@octanejs/mantine-hooks",
       "@octanejs/floating-ui",
       "@octanejs/motion",
       "@octanejs/dnd-kit",
       "@octanejs/sonner",
+      "@octanejs/react-error-boundary",
       "@octanejs/cmdk",
       "@octanejs/shadcn",
       "@octanejs/lucide",
+      "@octanejs/usehooks-ts",
       "@octanejs/tanstack-hotkeys",
       "@octanejs/tanstack-pacer"
     ]

@@ -1,7 +1,8 @@
 // Focused contract for the newcomer-oriented Core APIs guide. This file owns
 // the route's learning structure, local navigation, and real interactive
 // examples so the unusually large page does not need duplicate generic smoke
-// coverage.
+// coverage. Its timeout absorbs the website job's background build contention
+// without serializing that build and this test.
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, render, waitFor, within } from '@octanejs/testing-library';
 import { RouterProvider, createMemoryHistory } from '@octanejs/tanstack-router';
@@ -65,6 +66,8 @@ describe('Core APIs documentation', () => {
 			expect(container.querySelector(`[data-demo="${id}"]`)).toBeTruthy();
 		}
 		for (const id of [
+			'use-linked-state',
+			'strong-mode',
 			'use-sync-external-store',
 			'hydrate-when',
 			'hydrate-split',
@@ -99,6 +102,9 @@ describe('Core APIs documentation', () => {
 		expect(highlightedSource.some((source) => source.includes('createRoot(container)'))).toBe(true);
 		expect(highlightedSource.some((source) => source.includes('renderToString(App'))).toBe(true);
 		for (const sourceMarker of [
+			'useLinkedState(props.user.id, () => props.user.name)',
+			"'use strong';",
+			'nextItems.find((item) => item.id === previous?.value?.id)',
 			'export function NetworkStatus()',
 			'<Hydrate when={visible({ rootMargin:',
 			'<Hydrate when={idle()} split={false}>',
@@ -126,6 +132,9 @@ describe('Core APIs documentation', () => {
 		expect(groupedApiCodeCount('isChildrenBlock')).toBe(3);
 		expect(
 			apiRows.some((row) => row.querySelector(':scope > code')?.textContent === 'Hydrate'),
+		).toBe(true);
+		expect(
+			apiRows.some((row) => row.querySelector(':scope > code')?.textContent === 'useLinkedState'),
 		).toBe(true);
 
 		const active = container.querySelector(
@@ -386,5 +395,5 @@ describe('Core APIs documentation', () => {
 			});
 			expect(mobileToggle.getAttribute('aria-expanded')).toBe('false');
 		}
-	});
+	}, 60_000);
 });

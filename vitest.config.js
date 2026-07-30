@@ -239,6 +239,12 @@ export default defineConfig({
 			{
 				test: {
 					name: 'octane',
+					// The individual cases here run in milliseconds; the 5s default was
+					// being tripped by machine contention, not by the code under test
+					// (control-flow, hmr, and differential files each failed this way in
+					// a full run while passing alone). A 20s ceiling absorbs a saturated
+					// machine and still catches a genuine hang.
+					testTimeout: 20_000,
 					include: ['packages/octane/tests/**/*.test.tsrx', 'packages/octane/tests/**/*.test.ts'],
 					exclude: [
 						...configDefaults.exclude,
@@ -318,9 +324,19 @@ export default defineConfig({
 				// are unaffected — they control their own options).
 				test: {
 					name: 'octane-prod',
+					// Same contention budget as the `octane` project above: this one re-runs
+					// the runtime suite, so it is on the machine at the same moment and
+					// fails the same way.
+					testTimeout: 20_000,
 					include: ['packages/octane/tests/**/*.test.tsrx', 'packages/octane/tests/**/*.test.ts'],
 					exclude: [
 						...configDefaults.exclude,
+						// tests/compiler/ holds the suites that never mount a component: they
+						// hand the compiler a source string and their own options, so the
+						// plugin config and OCTANE_TEST_COMPILE_MODE above cannot reach them
+						// and a second run reproduces the first one exactly. A test that
+						// mounts anything does not belong in that directory.
+						'packages/octane/tests/compiler/**',
 						'packages/octane/tests/profiling-runtime.test.tsrx',
 						'packages/octane/tests/devtools-runtime.test.tsrx',
 						'packages/octane/tests/devtools-transitions.test.tsrx',
@@ -673,6 +689,45 @@ export default defineConfig({
 						{
 							find: /^@octanejs\/i18next\/(.*)$/,
 							replacement: resolve(import.meta.dirname, 'packages/i18next/src') + '/$1.js',
+						},
+					],
+				},
+			},
+			{
+				test: {
+					name: 'usehooks-ts',
+					include: ['packages/usehooks-ts/tests/**/*.test.ts'],
+					exclude: ['packages/usehooks-ts/tests/ssr.test.ts'],
+					environment: 'jsdom',
+					globals: false,
+				},
+				plugins: [octane()],
+				resolve: {
+					alias: [
+						{
+							find: /^@octanejs\/usehooks-ts$/,
+							replacement: resolve(import.meta.dirname, 'packages/usehooks-ts/src/index.ts'),
+						},
+					],
+				},
+			},
+			{
+				test: {
+					name: 'usehooks-ts-ssr',
+					include: ['packages/usehooks-ts/tests/ssr.test.ts'],
+					environment: 'node',
+					globals: false,
+				},
+				plugins: [octane({ ssr: true })],
+				resolve: {
+					alias: [
+						{
+							find: /^octane$/,
+							replacement: resolve(import.meta.dirname, 'packages/octane/src/server/index.ts'),
+						},
+						{
+							find: /^@octanejs\/usehooks-ts$/,
+							replacement: resolve(import.meta.dirname, 'packages/usehooks-ts/src/index.ts'),
 						},
 					],
 				},
@@ -1138,6 +1193,27 @@ export default defineConfig({
 			},
 			{
 				test: {
+					name: 'wagmi',
+					include: ['packages/wagmi/tests/**/*.test.ts'],
+					environment: 'jsdom',
+					globals: false,
+				},
+				plugins: [octane()],
+				resolve: {
+					alias: [
+						{
+							find: /^@octanejs\/wagmi$/,
+							replacement: resolve(import.meta.dirname, 'packages/wagmi/src/index.ts'),
+						},
+						{
+							find: /^@octanejs\/wagmi\/(.*)$/,
+							replacement: resolve(import.meta.dirname, 'packages/wagmi/src') + '/$1.ts',
+						},
+					],
+				},
+			},
+			{
+				test: {
 					name: 'tanstack-query',
 					include: ['packages/tanstack-query/tests/**/*.test.ts'],
 					environment: 'jsdom',
@@ -1455,8 +1531,9 @@ export default defineConfig({
 					environment: 'jsdom',
 					// The differential oracle (real recharts + vendored d3) is expensive
 					// to load and charts settle over many raf rounds — slow CI runners
-					// tripped the 5s default on the file's first test.
-					testTimeout: 30_000,
+					// can spend more than 30s transforming the oracle while the build
+					// integration projects saturate the machine.
+					testTimeout: 60_000,
 					// Differential precompile for recharts fixtures: rewrites
 					// `@octanejs/recharts` → `recharts` so the React side runs the real
 					// recharts as the byte-for-byte SVG oracle.
@@ -2232,6 +2309,13 @@ export default defineConfig({
 					name: 'cmdk',
 					include: ['packages/cmdk/tests/**/*.test.ts', '!packages/cmdk/tests/ssr/**/*.test.ts'],
 					environment: 'jsdom',
+					// The differential oracle mounts real cmdk beside the Octane build.
+					// In isolation the whole project finishes in ~5.6s, but inside a full
+					// run those two cases overran the 5s default purely from machine
+					// contention — a green suite reporting itself broken. Same budget as
+					// the other differential-bearing projects.
+					testTimeout: 30_000,
+					hookTimeout: 30_000,
 					// Fails any test that logs a console.error (octane reports effect
 					// exceptions there without failing the run).
 					setupFiles: ['packages/cmdk/tests/_setup.ts'],
@@ -2384,9 +2468,13 @@ export default defineConfig({
 				},
 			},
 			{
+				plugins: [octane()],
 				test: {
 					name: 'docusaurus',
-					include: ['packages/docusaurus/tests/**/*.test.ts'],
+					include: [
+						'packages/docusaurus/tests/**/*.test.ts',
+						'!packages/docusaurus/tests/ssr/**/*.test.ts',
+					],
 					environment: 'node',
 					globals: false,
 				},
@@ -2395,6 +2483,39 @@ export default defineConfig({
 						{
 							find: /^@octanejs\/mdx\/compile$/,
 							replacement: resolve(import.meta.dirname, 'packages/mdx/src/compile.js'),
+						},
+						{
+							find: /^@octanejs\/remix-router$/,
+							replacement: resolve(import.meta.dirname, 'packages/remix-router/src/index.ts'),
+						},
+					],
+				},
+			},
+			{
+				plugins: [octane({ ssr: true })],
+				test: {
+					name: 'docusaurus-ssr',
+					include: ['packages/docusaurus/tests/ssr/**/*.test.ts'],
+					environment: 'node',
+					globals: false,
+				},
+				resolve: {
+					alias: [
+						{
+							find: /^octane$/,
+							replacement: resolve(import.meta.dirname, 'packages/octane/src/server/index.ts'),
+						},
+						{
+							find: /^@octanejs\/docusaurus\/server$/,
+							replacement: resolve(import.meta.dirname, 'packages/docusaurus/src/server.js'),
+						},
+						{
+							find: /^@octanejs\/mdx\/compile$/,
+							replacement: resolve(import.meta.dirname, 'packages/mdx/src/compile.js'),
+						},
+						{
+							find: /^@octanejs\/remix-router$/,
+							replacement: resolve(import.meta.dirname, 'packages/remix-router/src/index.ts'),
 						},
 					],
 				},
@@ -2524,13 +2645,26 @@ export default defineConfig({
 				test: {
 					name: 'website-unit',
 					include: ['website/tests/**/*.test.ts'],
+					// A project that declares `exclude` makes Vitest ignore the CLI
+					// `--exclude` flag entirely. CI's sharded suite therefore CANNOT drop
+					// a spec in this project by name the way it does for every other
+					// quarantined path, and its `--exclude "$WEBSITE_DOCS_SPEC"` was
+					// silently a no-op — core-apis-docs ran in a shard AND in the
+					// website_e2e job that owns it. The shard sets the variable below to
+					// ask for the exclusion; website_e2e does not, so it still runs there.
 					exclude: [
-						'website/tests/core-apis-docs.test.ts',
 						'website/tests/ssr-smoke.test.ts',
 						'website/tests/ssr-hydration.e2e.test.ts',
+						...(process.env.OCTANE_EXCLUDE_WEBSITE_DOCS === '1'
+							? ['website/tests/core-apis-docs.test.ts']
+							: []),
 					],
 					environment: 'jsdom',
+					setupFiles: ['website/tests/setup/unit.ts'],
 					globals: false,
+					// Route tests render the real documentation graph. The heaviest
+					// Core APIs case owns a larger, contention-safe timeout inline.
+					testTimeout: 15_000,
 				},
 				// Unit tests compile MDX and TSRX directly. Production SSR, hydration,
 				// routing, and deployment are owned by @octanejs/tanstack-start; the
@@ -2540,11 +2674,10 @@ export default defineConfig({
 			{
 				test: {
 					name: 'website-integration',
-					include: [
-						'website/tests/core-apis-docs.test.ts',
-						'website/tests/ssr-smoke.test.ts',
-						'website/tests/ssr-hydration.e2e.test.ts',
-					],
+					include: ['website/tests/ssr-smoke.test.ts', 'website/tests/ssr-hydration.e2e.test.ts'],
+					// One production build and one preview server for both specs; see
+					// the file header for why they no longer build for themselves.
+					globalSetup: ['./website/tests/setup/production-server.ts'],
 					environment: 'jsdom',
 					globals: false,
 					// Vitest defaults ordinary tests to five seconds. This project
@@ -2552,12 +2685,147 @@ export default defineConfig({
 					// coverage, so give unannotated integration cases the same
 					// budget as the SSR smoke test.
 					testTimeout: 15_000,
-					// The SSR and browser specs write website/.output, while the
-					// route-level docs test renders the full application. Keep this
-					// integration boundary serial while ordinary tests stay parallel.
+					// The production build no longer blocks globalSetup (see
+					// tests/setup/production-server.ts); both specs wait for it in a
+					// `beforeAll` instead. That hook is therefore as long as a cold
+					// website build, which the 10s hook default cannot cover.
+					hookTimeout: 320_000,
+					// Browser cases inside the e2e spec run concurrently (page-per-case
+					// against a shared server). Four keeps the Vite dev server's on-demand
+					// transform queue from becoming the bottleneck and leaves headroom, so
+					// timing-sensitive hover and layout cases are not measured on a
+					// saturated machine.
+					maxConcurrency: 4,
+					// Both specs drive the shared preview server and the e2e spec also
+					// owns a Vite dev server, a browser, and source edits for its HMR
+					// case. Keep the FILE boundary serial even though cases within a file
+					// are concurrent.
 					fileParallelism: false,
 				},
 				plugins: [octaneMdx(websiteMdxOptions), octane()],
+			},
+			{
+				test: {
+					name: 'react-error-boundary',
+					include: [
+						'packages/react-error-boundary/tests/**/*.test.ts',
+						'!packages/react-error-boundary/tests/ssr/**/*.test.ts',
+					],
+					environment: 'jsdom',
+					globals: false,
+				},
+				plugins: [octane()],
+				resolve: {
+					alias: [
+						{
+							find: /^@octanejs\/react-error-boundary$/,
+							replacement: resolve(
+								import.meta.dirname,
+								'packages/react-error-boundary/src/index.ts',
+							),
+						},
+					],
+				},
+			},
+			{
+				test: {
+					name: 'mantine-hooks',
+					include: ['packages/mantine-hooks/tests/conformance/**/*.test.ts'],
+					environment: 'jsdom',
+					globals: false,
+				},
+				plugins: [octane()],
+				resolve: {
+					alias: [
+						{
+							find: /^@octanejs\/mantine-hooks$/,
+							replacement: resolve(import.meta.dirname, 'packages/mantine-hooks/src/index.ts'),
+						},
+					],
+				},
+			},
+			{
+				test: {
+					name: 'react-error-boundary-ssr',
+					include: ['packages/react-error-boundary/tests/ssr/**/*.test.ts'],
+					environment: 'node',
+					globals: false,
+				},
+				plugins: [octane({ ssr: true })],
+				resolve: {
+					alias: [
+						{
+							find: /^octane$/,
+							replacement: resolve(import.meta.dirname, 'packages/octane/src/server/index.ts'),
+						},
+						{
+							find: /^@octanejs\/react-error-boundary\/server$/,
+							replacement: resolve(
+								import.meta.dirname,
+								'packages/react-error-boundary/src/server.tsrx',
+							),
+						},
+					],
+				},
+			},
+			{
+				test: {
+					name: 'mantine-hooks-ssr',
+					include: ['packages/mantine-hooks/tests/ssr/**/*.test.ts'],
+					environment: 'node',
+					globals: false,
+				},
+				plugins: [octane({ ssr: true })],
+				resolve: {
+					alias: [
+						{
+							find: /^octane$/,
+							replacement: resolve(import.meta.dirname, 'packages/octane/src/server/index.ts'),
+						},
+						{
+							find: /^@octanejs\/mantine-hooks$/,
+							replacement: resolve(import.meta.dirname, 'packages/mantine-hooks/src/index.ts'),
+						},
+					],
+				},
+			},
+			{
+				test: {
+					name: 'mobx',
+					include: ['packages/mobx/tests/conformance/**/*.test.ts'],
+					environment: 'jsdom',
+					globals: false,
+				},
+				plugins: [octane()],
+				resolve: {
+					alias: [
+						{
+							find: /^@octanejs\/mobx$/,
+							replacement: resolve(import.meta.dirname, 'packages/mobx/src/index.ts'),
+						},
+					],
+				},
+			},
+			{
+				test: {
+					name: 'mobx-ssr',
+					include: ['packages/mobx/tests/ssr/**/*.test.ts'],
+					environment: 'node',
+					globals: false,
+				},
+				plugins: [octane({ ssr: true })],
+				resolve: {
+					alias: [
+						{
+							find: /^octane$/,
+							replacement: resolve(import.meta.dirname, 'packages/octane/src/server/index.ts'),
+						},
+						{
+							find: /^@octanejs\/mobx$/,
+							replacement: resolve(import.meta.dirname, 'packages/mobx/src/index.ts'),
+						},
+					],
+				},
 			},
 			{
 				test: {
@@ -2577,8 +2845,8 @@ export default defineConfig({
 					include: ['website-mcp/tests/built-handler.e2e.test.ts'],
 					environment: 'node',
 					globals: false,
-					// This spec writes website-mcp/dist and .vercel/output before
-					// importing the emitted server entry.
+					// The spec builds an OS-temporary mirror before importing the
+					// emitted server entry; keep that one build/test file serial.
 					fileParallelism: false,
 				},
 			},

@@ -82,6 +82,33 @@ await save(getDraft());
 
 Ordinary two-item destructuring stays on the normal two-item path.
 
+When local state should reset or adjust after another value changes, Octane adds
+`useLinkedState`:
+
+```tsrx
+const [name, setName] = useLinkedState(user.id, () => user.name);
+```
+
+The name remains editable while `user.id` stays the same. When the ID changes, the hook
+returns the next user's name immediately. There is no effect, render-time setter, or
+extra render to correct the old value. The calculation can also read the previous
+`{ source, value }`, which is useful when a selection should survive if it is still
+valid.
+
+<h2 id="strong-mode">Strong mode is optional</h2>
+
+Strong mode helps catch state and ref patterns that React applications sometimes
+use as workarounds. Enable it for a single module with `"use strong"` before its
+imports, or across your application with `compiler: { strong: true }` in
+`octane.config.ts`.
+
+The compiler rejects state updates during render, state updates made directly
+while an effect is being set up, and writes to `ref.current` during render. Use
+`useLinkedState` when editable state should follow a changing prop. Event
+handlers, effects that synchronize external systems, and normal DOM or timer
+refs remain supported. Installed dependencies keep their existing behavior
+unless they opt in themselves.
+
 <h2 id="events-and-dom">Events come from the browser</h2>
 
 Handlers receive the browser's real `Event` object, not a synthetic wrapper. Bubbling,
@@ -185,23 +212,6 @@ const userPromise = fetchUser(id);
 const thumbnailPromise = userPromise.then((user) => user.thumbnail());
 <Avatar thumbnail={use(thumbnailPromise)} />
 ```
-
-`userPromise` is keyed on `id`, and the derived `.then` link is keyed on
-`userPromise`'s identity — so nothing refetches on an unrelated re-render or a
-suspense replay, the whole chain refetches exactly when `id` changes, and the
-chain's head joins the prefetch (`__warm`) plan an ancestor can start early.
-React re-runs an uncached creation on every render attempt (with a dev
-warning), and the React Compiler stabilizes the promise identity but still
-unwraps serially. In production output these memoized creations — and
-`useMemo`/`useCallback` themselves — compile to inline caches: a dependency
-hit costs a few comparisons with no closure, dependency-array, or hook-map
-allocations.
-
-Two known gaps are tracked while this area is under active work: independence
-analysis stops at module boundaries (independent `use()` reads inside an
-imported custom hook still serialize), and a transition-wrapped update
-currently reveals newly-loaded content progressively — never rolling back —
-where React holds the previous screen until the whole update completes.
 
 <h2 id="errors-and-server">Errors and server rendering</h2>
 
