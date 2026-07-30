@@ -60,7 +60,6 @@ export function Swiper({
 		};
 	}, []);
 
-
 	const updateSwiperStyle = (offset: number) => {
 		'main thread';
 		const container = containerRef.current;
