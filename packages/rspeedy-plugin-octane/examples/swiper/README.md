@@ -44,14 +44,15 @@ Open the printed `main.lynx.bundle?fullscreen=true` URL with Lynx Explorer 3.9+.
   (auto-advance smoke test);
 - rendering matches the ReactLynx `EasingDefault` bundle side-by-side.
 
-## Known octane limitation found by this port
+## Octane defect found (and fixed) by this port
 
-With the default synchronous first screen, `<image>` nodes that start
-**offscreen** in the adopted first tree never paint after the container is
-translated (their native boxes are laid out, `src` is set, and the resource
-loads — the paint never invalidates). Slides 2+ therefore show black on
-Explorer while slide 1 is fine; the ReactLynx original paints all slides. The
-same tree **mounted from the background graph** (for example behind a
-`useEffect`-driven `@if (ready)`) paints every slide correctly, isolating the
-defect to octane's first-tree adoption path (its Milestone 6 exit criteria
-already list native adoption behavior as unproven).
+This port originally rendered every slide beyond the first as black: elements
+created during main-thread script evaluation bake in unconfigured PageConfig
+defaults (`defaultOverflowVisible` above all), because native installs the
+decoded PageConfig on the ElementManager only after evaluation
+(`TemplateAssembler::DidVMExecute`). The translated `display: linear`
+container therefore clipped everything outside its own bounds, and no later
+style or attribute touch could recover the platform views. Fixed by deferring
+the application first screen to the engine's `__RenderPage` lifecycle —
+`firstScreenRender: 'engine'` (octanejs/octane#419); with that fix every slide
+paints identically to the ReactLynx original.
