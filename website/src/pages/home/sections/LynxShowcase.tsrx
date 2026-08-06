@@ -81,9 +81,14 @@ export function LynxShowcase() @{
 			/* The Link renders its own <a>, so a scoped class selector never lands
 			   on it — reach it through :global, the same way the other sections
 			   style their links. */
+			/* 375px is the viewport these examples are authored for, and the
+			   preview's responsive path maps `rpx` 1:1 at exactly that width — so
+			   the phone shows the example as drawn rather than a re-based
+			   approximation of it. Narrower screens re-base, which is the honest
+			   trade for fitting. */
 			.lynx-cards :global(a.lynx-card) {
 				display: block;
-				width: min(16rem, 100%);
+				width: min(375px, 100%);
 				color: inherit;
 			}
 			.lynx-cards :global(a.lynx-card:hover) {
