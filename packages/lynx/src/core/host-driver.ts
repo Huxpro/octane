@@ -1942,8 +1942,16 @@ function firstTreeOwner<Node extends LynxElementRef>(
  * can retire an unadoptable first screen quietly and still surface a broken
  * host. A native `<list>` is the one such composition today: the platform
  * materializes its rows through the `componentAtIndex`/`enqueueComponent`
- * callbacks created for `listPAPI.create`, and it owns the resulting cell state,
- * so neither can cross to the background the way a described node can.
+ * callbacks created for `listPAPI.create`, and it owns the resulting cell state.
+ * Those callbacks are per-instance closures with no cross-thread handle space, so
+ * a described tree has nothing to hand over. That is a limit of this design, not
+ * an inherent one — a list can cross such a boundary when the callbacks stay
+ * host-local and only a descriptor keyed by a stable id travels.
+ *
+ * The portal guards below keep throwing rather than joining this channel because
+ * they are unreachable from the first-screen path: the main renderer rejects a
+ * portal while rendering, long before a host container exists. They defend only
+ * a direct call to this function, where a fault is the right report.
  */
 export function captureLynxFirstTree<Node extends LynxElementRef>(
 	container: LynxHostContainer<Node>,

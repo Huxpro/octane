@@ -44,11 +44,16 @@ duplicate, readiness is announced immediately with the same `main-ready` signal,
 and no error is raised.
 
 The synchronous first screen is still unavailable for pages containing a `<list>`;
-this makes that outcome ordinary and quiet rather than a reported defect. Two
-things are deliberately left open. The render is still performed before the
-`<list>` is discovered, because nothing knows it is coming until the batch has
-been applied — avoiding that needs a static signal from the compiler, which would
-not cover dynamically composed trees and so would need this runtime behavior
-underneath it anyway. And portals reject capture through the same channel; they
-look like the same shape, but no reported case drove this change, so they were
-left throwing rather than reclassified on speculation.
+this makes that outcome ordinary and quiet rather than a reported defect.
+
+One thing is deliberately left open. The first screen is still built and then torn
+back out, and that is avoidable: the batch is prepared before any of it is
+applied, and preparation already stages each node's type, so the decline could
+happen before a single element is created. Taking it there needs the prepared
+batch to publish what it staged, which is a wider change than this fix; until
+then a page with a `<list>` pays for a screen it never keeps.
+
+Portals reject capture through the same function and keep throwing. That is not a
+half-finished migration: the main renderer rejects a portal while rendering, so
+those guards are unreachable from the first-screen path and defend only a direct
+call, where a fault is the right report.

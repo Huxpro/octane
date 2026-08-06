@@ -1074,7 +1074,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	});
 	const hostGlobals = rawTarget as Record<string, unknown>;
 	const previousRunWorklet = hostGlobals.runWorklet;
+	// Captured before the wrapper is installed, because installing it creates an
+	// own property either way. `papi` resolved the same entry earlier and holds it
+	// bound, so Octane's own commit flushes deliberately bypass this wrapper —
+	// they never run inside a host dispatch.
 	const hostFlush = hostGlobals.__FlushElementTree as (...values: unknown[]) => void;
+	const hostOwnsFlush = Object.prototype.hasOwnProperty.call(hostGlobals, '__FlushElementTree');
 
 	// A host may dispatch a `'main thread'` event handler from inside its own
 	// element-tree work rather than from a clean stack. Lynx for Web does: its
@@ -1082,18 +1087,20 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	// `runWorklet`, so the host's own `__FlushElementTree` — the documented way a
 	// main-thread handler publishes its mutations — throws "recursive use of an
 	// object detected which would lead to unsafe aliasing in rust" for the whole
-	// life of the page. The mutations themselves land, because that host applies
-	// each element write eagerly; only the flush's own bookkeeping is lost, and
-	// the throw escapes through the host's frames as an uncaught error once per
-	// event.
+	// life of the page, and the throw escapes through the host's frames as an
+	// uncaught error once per event. Most of that host's element PAPIs take the
+	// same borrow and would fail the same way; only the ones backed by free wasm
+	// functions are unaffected.
 	//
-	// The flush is the one element PAPI whose effect survives being moved past
-	// the end of the dispatch, so take it there when the host cannot take it
-	// inline. The inline call is still attempted first, which leaves every host
-	// that permits a re-entrant flush on exactly its previous timing; only a host
-	// that rejects one latches into the deferred path. Deferred requests coalesce
-	// onto a single microtask, so a handler bound to a per-frame event flushes
-	// once per checkpoint instead of queueing one job per event.
+	// This wraps the flush alone, not because the others are safe, but because
+	// the flush is the only one whose effect survives being moved past the end of
+	// the dispatch — every other PAPI has a return value or an ordering the
+	// handler depends on. The inline call is still attempted first, which leaves
+	// every host that permits a re-entrant flush on exactly its previous timing;
+	// only a host that rejects one latches into the deferred path. A deferred
+	// request holds the latest arguments and publishes once per microtask
+	// checkpoint, so a handler bound to a per-frame event does not queue one job
+	// per event.
 	let hostDispatchDepth = 0;
 	let hostTakesInlineFlush = true;
 	let deferredFlush: readonly unknown[] | null = null;
@@ -1113,6 +1120,8 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		}
 	};
 
+	// Last request wins: a second flush inside one checkpoint replaces the first
+	// rather than queueing behind it, so its `node`/`options` are what publish.
 	const deferHostFlush = (args: readonly unknown[]): void => {
 		const alreadyScheduled = deferredFlush !== null;
 		deferredFlush = args;
@@ -1151,7 +1160,10 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		// A flush still owed to a torn-down page has nothing left to publish.
 		deferredFlush = null;
 		if (hostGlobals.__FlushElementTree === installedFlush) {
-			hostGlobals.__FlushElementTree = hostFlush;
+			// Restoring by assignment would leave a permanent own-property shadow on a
+			// target that only inherits the PAPI, which an explicit `target` may.
+			if (hostOwnsFlush) hostGlobals.__FlushElementTree = hostFlush;
+			else delete hostGlobals.__FlushElementTree;
 		}
 		if (hostGlobals.runWorklet !== installedRunWorklet) return;
 		if (previousRunWorklet === undefined) delete hostGlobals.runWorklet;
@@ -1309,6 +1321,32 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			if (treeComplete && sourceComplete) return true;
 		}
 		return false;
+	};
+
+	/**
+	 * Take a rendered first screen back out and release the background, whether it
+	 * was declined as unadoptable or lost to a fault. Both outcomes retain the
+	 * source first so a throwing remove/flush stays retryable rather than leaking
+	 * an unreachable tree the background would then duplicate.
+	 */
+	const retireFirstScreen = (
+		source: LynxHostContainer<Node> | null,
+		settled: 'skipped' | 'failed',
+		reason: string,
+	): void => {
+		firstScreenState = 'cleanup-pending';
+		firstScreenSyncReady = true;
+		if (firstTree === null && source !== null) failedFirstScreenSource = source;
+		if (retryFirstScreenCleanup()) {
+			firstScreenState = settled;
+		} else {
+			report(
+				new Error(
+					`Octane Lynx withheld background readiness because ${reason} first-screen cleanup remains incomplete.`,
+				),
+			);
+		}
+		announceReady();
 	};
 
 	const forceCloseWorkletRuntime = (): void => {
@@ -1738,24 +1776,15 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				// The page rendered correctly but holds a composition the background
 				// cannot adopt — today a native `<list>`, whose rows the platform
 				// materializes through main-local callbacks. That is a property of the
-				// page, not a broken host, so the first screen is retired the same way
-				// an entry that never rendered one settles: the nodes come back out so
-				// the background does not duplicate them, readiness is announced, and
-				// no error is raised against an application that is entitled to the
-				// element. `null` tells the caller its synchronous paint was declined.
-				failedFirstScreenSource = source;
-				firstScreenSyncReady = true;
-				if (disposeFailedFirstScreenSource()) {
-					firstScreenState = 'skipped';
-				} else {
-					firstScreenState = 'cleanup-pending';
-					report(
-						new Error(
-							'Octane Lynx withheld background readiness because unadoptable first-screen cleanup remains incomplete.',
-						),
-					);
-				}
-				announceReady();
+				// page, not a broken host, so it settles as `skipped` rather than
+				// `failed` and raises no error against an application that is entitled
+				// to the element. `null` tells the caller its paint was declined.
+				//
+				// The batch is built before any of this is applied, so a `<list>` is in
+				// principle knowable before the tree is created; declining that early
+				// would avoid building and tearing down a first screen that is never
+				// kept. That needs the prepared batch to publish what it stages.
+				retireFirstScreen(source, 'skipped', 'unadoptable');
 				return null;
 			}
 			firstTree = captured;
@@ -1764,24 +1793,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			announceReady();
 			return result;
 		} catch (error) {
-			firstScreenState = 'cleanup-pending';
-			firstScreenSyncReady = true;
-			if (firstTree === null && source !== null) {
-				// Retain the only native ownership journal before cleanup. A throwing
-				// remove/flush must remain retryable rather than leaking an unreachable
-				// first tree and allowing the background root to duplicate it.
-				failedFirstScreenSource = source;
-			}
-			if (retryFirstScreenCleanup()) {
-				firstScreenState = 'failed';
-			} else {
-				report(
-					new Error(
-						'Octane Lynx withheld background readiness because failed first-screen cleanup remains incomplete.',
-					),
-				);
-			}
-			announceReady();
+			retireFirstScreen(source, 'failed', 'failed');
 			throw report(error, 'Octane Lynx could not render its synchronous first screen.');
 		} finally {
 			firstScreenRenderInProgress = false;

@@ -692,6 +692,30 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		]);
 	});
 
+	it('retries cleanup for a declined first screen instead of withholding readiness', () => {
+		let removalFailures = 0;
+		const { dom, main } = installEnvironment((target) => {
+			const remove = target.__RemoveElement as (parent: object, child: object) => unknown;
+			target.__RemoveElement = (parent: object, child: object) => {
+				if (removalFailures++ < 1) throw new Error('transient declined-source remove failure');
+				return remove(parent, child);
+			};
+		});
+		const inbound: LynxBackgroundInboundMessage[] = [];
+		mainContext().addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
+			inbound.push(event.data as LynxBackgroundInboundMessage);
+		});
+
+		expect(firstScreenRoot.render(FeedScene, {})).toBeNull();
+
+		// A removal that fails once and succeeds on retry is still an ordinary
+		// decline: the nodes come out and the background is released immediately.
+		expect(removalFailures).toBeGreaterThan(1);
+		expect(dom.window.document.querySelector('#feed-shell')).toBeNull();
+		expect(main.firstScreenSnapshot()).toBeNull();
+		expect(inbound).toEqual([expect.objectContaining({ type: 'main-ready', request: 0 })]);
+	});
+
 	it('retains a failed pre-capture source and retries cleanup for background readiness', () => {
 		const captureFailure = new Error('capture unique ID failed');
 		let uniqueIdCalls = 0;

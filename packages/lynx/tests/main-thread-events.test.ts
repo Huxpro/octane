@@ -791,23 +791,16 @@ describe.sequential('Lynx main-thread worklet dispatch', () => {
 	interface FlushHost {
 		readonly controller: LynxMainThreadController;
 		readonly flushes: readonly (readonly unknown[])[];
+		readonly globals: Record<string, unknown>;
 		dispatch(worklet: unknown, args?: readonly unknown[]): unknown;
-		endDispatch(): void;
 		close(): void;
 	}
 
-	let flushHost: { close(): void } | null = null;
-	// An authored `'main thread'` handler publishes through whichever object the
-	// runtime installed the element PAPI onto. That is the bare global on a real
-	// host, but the Lynx testing environment rebuilds `globalThis` from its own
-	// per-thread bag on every thread switch, so these hosts hand the runtime an
-	// object that survives those switches and the handlers read the same one.
-	let hostGlobals: Record<string, unknown> | null = null;
+	let flushHost: FlushHost | null = null;
 
 	afterEach(() => {
 		flushHost?.close();
 		flushHost = null;
-		hostGlobals = null;
 	});
 
 	/**
@@ -825,8 +818,12 @@ describe.sequential('Lynx main-thread worklet dispatch', () => {
 		});
 		const env = globalThis.lynxTestingEnv;
 		env.switchToMainThread();
+		// An authored `'main thread'` handler publishes through whichever object the
+		// runtime installed the element PAPI onto — the bare global on a real host.
+		// The Lynx testing environment rebuilds `globalThis` from its own per-thread
+		// bag on every thread switch, so the runtime is handed an object that
+		// survives those switches and the handlers read that same one.
 		const target = Object.create(globalThis) as Record<string, unknown>;
-		hostGlobals = target;
 		const hostFlush = target.__FlushElementTree as (...args: unknown[]) => void;
 		target.__FlushElementTree = (...args: unknown[]) => {
 			if (dispatching && rejectsInlineFlush) {
@@ -846,12 +843,15 @@ describe.sequential('Lynx main-thread worklet dispatch', () => {
 		const host: FlushHost = {
 			controller,
 			flushes,
+			globals: target,
 			dispatch(worklet, args) {
+				// The borrow the host holds is released as its dispatch unwinds.
 				dispatching = true;
-				return runWorklet(worklet, args);
-			},
-			endDispatch() {
-				dispatching = false;
+				try {
+					return runWorklet(worklet, args);
+				} finally {
+					dispatching = false;
+				}
 			},
 			close() {
 				controller.close();
@@ -864,21 +864,20 @@ describe.sequential('Lynx main-thread worklet dispatch', () => {
 		return host;
 	}
 
-	function activateFlushingHandler(id: string): unknown {
+	function activateFlushingHandler(id: string, host: FlushHost): unknown {
 		const descriptor = registerMainThreadWorklet(id, undefined, function () {
-			(hostGlobals as unknown as { __FlushElementTree(): void }).__FlushElementTree();
+			(host.globals as unknown as { __FlushElementTree(): void }).__FlushElementTree();
 		});
 		return activateLynxMainThreadWorklet(descriptor);
 	}
 
 	it('publishes a handler flush the host refuses to take during its own dispatch', async () => {
 		const host = installFlushHost(true);
-		const handler = activateFlushingHandler('test:flush-during-dispatch');
+		const handler = activateFlushingHandler('test:flush-during-dispatch', host);
 
 		expect(() => host.dispatch(handler)).not.toThrow();
 		expect(host.flushes).toEqual([]);
 
-		host.endDispatch();
 		await Promise.resolve();
 		expect(host.flushes).toEqual([[]]);
 		expect(host.controller.diagnostics()).toEqual([]);
@@ -886,7 +885,7 @@ describe.sequential('Lynx main-thread worklet dispatch', () => {
 
 	it('coalesces the flushes of a handler that fires repeatedly within one dispatch', async () => {
 		const host = installFlushHost(true);
-		const handler = activateFlushingHandler('test:flush-every-frame');
+		const handler = activateFlushingHandler('test:flush-every-frame', host);
 
 		// A `scroll-event-throttle={0}` handler fires once per frame, and every one
 		// of those flushes is refused inline. They must not each queue work.
@@ -894,7 +893,6 @@ describe.sequential('Lynx main-thread worklet dispatch', () => {
 		host.dispatch(handler);
 		host.dispatch(handler);
 
-		host.endDispatch();
 		await Promise.resolve();
 		expect(host.flushes).toEqual([[]]);
 		expect(host.controller.diagnostics()).toEqual([]);
@@ -902,7 +900,7 @@ describe.sequential('Lynx main-thread worklet dispatch', () => {
 
 	it('leaves a host that takes an inline flush on its own synchronous timing', () => {
 		const host = installFlushHost(false);
-		const handler = activateFlushingHandler('test:flush-inline');
+		const handler = activateFlushingHandler('test:flush-inline', host);
 
 		host.dispatch(handler);
 		// Native Lynx publishes within the dispatch, so the flush must already have

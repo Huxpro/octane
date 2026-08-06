@@ -152,14 +152,26 @@ async function launchChromium(): Promise<Awaited<ReturnType<typeof chromium.laun
 	}
 }
 
-it('mounts the demo through Lynx for Web and handles a native tap', async () => {
-	const temporaryRoot = await mkdtemp(resolve(tmpdir(), 'octane-lynx-web-host-'));
+/**
+ * Build a fixture, serve it to a real Chromium against `@lynx-js/web-core`, and
+ * run `visit` against the mounted page. Mounting a Lynx bundle must never fault
+ * the host, so both error channels are asserted empty on the way out for every
+ * caller rather than being restated per test.
+ */
+async function withWebHostPage(
+	fixtureRoot: string,
+	prefix: string,
+	visit: (
+		page: Awaited<ReturnType<Awaited<ReturnType<typeof chromium.launch>>['newPage']>>,
+	) => Promise<void>,
+): Promise<void> {
+	const temporaryRoot = await mkdtemp(resolve(tmpdir(), prefix));
 	const outputRoot = resolve(temporaryRoot, 'dist');
 	let host: Awaited<ReturnType<typeof startHost>> | undefined;
 	let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
 
 	try {
-		await buildWebBundle(DEMO_ROOT, outputRoot);
+		await buildWebBundle(fixtureRoot, outputRoot);
 
 		host = await startHost(resolve(outputRoot, 'main.web.bundle'));
 		browser = await launchChromium();
@@ -169,15 +181,8 @@ it('mounts the demo through Lynx for Web and handles a native tap', async () => 
 		page.on('pageerror', (error) => pageErrors.push(error.message));
 
 		await page.goto(host.url, { waitUntil: 'domcontentloaded' });
-		const initialCount = page.getByText('Count 0', { exact: true });
-		await initialCount.waitFor({ state: 'visible' });
-		expect(await initialCount.count()).toBe(1);
-		expect(await page.locator('lynx-view *').count()).toBeGreaterThan(0);
+		await visit(page);
 
-		await page.getByText('Tap to increment', { exact: true }).click();
-		const updatedCount = page.getByText('Count 1', { exact: true });
-		await updatedCount.waitFor({ state: 'visible' });
-		expect(await updatedCount.count()).toBe(1);
 		expect(pageErrors).toEqual([]);
 		expect(
 			await page.evaluate<string[]>(
@@ -189,6 +194,20 @@ it('mounts the demo through Lynx for Web and handles a native tap', async () => 
 		await host?.close();
 		await rm(temporaryRoot, { recursive: true, force: true });
 	}
+}
+
+it('mounts the demo through Lynx for Web and handles a native tap', async () => {
+	await withWebHostPage(DEMO_ROOT, 'octane-lynx-web-host-', async (page) => {
+		const initialCount = page.getByText('Count 0', { exact: true });
+		await initialCount.waitFor({ state: 'visible' });
+		expect(await initialCount.count()).toBe(1);
+		expect(await page.locator('lynx-view *').count()).toBeGreaterThan(0);
+
+		await page.getByText('Tap to increment', { exact: true }).click();
+		const updatedCount = page.getByText('Count 1', { exact: true });
+		await updatedCount.waitFor({ state: 'visible' });
+		expect(await updatedCount.count()).toBe(1);
+	});
 }, 90_000);
 
 // Lynx for Web calls a `'main thread'` handler from inside its own wasm element
@@ -197,22 +216,7 @@ it('mounts the demo through Lynx for Web and handles a native tap', async () => 
 // handler as an uncaught page error — one per event, so a handler bound to a
 // per-frame event flooded the console for as long as the page lived.
 it('publishes a main-thread handler flush without faulting the Web host', async () => {
-	const temporaryRoot = await mkdtemp(resolve(tmpdir(), 'octane-lynx-web-flush-'));
-	const outputRoot = resolve(temporaryRoot, 'dist');
-	let host: Awaited<ReturnType<typeof startHost>> | undefined;
-	let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
-
-	try {
-		await buildWebBundle(MAIN_THREAD_FLUSH_ROOT, outputRoot);
-
-		host = await startHost(resolve(outputRoot, 'main.web.bundle'));
-		browser = await launchChromium();
-		const page = await browser.newPage();
-		page.setDefaultTimeout(30_000);
-		const pageErrors: string[] = [];
-		page.on('pageerror', (error) => pageErrors.push(error.message));
-
-		await page.goto(host.url, { waitUntil: 'domcontentloaded' });
+	await withWebHostPage(MAIN_THREAD_FLUSH_ROOT, 'octane-lynx-web-flush-', async (page) => {
 		const probe = page.getByText('Tap to flush', { exact: true });
 		await probe.waitFor({ state: 'visible' });
 
@@ -225,15 +229,5 @@ it('publishes a main-thread handler flush without faulting the Web host', async 
 		// The style writes prove the handler ran, so an empty error list is not the
 		// vacuous pass of an event that never reached the main thread.
 		await expect.poll(barHeight).toBe('24px');
-		expect(pageErrors).toEqual([]);
-		expect(
-			await page.evaluate<string[]>(
-				() => (window as typeof window & { __lynxHostErrors: string[] }).__lynxHostErrors,
-			),
-		).toEqual([]);
-	} finally {
-		await browser?.close();
-		await host?.close();
-		await rm(temporaryRoot, { recursive: true, force: true });
-	}
+	});
 }, 90_000);
