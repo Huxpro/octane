@@ -50,7 +50,8 @@ const REPOSITORY_TREE_URL = 'https://github.com/octanejs/octane/tree/main';
 // Workspace packages whose source decides what an example's bundle contains,
 // beyond the package that owns the example directory itself. Keep this in step
 // with what `pluginOctane` pulls in.
-const TOOLCHAIN_PACKAGES = ['packages/lynx'];
+const TOOLCHAIN_PACKAGES = ['packages/lynx', 'packages/octane', 'packages/rspack-plugin-octane'];
+const PNPM_EXECUTABLE = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 
 const examples = JSON.parse(
 	readFileSync(join(WEBSITE_ROOT, 'src/content/lynx-examples.json'), 'utf-8'),
@@ -189,11 +190,15 @@ function buildIfStale(example, assetPrefix) {
 	// Rspeedy is a dependency of the package that owns the example, not of the
 	// example folder, so run it from that package with --root.
 	console.info(`  building ${example.id} (assetPrefix ${assetPrefix})`);
-	execFileSync('pnpm', ['exec', 'rspeedy', 'build', '--root', relative(owner, sourceRoot)], {
-		cwd: owner,
-		stdio: 'inherit',
-		env: { ...process.env, OCTANE_LYNX_ASSET_PREFIX: assetPrefix },
-	});
+	execFileSync(
+		PNPM_EXECUTABLE,
+		['exec', 'rspeedy', 'build', '--root', relative(owner, sourceRoot)],
+		{
+			cwd: owner,
+			stdio: 'inherit',
+			env: { ...process.env, OCTANE_LYNX_ASSET_PREFIX: assetPrefix },
+		},
+	);
 	writeFileSync(stampPath, `${JSON.stringify(stamp, null, 2)}\n`);
 }
 
