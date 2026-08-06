@@ -30,8 +30,8 @@ export function Lynx() @{
 				</p>
 				<p class="lynx-note">
 					{'Hooks, context, Suspense and transitions work the same way. Mark only ' +
-						'frame-critical code to run on the main thread. Octane support for Lynx is a ' +
-						'technical preview.'}
+						'frame-critical code to run on the main thread. Octane support for Lynx' +
+						' is currently available as a technical preview.'}
 				</p>
 				<Link to="/docs/$slug" params={{ slug: 'lynx' }} class="lynx-link">
 					Learn how Octane works with Lynx →

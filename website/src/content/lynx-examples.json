@@ -31,6 +31,22 @@
               "y": 0.3
             }
           ],
+          "iterations": 7,
+          "durationMs": 520,
+          "restMs": 2600
+        },
+        {
+          "path": [
+            {
+              "x": 0.02,
+              "y": 0.3
+            },
+            {
+              "x": 1.02,
+              "y": 0.3
+            }
+          ],
+          "iterations": 7,
           "durationMs": 520,
           "restMs": 2600
         }
