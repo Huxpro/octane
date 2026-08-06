@@ -61,6 +61,7 @@ const ROUTES = [
 	'/docs/core-apis',
 	'/docs/tsrx-vs-tsx',
 	'/docs/differences-from-react',
+	'/docs/lynx',
 	'/docs/react-compat',
 	'/docs/profiling',
 	'/docs/bindings',
