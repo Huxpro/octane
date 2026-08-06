@@ -9,6 +9,7 @@ Apache-2.0 licensed:
 | `fit.ts` | `src/example-preview/utils/fit-scale.ts`, `src/example-preview/utils/number.ts` |
 | `mode.ts` | `src/example-preview/utils/resolve-web-preview.ts` |
 | `controller.ts` | `src/example-preview/components/web-iframe.tsx` |
+| `auto-gesture.ts` | no upstream equivalent — new, and offered back |
 
 ```
 Copyright The Lynx Authors and the go-web contributors.
@@ -54,8 +55,67 @@ to upstream so a diff against it stays readable.
 
 ## Known divergences from upstream
 
-- The overlay, its labels and the "can refresh" affordance are not ported; this
-  site renders its own status UI from `onStateChange`.
+- The overlay and its labels are not ported; this site renders its own status UI
+  from `onStateChange`. Upstream's `onCanRefreshChange` callback is folded into
+  that same state as `canRefresh`, which carries the same fact.
 - The `?simulateError=` development hook is not ported.
 - Upstream's static preview image and `<img>` cover path belong to its own
   chrome, not to the view, and are not ported.
+
+### Behavioural fixes made here, worth sending back
+
+Three things were found by embedding real tutorial examples. All three are
+upstream bugs, not adaptation artefacts, and all three are fixed here.
+
+1. **The fit path breaks `<list>`.** `fit` scales the view with a CSS
+   `transform`, and web-core measures list cells through
+   `getBoundingClientRect()`. Under a transform those measurements come back in
+   visual pixels while the positions are written in layout pixels, so a
+   waterfall list packs its cells by the scale factor and they overlap. With the
+   Lynx Product Gallery tutorial at a 248 x 537 panel, the 10px gap between
+   cells became a 35px overlap — exactly the 0.66 scale factor. The same
+   coordinate mismatch applies to `main-thread:bindtouch*` handlers, which read
+   `clientX` in visual pixels and write `translateX` in layout pixels.
+
+   The default here is therefore `responsive` (which is also go-web's own
+   documented default; `auto` resolves to `fit` for any panel narrower than a
+   phone, which is nearly all of them). A caller that wants the authored
+   viewport exactly should size the container to `designWidth`, where
+   `responsive` maps `rpx` 1:1 with no transform at all.
+
+2. **`pageRoot()` must skip the disposed root.** A reload does not replace the
+   old page root: web-core marks it `l-disposed` and leaves it in the shadow
+   tree. Upstream's `shadow.querySelector('[part="page"], [lynx-tag="page"]')`
+   returns that dead node first, so the "has it painted" test can never observe
+   the new page. This returns the first *live* root instead.
+
+3. **`<lynx-view>.reload()` does not rebuild** on `@lynx-js/web-core@0.22.2`. It
+   disposes the page — same root identity, `l-disposed` set — and nothing
+   replaces it, so upstream's soft refresh leaves a dead tree on screen until
+   its 5s fallback timeout hides the problem. `reload()` here recreates the
+   element instead; the bundle comes from the HTTP cache, so it costs a rebuild
+   rather than a download, and it settles in well under a second.
+
+### `auto-gesture.ts` — new, and the most reusable piece here
+
+A gesture-driven example cannot demonstrate itself in an embedded preview: the
+Lynx Product Detail tutorial binds `touchstart`/`touchmove`/`touchend`, so a
+desktop reader's mouse never reaches it and the carousel looks like a still
+image. `playAutoGesture(host, { steps })` performs the gesture and draws the
+contact point the way a device simulator does, so the preview shows what the
+example is for.
+
+It is deliberately the most framework-neutral file in this directory: no Lynx,
+no Octane, no import from anything else here. It takes a host element and
+fractional coordinates, so the same driver would work for a ReactLynx or Vue
+Lynx example gallery, and for go-web itself.
+
+Two details worth carrying over with it:
+
+- **Dispatch pointer events as well as touch events.** Real touch input produces
+  both, and web-core drives its gestures from the pointer stream — dispatching
+  only `touchstart`/`touchmove`/`touchend` reaches the correct element, bubbles
+  all the way to the document, and does nothing at all.
+- **`isTrusted` is the right way to hand control back.** Synthesized events
+  always report `false`, so the first real pointer or touch is unambiguous and
+  stops the playback without any flag of our own.
