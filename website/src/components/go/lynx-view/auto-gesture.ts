@@ -84,12 +84,28 @@ export function playAutoGesture(host: HTMLElement, options: AutoGestureOptions):
 	let stopped = false;
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let identifier = 1;
+	let activeContact:
+		| {
+				target: Element;
+				identifier: number;
+				point: { clientX: number; clientY: number };
+		  }
+		| undefined;
 	const pointer = showPointer ? createPointer(host) : undefined;
+
+	const endActiveContact = (): void => {
+		if (!activeContact) return;
+		const { target, identifier, point } = activeContact;
+		activeContact = undefined;
+		dispatchTouch(target, 'touchend', identifier, point);
+		hidePointer(pointer);
+	};
 
 	const stop = (): void => {
 		if (stopped) return;
 		stopped = true;
 		if (timer) clearTimeout(timer);
+		endActiveContact();
 		pointer?.remove();
 		for (const type of USER_INPUT_EVENTS) {
 			host.removeEventListener(type, onUserInput, true);
@@ -139,6 +155,7 @@ export function playAutoGesture(host: HTMLElement, options: AutoGestureOptions):
 		if (!target) return;
 
 		showPointerAt(pointer, host, points[0]);
+		activeContact = { target, identifier: id, point: points[0] };
 		dispatchTouch(target, 'touchstart', id, points[0]);
 
 		const duration = step.durationMs ?? DEFAULT_DURATION_MS;
@@ -149,13 +166,14 @@ export function playAutoGesture(host: HTMLElement, options: AutoGestureOptions):
 			const progress = easeInOutQuad(frame / frames);
 			const point = interpolate(points, progress);
 			showPointerAt(pointer, host, point);
+			activeContact.point = point;
 			dispatchTouch(target, 'touchmove', id, point);
 			await wait(FRAME_MS);
 		}
 
 		if (stopped) return;
-		dispatchTouch(target, 'touchend', id, points[points.length - 1]);
-		hidePointer(pointer);
+		activeContact.point = points[points.length - 1];
+		endActiveContact();
 	}
 
 	void run();

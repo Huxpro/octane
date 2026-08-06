@@ -5,7 +5,8 @@
 // These are the two pieces that must stay behaviourally equal to upstream so
 // the directory can go back there, and the hysteresis in particular is easy to
 // break in a way no screenshot would catch.
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { playAutoGesture } from '../src/components/go/lynx-view/auto-gesture.ts';
 import {
 	computeFrameOffset,
 	computeScaleRange,
@@ -145,6 +146,61 @@ describe('the default viewport mode', () => {
 		// Guards the reasoning above rather than the choice: if `auto` ever stops
 		// resolving to fit here, the default is worth revisiting.
 		expect(resolveWebPreviewMode(args(248, 537)).mode).toBe('fit');
+	});
+});
+
+describe('automatic gesture playback', () => {
+	const elementFromPointDescriptor = Object.getOwnPropertyDescriptor(document, 'elementFromPoint');
+
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.restoreAllMocks();
+		if (elementFromPointDescriptor) {
+			Object.defineProperty(document, 'elementFromPoint', elementFromPointDescriptor);
+		} else {
+			Reflect.deleteProperty(document, 'elementFromPoint');
+		}
+		document.body.replaceChildren();
+	});
+
+	it('ends an active contact before stopping playback', async () => {
+		vi.useFakeTimers();
+		const host = document.createElement('div');
+		const target = document.createElement('div');
+		host.append(target);
+		document.body.append(host);
+		vi.spyOn(host, 'getBoundingClientRect').mockReturnValue(
+			DOMRect.fromRect({ x: 0, y: 0, width: 375, height: 812 }),
+		);
+		Object.defineProperty(document, 'elementFromPoint', {
+			configurable: true,
+			value: () => target,
+		});
+
+		const events: string[] = [];
+		for (const type of ['pointerdown', 'pointermove', 'pointerup']) {
+			target.addEventListener(type, () => events.push(type));
+		}
+		const playback = playAutoGesture(host, {
+			steps: [
+				{
+					path: [
+						{ x: 0.8, y: 0.5 },
+						{ x: 0.2, y: 0.5 },
+					],
+					durationMs: 320,
+				},
+			],
+			loop: false,
+			showPointer: false,
+			startDelayMs: 0,
+			stopOnUserInput: false,
+		});
+
+		await vi.advanceTimersByTimeAsync(1);
+		expect(events.slice(0, 2)).toEqual(['pointerdown', 'pointermove']);
+		playback.stop();
+		expect(events.at(-1)).toBe('pointerup');
 	});
 });
 

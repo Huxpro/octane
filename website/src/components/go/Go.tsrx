@@ -307,6 +307,7 @@ export function Go(props: GoProps) @{
 				border-radius: 1rem;
 				overflow: hidden;
 				background: var(--code-bg);
+				container: go-panel / inline-size;
 			}
 			/* Expanded, the panel leaves the prose column and takes the window. It
 			   stays the same element — only the frame moves — so the preview is not
@@ -518,7 +519,7 @@ export function Go(props: GoProps) @{
 			}
 			/* Stacked, there is nothing to drag: both panes are full width and the
 			   preview leads, because it is the thing worth looking at. */
-			@media (max-width: 720px) {
+			@container go-panel (max-width: 720px) {
 				.go-body {
 					grid-template-columns: minmax(0, 1fr);
 					height: auto;
