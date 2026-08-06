@@ -38,6 +38,18 @@ the fact that there is no public "rendered" event so the page root inside the
 shadow tree has to be observed instead. Reimplementing that from scratch would
 diverge from go-web for no benefit.
 
+## Upstream status
+
+This directory has been sent back to go-web as
+[lynx-community/go-web#79](https://github.com/lynx-community/go-web/pull/79),
+which adds it there as a `@lynx-js/go-web/lynx-view` entry point — importing
+go-web's own `fit-scale` and `resolve-web-preview` utilities instead of the
+`fit.ts`/`mode.ts` copies here, which only exist because this side had nothing
+to import. Once that lands and ships, this directory should be deleted and
+`LynxPreview.tsrx` should import the published package instead.
+
+Until then, changes made here need to be mirrored onto that branch.
+
 ## Upstream intent
 
 This directory has no React import, no framework dependency and no dependency on
