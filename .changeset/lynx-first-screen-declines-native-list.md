@@ -12,12 +12,25 @@ error — on exactly the app shape a fast first screen exists for. It reproduced
 `examples/gallery`, a faithful port of the official Lynx Product Gallery tutorial,
 as `native list materializations cannot be captured as a first tree`.
 
-The guard itself was right. A native `<list>` does not own its rows: the platform
-materializes them through the `componentAtIndex`/`enqueueComponent` callbacks
-handed to `listPAPI.create`, and it owns the resulting cell state. A first tree is
-a clone-safe description the background *adopts*, so a list cannot cross that
-boundary — and skipping its children would not help, because the list node is
-itself the part that cannot be handed over.
+The guard itself was right for the design we have. A native `<list>` does not own
+its rows: the platform materializes them through the
+`componentAtIndex`/`enqueueComponent` callbacks handed to `listPAPI.create`, and
+it owns the resulting cell state. Octane builds those callbacks as per-instance
+closures with no cross-thread handle space, so a first tree — a clone-safe
+description the background *adopts* — has nothing it can hand over, and skipping
+the list's children would not help because the list node is itself the
+unhandoverable part.
+
+That is a limit of this design, not an inherent one. ReactLynx's element-template
+runtime carries lists across the same boundary by never transferring the callbacks
+at all: its hydration payload strips `component-at-index`,
+`component-at-indexes`, `enqueue-component`, and `update-list-info`; the callbacks
+are installed once as stable identities that read mutable list state rather than
+being recreated per update; and what crosses is a serializable descriptor — the
+remaining attributes plus item metadata keyed by a stable id shared between the
+background command stream, the main-thread registry, and native's list callbacks.
+Adopting a list here would mean adopting that shape. Declining is the right
+behavior until then, not a permanent verdict.
 
 What was wrong is that this was classified as a fault. `captureLynxFirstTree` had
 one failure channel, so an unsupported composition and a broken host came out the
