@@ -203,7 +203,9 @@ describe('website routes', () => {
 		// card per packaged example. The phones behind them are deferred, so the
 		// server renders the copy and the cards mount when the section comes near.
 		const lynx = container.querySelector('section.lynx')!;
-		expect(lynx.querySelector('.lynx-title')?.textContent).toContain('native engine');
+		expect(lynx.querySelector('.lynx-title')?.textContent).toContain(
+			'Build native apps with Octane',
+		);
 		expect(findLink(lynx, '/docs/lynx')).toBeTruthy();
 
 		// The home page renders the interactive benchmark explorer from the checked-in

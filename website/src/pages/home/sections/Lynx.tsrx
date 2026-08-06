@@ -20,20 +20,20 @@ export function Lynx() @{
 		<div class="lynx-body">
 			<div class="lynx-copy">
 				<h2 id="lynx-heading" class="lynx-title">
-					{'The same components. '}
-					<span class="lynx-accent">Drawn by a native engine.</span>
+					{'Build native apps with Octane. '}
+					<span class="lynx-accent">Powered by Lynx.</span>
 				</h2>
 				<p class="lynx-lead">
-					{'Lynx renders your UI with platform-native views on iOS and Android, and on the ' +
-						'web from the same bundle. Both screens here are Octane components compiled ' +
-						'for Lynx — and they are running in this page, not screenshots of one.'}
+					{'Use Octane to build apps that render with native views on iOS and Android ' +
+						'through Lynx. These demos are running live in the browser with Lynx for Web — ' +
+						'click around and try them.'}
 				</p>
 				<p class="lynx-note">
-					{'Hooks, context, Suspense and transitions carry over. Only the work that has to ' +
-						'happen on the frame the user sees is marked to stay on the main thread.'}
+					{'Hooks, context, Suspense and transitions work the same way. Mark only ' +
+						'frame-critical code to run on the main thread.'}
 				</p>
 				<Link to="/docs/$slug" params={{ slug: 'lynx' }} class="lynx-link">
-					See how Octane runs on Lynx →
+					Learn how Octane works with Lynx →
 				</Link>
 			</div>
 
