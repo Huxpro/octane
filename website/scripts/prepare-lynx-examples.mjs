@@ -47,6 +47,11 @@ const RUNTIME_DEST = join(PUBLIC_ROOT, 'lynx-runtime');
 const EXAMPLE_BASE_PATH = '/lynx-examples';
 const REPOSITORY_TREE_URL = 'https://github.com/octanejs/octane/tree/main';
 
+// Workspace packages whose source decides what an example's bundle contains,
+// beyond the package that owns the example directory itself. Keep this in step
+// with what `pluginOctane` pulls in.
+const TOOLCHAIN_PACKAGES = ['packages/lynx'];
+
 const examples = JSON.parse(
 	readFileSync(join(WEBSITE_ROOT, 'src/content/lynx-examples.json'), 'utf-8'),
 );
@@ -151,15 +156,20 @@ function buildIfStale(example, assetPrefix) {
 	const sourceRoot = join(REPO_ROOT, example.directory);
 	const distRoot = join(sourceRoot, 'dist');
 	const stampPath = join(distRoot, '.octane-go-stamp.json');
-	// The toolchain is part of the input, not just the example: a change to the
-	// Rspeedy plugin (which compiles both thread graphs) produces a different
-	// bundle from identical sources, and a stamp that ignored it would publish
-	// the stale one.
+	// The toolchain is part of the input, not just the example: an example's
+	// bundle is produced from identical sources by the Rspeedy plugin and the
+	// renderer it compiles against, so a change to either yields a different
+	// bundle. A stamp that ignored them would publish the stale one — which is
+	// exactly what happened when a renderer fix landed and every example was
+	// "reused".
 	const owner = owningPackageRoot(sourceRoot);
 	const stamp = {
 		assetPrefix,
 		builtFrom: newestModification(sourceRoot),
-		builtWith: newestModification(join(owner, 'src')),
+		builtWith: Math.max(
+			newestModification(join(owner, 'src')),
+			...TOOLCHAIN_PACKAGES.map((pkg) => newestModification(join(REPO_ROOT, pkg, 'src'))),
+		),
 	};
 
 	if (existsSync(stampPath)) {
