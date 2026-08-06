@@ -96,7 +96,7 @@ export function Lynx() @{
 				.lynx-body {
 					max-width: none;
 					display: grid;
-					grid-template-columns: minmax(0, 28rem) minmax(0, 1fr);
+					grid-template-columns: minmax(0, 30rem) minmax(0, 1fr);
 					gap: 3.5rem;
 					align-items: center;
 				}
