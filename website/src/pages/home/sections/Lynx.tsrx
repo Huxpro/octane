@@ -25,8 +25,8 @@ export function Lynx() @{
 				</h2>
 				<p class="lynx-lead">
 					{'Use Octane to build apps that render with native views on iOS and Android ' +
-						'through Lynx. These demos are running live in the browser with Lynx for Web — ' +
-						'click around and try them.'}
+						'through Lynx. These demos are running live in the browser with Lynx for Web, ' +
+						'not shown as screenshots.'}
 				</p>
 				<p class="lynx-note">
 					{'Hooks, context, Suspense and transitions work the same way. Mark only ' +
