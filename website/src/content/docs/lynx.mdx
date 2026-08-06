@@ -34,8 +34,10 @@ ported to Octane. A two-column waterfall `<list>` recycles its cells, each card 
 `'main thread'` handler that never asks the background thread for anything.
 
 It scrolls on its own because the example asks it to: `ref.current.invoke('autoScroll', …)`
-drives the native list, and the scrollbar you see tracking it is the main-thread handler
-doing its work every frame. Open the Device tab to run the same example on a phone.
+starts the native list moving downward. At the bottom, the main-thread scroll handler
+changes the rate from `60` to `-60`; at the top, it changes it back. The scrollbar you
+see tracking the list is updated by that same handler every frame. Open the Device tab
+to run the same example on a phone.
 
 <Go example="gallery" label="Two-column waterfall gallery running on Lynx for Web" />
 
@@ -45,16 +47,53 @@ heart, and the scroll handler is an ordinary function marked to run on the other
 ```tsrx
 export function Gallery({ pictureData }: { pictureData: Picture[] }) @{
 	const scrollbarMTSRef = useMainThreadRef<object>();
+	const galleryMTSRef = useMainThreadRef<object>();
+	const galleryRef = useRef<LynxPublicHandle | null>(null);
 
 	const onScrollMTS = (event: { detail: GalleryScrollDetail }) => {
 		'main thread';
 		const scrollbar = scrollbarMTSRef.current;
-		if (scrollbar === null || scrollbar === undefined) return;
+		const gallery = galleryMTSRef.current;
+		if (!scrollbar || !gallery) return;
+
+		const listHeight = SystemInfo.pixelHeight / SystemInfo.pixelRatio - 48;
+		const scrollbarTop = listHeight * (event.detail.scrollTop / event.detail.scrollHeight);
 		__AddInlineStyle(scrollbar, 'top', scrollbarTop + 'px');
 		__FlushElementTree();
+
+		const atBottom = event.detail.scrollTop + listHeight >= event.detail.scrollHeight;
+		if (event.detail.deltaY > 0 && atBottom) {
+			__InvokeUIMethod(
+				gallery,
+				'autoScroll',
+				{ rate: '-60', start: true, autoStop: true },
+				() => {},
+			);
+		} else if (event.detail.deltaY < 0 && event.detail.scrollTop <= 0) {
+			__InvokeUIMethod(
+				gallery,
+				'autoScroll',
+				{ rate: '60', start: true, autoStop: true },
+				() => {},
+			);
+		}
 	};
 
-	<list list-type="waterfall" span-count={2} main-thread:bindscroll={onScrollMTS}>
+	useEffect(() => {
+		void galleryRef.current?.invoke('autoScroll', {
+			rate: '60',
+			start: true,
+			autoStop: true,
+		});
+	}, []);
+
+	<list
+		ref={galleryRef}
+		main-thread:ref={galleryMTSRef}
+		list-type="waterfall"
+		span-count={2}
+		main-thread:bindscroll={onScrollMTS}
+	>
 		@for (const picture of pictureData; key picture.id) {
 			<list-item item-key={picture.id}>
 				<LikeImageCard picture={picture} />
@@ -71,13 +110,17 @@ ported to Octane. Touch tracking, the release animation and its easing curve all
 the main thread, so a frame never waits on a round trip. The indicator underneath is
 background state, updated across the thread boundary.
 
-<Go example="swiper" label="Product detail carousel running on Lynx for Web" />
+The preview sequence lives beside the example in `preview.json`. Seven simulated swipes
+move the eight-image carousel to one end, then seven swipes move it back. The sequence
+keeps alternating instead of continuing to push against an endpoint.
+
+<Go example="swiper" file="preview.json" label="Product detail carousel running on Lynx for Web" />
 
 <aside className="doc-callout note">
-	<p className="doc-callout-title">The swipe above is simulated</p>
+	<p className="doc-callout-title">The swipes above are simulated</p>
 	<p>
 		{
-			'The swiper binds main-thread:bindtouchstart, touchmove and touchend, so a mouse never reaches it — on a desktop browser the example would sit still and look like a picture. The preview therefore performs the gesture itself and draws the contact point, the way a device simulator does. Everything it triggers is real: the drag tracking, the release animation and its easing all run on the main thread, and the indicator updates across the thread boundary. Touch the preview yourself and the demonstration stops and hands it back to you. On a touchscreen, or in Lynx Explorer through the Device tab, the gesture is your own.'
+			'The swiper binds main-thread:bindtouchstart, touchmove and touchend, so a mouse never reaches it — on a desktop browser the example would sit still and look like a picture. The preview therefore performs the gestures itself and draws the contact point, the way a device simulator does. Everything it triggers is real: the drag tracking, the release animation and its easing all run on the main thread, and the indicator updates across the thread boundary. Touch the preview yourself and the demonstration stops and hands it back to you. On a touchscreen, or in Lynx Explorer through the Device tab, the gesture is your own.'
 		}
 	</p>
 </aside>
@@ -138,7 +181,7 @@ put a Lynx screen in front of someone who has no app installed.
 <h2 id="status">Where this stands</h2>
 
 <aside className="doc-callout important">
-	<p className="doc-callout-title">This is early access, not a preview release</p>
+	<p className="doc-callout-title">Octane support for Lynx is in early access</p>
 	<p>
 		{
 			'The renderer, the compiler’s thread directives and the Rspeedy build are implemented and tested, and the previews above are the real Lynx-for-Web bundles. What is not finished is the native evidence: the Android and iOS engine matrix, native list allocation, portals, Native Modules and reconstructing reload are all still open. Nothing here is ready to carry an app you ship.'

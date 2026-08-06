@@ -15,42 +15,6 @@
     "directory": "packages/rspeedy-plugin-octane/examples/swiper",
     "entry": "main",
     "defaultFile": "src/Swiper.lynx.tsrx",
-    "tutorial": "https://lynxjs.org/4.0/learn/product-detail.html",
-    "autoGesture": {
-      "loop": true,
-      "startDelayMs": 1400,
-      "steps": [
-        {
-          "path": [
-            {
-              "x": 0.98,
-              "y": 0.3
-            },
-            {
-              "x": -0.02,
-              "y": 0.3
-            }
-          ],
-          "iterations": 7,
-          "durationMs": 520,
-          "restMs": 2600
-        },
-        {
-          "path": [
-            {
-              "x": 0.02,
-              "y": 0.3
-            },
-            {
-              "x": 1.02,
-              "y": 0.3
-            }
-          ],
-          "iterations": 7,
-          "durationMs": 520,
-          "restMs": 2600
-        }
-      ]
-    }
+    "tutorial": "https://lynxjs.org/4.0/learn/product-detail.html"
   }
 ]
