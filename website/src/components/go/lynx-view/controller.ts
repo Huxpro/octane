@@ -45,6 +45,9 @@ import {
 /** web-core marks a torn-down page root with this before clearing the shadow. */
 const DISPOSED_ATTRIBUTE = 'l-disposed';
 
+/** How long a resize must be settled before the page is rebuilt for it. */
+const VIEWPORT_RESYNC_MS = 400;
+
 /** Lynx's `rpx` is defined against a 750-wide design baseline. */
 const RPX_BASELINE = 750;
 
@@ -145,6 +148,11 @@ export function mountLynxView(container: HTMLElement, options: LynxViewOptions):
 	let renderTimeout: ReturnType<typeof setTimeout> | undefined;
 	let previousPage: Element | null = null;
 	let gesture: AutoGestureHandle | undefined;
+	// The viewport the current page was built against, and the timer that
+	// rebuilds it once a resize settles.
+	let builtWidth = 0;
+	let builtHeight = 0;
+	let resyncTimer: ReturnType<typeof setTimeout> | undefined;
 
 	let state: LynxViewState = {
 		ready: false,
@@ -200,13 +208,16 @@ export function mountLynxView(container: HTMLElement, options: LynxViewOptions):
 		if (resolved.mode === 'responsive') {
 			stage.style.cssText = 'position:relative;width:100%;height:100%';
 			frame.style.cssText = 'position:relative;width:100%;height:100%';
-			if (view) {
-				// `cq*` units are resolved against the view's own box, so `rpx`,
-				// `vw` and `vh` inside the Lynx page track the panel.
-				view.style.cssText =
-					'width:100%;height:100%;container-type:size;' +
-					`--rpx-unit:calc(100cqw / ${RPX_BASELINE});--vh-unit:1cqh;--vw-unit:1cqw`;
-			}
+			// `cq*` units are resolved against the view's own box, so `rpx`, `vw`
+			// and `vh` inside the Lynx page track the panel.
+			applyViewStyle({
+				width: '100%',
+				height: '100%',
+				'container-type': 'size',
+				'--rpx-unit': `calc(100cqw / ${RPX_BASELINE})`,
+				'--vh-unit': '1cqh',
+				'--vw-unit': '1cqw',
+			});
 			return;
 		}
 
@@ -225,11 +236,28 @@ export function mountLynxView(container: HTMLElement, options: LynxViewOptions):
 			`position:absolute;transform-origin:top left;width:${designWidth}px;height:${designHeight}px;` +
 			`transform:translate(${offsetX}px, ${offsetY}px) scale(${scale});` +
 			(animate ? 'transition:transform 0.2s ease' : '');
-		if (view) {
-			view.style.cssText =
-				`width:${designWidth}px;height:${designHeight}px;container-type:size;` +
-				`--rpx-unit:${designWidth / RPX_BASELINE}px;` +
-				`--vh-unit:${designHeight / 100}px;--vw-unit:${designWidth / 100}px`;
+		applyViewStyle({
+			width: `${designWidth}px`,
+			height: `${designHeight}px`,
+			'container-type': 'size',
+			'--rpx-unit': `${designWidth / RPX_BASELINE}px`,
+			'--vh-unit': `${designHeight / 100}px`,
+			'--vw-unit': `${designWidth / 100}px`,
+		});
+	}
+
+	/**
+	 * Style the view one property at a time, never through `cssText`.
+	 *
+	 * web-core's stylesheet declares `lynx-view { display: none }` and reveals
+	 * the element with an inline style of its own once the page is up. Assigning
+	 * `cssText` here replaces the whole attribute, so a resize would silently
+	 * take that `display` away and collapse the preview to zero width.
+	 */
+	function applyViewStyle(declarations: Record<string, string>): void {
+		if (!view) return;
+		for (const [property, value] of Object.entries(declarations)) {
+			view.style.setProperty(property, value);
 		}
 	}
 
@@ -340,6 +368,7 @@ export function mountLynxView(container: HTMLElement, options: LynxViewOptions):
 					measure();
 					applyLayout();
 					initializeBrowserConfig();
+					scheduleViewportResync();
 				});
 	resizeObserver?.observe(container);
 	measure();
@@ -462,11 +491,45 @@ export function mountLynxView(container: HTMLElement, options: LynxViewOptions):
 		initializeBrowserConfig();
 		view.setAttribute('url', url);
 
+		builtWidth = Math.round(containerWidth);
+		builtHeight = Math.round(containerHeight);
+
 		watchShadow();
 		armRenderTimeout();
 	}
 
 	loadRuntime().then(startView, fail);
+
+	/**
+	 * Rebuild the page when the panel has settled at a new size.
+	 *
+	 * `browserConfig` is read once, when web-core builds the page, and assigning
+	 * it later does not re-lay-out — go-web pins it the same way. So after a
+	 * resize the Lynx page is still laid out for the old viewport: an example
+	 * that derives anything from `SystemInfo` (the swiper's slide width, the
+	 * gallery's column width) keeps the stale value and drifts out of alignment
+	 * with the box it is drawn in. Rebuilding is the only way to re-seed it, and
+	 * the bundle is cached, so it costs a rebuild rather than a download.
+	 *
+	 * Debounced, or dragging the split would restart the example every frame.
+	 */
+	function scheduleViewportResync(): void {
+		if (disposed || !view || builtWidth === 0) return;
+		if (Math.round(containerWidth) === builtWidth && Math.round(containerHeight) === builtHeight) {
+			return;
+		}
+		if (resyncTimer) clearTimeout(resyncTimer);
+		resyncTimer = setTimeout(() => {
+			if (disposed || !view) return;
+			if (
+				Math.round(containerWidth) === builtWidth &&
+				Math.round(containerHeight) === builtHeight
+			) {
+				return;
+			}
+			handle.reload();
+		}, VIEWPORT_RESYNC_MS);
+	}
 
 	/** Uncover the preview even if the page signal never arrives. */
 	function armRenderTimeout(): void {
@@ -488,7 +551,7 @@ export function mountLynxView(container: HTMLElement, options: LynxViewOptions):
 		gesture = undefined;
 	}
 
-	return {
+	const handle: LynxViewHandle = {
 		/**
 		 * Rebuild the page.
 		 *
@@ -511,6 +574,7 @@ export function mountLynxView(container: HTMLElement, options: LynxViewOptions):
 		dispose(): void {
 			disposed = true;
 			stopAutoGesture();
+			if (resyncTimer) clearTimeout(resyncTimer);
 			resizeObserver?.disconnect();
 			renderObserver?.disconnect();
 			cancelAnimationFrame(shadowPoll);
@@ -519,6 +583,7 @@ export function mountLynxView(container: HTMLElement, options: LynxViewOptions):
 			inner.remove();
 		},
 	};
+	return handle;
 }
 
 function omitUndefined<T extends object>(value: T): Partial<T> {
