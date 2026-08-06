@@ -16,12 +16,13 @@ import {
 	resolveEntry,
 	exampleRoot,
 } from '../../../components/go/example-data.ts';
-import { LYNX_EXAMPLES } from '../../../content/lynx-examples.ts';
+import { LYNX_EXAMPLES, type LynxExample } from '../../../content/lynx-examples.ts';
 
 interface CardProps {
 	id: string;
 	title: string;
 	summary: string;
+	autoGesture?: LynxExample['autoGesture'];
 }
 
 function ShowcaseCard(props: CardProps) @{
@@ -46,7 +47,11 @@ function ShowcaseCard(props: CardProps) @{
 		<div class="lynx-device">
 			<div class="lynx-screen">
 				@if (bundle) {
-					<LynxPreview src={bundle} label={props.title + ' running on Lynx for Web'} />
+					<LynxPreview
+						src={bundle}
+						label={props.title + ' running on Lynx for Web'}
+						autoGesture={props.autoGesture}
+					/>
 				}
 			</div>
 		</div>
@@ -59,7 +64,12 @@ function ShowcaseCard(props: CardProps) @{
 export function LynxShowcase() @{
 	<div class="lynx-cards">
 		@for (const example of LYNX_EXAMPLES; key example.id) {
-			<ShowcaseCard id={example.id} title={example.title} summary={example.summary} />
+			<ShowcaseCard
+				id={example.id}
+				title={example.title}
+				summary={example.summary}
+				autoGesture={example.autoGesture}
+			/>
 		}
 
 		<style>
@@ -88,7 +98,9 @@ export function LynxShowcase() @{
 			   trade for fitting. */
 			.lynx-cards :global(a.lynx-card) {
 				display: block;
-				width: min(375px, 100%);
+				/* The bezel is border-box, so add its padding and hairline back: the
+				   *screen* has to be 375px for `rpx` to map 1:1, not the card. */
+				width: min(calc(375px + 1rem + 2px), 100%);
 				color: inherit;
 			}
 			.lynx-cards :global(a.lynx-card:hover) {
