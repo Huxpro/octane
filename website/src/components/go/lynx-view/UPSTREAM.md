@@ -9,6 +9,7 @@ Apache-2.0 licensed:
 | `fit.ts` | `src/example-preview/utils/fit-scale.ts`, `src/example-preview/utils/number.ts` |
 | `mode.ts` | `src/example-preview/utils/resolve-web-preview.ts` |
 | `controller.ts` | `src/example-preview/components/web-iframe.tsx` |
+| `auto-gesture.ts` | no upstream equivalent — new, and offered back |
 
 ```
 Copyright The Lynx Authors and the go-web contributors.
@@ -94,3 +95,27 @@ upstream bugs, not adaptation artefacts, and all three are fixed here.
    its 5s fallback timeout hides the problem. `reload()` here recreates the
    element instead; the bundle comes from the HTTP cache, so it costs a rebuild
    rather than a download, and it settles in well under a second.
+
+### `auto-gesture.ts` — new, and the most reusable piece here
+
+A gesture-driven example cannot demonstrate itself in an embedded preview: the
+Lynx Product Detail tutorial binds `touchstart`/`touchmove`/`touchend`, so a
+desktop reader's mouse never reaches it and the carousel looks like a still
+image. `playAutoGesture(host, { steps })` performs the gesture and draws the
+contact point the way a device simulator does, so the preview shows what the
+example is for.
+
+It is deliberately the most framework-neutral file in this directory: no Lynx,
+no Octane, no import from anything else here. It takes a host element and
+fractional coordinates, so the same driver would work for a ReactLynx or Vue
+Lynx example gallery, and for go-web itself.
+
+Two details worth carrying over with it:
+
+- **Dispatch pointer events as well as touch events.** Real touch input produces
+  both, and web-core drives its gestures from the pointer stream — dispatching
+  only `touchstart`/`touchmove`/`touchend` reaches the correct element, bubbles
+  all the way to the document, and does nothing at all.
+- **`isTrusted` is the right way to hand control back.** Synthesized events
+  always report `false`, so the first real pointer or touch is unambiguous and
+  stops the playback without any flag of our own.

@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'octane';
 import { loadLynxRuntime } from './lynx-runtime.ts';
 import {
 	mountLynxView,
+	type AutoGestureOptions,
 	type LynxViewHandle,
 	type LynxViewState,
 	type WebPreviewMode,
@@ -33,6 +34,8 @@ interface LynxPreviewProps {
  * memory, without remounting the element or going back to the network.
  */
 	reloadKey?: number;
+	/** Demonstrate the example with simulated touches once it has painted. */
+	autoGesture?: AutoGestureOptions;
 	onStateChange?: (state: LynxViewState) => void;
 }
 
@@ -69,6 +72,7 @@ export function LynxPreview(props: LynxPreviewProps) @{
 			url: props.src,
 			loadRuntime: loadLynxRuntime,
 			webPreviewMode: props.mode,
+			autoGesture: props.autoGesture,
 			onStateChange: (next) => {
 				setState(next);
 				report.current?.(next);

@@ -16,6 +16,7 @@ import { bundleUrl, loadExample, resolveEntry, type LoadedExample } from './exam
 import { DeviceScan } from './DeviceScan.tsrx';
 import { LynxPreview } from './LynxPreview.tsrx';
 import type { WebPreviewMode } from './lynx-view/index.ts';
+import { findLynxExample } from '../../content/lynx-examples.ts';
 
 // Start fetching a screen before the panel arrives, so scrolling to it usually
 // finds it already running.
@@ -153,6 +154,7 @@ export function Go(props: GoProps) @{
 	const webBundle = entry?.webFile;
 	const nativeBundle = entry?.file;
 	const showRefresh = tab === 'web' && canRefresh;
+	const autoGesture = findLynxExample(props.example)?.autoGesture;
 
 	<div class={['go', fullscreen && 'is-fullscreen']} ref={panel}>
 		<div class="go-body" ref={body} style={'--go-preview-width:' + previewWidth + 'px'}>
@@ -279,6 +281,7 @@ export function Go(props: GoProps) @{
 								label={props.label}
 								mode={props.mode}
 								reloadKey={reloadKey}
+								autoGesture={autoGesture}
 								onStateChange={(state) => setCanRefresh(state.canRefresh)}
 							/>
 						} @else if (near && loaded) {

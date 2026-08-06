@@ -33,7 +33,9 @@ ported to Octane. A two-column waterfall `<list>` recycles its cells, each card 
 `useState` for its like button, and the scrollbar on the right is repositioned by a
 `'main thread'` handler that never asks the background thread for anything.
 
-Open the Device tab to run the same example on a phone.
+It scrolls on its own because the example asks it to: `ref.current.invoke('autoScroll', …)`
+drives the native list, and the scrollbar you see tracking it is the main-thread handler
+doing its work every frame. Open the Device tab to run the same example on a phone.
 
 <Go example="gallery" label="Two-column waterfall gallery running on Lynx for Web" />
 
@@ -71,9 +73,14 @@ background state, updated across the thread boundary.
 
 <Go example="swiper" label="Product detail carousel running on Lynx for Web" />
 
-The swiper binds `main-thread:bindtouchstart`, `touchmove` and `touchend`, so it responds
-to touch and not to a mouse. Swipe it on a touchscreen, or open the Device tab and run it
-on a phone, where the gesture is the point.
+<aside className="doc-callout note">
+	<p className="doc-callout-title">The swipe above is simulated</p>
+	<p>
+		{
+			'The swiper binds main-thread:bindtouchstart, touchmove and touchend, so a mouse never reaches it — on a desktop browser the example would sit still and look like a picture. The preview therefore performs the gesture itself and draws the contact point, the way a device simulator does. Everything it triggers is real: the drag tracking, the release animation and its easing all run on the main thread, and the indicator updates across the thread boundary. Touch the preview yourself and the demonstration stops and hands it back to you. On a touchscreen, or in Lynx Explorer through the Device tab, the gesture is your own.'
+		}
+	</p>
+</aside>
 
 <h2 id="two-threads">Two threads, one component tree</h2>
 

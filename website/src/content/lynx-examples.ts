@@ -4,6 +4,7 @@
 // builds and packages each entry into public/lynx-examples/<id>/, and the pages
 // name the same ids when they mount a <Go>. The JSON is the shared half so the
 // build script can read it without a TypeScript loader.
+import type { AutoGestureOptions } from '../components/go/lynx-view/index.ts';
 import lynxExamples from './lynx-examples.json';
 
 export interface LynxExample {
@@ -19,6 +20,12 @@ export interface LynxExample {
 	defaultFile: string;
 	/** The upstream Lynx tutorial this example ports. */
 	tutorial: string;
+	/**
+	 * Demonstrate the example with simulated touches. A gesture-driven example
+	 * shows nothing in an embedded preview otherwise: it binds touch events, so
+	 * a desktop reader's mouse does not reach it.
+	 */
+	autoGesture?: AutoGestureOptions;
 }
 
 export const LYNX_EXAMPLES = lynxExamples satisfies LynxExample[];

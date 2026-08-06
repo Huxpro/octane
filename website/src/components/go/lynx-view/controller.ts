@@ -31,6 +31,11 @@ import {
 	smoothstep01,
 } from './fit.ts';
 import {
+	playAutoGesture,
+	type AutoGestureHandle,
+	type AutoGestureOptions,
+} from './auto-gesture.ts';
+import {
 	resolveWebPreviewModeWithHysteresis,
 	type ResolvedWebPreviewFitKind,
 	type ResolvedWebPreviewMode,
@@ -80,6 +85,12 @@ export interface LynxViewOptions {
 	groupId?: number;
 	/** Uncover the preview anyway if the page signal never arrives. */
 	renderTimeoutMs?: number;
+	/**
+	 * Demonstrate the example with simulated touches once it has painted. For a
+	 * gesture-driven example this is the only way an embedded preview shows what
+	 * it does; see ./auto-gesture.ts.
+	 */
+	autoGesture?: AutoGestureOptions;
 	onStateChange?: (state: LynxViewState) => void;
 }
 
@@ -133,6 +144,7 @@ export function mountLynxView(container: HTMLElement, options: LynxViewOptions):
 	let shadowPoll = 0;
 	let renderTimeout: ReturnType<typeof setTimeout> | undefined;
 	let previousPage: Element | null = null;
+	let gesture: AutoGestureHandle | undefined;
 
 	let state: LynxViewState = {
 		ready: false,
@@ -400,6 +412,7 @@ export function mountLynxView(container: HTMLElement, options: LynxViewOptions):
 			requestAnimationFrame(() => {
 				requestAnimationFrame(() => {
 					publish({ rendered: true, stage: 'rendered', canRefresh: true });
+					startAutoGesture();
 				});
 			});
 			return;
@@ -460,7 +473,19 @@ export function mountLynxView(container: HTMLElement, options: LynxViewOptions):
 		if (renderTimeout) clearTimeout(renderTimeout);
 		renderTimeout = setTimeout(() => {
 			publish({ rendered: true, stage: 'rendered', canRefresh: true });
+			startAutoGesture();
 		}, settings.renderTimeoutMs);
+	}
+
+	/** Only after the page has painted: a gesture into a blank view demonstrates nothing. */
+	function startAutoGesture(): void {
+		if (disposed || gesture || !view || !settings.autoGesture) return;
+		gesture = playAutoGesture(view, settings.autoGesture);
+	}
+
+	function stopAutoGesture(): void {
+		gesture?.stop();
+		gesture = undefined;
 	}
 
 	return {
@@ -476,6 +501,7 @@ export function mountLynxView(container: HTMLElement, options: LynxViewOptions):
 		 */
 		reload(): void {
 			if (disposed) return;
+			stopAutoGesture();
 			renderObserver?.disconnect();
 			cancelAnimationFrame(shadowPoll);
 			view?.remove();
@@ -484,6 +510,7 @@ export function mountLynxView(container: HTMLElement, options: LynxViewOptions):
 		},
 		dispose(): void {
 			disposed = true;
+			stopAutoGesture();
 			resizeObserver?.disconnect();
 			renderObserver?.disconnect();
 			cancelAnimationFrame(shadowPoll);

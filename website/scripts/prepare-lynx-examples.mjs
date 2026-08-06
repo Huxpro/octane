@@ -151,13 +151,23 @@ function buildIfStale(example, assetPrefix) {
 	const sourceRoot = join(REPO_ROOT, example.directory);
 	const distRoot = join(sourceRoot, 'dist');
 	const stampPath = join(distRoot, '.octane-go-stamp.json');
-	const stamp = { assetPrefix, builtFrom: newestModification(sourceRoot) };
+	// The toolchain is part of the input, not just the example: a change to the
+	// Rspeedy plugin (which compiles both thread graphs) produces a different
+	// bundle from identical sources, and a stamp that ignored it would publish
+	// the stale one.
+	const owner = owningPackageRoot(sourceRoot);
+	const stamp = {
+		assetPrefix,
+		builtFrom: newestModification(sourceRoot),
+		builtWith: newestModification(join(owner, 'src')),
+	};
 
 	if (existsSync(stampPath)) {
 		const previous = JSON.parse(readFileSync(stampPath, 'utf-8'));
 		if (
 			previous.assetPrefix === stamp.assetPrefix &&
 			previous.builtFrom >= stamp.builtFrom &&
+			previous.builtWith >= stamp.builtWith &&
 			existsSync(join(distRoot, `${example.entry}.lynx.bundle`)) &&
 			existsSync(join(distRoot, `${example.entry}.web.bundle`))
 		) {
@@ -168,7 +178,6 @@ function buildIfStale(example, assetPrefix) {
 
 	// Rspeedy is a dependency of the package that owns the example, not of the
 	// example folder, so run it from that package with --root.
-	const owner = owningPackageRoot(sourceRoot);
 	console.info(`  building ${example.id} (assetPrefix ${assetPrefix})`);
 	execFileSync('pnpm', ['exec', 'rspeedy', 'build', '--root', relative(owner, sourceRoot)], {
 		cwd: owner,
