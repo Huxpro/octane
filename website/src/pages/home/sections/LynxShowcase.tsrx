@@ -123,9 +123,11 @@ export function LynxShowcase() @{
 			/* Before the example mounts this is an empty screen, so it takes the
 			   theme's inset fill rather than the preview's own dark backdrop — a
 			   black slab on a light page reads as a broken image. LynxPreview
-			   paints over it once it has something to show. */
+			   paints over it once it has something to show. Keep the 375px design
+			   width, but use three quarters of the authored 812px screen height so
+			   the home-page demos do not dominate the section. */
 			.lynx-cards :global(.lynx-screen) {
-				aspect-ratio: 375 / 812;
+				aspect-ratio: 375 / 609;
 				border-radius: 1.3rem;
 				overflow: hidden;
 				background: var(--surface-inset);
