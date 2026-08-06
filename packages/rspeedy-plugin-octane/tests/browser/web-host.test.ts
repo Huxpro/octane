@@ -13,6 +13,7 @@ import { expect, it } from 'vitest';
 import { pluginOctane } from '../../src/index.js';
 
 const DEMO_ROOT = resolve(import.meta.dirname, '../../examples/demo');
+const MAIN_THREAD_FLUSH_ROOT = resolve(import.meta.dirname, '../_fixtures/main-thread-flush');
 const WEB_CORE_ROOT = resolve(
 	dirname(fileURLToPath(import.meta.resolve('@lynx-js/web-core/package.json'))),
 	'dist/client_prod',
@@ -111,6 +112,46 @@ async function startHost(bundlePath: string): Promise<{
 	};
 }
 
+async function buildWebBundle(cwd: string, outputRoot: string): Promise<void> {
+	const rspeedy = await createRspeedy({
+		cwd,
+		loadEnv: false,
+		environment: ['web'],
+		rspeedyConfig: {
+			mode: 'production',
+			environments: { web: {} },
+			dev: { hmr: false, liveReload: false },
+			output: {
+				cleanDistPath: true,
+				distPath: { root: outputRoot },
+				filenameHash: false,
+				sourceMap: false,
+			},
+			source: { entry: { main: './src/index.ts' } },
+			splitChunks: false,
+			plugins: [pluginOctane({ dev: false, hmr: false })],
+		},
+	});
+	let build: Awaited<ReturnType<typeof rspeedy.build>> | undefined;
+	try {
+		build = await rspeedy.build();
+	} finally {
+		await build?.close();
+	}
+}
+
+async function launchChromium(): Promise<Awaited<ReturnType<typeof chromium.launch>>> {
+	try {
+		return await chromium.launch({ headless: true });
+	} catch (error) {
+		throw new Error(
+			'Chromium is required for the Lynx Web host smoke test ' +
+				'(run `pnpm --filter @octanejs/rspeedy-plugin exec playwright install chromium`): ' +
+				(error instanceof Error ? error.message.split('\n')[0] : String(error)),
+		);
+	}
+}
+
 it('mounts the demo through Lynx for Web and handles a native tap', async () => {
 	const temporaryRoot = await mkdtemp(resolve(tmpdir(), 'octane-lynx-web-host-'));
 	const outputRoot = resolve(temporaryRoot, 'dist');
@@ -118,42 +159,10 @@ it('mounts the demo through Lynx for Web and handles a native tap', async () => 
 	let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
 
 	try {
-		const rspeedy = await createRspeedy({
-			cwd: DEMO_ROOT,
-			loadEnv: false,
-			environment: ['web'],
-			rspeedyConfig: {
-				mode: 'production',
-				environments: { web: {} },
-				dev: { hmr: false, liveReload: false },
-				output: {
-					cleanDistPath: true,
-					distPath: { root: outputRoot },
-					filenameHash: false,
-					sourceMap: false,
-				},
-				source: { entry: { main: './src/index.ts' } },
-				splitChunks: false,
-				plugins: [pluginOctane({ dev: false, hmr: false })],
-			},
-		});
-		let build: Awaited<ReturnType<typeof rspeedy.build>> | undefined;
-		try {
-			build = await rspeedy.build();
-		} finally {
-			await build?.close();
-		}
+		await buildWebBundle(DEMO_ROOT, outputRoot);
 
 		host = await startHost(resolve(outputRoot, 'main.web.bundle'));
-		try {
-			browser = await chromium.launch({ headless: true });
-		} catch (error) {
-			throw new Error(
-				'Chromium is required for the Lynx Web host smoke test ' +
-					'(run `pnpm --filter @octanejs/rspeedy-plugin exec playwright install chromium`): ' +
-					(error instanceof Error ? error.message.split('\n')[0] : String(error)),
-			);
-		}
+		browser = await launchChromium();
 		const page = await browser.newPage();
 		page.setDefaultTimeout(30_000);
 		const pageErrors: string[] = [];
@@ -169,6 +178,53 @@ it('mounts the demo through Lynx for Web and handles a native tap', async () => 
 		const updatedCount = page.getByText('Count 1', { exact: true });
 		await updatedCount.waitFor({ state: 'visible' });
 		expect(await updatedCount.count()).toBe(1);
+		expect(pageErrors).toEqual([]);
+		expect(
+			await page.evaluate<string[]>(
+				() => (window as typeof window & { __lynxHostErrors: string[] }).__lynxHostErrors,
+			),
+		).toEqual([]);
+	} finally {
+		await browser?.close();
+		await host?.close();
+		await rm(temporaryRoot, { recursive: true, force: true });
+	}
+}, 90_000);
+
+// Lynx for Web calls a `'main thread'` handler from inside its own wasm element
+// context, which then refuses the `__FlushElementTree()` that the documented
+// main-thread scripting pattern ends with. Every refusal used to escape the
+// handler as an uncaught page error — one per event, so a handler bound to a
+// per-frame event flooded the console for as long as the page lived.
+it('publishes a main-thread handler flush without faulting the Web host', async () => {
+	const temporaryRoot = await mkdtemp(resolve(tmpdir(), 'octane-lynx-web-flush-'));
+	const outputRoot = resolve(temporaryRoot, 'dist');
+	let host: Awaited<ReturnType<typeof startHost>> | undefined;
+	let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+
+	try {
+		await buildWebBundle(MAIN_THREAD_FLUSH_ROOT, outputRoot);
+
+		host = await startHost(resolve(outputRoot, 'main.web.bundle'));
+		browser = await launchChromium();
+		const page = await browser.newPage();
+		page.setDefaultTimeout(30_000);
+		const pageErrors: string[] = [];
+		page.on('pageerror', (error) => pageErrors.push(error.message));
+
+		await page.goto(host.url, { waitUntil: 'domcontentloaded' });
+		const probe = page.getByText('Tap to flush', { exact: true });
+		await probe.waitFor({ state: 'visible' });
+
+		const barHeight = () =>
+			page.locator('#flush-bar').evaluate((element) => (element as HTMLElement).style.height);
+		expect(await barHeight()).toBe('8px');
+
+		await probe.click();
+		await probe.click();
+		// The style writes prove the handler ran, so an empty error list is not the
+		// vacuous pass of an event that never reached the main thread.
+		await expect.poll(barHeight).toBe('24px');
 		expect(pageErrors).toEqual([]);
 		expect(
 			await page.evaluate<string[]>(

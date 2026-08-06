@@ -1935,11 +1935,20 @@ function firstTreeOwner<Node extends LynxElementRef>(
 /**
  * Freeze the accepted main-runtime tree into a clone-safe description while
  * retaining PAPI references in a single-consumer, main-local journal.
+ *
+ * Returns `null` when the tree is well-formed but holds a composition the
+ * background cannot adopt, which is a property of the rendered page rather than
+ * a defect in the host. Every genuine capture fault still throws, so a caller
+ * can retire an unadoptable first screen quietly and still surface a broken
+ * host. A native `<list>` is the one such composition today: the platform
+ * materializes its rows through the `componentAtIndex`/`enqueueComponent`
+ * callbacks created for `listPAPI.create`, and it owns the resulting cell state,
+ * so neither can cross to the background the way a described node can.
  */
 export function captureLynxFirstTree<Node extends LynxElementRef>(
 	container: LynxHostContainer<Node>,
 	options: CaptureLynxFirstTreeOptions = {},
-): LynxFirstTree<Node> {
+): LynxFirstTree<Node> | null {
 	const state = container[LYNX_HOST_STATE];
 	if (state.disposed || state.disposing || state.faulted || state.applying) {
 		throw hostError('first tree can only be captured from a stable accepted root.');
@@ -1953,9 +1962,7 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 	) {
 		throw hostError('first-tree plan must be a non-empty string when provided.');
 	}
-	if (state.lists.size !== 0) {
-		throw hostError('native list materializations cannot be captured as a first tree.');
-	}
+	if (state.lists.size !== 0) return null;
 	if (state.portalChildren.size !== 0) {
 		throw hostError('portals cannot be captured before background adoption.');
 	}
@@ -1970,9 +1977,9 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 		if (isPortalParent(record.parent)) {
 			throw hostError('portals cannot be captured before background adoption.');
 		}
-		if (record.type === 'list') {
-			throw hostError('native list hosts cannot be captured as a first tree.');
-		}
+		// A `<list>` whose native state was never materialized is still a list the
+		// background cannot adopt.
+		if (record.type === 'list') return null;
 		if (!state.ownedNodes.has(record.node)) {
 			throw hostError(`first-tree host ${id} is missing from the physical ownership journal.`);
 		}

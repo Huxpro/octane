@@ -21,6 +21,7 @@ import {
 	type LynxContextProxyEvent,
 } from '../src/core/protocol.js';
 import { encodeLynxPortalTargetId } from '../src/core/portal.js';
+import { activateLynxMainThreadWorklet, registerMainThreadWorklet } from '../src/core/worklets.js';
 
 type Handler = ((payload: unknown) => void) | null;
 
@@ -783,6 +784,131 @@ describe.sequential('Lynx main-thread native event bridge', () => {
 		).rejects.toThrow('injected accepted flush fault');
 		expect(faultLog).toEqual([]);
 		expect(faulted.main.activeIdentity()).toMatchObject({ version: 1 });
+	});
+});
+
+describe.sequential('Lynx main-thread worklet dispatch', () => {
+	interface FlushHost {
+		readonly controller: LynxMainThreadController;
+		readonly flushes: readonly (readonly unknown[])[];
+		dispatch(worklet: unknown, args?: readonly unknown[]): unknown;
+		endDispatch(): void;
+		close(): void;
+	}
+
+	let flushHost: { close(): void } | null = null;
+	// An authored `'main thread'` handler publishes through whichever object the
+	// runtime installed the element PAPI onto. That is the bare global on a real
+	// host, but the Lynx testing environment rebuilds `globalThis` from its own
+	// per-thread bag on every thread switch, so these hosts hand the runtime an
+	// object that survives those switches and the handlers read the same one.
+	let hostGlobals: Record<string, unknown> | null = null;
+
+	afterEach(() => {
+		flushHost?.close();
+		flushHost = null;
+		hostGlobals = null;
+	});
+
+	/**
+	 * A host that refuses a flush taken from inside its own event dispatch. Lynx
+	 * for Web is one: its wasm element context is still borrowed by
+	 * `common_event_handler` when it calls `runWorklet`, so `__FlushElementTree`
+	 * throws for as long as the dispatch is on the stack.
+	 */
+	function installFlushHost(rejectsInlineFlush: boolean): FlushHost {
+		const flushes: (readonly unknown[])[] = [];
+		let dispatching = false;
+		const dom = new JSDOM('<!doctype html><html><body></body></html>');
+		installLynxTestingEnv(globalThis, {
+			window: dom.window as unknown as Window & typeof globalThis,
+		});
+		const env = globalThis.lynxTestingEnv;
+		env.switchToMainThread();
+		const target = Object.create(globalThis) as Record<string, unknown>;
+		hostGlobals = target;
+		const hostFlush = target.__FlushElementTree as (...args: unknown[]) => void;
+		target.__FlushElementTree = (...args: unknown[]) => {
+			if (dispatching && rejectsInlineFlush) {
+				throw new Error(
+					'recursive use of an object detected which would lead to unsafe aliasing in rust',
+				);
+			}
+			flushes.push(Object.freeze(args));
+			hostFlush.apply(target, args);
+		};
+		const controller = installLynxMainThread({ target });
+		env.switchToBackgroundThread();
+		const runWorklet = target.runWorklet as (
+			worklet: unknown,
+			args?: readonly unknown[],
+		) => unknown;
+		const host: FlushHost = {
+			controller,
+			flushes,
+			dispatch(worklet, args) {
+				dispatching = true;
+				return runWorklet(worklet, args);
+			},
+			endDispatch() {
+				dispatching = false;
+			},
+			close() {
+				controller.close();
+				env.clearGlobal();
+				uninstallLynxTestingEnv(globalThis);
+				dom.window.close();
+			},
+		};
+		flushHost = host;
+		return host;
+	}
+
+	function activateFlushingHandler(id: string): unknown {
+		const descriptor = registerMainThreadWorklet(id, undefined, function () {
+			(hostGlobals as unknown as { __FlushElementTree(): void }).__FlushElementTree();
+		});
+		return activateLynxMainThreadWorklet(descriptor);
+	}
+
+	it('publishes a handler flush the host refuses to take during its own dispatch', async () => {
+		const host = installFlushHost(true);
+		const handler = activateFlushingHandler('test:flush-during-dispatch');
+
+		expect(() => host.dispatch(handler)).not.toThrow();
+		expect(host.flushes).toEqual([]);
+
+		host.endDispatch();
+		await Promise.resolve();
+		expect(host.flushes).toEqual([[]]);
+		expect(host.controller.diagnostics()).toEqual([]);
+	});
+
+	it('coalesces the flushes of a handler that fires repeatedly within one dispatch', async () => {
+		const host = installFlushHost(true);
+		const handler = activateFlushingHandler('test:flush-every-frame');
+
+		// A `scroll-event-throttle={0}` handler fires once per frame, and every one
+		// of those flushes is refused inline. They must not each queue work.
+		host.dispatch(handler);
+		host.dispatch(handler);
+		host.dispatch(handler);
+
+		host.endDispatch();
+		await Promise.resolve();
+		expect(host.flushes).toEqual([[]]);
+		expect(host.controller.diagnostics()).toEqual([]);
+	});
+
+	it('leaves a host that takes an inline flush on its own synchronous timing', () => {
+		const host = installFlushHost(false);
+		const handler = activateFlushingHandler('test:flush-inline');
+
+		host.dispatch(handler);
+		// Native Lynx publishes within the dispatch, so the flush must already have
+		// landed when the handler returns rather than waiting for a checkpoint.
+		expect(host.flushes).toEqual([[]]);
+		expect(host.controller.diagnostics()).toEqual([]);
 	});
 });
 
