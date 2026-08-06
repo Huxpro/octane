@@ -131,6 +131,23 @@ describe('web preview hysteresis', () => {
 	});
 });
 
+describe('the default viewport mode', () => {
+	// The fit path scales the view with a CSS transform, and web-core measures
+	// list cells with getBoundingClientRect — so under it a waterfall <list>
+	// packs its cells by the scale factor and they overlap. `auto` picks fit for
+	// any panel narrower than a phone, which is nearly every panel, so the
+	// default has to be the one go-web itself documents.
+	it('leaves a panel narrower than the design width on the responsive path', () => {
+		expect(resolveWebPreviewMode(args(248, 537, 'responsive')).mode).toBe('responsive');
+	});
+
+	it('would have chosen the transform-scaled path under auto', () => {
+		// Guards the reasoning above rather than the choice: if `auto` ever stops
+		// resolving to fit here, the default is worth revisiting.
+		expect(resolveWebPreviewMode(args(248, 537)).mode).toBe('fit');
+	});
+});
+
 describe('example manifest', () => {
 	it('gives every example a distinct id and a repository directory', () => {
 		const ids = LYNX_EXAMPLES.map((example) => example.id);

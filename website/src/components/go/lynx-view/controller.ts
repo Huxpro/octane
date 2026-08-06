@@ -52,6 +52,12 @@ export interface LynxViewState {
 	rendered: boolean;
 	stage: LynxViewStage;
 	error: string | null;
+	/**
+	 * The bundle has been fetched, so `reload()` rebuilds the page without going
+	 * back to the network and a refresh control is worth offering. go-web reports
+	 * the same fact through its `onCanRefreshChange` callback.
+	 */
+	canRefresh: boolean;
 }
 
 export interface LynxViewOptions {
@@ -85,13 +91,19 @@ export interface LynxViewHandle {
 
 interface LynxViewElement extends HTMLElement {
 	browserConfig: { pixelWidth: number; pixelHeight: number; pixelRatio: number };
-	reload: () => void;
 }
 
+// `responsive` matches go-web's own default, and the match matters: the fit
+// path scales the view with a CSS transform, and web-core measures the list
+// through getBoundingClientRect. Under a transform those measurements come back
+// in visual pixels while the positions are written in layout pixels, so a
+// waterfall <list> packs its cells by the scale factor and they overlap. A
+// preview panel is almost always smaller than a phone, so `auto` would pick fit
+// nearly everywhere and make that the normal case.
 const DEFAULTS = {
 	designWidth: 375,
 	designHeight: 812,
-	webPreviewMode: 'auto' as WebPreviewMode,
+	webPreviewMode: 'responsive' as WebPreviewMode,
 	fit: 'auto' as const,
 	fitThresholdScale: 1,
 	fitMinScale: 0.5,
@@ -106,7 +118,12 @@ const DEFAULTS = {
  * elements below it are created and owned here.
  */
 export function mountLynxView(container: HTMLElement, options: LynxViewOptions): LynxViewHandle {
-	const settings = { ...DEFAULTS, ...options };
+	// The required options stay out of the merge so they keep their types; the
+	// optional ones skip absent keys rather than spreading them, because an
+	// explicitly-undefined option (a caller forwarding its own optional prop)
+	// would otherwise erase the default it is asking for.
+	const { url, loadRuntime, onStateChange } = options;
+	const settings = { ...DEFAULTS, ...omitUndefined(options) };
 	const { designWidth, designHeight } = settings;
 
 	let disposed = false;
@@ -116,18 +133,18 @@ export function mountLynxView(container: HTMLElement, options: LynxViewOptions):
 	let shadowPoll = 0;
 	let renderTimeout: ReturnType<typeof setTimeout> | undefined;
 	let previousPage: Element | null = null;
-	let pendingReload = false;
 
 	let state: LynxViewState = {
 		ready: false,
 		rendered: false,
 		stage: 'runtime',
 		error: null,
+		canRefresh: false,
 	};
 	const publish = (next: Partial<LynxViewState>) => {
 		if (disposed) return;
 		state = { ...state, ...next };
-		settings.onStateChange?.(state);
+		onStateChange?.(state);
 	};
 
 	// The subtree go-web builds: a centred flex box, an anchor the fit path
@@ -340,8 +357,21 @@ export function mountLynxView(container: HTMLElement, options: LynxViewOptions):
 		publish({ error: formatError(reason) ?? 'The Lynx runtime reported an error.' });
 	}
 
+	/**
+	 * The *live* page root.
+	 *
+	 * A reload does not replace the old root in place — web-core marks it
+	 * `l-disposed` and builds the new page beside it, so the torn-down node stays
+	 * in the shadow tree and is the first match for the selector. Taking the
+	 * first match (as go-web does) therefore never observes the rebuilt page and
+	 * a refresh can only ever end on the fallback timeout.
+	 */
 	function pageRoot(): Element | null {
-		return view?.shadowRoot?.querySelector('[part="page"], [lynx-tag="page"]') ?? null;
+		const roots = view?.shadowRoot?.querySelectorAll('[part="page"], [lynx-tag="page"]');
+		for (const root of roots ?? []) {
+			if (!root.hasAttribute(DISPOSED_ATTRIBUTE)) return root;
+		}
+		return null;
 	}
 
 	/**
@@ -359,19 +389,25 @@ export function mountLynxView(container: HTMLElement, options: LynxViewOptions):
 	function evaluateShadow(shadow: ShadowRoot): void {
 		if (disposed || state.rendered) return;
 		const page = pageRoot();
-		if (page && !page.hasAttribute(DISPOSED_ATTRIBUTE) && page !== previousPage) {
+		// Once the pre-reload root has been marked torn down it is no longer
+		// something a new root could be confused with, so stop holding it against
+		// the identity test.
+		if (previousPage?.hasAttribute(DISPOSED_ATTRIBUTE)) previousPage = null;
+		if (page && page !== previousPage) {
 			renderObserver?.disconnect();
 			// Double rAF: uncover only after the browser has actually painted the
 			// page, so the overlay never lifts onto a blank frame.
 			requestAnimationFrame(() => {
 				requestAnimationFrame(() => {
-					publish({ rendered: true, stage: 'rendered' });
+					publish({ rendered: true, stage: 'rendered', canRefresh: true });
 				});
 			});
 			return;
 		}
+		// Either signal means the bundle itself has arrived, which is what makes a
+		// soft reload cheap and therefore worth offering.
 		if (state.stage === 'downloading' && hasDecodedTemplate(shadow)) {
-			publish({ stage: 'rendering' });
+			publish({ stage: 'rendering', canRefresh: true });
 		}
 	}
 
@@ -391,24 +427,12 @@ export function mountLynxView(container: HTMLElement, options: LynxViewOptions):
 			attributeFilter: [DISPOSED_ATTRIBUTE],
 		});
 		evaluateShadow(shadow);
-
-		if (pendingReload) {
-			pendingReload = false;
-			view.reload();
-			// A cached rebuild can finish between turns, before the observer sees
-			// anything worth reporting.
-			queueMicrotask(() => {
-				if (!disposed && view?.shadowRoot) evaluateShadow(view.shadowRoot);
-			});
-			requestAnimationFrame(() => {
-				if (!disposed && view?.shadowRoot) evaluateShadow(view.shadowRoot);
-			});
-		}
 	}
 
-	settings.loadRuntime().then(() => {
+	/** Create the element, configure it, and point it at the bundle. */
+	function startView(): void {
 		if (disposed) return;
-		publish({ ready: true, stage: 'downloading' });
+		publish({ ready: true, rendered: false, stage: 'downloading', error: null });
 
 		view = document.createElement('lynx-view') as LynxViewElement;
 		view.setAttribute('lynx-group-id', String(settings.groupId));
@@ -418,25 +442,45 @@ export function mountLynxView(container: HTMLElement, options: LynxViewOptions):
 			const detail = (event as CustomEvent<{ error?: unknown; message?: unknown }>).detail;
 			fail(detail?.error ?? detail?.message ?? event);
 		});
+		browserConfigInitialized = false;
+		previousPage = null;
 		frame.append(view);
 		applyLayout();
 		initializeBrowserConfig();
-		view.setAttribute('url', settings.url);
+		view.setAttribute('url', url);
 
 		watchShadow();
+		armRenderTimeout();
+	}
+
+	loadRuntime().then(startView, fail);
+
+	/** Uncover the preview even if the page signal never arrives. */
+	function armRenderTimeout(): void {
+		if (renderTimeout) clearTimeout(renderTimeout);
 		renderTimeout = setTimeout(() => {
-			publish({ rendered: true, stage: 'rendered' });
+			publish({ rendered: true, stage: 'rendered', canRefresh: true });
 		}, settings.renderTimeoutMs);
-	}, fail);
+	}
 
 	return {
+		/**
+		 * Rebuild the page.
+		 *
+		 * go-web calls `<lynx-view>.reload()` for this, but on web-core 0.22.2
+		 * that tears the page down without building a new one: the root keeps its
+		 * identity, gains `l-disposed`, and nothing replaces it — so the preview
+		 * is left showing a dead tree until the fallback timeout gives up. A fresh
+		 * element rebuilds deterministically, and the bundle comes from the HTTP
+		 * cache, so this costs a rebuild rather than a download.
+		 */
 		reload(): void {
-			if (disposed || !view) return;
-			previousPage = pageRoot();
-			pendingReload = true;
-			publish({ rendered: false, stage: 'rendering', error: null });
+			if (disposed) return;
 			renderObserver?.disconnect();
-			watchShadow();
+			cancelAnimationFrame(shadowPoll);
+			view?.remove();
+			view = undefined;
+			startView();
 		},
 		dispose(): void {
 			disposed = true;
@@ -448,6 +492,12 @@ export function mountLynxView(container: HTMLElement, options: LynxViewOptions):
 			inner.remove();
 		},
 	};
+}
+
+function omitUndefined<T extends object>(value: T): Partial<T> {
+	return Object.fromEntries(
+		Object.entries(value).filter(([, entry]) => entry !== undefined),
+	) as Partial<T>;
 }
 
 function formatError(value: unknown): string | null {

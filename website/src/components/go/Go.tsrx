@@ -21,6 +21,18 @@ import type { WebPreviewMode } from './lynx-view/index.ts';
 // finds it already running.
 const PRELOAD_MARGIN = '400px';
 
+// The viewport these examples are authored against. At exactly this width the
+// responsive path maps `rpx` 1:1 with the design, so the example renders as
+// drawn — and, unlike the fit path, without a CSS transform for a `<list>` to
+// measure itself against.
+const DESIGN_WIDTH = 375;
+
+// Neither pane is worth showing below these; go-web uses the same thresholds
+// for its own split (PREVIEW_H_COLLAPSE / CODE_H_COLLAPSE).
+const PREVIEW_MIN = 260;
+const CODE_MIN = 200;
+const KEYBOARD_STEP = 16;
+
 interface GoProps {
 	/** Example id — the folder name under `/lynx-examples`. */
 	example: string;
@@ -36,11 +48,16 @@ interface GoProps {
 
 export function Go(props: GoProps) @{
 	const panel = useRef<HTMLDivElement | null>(null);
+	const body = useRef<HTMLDivElement | null>(null);
 	const [near, setNear] = useState(false);
 	const [loaded, setLoaded] = useState<LoadedExample | null>(null);
 	const [error, setError] = useState('');
 	const [openFile, setOpenFile] = useState('');
 	const [tab, setTab] = useState<'web' | 'device'>('web');
+	const [previewWidth, setPreviewWidth] = useState(DESIGN_WIDTH);
+	const [fullscreen, setFullscreen] = useState(false);
+	const [reloadKey, setReloadKey] = useState(0);
+	const [canRefresh, setCanRefresh] = useState(false);
 
 	// Everything below — metadata, sources, the Lynx runtime, the example's own
 	// assets — waits on this.
@@ -76,15 +93,69 @@ export function Go(props: GoProps) @{
 		return () => controller.abort();
 	});
 
+	// Expanded, the panel covers the page, so Escape has to bring it back and the
+	// page behind it must not scroll under it.
+	useEffect(() => {
+		if (!fullscreen) return;
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.key === 'Escape') setFullscreen(false);
+		};
+		const previous = document.body.style.overflow;
+		document.body.style.overflow = 'hidden';
+		document.addEventListener('keydown', onKeyDown);
+		return () => {
+			document.body.style.overflow = previous;
+			document.removeEventListener('keydown', onKeyDown);
+		};
+	});
+
+	const clampPreview = (width: number): number => {
+		const available = body.current?.getBoundingClientRect().width ?? width + CODE_MIN;
+		return Math.max(PREVIEW_MIN, Math.min(width, Math.max(PREVIEW_MIN, available - CODE_MIN)));
+	};
+
+	// The drag listens on the window rather than capturing the pointer on the
+	// separator: the pointer leaves a 10px-wide element immediately, and window
+	// listeners keep tracking it without depending on how a delegated event
+	// reports its current target.
+	const onSeparatorPointerDown = (event: PointerEvent) => {
+		event.preventDefault();
+		const onMove = (move: PointerEvent) => {
+			const bounds = body.current?.getBoundingClientRect();
+			if (!bounds) return;
+			// The preview is the trailing pane, so its width is whatever sits
+			// between the pointer and the panel's right edge.
+			setPreviewWidth(clampPreview(bounds.right - move.clientX));
+		};
+		const onUp = () => {
+			window.removeEventListener('pointermove', onMove);
+			window.removeEventListener('pointerup', onUp);
+			window.removeEventListener('pointercancel', onUp);
+		};
+		window.addEventListener('pointermove', onMove);
+		window.addEventListener('pointerup', onUp);
+		window.addEventListener('pointercancel', onUp);
+	};
+	const onSeparatorKeyDown = (event: KeyboardEvent) => {
+		if (event.key === 'ArrowLeft') setPreviewWidth(clampPreview(previewWidth + KEYBOARD_STEP));
+		else if (event.key === 'ArrowRight') setPreviewWidth(
+			clampPreview(previewWidth - KEYBOARD_STEP),
+		);
+		else if (event.key === 'Home') setPreviewWidth(clampPreview(DESIGN_WIDTH));
+		else return;
+		event.preventDefault();
+	};
+
 	const entry =
 		loaded ? resolveEntry(loaded.metadata, props.entry) : undefined;
 	const sources = loaded?.source.files ?? [];
 	const current = sources.find(({ path }) => path === openFile) ?? sources[0];
 	const webBundle = entry?.webFile;
 	const nativeBundle = entry?.file;
+	const showRefresh = tab === 'web' && canRefresh;
 
-	<div class="go" ref={panel}>
-		<div class="go-body">
+	<div class={['go', fullscreen && 'is-fullscreen']} ref={panel}>
+		<div class="go-body" ref={body} style={'--go-preview-width:' + previewWidth + 'px'}>
 			<div class="go-code">
 				<div class="go-files" role="tablist" aria-label="Example source files">
 					@for (const source of sources; key source.path) {
@@ -111,22 +182,92 @@ export function Go(props: GoProps) @{
 				</div>
 			</div>
 
+			{/* A real separator, so the split is adjustable by pointer and by
+    keyboard rather than being a decorative grip. */}
+			<div
+				class="go-separator"
+				role="separator"
+				aria-orientation="vertical"
+				aria-label="Resize the preview"
+				aria-valuenow={Math.round(previewWidth)}
+				aria-valuemin={PREVIEW_MIN}
+				tabIndex={0}
+				onPointerDown={onSeparatorPointerDown}
+				onKeyDown={onSeparatorKeyDown}
+			>
+				<span class="go-separator-grip" aria-hidden="true"></span>
+			</div>
+
 			<div class="go-preview">
-				<div class="go-preview-tabs" role="tablist" aria-label="Preview target">
-					<button
-						type="button"
-						role="tab"
-						class={['go-tab', tab === 'web' && 'is-active']}
-						aria-selected={tab === 'web'}
-						onClick={() => setTab('web')}
-					>Web</button>
-					<button
-						type="button"
-						role="tab"
-						class={['go-tab', tab === 'device' && 'is-active']}
-						aria-selected={tab === 'device'}
-						onClick={() => setTab('device')}
-					>Device</button>
+				<div class="go-preview-bar">
+					<div class="go-preview-tabs" role="tablist" aria-label="Preview target">
+						<button
+							type="button"
+							role="tab"
+							class={['go-tab', tab === 'web' && 'is-active']}
+							aria-selected={tab === 'web'}
+							onClick={() => setTab('web')}
+						>Web</button>
+						<button
+							type="button"
+							role="tab"
+							class={['go-tab', tab === 'device' && 'is-active']}
+							aria-selected={tab === 'device'}
+							onClick={() => setTab('device')}
+						>Device</button>
+					</div>
+					<div class="go-actions">
+						@if (showRefresh) {
+							<button
+								type="button"
+								class="go-action"
+								title="Reload the example"
+								aria-label="Reload the example"
+								onClick={() => setReloadKey(reloadKey + 1)}
+							>
+								<svg viewBox="0 0 16 16" aria-hidden="true">
+									<path
+										d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.4"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									/>
+								</svg>
+							</button>
+						}
+						<button
+							type="button"
+							class="go-action"
+							title={fullscreen ? 'Exit full screen' : 'Full screen'}
+							aria-label={fullscreen ? 'Exit full screen' : 'Full screen'}
+							aria-pressed={fullscreen}
+							onClick={() => setFullscreen(!fullscreen)}
+						>
+							<svg viewBox="0 0 16 16" aria-hidden="true">
+								@if (fullscreen) {
+									<path
+										d="M6.5 2.5v4h-4M9.5 13.5v-4h4"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.4"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									/>
+								} @else {
+									<path
+										d="M2.5 6.5v-4h4M13.5 9.5v4h-4"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.4"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									/>
+								}
+							</svg>
+						</button>
+					</div>
 				</div>
 				<div class="go-preview-body">
 					{/* Both panes stay mounted: unmounting the web preview to show a
@@ -137,6 +278,8 @@ export function Go(props: GoProps) @{
 								src={`/lynx-examples/${props.example}/${webBundle}`}
 								label={props.label}
 								mode={props.mode}
+								reloadKey={reloadKey}
+								onStateChange={(state) => setCanRefresh(state.canRefresh)}
 							/>
 						} @else if (near && loaded) {
 							<p class="go-message">
@@ -154,7 +297,7 @@ export function Go(props: GoProps) @{
 		</div>
 
 		<style>
-			/* The site's code-panel frame, widened into two columns. */
+			/* The site's code-panel frame, widened into two panes. */
 			.go {
 				margin: 1.6rem 0;
 				border: 1px solid var(--border);
@@ -162,16 +305,34 @@ export function Go(props: GoProps) @{
 				overflow: hidden;
 				background: var(--code-bg);
 			}
+			/* Expanded, the panel leaves the prose column and takes the window. It
+			   stays the same element — only the frame moves — so the preview is not
+			   remounted and the example keeps its state. */
+			.go.is-fullscreen {
+				position: fixed;
+				inset: 1rem;
+				z-index: 60;
+				margin: 0;
+				box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+			}
+			/* The explicit row matters: an implicit `auto` row sizes to the code
+			   pane's content, so the panes would lay out far taller than the frame
+			   and only look right because the frame clips them — and the preview
+			   would hand that phantom height to the Lynx page as its viewport. */
 			.go-body {
 				display: grid;
-				grid-template-columns: minmax(0, 1fr) 15.5rem;
-				min-height: 0;
+				grid-template-columns: minmax(0, 1fr) auto var(--go-preview-width);
+				grid-template-rows: minmax(0, 1fr);
+				height: 33.5rem;
+			}
+			.go.is-fullscreen .go-body {
+				height: 100%;
 			}
 			.go-code {
 				display: flex;
 				flex-direction: column;
 				min-width: 0;
-				border-right: 1px solid var(--border);
+				min-height: 0;
 			}
 			/* Editor-style file strip. It scrolls horizontally rather than wrapping,
 			   so the panel's height does not change with the file count. */
@@ -210,13 +371,9 @@ export function Go(props: GoProps) @{
 				color: var(--text);
 				border-bottom-color: var(--accent);
 			}
-			/* The panel's preview column is proportioned to the 375 x 812 viewport
-			   these examples are authored for, so the auto-fit path resolves to
-			   roughly the same scale on both axes and nothing is cropped. Keep the
-			   two heights in step if either changes. */
 			.go-source {
 				min-height: 0;
-				height: 33.5rem;
+				flex: 1;
 				overflow: auto;
 				scrollbar-width: thin;
 			}
@@ -230,18 +387,50 @@ export function Go(props: GoProps) @{
 				font-size: 0.75rem;
 				line-height: 1.6;
 			}
+			.go-separator {
+				width: 10px;
+				border-left: 1px solid var(--border);
+				border-right: 1px solid var(--border);
+				display: grid;
+				place-items: center;
+				background: var(--surface-subtle);
+				cursor: col-resize;
+				touch-action: none;
+			}
+			.go-separator:hover,
+			.go-separator:focus-visible {
+				background: var(--surface);
+				outline: none;
+			}
+			.go-separator:focus-visible {
+				box-shadow: inset 0 0 0 1px var(--accent);
+			}
+			/* The grip: a short dotted run, the affordance go-web uses for the same
+			   handle. */
+			.go-separator-grip {
+				width: 2px;
+				height: 18px;
+				background: radial-gradient(circle, var(--text-secondary) 1px, transparent 1px) 0 0 / 2px
+					6px repeat-y;
+				opacity: 0.7;
+			}
 			.go-preview {
 				display: flex;
 				flex-direction: column;
 				min-width: 0;
+				min-height: 0;
 			}
-			.go-preview-tabs {
+			.go-preview-bar {
 				display: flex;
-				gap: 0.15rem;
+				align-items: center;
 				min-height: 2rem;
 				padding: 0 0.35rem;
 				background: var(--surface-subtle);
 				border-bottom: 1px solid var(--border);
+			}
+			.go-preview-tabs {
+				display: flex;
+				gap: 0.15rem;
 			}
 			.go-tab {
 				padding: 0 0.6rem;
@@ -264,12 +453,44 @@ export function Go(props: GoProps) @{
 				color: var(--text);
 				border-bottom-color: var(--accent);
 			}
-			/* The container both panes measure against: the preview scales a
-			   375 x 812 phone into it, and the QR code sizes off it. */
+			.go-actions {
+				display: flex;
+				align-items: center;
+				gap: 0.15rem;
+				margin-left: auto;
+			}
+			.go-action {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				width: 1.6rem;
+				height: 1.6rem;
+				padding: 0;
+				border: 1px solid transparent;
+				border-radius: 0.4rem;
+				background: transparent;
+				color: var(--text-secondary);
+				cursor: pointer;
+				transition:
+					color 0.15s,
+					background 0.15s,
+					border-color 0.15s;
+			}
+			.go-action:hover {
+				color: var(--text);
+				background: var(--surface);
+				border-color: var(--border);
+			}
+			.go-action svg {
+				width: 14px;
+				height: 14px;
+			}
+			/* The container both panes measure against. */
 			.go-preview-body {
 				position: relative;
 				container-type: size;
-				height: 33.5rem;
+				flex: 1;
+				min-height: 0;
 			}
 			.go-pane {
 				position: absolute;
@@ -292,15 +513,18 @@ export function Go(props: GoProps) @{
 			.go-message-error {
 				color: var(--danger-text);
 			}
-			/* Below the two-column breakpoint the preview leads: it is the thing
-			   worth looking at, and the code reads fine underneath it. */
-			@media (max-width: 640px) {
+			/* Stacked, there is nothing to drag: both panes are full width and the
+			   preview leads, because it is the thing worth looking at. */
+			@media (max-width: 720px) {
 				.go-body {
 					grid-template-columns: minmax(0, 1fr);
+					height: auto;
+				}
+				.go-separator {
+					display: none;
 				}
 				.go-code {
 					order: 2;
-					border-right: 0;
 					border-top: 1px solid var(--border);
 				}
 				.go-preview {
@@ -308,6 +532,15 @@ export function Go(props: GoProps) @{
 				}
 				.go-source {
 					height: 20rem;
+					flex: none;
+				}
+				.go-preview-body {
+					height: 33.5rem;
+					flex: none;
+				}
+				.go.is-fullscreen .go-body {
+					height: 100%;
+					overflow-y: auto;
 				}
 			}
 		</style>

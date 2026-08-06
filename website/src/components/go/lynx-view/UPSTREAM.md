@@ -54,8 +54,43 @@ to upstream so a diff against it stays readable.
 
 ## Known divergences from upstream
 
-- The overlay, its labels and the "can refresh" affordance are not ported; this
-  site renders its own status UI from `onStateChange`.
+- The overlay and its labels are not ported; this site renders its own status UI
+  from `onStateChange`. Upstream's `onCanRefreshChange` callback is folded into
+  that same state as `canRefresh`, which carries the same fact.
 - The `?simulateError=` development hook is not ported.
 - Upstream's static preview image and `<img>` cover path belong to its own
   chrome, not to the view, and are not ported.
+
+### Behavioural fixes made here, worth sending back
+
+Three things were found by embedding real tutorial examples. All three are
+upstream bugs, not adaptation artefacts, and all three are fixed here.
+
+1. **The fit path breaks `<list>`.** `fit` scales the view with a CSS
+   `transform`, and web-core measures list cells through
+   `getBoundingClientRect()`. Under a transform those measurements come back in
+   visual pixels while the positions are written in layout pixels, so a
+   waterfall list packs its cells by the scale factor and they overlap. With the
+   Lynx Product Gallery tutorial at a 248 x 537 panel, the 10px gap between
+   cells became a 35px overlap — exactly the 0.66 scale factor. The same
+   coordinate mismatch applies to `main-thread:bindtouch*` handlers, which read
+   `clientX` in visual pixels and write `translateX` in layout pixels.
+
+   The default here is therefore `responsive` (which is also go-web's own
+   documented default; `auto` resolves to `fit` for any panel narrower than a
+   phone, which is nearly all of them). A caller that wants the authored
+   viewport exactly should size the container to `designWidth`, where
+   `responsive` maps `rpx` 1:1 with no transform at all.
+
+2. **`pageRoot()` must skip the disposed root.** A reload does not replace the
+   old page root: web-core marks it `l-disposed` and leaves it in the shadow
+   tree. Upstream's `shadow.querySelector('[part="page"], [lynx-tag="page"]')`
+   returns that dead node first, so the "has it painted" test can never observe
+   the new page. This returns the first *live* root instead.
+
+3. **`<lynx-view>.reload()` does not rebuild** on `@lynx-js/web-core@0.22.2`. It
+   disposes the page — same root identity, `l-disposed` set — and nothing
+   replaces it, so upstream's soft refresh leaves a dead tree on screen until
+   its 5s fallback timeout hides the problem. `reload()` here recreates the
+   element instead; the bundle comes from the HTTP cache, so it costs a rebuild
+   rather than a download, and it settles in well under a second.
