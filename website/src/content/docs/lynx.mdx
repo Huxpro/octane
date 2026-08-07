@@ -3,6 +3,8 @@ title: Native apps with Lynx
 ---
 
 import { Go } from '../../components/go/Go.tsrx';
+import { Hydrate } from 'octane';
+import { visible } from 'octane/hydration';
 
 <div className="doc-hero">
 	<p className="doc-eyebrow">Early access</p>
@@ -39,7 +41,9 @@ changes the rate from `60` to `-60`; at the top, it changes it back. The scrollb
 see tracking the list is updated by that same handler every frame. Open the Device tab
 to run the same example on a phone.
 
-<Go example="gallery" label="Two-column waterfall gallery running on Lynx for Web" />
+<Hydrate when={visible({ rootMargin: '400px' })}>
+	<Go example="gallery" label="Two-column waterfall gallery running on Lynx for Web" />
+</Hydrate>
 
 The template reads the way it would on the web. `@for` keys the cells, `@if` swaps the
 heart, and the scroll handler is an ordinary function marked to run on the other thread:
@@ -114,7 +118,13 @@ The preview sequence lives beside the example in `preview.json`. Seven simulated
 move the eight-image carousel to one end, then seven swipes move it back. The sequence
 keeps alternating instead of continuing to push against an endpoint.
 
-<Go example="swiper" file="preview.json" label="Product detail carousel running on Lynx for Web" />
+<Hydrate when={visible({ rootMargin: '400px' })}>
+	<Go
+		example="swiper"
+		file="preview.json"
+		label="Product detail carousel running on Lynx for Web"
+	/>
+</Hydrate>
 
 <aside className="doc-callout note">
 	<p className="doc-callout-title">The swipes above are simulated</p>
