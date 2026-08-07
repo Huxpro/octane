@@ -243,7 +243,7 @@ export const docsMeta: DocMeta[] = [
 			'.lynx.bundle',
 		],
 		sections: [
-			{ id: 'what-lynx-is', title: 'What Lynx is' },
+			{ id: 'what-lynx-is', title: 'How Lynx and Octane work together' },
 			{
 				id: 'gallery',
 				title: 'Image gallery with a main-thread scrollbar',
@@ -256,7 +256,7 @@ export const docsMeta: DocMeta[] = [
 			},
 			{ id: 'two-threads', title: 'Two threads, one component tree' },
 			{ id: 'run-it', title: 'Run it yourself' },
-			{ id: 'status', title: 'Where this stands' },
+			{ id: 'status', title: 'Current status' },
 		],
 	},
 	{
