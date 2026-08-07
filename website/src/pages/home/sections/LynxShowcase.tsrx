@@ -36,6 +36,7 @@ function ShowcaseCard(props: CardProps) @{
 		const controller = new AbortController();
 		loadExampleMetadata(props.id, controller.signal).then(
 			(metadata) => {
+				if (controller.signal.aborted) return;
 				const entry = resolveEntry(metadata);
 				if (entry?.webFile) setBundle(`${exampleRoot(props.id)}/${entry.webFile}`);
 			},
@@ -50,7 +51,7 @@ function ShowcaseCard(props: CardProps) @{
 	<Link to="/docs/$slug" params={{ slug: 'lynx' }} class="lynx-card" hash={props.id}>
 		<div class="lynx-device">
 			<div class="lynx-screen">
-				@if (bundle) {
+				@if (props.active && bundle) {
 					<LynxPreview
 						src={bundle}
 						label={props.title + ' running on Lynx for Web'}

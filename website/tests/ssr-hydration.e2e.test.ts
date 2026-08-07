@@ -1611,6 +1611,87 @@ describe(
 		);
 
 		it.concurrent(
+			'late Lynx metadata cannot mount a preview after navigation starts',
+			{ timeout: 30_000 },
+			async () => {
+				const outgoingLynxRequests: string[] = [];
+				let navigating = false;
+				const { page, errors } = await loadRoute(PREVIEW_ORIGIN, '/', {
+					beforeNavigation: async (page) => {
+						await page.addInitScript(() => {
+							const originalFetch = window.fetch.bind(window);
+							// Download the real metadata, then hold its JSON completion so the
+							// route can become inactive after the network response has settled.
+							const metadataReleases: Array<() => void> = [];
+							const gate = window as Window & {
+								pendingLynxMetadata?: () => number;
+								releaseLynxMetadata?: () => void;
+							};
+							gate.pendingLynxMetadata = () => metadataReleases.length;
+							gate.releaseLynxMetadata = () => {
+								for (const release of metadataReleases.splice(0)) release();
+							};
+							window.fetch = async (...args) => {
+								const response = await originalFetch(...args);
+								const input = args[0];
+								const url = input instanceof Request ? input.url : String(input);
+								if (!new URL(url, location.href).pathname.endsWith('/example-metadata.json')) {
+									return response;
+								}
+								const metadata = await response.json();
+								return {
+									ok: response.ok,
+									status: response.status,
+									json: () =>
+										new Promise((resolve) => {
+											metadataReleases.push(() => resolve(metadata));
+										}),
+								} as Response;
+							};
+						});
+						await page.route(/\/assets\/benchmarks-[^/]+\.js$/, async (route) => {
+							await new Promise((resolve) => setTimeout(resolve, 1_000));
+							await route.continue();
+						});
+						page.on('request', (request) => {
+							const pathname = new URL(request.url()).pathname;
+							if (navigating && pathname.startsWith('/lynx-examples/')) {
+								outgoingLynxRequests.push(pathname);
+							}
+						});
+					},
+				});
+				try {
+					await page.locator('.lynx-stage').scrollIntoViewIfNeeded();
+					await page.waitForFunction(
+						() =>
+							(window as Window & { pendingLynxMetadata?: () => number }).pendingLynxMetadata?.() >
+							0,
+						null,
+						{ timeout: PLAYWRIGHT_ACTION_TIMEOUT },
+					);
+					navigating = true;
+					await page.click('a.nav-link[href="/benchmarks"]');
+					await page.waitForFunction(() => location.pathname === '/benchmarks', null, {
+						timeout: PLAYWRIGHT_ACTION_TIMEOUT,
+					});
+					await page.evaluate(() => {
+						(window as Window & { releaseLynxMetadata?: () => void }).releaseLynxMetadata?.();
+					});
+					await page.waitForFunction(
+						() => document.querySelector('main .benchpage') !== null,
+						null,
+						{ timeout: PLAYWRIGHT_ACTION_TIMEOUT },
+					);
+					expect(outgoingLynxRequests).toEqual([]);
+					expect(errors).toEqual([]);
+				} finally {
+					await page.close();
+				}
+			},
+		);
+
+		it.concurrent(
 			'playground compiles, runs, and handles an event inside its sandbox',
 			async () => {
 				const { page, errors } = await loadRoute(PREVIEW_ORIGIN, '/playground');
