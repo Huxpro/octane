@@ -1620,8 +1620,8 @@ describe(
 					beforeNavigation: async (page) => {
 						await page.addInitScript(() => {
 							const originalFetch = window.fetch.bind(window);
-							// Download the real metadata, then hold its JSON completion so the
-							// route can become inactive after the network response has settled.
+							// Return a settled metadata response, then hold its JSON completion so
+							// the route can become inactive before the consumer resumes.
 							const metadataReleases: Array<() => void> = [];
 							const gate = window as Window & {
 								pendingLynxMetadata?: () => number;
@@ -1631,22 +1631,32 @@ describe(
 							gate.releaseLynxMetadata = () => {
 								for (const release of metadataReleases.splice(0)) release();
 							};
-							window.fetch = async (...args) => {
-								const response = await originalFetch(...args);
+							window.fetch = (...args) => {
 								const input = args[0];
 								const url = input instanceof Request ? input.url : String(input);
 								if (!new URL(url, location.href).pathname.endsWith('/example-metadata.json')) {
-									return response;
+									return originalFetch(...args);
 								}
-								const metadata = await response.json();
-								return {
-									ok: response.ok,
-									status: response.status,
+								return Promise.resolve({
+									ok: true,
+									status: 200,
 									json: () =>
 										new Promise((resolve) => {
-											metadataReleases.push(() => resolve(metadata));
+											metadataReleases.push(() =>
+												resolve({
+													name: 'test',
+													files: [],
+													templateFiles: [
+														{
+															name: 'main',
+															file: 'dist/main.bundle',
+															webFile: 'dist/main.web.bundle',
+														},
+													],
+												}),
+											);
 										}),
-								} as Response;
+								} as Response);
 							};
 						});
 						await page.route(/\/assets\/benchmarks-[^/]+\.js$/, async (route) => {
@@ -1662,11 +1672,13 @@ describe(
 					},
 				});
 				try {
-					await page.locator('.lynx-stage').scrollIntoViewIfNeeded();
+					await page.locator('section.lynx').scrollIntoViewIfNeeded();
 					await page.waitForFunction(
-						() =>
-							(window as Window & { pendingLynxMetadata?: () => number }).pendingLynxMetadata?.() >
-							0,
+						() => {
+							const pending = (window as Window & { pendingLynxMetadata?: () => number })
+								.pendingLynxMetadata;
+							return pending !== undefined && pending() > 0;
+						},
 						null,
 						{ timeout: PLAYWRIGHT_ACTION_TIMEOUT },
 					);
