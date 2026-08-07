@@ -1569,21 +1569,46 @@ describe(
 			},
 		);
 
-		it.concurrent('client-side navigation works after hydration', { timeout: 30_000 }, async () => {
-			const { page, errors } = await loadRoute(PREVIEW_ORIGIN, '/');
-			try {
-				await page.click('a.nav-link[href="/benchmarks"]');
-				await page.waitForFunction(() => location.pathname === '/benchmarks', null, {
-					timeout: PLAYWRIGHT_ACTION_TIMEOUT,
+		it.concurrent(
+			'client-side navigation does not start resources owned by the outgoing route',
+			{ timeout: 30_000 },
+			async () => {
+				const outgoingLynxRequests: string[] = [];
+				let navigating = false;
+				const { page, errors } = await loadRoute(PREVIEW_ORIGIN, '/', {
+					beforeNavigation: async (page) => {
+						await page.route(/\/assets\/benchmarks-[^/]+\.js$/, async (route) => {
+							await new Promise((resolve) => setTimeout(resolve, 500));
+							await route.continue();
+						});
+						page.on('request', (request) => {
+							const pathname = new URL(request.url()).pathname;
+							if (navigating && pathname.startsWith('/lynx-examples/')) {
+								outgoingLynxRequests.push(pathname);
+							}
+						});
+					},
 				});
-				await page.waitForFunction(() => document.querySelector('main .benchpage') !== null, null, {
-					timeout: PLAYWRIGHT_ACTION_TIMEOUT,
-				});
-				expect(errors).toEqual([]);
-			} finally {
-				await page.close();
-			}
-		});
+				try {
+					navigating = true;
+					await page.click('a.nav-link[href="/benchmarks"]');
+					await page.waitForFunction(() => location.pathname === '/benchmarks', null, {
+						timeout: PLAYWRIGHT_ACTION_TIMEOUT,
+					});
+					await page.waitForFunction(
+						() => document.querySelector('main .benchpage') !== null,
+						null,
+						{
+							timeout: PLAYWRIGHT_ACTION_TIMEOUT,
+						},
+					);
+					expect(outgoingLynxRequests).toEqual([]);
+					expect(errors).toEqual([]);
+				} finally {
+					await page.close();
+				}
+			},
+		);
 
 		it.concurrent(
 			'playground compiles, runs, and handles an event inside its sandbox',

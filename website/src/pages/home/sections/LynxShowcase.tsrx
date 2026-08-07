@@ -9,7 +9,7 @@
 // Each card fetches only `example-metadata.json`, not the highlighted sources
 // the docs' <Go> panel also pulls: there is no code on this page.
 import { useEffect, useState } from 'octane';
-import { Link } from '@octanejs/tanstack-router';
+import { Link, useLocation } from '@octanejs/tanstack-router';
 import { LynxPreview } from '../../../components/go/LynxPreview.tsrx';
 import {
 	loadExampleMetadata,
@@ -22,6 +22,7 @@ interface CardProps {
 	id: string;
 	title: string;
 	summary: string;
+	active: boolean;
 	autoGesture?: LynxExample['autoGesture'];
 }
 
@@ -29,6 +30,9 @@ function ShowcaseCard(props: CardProps) @{
 	const [bundle, setBundle] = useState('');
 
 	useEffect(() => {
+		// Route updates may wake a dormant hydration boundary before it unmounts.
+		// Do not start this route's large preview resources once navigation begins.
+		if (!props.active) return;
 		const controller = new AbortController();
 		loadExampleMetadata(props.id, controller.signal).then(
 			(metadata) => {
@@ -62,12 +66,15 @@ function ShowcaseCard(props: CardProps) @{
 }
 
 export function LynxShowcase() @{
+	const pathname = useLocation({ select: (location) => location.pathname });
+
 	<div class="lynx-cards">
 		@for (const example of LYNX_EXAMPLES; key example.id) {
 			<ShowcaseCard
 				id={example.id}
 				title={example.title}
 				summary={example.summary}
+				active={pathname === '/'}
 				autoGesture={example.autoGesture}
 			/>
 		}
