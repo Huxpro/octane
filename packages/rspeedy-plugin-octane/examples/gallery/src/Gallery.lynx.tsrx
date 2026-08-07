@@ -48,7 +48,8 @@ export function Gallery({ pictureData }: { pictureData: Picture[] }) @{
 		// to — assumed a full-screen page behind Explorer's title bar. That was
 		// wrong on Web, wrong in Explorer's fullscreen mode, and it also left the
 		// list 48px short of its wrapper, which is where the black band came from.
-		const listHeight = event.detail.listHeight ?? SystemInfo.pixelHeight / SystemInfo.pixelRatio;
+		// `||` rather than `??`: Lynx for Web reports 0 here, not undefined.
+		const listHeight = event.detail.listHeight || SystemInfo.pixelHeight / SystemInfo.pixelRatio;
 		const scrollbarHeight = listHeight * (listHeight / event.detail.scrollHeight);
 		const scrollbarTop = listHeight * (event.detail.scrollTop / event.detail.scrollHeight);
 		__AddInlineStyle(scrollbar, 'height', scrollbarHeight + 'px');
