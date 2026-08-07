@@ -204,7 +204,7 @@ describe('website routes', () => {
 		// server renders the copy and the cards mount when the section comes near.
 		const lynx = container.querySelector('section.lynx')!;
 		expect(lynx.querySelector('.lynx-title')?.textContent).toContain(
-			'Build native apps with Octane',
+			'Build Native Apps, with Lynx and Octane',
 		);
 		expect(findLink(lynx, '/docs/lynx')).toBeTruthy();
 

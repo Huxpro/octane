@@ -20,8 +20,8 @@ export function Lynx() @{
 		<div class="lynx-body">
 			<div class="lynx-copy">
 				<h2 id="lynx-heading" class="lynx-title">
-					{'Build native apps with Octane. '}
-					<span class="lynx-accent">Powered by Lynx.</span>
+					{'Build Native Apps, '}
+					<span class="lynx-accent">with Lynx and Octane</span>
 				</h2>
 				<p class="lynx-lead">
 					{'Use Octane to build apps that render with native views on iOS and Android ' +

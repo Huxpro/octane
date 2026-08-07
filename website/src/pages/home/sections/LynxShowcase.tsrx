@@ -57,7 +57,7 @@ function ShowcaseCard(props: CardProps) @{
 		</div>
 		<h3 class="lynx-card-title">{props.title as string}</h3>
 		<p class="lynx-card-summary">{props.summary as string}</p>
-		<span class="lynx-card-cta">See it running →</span>
+		<span class="lynx-card-cta">View the demo and code →</span>
 	</Link>
 }
 
