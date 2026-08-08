@@ -1380,32 +1380,32 @@
     "op": "select_commands_1k",
     "target": "octane-lynx",
     "reference": "changed-rows-model",
-    "maxRatio": 1600,
-    "note": "KNOWN GAP under active investigation: a select moves one .danger class between two rows, so its commit strictly implies ~2 update commands, but every row's freshly re-encoded class array and both bindtap closures cross the wire on every commit — measured 3000 commands = 1500x the changed-rows floor on 2026-08-08 at the 1k rung. The 1600 ceiling only catches further regression; wire-diff fixes must TIGHTEN this guard toward 1.0x."
+    "maxRatio": 1.5,
+    "note": "Deterministic wire gate: a select moves one .danger class between two rows, so its commit must carry ~2 update commands. Measured exactly 2 = 1.0x the changed-rows floor on 2026-08-08 (was 3000 = 1500x before value-semantic slot equality). A breach means the wire payload is scaling with tree size again."
   },
   {
     "suite": "lynx-table",
     "op": "select_bytes_1k",
     "target": "octane-lynx",
     "reference": "changed-rows-model",
-    "maxRatio": 125,
-    "note": "KNOWN GAP: the serialized select commit measured 237787 bytes against the model's 2048-byte point-update budget (116x) on 2026-08-08. Label text never rides a select commit, so this is deterministic. Fixes must TIGHTEN toward <=1."
+    "maxRatio": 1,
+    "note": "Absolute serialized-commit budget at the CI (quick) scale: model pins 2048 bytes and the measured select commit is 225 bytes on 2026-08-08 (was 237787 before the fix). Label text never rides a select commit, so this is deterministic."
   },
   {
     "suite": "lynx-table",
     "op": "update10th_commands_1k",
     "target": "octane-lynx",
     "reference": "changed-rows-model",
-    "maxRatio": 35,
-    "note": "KNOWN GAP: update-every-10th rewrites ceil(rows/10)=100 labels but the commit measured 3100 commands = 31x the floor on 2026-08-08 (every row's class array plus two event re-binds per row). Ceiling 35 catches further regression only; fixes must TIGHTEN."
+    "maxRatio": 1.5,
+    "note": "Update-every-10th rewrites ceil(rows/10) labels; the commit must carry one text update per changed row. Measured exactly 100 = 1.0x the floor on 2026-08-08 (was 3100: every row's class array plus two event re-binds per row crossed on every commit)."
   },
   {
     "suite": "lynx-table",
     "op": "update_storm_commands_1k",
     "target": "octane-lynx",
     "reference": "changed-rows-model",
-    "maxRatio": 35,
-    "note": "KNOWN GAP: 50 storm ticks x 100 changed rows imply 5000 commands; measured 155000 = 31x on 2026-08-08. Fixes must TIGHTEN."
+    "maxRatio": 1.5,
+    "note": "Storm gate at the CI (quick) scale: 50 ticks x 100 changed rows = 5000 commands, measured exactly 1.0x the floor on 2026-08-08 (was 155000 before value-semantic slot equality)."
   },
   {
     "suite": "lynx-table",
@@ -1413,47 +1413,47 @@
     "target": "octane-lynx",
     "reference": "changed-rows-model",
     "maxRatio": 1,
-    "note": "One commit per storm tick is the ceiling in the synchronous counter harness: 50 ticks -> 50 commits, measured exactly on 2026-08-08. More commits than ticks would mean a scheduling regression splits one tick's update across commits. This guard is already at its floor."
+    "note": "One commit per storm tick is the ceiling in the synchronous counter harness: 50 ticks -> 50 commits at the CI scale, measured exactly on 2026-08-08. More commits than ticks would mean a scheduling regression splits one tick's update across commits."
   },
   {
     "suite": "lynx-table",
     "op": "select_storm_commands_1k",
     "target": "octane-lynx",
     "reference": "changed-rows-model",
-    "maxRatio": 1600,
-    "note": "KNOWN GAP: 30 select ticks x 2 changed rows imply 60 commands; measured 90000 = 1500x on 2026-08-08. Fixes must TIGHTEN."
+    "maxRatio": 1.5,
+    "note": "30 select ticks x 2 changed rows = 60 commands at the CI scale, measured exactly 1.0x the floor on 2026-08-08 (was 90000 before the fix)."
   },
   {
     "suite": "lynx-table",
     "op": "select_commands_10k",
     "target": "octane-lynx",
     "reference": "changed-rows-model",
-    "maxRatio": 16000,
-    "note": "KNOWN GAP: same select gate at 10k rows measured 30000 commands = 15000x the 2-command floor on 2026-08-08 — the wire payload scales with tree size, not change size (the P0 this suite exists to track). Fixes must TIGHTEN toward 1.0x."
+    "maxRatio": 1.5,
+    "note": "Same gate at 10k rows: measured exactly 2 commands on 2026-08-08 (was 30000 before the fix). Point-update wire cost must stay independent of table size."
   },
   {
     "suite": "lynx-table",
     "op": "select_bytes_10k",
     "target": "octane-lynx",
     "reference": "changed-rows-model",
-    "maxRatio": 1200,
-    "note": "KNOWN GAP: the 10k select commit serialized to 2406468 bytes (2.4MB, 1175x the 2048-byte budget) on 2026-08-08 — byte-identical to the captured production payload that motivated this suite. Fixes must TIGHTEN toward <=1."
+    "maxRatio": 1,
+    "note": "Absolute serialized-commit budget: the model pins 2048 bytes and the measured select commit is 225 bytes on 2026-08-08 (was 2406468 = 2.4MB before the fix, byte-identical to the captured production payload that motivated this suite)."
   },
   {
     "suite": "lynx-table",
     "op": "update10th_commands_10k",
     "target": "octane-lynx",
     "reference": "changed-rows-model",
-    "maxRatio": 35,
-    "note": "KNOWN GAP: measured 31000 commands = 31x the 1000-changed-rows floor at 10k on 2026-08-08. Fixes must TIGHTEN."
+    "maxRatio": 1.5,
+    "note": "Same gate at 10k rows: measured exactly 1000 = 1.0x the floor on 2026-08-08 (was 31000 before the fix)."
   },
   {
     "suite": "lynx-table",
     "op": "update_storm_commands_10k",
     "target": "octane-lynx",
     "reference": "changed-rows-model",
-    "maxRatio": 35,
-    "note": "KNOWN GAP: 50 ticks x 1000 changed rows imply 50000 commands; measured 1550000 = 31x on 2026-08-08. Fixes must TIGHTEN."
+    "maxRatio": 1.5,
+    "note": "Storm regression gate (the coalescing trap): 50 ticks x 1000 changed rows must stay ~50000 commands. Measured exactly 1.0x the floor on 2026-08-08 (was 1550000 before the fix). The synchronous harness acks instantly, so commits-per-tick stays 1 here; the asynchronous latest-state coalescing contract is pinned in universal-transport.test.ts."
   },
   {
     "suite": "lynx-table",
@@ -1468,8 +1468,8 @@
     "op": "select_storm_commands_10k",
     "target": "octane-lynx",
     "reference": "changed-rows-model",
-    "maxRatio": 16000,
-    "note": "KNOWN GAP: 30 ticks x 2 changed rows imply 60 commands; measured 900000 = 15000x on 2026-08-08. Fixes must TIGHTEN."
+    "maxRatio": 1.5,
+    "note": "30 select ticks x 2 changed rows = 60 commands, measured exactly 1.0x the floor on 2026-08-08 (was 900000 before the fix)."
   },
   {
     "suite": "lynx-bundle-size",
