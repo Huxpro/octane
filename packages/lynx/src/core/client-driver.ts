@@ -2,12 +2,14 @@ import type {
 	UniversalHostAttachmentBatch,
 	UniversalHostBatch,
 	UniversalHostDriver,
+	UniversalHostParent,
 	UniversalHostPropCodecContext,
 	UniversalPortalTargetContext,
 	UniversalPortalTargetRegistration,
 	UniversalSerializableValue,
 	UniversalTransportIdentity,
 } from 'octane/universal/native';
+import { LYNX_DEVELOPMENT } from './environment.js';
 import {
 	LYNX_TRANSPORT_PROTOCOL_VERSION,
 	LYNX_TRANSPORT_RENDERER,
@@ -34,7 +36,7 @@ import {
 	type LynxNodesRefFieldsResult,
 	type LynxNodesRefPathResult,
 } from './nodes-ref.js';
-import { encodeLynxPortalTargetId } from './portal.js';
+import { decodeLynxPortalTargetId, encodeLynxPortalTargetId } from './portal.js';
 
 export interface LynxPublicHandle {
 	readonly renderer: typeof LYNX_TRANSPORT_RENDERER;
@@ -246,9 +248,22 @@ function createHandleEntry(
 	};
 }
 
+/**
+ * The background's mirror of one accepted host node's placement. Maintained
+ * from the same command stream main stages (protocol 2), so acknowledgement
+ * handle deltas — creation state, physical-attachment seeds, and list-ancestry
+ * flips — are derived here instead of being computed on main and shipped.
+ */
+interface LynxTopologyEntry {
+	parent: number | null | undefined;
+	readonly type: string;
+	readonly children: Set<number>;
+}
+
 interface LynxClientContainerState {
 	handles: Map<number, LynxHandleEntry>;
 	readonly generations: Map<number, number>;
+	topology: Map<number, LynxTopologyEntry>;
 	readonly worklets?: LynxBackgroundFunctionRegistry;
 	readonly createSelectorQuery: LynxCreateSelectorQuery;
 	readonly attachmentSubscribers: Set<(batch: UniversalHostAttachmentBatch) => void>;
@@ -290,6 +305,7 @@ export function createLynxClientContainer(
 	CONTAINER_STATE.set(container, {
 		handles: new Map(),
 		generations: new Map(),
+		topology: new Map(),
 		worklets: options.worklets,
 		createSelectorQuery,
 		attachmentSubscribers: new Set(),
@@ -388,7 +404,7 @@ function cloneSnapshot(value: UniversalSerializableValue): UniversalSerializable
 function validateSnapshotIdentity(
 	snapshot: UniversalSerializableValue,
 	identity: UniversalTransportIdentity,
-	delta: Extract<LynxPublicHandleDelta, { readonly op: 'upsert' }>,
+	delta: { readonly id: number; readonly type: string; readonly generation: number },
 ): void {
 	if (snapshot === null || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
 		throw new Error(
@@ -438,11 +454,33 @@ function expectedHandleDelta(transition: LynxHandleTransition): LynxExpectedHand
 	return transition.snapshotChanged ? 'update' : 'none';
 }
 
-/** @internal Used by the background transport immediately before core ACK. */
+/** Decode a wire placement parent to the topology mirror's parent id. */
+function topologyParentId(parent: UniversalHostParent): number | null | undefined {
+	if (parent === null || typeof parent === 'number') return parent;
+	return decodeLynxPortalTargetId((parent as { readonly id?: unknown }).id)?.id;
+}
+
+/**
+ * @internal Used by the background transport immediately before core ACK.
+ *
+ * Protocol 2 derives every acknowledgement handle delta locally: the commands
+ * this thread sent determine which handles are created, recreated, and
+ * destroyed; generations follow main's exact rules against the same accepted
+ * history; snapshots are pure identity; and the topology mirror answers the
+ * placement-derived bits (root connectivity and list ancestry). Physical
+ * attachment under a native list is cell materialization, which the derivation
+ * seeds as detached for new cells and the host-attachment channel converges —
+ * the same channel that owned it when main shipped the deltas.
+ *
+ * `deltas` is main's development-only cross-check payload: when present, each
+ * received delta must match its derived counterpart, modulo the documented
+ * attachment tolerance for native-list descendants. Production
+ * acknowledgements carry no deltas and the derivation stands alone.
+ */
 export function prepareLynxHandleDeltas(
 	container: LynxClientContainer,
 	batch: UniversalHostBatch,
-	deltas: readonly LynxPublicHandleDelta[],
+	deltas: readonly LynxPublicHandleDelta[] | undefined,
 	identity: UniversalTransportIdentity,
 ): LynxPreparedHandleDeltas {
 	const state = containerState(container);
@@ -457,6 +495,29 @@ export function prepareLynxHandleDeltas(
 		throw new Error('Octane Lynx acknowledgement has a foreign transport identity.');
 	}
 	const originalHandles = state.handles;
+	const topology = state.topology;
+	// Copy-on-write topology overlay: committed entries are never mutated while
+	// staging, so rollback restores them by reference.
+	const stagedTopology = new Map<number, LynxTopologyEntry | null>();
+	const readTopology = (id: number): LynxTopologyEntry | undefined => {
+		if (stagedTopology.has(id)) return stagedTopology.get(id) ?? undefined;
+		return topology.get(id);
+	};
+	const writeTopology = (id: number): LynxTopologyEntry | undefined => {
+		if (stagedTopology.has(id)) return stagedTopology.get(id) ?? undefined;
+		const committed = topology.get(id);
+		if (committed === undefined) return undefined;
+		const clone: LynxTopologyEntry = {
+			parent: committed.parent,
+			type: committed.type,
+			children: new Set(committed.children),
+		};
+		stagedTopology.set(id, clone);
+		return clone;
+	};
+	const detachFromParent = (id: number, parent: number | null | undefined): void => {
+		if (typeof parent === 'number') writeTopology(parent)?.children.delete(id);
+	};
 	const stagedHandles = new Map<number, LynxHandleEntry | null>();
 	const finalHandle = (id: number): LynxHandleEntry | undefined => {
 		if (!stagedHandles.has(id)) return originalHandles.get(id);
@@ -477,7 +538,37 @@ export function prepareLynxHandleDeltas(
 		transitions.set(id, transition);
 		return transition;
 	};
+	const listAncestryRoots = new Set<number>();
+	// Main's exact generation rules against the same accepted history: main
+	// stages a bump per create/recreate *command* (not per net transition), a
+	// destroy never clears the counter, and every staged entry — including one
+	// whose handle the same batch nets away — merges into the committed map on
+	// acceptance. Both sides advance only on accepted batches, so the maps
+	// agree and the derived generation is the one main assigns.
+	const stagedGenerations = new Map<number, number>();
 	for (const command of batch.commands) {
+		if (command.op === 'insert' || command.op === 'move') {
+			const entry = writeTopology(command.id);
+			if (entry === undefined) {
+				throw new Error(`Octane Lynx batch places missing handle ${command.id}.`);
+			}
+			detachFromParent(command.id, entry.parent);
+			entry.parent = topologyParentId(command.parent);
+			if (typeof entry.parent === 'number') {
+				writeTopology(entry.parent)?.children.add(command.id);
+			}
+			listAncestryRoots.add(command.id);
+			continue;
+		}
+		if (command.op === 'remove') {
+			const entry = writeTopology(command.id);
+			if (entry !== undefined) {
+				detachFromParent(command.id, entry.parent);
+				entry.parent = undefined;
+			}
+			listAncestryRoots.add(command.id);
+			continue;
+		}
 		if (
 			command.op !== 'create' &&
 			command.op !== 'update' &&
@@ -494,6 +585,15 @@ export function prepareLynxHandleDeltas(
 			transition.present = true;
 			transition.type = command.type;
 			transition.snapshotChanged = true;
+			stagedGenerations.set(
+				command.id,
+				(stagedGenerations.get(command.id) ?? state.generations.get(command.id) ?? 0) + 1,
+			);
+			stagedTopology.set(command.id, {
+				parent: undefined,
+				type: command.type,
+				children: new Set(),
+			});
 		} else if (command.op === 'update') {
 			if (!transition.present) {
 				throw new Error(`Octane Lynx batch updates missing handle ${command.id}.`);
@@ -505,6 +605,12 @@ export function prepareLynxHandleDeltas(
 			}
 			transition.identityChanged = true;
 			transition.snapshotChanged = true;
+			stagedGenerations.set(
+				command.id,
+				(stagedGenerations.get(command.id) ??
+					state.generations.get(command.id) ??
+					transition.initial!.generation) + 1,
+			);
 		} else {
 			if (!transition.present) {
 				throw new Error(`Octane Lynx batch destroys missing handle ${command.id}.`);
@@ -512,168 +618,265 @@ export function prepareLynxHandleDeltas(
 			transition.present = false;
 			transition.type = null;
 			transition.identityChanged = true;
+			detachFromParent(command.id, readTopology(command.id)?.parent);
+			stagedTopology.set(command.id, null);
 		}
 	}
 
-	const seen = new Set<number>();
+	// One walk-scoped cycle guard, cleared per walk; the topology mirrors
+	// commands main validated, so a cycle here is a corrupted mirror.
+	const walkGuard = new Set<number>();
+	const listDescendantIn = (
+		read: (id: number) => LynxTopologyEntry | undefined,
+		id: number,
+		cache: Map<number, boolean>,
+	): boolean => {
+		const path: number[] = [];
+		walkGuard.clear();
+		let currentId = id;
+		let current = read(currentId);
+		let result = false;
+		while (current !== undefined) {
+			const known = cache.get(currentId);
+			if (known !== undefined) {
+				result = known;
+				break;
+			}
+			if (walkGuard.has(currentId)) {
+				throw new Error('Octane Lynx host ancestry contains a cycle.');
+			}
+			walkGuard.add(currentId);
+			path.push(currentId);
+			const parentId = current.parent;
+			if (typeof parentId !== 'number') break;
+			const parent = read(parentId);
+			if (parent === undefined) break;
+			if (parent.type === 'list' && current.type === 'list-item') {
+				result = true;
+				break;
+			}
+			currentId = parentId;
+			current = parent;
+		}
+		for (const walked of path) cache.set(walked, result);
+		return result;
+	};
+	const deriveAttached = (id: number): boolean => {
+		walkGuard.clear();
+		let currentId = id;
+		let current = readTopology(currentId);
+		while (current !== undefined) {
+			if (walkGuard.has(currentId)) {
+				throw new Error('Octane Lynx host ancestry contains a cycle.');
+			}
+			walkGuard.add(currentId);
+			const parentId = current.parent;
+			if (parentId === null) return true;
+			if (typeof parentId !== 'number') return false;
+			const parent = readTopology(parentId);
+			if (parent === undefined) return false;
+			if (parent.type === 'list' && current.type === 'list-item') {
+				// Crossing a cell boundary: a cell this batch creates or recreates
+				// has no element until the engine materializes it, and an existing
+				// cell contributes its channel-owned materialization bit. The walk
+				// still continues upward so a list detached in the same batch wins
+				// over a live cell.
+				const cellTransition = transitions.get(currentId);
+				if (
+					cellTransition !== undefined &&
+					(cellTransition.initial === undefined || cellTransition.identityChanged)
+				) {
+					return false;
+				}
+				const cell = originalHandles.get(currentId);
+				if (cell === undefined || !cell.attached) return false;
+			}
+			currentId = parentId;
+			current = parent;
+		}
+		return false;
+	};
+
 	const priorStates = new Map<LynxHandleEntry, LynxHandleStateSnapshot>();
 	const nextStates = new Map<LynxHandleEntry, LynxHandleStateSnapshot>();
 	const createdHandles = new Set<LynxHandleEntry>();
 	const priorGenerations = new Map<number, number | undefined>();
-	const nextGenerations = new Map<number, number>();
-	// Main owns the accepted host topology and publishes this derived bit. The
-	// command gate prevents ancestry state from changing on a non-structural ACK;
-	// identity, generation, transition, and change checks guard its lifecycle.
-	const hasTopologyMutation = batch.commands.some(
-		(command) => command.op === 'insert' || command.op === 'move' || command.op === 'remove',
-	);
-	const stageGeneration = (id: number, generation: number) => {
-		if (!priorGenerations.has(id)) priorGenerations.set(id, state.generations.get(id));
-		nextGenerations.set(id, generation);
-	};
-	for (const delta of deltas) {
-		if (seen.has(delta.id)) {
-			throw new Error(`Octane Lynx acknowledgement repeats handle ${delta.id}.`);
-		}
-		seen.add(delta.id);
-		const transition = transitions.get(delta.id);
-		const expected = transition === undefined ? 'none' : expectedHandleDelta(transition);
-		if (delta.op === 'list-ancestry') {
-			const handle = originalHandles.get(delta.id);
-			if (
-				!hasTopologyMutation ||
-				expected !== 'none' ||
-				handle === undefined ||
-				!handle.active ||
-				handle.root !== identity.root ||
-				handle.generation !== delta.generation
-			) {
-				throw new Error(
-					`Octane Lynx acknowledgement changes list ancestry for stale or transitioning handle ${delta.id}:${delta.generation}.`,
-				);
-			}
-			if (handle.listDescendant === delta.listDescendant) {
-				throw new Error(
-					`Octane Lynx acknowledgement publishes unchanged list ancestry for handle ${delta.id}.`,
-				);
-			}
-			priorStates.set(handle, captureHandleState(handle));
-			nextStates.set(handle, {
-				...captureHandleState(handle),
-				listDescendant: delta.listDescendant,
-			});
-			continue;
-		}
-		if (transition === undefined || expected === 'none') {
-			throw new Error(`Octane Lynx acknowledgement publishes unchanged handle ${delta.id}.`);
-		}
-		if (delta.op === 'remove') {
-			if (expected !== 'remove') {
-				throw new Error(`Octane Lynx acknowledgement removes non-destroyed handle ${delta.id}.`);
-			}
-			const previous = transition.initial!;
-			if (previous.generation !== delta.generation) {
-				throw new Error(
-					`Octane Lynx acknowledgement removes stale handle ${delta.id}:${delta.generation}.`,
-				);
-			}
-			priorStates.set(previous, captureHandleState(previous));
-			stagedHandles.set(delta.id, null);
-			continue;
-		}
-
-		if (expected === 'remove') {
-			throw new Error(`Octane Lynx acknowledgement retains destroyed handle ${delta.id}.`);
-		}
-		validateSnapshotIdentity(delta.snapshot, identity, delta);
-		const finalType = transition.type!;
-		if (expected === 'create') {
-			const previousGeneration = state.generations.get(delta.id) ?? 0;
-			if (delta.type !== finalType || delta.generation <= previousGeneration) {
-				throw new Error(`Octane Lynx acknowledgement has invalid created handle ${delta.id}.`);
-			}
-			const handle = createHandleEntry(
-				identity.root,
-				delta.id,
-				delta.type,
-				delta.generation,
-				delta.snapshot,
-				state.createSelectorQuery,
-			);
-			createdHandles.add(handle);
-			stageGeneration(delta.id, delta.generation);
-			// A handle this preparation just built is unreachable until apply()
-			// publishes it into `state.handles`, so its state is written directly
-			// rather than staged. Rollback drops the handle outright, so there is
-			// no prior state to restore. This keeps a mount from allocating two
-			// state clones and two map entries per accepted node.
-			handle.active = true;
-			handle.attachmentEpoch = nextAttachmentEpoch(handle, delta.attached);
-			handle.attached = delta.attached;
-			handle.listDescendant = delta.listDescendant;
-			stagedHandles.set(delta.id, handle);
-			continue;
-		}
-		const previous = transition.initial!;
-		if (previous.root !== identity.root) {
-			throw new Error(`Octane Lynx acknowledgement changes root for retained handle ${delta.id}.`);
-		}
-		if (expected === 'recreate') {
-			const previousGeneration = state.generations.get(delta.id) ?? previous.generation;
-			if (
-				delta.type !== finalType ||
-				delta.generation <= previous.generation ||
-				delta.generation <= previousGeneration
-			) {
-				throw new Error(`Octane Lynx acknowledgement has stale recreated handle ${delta.id}.`);
-			}
-			priorStates.set(previous, captureHandleState(previous));
-			const handle = createHandleEntry(
-				identity.root,
-				delta.id,
-				delta.type,
-				delta.generation,
-				delta.snapshot,
-				state.createSelectorQuery,
-			);
-			createdHandles.add(handle);
-			stageGeneration(delta.id, delta.generation);
-			// A handle this preparation just built is unreachable until apply()
-			// publishes it into `state.handles`, so its state is written directly
-			// rather than staged. Rollback drops the handle outright, so there is
-			// no prior state to restore. This keeps a mount from allocating two
-			// state clones and two map entries per accepted node.
-			handle.active = true;
-			handle.attachmentEpoch = nextAttachmentEpoch(handle, delta.attached);
-			handle.attached = delta.attached;
-			handle.listDescendant = delta.listDescendant;
-			stagedHandles.set(delta.id, handle);
-			continue;
-		}
-		if (delta.type !== finalType || delta.generation !== previous.generation) {
-			throw new Error(`Octane Lynx acknowledgement changes retained handle ${delta.id}.`);
-		}
-		priorStates.set(previous, captureHandleState(previous));
-		nextStates.set(previous, {
-			active: true,
-			attached: delta.attached,
-			listDescendant: delta.listDescendant,
-			attachmentEpoch: nextAttachmentEpoch(previous, delta.attached),
-			rawSnapshot: delta.snapshot,
-			clonedSnapshot: undefined,
-		});
-	}
+	const crossCheck = LYNX_DEVELOPMENT && deltas !== undefined;
+	const derived = crossCheck ? new Map<number, LynxPublicHandleDelta>() : null;
+	const previousListDescendants = new Map<number, boolean>();
+	const nextListDescendants = new Map<number, boolean>();
+	const committedTopology = (id: number): LynxTopologyEntry | undefined => topology.get(id);
 
 	for (const [id, transition] of transitions) {
-		if (seen.has(id)) continue;
 		const expected = expectedHandleDelta(transition);
-		if (expected !== 'none') {
-			throw new Error(`Octane Lynx acknowledgement omits ${expected}d handle ${id}.`);
+		// `update` preserves handle identity, generation, and snapshot, and its
+		// physical-attachment bit is owned by the host-attachment channel, so an
+		// update-only transition derives no delta at all.
+		if (expected === 'none' || expected === 'update') continue;
+		if (expected === 'remove') {
+			const previous = transition.initial!;
+			priorStates.set(previous, captureHandleState(previous));
+			stagedHandles.set(id, null);
+			derived?.set(id, Object.freeze({ op: 'remove', id, generation: previous.generation }));
+			continue;
+		}
+		const type = transition.type!;
+		// The final staged value: a create or recreate transition always staged
+		// at least one bump in the command loop above.
+		const generation = stagedGenerations.get(id)!;
+		if (expected === 'recreate') {
+			priorStates.set(transition.initial!, captureHandleState(transition.initial!));
+		}
+		const snapshot: UniversalSerializableValue = Object.freeze({
+			$$kind: 'octane.lynx.element',
+			renderer: LYNX_TRANSPORT_RENDERER,
+			root: identity.root,
+			id,
+			type,
+			generation,
+			selector: createLynxNodesRefSelector(identity.root, id, generation),
+		});
+		const handle = createHandleEntry(
+			identity.root,
+			id,
+			type,
+			generation,
+			snapshot,
+			state.createSelectorQuery,
+		);
+		createdHandles.add(handle);
+		// A handle this preparation just built is unreachable until apply()
+		// publishes it into `state.handles`, so its state is written directly
+		// rather than staged. Rollback drops the handle outright, so there is
+		// no prior state to restore. This keeps a mount from allocating two
+		// state clones and two map entries per accepted node.
+		const attached = deriveAttached(id);
+		const listDescendant = listDescendantIn(readTopology, id, nextListDescendants);
+		handle.active = true;
+		handle.attachmentEpoch = nextAttachmentEpoch(handle, attached);
+		handle.attached = attached;
+		handle.listDescendant = listDescendant;
+		stagedHandles.set(id, handle);
+		derived?.set(
+			id,
+			Object.freeze({ op: 'upsert', id, type, generation, attached, listDescendant, snapshot }),
+		);
+	}
+
+	// List-ancestry flips: mirror main's exact walk. Roots are the ids whose
+	// placement changed; a root whose own bit flipped walks its final subtree,
+	// and every surviving same-handle descendant whose bit flipped stages the
+	// new value at its unchanged generation.
+	if (listAncestryRoots.size !== 0) {
+		const ancestrySeen = new Set<number>();
+		const pending: number[] = [];
+		for (const rootId of listAncestryRoots) {
+			if (topology.get(rootId) === undefined || readTopology(rootId) === undefined) continue;
+			if (
+				listDescendantIn(committedTopology, rootId, previousListDescendants) ===
+				listDescendantIn(readTopology, rootId, nextListDescendants)
+			) {
+				continue;
+			}
+			pending.push(rootId);
+			while (pending.length !== 0) {
+				const descendantId = pending.pop()!;
+				if (ancestrySeen.has(descendantId)) continue;
+				ancestrySeen.add(descendantId);
+				const next = readTopology(descendantId);
+				if (next === undefined) continue;
+				for (const childId of next.children) pending.push(childId);
+				if (topology.get(descendantId) === undefined) continue;
+				const transition = transitions.get(descendantId);
+				if (
+					transition !== undefined &&
+					(transition.initial === undefined || transition.identityChanged)
+				) {
+					continue;
+				}
+				const entry = originalHandles.get(descendantId);
+				if (entry === undefined) continue;
+				const listDescendant = listDescendantIn(readTopology, descendantId, nextListDescendants);
+				if (
+					listDescendantIn(committedTopology, descendantId, previousListDescendants) ===
+					listDescendant
+				) {
+					continue;
+				}
+				priorStates.set(entry, captureHandleState(entry));
+				nextStates.set(entry, { ...captureHandleState(entry), listDescendant });
+				derived?.set(
+					descendantId,
+					Object.freeze({
+						op: 'list-ancestry',
+						id: descendantId,
+						generation: entry.generation,
+						listDescendant,
+					}),
+				);
+			}
+		}
+	}
+
+	if (crossCheck) {
+		// Development cross-check: main's computed deltas must match the local
+		// derivation delta-for-delta. The one tolerated divergence is `attached`
+		// under a native list, where main reads cell materialization after its
+		// flush while the derivation seeds the pre-materialization value; the
+		// host-attachment channel converges the two either way.
+		const seen = new Set<number>();
+		for (const delta of deltas!) {
+			if (seen.has(delta.id)) {
+				throw new Error(`Octane Lynx acknowledgement repeats handle ${delta.id}.`);
+			}
+			seen.add(delta.id);
+			const expected = derived!.get(delta.id);
+			if (expected === undefined) {
+				throw new Error(`Octane Lynx acknowledgement publishes unchanged handle ${delta.id}.`);
+			}
+			if (delta.op === 'remove') {
+				if (expected.op !== 'remove' || expected.generation !== delta.generation) {
+					throw new Error(
+						`Octane Lynx acknowledgement removes stale handle ${delta.id}:${delta.generation}.`,
+					);
+				}
+				continue;
+			}
+			if (delta.op === 'list-ancestry') {
+				if (
+					expected.op !== 'list-ancestry' ||
+					expected.generation !== delta.generation ||
+					expected.listDescendant !== delta.listDescendant
+				) {
+					throw new Error(
+						`Octane Lynx acknowledgement changes list ancestry for stale or transitioning handle ${delta.id}:${delta.generation}.`,
+					);
+				}
+				continue;
+			}
+			if (
+				expected.op !== 'upsert' ||
+				expected.type !== delta.type ||
+				expected.generation !== delta.generation ||
+				expected.listDescendant !== delta.listDescendant ||
+				(!expected.listDescendant && expected.attached !== delta.attached)
+			) {
+				throw new Error(
+					`Octane Lynx acknowledgement diverges from the derived handle ${delta.id}:${delta.generation}.`,
+				);
+			}
+			validateSnapshotIdentity(delta.snapshot, identity, expected);
+		}
+		for (const id of derived!.keys()) {
+			if (!seen.has(id)) {
+				throw new Error(`Octane Lynx acknowledgement omits derived handle ${id}.`);
+			}
 		}
 	}
 
 	let applied = false;
 	let rolledBack = false;
+	const priorTopology = new Map<number, LynxTopologyEntry | undefined>();
 	return {
 		apply() {
 			if (applied || rolledBack) return;
@@ -700,7 +903,15 @@ export function prepareLynxHandleDeltas(
 				if (handle === null) originalHandles.delete(id);
 				else originalHandles.set(id, handle);
 			});
-			nextGenerations.forEach((generation, id) => state.generations.set(id, generation));
+			stagedGenerations.forEach((generation, id) => {
+				priorGenerations.set(id, state.generations.get(id));
+				state.generations.set(id, generation);
+			});
+			stagedTopology.forEach((entry, id) => {
+				priorTopology.set(id, topology.get(id));
+				if (entry === null) topology.delete(id);
+				else topology.set(id, entry);
+			});
 		},
 		rollback() {
 			if (!applied || rolledBack) return;
@@ -727,6 +938,10 @@ export function prepareLynxHandleDeltas(
 				if (previous === undefined) state.generations.delete(id);
 				else state.generations.set(id, previous);
 			}
+			priorTopology.forEach((entry, id) => {
+				if (entry === undefined) topology.delete(id);
+				else topology.set(id, entry);
+			});
 		},
 	};
 }
@@ -792,6 +1007,7 @@ export function invalidateLynxClientContainer(container: LynxClientContainer): v
 		);
 	}
 	state.handles = new Map();
+	state.topology = new Map();
 	try {
 		if (detached.length !== 0) {
 			const batch = Object.freeze({

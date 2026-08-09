@@ -22,7 +22,7 @@ import { decodeLynxPortalTargetId } from './portal.js';
 import { LYNX_RENDERER_ID } from './renderer-id.js';
 
 /** Kept local to the main-thread protocol graph; the type pins it to the core ABI. */
-export const LYNX_TRANSPORT_PROTOCOL_VERSION: typeof UNIVERSAL_TRANSPORT_PROTOCOL_VERSION = 1;
+export const LYNX_TRANSPORT_PROTOCOL_VERSION: typeof UNIVERSAL_TRANSPORT_PROTOCOL_VERSION = 2;
 
 export const LYNX_TRANSPORT_RENDERER: typeof LYNX_RENDERER_ID = LYNX_RENDERER_ID;
 
@@ -132,8 +132,22 @@ export type LynxPublicHandleDelta =
 	LynxPublicHandleUpsert | LynxPublicHandleListAncestry | LynxPublicHandleRemoval;
 
 export interface LynxTransportAcknowledgement extends UniversalTransportAcknowledgement {
-	readonly handles: readonly LynxPublicHandleDelta[];
+	/**
+	 * Development builds carry main's handle deltas as a cross-check against the
+	 * deltas the background derives locally from the batch it sent (protocol 2).
+	 * Production acknowledgements omit the field: every delta is derivable, so
+	 * shipping them spent serialization and an O(nodes) main-thread walk on
+	 * bytes the background could already compute.
+	 */
+	readonly handles?: readonly LynxPublicHandleDelta[];
 	readonly adoption?: 'adopted' | 'repaired';
+	/**
+	 * Main had no post-acknowledgement work for this batch — no queued host
+	 * attachments and no pending first-tree adoption — so this acknowledgement
+	 * is also the batch's completion and no separate `complete` message will
+	 * follow. Absent, the two-message tail is unchanged.
+	 */
+	readonly complete?: true;
 }
 
 /** Background listener ownership is live; buffered first-screen events may replay. */
@@ -1077,24 +1091,32 @@ export function validateLynxBackgroundInboundMessage(value: unknown): LynxBackgr
 		return message as unknown as LynxCallMainErrorMessage;
 	}
 	if (message.type === 'ack') {
+		const keys = ['protocol', 'renderer', 'root', 'version', 'type'];
+		const hasHandles = Object.prototype.hasOwnProperty.call(message, 'handles');
+		if (hasHandles) keys.push('handles');
 		const hasAdoption = Object.prototype.hasOwnProperty.call(message, 'adoption');
-		exactKeys(
-			message,
-			hasAdoption
-				? ['protocol', 'renderer', 'root', 'version', 'type', 'handles', 'adoption']
-				: ['protocol', 'renderer', 'root', 'version', 'type', 'handles'],
-			'ack',
-		);
+		if (hasAdoption) keys.push('adoption');
+		const hasComplete = Object.prototype.hasOwnProperty.call(message, 'complete');
+		if (hasComplete) keys.push('complete');
+		exactKeys(message, keys, 'ack');
 		if (hasAdoption && message.adoption !== 'adopted' && message.adoption !== 'repaired') {
 			fail('ack.adoption', 'must be adopted or repaired.');
 		}
-		if (!Array.isArray(message.handles)) fail('ack.handles', 'must be an array.');
-		// Per-delta structural walk: development-only, like the commit batch
-		// walk. The background's handle-delta reconciliation independently
-		// verifies every delta against the transitions it staged.
-		if (LYNX_DEVELOPMENT) {
-			for (let index = 0; index < message.handles.length; index++) {
-				assertHandleDelta(message.handles[index], index, message);
+		if (hasComplete && message.complete !== true) fail('ack.complete', 'must be true.');
+		// An adopted first tree keeps post-acknowledgement work on main (the
+		// adoption-ready round trip), so a merged completion cannot coexist.
+		if (hasComplete && message.adoption === 'adopted') {
+			fail('ack.complete', 'cannot merge completion into an adopting acknowledgement.');
+		}
+		if (hasHandles) {
+			if (!Array.isArray(message.handles)) fail('ack.handles', 'must be an array.');
+			// Per-delta structural walk: development-only, like the commit batch
+			// walk. The background's handle-delta reconciliation independently
+			// checks every delta against the deltas it derives from the batch.
+			if (LYNX_DEVELOPMENT) {
+				for (let index = 0; index < message.handles.length; index++) {
+					assertHandleDelta(message.handles[index], index, message);
+				}
 			}
 		}
 		return message as unknown as LynxTransportAcknowledgement;

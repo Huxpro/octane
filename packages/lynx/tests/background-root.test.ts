@@ -1309,7 +1309,10 @@ describe.sequential('@octanejs/lynx background root in the official JS environme
 			},
 		});
 
-		expect(inbound.map((message) => message.type)).toEqual(['ack', 'complete', 'reject']);
+		// The first commit's acknowledgement carries its merged completion
+		// (protocol 2), so the rejected batch answers with the third message.
+		expect(inbound.map((message) => message.type)).toEqual(['ack', 'reject']);
+		expect(inbound[0]).toMatchObject({ type: 'ack', complete: true });
 		expect(page.innerHTML).toBe(before);
 		expect(page.querySelector('#survivor')).toBe(survivor);
 		expect(page.querySelector('#never-visible')).toBeNull();
@@ -1672,15 +1675,20 @@ describe.sequential('@octanejs/lynx background root in the official JS environme
 			inbound.map((message) =>
 				'version' in message ? `${message.type}:${message.version}` : message.type,
 			),
-		).toEqual(['ack:1', 'complete:1', 'ack:2', 'complete:2', 'ack:3', 'complete:3']);
+		).toEqual(['ack:1', 'ack:2', 'ack:3']);
+		expect(inbound.every((message) => (message as { complete?: true }).complete === true)).toBe(
+			true,
+		);
 		expect(main.activeIdentity()).toMatchObject({ root: 701, version: 3 });
 		expect(publicHostHTML(dom.window.document.querySelector('page')!)).toBe(
 			'<view id="reentrant"></view>',
 		);
 	});
 
-	it('fail-stops an accepted root when completion delivery and immediate cleanup fail', async () => {
-		const deliveryError = new Error('injected completion delivery failure');
+	it('fail-stops an accepted root when response delivery and immediate cleanup fail', async () => {
+		// The acknowledgement carries the merged completion (protocol 2), so it is
+		// the accepted-response delivery whose failure must fail-stop the root.
+		const deliveryError = new Error('injected acknowledgement delivery failure');
 		const cleanupError = new Error('injected completion cleanup failure');
 		let failCleanup = true;
 		const { dom, main } = installEnvironment(
@@ -1697,7 +1705,7 @@ describe.sequential('@octanejs/lynx background root in the official JS environme
 					dispatchEvent(event) {
 						if (
 							event.type === LYNX_MAIN_TO_BACKGROUND_EVENT &&
-							(event.data as { type?: unknown }).type === 'complete'
+							(event.data as { type?: unknown }).type === 'ack'
 						) {
 							throw deliveryError;
 						}
@@ -1734,7 +1742,9 @@ describe.sequential('@octanejs/lynx background root in the official JS environme
 				},
 			});
 		}).toThrow(deliveryError);
-		expect(inbound.map(({ type }) => type)).toEqual(['ack']);
+		// The throwing proxy swallowed the acknowledgement before any listener
+		// saw it, so nothing reached the background side.
+		expect(inbound.map(({ type }) => type)).toEqual([]);
 		expect(main.activeIdentity()).toMatchObject({ root: 751, version: 1 });
 		expect(dom.window.document.querySelector('#accepted')).not.toBeNull();
 		expect(main.diagnostics()).toContain(deliveryError);
@@ -2045,7 +2055,11 @@ describe.sequential('@octanejs/lynx background root in the official JS environme
 			inbound
 				.filter((message) => message.root === 777 && message.version === 3)
 				.map(({ type }) => type),
-		).toEqual(['ack', 'complete']);
+		).toEqual(['ack']);
+		expect(inbound.find((message) => message.root === 777 && message.version === 3)).toMatchObject({
+			type: 'ack',
+			complete: true,
+		});
 		// Cleanup-only acceptance intentionally leaves the faulted physical tree for dispose.
 		expect(page.querySelector('#after-fault')).not.toBeNull();
 

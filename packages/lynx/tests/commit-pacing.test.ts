@@ -114,18 +114,6 @@ function installPacedMain(
 					listDescendant: false,
 					snapshot: snapshotOf(commit.root, command.id, command.type, generation),
 				});
-			} else if (command.op === 'update') {
-				const generation = generations.get(command.id)!;
-				const type = types.get(command.id)!;
-				deltas.push({
-					op: 'upsert',
-					id: command.id,
-					type,
-					generation,
-					attached: true,
-					listDescendant: false,
-					snapshot: snapshotOf(commit.root, command.id, type, generation),
-				});
 			} else if (command.op === 'destroy') {
 				deltas.push({ op: 'remove', id: command.id, generation: generations.get(command.id)! });
 				types.delete(command.id);
@@ -287,27 +275,25 @@ describe('@octanejs/lynx frame-aligned commit pacing', () => {
 		// The following frame carries every remaining folded update in one
 		// commit: intermediate count 3 never crosses the wire. The fold tail —
 		// the last scheduled flush re-renders, finds nothing new, and commits an
-		// empty batch — crosses right behind it WITHOUT a pace flag: an empty
-		// batch mutates nothing on main and must not spend a frame.
+		// empty batch — settles on the background and never crosses at all
+		// (protocol 2): an empty batch mutates nothing on main.
 		main.pulse();
 		await flushMicrotasks();
-		expect(main.commits).toHaveLength(5);
+		expect(main.commits).toHaveLength(4);
 		expect(countOf(main.commits[3]!)).toBe(4);
 		expect(main.commits[3]!.pace).toBe(true);
-		expect(main.commits[4]!.batch.commands).toHaveLength(0);
-		expect(main.commits[4]!.pace).toBeUndefined();
 
 		// Answer the count-4 commit's frame; nothing further crosses.
 		main.pulse();
 		await flushMicrotasks();
-		expect(main.commits).toHaveLength(5);
+		expect(main.commits).toHaveLength(4);
 
 		// Back to idle with every pulse answered: the next one-shot update needs
 		// no further frame to cross — pacing never taxes cold latency.
 		tap();
 		await flushMicrotasks();
-		expect(main.commits).toHaveLength(6);
-		expect(countOf(main.commits[5]!)).toBe(5);
+		expect(main.commits).toHaveLength(5);
+		expect(countOf(main.commits[4]!)).toBe(5);
 		harness.transport.close();
 	});
 

@@ -509,7 +509,8 @@ describe.sequential('Lynx main-thread native event bridge', () => {
 			expect.objectContaining({ op: 'upsert', id: 4, listDescendant: false }),
 			expect.objectContaining({ op: 'upsert', id: 5, listDescendant: false }),
 		]);
-		expect(inbound.map(({ type }) => type)).toEqual(['ack', 'complete']);
+		expect(inbound.map(({ type }) => type)).toEqual(['ack']);
+		expect(acknowledgement).toMatchObject({ complete: true });
 
 		globalThis.lynxTestingEnv.switchToMainThread();
 		const list = dom.window.document.querySelector('#feed')!;
@@ -545,7 +546,7 @@ describe.sequential('Lynx main-thread native event bridge', () => {
 			{ op: 'list-ancestry', id: 4, generation: 1, listDescendant: true },
 			{ op: 'list-ancestry', id: 5, generation: 1, listDescendant: true },
 		]);
-		expect(inbound.map(({ type }) => type)).toEqual(['ack', 'complete']);
+		expect(inbound.map(({ type }) => type)).toEqual(['ack']);
 
 		inbound.length = 0;
 		dispatchCommit(context, 90, 3, [{ op: 'move', parent: null, id: 4, before: null }]);
@@ -555,14 +556,16 @@ describe.sequential('Lynx main-thread native event bridge', () => {
 			{ op: 'list-ancestry', id: 4, generation: 1, listDescendant: false },
 			{ op: 'list-ancestry', id: 5, generation: 1, listDescendant: false },
 		]);
-		expect(inbound.map(({ type }) => type)).toEqual(['ack', 'complete']);
+		expect(inbound.map(({ type }) => type)).toEqual(['ack']);
 	});
 
-	it('settles complete-time events immediately and drops reject-time reentry', () => {
+	it('settles completion-time events immediately and drops reject-time reentry', () => {
 		const { main, registrations } = installEnvironment();
 		const context = backgroundContext();
 		const inbound: LynxBackgroundInboundMessage[] = [];
-		let injectAt: 'complete' | 'reject' | null = 'complete';
+		// The acknowledgement carries the merged completion (protocol 2), so an
+		// event arriving while it dispatches is the completion-time race.
+		let injectAt: 'ack' | 'reject' | null = 'ack';
 		context.addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
 			const message = event.data as LynxBackgroundInboundMessage;
 			inbound.push(message);
@@ -579,7 +582,7 @@ describe.sequential('Lynx main-thread native event bridge', () => {
 			{ op: 'event', id: 1, type: 'bindtap', listener: { id: 101, priority: 'discrete' } },
 			{ op: 'insert', parent: null, id: 1, before: null },
 		]);
-		expect(inbound.map(({ type }) => type)).toEqual(['ack', 'complete', 'event']);
+		expect(inbound.map(({ type }) => type)).toEqual(['ack', 'event']);
 		expect(inbound.at(-1)).toMatchObject({ type: 'event', root: 91, version: 1 });
 
 		inbound.length = 0;
@@ -589,7 +592,7 @@ describe.sequential('Lynx main-thread native event bridge', () => {
 
 		inbound.length = 0;
 		dispatchCommit(context, 91, 3, [{ op: 'update', id: 1, props: { id: 'after' } }]);
-		expect(inbound.map(({ type }) => type)).toEqual(['ack', 'complete']);
+		expect(inbound.map(({ type }) => type)).toEqual(['ack']);
 	});
 
 	it('binds exact PAPI kinds, snapshots payloads, batches propagation, and avoids rebinding', async () => {

@@ -15,6 +15,7 @@ import {
 	useState,
 } from 'octane/universal/native';
 import {
+	applyLynxHostAttachments,
 	createLynxClientContainer,
 	createLynxClientDriver,
 	prepareLynxHandleDeltas,
@@ -123,8 +124,6 @@ interface MainHarness {
 function installMainHarness(context: FakeContextProxy, autoReady = true): MainHarness {
 	const commits: UniversalTransportCommitMessage[] = [];
 	const disposals: LynxDisposeMessage[] = [];
-	const generations = new Map<number, number>();
-	const types = new Map<number, string>();
 	context.addEventListener(LYNX_BACKGROUND_TO_MAIN_EVENT, (event) => {
 		const message = validateLynxBackgroundOutboundMessage(event.data);
 		if (message.type === 'main-ready-request') {
@@ -142,76 +141,13 @@ function installMainHarness(context: FakeContextProxy, autoReady = true): MainHa
 		else if (message.type === 'dispose') disposals.push(message);
 	});
 
-	const handleDeltas = (commit: UniversalTransportCommitMessage): LynxPublicHandleDelta[] => {
-		const deltas: LynxPublicHandleDelta[] = [];
-		for (const command of commit.batch.commands) {
-			if (command.op === 'create') {
-				const generation = (generations.get(command.id) ?? 0) + 1;
-				generations.set(command.id, generation);
-				types.set(command.id, command.type);
-				deltas.push({
-					op: 'upsert',
-					id: command.id,
-					type: command.type,
-					generation,
-					attached: true,
-					listDescendant: false,
-					snapshot: handleSnapshot(commit.root, command.id, command.type, generation, {
-						props: command.props,
-					}),
-				});
-			} else if (command.op === 'update') {
-				deltas.push({
-					op: 'upsert',
-					id: command.id,
-					type: types.get(command.id)!,
-					generation: generations.get(command.id)!,
-					attached: true,
-					listDescendant: false,
-					snapshot: handleSnapshot(
-						commit.root,
-						command.id,
-						types.get(command.id)!,
-						generations.get(command.id)!,
-						{ props: command.props },
-					),
-				});
-			} else if (command.op === 'recreate') {
-				const generation = generations.get(command.id)! + 1;
-				generations.set(command.id, generation);
-				types.set(command.id, command.type);
-				deltas.push({
-					op: 'upsert',
-					id: command.id,
-					type: command.type,
-					generation,
-					attached: true,
-					listDescendant: false,
-					snapshot: handleSnapshot(commit.root, command.id, command.type, generation, {
-						props: command.props,
-					}),
-				});
-			} else if (command.op === 'destroy') {
-				deltas.push({
-					op: 'remove',
-					id: command.id,
-					generation: generations.get(command.id)!,
-				});
-				types.delete(command.id);
-			}
-		}
-		return deltas;
-	};
-
 	return {
 		commits,
 		disposals,
 		acknowledge(commit, completion = null) {
-			context.sendToBackground({
-				...commitIdentity(commit),
-				type: 'ack',
-				handles: handleDeltas(commit),
-			});
+			// Protocol 2 production shape: the acknowledgement carries no handle
+			// deltas — the background derives them from the batch it sent.
+			context.sendToBackground({ ...commitIdentity(commit), type: 'ack' });
 			// A main thread with no frame source answers a paced commit's apply
 			// with an immediate frame pulse; mirror that so scripted commits keep
 			// dispatching without frame alignment.
@@ -421,9 +357,35 @@ describe('@octanejs/lynx transported protocol', () => {
 				batch: { ...commit.batch, commands: [{ ...commit.batch.commands[0], extra: true }] },
 			}),
 		).toThrow(/unknown field "extra"/);
-		expect(() => validateLynxBackgroundInboundMessage({ ...identity(1, 1), type: 'ack' })).toThrow(
-			/missing field "handles"/,
-		);
+		// Protocol 2: a bare acknowledgement is the production shape — the
+		// background derives handle deltas locally — and `complete: true` merges
+		// the completion into the acknowledgement. An adopting acknowledgement
+		// still requires its own completion after the adoption round trip.
+		expect(validateLynxBackgroundInboundMessage({ ...identity(1, 1), type: 'ack' })).toMatchObject({
+			type: 'ack',
+		});
+		expect(
+			validateLynxBackgroundInboundMessage({ ...identity(1, 1), type: 'ack', complete: true }),
+		).toMatchObject({ type: 'ack', complete: true });
+		expect(
+			validateLynxBackgroundInboundMessage({
+				...identity(1, 1),
+				type: 'ack',
+				adoption: 'repaired',
+				complete: true,
+			}),
+		).toMatchObject({ type: 'ack', adoption: 'repaired', complete: true });
+		expect(() =>
+			validateLynxBackgroundInboundMessage({ ...identity(1, 1), type: 'ack', complete: 1 }),
+		).toThrow(/ack\.complete/);
+		expect(() =>
+			validateLynxBackgroundInboundMessage({
+				...identity(1, 1),
+				type: 'ack',
+				adoption: 'adopted',
+				complete: true,
+			}),
+		).toThrow(/adopting acknowledgement/);
 		expect(() =>
 			validateLynxBackgroundInboundMessage({
 				...identity(1, 1),
@@ -650,49 +612,29 @@ describe('@octanejs/lynx transported protocol', () => {
 		expect(() => prepareTarget(firstContainer, null)).toThrow(
 			/Initial portals must wait for the target ref acknowledgement/,
 		);
+		// Production shape: no cross-check deltas — the derivation alone builds
+		// the handles from the batch topology. Handle 3 lives inside a list cell,
+		// so it derives detached until the host-attachment channel materializes
+		// the cell, and list-descendant from its ancestry.
 		const mountBatch: UniversalHostBatch = {
 			renderer: LYNX_TRANSPORT_RENDERER,
 			version: 1,
 			commands: [
 				{ op: 'create', id: 1, type: 'view', props: {} },
 				{ op: 'create', id: 2, type: 'list', props: {} },
+				{ op: 'create', id: 4, type: 'list-item', props: {} },
 				{ op: 'create', id: 3, type: 'view', props: {} },
+				{ op: 'insert', parent: null, id: 1, before: null },
+				{ op: 'insert', parent: null, id: 2, before: null },
+				{ op: 'insert', parent: 2, id: 4, before: null },
+				{ op: 'insert', parent: 4, id: 3, before: null },
 			],
 		};
-		prepareLynxHandleDeltas(
-			firstContainer,
-			mountBatch,
-			[
-				{
-					op: 'upsert',
-					id: 1,
-					type: 'view',
-					generation: 1,
-					attached: true,
-					listDescendant: false,
-					snapshot: handleSnapshot(17, 1, 'view', 1),
-				},
-				{
-					op: 'upsert',
-					id: 2,
-					type: 'list',
-					generation: 1,
-					attached: true,
-					listDescendant: false,
-					snapshot: handleSnapshot(17, 2, 'list', 1),
-				},
-				{
-					op: 'upsert',
-					id: 3,
-					type: 'view',
-					generation: 1,
-					attached: true,
-					listDescendant: true,
-					snapshot: handleSnapshot(17, 3, 'view', 1),
-				},
-			],
-			identity(17, 1),
-		).apply();
+		prepareLynxHandleDeltas(firstContainer, mountBatch, undefined, identity(17, 1)).apply();
+		applyLynxHostAttachments(firstContainer, [
+			{ id: 4, generation: 1, attached: true },
+			{ id: 3, generation: 1, attached: true },
+		]);
 		const target = firstContainer.getPublicHandle(1)!;
 		const registration = prepareTarget(firstContainer, target);
 		expect(registration.handle).toEqual({
@@ -713,17 +655,14 @@ describe('@octanejs/lynx transported protocol', () => {
 			/native-list descendant/,
 		);
 
+		// Moving the target under the cell derives the list-ancestry flip from
+		// the topology mirror alone.
 		const enterListBatch: UniversalHostBatch = {
 			renderer: LYNX_TRANSPORT_RENDERER,
 			version: 2,
 			commands: [{ op: 'move', parent: 3, id: 1, before: null }],
 		};
-		prepareLynxHandleDeltas(
-			firstContainer,
-			enterListBatch,
-			[{ op: 'list-ancestry', id: 1, generation: 1, listDescendant: true }],
-			identity(17, 2),
-		).apply();
+		prepareLynxHandleDeltas(firstContainer, enterListBatch, undefined, identity(17, 2)).apply();
 		expect(() => prepareTarget(firstContainer, target)).toThrow(/native-list descendant/);
 
 		const leaveListBatch: UniversalHostBatch = {
@@ -731,12 +670,7 @@ describe('@octanejs/lynx transported protocol', () => {
 			version: 3,
 			commands: [{ op: 'move', parent: null, id: 1, before: null }],
 		};
-		prepareLynxHandleDeltas(
-			firstContainer,
-			leaveListBatch,
-			[{ op: 'list-ancestry', id: 1, generation: 1, listDescendant: false }],
-			identity(17, 3),
-		).apply();
+		prepareLynxHandleDeltas(firstContainer, leaveListBatch, undefined, identity(17, 3)).apply();
 		expect(() => prepareTarget(firstContainer, target)).not.toThrow();
 
 		const rolledBack = prepareLynxHandleDeltas(
@@ -749,6 +683,8 @@ describe('@octanejs/lynx transported protocol', () => {
 		expect(() => prepareTarget(firstContainer, target)).toThrow(/native-list descendant/);
 		rolledBack.rollback();
 		expect(() => prepareTarget(firstContainer, target)).not.toThrow();
+		// A development cross-check delta claiming a foreign generation must be
+		// rejected against the derived flip at the handle's real generation.
 		expect(() =>
 			prepareLynxHandleDeltas(
 				firstContainer,
@@ -763,22 +699,7 @@ describe('@octanejs/lynx transported protocol', () => {
 			version: 5,
 			commands: [{ op: 'recreate', id: 1, type: 'view', props: {} }],
 		};
-		prepareLynxHandleDeltas(
-			firstContainer,
-			recreateBatch,
-			[
-				{
-					op: 'upsert',
-					id: 1,
-					type: 'view',
-					generation: 2,
-					attached: true,
-					listDescendant: false,
-					snapshot: handleSnapshot(17, 1, 'view', 2),
-				},
-			],
-			identity(17, 5),
-		).apply();
+		prepareLynxHandleDeltas(firstContainer, recreateBatch, undefined, identity(17, 5)).apply();
 		expect(target.active).toBe(false);
 		expect(() => prepareTarget(firstContainer, target)).toThrow(/current, active/);
 	});
@@ -1465,7 +1386,9 @@ describe('@octanejs/lynx transported protocol', () => {
 		main.acknowledge(main.commits[1], 'complete');
 		await update;
 		expect(container.getPublicHandle(1)).toBe(first);
-		expect(first.snapshot).toMatchObject({ props: { value: 2 } });
+		// Snapshots are pure identity (protocol 2): an update preserves the
+		// handle, its generation, and its snapshot rather than republishing it.
+		expect(first.snapshot).toMatchObject({ id: 1, type: 'view', generation: 1 });
 		expect(refs).toEqual([first]);
 
 		const recreate = root.renderAsync(Scene, { value: 3, replace: true });
@@ -1509,8 +1432,8 @@ describe('@octanejs/lynx transported protocol', () => {
 				},
 			}),
 		});
-		// Acks are hand-scripted with custom handle deltas and no frame pulses;
-		// pin unpaced dispatch so every scripted commit crosses immediately.
+		// Acks and host attachments are hand-scripted without frame pulses; pin
+		// unpaced dispatch so every scripted commit crosses immediately.
 		const transport = createLynxBackgroundTransport(context, container, {
 			commitPacing: 'immediate',
 		});
@@ -1529,39 +1452,20 @@ describe('@octanejs/lynx transported protocol', () => {
 		const rendering = root.renderAsync(Scene, { value: 1 });
 		await flushMicrotasks();
 		const mount = main.commits[0];
-		context.sendToBackground({
-			...commitIdentity(mount),
-			type: 'ack',
-			handles: [
-				{
-					op: 'upsert',
-					id: 1,
-					type: 'view',
-					generation: 1,
-					attached: false,
-					listDescendant: false,
-					snapshot: handleSnapshot(mount.root, 1, 'view', 1),
-				},
-			],
-		});
+		// Protocol 2: the bare acknowledgement derives the root view as attached,
+		// so the ref publishes at ACK; physical attachment is thereafter owned by
+		// the host-attachment channel alone.
+		context.sendToBackground({ ...commitIdentity(mount), type: 'ack' });
 		context.sendToBackground({ ...commitIdentity(mount), type: 'complete' });
 		await rendering;
 		const handle = container.getPublicHandle(1)!;
 		expect(handle.active).toBe(true);
-		expect(handle.attached).toBe(false);
-		expect(refs).toEqual([]);
-		await expect(handle.invoke('readCell')).rejects.toMatchObject({ code: 'inactive' });
-		expect(selectors).toEqual([]);
-
-		context.sendToBackground({
-			...commitIdentity(mount),
-			type: 'host-attachment',
-			changes: [{ id: 1, generation: 1, attached: true }],
-		});
 		expect(handle.attached).toBe(true);
 		expect(refs).toEqual([handle]);
 
 		const sameAttachment = handle.invoke<{ cell: string }>('readCell');
+		// A change repeating the current attachment is idempotent: it neither
+		// republishes the ref nor invalidates the query in flight.
 		context.sendToBackground({
 			...commitIdentity(mount),
 			type: 'host-attachment',
@@ -1587,6 +1491,9 @@ describe('@octanejs/lynx transported protocol', () => {
 		expect(refs).toEqual([handle, null]);
 		await Promise.resolve();
 		expect(pendingOutcome).toMatchObject({ code: 'inactive' });
+		// A query started while detached rejects without reaching the selector.
+		await expect(handle.invoke('readCell')).rejects.toMatchObject({ code: 'inactive' });
+		expect(invokes).toHaveLength(2);
 
 		context.sendToBackground({
 			...commitIdentity(mount),
@@ -1605,47 +1512,23 @@ describe('@octanejs/lynx transported protocol', () => {
 		invokes[2].success({ cell: 'current' });
 		await expect(current).resolves.toEqual({ cell: 'current' });
 
-		const retained = handle.invoke('readCell');
-		let retainedOutcome: unknown = 'pending';
-		void retained.then(
-			(value) => (retainedOutcome = value),
-			(error: unknown) => (retainedOutcome = error),
-		);
+		// An update acknowledgement carries no attachment bits (protocol 2), so
+		// the handle stays attached at its generation and a query in flight
+		// across the update settles normally.
+		const retained = handle.invoke<{ cell: string }>('readCell');
 		const updating = root.renderAsync(Scene, { value: 2 });
 		await flushMicrotasks();
 		const update = main.commits[1];
-		context.sendToBackground({
-			...commitIdentity(update),
-			type: 'ack',
-			handles: [
-				{
-					op: 'upsert',
-					id: 1,
-					type: 'view',
-					generation: 1,
-					attached: false,
-					listDescendant: false,
-					snapshot: handleSnapshot(update.root, 1, 'view', 1, { value: 2 }),
-				},
-			],
-		});
+		context.sendToBackground({ ...commitIdentity(update), type: 'ack' });
 		context.sendToBackground({ ...commitIdentity(update), type: 'complete' });
 		await updating;
-		await Promise.resolve();
-		expect(retainedOutcome).toMatchObject({ code: 'inactive' });
-		expect(handle.attached).toBe(false);
+		expect(handle.attached).toBe(true);
 		expect(handle.generation).toBe(1);
-
-		context.sendToBackground({
-			...commitIdentity(update),
-			type: 'host-attachment',
-			changes: [{ id: 1, generation: 1, attached: true }],
-		});
-		const retainedError = retainedOutcome;
-		invokes[3].success({ cell: 'stale-retained-ack' });
-		await Promise.resolve();
-		expect(retainedOutcome).toBe(retainedError);
+		// The re-render swaps the inline ref closure, so the old ref detaches and
+		// the new one attaches — to the same still-attached handle.
 		expect(refs).toEqual([handle, null, handle, null, handle]);
+		invokes[3].success({ cell: 'across-update' });
+		await expect(retained).resolves.toEqual({ cell: 'across-update' });
 
 		const afterUpdate = handle.invoke<{ cell: string }>('readCell');
 		invokes[4].success({ cell: 'after-update' });
@@ -1655,11 +1538,7 @@ describe('@octanejs/lynx transported protocol', () => {
 		const unmounting = root.unmountAsync();
 		await flushMicrotasks();
 		const unmount = main.commits[2];
-		context.sendToBackground({
-			...commitIdentity(unmount),
-			type: 'ack',
-			handles: [{ op: 'remove', id: 1, generation: 1 }],
-		});
+		context.sendToBackground({ ...commitIdentity(unmount), type: 'ack' });
 		context.sendToBackground({ ...commitIdentity(unmount), type: 'complete' });
 		await unmounting;
 		expect(handle.active).toBe(false);
@@ -1823,18 +1702,32 @@ describe('@octanejs/lynx transported protocol', () => {
 		const update = root.renderAsync(Scene, { value: 2 });
 		void update.catch(() => {});
 		await flushMicrotasks();
+		// An update batch derives no handle deltas, so a cross-check payload
+		// claiming the untouched handle cannot be installed and the root closes.
 		context.sendToBackground({
 			...commitIdentity(main.commits[1]),
 			type: 'ack',
-			handles: [],
+			handles: [
+				{
+					op: 'upsert',
+					id: 1,
+					type: 'view',
+					generation: 1,
+					attached: true,
+					listDescendant: false,
+					snapshot: handleSnapshot(main.commits[1].root, 1, 'view', 1),
+				},
+			],
 		});
-		await expect(update).rejects.toThrow(/omits updated handle 1/);
+		await expect(update).rejects.toThrow(/publishes unchanged handle 1/);
 		expect(transport.acceptedIdentity()).toBe(accepted);
 		expect(handle.active).toBe(false);
 		expect(container.getPublicHandle(1)).toBeNull();
 
 		const commitCount = main.commits.length;
-		await expect(root.renderAsync(Scene, { value: 3 })).rejects.toThrow(/omits updated handle 1/);
+		await expect(root.renderAsync(Scene, { value: 3 })).rejects.toThrow(
+			/publishes unchanged handle 1/,
+		);
 		expect(main.commits).toHaveLength(commitCount);
 	});
 
@@ -1912,8 +1805,11 @@ describe('@octanejs/lynx transported protocol', () => {
 					op: 'upsert',
 					id: 1,
 					type: 'view',
+					// The netted create+destroy of version 1 still advanced the
+					// generation counter on both sides, exactly as main stages a
+					// bump per create command and never clears it on destroy.
 					generation: 2,
-					attached: true,
+					attached: false,
 					listDescendant: false,
 					snapshot: handleSnapshot(88, 1, 'view', 2, { value: 1 }),
 				},
@@ -1935,8 +1831,9 @@ describe('@octanejs/lynx transported protocol', () => {
 					op: 'upsert',
 					id: 1,
 					type: 'view',
+					// Two recreates in one batch bump the generation twice.
 					generation: 4,
-					attached: true,
+					attached: false,
 					listDescendant: false,
 					snapshot: handleSnapshot(88, 1, 'view', 4, { value: 3 }),
 				},
@@ -1980,14 +1877,16 @@ describe('@octanejs/lynx transported protocol', () => {
 					op: 'upsert',
 					id: 1,
 					type: 'view',
+					// Stale claim: the counter reached 5 through the accepted
+					// recreate of version 4, so this create derives generation 6.
 					generation: 4,
-					attached: true,
+					attached: false,
 					listDescendant: false,
 					snapshot: handleSnapshot(88, 1, 'view', 4, { value: 5 }),
 				},
 			],
 		});
-		await expect(staleCreate).rejects.toThrow(/invalid created handle 1/);
+		await expect(staleCreate).rejects.toThrow(/diverges from the derived handle 1:4/);
 		expect(container.getPublicHandle(1)).toBeNull();
 		transport.close();
 	});
@@ -2028,7 +1927,15 @@ describe('@octanejs/lynx transported protocol', () => {
 		expect(main.commits).toHaveLength(2);
 		main.acknowledge(main.commits[1], 'complete');
 		await root.flushTransport();
-		expect(container.getPublicHandle(1)?.snapshot).toMatchObject({ props: { count: 1 } });
+		// The event-driven re-render crossed as an update at the preserved handle
+		// identity; snapshots are pure identity (protocol 2), so the new props
+		// are observable on the wire commit, not the snapshot.
+		expect(container.getPublicHandle(1)?.snapshot).toMatchObject({ id: 1, generation: 1 });
+		expect(
+			main.commits[1].batch.commands.some(
+				(command) => command.op === 'update' && (command.props as { count?: unknown }).count === 1,
+			),
+		).toBe(true);
 		context.sendToBackground({ ...firstIdentity, type: 'ack', handles: [] });
 		expect(transport.diagnostics().at(-1)?.message).toMatch(/late or duplicate acknowledgement/);
 

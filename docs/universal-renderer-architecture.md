@@ -831,7 +831,7 @@ interface UniversalAsyncCommitTransport<Container> {
 		container: Container,
 		batch: UniversalHostBatch,
 		identity: {
-			protocol: 1;
+			protocol: 2;
 			renderer: string;
 			root: number;
 			version: number;
