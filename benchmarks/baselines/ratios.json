@@ -1592,6 +1592,38 @@
     "note": "Deterministic decoded main-program gate comparing the common host receiver plus IFR's authored first-tree graph with the preview's receiver-only program. The source/build record is 59260 / 55709 = 1.0637x; background bytes are separately required to remain byte-identical by the harness."
   },
   {
+    "suite": "lynx-bundle-size",
+    "op": "main_gzip",
+    "target": "octane-preview",
+    "reference": "slice-budget-preview",
+    "maxRatio": 1.03,
+    "note": "Per-slice gzip budget (lynx-perf #8): the receiver-only main program froze at 61893 gzip on 2026-08-09 after the lazy worklet-bridge boundary shed the registry/call-bridge machinery from no-worklet bundles (was 64266 before the diet). The budget is the frozen reference target the harness emits; 1.03x allows toolchain jitter while rejecting a retained-machinery regression, which showed as +2.4k when the boundary was broken."
+  },
+  {
+    "suite": "lynx-bundle-size",
+    "op": "main_gzip",
+    "target": "octane-ifr",
+    "reference": "slice-budget-ifr",
+    "maxRatio": 1.03,
+    "note": "Per-slice gzip budget (lynx-perf #8): the IFR main program (receiver plus authored first-screen tree) froze at 65942 gzip on 2026-08-09 (was 68570 before the worklet boundary). Guards the whole first-screen-critical slice, so either receiver or one-shot renderer growth breaches it."
+  },
+  {
+    "suite": "lynx-bundle-size",
+    "op": "background_gzip",
+    "target": "octane-ifr",
+    "reference": "slice-budget-ifr",
+    "maxRatio": 1.03,
+    "note": "Per-slice gzip budget (lynx-perf #8): the background program froze at 63044 gzip on 2026-08-09, byte-identical between preview and IFR by a separate harness gate. The receiver diet must not push cost across the thread boundary; a background regression breaches here even when both main gates pass."
+  },
+  {
+    "suite": "lynx-bundle-size",
+    "op": "bundle_gzip",
+    "target": "octane-ifr",
+    "reference": "slice-budget-ifr",
+    "maxRatio": 1.03,
+    "note": "Whole-artifact gzip budget (lynx-perf #8): the encoded IFR bundle froze at 128812 gzip on 2026-08-09. Catches growth that hides in encoder sections outside the two thread scripts."
+  },
+  {
     "suite": "ssr-http",
     "op": "import_renderer",
     "target": "octane-tsrx",

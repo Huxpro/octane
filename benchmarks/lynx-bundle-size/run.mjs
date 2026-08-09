@@ -378,6 +378,31 @@ try {
 			`preview and IFR ${operation} differ`,
 		);
 	}
+	// Fixed per-slice gzip budgets (lynx-perf #8): the bytes this fixture
+	// measured on 2026-08-09 after the receiver diet's lazy worklet boundary.
+	// They exist as reference targets so `ratios.json` can gate each slice's
+	// growth independently — the budgets themselves change only with a
+	// justified guard update, exactly like every other deterministic gate.
+	results.push(
+		{
+			name: 'slice-budget-preview',
+			ops: {
+				bundle_gzip: stat(124_867),
+				main_gzip: stat(61_893),
+				background_gzip: stat(63_044),
+			},
+			meta: { evidence: 'frozen-slice-budget', nativeExecution: false },
+		},
+		{
+			name: 'slice-budget-ifr',
+			ops: {
+				bundle_gzip: stat(128_812),
+				main_gzip: stat(65_942),
+				background_gzip: stat(63_044),
+			},
+			meta: { evidence: 'frozen-slice-budget', nativeExecution: false },
+		},
+	);
 } catch (error) {
 	failed = error instanceof Error ? error.stack || error.message : String(error);
 	console.error(failed);
@@ -395,7 +420,7 @@ if (failed !== undefined) {
 	process.exitCode = 1;
 } else {
 	console.log('\ntarget                  bundle raw  bundle gzip  main gzip  background gzip');
-	for (const result of results) {
+	for (const result of results.filter((entry) => entry.meta.evidence !== 'frozen-slice-budget')) {
 		console.log(
 			`${result.name.padEnd(23)} ${String(result.ops.bundle_raw.score).padStart(10)} ${String(result.ops.bundle_gzip.score).padStart(12)} ${String(result.ops.main_gzip.score).padStart(10)} ${String(result.ops.background_gzip.score).padStart(16)}`,
 		);

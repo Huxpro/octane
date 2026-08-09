@@ -22,17 +22,30 @@ import type {
 } from 'octane/universal/native';
 import { isLynxNativeResource } from './resource.js';
 import { registerLynxPlan } from './core/plan-wire.js';
-import { createLynxMainThreadRefDescriptor, type LynxMainThreadRefCell } from './core/worklets.js';
-
-export {
-	attachThreadFunction,
-	bindThreadFunction,
-	invokeThreadFunction,
-	registerThreadFunction,
-	runOnBackground,
-	runOnMainThread,
-	unregisterThreadFunction,
+import { provideLynxMainThreadWorkletBridge } from './core/worklet-bridge.js';
+import {
+	attachThreadFunction as attachThreadFunctionCore,
+	bindThreadFunction as bindThreadFunctionCore,
+	createLynxMainThreadRefDescriptor,
+	createLynxMainThreadWorkletRegistry,
+	installLynxMainThreadWorkletRegistry,
+	installMainThreadCallBridge,
+	invokeThreadFunction as invokeThreadFunctionCore,
+	isLynxBackgroundFunctionDescriptor,
+	isolateLynxWorkletValue,
+	registerThreadFunction as registerThreadFunctionCore,
+	runOnBackground as runOnBackgroundCore,
+	runOnMainThread as runOnMainThreadCore,
+	unregisterThreadFunction as unregisterThreadFunctionCore,
+	type LynxBackgroundFunctionDescriptor,
+	type LynxCancelablePromise,
+	type LynxCompiledThreadFunctionImplementation,
+	type LynxMainThreadRefCell,
+	type LynxMainThreadWorkletDescriptor,
+	type LynxThreadFunctionKind,
+	type LynxThreadFunctionSourceLike,
 } from './core/worklets.js';
+
 export type {
 	LynxBackgroundFunctionDescriptor,
 	LynxCancelablePromise,
@@ -40,6 +53,87 @@ export type {
 	LynxMainThreadWorkletDescriptor,
 	LynxWorkletValue,
 } from './core/worklets.js';
+
+/**
+ * The main-thread receiver resolves its worklet runtime through the
+ * `worklet-bridge` slot instead of importing `worklets.ts`, so a bundle whose
+ * compiled output never touches these entry points retains none of the
+ * registry or call-bridge machinery. Every thread-function entry point below
+ * provides the bridge before delegating: compiled worklet output registers,
+ * binds, or attaches at module scope, and `useMainThreadRef` creates ref
+ * descriptors, so any bundle that can put a worklet feature in front of the
+ * receiver has provided the bridge before the receiver installs. Exported for
+ * hosts and harnesses that hand-register worklets through `worklets.ts`
+ * instead of these entry points.
+ */
+export function ensureLynxMainThreadWorkletBridge(): void {
+	provideLynxMainThreadWorkletBridge({
+		createRegistry: createLynxMainThreadWorkletRegistry,
+		installRegistry: installLynxMainThreadWorkletRegistry,
+		installCallBridge: installMainThreadCallBridge,
+		isolateWorkletValue: isolateLynxWorkletValue,
+		isBackgroundFunctionDescriptor: isLynxBackgroundFunctionDescriptor,
+	});
+}
+
+export function registerThreadFunction(
+	kind: LynxThreadFunctionKind,
+	id: string,
+	implementation: LynxCompiledThreadFunctionImplementation,
+	source?: LynxThreadFunctionSourceLike,
+): void {
+	ensureLynxMainThreadWorkletBridge();
+	registerThreadFunctionCore(kind, id, implementation, source);
+}
+
+export function unregisterThreadFunction(kind: LynxThreadFunctionKind, id: string): void {
+	ensureLynxMainThreadWorkletBridge();
+	unregisterThreadFunctionCore(kind, id);
+}
+
+export function bindThreadFunction(
+	kind: LynxThreadFunctionKind,
+	id: string,
+	readCaptures: () => readonly unknown[],
+	source?: LynxThreadFunctionSourceLike,
+): ReturnType<typeof bindThreadFunctionCore> {
+	ensureLynxMainThreadWorkletBridge();
+	return bindThreadFunctionCore(kind, id, readCaptures, source);
+}
+
+export function attachThreadFunction<Fn extends (...args: never[]) => unknown>(
+	fn: Fn,
+	kind: LynxThreadFunctionKind,
+	id: string,
+	readCaptures: () => readonly unknown[],
+	source?: LynxThreadFunctionSourceLike,
+): Fn {
+	ensureLynxMainThreadWorkletBridge();
+	return attachThreadFunctionCore(fn, kind, id, readCaptures, source);
+}
+
+export function invokeThreadFunction(
+	fn: unknown,
+	receiver: unknown,
+	args: readonly unknown[],
+): unknown {
+	ensureLynxMainThreadWorkletBridge();
+	return invokeThreadFunctionCore(fn, receiver, args);
+}
+
+export function runOnMainThread<Args extends readonly unknown[], Result>(
+	fn: ((...args: Args) => Result) | LynxMainThreadWorkletDescriptor,
+): (...args: Args) => LynxCancelablePromise<Awaited<Result>> {
+	ensureLynxMainThreadWorkletBridge();
+	return runOnMainThreadCore(fn);
+}
+
+export function runOnBackground<Args extends readonly unknown[], Result>(
+	fn: ((...args: Args) => Result) | LynxBackgroundFunctionDescriptor,
+): (...args: Args) => LynxCancelablePromise<Awaited<Result>> {
+	ensureLynxMainThreadWorkletBridge();
+	return runOnBackgroundCore(fn);
+}
 
 const UNIVERSAL_PLAN = Symbol.for('octane.universal.plan');
 const UNIVERSAL_VALUE = Symbol.for('octane.universal.value');
@@ -1178,6 +1272,7 @@ export function useMainThreadRef<T>(
 	const resolvedSlot =
 		arguments.length > 1 ? slot : hasInitialValue ? undefined : initialValueOrSlot;
 	const initialValue = hasInitialValue ? (initialValueOrSlot as T) : undefined;
+	ensureLynxMainThreadWorkletBridge();
 	const id = useId(resolvedSlot);
 	return useMemo(
 		() => createLynxMainThreadRefDescriptor(`octane:${id}`, initialValue),

@@ -67,15 +67,18 @@ describe('@octanejs/lynx Milestone 8 private surface', () => {
 		expect(mainRendererApi.lazy).toBeTypeOf('function');
 		expect(mainRendererApi.useMainThreadRef).toBeTypeOf('function');
 		expect(mainRendererApi.registerThreadFunction).toBeTypeOf('function');
-		expect(firstScreenApi.runOnBackground).toBe(rootApi.runOnBackground);
-		expect(firstScreenApi.runOnMainThread).toBe(rootApi.runOnMainThread);
+		// The main-thread layer's runOn* pair is `main-renderer.ts`'s
+		// bridge-providing wrapper, distinct from the background layer's core
+		// implementation; every main-thread entry shares the one wrapper.
+		expect(firstScreenApi.runOnBackground).toBe(mainRendererApi.runOnBackground);
+		expect(firstScreenApi.runOnMainThread).toBe(mainRendererApi.runOnMainThread);
 		expect(rootApi.createLynxRoot).toBeTypeOf('function');
 		expect(rootApi.useMainThreadRef).toBeTypeOf('function');
 		expect(rootApi.runOnBackground).toBeTypeOf('function');
 		expect(rootApi.runOnMainThread).toBeTypeOf('function');
 		expect(rootApi.createLynxNativeResource).toBeTypeOf('function');
 		expect(mainThreadApi.installLynxMainThread).toBeTypeOf('function');
-		expect(mainThreadApi.runOnBackground).toBe(rootApi.runOnBackground);
+		expect(mainThreadApi.runOnBackground).toBe(mainRendererApi.runOnBackground);
 		expect(platformApi.useInitData).toBeTypeOf('function');
 		expect(platformApi.useGlobalProps).toBeTypeOf('function');
 		expect(platformApi.getNativeModules).toBeTypeOf('function');

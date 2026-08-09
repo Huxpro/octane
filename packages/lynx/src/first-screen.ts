@@ -98,12 +98,11 @@ export const lynxRootAvailability = {
 export { createLynxNativeResource } from './resource.js';
 export type { LynxNativeResource } from './resource.js';
 export { LynxNodesRefError } from './core/nodes-ref.js';
-export { useMainThreadRef } from './main-renderer.js';
-export {
-	runOnBackground,
-	runOnMainThread,
-	LynxCrossThreadCallCancelledError,
-} from './core/worklets.js';
+// The runOn* pair comes from `main-renderer.ts`'s bridge-providing wrappers,
+// not `worklets.ts` directly, so using them keeps the receiver's lazy worklet
+// boundary provided.
+export { runOnBackground, runOnMainThread, useMainThreadRef } from './main-renderer.js';
+export { LynxCrossThreadCallCancelledError } from './core/worklets.js';
 export type {
 	LynxBackgroundFunctionDescriptor,
 	LynxCancelablePromise,

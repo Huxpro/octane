@@ -138,6 +138,7 @@ describe('Lynx runtime compatibility evidence', () => {
 				'src/core/profiling.ts',
 				'src/core/protocol.ts',
 				'src/core/renderer-id.ts',
+				'src/core/worklet-bridge.ts',
 				'src/core/worklets.ts',
 				'src/first-screen.ts',
 				'src/main-renderer.ts',

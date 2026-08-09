@@ -10,7 +10,13 @@ import {
 } from 'octane/universal/native';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createLynxRoot, type LynxPublicHandle, type LynxRoot } from '../src/index.js';
+import { ensureLynxMainThreadWorkletBridge } from '../src/main-renderer.js';
 import { installLynxMainThread, type LynxMainThreadController } from '../src/main-thread.js';
+
+// This suite hand-registers worklets through `worklets.ts`, standing in for
+// compiled worklet output; provide the receiver's lazy worklet bridge the same
+// way a worklet bundle's module evaluation would.
+ensureLynxMainThreadWorkletBridge();
 import {
 	LYNX_BACKGROUND_TO_MAIN_EVENT,
 	LYNX_MAIN_TO_BACKGROUND_EVENT,
