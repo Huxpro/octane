@@ -482,6 +482,76 @@ describe('@octanejs/lynx transported protocol', () => {
 		).toMatchObject({ type: 'dispose-retry' });
 	});
 
+	it('validates the plan-aware wire: instantiate commands, announcements, and registry updates', () => {
+		const instantiate = {
+			op: 'instantiate',
+			plan: '1a2b3c-9',
+			parent: null,
+			before: null,
+			ids: [4, 5, 6],
+			values: ['row-1', null, 7],
+			events: [{ id: 5, type: 'tap', listener: 3, priority: 'discrete' }],
+		};
+		const commit = (command: unknown) => ({
+			...identity(1, 1),
+			type: 'commit',
+			batch: { renderer: LYNX_TRANSPORT_RENDERER, version: 1, commands: [command] },
+		});
+		expect(validateLynxBackgroundOutboundMessage(commit(instantiate))).toMatchObject({
+			type: 'commit',
+		});
+		expect(() =>
+			validateLynxBackgroundOutboundMessage(commit({ ...instantiate, plan: '' })),
+		).toThrow(/plan/);
+		expect(() =>
+			validateLynxBackgroundOutboundMessage(commit({ ...instantiate, ids: [] })),
+		).toThrow(/ids/);
+		expect(() =>
+			validateLynxBackgroundOutboundMessage(commit({ ...instantiate, ids: [4, 5.5] })),
+		).toThrow(/ids/);
+		expect(() =>
+			validateLynxBackgroundOutboundMessage(commit({ ...instantiate, values: [() => {}] })),
+		).toThrow(/values/);
+		expect(() =>
+			validateLynxBackgroundOutboundMessage(commit({ ...instantiate, values: [{ deep: 1 }] })),
+		).toThrow(/values/);
+		expect(() =>
+			validateLynxBackgroundOutboundMessage(
+				commit({
+					...instantiate,
+					events: [{ id: 5, type: 'tap', listener: 3, priority: 'urgent' }],
+				}),
+			),
+		).toThrow(/priority/);
+		expect(() =>
+			validateLynxBackgroundOutboundMessage(commit({ ...instantiate, extra: true })),
+		).toThrow(/unknown field "extra"/);
+
+		const ready = {
+			protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
+			renderer: LYNX_TRANSPORT_RENDERER,
+			type: 'main-ready',
+			request: 0,
+		};
+		expect(
+			validateLynxBackgroundInboundMessage({ ...ready, plans: ['1a2b3c-9', 'z9y8x7-c'] }),
+		).toMatchObject({ type: 'main-ready', plans: ['1a2b3c-9', 'z9y8x7-c'] });
+		expect(() => validateLynxBackgroundInboundMessage({ ...ready, plans: 'all' })).toThrow(/plans/);
+		expect(() => validateLynxBackgroundInboundMessage({ ...ready, plans: [7] })).toThrow(/plans/);
+
+		const registry = {
+			protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
+			renderer: LYNX_TRANSPORT_RENDERER,
+			type: 'plan-registry',
+			plans: ['1a2b3c-9'],
+		};
+		expect(validateLynxBackgroundInboundMessage(registry)).toBe(registry);
+		expect(() => validateLynxBackgroundInboundMessage({ ...registry, plans: [] })).toThrow(/plans/);
+		expect(() => validateLynxBackgroundInboundMessage({ ...registry, root: 1 })).toThrow(
+			/unknown field "root"/,
+		);
+	});
+
 	it('validates and snapshots root-independent clone-safe lifecycle data', () => {
 		const shared = { enabled: true };
 		const source = {

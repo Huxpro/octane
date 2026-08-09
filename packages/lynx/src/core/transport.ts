@@ -47,6 +47,7 @@ import {
 	type LynxTransportAcknowledgement,
 } from './protocol.js';
 import type { LynxBackgroundNativeEventDelivery } from './native-event-receiver.js';
+import { foldLynxPlanInstances } from './plan-wire.js';
 import {
 	isLynxMainThreadWorkletDescriptor,
 	isolateLynxWorkletValue,
@@ -290,6 +291,11 @@ export function createLynxBackgroundTransport(
 	const readyDeferred = createDeferred<void>();
 	// A transport can be synchronously closed before a root observes `ready`.
 	void readyDeferred.promise.catch(() => {});
+	// Plan IDs main announced from its registry (in the ready reply, then via
+	// plan-registry messages as lazy chunks register more). Folding is limited
+	// to this set, so registry skew degrades to per-node commands.
+	const announcedPlans = new Set<string>();
+	const isPlanAnnounced = (planId: string): boolean => announcedPlans.has(planId);
 	let accepted: UniversalTransportIdentity | null = null;
 	let boundRoot: Pick<UniversalRoot, 'dispatchTransportEvent'> | null = null;
 	let closedError: Error | null = null;
@@ -913,7 +919,8 @@ export function createLynxBackgroundTransport(
 			message.type === 'main-ready' ||
 			message.type === 'page-destroy' ||
 			message.type === 'page-data' ||
-			message.type === 'global-props'
+			message.type === 'global-props' ||
+			message.type === 'plan-registry'
 		) {
 			return;
 		}
@@ -1374,7 +1381,14 @@ export function createLynxBackgroundTransport(
 			return;
 		}
 		if (message.type === 'main-ready') {
+			if (message.plans !== undefined) {
+				for (const planId of message.plans) announcedPlans.add(planId);
+			}
 			handleReady(message);
+			return;
+		}
+		if (message.type === 'plan-registry') {
+			for (const planId of message.plans) announcedPlans.add(planId);
 			return;
 		}
 		if (message.type === 'call-main-result' || message.type === 'call-main-error') {
@@ -1450,6 +1464,7 @@ export function createLynxBackgroundTransport(
 
 	const transport: LynxBackgroundTransport = {
 		mode: 'async',
+		planInstantiation: true,
 		ready: readyDeferred.promise,
 		prepareBatch(target, batch, identity): UniversalAsyncPreparedHostBatch {
 			if (target !== container) {
@@ -1493,15 +1508,23 @@ export function createLynxBackgroundTransport(
 				});
 			}
 			const preparedBatch = options.prepareWorkletBatch?.(batch) ?? batch;
+			// Fold provable plan instances into instantiate commands for the wire
+			// message only. Background bookkeeping — handle-delta validation against
+			// main's acknowledgement and worklet lifetimes — keeps reading the
+			// per-node `preparedBatch`, which mirrors the commands main regenerates
+			// when it expands each instantiate. Only plans main announced from its
+			// registry are folded, so an unannounced plan (registry skew, lazy
+			// chunk, collision) degrades to the per-node commands staged here.
+			const wireBatch = foldLynxPlanInstances(preparedBatch, isPlanAnnounced);
 			// An empty batch mutates nothing on main, so it never rides the frame
 			// budget: it crosses unpaced, main answers it with no pulse, and it
 			// neither waits for nor closes the gate. Renders folded behind a held
 			// commit leave a tail of such no-op batches (one per scheduled flush),
 			// and pacing them would spend a frame each to learn nothing.
-			const paceThisCommit = commitPacing === 'frame' && preparedBatch.commands.length > 0;
+			const paceThisCommit = commitPacing === 'frame' && wireBatch.commands.length > 0;
 			const commit: LynxCommitWireMessage = paceThisCommit
-				? { ...identity, type: 'commit', batch: preparedBatch, pace: true }
-				: { ...identity, type: 'commit', batch: preparedBatch };
+				? { ...identity, type: 'commit', batch: wireBatch, pace: true }
+				: { ...identity, type: 'commit', batch: wireBatch };
 			try {
 				selfCheckLynxBackgroundOutboundMessage(commit);
 			} catch (error) {

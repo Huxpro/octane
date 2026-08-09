@@ -21,6 +21,7 @@ import type {
 	UniversalRenderContext,
 } from 'octane/universal/native';
 import { isLynxNativeResource } from './resource.js';
+import { registerLynxPlan } from './core/plan-wire.js';
 import { createLynxMainThreadRefDescriptor, type LynxMainThreadRefCell } from './core/worklets.js';
 
 export {
@@ -242,11 +243,17 @@ function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
 
 export function universalPlan(renderer: string, root: UniversalPlanNode): UniversalPlan {
 	assertRenderer(renderer);
-	return Object.freeze({
+	const plan = Object.freeze({
 		$$kind: UNIVERSAL_PLAN,
 		renderer,
 		root: freezePlanNode(root),
 	}) as unknown as UniversalPlan;
+	// Every compiled plan constant on this thread flows through this facade, so
+	// registering here builds the main-side instantiate registry with no
+	// compiler involvement. Plans the wire can never instantiate register
+	// nothing.
+	registerLynxPlan(plan);
+	return plan;
 }
 
 export function universalValue(

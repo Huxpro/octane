@@ -17,6 +17,11 @@ import {
 	type LynxWorkletRecord,
 } from '../src/core/worklets.js';
 import {
+	lynxPlanRegistrySnapshot,
+	unregisterLynxPlan,
+	type LynxInstantiateCommand,
+} from '../src/core/plan-wire.js';
+import {
 	LYNX_BACKGROUND_TO_MAIN_EVENT,
 	LYNX_MAIN_TO_BACKGROUND_EVENT,
 	type LynxBackgroundInboundMessage,
@@ -115,12 +120,23 @@ export function RefOnlyScene() @{
 	const state = useMainThreadRef(0);
 	<view id={'faulted-ref-' + state._wvid} />
 }
+
+export function PlanRows({ items, onHit }) @{
+	<view id="rows">
+		@for (const item of items; key item.id) {
+			<view class={'row-' + item.id}>
+				<text bindtap={() => onHit(item.id)}>{item.label as string}</text>
+			</view>
+		}
+	</view>
+}
 `;
 
 const EXPORT_NAMES = [
 	'Scene',
 	'StateRefScene',
 	'RefOnlyScene',
+	'PlanRows',
 	'mainStateControl',
 	'mainEcho',
 	'mainThrow',
@@ -131,10 +147,16 @@ const EXPORT_NAMES = [
 	'setupCapturedDeclaration',
 ] as const;
 
+interface PlanRowsProps {
+	readonly items: readonly { readonly id: number; readonly label: string }[];
+	readonly onHit: (id: number) => void;
+}
+
 interface CompiledLayer {
 	readonly Scene: UniversalComponent<{ readonly prefix: string }>;
 	readonly StateRefScene: UniversalComponent<Record<string, never>>;
 	readonly RefOnlyScene: UniversalComponent<Record<string, never>>;
+	readonly PlanRows: UniversalComponent<PlanRowsProps>;
 	readonly mainStateControl: {
 		increment: (() => Promise<number>) | null;
 		layoutValue: number | null;
@@ -634,5 +656,196 @@ describe.sequential('Lynx Milestone 7 compiler/runtime integration', () => {
 			backgroundOutbound.filter(({ type }) => type === 'call-main').map(({ call }) => call),
 		).toEqual([1, 2, 4]);
 		expect(mainOutbound.filter(({ type }) => type === 'call-background')).toHaveLength(2);
+	});
+});
+
+describe.sequential('Lynx plan-aware wire integration', () => {
+	interface WireHarness {
+		readonly environment: InstalledEnvironment;
+		readonly outbound: LynxBackgroundOutboundMessage[];
+		readonly inbound: LynxBackgroundInboundMessage[];
+		readonly hits: number[];
+		commits(): Extract<LynxBackgroundOutboundMessage, { type: 'commit' }>[];
+		instantiates(
+			commit: Extract<LynxBackgroundOutboundMessage, { type: 'commit' }>,
+		): LynxInstantiateCommand[];
+		rows(): Element[];
+		tapRow(index: number): Promise<void>;
+	}
+
+	function installWireHarness(): WireHarness {
+		const environment = installEnvironment();
+		const outbound: LynxBackgroundOutboundMessage[] = [];
+		const inbound: LynxBackgroundInboundMessage[] = [];
+		environment.context.addEventListener(LYNX_BACKGROUND_TO_MAIN_EVENT, (event) => {
+			outbound.push(event.data as LynxBackgroundOutboundMessage);
+		});
+		environment.context.addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
+			inbound.push(event.data as LynxBackgroundInboundMessage);
+		});
+		const harness: WireHarness = {
+			environment,
+			outbound,
+			inbound,
+			hits: [],
+			commits: () =>
+				outbound.filter(
+					(message): message is Extract<LynxBackgroundOutboundMessage, { type: 'commit' }> =>
+						message.type === 'commit',
+				),
+			instantiates: (commit) =>
+				commit.batch.commands.filter(
+					(command): command is LynxInstantiateCommand => command.op === 'instantiate',
+				),
+			rows: () => [...environment.dom.window.document.querySelectorAll('#rows > view')],
+			async tapRow(index) {
+				globalThis.lynxTestingEnv.switchToMainThread();
+				const row = harness.rows()[index];
+				expect(row).toBeDefined();
+				row!
+					.querySelector('text')!
+					.dispatchEvent(new environment.dom.window.Event('bindEvent:tap', { bubbles: true }));
+				globalThis.lynxTestingEnv.switchToBackgroundThread();
+				await flushMicrotasks();
+			},
+		};
+		return harness;
+	}
+
+	it('folds announced plan instances into instantiate commands the main thread expands', async () => {
+		const harness = installWireHarness();
+		const { environment, hits } = harness;
+		backgroundRoot = rootApi.createLynxRoot();
+		const onHit = (id: number) => hits.push(id);
+		await backgroundRoot.render(environment.background.PlanRows, {
+			items: [
+				{ id: 1, label: 'one' },
+				{ id: 2, label: 'two' },
+				{ id: 3, label: 'three' },
+			],
+			onHit,
+		});
+		await backgroundRoot.flushTransport();
+
+		// Main announced its compiled plan registry in the ready reply.
+		const ready = harness.inbound.find((message) => message.type === 'main-ready');
+		expect(ready).toMatchObject({ plans: expect.any(Array) });
+
+		// Each row — view + text + materialized label host, one listener, three
+		// inserts — crossed as a single instantiate command; only the container
+		// crossed per-node.
+		const mount = harness.commits()[0]!;
+		const instantiates = harness.instantiates(mount);
+		expect(instantiates).toHaveLength(3);
+		for (const command of instantiates) {
+			expect(command.ids).toHaveLength(3);
+			expect(command.events).toHaveLength(1);
+		}
+		expect(mount.batch.commands.filter((command) => command.op === 'create')).toHaveLength(1);
+
+		// The expansion rebuilt the exact per-node DOM.
+		const rows = harness.rows();
+		expect(rows.map((row) => row.getAttribute('class'))).toEqual(['row-1', 'row-2', 'row-3']);
+		expect(rows.map((row) => row.textContent)).toEqual(['one', 'two', 'three']);
+
+		// Listeners announced through an instantiate reach the background handler.
+		await harness.tapRow(1);
+		expect(hits).toEqual([2]);
+
+		// A retained instance updates per-node — no re-instantiation — and keeps
+		// its physical host.
+		const retained = harness.rows()[0];
+		await backgroundRoot.render(environment.background.PlanRows, {
+			items: [
+				{ id: 1, label: 'one' },
+				{ id: 2, label: 'TWO' },
+				{ id: 3, label: 'three' },
+			],
+			onHit,
+		});
+		await backgroundRoot.flushTransport();
+		const update = harness.commits().at(-1)!;
+		expect(harness.instantiates(update)).toHaveLength(0);
+		expect(update.batch.commands.some((command) => command.op === 'update')).toBe(true);
+		expect(harness.rows()[0]).toBe(retained);
+		expect(harness.rows().map((row) => row.textContent)).toEqual(['one', 'TWO', 'three']);
+
+		// A later insertion folds exactly the new row.
+		await backgroundRoot.render(environment.background.PlanRows, {
+			items: [
+				{ id: 1, label: 'one' },
+				{ id: 2, label: 'TWO' },
+				{ id: 3, label: 'three' },
+				{ id: 4, label: 'four' },
+			],
+			onHit,
+		});
+		await backgroundRoot.flushTransport();
+		const insertion = harness.commits().at(-1)!;
+		expect(harness.instantiates(insertion)).toHaveLength(1);
+		expect(harness.rows().map((row) => row.textContent)).toEqual(['one', 'TWO', 'three', 'four']);
+		await harness.tapRow(3);
+		expect(hits).toEqual([2, 4]);
+
+		// A plan registered after the ready reply is announced incrementally, so
+		// lazily loaded chunks can join the negotiated capability.
+		globalThis.lynxTestingEnv.switchToMainThread();
+		mainRenderer.universalPlan('lynx', {
+			kind: 'host',
+			type: 'view',
+			props: { tag: 'late-registration-proof' },
+		});
+		globalThis.lynxTestingEnv.switchToBackgroundThread();
+		const registryUpdates = harness.inbound.filter((message) => message.type === 'plan-registry');
+		expect(registryUpdates).toHaveLength(1);
+		expect(registryUpdates[0]!.plans).toHaveLength(1);
+	});
+
+	it('degrades to per-node commands when the main thread announces no plans', async () => {
+		const harness = installWireHarness();
+		const { environment, hits } = harness;
+		// Simulate registry skew: this main thread build knows none of the plans.
+		for (const planId of lynxPlanRegistrySnapshot()) unregisterLynxPlan(planId);
+		backgroundRoot = rootApi.createLynxRoot();
+		await backgroundRoot.render(environment.background.PlanRows, {
+			items: [
+				{ id: 1, label: 'one' },
+				{ id: 2, label: 'two' },
+			],
+			onHit: (id: number) => hits.push(id),
+		});
+		await backgroundRoot.flushTransport();
+
+		const ready = harness.inbound.find((message) => message.type === 'main-ready');
+		expect(ready).toBeDefined();
+		expect(ready && 'plans' in ready).toBe(false);
+		for (const commit of harness.commits()) {
+			expect(harness.instantiates(commit)).toHaveLength(0);
+		}
+		expect(harness.rows().map((row) => row.textContent)).toEqual(['one', 'two']);
+		await harness.tapRow(0);
+		expect(hits).toEqual([1]);
+	});
+
+	it('rejects a commit whose instantiate names a plan the main thread lost', async () => {
+		const harness = installWireHarness();
+		const { environment } = harness;
+		backgroundRoot = rootApi.createLynxRoot();
+		// The ready reply has announced the row plan by the time the first commit
+		// settles.
+		await backgroundRoot.render(environment.background.PlanRows, {
+			items: [],
+			onHit: () => {},
+		});
+		await backgroundRoot.flushTransport();
+		// Corrupt the main-side registry after announcement: expansion cannot
+		// resolve the plan, and the commit must reject rather than degrade.
+		for (const planId of lynxPlanRegistrySnapshot()) unregisterLynxPlan(planId);
+		await expect(
+			backgroundRoot.render(environment.background.PlanRows, {
+				items: [{ id: 1, label: 'one' }],
+				onHit: () => {},
+			}),
+		).rejects.toThrow(/never registered/);
 	});
 });

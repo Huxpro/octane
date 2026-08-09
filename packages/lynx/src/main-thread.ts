@@ -1,4 +1,9 @@
 import { hasOwnSymbolFields } from './core/own-symbols.js';
+import {
+	expandLynxWireBatch,
+	lynxPlanRegistrySnapshot,
+	onLynxPlanRegistered,
+} from './core/plan-wire.js';
 import { hasCrossRealmPlainPrototype } from './core/plain-object.js';
 import type {
 	UniversalComponent,
@@ -1297,12 +1302,17 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			request === LYNX_READY_ANNOUNCEMENT_REQUEST || firstTreeSnapshotSent || firstTree === null
 				? null
 				: firstTree.snapshot;
+		// Announce this thread's instantiable plans with every reply: the
+		// background folds plan-instance commands only for announced IDs, so a
+		// missed announcement costs wire compactness, never correctness.
+		const plans = lynxPlanRegistrySnapshot();
 		const reply: LynxMainReadyReply = {
 			protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 			renderer: LYNX_TRANSPORT_RENDERER,
 			type: 'main-ready',
 			request,
 			...(snapshot == null ? null : { firstTree: snapshot }),
+			...(plans.length === 0 ? null : { plans }),
 		};
 		if (request !== LYNX_READY_ANNOUNCEMENT_REQUEST && !correlatedReadySent) {
 			correlatedReadySent = true;
@@ -1358,6 +1368,24 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			readyAnnouncementInProgress = false;
 		}
 	};
+
+	// Plans registered after the ready reply (lazy chunks) are re-announced so
+	// the background can extend its fold set. A failed announcement only costs
+	// wire compactness — the background keeps sending per-node commands.
+	const unsubscribePlanRegistry = onLynxPlanRegistered((planId) => {
+		if (closed || lifecycleClosed) return;
+		if (!readyAnnouncementSent && !correlatedReadySent) return;
+		try {
+			dispatch({
+				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
+				renderer: LYNX_TRANSPORT_RENDERER,
+				type: 'plan-registry',
+				plans: [planId],
+			});
+		} catch (error) {
+			report(error, 'Octane Lynx could not announce a late-registered plan.');
+		}
+	});
 
 	const releaseFirstTree = (): void => {
 		if (firstTree === null) return;
@@ -2020,6 +2048,20 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			}
 		}
 
+		// Expand plan-instance instructions into the per-node commands they encode
+		// before the untouched validation and Element PAPI apply paths run. The
+		// background only folds plans this thread announced, so an unresolvable
+		// plan here is registry corruption and rejects the commit like any other
+		// malformed batch.
+		let hostBatch: UniversalHostBatch;
+		try {
+			hostBatch = expandLynxWireBatch(message.batch);
+		} catch (error) {
+			if (provisional) disposeRecord(record);
+			reject(identity, error);
+			return;
+		}
+
 		let prepared: LynxPreparedHostBatch;
 		// The opaque journal remains live after transfer only so first-screen event
 		// tokens can be resolved until background confirms listener ownership. It
@@ -2029,7 +2071,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		try {
 			prepared = prepareLynxHostBatch(
 				record.container,
-				message.batch,
+				hostBatch,
 				candidateFirstTree === null
 					? undefined
 					: {
@@ -2089,7 +2131,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			}
 		}
 		const startedAck = LYNX_PROFILE ? performance.now() : 0;
-		const handles = acknowledgementHandles(driver, record.container, prepared, message.batch);
+		const handles = acknowledgementHandles(driver, record.container, prepared, hostBatch);
 		const acknowledgement: LynxTransportAcknowledgement = {
 			...identity,
 			type: 'ack',
@@ -2424,6 +2466,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		uninstallFirstScreenHost = null;
 		if (!closed) {
 			closed = true;
+			unsubscribePlanRegistry();
 			try {
 				context.removeEventListener(LYNX_BACKGROUND_TO_MAIN_EVENT, receive);
 			} catch (error) {

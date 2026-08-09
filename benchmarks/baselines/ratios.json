@@ -1377,6 +1377,22 @@
   },
   {
     "suite": "lynx-table",
+    "op": "create_commands_1k",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 1.5,
+    "note": "Plan-instantiation gate (lynx-perf #5): the main thread announces the row plan, so creating 1000 rows folds to one instantiate command per row. Measured exactly 1000 = 1.0x the one-command-per-row floor on 2026-08-09 (was 16000 = 16x as per-node creates/events/inserts before folding). A breach means announced plan instances stopped folding on the wire."
+  },
+  {
+    "suite": "lynx-table",
+    "op": "create_commands_10k",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 1.5,
+    "note": "Same plan-instantiation gate at 10k rows: measured exactly 10000 = 1.0x the floor on 2026-08-09 (was 160000 before folding). Creation wire cost must stay one command per row, independent of the per-row subtree size."
+  },
+  {
+    "suite": "lynx-table",
     "op": "select_commands_1k",
     "target": "octane-lynx",
     "reference": "changed-rows-model",
