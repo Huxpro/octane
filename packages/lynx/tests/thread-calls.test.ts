@@ -19,7 +19,13 @@ import {
 	type LynxMainThreadRefCell,
 	type LynxMainThreadWorkletDescriptor,
 } from '../src/core/worklets.js';
+import { ensureLynxMainThreadWorkletBridge } from '../src/main-renderer.js';
 import { installLynxMainThread, type LynxMainThreadController } from '../src/main-thread.js';
+
+// This suite hand-registers worklets through `worklets.ts`, standing in for
+// compiled worklet output; provide the receiver's lazy worklet bridge the same
+// way a worklet bundle's module evaluation would.
+ensureLynxMainThreadWorkletBridge();
 
 let dom: JSDOM | null = null;
 let controller: LynxMainThreadController | null = null;

@@ -1656,6 +1656,38 @@
     "note": "Deterministic decoded main-program gate comparing the common host receiver plus IFR's authored first-tree graph with the preview's receiver-only program. The source/build record is 59260 / 55709 = 1.0637x; background bytes are separately required to remain byte-identical by the harness."
   },
   {
+    "suite": "lynx-bundle-size",
+    "op": "main_gzip",
+    "target": "octane-preview",
+    "reference": "slice-budget-preview",
+    "maxRatio": 1.03,
+    "note": "Per-slice gzip budget: the receiver-only main program froze at 62420 bytes on the final lazy-worklet-bridge candidate (P5 exact parent: 64855). The harness emits this absolute reference; 1.03x allows toolchain jitter while rejecting the measured +2435-byte retained-machinery regression."
+  },
+  {
+    "suite": "lynx-bundle-size",
+    "op": "main_gzip",
+    "target": "octane-ifr",
+    "reference": "slice-budget-ifr",
+    "maxRatio": 1.03,
+    "note": "Per-slice gzip budget: the IFR main program (receiver plus authored first-screen tree) froze at 66685 bytes on the final lazy-worklet-bridge candidate (P5 exact parent: 69245). It guards the whole first-screen-critical slice, so either receiver or one-shot renderer growth breaches it."
+  },
+  {
+    "suite": "lynx-bundle-size",
+    "op": "background_gzip",
+    "target": "octane-ifr",
+    "reference": "slice-budget-ifr",
+    "maxRatio": 1.03,
+    "note": "Per-slice gzip budget: the background program froze at 61907 bytes on the final candidate and remains byte-identical between preview and IFR within the build by a separate harness gate. The receiver diet must not push cost across the thread boundary; P5 measured 61906 bytes, so the candidate delta is one gzip byte with identical raw length."
+  },
+  {
+    "suite": "lynx-bundle-size",
+    "op": "bundle_gzip",
+    "target": "octane-ifr",
+    "reference": "slice-budget-ifr",
+    "maxRatio": 1.03,
+    "note": "Whole-artifact gzip budget: the encoded IFR bundle froze at 128456 bytes on the final lazy-worklet-bridge candidate (P5 exact parent: 130953). Catches growth that hides in encoder sections outside the two thread scripts."
+  },
+  {
     "suite": "ssr-http",
     "op": "import_renderer",
     "target": "octane-tsrx",

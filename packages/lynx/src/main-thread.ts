@@ -81,14 +81,10 @@ import { LYNX_DEVELOPMENT } from './core/environment.js';
 import { createLynxElementPAPI, type LynxElementPAPI, type LynxElementRef } from './core/papi.js';
 import { LYNX_PROFILE, lynxWireProfile, profileOutboundMessage } from './core/profiling.js';
 import {
-	createLynxMainThreadWorkletRegistry,
-	installLynxMainThreadWorkletRegistry,
-	installMainThreadCallBridge,
-	isLynxBackgroundFunctionDescriptor,
-	isolateLynxWorkletValue,
-	type LynxMainThreadWorkletRegistry,
-	type LynxWorkletValue,
-} from './core/worklets.js';
+	installedLynxMainThreadWorkletBridge,
+	type LynxMainThreadWorkletBridge,
+} from './core/worklet-bridge.js';
+import type { LynxMainThreadWorkletRegistry, LynxWorkletValue } from './core/worklets.js';
 import { installLynxFirstScreenHost } from './first-screen.js';
 import { renderLynxFirstScreen, type LynxFirstScreenRenderResult } from './main-renderer.js';
 
@@ -604,7 +600,13 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	let uninstallWorkletRegistry: (() => void) | null = null;
 	let uninstallCallBridge: (() => void) | null = null;
 	let restoreHostHooks: (() => void) | null = null;
-	let worklets: LynxMainThreadWorkletRegistry;
+	// Resolved once per install. Compiled worklet output and `useMainThreadRef`
+	// provide the bridge at module evaluation, which precedes this install for
+	// any statically bundled application; a bundle that never provided it
+	// compiled no worklet features, and every worklet-addressed path below
+	// reports that instead of resolving.
+	let workletBridge: LynxMainThreadWorkletBridge | null = null;
+	let worklets: LynxMainThreadWorkletRegistry | null = null;
 	let mainCallPublication: UniversalTransportIdentity | null = null;
 	let nativeDestroyListenerRegistered = false;
 	let nativeDestroyReceived = false;
@@ -898,8 +900,10 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		pendingBackgroundCalls.delete(message.call);
 		if (message.type === 'call-background-result') {
 			try {
+				// A pending entry only exists after `callBackground` ran, and that
+				// path resolves through the bridge, so it is present here.
 				entry.deferred.resolve(
-					isolateLynxWorkletValue(
+					workletBridge!.isolateWorkletValue(
 						message.value as LynxWorkletValue,
 						'background call result',
 					) as UniversalSerializableValue,
@@ -973,16 +977,22 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		let result: unknown;
 		try {
 			if (options.executeMainThreadWorklet === undefined) {
-				const activeWorklet = worklets.activate(
+				const registry = worklets;
+				if (registry === null) {
+					throw new Error(
+						'Octane Lynx received a main-thread call, but this bundle compiled no main-thread worklets.',
+					);
+				}
+				const activeWorklet = registry.activate(
 					message.worklet as import('./core/worklets.js').LynxMainThreadWorkletDescriptor,
 				);
 				let retained = true;
 				running.release = () => {
 					if (!retained) return;
 					retained = false;
-					worklets.release(activeWorklet);
+					registry.release(activeWorklet);
 				};
-				result = worklets.runWorklet(activeWorklet, message.args);
+				result = registry.runWorklet(activeWorklet, message.args);
 			} else {
 				result = options.executeMainThreadWorklet(message.worklet, message.args);
 			}
@@ -1000,10 +1010,15 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				runningMainCalls.delete(message.call);
 				running.release();
 				try {
-					const isolated = isolateLynxWorkletValue(
-						value as LynxWorkletValue,
-						'main-thread call result',
-					);
+					// Absent only under an `executeMainThreadWorklet` install with no
+					// bridge provider, where the host owns the result's shape.
+					const isolated =
+						workletBridge === null
+							? (value as LynxWorkletValue)
+							: workletBridge.isolateWorkletValue(
+									value as LynxWorkletValue,
+									'main-thread call result',
+								);
 					dispatch({
 						...running.identity,
 						type: 'call-main-result',
@@ -1102,14 +1117,17 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			deferred.reject(new Error('Octane Lynx background call identity space is exhausted.'));
 			return Object.freeze({ promise: deferred.promise, cancel() {} });
 		}
-		const isolatedFn = isolateLynxWorkletValue(
+		// Only the bridge-installed registry hooks and call bridge reach this
+		// function, so the bridge is present whenever it runs.
+		const bridge = workletBridge!;
+		const isolatedFn = bridge.isolateWorkletValue(
 			fn as LynxWorkletValue,
 			'background function call target',
 		);
-		if (!isLynxBackgroundFunctionDescriptor(isolatedFn)) {
+		if (!bridge.isBackgroundFunctionDescriptor(isolatedFn)) {
 			throw new TypeError('Octane Lynx background function call target is invalid.');
 		}
-		const isolatedArgs = isolateLynxWorkletValue(
+		const isolatedArgs = bridge.isolateWorkletValue(
 			args as unknown as LynxWorkletValue[],
 			'background function call arguments',
 		);
@@ -1142,14 +1160,18 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		});
 	};
 
-	worklets = createLynxMainThreadWorkletRegistry({
-		callBackground(fn, args) {
-			return callBackground(
-				fn as LynxBackgroundFunctionWireDescriptor,
-				args as readonly UniversalSerializableValue[],
-			).promise;
-		},
-	});
+	workletBridge = installedLynxMainThreadWorkletBridge();
+	worklets =
+		workletBridge === null
+			? null
+			: workletBridge.createRegistry({
+					callBackground(fn, args) {
+						return callBackground(
+							fn as LynxBackgroundFunctionWireDescriptor,
+							args as readonly UniversalSerializableValue[],
+						).promise;
+					},
+				});
 	const hostGlobals = rawTarget as Record<string, unknown>;
 	const previousRunWorklet = hostGlobals.runWorklet;
 	// Captured before the wrapper is installed, because installing it creates an
@@ -1227,6 +1249,14 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		descriptor: import('./core/worklets.js').LynxMainThreadWorkletDescriptor,
 		args?: readonly unknown[],
 	) => {
+		if (worklets === null) {
+			report(
+				new Error(
+					'Octane Lynx host dispatched a main-thread worklet, but this bundle compiled none.',
+				),
+			);
+			return undefined;
+		}
 		hostDispatchDepth++;
 		try {
 			return worklets.runWorklet(descriptor, args);
@@ -1248,22 +1278,24 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		else hostGlobals.runWorklet = previousRunWorklet;
 	};
 	try {
-		uninstallWorkletRegistry = installLynxMainThreadWorkletRegistry(worklets);
-		uninstallCallBridge = installMainThreadCallBridge({
-			callBackground<Result>(
-				fn: import('./core/worklets.js').LynxBackgroundFunctionDescriptor,
-				args: readonly import('./core/worklets.js').LynxWorkletValue[],
-			) {
-				const call = callBackground(
-					fn as LynxBackgroundFunctionWireDescriptor,
-					args as readonly UniversalSerializableValue[],
-				);
-				return {
-					promise: call.promise as Promise<Result>,
-					cancel: call.cancel,
-				};
-			},
-		});
+		if (workletBridge !== null && worklets !== null) {
+			uninstallWorkletRegistry = workletBridge.installRegistry(worklets);
+			uninstallCallBridge = workletBridge.installCallBridge({
+				callBackground<Result>(
+					fn: import('./core/worklets.js').LynxBackgroundFunctionDescriptor,
+					args: readonly import('./core/worklets.js').LynxWorkletValue[],
+				) {
+					const call = callBackground(
+						fn as LynxBackgroundFunctionWireDescriptor,
+						args as readonly UniversalSerializableValue[],
+					);
+					return {
+						promise: call.promise as Promise<Result>,
+						cancel: call.cancel,
+					};
+				},
+			});
+		}
 		hostGlobals.runWorklet = installedRunWorklet;
 		hostGlobals.__FlushElementTree = installedFlush;
 	} catch (error) {
@@ -1273,7 +1305,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		uninstallCallBridge = null;
 		uninstallWorkletRegistry?.();
 		uninstallWorkletRegistry = null;
-		worklets.close();
+		worklets?.close();
 		throw error;
 	}
 
@@ -1281,7 +1313,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		if (mainCallPublication === null) return;
 		mainCallPublication = null;
 		try {
-			worklets.finishRefOwnerPublication();
+			worklets?.finishRefOwnerPublication();
 		} catch (error) {
 			report(error, 'Octane Lynx could not finish main-thread ref owner publication.');
 		}
@@ -1464,7 +1496,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		uninstallCallBridge = null;
 		uninstallWorkletRegistry?.();
 		uninstallWorkletRegistry = null;
-		worklets.close();
+		worklets?.close();
 	};
 
 	const closeWorkletRuntime = (): boolean => {
@@ -1713,7 +1745,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	const finalizeDisposedRoot = (record: ActiveLynxMainRoot<Node>, version: number): void => {
 		if (active !== record) return;
 		finishMainCallPublication();
-		worklets.releaseOwners();
+		worklets?.releaseOwners();
 		rememberDisposed(record.root, version);
 		active = null;
 	};
@@ -1807,7 +1839,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				return;
 			}
 			try {
-				worklets.beginRefOwnerPublication();
+				worklets?.beginRefOwnerPublication();
 				mainCallPublication = Object.freeze({
 					protocol: message.protocol,
 					renderer: message.renderer,
@@ -1870,7 +1902,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			source = createLynxHostContainer(papi, {
 				root: FIRST_SCREEN_ROOT_ID,
 				page,
-				worklets,
+				...(worklets === null ? null : { worklets }),
 			});
 			const prepared = prepareLynxHostBatch(source, result.batch);
 			prepared.apply();
@@ -2033,7 +2065,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 					container: createLynxHostContainer(papi, {
 						root: message.root,
 						page,
-						worklets,
+						...(worklets === null ? null : { worklets }),
 						onAttachments: submitHostAttachments,
 						onCallbackFault: failAcceptedRoot,
 					}),
@@ -2320,7 +2352,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				);
 				return;
 			}
-			worklets.releaseOwners();
+			worklets?.releaseOwners();
 			rememberDisposed(message.root, message.version);
 			acknowledge();
 			return;
@@ -2666,11 +2698,10 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	return Object.freeze(controller);
 }
 
-export {
-	runOnBackground,
-	runOnMainThread,
-	LynxCrossThreadCallCancelledError,
-} from './core/worklets.js';
+// The runOn* pair re-exports `main-renderer.ts`'s bridge-providing wrappers so
+// using them from this entry also keeps the lazy worklet boundary provided.
+export { runOnBackground, runOnMainThread } from './main-renderer.js';
+export { LynxCrossThreadCallCancelledError } from './core/worklets.js';
 export type {
 	LynxBackgroundFunctionDescriptor,
 	LynxCancelablePromise,
