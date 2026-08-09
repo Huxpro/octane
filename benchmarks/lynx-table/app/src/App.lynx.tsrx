@@ -17,6 +17,16 @@ declare const __BENCH_AUTOROWS__: number;
 const INITIAL_ROWS: RowData[] =
 	__BENCH_AUTOROWS__ > 0 ? buildDataSeeded(__BENCH_AUTOROWS__) : [];
 
+// Render-breadth counter for the deterministic rig: profile builds count Row
+// body executions, so run.mjs can gate "an update renders only the changed
+// rows". Compiled out of the default (shipping-configuration) bundle.
+declare const __OCTANE_LYNX_PROFILE__: boolean;
+function countRowRender(): void {
+	if (!__OCTANE_LYNX_PROFILE__) return;
+	const bench = globalThis as { __BENCH_ROW_RENDERS__?: number };
+	bench.__BENCH_ROW_RENDERS__ = (bench.__BENCH_ROW_RENDERS__ ?? 0) + 1;
+}
+
 // -- storms: N sequential state→render→DOM ticks from one click --------------
 // Each tick runs in its own macrotask (MessageChannel avoids the nested
 // setTimeout 4ms clamp) so every mutation goes through a full render cycle
@@ -54,6 +64,7 @@ interface RowProps {
 }
 
 function Row(props: RowProps) @{
+	countRowRender();
 	<view class={['row', props.isSelected && 'danger']}>
 		<text class="col-id">{String(props.row.id)}</text>
 		<text class="col-label" bindtap={() => props.onSelect(props.row.id)}>{props.row.label}</text>

@@ -12,15 +12,21 @@ import {
 	type UniversalTransportCommitMessage,
 	type UniversalTransportEventMessage,
 	type UniversalTransportIdentity,
+	createContext,
 	createObjectContainer,
 	createObjectDriver,
 	createUniversalRoot,
 	defineUniversalComponent,
 	type UniversalRoot,
+	universalComponent,
+	universalContext,
+	universalFor,
 	universalPlan,
 	universalProps,
 	universalValue,
 	use,
+	useContext,
+	useEffect,
 	useLayoutEffect,
 	useState,
 } from '../src/universal.js';
@@ -1338,6 +1344,199 @@ describe('universal asynchronous transport', () => {
 		);
 		expect(protocol.error?.message).toMatch(/uses protocol 999/);
 		expect(log).toEqual([]);
+		await root.unmountAsync();
+	});
+});
+
+describe('transported retained-subtree adoption', () => {
+	// A transported parent update must not re-render keyed children whose
+	// component, props, and consumed contexts are unchanged: their committed
+	// subtrees are adopted wholesale with React memo semantics (no render, no
+	// effect churn, stable host identity), while updates, context changes, and
+	// reorders still land exactly as they would without adoption. Every update
+	// here arrives through a transported event, so the listener table, version
+	// handshake, and acknowledgement flow run for real across retained commits.
+	interface SceneRow {
+		readonly id: number;
+		readonly label: string;
+	}
+
+	interface SceneCommand {
+		readonly select?: number;
+		readonly theme?: string;
+		readonly rotate?: boolean;
+		readonly relabel?: number;
+	}
+
+	const itemPlan = universalPlan(RENDERER, { kind: 'host', type: 'item', propsSlot: 0 });
+	const Theme = createContext('plain');
+
+	function retainedScene() {
+		const { container, loopback, root } = transportRoot();
+		const bodyLog: string[] = [];
+		const effectLog: string[] = [];
+		let command!: (payload: SceneCommand) => void;
+		// One stable handler shared by every item across every render: parents
+		// pass identity-equal props to unchanged rows, the way an app passes a
+		// useCallback-stable callback into each row.
+		const onCommand = (payload: unknown) => command(payload as SceneCommand);
+		const Item = defineUniversalComponent(
+			RENDERER,
+			(props: { row: SceneRow; selected: boolean; onCommand: (payload: unknown) => void }) => {
+				const theme = useContext(Theme);
+				bodyLog.push(`item:${props.row.id}`);
+				useEffect(
+					() => {
+						effectLog.push(`mount:${props.row.id}`);
+						return () => effectLog.push(`cleanup:${props.row.id}`);
+					},
+					[],
+					'mounted',
+				);
+				return universalValue(itemPlan, [
+					universalProps([
+						['set', 'label', props.row.label],
+						['set', 'theme', theme],
+						['set', 'selected', props.selected],
+						['set', 'onPoke', props.onCommand],
+					]),
+				]);
+			},
+		);
+		const Scene = defineUniversalComponent(RENDERER, () => {
+			const [rows, setRows] = useState<readonly SceneRow[]>(
+				[
+					{ id: 1, label: 'a' },
+					{ id: 2, label: 'b' },
+					{ id: 3, label: 'c' },
+				],
+				'rows',
+			);
+			const [selected, setSelected] = useState(0, 'selected');
+			const [theme, setTheme] = useState('plain', 'theme');
+			command = (payload) => {
+				if (payload.select !== undefined) setSelected(payload.select);
+				if (payload.theme !== undefined) setTheme(payload.theme);
+				if (payload.rotate === true) {
+					setRows((previous) => [previous[2]!, previous[0]!, previous[1]!]);
+				}
+				if (payload.relabel !== undefined) {
+					setRows((previous) =>
+						previous.map((row) =>
+							row.id === payload.relabel ? { id: row.id, label: `${row.label}!` } : row,
+						),
+					);
+				}
+			};
+			bodyLog.push('scene');
+			return universalContext(Theme, theme, () =>
+				universalFor(
+					rows,
+					(row) => row.id,
+					(row) =>
+						universalComponent(
+							RENDERER,
+							Item,
+							universalProps([
+								['set', 'row', row],
+								['set', 'selected', selected === row.id],
+								['set', 'onCommand', onCommand],
+							]),
+						),
+				),
+			);
+		});
+		const items = () => container.host.children;
+		// Listener occurrences follow mount announcement order (item 1, 2, 3)
+		// and survive reorders: retained items never re-announce.
+		const poke = async (occurrence: number, payload: SceneCommand) => {
+			const outcome = await loopback.sendEvent([
+				{ listener: loopback.listener('poke', occurrence), payload },
+			]);
+			expect(outcome.error).toBeUndefined();
+			await root.flushTransport();
+		};
+		return { root, Scene, bodyLog, effectLog, items, poke };
+	}
+
+	it('adopts unchanged keyed items over transported parent updates and keeps them live', async () => {
+		const { root, Scene, bodyLog, effectLog, items, poke } = retainedScene();
+		await root.renderAsync(Scene, undefined);
+		await root.flushTransport();
+		expect(bodyLog).toEqual(['scene', 'item:1', 'item:2', 'item:3']);
+		expect(items().map((item) => item.props.label)).toEqual(['a', 'b', 'c']);
+		expect(effectLog).toEqual(['mount:1', 'mount:2', 'mount:3']);
+		const [first, second, third] = [...items()];
+
+		bodyLog.length = 0;
+		await poke(0, { select: 2 });
+		expect(bodyLog).toEqual(['scene', 'item:2']);
+		expect(items()[0]).toBe(first);
+		expect(items()[1]).toBe(second);
+		expect(items()[2]).toBe(third);
+		expect(items().map((item) => item.props.selected)).toEqual([false, true, false]);
+
+		// Item 3 was retained through that commit; its listener was announced
+		// once at mount and must still dispatch against the newest version.
+		bodyLog.length = 0;
+		await poke(2, { select: 3 });
+		expect(bodyLog).toEqual(['scene', 'item:2', 'item:3']);
+		expect(items().map((item) => item.props.selected)).toEqual([false, false, true]);
+
+		// A retained item re-enters normally the moment its own props change.
+		bodyLog.length = 0;
+		await poke(0, { relabel: 1 });
+		expect(bodyLog).toEqual(['scene', 'item:1']);
+		expect(items()[0]).toBe(first);
+		expect(items().map((item) => item.props.label)).toEqual(['a!', 'b', 'c']);
+
+		// Adoption never re-ran or tore down a mount effect.
+		expect(effectLog).toEqual(['mount:1', 'mount:2', 'mount:3']);
+		await root.unmountAsync();
+		expect(effectLog.slice(3).toSorted()).toEqual(['cleanup:1', 'cleanup:2', 'cleanup:3']);
+	});
+
+	it('re-renders retained-prop items when a context value they consume changes', async () => {
+		const { root, Scene, bodyLog, items, poke } = retainedScene();
+		await root.renderAsync(Scene, undefined);
+		await root.flushTransport();
+		expect(items().map((item) => item.props.theme)).toEqual(['plain', 'plain', 'plain']);
+
+		// Identity-equal props cannot retain a subtree whose consumed context
+		// changed underneath it.
+		bodyLog.length = 0;
+		await poke(0, { theme: 'dark' });
+		expect(bodyLog).toEqual(['scene', 'item:1', 'item:2', 'item:3']);
+		expect(items().map((item) => item.props.theme)).toEqual(['dark', 'dark', 'dark']);
+
+		// Once the provider settles, the same items are adoptable again.
+		bodyLog.length = 0;
+		await poke(0, { select: 2 });
+		expect(bodyLog).toEqual(['scene', 'item:2']);
+		expect(items().map((item) => item.props.theme)).toEqual(['dark', 'dark', 'dark']);
+		await root.unmountAsync();
+	});
+
+	it('reorders retained keyed items without re-rendering or remounting them', async () => {
+		const { root, Scene, bodyLog, effectLog, items, poke } = retainedScene();
+		await root.renderAsync(Scene, undefined);
+		await root.flushTransport();
+		const [first, second, third] = [...items()];
+
+		bodyLog.length = 0;
+		await poke(0, { rotate: true });
+		expect(bodyLog).toEqual(['scene']);
+		expect(items()[0]).toBe(third);
+		expect(items()[1]).toBe(first);
+		expect(items()[2]).toBe(second);
+		expect(items().map((item) => item.props.label)).toEqual(['c', 'a', 'b']);
+		expect(effectLog).toEqual(['mount:1', 'mount:2', 'mount:3']);
+
+		// Moved-but-retained items still receive their own updates afterwards.
+		bodyLog.length = 0;
+		await poke(1, { select: 2 });
+		expect(bodyLog).toEqual(['scene', 'item:2']);
+		expect(items().map((item) => item.props.selected)).toEqual([false, false, true]);
 		await root.unmountAsync();
 	});
 });

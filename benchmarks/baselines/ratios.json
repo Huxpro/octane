@@ -1425,6 +1425,38 @@
   },
   {
     "suite": "lynx-table",
+    "op": "update10th_item_renders_1k",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 1,
+    "note": "Render-breadth acceptance gate (lynx-perf #4): unchanged keyed rows are adopted, not re-rendered, so update-every-10th renders exactly the ceil(rows/10) changed Row components. Measured exactly 100 = 1.0x the floor on 2026-08-09 (was 1000 = every row before transported retained-subtree adoption). A breach means transported attempts stopped adopting retained subtrees."
+  },
+  {
+    "suite": "lynx-table",
+    "op": "select_item_renders_1k",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 1,
+    "note": "A select renders exactly the two rows whose isSelected flipped. Measured 2 on 2026-08-09 (was 1000 = the whole table before transported retained-subtree adoption)."
+  },
+  {
+    "suite": "lynx-table",
+    "op": "swap_item_renders_1k",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 1,
+    "note": "A far transposition of two identity-stable rows re-renders no Row at all: props are untouched, so the reconciler reorders adopted subtrees. The model uses the 2 moved rows as a non-zero denominator; measured 0 on 2026-08-09 (was 1000)."
+  },
+  {
+    "suite": "lynx-table",
+    "op": "swap_commands_1k",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 500,
+    "note": "KNOWN GAP waterline, not a floor: swapping rows 1 and 998 measures 997 move commands against the 2-move model. The LIS reconciler guarantees final order and survivor identity, not a minimal move set (docs/differences-from-react.md), and for this transposition it moves the spanned window. Pinned at the 2026-08-09 waterline (997 = 498.5x) so it cannot silently grow; shrinking the move set is open follow-up."
+  },
+  {
+    "suite": "lynx-table",
     "op": "update_storm_paced_frame_commits_1k",
     "target": "octane-lynx",
     "reference": "changed-rows-model",
@@ -1494,6 +1526,38 @@
     "reference": "changed-rows-model",
     "maxRatio": 1.5,
     "note": "30 select ticks x 2 changed rows = 60 commands, measured exactly 1.0x the floor on 2026-08-08 (was 900000 before the fix)."
+  },
+  {
+    "suite": "lynx-table",
+    "op": "update10th_item_renders_10k",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 1,
+    "note": "Same render-breadth gate at 10k rows: measured exactly 1000 changed-row renders on 2026-08-09 (was 10000 = every row). Render breadth must stay proportional to change size, not table size."
+  },
+  {
+    "suite": "lynx-table",
+    "op": "select_item_renders_10k",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 1,
+    "note": "Same gate at 10k rows: a select renders exactly 2 Row components. Measured 2 on 2026-08-09 (was 10000)."
+  },
+  {
+    "suite": "lynx-table",
+    "op": "swap_item_renders_10k",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 1,
+    "note": "Same gate at 10k rows: a far transposition renders 0 Rows. Measured 0 on 2026-08-09 (was 10000)."
+  },
+  {
+    "suite": "lynx-table",
+    "op": "swap_commands_10k",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 500,
+    "note": "KNOWN GAP waterline at 10k rows: the same rows-1-and-998 transposition measures the same 997 move commands (the moved window is scale-independent); see the 1k twin."
   },
   {
     "suite": "lynx-bundle-size",
