@@ -661,6 +661,12 @@ function assertBatch(
 		fail('commit.batch.renderer', 'does not match envelope.');
 	if (batch.version !== identity.version) fail('commit.batch.version', 'does not match envelope.');
 	if (!Array.isArray(batch.commands)) fail('commit.batch.commands', 'must be an array.');
+	// The per-command structural walk is O(commands x props) and only ever
+	// answers "valid" on a correct build. Development and the two-realm CI rig
+	// keep it so protocol drift fails loudly at the boundary; production keeps
+	// the envelope above and relies on the receiver's staging guards plus the
+	// apply-time fault path to reject a corrupt batch loudly.
+	if (!LYNX_DEVELOPMENT) return;
 	for (let index = 0; index < batch.commands.length; index++) {
 		assertCommand(batch.commands[index], index);
 	}
@@ -808,6 +814,12 @@ function assertFirstTreeSnapshot(value: unknown, label: string): void {
 		positiveInteger(snapshot.roots[index], `${label}.roots[${index}]`);
 	}
 	if (!Array.isArray(snapshot.nodes)) fail(`${label}.nodes`, 'must be an array.');
+	// Per-node structural walk: development-only, like the commit batch walk.
+	// The snapshot rides the first-screen ready reply, so this loop is O(first
+	// tree) on the FCP path; production keeps the envelope above and relies on
+	// the adoption pass, which touches every node anyway and faults loudly on a
+	// shape it cannot adopt.
+	if (!LYNX_DEVELOPMENT) return;
 	for (let index = 0; index < snapshot.nodes.length; index++) {
 		const nodeLabel = `${label}.nodes[${index}]`;
 		const node = record(snapshot.nodes[index], nodeLabel);
@@ -1077,8 +1089,13 @@ export function validateLynxBackgroundInboundMessage(value: unknown): LynxBackgr
 			fail('ack.adoption', 'must be adopted or repaired.');
 		}
 		if (!Array.isArray(message.handles)) fail('ack.handles', 'must be an array.');
-		for (let index = 0; index < message.handles.length; index++) {
-			assertHandleDelta(message.handles[index], index, message);
+		// Per-delta structural walk: development-only, like the commit batch
+		// walk. The background's handle-delta reconciliation independently
+		// verifies every delta against the transitions it staged.
+		if (LYNX_DEVELOPMENT) {
+			for (let index = 0; index < message.handles.length; index++) {
+				assertHandleDelta(message.handles[index], index, message);
+			}
 		}
 		return message as unknown as LynxTransportAcknowledgement;
 	}

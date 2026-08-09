@@ -247,22 +247,35 @@ async function measureDeterministicSelectStorm(page) {
 	return ms;
 }
 
+function readProfileGlobalsInRealm() {
+	const copy = (value) => {
+		const output = {};
+		if (value === undefined) return output;
+		for (const key of Object.keys(value))
+			if (typeof value[key] === 'number') output[key] = value[key];
+		return output;
+	};
+	return {
+		allocation: copy(globalThis.__OCTANE_LYNX_ATTRIBUTION__),
+		wire: copy(globalThis.__OCTANE_LYNX_PROF),
+	};
+}
+
 async function profileGlobals(page) {
 	const worker = backgroundWorker(page);
 	if (worker === null) throw new Error('background worker is unavailable.');
-	return worker.evaluate(() => {
-		const copy = (value) => {
-			const output = {};
-			if (value === undefined) return output;
-			for (const key of Object.keys(value))
-				if (typeof value[key] === 'number') output[key] = value[key];
-			return output;
-		};
-		return {
-			allocation: copy(globalThis.__OCTANE_LYNX_ATTRIBUTION__),
-			wire: copy(globalThis.__OCTANE_LYNX_PROF),
-		};
-	});
+	const [background, ...frames] = await Promise.all([
+		worker.evaluate(readProfileGlobalsInRealm),
+		...page
+			.frames()
+			.map((frame) =>
+				frame.evaluate(readProfileGlobalsInRealm).catch(() => ({ allocation: {}, wire: {} })),
+			),
+	]);
+	const main = frames.find((profile) =>
+		Object.prototype.hasOwnProperty.call(profile.wire, 'prepareMs'),
+	);
+	return { ...background, mainWire: main?.wire ?? {} };
 }
 
 function numericDelta(after, before) {
@@ -343,6 +356,7 @@ async function heapSample(browser, target, rows, takeSnapshot) {
 			oracle: compactOracle(oracle),
 			allocation: numericDelta(afterProfile.allocation, beforeProfile.allocation),
 			wire: numericDelta(afterProfile.wire, beforeProfile.wire),
+			mainWire: numericDelta(afterProfile.mainWire, beforeProfile.mainWire),
 			snapshot,
 			workerReleased,
 		};
@@ -365,12 +379,16 @@ async function cpuSample(browser, target) {
 			stopCpuProfile(main),
 		]);
 		const after = await profileGlobals(page);
+		if (bundleVariant === 'profile' && !Object.hasOwn(after.mainWire, 'prepareMs')) {
+			throw new Error(`${target.id}: profile bundle did not expose a main-realm wire profile.`);
+		}
 		return {
 			wallMs,
 			background: summarizeCpuProfile(backgroundProfile),
 			main: summarizeCpuProfile(mainProfile),
 			allocation: numericDelta(after.allocation, before.allocation),
 			wire: numericDelta(after.wire, before.wire),
+			mainWire: numericDelta(after.mainWire, before.mainWire),
 			oracle: compactOracle(await page.evaluate(() => globalThis.__x.tableOracle())),
 		};
 	} finally {
@@ -441,6 +459,7 @@ async function coldSequence(browser, target, operation, rows = 1000) {
 				ms,
 				presentation,
 				wire: numericDelta(afterProfile.wire, beforeProfile.wire),
+				mainWire: numericDelta(afterProfile.mainWire, beforeProfile.mainWire),
 				before: compactOracle(beforeOracle),
 				after: compactOracle(afterOracle),
 				survivors,
@@ -473,6 +492,7 @@ async function stormSample(browser, target, rows = 1000) {
 				ms,
 				presentation,
 				wire: numericDelta(afterProfile.wire, beforeProfile.wire),
+				mainWire: numericDelta(afterProfile.mainWire, beforeProfile.mainWire),
 				before: compactOracle(before),
 				after: compactOracle(after),
 				survivors:
