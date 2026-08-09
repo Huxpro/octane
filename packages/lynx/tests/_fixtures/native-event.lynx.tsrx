@@ -7,6 +7,9 @@ import { useState } from 'octane';
  */
 export function NativeEventFixture(props) @{
 	const [taps, setTaps] = useState(0);
+	// Unrendered state: updating it re-renders to identical output, so the
+	// commit that crosses (or settles locally) carries zero commands.
+	const [, setPing] = useState(0);
 
 	<view id="shell" bindtap={() => props.log('shell:' + taps)}>
 		<view
@@ -20,6 +23,9 @@ export function NativeEventFixture(props) @{
 		</view>
 		<view id="caught" catchtap={() => props.log('caught')}>
 			<text>{'caught'}</text>
+		</view>
+		<view id="noop" bindtap={() => setPing((value) => value + 1)}>
+			<text>{'noop'}</text>
 		</view>
 	</view>
 }

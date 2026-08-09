@@ -186,6 +186,32 @@ describe.sequential('@octanejs/lynx native background event delivery', () => {
 		expect(dom.window.document.querySelector('#shell')?.textContent).toContain('taps: 2');
 	});
 
+	it('keeps delivering engine taps after a value-identical re-render settles locally', async () => {
+		const { dom } = installEnvironment();
+		const log: string[] = [];
+		backgroundRoot = createLynxRoot();
+		await backgroundRoot.render(fixture, { log: (entry) => log.push(entry) });
+		await settle();
+
+		// A no-op state update re-renders to identical output, so its commit
+		// carries zero commands and (protocol 2) settles on the background without
+		// crossing the wire, putting the root's version line ahead of the newest
+		// batch main applied. The tap bubbles, so the shell handler proves the
+		// no-op tap itself delivered.
+		tap(dom, '#noop', 'bindEvent');
+		await settle();
+		expect(log).toEqual(['shell:0']);
+
+		// The next tap is still an engine call naming a host main installed, and
+		// main's watermark has not moved. It must keep delivering: a tap dropped
+		// here would freeze every interaction that follows an idle re-render.
+		tap(dom, '#target', 'bindEvent', { marker: 'after-elide' });
+		await settle();
+
+		expect(log).toEqual(['shell:0', 'target:tap:after-elide', 'shell:0']);
+		expect(dom.window.document.querySelector('#shell')?.textContent).toContain('taps: 1');
+	});
+
 	it('delivers one propagation path as a single event scope', async () => {
 		const { dom } = installEnvironment();
 		const log: string[] = [];

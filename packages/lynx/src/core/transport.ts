@@ -1042,7 +1042,12 @@ export function createLynxBackgroundTransport(
 			protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 			renderer: LYNX_TRANSPORT_RENDERER,
 			root: accepted!.root,
-			version: accepted!.version,
+			// An engine-delivered tap names hosts main installed, so it carries
+			// main's watermark — the one `handleEvent` validates. Elided batches can
+			// put `accepted` ahead of it; `handleEvent` restamps the delivery up to
+			// `accepted` for the root either way. `mainAccepted` is non-null
+			// whenever `accepted` is: both acceptance paths require it.
+			version: mainAccepted!.version,
 			type: 'event',
 			priority: batch.priority,
 			deliveries: transported,
