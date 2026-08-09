@@ -49,6 +49,13 @@ export interface LynxWireProfile {
 	validateMs: number;
 	/** Main: prepareLynxHostBatch staging time. */
 	prepareMs: number;
+	/**
+	 * Main: the development-only validation share of `prepareMs` — the final
+	 * whole-tree check pass (lynx-perf #6). Production builds compile those
+	 * checks out, so this stays 0 there; `prepareMs - prepareCheckMs` is the
+	 * staging cost both builds share.
+	 */
+	prepareCheckMs: number;
 	/** Main: prepared.apply() time, including the Element PAPI flush. */
 	applyMs: number;
 	/** Main: acknowledgement handle computation + dispatch time. */
@@ -71,6 +78,7 @@ export function lynxWireProfile(): LynxWireProfile {
 		dispatchMs: 0,
 		validateMs: 0,
 		prepareMs: 0,
+		prepareCheckMs: 0,
 		applyMs: 0,
 		ackMs: 0,
 	});

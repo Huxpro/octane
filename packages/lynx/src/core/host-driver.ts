@@ -16,7 +16,9 @@ import {
 	type LynxNativeEventBinding,
 	type LynxNativeEventToken,
 } from './native-events.js';
+import { LYNX_DEVELOPMENT } from './environment.js';
 import { hasCrossRealmPlainPrototype } from './plain-object.js';
+import { LYNX_PROFILE, lynxWireProfile } from './profiling.js';
 import {
 	createLynxFirstTree,
 	LYNX_FIRST_TREE_STATE,
@@ -360,13 +362,26 @@ function hostError(message: string): Error {
 	return new Error(`Octane Lynx host: ${message}`);
 }
 
+// The assert helpers below are pure predicates over commands the same
+// application's background bundle produced: on a correct build they only ever
+// answer "valid", so production compiles their bodies out (lynx-perf #6) and
+// pays nothing per command. Development and the two-realm CI rig keep every
+// check. Corruption in production still cannot apply silently: the staging
+// closures throw on any id the record maps cannot resolve, and prepare/apply
+// run under the transport's fault path, which tears the root down loudly.
+// Checks that gate real behavior — duplicate ids, record existence,
+// attach-state transitions, cloneProps ownership — are not in this family and
+// stay unconditional.
+
 function assertSafeId(value: unknown, label: string): asserts value is number {
+	if (!LYNX_DEVELOPMENT) return;
 	if (!Number.isSafeInteger(value) || (value as number) <= 0) {
 		throw hostError(`${label} must be a positive safe integer.`);
 	}
 }
 
 function assertHostType(value: unknown, label: string): asserts value is string {
+	if (!LYNX_DEVELOPMENT) return;
 	if (typeof value !== 'string' || value.length === 0) {
 		throw hostError(`${label} must be a non-empty string.`);
 	}
@@ -461,6 +476,7 @@ function assertTextProps(
 	props: Readonly<Record<string, unknown>>,
 	label: string,
 ): void {
+	if (!LYNX_DEVELOPMENT) return;
 	if (type !== '#text') return;
 	if (
 		typeof props.value !== 'string' ||
@@ -474,6 +490,7 @@ function assertNoMainThreadEventCollision(
 	props: Readonly<Record<string, unknown>>,
 	events: ReadonlyMap<string, UniversalEventListenerDescriptor>,
 ): void {
+	if (!LYNX_DEVELOPMENT) return;
 	if (events.size === 0) return;
 	for (const name of Object.keys(props)) {
 		if (props[name] === null || props[name] === undefined) continue;
@@ -536,6 +553,7 @@ function assertNoCycle<Node extends LynxElementRef>(
 	id: number,
 	parent: LynxAttachedHostParent,
 ): void {
+	if (!LYNX_DEVELOPMENT) return;
 	let current = parentHostId(parent);
 	const visited = new Set<number>();
 	while (typeof current === 'number') {
@@ -2554,11 +2572,15 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			for (const child of entry.children) captureInitialNode(child);
 		}
 	};
+	// Pre-pass feeding the development-only "destroy under a surviving parent"
+	// check; production has no consumer for the set.
 	const destroyedIds = new Set<number>();
-	for (const command of batch.commands) {
-		if (command?.op === 'destroy') {
-			assertSafeId(command.id, 'destroy.id');
-			destroyedIds.add(command.id);
+	if (LYNX_DEVELOPMENT) {
+		for (const command of batch.commands) {
+			if (command?.op === 'destroy') {
+				assertSafeId(command.id, 'destroy.id');
+				destroyedIds.add(command.id);
+			}
 		}
 	}
 	const operations: LynxApplyOperation<Node>[] = [];
@@ -2690,20 +2712,22 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			if (command.op === 'move' && record.parent === undefined) {
 				throw hostError(`move target ${command.id} is detached.`);
 			}
-			if (record.type === '#text' || record.type === 'raw-text') {
-				const parentRecord =
-					typeof physicalParentId === 'number' ? getRecord(physicalParentId) : undefined;
-				if (parentRecord?.type !== 'text') {
-					throw hostError(
-						`${record.type} host ${command.id} may only be placed directly under a text host.`,
-					);
+			if (LYNX_DEVELOPMENT) {
+				if (record.type === '#text' || record.type === 'raw-text') {
+					const parentRecord =
+						typeof physicalParentId === 'number' ? getRecord(physicalParentId) : undefined;
+					if (parentRecord?.type !== 'text') {
+						throw hostError(
+							`${record.type} host ${command.id} may only be placed directly under a text host.`,
+						);
+					}
 				}
-			}
-			if (
-				record.type === 'list-item' &&
-				(typeof parent !== 'number' || getRecord(parent)?.type !== 'list')
-			) {
-				throw hostError(`<list-item> ${command.id} must be placed directly under a <list>.`);
+				if (
+					record.type === 'list-item' &&
+					(typeof parent !== 'number' || getRecord(parent)?.type !== 'list')
+				) {
+					throw hostError(`<list-item> ${command.id} must be placed directly under a <list>.`);
+				}
 			}
 			assertNoCycle(getRecord, command.id, parent);
 			const wasConnected = isRootConnected(getRecord, command.id);
@@ -2776,11 +2800,13 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			assertHostType(command.type, `command ${index} event.type`);
 			const record = writeRecord(command.id);
 			if (record === undefined) throw hostError(`unknown event target ${command.id}.`);
-			if (record.type === '#text' || record.type === 'raw-text') {
-				throw hostError(`raw-text host ${command.id} cannot own native events.`);
-			}
-			if (parseLynxNativeEventProp(command.type) === null) {
-				throw hostError(`event ${JSON.stringify(command.type)} is not a Lynx event prop.`);
+			if (LYNX_DEVELOPMENT) {
+				if (record.type === '#text' || record.type === 'raw-text') {
+					throw hostError(`raw-text host ${command.id} cannot own native events.`);
+				}
+				if (parseLynxNativeEventProp(command.type) === null) {
+					throw hostError(`event ${JSON.stringify(command.type)} is not a Lynx event prop.`);
+				}
 			}
 			captureInitialNode(command.id);
 			const previous = record.events.get(command.type) ?? null;
@@ -2788,7 +2814,10 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				record.events.delete(command.type);
 			} else {
 				assertSafeId(command.listener.id, `command ${index} event.listener.id`);
-				if (!['continuous', 'default', 'discrete'].includes(command.listener.priority)) {
+				if (
+					LYNX_DEVELOPMENT &&
+					!['continuous', 'default', 'discrete'].includes(command.listener.priority)
+				) {
 					throw hostError(`command ${index} has invalid event priority.`);
 				}
 				record.events.set(
@@ -2816,16 +2845,18 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			if (record.children.length !== 0) {
 				throw hostError(`destroy target ${command.id} still owns children.`);
 			}
-			if (isRootConnected(getRecord, command.id)) {
-				throw hostError(`destroy target ${command.id} is still attached to the page.`);
-			}
-			if (isPortalParent(record.parent)) {
-				throw hostError(
-					`destroy target ${command.id} remains attached to a surviving portal target.`,
-				);
+			if (LYNX_DEVELOPMENT) {
+				if (isRootConnected(getRecord, command.id)) {
+					throw hostError(`destroy target ${command.id} is still attached to the page.`);
+				}
+				if (isPortalParent(record.parent)) {
+					throw hostError(
+						`destroy target ${command.id} remains attached to a surviving portal target.`,
+					);
+				}
 			}
 			if (typeof record.parent === 'number') {
-				if (!destroyedIds.has(record.parent)) {
+				if (LYNX_DEVELOPMENT && !destroyedIds.has(record.parent)) {
 					throw hostError(
 						`destroy target ${command.id} remains attached to a surviving detached parent.`,
 					);
@@ -2849,12 +2880,17 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 		throw hostError('post-fault teardown must remove every remaining host in one batch.');
 	}
 
+	// The whole-tree id set feeds only the development check pass below and
+	// first-tree adoption; a production steady-state commit never materializes
+	// it, so prepare stays O(batch) rather than O(final tree).
 	const finalIds = new Set<number>();
-	for (const id of state.records.keys()) {
-		if (!deletedRecords.has(id)) finalIds.add(id);
-	}
-	for (const id of stagedRecords.keys()) {
-		if (!deletedRecords.has(id)) finalIds.add(id);
+	if (LYNX_DEVELOPMENT || firstTree !== undefined) {
+		for (const id of state.records.keys()) {
+			if (!deletedRecords.has(id)) finalIds.add(id);
+		}
+		for (const id of stagedRecords.keys()) {
+			if (!deletedRecords.has(id)) finalIds.add(id);
+		}
 	}
 	let finalPortalChildren: ReadonlyMap<string, LynxPortalChildren> = state.portalChildren;
 	const portalChildrenChanges = readStagedPortalChildren();
@@ -2896,35 +2932,50 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			}
 		}
 	}
+	// List updates need every list alive in the final tree: lists the accepted
+	// state already tracked (including ones this batch deleted, whose removal
+	// updates must still be planned) plus lists this batch staged.
 	const listIds = new Set<number>();
-	const finalMainThreadRefOwners = new Map<string, number>();
 	for (const [id, record] of state.records) {
 		if (record.type === 'list') listIds.add(id);
 	}
-	for (const id of finalIds) {
-		const record = getRecord(id)!;
-		assertNoMainThreadEventCollision(record.props, record.events);
-		const mainThreadRef = record.props['main-thread:ref'] as
-			LynxMainThreadRefDescriptor | null | undefined;
-		if (mainThreadRef != null && record.visible && isRootConnected(getRecord, id)) {
-			const previousOwner = finalMainThreadRefOwners.get(mainThreadRef._wvid);
-			if (previousOwner !== undefined && previousOwner !== id) {
-				throw hostError(
-					`main-thread ref ${JSON.stringify(mainThreadRef._wvid)} is assigned to hosts ${previousOwner} and ${id}.`,
-				);
+	if (LYNX_DEVELOPMENT) {
+		// The whole-tree check pass: O(final tree) per commit, and on a correct
+		// build it only ever answers "valid", so production compiles it out
+		// (lynx-perf #6) and collects staged lists directly below instead. Timed
+		// apart from staging so the profile shows the share production sheds.
+		const startedChecks = LYNX_PROFILE ? performance.now() : 0;
+		const finalMainThreadRefOwners = new Map<string, number>();
+		for (const id of finalIds) {
+			const record = getRecord(id)!;
+			assertNoMainThreadEventCollision(record.props, record.events);
+			const mainThreadRef = record.props['main-thread:ref'] as
+				LynxMainThreadRefDescriptor | null | undefined;
+			if (mainThreadRef != null && record.visible && isRootConnected(getRecord, id)) {
+				const previousOwner = finalMainThreadRefOwners.get(mainThreadRef._wvid);
+				if (previousOwner !== undefined && previousOwner !== id) {
+					throw hostError(
+						`main-thread ref ${JSON.stringify(mainThreadRef._wvid)} is assigned to hosts ${previousOwner} and ${id}.`,
+					);
+				}
+				finalMainThreadRefOwners.set(mainThreadRef._wvid, id);
 			}
-			finalMainThreadRefOwners.set(mainThreadRef._wvid, id);
+			if (record.type === 'list') listIds.add(id);
+			if (record.type === 'list' && directListItem(getRecord, id) !== null) {
+				throw hostError('nested <list> hosts are not supported by the initial recycling contract.');
+			}
+			if (
+				record.type === 'list-item' &&
+				record.parent !== undefined &&
+				(typeof record.parent !== 'number' || getRecord(record.parent)?.type !== 'list')
+			) {
+				throw hostError(`<list-item> ${id} must be placed directly under a <list>.`);
+			}
 		}
-		if (record.type === 'list') listIds.add(id);
-		if (record.type === 'list' && directListItem(getRecord, id) !== null) {
-			throw hostError('nested <list> hosts are not supported by the initial recycling contract.');
-		}
-		if (
-			record.type === 'list-item' &&
-			record.parent !== undefined &&
-			(typeof record.parent !== 'number' || getRecord(record.parent)?.type !== 'list')
-		) {
-			throw hostError(`<list-item> ${id} must be placed directly under a <list>.`);
+		if (LYNX_PROFILE) lynxWireProfile().prepareCheckMs += performance.now() - startedChecks;
+	} else {
+		for (const [id, record] of stagedRecords) {
+			if (!deletedRecords.has(id) && record.type === 'list') listIds.add(id);
 		}
 	}
 	const listAncestryDelta: LynxHostListAncestryDelta[] = [];
