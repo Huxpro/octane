@@ -5,7 +5,6 @@ import {
 	type UniversalHostBatch,
 	type UniversalRoot,
 	type UniversalTransportAcknowledgement,
-	type UniversalTransportCommitMessage,
 	type UniversalEventPriority,
 	type UniversalTransportEventDelivery,
 	type UniversalTransportIdentity,
@@ -36,8 +35,10 @@ import {
 	type LynxCallMainResultMessage,
 	type LynxContextProxy,
 	type LynxContextProxyEvent,
+	type LynxCommitWireMessage,
 	type LynxDisposeAcknowledgement,
 	type LynxDisposeRetryMessage,
+	type LynxFramePulseMessage,
 	type LynxHostAttachmentMessage,
 	type LynxHostFaultMessage,
 	type LynxMainReadyReply,
@@ -54,6 +55,19 @@ import {
 
 export interface LynxBackgroundTransportOptions {
 	readonly onDiagnostic?: (error: Error) => void;
+	/**
+	 * Commit dispatch pacing toward the main thread. `frame` (the default) sends
+	 * at most one commit per main-thread frame: the first commit after idle
+	 * dispatches immediately, and a commit prepared before the previous one's
+	 * frame ended is held until main's `frame-pulse` answers that apply. Renders
+	 * scheduled while a commit is held keep folding through the existing
+	 * awaiting-acknowledgement contract, so held time turns into batching, never
+	 * extra intermediate commits. Empty-command batches always cross unpaced —
+	 * they mutate nothing on main and must not spend frames. `immediate`
+	 * restores unpaced dispatch; hosts with no frame source behave as
+	 * `immediate` because main answers paced commits synchronously.
+	 */
+	readonly commitPacing?: 'immediate' | 'frame';
 	/** Page-lifetime tombstone checked after receiver attachment and before readiness. */
 	readonly isPageDestroyed?: () => boolean;
 	/** Transactionally bind renderer-local worklet handles at the complete-batch boundary. */
@@ -172,6 +186,15 @@ interface RunningBackgroundCall {
 let NEXT_READY_REQUEST = 1;
 const MAX_DISPOSE_ATTEMPTS = 3;
 const MAX_QUEUED_THREAD_CALLS = 128;
+/**
+ * Liveness valve for a held paced commit. Main's frame source can stall
+ * entirely (a hidden Lynx-for-Web page throttles rAF to nothing), and a
+ * commit held forever would freeze acknowledgement-driven effects, so a held
+ * dispatch force-opens after ~4 frames even if no pulse arrives. The valve
+ * never fires in the steady state: a live frame source answers within one
+ * frame.
+ */
+const PACE_SAFETY_MS = 64;
 
 function isRootIndependentDataMessage(value: unknown): boolean {
 	if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -244,6 +267,14 @@ export function createLynxBackgroundTransport(
 	if (container.renderer !== LYNX_TRANSPORT_RENDERER) {
 		throw new Error('Octane Lynx background transport received a foreign client container.');
 	}
+	if (
+		options.commitPacing !== undefined &&
+		options.commitPacing !== 'immediate' &&
+		options.commitPacing !== 'frame'
+	) {
+		throw new TypeError('Octane Lynx commitPacing must be "immediate" or "frame".');
+	}
+	const commitPacing = options.commitPacing ?? 'frame';
 
 	const reported: Error[] = [];
 	const pending = new Map<number, PendingCommit>();
@@ -284,6 +315,13 @@ export function createLynxBackgroundTransport(
 	let pageDestroyReceived = false;
 	let pageDestroyHandler: (() => void | Promise<void>) | null = null;
 	let pageDestroyHandlerInvoked = false;
+	// The version whose main-thread frame has not yet ended. Non-null closes the
+	// dispatch gate; main's frame-pulse for that version (or the safety valve)
+	// reopens it. One commit is in flight at a time, so at most one release is
+	// ever held, but releases re-queue themselves, so this stays a list.
+	let paceGateVersion: number | null = null;
+	let paceWaiters: (() => void)[] = [];
+	let paceSafetyTimer: ReturnType<typeof setTimeout> | null = null;
 	const finalizedWorkletBatches = new WeakSet<object>();
 
 	const report = (error: unknown, fallback = 'Octane Lynx transport protocol error.') => {
@@ -507,6 +545,46 @@ export function createLynxBackgroundTransport(
 		);
 	};
 
+	const openPaceGate = (): void => {
+		if (paceSafetyTimer !== null) {
+			clearTimeout(paceSafetyTimer);
+			paceSafetyTimer = null;
+		}
+		if (paceGateVersion === null) return;
+		paceGateVersion = null;
+		if (paceWaiters.length === 0) return;
+		const released = paceWaiters;
+		paceWaiters = [];
+		// The first live release dispatches and closes the gate again; any release
+		// that finds the gate closed re-holds itself.
+		for (const release of released) release();
+	};
+
+	const holdForPaceGate = (release: () => void): void => {
+		paceWaiters.push(release);
+		if (paceSafetyTimer !== null || typeof setTimeout !== 'function') return;
+		paceSafetyTimer = setTimeout(() => {
+			paceSafetyTimer = null;
+			openPaceGate();
+		}, PACE_SAFETY_MS);
+	};
+
+	const handleFramePulse = (message: LynxFramePulseMessage): void => {
+		// A pulse answers the apply of a specific paced commit. One for an older
+		// version can trail in after the safety valve already opened the gate and
+		// a newer commit dispatched; the newer commit's frame has not ended, so
+		// that pulse must not open its gate.
+		if (
+			paceGateVersion === null ||
+			transportRoot === null ||
+			message.root !== transportRoot ||
+			message.version < paceGateVersion
+		) {
+			return;
+		}
+		openPaceGate();
+	};
+
 	const closeEntry = (entry: PendingCommit, error: unknown) => {
 		if (pending.get(entry.identity.version) !== entry) return;
 		pending.delete(entry.identity.version);
@@ -576,6 +654,14 @@ export function createLynxBackgroundTransport(
 		closeThreadCalls(error, notifyMain);
 		// Nothing will acknowledge a held native event once the transport closes.
 		dropDeferredNativeEvents();
+		// Held paced dispatches settle through their pending entries below; the
+		// gate state itself must not outlive the transport.
+		if (paceSafetyTimer !== null) {
+			clearTimeout(paceSafetyTimer);
+			paceSafetyTimer = null;
+		}
+		paceGateVersion = null;
+		paceWaiters = [];
 		closedError = error;
 		readyDeferred.reject(error);
 		for (const entry of [...pending.values()]) closeEntry(entry, error);
@@ -799,6 +885,9 @@ export function createLynxBackgroundTransport(
 			return;
 		}
 		if (message.type === 'reject') {
+			// A pre-acknowledgement rejection consumed no main-thread frame and
+			// main will never pulse for it, so the paced gate it closed reopens.
+			if (paceGateVersion === entry.identity.version) openPaceGate();
 			closeEntry(entry, remoteError(message.error));
 			return;
 		}
@@ -815,6 +904,7 @@ export function createLynxBackgroundTransport(
 			message.type === 'cancel-background' ||
 			message.type === 'call-main-result' ||
 			message.type === 'call-main-error' ||
+			message.type === 'frame-pulse' ||
 			message.type === 'event' ||
 			message.type === 'host-attachment' ||
 			message.type === 'host-fault' ||
@@ -1299,6 +1389,10 @@ export function createLynxBackgroundTransport(
 			handleCancelBackgroundCall(message);
 			return;
 		}
+		if (message.type === 'frame-pulse') {
+			handleFramePulse(message);
+			return;
+		}
 		if (message.type === 'event') {
 			handleEvent(message);
 			return;
@@ -1399,11 +1493,15 @@ export function createLynxBackgroundTransport(
 				});
 			}
 			const preparedBatch = options.prepareWorkletBatch?.(batch) ?? batch;
-			const commit: UniversalTransportCommitMessage = {
-				...identity,
-				type: 'commit',
-				batch: preparedBatch,
-			};
+			// An empty batch mutates nothing on main, so it never rides the frame
+			// budget: it crosses unpaced, main answers it with no pulse, and it
+			// neither waits for nor closes the gate. Renders folded behind a held
+			// commit leave a tail of such no-op batches (one per scheduled flush),
+			// and pacing them would spend a frame each to learn nothing.
+			const paceThisCommit = commitPacing === 'frame' && preparedBatch.commands.length > 0;
+			const commit: LynxCommitWireMessage = paceThisCommit
+				? { ...identity, type: 'commit', batch: preparedBatch, pace: true }
+				: { ...identity, type: 'commit', batch: preparedBatch };
 			try {
 				selfCheckLynxBackgroundOutboundMessage(commit);
 			} catch (error) {
@@ -1446,33 +1544,42 @@ export function createLynxBackgroundTransport(
 					};
 					token.entry = entry;
 					pending.set(identity.version, entry);
-					void readyDeferred.promise.then(
-						() => {
-							if (pending.get(identity.version) !== entry) return;
-							entry.state = 'sent';
-							let dispatchError: Error | null = null;
-							dispatchingCommit = entry;
-							try {
-								dispatch(commit);
-							} catch (error) {
-								dispatchError = report(
-									error,
-									`Octane Lynx could not deliver commit ${identity.version}.`,
-								);
-							} finally {
-								dispatchingCommit = null;
-							}
-							if (dispatchError !== null) {
-								terminalCloseAfterHostAcceptance(entry.identity, dispatchError);
-								return;
-							}
-							const response = entry.deferredResponse;
-							entry.deferredResponse = null;
-							if (response !== null && pending.get(identity.version) === entry) {
-								settleCommitResponse(entry, response);
-							}
-						},
-						(error) => closeEntry(entry, error),
+					const dispatchThroughPaceGate = (): void => {
+						// Stale by abort or transport close while ready/pacing gated.
+						if (pending.get(identity.version) !== entry) return;
+						if (paceGateVersion !== null && commit.pace === true) {
+							holdForPaceGate(dispatchThroughPaceGate);
+							return;
+						}
+						entry.state = 'sent';
+						// Close the gate before dispatching: a synchronous ContextProxy
+						// delivers main's frame pulse re-entrantly inside dispatch(), and
+						// that pulse must find this commit's gate already closed.
+						if (commit.pace === true) paceGateVersion = identity.version;
+						let dispatchError: Error | null = null;
+						dispatchingCommit = entry;
+						try {
+							dispatch(commit);
+						} catch (error) {
+							dispatchError = report(
+								error,
+								`Octane Lynx could not deliver commit ${identity.version}.`,
+							);
+						} finally {
+							dispatchingCommit = null;
+						}
+						if (dispatchError !== null) {
+							terminalCloseAfterHostAcceptance(entry.identity, dispatchError);
+							return;
+						}
+						const response = entry.deferredResponse;
+						entry.deferredResponse = null;
+						if (response !== null && pending.get(identity.version) === entry) {
+							settleCommitResponse(entry, response);
+						}
+					};
+					void readyDeferred.promise.then(dispatchThroughPaceGate, (error) =>
+						closeEntry(entry, error),
 					);
 					return entry.deferred.promise;
 				},

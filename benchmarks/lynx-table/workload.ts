@@ -174,7 +174,17 @@ interface Harness {
 	dispose(): Promise<void>;
 }
 
-function createHarness(): Harness {
+interface HarnessOptions {
+	/**
+	 * Main-thread frame source. Without one, main answers each paced commit
+	 * synchronously and pacing degrades to immediate dispatch, keeping every
+	 * unpaced counter byte-comparable; the paced scenario injects a queue here
+	 * so the workload owns the frame clock.
+	 */
+	readonly frameScheduler?: (callback: () => void) => void;
+}
+
+function createHarness(options: HarnessOptions = {}): Harness {
 	const contexts = createContextPair();
 	const papi = new FakeElementPAPI();
 	const diagnostics: Error[] = [];
@@ -187,6 +197,7 @@ function createHarness(): Harness {
 		target: mainTarget,
 		context: contexts.main,
 		onDiagnostic: (error) => diagnostics.push(error),
+		frameScheduler: options.frameScheduler,
 	});
 	const backgroundTarget = {
 		lynxCoreInject: { tt: {} as Record<string, unknown> },
@@ -225,12 +236,19 @@ interface ProfileGlobals {
 	__OCTANE_LYNX_PROF?: LynxWireProfile;
 }
 
-function profileSnapshot(): { commits: number; commands: number; bytes: number } {
+function profileSnapshot(): {
+	commits: number;
+	pacedCommits: number;
+	commands: number;
+	bytes: number;
+} {
 	const profile = (globalThis as ProfileGlobals).__OCTANE_LYNX_PROF;
 	// Both fake threads share this realm, so the main-thread receiver also
 	// counted each commit; halve to report per-wire commits and commands once.
+	// pacedCommits and bytes are dispatch-side only and need no halving.
 	return {
 		commits: (profile?.commits ?? 0) / 2,
+		pacedCommits: profile?.pacedCommits ?? 0,
 		commands: (profile?.commands ?? 0) / 2,
 		bytes: profile?.bytes ?? 0,
 	};
@@ -438,4 +456,102 @@ export async function runTable(rows: number): Promise<TableRunResult> {
 	}
 }
 
-export { STORM_UPDATE_TICKS, STORM_SELECT_TICKS };
+// -- paced storm --------------------------------------------------------------
+
+/**
+ * One main-thread frame is pumped every PACED_FRAME_EVERY macrotask turns
+ * while the app's storm posts one tick per turn, so about that many ticks
+ * fold behind each frame-held commit. Two keeps the deterministic hold window
+ * far below the transport's wall-clock safety valve on a slow host while
+ * still separating "one commit per frame" from "one commit per tick".
+ */
+const PACED_FRAME_EVERY = 2;
+
+export interface PacedStormResult {
+	readonly rows: number;
+	/** Frames that released at least one queued pulse over the whole run. */
+	readonly framesPumped: number;
+	readonly updateStorm: OpCounters;
+	/** Frame-consuming (`pace: true`) commits dispatched during the storm. */
+	readonly updateStormPacedCommits: number;
+	readonly diagnostics: readonly string[];
+}
+
+/**
+ * Frame-paced update storm: the same app and tick driver as runTable, but the
+ * main thread carries an injected frame source, so paced commits are held
+ * until the workload pumps a frame. `flushTransport()` cannot drive this
+ * scenario — it waits on the held commit that only a frame pump releases — so
+ * the driver pumps microtasks and macrotasks directly and reads the fake main
+ * tree for progress.
+ */
+export async function runPacedUpdateStorm(rows: number): Promise<PacedStormResult> {
+	const createButton = CREATE_BUTTON[rows];
+	if (createButton === undefined) throw new Error(`no create button for ${rows} rows`);
+	const frameQueue: (() => void)[] = [];
+	let framesPumped = 0;
+	const pumpFrame = (): void => {
+		if (frameQueue.length === 0) return;
+		framesPumped += 1;
+		for (const callback of frameQueue.splice(0)) callback();
+	};
+	const harness = createHarness({ frameScheduler: (callback) => frameQueue.push(callback) });
+	const flushMicrotasks = async (): Promise<void> => {
+		for (let turn = 0; turn < 8; turn++) await Promise.resolve();
+	};
+	const drive = async (predicate: () => boolean, what: string, turns = 20_000): Promise<void> => {
+		for (let turn = 1; turn <= turns; turn++) {
+			await flushMicrotasks();
+			if (predicate()) return;
+			await macrotask();
+			if (turn % PACED_FRAME_EVERY === 0) pumpFrame();
+		}
+		throw new Error(`timed out waiting for ${what}`);
+	};
+	/** Answer every outstanding pulse so the gate is open and counters settled. */
+	const drain = async (): Promise<void> => {
+		for (let round = 0; round < 64 && frameQueue.length > 0; round++) {
+			pumpFrame();
+			await flushMicrotasks();
+			await macrotask();
+			await flushMicrotasks();
+		}
+	};
+	const tapLabel = (label: string): void => {
+		const token = buttonTapToken(harness.papi, label);
+		if (token === null) throw new Error(`no tap token found for button "${label}"`);
+		tap(harness, token);
+	};
+	try {
+		await harness.root.render(App, {});
+		await drive(() => buttonTapToken(harness.papi, createButton) !== null, 'paced mount', 400);
+		tapLabel(createButton);
+		await drive(() => rowViews(harness.papi).length === rows, `paced ${rows} rows`);
+		await drain();
+
+		const before = profileSnapshot();
+		tapLabel('Update storm');
+		await drive(
+			() => labelTextOf(rowViews(harness.papi)[0]!) === `bench ${STORM_UPDATE_TICKS}`,
+			'paced update storm',
+		);
+		await drain();
+		const after = profileSnapshot();
+
+		return {
+			rows,
+			framesPumped,
+			updateStorm: {
+				commits: after.commits - before.commits,
+				commands: after.commands - before.commands,
+				bytes: after.bytes - before.bytes,
+			},
+			updateStormPacedCommits: after.pacedCommits - before.pacedCommits,
+			diagnostics: harness.diagnostics.map((error) => error.message),
+		};
+	} finally {
+		await harness.dispose();
+	}
+}
+
+export { STORM_UPDATE_TICKS, STORM_SELECT_TICKS, PACED_FRAME_EVERY };

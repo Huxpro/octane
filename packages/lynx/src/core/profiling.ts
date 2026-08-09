@@ -29,6 +29,14 @@ export const LYNX_PROFILE: boolean =
 export interface LynxWireProfile {
 	/** Commit messages dispatched (background) or applied (main). */
 	commits: number;
+	/**
+	 * Background only: dispatched commits carrying `pace: true`. Each of these
+	 * asks main for a frame-pulse and therefore consumes one main-thread frame;
+	 * empty-batch commits cross unpaced and are excluded. Deterministic for a
+	 * fixed app and interaction, so benchmarks/lynx-table gates "at most one
+	 * frame-consuming commit per frame" on it.
+	 */
+	pacedCommits: number;
 	/** Host commands across those commits. */
 	commands: number;
 	/** Serialized commit size, as JSON bytes — a structured-clone-cost proxy. */
@@ -56,6 +64,7 @@ export function lynxWireProfile(): LynxWireProfile {
 	const globals = globalThis as LynxProfileGlobals;
 	return (globals.__OCTANE_LYNX_PROF ??= {
 		commits: 0,
+		pacedCommits: 0,
 		commands: 0,
 		bytes: 0,
 		selfcheckMs: 0,
@@ -69,9 +78,14 @@ export function lynxWireProfile(): LynxWireProfile {
 
 /** Count one outbound message; commits also add commands and JSON bytes. */
 export function profileOutboundMessage(profile: LynxWireProfile, message: unknown): void {
-	const record = message as { type?: unknown; batch?: { commands?: readonly unknown[] } };
+	const record = message as {
+		type?: unknown;
+		pace?: unknown;
+		batch?: { commands?: readonly unknown[] };
+	};
 	if (record.type !== 'commit') return;
 	profile.commits += 1;
+	if (record.pace === true) profile.pacedCommits += 1;
 	profile.commands += record.batch?.commands?.length ?? 0;
 	try {
 		profile.bytes += JSON.stringify(message).length;

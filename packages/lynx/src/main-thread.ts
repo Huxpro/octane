@@ -91,7 +91,9 @@ interface LynxMainThreadGlobals {
 		getEngine?(): LynxContextProxy;
 		getJSContext?(): LynxContextProxy;
 		getNative?(): LynxContextProxy;
+		requestAnimationFrame?(callback: () => void): number;
 	};
+	readonly requestAnimationFrame?: (callback: () => void) => number;
 }
 
 export interface InstallLynxMainThreadOptions {
@@ -118,6 +120,14 @@ export interface InstallLynxMainThreadOptions {
 	 */
 	readonly firstScreenRender?: 'immediate' | 'engine';
 	readonly onDiagnostic?: (error: Error) => void;
+	/**
+	 * Frame-boundary scheduler answering paced commits with `frame-pulse`.
+	 * Defaults to `lynx.requestAnimationFrame`, then the target's own
+	 * `requestAnimationFrame`. A host with neither answers synchronously, which
+	 * degrades background commit pacing to immediate dispatch. Tests inject a
+	 * manual scheduler here to pump deterministic frames.
+	 */
+	readonly frameScheduler?: (callback: () => void) => void;
 	readonly executeMainThreadWorklet?: (
 		worklet: import('./core/protocol.js').LynxMainThreadWorkletWireDescriptor,
 		args: readonly UniversalSerializableValue[],
@@ -513,6 +523,21 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	if (environmentTarget.SystemInfo === undefined) {
 		environmentTarget.SystemInfo = environmentTarget.lynx?.SystemInfo ?? {};
 	}
+	if (options.frameScheduler !== undefined && typeof options.frameScheduler !== 'function') {
+		throw new TypeError('Octane Lynx frameScheduler must be a function.');
+	}
+	const frameScheduler: ((callback: () => void) => void) | null = (() => {
+		if (options.frameScheduler !== undefined) return options.frameScheduler;
+		const lynxFrame = target.lynx?.requestAnimationFrame;
+		if (typeof lynxFrame === 'function') {
+			return (callback) => void lynxFrame.call(target.lynx, callback);
+		}
+		const targetFrame = target.requestAnimationFrame;
+		if (typeof targetFrame === 'function') {
+			return (callback) => void targetFrame.call(rawTarget, callback);
+		}
+		return null;
+	})();
 	const papi: LynxElementPAPI<Node> = createLynxElementPAPI<Node>(rawTarget);
 	const componentId = options.componentId ?? '0';
 	if (typeof componentId !== 'string' || componentId.length === 0) {
@@ -603,6 +628,47 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	const dispatch = (message: LynxBackgroundInboundMessage): void => {
 		const validated = selfCheckLynxBackgroundInboundMessage(message);
 		context.dispatchEvent({ type: LYNX_MAIN_TO_BACKGROUND_EVENT, data: validated });
+	};
+
+	// One pulse per applied paced commit, carrying the latest applied identity.
+	// Applies within the same frame coalesce into a single scheduled pulse.
+	let pacePulseIdentity: UniversalTransportIdentity | null = null;
+	let pacePulseScheduled = false;
+
+	const dispatchPacePulse = (): void => {
+		pacePulseScheduled = false;
+		const identity = pacePulseIdentity;
+		pacePulseIdentity = null;
+		if (identity === null || closed || closePending) return;
+		try {
+			dispatch({ ...identity, type: 'frame-pulse' });
+		} catch (error) {
+			report(error, 'Octane Lynx could not dispatch a frame pulse.');
+		}
+	};
+
+	const schedulePacePulse = (identity: UniversalTransportIdentity): void => {
+		pacePulseIdentity = {
+			protocol: identity.protocol,
+			renderer: identity.renderer,
+			root: identity.root,
+			version: identity.version,
+		};
+		if (frameScheduler === null) {
+			// No frame source: the next frame boundary is indistinguishable from
+			// "now", so answer synchronously and pacing degrades to immediate.
+			dispatchPacePulse();
+			return;
+		}
+		if (pacePulseScheduled) return;
+		pacePulseScheduled = true;
+		try {
+			frameScheduler(dispatchPacePulse);
+		} catch (error) {
+			pacePulseScheduled = false;
+			report(error, 'Octane Lynx frame scheduler failed; answering the pulse immediately.');
+			dispatchPacePulse();
+		}
 	};
 
 	const dispatchLifecycleMessage = (message: LynxLifecycleMessage): void => {
@@ -2048,6 +2114,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			);
 		}
 
+		// The apply consumed this frame. Answer at the next frame boundary so the
+		// background dispatches its next commit at most once per frame.
+		if (!applyFailed && message.pace === true) schedulePacePulse(identity);
 		if (!applyFailed) {
 			if (!drainHostAttachments()) return;
 			if (awaitingAdoption === null) drainNativeEvents();

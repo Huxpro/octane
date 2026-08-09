@@ -192,6 +192,77 @@ try {
 		);
 	}
 
+	// Frame-paced storm: an injected main-thread frame source holds commits to
+	// one per frame, and the app posts ticks faster than frames, so ticks fold.
+	// The gate compares commits against a frames-elapsed floor rather than the
+	// one-commit-per-tick floor the unpaced synchronous harness pins.
+	const PACED_ROWS = 1000;
+	if (failures.length === 0 && SCALES.includes(PACED_ROWS)) {
+		const suffix = scaleLabel(PACED_ROWS);
+		let signature = null;
+		let paced = null;
+		for (let iteration = 0; iteration < iterations; iteration++) {
+			paced = await workload.runPacedUpdateStorm(PACED_ROWS);
+			if (paced.diagnostics.length !== 0) {
+				failures.push(`paced rows=${PACED_ROWS}: ${paced.diagnostics.join(' | ')}`);
+				break;
+			}
+			const nextSignature = JSON.stringify([
+				paced.updateStorm.commits,
+				paced.updateStormPacedCommits,
+				paced.updateStorm.commands,
+				paced.framesPumped,
+			]);
+			if (signature === null) signature = nextSignature;
+			else if (signature !== nextSignature) {
+				failures.push(
+					`paced rows=${PACED_ROWS}: paced storm counters drifted across iterations (${signature} vs ${nextSignature}).`,
+				);
+				break;
+			}
+		}
+		if (paced !== null && paced.diagnostics.length === 0 && failures.length === 0) {
+			octaneOps[`update_storm_paced_commits_${suffix}`] = countStat(
+				paced.updateStorm.commits,
+				iterations,
+			);
+			octaneOps[`update_storm_paced_frame_commits_${suffix}`] = countStat(
+				paced.updateStormPacedCommits,
+				iterations,
+			);
+			octaneOps[`update_storm_paced_commands_${suffix}`] = countStat(
+				paced.updateStorm.commands,
+				iterations,
+			);
+			// Total commits may not exceed one per scheduled flush (the unpaced
+			// per-tick ceiling); frame-consuming commits may not exceed the frames
+			// the driver could pump (one per PACED_FRAME_EVERY macrotask turns);
+			// commands are gated against the single-final-commit floor: the storm
+			// touches ceil(rows/10) unique rows, so that is the minimum wire to
+			// reach the final state.
+			const framesCeiling = Math.ceil(workload.STORM_UPDATE_TICKS / workload.PACED_FRAME_EVERY);
+			modelOps[`update_storm_paced_commits_${suffix}`] = countStat(
+				workload.STORM_UPDATE_TICKS,
+				iterations,
+			);
+			modelOps[`update_storm_paced_frame_commits_${suffix}`] = countStat(framesCeiling, iterations);
+			modelOps[`update_storm_paced_commands_${suffix}`] = countStat(
+				Math.ceil(PACED_ROWS / 10),
+				iterations,
+			);
+			meta[`paced_${suffix}`] = {
+				rows: PACED_ROWS,
+				framesPumped: paced.framesPumped,
+				updateStormBytes: paced.updateStorm.bytes,
+			};
+			console.log(
+				`paced rows=${String(PACED_ROWS).padStart(5)}  ` +
+					`updateStorm=${paced.updateStorm.commits}c/${paced.updateStorm.commands}  ` +
+					`framed=${paced.updateStormPacedCommits}  frames=${paced.framesPumped}`,
+			);
+		}
+	}
+
 	payload = {
 		suite: 'lynx-table',
 		iterations,

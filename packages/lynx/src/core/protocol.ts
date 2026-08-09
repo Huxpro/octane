@@ -125,6 +125,25 @@ export interface LynxAdoptionReadyMessage extends UniversalTransportIdentity {
 	readonly type: 'adoption-ready';
 }
 
+/**
+ * Commit as carried on the Lynx wire. `pace` asks main to answer the apply
+ * with one `frame-pulse` at its next frame boundary; the background commit
+ * scheduler holds later dispatches until that pulse so at most one commit
+ * crosses per main-thread frame.
+ */
+export interface LynxCommitWireMessage extends UniversalTransportCommitMessage {
+	readonly pace?: true;
+}
+
+/**
+ * One main-thread frame boundary has passed since the identified paced commit
+ * applied. Emitted at most once per applied paced commit, so pulse chatter is
+ * bounded by commit traffic and stops when the transport goes idle.
+ */
+export interface LynxFramePulseMessage extends UniversalTransportIdentity {
+	readonly type: 'frame-pulse';
+}
+
 export interface LynxHostAttachmentChange {
 	readonly id: number;
 	readonly generation: number;
@@ -240,7 +259,7 @@ export type LynxBackgroundOutboundMessage =
 	| LynxCancelMainCallMessage
 	| LynxCallBackgroundResultMessage
 	| LynxCallBackgroundErrorMessage
-	| UniversalTransportCommitMessage
+	| LynxCommitWireMessage
 	| UniversalTransportAbortMessage
 	| LynxDisposeMessage
 	| LynxTerminalDisposeMessage;
@@ -254,6 +273,7 @@ export type LynxBackgroundInboundMessage =
 	| LynxCallMainResultMessage
 	| LynxCallMainErrorMessage
 	| LynxTransportAcknowledgement
+	| LynxFramePulseMessage
 	| UniversalTransportCompleteMessage
 	| UniversalTransportRejectMessage
 	| UniversalTransportFaultMessage
@@ -849,9 +869,17 @@ export function validateLynxBackgroundOutboundMessage(
 		return message as unknown as LynxCallBackgroundErrorMessage;
 	}
 	if (message.type === 'commit') {
-		exactKeys(message, ['protocol', 'renderer', 'root', 'version', 'type', 'batch'], 'commit');
+		const hasPace = Object.prototype.hasOwnProperty.call(message, 'pace');
+		exactKeys(
+			message,
+			hasPace
+				? ['protocol', 'renderer', 'root', 'version', 'type', 'batch', 'pace']
+				: ['protocol', 'renderer', 'root', 'version', 'type', 'batch'],
+			'commit',
+		);
+		if (hasPace && message.pace !== true) fail('commit.pace', 'must be true when present.');
 		assertBatch(message.batch, message);
-		return message as unknown as UniversalTransportCommitMessage;
+		return message as unknown as LynxCommitWireMessage;
 	}
 	if (message.type === 'abort') {
 		exactKeys(message, ['protocol', 'renderer', 'root', 'version', 'type'], 'abort');
@@ -958,6 +986,10 @@ export function validateLynxBackgroundInboundMessage(value: unknown): LynxBackgr
 			assertHandleDelta(message.handles[index], index, message);
 		}
 		return message as unknown as LynxTransportAcknowledgement;
+	}
+	if (message.type === 'frame-pulse') {
+		exactKeys(message, ['protocol', 'renderer', 'root', 'version', 'type'], 'frame-pulse');
+		return message as unknown as LynxFramePulseMessage;
 	}
 	if (message.type === 'complete') {
 		exactKeys(message, ['protocol', 'renderer', 'root', 'version', 'type'], 'complete');
