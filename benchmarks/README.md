@@ -188,6 +188,7 @@ internally, get their own baseline and guard namespace.
 | `svg-dashboard` | svg-dashboard | octane-tsrx, react, solid, svelte | hand-rolled SVG observability dashboard: path-d/transform churn, keyed reconcile inside `<svg>`, foreignObject labels, portal tooltip overlay, createElement icon de-opt; byte-exact Node-replay + cross-flavor DOM-parity gates |
 | `dbmon` | dbmon | Octane + reference frameworks | per-cell update churn |
 | `recursive-context` | recursive-context | Octane + reference frameworks | context fan-out |
+| `spa-navigation` | spa-navigation | octane-tsrx, octane-jsx, react, solid, vue-vapor | full-page routed-subtree teardown/mount with shell/layout identity and production-work gates |
 | `signal-favoring` | signal-favoring | Octane + reference frameworks | cascade vs targeted |
 | `news` | news | none (builds) | SSR + hydration, per-target |
 | `hydration-interactivity` | hydration-interactivity | none (builds) | real pre-hydration typing, controlled inputs, native event replay, and 1×/6× Chromium CPU throttling across Octane, React, Preact, Solid 2, Svelte, and Vue Vapor |
@@ -256,15 +257,17 @@ sets use `todo_*`, `chat_*`, and `weather_*` operation prefixes; weather's share
 service and formatting modules count as app code in both framework builds.
 
 `bundle-size/app-budgets.json` independently caps all four complete Octane TSRX
-applications. Each set has separate application, framework, and total raw, gzip,
-and brotli ceilings: thirty-six deterministic limits in total. The harness
-publishes those committed values as one same-run `octane-tsrx-budget` target,
-and thirty-six `maxRatio: 1` guards enforce them alongside the existing
-cross-framework comparisons. Ceilings retain at least 32 bytes of headroom and
-are rounded to 32-byte boundaries, so small changes in another framework cannot
-hide Octane application or runtime growth. Refresh a ceiling only with a
-reviewed explanation and a production measurement using the pinned CI Node
-version.
+applications, while `bundle-size/jsx-budgets.json` separately caps the Octane JSX
+rows application. Each fixture has application, framework, and total raw, gzip,
+and brotli ceilings: forty-five deterministic limits in total. The harness
+publishes those committed values as separate same-run `octane-tsrx-budget` and
+`octane-jsx-budget` targets, and forty-five `maxRatio: 1` guards enforce them
+alongside the existing cross-framework comparisons. Independent dialect budgets
+allow either runtime to shrink without making the other dialect look larger by
+comparison. Ceilings retain at least 32 bytes of headroom and are rounded to
+32-byte boundaries, so small changes in another framework cannot hide Octane
+application or runtime growth. Refresh a ceiling only with a reviewed explanation
+and a production measurement using the pinned CI Node version.
 
 `bundle-reachability` builds twenty-one independent public-entry feature fixtures
 across twenty-eight production builds with the production Octane compiler,

@@ -26,6 +26,7 @@ import news from '../../../benchmarks/baselines/local/news.json';
 import portalSwarm from '../../../benchmarks/baselines/local/portal-swarm.json';
 import recursiveContext from '../../../benchmarks/baselines/local/recursive-context.json';
 import signalFavoring from '../../../benchmarks/baselines/local/signal-favoring.json';
+import spaNavigation from '../../../benchmarks/baselines/local/spa-navigation.json';
 import ssrThroughput from '../../../benchmarks/baselines/local/ssr-throughput.json';
 import streamingSsr from '../../../benchmarks/baselines/local/streaming-ssr.json';
 import svgDashboard from '../../../benchmarks/baselines/local/svg-dashboard.json';
@@ -235,14 +236,23 @@ export const FRAMEWORK_CARDS: BenchCard[] = [
 		weatherAppLighthouse,
 		'weather-app-lighthouse',
 		'weather-app — Lighthouse',
-		'Desktop Lighthouse lab metrics for the same weather app — first and largest contentful paint, speed index, and total blocking time. Cumulative layout shift is unitless and omitted from the millisecond chart.',
+		'Desktop Lighthouse lab metrics for the same weather app — simulated and observed first and largest contentful paint, speed index, and total blocking time. Simulated paints use Lighthouse’s desktop-network model; observed paints come from the unthrottled browser trace. Cumulative layout shift is unitless and omitted from the millisecond chart.',
 		{
-			first_contentful_paint: 'FCP',
-			largest_contentful_paint: 'LCP',
+			first_contentful_paint: 'simulated FCP',
+			observed_first_contentful_paint: 'observed FCP',
+			largest_contentful_paint: 'simulated LCP',
+			observed_largest_contentful_paint: 'observed LCP',
 			speed_index: 'speed index',
 			total_blocking_time: 'TBT',
 		},
-		['first_contentful_paint', 'largest_contentful_paint', 'speed_index', 'total_blocking_time'],
+		[
+			'first_contentful_paint',
+			'observed_first_contentful_paint',
+			'largest_contentful_paint',
+			'observed_largest_contentful_paint',
+			'speed_index',
+			'total_blocking_time',
+		],
 	),
 	frameworkCard(
 		chatStream,
@@ -320,6 +330,19 @@ export const FRAMEWORK_CARDS: BenchCard[] = [
 		'recursive-context',
 		'recursive-context',
 		'A deep recursive tree driven by context updates — mount, root and partial updates, unmount.',
+	),
+	frameworkCard(
+		spaNavigation,
+		'spa-navigation',
+		'spa-navigation',
+		'Full-page client navigation — routed-subtree teardown and mount while the app shell survives, including nested-layout reuse and a 6× CPU-throttled route swap.',
+		{
+			nav_deep: 'deep route swap',
+			nav_teardown: 'deep → nested',
+			nav_mount: 'nested → deep',
+			nav_nested: 'nested route swap',
+			nav_deep_6x: 'deep route swap (6× CPU)',
+		},
 	),
 	frameworkCard(
 		signalFavoring,
@@ -485,7 +508,7 @@ const THREE_SERIES = {
 		id: 'three-renderer',
 		title: 'three-renderer',
 		description:
-			'Object lifecycle at 1,000 meshes — mount, update, reorder, unmount, reconstruct with dispose, a frame with 1,000 subscribers, and raycast events — for the Octane Three renderer, React Three Fiber, and hand-written Three.js.',
+			'Object lifecycle at 1,000 meshes — mount, update, reorder, unmount, direct and component-driven reconstruction with disposal, a frame with 1,000 subscribers, and raycast events — for the Octane Three renderer, React Three Fiber, and hand-written Three.js.',
 		series,
 		rows: rowsFor(b, series, {
 			mount_1k: 'mount 1k',
@@ -493,6 +516,7 @@ const THREE_SERIES = {
 			reorder_1k: 'reorder 1k',
 			unmount_tree_1k: 'unmount 1k',
 			reconstruct_dispose_1k: 'reconstruct + dispose 1k',
+			reconstruct_component_dispose_1k: 'reconstruct component + dispose 1k',
 			frame_1k_subscribers: 'frame, 1k subscribers',
 			raycast_event: 'raycast event',
 		}),

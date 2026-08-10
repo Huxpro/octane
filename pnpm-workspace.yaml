@@ -6,6 +6,8 @@ packages:
   - benchmarks/js-framework/*
   - benchmarks/recursive-context
   - benchmarks/recursive-context/*
+  - benchmarks/spa-navigation
+  - benchmarks/spa-navigation/*
   - benchmarks/signal-favoring
   - benchmarks/signal-favoring/*
   - benchmarks/dbmon
@@ -77,6 +79,18 @@ allowBuilds:
   # Docusaurus pulls core-js transitively. Its postinstall only prints funding
   # information and is not required for the shipped polyfill modules.
   core-js: false
+  # Optional native accelerators; both packages provide JavaScript fallbacks.
+  '@parcel/watcher': false
+  msgpackr-extract: false
+  # LiveStore's test-only telemetry closure uses protobufjs; its postinstall
+  # prints a donation notice and does not generate runtime artifacts.
+  protobufjs: false
+  # Wallet/WebSocket parity dependencies expose optional native accelerators;
+  # Node and the packages themselves provide JavaScript fallbacks.
+  bufferutil: false
+  keccak: false
+  utf-8-validate: false
+
 # Variables
 esrap_common: &esrap_common ^2.3.0
 
@@ -109,6 +123,19 @@ packageExtensions:
       '@rspack/core': 2.1.3
 
 catalogs:
+  livestore-react-oracle:
+    '@livestore/utils-dev': 0.4.0
+    '@opentelemetry/sdk-trace-base': 2.2.0
+    '@testing-library/dom': 10.4.1
+    '@testing-library/react': 16.3.1
+    '@types/react': 19.2.7
+    '@types/react-dom': 19.2.3
+    '@types/react-window': 1.8.8
+    jsdom: 26.1.0
+    react: 19.2.3
+    react-dom: 19.2.3
+    react-window: 1.8.11
+    vite: 7.3.1
   lynx:
     '@lynx-js/css-extract-webpack-plugin': 0.9.0
     '@lynx-js/qrcode-rsbuild-plugin': 0.6.0
@@ -127,12 +154,21 @@ catalogs:
     '@react-rxjs/core': 0.10.8
     '@react-rxjs/utils': 0.9.7
     '@rx-state/core': 0.1.4
+    '@livestore/adapter-web': 0.4.0
+    '@livestore/common': 0.4.0
+    '@livestore/framework-toolkit': 0.4.0
+    '@livestore/livestore': 0.4.0
+    '@livestore/utils': 0.4.0
+    '@opentelemetry/api': 1.9.0
     '@apollo/client': 4.2.6
+    animejs: 4.5.0
     dexie: 4.4.4
     fake-indexeddb: 6.2.5
     viem: 2.55.10
     wagmi: 3.7.4
     '@graphql-typed-document-node/core': ^3.2.0
+    '@inertiajs/core': 3.6.1
+    '@inertiajs/react': 3.6.1
     '@lucide/icons': 1.24.0
     '@phosphor-icons/core': 2.1.1
     '@babel/core': 7.29.7
@@ -277,6 +313,8 @@ catalogs:
     esrap: ^2.3.0
     sucrase: ^3.35.1
     graphql: ^16.14.2
+    gsap: 3.15.0
+    '@gsap/react': 2.1.2
     happy-dom: ^20.11.0
     html-parse-stringify: ^3.0.1
     i18next: 26.3.6
@@ -347,6 +385,7 @@ catalogs:
     d3-voronoi: ^1.1.4
     'decimal.js-light': ^2.5.1
     'es-toolkit': ^1.49.0
+    'laravel-precognition': ^2.0.0
     eventemitter3: ^5.0.4
     fast-equals: ^5.4.1
     immer: ^11.1.15
@@ -411,7 +450,7 @@ catalogs:
 # superseded — @tsrx/core >= 0.1.42 ships the fix.
 
 minimumReleaseAgeExclude:
-  - octane@0.1.29 || 0.1.31
+  - octane@0.1.29 || 0.1.31 || 0.1.32
 
 # Changesets 2.31.1 assumes npm's error shape and crashes on pnpm 11 duplicate
 # publish errors. Remove this backport once the fix ships on Changesets' stable line.
