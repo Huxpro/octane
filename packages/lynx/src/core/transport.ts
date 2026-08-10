@@ -48,7 +48,12 @@ import {
 	type LynxTransportAcknowledgement,
 } from './protocol.js';
 import type { LynxBackgroundNativeEventDelivery } from './native-event-receiver.js';
-import { foldLynxPlanInstances, isLynxPlanInstanceEligible } from './plan-wire.js';
+import {
+	foldLynxPlanInstances,
+	isLynxPlanInstanceEligible,
+	lynxPlanWireId,
+	type LynxWireHostBatch,
+} from './plan-wire.js';
 import {
 	isLynxMainThreadWorkletDescriptor,
 	isolateLynxWorkletValue,
@@ -158,6 +163,8 @@ interface PreparedTokenState {
 interface PendingCommit {
 	readonly identity: UniversalTransportIdentity;
 	readonly batch: UniversalHostBatch;
+	readonly handleBatch: LynxWireHostBatch;
+	readonly handlePlans: ReadonlyMap<string, UniversalPlan>;
 	readonly acknowledge: (message: UniversalTransportAcknowledgement) => void;
 	readonly deferred: Deferred<void>;
 	readonly token: PreparedTokenState;
@@ -859,7 +866,13 @@ export function createLynxBackgroundTransport(
 		const previousAccepted = accepted;
 		const previousMainAccepted = mainAccepted;
 		try {
-			handles = prepareLynxHandleDeltas(container, entry.batch, message.handles, message);
+			handles = prepareLynxHandleDeltas(
+				container,
+				entry.handleBatch,
+				message.handles,
+				message,
+				(planId) => entry.handlePlans.get(planId),
+			);
 			// Applying handle deltas and acceptance callbacks can invoke user code.
 			// Queue any resulting calls until all older pre-acceptance IDs can drain.
 			publishingAcknowledgement = true;
@@ -1507,6 +1520,8 @@ export function createLynxBackgroundTransport(
 		planInstantiation(plan: UniversalPlan, values: readonly unknown[]) {
 			return isLynxPlanInstanceEligible(plan, values, isPlanAnnounced);
 		},
+		compactPlanInstantiation: (plan, values) =>
+			isLynxPlanInstanceEligible(plan, values, isPlanAnnounced),
 		ready: readyDeferred.promise,
 		prepareBatch(target, batch, identity): UniversalAsyncPreparedHostBatch {
 			if (target !== container) {
@@ -1552,16 +1567,14 @@ export function createLynxBackgroundTransport(
 			const preparedWithProvenance = options.prepareWorkletBatch?.(batch) ?? batch;
 			// Fold provable plan instances into instantiate commands for the wire
 			// message only. Background bookkeeping — handle-delta validation against
-			// main's acknowledgement and worklet lifetimes — keeps reading the
-			// per-node `preparedBatch`, which mirrors the commands main regenerates
-			// when it expands each instantiate. Only plans main announced from its
-			// registry are folded, so an unannounced plan (registry skew, lazy
-			// chunk, or locally detected collision) degrades to the per-node commands
-			// staged here.
+			// main's acknowledgement — reads the same compact wire batch and walks
+			// instantiate topology without rebuilding per-node command objects. Only
+			// plans main announced from its registry are folded, so an unannounced
+			// plan (registry skew, lazy chunk, or collision) keeps per-node commands.
 			const wireBatch = foldLynxPlanInstances(preparedWithProvenance, isPlanAnnounced);
-			// Provenance is consumed by the fold above. Handle validation and worklet
-			// ownership need only the original per-node commands, so do not retain the
-			// per-instance plan/value/ID snapshots through acknowledgement.
+			// Worklet ownership needs only commands. Keep the exact plans separately
+			// until acknowledgement so tests or lazy-chunk teardown cannot invalidate
+			// an instantiate command between prepare and handle publication.
 			const preparedBatch: UniversalHostBatch =
 				preparedWithProvenance.planInstances === undefined
 					? preparedWithProvenance
@@ -1570,6 +1583,12 @@ export function createLynxBackgroundTransport(
 							version: preparedWithProvenance.version,
 							commands: preparedWithProvenance.commands,
 						});
+			const handleBatch = wireBatch;
+			const handlePlans = new Map<string, UniversalPlan>();
+			for (const instance of preparedWithProvenance.planInstances ?? []) {
+				const planId = lynxPlanWireId(instance.plan);
+				if (planId !== null && !handlePlans.has(planId)) handlePlans.set(planId, instance.plan);
+			}
 			// An empty batch mutates nothing on main, so it never rides the frame
 			// budget, and once a batch has crossed it does not cross the wire at
 			// all — see the elision branch in dispatchThroughPaceGate below.
@@ -1610,6 +1629,8 @@ export function createLynxBackgroundTransport(
 					const entry: PendingCommit = {
 						identity: frozenIdentity(identity),
 						batch: preparedBatch,
+						handleBatch,
+						handlePlans,
 						acknowledge,
 						deferred: createDeferred<void>(),
 						token,

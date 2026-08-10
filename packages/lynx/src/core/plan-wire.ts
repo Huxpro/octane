@@ -361,6 +361,28 @@ function isWireLeaf(value: unknown): boolean {
 	);
 }
 
+function prepareLynxPlanInstance(
+	plan: UniversalPlan,
+	values: readonly unknown[],
+	isAnnounced: (planId: string, canonical: string) => boolean,
+): { readonly planId: string; readonly wireValues: readonly unknown[] } | null {
+	const identity = lynxPlanWireIdentity(plan);
+	if (identity === null || !isAnnounced(identity.id, identity.canonical)) return null;
+	const shape = lynxPlanWireShape(plan);
+	if (shape === null) return null;
+	const wireValues: unknown[] = [];
+	for (let slot = 0; slot < values.length; slot++) {
+		if (!shape.valueSlots.has(slot)) {
+			wireValues.push(null);
+			continue;
+		}
+		const value = values[slot];
+		if (!isWireLeaf(value)) return null;
+		wireValues.push(value);
+	}
+	return { planId: identity.id, wireValues };
+}
+
 /** Skip provenance walks for plans the current main thread cannot reproduce. */
 export function isLynxPlanInstanceEligible(
 	plan: UniversalPlan,
@@ -469,14 +491,69 @@ export function foldLynxPlanInstances(
 		version: batch.version,
 		commands: batch.commands,
 	});
+	if (instances[0]?.compact === true) {
+		const byRoot = new Map<
+			number,
+			{
+				readonly instance: UniversalPlanInstance;
+				readonly planId: string;
+				readonly wireValues: readonly unknown[];
+			}
+		>();
+		for (const instance of instances) {
+			if (instance.compact !== true) {
+				throw new Error('Octane Lynx received mixed compact and expanded plan provenance.');
+			}
+			const prepared = prepareLynxPlanInstance(instance.plan, instance.values, isAnnounced);
+			if (prepared === null || instance.ids.length === 0) {
+				throw new Error('Octane Lynx compact plan provenance lost its wire eligibility.');
+			}
+			if (byRoot.has(instance.rootId)) {
+				throw new Error(`Octane Lynx compact plan duplicated root ${instance.rootId}.`);
+			}
+			byRoot.set(instance.rootId, { instance, ...prepared });
+		}
+		const commands: LynxWireHostCommand[] = [];
+		for (const command of batch.commands) {
+			const candidate = command.op === 'insert' ? byRoot.get(command.id) : undefined;
+			if (candidate === undefined) {
+				commands.push(command);
+				continue;
+			}
+			if (command.op !== 'insert') {
+				throw new Error('Octane Lynx compact plan provenance matched a non-insert command.');
+			}
+			commands.push(
+				Object.freeze({
+					op: 'instantiate',
+					plan: candidate.planId,
+					parent: command.parent,
+					before: command.before,
+					ids: candidate.instance.ids,
+					values: Object.freeze(candidate.wireValues),
+					events: candidate.instance.events,
+				}),
+			);
+			byRoot.delete(command.id);
+		}
+		if (byRoot.size !== 0) {
+			throw new Error('Octane Lynx compact plan provenance is missing its root placement.');
+		}
+		return Object.freeze({
+			renderer: batch.renderer,
+			version: batch.version,
+			commands: Object.freeze(commands),
+		});
+	}
 	const byId = new Map<number, FoldCandidate>();
 	const candidates: FoldCandidate[] = [];
 	for (const instance of instances) {
-		const identity = lynxPlanWireIdentity(instance.plan);
-		if (identity === null || !isAnnounced(identity.id, identity.canonical)) continue;
-		const planId = identity.id;
-		const shape = lynxPlanWireShape(instance.plan);
-		if (shape === null) continue;
+		if (instance.compact === true) {
+			throw new Error('Octane Lynx received mixed compact and expanded plan provenance.');
+		}
+		const prepared = prepareLynxPlanInstance(instance.plan, instance.values, isAnnounced);
+		if (prepared === null) continue;
+		const { planId, wireValues } = prepared;
 		// Outer instances stamp before the inner ones they contain; an accepted
 		// outer instance always disqualifies here on a non-leaf slot value (the
 		// nesting can only enter through one), never silently double-covers.
@@ -486,21 +563,6 @@ export function foldLynxPlanInstances(
 				usable = false;
 				break;
 			}
-		}
-		if (!usable) continue;
-		const wireValues: unknown[] = [];
-		for (let slot = 0; slot < instance.values.length; slot++) {
-			if (!shape.valueSlots.has(slot)) {
-				// Event handlers and unused slots never cross.
-				wireValues.push(null);
-				continue;
-			}
-			const value = instance.values[slot];
-			if (!isWireLeaf(value)) {
-				usable = false;
-				break;
-			}
-			wireValues.push(value);
 		}
 		if (!usable || instance.ids.length === 0) continue;
 		const candidate: FoldCandidate = {
@@ -736,6 +798,76 @@ function appendLynxInstantiateCommands(
 		id: state.rootId,
 		before: command.before,
 	});
+}
+
+/**
+ * Visit only the host identity/topology encoded by an instantiate command.
+ * Background handle publication needs no props or per-node command objects,
+ * so this keeps acknowledgement bookkeeping linear and allocation-light.
+ */
+export function visitLynxInstantiateTopology(
+	command: LynxInstantiateCommand,
+	plan: UniversalPlan,
+	create: (id: number, type: string) => void,
+	insert: (id: number, parent: UniversalHostParent) => void,
+): void {
+	if (lynxPlanWireShape(plan) === null) {
+		throw expansionError(command.plan, 'received an ineligible plan.');
+	}
+	let next = 0;
+	let rootId: number | null = null;
+	let rootCount = 0;
+	const takeId = (): number => {
+		if (next >= command.ids.length) {
+			throw expansionError(command.plan, 'ran out of host IDs.');
+		}
+		return command.ids[next++]!;
+	};
+	const place = (id: number, parent: number | null): void => {
+		if (parent === null) {
+			rootId = id;
+			rootCount++;
+			return;
+		}
+		insert(id, parent);
+	};
+	const textHost = (value: unknown, parent: number | null): void => {
+		if (value === null || value === undefined || value === true || value === false) return;
+		if (typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint') {
+			const id = takeId();
+			create(id, '#text');
+			place(id, parent);
+			return;
+		}
+		throw expansionError(command.plan, 'received a non-primitive text slot value.');
+	};
+	const walk = (node: UniversalPlanNode, parent: number | null): void => {
+		switch (node.kind) {
+			case 'text':
+				textHost(node.slot === undefined ? (node.value ?? '') : command.values[node.slot], parent);
+				return;
+			case 'slot':
+				textHost(command.values[node.slot], parent);
+				return;
+			case 'range':
+				for (const child of node.children) walk(child, parent);
+				return;
+			case 'host': {
+				const id = takeId();
+				create(id, node.type);
+				for (const child of node.children ?? []) walk(child, id);
+				place(id, parent);
+				return;
+			}
+			default:
+				throw expansionError(command.plan, `cannot expand a ${node.kind} plan node.`);
+		}
+	};
+	walk(plan.root, null);
+	if (rootCount !== 1 || next !== command.ids.length || rootId !== command.ids[0]) {
+		throw expansionError(command.plan, 'produced a different subtree than the background staged.');
+	}
+	insert(rootId!, command.parent);
 }
 
 /**

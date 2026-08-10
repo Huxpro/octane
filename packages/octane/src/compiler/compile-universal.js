@@ -273,6 +273,7 @@ const UNIVERSAL_RUNTIME_IMPORTS = new Set([
 // background-owned callbacks from their render-only specialization.
 const MAIN_THREAD_RENDER_ONLY_CAPABILITY = 'main-thread-render-only';
 const THREAD_FUNCTION_CAPABILITY = 'thread-functions';
+const COMPILER_COMPONENT_ITEMS_CAPABILITY = 'compiler-component-items';
 const THREAD_DIRECTIVES = new Map([
 	['main thread', 'main-thread'],
 	['background only', 'background'],
@@ -2352,6 +2353,27 @@ function ownerFreeForThreeHostComponent(node, state) {
 	return binding?.scope === trusted.lexical.rootScope ? component : null;
 }
 
+// A keyed directive owner is also redundant when the body only constructs one
+// component descriptor. A capable renderer defers that component owner until
+// evaluation reaches owner-scoped behavior; renderLazyLeafItem still lazily
+// claims the directive owner first if descriptor props invoke a hook via getter.
+// Keep this proof narrower than arbitrary value bodies so a fragment, setup
+// statement, or authored sibling retains its keyed directive scope.
+function ownerFreeForComponent(node) {
+	if (node.empty != null) return null;
+	if (!isOwnerFreeForExpression(node.right) || !isOwnerFreeForExpression(node.key)) return null;
+	const body = (node.body?.body ?? []).filter(
+		(statement) => statement.type !== 'JSXText' || normalizeJsxText(statement.value ?? '') !== '',
+	);
+	if (body.length !== 1) return null;
+	const component = body[0];
+	return (component.type === 'JSXElement' || component.type === 'Element') &&
+		isComponentElement(component) &&
+		jsxName(component) !== 'Activity'
+		? component
+		: null;
+}
+
 function allocPlan(state, root, origin = null) {
 	const name = allocName(
 		state,
@@ -2765,6 +2787,25 @@ function compilePlainPropsObjectAst(attributes, state, origin) {
 	return inheritGeneratedOrigin(b.object(entries), origin);
 }
 
+// A compiler-created component prop literal has no observable identity before
+// universalComponent receives it. For the narrow no-spread/no-children case,
+// pass that literal directly so the hot keyed-component path does not allocate
+// an ordered prop-program entry array and then replay it into another object.
+// `key`, `children`, and `__proto__` retain the general prop-program semantics.
+function compileDirectComponentPropsAst(attributes, childrenExpression, state, origin) {
+	if (childrenExpression !== null) return null;
+	for (const attribute of attributes) {
+		if (attribute.type === 'JSXSpreadAttribute' || attribute.type === 'SpreadAttribute') {
+			return null;
+		}
+		const name = attributeName(attribute);
+		if (name === null || name === 'key' || name === 'children' || name === '__proto__') {
+			return null;
+		}
+	}
+	return compilePlainPropsObjectAst(attributes, state, origin);
+}
+
 /**
  * Lower a `class={[…]}` array literal to its clsx-composed string when every
  * element is statically a string or falsy.
@@ -3063,7 +3104,13 @@ function compileActivityElementAst(node, context, state) {
 	return addDynamicAst(context, generatedCall(state.helpers.activity, [mode, body], node));
 }
 
-function compileComponentElementAst(node, context, state) {
+function compileComponentValueAst(
+	node,
+	state,
+	compilerDirectProps = false,
+	compilerKey = null,
+	compilerLazyOwner = false,
+) {
 	const component = jsxNameExpressionAst(node, state);
 	const providerContext = contextProviderExpressionAst(node, state);
 	const childNodes = node.children ?? [];
@@ -3100,17 +3147,30 @@ function compileComponentElementAst(node, context, state) {
 			),
 			node,
 		);
-		return addDynamicAst(context, generatedCall(callback, [propsObject], node));
+		return generatedCall(callback, [propsObject], node);
 	}
-	const props = compilePropsAst(attributes, childrenExpression, state, node);
-	return addDynamicAst(
-		context,
-		generatedCall(
-			state.helpers.nestedComponent,
-			[b.literal(state.renderer.id), component, props],
-			node,
-		),
+	const directProps = compilerDirectProps
+		? compileDirectComponentPropsAst(attributes, childrenExpression, state, node)
+		: null;
+	const props = directProps ?? compilePropsAst(attributes, childrenExpression, state, node);
+	return generatedCall(
+		state.helpers.nestedComponent,
+		[
+			b.literal(state.renderer.id),
+			component,
+			props,
+			...(compilerKey === null && directProps === null && !compilerLazyOwner
+				? []
+				: [compilerKey ?? b.id('undefined')]),
+			...(directProps === null && !compilerLazyOwner ? [] : [b.literal(directProps !== null)]),
+			...(compilerLazyOwner ? [b.literal(true)] : []),
+		],
+		node,
 	);
+}
+
+function compileComponentElementAst(node, context, state) {
+	return addDynamicAst(context, compileComponentValueAst(node, state));
 }
 
 function rewriteSetupStatementsAst(statements, state) {
@@ -3270,18 +3330,48 @@ function compileForAst(node, context, state) {
 	assertNoResidualTemplate(node.right, state, '@for source');
 	assertNoResidualTemplate(node.key, state, '@for key');
 	const host = !state.hmr ? ownerFreeForHost(node) : null;
-	const component = host === null ? ownerFreeForThreeHostComponent(node, state) : null;
+	const compactComponent = host === null ? ownerFreeForThreeHostComponent(node, state) : null;
+	const lazyComponent =
+		host === null &&
+		compactComponent === null &&
+		!state.hmr &&
+		rendererHasCapability(state, COMPILER_COMPONENT_ITEMS_CAPABILITY)
+			? ownerFreeForComponent(node)
+			: null;
 	const compactHost =
 		host === null ? null : compileOwnerFreeForHostAst(host, state, itemBinding, indexBinding);
-	const compactComponent =
-		component === null
+	const compactComponentProgram =
+		compactComponent === null
 			? null
-			: compileOwnerFreeThreeHostComponentAst(component, state, itemBinding, indexBinding);
+			: compileOwnerFreeThreeHostComponentAst(compactComponent, state, itemBinding, indexBinding);
+	const lazyComponentAttributes =
+		lazyComponent?.openingElement?.attributes ?? lazyComponent?.attributes ?? [];
+	const lazyComponentOwnsAuthoredKey = lazyComponentAttributes.some(
+		(attribute) =>
+			attribute.type !== 'JSXSpreadAttribute' &&
+			attribute.type !== 'SpreadAttribute' &&
+			attributeName(attribute) === 'key',
+	);
+	const lazyComponentRender =
+		lazyComponent === null
+			? null
+			: generatedArrow(
+					[itemBinding, indexBinding],
+					compileComponentValueAst(
+						lazyComponent,
+						state,
+						!lazyComponentOwnsAuthoredKey,
+						lazyComponentOwnsAuthoredKey ? null : rewriteSourceAst(node.key, state),
+						true,
+					),
+					node.body ?? node,
+				);
 	const args = [
 		rewriteSourceAst(node.right, state),
 		generatedArrow([itemBinding, indexBinding], rewriteSourceAst(node.key, state), node.key),
 		compactHost?.render ??
-			compactComponent?.render ??
+			compactComponentProgram?.render ??
+			lazyComponentRender ??
 			compileBlockValueAst(
 				node.body?.body ?? [],
 				state,
@@ -3297,15 +3387,17 @@ function compileForAst(node, context, state) {
 			inheritGeneratedOrigin(b.unary('void', b.literal(0)), host),
 			compactHost.plan,
 		);
-	} else if (component !== null) {
+	} else if (compactComponent !== null) {
 		args.push(
 			b.literal(null, 'null'),
 			b.literal(true),
 			b.literal(true),
-			jsxNameExpressionAst(component, state),
-			compactComponent.plan,
-			compactComponent.signature,
+			jsxNameExpressionAst(compactComponent, state),
+			compactComponentProgram.plan,
+			compactComponentProgram.signature,
 		);
+	} else if (lazyComponent !== null) {
+		args.push(b.literal(null, 'null'), b.literal(true), b.literal(false));
 	} else if (node.empty) {
 		args.push(compileBlockValueAst(node.empty?.body ?? [], state, [], node.empty));
 	}

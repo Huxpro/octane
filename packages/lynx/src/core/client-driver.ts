@@ -4,6 +4,7 @@ import type {
 	UniversalHostDriver,
 	UniversalHostParent,
 	UniversalHostPropCodecContext,
+	UniversalPlan,
 	UniversalPortalTargetContext,
 	UniversalPortalTargetRegistration,
 	UniversalSerializableValue,
@@ -37,6 +38,11 @@ import {
 	type LynxNodesRefPathResult,
 } from './nodes-ref.js';
 import { decodeLynxPortalTargetId, encodeLynxPortalTargetId } from './portal.js';
+import {
+	resolveLynxPlan,
+	visitLynxInstantiateTopology,
+	type LynxWireHostBatch,
+} from './plan-wire.js';
 
 export interface LynxPublicHandle {
 	readonly renderer: typeof LYNX_TRANSPORT_RENDERER;
@@ -475,9 +481,10 @@ function isListTopologyType(type: string): boolean {
  */
 export function prepareLynxHandleDeltas(
 	container: LynxClientContainer,
-	batch: UniversalHostBatch,
+	batch: UniversalHostBatch | LynxWireHostBatch,
 	deltas: readonly LynxPublicHandleDelta[] | undefined,
 	identity: UniversalTransportIdentity,
+	resolvePlan: (planId: string) => UniversalPlan | undefined = resolveLynxPlan,
 ): LynxPreparedHandleDeltas {
 	const state = containerState(container);
 	if (
@@ -536,19 +543,42 @@ export function prepareLynxHandleDeltas(
 	// acceptance. Both sides advance only on accepted batches, so the maps
 	// agree and the derived generation is the one main assigns.
 	const stagedGenerations = new Map<number, number>();
+	const stagePlacement = (id: number, parent: UniversalHostParent): void => {
+		if (finalTopologyType(id) === undefined) {
+			throw new Error(`Octane Lynx batch places missing handle ${id}.`);
+		}
+		const parentId = topologyParentId(parent);
+		// A reorder within one parent changes no state the handle mirror owns.
+		// Avoid staging one Map entry per moved sibling; only cross-parent
+		// placement can change attachment or list ancestry.
+		if (finalTopologyParent(id) !== parentId) {
+			stagedParents.set(id, parentId);
+			listAncestryRoots.add(id);
+		}
+	};
+	const stageCreate = (id: number, type: string): void => {
+		const transition = transitionFor(id);
+		if (transition.present) {
+			throw new Error(`Octane Lynx batch creates existing handle ${id}.`);
+		}
+		transition.present = true;
+		transition.type = type;
+		transition.snapshotChanged = true;
+		if (isListTopologyType(type)) nextListTopologyNodes += 1;
+		stagedGenerations.set(id, (stagedGenerations.get(id) ?? state.generations.get(id) ?? 0) + 1);
+		stagedParents.set(id, undefined);
+	};
 	for (const command of batch.commands) {
+		if (command.op === 'instantiate') {
+			const plan = resolvePlan(command.plan);
+			if (plan === undefined) {
+				throw new Error(`Octane Lynx instantiate(${command.plan}) references an unknown plan.`);
+			}
+			visitLynxInstantiateTopology(command, plan, stageCreate, stagePlacement);
+			continue;
+		}
 		if (command.op === 'insert' || command.op === 'move') {
-			if (finalTopologyType(command.id) === undefined) {
-				throw new Error(`Octane Lynx batch places missing handle ${command.id}.`);
-			}
-			const parent = topologyParentId(command.parent);
-			// A reorder within one parent changes no state the handle mirror owns.
-			// Avoid staging one Map and Set entry per moved sibling (the common keyed
-			// swap path); only cross-parent placement can change attachment/ancestry.
-			if (finalTopologyParent(command.id) !== parent) {
-				stagedParents.set(command.id, parent);
-				listAncestryRoots.add(command.id);
-			}
+			stagePlacement(command.id, command.parent);
 			continue;
 		}
 		if (command.op === 'remove') {
@@ -571,18 +601,7 @@ export function prepareLynxHandleDeltas(
 		}
 		const transition = transitionFor(command.id);
 		if (command.op === 'create') {
-			if (transition.present) {
-				throw new Error(`Octane Lynx batch creates existing handle ${command.id}.`);
-			}
-			transition.present = true;
-			transition.type = command.type;
-			transition.snapshotChanged = true;
-			if (isListTopologyType(command.type)) nextListTopologyNodes += 1;
-			stagedGenerations.set(
-				command.id,
-				(stagedGenerations.get(command.id) ?? state.generations.get(command.id) ?? 0) + 1,
-			);
-			stagedParents.set(command.id, undefined);
+			stageCreate(command.id, command.type);
 		} else if (command.op === 'update') {
 			if (!transition.present) {
 				throw new Error(`Octane Lynx batch updates missing handle ${command.id}.`);
@@ -1129,7 +1148,11 @@ export function createLynxClientDriver(): UniversalHostDriver<
 > {
 	const driver: UniversalHostDriver<LynxClientContainer, LynxPublicHandle> = {
 		id: LYNX_TRANSPORT_RENDERER,
-		capabilities: Object.freeze({ text: 'host' as const, visibility: true }),
+		capabilities: Object.freeze({
+			text: 'host' as const,
+			visibility: true,
+			compilerComponentItems: true,
+		}),
 		portals: Object.freeze({
 			prepareTarget({
 				container,

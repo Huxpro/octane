@@ -191,6 +191,7 @@ interface ComponentValue {
 	readonly props: PropsValue;
 	readonly key: unknown;
 	readonly hasKey: boolean;
+	readonly compilerLazyOwner?: true;
 }
 
 interface FirstScreenOwner {
@@ -239,8 +240,10 @@ class FirstScreenSuspense {
 let CURRENT_ATTEMPT: FirstScreenAttempt | null = null;
 let NEXT_HOOK_SLOT = 0;
 let FIRST_SCREEN_WARM_DEPTH = 0;
+let FIRST_SCREEN_COMPONENT_BODY_DEPTH = 0;
 const SLOT_STACK: unknown[] = [];
 const ACTIVE_FIRST_SCREEN_WARM_PLANS: Array<() => void> = [];
+const FIRST_SCREEN_COMPONENT_OWNER_USE: boolean[] = [];
 
 function currentAttempt(): FirstScreenAttempt {
 	if (CURRENT_ATTEMPT === null) {
@@ -250,6 +253,9 @@ function currentAttempt(): FirstScreenAttempt {
 }
 
 function currentOwner(): FirstScreenOwner {
+	if (FIRST_SCREEN_COMPONENT_BODY_DEPTH !== 0 && FIRST_SCREEN_COMPONENT_OWNER_USE.length !== 0) {
+		FIRST_SCREEN_COMPONENT_OWNER_USE[FIRST_SCREEN_COMPONENT_OWNER_USE.length - 1] = true;
+	}
 	return currentAttempt().owner;
 }
 
@@ -446,6 +452,8 @@ export function universalComponent(
 	component: UniversalComponent<any>,
 	props: PropsValue | Readonly<Record<string, unknown>> | null = null,
 	key: unknown = NO_KEY,
+	_compilerDirectProps = false,
+	compilerLazyOwner = false,
 ): UniversalRenderable {
 	assertRenderer(renderer);
 	const normalized = normalizeProps(props);
@@ -456,6 +464,7 @@ export function universalComponent(
 		props: normalized,
 		key: key === NO_KEY ? normalized.key : key,
 		hasKey: key !== NO_KEY || normalized.hasKey,
+		...(compilerLazyOwner ? { compilerLazyOwner: true as const } : null),
 	} as never;
 }
 
@@ -790,15 +799,37 @@ function renderComponent(
 	component: UniversalComponent<any>,
 	props: Readonly<Record<string, unknown>>,
 ): FirstScreenNode[] {
+	return renderComponentTracked(component, props).nodes;
+}
+
+function renderComponentTracked(
+	component: UniversalComponent<any>,
+	props: Readonly<Record<string, unknown>>,
+): { readonly nodes: FirstScreenNode[]; readonly ownerUsed: boolean } {
 	const metadata = componentMetadata(component);
 	if (metadata !== FIRST_SCREEN_LAZY_METADATA && metadata.id !== 'lynx') {
 		throw new Error('Lynx first-screen rendering requires a compiled Lynx component.');
 	}
 	const owner = childOwner(currentOwner());
 	const warmPlanCheckpoint = ACTIVE_FIRST_SCREEN_WARM_PLANS.length;
+	FIRST_SCREEN_COMPONENT_OWNER_USE.push(false);
 	try {
-		return withOwner(owner, () => materialize(component(props, componentContext()), null));
+		const nodes = withOwner(owner, () => {
+			FIRST_SCREEN_COMPONENT_BODY_DEPTH++;
+			let rendered: UniversalRenderable;
+			try {
+				rendered = component(props, componentContext());
+			} finally {
+				FIRST_SCREEN_COMPONENT_BODY_DEPTH--;
+			}
+			return materialize(rendered, null);
+		});
+		return {
+			nodes,
+			ownerUsed: FIRST_SCREEN_COMPONENT_OWNER_USE[FIRST_SCREEN_COMPONENT_OWNER_USE.length - 1],
+		};
 	} finally {
+		FIRST_SCREEN_COMPONENT_OWNER_USE.pop();
 		ACTIVE_FIRST_SCREEN_WARM_PLANS.length = warmPlanCheckpoint;
 	}
 }
@@ -814,6 +845,9 @@ function renderPlanNode(node: UniversalPlanNode, values: readonly unknown[]): Fi
 		return [range(children)];
 	}
 	if (node.kind === 'component') {
+		if (FIRST_SCREEN_COMPONENT_OWNER_USE.length !== 0) {
+			FIRST_SCREEN_COMPONENT_OWNER_USE[FIRST_SCREEN_COMPONENT_OWNER_USE.length - 1] = true;
+		}
 		const component = node.component ?? (values[node.componentSlot!] as UniversalComponent<any>);
 		let props =
 			node.propsSlot === undefined ? universalProps([]) : normalizeProps(values[node.propsSlot]);
@@ -937,6 +971,14 @@ function materialize(value: unknown, key: UniversalKey | null): FirstScreenNode[
 	if (record?.$$kind === UNIVERSAL_COMPONENT_VALUE) {
 		const component = value as ComponentValue;
 		assertRenderer(component.renderer);
+		if (component.compilerLazyOwner === true) {
+			const rendered = renderComponentTracked(component.component, component.props.props);
+			if (!rendered.ownerUsed) return rendered.nodes;
+			return [range(rendered.nodes, component.hasKey ? normalizeKey(component.key) : key)];
+		}
+		if (FIRST_SCREEN_COMPONENT_OWNER_USE.length !== 0) {
+			FIRST_SCREEN_COMPONENT_OWNER_USE[FIRST_SCREEN_COMPONENT_OWNER_USE.length - 1] = true;
+		}
 		return [
 			range(
 				renderComponent(component.component, component.props.props),
@@ -977,12 +1019,20 @@ function materialize(value: unknown, key: UniversalKey | null): FirstScreenNode[
 				(record.render as (item: unknown, index: number) => UniversalRenderable)(item, index++),
 				null,
 			);
-			// `ownerless`/`compact` are compiler hints, not unconditional descriptor
-			// semantics. The background Lynx client driver does not advertise the
-			// compilerLeafProps capability, so universal-core deliberately falls back
-			// to one logical owner range per item. The first-screen program must retain
-			// those ranges too or every following host ID diverges during adoption.
-			output.push(range(rendered, itemKey));
+			// A compiler-proven single-component item elides its component range only
+			// when evaluation did not touch owner-scoped behavior. Mirror that shape on
+			// main so background adoption assigns the same following host IDs.
+			if (
+				record.ownerless === true &&
+				record.compact !== true &&
+				rendered.length === 1 &&
+				(rendered[0].key === null || Object.is(rendered[0].key, itemKey))
+			) {
+				rendered[0].key = itemKey;
+				output.push(rendered[0]);
+			} else {
+				output.push(range(rendered, itemKey));
+			}
 		}
 		if (index === 0 && typeof record.empty === 'function') {
 			return [range(materialize((record.empty as () => UniversalRenderable)(), null))];

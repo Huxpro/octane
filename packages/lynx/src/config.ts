@@ -222,7 +222,7 @@ export const lynxBackgroundRenderer = {
 	server: 'unsupported',
 	intrinsics: '@octanejs/lynx/intrinsics',
 	text: 'host',
-	capabilities: ['class-name-alias', 'visibility', 'thread-functions'],
+	capabilities: ['class-name-alias', 'visibility', 'thread-functions', 'compiler-component-items'],
 	validation: LYNX_BACKGROUND_VALIDATION,
 } as const;
 
@@ -233,7 +233,13 @@ export const lynxMainThreadRenderer = {
 	server: 'unsupported',
 	intrinsics: '@octanejs/lynx/intrinsics',
 	text: 'host',
-	capabilities: ['class-name-alias', 'visibility', 'main-thread-render-only', 'thread-functions'],
+	capabilities: [
+		'class-name-alias',
+		'visibility',
+		'main-thread-render-only',
+		'thread-functions',
+		'compiler-component-items',
+	],
 	firstScreenEvents: ['bind*', 'catch*', 'capture-bind*', 'capture-catch*', 'global-bind*'],
 	validation: LYNX_MAIN_THREAD_VALIDATION,
 } as const;

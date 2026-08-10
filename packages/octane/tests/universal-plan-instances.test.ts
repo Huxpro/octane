@@ -25,6 +25,7 @@ const RENDERER = 'plan-instances-proof';
  */
 function captureRoot(
 	planInstantiation: boolean | ((plan: UniversalPlan, values: readonly unknown[]) => boolean),
+	compactPlanInstantiation?: UniversalAsyncCommitTransport['compactPlanInstantiation'],
 ) {
 	const batches: UniversalHostBatch[] = [];
 	const container = createObjectContainer(RENDERER);
@@ -33,6 +34,7 @@ function captureRoot(
 		...(planInstantiation
 			? { planInstantiation: planInstantiation === true ? true : planInstantiation }
 			: null),
+		...(compactPlanInstantiation === undefined ? null : { compactPlanInstantiation }),
 		prepareBatch(_container, batch, identity) {
 			return {
 				apply(acknowledge) {
@@ -178,6 +180,25 @@ describe('universal plan-instance provenance', () => {
 		);
 		expect(updatedIds.length).toBeGreaterThan(0);
 		for (const id of updatedIds) expect(instances[0]!.ids).not.toContain(id);
+	});
+
+	it('omits derivable per-host commands for transport-approved plan instances', async () => {
+		const { root, batches } = captureRoot(true, (plan) => plan === rowPlan);
+		await root.renderAsync(Rows, {
+			items: [
+				{ id: 1, label: 'one' },
+				{ id: 2, label: 'two' },
+			],
+		});
+		const batch = batches[0]!;
+		const instances = instancesOf(batch);
+		expect(instances).toHaveLength(2);
+		expect(instances.every((instance) => instance.compact === true)).toBe(true);
+		expect(batch.commands.filter((command) => command.op === 'create')).toHaveLength(1);
+		expect(batch.commands.filter((command) => command.op === 'event')).toHaveLength(0);
+		// The ordinary list container placement and one root-placement marker per
+		// compact row remain; the transport replaces each marker in stream order.
+		expect(batch.commands.filter((command) => command.op === 'insert')).toHaveLength(3);
 	});
 
 	it('excludes subtrees a wire instruction could not reproduce', async () => {
