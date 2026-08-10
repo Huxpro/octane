@@ -4,6 +4,7 @@ import type {
 	UniversalHostDriver,
 	UniversalHostParent,
 	UniversalHostPropCodecContext,
+	UniversalPlan,
 	UniversalPortalTargetContext,
 	UniversalPortalTargetRegistration,
 	UniversalSerializableValue,
@@ -37,6 +38,11 @@ import {
 	type LynxNodesRefPathResult,
 } from './nodes-ref.js';
 import { decodeLynxPortalTargetId, encodeLynxPortalTargetId } from './portal.js';
+import {
+	resolveLynxPlan,
+	visitLynxInstantiateTopology,
+	type LynxWireHostBatch,
+} from './plan-wire.js';
 
 export interface LynxPublicHandle {
 	readonly renderer: typeof LYNX_TRANSPORT_RENDERER;
@@ -479,9 +485,10 @@ function topologyParentId(parent: UniversalHostParent): number | null | undefine
  */
 export function prepareLynxHandleDeltas(
 	container: LynxClientContainer,
-	batch: UniversalHostBatch,
+	batch: UniversalHostBatch | LynxWireHostBatch,
 	deltas: readonly LynxPublicHandleDelta[] | undefined,
 	identity: UniversalTransportIdentity,
+	resolvePlan: (planId: string) => UniversalPlan | undefined = resolveLynxPlan,
 ): LynxPreparedHandleDeltas {
 	const state = containerState(container);
 	if (
@@ -546,18 +553,44 @@ export function prepareLynxHandleDeltas(
 	// acceptance. Both sides advance only on accepted batches, so the maps
 	// agree and the derived generation is the one main assigns.
 	const stagedGenerations = new Map<number, number>();
+	const stagePlacement = (id: number, parent: UniversalHostParent): void => {
+		const entry = writeTopology(id);
+		if (entry === undefined) {
+			throw new Error(`Octane Lynx batch places missing handle ${id}.`);
+		}
+		detachFromParent(id, entry.parent);
+		entry.parent = topologyParentId(parent);
+		if (typeof entry.parent === 'number') {
+			writeTopology(entry.parent)?.children.add(id);
+		}
+		listAncestryRoots.add(id);
+	};
+	const stageCreate = (id: number, type: string): void => {
+		const transition = transitionFor(id);
+		if (transition.present) {
+			throw new Error(`Octane Lynx batch creates existing handle ${id}.`);
+		}
+		transition.present = true;
+		transition.type = type;
+		transition.snapshotChanged = true;
+		stagedGenerations.set(id, (stagedGenerations.get(id) ?? state.generations.get(id) ?? 0) + 1);
+		stagedTopology.set(id, {
+			parent: undefined,
+			type,
+			children: new Set(),
+		});
+	};
 	for (const command of batch.commands) {
+		if (command.op === 'instantiate') {
+			const plan = resolvePlan(command.plan);
+			if (plan === undefined) {
+				throw new Error(`Octane Lynx instantiate(${command.plan}) references an unknown plan.`);
+			}
+			visitLynxInstantiateTopology(command, plan, stageCreate, stagePlacement);
+			continue;
+		}
 		if (command.op === 'insert' || command.op === 'move') {
-			const entry = writeTopology(command.id);
-			if (entry === undefined) {
-				throw new Error(`Octane Lynx batch places missing handle ${command.id}.`);
-			}
-			detachFromParent(command.id, entry.parent);
-			entry.parent = topologyParentId(command.parent);
-			if (typeof entry.parent === 'number') {
-				writeTopology(entry.parent)?.children.add(command.id);
-			}
-			listAncestryRoots.add(command.id);
+			stagePlacement(command.id, command.parent);
 			continue;
 		}
 		if (command.op === 'remove') {
@@ -579,21 +612,7 @@ export function prepareLynxHandleDeltas(
 		}
 		const transition = transitionFor(command.id);
 		if (command.op === 'create') {
-			if (transition.present) {
-				throw new Error(`Octane Lynx batch creates existing handle ${command.id}.`);
-			}
-			transition.present = true;
-			transition.type = command.type;
-			transition.snapshotChanged = true;
-			stagedGenerations.set(
-				command.id,
-				(stagedGenerations.get(command.id) ?? state.generations.get(command.id) ?? 0) + 1,
-			);
-			stagedTopology.set(command.id, {
-				parent: undefined,
-				type: command.type,
-				children: new Set(),
-			});
+			stageCreate(command.id, command.type);
 		} else if (command.op === 'update') {
 			if (!transition.present) {
 				throw new Error(`Octane Lynx batch updates missing handle ${command.id}.`);
@@ -1101,7 +1120,11 @@ export function createLynxClientDriver(): UniversalHostDriver<
 > {
 	const driver: UniversalHostDriver<LynxClientContainer, LynxPublicHandle> = {
 		id: LYNX_TRANSPORT_RENDERER,
-		capabilities: Object.freeze({ text: 'host' as const, visibility: true }),
+		capabilities: Object.freeze({
+			text: 'host' as const,
+			visibility: true,
+			compilerComponentItems: true,
+		}),
 		portals: Object.freeze({
 			prepareTarget({
 				container,

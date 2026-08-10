@@ -1994,6 +1994,27 @@ function ownerFreeForHost(node) {
 	return attributes.every(isOwnerFreeForAttribute) ? host : null;
 }
 
+// A keyed directive owner is also redundant when the body only constructs one
+// component descriptor. A capable renderer defers that component owner until
+// evaluation reaches owner-scoped behavior; renderLazyLeafItem still lazily
+// claims the directive owner first if descriptor props invoke a hook via getter.
+// Keep this proof narrower than arbitrary value bodies so a fragment, setup
+// statement, or authored sibling retains its keyed directive scope.
+function ownerFreeForComponent(node) {
+	if (node.empty != null) return null;
+	if (!isOwnerFreeForExpression(node.right) || !isOwnerFreeForExpression(node.key)) return null;
+	const body = (node.body?.body ?? []).filter(
+		(statement) => statement.type !== 'JSXText' || normalizeJsxText(statement.value ?? '') !== '',
+	);
+	if (body.length !== 1) return null;
+	const component = body[0];
+	return (component.type === 'JSXElement' || component.type === 'Element') &&
+		isComponentElement(component) &&
+		jsxName(component) !== 'Activity'
+		? component
+		: null;
+}
+
 function allocPlan(state, root, origin = null) {
 	const name = allocName(
 		state,
@@ -2407,6 +2428,25 @@ function compilePlainPropsObjectAst(attributes, state, origin) {
 	return inheritGeneratedOrigin(b.object(entries), origin);
 }
 
+// A compiler-created component prop literal has no observable identity before
+// universalComponent receives it. For the narrow no-spread/no-children case,
+// pass that literal directly so the hot keyed-component path does not allocate
+// an ordered prop-program entry array and then replay it into another object.
+// `key`, `children`, and `__proto__` retain the general prop-program semantics.
+function compileDirectComponentPropsAst(attributes, childrenExpression, state, origin) {
+	if (childrenExpression !== null) return null;
+	for (const attribute of attributes) {
+		if (attribute.type === 'JSXSpreadAttribute' || attribute.type === 'SpreadAttribute') {
+			return null;
+		}
+		const name = attributeName(attribute);
+		if (name === null || name === 'key' || name === 'children' || name === '__proto__') {
+			return null;
+		}
+	}
+	return compilePlainPropsObjectAst(attributes, state, origin);
+}
+
 /**
  * Lower a `class={[…]}` array literal to its clsx-composed string when every
  * element is statically a string or falsy.
@@ -2673,7 +2713,13 @@ function compileActivityElementAst(node, context, state) {
 	return addDynamicAst(context, generatedCall(state.helpers.activity, [mode, body], node));
 }
 
-function compileComponentElementAst(node, context, state) {
+function compileComponentValueAst(
+	node,
+	state,
+	compilerDirectProps = false,
+	compilerKey = null,
+	compilerLazyOwner = false,
+) {
 	const component = jsxNameExpressionAst(node, state);
 	const providerContext = contextProviderExpressionAst(node, state);
 	const childNodes = node.children ?? [];
@@ -2710,17 +2756,30 @@ function compileComponentElementAst(node, context, state) {
 			),
 			node,
 		);
-		return addDynamicAst(context, generatedCall(callback, [propsObject], node));
+		return generatedCall(callback, [propsObject], node);
 	}
-	const props = compilePropsAst(attributes, childrenExpression, state, node);
-	return addDynamicAst(
-		context,
-		generatedCall(
-			state.helpers.nestedComponent,
-			[b.literal(state.renderer.id), component, props],
-			node,
-		),
+	const directProps = compilerDirectProps
+		? compileDirectComponentPropsAst(attributes, childrenExpression, state, node)
+		: null;
+	const props = directProps ?? compilePropsAst(attributes, childrenExpression, state, node);
+	return generatedCall(
+		state.helpers.nestedComponent,
+		[
+			b.literal(state.renderer.id),
+			component,
+			props,
+			...(compilerKey === null && directProps === null && !compilerLazyOwner
+				? []
+				: [compilerKey ?? b.id('undefined')]),
+			...(directProps === null && !compilerLazyOwner ? [] : [b.literal(directProps !== null)]),
+			...(compilerLazyOwner ? [b.literal(true)] : []),
+		],
+		node,
 	);
+}
+
+function compileComponentElementAst(node, context, state) {
+	return addDynamicAst(context, compileComponentValueAst(node, state));
 }
 
 function rewriteSetupStatementsAst(statements, state) {
@@ -2830,18 +2889,43 @@ function compileForAst(node, context, state) {
 		node.index ?? generatedIdentifier(allocName(state, '__octaneUniversalIndex'), node);
 	assertNoResidualTemplate(node.right, state, '@for source');
 	assertNoResidualTemplate(node.key, state, '@for key');
+	const ownerFreeHost = !state.hmr ? ownerFreeForHost(node) : null;
+	const ownerFreeComponent =
+		!state.hmr && ownerFreeHost === null ? ownerFreeForComponent(node) : null;
+	const ownerFreeComponentAttributes =
+		ownerFreeComponent?.openingElement?.attributes ?? ownerFreeComponent?.attributes ?? [];
+	const componentOwnsAuthoredKey = ownerFreeComponentAttributes.some(
+		(attribute) =>
+			attribute.type !== 'JSXSpreadAttribute' &&
+			attribute.type !== 'SpreadAttribute' &&
+			attributeName(attribute) === 'key',
+	);
+	const render =
+		ownerFreeComponent === null
+			? compileBlockValueAst(
+					node.body?.body ?? [],
+					state,
+					[itemBinding, indexBinding],
+					node.body ?? node,
+				)
+			: generatedArrow(
+					[itemBinding, indexBinding],
+					compileComponentValueAst(
+						ownerFreeComponent,
+						state,
+						!componentOwnsAuthoredKey,
+						componentOwnsAuthoredKey ? null : rewriteSourceAst(node.key, state),
+						true,
+					),
+					node.body ?? node,
+				);
 	const args = [
 		rewriteSourceAst(node.right, state),
 		generatedArrow([itemBinding, indexBinding], rewriteSourceAst(node.key, state), node.key),
-		compileBlockValueAst(
-			node.body?.body ?? [],
-			state,
-			[itemBinding, indexBinding],
-			node.body ?? node,
-		),
+		render,
 	];
-	if (!state.hmr && ownerFreeForHost(node) !== null) {
-		args.push(b.literal(null, 'null'), b.literal(true), b.literal(true));
+	if (ownerFreeHost !== null || ownerFreeComponent !== null) {
+		args.push(b.literal(null, 'null'), b.literal(true), b.literal(ownerFreeHost !== null));
 	} else if (node.empty) {
 		args.push(compileBlockValueAst(node.empty?.body ?? [], state, [], node.empty));
 	}

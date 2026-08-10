@@ -12,6 +12,7 @@ import {
 	createPortal,
 	createUniversalRoot,
 	defineUniversalComponent,
+	universalComponent,
 	universalFor,
 	universalKey,
 	universalList,
@@ -1945,6 +1946,225 @@ export function Scene() @{
 
 		root.render(PureList as any, { items: [] });
 		expect(container.children).toEqual([]);
+		root.unmount();
+	});
+
+	it('marks a single keyed component body ownerless without compacting its subtree', () => {
+		const source = `
+			function Row({ row, selected, onSelect }) @{
+				<row active={selected === row.id} onSelect={onSelect}>
+					<label value={row.label} />
+				</row>
+			}
+			export function Scene({ items, selected, select }) @{
+				@for (const row of items; key row.id) {
+					<Row row={row} selected={selected} onSelect={select} />
+				}
+			}
+		`;
+		const output = compile(source, '/src/ComponentList.object.tsrx', {
+			renderer,
+			hmr: false,
+		}).code;
+		expect(output).toMatch(/__octaneUniversalFor\(\s*items/);
+		expect(output).toMatch(/,\s*null,\s*true,\s*false\s*\)/);
+		expect(output).toMatch(
+			/__octaneUniversalComponent\('object', Row, \{\s*"row": row,\s*"selected": selected,\s*"onSelect": select\s*\}, row\.id, true, true\)/,
+		);
+
+		const withChildren = compile(
+			`export function Scene({ items }) @{
+				@for (const row of items; key row.id) {
+					<Row row={row}><label value={row.label} /></Row>
+				}
+			}`,
+			'/src/ComponentChildrenList.object.tsrx',
+			{ renderer, hmr: false },
+		).code;
+		expect(withChildren).toMatch(
+			/__octaneUniversalComponent\([\s\S]*row\.id,\s*false,\s*true\s*\)/,
+		);
+	});
+
+	it('renders ownerless keyed component items with multi-host subtrees', () => {
+		const container = createObjectContainer();
+		const base = createObjectDriver();
+		const driver = {
+			...base,
+			capabilities: { ...base.capabilities, compilerComponentItems: true },
+		};
+		const root = createUniversalRoot(container, driver);
+		const rowPlan = universalPlan('object', {
+			kind: 'host',
+			type: 'row',
+			bindings: [['value', 0]],
+			children: [{ kind: 'host', type: 'label', bindings: [['value', 1]] }],
+		});
+		const Row = defineUniversalComponent('object', ({ id, label }: { id: string; label: string }) =>
+			universalValue(rowPlan, [id, label]),
+		);
+		const List = defineUniversalComponent('object', ({ items }: { items: string[] }) =>
+			universalFor(
+				items,
+				(item) => item,
+				(item) =>
+					universalComponent(
+						'object',
+						Row,
+						{ id: item, label: item.toUpperCase() },
+						item,
+						true,
+						true,
+					),
+				null,
+				true,
+				false,
+			),
+		);
+
+		root.render(List, { items: ['a', 'b'] });
+		const rowA = container.children[0];
+		const rowB = container.children[1];
+		expect(rowA.children[0].props.value).toBe('A');
+		expect(rowB.children[0].props.value).toBe('B');
+
+		root.render(List, { items: ['b', 'a', 'c'] });
+		expect(container.children.map((row) => row.props.value)).toEqual(['b', 'a', 'c']);
+		expect(container.children[0]).toBe(rowB);
+		expect(container.children[1]).toBe(rowA);
+		root.unmount();
+	});
+
+	it('retains a lazily activated keyed component owner across a false hook branch', () => {
+		const container = createObjectContainer();
+		const base = createObjectDriver();
+		const driver = {
+			...base,
+			capabilities: { ...base.capabilities, compilerComponentItems: true },
+		};
+		const root = createUniversalRoot(container, driver);
+		const rowPlan = universalPlan('object', {
+			kind: 'host',
+			type: 'row',
+			bindings: [['value', 0]],
+		});
+		let setValue: ((value: string) => void) | null = null;
+		const Row = defineUniversalComponent(
+			'object',
+			({ enabled, value }: { enabled: boolean; value: string }) => {
+				if (enabled) {
+					const [state, update] = UniversalRuntime.useState(value, 'value');
+					setValue = update;
+					return universalValue(rowPlan, [state]);
+				}
+				return universalValue(rowPlan, ['disabled']);
+			},
+		);
+		const List = defineUniversalComponent('object', ({ enabled }: { enabled: boolean }) =>
+			universalFor(
+				['row'],
+				(item) => item,
+				(item) =>
+					UniversalRuntime.universalComponent(
+						'object',
+						Row,
+						{ enabled, value: 'initial' },
+						item,
+						true,
+						true,
+					),
+				null,
+				true,
+				false,
+			),
+		);
+
+		root.render(List, { enabled: true });
+		expect(container.children[0].props.value).toBe('initial');
+		UniversalRuntime.flushUniversalSync(() => setValue!('retained'));
+		expect(container.children[0].props.value).toBe('retained');
+		root.render(List, { enabled: false });
+		expect(container.children[0].props.value).toBe('disabled');
+		root.render(List, { enabled: true });
+		expect(container.children[0].props.value).toBe('retained');
+		root.unmount();
+	});
+
+	it('retains unchanged compiler-lazy keyed component subtrees without re-executing them', () => {
+		const container = createObjectContainer();
+		const base = createObjectDriver();
+		const driver = {
+			...base,
+			capabilities: { ...base.capabilities, compilerComponentItems: true },
+		};
+		const root = createUniversalRoot(container, driver);
+		const rowPlan = universalPlan('object', {
+			kind: 'host',
+			type: 'row',
+			bindings: [
+				['id', 0],
+				['value', 1],
+			],
+			children: [{ kind: 'host', type: 'label', bindings: [['value', 1]] }],
+		});
+		const renders: string[] = [];
+		const Row = defineUniversalComponent(
+			'object',
+			({ id, value }: { id: string; value: string }) => {
+				renders.push(`${id}:${value}`);
+				return universalValue(rowPlan, [id, value]);
+			},
+		);
+		const List = defineUniversalComponent(
+			'object',
+			({ items }: { items: readonly { id: string; value: string }[] }) =>
+				universalFor(
+					items,
+					(item) => item.id,
+					(item) =>
+						UniversalRuntime.universalComponent(
+							'object',
+							Row,
+							{ id: item.id, value: item.value },
+							item.id,
+							true,
+							true,
+						),
+					null,
+					true,
+					false,
+				),
+		);
+
+		root.render(List, {
+			items: [
+				{ id: 'a', value: 'A' },
+				{ id: 'b', value: 'B' },
+			],
+		});
+		const [hostA, hostB] = container.children;
+		expect(renders).toEqual(['a:A', 'b:B']);
+
+		root.render(List, {
+			items: [
+				{ id: 'b', value: 'B' },
+				{ id: 'a', value: 'A' },
+			],
+		});
+		expect(renders).toEqual(['a:A', 'b:B']);
+		expect(container.children).toEqual([hostB, hostA]);
+		expect(container.children[0].children[0].props.value).toBe('B');
+
+		root.render(List, {
+			items: [
+				{ id: 'b', value: 'B2' },
+				{ id: 'a', value: 'A' },
+			],
+		});
+		expect(renders).toEqual(['a:A', 'b:B', 'b:B2']);
+		expect(container.children).toEqual([hostB, hostA]);
+		expect(container.children[0].props.value).toBe('B2');
+		expect(container.children[0].children[0].props.value).toBe('B2');
 		root.unmount();
 	});
 

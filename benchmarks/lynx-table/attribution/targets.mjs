@@ -32,10 +32,16 @@ export const REFERENCE_TARGETS = Object.freeze([
 	}),
 ]);
 
+export const WORKSPACE_TARGET = Object.freeze({
+	id: 'workspace',
+	sha: 'workspace',
+	workspace: true,
+});
+
 export function selectTargets(ids) {
 	if (ids === undefined || ids.length === 0) return STACK_TARGETS;
 	const wanted = new Set(ids);
-	const selected = [...STACK_TARGETS, ...REFERENCE_TARGETS].filter((target) =>
+	const selected = [...STACK_TARGETS, ...REFERENCE_TARGETS, WORKSPACE_TARGET].filter((target) =>
 		wanted.has(target.id),
 	);
 	const missing = [...wanted].filter((id) => !selected.some((target) => target.id === id));

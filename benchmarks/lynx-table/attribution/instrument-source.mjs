@@ -72,7 +72,7 @@ export function universalValue(
 		source = replaceOnce(
 			source,
 			'function createLogicalRecord(id: number, blueprint: BlueprintNode): LogicalRecord {\n\treturn {\n',
-			"function createLogicalRecord(id: number, blueprint: BlueprintNode): LogicalRecord {\n\ts3AttributionCount('logicalRecords');\n\treturn {\n",
+			"function createLogicalRecord(id: number, blueprint: BlueprintNode): LogicalRecord {\n\ts3AttributionCount('logicalRecords');\n\ts3AttributionCount(`logical-${blueprint.kind}`);\n\treturn {\n",
 			file,
 		);
 		source = replaceOnce(

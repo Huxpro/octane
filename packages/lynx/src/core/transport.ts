@@ -3,6 +3,7 @@ import {
 	type UniversalAsyncCommitTransport,
 	type UniversalAsyncPreparedHostBatch,
 	type UniversalHostBatch,
+	type UniversalPlan,
 	type UniversalRoot,
 	type UniversalTransportAcknowledgement,
 	type UniversalEventPriority,
@@ -47,7 +48,12 @@ import {
 	type LynxTransportAcknowledgement,
 } from './protocol.js';
 import type { LynxBackgroundNativeEventDelivery } from './native-event-receiver.js';
-import { foldLynxPlanInstances } from './plan-wire.js';
+import {
+	canCompactLynxPlanInstance,
+	foldLynxPlanInstances,
+	lynxPlanWireId,
+	type LynxWireHostBatch,
+} from './plan-wire.js';
 import {
 	isLynxMainThreadWorkletDescriptor,
 	isolateLynxWorkletValue,
@@ -157,6 +163,8 @@ interface PreparedTokenState {
 interface PendingCommit {
 	readonly identity: UniversalTransportIdentity;
 	readonly batch: UniversalHostBatch;
+	readonly handleBatch: LynxWireHostBatch;
+	readonly handlePlans: ReadonlyMap<string, UniversalPlan>;
 	readonly acknowledge: (message: UniversalTransportAcknowledgement) => void;
 	readonly deferred: Deferred<void>;
 	readonly token: PreparedTokenState;
@@ -857,7 +865,13 @@ export function createLynxBackgroundTransport(
 		const previousAccepted = accepted;
 		const previousMainAccepted = mainAccepted;
 		try {
-			handles = prepareLynxHandleDeltas(container, entry.batch, message.handles, message);
+			handles = prepareLynxHandleDeltas(
+				container,
+				entry.handleBatch,
+				message.handles,
+				message,
+				(planId) => entry.handlePlans.get(planId),
+			);
 			// Applying handle deltas and acceptance callbacks can invoke user code.
 			// Queue any resulting calls until all older pre-acceptance IDs can drain.
 			publishingAcknowledgement = true;
@@ -1503,6 +1517,8 @@ export function createLynxBackgroundTransport(
 	const transport: LynxBackgroundTransport = {
 		mode: 'async',
 		planInstantiation: true,
+		compactPlanInstantiation: (plan, values) =>
+			canCompactLynxPlanInstance(plan, values, isPlanAnnounced),
 		ready: readyDeferred.promise,
 		prepareBatch(target, batch, identity): UniversalAsyncPreparedHostBatch {
 			if (target !== container) {
@@ -1554,6 +1570,13 @@ export function createLynxBackgroundTransport(
 			// registry are folded, so an unannounced plan (registry skew, lazy
 			// chunk, collision) degrades to the per-node commands staged here.
 			const wireBatch = foldLynxPlanInstances(preparedBatch, isPlanAnnounced);
+			const handleBatch = wireBatch;
+			const handlePlans = new Map<string, UniversalPlan>();
+			for (const instance of preparedBatch.planInstances ?? []) {
+				if (instance.compact !== true) continue;
+				const planId = lynxPlanWireId(instance.plan);
+				if (planId !== null) handlePlans.set(planId, instance.plan);
+			}
 			// An empty batch mutates nothing on main, so it never rides the frame
 			// budget, and once a batch has crossed it does not cross the wire at
 			// all — see the elision branch in dispatchThroughPaceGate below.
@@ -1594,6 +1617,8 @@ export function createLynxBackgroundTransport(
 					const entry: PendingCommit = {
 						identity: frozenIdentity(identity),
 						batch: preparedBatch,
+						handleBatch,
+						handlePlans,
 						acknowledge,
 						deferred: createDeferred<void>(),
 						token,

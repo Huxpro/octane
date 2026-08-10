@@ -66,9 +66,23 @@ try {
 	process.env.BENCH_AUTOROWS = String(rows);
 	fs.mkdirSync(workRoot, { recursive: true });
 	for (const target of targets) {
-		const checkout = fs.mkdtempSync(path.join(workRoot, `${target.id}-`));
 		const variant = `${target.id}${rows === 0 ? '' : `-rows${rows}`}${args.profile ? '-profile' : ''}`;
 		const destination = path.join(outputRoot, variant);
+		if (target.workspace === true) {
+			buildTableApp({ silent: true, destinationRoot: destination });
+			const bundle = path.join(destination, 'main.web.bundle');
+			manifest.push({
+				...target,
+				rows,
+				profile: args.profile,
+				bundle: path.relative(import.meta.dirname, bundle),
+				bytes: fs.statSync(bundle).size,
+				sha256: sha256(bundle),
+			});
+			console.log(`[s3-build] ${variant} ${manifest.at(-1).sha256}`);
+			continue;
+		}
+		const checkout = fs.mkdtempSync(path.join(workRoot, `${target.id}-`));
 		try {
 			exportTarget(target, checkout);
 			buildTableApp({ silent: true, repositoryRoot: checkout, destinationRoot: destination });
