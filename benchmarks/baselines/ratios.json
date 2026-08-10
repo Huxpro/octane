@@ -1453,7 +1453,7 @@
     "target": "octane-lynx",
     "reference": "changed-rows-model",
     "maxRatio": 1,
-    "note": "Absolute serialized-commit budget at the CI (quick) scale: model pins 2048 bytes and the measured select commit is 225 bytes on 2026-08-08 (was 237787 before the fix). Label text never rides a select commit, so this is deterministic."
+    "note": "Absolute serialized-commit budget at the CI (quick) scale: model pins 2048 bytes and the paced select commit is 237 bytes (225 without the 12-byte frame-pacing flag; 237787 before change-size wire). Label text never rides a select commit, so this is deterministic."
   },
   {
     "suite": "lynx-table",
@@ -1489,6 +1489,30 @@
   },
   {
     "suite": "lynx-table",
+    "op": "update_storm_paced_frame_commits_1k",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 1,
+    "note": "Commits carrying pace:true each consume one main-thread frame. The model is the number of frames actually pumped during the measured storm, so a ratio above 1 means the dispatch gate crossed more than one frame-consuming commit per observed frame."
+  },
+  {
+    "suite": "lynx-table",
+    "op": "update_storm_paced_commits_1k",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 1,
+    "note": "Total commits under pacing keep the one-per-scheduled-flush ceiling: 50 ticks permit at most 50 commits. Empty fold-tail batches cross unpaced; eliding them is a separate universal-core optimization. More than 50 would mean pacing is splitting a flush across commits."
+  },
+  {
+    "suite": "lynx-table",
+    "op": "update_storm_paced_commands_1k",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 5,
+    "note": "Folding gate: the paced storm touches the same 100 rows every tick, so the single-final-commit floor is 100 update commands. The 5x ceiling permits four extra fold boundaries across host event-loop interleavings; unpaced dispatch costs 5000 = 50x."
+  },
+  {
+    "suite": "lynx-table",
     "op": "select_commands_10k",
     "target": "octane-lynx",
     "reference": "changed-rows-model",
@@ -1501,7 +1525,7 @@
     "target": "octane-lynx",
     "reference": "changed-rows-model",
     "maxRatio": 1,
-    "note": "Absolute serialized-commit budget: the model pins 2048 bytes and the measured select commit is 225 bytes on 2026-08-08 (was 2406468 = 2.4MB before the fix, byte-identical to the captured production payload that motivated this suite)."
+    "note": "Absolute serialized-commit budget: the model pins 2048 bytes and the paced select commit is 237 bytes (225 without the 12-byte frame-pacing flag; 2406468 = 2.4MB before change-size wire)."
   },
   {
     "suite": "lynx-table",

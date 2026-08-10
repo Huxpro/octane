@@ -30,10 +30,13 @@ size" regression gate. The suite runs from the root runner:
 node benchmarks/bench.mjs --only lynx-table --ratios
 ```
 
-Because the in-process ContextProxy is synchronous, acknowledgements return
-immediately and the storm gates see one commit per tick; the asynchronous
-"renders while a commit is in flight coalesce into the next commit" contract
-is pinned separately in `packages/octane/tests/universal-transport.test.ts`.
+The standard in-process scenario has no frame source, so acknowledgements and
+frame pulses return synchronously and its storm gates see one commit per tick.
+A second deterministic scenario injects a manually pumped main-thread frame
+source, floods updates faster than those frames, and gates both folding cost
+and the invariant that at most one non-empty commit crosses per observed
+frame. The lower-level in-flight coalescing contract remains pinned in
+`packages/octane/tests/universal-transport.test.ts`.
 
 ## 2. Lynx-for-Web wall-clock harness (`web/run-web.mjs`, informational)
 

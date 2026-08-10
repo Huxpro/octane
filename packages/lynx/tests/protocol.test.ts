@@ -212,6 +212,12 @@ function installMainHarness(context: FakeContextProxy, autoReady = true): MainHa
 				type: 'ack',
 				handles: handleDeltas(commit),
 			});
+			// A main thread with no frame source answers a paced commit's apply
+			// with an immediate frame pulse; mirror that so scripted commits keep
+			// dispatching without frame alignment.
+			if ((commit as { pace?: true }).pace === true) {
+				context.sendToBackground({ ...commitIdentity(commit), type: 'frame-pulse' });
+			}
 			if (completion !== null) {
 				context.sendToBackground(
 					completion === 'complete'
@@ -1433,7 +1439,11 @@ describe('@octanejs/lynx transported protocol', () => {
 				},
 			}),
 		});
-		const transport = createLynxBackgroundTransport(context, container);
+		// Acks are hand-scripted with custom handle deltas and no frame pulses;
+		// pin unpaced dispatch so every scripted commit crosses immediately.
+		const transport = createLynxBackgroundTransport(context, container, {
+			commitPacing: 'immediate',
+		});
 		const root = createUniversalRoot(container, createLynxClientDriver(), { transport });
 		transport.bindRoot(root);
 		const refs: Array<LynxPublicHandle | null> = [];
@@ -1788,7 +1798,10 @@ describe('@octanejs/lynx transported protocol', () => {
 		const context = new FakeContextProxy();
 		installMainHarness(context);
 		const container = createLynxClientContainer();
-		const transport = createLynxBackgroundTransport(context, container);
+		// Acks are hand-scripted without frame pulses; pin unpaced dispatch.
+		const transport = createLynxBackgroundTransport(context, container, {
+			commitPacing: 'immediate',
+		});
 		await transport.ready;
 		const commit = async (
 			batch: UniversalHostBatch,

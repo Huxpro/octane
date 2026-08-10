@@ -48,6 +48,13 @@ export interface CreateLynxRootOptions {
 	readonly context?: LynxContextProxy;
 	/** Explicit scheduler when neither Lynx nor the JS runtime supplies one. */
 	readonly scheduleMicrotask?: (callback: () => void) => void;
+	/**
+	 * Commit dispatch pacing toward the main thread. `frame` (default) sends at
+	 * most one commit per main-thread frame while keeping the first commit after
+	 * idle immediate; `immediate` restores unpaced dispatch for hosts and tests
+	 * that must observe every commit without frame alignment.
+	 */
+	readonly commitPacing?: 'immediate' | 'frame';
 	readonly onDiagnostic?: (error: Error) => void;
 }
 
@@ -237,6 +244,7 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 		try {
 			return createLynxBackgroundTransport(context, container, {
 				onDiagnostic: options.onDiagnostic,
+				commitPacing: options.commitPacing,
 				isPageDestroyed: lifecycleInstallation.isPageDestroyed,
 				prepareWorkletBatch: (batch) => prepareLynxClientWorkletBatch(container, batch),
 				onWorkletBatchAccepted: acceptWorkletBatch,
