@@ -501,10 +501,35 @@ export interface UniversalEventCapability {
 	classify(name: string): UniversalEventDefinition | null;
 }
 
+/** One staged event listener of a plan-instance subtree, keyed by its host ID. */
+export interface UniversalPlanInstanceEvent {
+	readonly id: number;
+	readonly type: string;
+	readonly listener: number;
+	readonly priority: UniversalEventPriority;
+}
+
+/**
+ * Provenance for a batch subtree that was materialized wholesale from one
+ * `universalValue(plan, values)` instance: every physical host in `ids` (listed
+ * in pre-order) is new, visible, and covered by `plan` plus `values`. A
+ * transport that declares `planInstantiation` may re-encode the instance's
+ * commands as one wire-level instruction; the commands themselves stay in the
+ * batch, so every other consumer ignores this field.
+ */
+export interface UniversalPlanInstance {
+	readonly plan: UniversalPlan;
+	readonly values: readonly unknown[];
+	readonly rootId: number;
+	readonly ids: readonly number[];
+	readonly events: readonly UniversalPlanInstanceEvent[];
+}
+
 export interface UniversalHostBatch {
 	readonly renderer: string;
 	readonly version: number;
 	readonly commands: readonly UniversalHostCommand[];
+	readonly planInstances?: readonly UniversalPlanInstance[];
 }
 
 export interface UniversalTransportIdentity {
@@ -623,6 +648,13 @@ export interface UniversalCommitTransport<Container = unknown> {
 
 export interface UniversalAsyncCommitTransport<Container = unknown> {
 	readonly mode: 'async';
+	/**
+	 * Ask staging to attach `planInstances` provenance to each prepared batch.
+	 * `true` collects every eligible materialization; a predicate can reject a
+	 * plan before staging walks its new draft subtree. Collection is opt-in.
+	 */
+	readonly planInstantiation?:
+		true | ((plan: UniversalPlan, values: readonly unknown[]) => boolean);
 	prepareBatch(
 		container: Container,
 		batch: UniversalHostBatch,
@@ -703,6 +735,11 @@ interface BlueprintHost {
 	localCallbacks: Map<string, BlueprintHostCallback>;
 	visibility: UniversalVisibility;
 	children: BlueprintNode[];
+	// Set only on the single physical root of a plan-value materialization, so
+	// staging can attribute the whole subtree to `plan` plus `values` when a
+	// transport asks for plan-instance provenance.
+	plan?: UniversalPlan;
+	planValues?: readonly unknown[];
 }
 
 interface BlueprintPortal {
@@ -3439,6 +3476,13 @@ function materializePlanValue(
 		);
 	}
 	const nodes = materializeNode(value.plan.root, value.values, expectedRenderer, [...path, 'plan']);
+	if (nodes.length === 1 && nodes[0].kind === 'host') {
+		// One write per plan-value materialization; the field stays absent from
+		// every other blueprint host, and only provenance-collecting transports
+		// read it.
+		nodes[0].plan = value.plan;
+		nodes[0].planValues = value.values;
+	}
 	if (value.key === null) return nodes;
 	if (nodes.length === 1) {
 		nodes[0].key = value.key;
@@ -5642,6 +5686,7 @@ function freezeUniversalHostBatch(
 	renderer: string,
 	version: number,
 	commands: readonly UniversalHostCommand[],
+	planInstances: readonly UniversalPlanInstance[] | null = null,
 ): UniversalHostBatch {
 	for (const command of commands) {
 		if (
@@ -5652,11 +5697,25 @@ function freezeUniversalHostBatch(
 		}
 		Object.freeze(command);
 	}
-	return Object.freeze({
-		renderer,
-		version,
-		commands: Object.freeze(commands),
-	});
+	const frozenCommands = Object.freeze(commands);
+	return planInstances === null
+		? Object.freeze({ renderer, version, commands: frozenCommands })
+		: Object.freeze({
+				renderer,
+				version,
+				commands: frozenCommands,
+				planInstances: Object.freeze(planInstances),
+			});
+}
+
+function stripUniversalPlanInstances(batch: UniversalHostBatch): UniversalHostBatch {
+	return batch.planInstances === undefined
+		? batch
+		: Object.freeze({
+				renderer: batch.renderer,
+				version: batch.version,
+				commands: batch.commands,
+			});
 }
 
 function collectEffectEventCells(owners: readonly UniversalOwnerRecord[]): EffectEventCell[] {
@@ -8712,6 +8771,78 @@ class UniversalRootImpl<Container, PublicInstance> implements UniversalRoot<any>
 			op: 'destroy',
 			id: record.id,
 		}));
+		// Plan-instance provenance: attribute each fully-new, visible subtree that
+		// was materialized from one `universalValue(plan, values)` to its plan, so
+		// an opted-in transport can re-encode those commands as one wire
+		// instruction. Nested stamps are collected too — an outer instance the
+		// transport cannot use must not hide the inner ones — and the transport
+		// resolves the overlap by accepting outer-first.
+		let planInstances: UniversalPlanInstance[] | null = null;
+		// No create command means no fully-new host can qualify. Avoid walking a
+		// retained tree on update-only commits just to rediscover that fact.
+		if (creates.length !== 0 && this.transport !== null) {
+			const planInstantiation = (this.transport as UniversalAsyncCommitTransport).planInstantiation;
+			if (planInstantiation !== undefined) {
+				const instances: UniversalPlanInstance[] = [];
+				const collectInstance = (root: DraftRecord): boolean => {
+					const ids: number[] = [];
+					const events: UniversalPlanInstanceEvent[] = [];
+					const walk = (draft: DraftRecord): boolean => {
+						if (draft.retained === true) return false;
+						const record = draft.record;
+						if (record.kind === 'portal') return false;
+						if (record.kind === 'host') {
+							if (!draft.isNew) return false;
+							const blueprintHost = draft.blueprint as BlueprintHost;
+							if (blueprintHost.visibility !== 'visible') return false;
+							if (blueprintHost.lifecycles.size !== 0 || blueprintHost.localCallbacks.size !== 0) {
+								return false;
+							}
+							ids.push(record.id);
+							if (blueprintHost.events.size !== 0) {
+								const staged = stagedEvents.get(record);
+								if (staged === undefined) return false;
+								for (const event of staged.values()) {
+									events.push({
+										id: record.id,
+										type: event.type,
+										listener: event.listener,
+										priority: event.priority,
+									});
+								}
+							}
+						}
+						for (const child of draft.children) if (!walk(child)) return false;
+						return true;
+					};
+					if (!walk(root)) return false;
+					const blueprint = root.blueprint as BlueprintHost;
+					instances.push({
+						plan: blueprint.plan!,
+						values: blueprint.planValues!,
+						rootId: root.record.id,
+						ids,
+						events,
+					});
+					return true;
+				};
+				const findInstances = (draft: DraftRecord): void => {
+					if (draft.record.kind === 'host' && draft.isNew) {
+						const blueprint = draft.blueprint as BlueprintHost;
+						const plan = blueprint.plan;
+						if (
+							plan !== undefined &&
+							(planInstantiation === true || planInstantiation(plan, blueprint.planValues!))
+						) {
+							collectInstance(draft);
+						}
+					}
+					for (const child of draft.children) findInstances(child);
+				};
+				findInstances(draftRoot);
+				if (instances.length !== 0) planInstances = instances;
+			}
+		}
 		const commands: UniversalHostCommand[] = [
 			...creates,
 			...updates,
@@ -8723,7 +8854,12 @@ class UniversalRootImpl<Container, PublicInstance> implements UniversalRoot<any>
 			...visibilityCommands,
 			...destroys,
 		];
-		const batch = freezeUniversalHostBatch(this.renderer, this.nextBatchVersion++, commands);
+		const batch = freezeUniversalHostBatch(
+			this.renderer,
+			this.nextBatchVersion++,
+			commands,
+			planInstances,
+		);
 		const retryThenables = [...attempt.retryThenables];
 		const retryMemos = retryThenables.length === 0 ? ([] as const) : collectSuspendedMemos(attempt);
 
@@ -9033,9 +9169,13 @@ class UniversalRootImpl<Container, PublicInstance> implements UniversalRoot<any>
 			}
 		}
 
+		// Provenance belongs to transport preparation, not to the public
+		// transaction returned after the commit. Keeping it there would retain one
+		// plan/value/ID snapshot per materialization for as long as callers retain
+		// an otherwise-settled transaction.
 		const transaction = new UniversalTransactionImpl(
 			this,
-			batch,
+			stripUniversalPlanInstances(batch),
 			preparedHost === null ? null : () => preparedHost!.apply(),
 			preparedAsyncHost === null ? null : (acknowledge) => preparedAsyncHost!.apply(acknowledge),
 			identity,

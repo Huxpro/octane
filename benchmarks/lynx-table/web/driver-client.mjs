@@ -232,7 +232,7 @@ export const DRIVER_CLIENT_JS = `(() => {
   };
 
   // -- measurement primitives ------------------------------------------------
-  x.arm = (spec, timeoutMs) =>
+  const arm = (spec, timeoutMs) =>
     new Promise((resolve, reject) => {
       let t0 = null;
       const onDown = () => { t0 = performance.now(); };
@@ -249,6 +249,24 @@ export const DRIVER_CLIENT_JS = `(() => {
       };
       requestAnimationFrame(tick);
     });
+  x.arm = arm;
+
+  // Playwright cannot await arm() before clicking because arm resolves only
+  // after the requested presentation. The token pair makes listener readiness
+  // an explicit synchronous handshake while preserving arm() for existing
+  // callers: create the promise, return its token, then await it separately.
+  let nextArmToken = 1;
+  const armed = new Map();
+  x.armToken = (spec, timeoutMs) => {
+    const token = nextArmToken++;
+    armed.set(token, arm(spec, timeoutMs));
+    return token;
+  };
+  x.armResult = (token) => {
+    const result = armed.get(token);
+    if (!result) throw new Error('unknown arm token ' + token);
+    return result.finally(() => armed.delete(token));
+  };
 
   x.until = (spec, timeoutMs = 120000) =>
     new Promise((resolve, reject) => {

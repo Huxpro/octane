@@ -195,19 +195,31 @@ async function buttonRect(page, label) {
 }
 
 async function measureButton(page, label, spec, timeoutMs = 180000) {
-	const armed = page.evaluate((request) => globalThis.__x.arm(request.spec, request.timeoutMs), {
-		spec,
-		timeoutMs,
-	});
+	// Target discovery is driver work, not framework response time. Resolve the
+	// hit point before arming the in-page click-to-presentation timer.
 	const rectangle = await buttonRect(page, label);
+	const token = await page.evaluate(
+		(request) => globalThis.__x.armToken(request.spec, request.timeoutMs),
+		{
+			spec,
+			timeoutMs,
+		},
+	);
+	const armed = page.evaluate((value) => globalThis.__x.armResult(value), token);
 	await page.mouse.click(rectangle.x, rectangle.y);
 	return (await armed).ms;
 }
 
 async function measureCell(page, index) {
-	const armed = page.evaluate((row) => globalThis.__x.arm({ type: 'dangerAt', index: row }), index);
+	// Keep the same boundary as buttons: locating a row must not become select
+	// time merely because one bundle changes the page's JIT/layout state.
 	const rectangle = await page.evaluate((row) => globalThis.__x.cellRect(row, 'col-label'), index);
 	if (rectangle === null) throw new Error(`row ${index} label not found.`);
+	const token = await page.evaluate(
+		(row) => globalThis.__x.armToken({ type: 'dangerAt', index: row }),
+		index,
+	);
+	const armed = page.evaluate((value) => globalThis.__x.armResult(value), token);
 	await page.mouse.click(rectangle.x, rectangle.y);
 	return (await armed).ms;
 }

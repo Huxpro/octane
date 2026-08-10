@@ -1441,6 +1441,22 @@
   },
   {
     "suite": "lynx-table",
+    "op": "create_commands_1k",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 1,
+    "note": "Strict plan-instantiation gate: creating 1,000 rows must fold to exactly one instantiate command per row. A breach means the wire is no longer at the one-command-per-row semantic floor."
+  },
+  {
+    "suite": "lynx-table",
+    "op": "create_commands_10k",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 1,
+    "note": "Strict plan-instantiation gate at 10k rows: creation wire cost must remain exactly one command per row, independent of the per-row subtree size."
+  },
+  {
+    "suite": "lynx-table",
     "op": "select_commands_1k",
     "target": "octane-lynx",
     "reference": "changed-rows-model",

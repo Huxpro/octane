@@ -3,6 +3,7 @@ import {
 	type UniversalAsyncCommitTransport,
 	type UniversalAsyncPreparedHostBatch,
 	type UniversalHostBatch,
+	type UniversalPlan,
 	type UniversalRoot,
 	type UniversalTransportAcknowledgement,
 	type UniversalEventPriority,
@@ -47,6 +48,7 @@ import {
 	type LynxTransportAcknowledgement,
 } from './protocol.js';
 import type { LynxBackgroundNativeEventDelivery } from './native-event-receiver.js';
+import { foldLynxPlanInstances, isLynxPlanInstanceEligible } from './plan-wire.js';
 import {
 	isLynxMainThreadWorkletDescriptor,
 	isolateLynxWorkletValue,
@@ -290,6 +292,12 @@ export function createLynxBackgroundTransport(
 	const readyDeferred = createDeferred<void>();
 	// A transport can be synchronously closed before a root observes `ready`.
 	void readyDeferred.promise.catch(() => {});
+	// Plan IDs main announced from its registry (in the ready reply, then via
+	// plan-registry messages as lazy chunks register more). Folding is limited
+	// to this set, so registry skew degrades to per-node commands.
+	const announcedPlans = new Map<string, string>();
+	const isPlanAnnounced = (planId: string, canonical: string): boolean =>
+		announcedPlans.get(planId) === canonical;
 	let accepted: UniversalTransportIdentity | null = null;
 	let boundRoot: Pick<UniversalRoot, 'dispatchTransportEvent'> | null = null;
 	let closedError: Error | null = null;
@@ -913,7 +921,8 @@ export function createLynxBackgroundTransport(
 			message.type === 'main-ready' ||
 			message.type === 'page-destroy' ||
 			message.type === 'page-data' ||
-			message.type === 'global-props'
+			message.type === 'global-props' ||
+			message.type === 'plan-registry'
 		) {
 			return;
 		}
@@ -1374,7 +1383,14 @@ export function createLynxBackgroundTransport(
 			return;
 		}
 		if (message.type === 'main-ready') {
+			if (message.plans !== undefined) {
+				for (const plan of message.plans) announcedPlans.set(plan.id, plan.canonical);
+			}
 			handleReady(message);
+			return;
+		}
+		if (message.type === 'plan-registry') {
+			for (const plan of message.plans) announcedPlans.set(plan.id, plan.canonical);
 			return;
 		}
 		if (message.type === 'call-main-result' || message.type === 'call-main-error') {
@@ -1450,6 +1466,9 @@ export function createLynxBackgroundTransport(
 
 	const transport: LynxBackgroundTransport = {
 		mode: 'async',
+		planInstantiation(plan: UniversalPlan, values: readonly unknown[]) {
+			return isLynxPlanInstanceEligible(plan, values, isPlanAnnounced);
+		},
 		ready: readyDeferred.promise,
 		prepareBatch(target, batch, identity): UniversalAsyncPreparedHostBatch {
 			if (target !== container) {
@@ -1492,16 +1511,36 @@ export function createLynxBackgroundTransport(
 					},
 				});
 			}
-			const preparedBatch = options.prepareWorkletBatch?.(batch) ?? batch;
+			const preparedWithProvenance = options.prepareWorkletBatch?.(batch) ?? batch;
+			// Fold provable plan instances into instantiate commands for the wire
+			// message only. Background bookkeeping — handle-delta validation against
+			// main's acknowledgement and worklet lifetimes — keeps reading the
+			// per-node `preparedBatch`, which mirrors the commands main regenerates
+			// when it expands each instantiate. Only plans main announced from its
+			// registry are folded, so an unannounced plan (registry skew, lazy
+			// chunk, or locally detected collision) degrades to the per-node commands
+			// staged here.
+			const wireBatch = foldLynxPlanInstances(preparedWithProvenance, isPlanAnnounced);
+			// Provenance is consumed by the fold above. Handle validation and worklet
+			// ownership need only the original per-node commands, so do not retain the
+			// per-instance plan/value/ID snapshots through acknowledgement.
+			const preparedBatch: UniversalHostBatch =
+				preparedWithProvenance.planInstances === undefined
+					? preparedWithProvenance
+					: Object.freeze({
+							renderer: preparedWithProvenance.renderer,
+							version: preparedWithProvenance.version,
+							commands: preparedWithProvenance.commands,
+						});
 			// An empty batch mutates nothing on main, so it never rides the frame
 			// budget: it crosses unpaced, main answers it with no pulse, and it
 			// neither waits for nor closes the gate. Renders folded behind a held
 			// commit leave a tail of such no-op batches (one per scheduled flush),
 			// and pacing them would spend a frame each to learn nothing.
-			const paceThisCommit = commitPacing === 'frame' && preparedBatch.commands.length > 0;
-			const commit: LynxCommitWireMessage = paceThisCommit
-				? { ...identity, type: 'commit', batch: preparedBatch, pace: true }
-				: { ...identity, type: 'commit', batch: preparedBatch };
+			const paceThisCommit = commitPacing === 'frame' && wireBatch.commands.length > 0;
+			let commit: LynxCommitWireMessage | null = paceThisCommit
+				? { ...identity, type: 'commit', batch: wireBatch, pace: true }
+				: { ...identity, type: 'commit', batch: wireBatch };
 			try {
 				selfCheckLynxBackgroundOutboundMessage(commit);
 			} catch (error) {
@@ -1547,19 +1586,21 @@ export function createLynxBackgroundTransport(
 					const dispatchThroughPaceGate = (): void => {
 						// Stale by abort or transport close while ready/pacing gated.
 						if (pending.get(identity.version) !== entry) return;
-						if (paceGateVersion !== null && commit.pace === true) {
+						if (paceGateVersion !== null && paceThisCommit) {
 							holdForPaceGate(dispatchThroughPaceGate);
 							return;
 						}
+						const outbound = commit;
+						if (outbound === null) return;
 						entry.state = 'sent';
 						// Close the gate before dispatching: a synchronous ContextProxy
 						// delivers main's frame pulse re-entrantly inside dispatch(), and
 						// that pulse must find this commit's gate already closed.
-						if (commit.pace === true) paceGateVersion = identity.version;
+						if (paceThisCommit) paceGateVersion = identity.version;
 						let dispatchError: Error | null = null;
 						dispatchingCommit = entry;
 						try {
-							dispatch(commit);
+							dispatch(outbound);
 						} catch (error) {
 							dispatchError = report(
 								error,
@@ -1567,6 +1608,9 @@ export function createLynxBackgroundTransport(
 							);
 						} finally {
 							dispatchingCommit = null;
+							// ContextProxy consumes/clones the message during dispatch. The
+							// settled transaction must not retain the large instantiate payload.
+							commit = null;
 						}
 						if (dispatchError !== null) {
 							terminalCloseAfterHostAcceptance(entry.identity, dispatchError);

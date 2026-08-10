@@ -34,6 +34,7 @@ import {
 	type LynxBackgroundInboundMessage,
 	type LynxContextProxy,
 } from '../src/core/protocol.js';
+import { lynxPlanRegistrySnapshot } from '../src/core/plan-wire.js';
 
 interface SceneProps {
 	readonly id: string;
@@ -598,6 +599,9 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 				renderer: LYNX_TRANSPORT_RENDERER,
 				type: 'main-ready',
 				request: 0,
+				// The ready announcement carries this realm's instantiable plans
+				// (the compiled scene registers one through the facade).
+				plans: [...lynxPlanRegistrySnapshot()],
 			},
 		]);
 		expect(() =>

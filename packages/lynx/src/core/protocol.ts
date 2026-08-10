@@ -16,6 +16,7 @@ import type {
 	UniversalTransportRejectMessage,
 } from 'octane/universal/native';
 import type { LynxFirstTreeSnapshot } from './first-screen.js';
+import type { LynxPlanRegistration, LynxWireHostBatch, LynxWireHostCommand } from './plan-wire.js';
 import { LYNX_DEVELOPMENT } from './environment.js';
 import { decodeLynxPortalTargetId } from './portal.js';
 import { LYNX_RENDERER_ID } from './renderer-id.js';
@@ -56,6 +57,21 @@ export interface LynxMainReadyReply {
 	readonly type: 'main-ready';
 	readonly request: number;
 	readonly firstTree?: LynxFirstTreeSnapshot;
+	/**
+	 * Wire IDs of the plans this main thread can instantiate. A negotiated
+	 * capability, not a protocol revision: the background folds plan-instance
+	 * commands only for announced IDs, so a main thread that announces nothing
+	 * receives per-node commands exactly as before.
+	 */
+	readonly plans?: readonly LynxPlanRegistration[];
+}
+
+/** Root-independent announcement of plans registered after the ready reply. */
+export interface LynxPlanRegistryMessage {
+	readonly protocol: typeof LYNX_TRANSPORT_PROTOCOL_VERSION;
+	readonly renderer: typeof LYNX_TRANSPORT_RENDERER;
+	readonly type: 'plan-registry';
+	readonly plans: readonly LynxPlanRegistration[];
 }
 
 /** Root-independent native page lifetime teardown broadcast to the background runtime. */
@@ -131,7 +147,8 @@ export interface LynxAdoptionReadyMessage extends UniversalTransportIdentity {
  * scheduler holds later dispatches until that pulse so at most one commit
  * crosses per main-thread frame.
  */
-export interface LynxCommitWireMessage extends UniversalTransportCommitMessage {
+export interface LynxCommitWireMessage extends Omit<UniversalTransportCommitMessage, 'batch'> {
+	readonly batch: LynxWireHostBatch;
 	readonly pace?: true;
 }
 
@@ -267,6 +284,7 @@ export type LynxBackgroundOutboundMessage =
 export type LynxBackgroundInboundMessage =
 	| LynxMainReadyReply
 	| LynxPageDestroyMessage
+	| LynxPlanRegistryMessage
 	| LynxDataLifecycleMessage
 	| LynxCallBackgroundMessage
 	| LynxCancelBackgroundCallMessage
@@ -521,8 +539,56 @@ const REMOVE_KEYS = Object.freeze(['op', 'parent', 'id']);
 const DESTROY_KEYS = Object.freeze(['op', 'id']);
 const COMMIT_KEYS = Object.freeze(['protocol', 'renderer', 'root', 'version', 'type', 'batch']);
 const PACED_COMMIT_KEYS = Object.freeze([...COMMIT_KEYS, 'pace']);
+const INSTANTIATE_KEYS = Object.freeze([
+	'op',
+	'plan',
+	'parent',
+	'before',
+	'ids',
+	'values',
+	'events',
+]);
+const INSTANTIATE_EVENT_KEYS = Object.freeze(['id', 'type', 'listener', 'priority']);
 
-function assertCommand(value: unknown, index: number): asserts value is UniversalHostCommand {
+function assertInstantiate(command: Record<string, unknown>, index: number): void {
+	const label = COMMANDS_LABEL;
+	exactKeys(command, INSTANTIATE_KEYS, label, index);
+	nonEmptyString(command.plan, label, index, 'plan');
+	hostParent(command.parent, label, index, 'parent');
+	nullableHostId(command.before, label, index, 'before');
+	if (!Array.isArray(command.ids) || command.ids.length === 0) {
+		fail(label, 'must be a non-empty array.', index, 'ids');
+	}
+	for (let position = 0; position < command.ids.length; position++) {
+		positiveInteger(command.ids[position], `${composePath(label, index, 'ids')}[${position}]`);
+	}
+	if (!Array.isArray(command.values)) fail(label, 'must be an array.', index, 'values');
+	for (let position = 0; position < command.values.length; position++) {
+		// Instantiate slot values are leaves by construction: handlers are
+		// scrubbed background-side, and composite values disqualify the fold.
+		if (!isWireLeaf(command.values[position])) {
+			fail(`${composePath(label, index, 'values')}[${position}]`, 'must be a wire leaf.');
+		}
+	}
+	if (!Array.isArray(command.events)) fail(label, 'must be an array.', index, 'events');
+	for (let position = 0; position < command.events.length; position++) {
+		const entryLabel = `${composePath(label, index, 'events')}[${position}]`;
+		const entry = record(command.events[position], entryLabel);
+		exactKeys(entry, INSTANTIATE_EVENT_KEYS, entryLabel);
+		positiveInteger(entry.id, `${entryLabel}.id`);
+		nonEmptyString(entry.type, `${entryLabel}.type`);
+		positiveInteger(entry.listener, `${entryLabel}.listener`);
+		if (
+			entry.priority !== 'discrete' &&
+			entry.priority !== 'continuous' &&
+			entry.priority !== 'default'
+		) {
+			fail(`${entryLabel}.priority`, 'must be discrete, continuous, or default.');
+		}
+	}
+}
+
+function assertCommand(value: unknown, index: number): asserts value is LynxWireHostCommand {
 	// One call per accepted host node. Every path below is composed lazily.
 	const label = COMMANDS_LABEL;
 	const command = record(value, label, index);
@@ -561,6 +627,9 @@ function assertCommand(value: unknown, index: number): asserts value is Universa
 		case 'lifecycle':
 		case 'local-callback':
 			fail(label, `${command.op} is not supported by the Lynx async host.`, index, 'op');
+		case 'instantiate':
+			assertInstantiate(command, index);
+			return;
 		case 'visibility':
 			exactKeys(command, VISIBILITY_KEYS, label, index);
 			positiveInteger(command.id, label, index, 'id');
@@ -585,7 +654,7 @@ function assertCommand(value: unknown, index: number): asserts value is Universa
 function assertBatch(
 	value: unknown,
 	identity: UniversalTransportIdentity,
-): asserts value is UniversalHostBatch {
+): asserts value is LynxWireHostBatch {
 	const batch = record(value, 'commit.batch');
 	exactKeys(batch, ['renderer', 'version', 'commands'], 'commit.batch');
 	if (batch.renderer !== identity.renderer)
@@ -774,17 +843,36 @@ function assertFirstTreeSnapshot(value: unknown, label: string): void {
 	}
 }
 
+function assertPlanRegistrations(value: unknown, label: string): void {
+	// Both announcement carriers omit the field instead of sending nothing.
+	if (!Array.isArray(value) || value.length === 0) fail(label, 'must be a non-empty array.');
+	for (let index = 0; index < value.length; index++) {
+		const entryLabel = `${label}[${index}]`;
+		const entry = record(value[index], entryLabel);
+		exactKeys(entry, ['id', 'canonical'], entryLabel);
+		nonEmptyString(entry.id, `${entryLabel}.id`);
+		nonEmptyString(entry.canonical, `${entryLabel}.canonical`);
+	}
+}
+
 function assertReady(value: unknown, reply: boolean): LynxMainReadyRequest | LynxMainReadyReply {
 	const label = reply ? 'main-ready reply' : 'main-ready request';
 	const message = record(value, label);
 	const hasFirstTree = reply && Object.prototype.hasOwnProperty.call(message, 'firstTree');
+	const hasPlans = reply && Object.prototype.hasOwnProperty.call(message, 'plans');
 	exactKeys(
 		message,
-		hasFirstTree
-			? ['protocol', 'renderer', 'type', 'request', 'firstTree']
-			: ['protocol', 'renderer', 'type', 'request'],
+		[
+			'protocol',
+			'renderer',
+			'type',
+			'request',
+			...(hasFirstTree ? ['firstTree'] : []),
+			...(hasPlans ? ['plans'] : []),
+		],
 		label,
 	);
+	if (hasPlans) assertPlanRegistrations(message.plans, `${label}.plans`);
 	if (message.protocol !== LYNX_TRANSPORT_PROTOCOL_VERSION) {
 		fail(label, `protocol must be ${LYNX_TRANSPORT_PROTOCOL_VERSION}.`);
 	}
@@ -904,6 +992,17 @@ export function validateLynxBackgroundInboundMessage(value: unknown): LynxBackgr
 			fail('page-destroy', `renderer must be ${JSON.stringify(LYNX_TRANSPORT_RENDERER)}.`);
 		}
 		return message as unknown as LynxPageDestroyMessage;
+	}
+	if (message.type === 'plan-registry') {
+		exactKeys(message, ['protocol', 'renderer', 'type', 'plans'], 'plan-registry');
+		if (message.protocol !== LYNX_TRANSPORT_PROTOCOL_VERSION) {
+			fail('plan-registry', `protocol must be ${LYNX_TRANSPORT_PROTOCOL_VERSION}.`);
+		}
+		if (message.renderer !== LYNX_TRANSPORT_RENDERER) {
+			fail('plan-registry', `renderer must be ${JSON.stringify(LYNX_TRANSPORT_RENDERER)}.`);
+		}
+		assertPlanRegistrations(message.plans, 'plan-registry.plans');
+		return message as unknown as LynxPlanRegistryMessage;
 	}
 	if (message.type === 'page-data') {
 		exactKeys(message, ['protocol', 'renderer', 'type', 'operation', 'data'], 'page-data');

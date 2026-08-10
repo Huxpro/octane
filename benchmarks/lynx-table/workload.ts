@@ -22,6 +22,12 @@ import type { LynxElementEventListener } from '../../packages/lynx/src/core/papi
 import type { LynxWireProfile } from '../../packages/lynx/src/core/profiling.js';
 import { App } from './app/src/App.lynx.tsrx';
 
+// run.mjs bridges the main-layer bundle's registered plans into this bundle's
+// registry through this export, so the fake main thread announces them and the
+// background folds — mirroring two device bundles that each evaluate their own
+// copy of the same hoisted plan constants.
+export { registerLynxPlan } from '../../packages/lynx/src/core/plan-wire.js';
+
 interface FakeNode {
 	readonly sign: number;
 	readonly type: string;

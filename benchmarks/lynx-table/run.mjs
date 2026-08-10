@@ -20,7 +20,11 @@ import { pathToFileURL } from 'node:url';
 import { build } from 'vite';
 
 import { octane } from '../../packages/octane/src/compiler/vite.js';
-import { lynxRenderers } from '../../packages/lynx/src/config.runtime.js';
+import {
+	lynxMainThreadRendererRegistry,
+	lynxRendererRules,
+	lynxRenderers,
+} from '../../packages/lynx/src/config.runtime.js';
 
 const ROOT = import.meta.dirname;
 const REPO = path.resolve(ROOT, '../..');
@@ -59,49 +63,74 @@ const scaleLabel = (rows) => (rows % 1000 === 0 ? `${rows / 1000}k` : String(row
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'octane-lynx-table-'));
 let payload;
 
-try {
-	await build({
+const RESOLVE_ALIASES = [
+	{ find: /^@octanejs\/lynx$/, replacement: path.join(LYNX_SOURCE, 'index.ts') },
+	{
+		find: /^@octanejs\/lynx\/intrinsics\/jsx-runtime$/,
+		replacement: path.join(LYNX_SOURCE, 'intrinsics.ts'),
+	},
+	{ find: /^@octanejs\/lynx\/(.*)$/, replacement: `${LYNX_SOURCE}/$1.ts` },
+	{
+		find: /^octane\/universal\/native$/,
+		replacement: path.join(OCTANE_SOURCE, 'universal-native.ts'),
+	},
+	{ find: /^octane\/universal$/, replacement: path.join(OCTANE_SOURCE, 'universal.ts') },
+	{ find: /^octane$/, replacement: path.join(OCTANE_SOURCE, 'index.ts') },
+];
+
+const BUILD_DEFINE = {
+	'process.env.NODE_ENV': '"production"',
+	__OCTANE_LYNX_PROFILE__: 'true',
+	__BENCH_AUTOROWS__: '0',
+};
+
+function layerBuild(entryName, renderers) {
+	return build({
 		configFile: false,
 		root: REPO,
 		logLevel: 'silent',
-		resolve: {
-			alias: [
-				{ find: /^@octanejs\/lynx$/, replacement: path.join(LYNX_SOURCE, 'index.ts') },
-				{
-					find: /^@octanejs\/lynx\/intrinsics\/jsx-runtime$/,
-					replacement: path.join(LYNX_SOURCE, 'intrinsics.ts'),
-				},
-				{ find: /^@octanejs\/lynx\/(.*)$/, replacement: `${LYNX_SOURCE}/$1.ts` },
-				{
-					find: /^octane\/universal\/native$/,
-					replacement: path.join(OCTANE_SOURCE, 'universal-native.ts'),
-				},
-				{ find: /^octane\/universal$/, replacement: path.join(OCTANE_SOURCE, 'universal.ts') },
-				{ find: /^octane$/, replacement: path.join(OCTANE_SOURCE, 'index.ts') },
-			],
-		},
-		plugins: [octane({ renderers: lynxRenderers, ssr: false })],
-		define: {
-			'process.env.NODE_ENV': '"production"',
-			__OCTANE_LYNX_PROFILE__: 'true',
-			__BENCH_AUTOROWS__: '0',
-		},
+		resolve: { alias: RESOLVE_ALIASES },
+		plugins: [octane({ renderers, ssr: false })],
+		define: BUILD_DEFINE,
 		build: {
 			write: true,
 			minify: false,
 			target: 'node22',
 			lib: {
-				entry: path.join(ROOT, 'workload.ts'),
+				entry: path.join(ROOT, `${entryName}.ts`),
 				formats: ['es'],
-				fileName: 'workload',
+				fileName: entryName,
 			},
 			outDir: tempDir,
 			emptyOutDir: false,
 			rollupOptions: { external: [] },
 		},
 	});
+}
+
+try {
+	// Two independent builds mirror the device's dual bundles: the workload
+	// carries the background-compiled app plus both fake threads, and the main
+	// layer carries the same app compiled with the main-thread renderer, whose
+	// evaluation registers its hoisted universal plans.
+	await layerBuild('workload', lynxRenderers);
+	await layerBuild('main-layer', {
+		registry: lynxMainThreadRendererRegistry,
+		rules: lynxRendererRules,
+	});
 
 	const workload = await import(pathToFileURL(path.join(tempDir, 'workload.js')).href);
+	const mainLayer = await import(pathToFileURL(path.join(tempDir, 'main-layer.js')).href);
+
+	// Bridge the main layer's registered plans into the workload realm, where
+	// the fake main thread reads its announcement snapshot. Identity is
+	// content-derived, so the bridged copies fold against the background's own
+	// structurally identical plan constants.
+	for (const registration of mainLayer.lynxPlanRegistrySnapshot()) {
+		const plan = mainLayer.resolveLynxPlan(registration.id);
+		if (plan === undefined) throw new Error(`Main-layer plan registry lost ${registration.id}.`);
+		workload.registerLynxPlan(plan);
+	}
 
 	const failures = [];
 	const octaneOps = {};
@@ -173,7 +202,10 @@ try {
 		// command model pins today's known 997-command LIS-reorder waterline; it
 		// is an upper bound, not a claim that the command set is minimal.
 		const changed = Math.ceil(rows / 10);
-		modelOps[`create_commands_${suffix}`] = countStat(result.create.commands, iterations);
+		// Create floor under plan instantiation: the main thread
+		// holds the row plan, so materializing N rows strictly implies one
+		// instantiate command per row.
+		modelOps[`create_commands_${suffix}`] = countStat(rows, iterations);
 		modelOps[`update10th_commands_${suffix}`] = countStat(changed, iterations);
 		modelOps[`update10th_item_renders_${suffix}`] = countStat(changed, iterations);
 		modelOps[`select_commands_${suffix}`] = countStat(2, iterations);
