@@ -15,8 +15,8 @@
  * server renderer does — effects no-op, memo runs once, ids are deterministic).
  * Every dynamic site is
  * wrapped in the hydration markers (`constants.ts`) the client `hydrateRoot`
- * cursor adopts. Events and refs are dropped (no DOM on the server); fragment
- * refs (`<Fragment ref={…}>`) are rejected by the compiler in server mode.
+ * cursor adopts. Events and refs are dropped (no DOM on the server); Fragment
+ * refs retain their range markers only when producing hydratable output.
  */
 
 // ---------------------------------------------------------------------------
@@ -76,6 +76,7 @@ import {
 	markComponentFlags,
 } from './component-flags.js';
 import { formatServerError } from './error-codes.server.generated.js';
+import { isRendererContext, registerServerRendererContextProvider } from './renderer-bridge.js';
 export { EXTERNAL_HYDRATION_PROMISE, HYDRATION_RANGE_BOUNDARY, normalizeClass };
 
 const NATIVE_ARRAY_MAP = Array.prototype.map;
@@ -616,6 +617,9 @@ export function createElement(
 	props?: any,
 	...children: any[]
 ): ElementDescriptor {
+	if (typeof type === 'function' && isRendererContext(type)) {
+		registerServerRendererContextProvider(renderServerContextProvider);
+	}
 	const src = (props ?? null) as any;
 	const key = hasElementConfigKey(src) ? '' + src.key : null;
 	let kids = children.length > 0 ? (children.length === 1 ? children[0] : children) : src?.children;
@@ -664,6 +668,27 @@ function fragmentDescriptorChildren(value: ElementDescriptor): any[] {
 	return Array.isArray(children) ? children : [children];
 }
 
+/** Server counterpart of the client's cold ref-bearing Fragment wrapper. */
+function fragmentRefDescriptor(value: ElementDescriptor): ElementDescriptor {
+	return {
+		$$kind: ELEMENT_TAG,
+		type: renderFragmentRefDescriptor,
+		props: value,
+		key: value.key,
+		ref: null,
+		children: null,
+	};
+}
+
+/** Retain the exact range adopted by the client without attaching its ref. */
+function renderFragmentRefDescriptor(descriptor: ElementDescriptor, scope: SSRScope): string {
+	return (
+		ssrFragmentMarker(true, descriptor.ref) +
+		ssrChild(descriptor.children, scope) +
+		ssrFragmentMarker(false)
+	);
+}
+
 type SsrDeoptWrapperKind = 'array' | 'fragment';
 
 interface PreparedSsrDeoptList {
@@ -704,6 +729,11 @@ function flattenSsrChildContainer(
 	for (let i = 0; i < count; i++) {
 		const item = children[i];
 		if (isFragmentDescriptor(item)) {
+			if (item.ref != null || Object.prototype.hasOwnProperty.call(item.props, 'ref')) {
+				outItems.push(fragmentRefDescriptor(item));
+				outKeys.push(scopedSsrDeoptKey(path, item, i, ssrDeoptKey(item, i)));
+				continue;
+			}
 			const nested = fragmentDescriptorChildren(item);
 			if (item.key != null) {
 				flattenSsrChildContainer(outItems, outKeys, nested, 'fragment', [
@@ -743,6 +773,12 @@ function prepareSsrDeoptList(value: any, includeKeyedSingle: boolean): PreparedS
 	// descriptor, text, null) is the common one — build the two output arrays only
 	// once a list regime is established. Mirrors prepareDeoptList in runtime.ts.
 	if (isFragmentDescriptor(value)) {
+		if (value.ref != null || Object.prototype.hasOwnProperty.call(value.props, 'ref')) {
+			return {
+				items: [fragmentRefDescriptor(value)],
+				keys: [scopedSsrDeoptKey([], value, 0, value.key ?? 0)],
+			};
+		}
 		const items: any[] = [];
 		const keys: any[] = [];
 		const path = value.key == null ? [] : ['keyed-fragment', value.key];
@@ -1556,6 +1592,15 @@ export function ssrBlock(content: string): string {
 }
 
 /**
+ * Preserve a Fragment ref's authored evaluation order without attaching its
+ * value. Hydratable output needs the exact comments its client template adopts;
+ * static markup omits them along with every other hydration-only marker.
+ */
+export function ssrFragmentMarker(open: boolean, _ref?: unknown): string {
+	return MARKERS ? (open ? '<!--frag-->' : '<!--/frag-->') : '';
+}
+
+/**
  * Server half of `<Activity mode="visible"|"hidden">`.
  *
  * Visible content renders inside one hydratable range. Hidden content is not
@@ -1610,8 +1655,18 @@ export function encodeAsyncIdentityString(value: string): string {
 
 function asyncIdentityKey(value: unknown, objectIs: boolean, positionFallback?: string): string {
 	switch (typeof value) {
-		case 'string':
+		case 'string': {
+			if (value.length > 64 && RESOLVED !== null) {
+				const ids = RESOLVED.asyncIdentities;
+				let id = ids.get(value);
+				if (id === undefined) {
+					id = RESOLVED.nextAsyncIdentity++;
+					ids.set(value, id);
+				}
+				return 't' + id.toString(36);
+			}
 			return 's' + encodeAsyncIdentityString(value);
+		}
 		case 'number':
 			return 'n' + (objectIs && Object.is(value, -0) ? '-0' : String(value));
 		case 'bigint':
@@ -1733,6 +1788,11 @@ export function ssrAttr(
 	// setAttribute writes (hydration parity). Custom elements get their props
 	// VERBATIM (no alias tables) — React parity.
 	if (!isCustomTag) {
+		// Server markup carries browser-native autofocus even though client mounts
+		// perform focus at commit without writing this attribute.
+		if (name === 'autoFocus') {
+			return v && typeof v !== 'function' && typeof v !== 'symbol' ? ' autofocus=""' : '';
+		}
 		const alias = ATTRIBUTE_ALIASES.get(name);
 		if (alias !== undefined) name = alias;
 	}
@@ -1956,9 +2016,6 @@ function ssrAttrEntry(
 	)
 		return '';
 	if (k.length > 2 && k[0] === 'o' && k[1] === 'n' && k[2] >= 'A' && k[2] <= 'Z') return '';
-	// `autoFocus` never serializes (client focuses at its mount commit).
-	if (k === 'autoFocus' && (namespace !== 'html' || tag === undefined || tag.indexOf('-') === -1))
-		return '';
 	if (k === 'style') return ssrStyle(v);
 	if (k === 'className' || k === 'class') return ssrAttr('class', v, tag, namespace);
 	if (VALID_ATTR_NAME.test(k)) return ssrAttr(k, v, tag, namespace);
@@ -2059,11 +2116,6 @@ export function ssrAttrs(
 			const c = rawName.charCodeAt(2);
 			if (c >= 65 && c <= 90) continue;
 		}
-		if (
-			rawName === 'autoFocus' &&
-			(namespace !== 'html' || tag === undefined || tag.indexOf('-') === -1)
-		)
-			continue;
 		const name = normalizeSsrAttributeName(rawName, tag, namespace);
 		if (!VALID_ATTR_NAME.test(name)) continue;
 		// Attribute identity is ASCII-case-insensitive in the HTML namespace.
@@ -3648,23 +3700,29 @@ export interface Context<T> {
 
 export function createContext<T>(defaultValue: T): Context<T> {
 	const ctx = function ProviderBody(props, scope) {
-		if (scope.$$ctxValues === null) scope.$$ctxValues = new Map();
-		scope.$$ctxValues.set(ctx, props.value);
-		const children = props.children;
-		if (children == null) return '';
-		// `.tsrx` threads children as a render function (call it directly). `.tsx`
-		// `<Ctx.Provider>…</Ctx.Provider>` lowers to `createElement(Provider, {}, …)`,
-		// so children arrive as a descriptor / array / primitive — render whichever
-		// shape through the generic child serializer (the same path every other
-		// descriptor child uses), or direct-JSX provider SSR would drop its content.
-		return typeof children === 'function'
-			? (children(undefined, scope) ?? '')
-			: ssrChild(children, scope);
+		return renderServerContextProvider(ctx, props, scope);
 	} as Context<T>;
 	ctx.$$kind = CONTEXT_TAG;
 	ctx.defaultValue = defaultValue;
 	ctx.Provider = ctx;
 	return ctx;
+}
+
+function renderServerContextProvider(
+	context: unknown,
+	props: { value: unknown; children?: unknown },
+	renderScope: object,
+): string {
+	const scope = renderScope as SSRScope;
+	if (scope.$$ctxValues === null) scope.$$ctxValues = new Map();
+	scope.$$ctxValues.set(context, props.value);
+	const children = props.children;
+	if (children == null) return '';
+	// `.tsrx` children are render functions; `.tsx` children are descriptors,
+	// arrays, or primitives and must keep the ordinary server serializer.
+	return typeof children === 'function'
+		? (children(undefined, scope) ?? '')
+		: ssrChild(children, scope);
 }
 
 function readContext<T>(ctx: Context<T>): T {
@@ -5172,7 +5230,7 @@ type SuspenseOutcome = SuspenseResult & {
 //              can't know the unwraps' string keys, but puMemo makes instance
 //              identity stable across passes);
 type ResolvedMap = Map<string, SuspenseOutcome> & {
-	/** Render-local stable ids for non-primitive control/list keys. */
+	/** Render-local stable ids for non-primitive and long string control/list keys. */
 	asyncIdentities: Map<unknown, number>;
 	/** Cross-pass fallback ids for transient object keys at one lexical position. */
 	asyncPositionIdentities: Map<string, number>;
