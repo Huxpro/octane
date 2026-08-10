@@ -48,7 +48,12 @@ export const DRIVER_CLIENT_JS = `(() => {
     view.style.cssText = 'display:block;width:' + w + 'px;height:' + h + 'px;';
     x.viewAttachTime = performance.now();
     document.body.appendChild(view);
+    x.view = view;
     return true;
+  };
+  x.removeView = () => {
+    x.view?.remove();
+    x.view = null;
   };
 
   // -- content count: workload-agnostic FCP signal ---------------------------
@@ -95,6 +100,107 @@ export const DRIVER_CLIENT_JS = `(() => {
     return r ? hasClass(r, 'danger') : false;
   };
 
+  // -- semantic and presentation controls ----------------------------------
+  const identity = new WeakMap();
+  let nextIdentity = 1;
+  const identityOf = (row) => {
+    let value = identity.get(row);
+    if (value === undefined) identity.set(row, (value = nextIdentity++));
+    return value;
+  };
+  const hashText = (seed, text) => {
+    let hash = seed >>> 0;
+    for (let i = 0; i < text.length; i++) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 16777619) >>> 0;
+    }
+    return hash;
+  };
+  x.tableOracle = () => {
+    const current = rowEls();
+    let checksum = 2166136261;
+    let selected = -1;
+    const identities = [];
+    for (let i = 0; i < current.length; i++) {
+      const row = current[i];
+      const id = cellOf(row, 'col-id')?.textContent ?? '';
+      const label = cellOf(row, 'col-label')?.textContent ?? '';
+      checksum = hashText(checksum, id + '\\u0000' + label + '\\u0000' + classOf(row));
+      identities.push(identityOf(row));
+      if (hasClass(row, 'danger')) selected = i;
+    }
+    return {
+      rows: current.length,
+      checksum,
+      selected,
+      firstId: current[0] ? cellOf(current[0], 'col-id')?.textContent ?? null : null,
+      lastId: current.at(-1) ? cellOf(current.at(-1), 'col-id')?.textContent ?? null : null,
+      identities,
+    };
+  };
+
+  let presentation = null;
+  x.startPresentationObserver = () => {
+    if (presentation !== null) throw new Error('presentation observer already active');
+    let commits = 0;
+    let changedRows = 0;
+    let scheduled = false;
+    const pendingRows = new Set();
+    const observers = [];
+    const rowFor = (node) => {
+      let current = node?.nodeType === 1 ? node : node?.parentElement;
+      while (current) {
+        if (hasClass(current, 'row')) return current;
+        current = current.parentElement;
+      }
+      return null;
+    };
+    const flush = () => {
+      scheduled = false;
+      if (pendingRows.size === 0) return;
+      commits++;
+      changedRows += pendingRows.size;
+      pendingRows.clear();
+    };
+    const observe = (root) => {
+      const observer = new MutationObserver((records) => {
+        for (const record of records) {
+          const row = rowFor(record.target);
+          if (row) pendingRows.add(row);
+          for (const node of record.addedNodes) {
+            const added = rowFor(node);
+            if (added) pendingRows.add(added);
+          }
+          for (const node of record.removedNodes) {
+            const removed = rowFor(node);
+            if (removed) pendingRows.add(removed);
+          }
+        }
+        if (!scheduled) {
+          scheduled = true;
+          queueMicrotask(flush);
+        }
+      });
+      observer.observe(root, { attributes: true, characterData: true, childList: true, subtree: true });
+      observers.push(observer);
+      for (const element of root.querySelectorAll?.('*') ?? []) {
+        if (element.shadowRoot) observe(element.shadowRoot);
+      }
+    };
+    observe(document);
+    presentation = {
+      read: () => ({ commits, changedRows }),
+      stop: () => {
+        for (const observer of observers) observer.disconnect();
+        presentation = null;
+        return { commits, changedRows };
+      },
+    };
+    return true;
+  };
+  x.readPresentationObserver = () => presentation?.read() ?? null;
+  x.stopPresentationObserver = () => presentation?.stop() ?? null;
+
   // -- click geometry --------------------------------------------------------
   x.buttonRect = (label) => {
     for (const el of findByClass('btn-text')) {
@@ -119,6 +225,7 @@ export const DRIVER_CLIENT_JS = `(() => {
       case 'rowCount': return x.rowCount() === spec.value;
       case 'labelAt': return x.labelAt(spec.index) === spec.equals;
       case 'dangerAt': return x.dangerAt(spec.index);
+      case 'checksumNot': return x.tableOracle().checksum !== spec.value;
       case 'contentAtLeast': return x.contentCount() >= spec.value;
       default: throw new Error('unknown predicate ' + spec.type);
     }
@@ -170,19 +277,23 @@ export const DRIVER_CLIENT_JS = `(() => {
       const t0 = x.viewAttachTime ?? performance.now();
       const deadline = performance.now() + timeoutMs;
       let fcp = null;
+      let fcpEpoch = null;
       let lastCount = -1;
       let lastChange = performance.now();
       const tick = () => {
         const now = performance.now();
         const c = x.contentCount();
-        if (fcp == null && c >= minContent) { fcp = now - t0; }
+        if (fcp == null && c >= minContent) {
+          fcp = now - t0;
+          fcpEpoch = performance.timeOrigin + now;
+        }
         if (c !== lastCount) { lastCount = c; lastChange = now; }
         if (fcp != null && now - lastChange >= idleMs) {
-          resolve({ fcp, settled: lastChange - t0, finalCount: c, dnf: false });
+          resolve({ fcp, fcpEpoch, settled: lastChange - t0, finalCount: c, dnf: false });
           return;
         }
         if (now > deadline) {
-          resolve({ fcp, settled: null, finalCount: c, dnf: true });
+          resolve({ fcp, fcpEpoch, settled: null, finalCount: c, dnf: true });
           return;
         }
         requestAnimationFrame(tick);
@@ -245,6 +356,32 @@ export const NEUTRALIZE_LYNX_PROFILE = `(() => {
 export async function applyNeutralize(page) {
 	await page.addInitScript(NEUTRALIZE_LYNX_PROFILE);
 	page.on('worker', (w) => w.evaluate(NEUTRALIZE_LYNX_PROFILE).catch(() => {}));
+}
+
+export const OBSERVE_LYNX_MT_SLICE_LOAD = `(() => {
+  const descriptor = Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, 'src');
+  if (!descriptor?.get || !descriptor?.set) return;
+  Object.defineProperty(HTMLScriptElement.prototype, 'src', {
+    configurable: descriptor.configurable,
+    enumerable: descriptor.enumerable,
+    get: descriptor.get,
+    set(value) {
+      if (
+        globalThis.location?.href === 'about:srcdoc'
+        && typeof value === 'string'
+        && value.startsWith('blob:')
+        && globalThis.__OCTANE_LYNX_MT_SLICE_LOAD_START_EPOCH__ === undefined
+      ) {
+        globalThis.__OCTANE_LYNX_MT_SLICE_LOAD_START_EPOCH__ =
+          performance.timeOrigin + performance.now();
+      }
+      return descriptor.set.call(this, value);
+    },
+  });
+})()`;
+
+export async function applyStageClock(page) {
+	await page.addInitScript(OBSERVE_LYNX_MT_SLICE_LOAD);
 }
 
 /** min/max/mean/median/std/ci95 over a numeric array (nulls/NaN dropped). */

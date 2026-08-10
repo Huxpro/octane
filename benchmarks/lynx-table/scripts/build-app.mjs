@@ -13,13 +13,21 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { instrumentLynxStageSources } from '../stages/instrument-source.mjs';
+import { instrumentLynxAttributionSources } from '../attribution/instrument-source.mjs';
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repo = path.resolve(root, '../..');
 
 const STAGE_NAME = 'lynx-table-bench';
 
-export function buildTableApp({ silent = false } = {}) {
-	const pluginDir = path.join(repo, 'packages/rspeedy-plugin-octane');
+export function buildTableApp({
+	silent = false,
+	repositoryRoot = repo,
+	destinationRoot = null,
+	toolRepositoryRoot = repo,
+} = {}) {
+	const pluginDir = path.join(repositoryRoot, 'packages/rspeedy-plugin-octane');
 	const src = path.join(root, 'app');
 	const stage = path.join(pluginDir, 'examples', STAGE_NAME);
 	fs.rmSync(stage, { recursive: true, force: true });
@@ -31,21 +39,40 @@ export function buildTableApp({ silent = false } = {}) {
 		fs.copyFileSync(path.join(src, 'src', file), path.join(stage, 'src', file));
 	}
 
-	if (!silent) console.log('[lynx-table] building octane table app (production)…');
-	execFileSync('npx', ['rspeedy', 'build', '--root', `examples/${STAGE_NAME}`], {
-		cwd: pluginDir,
-		stdio: silent ? 'pipe' : 'inherit',
-		env: { ...process.env, NODE_ENV: 'production' },
-	});
-
 	const autoRows = Number(process.env.BENCH_AUTOROWS ?? '0') || 0;
 	const profile = process.env.OCTANE_LYNX_PROFILE === '1';
+	const stageProfile = process.env.OCTANE_LYNX_STAGE_PROFILE === '1';
+	const attribution = process.env.OCTANE_LYNX_ATTRIBUTION === '1';
+	const restores = [];
+	let built = false;
+	try {
+		if (attribution) restores.push(instrumentLynxAttributionSources(repositoryRoot));
+		if (stageProfile) restores.push(instrumentLynxStageSources(repositoryRoot));
+		if (!silent) console.log('[lynx-table] building octane table app (production)…');
+		execFileSync(
+			path.join(toolRepositoryRoot, 'packages/rspeedy-plugin-octane/node_modules/.bin/rspeedy'),
+			['build', '--root', `examples/${STAGE_NAME}`],
+			{
+				cwd: pluginDir,
+				stdio: silent ? 'pipe' : 'inherit',
+				env: { ...process.env, NODE_ENV: 'production' },
+			},
+		);
+		built = true;
+	} finally {
+		for (let index = restores.length - 1; index >= 0; index--) restores[index]();
+		if (!built) fs.rmSync(stage, { recursive: true, force: true });
+	}
+
 	const suffix = (autoRows > 0 ? `-rows${autoRows}` : '') + (profile ? '-profile' : '');
 	const from = path.join(stage, `dist${suffix}`);
-	const to = path.join(src, `dist${suffix}`);
-	fs.rmSync(to, { recursive: true, force: true });
-	fs.cpSync(from, to, { recursive: true });
-	fs.rmSync(stage, { recursive: true, force: true });
+	const to = destinationRoot ?? path.join(src, `dist${suffix}`);
+	try {
+		fs.rmSync(to, { recursive: true, force: true });
+		fs.cpSync(from, to, { recursive: true });
+	} finally {
+		fs.rmSync(stage, { recursive: true, force: true });
+	}
 	if (!silent) console.log(`[lynx-table] staged bundles → app/dist${suffix}`);
 	return to;
 }

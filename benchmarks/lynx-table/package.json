@@ -7,7 +7,13 @@
   "scripts": {
     "bench": "node run.mjs",
     "bench:web": "node web/run-web.mjs",
-    "build:app": "node scripts/build-app.mjs"
+    "bench:stages": "node stages/run.mjs",
+    "bench:attribution:build": "node attribution/build-matrix.mjs",
+    "bench:attribution:run": "node attribution/run.mjs",
+    "bench:attribution:analyze": "node attribution/analyze.mjs",
+    "build:app": "node scripts/build-app.mjs",
+    "test:attribution": "node --test attribution/*.test.mjs",
+    "test:stages": "node --test stages/*.test.mjs"
   },
   "dependencies": {
     "@lynx-js/web-core": "0.22.2",
