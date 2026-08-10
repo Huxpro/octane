@@ -170,19 +170,23 @@ export const DRIVER_CLIENT_JS = `(() => {
       const t0 = x.viewAttachTime ?? performance.now();
       const deadline = performance.now() + timeoutMs;
       let fcp = null;
+      let fcpEpoch = null;
       let lastCount = -1;
       let lastChange = performance.now();
       const tick = () => {
         const now = performance.now();
         const c = x.contentCount();
-        if (fcp == null && c >= minContent) { fcp = now - t0; }
+        if (fcp == null && c >= minContent) {
+          fcp = now - t0;
+          fcpEpoch = performance.timeOrigin + now;
+        }
         if (c !== lastCount) { lastCount = c; lastChange = now; }
         if (fcp != null && now - lastChange >= idleMs) {
-          resolve({ fcp, settled: lastChange - t0, finalCount: c, dnf: false });
+          resolve({ fcp, fcpEpoch, settled: lastChange - t0, finalCount: c, dnf: false });
           return;
         }
         if (now > deadline) {
-          resolve({ fcp, settled: null, finalCount: c, dnf: true });
+          resolve({ fcp, fcpEpoch, settled: null, finalCount: c, dnf: true });
           return;
         }
         requestAnimationFrame(tick);
@@ -245,6 +249,32 @@ export const NEUTRALIZE_LYNX_PROFILE = `(() => {
 export async function applyNeutralize(page) {
 	await page.addInitScript(NEUTRALIZE_LYNX_PROFILE);
 	page.on('worker', (w) => w.evaluate(NEUTRALIZE_LYNX_PROFILE).catch(() => {}));
+}
+
+export const OBSERVE_LYNX_MT_SLICE_LOAD = `(() => {
+  const descriptor = Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, 'src');
+  if (!descriptor?.get || !descriptor?.set) return;
+  Object.defineProperty(HTMLScriptElement.prototype, 'src', {
+    configurable: descriptor.configurable,
+    enumerable: descriptor.enumerable,
+    get: descriptor.get,
+    set(value) {
+      if (
+        globalThis.location?.href === 'about:srcdoc'
+        && typeof value === 'string'
+        && value.startsWith('blob:')
+        && globalThis.__OCTANE_LYNX_MT_SLICE_LOAD_START_EPOCH__ === undefined
+      ) {
+        globalThis.__OCTANE_LYNX_MT_SLICE_LOAD_START_EPOCH__ =
+          performance.timeOrigin + performance.now();
+      }
+      return descriptor.set.call(this, value);
+    },
+  });
+})()`;
+
+export async function applyStageClock(page) {
+	await page.addInitScript(OBSERVE_LYNX_MT_SLICE_LOAD);
 }
 
 /** min/max/mean/median/std/ci95 over a numeric array (nulls/NaN dropped). */
