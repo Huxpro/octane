@@ -12,15 +12,21 @@ import {
 	type UniversalTransportCommitMessage,
 	type UniversalTransportEventMessage,
 	type UniversalTransportIdentity,
+	createContext,
 	createObjectContainer,
 	createObjectDriver,
 	createUniversalRoot,
 	defineUniversalComponent,
 	type UniversalRoot,
+	universalComponent,
+	universalContext,
+	universalFor,
 	universalPlan,
 	universalProps,
 	universalValue,
 	use,
+	useContext,
+	useEffect,
 	useLayoutEffect,
 	useState,
 } from '../src/universal.js';
@@ -114,8 +120,10 @@ function createTransportDriver(
 ): UniversalHostDriver<TransportContainer, PublicHandle> {
 	const hostDriver = createObjectDriver(RENDERER);
 	return {
-		...hostDriver,
+		id: hostDriver.id,
 		capabilities: { ...hostDriver.capabilities, localHostCallbacks: false },
+		events: hostDriver.events,
+		lifecycles: hostDriver.lifecycles,
 		localCallbacks: undefined,
 		props: withCodec
 			? {
@@ -1338,6 +1346,185 @@ describe('universal asynchronous transport', () => {
 		);
 		expect(protocol.error?.message).toMatch(/uses protocol 999/);
 		expect(log).toEqual([]);
+		await root.unmountAsync();
+	});
+});
+
+describe('transported keyed component stability', () => {
+	// Every update arrives through a transported event, so the listener table,
+	// version handshake, and acknowledgement flow run for real.
+	interface SceneRow {
+		readonly id: number;
+		readonly label: string;
+	}
+
+	interface SceneCommand {
+		readonly select?: number;
+		readonly theme?: string;
+		readonly rotate?: boolean;
+		readonly relabel?: number;
+	}
+
+	const itemPlan = universalPlan(RENDERER, { kind: 'host', type: 'item', propsSlot: 0 });
+	const Theme = createContext('plain');
+
+	function retainedScene() {
+		const { container, loopback, root } = transportRoot();
+		const effectLog: string[] = [];
+		let command!: (payload: SceneCommand) => void;
+		// One stable handler shared by every item across every render: parents
+		// pass identity-equal props to unchanged rows, the way an app passes a
+		// useCallback-stable callback into each row.
+		const onCommand = (payload: unknown) => command(payload as SceneCommand);
+		const Item = defineUniversalComponent(
+			RENDERER,
+			(props: { row: SceneRow; selected: boolean; onCommand: (payload: unknown) => void }) => {
+				const theme = useContext(Theme);
+				const [pokeCount, setPokeCount] = useState(0, 'pokes');
+				useEffect(
+					() => {
+						effectLog.push(`mount:${props.row.id}`);
+						return () => effectLog.push(`cleanup:${props.row.id}`);
+					},
+					[],
+					'mounted',
+				);
+				const onPoke = (payload: unknown) => {
+					setPokeCount((count) => count + 1);
+					props.onCommand(payload);
+				};
+				return universalValue(itemPlan, [
+					universalProps([
+						['set', 'label', props.row.label],
+						['set', 'theme', theme],
+						['set', 'selected', props.selected],
+						['set', 'pokes', pokeCount],
+						['set', 'onPoke', onPoke],
+					]),
+				]);
+			},
+		);
+		const Scene = defineUniversalComponent(RENDERER, () => {
+			const [rows, setRows] = useState<readonly SceneRow[]>(
+				[
+					{ id: 1, label: 'a' },
+					{ id: 2, label: 'b' },
+					{ id: 3, label: 'c' },
+				],
+				'rows',
+			);
+			const [selected, setSelected] = useState(0, 'selected');
+			const [theme, setTheme] = useState('plain', 'theme');
+			command = (payload) => {
+				if (payload.select !== undefined) setSelected(payload.select);
+				if (payload.theme !== undefined) setTheme(payload.theme);
+				if (payload.rotate === true) {
+					setRows((previous) => [previous[2]!, previous[0]!, previous[1]!]);
+				}
+				if (payload.relabel !== undefined) {
+					setRows((previous) =>
+						previous.map((row) =>
+							row.id === payload.relabel ? { id: row.id, label: `${row.label}!` } : row,
+						),
+					);
+				}
+			};
+			return universalContext(Theme, theme, () =>
+				universalFor(
+					rows,
+					(row) => row.id,
+					(row) =>
+						universalComponent(
+							RENDERER,
+							Item,
+							universalProps([
+								['set', 'row', row],
+								['set', 'selected', selected === row.id],
+								['set', 'onCommand', onCommand],
+							]),
+						),
+				),
+			);
+		});
+		const items = () => container.host.children;
+		// Listener occurrences follow mount announcement order (item 1, 2, 3)
+		// and survive reorders: retained items never re-announce.
+		const poke = async (occurrence: number, payload: SceneCommand) => {
+			const outcome = await loopback.sendEvent([
+				{ listener: loopback.listener('poke', occurrence), payload },
+			]);
+			expect(outcome.error).toBeUndefined();
+			await root.flushTransport();
+		};
+		return { root, Scene, effectLog, items, poke };
+	}
+
+	it('keeps keyed item identity, effects, and listeners live across parent updates', async () => {
+		const { root, Scene, effectLog, items, poke } = retainedScene();
+		await root.renderAsync(Scene, undefined);
+		await root.flushTransport();
+		expect(items().map((item) => item.props.label)).toEqual(['a', 'b', 'c']);
+		expect(effectLog).toEqual(['mount:1', 'mount:2', 'mount:3']);
+		const [first, second, third] = [...items()];
+
+		await poke(0, { select: 2 });
+		expect(items()[0]).toBe(first);
+		expect(items()[1]).toBe(second);
+		expect(items()[2]).toBe(third);
+		expect(items().map((item) => item.props.selected)).toEqual([false, true, false]);
+		expect(items().map((item) => item.props.pokes)).toEqual([1, 0, 0]);
+
+		// Item 3 was retained through that commit; its listener was announced
+		// once at mount and must still dispatch against the newest version.
+		await poke(2, { select: 3 });
+		expect(items().map((item) => item.props.selected)).toEqual([false, false, true]);
+		expect(items().map((item) => item.props.pokes)).toEqual([1, 0, 1]);
+
+		// The same item accepts its own prop update after surviving parent work.
+		await poke(0, { relabel: 1 });
+		expect(items()[0]).toBe(first);
+		expect(items().map((item) => item.props.label)).toEqual(['a!', 'b', 'c']);
+		expect(items().map((item) => item.props.pokes)).toEqual([2, 0, 1]);
+
+		// Parent updates never tore down a mount effect.
+		expect(effectLog).toEqual(['mount:1', 'mount:2', 'mount:3']);
+		await root.unmountAsync();
+		expect(effectLog.slice(3).toSorted()).toEqual(['cleanup:1', 'cleanup:2', 'cleanup:3']);
+	});
+
+	it('refreshes keyed items when a consumed context changes', async () => {
+		const { root, Scene, items, poke } = retainedScene();
+		await root.renderAsync(Scene, undefined);
+		await root.flushTransport();
+		expect(items().map((item) => item.props.theme)).toEqual(['plain', 'plain', 'plain']);
+
+		await poke(0, { theme: 'dark' });
+		expect(items().map((item) => item.props.theme)).toEqual(['dark', 'dark', 'dark']);
+
+		// The listeners remain live after the provider update.
+		await poke(0, { select: 2 });
+		expect(items().map((item) => item.props.theme)).toEqual(['dark', 'dark', 'dark']);
+		expect(items().map((item) => item.props.selected)).toEqual([false, true, false]);
+		await root.unmountAsync();
+	});
+
+	it('preserves keyed item identity and listeners through reorders', async () => {
+		const { root, Scene, effectLog, items, poke } = retainedScene();
+		await root.renderAsync(Scene, undefined);
+		await root.flushTransport();
+		const [first, second, third] = [...items()];
+
+		await poke(0, { rotate: true });
+		expect(items()[0]).toBe(third);
+		expect(items()[1]).toBe(first);
+		expect(items()[2]).toBe(second);
+		expect(items().map((item) => item.props.label)).toEqual(['c', 'a', 'b']);
+		expect(effectLog).toEqual(['mount:1', 'mount:2', 'mount:3']);
+
+		// Moved items still receive their own updates afterwards.
+		await poke(1, { select: 2 });
+		expect(items().map((item) => item.props.selected)).toEqual([false, false, true]);
+		expect(items().map((item) => item.props.pokes)).toEqual([0, 1, 1]);
 		await root.unmountAsync();
 	});
 });

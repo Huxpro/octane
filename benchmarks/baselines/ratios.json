@@ -1489,6 +1489,38 @@
   },
   {
     "suite": "lynx-table",
+    "op": "update10th_item_renders_1k",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 1,
+    "note": "Update-every-10th must render exactly ceil(rows/10) changed Row components. The accepted value is 100; re-rendering the whole transported table produces 1000 and breaches this gate."
+  },
+  {
+    "suite": "lynx-table",
+    "op": "select_item_renders_1k",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 1,
+    "note": "A select must render exactly the two rows whose isSelected prop changed. Re-rendering the whole transported table produces 1000 and breaches this gate."
+  },
+  {
+    "suite": "lynx-table",
+    "op": "swap_item_renders_1k",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 0,
+    "note": "A far transposition of identity-stable rows must render no Row components. The model denominator is 1 so the zero-only acceptance threshold is representable."
+  },
+  {
+    "suite": "lynx-table",
+    "op": "swap_commands_1k",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 1,
+    "note": "KNOWN GAP waterline, not a semantic floor: swapping rows 1 and 998 currently emits 997 move commands. The LIS reconciler guarantees final order and survivor identity, not a minimal move set; using 997 as the model pins that upper bound while allowing future reductions."
+  },
+  {
+    "suite": "lynx-table",
     "op": "update_storm_paced_frame_commits_1k",
     "target": "octane-lynx",
     "reference": "changed-rows-model",
@@ -1558,6 +1590,38 @@
     "reference": "changed-rows-model",
     "maxRatio": 1.5,
     "note": "30 select ticks x 2 changed rows = 60 commands, measured exactly 1.0x the floor on 2026-08-08 (was 900000 before the fix)."
+  },
+  {
+    "suite": "lynx-table",
+    "op": "update10th_item_renders_10k",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 1,
+    "note": "At 10k rows, update-every-10th must render exactly the 1000 changed Row components; render breadth must stay proportional to change size."
+  },
+  {
+    "suite": "lynx-table",
+    "op": "select_item_renders_10k",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 1,
+    "note": "At 10k rows, a select must still render exactly the two Row components whose isSelected prop changed."
+  },
+  {
+    "suite": "lynx-table",
+    "op": "swap_item_renders_10k",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 0,
+    "note": "At 10k rows, the same far transposition must render zero Row components; the model denominator is 1."
+  },
+  {
+    "suite": "lynx-table",
+    "op": "swap_commands_10k",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 1,
+    "note": "KNOWN GAP waterline at 10k rows: the same rows-1-and-998 transposition is capped at the scale-independent 997-command model; see the 1k twin."
   },
   {
     "suite": "lynx-bundle-size",

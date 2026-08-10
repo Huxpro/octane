@@ -234,6 +234,8 @@ function createHarness(options: HarnessOptions = {}): Harness {
 
 interface ProfileGlobals {
 	__OCTANE_LYNX_PROF?: LynxWireProfile;
+	/** Row body executions counted by the profile build of the app itself. */
+	__BENCH_ROW_RENDERS__?: number;
 }
 
 function profileSnapshot(): {
@@ -241,16 +243,19 @@ function profileSnapshot(): {
 	pacedCommits: number;
 	commands: number;
 	bytes: number;
+	itemRenders: number;
 } {
 	const profile = (globalThis as ProfileGlobals).__OCTANE_LYNX_PROF;
 	// Both fake threads share this realm, so the main-thread receiver also
 	// counted each commit; halve to report per-wire commits and commands once.
-	// pacedCommits and bytes are dispatch-side only and need no halving.
+	// pacedCommits, bytes, and itemRenders are background-side only and need
+	// no halving.
 	return {
 		commits: (profile?.commits ?? 0) / 2,
 		pacedCommits: profile?.pacedCommits ?? 0,
 		commands: (profile?.commands ?? 0) / 2,
 		bytes: profile?.bytes ?? 0,
+		itemRenders: (globalThis as ProfileGlobals).__BENCH_ROW_RENDERS__ ?? 0,
 	};
 }
 
@@ -355,6 +360,8 @@ export interface OpCounters {
 	readonly commits: number;
 	readonly commands: number;
 	readonly bytes: number;
+	/** Row component body executions on the background thread during the op. */
+	readonly itemRenders: number;
 }
 
 export interface TableRunResult {
@@ -362,6 +369,7 @@ export interface TableRunResult {
 	readonly create: OpCounters;
 	readonly update10th: OpCounters;
 	readonly select: OpCounters;
+	readonly swap: OpCounters;
 	readonly updateStorm: OpCounters;
 	readonly selectStorm: OpCounters;
 	readonly createdElements: number;
@@ -397,6 +405,7 @@ export async function runTable(rows: number): Promise<TableRunResult> {
 				commits: after.commits - before.commits,
 				commands: after.commands - before.commands,
 				bytes: after.bytes - before.bytes,
+				itemRenders: after.itemRenders - before.itemRenders,
 			};
 		};
 
@@ -427,6 +436,23 @@ export async function runTable(rows: number): Promise<TableRunResult> {
 			await until(harness, () => hasClass(rowViews(harness.papi)[2]!, 'danger'), 'select');
 		});
 
+		// Swap exchanges two far-apart rows without changing any row's props: the
+		// keyed reconciler must reorder the committed row subtrees, and the
+		// itemRenders delta says whether it re-rendered them to do it.
+		const swap = await measure(async () => {
+			const rowsBefore = rowViews(harness.papi);
+			const firstLabel = labelTextOf(rowsBefore[1]!);
+			const otherLabel = labelTextOf(rowsBefore[998]!);
+			await tapButton(harness, 'Swap Rows');
+			await until(
+				harness,
+				() =>
+					labelTextOf(rowViews(harness.papi)[1]!) === otherLabel &&
+					labelTextOf(rowViews(harness.papi)[998]!) === firstLabel,
+				'swapped rows',
+			);
+		});
+
 		const updateStorm = await measure(async () => {
 			await tapButton(harness, 'Update storm');
 			await until(
@@ -446,6 +472,7 @@ export async function runTable(rows: number): Promise<TableRunResult> {
 			create,
 			update10th,
 			select,
+			swap,
 			updateStorm,
 			selectStorm,
 			createdElements: harness.papi.createdElements,
@@ -546,6 +573,7 @@ export async function runPacedUpdateStorm(rows: number): Promise<PacedStormResul
 				commits: after.commits - before.commits,
 				commands: after.commands - before.commands,
 				bytes: after.bytes - before.bytes,
+				itemRenders: after.itemRenders - before.itemRenders,
 			},
 			updateStormPacedCommits: after.pacedCommits - before.pacedCommits,
 			diagnostics: harness.diagnostics.map((error) => error.message),

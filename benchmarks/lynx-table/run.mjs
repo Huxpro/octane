@@ -35,6 +35,7 @@ const SCALES = (process.env.LYNX_TABLE_SCALES ?? '1000,10000')
 	.split(',')
 	.map((value) => Number(value.trim()))
 	.filter(Boolean);
+const SWAP_COMMAND_WATERLINE = 997;
 
 const LYNX_SOURCE = path.join(REPO, 'packages/lynx/src');
 const OCTANE_SOURCE = path.join(REPO, 'packages/octane/src');
@@ -120,9 +121,10 @@ try {
 				break;
 			}
 			const nextSignature = JSON.stringify({
-				create: result.create.commands,
-				update10th: result.update10th.commands,
-				select: [result.select.commands, result.select.bytes],
+				create: [result.create.commands, result.create.itemRenders],
+				update10th: [result.update10th.commands, result.update10th.itemRenders],
+				select: [result.select.commands, result.select.bytes, result.select.itemRenders],
+				swap: [result.swap.commands, result.swap.itemRenders],
 				updateStorm: [result.updateStorm.commits, result.updateStorm.commands],
 				selectStorm: [result.selectStorm.commits, result.selectStorm.commands],
 			});
@@ -138,8 +140,15 @@ try {
 
 		octaneOps[`create_commands_${suffix}`] = countStat(result.create.commands, iterations);
 		octaneOps[`update10th_commands_${suffix}`] = countStat(result.update10th.commands, iterations);
+		octaneOps[`update10th_item_renders_${suffix}`] = countStat(
+			result.update10th.itemRenders,
+			iterations,
+		);
 		octaneOps[`select_commands_${suffix}`] = countStat(result.select.commands, iterations);
 		octaneOps[`select_bytes_${suffix}`] = countStat(result.select.bytes, iterations);
+		octaneOps[`select_item_renders_${suffix}`] = countStat(result.select.itemRenders, iterations);
+		octaneOps[`swap_commands_${suffix}`] = countStat(result.swap.commands, iterations);
+		octaneOps[`swap_item_renders_${suffix}`] = countStat(result.swap.itemRenders, iterations);
 		octaneOps[`update_storm_commits_${suffix}`] = countStat(result.updateStorm.commits, iterations);
 		octaneOps[`update_storm_commands_${suffix}`] = countStat(
 			result.updateStorm.commands,
@@ -158,11 +167,20 @@ try {
 		// own macrotasks, so nothing can legitimately merge them here — times the
 		// per-tick change. select_bytes uses the absolute 2 KiB acceptance budget
 		// for a point-update commit rather than a modeled byte count.
+		// Render-breadth floors: an update renders exactly the rows whose props
+		// changed (update10th rewrites ceil(rows/10) row objects, select moves
+		// `isSelected` between 2 rows), and a pure reorder renders none. The swap
+		// command model pins today's known 997-command LIS-reorder waterline; it
+		// is an upper bound, not a claim that the command set is minimal.
 		const changed = Math.ceil(rows / 10);
 		modelOps[`create_commands_${suffix}`] = countStat(result.create.commands, iterations);
 		modelOps[`update10th_commands_${suffix}`] = countStat(changed, iterations);
+		modelOps[`update10th_item_renders_${suffix}`] = countStat(changed, iterations);
 		modelOps[`select_commands_${suffix}`] = countStat(2, iterations);
 		modelOps[`select_bytes_${suffix}`] = countStat(2048, iterations);
+		modelOps[`select_item_renders_${suffix}`] = countStat(2, iterations);
+		modelOps[`swap_commands_${suffix}`] = countStat(SWAP_COMMAND_WATERLINE, iterations);
+		modelOps[`swap_item_renders_${suffix}`] = countStat(1, iterations);
 		modelOps[`update_storm_commits_${suffix}`] = countStat(workload.STORM_UPDATE_TICKS, iterations);
 		modelOps[`update_storm_commands_${suffix}`] = countStat(
 			workload.STORM_UPDATE_TICKS * changed,
@@ -185,8 +203,9 @@ try {
 
 		console.log(
 			`rows=${String(rows).padStart(5)}  create=${result.create.commands}  ` +
-				`update10th=${result.update10th.commands}  ` +
-				`select=${result.select.commands} (${result.select.bytes}B)  ` +
+				`update10th=${result.update10th.commands} (${result.update10th.itemRenders}r)  ` +
+				`select=${result.select.commands} (${result.select.bytes}B, ${result.select.itemRenders}r)  ` +
+				`swap=${result.swap.commands} (${result.swap.itemRenders}r)  ` +
 				`updateStorm=${result.updateStorm.commits}c/${result.updateStorm.commands}  ` +
 				`selectStorm=${result.selectStorm.commits}c/${result.selectStorm.commands}`,
 		);
