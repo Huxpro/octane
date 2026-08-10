@@ -190,6 +190,29 @@ async function measureCell(page, index) {
 	return (await armed).ms;
 }
 
+async function measureDeterministicUpdateStorm(page, ticks = 5) {
+	let ms = 0;
+	for (let tick = 0; tick < ticks; tick++) {
+		const before = await page.evaluate(() => globalThis.__x.labelAt(0));
+		ms += await measureButton(page, 'Update every 10th row', {
+			type: 'labelAt',
+			index: 0,
+			equals: `${before} !!!`,
+		});
+		await page.evaluate(() => globalThis.__x.settle(0));
+	}
+	return ms;
+}
+
+async function measureDeterministicSelectStorm(page) {
+	let ms = 0;
+	for (const row of [1, 2]) {
+		ms += await measureCell(page, row);
+		await page.evaluate(() => globalThis.__x.settle(0));
+	}
+	return ms;
+}
+
 async function profileGlobals(page) {
 	const worker = backgroundWorker(page);
 	if (worker === null) throw new Error('background worker is unavailable.');
@@ -253,10 +276,15 @@ async function heapSample(browser, target, rows, takeSnapshot) {
 				...(await takeHeapSnapshot(worker.session, file)),
 			};
 		}
-		await measureButton(page, 'Clear', { type: 'rowCount', value: 0 });
+		const clearMs = await measureButton(page, 'Clear', { type: 'rowCount', value: 0 });
 		await page.evaluate(() => globalThis.__x.settle());
 		const cleared = await collectHeap(worker.session);
-		await page.evaluate(() => globalThis.__x.removeView());
+		const viewDestroyMs = await page.evaluate(() => {
+			const started = performance.now();
+			globalThis.__x.removeView();
+			return performance.now() - started;
+		});
+		const workerReleaseStarted = performance.now();
 		await page.close();
 		pageClosed = true;
 		let workerReleased = false;
@@ -267,8 +295,12 @@ async function heapSample(browser, target, rows, takeSnapshot) {
 			}
 			await new Promise((resolve) => setTimeout(resolve, 50));
 		}
+		const workerReleaseMs = performance.now() - workerReleaseStarted;
 		return {
 			createMs,
+			clearMs,
+			viewDestroyMs,
+			workerReleaseMs,
 			baseline,
 			held,
 			cleared,
@@ -397,18 +429,13 @@ async function stormSample(browser, target, rows = 1000) {
 			await page.evaluate(() => globalThis.__x.startPresentationObserver());
 			const ms =
 				operation === 'updateStorm'
-					? await measureButton(
-							page,
-							'Update storm',
-							{ type: 'labelAt', index: 0, equals: 'bench 50' },
-							240000,
-						)
-					: await measureButton(page, 'Select storm', { type: 'dangerAt', index: 0 }, 240000);
+					? await measureDeterministicUpdateStorm(page)
+					: await measureDeterministicSelectStorm(page);
 			await page.evaluate(() => globalThis.__x.settle());
 			const presentation = await page.evaluate(() => globalThis.__x.stopPresentationObserver());
 			const after = await page.evaluate(() => globalThis.__x.tableOracle());
 			const afterProfile = await profileGlobals(page);
-			operations[operation] = {
+			const sample = {
 				ms,
 				presentation,
 				wire: numericDelta(afterProfile.wire, beforeProfile.wire),
@@ -424,6 +451,21 @@ async function stormSample(browser, target, rows = 1000) {
 						.sort((a, b) => a - b)
 						.join(','),
 			};
+			const expected =
+				operation === 'updateStorm'
+					? { commits: 5, changedRows: 500, wireCommits: 5, wireCommands: 500 }
+					: { commits: 2, changedRows: 3, wireCommits: 2, wireCommands: 3 };
+			if (
+				presentation.commits !== expected.commits ||
+				presentation.changedRows !== expected.changedRows ||
+				sample.wire.commits !== expected.wireCommits ||
+				sample.wire.commands !== expected.wireCommands
+			) {
+				throw new Error(
+					`${target.id} ${operation} constants diverged: ${JSON.stringify({ presentation, wire: sample.wire, expected })}`,
+				);
+			}
+			operations[operation] = sample;
 		}
 		return operations;
 	} finally {
@@ -455,7 +497,7 @@ const report = {
 		coldSamples,
 		scales,
 		protocol:
-			'fresh page and background worker per repetition; explicit CDP GC before Runtime.getHeapUsage; sample order retained; identical driver and semantic oracle for every stack head',
+			'fresh page and background worker per repetition; explicit CDP GC before Runtime.getHeapUsage; UI clear, synchronous view destroy, and page-close-to-worker-release timed separately; deterministic five-commit update and two-commit select storms; sample order retained; identical driver and semantic oracle for every stack head',
 		bundleVariant: args['bundle-variant'],
 	},
 	targets: {},
@@ -472,7 +514,7 @@ try {
 					const sample = await heapSample(browser, target, rows, takeSnapshot);
 					samples.push(sample);
 					console.log(
-						`[s3-heap] ${target.id} rows=${rows} rep=${repetition + 1} retained=${sample.retainedBytes}`,
+						`[s3-heap] ${target.id} rows=${rows} rep=${repetition + 1} retained=${sample.retainedBytes} clear=${sample.clearMs.toFixed(1)} destroy=${sample.viewDestroyMs.toFixed(1)} release=${sample.workerReleaseMs.toFixed(1)}`,
 					);
 				}
 				targetResult.heap[rows] = samples;

@@ -17,6 +17,11 @@ function stats(values) {
 	return { median: median(values), min: Math.min(...values), max: Math.max(...values) };
 }
 
+function optionalStats(samples, name) {
+	const values = samples.map((sample) => sample[name]).filter((value) => Number.isFinite(value));
+	return values.length === 0 ? null : stats(values);
+}
+
 export function linearSlope(points) {
 	const xMean = points.reduce((sum, point) => sum + point.x, 0) / points.length;
 	const yMean = points.reduce((sum, point) => sum + point.y, 0) / points.length;
@@ -47,13 +52,21 @@ function mergeFragments(fragments) {
 
 function summarizeHeap(heap) {
 	const scales = Object.entries(heap)
-		.map(([rows, samples]) => ({
-			rows: Number(rows),
-			retained: stats(samples.map((sample) => sample.retainedBytes)),
-			clearResidual: stats(samples.map((sample) => sample.clearResidualBytes)),
-			semantic: samples.every((sample) => sample.oracle.rows === Number(rows)),
-			workerReleased: samples.every((sample) => sample.workerReleased),
-		}))
+		.map(([rows, samples]) => {
+			const clearMs = optionalStats(samples, 'clearMs');
+			const viewDestroyMs = optionalStats(samples, 'viewDestroyMs');
+			const workerReleaseMs = optionalStats(samples, 'workerReleaseMs');
+			return {
+				rows: Number(rows),
+				retained: stats(samples.map((sample) => sample.retainedBytes)),
+				clearResidual: stats(samples.map((sample) => sample.clearResidualBytes)),
+				...(clearMs === null ? null : { clearMs }),
+				...(viewDestroyMs === null ? null : { viewDestroyMs }),
+				...(workerReleaseMs === null ? null : { workerReleaseMs }),
+				semantic: samples.every((sample) => sample.oracle.rows === Number(rows)),
+				workerReleased: samples.every((sample) => sample.workerReleased),
+			};
+		})
 		.sort((a, b) => a.rows - b.rows);
 	return {
 		scales,
