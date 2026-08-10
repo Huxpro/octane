@@ -1,0 +1,3163 @@
+{
+  "protocol": [
+    {
+      "date": "2026-08-10T09:13:38.271Z",
+      "node": "v22.22.2",
+      "chromium": "149.0.7827.55",
+      "cpus": 32,
+      "cpuModel": "Intel(R) Xeon(R) Platinum 8336C CPU @ 2.30GHz",
+      "platform": "linux",
+      "release": "5.15.120.bsk.3-amd64",
+      "loadStart": [1.12, 0.79, 0.65],
+      "repetitions": 5,
+      "coldSamples": 5,
+      "scales": [1000, 10000, 30000],
+      "protocol": "fresh page and background worker per repetition; explicit CDP GC before Runtime.getHeapUsage; sample order retained; identical driver and semantic oracle for every stack head",
+      "loadEnd": [2.89, 3.68, 3.13],
+      "bundleSha256": {
+        "main": "bbf4d240ad577c80bb0ebce4773523ead96a69e2c2cd3a680b59862ae0ffd810",
+        "pr-1": "142b3ce5475464d3e8ffa76868f1d845aee6264e76bba217f99eb7d0fc828d32",
+        "pr-10": "43fb65f771e51b19982ca7064b879a20ffed1ca32cd48911e5a473bd6e1dd165",
+        "pr-11": "6fc807687e1c259df216f4580b4e8886ea00d72efc9c188010bc36a231b7f559",
+        "pr-12": "3921c79d8cc1755a0e7729fa68e9f91c43bb16d1f5c8eb1d6c6f274d7334f386",
+        "pr-13": "2b7efb3008b1a85bb3680e0ad52915798cbfc02812f7401c0f90bcdb00c61b77",
+        "pr-14": "3454ef9795ad5ac8d406408508d58cd13597eab403cea2d2514e739af8df2bff",
+        "pr-15": "1633935a3dd9f6b443be8ce461951f65b28af6b832bda5b5a7963c4dd2e2eaa4",
+        "pr-22": "1633935a3dd9f6b443be8ce461951f65b28af6b832bda5b5a7963c4dd2e2eaa4"
+      }
+    },
+    {
+      "date": "2026-08-10T09:34:29.021Z",
+      "node": "v22.22.2",
+      "chromium": "149.0.7827.55",
+      "cpus": 32,
+      "cpuModel": "Intel(R) Xeon(R) Platinum 8336C CPU @ 2.30GHz",
+      "platform": "linux",
+      "release": "5.15.120.bsk.3-amd64",
+      "loadStart": [1.15, 3.06, 2.95],
+      "repetitions": 5,
+      "coldSamples": 5,
+      "scales": [1000, 10000, 30000],
+      "protocol": "fresh page and background worker per repetition; explicit CDP GC before Runtime.getHeapUsage; sample order retained; identical driver and semantic oracle for every stack head",
+      "loadEnd": [2.02, 2.61, 2.8],
+      "bundleSha256": {
+        "main": "bbf4d240ad577c80bb0ebce4773523ead96a69e2c2cd3a680b59862ae0ffd810",
+        "pr-1": "142b3ce5475464d3e8ffa76868f1d845aee6264e76bba217f99eb7d0fc828d32",
+        "pr-10": "43fb65f771e51b19982ca7064b879a20ffed1ca32cd48911e5a473bd6e1dd165",
+        "pr-11": "6fc807687e1c259df216f4580b4e8886ea00d72efc9c188010bc36a231b7f559",
+        "pr-12": "3921c79d8cc1755a0e7729fa68e9f91c43bb16d1f5c8eb1d6c6f274d7334f386",
+        "pr-13": "2b7efb3008b1a85bb3680e0ad52915798cbfc02812f7401c0f90bcdb00c61b77",
+        "pr-14": "3454ef9795ad5ac8d406408508d58cd13597eab403cea2d2514e739af8df2bff",
+        "pr-15": "1633935a3dd9f6b443be8ce461951f65b28af6b832bda5b5a7963c4dd2e2eaa4",
+        "pr-22": "1633935a3dd9f6b443be8ce461951f65b28af6b832bda5b5a7963c4dd2e2eaa4"
+      }
+    },
+    {
+      "date": "2026-08-10T09:38:23.720Z",
+      "node": "v22.22.2",
+      "chromium": "149.0.7827.55",
+      "cpus": 32,
+      "cpuModel": "Intel(R) Xeon(R) Platinum 8336C CPU @ 2.30GHz",
+      "platform": "linux",
+      "release": "5.15.120.bsk.3-amd64",
+      "loadStart": [1.7, 2.51, 2.76],
+      "repetitions": 5,
+      "coldSamples": 5,
+      "scales": [1000, 10000, 30000],
+      "protocol": "fresh page and background worker per repetition; explicit CDP GC before Runtime.getHeapUsage; sample order retained; identical driver and semantic oracle for every stack head",
+      "loadEnd": [1.82, 2.07, 2.4],
+      "bundleSha256": {
+        "main": "bbf4d240ad577c80bb0ebce4773523ead96a69e2c2cd3a680b59862ae0ffd810",
+        "pr-1": "142b3ce5475464d3e8ffa76868f1d845aee6264e76bba217f99eb7d0fc828d32",
+        "pr-10": "43fb65f771e51b19982ca7064b879a20ffed1ca32cd48911e5a473bd6e1dd165",
+        "pr-11": "6fc807687e1c259df216f4580b4e8886ea00d72efc9c188010bc36a231b7f559",
+        "pr-12": "3921c79d8cc1755a0e7729fa68e9f91c43bb16d1f5c8eb1d6c6f274d7334f386",
+        "pr-13": "2b7efb3008b1a85bb3680e0ad52915798cbfc02812f7401c0f90bcdb00c61b77",
+        "pr-14": "3454ef9795ad5ac8d406408508d58cd13597eab403cea2d2514e739af8df2bff",
+        "pr-15": "1633935a3dd9f6b443be8ce461951f65b28af6b832bda5b5a7963c4dd2e2eaa4",
+        "pr-22": "1633935a3dd9f6b443be8ce461951f65b28af6b832bda5b5a7963c4dd2e2eaa4"
+      }
+    },
+    {
+      "date": "2026-08-10T09:50:27.375Z",
+      "node": "v22.22.2",
+      "chromium": "149.0.7827.55",
+      "cpus": 32,
+      "cpuModel": "Intel(R) Xeon(R) Platinum 8336C CPU @ 2.30GHz",
+      "platform": "linux",
+      "release": "5.15.120.bsk.3-amd64",
+      "loadStart": [1.16, 1.88, 2.33],
+      "repetitions": 5,
+      "coldSamples": 5,
+      "scales": [1000, 10000, 30000],
+      "protocol": "fresh page and background worker per repetition; explicit CDP GC before Runtime.getHeapUsage; sample order retained; identical driver and semantic oracle for every stack head",
+      "loadEnd": [1.35, 1.79, 2.27],
+      "bundleSha256": {
+        "main": "bbf4d240ad577c80bb0ebce4773523ead96a69e2c2cd3a680b59862ae0ffd810",
+        "pr-1": "142b3ce5475464d3e8ffa76868f1d845aee6264e76bba217f99eb7d0fc828d32",
+        "pr-10": "43fb65f771e51b19982ca7064b879a20ffed1ca32cd48911e5a473bd6e1dd165",
+        "pr-11": "6fc807687e1c259df216f4580b4e8886ea00d72efc9c188010bc36a231b7f559",
+        "pr-12": "3921c79d8cc1755a0e7729fa68e9f91c43bb16d1f5c8eb1d6c6f274d7334f386",
+        "pr-13": "2b7efb3008b1a85bb3680e0ad52915798cbfc02812f7401c0f90bcdb00c61b77",
+        "pr-14": "3454ef9795ad5ac8d406408508d58cd13597eab403cea2d2514e739af8df2bff",
+        "pr-15": "1633935a3dd9f6b443be8ce461951f65b28af6b832bda5b5a7963c4dd2e2eaa4",
+        "pr-22": "1633935a3dd9f6b443be8ce461951f65b28af6b832bda5b5a7963c4dd2e2eaa4"
+      }
+    },
+    {
+      "date": "2026-08-10T09:52:00.479Z",
+      "node": "v22.22.2",
+      "chromium": "149.0.7827.55",
+      "cpus": 32,
+      "cpuModel": "Intel(R) Xeon(R) Platinum 8336C CPU @ 2.30GHz",
+      "platform": "linux",
+      "release": "5.15.120.bsk.3-amd64",
+      "loadStart": [0.99, 1.65, 2.2],
+      "repetitions": 5,
+      "coldSamples": 5,
+      "scales": [1000, 10000, 30000],
+      "protocol": "fresh page and background worker per repetition; explicit CDP GC before Runtime.getHeapUsage; sample order retained; identical driver and semantic oracle for every stack head",
+      "loadEnd": [2.15, 2.23, 2.29],
+      "bundleSha256": {
+        "vue-vdom": "699e029f0e778e4e322d7a7243a000b221cf965cdb65dd8a3d9ca3af633c20d2",
+        "vue-vapor": "5435ccde6c1751cb8b0e1a82bb891bd5d11e7a9829dc26c3f819ea0e33375dc8",
+        "react": "160a7035fb63dafc5dd4d801b598cd11c33abc14062bf30021a0de081f8d701e"
+      }
+    },
+    {
+      "date": "2026-08-10T10:02:55.084Z",
+      "node": "v22.22.2",
+      "chromium": "149.0.7827.55",
+      "cpus": 32,
+      "cpuModel": "Intel(R) Xeon(R) Platinum 8336C CPU @ 2.30GHz",
+      "platform": "linux",
+      "release": "5.15.120.bsk.3-amd64",
+      "loadStart": [0.72, 1.56, 2.02],
+      "repetitions": 5,
+      "coldSamples": 5,
+      "scales": [1000, 10000, 30000],
+      "protocol": "fresh page and background worker per repetition; explicit CDP GC before Runtime.getHeapUsage; sample order retained; identical driver and semantic oracle for every stack head",
+      "bundleVariant": "control",
+      "loadEnd": [5.65, 3.79, 2.77],
+      "bundleSha256": {
+        "main": "8b6dba0774633c7b38839c8771ce6de4856eb628a9af3d85cc132f051c84ccbd",
+        "pr-22": "d81f99e8d8a613ea41ad6dc5635070a8ce4aa0ce25614ad940702538f492f42b"
+      }
+    }
+  ],
+  "bundleSha256": {
+    "main": "8b6dba0774633c7b38839c8771ce6de4856eb628a9af3d85cc132f051c84ccbd",
+    "pr-1": "142b3ce5475464d3e8ffa76868f1d845aee6264e76bba217f99eb7d0fc828d32",
+    "pr-10": "43fb65f771e51b19982ca7064b879a20ffed1ca32cd48911e5a473bd6e1dd165",
+    "pr-11": "6fc807687e1c259df216f4580b4e8886ea00d72efc9c188010bc36a231b7f559",
+    "pr-12": "3921c79d8cc1755a0e7729fa68e9f91c43bb16d1f5c8eb1d6c6f274d7334f386",
+    "pr-13": "2b7efb3008b1a85bb3680e0ad52915798cbfc02812f7401c0f90bcdb00c61b77",
+    "pr-14": "3454ef9795ad5ac8d406408508d58cd13597eab403cea2d2514e739af8df2bff",
+    "pr-15": "1633935a3dd9f6b443be8ce461951f65b28af6b832bda5b5a7963c4dd2e2eaa4",
+    "pr-22": "d81f99e8d8a613ea41ad6dc5635070a8ce4aa0ce25614ad940702538f492f42b",
+    "vue-vdom": "699e029f0e778e4e322d7a7243a000b221cf965cdb65dd8a3d9ca3af633c20d2",
+    "vue-vapor": "5435ccde6c1751cb8b0e1a82bb891bd5d11e7a9829dc26c3f819ea0e33375dc8",
+    "react": "160a7035fb63dafc5dd4d801b598cd11c33abc14062bf30021a0de081f8d701e"
+  },
+  "targets": {
+    "main": {
+      "sha": "cdb501c945801d449d5d098b1b52341f23a0f80f",
+      "heap": {
+        "scales": [
+          {
+            "rows": 1000,
+            "retained": {
+              "median": 14203220,
+              "min": 14188016,
+              "max": 14210404
+            },
+            "clearResidual": {
+              "median": 4549352,
+              "min": 4545744,
+              "max": 4597396
+            },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 10000,
+            "retained": {
+              "median": 141779032,
+              "min": 141766524,
+              "max": 141785660
+            },
+            "clearResidual": {
+              "median": 41817608,
+              "min": 41797016,
+              "max": 41823668
+            },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 30000,
+            "retained": {
+              "median": 410672160,
+              "min": 410668052,
+              "max": 410675192
+            },
+            "clearResidual": {
+              "median": 119564972,
+              "min": 119555980,
+              "max": 119568212
+            },
+            "semantic": true,
+            "workerReleased": true
+          }
+        ],
+        "slopeBytesPerRow": 13633.618856278368
+      },
+      "cpu": {
+        "wallMs": {
+          "median": 3274.7999999523163,
+          "min": 3222.5,
+          "max": 3449.399999856949
+        },
+        "backgroundActiveMs": {
+          "median": 906.402,
+          "min": 854.43,
+          "max": 912.538
+        },
+        "mainActiveMs": { "median": 2467.18, "min": 2441.51, "max": 2622.273 },
+        "stageMs": {
+          "ownerMaterializationMs": 290.89999985694885,
+          "transactionStagingMs": 377.69999980926514,
+          "planFoldingMs": 0
+        },
+        "explainedShare": 0.7376417965386374,
+        "semantic": true
+      },
+      "cold": {
+        "swap": {
+          "first": {
+            "median": 163.70000004768372,
+            "min": 157.59999990463257,
+            "max": 168.39999985694885
+          },
+          "steady": {
+            "median": 142.60000002384186,
+            "min": 131.90000009536743,
+            "max": 164.90000009536743
+          },
+          "firstSteadyRatio": 1.1479663395533946,
+          "firstExcessMs": 21.100000023841858,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 997, "min": 997, "max": 997 }
+          }
+        },
+        "replace": {
+          "first": {
+            "median": 429.2999999523163,
+            "min": 403.39999985694885,
+            "max": 439.60000014305115
+          },
+          "steady": {
+            "median": 357.7000000476837,
+            "min": 324.7999999523163,
+            "max": 410.09999990463257
+          },
+          "firstSteadyRatio": 1.2001677380349114,
+          "firstExcessMs": 71.59999990463257,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2000, "min": 2000, "max": 2000 }
+          }
+        },
+        "create": {
+          "first": {
+            "median": 360.7999999523163,
+            "min": 352.09999990463257,
+            "max": 381.2999999523163
+          },
+          "steady": {
+            "median": 273.90000009536743,
+            "min": 237.79999995231628,
+            "max": 300.2999999523163
+          },
+          "firstSteadyRatio": 1.3172690756724779,
+          "firstExcessMs": 86.89999985694885,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "clear": {
+          "first": { "median": 84, "min": 81.20000004768372, "max": 91.5 },
+          "steady": { "median": 72.25, "min": 60.5, "max": 79.20000004768372 },
+          "firstSteadyRatio": 1.1626297577854672,
+          "firstExcessMs": 11.75,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "select": {
+          "first": {
+            "median": 92.09999990463257,
+            "min": 88.90000009536743,
+            "max": 95.60000014305115
+          },
+          "steady": {
+            "median": 84.5,
+            "min": 70.90000009536743,
+            "max": 96.19999980926514
+          },
+          "firstSteadyRatio": 1.0899408272737583,
+          "firstExcessMs": 7.599999904632568,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2, "min": 1, "max": 2 }
+          }
+        },
+        "update10th": {
+          "first": {
+            "median": 112.29999995231628,
+            "min": 101.79999995231628,
+            "max": 142.40000009536743
+          },
+          "steady": {
+            "median": 99.05000007152557,
+            "min": 90.20000004768372,
+            "max": 150.40000009536743
+          },
+          "firstSteadyRatio": 1.1337708215166349,
+          "firstExcessMs": 13.24999988079071,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 100, "min": 100, "max": 100 }
+          }
+        }
+      },
+      "storm": {
+        "updateStorm": {
+          "ms": {
+            "median": 205.59999990463257,
+            "min": 198.29999995231628,
+            "max": 222.5
+          },
+          "commits": { "median": 2, "min": 2, "max": 2 },
+          "changedRows": { "median": 200, "min": 200, "max": 200 },
+          "wireCommits": { "median": 0, "min": 0, "max": 0 },
+          "wireCommands": { "median": 0, "min": 0, "max": 0 },
+          "semantic": true
+        },
+        "selectStorm": {
+          "ms": {
+            "median": 134,
+            "min": 132.79999995231628,
+            "max": 155.40000009536743
+          },
+          "commits": { "median": 1, "min": 1, "max": 1 },
+          "changedRows": { "median": 1, "min": 1, "max": 1 },
+          "wireCommits": { "median": 0, "min": 0, "max": 0 },
+          "wireCommands": { "median": 0, "min": 0, "max": 0 },
+          "semantic": true
+        }
+      }
+    },
+    "pr-1": {
+      "sha": "e14d6001ae1ffe21a82a08116555ed6877696440",
+      "heap": {
+        "scales": [
+          {
+            "rows": 1000,
+            "retained": {
+              "median": 14179724,
+              "min": 14166544,
+              "max": 14180464
+            },
+            "clearResidual": {
+              "median": 4530032,
+              "min": 4519772,
+              "max": 4577568
+            },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 10000,
+            "retained": {
+              "median": 141461328,
+              "min": 141449284,
+              "max": 141464968
+            },
+            "clearResidual": {
+              "median": 41506632,
+              "min": 41494364,
+              "max": 41513648
+            },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 30000,
+            "retained": {
+              "median": 409712240,
+              "min": 409709152,
+              "max": 409714732
+            },
+            "clearResidual": {
+              "median": 118604944,
+              "min": 118599096,
+              "max": 118607320
+            },
+            "semantic": true,
+            "workerReleased": true
+          }
+        ],
+        "slopeBytesPerRow": 13601.358275340393
+      },
+      "cpu": {
+        "wallMs": {
+          "median": 3150,
+          "min": 3091.7999999523163,
+          "max": 3207.600000143051
+        },
+        "backgroundActiveMs": {
+          "median": 895.384,
+          "min": 879.463,
+          "max": 920.836
+        },
+        "mainActiveMs": {
+          "median": 2374.529,
+          "min": 2316.586,
+          "max": 2445.984
+        },
+        "stageMs": {
+          "ownerMaterializationMs": 266.90000009536743,
+          "transactionStagingMs": 370.89999985694885,
+          "planFoldingMs": 0
+        },
+        "explainedShare": 0.7123200771426743,
+        "semantic": true
+      },
+      "cold": {
+        "swap": {
+          "first": {
+            "median": 132.90000009536743,
+            "min": 130.90000009536743,
+            "max": 138.10000014305115
+          },
+          "steady": {
+            "median": 116.94999992847443,
+            "min": 107.30000019073486,
+            "max": 150.79999995231628
+          },
+          "firstSteadyRatio": 1.1363830711983574,
+          "firstExcessMs": 15.950000166893005,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 997, "min": 997, "max": 997 }
+          }
+        },
+        "replace": {
+          "first": {
+            "median": 415.09999990463257,
+            "min": 398.39999985694885,
+            "max": 428.7999999523163
+          },
+          "steady": {
+            "median": 357.25,
+            "min": 320.90000009536743,
+            "max": 390.89999985694885
+          },
+          "firstSteadyRatio": 1.1619314203068791,
+          "firstExcessMs": 57.84999990463257,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2000, "min": 2000, "max": 2000 }
+          }
+        },
+        "create": {
+          "first": {
+            "median": 378.09999990463257,
+            "min": 349.10000014305115,
+            "max": 393.39999985694885
+          },
+          "steady": {
+            "median": 274.950000166893,
+            "min": 238.59999990463257,
+            "max": 313.59999990463257
+          },
+          "firstSteadyRatio": 1.3751591186584038,
+          "firstExcessMs": 103.14999973773956,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "clear": {
+          "first": {
+            "median": 87,
+            "min": 84.09999990463257,
+            "max": 90.79999995231628
+          },
+          "steady": {
+            "median": 72.04999995231628,
+            "min": 65,
+            "max": 81.70000004768372
+          },
+          "firstSteadyRatio": 1.207494796080192,
+          "firstExcessMs": 14.950000047683716,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "select": {
+          "first": { "median": 63.5, "min": 59.5, "max": 66.89999985694885 },
+          "steady": {
+            "median": 53.700000047683716,
+            "min": 40,
+            "max": 66.90000009536743
+          },
+          "firstSteadyRatio": 1.1824953434565033,
+          "firstExcessMs": 9.799999952316284,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2, "min": 1, "max": 2 }
+          }
+        },
+        "update10th": {
+          "first": {
+            "median": 67.29999995231628,
+            "min": 64.60000014305115,
+            "max": 74.89999985694885
+          },
+          "steady": {
+            "median": 64.70000004768372,
+            "min": 58.40000009536743,
+            "max": 77.70000004768372
+          },
+          "firstSteadyRatio": 1.0401854699028805,
+          "firstExcessMs": 2.5999999046325684,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 100, "min": 100, "max": 100 }
+          }
+        }
+      },
+      "storm": {
+        "updateStorm": {
+          "ms": { "median": 247.59999990463257, "min": 201, "max": 262 },
+          "commits": { "median": 4, "min": 3, "max": 4 },
+          "changedRows": { "median": 400, "min": 300, "max": 400 },
+          "wireCommits": { "median": 6, "min": 5, "max": 6 },
+          "wireCommands": { "median": 400, "min": 300, "max": 400 },
+          "semantic": true
+        },
+        "selectStorm": {
+          "ms": {
+            "median": 61.299999952316284,
+            "min": 52.5,
+            "max": 66.90000009536743
+          },
+          "commits": { "median": 1, "min": 1, "max": 1 },
+          "changedRows": { "median": 1, "min": 1, "max": 1 },
+          "wireCommits": { "median": 4, "min": 4, "max": 4 },
+          "wireCommands": { "median": 1, "min": 1, "max": 1 },
+          "semantic": true
+        }
+      }
+    },
+    "pr-10": {
+      "sha": "34d530da299849397cd495c4f7b2709599ab09a7",
+      "heap": {
+        "scales": [
+          {
+            "rows": 1000,
+            "retained": {
+              "median": 14180160,
+              "min": 14167780,
+              "max": 14181120
+            },
+            "clearResidual": {
+              "median": 4540304,
+              "min": 4530480,
+              "max": 4580088
+            },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 10000,
+            "retained": {
+              "median": 141463956,
+              "min": 141458292,
+              "max": 141465728
+            },
+            "clearResidual": {
+              "median": 41513544,
+              "min": 41490732,
+              "max": 41526120
+            },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 30000,
+            "retained": {
+              "median": 409712096,
+              "min": 409678220,
+              "max": 409716564
+            },
+            "clearResidual": {
+              "median": 118612404,
+              "min": 118523696,
+              "max": 118617164
+            },
+            "semantic": true,
+            "workerReleased": true
+          }
+        ],
+        "slopeBytesPerRow": 13601.318538577912
+      },
+      "cpu": {
+        "wallMs": {
+          "median": 3174.300000190735,
+          "min": 3066.699999809265,
+          "max": 3191.2999999523163
+        },
+        "backgroundActiveMs": {
+          "median": 902.803,
+          "min": 888.603,
+          "max": 906.616
+        },
+        "mainActiveMs": {
+          "median": 2393.796,
+          "min": 2298.501,
+          "max": 2418.281
+        },
+        "stageMs": {
+          "ownerMaterializationMs": 266.09999990463257,
+          "transactionStagingMs": 367.2000000476837,
+          "planFoldingMs": 0
+        },
+        "explainedShare": 0.7014819400825166,
+        "semantic": true
+      },
+      "cold": {
+        "swap": {
+          "first": { "median": 122.5, "min": 119.5, "max": 134.30000019073486 },
+          "steady": {
+            "median": 109.74999988079071,
+            "min": 102.70000004768372,
+            "max": 122.90000009536743
+          },
+          "firstSteadyRatio": 1.116173121941305,
+          "firstExcessMs": 12.75000011920929,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 997, "min": 997, "max": 997 }
+          }
+        },
+        "replace": {
+          "first": {
+            "median": 417.7000000476837,
+            "min": 400.7999999523163,
+            "max": 422.2000000476837
+          },
+          "steady": {
+            "median": 359.39999997615814,
+            "min": 329.80000019073486,
+            "max": 418.2000000476837
+          },
+          "firstSteadyRatio": 1.1622148026583001,
+          "firstExcessMs": 58.300000071525574,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2000, "min": 2000, "max": 2000 }
+          }
+        },
+        "create": {
+          "first": { "median": 357.2999999523163, "min": 345.5, "max": 365.5 },
+          "steady": {
+            "median": 277.64999997615814,
+            "min": 234.10000014305115,
+            "max": 305.90000009536743
+          },
+          "firstSteadyRatio": 1.2868719610408705,
+          "firstExcessMs": 79.64999997615814,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "clear": {
+          "first": { "median": 88, "min": 83, "max": 104.39999985694885 },
+          "steady": {
+            "median": 72.10000002384186,
+            "min": 61.700000047683716,
+            "max": 88.70000004768372
+          },
+          "firstSteadyRatio": 1.2205270453661632,
+          "firstExcessMs": 15.899999976158142,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "select": {
+          "first": {
+            "median": 53.90000009536743,
+            "min": 52.200000047683716,
+            "max": 60.09999990463257
+          },
+          "steady": {
+            "median": 55.25,
+            "min": 40.799999952316284,
+            "max": 60.59999990463257
+          },
+          "firstSteadyRatio": 0.9755656125858359,
+          "firstExcessMs": -1.3499999046325684,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2, "min": 1, "max": 2 }
+          }
+        },
+        "update10th": {
+          "first": {
+            "median": 64.70000004768372,
+            "min": 62.89999985694885,
+            "max": 67
+          },
+          "steady": {
+            "median": 62.550000071525574,
+            "min": 47.799999952316284,
+            "max": 67.70000004768372
+          },
+          "firstSteadyRatio": 1.0343725015779317,
+          "firstExcessMs": 2.149999976158142,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 100, "min": 100, "max": 100 }
+          }
+        }
+      },
+      "storm": {
+        "updateStorm": {
+          "ms": {
+            "median": 241.20000004768372,
+            "min": 201,
+            "max": 252.40000009536743
+          },
+          "commits": { "median": 4, "min": 3, "max": 4 },
+          "changedRows": { "median": 400, "min": 300, "max": 400 },
+          "wireCommits": { "median": 6, "min": 5, "max": 6 },
+          "wireCommands": { "median": 400, "min": 300, "max": 400 },
+          "semantic": true
+        },
+        "selectStorm": {
+          "ms": {
+            "median": 61.59999990463257,
+            "min": 58.40000009536743,
+            "max": 68.10000014305115
+          },
+          "commits": { "median": 1, "min": 1, "max": 1 },
+          "changedRows": { "median": 1, "min": 1, "max": 1 },
+          "wireCommits": { "median": 4, "min": 4, "max": 5 },
+          "wireCommands": { "median": 1, "min": 1, "max": 1 },
+          "semantic": true
+        }
+      }
+    },
+    "pr-11": {
+      "sha": "adfad409867733a524c5ab200c15b0510535586d",
+      "heap": {
+        "scales": [
+          {
+            "rows": 1000,
+            "retained": {
+              "median": 14178860,
+              "min": 14166940,
+              "max": 14179856
+            },
+            "clearResidual": {
+              "median": 4574412,
+              "min": 4540640,
+              "max": 4579348
+            },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 10000,
+            "retained": {
+              "median": 141460164,
+              "min": 141448212,
+              "max": 141463320
+            },
+            "clearResidual": {
+              "median": 41513400,
+              "min": 41510188,
+              "max": 41714828
+            },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 30000,
+            "retained": {
+              "median": 409711760,
+              "min": 409709936,
+              "max": 409716632
+            },
+            "clearResidual": {
+              "median": 118609276,
+              "min": 118603356,
+              "max": 118617492
+            },
+            "semantic": true,
+            "workerReleased": true
+          }
+        ],
+        "slopeBytesPerRow": 13601.37500453858
+      },
+      "cpu": {
+        "wallMs": {
+          "median": 3125.5999999046326,
+          "min": 3104.2999999523163,
+          "max": 3244.2999999523163
+        },
+        "backgroundActiveMs": {
+          "median": 880.545,
+          "min": 861.201,
+          "max": 931.56
+        },
+        "mainActiveMs": {
+          "median": 2386.137,
+          "min": 2314.317,
+          "max": 2490.531
+        },
+        "stageMs": {
+          "ownerMaterializationMs": 268.2000000476837,
+          "transactionStagingMs": 358.09999990463257,
+          "planFoldingMs": 0
+        },
+        "explainedShare": 0.7112640466441991,
+        "semantic": true
+      },
+      "cold": {
+        "swap": {
+          "first": {
+            "median": 87,
+            "min": 83.90000009536743,
+            "max": 88.79999995231628
+          },
+          "steady": {
+            "median": 72.15000009536743,
+            "min": 61.80000019073486,
+            "max": 83.39999985694885
+          },
+          "firstSteadyRatio": 1.2058212042273586,
+          "firstExcessMs": 14.849999904632568,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 997, "min": 997, "max": 997 }
+          }
+        },
+        "replace": {
+          "first": {
+            "median": 432.2000000476837,
+            "min": 412.90000009536743,
+            "max": 464.5
+          },
+          "steady": {
+            "median": 375.90000009536743,
+            "min": 332.39999985694885,
+            "max": 491
+          },
+          "firstSteadyRatio": 1.1497738758660088,
+          "firstExcessMs": 56.299999952316284,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2000, "min": 2000, "max": 2000 }
+          }
+        },
+        "create": {
+          "first": { "median": 353, "min": 344, "max": 365.7999999523163 },
+          "steady": {
+            "median": 275.10000002384186,
+            "min": 234.79999995231628,
+            "max": 331.40000009536743
+          },
+          "firstSteadyRatio": 1.2831697563409918,
+          "firstExcessMs": 77.89999997615814,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "clear": {
+          "first": {
+            "median": 85.5,
+            "min": 83.09999990463257,
+            "max": 90.29999995231628
+          },
+          "steady": {
+            "median": 69.95000004768372,
+            "min": 62.80000019073486,
+            "max": 84.09999990463257
+          },
+          "firstSteadyRatio": 1.222301643198229,
+          "firstExcessMs": 15.549999952316284,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "select": {
+          "first": {
+            "median": 31.700000047683716,
+            "min": 28.299999952316284,
+            "max": 34.5
+          },
+          "steady": {
+            "median": 20.700000047683716,
+            "min": 16.5,
+            "max": 26.200000047683716
+          },
+          "firstSteadyRatio": 1.5314009649594602,
+          "firstExcessMs": 11,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2, "min": 1, "max": 2 }
+          }
+        },
+        "update10th": {
+          "first": {
+            "median": 38,
+            "min": 37.799999952316284,
+            "max": 50.59999990463257
+          },
+          "steady": {
+            "median": 29.950000047683716,
+            "min": 25.200000047683716,
+            "max": 37.700000047683716
+          },
+          "firstSteadyRatio": 1.2687813001502435,
+          "firstExcessMs": 8.049999952316284,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 100, "min": 100, "max": 100 }
+          }
+        }
+      },
+      "storm": {
+        "updateStorm": {
+          "ms": {
+            "median": 115.60000014305115,
+            "min": 112.10000014305115,
+            "max": 122.10000014305115
+          },
+          "commits": { "median": 4, "min": 4, "max": 4 },
+          "changedRows": { "median": 400, "min": 400, "max": 400 },
+          "wireCommits": { "median": 11, "min": 11, "max": 12 },
+          "wireCommands": { "median": 400, "min": 400, "max": 400 },
+          "semantic": true
+        },
+        "selectStorm": {
+          "ms": {
+            "median": 28.100000143051147,
+            "min": 24,
+            "max": 62.59999990463257
+          },
+          "commits": { "median": 1, "min": 1, "max": 2 },
+          "changedRows": { "median": 1, "min": 1, "max": 3 },
+          "wireCommits": { "median": 13, "min": 12, "max": 14 },
+          "wireCommands": { "median": 1, "min": 1, "max": 3 },
+          "semantic": true
+        }
+      }
+    },
+    "pr-12": {
+      "sha": "b4b0ab92df2f4b4ec0cf3b1a203158f8aa6943ec",
+      "heap": {
+        "scales": [
+          {
+            "rows": 1000,
+            "retained": {
+              "median": 14823824,
+              "min": 14813184,
+              "max": 14825380
+            },
+            "clearResidual": {
+              "median": 4628156,
+              "min": 4617816,
+              "max": 4650040
+            },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 10000,
+            "retained": {
+              "median": 147365584,
+              "min": 147362816,
+              "max": 147384348
+            },
+            "clearResidual": {
+              "median": 41565684,
+              "min": 41551748,
+              "max": 41567012
+            },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 30000,
+            "retained": {
+              "median": 427340664,
+              "min": 427335792,
+              "max": 427345508
+            },
+            "clearResidual": {
+              "median": 118664616,
+              "min": 118661608,
+              "max": 118666736
+            },
+            "semantic": true,
+            "workerReleased": true
+          }
+        ],
+        "slopeBytesPerRow": 14187.114826021181
+      },
+      "cpu": {
+        "wallMs": {
+          "median": 3025.399999856949,
+          "min": 2945.0999999046326,
+          "max": 3078.0999999046326
+        },
+        "backgroundActiveMs": {
+          "median": 885.039,
+          "min": 874.501,
+          "max": 925.892
+        },
+        "mainActiveMs": {
+          "median": 2249.469,
+          "min": 2173.807,
+          "max": 2264.188
+        },
+        "stageMs": {
+          "ownerMaterializationMs": 269.89999985694885,
+          "transactionStagingMs": 454.89999985694885,
+          "planFoldingMs": 63.200000047683716
+        },
+        "explainedShare": 0.8903562439187216,
+        "semantic": true
+      },
+      "cold": {
+        "swap": {
+          "first": {
+            "median": 89,
+            "min": 83.79999995231628,
+            "max": 104.09999990463257
+          },
+          "steady": {
+            "median": 72.50000011920929,
+            "min": 65.20000004768372,
+            "max": 93.09999990463257
+          },
+          "firstSteadyRatio": 1.2275862048780735,
+          "firstExcessMs": 16.49999988079071,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 997, "min": 997, "max": 997 }
+          }
+        },
+        "replace": {
+          "first": {
+            "median": 412.09999990463257,
+            "min": 402.90000009536743,
+            "max": 456.40000009536743
+          },
+          "steady": {
+            "median": 355.75,
+            "min": 326.7000000476837,
+            "max": 401.5
+          },
+          "firstSteadyRatio": 1.1583977509617218,
+          "firstExcessMs": 56.34999990463257,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2000, "min": 2000, "max": 2000 }
+          }
+        },
+        "create": {
+          "first": {
+            "median": 361.7999999523163,
+            "min": 355.90000009536743,
+            "max": 401.7000000476837
+          },
+          "steady": { "median": 276.8000000715256, "min": 236, "max": 290 },
+          "firstSteadyRatio": 1.3070809243454717,
+          "firstExcessMs": 84.99999988079071,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "clear": {
+          "first": {
+            "median": 92.39999985694885,
+            "min": 86.90000009536743,
+            "max": 93.29999995231628
+          },
+          "steady": {
+            "median": 70.69999992847443,
+            "min": 65.5,
+            "max": 93.39999985694885
+          },
+          "firstSteadyRatio": 1.3069306923681445,
+          "firstExcessMs": 21.699999928474426,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "select": {
+          "first": {
+            "median": 28.09999990463257,
+            "min": 21.399999856948853,
+            "max": 32
+          },
+          "steady": {
+            "median": 20.049999952316284,
+            "min": 15.599999904632568,
+            "max": 25.59999990463257
+          },
+          "firstSteadyRatio": 1.4014962579282353,
+          "firstExcessMs": 8.049999952316284,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2, "min": 1, "max": 2 }
+          }
+        },
+        "update10th": {
+          "first": {
+            "median": 45.200000047683716,
+            "min": 40.299999952316284,
+            "max": 45.90000009536743
+          },
+          "steady": {
+            "median": 29.149999976158142,
+            "min": 24.899999856948853,
+            "max": 37.700000047683716
+          },
+          "firstSteadyRatio": 1.5506003459572182,
+          "firstExcessMs": 16.050000071525574,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 100, "min": 100, "max": 100 }
+          }
+        }
+      },
+      "storm": {
+        "updateStorm": {
+          "ms": {
+            "median": 101.30000019073486,
+            "min": 95.40000009536743,
+            "max": 124.59999990463257
+          },
+          "commits": { "median": 3, "min": 3, "max": 4 },
+          "changedRows": { "median": 300, "min": 300, "max": 400 },
+          "wireCommits": { "median": 10, "min": 9, "max": 10 },
+          "wireCommands": { "median": 300, "min": 300, "max": 400 },
+          "semantic": true
+        },
+        "selectStorm": {
+          "ms": {
+            "median": 33.799999952316284,
+            "min": 22,
+            "max": 55.10000014305115
+          },
+          "commits": { "median": 1, "min": 1, "max": 2 },
+          "changedRows": { "median": 1, "min": 1, "max": 3 },
+          "wireCommits": { "median": 13, "min": 12, "max": 15 },
+          "wireCommands": { "median": 1, "min": 1, "max": 3 },
+          "semantic": true
+        }
+      }
+    },
+    "pr-13": {
+      "sha": "dcb334afa415fda63e94c09a77a31d107dea6128",
+      "heap": {
+        "scales": [
+          {
+            "rows": 1000,
+            "retained": {
+              "median": 14769900,
+              "min": 14764804,
+              "max": 14781068
+            },
+            "clearResidual": {
+              "median": 4605428,
+              "min": 4605264,
+              "max": 4618848
+            },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 10000,
+            "retained": {
+              "median": 147351328,
+              "min": 147345592,
+              "max": 147354204
+            },
+            "clearResidual": {
+              "median": 41564552,
+              "min": 41531620,
+              "max": 41565652
+            },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 30000,
+            "retained": {
+              "median": 427310024,
+              "min": 427305128,
+              "max": 427313800
+            },
+            "clearResidual": {
+              "median": 118674168,
+              "min": 118650128,
+              "max": 118694456
+            },
+            "semantic": true,
+            "workerReleased": true
+          }
+        ],
+        "slopeBytesPerRow": 14187.647782148262
+      },
+      "cpu": {
+        "wallMs": {
+          "median": 2989.699999809265,
+          "min": 2894,
+          "max": 3023.5999999046326
+        },
+        "backgroundActiveMs": {
+          "median": 897.796,
+          "min": 849.944,
+          "max": 917.67
+        },
+        "mainActiveMs": {
+          "median": 2245.559,
+          "min": 2157.121,
+          "max": 2278.782
+        },
+        "stageMs": {
+          "ownerMaterializationMs": 276,
+          "transactionStagingMs": 408.5,
+          "planFoldingMs": 59.89999985694885
+        },
+        "explainedShare": 0.8291415865708344,
+        "semantic": true
+      },
+      "cold": {
+        "swap": {
+          "first": {
+            "median": 89,
+            "min": 82.29999995231628,
+            "max": 93.30000019073486
+          },
+          "steady": {
+            "median": 71.70000004768372,
+            "min": 61.299999952316284,
+            "max": 87.89999985694885
+          },
+          "firstSteadyRatio": 1.2412831233028034,
+          "firstExcessMs": 17.299999952316284,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 997, "min": 997, "max": 997 }
+          }
+        },
+        "replace": {
+          "first": {
+            "median": 419.5,
+            "min": 409.7000000476837,
+            "max": 455.69999980926514
+          },
+          "steady": {
+            "median": 351.6999999284744,
+            "min": 311.60000014305115,
+            "max": 376.60000014305115
+          },
+          "firstSteadyRatio": 1.1927779359832644,
+          "firstExcessMs": 67.80000007152557,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2000, "min": 2000, "max": 2000 }
+          }
+        },
+        "create": {
+          "first": {
+            "median": 377.90000009536743,
+            "min": 351.2999999523163,
+            "max": 412
+          },
+          "steady": {
+            "median": 269.14999997615814,
+            "min": 244,
+            "max": 318.89999985694885
+          },
+          "firstSteadyRatio": 1.4040497868431825,
+          "firstExcessMs": 108.75000011920929,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "clear": {
+          "first": { "median": 80, "min": 76.20000004768372, "max": 81.5 },
+          "steady": {
+            "median": 59.25,
+            "min": 55.40000009536743,
+            "max": 71.90000009536743
+          },
+          "firstSteadyRatio": 1.350210970464135,
+          "firstExcessMs": 20.75,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "select": {
+          "first": {
+            "median": 33.299999952316284,
+            "min": 21,
+            "max": 35.59999990463257
+          },
+          "steady": {
+            "median": 23.449999928474426,
+            "min": 12.100000143051147,
+            "max": 27.200000047683716
+          },
+          "firstSteadyRatio": 1.4200426462211364,
+          "firstExcessMs": 9.850000023841858,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2, "min": 1, "max": 2 }
+          }
+        },
+        "update10th": {
+          "first": {
+            "median": 35.200000047683716,
+            "min": 34.39999985694885,
+            "max": 37.799999952316284
+          },
+          "steady": { "median": 27.5, "min": 24.5, "max": 43.299999952316284 },
+          "firstSteadyRatio": 1.2800000017339532,
+          "firstExcessMs": 7.700000047683716,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 100, "min": 100, "max": 100 }
+          }
+        }
+      },
+      "storm": {
+        "updateStorm": {
+          "ms": {
+            "median": 139.40000009536743,
+            "min": 125,
+            "max": 144.90000009536743
+          },
+          "commits": { "median": 5, "min": 4, "max": 5 },
+          "changedRows": { "median": 500, "min": 400, "max": 500 },
+          "wireCommits": { "median": 13, "min": 12, "max": 14 },
+          "wireCommands": { "median": 500, "min": 400, "max": 500 },
+          "semantic": true
+        },
+        "selectStorm": {
+          "ms": {
+            "median": 25.199999809265137,
+            "min": 16.200000047683716,
+            "max": 28.90000009536743
+          },
+          "commits": { "median": 1, "min": 1, "max": 1 },
+          "changedRows": { "median": 1, "min": 1, "max": 1 },
+          "wireCommits": { "median": 15, "min": 14, "max": 16 },
+          "wireCommands": { "median": 1, "min": 1, "max": 1 },
+          "semantic": true
+        }
+      }
+    },
+    "pr-14": {
+      "sha": "e627ca5979ed77fbaf8ef5eafbea86c482f64cf5",
+      "heap": {
+        "scales": [
+          {
+            "rows": 1000,
+            "retained": {
+              "median": 15643552,
+              "min": 15641172,
+              "max": 15651648
+            },
+            "clearResidual": {
+              "median": 4553484,
+              "min": 4553248,
+              "max": 4567256
+            },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 10000,
+            "retained": {
+              "median": 156944148,
+              "min": 156927300,
+              "max": 156965416
+            },
+            "clearResidual": {
+              "median": 41094296,
+              "min": 41089064,
+              "max": 41101548
+            },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 30000,
+            "retained": {
+              "median": 454088040,
+              "min": 454086932,
+              "max": 454096716
+            },
+            "clearResidual": {
+              "median": 117111652,
+              "min": 117096612,
+              "max": 117131444
+            },
+            "semantic": true,
+            "workerReleased": true
+          }
+        ],
+        "slopeBytesPerRow": 15075.244596066566
+      },
+      "cpu": {
+        "wallMs": {
+          "median": 2792.100000143051,
+          "min": 2763.699999809265,
+          "max": 2909.7999999523163
+        },
+        "backgroundActiveMs": {
+          "median": 857.682,
+          "min": 821.922,
+          "max": 943.656
+        },
+        "mainActiveMs": {
+          "median": 2081.161,
+          "min": 2017.839,
+          "max": 2108.023
+        },
+        "stageMs": {
+          "ownerMaterializationMs": 262.10000014305115,
+          "transactionStagingMs": 427.2999999523163,
+          "planFoldingMs": 60
+        },
+        "explainedShare": 0.8737504111026784,
+        "semantic": true
+      },
+      "cold": {
+        "swap": {
+          "first": { "median": 82.59999990463257, "min": 80, "max": 87.5 },
+          "steady": {
+            "median": 68.45000004768372,
+            "min": 64.69999980926514,
+            "max": 78.59999990463257
+          },
+          "firstSteadyRatio": 1.2067202315133918,
+          "firstExcessMs": 14.149999856948853,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 997, "min": 997, "max": 997 }
+          }
+        },
+        "replace": {
+          "first": {
+            "median": 415.40000009536743,
+            "min": 373.09999990463257,
+            "max": 457.2999999523163
+          },
+          "steady": {
+            "median": 337.7499998807907,
+            "min": 301.5,
+            "max": 378.60000014305115
+          },
+          "firstSteadyRatio": 1.2299037756979523,
+          "firstExcessMs": 77.65000021457672,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2000, "min": 2000, "max": 2000 }
+          }
+        },
+        "create": {
+          "first": {
+            "median": 366.5,
+            "min": 353.2999999523163,
+            "max": 392.2000000476837
+          },
+          "steady": {
+            "median": 264.7000000476837,
+            "min": 243,
+            "max": 301.10000014305115
+          },
+          "firstSteadyRatio": 1.3845863238911136,
+          "firstExcessMs": 101.79999995231628,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "clear": {
+          "first": {
+            "median": 72.20000004768372,
+            "min": 68.79999995231628,
+            "max": 88.20000004768372
+          },
+          "steady": {
+            "median": 57.050000071525574,
+            "min": 53.19999980926514,
+            "max": 98.69999980926514
+          },
+          "firstSteadyRatio": 1.2655565286093613,
+          "firstExcessMs": 15.149999976158142,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "select": {
+          "first": {
+            "median": 33.90000009536743,
+            "min": 31.399999856948853,
+            "max": 35
+          },
+          "steady": {
+            "median": 23.450000047683716,
+            "min": 16.09999990463257,
+            "max": 33.200000047683716
+          },
+          "firstSteadyRatio": 1.4456289989950732,
+          "firstExcessMs": 10.450000047683716,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2, "min": 1, "max": 2 }
+          }
+        },
+        "update10th": {
+          "first": { "median": 40.89999985694885, "min": 38.5, "max": 48 },
+          "steady": {
+            "median": 29.75000011920929,
+            "min": 22.700000047683716,
+            "max": 40.09999990463257
+          },
+          "firstSteadyRatio": 1.3747899056491135,
+          "firstExcessMs": 11.149999737739563,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 100, "min": 100, "max": 100 }
+          }
+        }
+      },
+      "storm": {
+        "updateStorm": {
+          "ms": {
+            "median": 146.20000004768372,
+            "min": 137.5,
+            "max": 162.80000019073486
+          },
+          "commits": { "median": 6, "min": 5, "max": 6 },
+          "changedRows": { "median": 600, "min": 500, "max": 600 },
+          "wireCommits": { "median": 6, "min": 5, "max": 6 },
+          "wireCommands": { "median": 600, "min": 500, "max": 600 },
+          "semantic": true
+        },
+        "selectStorm": {
+          "ms": {
+            "median": 42.200000047683716,
+            "min": 35.60000014305115,
+            "max": 44.40000009536743
+          },
+          "commits": { "median": 2, "min": 2, "max": 2 },
+          "changedRows": { "median": 3, "min": 3, "max": 3 },
+          "wireCommits": { "median": 2, "min": 2, "max": 2 },
+          "wireCommands": { "median": 3, "min": 3, "max": 3 },
+          "semantic": true
+        }
+      }
+    },
+    "pr-15": {
+      "sha": "4a53620fe811a016cb9966fab53ca181a89159c8",
+      "heap": {
+        "scales": [
+          {
+            "rows": 1000,
+            "retained": {
+              "median": 15642872,
+              "min": 15631868,
+              "max": 15649384
+            },
+            "clearResidual": {
+              "median": 4553512,
+              "min": 4553468,
+              "max": 4571520
+            },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 10000,
+            "retained": {
+              "median": 156928416,
+              "min": 156924004,
+              "max": 156958500
+            },
+            "clearResidual": {
+              "median": 41088972,
+              "min": 41084760,
+              "max": 41119376
+            },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 30000,
+            "retained": {
+              "median": 454085196,
+              "min": 454083520,
+              "max": 454090228
+            },
+            "clearResidual": {
+              "median": 117141204,
+              "min": 117122192,
+              "max": 117145688
+            },
+            "semantic": true,
+            "workerReleased": true
+          }
+        ],
+        "slopeBytesPerRow": 15075.28963086233
+      },
+      "cpu": {
+        "wallMs": {
+          "median": 2818.5,
+          "min": 2692.2999999523163,
+          "max": 2897.5
+        },
+        "backgroundActiveMs": {
+          "median": 879.347,
+          "min": 845.008,
+          "max": 943.877
+        },
+        "mainActiveMs": {
+          "median": 2099.149,
+          "min": 1989.122,
+          "max": 2173.292
+        },
+        "stageMs": {
+          "ownerMaterializationMs": 263.90000009536743,
+          "transactionStagingMs": 405.5,
+          "planFoldingMs": 58.40000009536743
+        },
+        "explainedShare": 0.8276596158180274,
+        "semantic": true
+      },
+      "cold": {
+        "swap": {
+          "first": { "median": 82.90000009536743, "min": 76, "max": 87 },
+          "steady": {
+            "median": 72.29999995231628,
+            "min": 62.5,
+            "max": 88.89999985694885
+          },
+          "firstSteadyRatio": 1.14661134370736,
+          "firstExcessMs": 10.600000143051147,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 997, "min": 997, "max": 997 }
+          }
+        },
+        "replace": {
+          "first": {
+            "median": 425.5,
+            "min": 403.2999999523163,
+            "max": 468.39999985694885
+          },
+          "steady": {
+            "median": 331.9499999284744,
+            "min": 306.7000000476837,
+            "max": 401.60000014305115
+          },
+          "firstSteadyRatio": 1.2818195514134143,
+          "firstExcessMs": 93.55000007152557,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2000, "min": 2000, "max": 2000 }
+          }
+        },
+        "create": {
+          "first": {
+            "median": 343.7999999523163,
+            "min": 328.60000014305115,
+            "max": 352.59999990463257
+          },
+          "steady": {
+            "median": 254.70000004768372,
+            "min": 237.59999990463257,
+            "max": 301
+          },
+          "firstSteadyRatio": 1.3498233211148476,
+          "firstExcessMs": 89.09999990463257,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "clear": {
+          "first": {
+            "median": 70.5,
+            "min": 66.60000014305115,
+            "max": 73.60000014305115
+          },
+          "steady": {
+            "median": 59.449999928474426,
+            "min": 53.09999990463257,
+            "max": 84.5
+          },
+          "firstSteadyRatio": 1.1858704808211955,
+          "firstExcessMs": 11.050000071525574,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "select": {
+          "first": { "median": 32.5, "min": 29.200000047683716, "max": 45 },
+          "steady": {
+            "median": 20.149999856948853,
+            "min": 10.799999952316284,
+            "max": 32.700000047683716
+          },
+          "firstSteadyRatio": 1.6129032372569558,
+          "firstExcessMs": 12.350000143051147,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2, "min": 1, "max": 2 }
+          }
+        },
+        "update10th": {
+          "first": {
+            "median": 40.40000009536743,
+            "min": 37.700000047683716,
+            "max": 47.09999990463257
+          },
+          "steady": {
+            "median": 31.949999928474426,
+            "min": 23.09999990463257,
+            "max": 42.299999952316284
+          },
+          "firstSteadyRatio": 1.2644757491646255,
+          "firstExcessMs": 8.450000166893005,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 100, "min": 100, "max": 100 }
+          }
+        }
+      },
+      "storm": {
+        "updateStorm": {
+          "ms": {
+            "median": 131.5,
+            "min": 122.79999995231628,
+            "max": 140.20000004768372
+          },
+          "commits": { "median": 5, "min": 5, "max": 6 },
+          "changedRows": { "median": 500, "min": 500, "max": 600 },
+          "wireCommits": { "median": 5, "min": 5, "max": 6 },
+          "wireCommands": { "median": 500, "min": 500, "max": 600 },
+          "semantic": true
+        },
+        "selectStorm": {
+          "ms": {
+            "median": 34.19999980926514,
+            "min": 32.80000019073486,
+            "max": 45.40000009536743
+          },
+          "commits": { "median": 2, "min": 2, "max": 2 },
+          "changedRows": { "median": 3, "min": 3, "max": 3 },
+          "wireCommits": { "median": 2, "min": 2, "max": 2 },
+          "wireCommands": { "median": 3, "min": 3, "max": 3 },
+          "semantic": true
+        }
+      }
+    },
+    "pr-22": {
+      "sha": "3f251a8a7033adf2afa135c146536a57dfa58426",
+      "heap": {
+        "scales": [
+          {
+            "rows": 1000,
+            "retained": {
+              "median": 15642320,
+              "min": 15632044,
+              "max": 15660720
+            },
+            "clearResidual": {
+              "median": 4557920,
+              "min": 4553192,
+              "max": 4566840
+            },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 10000,
+            "retained": {
+              "median": 156943976,
+              "min": 156926028,
+              "max": 156964620
+            },
+            "clearResidual": {
+              "median": 41090796,
+              "min": 41078112,
+              "max": 41099260
+            },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 30000,
+            "retained": {
+              "median": 454085884,
+              "min": 454083140,
+              "max": 454091476
+            },
+            "clearResidual": {
+              "median": 117142376,
+              "min": 117121856,
+              "max": 117146036
+            },
+            "semantic": true,
+            "workerReleased": true
+          }
+        ],
+        "slopeBytesPerRow": 15075.201527987898
+      },
+      "cpu": {
+        "wallMs": {
+          "median": 2784.5999999046326,
+          "min": 2742,
+          "max": 2846.7999999523163
+        },
+        "backgroundActiveMs": {
+          "median": 880.891,
+          "min": 876.504,
+          "max": 898.133
+        },
+        "mainActiveMs": { "median": 2057.55, "min": 2022.989, "max": 2066.82 },
+        "stageMs": {
+          "ownerMaterializationMs": 266.10000014305115,
+          "transactionStagingMs": 396.39999985694885,
+          "planFoldingMs": 58.39999985694885
+        },
+        "explainedShare": 0.8183759396530886,
+        "semantic": true
+      },
+      "cold": {
+        "swap": {
+          "first": {
+            "median": 84.69999980926514,
+            "min": 80.19999980926514,
+            "max": 97.60000014305115
+          },
+          "steady": {
+            "median": 71.69999992847443,
+            "min": 62.40000009536743,
+            "max": 78.30000019073486
+          },
+          "firstSteadyRatio": 1.1813110166493597,
+          "firstExcessMs": 12.99999988079071,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 997, "min": 997, "max": 997 }
+          }
+        },
+        "replace": {
+          "first": {
+            "median": 392.2000000476837,
+            "min": 370.40000009536743,
+            "max": 423.60000014305115
+          },
+          "steady": { "median": 335.60000002384186, "min": 303, "max": 355 },
+          "firstSteadyRatio": 1.168653158581111,
+          "firstExcessMs": 56.60000002384186,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2000, "min": 2000, "max": 2000 }
+          }
+        },
+        "create": {
+          "first": {
+            "median": 328.2999999523163,
+            "min": 325.7000000476837,
+            "max": 389.90000009536743
+          },
+          "steady": {
+            "median": 255.19999992847443,
+            "min": 238.10000014305115,
+            "max": 291.5
+          },
+          "firstSteadyRatio": 1.2864420064432986,
+          "firstExcessMs": 73.10000002384186,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "clear": {
+          "first": {
+            "median": 76.40000009536743,
+            "min": 74.90000009536743,
+            "max": 81.90000009536743
+          },
+          "steady": {
+            "median": 60.199999928474426,
+            "min": 52.90000009536743,
+            "max": 89.5
+          },
+          "firstSteadyRatio": 1.2691029931252618,
+          "firstExcessMs": 16.200000166893005,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "select": {
+          "first": {
+            "median": 32.299999952316284,
+            "min": 30.700000047683716,
+            "max": 34
+          },
+          "steady": {
+            "median": 21.40000009536743,
+            "min": 13.799999952316284,
+            "max": 30.700000047683716
+          },
+          "firstSteadyRatio": 1.5093457854380306,
+          "firstExcessMs": 10.899999856948853,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2, "min": 1, "max": 2 }
+          }
+        },
+        "update10th": {
+          "first": {
+            "median": 42.09999990463257,
+            "min": 33.09999990463257,
+            "max": 44.299999952316284
+          },
+          "steady": { "median": 30.5, "min": 23.5, "max": 38 },
+          "firstSteadyRatio": 1.380327865725658,
+          "firstExcessMs": 11.599999904632568,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 100, "min": 100, "max": 100 }
+          }
+        }
+      },
+      "storm": {
+        "updateStorm": {
+          "ms": {
+            "median": 150.30000019073486,
+            "min": 136.90000009536743,
+            "max": 153.80000019073486
+          },
+          "commits": { "median": 5, "min": 5, "max": 6 },
+          "changedRows": { "median": 500, "min": 500, "max": 600 },
+          "wireCommits": { "median": 5, "min": 5, "max": 6 },
+          "wireCommands": { "median": 500, "min": 500, "max": 600 },
+          "semantic": true
+        },
+        "selectStorm": {
+          "ms": {
+            "median": 43.10000014305115,
+            "min": 35.299999952316284,
+            "max": 43.90000009536743
+          },
+          "commits": { "median": 2, "min": 2, "max": 2 },
+          "changedRows": { "median": 3, "min": 3, "max": 3 },
+          "wireCommits": { "median": 2, "min": 2, "max": 2 },
+          "wireCommands": { "median": 3, "min": 3, "max": 3 },
+          "semantic": true
+        }
+      }
+    },
+    "vue-vdom": {
+      "sha": "02376ecd1cd62d3797ff1de1209d82dc2f9d91d9",
+      "heap": {
+        "scales": [
+          {
+            "rows": 1000,
+            "retained": { "median": 5490084, "min": 5483896, "max": 5492352 },
+            "clearResidual": { "median": 783068, "min": 778300, "max": 784548 },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 10000,
+            "retained": {
+              "median": 53075984,
+              "min": 53074320,
+              "max": 53080508
+            },
+            "clearResidual": {
+              "median": 5499328,
+              "min": 5496964,
+              "max": 5502412
+            },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 30000,
+            "retained": {
+              "median": 157975164,
+              "min": 157950692,
+              "max": 157985020
+            },
+            "clearResidual": {
+              "median": 15015316,
+              "min": 14991636,
+              "max": 15022460
+            },
+            "semantic": true,
+            "workerReleased": true
+          }
+        ],
+        "slopeBytesPerRow": 5255.918320726172
+      },
+      "cpu": {
+        "wallMs": {
+          "median": 1437.2999999523163,
+          "min": 1411.5999999046326,
+          "max": 1502.5
+        },
+        "backgroundActiveMs": {
+          "median": 296.464,
+          "min": 283.165,
+          "max": 309.442
+        },
+        "mainActiveMs": {
+          "median": 1157.841,
+          "min": 1135.191,
+          "max": 1221.208
+        },
+        "stageMs": {
+          "ownerMaterializationMs": 0,
+          "transactionStagingMs": 0,
+          "planFoldingMs": 0
+        },
+        "explainedShare": 0,
+        "semantic": true
+      },
+      "cold": {
+        "swap": {
+          "first": { "median": 31, "min": 17.799999952316284, "max": 32 },
+          "steady": {
+            "median": 28.600000023841858,
+            "min": 15,
+            "max": 34.200000047683716
+          },
+          "firstSteadyRatio": 1.0839160830124974,
+          "firstExcessMs": 2.399999976158142,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2, "min": 2, "max": 2 }
+          }
+        },
+        "replace": {
+          "first": {
+            "median": 186.10000014305115,
+            "min": 183.70000004768372,
+            "max": 191.5
+          },
+          "steady": {
+            "median": 162.10000002384186,
+            "min": 150.70000004768372,
+            "max": 170.5
+          },
+          "firstSteadyRatio": 1.1480567558030805,
+          "firstExcessMs": 24.00000011920929,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2000, "min": 2000, "max": 2000 }
+          }
+        },
+        "create": {
+          "first": {
+            "median": 165.20000004768372,
+            "min": 162.79999995231628,
+            "max": 187.70000004768372
+          },
+          "steady": {
+            "median": 126.65000009536743,
+            "min": 120.29999995231628,
+            "max": 148
+          },
+          "firstSteadyRatio": 1.3043821549410828,
+          "firstExcessMs": 38.549999952316284,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "clear": {
+          "first": {
+            "median": 29.59999990463257,
+            "min": 26.200000047683716,
+            "max": 34.5
+          },
+          "steady": {
+            "median": 24.699999928474426,
+            "min": 21.90000009536743,
+            "max": 34.5
+          },
+          "firstSteadyRatio": 1.198380566410827,
+          "firstExcessMs": 4.899999976158142,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "select": {
+          "first": {
+            "median": 25.90000009536743,
+            "min": 14.300000190734863,
+            "max": 28
+          },
+          "steady": {
+            "median": 24.899999976158142,
+            "min": 18.799999952316284,
+            "max": 28.100000143051147
+          },
+          "firstSteadyRatio": 1.0401606473962568,
+          "firstExcessMs": 1.0000001192092896,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2, "min": 1, "max": 2 }
+          }
+        },
+        "update10th": {
+          "first": {
+            "median": 20,
+            "min": 14.599999904632568,
+            "max": 28.700000047683716
+          },
+          "steady": {
+            "median": 24.299999952316284,
+            "min": 12,
+            "max": 30.90000009536743
+          },
+          "firstSteadyRatio": 0.8230452691047677,
+          "firstExcessMs": -4.299999952316284,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 100, "min": 100, "max": 100 }
+          }
+        }
+      },
+      "storm": {
+        "updateStorm": {
+          "ms": {
+            "median": 137.20000004768372,
+            "min": 121.40000009536743,
+            "max": 143.29999995231628
+          },
+          "commits": { "median": 50, "min": 50, "max": 50 },
+          "changedRows": { "median": 5000, "min": 5000, "max": 5000 },
+          "wireCommits": { "median": 0, "min": 0, "max": 0 },
+          "wireCommands": { "median": 0, "min": 0, "max": 0 },
+          "semantic": true
+        },
+        "selectStorm": {
+          "ms": {
+            "median": 62.89999985694885,
+            "min": 56.799999952316284,
+            "max": 66
+          },
+          "commits": { "median": 30, "min": 30, "max": 30 },
+          "changedRows": { "median": 59, "min": 59, "max": 59 },
+          "wireCommits": { "median": 0, "min": 0, "max": 0 },
+          "wireCommands": { "median": 0, "min": 0, "max": 0 },
+          "semantic": true
+        }
+      }
+    },
+    "vue-vapor": {
+      "sha": "02376ecd1cd62d3797ff1de1209d82dc2f9d91d9",
+      "heap": {
+        "scales": [
+          {
+            "rows": 1000,
+            "retained": { "median": 8756920, "min": 8755792, "max": 8766712 },
+            "clearResidual": { "median": 355504, "min": 355360, "max": 355804 },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 10000,
+            "retained": {
+              "median": 84746276,
+              "min": 84746052,
+              "max": 84748900
+            },
+            "clearResidual": { "median": 365808, "min": 365604, "max": 367600 },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 30000,
+            "retained": {
+              "median": 252990360,
+              "min": 252969340,
+              "max": 252993472
+            },
+            "clearResidual": { "median": 380436, "min": 371860, "max": 383124 },
+            "semantic": true,
+            "workerReleased": true
+          }
+        ],
+        "slopeBytesPerRow": 8420.23876248109
+      },
+      "cpu": {
+        "wallMs": {
+          "median": 1563.3999998569489,
+          "min": 1537.7000000476837,
+          "max": 1643.3999998569489
+        },
+        "backgroundActiveMs": {
+          "median": 389.617,
+          "min": 370.291,
+          "max": 396.179
+        },
+        "mainActiveMs": {
+          "median": 1177.999,
+          "min": 1165.161,
+          "max": 1249.518
+        },
+        "stageMs": {
+          "ownerMaterializationMs": 0,
+          "transactionStagingMs": 0,
+          "planFoldingMs": 0
+        },
+        "explainedShare": 0,
+        "semantic": true
+      },
+      "cold": {
+        "swap": {
+          "first": {
+            "median": 25.299999952316284,
+            "min": 22.200000047683716,
+            "max": 31.199999809265137
+          },
+          "steady": {
+            "median": 28.99999988079071,
+            "min": 13.400000095367432,
+            "max": 34.700000047683716
+          },
+          "firstSteadyRatio": 0.8724137950453832,
+          "firstExcessMs": -3.6999999284744263,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2, "min": 2, "max": 2 }
+          }
+        },
+        "replace": {
+          "first": {
+            "median": 196.40000009536743,
+            "min": 191.40000009536743,
+            "max": 209.59999990463257
+          },
+          "steady": {
+            "median": 175.45000004768372,
+            "min": 166.59999990463257,
+            "max": 185.79999995231628
+          },
+          "firstSteadyRatio": 1.1194072387688228,
+          "firstExcessMs": 20.950000047683716,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2000, "min": 2000, "max": 2000 }
+          }
+        },
+        "create": {
+          "first": {
+            "median": 173.5,
+            "min": 165.20000004768372,
+            "max": 174.20000004768372
+          },
+          "steady": {
+            "median": 141.14999997615814,
+            "min": 130.40000009536743,
+            "max": 154.29999995231628
+          },
+          "firstSteadyRatio": 1.2291888064421264,
+          "firstExcessMs": 32.35000002384186,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "clear": {
+          "first": {
+            "median": 28.600000143051147,
+            "min": 28.40000009536743,
+            "max": 34.59999990463257
+          },
+          "steady": {
+            "median": 25.300000071525574,
+            "min": 23.399999856948853,
+            "max": 28.5
+          },
+          "firstSteadyRatio": 1.1304347850670415,
+          "firstExcessMs": 3.3000000715255737,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "select": {
+          "first": {
+            "median": 18.300000190734863,
+            "min": 16,
+            "max": 22.199999809265137
+          },
+          "steady": {
+            "median": 23.449999928474426,
+            "min": 18.59999990463257,
+            "max": 27.700000047683716
+          },
+          "firstSteadyRatio": 0.7803838058231242,
+          "firstExcessMs": -5.149999737739563,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 2, "min": 1, "max": 2 },
+            "changedRows": { "median": 2, "min": 1, "max": 2 }
+          }
+        },
+        "update10th": {
+          "first": { "median": 27, "min": 18.5, "max": 28.899999856948853 },
+          "steady": { "median": 20, "min": 7.5, "max": 29.5 },
+          "firstSteadyRatio": 1.35,
+          "firstExcessMs": 7,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 100, "min": 100, "max": 100 }
+          }
+        }
+      },
+      "storm": {
+        "updateStorm": {
+          "ms": {
+            "median": 123.69999980926514,
+            "min": 120.69999980926514,
+            "max": 124.39999985694885
+          },
+          "commits": { "median": 50, "min": 50, "max": 50 },
+          "changedRows": { "median": 5000, "min": 5000, "max": 5000 },
+          "wireCommits": { "median": 0, "min": 0, "max": 0 },
+          "wireCommands": { "median": 0, "min": 0, "max": 0 },
+          "semantic": true
+        },
+        "selectStorm": {
+          "ms": {
+            "median": 22.700000047683716,
+            "min": 21,
+            "max": 25.799999952316284
+          },
+          "commits": { "median": 59, "min": 59, "max": 59 },
+          "changedRows": { "median": 59, "min": 59, "max": 59 },
+          "wireCommits": { "median": 0, "min": 0, "max": 0 },
+          "wireCommands": { "median": 0, "min": 0, "max": 0 },
+          "semantic": true
+        }
+      }
+    },
+    "react": {
+      "sha": "02376ecd1cd62d3797ff1de1209d82dc2f9d91d9",
+      "heap": {
+        "scales": [
+          {
+            "rows": 1000,
+            "retained": { "median": 3222652, "min": 3222232, "max": 3224008 },
+            "clearResidual": {
+              "median": 1753060,
+              "min": 1752592,
+              "max": 1754392
+            },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 10000,
+            "retained": {
+              "median": 30018344,
+              "min": 29981708,
+              "max": 30781732
+            },
+            "clearResidual": {
+              "median": 15087344,
+              "min": 15049696,
+              "max": 15446700
+            },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 30000,
+            "retained": {
+              "median": 89816544,
+              "min": 89811668,
+              "max": 89848688
+            },
+            "clearResidual": {
+              "median": 44965912,
+              "min": 44960824,
+              "max": 44991672
+            },
+            "semantic": true,
+            "workerReleased": true
+          }
+        ],
+        "slopeBytesPerRow": 2986.6475763993953
+      },
+      "cpu": {
+        "wallMs": {
+          "median": 1157,
+          "min": 1124.2999999523163,
+          "max": 1216.9000000953674
+        },
+        "backgroundActiveMs": {
+          "median": 198.433,
+          "min": 193.406,
+          "max": 217.826
+        },
+        "mainActiveMs": { "median": 940.435, "min": 915.852, "max": 1002.181 },
+        "stageMs": {
+          "ownerMaterializationMs": 0,
+          "transactionStagingMs": 0,
+          "planFoldingMs": 0
+        },
+        "explainedShare": 0,
+        "semantic": true
+      },
+      "cold": {
+        "swap": {
+          "first": { "median": 20.5, "min": 20, "max": 22.09999990463257 },
+          "steady": {
+            "median": 26,
+            "min": 16.899999856948853,
+            "max": 35.40000009536743
+          },
+          "firstSteadyRatio": 0.7884615384615384,
+          "firstExcessMs": -5.5,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2, "min": 2, "max": 2 }
+          }
+        },
+        "replace": {
+          "first": {
+            "median": 184.90000009536743,
+            "min": 172.10000014305115,
+            "max": 189.89999985694885
+          },
+          "steady": {
+            "median": 162.10000002384186,
+            "min": 150.19999980926514,
+            "max": 193.5
+          },
+          "firstSteadyRatio": 1.1406539177555344,
+          "firstExcessMs": 22.800000071525574,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2000, "min": 2000, "max": 2000 }
+          }
+        },
+        "create": {
+          "first": {
+            "median": 138.90000009536743,
+            "min": 137.10000014305115,
+            "max": 148.79999995231628
+          },
+          "steady": {
+            "median": 109.35000002384186,
+            "min": 98.20000004768372,
+            "max": 127.39999985694885
+          },
+          "firstSteadyRatio": 1.2702331967543001,
+          "firstExcessMs": 29.550000071525574,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "clear": {
+          "first": {
+            "median": 35.700000047683716,
+            "min": 34.59999990463257,
+            "max": 39.90000009536743
+          },
+          "steady": {
+            "median": 29.15000009536743,
+            "min": 27.200000047683716,
+            "max": 53.60000014305115
+          },
+          "firstSteadyRatio": 1.2246998261024782,
+          "firstExcessMs": 6.549999952316284,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "select": {
+          "first": {
+            "median": 16.799999952316284,
+            "min": 14.600000143051147,
+            "max": 17.600000143051147
+          },
+          "steady": {
+            "median": 20.950000047683716,
+            "min": 11.400000095367432,
+            "max": 25.40000009536743
+          },
+          "firstSteadyRatio": 0.801909303774619,
+          "firstExcessMs": -4.150000095367432,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2, "min": 1, "max": 2 }
+          }
+        },
+        "update10th": {
+          "first": {
+            "median": 29.600000143051147,
+            "min": 19.699999809265137,
+            "max": 30.700000047683716
+          },
+          "steady": {
+            "median": 25.600000023841858,
+            "min": 16,
+            "max": 31.299999952316284
+          },
+          "firstSteadyRatio": 1.1562500045110937,
+          "firstExcessMs": 4.0000001192092896,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 100, "min": 100, "max": 100 }
+          }
+        }
+      },
+      "storm": {
+        "updateStorm": {
+          "ms": {
+            "median": 455.09999990463257,
+            "min": 453.59999990463257,
+            "max": 469.09999990463257
+          },
+          "commits": { "median": 50, "min": 50, "max": 50 },
+          "changedRows": { "median": 5000, "min": 5000, "max": 5000 },
+          "wireCommits": { "median": 0, "min": 0, "max": 0 },
+          "wireCommands": { "median": 0, "min": 0, "max": 0 },
+          "semantic": true
+        },
+        "selectStorm": {
+          "ms": {
+            "median": 187.69999980926514,
+            "min": 173.89999985694885,
+            "max": 188
+          },
+          "commits": { "median": 30, "min": 30, "max": 30 },
+          "changedRows": { "median": 59, "min": 59, "max": 59 },
+          "wireCommits": { "median": 0, "min": 0, "max": 0 },
+          "wireCommands": { "median": 0, "min": 0, "max": 0 },
+          "semantic": true
+        }
+      }
+    }
+  },
+  "controls": {
+    "main": {
+      "sha": "cdb501c945801d449d5d098b1b52341f23a0f80f",
+      "heap": {
+        "scales": [
+          {
+            "rows": 1000,
+            "retained": {
+              "median": 14206884,
+              "min": 14206116,
+              "max": 14207612
+            },
+            "clearResidual": {
+              "median": 4598524,
+              "min": 4560048,
+              "max": 4608280
+            },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 10000,
+            "retained": {
+              "median": 141779500,
+              "min": 141768228,
+              "max": 141781700
+            },
+            "clearResidual": {
+              "median": 41801036,
+              "min": 41792196,
+              "max": 41817708
+            },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 30000,
+            "retained": {
+              "median": 410669240,
+              "min": 410668484,
+              "max": 410672368
+            },
+            "clearResidual": {
+              "median": 119557128,
+              "min": 119554316,
+              "max": 119562244
+            },
+            "semantic": true,
+            "workerReleased": true
+          }
+        ],
+        "slopeBytesPerRow": 13633.401413010592
+      },
+      "cpu": {
+        "wallMs": {
+          "median": 3161.7000000476837,
+          "min": 3081.600000143051,
+          "max": 3297.800000190735
+        },
+        "backgroundActiveMs": {
+          "median": 849.094,
+          "min": 819.514,
+          "max": 919.895
+        },
+        "mainActiveMs": {
+          "median": 2428.844,
+          "min": 2313.113,
+          "max": 2462.306
+        },
+        "stageMs": {
+          "ownerMaterializationMs": 0,
+          "transactionStagingMs": 0,
+          "planFoldingMs": 0
+        },
+        "explainedShare": 0,
+        "semantic": true
+      },
+      "cold": {
+        "swap": {
+          "first": {
+            "median": 167.29999995231628,
+            "min": 161.90000009536743,
+            "max": 184.90000009536743
+          },
+          "steady": {
+            "median": 145.34999990463257,
+            "min": 131.60000014305115,
+            "max": 166.40000009536743
+          },
+          "firstSteadyRatio": 1.1510147923088105,
+          "firstExcessMs": 21.950000047683716,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 997, "min": 997, "max": 997 }
+          }
+        },
+        "replace": {
+          "first": {
+            "median": 426.59999990463257,
+            "min": 411.2999999523163,
+            "max": 502.7999999523163
+          },
+          "steady": {
+            "median": 366.89999997615814,
+            "min": 334.39999985694885,
+            "max": 401.59999990463257
+          },
+          "firstSteadyRatio": 1.1627146359562657,
+          "firstExcessMs": 59.699999928474426,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2000, "min": 2000, "max": 2000 }
+          }
+        },
+        "create": {
+          "first": { "median": 361.5, "min": 352.5, "max": 400.5 },
+          "steady": {
+            "median": 274.5500000715256,
+            "min": 241.30000019073486,
+            "max": 317.2999999523163
+          },
+          "firstSteadyRatio": 1.3167000542918312,
+          "firstExcessMs": 86.94999992847443,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "clear": {
+          "first": {
+            "median": 84.79999995231628,
+            "min": 82.10000014305115,
+            "max": 94.29999995231628
+          },
+          "steady": { "median": 71.69999992847443, "min": 65, "max": 78 },
+          "firstSteadyRatio": 1.1827057187853556,
+          "firstExcessMs": 13.100000023841858,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "select": {
+          "first": {
+            "median": 87.90000009536743,
+            "min": 84.5,
+            "max": 98.20000004768372
+          },
+          "steady": {
+            "median": 82.64999997615814,
+            "min": 66.30000019073486,
+            "max": 100.20000004768372
+          },
+          "firstSteadyRatio": 1.0635208726040382,
+          "firstExcessMs": 5.2500001192092896,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2, "min": 1, "max": 2 }
+          }
+        },
+        "update10th": {
+          "first": { "median": 102.5, "min": 100.5, "max": 106.30000019073486 },
+          "steady": {
+            "median": 92.35000002384186,
+            "min": 79.79999995231628,
+            "max": 107.20000004768372
+          },
+          "firstSteadyRatio": 1.1099079585656495,
+          "firstExcessMs": 10.149999976158142,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 100, "min": 100, "max": 100 }
+          }
+        }
+      }
+    },
+    "pr-22": {
+      "sha": "3f251a8a7033adf2afa135c146536a57dfa58426",
+      "heap": {
+        "scales": [
+          {
+            "rows": 1000,
+            "retained": {
+              "median": 15636968,
+              "min": 15383468,
+              "max": 15638464
+            },
+            "clearResidual": {
+              "median": 4553708,
+              "min": 4322812,
+              "max": 4572748
+            },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 10000,
+            "retained": {
+              "median": 156938120,
+              "min": 156922560,
+              "max": 156954632
+            },
+            "clearResidual": {
+              "median": 41102528,
+              "min": 41086568,
+              "max": 41103896
+            },
+            "semantic": true,
+            "workerReleased": true
+          },
+          {
+            "rows": 30000,
+            "retained": {
+              "median": 454080848,
+              "min": 454078540,
+              "max": 454087976
+            },
+            "clearResidual": {
+              "median": 117120652,
+              "min": 117092452,
+              "max": 117142512
+            },
+            "semantic": true,
+            "workerReleased": true
+          }
+        ],
+        "slopeBytesPerRow": 15075.217434190621
+      },
+      "cpu": {
+        "wallMs": {
+          "median": 2814.5999999046326,
+          "min": 2752.399999856949,
+          "max": 3003.199999809265
+        },
+        "backgroundActiveMs": {
+          "median": 865.371,
+          "min": 823.246,
+          "max": 881.222
+        },
+        "mainActiveMs": {
+          "median": 2093.704,
+          "min": 2025.977,
+          "max": 2220.225
+        },
+        "stageMs": {
+          "ownerMaterializationMs": 0,
+          "transactionStagingMs": 0,
+          "planFoldingMs": 0
+        },
+        "explainedShare": 0,
+        "semantic": true
+      },
+      "cold": {
+        "swap": {
+          "first": {
+            "median": 84.70000004768372,
+            "min": 81.5,
+            "max": 97.70000004768372
+          },
+          "steady": {
+            "median": 74.10000002384186,
+            "min": 61.299999952316284,
+            "max": 132.29999995231628
+          },
+          "firstSteadyRatio": 1.1430499327993426,
+          "firstExcessMs": 10.600000023841858,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 997, "min": 997, "max": 997 }
+          }
+        },
+        "replace": {
+          "first": {
+            "median": 455.10000014305115,
+            "min": 380.7999999523163,
+            "max": 545.7000000476837
+          },
+          "steady": { "median": 363.5, "min": 311, "max": 603.7999999523163 },
+          "firstSteadyRatio": 1.2519944983302644,
+          "firstExcessMs": 91.60000014305115,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2000, "min": 2000, "max": 2000 }
+          }
+        },
+        "create": {
+          "first": {
+            "median": 334.2000000476837,
+            "min": 322.2000000476837,
+            "max": 370.10000014305115
+          },
+          "steady": {
+            "median": 257,
+            "min": 238.20000004768372,
+            "max": 298.39999985694885
+          },
+          "firstSteadyRatio": 1.3003891052439056,
+          "firstExcessMs": 77.20000004768372,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "clear": {
+          "first": {
+            "median": 71.79999995231628,
+            "min": 70.90000009536743,
+            "max": 72.79999995231628
+          },
+          "steady": {
+            "median": 60.550000071525574,
+            "min": 54.5,
+            "max": 82.70000004768372
+          },
+          "firstSteadyRatio": 1.1857968599091904,
+          "firstExcessMs": 11.24999988079071,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 1000, "min": 1000, "max": 1000 }
+          }
+        },
+        "select": {
+          "first": {
+            "median": 32.200000047683716,
+            "min": 29.800000190734863,
+            "max": 33.59999990463257
+          },
+          "steady": {
+            "median": 20.600000023841858,
+            "min": 11.700000047683716,
+            "max": 32.09999990463257
+          },
+          "firstSteadyRatio": 1.5631067966221528,
+          "firstExcessMs": 11.600000023841858,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 2, "min": 1, "max": 2 }
+          }
+        },
+        "update10th": {
+          "first": {
+            "median": 44.59999990463257,
+            "min": 37.799999952316284,
+            "max": 47.700000047683716
+          },
+          "steady": {
+            "median": 26.350000023841858,
+            "min": 22.90000009536743,
+            "max": 41.799999952316284
+          },
+          "firstSteadyRatio": 1.6925996153426128,
+          "firstExcessMs": 18.24999988079071,
+          "semantic": true,
+          "presentation": {
+            "commits": { "median": 1, "min": 1, "max": 1 },
+            "changedRows": { "median": 100, "min": 100, "max": 100 }
+          }
+        }
+      }
+    }
+  },
+  "adjacent": [
+    {
+      "from": "main",
+      "to": "pr-1",
+      "heapRatio": 0.9976337477761366,
+      "coldRatios": {
+        "swap": 0.8118509472000939,
+        "replace": 0.9669228976257607,
+        "create": 1.0479490020914708,
+        "clear": 1.0357142857142858,
+        "select": 0.689467970312191,
+        "update10th": 0.5992876222697466
+      }
+    },
+    {
+      "from": "pr-1",
+      "to": "pr-10",
+      "heapRatio": 0.9999970784710117,
+      "coldRatios": {
+        "swap": 0.9217456727772422,
+        "replace": 1.0062635512976355,
+        "create": 0.9449880984989086,
+        "clear": 1.0114942528735633,
+        "select": 0.8488188991396446,
+        "update10th": 0.961367014762634
+      }
+    },
+    {
+      "from": "pr-10",
+      "to": "pr-11",
+      "heapRatio": 1.0000041515063784,
+      "coldRatios": {
+        "swap": 0.710204081632653,
+        "replace": 1.034713909500466,
+        "create": 0.9879652954019308,
+        "clear": 0.9715909090909091,
+        "select": 0.5881261593988059,
+        "update10th": 0.5873261201235566
+      }
+    },
+    {
+      "from": "pr-11",
+      "to": "pr-12",
+      "heapRatio": 1.043064750533468,
+      "coldRatios": {
+        "swap": 1.0229885057471264,
+        "replace": 0.9534937525663268,
+        "create": 1.0249291783351737,
+        "clear": 1.0807017527128522,
+        "select": 0.8864353268884555,
+        "update10th": 1.189473685465361
+      }
+    },
+    {
+      "from": "pr-12",
+      "to": "pr-13",
+      "heapRatio": 1.0000375662094525,
+      "coldRatios": {
+        "swap": 1,
+        "replace": 1.0179568068359135,
+        "create": 1.0444997240054534,
+        "clear": 0.865800867141275,
+        "select": 1.1850533831078927,
+        "update10th": 0.7787610621802985
+      }
+    },
+    {
+      "from": "pr-13",
+      "to": "pr-14",
+      "heapRatio": 1.06256123830725,
+      "coldRatios": {
+        "swap": 0.9280898865689052,
+        "replace": 0.9902264602988496,
+        "create": 0.9698332889852064,
+        "clear": 0.9025000005960464,
+        "select": 1.018018022339649,
+        "update10th": 1.161931812543853
+      }
+    },
+    {
+      "from": "pr-14",
+      "to": "pr-15",
+      "heapRatio": 1.0000029873343332,
+      "coldRatios": {
+        "swap": 1.003631963572412,
+        "replace": 1.0243139140643087,
+        "create": 0.9380627556679844,
+        "clear": 0.9764542929839201,
+        "select": 0.9587020621997359,
+        "update10th": 0.9877750669112417
+      }
+    },
+    {
+      "from": "pr-15",
+      "to": "pr-22",
+      "heapRatio": 0.9999941558088375,
+      "coldRatios": {
+        "swap": 1.0217129036408565,
+        "replace": 0.9217391305468478,
+        "create": 0.9549156486266731,
+        "clear": 1.0836879446151408,
+        "select": 0.9938461523789626,
+        "update10th": 1.0420792031003008
+      }
+    }
+  ],
+  "gates": {
+    "retainedRegression": null,
+    "coldRegression": {
+      "from": "pr-11",
+      "to": "pr-12",
+      "heapRatio": 1.043064750533468,
+      "coldRatios": {
+        "swap": 1.0229885057471264,
+        "replace": 0.9534937525663268,
+        "create": 1.0249291783351737,
+        "clear": 1.0807017527128522,
+        "select": 0.8864353268884555,
+        "update10th": 1.189473685465361
+      }
+    },
+    "cpuAttributionPass": true
+  }
+}

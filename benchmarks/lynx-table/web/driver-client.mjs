@@ -48,7 +48,12 @@ export const DRIVER_CLIENT_JS = `(() => {
     view.style.cssText = 'display:block;width:' + w + 'px;height:' + h + 'px;';
     x.viewAttachTime = performance.now();
     document.body.appendChild(view);
+    x.view = view;
     return true;
+  };
+  x.removeView = () => {
+    x.view?.remove();
+    x.view = null;
   };
 
   // -- content count: workload-agnostic FCP signal ---------------------------
@@ -95,6 +100,107 @@ export const DRIVER_CLIENT_JS = `(() => {
     return r ? hasClass(r, 'danger') : false;
   };
 
+  // -- semantic and presentation controls ----------------------------------
+  const identity = new WeakMap();
+  let nextIdentity = 1;
+  const identityOf = (row) => {
+    let value = identity.get(row);
+    if (value === undefined) identity.set(row, (value = nextIdentity++));
+    return value;
+  };
+  const hashText = (seed, text) => {
+    let hash = seed >>> 0;
+    for (let i = 0; i < text.length; i++) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 16777619) >>> 0;
+    }
+    return hash;
+  };
+  x.tableOracle = () => {
+    const current = rowEls();
+    let checksum = 2166136261;
+    let selected = -1;
+    const identities = [];
+    for (let i = 0; i < current.length; i++) {
+      const row = current[i];
+      const id = cellOf(row, 'col-id')?.textContent ?? '';
+      const label = cellOf(row, 'col-label')?.textContent ?? '';
+      checksum = hashText(checksum, id + '\\u0000' + label + '\\u0000' + classOf(row));
+      identities.push(identityOf(row));
+      if (hasClass(row, 'danger')) selected = i;
+    }
+    return {
+      rows: current.length,
+      checksum,
+      selected,
+      firstId: current[0] ? cellOf(current[0], 'col-id')?.textContent ?? null : null,
+      lastId: current.at(-1) ? cellOf(current.at(-1), 'col-id')?.textContent ?? null : null,
+      identities,
+    };
+  };
+
+  let presentation = null;
+  x.startPresentationObserver = () => {
+    if (presentation !== null) throw new Error('presentation observer already active');
+    let commits = 0;
+    let changedRows = 0;
+    let scheduled = false;
+    const pendingRows = new Set();
+    const observers = [];
+    const rowFor = (node) => {
+      let current = node?.nodeType === 1 ? node : node?.parentElement;
+      while (current) {
+        if (hasClass(current, 'row')) return current;
+        current = current.parentElement;
+      }
+      return null;
+    };
+    const flush = () => {
+      scheduled = false;
+      if (pendingRows.size === 0) return;
+      commits++;
+      changedRows += pendingRows.size;
+      pendingRows.clear();
+    };
+    const observe = (root) => {
+      const observer = new MutationObserver((records) => {
+        for (const record of records) {
+          const row = rowFor(record.target);
+          if (row) pendingRows.add(row);
+          for (const node of record.addedNodes) {
+            const added = rowFor(node);
+            if (added) pendingRows.add(added);
+          }
+          for (const node of record.removedNodes) {
+            const removed = rowFor(node);
+            if (removed) pendingRows.add(removed);
+          }
+        }
+        if (!scheduled) {
+          scheduled = true;
+          queueMicrotask(flush);
+        }
+      });
+      observer.observe(root, { attributes: true, characterData: true, childList: true, subtree: true });
+      observers.push(observer);
+      for (const element of root.querySelectorAll?.('*') ?? []) {
+        if (element.shadowRoot) observe(element.shadowRoot);
+      }
+    };
+    observe(document);
+    presentation = {
+      read: () => ({ commits, changedRows }),
+      stop: () => {
+        for (const observer of observers) observer.disconnect();
+        presentation = null;
+        return { commits, changedRows };
+      },
+    };
+    return true;
+  };
+  x.readPresentationObserver = () => presentation?.read() ?? null;
+  x.stopPresentationObserver = () => presentation?.stop() ?? null;
+
   // -- click geometry --------------------------------------------------------
   x.buttonRect = (label) => {
     for (const el of findByClass('btn-text')) {
@@ -119,6 +225,7 @@ export const DRIVER_CLIENT_JS = `(() => {
       case 'rowCount': return x.rowCount() === spec.value;
       case 'labelAt': return x.labelAt(spec.index) === spec.equals;
       case 'dangerAt': return x.dangerAt(spec.index);
+      case 'checksumNot': return x.tableOracle().checksum !== spec.value;
       case 'contentAtLeast': return x.contentCount() >= spec.value;
       default: throw new Error('unknown predicate ' + spec.type);
     }

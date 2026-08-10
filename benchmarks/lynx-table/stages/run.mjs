@@ -59,6 +59,7 @@ const html = makeBenchHtml();
 
 function buildVariants() {
 	const previousProfile = process.env.OCTANE_LYNX_PROFILE;
+	const previousStageProfile = process.env.OCTANE_LYNX_STAGE_PROFILE;
 	const previousRows = process.env.BENCH_AUTOROWS;
 	try {
 		for (const [profile, autoRows] of [
@@ -68,12 +69,15 @@ function buildVariants() {
 			['1', String(rows)],
 		]) {
 			process.env.OCTANE_LYNX_PROFILE = profile;
+			process.env.OCTANE_LYNX_STAGE_PROFILE = profile;
 			process.env.BENCH_AUTOROWS = autoRows;
 			buildTableApp({ silent: true });
 		}
 	} finally {
 		if (previousProfile === undefined) delete process.env.OCTANE_LYNX_PROFILE;
 		else process.env.OCTANE_LYNX_PROFILE = previousProfile;
+		if (previousStageProfile === undefined) delete process.env.OCTANE_LYNX_STAGE_PROFILE;
+		else process.env.OCTANE_LYNX_STAGE_PROFILE = previousStageProfile;
 		if (previousRows === undefined) delete process.env.BENCH_AUTOROWS;
 		else process.env.BENCH_AUTOROWS = previousRows;
 	}

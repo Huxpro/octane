@@ -14,14 +14,20 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { instrumentLynxStageSources } from '../stages/instrument-source.mjs';
+import { instrumentLynxAttributionSources } from '../attribution/instrument-source.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repo = path.resolve(root, '../..');
 
 const STAGE_NAME = 'lynx-table-bench';
 
-export function buildTableApp({ silent = false } = {}) {
-	const pluginDir = path.join(repo, 'packages/rspeedy-plugin-octane');
+export function buildTableApp({
+	silent = false,
+	repositoryRoot = repo,
+	destinationRoot = null,
+	toolRepositoryRoot = repo,
+} = {}) {
+	const pluginDir = path.join(repositoryRoot, 'packages/rspeedy-plugin-octane');
 	const src = path.join(root, 'app');
 	const stage = path.join(pluginDir, 'examples', STAGE_NAME);
 	fs.rmSync(stage, { recursive: true, force: true });
@@ -35,21 +41,29 @@ export function buildTableApp({ silent = false } = {}) {
 
 	const autoRows = Number(process.env.BENCH_AUTOROWS ?? '0') || 0;
 	const profile = process.env.OCTANE_LYNX_PROFILE === '1';
-	const restore = profile ? instrumentLynxStageSources(repo) : () => {};
+	const stageProfile = process.env.OCTANE_LYNX_STAGE_PROFILE === '1';
+	const attribution = process.env.OCTANE_LYNX_S3_PROFILE === '1';
+	const restores = [];
+	if (attribution) restores.push(instrumentLynxAttributionSources(repositoryRoot));
+	if (stageProfile) restores.push(instrumentLynxStageSources(repositoryRoot));
 	if (!silent) console.log('[lynx-table] building octane table app (production)…');
 	try {
-		execFileSync('npx', ['rspeedy', 'build', '--root', `examples/${STAGE_NAME}`], {
-			cwd: pluginDir,
-			stdio: silent ? 'pipe' : 'inherit',
-			env: { ...process.env, NODE_ENV: 'production' },
-		});
+		execFileSync(
+			path.join(toolRepositoryRoot, 'packages/rspeedy-plugin-octane/node_modules/.bin/rspeedy'),
+			['build', '--root', `examples/${STAGE_NAME}`],
+			{
+				cwd: pluginDir,
+				stdio: silent ? 'pipe' : 'inherit',
+				env: { ...process.env, NODE_ENV: 'production' },
+			},
+		);
 	} finally {
-		restore();
+		for (let index = restores.length - 1; index >= 0; index--) restores[index]();
 	}
 
 	const suffix = (autoRows > 0 ? `-rows${autoRows}` : '') + (profile ? '-profile' : '');
 	const from = path.join(stage, `dist${suffix}`);
-	const to = path.join(src, `dist${suffix}`);
+	const to = destinationRoot ?? path.join(src, `dist${suffix}`);
 	fs.rmSync(to, { recursive: true, force: true });
 	fs.cpSync(from, to, { recursive: true });
 	fs.rmSync(stage, { recursive: true, force: true });

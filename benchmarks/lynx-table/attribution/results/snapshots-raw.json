@@ -1,0 +1,302 @@
+{
+  "meta": {
+    "date": "2026-08-10T09:59:17.521Z",
+    "node": "v22.22.2",
+    "chromium": "149.0.7827.55",
+    "cpus": 32,
+    "cpuModel": "Intel(R) Xeon(R) Platinum 8336C CPU @ 2.30GHz",
+    "platform": "linux",
+    "release": "5.15.120.bsk.3-amd64",
+    "loadStart": [1.83, 2.15, 2.26],
+    "repetitions": 1,
+    "coldSamples": 5,
+    "scales": [10000],
+    "protocol": "fresh page and background worker per repetition; explicit CDP GC before Runtime.getHeapUsage; sample order retained; identical driver and semantic oracle for every stack head",
+    "loadEnd": [1.96, 2.14, 2.25],
+    "bundleSha256": {
+      "main": "bbf4d240ad577c80bb0ebce4773523ead96a69e2c2cd3a680b59862ae0ffd810",
+      "pr-12": "3921c79d8cc1755a0e7729fa68e9f91c43bb16d1f5c8eb1d6c6f274d7334f386",
+      "pr-14": "3454ef9795ad5ac8d406408508d58cd13597eab403cea2d2514e739af8df2bff",
+      "pr-22": "1633935a3dd9f6b443be8ce461951f65b28af6b832bda5b5a7963c4dd2e2eaa4"
+    }
+  },
+  "targets": {
+    "main": {
+      "sha": "cdb501c945801d449d5d098b1b52341f23a0f80f",
+      "heap": {
+        "10000": [
+          {
+            "createMs": 2910.7999999523163,
+            "baseline": {
+              "usedSize": 1395992,
+              "totalSize": 1802240,
+              "embedderHeapUsedSize": 27192,
+              "backingStorageSize": 62734
+            },
+            "held": {
+              "usedSize": 143175360,
+              "totalSize": 147214336,
+              "embedderHeapUsedSize": 492216,
+              "backingStorageSize": 62734
+            },
+            "cleared": {
+              "usedSize": 43201148,
+              "totalSize": 50237440,
+              "embedderHeapUsedSize": 619752,
+              "backingStorageSize": 62734
+            },
+            "retainedBytes": 141779368,
+            "clearResidualBytes": 41805156,
+            "oracle": {
+              "rows": 10000,
+              "checksum": 4233709704,
+              "selected": -1,
+              "firstId": "1",
+              "lastId": "10000",
+              "identityChecksum": 450656821
+            },
+            "allocation": {
+              "ownerDrafts": 20001,
+              "planValues": 20001,
+              "planMaterializations": 20001,
+              "cloneVisits": 60028,
+              "blueprintHosts": 40028,
+              "ownerMaterializationMs": 252.69999980926514,
+              "logicalRecords": 90000,
+              "commands": 160000,
+              "frozenObjects": 160002,
+              "transactionStagingMs": 341.59999990463257,
+              "forItemCallbacks": 10000,
+              "propPrograms": 10000
+            },
+            "wire": {},
+            "snapshot": {
+              "file": "snapshots/main-10000.heapsnapshot",
+              "chunks": 285,
+              "bytes": 298367082
+            },
+            "workerReleased": true
+          }
+        ]
+      }
+    },
+    "pr-12": {
+      "sha": "b4b0ab92df2f4b4ec0cf3b1a203158f8aa6943ec",
+      "heap": {
+        "10000": [
+          {
+            "createMs": 2832.9000000953674,
+            "baseline": {
+              "usedSize": 1453012,
+              "totalSize": 2072576,
+              "embedderHeapUsedSize": 27192,
+              "backingStorageSize": 62734
+            },
+            "held": {
+              "usedSize": 148817532,
+              "totalSize": 154824704,
+              "embedderHeapUsedSize": 27192,
+              "backingStorageSize": 62734
+            },
+            "cleared": {
+              "usedSize": 43029728,
+              "totalSize": 54439936,
+              "embedderHeapUsedSize": 618960,
+              "backingStorageSize": 62734
+            },
+            "retainedBytes": 147364520,
+            "clearResidualBytes": 41576716,
+            "oracle": {
+              "rows": 10000,
+              "checksum": 3892828525,
+              "selected": -1,
+              "firstId": "1",
+              "lastId": "10000",
+              "identityChecksum": 450656821
+            },
+            "allocation": {
+              "ownerDrafts": 20001,
+              "planValues": 20001,
+              "planMaterializations": 20001,
+              "cloneVisits": 40028,
+              "blueprintHosts": 40028,
+              "ownerMaterializationMs": 257.2999999523163,
+              "logicalRecords": 90000,
+              "commands": 160000,
+              "frozenObjects": 160002,
+              "planInstances": 10000,
+              "planFoldingMs": 58.700000047683716,
+              "transactionStagingMs": 434.80000019073486,
+              "forItemCallbacks": 10000,
+              "propPrograms": 10000
+            },
+            "wire": {
+              "commits": 1,
+              "pacedCommits": 1,
+              "commands": 10000,
+              "bytes": 3297736,
+              "selfcheckMs": 0,
+              "dispatchMs": 27,
+              "validateMs": 0,
+              "prepareMs": 0,
+              "applyMs": 0,
+              "ackMs": 0
+            },
+            "snapshot": {
+              "file": "snapshots/pr-12-10000.heapsnapshot",
+              "chunks": 298,
+              "bytes": 311634696
+            },
+            "workerReleased": true
+          }
+        ]
+      }
+    },
+    "pr-14": {
+      "sha": "e627ca5979ed77fbaf8ef5eafbea86c482f64cf5",
+      "heap": {
+        "10000": [
+          {
+            "createMs": 2648.600000143051,
+            "baseline": {
+              "usedSize": 1446824,
+              "totalSize": 2076672,
+              "embedderHeapUsedSize": 27192,
+              "backingStorageSize": 62734
+            },
+            "held": {
+              "usedSize": 158372796,
+              "totalSize": 163913728,
+              "embedderHeapUsedSize": 491424,
+              "backingStorageSize": 62734
+            },
+            "cleared": {
+              "usedSize": 42534680,
+              "totalSize": 55033856,
+              "embedderHeapUsedSize": 618960,
+              "backingStorageSize": 62734
+            },
+            "retainedBytes": 156925972,
+            "clearResidualBytes": 41087856,
+            "oracle": {
+              "rows": 10000,
+              "checksum": 438995164,
+              "selected": -1,
+              "firstId": "1",
+              "lastId": "10000",
+              "identityChecksum": 450656821
+            },
+            "allocation": {
+              "ownerDrafts": 20001,
+              "planValues": 20001,
+              "planMaterializations": 20001,
+              "cloneVisits": 40028,
+              "blueprintHosts": 40028,
+              "ownerMaterializationMs": 252.90000009536743,
+              "logicalRecords": 90000,
+              "commands": 160000,
+              "frozenObjects": 160002,
+              "planInstances": 10000,
+              "planFoldingMs": 58.200000047683716,
+              "transactionStagingMs": 428.2999999523163,
+              "forItemCallbacks": 10000,
+              "propPrograms": 10000
+            },
+            "wire": {
+              "commits": 1,
+              "pacedCommits": 1,
+              "commands": 10000,
+              "bytes": 3297696,
+              "selfcheckMs": 0,
+              "dispatchMs": 25.5,
+              "validateMs": 0,
+              "prepareMs": 0,
+              "prepareCheckMs": 0,
+              "applyMs": 0,
+              "ackMs": 0
+            },
+            "snapshot": {
+              "file": "snapshots/pr-14-10000.heapsnapshot",
+              "chunks": 320,
+              "bytes": 335290934
+            },
+            "workerReleased": true
+          }
+        ]
+      }
+    },
+    "pr-22": {
+      "sha": "3f251a8a7033adf2afa135c146536a57dfa58426",
+      "heap": {
+        "10000": [
+          {
+            "createMs": 2723.5999999046326,
+            "baseline": {
+              "usedSize": 1446848,
+              "totalSize": 2076672,
+              "embedderHeapUsedSize": 27192,
+              "backingStorageSize": 62734
+            },
+            "held": {
+              "usedSize": 158376332,
+              "totalSize": 163913728,
+              "embedderHeapUsedSize": 491424,
+              "backingStorageSize": 62734
+            },
+            "cleared": {
+              "usedSize": 42542408,
+              "totalSize": 53198848,
+              "embedderHeapUsedSize": 618976,
+              "backingStorageSize": 62734
+            },
+            "retainedBytes": 156929484,
+            "clearResidualBytes": 41095560,
+            "oracle": {
+              "rows": 10000,
+              "checksum": 3403515276,
+              "selected": -1,
+              "firstId": "1",
+              "lastId": "10000",
+              "identityChecksum": 450656821
+            },
+            "allocation": {
+              "ownerDrafts": 20001,
+              "planValues": 20001,
+              "planMaterializations": 20001,
+              "cloneVisits": 40028,
+              "blueprintHosts": 40028,
+              "ownerMaterializationMs": 259.2999999523163,
+              "logicalRecords": 90000,
+              "commands": 160000,
+              "frozenObjects": 160002,
+              "planInstances": 10000,
+              "planFoldingMs": 58.299999952316284,
+              "transactionStagingMs": 422.59999990463257,
+              "forItemCallbacks": 10000,
+              "propPrograms": 10000
+            },
+            "wire": {
+              "commits": 1,
+              "pacedCommits": 1,
+              "commands": 10000,
+              "bytes": 3298297,
+              "selfcheckMs": 0,
+              "dispatchMs": 26.5,
+              "validateMs": 0,
+              "prepareMs": 0,
+              "prepareCheckMs": 0,
+              "applyMs": 0,
+              "ackMs": 0
+            },
+            "snapshot": {
+              "file": "snapshots/pr-22-10000.heapsnapshot",
+              "chunks": 320,
+              "bytes": 335281372
+            },
+            "workerReleased": true
+          }
+        ]
+      }
+    }
+  }
+}
