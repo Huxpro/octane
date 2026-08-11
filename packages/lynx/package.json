@@ -42,6 +42,7 @@
     },
     "./renderer": "./src/renderer.ts",
     "./main-renderer": "./src/main-renderer.ts",
+    "./main-worklets": "./src/main-worklets.ts",
     "./first-screen": "./src/first-screen.ts",
     "./intrinsics": "./src/intrinsics.ts",
     "./intrinsics/jsx-runtime": "./src/intrinsics.ts",
