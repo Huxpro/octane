@@ -197,33 +197,26 @@ export function createLynxElementPAPI<Node extends LynxElementRef = LynxElementR
 			);
 			next = replaceOnce(
 				next,
-				`\t\tlet hostBatch: UniversalHostBatch;
-\t\ttry {
-\t\t\thostBatch = expandLynxWireBatch(message.batch);
+				`\t\tlet postFirstTreeIncrementalCompact = false;
 `,
-				`\t\tlet hostBatch: UniversalHostBatch;
+				`\t\t// The original stage probe timed legacy instantiate expansion. The
+\t\t// template-program transport replaces that step with capability-gated
+\t\t// incremental-run validation and freezing; retain the historical profile
+\t\t// field name so archived and current samples stay readable together.
 \t\tconst startedExpand = performance.now();
-\t\ttry {
-\t\t\thostBatch = expandLynxWireBatch(message.batch);
+\t\tlet postFirstTreeIncrementalCompact = false;
 `,
 				file,
 			);
 			return replaceOnce(
 				next,
-				`\t\t\treject(identity, error);
-\t\t\treturn;
-\t\t}
-
-\t\tlet prepared: LynxPreparedHostBatch;
+				`\t\tlet record = active;
 `,
-				`\t\t\treject(identity, error);
-\t\t\treturn;
-\t\t}
-\t\tconst expandProfile = lynxWireProfile();
+				`\t\tconst expandProfile = lynxWireProfile();
 \t\texpandProfile.mtExpandMs =
 \t\t\t(expandProfile.mtExpandMs ?? 0) + performance.now() - startedExpand;
 
-\t\tlet prepared: LynxPreparedHostBatch;
+\t\tlet record = active;
 `,
 				file,
 			);

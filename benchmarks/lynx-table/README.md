@@ -140,7 +140,10 @@ and ends when that same driver sees 10,000 rows:
 1. `bg_replay`: native-event delivery through completion of background render,
    diff, command staging, and plan folding, stopping before outbound self-check.
 2. `wire_clone_transfer`: the existing ContextProxy `dispatchEvent` interval.
-3. `mt_expand`: `instantiate` expansion before host preparation.
+3. `mt_expand`: main-thread wire-shape preparation before host preparation.
+   Historical plan-wire samples measure `instantiate` expansion; rebased
+   template-program samples measure incremental-run capability validation and
+   freezing under the same archived profile field.
 4. `papi_element_creation`: time inside Element PAPI page/element/list creation
    calls.
 5. `layout_flush_residual`: the exclusive wall-clock remainder, including
