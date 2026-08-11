@@ -9,6 +9,8 @@ import { instrumentLynxAttributionSources } from './instrument-source.mjs';
 const repositoryRoot = path.resolve(import.meta.dirname, '../../..');
 const sourceFiles = [
 	'packages/octane/src/universal-core.ts',
+	'packages/lynx/src/core/profiling.ts',
+	'packages/lynx/src/main-thread.ts',
 	'packages/lynx/src/core/plan-wire.ts',
 ].filter((relative) => fs.existsSync(path.join(repositoryRoot, relative)));
 
@@ -30,6 +32,10 @@ test('instruments an isolated source copy and restores every byte', () => {
 		assert.match(
 			fs.readFileSync(path.join(temporary, 'packages/octane/src/universal-core.ts'), 'utf8'),
 			/__OCTANE_LYNX_ATTRIBUTION__/,
+		);
+		assert.match(
+			fs.readFileSync(path.join(temporary, 'packages/lynx/src/core/profiling.ts'), 'utf8'),
+			/messageBytes/,
 		);
 		if (before.has('packages/lynx/src/core/plan-wire.ts')) {
 			assert.match(

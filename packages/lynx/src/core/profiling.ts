@@ -1,13 +1,12 @@
 // Build-flag-gated wire-cost counters for the dual-thread commit pipeline.
 //
-// The Lynx transport's dominant costs are proportional to the serialized
-// command stream: the background self-check and structured clone, and the
-// main-thread validate/prepare/apply/acknowledge stages. Wall-clock timing of
-// those stages is host-bound, but the command count and serialized byte size
-// of each commit are deterministic for a fixed app and interaction, which
-// makes them gateable (see benchmarks/lynx-table). This module is the one
-// permanent home for those counters so measurement never needs an ad-hoc
-// patch.
+// The Lynx transport's dominant costs are proportional to the serialized wire
+// traffic: the background self-check and structured clone, and the main-thread
+// validate/prepare/apply/acknowledge stages. Wall-clock timing of those stages
+// is host-bound, but the message/command counts and serialized byte sizes are
+// deterministic for a fixed app and interaction, which makes them gateable
+// (see benchmarks/lynx-table). This module is the one permanent home for those
+// counters so measurement never needs an ad-hoc patch.
 //
 // `__OCTANE_LYNX_PROFILE__` is substituted by the build (Rspeedy/Rspack/Vite
 // `define`, see benchmarks/lynx-table). Production bundles that do not define
@@ -23,10 +22,15 @@ export const LYNX_PROFILE: boolean =
  * Per-realm commit-pipeline counters. The background and main threads run in
  * separate realms, so each accumulates its own record under the same global
  * name: background fills the dispatch-side fields, main the receive-side ones.
- * Milliseconds are informational (host-bound); `commits`, `commands`, and
- * `bytes` are deterministic for a fixed app and interaction sequence.
+ * Milliseconds are informational (host-bound); `messages`, `messageBytes`,
+ * `commits`, `commands`, and `bytes` are deterministic for a fixed app and
+ * interaction sequence.
  */
 export interface LynxWireProfile {
+	/** All messages dispatched by this realm, in either protocol direction. */
+	messages: number;
+	/** JSON size of every dispatched message, as a structured-clone-cost proxy. */
+	messageBytes: number;
 	/** Commit messages dispatched (background) or applied (main). */
 	commits: number;
 	/**
@@ -69,6 +73,8 @@ interface LynxProfileGlobals {
 export function lynxWireProfile(): LynxWireProfile {
 	const globals = globalThis as LynxProfileGlobals;
 	return (globals.__OCTANE_LYNX_PROF ??= {
+		messages: 0,
+		messageBytes: 0,
 		commits: 0,
 		pacedCommits: 0,
 		commands: 0,
@@ -83,21 +89,25 @@ export function lynxWireProfile(): LynxWireProfile {
 	});
 }
 
-/** Count one outbound message; commits also add commands and JSON bytes. */
+/** Count one outbound message; commits also add commands and commit-only bytes. */
 export function profileOutboundMessage(profile: LynxWireProfile, message: unknown): void {
 	const record = message as {
 		type?: unknown;
 		pace?: unknown;
 		batch?: { commands?: readonly unknown[] };
 	};
+	profile.messages += 1;
+	let serializedBytes = 0;
+	try {
+		serializedBytes = JSON.stringify(message).length;
+		profile.messageBytes += serializedBytes;
+	} catch {
+		// Wire messages are serializable by contract; a failure here must not
+		// turn a measurement run into a dispatch failure.
+	}
 	if (record.type !== 'commit') return;
 	profile.commits += 1;
 	if (record.pace === true) profile.pacedCommits += 1;
 	profile.commands += record.batch?.commands?.length ?? 0;
-	try {
-		profile.bytes += JSON.stringify(message).length;
-	} catch {
-		// Wire messages are serializable by contract; a failure here must not
-		// turn a measurement run into a commit failure.
-	}
+	profile.bytes += serializedBytes;
 }

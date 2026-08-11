@@ -49,8 +49,14 @@ const NO_PENDING_PASSIVE_ERROR = Symbol('octane.universal.no-pending-passive-err
 
 let HAS_UNIVERSAL_HOST_COMPONENTS = false;
 
-/** Structured-clone protocol version used by experimental transported roots. */
-export const UNIVERSAL_TRANSPORT_PROTOCOL_VERSION = 1 as const;
+/**
+ * Structured-clone protocol version used by experimental transported roots.
+ * Version 2: acknowledgement handle deltas became transport-optional (the Lynx
+ * background derives them from the batch it sent), an acknowledgement may
+ * merge the batch's completion, and zero-command commits after activation do
+ * not cross the wire.
+ */
+export const UNIVERSAL_TRANSPORT_PROTOCOL_VERSION = 2 as const;
 
 export type UniversalKey = string | number | symbol | bigint;
 

@@ -245,6 +245,8 @@ interface ProfileGlobals {
 }
 
 function profileSnapshot(): {
+	messages: number;
+	messageBytes: number;
 	commits: number;
 	pacedCommits: number;
 	commands: number;
@@ -254,9 +256,12 @@ function profileSnapshot(): {
 	const profile = (globalThis as ProfileGlobals).__OCTANE_LYNX_PROF;
 	// Both fake threads share this realm, so the main-thread receiver also
 	// counted each commit; halve to report per-wire commits and commands once.
-	// pacedCommits, bytes, and itemRenders are background-side only and need
-	// no halving.
+	// messages/messageBytes already count each directional dispatch once.
+	// pacedCommits, commit-only bytes, and itemRenders are background-side only
+	// and need no halving.
 	return {
+		messages: profile?.messages ?? 0,
+		messageBytes: profile?.messageBytes ?? 0,
 		commits: (profile?.commits ?? 0) / 2,
 		pacedCommits: profile?.pacedCommits ?? 0,
 		commands: (profile?.commands ?? 0) / 2,
@@ -363,6 +368,8 @@ async function tapButton(harness: Harness, label: string): Promise<void> {
 }
 
 export interface OpCounters {
+	readonly messages: number;
+	readonly messageBytes: number;
 	readonly commits: number;
 	readonly commands: number;
 	readonly bytes: number;
@@ -408,6 +415,8 @@ export async function runTable(rows: number): Promise<TableRunResult> {
 			await drive();
 			const after = profileSnapshot();
 			return {
+				messages: after.messages - before.messages,
+				messageBytes: after.messageBytes - before.messageBytes,
 				commits: after.commits - before.commits,
 				commands: after.commands - before.commands,
 				bytes: after.bytes - before.bytes,
@@ -576,6 +585,8 @@ export async function runPacedUpdateStorm(rows: number): Promise<PacedStormResul
 			rows,
 			framesPumped: framesPumped - framesBefore,
 			updateStorm: {
+				messages: after.messages - before.messages,
+				messageBytes: after.messageBytes - before.messageBytes,
 				commits: after.commits - before.commits,
 				commands: after.commands - before.commands,
 				bytes: after.bytes - before.bytes,

@@ -228,9 +228,21 @@ try {
 			rows,
 			createdElements: result.createdElements,
 			createBytes: result.create.bytes,
+			createMessages: result.create.messages,
+			createMessageBytes: result.create.messageBytes,
 			update10thBytes: result.update10th.bytes,
+			update10thMessages: result.update10th.messages,
+			update10thMessageBytes: result.update10th.messageBytes,
+			selectMessages: result.select.messages,
+			selectMessageBytes: result.select.messageBytes,
+			swapMessages: result.swap.messages,
+			swapMessageBytes: result.swap.messageBytes,
 			updateStormBytes: result.updateStorm.bytes,
+			updateStormMessages: result.updateStorm.messages,
+			updateStormMessageBytes: result.updateStorm.messageBytes,
 			selectStormBytes: result.selectStorm.bytes,
+			selectStormMessages: result.selectStorm.messages,
+			selectStormMessageBytes: result.selectStorm.messageBytes,
 		};
 
 		console.log(
@@ -307,6 +319,8 @@ try {
 				rows: PACED_ROWS,
 				framesPumped: paced.framesPumped,
 				updateStormBytes: paced.updateStorm.bytes,
+				updateStormMessages: paced.updateStorm.messages,
+				updateStormMessageBytes: paced.updateStorm.messageBytes,
 			};
 			console.log(
 				`paced rows=${String(PACED_ROWS).padStart(5)}  ` +

@@ -298,7 +298,16 @@ export function createLynxBackgroundTransport(
 	const announcedPlans = new Map<string, string>();
 	const isPlanAnnounced = (planId: string, canonical: string): boolean =>
 		announcedPlans.get(planId) === canonical;
+	// Two acceptance watermarks (protocol 2). `accepted` is what this thread and
+	// its root have accepted, including zero-command batches settled locally
+	// without crossing the wire; the root stamps and validates against it.
+	// `mainAccepted` is the newest batch main actually applied — the only
+	// versions main can stamp on the messages it originates (events, host
+	// attachments, host faults) or accept on the calls this thread sends it.
+	// Elision never lets `mainAccepted` pass `accepted`, so
+	// mainAccepted.version <= accepted.version always holds.
 	let accepted: UniversalTransportIdentity | null = null;
+	let mainAccepted: UniversalTransportIdentity | null = null;
 	let boundRoot: Pick<UniversalRoot, 'dispatchTransportEvent'> | null = null;
 	let closedError: Error | null = null;
 	let transportRoot: number | null = null;
@@ -384,8 +393,10 @@ export function createLynxBackgroundTransport(
 	): boolean => identity !== null && sameLynxTransportIdentity(identity, message);
 
 	const sendMainThreadCall = (entry: PendingMainThreadCall): void => {
-		if (accepted === null || entry.state !== 'queued') return;
-		entry.identity = frozenIdentity(accepted);
+		// Stamp the newest version main has applied: an identity from a locally
+		// settled batch would read as foreign on main.
+		if (mainAccepted === null || entry.state !== 'queued') return;
+		entry.identity = frozenIdentity(mainAccepted);
 		entry.state = 'sent';
 		try {
 			dispatch({
@@ -406,7 +417,7 @@ export function createLynxBackgroundTransport(
 
 	const drainMainThreadCalls = (): void => {
 		if (
-			accepted === null ||
+			mainAccepted === null ||
 			closedError !== null ||
 			publishingAcknowledgement ||
 			drainingMainThreadCalls ||
@@ -846,6 +857,7 @@ export function createLynxBackgroundTransport(
 		}
 		let handles;
 		const previousAccepted = accepted;
+		const previousMainAccepted = mainAccepted;
 		try {
 			handles = prepareLynxHandleDeltas(container, entry.batch, message.handles, message);
 			// Applying handle deltas and acceptance callbacks can invoke user code.
@@ -854,11 +866,13 @@ export function createLynxBackgroundTransport(
 			handles.apply();
 			entry.state = 'acknowledged';
 			accepted = frozenIdentity(message);
+			mainAccepted = accepted;
 			finalizeWorkletBatch(entry.batch, true);
 			entry.acknowledge(message);
 		} catch (error) {
 			publishingAcknowledgement = false;
 			accepted = previousAccepted;
+			mainAccepted = previousMainAccepted;
 			handles?.rollback();
 			const terminalError = report(
 				error,
@@ -885,6 +899,17 @@ export function createLynxBackgroundTransport(
 		// The acknowledgement just published this batch's hosts, which is what a
 		// tap racing main's apply was waiting for.
 		flushDeferredNativeEvents();
+		if (message.complete === true) {
+			// Main merged the completion into this acknowledgement (protocol 2):
+			// no attachment or adoption work remained, so no separate `complete`
+			// message follows. Settle through the same deferral the wire message
+			// would use, so a merged acknowledgement delivered re-entrantly inside
+			// dispatch() settles after dispatch returns, exactly like its
+			// two-message predecessor.
+			const settlement: CommitSettlement = { ...frozenIdentity(message), type: 'complete' };
+			if (dispatchingCommit === entry) entry.deferredResponse = settlement;
+			else settleCommitResponse(entry, settlement);
+		}
 	};
 
 	const settleCommitResponse = (entry: PendingCommit, message: CommitSettlement): void => {
@@ -1019,7 +1044,12 @@ export function createLynxBackgroundTransport(
 			protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 			renderer: LYNX_TRANSPORT_RENDERER,
 			root: accepted!.root,
-			version: accepted!.version,
+			// An engine-delivered tap names hosts main installed, so it carries
+			// main's watermark — the one `handleEvent` validates. Elided batches can
+			// put `accepted` ahead of it; `handleEvent` restamps the delivery up to
+			// `accepted` for the root either way. `mainAccepted` is non-null
+			// whenever `accepted` is: both acceptance paths require it.
+			version: mainAccepted!.version,
 			type: 'event',
 			priority: batch.priority,
 			deliveries: transported,
@@ -1081,7 +1111,10 @@ export function createLynxBackgroundTransport(
 	};
 
 	const handleEvent = (message: Extract<LynxBackgroundInboundMessage, { type: 'event' }>) => {
-		if (accepted === null || !sameLynxTransportIdentity(accepted, message)) {
+		// Main stamps the newest version it applied; validate against that, then
+		// restamp to the root's watermark — locally settled batches can put the
+		// root ahead of main, and the root validates events against its own.
+		if (mainAccepted === null || !sameLynxTransportIdentity(mainAccepted, message)) {
 			report(
 				new Error(`Octane Lynx transport received a stale or foreign event ${message.version}.`),
 			);
@@ -1092,14 +1125,18 @@ export function createLynxBackgroundTransport(
 			return;
 		}
 		try {
-			boundRoot.dispatchTransportEvent(message);
+			boundRoot.dispatchTransportEvent(
+				accepted !== null && accepted.version !== message.version
+					? { ...message, version: accepted.version }
+					: message,
+			);
 		} catch (error) {
 			report(error, 'Octane Lynx transported event failed.');
 		}
 	};
 
 	const handleHostAttachment = (message: LynxHostAttachmentMessage): void => {
-		if (accepted === null || !sameLynxTransportIdentity(accepted, message)) {
+		if (mainAccepted === null || !sameLynxTransportIdentity(mainAccepted, message)) {
 			report(
 				new Error(
 					`Octane Lynx transport received a stale or foreign host attachment ${message.version}.`,
@@ -1118,7 +1155,7 @@ export function createLynxBackgroundTransport(
 	};
 
 	const handleHostFault = (message: LynxHostFaultMessage): void => {
-		if (accepted === null || !sameLynxTransportIdentity(accepted, message)) {
+		if (mainAccepted === null || !sameLynxTransportIdentity(mainAccepted, message)) {
 			report(
 				new Error(
 					`Octane Lynx transport received a stale or foreign host fault ${message.version}.`,
@@ -1321,16 +1358,17 @@ export function createLynxBackgroundTransport(
 		}
 		if (
 			(raw.type === 'host-fault' || raw.type === 'host-attachment') &&
-			accepted !== null &&
-			raw.protocol === accepted.protocol &&
-			raw.renderer === accepted.renderer &&
-			raw.root === accepted.root &&
-			raw.version === accepted.version
+			mainAccepted !== null &&
+			raw.protocol === mainAccepted.protocol &&
+			raw.renderer === mainAccepted.renderer &&
+			raw.root === mainAccepted.root &&
+			raw.version === mainAccepted.version
 		) {
 			// These unsolicited messages are emitted only for an already-mutated
-			// accepted root. A malformed exact identity is therefore fail-stop; a
-			// stale or foreign identity remains diagnostic-only.
-			terminalCloseAfterHostAcceptance(accepted, error);
+			// accepted root, and main stamps the newest version it applied. A
+			// malformed exact identity is therefore fail-stop; a stale or foreign
+			// identity remains diagnostic-only.
+			terminalCloseAfterHostAcceptance(mainAccepted, error);
 			return;
 		}
 		if (!Number.isSafeInteger(raw.version)) return;
@@ -1533,10 +1571,8 @@ export function createLynxBackgroundTransport(
 							commands: preparedWithProvenance.commands,
 						});
 			// An empty batch mutates nothing on main, so it never rides the frame
-			// budget: it crosses unpaced, main answers it with no pulse, and it
-			// neither waits for nor closes the gate. Renders folded behind a held
-			// commit leave a tail of such no-op batches (one per scheduled flush),
-			// and pacing them would spend a frame each to learn nothing.
+			// budget, and once a batch has crossed it does not cross the wire at
+			// all — see the elision branch in dispatchThroughPaceGate below.
 			const paceThisCommit = commitPacing === 'frame' && wireBatch.commands.length > 0;
 			let commit: LynxCommitWireMessage | null = paceThisCommit
 				? { ...identity, type: 'commit', batch: wireBatch, pace: true }
@@ -1586,6 +1622,43 @@ export function createLynxBackgroundTransport(
 					const dispatchThroughPaceGate = (): void => {
 						// Stale by abort or transport close while ready/pacing gated.
 						if (pending.get(identity.version) !== entry) return;
+						// Zero-command elision (protocol 2): once a batch has crossed —
+						// main knows this root — an empty batch settles here without
+						// touching the wire. Main would stage nothing, publish no
+						// handles, and answer with a bare acknowledgement, so this
+						// thread runs the same acceptance locally. Renders folded
+						// behind a held commit leave a tail of such no-op batches;
+						// shipping each spent a structured clone and two response
+						// messages to learn nothing. Local acceptance advances
+						// `accepted` — the root's watermark — but never
+						// `mainAccepted`: main's staleness check is `<=`, so the
+						// version gap is legal, and the very first batch still
+						// crosses even when empty so activation is never elided. The
+						// deferred-native-event grace is not decremented: no handles
+						// were published, so a held tap learned nothing either way.
+						if (wireBatch.commands.length === 0 && mainAccepted !== null) {
+							entry.state = 'acknowledged';
+							const previousAccepted = accepted;
+							try {
+								publishingAcknowledgement = true;
+								accepted = frozenIdentity(identity);
+								finalizeWorkletBatch(preparedBatch, true);
+								entry.acknowledge({ ...identity, type: 'ack' });
+							} catch (error) {
+								publishingAcknowledgement = false;
+								accepted = previousAccepted;
+								terminalCloseAfterHostAcceptance(
+									identity,
+									report(error, `Octane Lynx could not accept elided batch ${identity.version}.`),
+								);
+								return;
+							}
+							// Publication markers and calls are main-facing, so they
+							// carry main's watermark, not the elided identity.
+							if (!publishAcknowledgementMainCalls({ ...mainAccepted, type: 'ack' })) return;
+							settleCommitResponse(entry, { ...frozenIdentity(identity), type: 'complete' });
+							return;
+						}
 						if (paceGateVersion !== null && paceThisCommit) {
 							holdForPaceGate(dispatchThroughPaceGate);
 							return;
@@ -1725,12 +1798,14 @@ export function createLynxBackgroundTransport(
 		dispose() {
 			if (disposeDeferred !== null) return disposeDeferred.promise;
 			if (closedError !== null) return Promise.reject(closedError);
-			if (accepted === null) {
+			if (mainAccepted === null) {
 				return Promise.reject(
 					new Error('Octane Lynx transport cannot dispose before a batch is accepted.'),
 				);
 			}
-			disposeIdentity = accepted;
+			// The dispose handshake is validated by main against the versions it
+			// applied, so it carries main's watermark, never an elided version.
+			disposeIdentity = mainAccepted;
 			disposeDeferred = createDeferred<void>();
 			const deferred = disposeDeferred;
 			void readyDeferred.promise.then(
@@ -1782,7 +1857,7 @@ export function createLynxBackgroundTransport(
 				state: 'queued',
 			};
 			pendingMainCalls.set(entry.call, entry);
-			if (accepted !== null && !publishingAcknowledgement && !drainingMainThreadCalls) {
+			if (mainAccepted !== null && !publishingAcknowledgement && !drainingMainThreadCalls) {
 				sendMainThreadCall(entry);
 			} else {
 				mainThreadCallsNeedDrain = true;

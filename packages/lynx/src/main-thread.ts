@@ -77,8 +77,9 @@ import {
 	snapshotLynxLifecycleData,
 	type LynxLifecycleDataRecord,
 } from './core/lifecycle-data.js';
+import { LYNX_DEVELOPMENT } from './core/environment.js';
 import { createLynxElementPAPI, type LynxElementPAPI, type LynxElementRef } from './core/papi.js';
-import { LYNX_PROFILE, lynxWireProfile } from './core/profiling.js';
+import { LYNX_PROFILE, lynxWireProfile, profileOutboundMessage } from './core/profiling.js';
 import {
 	createLynxMainThreadWorkletRegistry,
 	installLynxMainThreadWorkletRegistry,
@@ -420,11 +421,19 @@ function publicHandleUpsert(
 	});
 }
 
+/**
+ * Development-only cross-check payload (protocol 2). The background derives
+ * these same deltas from the batch it sent — creates, recreates, and destroys
+ * from its command transitions, list-ancestry flips from its topology mirror —
+ * and that derivation is the only source production consults, so production
+ * acknowledgements carry no handle deltas at all. `update` commands publish
+ * nothing here either: an update preserves handle identity and generation, so
+ * its upsert was byte-identical to state the background already held, and its
+ * physical-attachment bit is owned by the host-attachment channel.
+ */
 function acknowledgementHandles<Node extends LynxElementRef>(
-	driver: LynxHostDriver<Node>,
 	container: LynxHostContainer<Node>,
 	prepared: LynxPreparedHostBatch,
-	batch: UniversalHostBatch,
 ): readonly LynxPublicHandleDelta[] {
 	const handles = new Map<number, LynxPublicHandleDelta>();
 	for (const delta of prepared.handleDelta) {
@@ -441,16 +450,6 @@ function acknowledgementHandles<Node extends LynxElementRef>(
 			handles.set(
 				delta.handle.id,
 				publicHandleUpsert(delta.handle, getLynxHostPublicState(container, delta.handle.id)),
-			);
-		}
-	}
-	for (const command of batch.commands) {
-		if (command.op !== 'update' || handles.has(command.id)) continue;
-		const handle = driver.getPublicInstance(container, command.id);
-		if (handle !== null) {
-			handles.set(
-				command.id,
-				publicHandleUpsert(handle, getLynxHostPublicState(container, command.id)),
 			);
 		}
 	}
@@ -633,6 +632,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	const dispatch = (message: LynxBackgroundInboundMessage): void => {
 		const validated = selfCheckLynxBackgroundInboundMessage(message);
 		context.dispatchEvent({ type: LYNX_MAIN_TO_BACKGROUND_EVENT, data: validated });
+		if (LYNX_PROFILE) profileOutboundMessage(lynxWireProfile(), message);
 	};
 
 	// One pulse per applied paced commit, carrying the latest applied identity.
@@ -2131,16 +2131,27 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			}
 		}
 		const startedAck = LYNX_PROFILE ? performance.now() : 0;
-		const handles = acknowledgementHandles(driver, record.container, prepared, hostBatch);
+		// Completion merges into the acknowledgement when main has no work left
+		// between the two messages: nothing queued on the attachment channel and
+		// no adoption round trip pending, this batch's or an earlier one's.
+		const mergeComplete =
+			!applyFailed && awaitingAdoption === null && queuedHostAttachments.length === 0;
 		const acknowledgement: LynxTransportAcknowledgement = {
 			...identity,
 			type: 'ack',
-			handles,
+			// The development cross-check payload describes the intended final
+			// state, which a faulted apply no longer has: the fault message that
+			// follows this acknowledgement invalidates every handle anyway, so a
+			// faulted apply acknowledges without it.
+			...(LYNX_DEVELOPMENT && !applyFailed
+				? { handles: acknowledgementHandles(record.container, prepared) }
+				: null),
 			...(prepared.firstTreeAction === 'none'
 				? null
 				: {
 						adoption: prepared.firstTreeAction === 'adopt' ? 'adopted' : 'repaired',
 					}),
+			...(mergeComplete ? { complete: true as const } : null),
 		};
 		try {
 			dispatch(acknowledgement);
@@ -2160,6 +2171,16 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		// background dispatches its next commit at most once per frame.
 		if (!applyFailed && message.pace === true) schedulePacePulse(identity);
 		if (!applyFailed) {
+			if (mergeComplete) {
+				// The acknowledgement carried the completion; only the
+				// post-completion tail remains. Attachments can still arrive
+				// re-entrantly while the acknowledgement dispatches, so the drain
+				// stays even though the queue was empty when the flag was set.
+				if (!drainHostAttachments()) return;
+				drainNativeEvents();
+				openBackgroundCalls();
+				return;
+			}
 			if (!drainHostAttachments()) return;
 			if (awaitingAdoption === null) drainNativeEvents();
 			try {

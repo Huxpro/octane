@@ -44,6 +44,8 @@ export function instrumentLynxStageSources(repositoryRoot) {
 				`function profilePapiCreate(started: number): void {
 \tconst globals = globalThis as any;
 \tconst profile = (globals.__OCTANE_LYNX_PROF ??= {
+\t\tmessages: 0,
+\t\tmessageBytes: 0,
 \t\tcommits: 0,
 \t\tpacedCommits: 0,
 \t\tcommands: 0,

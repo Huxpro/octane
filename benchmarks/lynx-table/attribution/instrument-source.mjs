@@ -246,6 +246,94 @@ ${hasPlanInstances ? "\tattributionCount('planInstances', planInstances?.length 
 		);
 		fs.writeFileSync(file, source);
 
+		// P5 made total bidirectional message count/bytes permanent profile fields.
+		// Inject the same build-flag-gated counters into older comparison targets,
+		// so an exact parent SHA and the candidate use one measurement boundary.
+		const profileFile = path.join(repositoryRoot, 'packages/lynx/src/core/profiling.ts');
+		const profileOriginal = fs.readFileSync(profileFile, 'utf8');
+		originals.set(profileFile, profileOriginal);
+		if (!profileOriginal.includes('\tmessageBytes: number;')) {
+			let profileSource = profileOriginal;
+			profileSource = replaceOnce(
+				profileSource,
+				'export interface LynxWireProfile {\n\t/** Commit messages dispatched (background) or applied (main). */\n',
+				`export interface LynxWireProfile {
+\t/** All messages dispatched by this realm, in either protocol direction. */
+\tmessages: number;
+\t/** JSON size of every dispatched message, as a structured-clone-cost proxy. */
+\tmessageBytes: number;
+\t/** Commit messages dispatched (background) or applied (main). */
+`,
+				profileFile,
+			);
+			profileSource = replaceOnce(
+				profileSource,
+				'\treturn (globals.__OCTANE_LYNX_PROF ??= {\n\t\tcommits: 0,\n',
+				`\treturn (globals.__OCTANE_LYNX_PROF ??= {
+\t\tmessages: 0,
+\t\tmessageBytes: 0,
+\t\tcommits: 0,
+`,
+				profileFile,
+			);
+			profileSource = replaceOnce(
+				profileSource,
+				`\tif (record.type !== 'commit') return;
+\tprofile.commits += 1;
+\tif (record.pace === true) profile.pacedCommits += 1;
+\tprofile.commands += record.batch?.commands?.length ?? 0;
+\ttry {
+\t\tprofile.bytes += JSON.stringify(message).length;
+\t} catch {
+\t\t// Wire messages are serializable by contract; a failure here must not
+\t\t// turn a measurement run into a commit failure.
+\t}
+`,
+				`\tprofile.messages += 1;
+\tlet serializedBytes = 0;
+\ttry {
+\t\tserializedBytes = JSON.stringify(message).length;
+\t\tprofile.messageBytes += serializedBytes;
+\t} catch {
+\t\t// Measurement must not turn a dispatch into a failure.
+\t}
+\tif (record.type !== 'commit') return;
+\tprofile.commits += 1;
+\tif (record.pace === true) profile.pacedCommits += 1;
+\tprofile.commands += record.batch?.commands?.length ?? 0;
+\tprofile.bytes += serializedBytes;
+`,
+				profileFile,
+			);
+			fs.writeFileSync(profileFile, profileSource);
+
+			const mainFile = path.join(repositoryRoot, 'packages/lynx/src/main-thread.ts');
+			const mainOriginal = fs.readFileSync(mainFile, 'utf8');
+			originals.set(mainFile, mainOriginal);
+			let mainSource = replaceOnce(
+				mainOriginal,
+				"import { LYNX_PROFILE, lynxWireProfile } from './core/profiling.js';",
+				"import { LYNX_PROFILE, lynxWireProfile, profileOutboundMessage } from './core/profiling.js';",
+				mainFile,
+			);
+			mainSource = replaceOnce(
+				mainSource,
+				`\tconst dispatch = (message: LynxBackgroundInboundMessage): void => {
+\t\tconst validated = selfCheckLynxBackgroundInboundMessage(message);
+\t\tcontext.dispatchEvent({ type: LYNX_MAIN_TO_BACKGROUND_EVENT, data: validated });
+\t};
+`,
+				`\tconst dispatch = (message: LynxBackgroundInboundMessage): void => {
+\t\tconst validated = selfCheckLynxBackgroundInboundMessage(message);
+\t\tcontext.dispatchEvent({ type: LYNX_MAIN_TO_BACKGROUND_EVENT, data: validated });
+\t\tif (LYNX_PROFILE) profileOutboundMessage(lynxWireProfile(), message);
+\t};
+`,
+				mainFile,
+			);
+			fs.writeFileSync(mainFile, mainSource);
+		}
+
 		const planFile = path.join(repositoryRoot, 'packages/lynx/src/core/plan-wire.ts');
 		if (fs.existsSync(planFile)) {
 			const planOriginal = fs.readFileSync(planFile, 'utf8');

@@ -1548,8 +1548,8 @@
     "op": "update_storm_paced_commits_1k",
     "target": "octane-lynx",
     "reference": "changed-rows-model",
-    "maxRatio": 1,
-    "note": "Total commits under pacing keep the one-per-scheduled-flush ceiling: 50 ticks permit at most 50 commits. Empty fold-tail batches cross unpaced; eliding them is a separate universal-core optimization. More than 50 would mean pacing is splitting a flush across commits."
+    "maxRatio": 0.1,
+    "note": "Protocol 2 settles empty fold-tail batches on the background, so the 50-tick paced storm crosses only its non-empty framed commits. A 0.1x ceiling permits at most 5 wire commits, leaving one interleave boundary of headroom above the deterministic 3-commit result; a breach means empty batches crossed the wire again."
   },
   {
     "suite": "lynx-table",
