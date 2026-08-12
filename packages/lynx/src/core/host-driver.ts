@@ -34,8 +34,10 @@ import {
 } from './first-screen.js';
 import {
 	LYNX_CSS_SCOPE_PROP,
+	hasLynxMainThreadProp,
 	planLynxHostPropPatch,
 	type LynxHostPropPatch,
+	type LynxMainThreadEventPatch,
 	type LynxMainThreadRefDescriptor,
 	type LynxMainThreadWorkletDescriptor,
 } from './host-props.js';
@@ -484,6 +486,9 @@ const EMPTY_HOST_CHILDREN: number[] = [];
 // Most hosts never own a background event. Keep the shared map private and
 // replace it before the first write so ordinary hosts allocate no event table.
 const EMPTY_HOST_EVENTS = new Map<string, UniversalEventListenerDescriptor>();
+// Capture asks every host what the main thread should own. Hosts that declare
+// no `main-thread:` prop share this empty answer instead of planning for one.
+const EMPTY_MAIN_THREAD_EVENTS: readonly LynxMainThreadEventPatch[] = Object.freeze([]);
 // Raw text is initialized by __CreateRawText itself. Its synthetic `value`
 // attribute is never forwarded, so an unscoped creation needs no prop diff.
 const EMPTY_RAW_TEXT_CREATE_PATCH: LynxHostPropPatch = Object.freeze({
@@ -2928,8 +2933,17 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 				);
 			}
 		}
-		const mainThreadPatch = planLynxHostPropPatch(record.type, {}, record.props);
-		for (const event of mainThreadPatch.mainThreadEvents) {
+		// Capture re-plans a host's props only to recover what the main thread
+		// should own; the props themselves were already planned and applied when
+		// the tree was built. A host that declares no `main-thread:` prop can own
+		// neither a main-thread event nor a main-thread ref, so planning it again
+		// would spend the page's largest per-host cost rediscovering an empty
+		// answer. Skipping it leaves the checks below unchanged: they still assert
+		// that nothing main-thread-owned is mounted on a host that never asked.
+		const mainThreadPatch = hasLynxMainThreadProp(record.props)
+			? planLynxHostPropPatch(record.type, {}, record.props)
+			: null;
+		for (const event of mainThreadPatch?.mainThreadEvents ?? EMPTY_MAIN_THREAD_EVENTS) {
 			if (event.value === null) continue;
 			const registration = state.nativeEvents.get(record.node)?.get(event.binding.prop);
 			if (
@@ -2947,7 +2961,7 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 				);
 			}
 		}
-		const expectedRef = mainThreadPatch.mainThreadRef?.value ?? null;
+		const expectedRef = mainThreadPatch?.mainThreadRef?.value ?? null;
 		const mountedRef = state.mainThreadRefs.get(record.node) ?? null;
 		if (
 			(record.visible && !sameSnapshotValue(expectedRef, mountedRef)) ||
