@@ -234,7 +234,20 @@ export function createLynxElementPAPI<Node extends LynxElementRef = LynxElementR
 \t\t} finally {
 \t\t\tFIRST_SCREEN_PLAN_PROFILE_DEPTH--;
 \t\t\tif (outerProfile) {
-\t\t\t\tconst profile = (globalThis as any).__OCTANE_LYNX_PROF;
+\t\t\t\tconst globals = globalThis as any;
+\t\t\t\tconst profile = (globals.__OCTANE_LYNX_PROF ??= {
+\t\t\t\t\tcommits: 0,
+\t\t\t\t\tpacedCommits: 0,
+\t\t\t\t\tcommands: 0,
+\t\t\t\t\tbytes: 0,
+\t\t\t\t\tselfcheckMs: 0,
+\t\t\t\t\tdispatchMs: 0,
+\t\t\t\t\tvalidateMs: 0,
+\t\t\t\t\tprepareMs: 0,
+\t\t\t\t\tprepareCheckMs: 0,
+\t\t\t\t\tapplyMs: 0,
+\t\t\t\t\tackMs: 0,
+\t\t\t\t});
 \t\t\t\tprofile.firstScreenPlanMs =
 \t\t\t\t\t(profile.firstScreenPlanMs ?? 0) + performance.now() - startedPlan;
 \t\t\t}
