@@ -43,14 +43,13 @@ const PREVIEW_RECEIVER_NAME = 'main__preview_receiver';
 const BUNDLE_NAME = 'main.lynx.bundle';
 const FORBIDDEN_RUNTIME = /(?:^|[^$\w])(?:react|react-dom|preact|ReactLynx)(?:[^$\w]|$)/i;
 const FORBIDDEN_DOM = /\b(?:document|window|HTMLElement|MutationObserver)\b/;
-// Frozen from upstream main 9b147781. The main caps are the largest integer
-// values that still prove the issue's >=2% gzip reduction. The background
-// program has no source change; its raw-byte budget prevents optional worklet
-// code from leaking onto that thread while tolerating minifier-symbol changes
-// caused by the independently optimized main graph.
+// Recalibrated on the complete local integration of upstream main 9b147781,
+// #706 at 8d8883c8, then both #707 commits ending at 71b758e7. These exact
+// deterministic caps keep the accepted worklet boundary and #706 size tax
+// visible together instead of applying either controlled delta additively.
 const NO_WORKLET_BUDGET = Object.freeze({
-	previewMainGzip: 75_376,
-	ifrMainGzip: 80_355,
+	previewMainGzip: 77_285,
+	ifrMainGzip: 82_274,
 	backgroundRaw: 271_737,
 });
 

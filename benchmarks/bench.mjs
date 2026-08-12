@@ -417,7 +417,10 @@ const SUITES = [
 		cwd: 'react-hosted-islands',
 		servers: [],
 		iter: { normal: 1, quick: 1 },
-		runs: [{ script: 'run.mjs', args: () => [] }],
+		runs: [
+			{ script: 'run.mjs', args: () => [] },
+			{ script: 'inventory.mjs', args: () => [] },
+		],
 	},
 	{
 		// Node-only (no servers, no browser). Time-budgeted: the iteration knob is a
