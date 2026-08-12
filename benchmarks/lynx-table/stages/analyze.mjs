@@ -50,17 +50,26 @@ export function analyzeFcpSample({ wallMs, main }) {
 
 export function analyzeCreateSample({ wallMs, background, main }) {
 	const totalMs = finite(wallMs, 'create wallMs');
+	const applyMs = observed(main?.applyMs, 'applyMs');
+	const papiCreateMs = observed(main?.papiCreateMs, 'papiCreateMs');
+	if (papiCreateMs > applyMs + 0.5) {
+		throw new Error('create PAPI element creation exceeds the enclosing main-thread apply stage.');
+	}
 	const stages = {
 		bg_replay: observed(background?.bgReplayMs, 'bgReplayMs'),
 		wire_clone_transfer: observed(background?.dispatchMs, 'dispatchMs'),
+		mt_validate: observed(main?.validateMs, 'validateMs'),
 		mt_expand: observed(main?.mtExpandMs, 'mtExpandMs'),
-		papi_element_creation: observed(main?.papiCreateMs, 'papiCreateMs'),
+		mt_prepare: observed(main?.prepareMs, 'prepareMs'),
+		papi_element_creation: papiCreateMs,
+		mt_apply_other: Math.max(0, applyMs - papiCreateMs),
+		mt_ack_publication: observed(main?.ackMs, 'ackMs'),
 	};
 	return {
 		totalMs,
 		stages: {
 			...stages,
-			layout_flush_residual: residual(totalMs, stages, 'create'),
+			presentation_residual: residual(totalMs, stages, 'create'),
 		},
 	};
 }

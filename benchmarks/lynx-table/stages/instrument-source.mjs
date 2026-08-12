@@ -20,8 +20,8 @@ export function instrumentLynxStageSources(repositoryRoot) {
 	};
 
 	try {
-		update('packages/lynx/src/core/profiling.ts', (source, file) =>
-			replaceOnce(
+		update('packages/lynx/src/core/profiling.ts', (source, file) => {
+			const next = replaceOnce(
 				source,
 				'\t/** Main: acknowledgement handle computation + dispatch time. */\n\tackMs: number;\n',
 				`\t/** Main: acknowledgement handle computation + dispatch time. */
@@ -34,8 +34,47 @@ export function instrumentLynxStageSources(repositoryRoot) {
 \tpapiCreateMs?: number;
 `,
 				file,
-			),
-		);
+			);
+			return replaceOnce(
+				next,
+				`\tprofile.commands += record.batch?.commands?.length ?? 0;
+\ttry {
+`,
+				`\tconst commands = record.batch?.commands ?? [];
+\tprofile.commands += commands.length;
+\tconst measured = profile as LynxWireProfile & {
+\t\ttemplateRuns?: number;
+\t\ttemplateInstances?: number;
+\t\ttemplateValues?: number;
+\t\tpublicHandleCommands?: number;
+\t};
+\tfor (const rawCommand of commands) {
+\t\tconst command = rawCommand as {
+\t\t\top?: unknown;
+\t\t\tcount?: unknown;
+\t\t\tvalues?: readonly unknown[];
+\t\t};
+\t\tif (command.op === 'mount-template-run') {
+\t\t\tmeasured.templateRuns = (measured.templateRuns ?? 0) + 1;
+\t\t\tmeasured.templateInstances =
+\t\t\t\t(measured.templateInstances ?? 0) +
+\t\t\t\t(typeof command.count === 'number' ? command.count : 0);
+\t\t\tmeasured.templateValues =
+\t\t\t\t(measured.templateValues ?? 0) + (command.values?.length ?? 0);
+\t\t} else if (command.op === 'mount-template-range') {
+\t\t\tmeasured.templateRuns = (measured.templateRuns ?? 0) + 1;
+\t\t\tmeasured.templateInstances = (measured.templateInstances ?? 0) + 1;
+\t\t\tmeasured.templateValues =
+\t\t\t\t(measured.templateValues ?? 0) + (command.values?.length ?? 0);
+\t\t} else if (command.op === 'ensure-public-instance') {
+\t\t\tmeasured.publicHandleCommands = (measured.publicHandleCommands ?? 0) + 1;
+\t\t}
+\t}
+\ttry {
+`,
+				file,
+			);
+		});
 
 		update('packages/lynx/src/core/papi.ts', (source, file) => {
 			let next = replaceOnce(
@@ -117,7 +156,7 @@ export function createLynxElementPAPI<Node extends LynxElementRef = LynxElementR
 `,
 				file,
 			);
-			return replaceOnce(
+			next = replaceOnce(
 				next,
 				`\t\t\t\tdefault:
 \t\t\t\t\treturn createElement(type, parentComponentUniqueId);
@@ -131,6 +170,43 @@ export function createLynxElementPAPI<Node extends LynxElementRef = LynxElementR
 \t\t\t\tprofilePapiCreate(started);
 \t\t\t}
 \t\t},
+`,
+				file,
+			);
+			return replaceOnce(
+				next,
+				`		intrinsics: Object.freeze({
+			view: createView,
+			text: createText,
+			rawText: createRawText,
+		}),
+`,
+				`		intrinsics: Object.freeze({
+			view(parentComponentUniqueId) {
+				const started = performance.now();
+				try {
+					return createView(parentComponentUniqueId);
+				} finally {
+					profilePapiCreate(started);
+				}
+			},
+			text(parentComponentUniqueId) {
+				const started = performance.now();
+				try {
+					return createText(parentComponentUniqueId);
+				} finally {
+					profilePapiCreate(started);
+				}
+			},
+			rawText(textValue) {
+				const started = performance.now();
+				try {
+					return createRawText(textValue);
+				} finally {
+					profilePapiCreate(started);
+				}
+			},
+		}),
 `,
 				file,
 			);

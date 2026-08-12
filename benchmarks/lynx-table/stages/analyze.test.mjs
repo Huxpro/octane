@@ -68,18 +68,38 @@ test('attributes only exclusive observed time and assigns the remainder to named
 		analyzeCreateSample({
 			wallMs: 200,
 			background: { bgReplayMs: 40, dispatchMs: 20 },
-			main: { mtExpandMs: 30, papiCreateMs: 50 },
+			main: {
+				validateMs: 5,
+				mtExpandMs: 10,
+				prepareMs: 15,
+				applyMs: 50,
+				papiCreateMs: 30,
+				ackMs: 10,
+			},
 		}),
 		{
 			totalMs: 200,
 			stages: {
 				bg_replay: 40,
 				wire_clone_transfer: 20,
-				mt_expand: 30,
-				papi_element_creation: 50,
-				layout_flush_residual: 60,
+				mt_validate: 5,
+				mt_expand: 10,
+				mt_prepare: 15,
+				papi_element_creation: 30,
+				mt_apply_other: 20,
+				mt_ack_publication: 10,
+				presentation_residual: 50,
 			},
 		},
+	);
+	assert.throws(
+		() =>
+			analyzeCreateSample({
+				wallMs: 100,
+				background: {},
+				main: { applyMs: 10, papiCreateMs: 11 },
+			}),
+		/exceeds the enclosing/,
 	);
 });
 

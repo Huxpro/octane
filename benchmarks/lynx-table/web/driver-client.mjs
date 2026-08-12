@@ -196,15 +196,73 @@ export const DRIVER_CLIENT_JS = `(() => {
   };
 })()`;
 
+// Page-side MessagePort accounting. It observes the same Web Core RPC boundary
+// as the shared cross-framework runner and records only JSON-equivalent bytes;
+// no payload is cloned, retained, or rewritten by the probe.
+export const WIRE_INSTRUMENT_JS = `(() => {
+  const stats = {
+    // Web Core direction names: page/main-thread-script -> background thread,
+    // then background thread -> page/main-thread-script.
+    toBts: { messages: 0, bytes: 0, byName: {} },
+    toMts: { messages: 0, bytes: 0, byName: {} },
+  };
+  const encoder = new TextEncoder();
+  const sizeOf = (data) => {
+    try {
+      const json = JSON.stringify(data, (_key, value) => {
+        if (value instanceof ArrayBuffer) return { $arrayBuffer: value.byteLength };
+        if (ArrayBuffer.isView(value)) return { $arrayBufferView: value.byteLength };
+        if (typeof value === 'function') return '$function';
+        return value;
+      });
+      return json ? encoder.encode(json).length : 0;
+    } catch {
+      return -1;
+    }
+  };
+  const record = (side, data) => {
+    const bytes = sizeOf(data);
+    const name = data && typeof data === 'object' && 'name' in data ? String(data.name) : '$raw';
+    side.messages++;
+    if (bytes > 0) side.bytes += bytes;
+    const endpoint = side.byName[name] ?? (side.byName[name] = { messages: 0, bytes: 0 });
+    endpoint.messages++;
+    if (bytes > 0) endpoint.bytes += bytes;
+  };
+  globalThis.__OCTANE_STAGE_WIRE__ = () => structuredClone(stats);
+  const postMessage = MessagePort.prototype.postMessage;
+  MessagePort.prototype.postMessage = function (data, ...rest) {
+    record(stats.toBts, data);
+    return postMessage.call(this, data, ...rest);
+  };
+  const descriptor = Object.getOwnPropertyDescriptor(MessagePort.prototype, 'onmessage');
+  if (descriptor?.get && descriptor.set) {
+    Object.defineProperty(MessagePort.prototype, 'onmessage', {
+      configurable: descriptor.configurable,
+      enumerable: descriptor.enumerable,
+      get() { return descriptor.get.call(this); },
+      set(listener) {
+        if (typeof listener !== 'function') return descriptor.set.call(this, listener);
+        return descriptor.set.call(this, function (event) {
+          record(stats.toMts, event.data);
+          return listener.call(this, event);
+        });
+      },
+    });
+  }
+})()`;
+
 /** Build the bench host HTML that loads web-core and installs the driver. */
 export function makeBenchHtml({
 	clientJs = '/webcore/static/js/client.js',
 	clientCss = '/webcore/static/css/client.css',
+	instrumentJs = '',
 } = {}) {
 	return `<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
+  <script>${instrumentJs}</script>
   <script type="module" src="${clientJs}"></script>
   <link rel="stylesheet" href="${clientCss}">
   <style>html,body{margin:0;padding:0}</style>

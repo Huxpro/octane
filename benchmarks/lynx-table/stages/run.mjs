@@ -15,6 +15,7 @@ import {
 } from './analyze.mjs';
 import {
 	DRIVER_CLIENT_JS,
+	WIRE_INSTRUMENT_JS,
 	applyNeutralize,
 	applyStageClock,
 	makeBenchHtml,
@@ -55,7 +56,7 @@ const variants = {
 };
 const webCoreClientJs = require.resolve('@lynx-js/web-core/client.prod.js');
 const webCoreRoot = path.resolve(path.dirname(webCoreClientJs), '../..');
-const html = makeBenchHtml();
+const html = makeBenchHtml({ instrumentJs: WIRE_INSTRUMENT_JS });
 
 function buildVariants() {
 	const previousProfile = process.env.OCTANE_LYNX_PROFILE;
@@ -171,6 +172,30 @@ async function resetProfiles(page) {
 	]);
 }
 
+async function wireSnapshot(page) {
+	return page.evaluate(() => globalThis.__OCTANE_STAGE_WIRE__());
+}
+
+function wireDelta(before, after) {
+	const side = (a, b) => {
+		const names = new Set([...Object.keys(a.byName), ...Object.keys(b.byName)]);
+		const byName = {};
+		for (const name of names) {
+			const value = {
+				messages: (b.byName[name]?.messages ?? 0) - (a.byName[name]?.messages ?? 0),
+				bytes: (b.byName[name]?.bytes ?? 0) - (a.byName[name]?.bytes ?? 0),
+			};
+			if (value.messages !== 0 || value.bytes !== 0) byName[name] = value;
+		}
+		return {
+			messages: b.messages - a.messages,
+			bytes: b.bytes - a.bytes,
+			byName,
+		};
+	};
+	return { toBts: side(before.toBts, after.toBts), toMts: side(before.toMts, after.toMts) };
+}
+
 async function runFcp(browser, variant, profile) {
 	const page = await load(browser, `${variant}-fcp`);
 	try {
@@ -207,41 +232,60 @@ const createLabels = new Map([
 	[30000, 'Create 30,000 rows'],
 ]);
 
-async function clickCreate(page) {
-	const label = createLabels.get(rows);
-	if (label === undefined) throw new Error(`the shared app has no create button for ${rows} rows.`);
+const operations = {
+	create: {
+		label: createLabels.get(rows),
+		predicate: { type: 'rowCount', value: rows },
+	},
+	replace: {
+		label: 'Create 1,000 rows',
+		setup: 'Create 1,000 rows',
+	},
+	append: {
+		label: 'Append 1,000 rows',
+		setup: 'Create 1,000 rows',
+		predicate: { type: 'rowCount', value: 2000 },
+	},
+};
+if (operations.create.label === undefined) {
+	throw new Error(`the shared app has no create button for ${rows} rows.`);
+}
+
+async function clickAndWait(page, label, predicate) {
 	await page.waitForFunction(() => globalThis.__x.findText('Benchmark on Lynx'), undefined, {
 		timeout: 60000,
 	});
 	await page.evaluate(() => globalThis.__x.settle());
-	const armed = page.evaluate(
-		(count) => globalThis.__x.arm({ type: 'rowCount', value: count }, 120000),
-		rows,
-	);
+	const armed = page.evaluate((spec) => globalThis.__x.arm(spec, 120000), predicate);
 	const rectangle = await page.evaluate((text) => globalThis.__x.buttonRect(text), label);
-	if (rectangle === null) throw new Error('create button not found.');
+	if (rectangle === null) throw new Error(`${label} button not found.`);
 	await page.mouse.click(rectangle.x, rectangle.y);
 	return (await armed).ms;
 }
 
-async function runCreate(browser, variant, profile) {
+async function runOperation(browser, variant, profile, operationName) {
 	const page = await load(browser, variant);
 	try {
-		if (profile) {
-			await page.waitForFunction(() => globalThis.__x.findText('Benchmark on Lynx'), undefined, {
-				timeout: 60000,
-			});
+		const operation = operations[operationName];
+		if (operation.setup !== undefined) {
+			await clickAndWait(page, operation.setup, { type: 'rowCount', value: 1000 });
 			await page.evaluate(() => globalThis.__x.settle());
-			await resetProfiles(page);
 		}
-		const rawMs = await clickCreate(page);
-		if (!profile) return { rawMs };
+		const oracle = await page.evaluate(() => globalThis.__x.tableOracle());
+		const predicate = operation.predicate ?? { type: 'checksumNot', value: oracle.checksum };
+		if (profile) await resetProfiles(page);
+		const beforeWire = await wireSnapshot(page);
+		const rawMs = await clickAndWait(page, operation.label, predicate);
+		const afterWire = await wireSnapshot(page);
+		const wire = wireDelta(beforeWire, afterWire);
+		if (!profile) return { rawMs, wire };
 		const realms = await realmSnapshots(page);
 		if (realms.background === null || realms.main === null) {
-			throw new Error('profile create did not expose both Lynx realm snapshots.');
+			throw new Error(`profile ${operationName} did not expose both Lynx realm snapshots.`);
 		}
 		return {
 			rawMs,
+			wire,
 			attribution: analyzeCreateSample({
 				wallMs: rawMs,
 				background: realms.background,
@@ -260,7 +304,7 @@ function round(value, digits = 2) {
 
 function markdown(report) {
 	const lines = [
-		'# Lynx 10k stage decomposition',
+		`# Lynx ${report.meta.rows.toLocaleString('en-US')}-row stage decomposition`,
 		'',
 		`- measured: ${report.meta.date}`,
 		`- host: ${report.meta.cpus}× ${report.meta.cpuModel}; ${report.meta.platform} ${report.meta.release}; Node ${report.meta.node}; Chromium ${report.meta.chromium}`,
@@ -268,9 +312,9 @@ function markdown(report) {
 		`- host load: start ${report.meta.loadStart.map((value) => value.toFixed(2)).join('/')} (1/5/15m), end ${report.meta.loadEnd.map((value) => value.toFixed(2)).join('/')}`,
 		`- repetitions: n=${report.meta.repetitions} per A/B cell`,
 		'',
-		'## FCP@10k',
+		`## FCP@${report.meta.rows}`,
 		'',
-		'Attribution starts when the shared browser hook assigns the hidden main-thread iframe Blob script URL, before load/parse/evaluation, and ends when the shared composed-tree observer first sees all 10,000 rows. `layout_flush_residual` is the exclusive remainder after directly observed slice evaluation, plan interpretation, and PAPI element creation; it includes PAPI prop/insertion work, `__FlushElementTree`, Web Core DOM publication, style/layout, and observer-frame delay because the host exposes no stable boundary between those costs.',
+		`Attribution starts when the shared browser hook assigns the hidden main-thread iframe Blob script URL, before load/parse/evaluation, and ends when the shared composed-tree observer first sees all ${report.meta.rows.toLocaleString('en-US')} rows. \`layout_flush_residual\` is the exclusive remainder after directly observed slice evaluation, plan interpretation, and PAPI element creation; it includes PAPI prop/insertion work, \`__FlushElementTree\`, Web Core DOM publication, style/layout, and observer-frame delay because the host exposes no stable boundary between those costs.`,
 		'',
 		'| segment | median ms | min–max ms | share |',
 		'|---|---:|---:|---:|',
@@ -284,9 +328,9 @@ function markdown(report) {
 		'',
 		`Raw view-attach FCP: profile ${round(report.fcp.rawProfile.median)} ms (${round(report.fcp.rawProfile.min)}–${round(report.fcp.rawProfile.max)}), control ${round(report.fcp.rawControl.median)} ms; same-window profile/control ${round(report.fcp.rawProfile.median / report.fcp.rawControl.median, 3)}×.`,
 		'',
-		'## create@10k',
+		`## create@${report.meta.rows}`,
 		'',
-		'Attribution starts at the shared pointerdown boundary and ends when the shared composed-tree observer sees 10,000 rows. `bg_replay`, `wire_clone_transfer`, `mt_expand`, and PAPI creation are directly observed exclusive intervals. `layout_flush_residual` is the wall-clock remainder, including event delivery before replay, validation/prepare, non-create PAPI work, flush/layout, scheduling, and observer-frame delay.',
+		`Attribution starts at the shared pointerdown boundary and ends when the shared composed-tree observer sees ${report.meta.rows.toLocaleString('en-US')} rows. All named intervals are directly observed and exclusive; \`presentation_residual\` is the wall-clock remainder through final composed-tree presentation.`,
 		'',
 		'| segment | median ms | min–max ms | share |',
 		'|---|---:|---:|---:|',
@@ -299,6 +343,20 @@ function markdown(report) {
 	lines.push(
 		'',
 		`Raw create: profile ${round(report.create.rawProfile.median)} ms (${round(report.create.rawProfile.min)}–${round(report.create.rawProfile.max)}), control ${round(report.create.rawControl.median)} ms, vue-vdom ${round(report.create.vueVdom.median)} ms; same-window profile/control ${round(report.create.rawProfile.median / report.create.rawControl.median, 3)}×, profile/vue-vdom ${round(report.create.rawProfile.median / report.create.vueVdom.median, 3)}×.`,
+		`Wire: MTS→BTS ${Math.round(report.create.wire.toBts.bytes.median).toLocaleString('en-US')} B / ${round(report.create.wire.toBts.messages.median)} messages; BTS→MTS ${Math.round(report.create.wire.toMts.bytes.median).toLocaleString('en-US')} B / ${round(report.create.wire.toMts.messages.median)} messages.`,
+	);
+	for (const operation of ['replace', 'append']) {
+		const cell = report[operation];
+		lines.push('', `## ${operation}@1k`, '', '| segment | median ms | share |', '|---|---:|---:|');
+		for (const [name, stage] of Object.entries(cell.attribution.stages)) {
+			lines.push(`| ${name} | ${round(stage.median)} | ${(stage.share * 100).toFixed(1)}% |`);
+		}
+		lines.push(
+			'',
+			`Raw ${operation}: profile ${round(cell.rawProfile.median)} ms, control ${round(cell.rawControl.median)} ms, vue-vdom ${round(cell.vueVdom.median)} ms. Wire: MTS→BTS ${Math.round(cell.wire.toBts.bytes.median).toLocaleString('en-US')} B / ${round(cell.wire.toBts.messages.median)} messages; BTS→MTS ${Math.round(cell.wire.toMts.bytes.median).toLocaleString('en-US')} B / ${round(cell.wire.toMts.messages.median)} messages.`,
+		);
+	}
+	lines.push(
 		'',
 		'## Verdicts',
 		'',
@@ -325,6 +383,8 @@ const loadStart = os.loadavg();
 const samples = {
 	fcp: { control: [], profile: [] },
 	create: { control: [], profile: [], vueVdom: [] },
+	replace: { control: [], profile: [], vueVdom: [] },
+	append: { control: [], profile: [], vueVdom: [] },
 };
 try {
 	const schedule = args.smoke ? [['control', 'profile']] : interleavedABSchedule(repetitions);
@@ -333,15 +393,23 @@ try {
 			const profile = variant === 'profile';
 			const fcp = await runFcp(browser, variant, profile);
 			samples.fcp[variant].push(fcp);
-			const create = await runCreate(browser, variant, profile);
-			samples.create[variant].push(create);
+			const measured = {};
+			for (const operation of Object.keys(operations)) {
+				measured[operation] = await runOperation(browser, variant, profile, operation);
+				samples[operation][variant].push(measured[operation]);
+			}
 			console.log(
-				`[stage] ${variant} fcp=${fcp.rawMs.toFixed(1)} create=${create.rawMs.toFixed(1)}`,
+				`[stage] ${variant} fcp=${fcp.rawMs.toFixed(1)} create=${measured.create.rawMs.toFixed(1)} replace=${measured.replace.rawMs.toFixed(1)} append=${measured.append.rawMs.toFixed(1)}`,
 			);
 		}
-		const reference = await runCreate(browser, 'vue-vdom', false);
-		samples.create.vueVdom.push(reference);
-		console.log(`[stage] vue-vdom create=${reference.rawMs.toFixed(1)}`);
+		const reference = {};
+		for (const operation of Object.keys(operations)) {
+			reference[operation] = await runOperation(browser, 'vue-vdom', false, operation);
+			samples[operation].vueVdom.push(reference[operation]);
+		}
+		console.log(
+			`[stage] vue-vdom create=${reference.create.rawMs.toFixed(1)} replace=${reference.replace.rawMs.toFixed(1)} append=${reference.append.rawMs.toFixed(1)}`,
+		);
 	}
 } finally {
 	await browser.close();
@@ -382,9 +450,56 @@ const createAttribution = summarizeSamples(
 		reference: samples.create.vueVdom.map((sample) => sample.rawMs),
 	},
 );
-const directFcpShare =
-	fcpAttribution.stages.mt_slice_eval.share + fcpAttribution.stages.plan_interpretation.share;
-const expandShare = createAttribution.stages.mt_expand.share;
+function summarizeRaw(cell) {
+	return summarizeSamples(
+		cell.map((sample) => ({ totalMs: sample.rawMs, stages: { raw: sample.rawMs } })),
+	).total;
+}
+function summarizeWire(cell, side, field) {
+	return summarizeSamples(
+		cell.map((sample) => {
+			const value = sample.wire[side][field];
+			return { totalMs: value, stages: { raw: value } };
+		}),
+	).total;
+}
+function mutationReport(operation) {
+	const cell = samples[operation];
+	return {
+		attribution: summarizeSamples(
+			cell.profile.map((sample) => sample.attribution),
+			{
+				control: cell.control.map((sample) => sample.rawMs),
+				reference: cell.vueVdom.map((sample) => sample.rawMs),
+			},
+		),
+		rawControl: summarizeRaw(cell.control),
+		rawProfile: summarizeRaw(cell.profile),
+		vueVdom: summarizeRaw(cell.vueVdom),
+		wire: {
+			toBts: {
+				bytes: summarizeWire(cell.profile, 'toBts', 'bytes'),
+				messages: summarizeWire(cell.profile, 'toBts', 'messages'),
+			},
+			toMts: {
+				bytes: summarizeWire(cell.profile, 'toMts', 'bytes'),
+				messages: summarizeWire(cell.profile, 'toMts', 'messages'),
+			},
+		},
+	};
+}
+const replaceReport = mutationReport('replace');
+const appendReport = mutationReport('append');
+const createWire = {
+	toBts: {
+		bytes: summarizeWire(samples.create.profile, 'toBts', 'bytes'),
+		messages: summarizeWire(samples.create.profile, 'toBts', 'messages'),
+	},
+	toMts: {
+		bytes: summarizeWire(samples.create.profile, 'toMts', 'bytes'),
+		messages: summarizeWire(samples.create.profile, 'toMts', 'messages'),
+	},
+};
 const report = {
 	meta: {
 		date: new Date().toISOString(),
@@ -400,7 +515,7 @@ const report = {
 		loadStart,
 		loadEnd: os.loadavg(),
 		protocol:
-			'fresh page per sample; control/profile order alternates AB/BA; one vue-vdom create sample follows each pair; no other benchmark process ran in this window',
+			'fresh page per operation sample; control/profile order alternates AB/BA; one vue-vdom create/replace/append triplet follows each pair; no other benchmark process ran in this window',
 	},
 	fcp: {
 		attribution: fcpAttribution,
@@ -419,6 +534,7 @@ const report = {
 	},
 	create: {
 		attribution: createAttribution,
+		wire: createWire,
 		rawControl: summarizeSamples(
 			samples.create.control.map((sample) => ({
 				totalMs: sample.rawMs,
@@ -438,28 +554,29 @@ const report = {
 			})),
 		).total,
 	},
+	replace: replaceReport,
+	append: appendReport,
 	verdicts: [
 		{
-			step: 's2-2 (#18)',
-			verdict: fcpAttribution.stages.plan_interpretation.share >= 0.1 ? 'GO' : 'NO-GO',
-			reason: `plan interpretation is ${(fcpAttribution.stages.plan_interpretation.share * 100).toFixed(1)}% of attributed FCP and instantiate expansion is ${(expandShare * 100).toFixed(1)}% of create; neither clears the 10% direct-share gate.`,
+			step: '#47 wire/encoding candidate',
+			verdict: 'NO-GO',
+			reason: `clone/transfer is ${(createAttribution.stages.wire_clone_transfer.share * 100).toFixed(1)}% of create, ${(replaceReport.attribution.stages.wire_clone_transfer.share * 100).toFixed(1)}% of replace, and ${(appendReport.attribution.stages.wire_clone_transfer.share * 100).toFixed(1)}% of append; it does not clear the 10% owner gate.`,
 		},
 		{
-			step: 's2-3 (#19)',
-			verdict: 'NO-GO from this instrument',
-			reason:
-				'This issue measures mount/FCP, not slot-update routing; the roadmap already records point updates inside the target band, so no measured mount share justifies updater staging here.',
+			step: '#47 measured CPU owner',
+			verdict: 'SPLIT',
+			reason: `PAPI creation plus remaining host apply is ${((createAttribution.stages.papi_element_creation.share + createAttribution.stages.mt_apply_other.share) * 100).toFixed(1)}% of create. This is a host materialization owner, not evidence for changing the wire representation.`,
 		},
 		{
-			step: 's2-4 (#20)',
-			verdict: directFcpShare >= 0.1 ? 'GO' : 'NO-GO',
-			reason: `receiver slice evaluation plus plan interpretation is ${(directFcpShare * 100).toFixed(1)}% of attributed FCP and wire is ${(createAttribution.stages.wire_clone_transfer.share * 100).toFixed(1)}% of create; neither clears the 10% direct-share gate, and the create residual is deliberately not attributed to receiver code.`,
+			step: '#47 acknowledgement-only candidate',
+			verdict: 'NO-GO for issue acceptance',
+			reason: `ACK/publication is ${(createAttribution.stages.mt_ack_publication.share * 100).toFixed(1)}% of create, ${(replaceReport.attribution.stages.mt_ack_publication.share * 100).toFixed(1)}% of replace, and ${(appendReport.attribution.stages.mt_ack_publication.share * 100).toFixed(1)}% of append; even a complete removal cannot meet the required 15% in all three cells or the 50% total-wire gate.`,
 		},
 	],
 	samples,
 };
 const output = path.join(import.meta.dirname, 'results');
 fs.mkdirSync(output, { recursive: true });
-fs.writeFileSync(path.join(output, 'sg1.json'), JSON.stringify(report, null, 2) + '\n');
-fs.writeFileSync(path.join(output, 'sg1.md'), markdown(report) + '\n');
+fs.writeFileSync(path.join(output, `live-${rows}.json`), JSON.stringify(report, null, 2) + '\n');
+fs.writeFileSync(path.join(output, `live-${rows}.md`), markdown(report) + '\n');
 console.log(markdown(report));
