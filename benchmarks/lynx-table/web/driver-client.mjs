@@ -95,6 +95,26 @@ export const DRIVER_CLIENT_JS = `(() => {
     return r ? hasClass(r, 'danger') : false;
   };
 
+  // -- semantic checksum ----------------------------------------------------
+  const hashText = (seed, text) => {
+    let hash = seed >>> 0;
+    for (let i = 0; i < text.length; i++) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 16777619) >>> 0;
+    }
+    return hash;
+  };
+  x.tableOracle = () => {
+    const current = rowEls();
+    let checksum = 2166136261;
+    for (const row of current) {
+      const id = cellOf(row, 'col-id')?.textContent ?? '';
+      const label = cellOf(row, 'col-label')?.textContent ?? '';
+      checksum = hashText(checksum, id + '\\u0000' + label + '\\u0000' + classOf(row));
+    }
+    return { rows: current.length, checksum };
+  };
+
   // -- click geometry --------------------------------------------------------
   x.buttonRect = (label) => {
     for (const el of findByClass('btn-text')) {
@@ -119,6 +139,7 @@ export const DRIVER_CLIENT_JS = `(() => {
       case 'rowCount': return x.rowCount() === spec.value;
       case 'labelAt': return x.labelAt(spec.index) === spec.equals;
       case 'dangerAt': return x.dangerAt(spec.index);
+      case 'checksumNot': return x.tableOracle().checksum !== spec.value;
       case 'contentAtLeast': return x.contentCount() >= spec.value;
       default: throw new Error('unknown predicate ' + spec.type);
     }
