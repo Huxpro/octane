@@ -15,6 +15,10 @@ import {
 	summarizeSamples,
 } from './analyze.mjs';
 
+// Anchored to this file, not the process working directory, so `test:stages`
+// works from the package directory as its script and the README both run it.
+const repositoryRoot = path.resolve(import.meta.dirname, '../../..');
+
 test('requires at least five repetitions for a reportable session', () => {
 	assert.throws(() => requireMinimumRepetitions(4), /at least 5/);
 	assert.equal(requireMinimumRepetitions(5), 5);
@@ -128,7 +132,7 @@ test('folds stage instrumentation out of a default production bundle', async () 
 		entry,
 		[
 			"import { lynxWireProfile } from '" +
-				path.resolve('packages/lynx/src/core/profiling.ts').replaceAll('\\', '/') +
+				path.resolve(repositoryRoot, 'packages/lynx/src/core/profiling.ts').replaceAll('\\', '/') +
 				"';",
 			'if (__OCTANE_LYNX_PROFILE__) {',
 			"\tconst profile = lynxWireProfile(); profile['octane-stage-profile-marker'] = 1;",

@@ -22,7 +22,13 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
-import { DRIVER_CLIENT_JS, makeBenchHtml, applyNeutralize, stats } from './driver-client.mjs';
+import {
+	DRIVER_CLIENT_JS,
+	applyNeutralize,
+	chromiumLaunchOptions,
+	makeBenchHtml,
+	stats,
+} from './driver-client.mjs';
 import { buildTableApp } from '../scripts/build-app.mjs';
 
 const require = createRequire(import.meta.url);
@@ -241,14 +247,7 @@ async function main() {
 
 	const server = await startServer();
 	const { chromium } = require('playwright');
-	const executablePath = fs.existsSync('/opt/pw-browsers/chromium')
-		? '/opt/pw-browsers/chromium'
-		: undefined;
-	const browser = await chromium.launch({
-		headless: !args.headed,
-		...(executablePath ? { executablePath } : null),
-		args: ['--disable-background-timer-throttling', '--disable-renderer-backgrounding'],
-	});
+	const browser = await chromium.launch(chromiumLaunchOptions({ headless: !args.headed }));
 
 	// cellId -> scale -> op -> stats|null
 	const results = {};
