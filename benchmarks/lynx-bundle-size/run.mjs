@@ -43,14 +43,14 @@ const PREVIEW_RECEIVER_NAME = 'main__preview_receiver';
 const BUNDLE_NAME = 'main.lynx.bundle';
 const FORBIDDEN_RUNTIME = /(?:^|[^$\w])(?:react|react-dom|preact|ReactLynx)(?:[^$\w]|$)/i;
 const FORBIDDEN_DOM = /\b(?:document|window|HTMLElement|MutationObserver)\b/;
-// Recalibrated on the complete local integration of upstream main 9b147781,
-// #706 at 8d8883c8, then both #707 commits ending at 71b758e7. These exact
-// deterministic caps keep the accepted worklet boundary and #706 size tax
-// visible together instead of applying either controlled delta additively.
+// Recalibrated on upstream main ffadd397, which contains merged #706 and #707.
+// These exact deterministic caps keep the accepted worklet boundary, #706
+// size tax, and subsequent mainline parity work visible together instead of
+// applying any controlled gzip delta additively.
 const NO_WORKLET_BUDGET = Object.freeze({
-	previewMainGzip: 77_285,
+	previewMainGzip: 77_286,
 	ifrMainGzip: 82_274,
-	backgroundRaw: 271_737,
+	backgroundRaw: 272_504,
 });
 
 function packageEntry(packageName) {

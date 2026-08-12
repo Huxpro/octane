@@ -1,38 +1,38 @@
 {
   "artifacts": {
-    "web": { "raw": 484572, "gzip": 132135 },
-    "lynx": { "raw": 473851, "gzip": 158882 }
+    "web": { "raw": 485345, "gzip": 132334 },
+    "lynx": { "raw": 474618, "gzip": 159077 }
   },
   "sections": {
-    "main": { "raw": 203712, "gzip": 57560 },
-    "background": { "raw": 276738, "gzip": 74170 }
+    "main": { "raw": 203712, "gzip": 57563 },
+    "background": { "raw": 277505, "gzip": 74381 }
   },
   "owners": {
     "web": {
-      "compiler-output-app": 139617,
-      "build-wrapper-main": 90909,
-      "universal-runtime": 77629,
-      "host-driver-papi": 37654,
-      "protocol-transport": 34477,
-      "lynx-runtime-other": 32834,
-      "first-screen-adoption": 30818,
-      "public-state-worklets": 28232,
-      "fixture-app": 11437,
+      "compiler-output-app": 140155,
+      "build-wrapper-main": 90775,
+      "universal-runtime": 78258,
+      "host-driver-papi": 37599,
+      "protocol-transport": 34427,
+      "lynx-runtime-other": 32786,
+      "first-screen-adoption": 30773,
+      "public-state-worklets": 28191,
+      "fixture-app": 11420,
       "generated-wrapper": 256,
       "octane-runtime-other": 515,
-      "third-party-runtime": 194
+      "third-party-runtime": 191
     },
     "lynx": {
-      "compiler-output-app": 136528,
-      "build-wrapper-main": 88897,
-      "universal-runtime": 75912,
-      "host-driver-papi": 36821,
-      "protocol-transport": 33715,
-      "lynx-runtime-other": 32107,
-      "first-screen-adoption": 30136,
-      "public-state-worklets": 27608,
-      "fixture-app": 11184,
-      "generated-wrapper": 251,
+      "compiler-output-app": 137057,
+      "build-wrapper-main": 88768,
+      "universal-runtime": 76528,
+      "host-driver-papi": 36768,
+      "protocol-transport": 33666,
+      "lynx-runtime-other": 32061,
+      "first-screen-adoption": 30093,
+      "public-state-worklets": 27568,
+      "fixture-app": 11167,
+      "generated-wrapper": 250,
       "octane-runtime-other": 503,
       "third-party-runtime": 189
     }

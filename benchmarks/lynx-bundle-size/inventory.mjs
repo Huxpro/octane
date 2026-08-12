@@ -287,7 +287,9 @@ try {
 		},
 		controlledLedger: BUDGETS.controlledLedger,
 	};
+	const calibrate = process.env.OCTANE_INVENTORY_CALIBRATE === '1';
 	for (const target of ['web', 'lynx']) {
+		if (calibrate) continue;
 		gateBudget(`${target} raw`, payload.artifacts[target].raw, BUDGETS.artifacts[target].raw);
 		gateBudget(`${target} gzip`, payload.artifacts[target].gzip, BUDGETS.artifacts[target].gzip);
 		if (payload.artifacts[target].inventory.coverage < 0.9) {
@@ -298,7 +300,7 @@ try {
 			gateBudget(`${target}/${owner} raw`, actual, budget);
 		}
 	}
-	for (const section of ['main', 'background']) {
+	for (const section of calibrate ? [] : ['main', 'background']) {
 		for (const metric of ['raw', 'gzip']) {
 			gateBudget(
 				`lynx ${section} ${metric}`,
