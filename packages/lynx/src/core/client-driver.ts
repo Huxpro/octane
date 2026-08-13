@@ -310,6 +310,23 @@ function setCompactHostCode(metadata: LynxCompactHostMetadata, id: number, code:
 	}
 }
 
+function retiredRangeGeneration(ranges: readonly [number, number][], id: number): 0 | 1 {
+	let low = 0;
+	let high = ranges.length - 1;
+	while (low <= high) {
+		const middle = (low + high) >>> 1;
+		const range = ranges[middle]!;
+		if (id < range[0]) {
+			high = middle - 1;
+		} else if (id > range[1]) {
+			low = middle + 1;
+		} else {
+			return 1;
+		}
+	}
+	return 0;
+}
+
 function compactHandle(state: LynxClientContainerState, id: number): LynxHandleEntry | undefined {
 	const existing = state.handles.get(id);
 	if (existing !== undefined) return existing;
@@ -1077,7 +1094,8 @@ export function prepareLynxHandleDeltas(
 		validateSnapshotIdentity(delta.snapshot, identity, delta);
 		const finalType = transition.type!;
 		if (expected === 'create') {
-			const previousGeneration = state.generations.get(delta.id) ?? 0;
+			const previousGeneration =
+				state.generations.get(delta.id) ?? retiredRangeGeneration(state.retiredRanges, delta.id);
 			if (delta.type !== finalType || delta.generation <= previousGeneration) {
 				throw new Error(`Octane Lynx acknowledgement has invalid created handle ${delta.id}.`);
 			}

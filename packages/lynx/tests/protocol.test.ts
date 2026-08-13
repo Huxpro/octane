@@ -2851,6 +2851,42 @@ describe('@octanejs/lynx transported protocol', () => {
 		expect(container.getPublicHandle(count + 1)?.generation).toBe(1);
 	});
 
+	it('requires a fresh generation when reusing a host from a retired compact run', () => {
+		const count = LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS;
+		const container = createLynxClientContainer();
+		prepareLynxCompactHandleDeltas(container, templateBatch(count), count, identity(98, 1)).apply();
+		prepareLynxHandleDeltas(
+			container,
+			{
+				renderer: LYNX_TRANSPORT_RENDERER,
+				version: 2,
+				commands: [{ op: 'destroy-run', parent: null, firstId: 1, count, width: 1 }],
+			},
+			[{ op: 'remove-run', firstId: 1, hostCount: count, generation: 1 }],
+			identity(98, 2),
+		).apply();
+
+		const reuseBatch: UniversalHostBatch = {
+			renderer: LYNX_TRANSPORT_RENDERER,
+			version: 3,
+			commands: [{ op: 'create', id: 1, type: 'view', props: { id: 'replacement' } }],
+		};
+		const replacement = (generation: number) => ({
+			op: 'upsert' as const,
+			id: 1,
+			type: 'view',
+			generation,
+			attached: true,
+			listDescendant: false,
+			snapshot: handleSnapshot(98, 1, 'view', generation),
+		});
+		expect(() =>
+			prepareLynxHandleDeltas(container, reuseBatch, [replacement(1)], identity(98, 3)),
+		).toThrow(/invalid created handle 1/);
+		prepareLynxHandleDeltas(container, reuseBatch, [replacement(2)], identity(98, 3)).apply();
+		expect(container.getPublicHandle(1)?.generation).toBe(2);
+	});
+
 	it('preserves adopted handles when compact descendants are accepted or rolled back', () => {
 		const count = LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS;
 		const container = createLynxClientContainer();
