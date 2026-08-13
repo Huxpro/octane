@@ -3,11 +3,12 @@
   "private": true,
   "type": "module",
   "version": "0.0.0",
-  "description": "Unified table benchmark for Octane on Lynx: deterministic wire-cost gates (command counts, commit bytes) plus a Lynx-for-Web Chromium harness with vendored ReactLynx and Vue Lynx reference bundles.",
+  "description": "Unified table benchmark for Octane on Lynx: deterministic wire-cost gates (command counts, commit bytes), a Lynx-for-Web Chromium harness with vendored ReactLynx and Vue Lynx reference bundles, and the host-side Element PAPI boundary decomposition that attributes each cell's startup and create cost.",
   "scripts": {
     "bench": "node run.mjs",
     "bench:web": "node web/run-web.mjs",
     "bench:stages": "node stages/run.mjs",
+    "bench:papi": "node stages/papi-run.mjs",
     "build:app": "node scripts/build-app.mjs",
     "test:stages": "node --test stages/*.test.mjs"
   },

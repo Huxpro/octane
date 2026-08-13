@@ -18,6 +18,7 @@ import {
 	WIRE_INSTRUMENT_JS,
 	applyNeutralize,
 	applyStageClock,
+	chromiumLaunchOptions,
 	makeBenchHtml,
 } from '../web/driver-client.mjs';
 import { buildTableApp } from '../scripts/build-app.mjs';
@@ -374,10 +375,7 @@ for (const [name, file] of Object.entries(variants)) {
 }
 const server = await startServer();
 const { chromium } = require('playwright');
-const browser = await chromium.launch({
-	headless: true,
-	args: ['--disable-background-timer-throttling', '--disable-renderer-backgrounding'],
-});
+const browser = await chromium.launch(chromiumLaunchOptions());
 const browserVersion = browser.version();
 const loadStart = os.loadavg();
 const samples = {
