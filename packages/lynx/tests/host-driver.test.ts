@@ -4076,7 +4076,6 @@ describe('Lynx Element PAPI host driver', () => {
 			),
 		).toThrow(/destroy-run does not match an accepted template run/);
 	});
-
 	it('retains compact-run ownership for terminal cleanup when fast teardown faults', () => {
 		const { container, page, papi } = createHost(65);
 		const program: UniversalHostTemplateProgram = Object.freeze({

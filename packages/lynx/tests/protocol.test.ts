@@ -2823,7 +2823,6 @@ describe('@octanejs/lynx transported protocol', () => {
 		prepareLynxCompactHandleDeltas(container, fresh, count, identity(97, 3), count, true).apply();
 		expect(container.getPublicHandle(count + 1)?.generation).toBe(1);
 	});
-
 	it('preserves adopted handles when compact descendants are accepted or rolled back', () => {
 		const count = LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS;
 		const container = createLynxClientContainer();
