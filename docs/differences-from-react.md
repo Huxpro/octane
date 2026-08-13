@@ -583,6 +583,13 @@ differences:
 Metadata and resources hoist from ANY depth, matching React: an element
 nested inside a host partitions out of the body on both the client and the
 server, and a hoist inside an `@if` arm registers only while that arm renders.
+Two more Fizz-parity behaviors on the server: `<meta charSet>` and
+`<meta name="viewport">` serialize at the FRONT of the head (charset first —
+parsers only honor it within the first 1024 bytes — then viewport, then
+everything else in discovery order), and hoistables authored inside a pending
+boundary's fallback are dropped transitively (a completed boundary nested in a
+fallback is still fallback territory; the streamed head would outlive the
+fallback it came from).
 
 React Float **resources** are supported with React's semantics:
 
@@ -590,7 +597,9 @@ React Float **resources** are supported with React's semantics:
   global resource: deduped by href across the page, hoisted into
   `document.head` with a `data-precedence` attribute, grouped by precedence in
   first-encounter order (later same-precedence sheets append to their group),
-  and retained after unmount. First instance wins; later differing props do
+  and retained after unmount. First encounter follows tree discovery order —
+  parent before child, suspended arms at reveal — so client mounts, SSR, and
+  React agree on group order. First instance wins; later differing props do
   not retarget a live sheet.
 - `<script async src>` (no children/handlers) hoists and dedupes by src, and
   is likewise never removed.
