@@ -3601,23 +3601,8 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 		}
 	}
 	const logicalTeardown = state.faulted;
-	if (
-		logicalTeardown &&
-		!batch.commands.every(
-			(command) =>
-				command !== null &&
-				typeof command === 'object' &&
-				(command.op === 'remove' ||
-					command.op === 'destroy' ||
-					(command.op === 'event' && command.listener === null)),
-		)
-	) {
-		throw hostError(
-			'after a host fault, only listener removal and remove/destroy teardown commands are accepted.',
-		);
-	}
 	let runExpansion: { firstId: number; hostCount: number } | null = null;
-	if (!logicalTeardown && firstTree === undefined) {
+	if (firstTree === undefined) {
 		const teardownStore =
 			state.records instanceof LynxDenseHostRecordStore ? state.records : state.teardownRecords;
 		let hasRun = false;
@@ -3651,10 +3636,27 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			}
 			batch = { ...batch, commands };
 		}
-		const denseTeardown = teardownStore?.prepareFullTeardown(state, batch) ?? null;
-		if (denseTeardown !== null) {
-			return prepareDenseTeardown(container, batch, state, denseTeardown, runExpansion);
+		if (!logicalTeardown) {
+			const denseTeardown = teardownStore?.prepareFullTeardown(state, batch) ?? null;
+			if (denseTeardown !== null) {
+				return prepareDenseTeardown(container, batch, state, denseTeardown, runExpansion);
+			}
 		}
+	}
+	if (
+		logicalTeardown &&
+		!batch.commands.every(
+			(command) =>
+				command !== null &&
+				typeof command === 'object' &&
+				(command.op === 'remove' ||
+					command.op === 'destroy' ||
+					(command.op === 'event' && command.listener === null)),
+		)
+	) {
+		throw hostError(
+			'after a host fault, only listener removal and remove/destroy teardown commands are accepted.',
+		);
 	}
 
 	const baseVersion = state.acceptedVersion;

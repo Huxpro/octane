@@ -25,9 +25,9 @@ import { parseArgs } from 'node:util';
 import {
 	analyzeCreateSample,
 	interleavedABSchedule,
-	parseRealmSnapshots,
 	requireMinimumRepetitions,
 } from './analyze.mjs';
+import { realmSnapshots, resetProfiles } from './profile-realms.mjs';
 import {
 	WIRE_INSTRUMENT_JS,
 	applyNeutralize,
@@ -403,31 +403,10 @@ async function runProbe(browser, chunkRows = 0) {
 	}
 }
 
-async function realmSnapshots(page) {
-	const read = () => {
-		const value = globalThis.__OCTANE_LYNX_PROF;
-		if (value === undefined) return null;
-		const copy = {};
-		for (const key of Object.keys(value)) {
-			if (typeof value[key] === 'number') copy[key] = value[key];
-		}
-		return copy;
-	};
-	const snapshots = [];
-	for (const frame of page.frames()) {
-		const profile = await frame.evaluate(read).catch(() => null);
-		if (profile !== null) snapshots.push({ kind: 'frame', profile });
-	}
-	for (const worker of page.workers()) {
-		const profile = await worker.evaluate(read).catch(() => null);
-		if (profile !== null) snapshots.push({ kind: 'worker', profile });
-	}
-	return parseRealmSnapshots(snapshots);
-}
-
 async function runOctaneCreate(browser, variant) {
 	const page = await load(browser, variant);
 	try {
+		if (variant === 'profile') await resetProfiles(page);
 		const armed = page.evaluate((spec) => globalThis.__x.arm(spec, 120000), {
 			type: 'rowCount',
 			value: rows,

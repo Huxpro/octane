@@ -4021,6 +4021,72 @@ describe('Lynx Element PAPI host driver', () => {
 		).toBe(true);
 	});
 
+	it('accepts a complete destroy-run teardown after an accepted host fault', () => {
+		const { container, page, papi } = createHost(69);
+		const program: UniversalHostTemplateProgram = Object.freeze({
+			nodes: Object.freeze([
+				Object.freeze({ type: 'view', parent: -1, props: Object.freeze({ class: 'row' }) }),
+				Object.freeze({ type: 'text', parent: 0, props: Object.freeze({}) }),
+				Object.freeze({ type: '#text', parent: 1, props: Object.freeze({ value: 'ready' }) }),
+			]),
+			events: Object.freeze([]),
+		});
+		prepareLynxHostBatch(
+			container,
+			batch(1, [
+				{ op: 'create', id: 1, type: 'view', props: { id: 'shell' } },
+				{ op: 'create', id: 2, type: 'view', props: { id: 'rows' } },
+				{ op: 'insert', parent: 1, id: 2, before: null },
+				{ op: 'insert', parent: null, id: 1, before: null },
+			]),
+		).apply();
+		prepareLynxHostBatch(
+			container,
+			batch(2, [
+				{
+					op: 'mount-template-run',
+					parent: 2,
+					before: null,
+					program,
+					firstId: 10,
+					firstListenerId: null,
+					count: 2,
+					values: Object.freeze([]),
+				},
+			]),
+			{ compact: true, incrementalCompact: true, lazyPublicInstances: true },
+		).apply();
+		expect(page.children[0]!.children[0]!.children).toHaveLength(2);
+
+		const failure = new Error('accepted run update failed');
+		papi.failNext('setAttribute', 'after', failure);
+		const faulting = prepareLynxHostBatch(
+			container,
+			batch(3, [{ op: 'update', id: 10, props: { title: 'faulted' } }]),
+		);
+		expect(() => faulting.apply()).toThrow(failure);
+		expect(container.acceptedVersion).toBe(3);
+
+		const teardown = prepareLynxHostBatch(
+			container,
+			batch(4, [
+				{ op: 'destroy-run', parent: 2, firstId: 10, count: 2, width: 3 },
+				{ op: 'remove', parent: null, id: 1 },
+				{ op: 'destroy', id: 2 },
+				{ op: 'destroy', id: 1 },
+			]),
+		);
+		teardown.apply();
+		expect(container.instanceCount).toBe(0);
+		expect(container.acceptedVersion).toBe(4);
+
+		// Post-fault application is logical only; terminal disposal still owns
+		// and removes the accepted native tree.
+		expect(page.children).toHaveLength(1);
+		expect(disposeLynxHostContainer(container).complete).toBe(true);
+		expect(page.children).toEqual([]);
+	});
+
 	it('expands a partial destroy-run through the general teardown path', () => {
 		const { container, page } = createHost(68);
 		const program: UniversalHostTemplateProgram = Object.freeze({

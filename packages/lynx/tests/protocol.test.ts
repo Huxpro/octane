@@ -2778,6 +2778,33 @@ describe('@octanejs/lynx transported protocol', () => {
 			version: 2,
 			commands: [{ op: 'destroy-run', parent: null, firstId: 1, count, width: 1 }],
 		};
+		expect(() => prepareLynxHandleDeltas(container, runBatch, [], identity(97, 2))).toThrow(
+			/omits destroyed run/,
+		);
+		expect(() =>
+			prepareLynxHandleDeltas(
+				container,
+				runBatch,
+				[{ op: 'remove', id: 1, generation: 1 }],
+				identity(97, 2),
+			),
+		).toThrow(/omits destroyed run/);
+
+		const fallback = prepareLynxHandleDeltas(
+			container,
+			runBatch,
+			Array.from({ length: count }, (_value, index) => ({
+				op: 'remove' as const,
+				id: index + 1,
+				generation: 1,
+			})),
+			identity(97, 2),
+		);
+		fallback.apply();
+		expect(container.getPublicHandle(2)).toBeNull();
+		fallback.rollback();
+		expect(container.getPublicHandle(2)).toBe(observed);
+
 		const removal = prepareLynxHandleDeltas(
 			container,
 			runBatch,

@@ -869,10 +869,11 @@ export function prepareLynxHandleDeltas(
 		transitions.set(id, transition);
 		return transition;
 	};
-	const runCommands: { firstId: number; hostCount: number }[] = [];
+	const runCommands: { firstId: number; hostCount: number; remaining: number }[] = [];
 	for (const command of batch.commands) {
 		if (command.op === 'destroy-run') {
-			runCommands.push({ firstId: command.firstId, hostCount: command.count * command.width });
+			const hostCount = command.count * command.width;
+			runCommands.push({ firstId: command.firstId, hostCount, remaining: hostCount });
 			continue;
 		}
 		if (command.op === 'mount-template-run') {
@@ -978,7 +979,9 @@ export function prepareLynxHandleDeltas(
 		if (delta.op === 'remove-run') {
 			const matched = runCommands.findIndex(
 				(candidate) =>
-					candidate.firstId === delta.firstId && candidate.hostCount === delta.hostCount,
+					candidate.firstId === delta.firstId &&
+					candidate.hostCount === delta.hostCount &&
+					candidate.remaining === candidate.hostCount,
 			);
 			if (matched === -1 || delta.generation !== 1) {
 				throw new Error(
@@ -1006,16 +1009,17 @@ export function prepareLynxHandleDeltas(
 			// A destroy-run command creates no per-host transitions; when the
 			// main thread answers one with per-host removals (partial ranges or
 			// explicit-path stores), derive the destroyed transition on demand.
-			const covered = runCommands.some(
+			const covered = runCommands.find(
 				(candidate) =>
 					delta.id >= candidate.firstId && delta.id < candidate.firstId + candidate.hostCount,
 			);
-			if (covered) {
+			if (covered !== undefined) {
 				transition = transitionFor(delta.id);
 				if (transition.present) {
 					transition.present = false;
 					transition.type = null;
 					transition.identityChanged = true;
+					covered.remaining -= 1;
 				}
 			}
 		}
@@ -1156,6 +1160,13 @@ export function prepareLynxHandleDeltas(
 			throw new Error(`Octane Lynx acknowledgement omits ${expected}d handle ${id}.`);
 		}
 	}
+	for (const command of runCommands) {
+		if (command.remaining !== 0) {
+			throw new Error(
+				`Octane Lynx acknowledgement omits destroyed run ${command.firstId}+${command.hostCount}.`,
+			);
+		}
+	}
 
 	const removedCompactHosts = new Map<number, number>();
 	const pushedRetiredRanges: [number, number][] = [];
@@ -1206,8 +1217,18 @@ export function prepareLynxHandleDeltas(
 						}
 					}
 				}
-				pushedRetiredRanges.push([removal.firstId, last]);
-				state.retiredRanges.push(pushedRetiredRanges[pushedRetiredRanges.length - 1]!);
+			}
+			for (const removal of runRemovals) {
+				const range: [number, number] = [removal.firstId, removal.firstId + removal.hostCount - 1];
+				pushedRetiredRanges.push(range);
+				state.retiredRanges.push(range);
+			}
+			// Exact remove-run acknowledgements were spliced above; every
+			// remaining command reached zero through complete per-host removals.
+			for (const removal of runCommands) {
+				const range: [number, number] = [removal.firstId, removal.firstId + removal.hostCount - 1];
+				pushedRetiredRanges.push(range);
+				state.retiredRanges.push(range);
 			}
 			if (pushedRetiredRanges.length !== 0) {
 				state.retiredRanges.sort((a, b) => a[0] - b[0]);
