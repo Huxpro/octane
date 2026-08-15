@@ -76,3 +76,6 @@ The single-order storm movements did not reproduce in the opposite order and the
 - Fast Vue represents text as a `text` attribute while Octane owns independent `#text`/`raw-text` hosts. Lynx's public text authoring types and Octane's identity, first-screen, generation, and cleanup contracts provide no safe small fusion boundary, so this was not used as a benchmark-only shortcut.
 
 Structured evidence, including raw samples and counters, is in `issue57-clear-teardown.json`.
+The nine source runner files are committed as deterministic `.json.gz` archives
+under `issue57-clear-teardown-runs/`; the structured evidence records their
+SHA-256 digests and the baseline/candidate bundle hashes for every autorow build.
