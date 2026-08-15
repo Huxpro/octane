@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "issue": "https://github.com/Huxpro/octane/issues/57",
+  "generatedAt": "2026-08-15T18:36:00.000Z",
+  "machine": {
+    "id": "65160668d8d9",
+    "cpu": "Intel Xeon Platinum 8336C",
+    "chromium": "playwright chromium-1228",
+    "repetitions": 7,
+    "dnf": 0
+  },
+  "baseline": {
+    "commit": "63eb788817ff91b841b5f0fd24321ae16e7f4396",
+    "clear10000": {
+      "medianMs": 379.57,
+      "ci95Ms": 38.932,
+      "samplesMs": [379.57, 339.455, 372.095, 363.045, 420.43, 465.245, 409.675]
+    },
+    "profile": {
+      "latencyMs": 372.335,
+      "destroyRunExpandMs": 13.71,
+      "denseValidateMs": 31.405,
+      "eventDetachMs": 33.435,
+      "papiRemoveMs": 175.96,
+      "denseReleaseMs": 0.035,
+      "synthesizedCommands": 100000,
+      "eventDetachCount": 20000,
+      "papiRemoveCount": 10000,
+      "denseReleaseHostCount": 70000
+    },
+    "bundle": {
+      "webRaw": 495178,
+      "webGzip": 135660,
+      "lynxRaw": 483645,
+      "lynxGzip": 162910
+    },
+    "heap": { "mts": 52722292, "bts": 26416184 },
+    "wire": { "toMtsBytes": 310, "toMtsMessages": 1, "toBtsBytes": 830, "toBtsMessages": 4 }
+  },
+  "candidate": {
+    "clear10000": {
+      "forward": {
+        "medianMs": 259.88,
+        "ci95Ms": 17.478,
+        "samplesMs": [294.09, 236.65, 241.485, 262.685, 252.47, 265.945, 259.88],
+        "reactMedianMs": 325.015,
+        "fastestVueMedianMs": 223.27,
+        "ratioToReact": 0.8,
+        "ratioToFastestVue": 1.164
+      },
+      "reverse": {
+        "medianMs": 267.95,
+        "ci95Ms": 23.304,
+        "samplesMs": [302.295, 227.78, 232.665, 267.95, 261.5, 270.69, 268.625],
+        "reactMedianMs": 327.885,
+        "fastestVueMedianMs": 247.585,
+        "ratioToReact": 0.817,
+        "ratioToFastestVue": 1.082
+      }
+    },
+    "abba": {
+      "baselineThenCandidate": { "baselineMs": 391.105, "candidateMs": 297.995, "change": -0.238 },
+      "candidateThenBaseline": { "baselineMs": 363.455, "candidateMs": 293.345, "change": -0.193 }
+    },
+    "profile": {
+      "latencyMs": 280.61,
+      "prepareMs": 0.585,
+      "applyMs": 175.715,
+      "destroyRunExpandMs": 0,
+      "denseValidateMs": 0.55,
+      "eventDetachMs": 0.035,
+      "papiRemoveMs": 175.52,
+      "denseReleaseMs": 0.03,
+      "synthesizedCommands": 0,
+      "eventDetachCount": 0,
+      "papiRemoveCount": 10000,
+      "denseReleaseHostCount": 70000
+    },
+    "bundle": {
+      "webRaw": 497310,
+      "webGzip": 136123,
+      "lynxRaw": 485217,
+      "lynxGzip": 163598
+    },
+    "heap": { "mts": 51964544, "bts": 26415924 },
+    "wire": { "toMtsBytes": 310, "toMtsMessages": 1, "toBtsBytes": 832, "toBtsMessages": 4 }
+  },
+  "challenge": {
+    "runs": [
+      "2026-08-15T18-19-09-65160668d8d9-issue57-final2-challenge-ab.json",
+      "2026-08-15T18-30-52-65160668d8d9-issue57-final2-challenge-ba.json"
+    ],
+    "latencyAndFcpCells": 38,
+    "dnf": 0,
+    "cellsWorseByMoreThanFivePercentInBothOrders": 0,
+    "fallbackClearChange": { "ab": -0.01, "ba": 0.012 },
+    "startup30000Change": { "ab": -0.007, "ba": 0.024 }
+  },
+  "rejectedCandidates": [
+    {
+      "name": "replace-many-roots",
+      "candidateMs": 321.89,
+      "controlMs": 312.695,
+      "reason": "Reduced the JS-to-PAPI call count to one, but Web Core still removed each DOM child internally."
+    },
+    {
+      "name": "reverse-root-removal",
+      "candidateMs": 343.535,
+      "controlMs": 312.695,
+      "reason": "Made both the PAPI removal span and end-to-end apply slower."
+    },
+    {
+      "name": "packed-or-unrolled-root-loop",
+      "reason": "Packed roots saved 0.0015 ms and four-way unrolling saved 0.0127 ms per 10000 calls, far below the required 6 ms."
+    },
+    {
+      "name": "text-only-host-fusion",
+      "reason": "No valid Lynx authoring or host-identity boundary exists for aliasing #text hosts onto the parent text element."
+    }
+  ]
+}
