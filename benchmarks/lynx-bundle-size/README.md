@@ -42,8 +42,9 @@ attribution is for prioritization; only an isolated production build delta may
 be described as gzip ownership.
 
 `inventory-budgets.json` freezes total, thread-section, and owner-slice raw
-budgets plus total gzip budgets on the integrated #706/#707 stack. The ledger
-keeps #706's accepted size tax and #707's controlled optional-worklet saving
+budgets plus total gzip budgets on the issue #57 first-screen template-range
+candidate over exact base `0fc84da`. The ledger keeps the older #706/#707
+entries, pre-existing mainline drift, and the candidate's controlled size tax
 separate because compressed deltas are not additive.
 
 The checked execution report is

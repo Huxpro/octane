@@ -41,10 +41,27 @@ test('instruments an isolated Lynx source copy and restores every byte', () => {
 			fs.readFileSync(path.join(temporary, 'packages/lynx/src/main-thread.ts'), 'utf8'),
 			/mtExpandMs/,
 		);
-		assert.match(
-			fs.readFileSync(path.join(temporary, 'packages/lynx/src/main-renderer.ts'), 'utf8'),
-			/firstScreenPlanMs/,
+		const instrumentedMainThread = fs.readFileSync(
+			path.join(temporary, 'packages/lynx/src/main-thread.ts'),
+			'utf8',
 		);
+		assert.match(instrumentedMainThread, /firstScreenPrepareMs/);
+		assert.match(instrumentedMainThread, /firstScreenApplyMs/);
+		assert.match(instrumentedMainThread, /firstScreenCaptureMs/);
+		assert.doesNotMatch(
+			instrumentedMainThread,
+			/for \(const rawCommand of result\.batch\.commands\)/,
+		);
+		const instrumentedMainRenderer = fs.readFileSync(
+			path.join(temporary, 'packages/lynx/src/main-renderer.ts'),
+			'utf8',
+		);
+		assert.match(instrumentedMainRenderer, /firstScreenPlanMs/);
+		assert.match(
+			instrumentedMainRenderer,
+			/startedCommandStage[\s\S]*selectFirstScreenTemplates\(nodes\)[\s\S]*const commands/,
+		);
+		assert.match(instrumentedMainRenderer, /batch,[\s\S]*hostCount: attempt\.hostCount/);
 		assert.match(
 			fs.readFileSync(path.join(temporary, 'packages/lynx/src/core/papi.ts'), 'utf8'),
 			/papiCreateMs/,
@@ -96,6 +113,7 @@ test('profiled first-screen rendering works without a stage-harness slice hook',
 		const { profile, result } = run();
 		assert.equal(result.hostCount, 1);
 		assert.ok(Number.isFinite(profile.firstScreenPlanMs));
+		assert.ok(Number.isFinite(profile.firstScreenCommandStageMs));
 		for (const name of [
 			'commits',
 			'commands',
