@@ -1,40 +1,40 @@
 {
   "artifacts": {
-    "web": { "raw": 499380, "gzip": 136977 },
-    "lynx": { "raw": 487188, "gzip": 164664 }
+    "web": { "raw": 501574, "gzip": 137369 },
+    "lynx": { "raw": 488917, "gzip": 165395 }
   },
   "sections": {
-    "main": { "raw": 213501, "gzip": 60547 },
-    "background": { "raw": 281753, "gzip": 76044 }
+    "main": { "raw": 215695, "gzip": 60980 },
+    "background": { "raw": 281753, "gzip": 76045 }
   },
   "owners": {
     "web": {
-      "compiler-output-app": 142234,
-      "build-wrapper-main": 93743,
-      "universal-runtime": 78788,
-      "host-driver-papi": 39858,
-      "protocol-transport": 35133,
-      "lynx-runtime-other": 33095,
-      "first-screen-adoption": 34566,
-      "public-state-worklets": 29326,
-      "fixture-app": 11209,
-      "generated-wrapper": 256,
-      "octane-runtime-other": 980,
-      "third-party-runtime": 192
+      "compiler-output-app": 142009,
+      "build-wrapper-main": 95043,
+      "universal-runtime": 78640,
+      "host-driver-papi": 41301,
+      "protocol-transport": 35153,
+      "lynx-runtime-other": 33032,
+      "first-screen-adoption": 34513,
+      "public-state-worklets": 29271,
+      "fixture-app": 11188,
+      "generated-wrapper": 255,
+      "octane-runtime-other": 978,
+      "third-party-runtime": 191
     },
     "lynx": {
-      "compiler-output-app": 138762,
-      "build-wrapper-main": 91454,
-      "universal-runtime": 76865,
-      "host-driver-papi": 38885,
-      "protocol-transport": 34275,
-      "lynx-runtime-other": 32287,
-      "first-screen-adoption": 33722,
-      "public-state-worklets": 28610,
-      "fixture-app": 10935,
+      "compiler-output-app": 138426,
+      "build-wrapper-main": 92644,
+      "universal-runtime": 76655,
+      "host-driver-papi": 40259,
+      "protocol-transport": 34265,
+      "lynx-runtime-other": 32199,
+      "first-screen-adoption": 33642,
+      "public-state-worklets": 28532,
+      "fixture-app": 10905,
       "generated-wrapper": 249,
-      "octane-runtime-other": 956,
-      "third-party-runtime": 188
+      "octane-runtime-other": 954,
+      "third-party-runtime": 187
     }
   },
   "controlledLedger": [
@@ -56,24 +56,24 @@
       "decision": "accepted child; deltas are not additive with rows-0 artifacts"
     },
     {
-      "owner": "mainline through 0fc84da",
+      "owner": "mainline through dcf94cfc8",
       "status": "merged baseline",
       "controlledGzipDelta": {
-        "rows0Web": "132334 -> 135664",
-        "rows0Lynx": "159077 -> 162892",
-        "previewMain": "77286 -> 79394",
-        "ifrMain": "82274 -> 84559"
+        "rows0Web": "132334 -> 136123",
+        "rows0Lynx": "159077 -> 163571",
+        "previewMain": "77286 -> 80507",
+        "ifrMain": "82274 -> 85724"
       },
-      "decision": "reconciled pre-existing drift from the ffadd397 caps; excluded from the issue #57 candidate tax"
+      "decision": "reconciled pre-existing drift from the ffadd397 caps, including the merged dense-clear teardown; excluded from the issue #57 candidate tax"
     },
     {
       "owner": "#57 first-screen template ranges",
       "status": "pending upstream",
       "controlledGzipDelta": {
-        "rows0Web": "135664 -> 136977 (+0.97%)",
-        "rows0Lynx": "162892 -> 164664 (+1.09%)",
-        "previewMain": "79394 -> 81016 (+2.04%)",
-        "ifrMain": "84559 -> 86318 (+2.08%)"
+        "rows0Web": "136123 -> 137369 (+0.92%)",
+        "rows0Lynx": "163571 -> 165395 (+1.12%)",
+        "previewMain": "80507 -> 82070 (+1.94%)",
+        "ifrMain": "85724 -> 87566 (+2.15%)"
       },
       "decision": "accepted size tax for 13.2% public and 11.8% all-row 10k FCP improvements; 30k all-row improved 9.3%"
     }

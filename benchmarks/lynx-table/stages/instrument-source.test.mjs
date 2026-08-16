@@ -13,9 +13,21 @@ const repositoryRoot = path.resolve(import.meta.dirname, '../../..');
 const sourceFiles = [
 	'packages/lynx/src/core/profiling.ts',
 	'packages/lynx/src/core/papi.ts',
+	'packages/lynx/src/core/own-symbols.ts',
 	'packages/lynx/src/core/transport.ts',
 	'packages/lynx/src/main-renderer.ts',
 	'packages/lynx/src/main-thread.ts',
+];
+const destroyRunProfileFields = [
+	'destroyRunExpandMs',
+	'denseValidateMs',
+	'eventDetachMs',
+	'papiRemoveMs',
+	'denseReleaseMs',
+	'synthesizedCommands',
+	'eventDetachCount',
+	'papiRemoveCount',
+	'denseReleaseHostCount',
 ];
 
 test('instruments an isolated Lynx source copy and restores every byte', () => {
@@ -62,10 +74,13 @@ test('instruments an isolated Lynx source copy and restores every byte', () => {
 			/startedCommandStage[\s\S]*selectFirstScreenTemplates\(nodes\)[\s\S]*const commands/,
 		);
 		assert.match(instrumentedMainRenderer, /batch,[\s\S]*hostCount: attempt\.hostCount/);
-		assert.match(
-			fs.readFileSync(path.join(temporary, 'packages/lynx/src/core/papi.ts'), 'utf8'),
-			/papiCreateMs/,
-		);
+		const papi = fs.readFileSync(path.join(temporary, 'packages/lynx/src/core/papi.ts'), 'utf8');
+		assert.match(papi, /papiCreateMs/);
+		for (const name of destroyRunProfileFields) {
+			const initializer = new RegExp(`\\b${name}: 0`);
+			assert.match(instrumentedMainRenderer, initializer);
+			assert.match(papi, initializer);
+		}
 		restore();
 		for (const relative of sourceFiles) {
 			assert.equal(fs.readFileSync(path.join(temporary, relative), 'utf8'), before.get(relative));
@@ -125,6 +140,7 @@ test('profiled first-screen rendering works without a stage-harness slice hook',
 			'prepareCheckMs',
 			'applyMs',
 			'ackMs',
+			...destroyRunProfileFields,
 		]) {
 			assert.equal(profile[name], 0);
 		}

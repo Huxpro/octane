@@ -2,42 +2,42 @@
 
 ## Reproducible baseline
 
-- formal source: the issue #57 first-screen template-range candidate over exact upstream `0fc84da02fd05403ac5e36d2aff631b31168d5ac`
+- formal source: the issue #57 first-screen template-range candidate over exact upstream `dcf94cfc83c8e9e8484d01446c3ff680134dd1d1`
 - fixture: `benchmarks/lynx-table/app`, `BENCH_AUTOROWS=0`, production Rspeedy, split chunks off, source maps off
-- tool host: Node `v22.22.2`, Linux `5.15.120.bsk.3-amd64`
-- checked command: `node benchmarks/bench.mjs --ratios lynx-bundle-size`, run at `2026-08-16T05:58:34.959Z` from one lockfile and an isolated dependency tree
+- tool host: Node `v24.18.0`, Darwin `25.5.0`
+- checked command: `node benchmarks/bench.mjs --ratios lynx-bundle-size`, calibrated at `2026-08-16T19:09:31.715Z` from one lockfile and isolated dependency trees for the base and candidate
 
 | artifact | raw | gzip | Brotli | SHA-256 |
 |---|---:|---:|---:|---|
-| Octane Web | 499,380 B | 136,977 B | 103,618 B | `fc8558b804d8bd3ee1d625c9b4e7fbfdd57b28f068723c40168cbcbfbba83b40` |
-| Octane Lynx | 487,188 B | 164,664 B | 138,589 B | `ada1b9c876f348c2ec8e9f6c7789943cd768aff0ff0eeb9b3fe323e98e961ec3` |
-| Lynx main program | 213,501 B | 60,547 B | 51,363 B | `154530fae4d610f8bdfdae59a460afb08535228017cdac5a59783110c08310ad` |
-| Lynx background program | 281,753 B | 76,042 B | 64,814 B | `b016770ecd3e245caf9bdbe8a56ff466e7338756da107b726d07ecdfdf209c48` |
+| Octane Web | 501,574 B | 137,369 B | 103,608 B | `7d3ba3972209483704f08e077c2068dcea4fb56909a6b7a3b85c5f78f6d3eb64` |
+| Octane Lynx | 488,917 B | 165,395 B | 139,006 B | `187f4b6d4dff59e9e13e87fe081d281046728c13090b6da602058bb00a009bf2` |
+| Lynx main program | 215,695 B | 60,980 B | 51,837 B | `ec9cacb8879a69ff8b6466b8f6b408241c6483def46aa246a126d2ce611fc7ea` |
+| Lynx background program | 281,753 B | 76,045 B | 64,843 B | `e2027a9fbfbd62303c0d2ba777ee5e498d1de84dd8b63306391821db57e952df` |
 
-The exact `0fc84da` control built in the same measurement window was 495,178 / 135,664 B
-for Web and 483,591 / 162,892 B for Lynx. The candidate therefore adds 1,313 B
-(0.97%) Web gzip and 1,772 B (1.09%) Lynx gzip. Those controlled deltas, rather
+The exact `dcf94cfc8` control built in the same measurement window was 497,310 / 136,123 B
+for Web and 485,163 / 163,571 B for Lynx. The candidate therefore adds 1,246 B
+(0.92%) Web gzip and 1,824 B (1.12%) Lynx gzip. Those controlled deltas, rather
 than the cumulative movement from older frozen caps, are the issue #57 size tax.
 
 ## Reachable-owner inventory
 
-The production compilation exposes 3,013,811 reachable transformed module
+The production compilation exposes 3,032,772 reachable transformed module
 bytes. The inventory distributes each final artifact's raw total according to
 those owner weights, accounting for 100%. This is a prioritization ledger, not
 an additive compressed-size claim.
 
 | owner | Web attributed raw | Lynx attributed raw | complete-artifact share |
 |---|---:|---:|---:|
-| compiler-emitted app/background program | 142,234 B | 138,762 B | 28.5% |
-| main-thread build/runtime wrapper | 93,743 B | 91,454 B | 18.8% |
-| universal runtime | 78,788 B | 76,865 B | 15.8% |
-| host driver / PAPI | 39,858 B | 38,885 B | 8.0% |
-| protocol / transport / profiling | 35,133 B | 34,275 B | 7.0% |
-| first screen / adoption | 34,566 B | 33,722 B | 6.9% |
-| other Lynx runtime | 33,095 B | 32,287 B | 6.6% |
-| public state / worklets | 29,326 B | 28,610 B | 5.9% |
-| authored fixture app | 11,209 B | 10,935 B | 2.2% |
-| remaining wrappers, Octane helpers, third party | 1,428 B | 1,393 B | 0.3% |
+| compiler-emitted app/background program | 142,009 B | 138,426 B | 28.3% |
+| main-thread build/runtime wrapper | 95,043 B | 92,644 B | 18.9% |
+| universal runtime | 78,640 B | 76,655 B | 15.7% |
+| host driver / PAPI | 41,301 B | 40,259 B | 8.2% |
+| protocol / transport / profiling | 35,153 B | 34,265 B | 7.0% |
+| first screen / adoption | 34,513 B | 33,642 B | 6.9% |
+| other Lynx runtime | 33,032 B | 32,199 B | 6.6% |
+| public state / worklets | 29,271 B | 28,532 B | 5.8% |
+| authored fixture app | 11,188 B | 10,905 B | 2.2% |
+| remaining wrappers, Octane helpers, third party | 1,424 B | 1,390 B | 0.3% |
 
 Every owner above 2% remains on the feature-equivalence ledger. A child may
 claim gzip ownership only after a controlled production ablation or isolated
@@ -47,8 +47,8 @@ product patch; these raw weights must not be converted into predicted gzip.
 
 - #706: Web/Lynx gzip `+1.38%/+1.45%`, accepted as a measured clear-performance size tax.
 - #707: preview main `76,915 -> 75,024 B` and IFR main `81,995 -> 79,980 B`, both `-2.46%`; complete preview `150,079 -> 148,183 B`, complete IFR `155,075 -> 152,968 B`; background raw unchanged. This is an accepted optional-worklet child, still pending upstream.
-- merged mainline through `0fc84da`: rows-0 Web/Lynx gzip moved from the old caps to `135,664 / 162,892 B`, and preview/IFR main gzip to `79,394 / 84,559 B`. This is pre-existing drift, not issue #57 ownership.
-- issue #57: rows-0 Web/Lynx gzip `135,664 -> 136,977 B` (+0.97%) and `162,892 -> 164,664 B` (+1.09%); preview/IFR main gzip `79,394 -> 81,016 B` (+2.04%) and `84,559 -> 86,318 B` (+2.08%). The size tax is accepted against same-window public/all-row 10k FCP improvements of 13.2%/11.8% and a 30k all-row improvement of 9.3%.
+- merged mainline through `dcf94cfc8`: rows-0 Web/Lynx gzip moved from the old caps to `136,123 / 163,571 B`, and preview/IFR main gzip to `80,507 / 85,724 B`. This includes the merged dense-clear teardown and is pre-existing drift, not issue #57 ownership.
+- issue #57: rows-0 Web/Lynx gzip `136,123 -> 137,369 B` (+0.92%) and `163,571 -> 165,395 B` (+1.12%); preview/IFR main gzip `80,507 -> 82,070 B` (+1.94%) and `85,724 -> 87,566 B` (+2.15%). The size tax is accepted against same-window public/all-row 10k FCP improvements of 13.2%/11.8% and a 30k all-row improvement of 9.3%.
 
 ## Decision
 

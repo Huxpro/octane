@@ -44,14 +44,14 @@ const BUNDLE_NAME = 'main.lynx.bundle';
 const FORBIDDEN_RUNTIME = /(?:^|[^$\w])(?:react|react-dom|preact|ReactLynx)(?:[^$\w]|$)/i;
 const FORBIDDEN_DOM = /\b(?:document|window|HTMLElement|MutationObserver)\b/;
 // Recalibrated on the issue #57 first-screen template candidate over exact base
-// 0fc84da. The base already exceeded the ffadd397 caps (preview/IFR main gzip
-// 79,394/84,559); the controlled candidate moved them to 81,016/86,318 while
+// dcf94cfc8. The base already exceeded the ffadd397 caps (preview/IFR main gzip
+// 80,507/85,724); the controlled candidate moved them to 82,070/87,566 while
 // retaining the 1.08 relative gate below. The inventory ledger separates that
 // accepted size tax from pre-existing mainline drift.
 const NO_WORKLET_BUDGET = Object.freeze({
-	previewMainGzip: 81_016,
-	ifrMainGzip: 86_318,
-	backgroundRaw: 276_752,
+	previewMainGzip: 82_070,
+	ifrMainGzip: 87_566,
+	backgroundRaw: 276_922,
 });
 
 function packageEntry(packageName) {

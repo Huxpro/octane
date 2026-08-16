@@ -305,6 +305,22 @@ export function runPlain(count) {
 		onTap() {},
 	});
 }
+export function runEngineSymbolProbe() {
+	const probePlan = universalPlan('lynx', {
+		kind: 'host',
+		type: 'view',
+		props: { class: 'safe-static-props' },
+	});
+	const Probe = defineUniversalComponent('lynx', () => universalValue(probePlan, []));
+	const ProbeApp = defineUniversalComponent('lynx', () =>
+		componentScope(
+			['item'],
+			(item) => item,
+			() => universalComponent('lynx', Probe),
+		),
+	);
+	return renderLynxFirstScreen(ProbeApp, {});
+}
 export function runUnsafe() {
 	return Object.fromEntries(
 		[
@@ -340,7 +356,9 @@ export function runUnsafe() {
 			platform: 'node',
 		});
 
-		const { run, runPlain, runUnsafe } = await import(pathToFileURL(output).href);
+		const { run, runEngineSymbolProbe, runPlain, runUnsafe } = await import(
+			pathToFileURL(output).href
+		);
 		const empty = run(0);
 		assert.equal(empty.hostCount, 1);
 		assert.equal(empty.logicalCount, 1);
@@ -367,6 +385,24 @@ export function runUnsafe() {
 
 		for (const [label, operations] of Object.entries(runUnsafe())) {
 			assert.ok(!operations.includes('mount-template-range'), label);
+		}
+
+		const getOwnPropertySymbols = Object.getOwnPropertySymbols;
+		try {
+			// PrimJS can report non-symbol own keys through this API. The template
+			// proof must ignore those entries while still rejecting genuine symbols.
+			Object.getOwnPropertySymbols = (target) => [
+				...getOwnPropertySymbols(target),
+				...Object.keys(target),
+			];
+			const primJsSafe = runEngineSymbolProbe();
+			assert.equal(
+				primJsSafe.batch.commands.filter((command) => command.op === 'mount-template-range').length,
+				1,
+			);
+			assert.ok(!runUnsafe()['static symbol prop'].includes('mount-template-range'));
+		} finally {
+			Object.getOwnPropertySymbols = getOwnPropertySymbols;
 		}
 
 		const count = 32;

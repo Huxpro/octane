@@ -43,9 +43,10 @@ be described as gzip ownership.
 
 `inventory-budgets.json` freezes total, thread-section, and owner-slice raw
 budgets plus total gzip budgets on the issue #57 first-screen template-range
-candidate over exact base `0fc84da`. The ledger keeps the older #706/#707
-entries, pre-existing mainline drift, and the candidate's controlled size tax
-separate because compressed deltas are not additive.
+candidate over exact base `dcf94cfc8`, which includes the merged dense-clear
+teardown. The ledger keeps the older #706/#707 entries, pre-existing mainline
+drift, and the candidate's controlled size tax separate because compressed
+deltas are not additive.
 
 The checked execution report is
 [`results/production-inventory.md`](results/production-inventory.md).

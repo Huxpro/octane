@@ -25,6 +25,7 @@ import type {
 	UniversalRenderable,
 	UniversalRenderContext,
 } from 'octane/universal/native';
+import { hasOwnSymbolFields } from './core/own-symbols.js';
 import { isLynxNativeResource } from './resource.js';
 
 const UNIVERSAL_PLAN = Symbol.for('octane.universal.plan');
@@ -747,7 +748,7 @@ function compiledFirstScreenProgram(plan: UniversalPlan): FirstScreenCompiledPro
 			bindingNames.add(name);
 		}
 		const staticSource = node.props ?? {};
-		if (Object.getOwnPropertySymbols(staticSource).length !== 0) return false;
+		if (hasOwnSymbolFields(staticSource)) return false;
 		const staticProps: Record<string, UniversalHostTemplateProgramValue> = {};
 		for (const name of Object.keys(staticSource)) {
 			if (bindingNames.has(name)) continue;
