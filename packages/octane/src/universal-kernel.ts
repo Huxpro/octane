@@ -372,6 +372,83 @@ export interface UniversalHookRootServices<Context = unknown> {
 	readBridgeContext(context: Context): unknown;
 }
 
+export interface UniversalLazyOwnerScope<Attempt, Owner> {
+	readonly attempt: Attempt;
+	readonly parent: Owner;
+	owner: Owner | null;
+	readonly identityPath: readonly unknown[];
+	key: unknown;
+}
+
+export interface UniversalOwnerClaimServices<Attempt extends { owner: Owner }, Owner> {
+	currentAttempt(): Attempt | null;
+	currentOwner(): Owner | null;
+	currentLazyScope(): UniversalLazyOwnerScope<Attempt, Owner> | null;
+	claim(scope: UniversalLazyOwnerScope<Attempt, Owner>): Owner;
+	activate(owner: Owner): void;
+}
+
+export interface UniversalOwnerClaimController<Owner> {
+	currentOwner(): Owner | null;
+	requireOwner(): Owner;
+	resolveSlot(slot: unknown): unknown;
+	withSlot<T>(slot: unknown, fn: (...args: any[]) => T, ...args: any[]): T;
+}
+
+/** Lazy owner activation and compiler-slot composition shared by hook cores. */
+export function createUniversalOwnerClaimController<
+	Owner extends { implicitSlot: number },
+	Attempt extends { owner: Owner },
+>(services: UniversalOwnerClaimServices<Attempt, Owner>): UniversalOwnerClaimController<Owner> {
+	const slotStack: unknown[] = [];
+	const currentOwner = (): Owner | null => {
+		const scope = services.currentLazyScope();
+		const active = services.currentOwner();
+		if (scope === null) return active;
+		const attempt = services.currentAttempt();
+		if (attempt !== scope.attempt || (active !== scope.parent && active !== scope.owner)) {
+			return active;
+		}
+		const owner = (scope.owner ??= services.claim(scope));
+		services.activate(owner);
+		return owner;
+	};
+	const requireOwner = (): Owner => {
+		if (services.currentAttempt() === null) {
+			throw new Error('Universal hooks may only run while a universal component is rendering.');
+		}
+		const owner = currentOwner();
+		if (owner === null) throw new Error('Universal hooks require an active component owner.');
+		return owner;
+	};
+	return {
+		currentOwner,
+		requireOwner,
+		resolveSlot(slot) {
+			const owner = requireOwner();
+			const own = slot ?? `implicit:${owner.implicitSlot++}`;
+			if (slotStack.length === 0) return own;
+			let key = '@octane:universal-hook:';
+			for (const part of [...slotStack, own]) {
+				const value =
+					typeof part === 'symbol'
+						? `s${part.description?.length ?? 0}:${part.description ?? ''}`
+						: `v${String(part).length}:${String(part)}`;
+				key += value;
+			}
+			return Symbol.for(key);
+		},
+		withSlot(slot, fn, ...args) {
+			slotStack.push(slot);
+			try {
+				return fn(...args);
+			} finally {
+				slotStack.pop();
+			}
+		},
+	};
+}
+
 export type UniversalOwnerScheduler<Owner, Slot = unknown> = (owner: Owner, slot?: Slot) => void;
 
 /**

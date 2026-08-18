@@ -1022,6 +1022,7 @@ import {
 	type UniversalCommittedHookOwner as KernelCommittedHookOwner,
 	type UniversalDraftHookOwner as KernelDraftHookOwner,
 	type UniversalHookRootServices as KernelHookRootServices,
+	type UniversalLazyOwnerScope as KernelLazyOwnerScope,
 	type UniversalTrackedThenable,
 	type UniversalTransitionUpdate,
 	type UniversalTransitionBatch as KernelUniversalTransitionBatch,
@@ -1034,6 +1035,7 @@ import {
 	trackUniversalThenable,
 	createScheduleOwner,
 	createUniversalTransitionController,
+	createUniversalOwnerClaimController,
 } from './universal-kernel.js';
 
 export type { LinkedStateOptions, LinkedStatePrevious } from './universal-kernel.js';
@@ -1175,13 +1177,7 @@ interface DraftOwner extends KernelDraftHookOwner<UniversalHook> {
 	contextStable: boolean | null;
 }
 
-interface LazyLeafOwnerScope {
-	readonly attempt: RenderAttempt;
-	readonly parent: DraftOwner;
-	readonly identityPath: readonly unknown[];
-	key: UniversalKey;
-	owner: DraftOwner | null;
-}
+type LazyLeafOwnerScope = KernelLazyOwnerScope<RenderAttempt, DraftOwner>;
 
 interface SuspendedOwnerSegment {
 	readonly component: UniversalComponent<any> | null;
@@ -1234,7 +1230,6 @@ let NEXT_RESOURCE_ROOT = 1;
 let NEXT_PORTAL_ROOT = 1;
 let NEXT_TRANSPORT_ROOT = 1;
 const EVENT_DISPATCHERS = new Map<number, (payload: unknown) => unknown>();
-const UNIVERSAL_SLOT_STACK: unknown[] = [];
 type UniversalHookUpdateQueue = KernelUniversalHookUpdateQueue<UniversalTransitionBatch>;
 type AppliedUniversalUrgentUpdates = KernelAppliedUniversalUrgentUpdates<UniversalTransitionBatch>;
 type AppliedUniversalLaneUpdates = KernelAppliedUniversalLaneUpdates<UniversalTransitionBatch>;
@@ -2356,25 +2351,7 @@ function ownerSubtreeRetainable(owner: UniversalOwnerRecord): boolean {
 }
 
 function activateLazyLeafOwner(): DraftOwner | null {
-	const scope = CURRENT_LAZY_LEAF_OWNER;
-	const attempt = CURRENT_ATTEMPT;
-	if (
-		scope === null ||
-		attempt !== scope.attempt ||
-		(CURRENT_OWNER !== scope.parent && CURRENT_OWNER !== scope.owner)
-	) {
-		return CURRENT_OWNER;
-	}
-	const owner = (scope.owner ??= claimChildOwner(
-		scope.parent,
-		null,
-		scope.identityPath,
-		scope.key,
-	));
-	owner.contextValues = null;
-	CURRENT_OWNER = owner;
-	attempt.owner = owner;
-	return owner;
+	return UNIVERSAL_OWNER_CLAIMS.currentOwner();
 }
 
 function readOwnerContext<T>(
@@ -4722,22 +4699,7 @@ function markUniversalTreeFeature(feature: number): void {
 }
 
 function resolveHookSlot(slot: unknown): unknown {
-	currentAttempt();
-	const owner = activateLazyLeafOwner();
-	if (owner === null) {
-		throw new Error('Universal hooks require an active component owner.');
-	}
-	const own = slot ?? `implicit:${owner.implicitSlot++}`;
-	if (UNIVERSAL_SLOT_STACK.length === 0) return own;
-	let key = '@octane:universal-hook:';
-	for (const part of [...UNIVERSAL_SLOT_STACK, own]) {
-		const value =
-			typeof part === 'symbol'
-				? `s${part.description?.length ?? 0}:${part.description ?? ''}`
-				: `v${String(part).length}:${String(part)}`;
-		key += value;
-	}
-	return Symbol.for(key);
+	return UNIVERSAL_OWNER_CLAIMS.resolveSlot(slot);
 }
 
 export function hookSlots(count: number): number {
@@ -4747,12 +4709,7 @@ export function hookSlots(count: number): number {
 }
 
 export function withSlot<T>(slot: unknown, fn: (...args: any[]) => T, ...args: any[]): T {
-	UNIVERSAL_SLOT_STACK.push(slot);
-	try {
-		return fn(...args);
-	} finally {
-		UNIVERSAL_SLOT_STACK.pop();
-	}
+	return UNIVERSAL_OWNER_CLAIMS.withSlot(slot, fn, ...args);
 }
 
 function finishUniversalTransitionRoot(
@@ -4813,6 +4770,21 @@ function enqueueUniversalHookUpdate(
 	queue.rebases?.push(false);
 }
 
+const UNIVERSAL_OWNER_CLAIMS = createUniversalOwnerClaimController<DraftOwner, RenderAttempt>({
+	currentAttempt: () => CURRENT_ATTEMPT,
+	currentOwner: () => CURRENT_OWNER,
+	currentLazyScope: () => CURRENT_LAZY_LEAF_OWNER,
+	claim(scope) {
+		const owner = claimChildOwner(scope.parent, null, scope.identityPath, scope.key);
+		owner.contextValues = null;
+		return owner;
+	},
+	activate(owner) {
+		CURRENT_OWNER = owner;
+		currentAttempt().owner = owner;
+	},
+});
+
 const UNIVERSAL_TRANSITIONS = createUniversalTransitionController<
 	UniversalOwnerRecord,
 	UniversalRootImpl<any, any>
@@ -4852,12 +4824,7 @@ const scheduleOwner = createScheduleOwner<UniversalOwnerRecord>((owner, slot) =>
 });
 
 function currentDraftOwner(): DraftOwner {
-	currentAttempt();
-	const owner = activateLazyLeafOwner();
-	if (owner === null) {
-		throw new Error('Universal hooks require an active component owner.');
-	}
-	return owner;
+	return UNIVERSAL_OWNER_CLAIMS.requireOwner();
 }
 
 function findDraftOwner(record: UniversalOwnerRecord): DraftOwner | null {
