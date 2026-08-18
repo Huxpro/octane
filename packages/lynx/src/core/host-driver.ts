@@ -2910,6 +2910,14 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		throw hostError('direct first-screen apply requires an empty container.');
 	}
 	if (firstScreenTreeHasList(roots)) return false;
+	// Same envelope contract as the staged path: the applier is exported, so a
+	// future caller must not be able to hand it an unvalidated batch.
+	if (batch.renderer !== LYNX_RENDERER_ID) {
+		throw hostError(`batch renderer ${JSON.stringify(batch.renderer)} is not "lynx".`);
+	}
+	if (!Number.isSafeInteger(batch.version) || batch.version <= 0) {
+		throw hostError(`batch version ${String(batch.version)} is not a positive safe integer.`);
+	}
 	const eventsByHost = new Map<number, [string, UniversalEventListenerDescriptor][]>();
 	for (const command of batch.commands) {
 		// First-screen batches never remove listeners; a null descriptor cannot
@@ -3003,12 +3011,29 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 	};
 	state.applying = true;
 	try {
-		for (const root of roots) visit(root, null, null, container.page as Node, true);
-		state.acceptedVersion = batch.version;
-		papi.flush(container.page as Node);
-	} catch (error) {
-		state.faulted = true;
-		throw error;
+		let applicationError: unknown = null;
+		try {
+			for (const root of roots) visit(root, null, null, container.page as Node, true);
+			state.acceptedVersion = batch.version;
+		} catch (error) {
+			applicationError = error;
+		}
+		// Mirror the staged applier's fault discipline: the flush obligation
+		// survives a mid-walk fault (terminal disposal retries it), and directly
+		// installed main-thread worklets must be invalidated before any native
+		// callback can fire against a faulted container.
+		try {
+			papi.flush(container.page as Node);
+			state.cleanupNeedsFlush = false;
+		} catch (error) {
+			state.cleanupNeedsFlush = true;
+			if (applicationError === null) applicationError = error;
+		}
+		if (applicationError !== null) {
+			state.faulted = true;
+			invalidateMainThreadLifetimesAfterFault(state);
+			throw applicationError;
+		}
 	} finally {
 		state.applying = false;
 	}

@@ -9,6 +9,7 @@ import {
 	applyLynxFirstScreenDirect,
 	captureLynxFirstTree,
 	createLynxHostContainer,
+	disposeLynxHostContainer,
 	prepareLynxHostBatch,
 } from '../src/core/host-driver.js';
 import { LYNX_FIRST_TREE_STATE } from '../src/core/first-screen.js';
@@ -35,8 +36,12 @@ interface FakeNode {
 	text: string;
 }
 
-function createFakePAPI(): LynxElementPAPI<FakeNode> & { readonly pages: FakeNode[] } {
+function createFakePAPI(
+	options: { failCreateAt?: number } = {},
+): LynxElementPAPI<FakeNode> & { readonly pages: FakeNode[]; flushes(): number } {
 	let nextUid = 1;
+	let created = 0;
+	let flushCount = 0;
 	const pages: FakeNode[] = [];
 	const node = (type: string, text = ''): FakeNode => ({
 		uid: nextUid++,
@@ -52,12 +57,19 @@ function createFakePAPI(): LynxElementPAPI<FakeNode> & { readonly pages: FakeNod
 	});
 	return {
 		pages,
+		flushes() {
+			return flushCount;
+		},
 		createPage() {
 			const page = node('page');
 			pages.push(page);
 			return page;
 		},
 		createElement(type, _parent, text) {
+			created += 1;
+			if (options.failCreateAt !== undefined && created === options.failCreateAt) {
+				throw new Error('injected create fault');
+			}
 			return node(type === '#text' ? 'raw-text' : type, text);
 		},
 		getUniqueId(target) {
@@ -104,7 +116,9 @@ function createFakePAPI(): LynxElementPAPI<FakeNode> & { readonly pages: FakeNod
 		setId(target, value) {
 			target.id = value;
 		},
-		flush() {},
+		flush() {
+			flushCount += 1;
+		},
 	};
 }
 
@@ -199,6 +213,45 @@ describe('direct first-screen applier', () => {
 			[...stagedTree![LYNX_FIRST_TREE_STATE].eventsByToken.keys()].sort(),
 		);
 		expect(shape(directPapi.pages[0]!)).toEqual(shape(stagedPapi.pages[0]!));
+	});
+
+	it('keeps the staged fault discipline on a mid-walk PAPI throw', () => {
+		const result = renderScene();
+		// Fail deep into the walk so hosts exist on both sides of the fault.
+		const papi = createFakePAPI({ failCreateAt: 5 });
+		const container = createLynxHostContainer(papi, { root: 1 });
+		expect(() => applyLynxFirstScreenDirect(container, result.nodes, result.batch)).toThrowError(
+			'injected create fault',
+		);
+		// The flush obligation survives the fault, further applies are refused,
+		// and the container still disposes cleanly — the same terminal contract
+		// the staged applier honors.
+		expect(papi.flushes()).toBe(1);
+		expect(() => applyLynxFirstScreenDirect(container, result.nodes, result.batch)).toThrowError(
+			/not accepting an initial tree/,
+		);
+		expect(() => disposeLynxHostContainer(container)).not.toThrowError();
+		expect(container.disposed).toBe(true);
+	});
+
+	it('rejects a foreign or unversioned batch envelope before touching PAPI', () => {
+		const result = renderScene();
+		const papi = createFakePAPI();
+		const container = createLynxHostContainer(papi, { root: 1 });
+		expect(() =>
+			applyLynxFirstScreenDirect(container, result.nodes, {
+				...result.batch,
+				renderer: 'three',
+			} as never),
+		).toThrowError(/is not "lynx"/);
+		expect(() =>
+			applyLynxFirstScreenDirect(container, result.nodes, {
+				...result.batch,
+				version: 0,
+			} as never),
+		).toThrowError(/positive safe integer/);
+		expect(container.instanceCount).toBe(0);
+		expect(papi.flushes()).toBe(0);
 	});
 
 	it('declines native-list trees so the staged path keeps owning them', () => {
