@@ -19,11 +19,13 @@ describe('universal kernel boundary', () => {
 		expect(source).not.toMatch(/\brequire\s*\(/);
 	});
 
-	it('stays wired into the core: cells created by hooks are kernel shapes', async () => {
+	it('keeps the extracted helpers behaviorally intact standalone', async () => {
 		const kernel = await import('../src/universal-kernel.js');
-		// The runtime slice of the kernel is small and callable directly; the
-		// behavioral coverage lives in the universal-* suites, so assert only
-		// that the extracted helpers are the ones the core executes.
+		// This pins the helpers' own contracts only. The guarantee that the
+		// core still renders through these cells rests on the universal-*
+		// behavioral suites (universal-scheduling, universal-event-scope,
+		// universal-retained-suspense, universal-activity), which exercise the
+		// same code paths end-to-end.
 		const runs: string[] = [];
 		const hook = {
 			kind: 'effect' as const,
