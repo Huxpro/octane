@@ -42,7 +42,8 @@ const server = http.createServer((request, response) => {
 		return;
 	}
 	let filePath = null;
-	if (url.pathname.startsWith('/webcore/')) filePath = path.join(webCoreRoot, url.pathname.slice(9));
+	if (url.pathname.startsWith('/webcore/'))
+		filePath = path.join(webCoreRoot, url.pathname.slice(9));
 	else if (url.pathname === '/bundle') filePath = BUNDLE;
 	if (!filePath || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
 		response.writeHead(404);
@@ -67,7 +68,9 @@ const browser = await chromium.launch({
 	...(executablePath ? { executablePath } : null),
 });
 const page = await browser.newPage();
-page.on('console', (message) => console.log(`[console:${message.type()}]`, message.text().slice(0, 300)));
+page.on('console', (message) =>
+	console.log(`[console:${message.type()}]`, message.text().slice(0, 300)),
+);
 page.on('pageerror', (error) => console.log('[pageerror]', String(error).slice(0, 500)));
 await applyNeutralize(page);
 await page.goto(`http://127.0.0.1:${PORT}/bench.html`, { waitUntil: 'load' });
@@ -138,22 +141,20 @@ if (args.fcp) {
 		cls: 'col-remove',
 	});
 	await page.mouse.click(removeRect.x, removeRect.y);
-	await page.waitForFunction(
-		(rows) => globalThis.__x.rowCount() === rows - 1,
-		ROWS,
-		{ timeout: 10_000, polling: 16 },
-	);
+	await page.waitForFunction((rows) => globalThis.__x.rowCount() === rows - 1, ROWS, {
+		timeout: 10_000,
+		polling: 16,
+	});
 	check('remove', true);
 
 	if (ROWS >= 1000) {
 		const label1 = await labelAt(1);
 		const label998 = await labelAt(998);
 		await click('Swap Rows');
-		await page.waitForFunction(
-			(expected) => globalThis.__x.labelAt(998) === expected,
-			label1,
-			{ timeout: 10_000, polling: 16 },
-		);
+		await page.waitForFunction((expected) => globalThis.__x.labelAt(998) === expected, label1, {
+			timeout: 10_000,
+			polling: 16,
+		});
 		check('swap', (await labelAt(1)) === label998);
 	}
 

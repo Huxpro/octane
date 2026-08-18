@@ -66,16 +66,34 @@ clear/both storms) before any measurement session.
 - All numbers are same-host, same-window comparisons; absolute milliseconds
   are host-bound.
 
-### L0 results (this host, Chromium 141, 4 CPUs; see prototype/results/)
+### L0 results (this host: 4× Xeon 2.10GHz, Chromium 141, quiet-host, n=5, AB/BA)
 
-Filled from `prototype/results/` and `stages/results/` in the same session:
+Session records under `prototype/results/`; medians, same-window ratios.
 
-- FCP@10k (mount-create ladder, raw view-attach boundary): octane universal
-  path vs `octane-direct` — see `prototype/results/fcp-10000.md`.
-- create/update/select/storms at 1k and 10k across `octane`, `octane-direct`,
-  `vue-vdom`, `vue-vapor`, `react`: see `results/web.md`.
-- Stage attribution of the current path on the same host:
-  `stages/results/` live reports.
+FCP@10k, mount-create ladder, raw view-attach boundary (`fcp-10000.md`):
+
+| cell | median ms | min–max |
+|---|---:|---:|
+| octane (universal path) | 1590.9 | 1541.4–1636.2 |
+| octane-direct | 915.0 | 886.2–947.9 |
+
+**0.575×**, −675.9 ms. Same-session stage attribution of the octane path
+(`stages-10000-l0-session.md`): `mt_slice_eval` 18.7 / `plan_interpretation`
+111.5 / `papi_element_creation` 476.6 / `layout_flush_residual` 1010.1.
+
+Per-op wall clock at 10k across all cells (`web-l0-session.md`, ×vs vue-vdom):
+
+| op | octane | octane-direct | vue-vdom | vue-vapor | react |
+|---|---:|---:|---:|---:|---:|
+| create | 1082 (0.80×) | 862 (0.64×) | 1350 | 1407 (1.04×) | 1107 (0.82×) |
+| update10th | 146 (1.34×) | 82 (0.75×) | 109 | 70 (0.64×) | 156 (1.43×) |
+| select | 75 (1.15×) | 44 (0.67×) | 65 | 35 (0.53×) | 94 (1.44×) |
+| updateStorm | 539 (0.32×) | 572 (0.34×) | 1668 | 808 (0.48×) | 3766 (2.26×) |
+| selectStorm | 103 (0.15×) | 91 (0.13×) | 708 | 129 (0.18×) | 1851 (2.62×) |
+
+Same-session octane create@10k attribution: `bg_replay` 138.7, `mt_validate`
+11.2, `papi_element_creation` 582.9, `mt_apply_other` 290.3, raw 1165.9
+(profile) / 1105.2 (control).
 
 Verdict recorded in §7.
 
@@ -240,11 +258,36 @@ handle/ack state (`mt_apply_other`, memory).
 
 ## 7. L0 exit-gate verdict
 
-Recorded after the measurement session on this branch; see
-`benchmarks/lynx-table/prototype/results/` for the full tables and
-`prototype/README.md` for the protocol.
+**GO.** Direct emission beats the interpreted representation on the FCP
+stages, and by far more than the plan walk alone: same-window mount-create
+FCP@10k is 915.0 ms versus 1590.9 ms (0.575×, −675.9 ms), against a path whose
+directly observed `plan_interpretation` is only 111.5 ms. The win is the
+whole interpret → `FirstScreenNode` record graph → command batch → prepare →
+generic apply pipeline wrapped around the identical PAPI calls, which is
+exactly what §6 predicted from attribution. The costs that persist in both
+cells — PAPI creation (476.6 ms same-session) and layout/flush — are the
+engine-intrinsic remainder; the prototype confirms they do not yield to
+representation change, and nothing else in the Lynx path is left to blame on
+the engine.
 
-<!-- L0-VERDICT -->
+Secondary observations, same session:
+
+- create@10k 862 ms vs 1082 ms (0.80× of octane; 0.64× of vue-vdom, the
+  fastest cell measured) with the caveat that the prototype's background stub
+  skips real replay work bounded by `bg_replay` 138.7 ms — the main-thread
+  apply-side collapse (`mt_validate` + `mt_apply_other` ≈ 300 ms) is the
+  attributable share.
+- update10th 82 vs 146 ms and select 44 vs 75 ms: slot-addressed writes
+  remove the per-update prop-bag replanning.
+- Storms are at parity (572 vs 539 ms; both far below every reference except
+  vapor): the universal path's per-tick cost is already dominated by
+  flush/layout, so the representation change neither helps nor hurts the
+  storm case on web. This bounds expectations: the specialized path's wins
+  are first screen, bulk creates, and point updates — not commit overhead
+  the engine already floors.
+
+The L0 exit gate is satisfied; proceed to L1 (compiler backend) with the spec
+in §3 and the extraction-first decision in §5.
 
 ## 8. Open questions carried into L1+
 

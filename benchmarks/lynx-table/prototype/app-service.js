@@ -31,18 +31,59 @@
 	var nextId = 1;
 
 	var ADJECTIVES = [
-		'pretty', 'large', 'big', 'small', 'tall', 'short', 'long', 'handsome',
-		'plain', 'quaint', 'clean', 'elegant', 'easy', 'angry', 'crazy', 'helpful',
-		'mushy', 'odd', 'unsightly', 'adorable', 'important', 'inexpensive',
-		'cheap', 'expensive', 'fancy',
+		'pretty',
+		'large',
+		'big',
+		'small',
+		'tall',
+		'short',
+		'long',
+		'handsome',
+		'plain',
+		'quaint',
+		'clean',
+		'elegant',
+		'easy',
+		'angry',
+		'crazy',
+		'helpful',
+		'mushy',
+		'odd',
+		'unsightly',
+		'adorable',
+		'important',
+		'inexpensive',
+		'cheap',
+		'expensive',
+		'fancy',
 	];
 	var COLOURS = [
-		'red', 'yellow', 'blue', 'green', 'pink', 'brown', 'purple', 'brown',
-		'white', 'black', 'orange',
+		'red',
+		'yellow',
+		'blue',
+		'green',
+		'pink',
+		'brown',
+		'purple',
+		'brown',
+		'white',
+		'black',
+		'orange',
 	];
 	var NOUNS = [
-		'table', 'chair', 'house', 'bbq', 'desk', 'car', 'pony', 'cookie',
-		'sandwich', 'burger', 'pizza', 'mouse', 'keyboard',
+		'table',
+		'chair',
+		'house',
+		'bbq',
+		'desk',
+		'car',
+		'pony',
+		'cookie',
+		'sandwich',
+		'burger',
+		'pizza',
+		'mouse',
+		'keyboard',
 	];
 
 	function randomIndex(max) {
@@ -52,9 +93,7 @@
 	function seedInitialRows(count) {
 		for (var i = 0; i < count; i++) {
 			ids.push(nextId++);
-			labels.push(
-				ADJECTIVES[i % 25] + ' ' + COLOURS[(i * 7) % 11] + ' ' + NOUNS[(i * 13) % 13],
-			);
+			labels.push(ADJECTIVES[i % 25] + ' ' + COLOURS[(i * 7) % 11] + ' ' + NOUNS[(i * 13) % 13]);
 		}
 	}
 
@@ -167,24 +206,43 @@
 
 	function stormSelect() {
 		runStorm(STORM_SELECT_TICKS, function (t) {
-			var id =
-				t < STORM_SELECT_TICKS ? ids[(t * 97) % ids.length] : ids[0];
+			var id = t < STORM_SELECT_TICKS ? ids[(t * 97) % ids.length] : ids[0];
 			sendDelta(selectById(id));
 		});
 	}
 
 	// -- event routing ---------------------------------------------------------
 	var BUTTON_ACTIONS = [
-		function () { sendDelta(createRows(1000)); },
-		function () { sendDelta(createRows(3000)); },
-		function () { sendDelta(createRows(5000)); },
-		function () { sendDelta(createRows(10000)); },
-		function () { sendDelta(createRows(20000)); },
-		function () { sendDelta(createRows(30000)); },
-		function () { sendDelta(appendRows(1000)); },
-		function () { sendDelta(updateEveryTenth()); },
-		function () { sendDelta(swapRows()); },
-		function () { sendDelta(clearOps()); },
+		function () {
+			sendDelta(createRows(1000));
+		},
+		function () {
+			sendDelta(createRows(3000));
+		},
+		function () {
+			sendDelta(createRows(5000));
+		},
+		function () {
+			sendDelta(createRows(10000));
+		},
+		function () {
+			sendDelta(createRows(20000));
+		},
+		function () {
+			sendDelta(createRows(30000));
+		},
+		function () {
+			sendDelta(appendRows(1000));
+		},
+		function () {
+			sendDelta(updateEveryTenth());
+		},
+		function () {
+			sendDelta(swapRows());
+		},
+		function () {
+			sendDelta(clearOps());
+		},
 		stormUpdate,
 		stormSelect,
 	];

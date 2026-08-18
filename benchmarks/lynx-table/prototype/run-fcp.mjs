@@ -63,7 +63,8 @@ const server = http.createServer((request, response) => {
 		return;
 	}
 	let filePath = null;
-	if (url.pathname.startsWith('/webcore/')) filePath = path.join(webCoreRoot, url.pathname.slice(9));
+	if (url.pathname.startsWith('/webcore/'))
+		filePath = path.join(webCoreRoot, url.pathname.slice(9));
 	else {
 		const cell = CELLS.find((entry) => url.pathname === `/bundles/${entry.id}`);
 		filePath = cell?.bundle ?? null;
