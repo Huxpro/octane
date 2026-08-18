@@ -29,7 +29,7 @@ import {
 	resolveRendererForFile,
 } from './renderers.js';
 import { findLeadingJsxImportSourcePragma } from './pragma.js';
-import { normalizeUniversalRuntime } from './universal-runtime.js';
+import { isUniversalFamilyTarget, normalizeUniversalRuntime } from './universal-runtime.js';
 import { formatCompileDiagnostic } from './native-change-diagnostics.js';
 import { findVoidComponentImports, findVoidRootImports, slotHooks } from './slot-hooks.js';
 import { rewriteServerRuntimeRequests } from './runtime-requests.js';
@@ -1048,7 +1048,7 @@ class OctaneBundlerCompiler {
 		if (!hostOwned) this._assertClientOnlySourceSupported(file, filename, renderer, collected);
 		if (
 			plainHelperSource &&
-			renderer.target === 'universal' &&
+			isUniversalFamilyTarget(renderer.target) &&
 			renderer.validation !== undefined &&
 			this._isProjectOwnedSource(file) &&
 			!this.exclude.some((path) => file.includes(path)) &&

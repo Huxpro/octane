@@ -228,7 +228,10 @@ export const lynxBackgroundRenderer = {
 export const lynxMainThreadRenderer = {
 	module: '@octanejs/lynx/main-renderer',
 	threadFunctionsModule: '@octanejs/lynx/main-worklets',
-	target: 'universal',
+	// The lynx target keeps the universal descriptor ABI but lowers eligible
+	// host-only templates into straight-line create functions executed by the
+	// first-screen renderer (docs/lynx-specialized-target-l0.md §3.2).
+	target: 'lynx',
 	server: 'unsupported',
 	intrinsics: '@octanejs/lynx/intrinsics',
 	text: 'host',

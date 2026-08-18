@@ -66,7 +66,11 @@ import { assertNoLiveClientOnlyImports } from './client-only-server.js';
 import { nsForChildren, nsForSelf } from './jsx-namespace.js';
 import { analyzeNativeChangeDiagnostics } from './native-change-diagnostics.js';
 import { assertStrongMode } from './strong-mode.js';
-import { assertUniversalRuntimeTarget, normalizeUniversalRuntime } from './universal-runtime.js';
+import {
+	assertUniversalRuntimeTarget,
+	isUniversalFamilyTarget,
+	normalizeUniversalRuntime,
+} from './universal-runtime.js';
 
 // DOM truth tables shared with the client/server runtimes (via constants.ts) —
 // static bakes and dynamic writes MUST agree on which attributes render, under
@@ -7774,7 +7778,7 @@ function compileInternal(source, filename, options, analyzedAst, mode, bundlerMe
 					source,
 					cleanFilename,
 					{
-						dom: options?.renderer?.target !== 'universal',
+						dom: !isUniversalFamilyTarget(options?.renderer?.target),
 						renderer: options?.renderer,
 						rendererBoundaries: options?.rendererBoundaries,
 						rendererRegistry: options?.rendererRegistry,
@@ -7800,7 +7804,7 @@ function compileInternal(source, filename, options, analyzedAst, mode, bundlerMe
 		}
 	}
 	if (mode === 'server') {
-		if (options?.renderer?.target === 'universal') {
+		if (isUniversalFamilyTarget(options?.renderer?.target)) {
 			throw new Error(
 				`Renderer ${JSON.stringify(options.renderer.id)} does not provide the serialization/hydration capability required by server compilation.`,
 			);
@@ -7856,11 +7860,9 @@ function compileInternal(source, filename, options, analyzedAst, mode, bundlerMe
 		return compiled;
 	}
 	const ownerRenderer =
-		options?.renderer?.target === 'universal'
+		isUniversalFamilyTarget(options?.renderer?.target) || options?.renderer?.target === 'dom'
 			? options.renderer
-			: options?.renderer?.target === 'dom'
-				? options.renderer
-				: { id: 'dom', module: 'octane', target: 'dom' };
+			: { id: 'dom', module: 'octane', target: 'dom' };
 	const rendererBoundaryPreparation = options?.__rendererBoundariesLowered
 		? null
 		: prepareRendererBoundaryRegions(source, filename, ownerRenderer, options, analyzedAst);
@@ -7879,7 +7881,7 @@ function compileInternal(source, filename, options, analyzedAst, mode, bundlerMe
 						rendererRegistry: options?.rendererRegistry,
 					},
 				).diagnostics);
-	if (options?.renderer?.target === 'universal') {
+	if (isUniversalFamilyTarget(options?.renderer?.target)) {
 		const renderer = options.renderer;
 		const result = compileUniversal(
 			source,
@@ -7952,7 +7954,7 @@ function compileInternal(source, filename, options, analyzedAst, mode, bundlerMe
 	const nativeChangeAnalysis =
 		options?.__nativeChangeAnalysis ??
 		analyzeNativeChangeDiagnostics(parsedAst, source, filename, {
-			dom: options?.renderer?.target !== 'universal',
+			dom: !isUniversalFamilyTarget(options?.renderer?.target),
 			renderer: options?.renderer,
 			rendererBoundaries: options?.rendererBoundaries,
 			rendererRegistry: options?.rendererRegistry,
@@ -9203,7 +9205,7 @@ function compileServer(source, filename, options, analyzedAst = null) {
 	const nativeChangeAnalysis =
 		options?.__nativeChangeAnalysis ??
 		analyzeNativeChangeDiagnostics(parsedAst, source, filename, {
-			dom: options?.renderer?.target !== 'universal',
+			dom: !isUniversalFamilyTarget(options?.renderer?.target),
 			renderer: options?.renderer,
 			rendererBoundaries: options?.rendererBoundaries,
 			rendererRegistry: options?.rendererRegistry,

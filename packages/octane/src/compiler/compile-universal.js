@@ -3913,16 +3913,151 @@ function universalProfileImportAst(state, origin = null) {
 		: null;
 }
 
+// Event props are recognized by name shape on both threads; keep this in sync
+// with the main-thread renderer's EVENT_PROP (packages/lynx/src/main-renderer.ts).
+const LYNX_EVENT_PROP = /^(?:capture-bind|capture-catch|global-bind|bind|catch)[A-Za-z]+$/;
+
+/**
+ * A plan is lowered to a create function only when every node is compile-time
+ * host structure: host/text/slot nodes, no props program (`propsSlot`), no
+ * component/if/switch/range nodes, and no prop that the record path would
+ * filter (`key`/`ref`/`children`) or classify by value (a static prop with an
+ * event-shaped name). Anything else keeps the interpreted plan encoding, so
+ * mixed modules stay correct while the hot host templates go straight-line.
+ */
+function lynxTemplateEligible(node) {
+	if (node.kind === 'text') return true;
+	if (node.kind === 'slot') return true;
+	if (node.kind !== 'host') return false;
+	if (node.propsSlot !== undefined) return false;
+	for (const name of Object.keys(node.props || {})) {
+		if (name === 'key' || name === 'ref' || name === 'children') return false;
+		if (LYNX_EVENT_PROP.test(name)) return false;
+	}
+	for (const binding of node.bindings || []) {
+		if (binding[0] === 'key' || binding[0] === 'ref' || binding[0] === 'children') return false;
+	}
+	return (node.children || []).every(lynxTemplateEligible);
+}
+
+function lynxTemplateSlotKinds(node, kinds) {
+	if (node.kind === 'text') {
+		if (node.slot !== undefined) kinds[node.slot] = 'c';
+		return kinds;
+	}
+	if (node.kind === 'slot') {
+		kinds[node.slot] = 'c';
+		return kinds;
+	}
+	for (const binding of node.bindings || []) {
+		kinds[binding[1]] = LYNX_EVENT_PROP.test(binding[0]) ? `e:${binding[0]}` : `p:${binding[0]}`;
+	}
+	for (const child of node.children || []) lynxTemplateSlotKinds(child, kinds);
+	return kinds;
+}
+
+function lynxValueSlotAst(slot, origin) {
+	return inheritGeneratedOrigin(b.member(b.id('values'), b.literal(slot), true), origin);
+}
+
+function lynxEnvCallAst(method, args, origin) {
+	return inheritGeneratedOrigin(b.stmt(b.call(b.member(b.id('env'), method), ...args)), origin);
+}
+
+function lynxTemplateCreateStatementsAst(node, parentName, statements, naming, origin) {
+	if (node.kind === 'text') {
+		if (node.slot === undefined) {
+			const value = node.value ?? '';
+			statements.push(
+				lynxEnvCallAst('t', [b.id(parentName), b.literal(value, JSON.stringify(value))], origin),
+			);
+		} else {
+			statements.push(
+				lynxEnvCallAst('s', [b.id(parentName), lynxValueSlotAst(node.slot, origin)], origin),
+			);
+		}
+		return;
+	}
+	if (node.kind === 'slot') {
+		statements.push(
+			lynxEnvCallAst('s', [b.id(parentName), lynxValueSlotAst(node.slot, origin)], origin),
+		);
+		return;
+	}
+	const name = `n${naming.next++}`;
+	statements.push(
+		inheritGeneratedOrigin(
+			b.const(
+				name,
+				b.call(b.member(b.id('env'), 'h'), b.literal(node.type, JSON.stringify(node.type))),
+			),
+			origin,
+		),
+	);
+	for (const [propName, value] of Object.entries(node.props || {})) {
+		statements.push(
+			lynxEnvCallAst(
+				'p',
+				[b.id(name), b.literal(propName, JSON.stringify(propName)), jsonValueToAst(value, origin)],
+				origin,
+			),
+		);
+	}
+	for (const binding of node.bindings || []) {
+		const method = LYNX_EVENT_PROP.test(binding[0]) ? 'e' : 'p';
+		statements.push(
+			lynxEnvCallAst(
+				method,
+				[
+					b.id(name),
+					b.literal(binding[0], JSON.stringify(binding[0])),
+					lynxValueSlotAst(binding[1], origin),
+				],
+				origin,
+			),
+		);
+	}
+	for (const child of node.children || []) {
+		lynxTemplateCreateStatementsAst(child, name, statements, naming, origin);
+	}
+	if (parentName !== null) {
+		statements.push(lynxEnvCallAst('a', [b.id(parentName), b.id(name)], origin));
+	}
+	if (parentName === null) naming.rootName = name;
+}
+
+function lynxTemplateObjectAst(root, origin) {
+	const statements = [];
+	const naming = { next: 0, rootName: null };
+	lynxTemplateCreateStatementsAst(root, null, statements, naming, origin);
+	statements.push(inheritGeneratedOrigin(b.return(b.id(naming.rootName)), origin));
+	const kinds = lynxTemplateSlotKinds(root, []);
+	const slotsAst = b.array(
+		Array.from(kinds, (kind) =>
+			kind === undefined ? b.literal(null, 'null') : b.literal(kind, JSON.stringify(kind)),
+		),
+	);
+	const createAst = b.arrow([b.id('env'), b.id('values')], b.block(statements));
+	return inheritGeneratedOrigin(
+		b.object([
+			b.prop('init', b.literal('kind', '"kind"'), b.literal('template', '"template"')),
+			b.prop('init', b.literal('slots', '"slots"'), slotsAst),
+			b.prop('init', b.literal('create', '"create"'), createAst),
+		]),
+		origin,
+	);
+}
+
 function universalPlanDeclarationsAst(state, origin = null) {
 	return state.plans.map((plan) => {
 		const planOrigin = plan.origin ?? origin;
+		const rootAst =
+			state.lynxTemplates && lynxTemplateEligible(plan.root) && plan.root.kind === 'host'
+				? lynxTemplateObjectAst(plan.root, planOrigin)
+				: jsonValueToAst(plan.root, planOrigin);
 		return generatedConst(
 			plan.name,
-			generatedCall(
-				state.helpers.plan,
-				[b.literal(state.renderer.id), jsonValueToAst(plan.root, planOrigin)],
-				planOrigin,
-			),
+			generatedCall(state.helpers.plan, [b.literal(state.renderer.id), rootAst], planOrigin),
 			planOrigin,
 		);
 	});
@@ -4512,7 +4647,7 @@ export function compileUniversal(
 		!renderer ||
 		typeof renderer.id !== 'string' ||
 		typeof renderer.module !== 'string' ||
-		renderer.target !== 'universal'
+		(renderer.target !== 'universal' && renderer.target !== 'lynx')
 	) {
 		throw new TypeError('Octane universal compiler requires a resolved universal renderer.');
 	}
@@ -4535,6 +4670,11 @@ export function compileUniversal(
 		helpers: {},
 		componentNames: collectComponentNames(ast),
 		runtimeImports: new Map(),
+		// The `lynx` target keeps the universal front-end and descriptor ABI but
+		// lowers eligible host-only plans into straight-line create functions
+		// (docs/lynx-specialized-target-l0.md §3.2); ineligible plans fall back
+		// to the interpreted plan encoding unchanged.
+		lynxTemplates: renderer.target === 'lynx',
 	};
 	state.explicitThreeHostIntrinsics = collectExplicitThreeHostIntrinsics(ast, renderer);
 	state.ownerFreeThreeHostComponents = collectOwnerFreeThreeHostComponents(

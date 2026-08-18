@@ -138,6 +138,34 @@ export interface UniversalSwitchPlan {
 	readonly default?: UniversalPlanNode;
 }
 
+/**
+ * Straight-line create program the `target: 'lynx'` compiler backend emits for
+ * host-only templates (docs/lynx-specialized-target-l0.md §3.2–§3.3). The env
+ * is renderer-owned: the Lynx main-thread renderer materializes through it,
+ * and the generic universal core never interprets this node kind.
+ */
+export interface UniversalTemplateEnv<Node = unknown> {
+	/** Create one host of the given intrinsic type. */
+	readonly h: (type: string) => Node;
+	/** Set one statically named non-event prop. */
+	readonly p: (node: Node, name: string, value: unknown) => void;
+	/** Register one statically named event prop; erased handlers stay markers. */
+	readonly e: (node: Node, name: string, value: unknown) => void;
+	/** Append one static text child. */
+	readonly t: (node: Node, value: string) => void;
+	/** Materialize one dynamic child hole in document order. */
+	readonly s: (node: Node, value: unknown) => void;
+	/** Append a completed child host to its parent. */
+	readonly a: (parent: Node, child: Node) => void;
+}
+
+export interface UniversalTemplatePlan {
+	readonly kind: 'template';
+	/** Per-value-slot kind table: `p:<name>`, `e:<name>`, `c`, or null. */
+	readonly slots: readonly (string | null)[];
+	readonly create: <Node>(env: UniversalTemplateEnv<Node>, values: readonly unknown[]) => Node;
+}
+
 export type UniversalPlanNode =
 	| UniversalHostPlan
 	| UniversalTextPlan
@@ -145,7 +173,8 @@ export type UniversalPlanNode =
 	| UniversalRangePlan
 	| UniversalComponentPlan
 	| UniversalIfPlan
-	| UniversalSwitchPlan;
+	| UniversalSwitchPlan
+	| UniversalTemplatePlan;
 
 export interface UniversalPlan {
 	readonly $$kind: typeof UNIVERSAL_PLAN;
@@ -1477,6 +1506,14 @@ function normalizeUniversalKey(value: unknown): UniversalKey | null {
 }
 
 function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
+	if (node.kind === 'template') {
+		// Template create programs are a lynx-target artifact; the generic core
+		// has no interpreter for them and must fail loudly rather than render a
+		// wrong tree if a mis-layered module ever reaches it.
+		throw new TypeError(
+			'Universal template plans require a lynx-target renderer module; the generic universal core cannot interpret them.',
+		);
+	}
 	if (node.kind === 'host') {
 		if (typeof node.type !== 'string' || node.type === '') {
 			throw new TypeError('A universal host plan requires a non-empty string type.');
@@ -3626,6 +3663,14 @@ function materializeNode(
 	renderer: string,
 	path: readonly unknown[],
 ): BlueprintNode[] {
+	if (node.kind === 'template') {
+		// freezePlanNode already rejects template roots; a nested template can
+		// only reach here through a hand-built plan, and the generic core has no
+		// interpreter for create programs.
+		throw new TypeError(
+			'Universal template plans require a lynx-target renderer module; the generic universal core cannot interpret them.',
+		);
+	}
 	if (node.kind === 'slot')
 		return materializeValue(values[node.slot], renderer, null, [...path, 'slot', node.slot]);
 	if (node.kind === 'text') {

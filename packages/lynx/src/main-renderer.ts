@@ -163,6 +163,13 @@ function assertRenderer(renderer: string): void {
 }
 
 function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
+	if (node.kind === 'template') {
+		return Object.freeze({
+			kind: 'template',
+			slots: Object.freeze([...node.slots]),
+			create: node.create,
+		});
+	}
 	if (node.kind === 'host') {
 		return Object.freeze({
 			kind: 'host',
@@ -679,7 +686,66 @@ function renderComponent(
 	}
 }
 
+/**
+ * Renderer-owned env executing compiled template create functions
+ * (docs/lynx-specialized-target-l0.md §3.2). This first-screen binding builds
+ * the same `FirstScreenHost` records `renderPlanNode` produces — the compiler
+ * guarantees names reaching `p`/`e` are statically known and pre-classified,
+ * so the per-prop `key`/`ref`/event filtering of `hostNode` is not repeated.
+ */
+const TEMPLATE_ENV = Object.freeze({
+	h(type: string): FirstScreenHost {
+		return {
+			kind: 'host',
+			key: null,
+			id: 0,
+			type,
+			props: {} as Record<string, unknown>,
+			events: new Map<string, UniversalEventPriority>(),
+			visibility: currentOwner().visibility,
+			children: [],
+		};
+	},
+	p(node: FirstScreenHost, name: string, value: unknown): void {
+		if (isLynxNativeResource(value)) {
+			throw new TypeError(
+				`Lynx first-screen rendering does not support native resource prop ${JSON.stringify(name)} on <${node.type}>; native resources are background-only.`,
+			);
+		}
+		(node.props as Record<string, unknown>)[name] = value;
+	},
+	e(node: FirstScreenHost, name: string, value: unknown): void {
+		if (value !== FIRST_SCREEN_EVENT && typeof value !== 'function') return;
+		const priority = eventPriority(name);
+		if (priority !== null) (node.events as Map<string, UniversalEventPriority>).set(name, priority);
+	},
+	t(node: FirstScreenHost, value: string): void {
+		node.children.push(hostNode('#text', { value: String(value) }, []));
+	},
+	s(node: FirstScreenHost, value: unknown): void {
+		node.children.push(...materialize(value, null));
+	},
+	a(parent: FirstScreenHost, child: FirstScreenHost): void {
+		parent.children.push(child);
+	},
+});
+
+function freezeTemplateHostProps(node: FirstScreenNode): void {
+	if (node.kind === 'host' && !Object.isFrozen(node.props)) Object.freeze(node.props);
+	for (const child of node.children) freezeTemplateHostProps(child);
+}
+
+function renderTemplate(
+	node: Extract<UniversalPlanNode, { kind: 'template' }>,
+	values: readonly unknown[],
+): FirstScreenNode[] {
+	const root = node.create(TEMPLATE_ENV, values) as FirstScreenHost;
+	freezeTemplateHostProps(root);
+	return [root];
+}
+
 function renderPlanNode(node: UniversalPlanNode, values: readonly unknown[]): FirstScreenNode[] {
+	if (node.kind === 'template') return renderTemplate(node, values);
 	if (node.kind === 'slot') return materialize(values[node.slot], null);
 	if (node.kind === 'text') {
 		return materialize(node.slot === undefined ? (node.value ?? '') : values[node.slot], null);

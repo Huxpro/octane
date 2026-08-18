@@ -1,4 +1,13 @@
 const UNIVERSAL_RUNTIME_KEYS = new Set(['runtime', 'thread']);
+
+/**
+ * The `lynx` target is the universal front-end plus create-function template
+ * emission (docs/lynx-specialized-target-l0.md); every non-emission decision
+ * treats it exactly like `universal`.
+ */
+export function isUniversalFamilyTarget(target) {
+	return target === 'universal' || target === 'lynx';
+}
 const RUNTIME_ID = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/;
 
 /**
@@ -33,7 +42,7 @@ export function assertUniversalRuntimeTarget(runtime, mode, renderer) {
 	if (mode !== 'client') {
 		throw new TypeError('Octane compiler: universalRuntime is available only in client mode.');
 	}
-	if (renderer?.target !== 'universal') {
+	if (renderer?.target !== 'universal' && renderer?.target !== 'lynx') {
 		throw new TypeError(
 			'Octane compiler: universalRuntime requires an explicitly selected universal renderer.',
 		);

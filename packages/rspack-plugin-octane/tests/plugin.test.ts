@@ -161,7 +161,7 @@ describe('OctaneRspackPlugin', () => {
 			universalRuntime: { runtime: 'lynx', thread: 'background' },
 			renderers: expect.objectContaining({
 				default: 'dom',
-				signature: expect.stringMatching(/^octane-renderers-v4:/),
+				signature: expect.stringMatching(/^octane-renderers-v5:/),
 				boundaries: {
 					'/src/object-boundaries.js': {
 						Canvas: {
