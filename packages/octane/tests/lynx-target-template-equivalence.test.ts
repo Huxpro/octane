@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 import { compile } from '../src/compiler/compile.js';
 import { lynxMainThreadRenderer } from '../../lynx/src/config.js';
 import * as MainRenderer from '../../lynx/src/main-renderer.js';
+import { createLynxNativeResource } from '../../lynx/src/resource.js';
 
 type SceneComponent = Parameters<typeof MainRenderer.renderLynxFirstScreen>[0];
 
@@ -56,19 +57,39 @@ export function Scene(props: { spec: unknown }) @{
 }
 `;
 
-const OBSERVATION_ORDER_SOURCE = `/** @jsxImportSource @octanejs/lynx/intrinsics */
-export function Scene(props: { outer: unknown; inner: unknown }) @{
-	<view class="page">
+// A `@try` boundary whose body holds two independent, mutually exclusive
+// outcomes: the parent carries a background-only native resource (which the
+// renderer refuses on both encodings) and the child suspends. Whichever the
+// renderer observes first decides which arm commits. Both renders SUCCEED —
+// this is a difference in what is painted, not an error path.
+const ARM_SELECTION_SOURCE = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { use } from 'octane';
+
+function Suspends(props: { gate: Promise<string> }) @{
+	const label = use(props.gate);
+	<text class="loaded">{label}</text>
+}
+
+export function Scene(props: { outer: unknown; gate: Promise<string> }) @{
+	<view class="root">
 		@try {
-			<view class="risky" data-outer={props.outer}>
-				<text class="inner" data-inner={props.inner}>{'inner'}</text>
+			<view data-outer={props.outer}>
+				<Suspends gate={props.gate} />
 			</view>
+		} @pending {
+			<text class="pending">{'PENDING'}</text>
 		} @catch (error) {
-			<text class="fallback">{error.message as string}</text>
+			<text class="caught">{error.message as string}</text>
 		}
 	</view>
 }
 `;
+
+function committedArm(result: { readonly batch: { readonly commands: readonly any[] } }): string[] {
+	return result.batch.commands
+		.filter((command) => command.op === 'create' && command.props?.class)
+		.map((command) => String(command.props.class));
+}
 
 describe('lynx-target template equivalence', () => {
 	it('renders the same batch when a custom element carries an inherited prop name', () => {
@@ -85,30 +106,22 @@ describe('lynx-target template equivalence', () => {
 		expect(fromTemplates.batch).toEqual(fromPlans.batch);
 	});
 
-	it('paints the same caught error when a prop value throws', () => {
-		// Two ordinary consumer objects whose property read throws. Which one the
-		// renderer observes first decides what the boundary paints.
-		const throwing = () => ({
-			outer: {
-				get $$kind(): never {
-					throw new Error('outer prop exploded');
-				},
-			},
-			inner: {
-				get $$kind(): never {
-					throw new Error('inner prop exploded');
-				},
-			},
+	it('commits the same @try arm under both encodings', () => {
+		// A real background-only resource, not an object impersonating the
+		// framework's internal brand: the renderer's own guard is what refuses it.
+		const props = () => ({
+			outer: createLynxNativeResource('OUTER'),
+			gate: new Promise<string>(() => {}),
 		});
 		const fromTemplates = MainRenderer.renderLynxFirstScreen(
-			scene(OBSERVATION_ORDER_SOURCE, 'lynx'),
-			throwing(),
+			scene(ARM_SELECTION_SOURCE, 'lynx'),
+			props() as never,
 		);
 		const fromPlans = MainRenderer.renderLynxFirstScreen(
-			scene(OBSERVATION_ORDER_SOURCE, 'universal'),
-			throwing(),
+			scene(ARM_SELECTION_SOURCE, 'universal'),
+			props() as never,
 		);
-		expect(paintedText(fromTemplates)).toEqual(paintedText(fromPlans));
+		expect(committedArm(fromTemplates)).toEqual(committedArm(fromPlans));
 		expect(fromTemplates.batch).toEqual(fromPlans.batch);
 	});
 });
