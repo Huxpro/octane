@@ -117,6 +117,41 @@ export interface UniversalHookUpdateQueue<Batch = unknown> extends Array<unknown
 	rebases?: boolean[];
 }
 
+/** Hook storage shared by committed and speculative renderer owners. */
+export interface UniversalHookOwner<Hook = unknown> {
+	hooks: Map<unknown, Hook>;
+}
+
+/** The state a captured hook setter needs from its committed owner. */
+export interface UniversalCommittedHookOwner<
+	Hook = unknown,
+	Batch = unknown,
+> extends UniversalHookOwner<Hook> {
+	updates: Map<unknown, UniversalHookUpdateQueue<Batch>>;
+	disposed: boolean;
+}
+
+/** The state an update raised during a speculative render marks dirty. */
+export interface UniversalDraftHookOwner<Hook = unknown> extends UniversalHookOwner<Hook> {
+	needsRender: boolean;
+}
+
+export type UniversalOwnerScheduler<Owner, Slot = unknown> = (owner: Owner, slot?: Slot) => void;
+
+/**
+ * Bind a renderer's scheduling service while keeping the shared disposed-owner
+ * contract in the kernel. The returned function is allocated once per core,
+ * never per owner or update.
+ */
+export function createScheduleOwner<Owner extends { disposed: boolean }, Slot = unknown>(
+	schedule: UniversalOwnerScheduler<Owner, Slot>,
+): UniversalOwnerScheduler<Owner, Slot> {
+	return (owner, slot) => {
+		if (owner.disposed) return;
+		schedule(owner, slot);
+	};
+}
+
 export interface AppliedUniversalUrgentUpdates<Batch = unknown> {
 	readonly lane: false;
 	readonly queue: UniversalHookUpdateQueue<Batch>;

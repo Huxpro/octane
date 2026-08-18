@@ -1019,6 +1019,8 @@ import {
 	type StateHook,
 	type ReducerHook,
 	type UniversalHookUpdateQueue as KernelUniversalHookUpdateQueue,
+	type UniversalCommittedHookOwner as KernelCommittedHookOwner,
+	type UniversalDraftHookOwner as KernelDraftHookOwner,
 	type UniversalTrackedThenable,
 	type UniversalTransitionUpdate,
 	type UniversalVisibility,
@@ -1028,6 +1030,7 @@ import {
 	runEffectCleanup,
 	runEffectCreate,
 	trackUniversalThenable,
+	createScheduleOwner,
 } from './universal-kernel.js';
 
 export type { LinkedStateOptions, LinkedStatePrevious } from './universal-kernel.js';
@@ -1060,7 +1063,10 @@ type UniversalHook =
 	| EffectHook
 	| EffectEventHook;
 
-interface UniversalOwnerRecord {
+interface UniversalOwnerRecord extends KernelCommittedHookOwner<
+	UniversalHook,
+	UniversalTransitionBatch
+> {
 	readonly root: UniversalRootImpl<any, any>;
 	readonly renderer: string;
 	component: UniversalComponent<any> | null;
@@ -1074,7 +1080,6 @@ interface UniversalOwnerRecord {
 	key: unknown;
 	id: number;
 	rangeKey: symbol;
-	hooks: Map<unknown, UniversalHook>;
 	effectOrder: EffectHook[];
 	children: UniversalOwnerRecord[];
 	// The root's dirty epoch this owner (or a descendant) was last scheduled in.
@@ -1083,7 +1088,6 @@ interface UniversalOwnerRecord {
 	dirtyEpoch: number;
 	range: LogicalRecord | null;
 	contextValues: Map<UniversalContext<any>, unknown> | null;
-	updates: Map<unknown, UniversalHookUpdateQueue>;
 	isBoundary: boolean;
 	canHandleSuspense: boolean;
 	boundaryError: unknown;
@@ -1091,7 +1095,6 @@ interface UniversalOwnerRecord {
 	boundaryThenable: PromiseLike<unknown> | null;
 	visibility: UniversalVisibility;
 	mounted: boolean;
-	disposed: boolean;
 }
 
 interface BoundaryOwner {
@@ -1132,13 +1135,12 @@ const UNIVERSAL_TREE_LOCAL_CALLBACK = 1 << 4;
 const UNIVERSAL_TREE_REF = 1 << 5;
 const UNIVERSAL_TREE_HIDDEN = 1 << 6;
 
-interface DraftOwner {
+interface DraftOwner extends KernelDraftHookOwner<UniversalHook> {
 	record: UniversalOwnerRecord;
 	componentProps: any;
 	componentRevision: number;
 	parent: DraftOwner | null;
 	replayPath: readonly SuspendedOwnerSegment[];
-	hooks: Map<unknown, UniversalHook>;
 	clonedHooks: Set<unknown>;
 	seenEffects: EffectHook[];
 	children: DraftOwner[];
@@ -1157,7 +1159,6 @@ interface DraftOwner {
 	childReplayOrdinals: OwnerIdentityIndex<number> | null;
 	contextValues: Map<UniversalContext<any>, unknown> | null;
 	appliedUpdates: Map<unknown, AppliedUniversalHookUpdates>;
-	needsRender: boolean;
 	implicitSlot: number;
 	boundaryError: unknown;
 	hasBoundaryError: boolean;
@@ -4938,8 +4939,7 @@ function enqueueUniversalHookUpdate(
 	queue.rebases?.push(false);
 }
 
-function scheduleOwner(owner: UniversalOwnerRecord, slot?: unknown): void {
-	if (owner.disposed) return;
+const scheduleOwner = createScheduleOwner<UniversalOwnerRecord>((owner, slot) => {
 	if (typeof __OCTANE_PROFILE_ENABLED__ !== 'undefined' && __OCTANE_PROFILE_ENABLED__) {
 		__profileSchedule(
 			owner,
@@ -4948,7 +4948,7 @@ function scheduleOwner(owner: UniversalOwnerRecord, slot?: unknown): void {
 		);
 	}
 	owner.root.scheduleOwned(owner);
-}
+});
 
 function currentDraftOwner(): DraftOwner {
 	currentAttempt();

@@ -8,6 +8,17 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import {
+	createObjectContainer,
+	createObjectDriver,
+	createUniversalRoot,
+	defineUniversalComponent,
+	flushUniversalSync,
+	universalPlan,
+	universalValue,
+	useReducer,
+	useState,
+} from '../src/universal.js';
 
 describe('universal kernel boundary', () => {
 	it('imports nothing — dependencies enter as type parameters only', () => {
@@ -49,5 +60,47 @@ describe('universal kernel boundary', () => {
 		expect(kernel.depsEqual([1, NaN], [1, NaN])).toBe(true);
 		expect(kernel.depsEqual([1], [2])).toBe(false);
 		expect(kernel.depsEqual(null, [])).toBe(false);
+	});
+
+	it('routes captured state and reducer updates through their mounted universal owner', async () => {
+		const container = createObjectContainer();
+		const root = createUniversalRoot(container, createObjectDriver());
+		const plan = universalPlan('object', {
+			kind: 'host',
+			type: 'node',
+			bindings: [
+				['state', 0],
+				['reduced', 1],
+			],
+		});
+		let setState!: (value: number) => void;
+		let dispatch!: (value: number) => void;
+		const Component = defineUniversalComponent('object', () => {
+			const [state, updateState] = useState(1, 'state');
+			const [reduced, updateReduced] = useReducer(
+				(value: number, action: number) => value + action,
+				2,
+				'reducer',
+			);
+			setState = updateState;
+			dispatch = updateReduced;
+			return universalValue(plan, [state, reduced]);
+		});
+
+		root.render(Component, undefined);
+		flushUniversalSync(() => {
+			setState(3);
+			dispatch(4);
+		});
+
+		expect(container.children[0].props).toMatchObject({ state: 3, reduced: 6 });
+		expect(container.commits).toHaveLength(2);
+
+		root.unmount();
+		const commitsAfterUnmount = container.commits.length;
+		setState(9);
+		dispatch(9);
+		await Promise.resolve();
+		expect(container.commits).toHaveLength(commitsAfterUnmount);
 	});
 });

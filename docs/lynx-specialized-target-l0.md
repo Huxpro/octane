@@ -346,7 +346,17 @@ in §3 and the extraction-first decision in §5.
 
 - **L2 (kernel-extraction spike):** `universal-kernel.ts` holds the
   host-neutral hook-cell slice (see §5 spike result); the seam inventory
-  there sequences the rest of the extraction.
+  there sequences the rest of the extraction. The next slice now also owns
+  the minimal committed/draft hook-owner contracts (`hooks`, update queues,
+  `disposed`, and `needsRender`) and a once-bound injected `scheduleOwner`
+  service; universal profiling plus `root.scheduleOwned` remain renderer-core
+  policy. A render-through-public-root guard drives captured state and reducer
+  updates together, pins one batched commit, and proves setters become inert
+  after unmount. Same-window B/A/B/A `universal-leaf-update` measurements found
+  no systematic regression: the 4k scoped leaf was 0.038/0.037 ms on the A1
+  base versus 0.040/0.040 ms on this slice, while the 4k clean-root control was
+  6.764/6.571 versus 6.927/6.615 ms (dirty control remained 33–35 ms). Treat
+  those small sign/magnitude changes as noise, not a performance claim.
 - **L3 (direct first-screen, first slice):** `renderFirstScreenNow` applies
   the rendered record tree straight to the Element PAPI
   (`applyLynxFirstScreenDirect`): no command staging, cloned record maps, or
