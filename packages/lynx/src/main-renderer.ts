@@ -164,6 +164,11 @@ function assertRenderer(renderer: string): void {
 
 function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
 	if (node.kind === 'template') {
+		if (typeof node.create !== 'function' || !Array.isArray(node.slots)) {
+			throw new TypeError(
+				'A universal template plan requires a create function and a slots array.',
+			);
+		}
 		return Object.freeze({
 			kind: 'template',
 			slots: Object.freeze([...node.slots]),
@@ -715,6 +720,11 @@ const TEMPLATE_ENV = Object.freeze({
 		(node.props as Record<string, unknown>)[name] = value;
 	},
 	e(node: FirstScreenHost, name: string, value: unknown): void {
+		if (isLynxNativeResource(value)) {
+			throw new TypeError(
+				`Lynx first-screen rendering does not support native resource prop ${JSON.stringify(name)} on <${node.type}>; native resources are background-only.`,
+			);
+		}
 		if (value !== FIRST_SCREEN_EVENT && typeof value !== 'function') return;
 		const priority = eventPriority(name);
 		if (priority !== null) (node.events as Map<string, UniversalEventPriority>).set(name, priority);

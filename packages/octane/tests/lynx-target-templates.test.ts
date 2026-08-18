@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { compile } from '../src/compiler/compile.js';
 import { lynxMainThreadRenderer } from '../../lynx/src/config.js';
 import * as MainRenderer from '../../lynx/src/main-renderer.js';
+import { createLynxNativeResource } from '../../lynx/src/resource.js';
 
 const SOURCE = `/** @jsxImportSource @octanejs/lynx/intrinsics */
 import { useCallback, useState } from 'octane';
@@ -99,5 +100,48 @@ describe('lynx-target template emission', () => {
 		const events = fromPlans.batch.commands.filter((command) => command.op === 'event');
 		expect(creates.length).toBeGreaterThanOrEqual(10);
 		expect(events.length).toBeGreaterThanOrEqual(3);
+	});
+
+	it('rejects native-resource event values identically under both encodings', () => {
+		// Background-only native resources must fail loudly on the main thread
+		// no matter which template representation carries the event prop.
+		const resource = createLynxNativeResource('res');
+		const planEncoded = MainRenderer.universalPlan('lynx', {
+			kind: 'host',
+			type: 'view',
+			bindings: [['bindtap', 0]],
+		});
+		const templateEncoded = MainRenderer.universalPlan('lynx', {
+			kind: 'template',
+			slots: ['e:bindtap'],
+			create: (env: any, values: readonly unknown[]) => {
+				const n0 = env.h('view');
+				env.e(n0, 'bindtap', values[0]);
+				return n0;
+			},
+		} as never);
+		for (const plan of [planEncoded, templateEncoded]) {
+			const Scene = MainRenderer.defineUniversalComponent(
+				'lynx',
+				() => MainRenderer.universalValue(plan, [resource]),
+				{ module: '@octanejs/lynx/main-renderer' },
+			);
+			expect(() => MainRenderer.renderLynxFirstScreen(Scene as never, {})).toThrowError(
+				/native resource prop "bindtap" on <view>/,
+			);
+		}
+	});
+
+	it('rejects malformed template plans at freeze time', () => {
+		expect(() =>
+			MainRenderer.universalPlan('lynx', { kind: 'template', slots: [], create: 42 } as never),
+		).toThrowError(/create function and a slots array/);
+		expect(() =>
+			MainRenderer.universalPlan('lynx', {
+				kind: 'template',
+				slots: 'nope',
+				create: () => null,
+			} as never),
+		).toThrowError(/create function and a slots array/);
 	});
 });
