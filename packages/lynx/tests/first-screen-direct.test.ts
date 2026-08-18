@@ -162,12 +162,7 @@ const Scene = defineUniversalComponent(
 			universalFor(
 				rows,
 				(row) => row.id,
-				(row) =>
-					universalValue(ROW_PLAN, [
-						row.active ? 'row active' : 'row',
-						() => {},
-						row.label,
-					]),
+				(row) => universalValue(ROW_PLAN, [row.active ? 'row active' : 'row', () => {}, row.label]),
 			),
 			universalActivity('hidden', () =>
 				universalValue(ROW_PLAN, ['row hidden-row', () => {}, 'hidden label']),
@@ -221,9 +216,9 @@ describe('direct first-screen applier', () => {
 		};
 		const papi = createFakePAPI();
 		const container = createLynxHostContainer(papi, { root: 1 });
-		expect(
-			applyLynxFirstScreenDirect(container, listResult.nodes, listResult.batch as never),
-		).toBe(false);
+		expect(applyLynxFirstScreenDirect(container, listResult.nodes, listResult.batch as never)).toBe(
+			false,
+		);
 		expect(container.instanceCount).toBe(0);
 	});
 });
