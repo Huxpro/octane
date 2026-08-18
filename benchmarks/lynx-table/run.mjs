@@ -199,6 +199,21 @@ try {
 			result.selectStorm.commands,
 			iterations,
 		);
+		for (const [name, counters] of Object.entries({
+			create: result.create,
+			update10th: result.update10th,
+			select: result.select,
+			swap: result.swap,
+			updateStorm: result.updateStorm,
+			selectStorm: result.selectStorm,
+		})) {
+			meta[`delta_${name}_${suffix}`] = {
+				commits: counters.deltaCommits,
+				misses: counters.deltaMisses,
+				ops: counters.deltaOps,
+				bytes: counters.deltaBytes,
+			};
+		}
 
 		// Semantic floor: the wire a change of this size strictly implies.
 		// Creating component-owned rows reuses one shared intrinsic-template

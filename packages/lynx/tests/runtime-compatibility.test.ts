@@ -27,6 +27,10 @@ const universalCore = readFileSync(
 	resolve(REPOSITORY_ROOT, 'packages/octane/src/universal-core.ts'),
 	'utf8',
 );
+const universalKernel = readFileSync(
+	resolve(REPOSITORY_ROOT, 'packages/octane/src/universal-kernel.ts'),
+	'utf8',
+);
 const lifecycleData = readFileSync(resolve(LYNX_ROOT, 'src/core/lifecycle-data.ts'), 'utf8');
 
 function runtimeSourceGraph(entry: string): { files: string[]; packages: string[] } {
@@ -69,7 +73,7 @@ describe('Lynx runtime compatibility evidence', () => {
 		).toEqual(new Set(['packages/rspeedy-plugin-octane/tests/build.test.ts']));
 	});
 
-	it('records every non-baseline built-in used by the native universal core', () => {
+	it('records every non-baseline built-in used by the native universal runtime graph', () => {
 		expect(universalCore).toContain('.flatMap(');
 		expect(universalCore).toContain('.finally(');
 		expect(universalCore).toContain('globalThis');
@@ -79,7 +83,7 @@ describe('Lynx runtime compatibility evidence', () => {
 		);
 		expect(lifecycleData).not.toMatch(/\.at\s*\(/);
 		expect(universalCore).toContain("typeof AggregateError === 'function'");
-		expect(universalCore).toContain('.description');
+		expect(universalKernel).toContain('.description');
 		expect(evidence.universalCoreBuiltins.documentedOrBaseline).toEqual(
 			expect.arrayContaining([
 				'Array.prototype.flatMap',
@@ -100,6 +104,8 @@ describe('Lynx runtime compatibility evidence', () => {
 			files: [
 				'src/core/background-lifecycle.ts',
 				'src/core/client-driver.ts',
+				'src/core/delta-protocol.ts',
+				'src/core/delta-shadow.ts',
 				'src/core/environment.ts',
 				'src/core/host-props.ts',
 				'src/core/lifecycle-data.ts',

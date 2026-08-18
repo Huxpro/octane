@@ -286,6 +286,10 @@ function profileSnapshot(): {
 	prepareMs: number;
 	applyMs: number;
 	ackMs: number;
+	deltaCommits: number;
+	deltaMisses: number;
+	deltaOps: number;
+	deltaBytes: number;
 } {
 	const profile = (globalThis as ProfileGlobals).__OCTANE_LYNX_PROF;
 	// Both fake threads share this realm, so the main-thread receiver also
@@ -302,6 +306,10 @@ function profileSnapshot(): {
 		prepareMs: profile?.prepareMs ?? 0,
 		applyMs: profile?.applyMs ?? 0,
 		ackMs: profile?.ackMs ?? 0,
+		deltaCommits: profile?.deltaCommits ?? 0,
+		deltaMisses: profile?.deltaMisses ?? 0,
+		deltaOps: profile?.deltaOps ?? 0,
+		deltaBytes: profile?.deltaBytes ?? 0,
 	};
 }
 
@@ -467,6 +475,10 @@ export interface OpCounters {
 	readonly prepareMs: number;
 	readonly applyMs: number;
 	readonly ackMs: number;
+	readonly deltaCommits: number;
+	readonly deltaMisses: number;
+	readonly deltaOps: number;
+	readonly deltaBytes: number;
 }
 
 export interface TableRunResult {
@@ -533,6 +545,10 @@ export async function runTable(rows: number): Promise<TableRunResult> {
 				prepareMs: after.prepareMs - before.prepareMs,
 				applyMs: after.applyMs - before.applyMs,
 				ackMs: after.ackMs - before.ackMs,
+				deltaCommits: after.deltaCommits - before.deltaCommits,
+				deltaMisses: after.deltaMisses - before.deltaMisses,
+				deltaOps: after.deltaOps - before.deltaOps,
+				deltaBytes: after.deltaBytes - before.deltaBytes,
 			};
 		};
 

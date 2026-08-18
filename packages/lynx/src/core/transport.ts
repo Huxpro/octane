@@ -11,6 +11,7 @@ import {
 	type UniversalSerializableValue,
 } from 'octane/universal/native';
 import { LYNX_PROFILE, lynxWireProfile, profileOutboundMessage } from './profiling.js';
+import { createLynxDeltaShadow, type LynxPreparedDeltaShadow } from './delta-shadow.js';
 import {
 	applyLynxHostAttachments,
 	invalidateLynxClientContainer,
@@ -158,6 +159,7 @@ interface PendingCommit {
 	compactHostCount: number | null;
 	abortRequested: boolean;
 	deferredResponse: CommitSettlement | null;
+	readonly deltaShadow: LynxPreparedDeltaShadow | null;
 }
 
 type CommitSettlement = Extract<
@@ -302,6 +304,7 @@ export function createLynxBackgroundTransport(
 	let pageDestroyHandler: (() => void | Promise<void>) | null = null;
 	let pageDestroyHandlerInvoked = false;
 	const finalizedWorkletBatches = new WeakSet<object>();
+	const deltaShadow = LYNX_PROFILE ? createLynxDeltaShadow() : null;
 
 	const report = (error: unknown, fallback = 'Octane Lynx transport protocol error.') => {
 		const normalized = errorFrom(error, fallback);
@@ -809,6 +812,7 @@ export function createLynxBackgroundTransport(
 			accepted = frozenIdentity(message);
 			finalizeWorkletBatch(entry.batch, true);
 			entry.acknowledge(message);
+			entry.deltaShadow?.commit();
 		} catch (error) {
 			publishingAcknowledgement = false;
 			accepted = previousAccepted;
@@ -1460,6 +1464,21 @@ export function createLynxBackgroundTransport(
 				});
 			}
 			const preparedBatch = options.prepareWorkletBatch?.(batch) ?? batch;
+			const preparedDeltaShadow = deltaShadow?.prepare(preparedBatch) ?? null;
+			if (LYNX_PROFILE) {
+				const profile = lynxWireProfile();
+				if (preparedDeltaShadow === null) {
+					profile.deltaMisses++;
+				} else {
+					profile.deltaCommits++;
+					profile.deltaOps += preparedDeltaShadow.operations.length;
+					try {
+						profile.deltaBytes += JSON.stringify(preparedDeltaShadow.encoded).length;
+					} catch {
+						// The command self-check remains authoritative for diagnostics.
+					}
+				}
+			}
 			const commit: LynxTransportCommitMessage = {
 				...identity,
 				type: 'commit',
@@ -1507,6 +1526,7 @@ export function createLynxBackgroundTransport(
 						compactHostCount: null,
 						abortRequested: false,
 						deferredResponse: null,
+						deltaShadow: preparedDeltaShadow,
 					};
 					token.entry = entry;
 					pending.set(identity.version, entry);
