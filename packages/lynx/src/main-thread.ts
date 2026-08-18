@@ -9,6 +9,7 @@ import type {
 	UniversalTransportIdentity,
 } from 'octane/universal/native';
 import {
+	applyLynxFirstScreenDirect,
 	captureLynxFirstTree,
 	createLynxHostContainer,
 	createLynxHostDriver,
@@ -1898,10 +1899,16 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				page,
 				worklets: hostWorklets,
 			});
-			const prepared = prepareLynxHostBatch(source, result.batch);
-			prepared.apply();
-			if (!prepared.mutationStarted) {
-				throw new Error('Octane Lynx first-screen host batch did not cross its apply boundary.');
+			// Issue-58 L3: the first screen materializes through direct PAPI
+			// emission; trees the direct path declines (native lists) keep the
+			// staged batch path, which is also what the adoption capture below
+			// will settle as `skipped`.
+			if (!applyLynxFirstScreenDirect(source, result.nodes, result.batch)) {
+				const prepared = prepareLynxHostBatch(source, result.batch);
+				prepared.apply();
+				if (!prepared.mutationStarted) {
+					throw new Error('Octane Lynx first-screen host batch did not cross its apply boundary.');
+				}
 			}
 			const captured = captureLynxFirstTree(source);
 			if (captured === null) {
