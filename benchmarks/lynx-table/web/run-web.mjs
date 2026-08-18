@@ -52,6 +52,11 @@ const STORM_TIMEOUT_MS = 240_000;
 // legacy id vdom-ifr-et); vue-vapor is `vapor +b +ifr` (legacy id vapor-ifr).
 const ALL_CELLS = [
 	{ id: 'octane', bundle: path.join(root, 'app/dist/main.web.bundle') },
+	// octane-direct is the issue-#58 L0 direct-emission prototype (see
+	// prototype/README.md): the same workload behind the same driver, but the
+	// main-thread/background programs a `target: 'lynx'` backend would emit.
+	// Build it with `node prototype/build.mjs`; it is opt-in via --cells.
+	{ id: 'octane-direct', bundle: path.join(root, 'prototype/dist/main.web.bundle') },
 	{ id: 'vue-vdom', bundle: path.join(root, 'reference/vdom-ifr-et/main.web.bundle') },
 	{ id: 'vue-vapor', bundle: path.join(root, 'reference/vapor-ifr/main.web.bundle') },
 	{ id: 'react', bundle: path.join(root, 'reference/react/main.web.bundle') },
