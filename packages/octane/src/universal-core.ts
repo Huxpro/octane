@@ -1021,6 +1021,7 @@ import {
 	type UniversalHookUpdateQueue as KernelUniversalHookUpdateQueue,
 	type UniversalCommittedHookOwner as KernelCommittedHookOwner,
 	type UniversalDraftHookOwner as KernelDraftHookOwner,
+	type UniversalHookRootServices as KernelHookRootServices,
 	type UniversalTrackedThenable,
 	type UniversalTransitionUpdate,
 	type UniversalTransitionBatch as KernelUniversalTransitionBatch,
@@ -1106,6 +1107,7 @@ interface BoundaryOwner {
 
 interface RenderAttempt {
 	root: UniversalRootImpl<any, any>;
+	hookRoot: KernelHookRootServices<UniversalContext<any>>;
 	owner: DraftOwner;
 	scope: UniversalOwnerRecord | null;
 	owners: DraftOwner[];
@@ -2397,7 +2399,7 @@ function readOwnerContext<T>(
 			}
 		}
 	}
-	value = currentAttempt().root.readBridgeContext(context);
+	value = currentAttempt().hookRoot.readBridgeContext(context) as T;
 	if (trackMemoRead) CURRENT_MEMO_CONTEXT_READS?.set(context, value);
 	return value;
 }
@@ -5448,7 +5450,11 @@ export function useMemo<T>(compute: () => T, deps?: readonly unknown[] | null, s
 		owner.clonedHooks.add(resolved);
 		return value;
 	}
-	const warmed = takeUniversalWarmValue(owner.record.root, resolved, normalized);
+	const warmed = takeUniversalWarmValue(
+		currentAttempt().hookRoot.warmMemoToken,
+		resolved,
+		normalized,
+	);
 	const value =
 		warmed === NO_WARM_VALUE
 			? (compute as (...args: unknown[]) => T)(...(normalized ?? []))
@@ -5513,7 +5519,7 @@ export function useId(slot?: unknown): string {
 		const attempt = currentAttempt();
 		hook = {
 			kind: 'id',
-			value: attempt.root.formatUniversalId(attempt.nextUniversalId++),
+			value: attempt.hookRoot.formatId(attempt.nextUniversalId++),
 		};
 		owner.hooks.set(resolved, hook);
 		owner.clonedHooks.add(resolved);
@@ -5751,10 +5757,7 @@ interface UniversalWarmEntry {
 	available: boolean;
 }
 
-const UNIVERSAL_WARM_CACHES = new WeakMap<
-	UniversalRootImpl<any, any>,
-	Map<unknown, UniversalWarmEntry[]>
->();
+const UNIVERSAL_WARM_CACHES = new WeakMap<object, Map<unknown, UniversalWarmEntry[]>>();
 let CURRENT_UNIVERSAL_WARM: Map<unknown, UniversalWarmEntry[]> | null = null;
 let CURRENT_UNIVERSAL_WARM_CLAIMS: Set<object> | null = null;
 const ACTIVE_UNIVERSAL_WARM_PLANS: Array<() => void> = [];
@@ -5765,12 +5768,12 @@ const UNIVERSAL_WARM_DEPTH_CAP = 64;
 const NO_WARM_VALUE = Symbol('octane.universal.no-warm-value');
 
 function takeUniversalWarmValue(
-	root: UniversalRootImpl<any, any>,
+	rootToken: object,
 	slot: unknown,
 	deps: readonly unknown[] | null,
 ): unknown {
 	if (deps === null) return NO_WARM_VALUE;
-	const cache = UNIVERSAL_WARM_CACHES.get(root);
+	const cache = UNIVERSAL_WARM_CACHES.get(rootToken);
 	const entries = cache?.get(slot);
 	if (entries === undefined) return NO_WARM_VALUE;
 	for (let index = 0; index < entries.length; index++) {
@@ -5798,11 +5801,11 @@ export function useBatch(items: any[], warm?: () => void): void {
 	}
 	if (pending === null) return;
 	if (ACTIVE_UNIVERSAL_WARM_PLANS.length !== 0 || warm !== undefined) {
-		const root = currentAttempt().root;
-		let cache = UNIVERSAL_WARM_CACHES.get(root);
+		const rootToken = currentAttempt().hookRoot.warmMemoToken;
+		let cache = UNIVERSAL_WARM_CACHES.get(rootToken);
 		if (cache === undefined) {
 			cache = new Map();
-			UNIVERSAL_WARM_CACHES.set(root, cache);
+			UNIVERSAL_WARM_CACHES.set(rootToken, cache);
 		}
 		const previous = CURRENT_UNIVERSAL_WARM;
 		const previousClaims = CURRENT_UNIVERSAL_WARM_CLAIMS;
@@ -6424,10 +6427,13 @@ interface UniversalPortalHandleEntry {
 	pending: number;
 }
 
-class UniversalRootImpl<Container, PublicInstance> implements UniversalRoot<any> {
+class UniversalRootImpl<Container, PublicInstance>
+	implements UniversalRoot<any>, KernelHookRootServices<UniversalContext<any>>
+{
 	readonly renderer: string;
 	private readonly rootRecord: LogicalRecord;
 	private readonly universalIdRoot = NEXT_UNIVERSAL_ID_ROOT++;
+	readonly warmMemoToken = {};
 	private readonly resourceRoot = NEXT_RESOURCE_ROOT++;
 	private readonly portalRoot = NEXT_PORTAL_ROOT++;
 	private readonly transportRoot = NEXT_TRANSPORT_ROOT++;
@@ -6883,7 +6889,7 @@ class UniversalRootImpl<Container, PublicInstance> implements UniversalRoot<any>
 		return this.rootRecord;
 	}
 
-	formatUniversalId(index: number): string {
+	formatId(index: number): string {
 		// Cantor pairing keeps IDs distinct across roots without reserving draft
 		// IDs globally. The per-root index advances only when a transaction is
 		// accepted, so abandoned work can reuse the same opaque ID.
@@ -8175,6 +8181,7 @@ class UniversalRootImpl<Container, PublicInstance> implements UniversalRoot<any>
 		const previousWarmPlans = ACTIVE_UNIVERSAL_WARM_PLANS.slice();
 		const attempt: RenderAttempt = {
 			root: this,
+			hookRoot: this,
 			owner,
 			scope: target,
 			owners: [owner],
@@ -8206,7 +8213,7 @@ class UniversalRootImpl<Container, PublicInstance> implements UniversalRoot<any>
 		} catch (error) {
 			this.discardDraftOwners(attempt.owners);
 			if (error instanceof UniversalSuspense) {
-				UNIVERSAL_WARM_CACHES.delete(this);
+				UNIVERSAL_WARM_CACHES.delete(this.warmMemoToken);
 				return null;
 			}
 			// An error that escapes the scope can only be handled by a boundary
@@ -8214,7 +8221,7 @@ class UniversalRootImpl<Container, PublicInstance> implements UniversalRoot<any>
 			// materialize-time handling; without one the error is the caller's.
 			for (let ancestor = target.parent; ancestor !== null; ancestor = ancestor.parent) {
 				if (ancestor.isBoundary) {
-					UNIVERSAL_WARM_CACHES.delete(this);
+					UNIVERSAL_WARM_CACHES.delete(this.warmMemoToken);
 					return null;
 				}
 			}
@@ -8229,7 +8236,7 @@ class UniversalRootImpl<Container, PublicInstance> implements UniversalRoot<any>
 		}
 		if (attempt.retryThenables.size !== 0 || (attempt.treeFeatures & unsupported) !== 0) {
 			this.discardDraftOwners(attempt.owners);
-			UNIVERSAL_WARM_CACHES.delete(this);
+			UNIVERSAL_WARM_CACHES.delete(this.warmMemoToken);
 			return null;
 		}
 
@@ -8255,7 +8262,7 @@ class UniversalRootImpl<Container, PublicInstance> implements UniversalRoot<any>
 			scopePlacement = this.scopePhysicalPlacement(range);
 			if (scopePlacement === null) {
 				this.discardDraftOwners(attempt.owners);
-				UNIVERSAL_WARM_CACHES.delete(this);
+				UNIVERSAL_WARM_CACHES.delete(this.warmMemoToken);
 				return null;
 			}
 		}
@@ -8409,7 +8416,7 @@ class UniversalRootImpl<Container, PublicInstance> implements UniversalRoot<any>
 		// A fresh render is a new suspension episode. Keep consumed warm entries
 		// across automatic retries, but never let their tombstones suppress a later
 		// update or remount that returns to the same dependency values.
-		UNIVERSAL_WARM_CACHES.delete(this);
+		UNIVERSAL_WARM_CACHES.delete(this.warmMemoToken);
 		try {
 			if (
 				ownedTarget !== undefined &&
@@ -8484,6 +8491,7 @@ class UniversalRootImpl<Container, PublicInstance> implements UniversalRoot<any>
 		const previousWarmPlans = ACTIVE_UNIVERSAL_WARM_PLANS.slice();
 		const attempt: RenderAttempt = {
 			root: this,
+			hookRoot: this,
 			owner,
 			scope: null,
 			owners: [owner],

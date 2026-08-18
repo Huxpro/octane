@@ -369,6 +369,18 @@ in §3 and the extraction-first decision in §5.
   (7 samples × 200 public transitions) were 0.0559/0.0576 ms on the owner-seam
   base versus 0.0591/0.0579 ms here: the first-window difference did not
   reproduce, so this is equivalence evidence, not a performance claim.
+  The hook-root service slice removes hooks' remaining dependency on the full
+  universal root: `useId` calls injected `formatId`, warm memo caches are keyed
+  by an opaque per-root token, and context fallback calls injected
+  `readBridgeContext`. A render attempt carries the same root through this
+  narrow interface; the only new allocation is one cold token per root. The
+  public-root guard proves two hook slots receive distinct opaque IDs, and the
+  existing abort/reclaim, warm-stratum, and mixed-owner bridge suites stay
+  green. Same-window B/A/B/A `universal-leaf-update` was mixed: 4k scoped leaf
+  0.037/0.039 ms base versus 0.041/0.041 ms candidate; 4k clean-root
+  6.654/6.565 versus 6.628/6.093 ms, with dirty controls 33.87–36.97 ms. The
+  microsecond scoped difference has no whole-path corroboration; treat the
+  result as inconclusive and keep measuring, not as a performance claim.
 - **L3 (direct first-screen, first slice):** `renderFirstScreenNow` applies
   the rendered record tree straight to the Element PAPI
   (`applyLynxFirstScreenDirect`): no command staging, cloned record maps, or

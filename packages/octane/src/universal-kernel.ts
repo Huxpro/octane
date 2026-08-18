@@ -365,6 +365,13 @@ export interface UniversalDraftHookOwner<Hook = unknown> extends UniversalHookOw
 	needsRender: boolean;
 }
 
+/** Narrow root capabilities consumed by host-neutral hook implementations. */
+export interface UniversalHookRootServices<Context = unknown> {
+	readonly warmMemoToken: object;
+	formatId(index: number): string;
+	readBridgeContext(context: Context): unknown;
+}
+
 export type UniversalOwnerScheduler<Owner, Slot = unknown> = (owner: Owner, slot?: Slot) => void;
 
 /**

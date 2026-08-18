@@ -18,6 +18,7 @@ import {
 	universalPlan,
 	universalValue,
 	useReducer,
+	useId,
 	useState,
 	useTransition,
 } from '../src/universal.js';
@@ -136,6 +137,29 @@ describe('universal kernel boundary', () => {
 		expect(renders).toContain('true:0');
 		expect(renders.at(-1)).toBe('false:1');
 		expect(container.children.map((child) => child.props.value)).toEqual([false, 1]);
+		root.unmount();
+	});
+
+	it('allocates distinct opaque ids through the injected root service', () => {
+		const container = createObjectContainer();
+		const root = createUniversalRoot(container, createObjectDriver());
+		const plan = universalPlan('object', {
+			kind: 'host',
+			type: 'ids',
+			bindings: [
+				['first', 0],
+				['second', 1],
+			],
+		});
+		const Component = defineUniversalComponent('object', () =>
+			universalValue(plan, [useId('first'), useId('second')]),
+		);
+
+		root.render(Component, undefined);
+		const { first, second } = container.children[0].props;
+		expect(first).toMatch(/^:octane-u[0-9a-z]+:$/);
+		expect(second).toMatch(/^:octane-u[0-9a-z]+:$/);
+		expect(second).not.toBe(first);
 		root.unmount();
 	});
 });
