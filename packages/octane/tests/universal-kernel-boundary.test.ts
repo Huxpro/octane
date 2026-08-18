@@ -14,10 +14,12 @@ import {
 	createUniversalRoot,
 	defineUniversalComponent,
 	flushUniversalSync,
+	startTransition,
 	universalPlan,
 	universalValue,
 	useReducer,
 	useState,
+	useTransition,
 } from '../src/universal.js';
 
 describe('universal kernel boundary', () => {
@@ -102,5 +104,38 @@ describe('universal kernel boundary', () => {
 		dispatch(9);
 		await Promise.resolve();
 		expect(container.commits).toHaveLength(commitsAfterUnmount);
+	});
+
+	it('publishes one transition pending lifecycle before the staged owner update', async () => {
+		const container = createObjectContainer();
+		const root = createUniversalRoot(container, createObjectDriver());
+		const pendingPlan = universalPlan('object', {
+			kind: 'host',
+			type: 'pending',
+			bindings: [['value', 0]],
+		});
+		const countPlan = universalPlan('object', {
+			kind: 'host',
+			type: 'count',
+			bindings: [['value', 0]],
+		});
+		const renders: string[] = [];
+		let begin!: () => void;
+		const Component = defineUniversalComponent('object', () => {
+			const [count, setCount] = useState(0, 'count');
+			const [pending] = useTransition('transition');
+			begin = () => startTransition(() => setCount(1));
+			renders.push(`${pending}:${count}`);
+			return [universalValue(pendingPlan, [pending]), universalValue(countPlan, [count])];
+		});
+
+		root.render(Component, undefined);
+		begin();
+		for (let index = 0; index < 6; index++) await Promise.resolve();
+
+		expect(renders).toContain('true:0');
+		expect(renders.at(-1)).toBe('false:1');
+		expect(container.children.map((child) => child.props.value)).toEqual([false, 1]);
+		root.unmount();
 	});
 });

@@ -110,6 +110,235 @@ export interface UniversalTransitionUpdate {
 	readonly kind: 'state' | 'reducer';
 }
 
+export interface UniversalTransitionBatch<Owner, Root> {
+	readonly updates: Map<Owner, Map<unknown, UniversalTransitionUpdate>>;
+	readonly roots: Set<Root>;
+	pendingActions: number;
+	pendingSignals: number;
+	closed: boolean;
+	promotionScheduled: boolean;
+	promoted: boolean;
+	settled: boolean;
+}
+
+export interface UniversalTransitionServices<Owner extends { disposed: boolean }, Root> {
+	rootFor(owner: Owner): Root;
+	hasQueuedBatch(
+		owner: Owner,
+		slot: unknown,
+		batch: UniversalTransitionBatch<Owner, Root>,
+	): boolean;
+	enqueueUpdate(
+		owner: Owner,
+		slot: unknown,
+		kind: 'state' | 'reducer',
+		value: unknown,
+		batch: UniversalTransitionBatch<Owner, Root>,
+	): void;
+	scheduleTransition(root: Root, batch: UniversalTransitionBatch<Owner, Root>): void;
+	discardTransitionBatch(root: Root, batch: UniversalTransitionBatch<Owner, Root>): void;
+	scheduleMicrotask(root: Root, callback: () => void): void;
+	scheduleFallbackMicrotask(callback: () => void): void;
+	withDiscreteNotifications(notify: () => void): void;
+}
+
+export interface UniversalTransitionController<Owner extends { disposed: boolean }, Root> {
+	readonly pendingCount: number;
+	subscribe(listener: () => void): () => void;
+	batchForUpdate(discrete: boolean): UniversalTransitionBatch<Owner, Root> | null;
+	stageUpdate(
+		batch: UniversalTransitionBatch<Owner, Root>,
+		owner: Owner,
+		slot: unknown,
+		kind: 'state' | 'reducer',
+		value: unknown,
+	): void;
+	finishRoot(batch: UniversalTransitionBatch<Owner, Root>, root: Root): void;
+	start(run: () => void | Promise<unknown>): void;
+}
+
+/** Host-neutral transition batch ownership and promotion lifecycle. */
+export function createUniversalTransitionController<Owner extends { disposed: boolean }, Root>(
+	services: UniversalTransitionServices<Owner, Root>,
+): UniversalTransitionController<Owner, Root> {
+	type Batch = UniversalTransitionBatch<Owner, Root>;
+	let depth = 0;
+	let asyncCount = 0;
+	let pendingCount = 0;
+	let activeBatch: Batch | null = null;
+	let inFlightBatch: Batch | null = null;
+	const listeners = new Set<() => void>();
+
+	const tickPending = (delta: number): void => {
+		pendingCount = Math.max(0, pendingCount + delta);
+		services.withDiscreteNotifications(() => {
+			for (const listener of [...listeners]) listener();
+		});
+	};
+	const settleBatch = (batch: Batch): void => {
+		if (batch.settled) return;
+		batch.settled = true;
+		if (activeBatch === batch) activeBatch = null;
+		if (inFlightBatch === batch) inFlightBatch = null;
+		tickPending(-batch.pendingSignals);
+	};
+
+	let queuePromotion!: (batch: Batch) => void;
+	const finishRoot = (batch: Batch, root: Root): void => {
+		if (batch.settled) return;
+		const rehomePromotion = !batch.promoted && batch.promotionScheduled;
+		services.discardTransitionBatch(root, batch);
+		batch.roots.delete(root);
+		if (batch.closed && batch.pendingActions === 0 && batch.roots.size === 0) {
+			settleBatch(batch);
+		} else if (rehomePromotion) {
+			batch.promotionScheduled = false;
+			queuePromotion(batch);
+		}
+	};
+	const promoteBatch = (batch: Batch): void => {
+		if (batch.promoted || batch.settled || !batch.closed || batch.pendingActions !== 0) return;
+		batch.promoted = true;
+		const scheduledRoots = new Set<Root>();
+		for (const [owner, bySlot] of batch.updates) {
+			if (owner.disposed) continue;
+			let hasUpdates = false;
+			for (const slot of bySlot.keys()) {
+				if (services.hasQueuedBatch(owner, slot, batch)) {
+					hasUpdates = true;
+					break;
+				}
+			}
+			if (!hasUpdates) continue;
+			const root = services.rootFor(owner);
+			if (!scheduledRoots.has(root)) {
+				scheduledRoots.add(root);
+				services.scheduleTransition(root, batch);
+			}
+		}
+		batch.updates.clear();
+		for (const root of [...batch.roots]) {
+			if (!scheduledRoots.has(root)) finishRoot(batch, root);
+		}
+		if (batch.roots.size === 0) settleBatch(batch);
+	};
+	queuePromotion = (batch: Batch): void => {
+		if (
+			batch.promotionScheduled ||
+			batch.promoted ||
+			batch.settled ||
+			!batch.closed ||
+			batch.pendingActions !== 0
+		) {
+			return;
+		}
+		batch.promotionScheduled = true;
+		const firstOwner = batch.updates.keys().next().value as Owner | undefined;
+		const promote = () => {
+			batch.promotionScheduled = false;
+			promoteBatch(batch);
+		};
+		if (firstOwner !== undefined && !firstOwner.disposed) {
+			services.scheduleMicrotask(services.rootFor(firstOwner), promote);
+		} else {
+			services.scheduleFallbackMicrotask(promote);
+		}
+	};
+
+	return {
+		get pendingCount() {
+			return pendingCount;
+		},
+		subscribe(listener) {
+			listeners.add(listener);
+			return () => listeners.delete(listener);
+		},
+		batchForUpdate(discrete) {
+			if (depth > 0) return activeBatch;
+			if (discrete) return null;
+			return asyncCount > 0 ? inFlightBatch : null;
+		},
+		stageUpdate(batch, owner, slot, kind, value) {
+			services.enqueueUpdate(owner, slot, kind, value, batch);
+			batch.roots.add(services.rootFor(owner));
+			let bySlot = batch.updates.get(owner);
+			if (bySlot === undefined) batch.updates.set(owner, (bySlot = new Map()));
+			const update = bySlot.get(slot);
+			if (update === undefined) bySlot.set(slot, { kind });
+			else if (update.kind !== kind) {
+				throw new Error('A universal transition cannot stage incompatible hook updates.');
+			}
+		},
+		finishRoot,
+		start(run) {
+			if (typeof run !== 'function') throw new TypeError('startTransition expected a function.');
+			tickPending(+1);
+			const parentBatch = activeBatch;
+			const pendingBatch = inFlightBatch;
+			const batch: Batch = parentBatch ??
+				pendingBatch ?? {
+					updates: new Map(),
+					roots: new Set(),
+					pendingActions: 0,
+					pendingSignals: 0,
+					closed: false,
+					promotionScheduled: false,
+					promoted: false,
+					settled: false,
+				};
+			const ownsBatch = parentBatch === null && pendingBatch === null;
+			batch.pendingSignals++;
+			activeBatch = batch;
+			depth++;
+			let result: void | Promise<unknown>;
+			let then: ((resolve: () => void, reject: () => void) => unknown) | null = null;
+			try {
+				result = run();
+				if ((result !== null && typeof result === 'object') || typeof result === 'function') {
+					const candidate = (result as any).then;
+					if (typeof candidate === 'function') then = candidate;
+				}
+				if (then !== null) {
+					batch.pendingActions++;
+					inFlightBatch = batch;
+				}
+			} catch (error) {
+				batch.pendingSignals--;
+				tickPending(-1);
+				if (ownsBatch) {
+					batch.closed = true;
+					queuePromotion(batch);
+				}
+				throw error;
+			} finally {
+				activeBatch = parentBatch;
+				depth--;
+			}
+			if (ownsBatch) batch.closed = true;
+			if (then !== null) {
+				asyncCount++;
+				let settled = false;
+				const settle = () => {
+					if (settled) return;
+					settled = true;
+					batch.pendingActions--;
+					asyncCount--;
+					if (batch.pendingActions === 0 && inFlightBatch === batch) inFlightBatch = null;
+					queuePromotion(batch);
+				};
+				try {
+					then.call(result, settle, settle);
+				} catch (error) {
+					settle();
+					throw error;
+				}
+			} else {
+				queuePromotion(batch);
+			}
+		},
+	};
+}
+
 export interface UniversalHookUpdateQueue<Batch = unknown> extends Array<unknown> {
 	kind?: 'state' | 'reducer';
 	baseState?: unknown;
