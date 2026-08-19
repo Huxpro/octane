@@ -317,6 +317,19 @@ in §3 and the extraction-first decision in §5.
 
 ## 8. Landed increments
 
+- **L2 (typed delta protocol):** `packages/lynx/src/core/delta-protocol.ts`
+  defines the versioned, flat, self-delimiting transport planned in §3.4.
+  `RUN`, `SET`, `REMOVE`, `MOVE`, and `BRANCH` round-trip through explicit
+  operation arities; `REMOVE` distinguishes instance and range addresses,
+  and range/branch member counts frame their trailing values. The decoder
+  validates only the envelope, version, opcode, arity, and typed header fields;
+  slot values remain opaque and are never recursively walked. This slice is
+  deliberately not connected to the runtime. Same-window deterministic
+  `lynx-table` runs against the #65 stack were identical at 1k and 10k for
+  create, update10th, select, swap, update storm, and select storm; runtime
+  performance remains **not measured** until background emission consumes the
+  protocol.
+
 - **L1 (compiler backend, first slice):** `target: 'lynx'` is accepted by the
   renderer config (v5) and routed through the shared universal front-end;
   eligible host-only templates emit create functions + slot-kind tables, and
