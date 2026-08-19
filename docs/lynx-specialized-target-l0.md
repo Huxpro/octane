@@ -448,6 +448,22 @@ in §3 and the extraction-first decision in §5.
   this is a no-regression result, not a speedup.** Raw bundle grows 506 B on
   489 KB.
 
+- **L3 (direct first-screen, event-channel refusal).** The staged path runs
+  `assertNoMainThreadEventCollision` over the batch's final host set during
+  prepare, so a host carrying both a main-thread worklet and a background
+  listener on one native channel is refused at zero PAPI cost. The direct path
+  has no prepare stage and skipped the check entirely, so such a page painted
+  and the background token silently superseded the main-thread handler —
+  reported or swallowed depending on whether an unrelated part of the page used
+  a native `<list>`, which is what makes the direct applier decline (#84). It
+  now pre-walks the tree and refuses before mutating, checking only hosts the
+  batch gave a listener and skipping the walk entirely when the page has none.
+  Same-window FCP@10k, n=5, quiet host: 1798.7 ms (1738.8–1815.8) without the
+  pre-walk versus 1752.0 ms (1701.8–2107.5) with it, floor 1102.2 ms — ranges
+  overlap, so **no measurable cost**. Raw bundle grows 219 B. Absolute
+  milliseconds are not comparable with the depth-fix window above; only the
+  within-window ratios are.
+
 - **L3 (direct first-screen, first slice):** `renderFirstScreenNow` applies
   the rendered record tree straight to the Element PAPI
   (`applyLynxFirstScreenDirect`): no command staging, cloned record maps, or

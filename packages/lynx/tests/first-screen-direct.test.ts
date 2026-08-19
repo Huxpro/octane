@@ -407,6 +407,79 @@ describe('direct first-screen applier', () => {
 		]);
 	});
 
+	// A main-thread worklet and a background listener on one native channel:
+	// whichever is installed second silently supersedes the other, so the staged
+	// path refuses the host during prepare, before any PAPI call. The direct
+	// path has no prepare stage and used to paint the page anyway, leaving the
+	// main-thread handler installed and then immediately overwritten — and
+	// whether the mistake was reported at all then depended on whether some
+	// unrelated part of the page had a native `<list>`, since that is what makes
+	// the direct applier decline.
+	it('refuses a main-thread/background event collision before touching PAPI', () => {
+		const tap = { _wkltId: 'card.tsrx:tap', _c: {} };
+		const roots: LynxFirstScreenDirectNode[] = [
+			{
+				kind: 'host',
+				id: 1,
+				type: 'view',
+				props: {},
+				children: [
+					{
+						kind: 'host',
+						id: 2,
+						type: 'view',
+						props: { 'main-thread:bindtap': tap },
+						children: [],
+					},
+				],
+			},
+		];
+		const batch = {
+			renderer: 'lynx',
+			version: 1,
+			commands: [
+				{ op: 'event', id: 2, type: 'bindtap', listener: { id: 7, priority: 'discrete' } },
+			],
+		} as unknown as Parameters<typeof applyLynxFirstScreenDirect>[2];
+
+		const papi = createFakePAPI();
+		const container = createLynxHostContainer(papi, { root: 1 });
+		expect(() => applyLynxFirstScreenDirect(container, roots, batch)).toThrowError(
+			/main-thread event "main-thread:bindtap" conflicts with background event "bindtap"/,
+		);
+		// Refused, not half-painted: the page is untouched and nothing flushed.
+		expect(papi.pages[0]!.children).toEqual([]);
+		expect(papi.flushes()).toBe(0);
+	});
+
+	it('does not reject a main-thread handler on a channel no listener shares', () => {
+		const tap = { _wkltId: 'card.tsrx:tap', _c: {} };
+		const roots: LynxFirstScreenDirectNode[] = [
+			{
+				kind: 'host',
+				id: 1,
+				type: 'view',
+				props: { 'main-thread:bindtap': tap },
+				children: [],
+			},
+		];
+		// Same host, different native channel: not a collision. Installing the
+		// worklet needs a registry this container has no reason to own, so the
+		// assertion is scoped to the rejection under test rather than to paint.
+		const batch = {
+			renderer: 'lynx',
+			version: 1,
+			commands: [
+				{ op: 'event', id: 1, type: 'bindlongpress', listener: { id: 7, priority: 'discrete' } },
+			],
+		} as unknown as Parameters<typeof applyLynxFirstScreenDirect>[2];
+
+		const container = createLynxHostContainer(createFakePAPI(), { root: 1 });
+		expect(() => applyLynxFirstScreenDirect(container, roots, batch)).not.toThrowError(
+			/conflicts with background event/,
+		);
+	});
+
 	it('declines native-list trees so the staged path keeps owning them', () => {
 		const listResult = {
 			batch: Object.freeze({ renderer: 'lynx', version: 1, commands: Object.freeze([]) }),
