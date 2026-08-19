@@ -1328,16 +1328,22 @@ function applyDenseScalarHostProps<Node extends LynxElementRef>(
 	if (classes !== '') papi.setClasses(node, classes);
 }
 
-function assertNoMainThreadEventCollision(
+/**
+ * A main-thread worklet and a background listener cannot share one native
+ * channel: whichever is installed second silently supersedes the other. Both
+ * the staged and the direct first-screen path refuse such a host before
+ * touching the Element PAPI, so the authoring mistake is reported rather than
+ * swallowed, and reported the same way whichever applier owns the page.
+ */
+function assertNoMainThreadEventCollisionForTypes(
 	props: Readonly<Record<string, unknown>>,
-	events: ReadonlyMap<string, UniversalEventListenerDescriptor>,
+	types: Iterable<string>,
 ): void {
-	if (events.size === 0) return;
 	for (const name of Object.keys(props)) {
 		if (props[name] === null || props[name] === undefined) continue;
 		const main = parseLynxMainThreadEventProp(name);
 		if (main === null) continue;
-		for (const type of events.keys()) {
+		for (const type of types) {
 			const ordinary = parseLynxNativeEventProp(type);
 			if (ordinary?.type !== main.type || ordinary.name !== main.name) continue;
 			throw hostError(
@@ -1345,6 +1351,14 @@ function assertNoMainThreadEventCollision(
 			);
 		}
 	}
+}
+
+function assertNoMainThreadEventCollision(
+	props: Readonly<Record<string, unknown>>,
+	events: ReadonlyMap<string, UniversalEventListenerDescriptor>,
+): void {
+	if (events.size === 0) return;
+	assertNoMainThreadEventCollisionForTypes(props, events.keys());
 }
 
 function cloneRecord<Node extends LynxElementRef>(
@@ -2936,6 +2950,29 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			eventsByHost.set(command.id, entries);
 		}
 		entries.push([command.type, command.listener]);
+	}
+	// The staged path runs this over the batch's final host set during prepare,
+	// so a collision costs zero PAPI calls. The direct path has no prepare stage,
+	// so it pre-walks: refusing after the walk has begun would leave a
+	// half-painted page, which is exactly the state the staged path never
+	// produces. Only hosts the batch gave a background listener can collide, and
+	// a page with no background listeners at all skips the walk entirely.
+	if (eventsByHost.size !== 0) {
+		const pending: (readonly LynxFirstScreenDirectNode[])[] = [roots];
+		while (pending.length !== 0) {
+			for (const node of pending.pop()!) {
+				if (node.kind === 'host' && node.props !== undefined) {
+					const entries = eventsByHost.get(node.id);
+					if (entries !== undefined) {
+						assertNoMainThreadEventCollisionForTypes(
+							node.props,
+							entries.map(([type]) => type),
+						);
+					}
+				}
+				if (node.children.length !== 0) pending.push(node.children);
+			}
+		}
 	}
 	const papi = state.papi;
 	const append =
