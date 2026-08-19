@@ -1023,6 +1023,7 @@ import {
 	type UniversalDraftHookOwner as KernelDraftHookOwner,
 	type UniversalTrackedThenable,
 	type UniversalTransitionUpdate,
+	type UniversalTransitionBatch as KernelUniversalTransitionBatch,
 	type UniversalVisibility,
 	deactivateEffectEventCells,
 	depsEqual,
@@ -1031,6 +1032,7 @@ import {
 	runEffectCreate,
 	trackUniversalThenable,
 	createScheduleOwner,
+	createUniversalTransitionController,
 } from './universal-kernel.js';
 
 export type { LinkedStateOptions, LinkedStatePrevious } from './universal-kernel.js';
@@ -1220,13 +1222,7 @@ const SCHEDULED_UNIVERSAL_ROOTS = new Set<UniversalRootImpl<any, any>>();
 const PENDING_UNIVERSAL_PASSIVE_ROOTS = new Set<UniversalRootImpl<any, any>>();
 let UNIVERSAL_SYNC_DEPTH = 0;
 let UNIVERSAL_COMMIT_TASK_DEPTH = 0;
-let UNIVERSAL_TRANSITION_DEPTH = 0;
-let UNIVERSAL_ASYNC_TRANSITION_COUNT = 0;
 let UNIVERSAL_DISCRETE_EVENT_DEPTH = 0;
-let UNIVERSAL_TRANSITION_PENDING_COUNT = 0;
-let ACTIVE_UNIVERSAL_TRANSITION_BATCH: UniversalTransitionBatch | null = null;
-let IN_FLIGHT_UNIVERSAL_TRANSITION_BATCH: UniversalTransitionBatch | null = null;
-const UNIVERSAL_TRANSITION_LISTENERS = new Set<() => void>();
 const UNIVERSAL_SYNC_DRAIN_LIMIT = 100;
 let NEXT_HOOK_SLOT = 0;
 let NEXT_OWNER_ID = 1;
@@ -1242,16 +1238,10 @@ type AppliedUniversalUrgentUpdates = KernelAppliedUniversalUrgentUpdates<Univers
 type AppliedUniversalLaneUpdates = KernelAppliedUniversalLaneUpdates<UniversalTransitionBatch>;
 type AppliedUniversalHookUpdates = KernelAppliedUniversalHookUpdates<UniversalTransitionBatch>;
 
-interface UniversalTransitionBatch {
-	readonly updates: Map<UniversalOwnerRecord, Map<unknown, UniversalTransitionUpdate>>;
-	readonly roots: Set<UniversalRootImpl<any, any>>;
-	pendingActions: number;
-	pendingSignals: number;
-	closed: boolean;
-	promotionScheduled: boolean;
-	promoted: boolean;
-	settled: boolean;
-}
+type UniversalTransitionBatch = KernelUniversalTransitionBatch<
+	UniversalOwnerRecord,
+	UniversalRootImpl<any, any>
+>;
 
 const EMPTY_UNIVERSAL_TRANSITION_BATCHES: ReadonlySet<UniversalTransitionBatch> = new Set();
 
@@ -4763,120 +4753,15 @@ export function withSlot<T>(slot: unknown, fn: (...args: any[]) => T, ...args: a
 	}
 }
 
-function createUniversalTransitionBatch(): UniversalTransitionBatch {
-	const batch: UniversalTransitionBatch = {
-		updates: new Map(),
-		roots: new Set(),
-		pendingActions: 0,
-		pendingSignals: 0,
-		closed: false,
-		promotionScheduled: false,
-		promoted: false,
-		settled: false,
-	};
-	return batch;
-}
-
-function tickUniversalTransitionCount(delta: number): void {
-	UNIVERSAL_TRANSITION_PENDING_COUNT += delta;
-	if (UNIVERSAL_TRANSITION_PENDING_COUNT < 0) UNIVERSAL_TRANSITION_PENDING_COUNT = 0;
-	UNIVERSAL_DISCRETE_EVENT_DEPTH++;
-	try {
-		for (const listener of [...UNIVERSAL_TRANSITION_LISTENERS]) listener();
-	} finally {
-		UNIVERSAL_DISCRETE_EVENT_DEPTH--;
-	}
-}
-
-function settleUniversalTransitionBatch(batch: UniversalTransitionBatch): void {
-	if (batch.settled) return;
-	batch.settled = true;
-	if (ACTIVE_UNIVERSAL_TRANSITION_BATCH === batch) ACTIVE_UNIVERSAL_TRANSITION_BATCH = null;
-	if (IN_FLIGHT_UNIVERSAL_TRANSITION_BATCH === batch) {
-		IN_FLIGHT_UNIVERSAL_TRANSITION_BATCH = null;
-	}
-	tickUniversalTransitionCount(-batch.pendingSignals);
-}
-
 function finishUniversalTransitionRoot(
 	batch: UniversalTransitionBatch,
 	root: UniversalRootImpl<any, any>,
 ): void {
-	if (batch.settled) return;
-	const rehomePromotion = !batch.promoted && batch.promotionScheduled;
-	root.discardTransitionBatch(batch);
-	batch.roots.delete(root);
-	if (batch.closed && batch.pendingActions === 0 && batch.roots.size === 0) {
-		settleUniversalTransitionBatch(batch);
-	} else if (rehomePromotion) {
-		// The original promotion callback may belong to a root that can no longer
-		// run it. Re-home the callback onto the first remaining staged owner; the
-		// stale callback is harmless because promotion and settlement are idempotent.
-		batch.promotionScheduled = false;
-		queueUniversalTransitionPromotion(batch);
-	}
-}
-
-function promoteUniversalTransitionBatch(batch: UniversalTransitionBatch): void {
-	if (batch.promoted || batch.settled || !batch.closed || batch.pendingActions !== 0) return;
-	batch.promoted = true;
-	const scheduledRoots = new Set<UniversalRootImpl<any, any>>();
-	for (const [owner, bySlot] of batch.updates) {
-		if (owner.disposed) continue;
-		let hasUpdates = false;
-		for (const slot of bySlot.keys()) {
-			const queue = owner.updates.get(slot);
-			if (queue?.batches?.some((queuedBatch) => queuedBatch === batch)) {
-				hasUpdates = true;
-				break;
-			}
-		}
-		if (!hasUpdates) continue;
-		if (!scheduledRoots.has(owner.root)) {
-			scheduledRoots.add(owner.root);
-			owner.root.scheduleTransition(batch);
-		}
-	}
-	// Promoted updates now live in their owner-local ordered queues. Retaining this
-	// staging index until every root settles would unnecessarily keep owners and
-	// updater closures from already-committed roots alive.
-	batch.updates.clear();
-	for (const root of [...batch.roots]) {
-		if (!scheduledRoots.has(root)) finishUniversalTransitionRoot(batch, root);
-	}
-	if (batch.roots.size === 0) settleUniversalTransitionBatch(batch);
-}
-
-function queueUniversalTransitionPromotion(batch: UniversalTransitionBatch): void {
-	if (
-		batch.promotionScheduled ||
-		batch.promoted ||
-		batch.settled ||
-		!batch.closed ||
-		batch.pendingActions !== 0
-	) {
-		return;
-	}
-	batch.promotionScheduled = true;
-	const firstOwner = batch.updates.keys().next().value as UniversalOwnerRecord | undefined;
-	const promote = () => {
-		batch.promotionScheduled = false;
-		promoteUniversalTransitionBatch(batch);
-	};
-	if (firstOwner !== undefined && !firstOwner.disposed) {
-		firstOwner.root.__scheduleMicrotask(promote);
-		return;
-	}
-	const scheduler = readGlobalMicrotaskScheduler();
-	if (scheduler !== undefined) scheduler.call(globalThis, promote);
-	else void Promise.resolve().then(promote);
+	UNIVERSAL_TRANSITIONS.finishRoot(batch, root);
 }
 
 function universalTransitionBatchForUpdate(): UniversalTransitionBatch | null {
-	if (UNIVERSAL_TRANSITION_DEPTH > 0) return ACTIVE_UNIVERSAL_TRANSITION_BATCH;
-	if (UNIVERSAL_DISCRETE_EVENT_DEPTH > 0) return null;
-	if (UNIVERSAL_ASYNC_TRANSITION_COUNT > 0) return IN_FLIGHT_UNIVERSAL_TRANSITION_BATCH;
-	return null;
+	return UNIVERSAL_TRANSITIONS.batchForUpdate(UNIVERSAL_DISCRETE_EVENT_DEPTH > 0);
 }
 
 function stageUniversalTransitionUpdate(
@@ -4886,20 +4771,7 @@ function stageUniversalTransitionUpdate(
 	kind: 'state' | 'reducer',
 	value: unknown,
 ): void {
-	enqueueUniversalHookUpdate(owner, slot, kind, value, batch);
-	batch.roots.add(owner.root);
-	let bySlot = batch.updates.get(owner);
-	if (bySlot === undefined) {
-		bySlot = new Map();
-		batch.updates.set(owner, bySlot);
-	}
-	let update = bySlot.get(slot);
-	if (update === undefined) {
-		update = { kind };
-		bySlot.set(slot, update);
-	} else if (update.kind !== kind) {
-		throw new Error('A universal transition cannot stage incompatible hook updates.');
-	}
+	UNIVERSAL_TRANSITIONS.stageUpdate(batch, owner, slot, kind, value);
 }
 
 function enqueueUniversalHookUpdate(
@@ -4938,6 +4810,33 @@ function enqueueUniversalHookUpdate(
 	queue.batches?.push(batch);
 	queue.rebases?.push(false);
 }
+
+const UNIVERSAL_TRANSITIONS = createUniversalTransitionController<
+	UniversalOwnerRecord,
+	UniversalRootImpl<any, any>
+>({
+	rootFor: (owner) => owner.root,
+	hasQueuedBatch: (owner, slot, batch) =>
+		owner.updates.get(slot)?.batches?.some((queuedBatch) => queuedBatch === batch) === true,
+	enqueueUpdate: (owner, slot, kind, value, batch) =>
+		enqueueUniversalHookUpdate(owner, slot, kind, value, batch),
+	scheduleTransition: (root, batch) => root.scheduleTransition(batch),
+	discardTransitionBatch: (root, batch) => root.discardTransitionBatch(batch),
+	scheduleMicrotask: (root, callback) => root.__scheduleMicrotask(callback),
+	scheduleFallbackMicrotask(callback) {
+		const scheduler = readGlobalMicrotaskScheduler();
+		if (scheduler !== undefined) scheduler.call(globalThis, callback);
+		else void Promise.resolve().then(callback);
+	},
+	withDiscreteNotifications(notify) {
+		UNIVERSAL_DISCRETE_EVENT_DEPTH++;
+		try {
+			notify();
+		} finally {
+			UNIVERSAL_DISCRETE_EVENT_DEPTH--;
+		}
+	},
+});
 
 const scheduleOwner = createScheduleOwner<UniversalOwnerRecord>((owner, slot) => {
 	if (typeof __OCTANE_PROFILE_ENABLED__ !== 'undefined' && __OCTANE_PROFILE_ENABLED__) {
@@ -5707,13 +5606,13 @@ export function useDeferredValue<T>(value: T, ...initialValueAndSlot: unknown[])
 export function useTransition(slot?: unknown): [boolean, typeof startTransition] {
 	const base = resolveHookSlot(slot);
 	return withSlot(base, () => {
-		const [pending, setPending] = useState(UNIVERSAL_TRANSITION_PENDING_COUNT > 0, 'pending');
+		const [pending, setPending] = useState(UNIVERSAL_TRANSITIONS.pendingCount > 0, 'pending');
 		useLayoutEffect(
 			() => {
-				const update = () => setPending(UNIVERSAL_TRANSITION_PENDING_COUNT > 0);
-				UNIVERSAL_TRANSITION_LISTENERS.add(update);
+				const update = () => setPending(UNIVERSAL_TRANSITIONS.pendingCount > 0);
+				const unsubscribe = UNIVERSAL_TRANSITIONS.subscribe(update);
 				update();
-				return () => UNIVERSAL_TRANSITION_LISTENERS.delete(update);
+				return unsubscribe;
 			},
 			[],
 			'subscribe',
@@ -6159,62 +6058,7 @@ export function useEffectEvent<T extends (...args: any[]) => any>(fn: T, slot?: 
 export function useDebugValue(): void {}
 
 export function startTransition(fn: () => void | Promise<unknown>): void {
-	if (typeof fn !== 'function') throw new TypeError('startTransition expected a function.');
-	tickUniversalTransitionCount(+1);
-	const parentBatch = ACTIVE_UNIVERSAL_TRANSITION_BATCH;
-	const pendingBatch = IN_FLIGHT_UNIVERSAL_TRANSITION_BATCH;
-	const batch = parentBatch ?? pendingBatch ?? createUniversalTransitionBatch();
-	const ownsBatch = parentBatch === null && pendingBatch === null;
-	batch.pendingSignals++;
-	ACTIVE_UNIVERSAL_TRANSITION_BATCH = batch;
-	UNIVERSAL_TRANSITION_DEPTH++;
-	let result: void | Promise<unknown>;
-	let then: ((resolve: () => void, reject: () => void) => unknown) | null = null;
-	try {
-		result = fn();
-		if ((result !== null && typeof result === 'object') || typeof result === 'function') {
-			const candidate = (result as any).then;
-			if (typeof candidate === 'function') then = candidate;
-		}
-		if (then !== null) {
-			batch.pendingActions++;
-			IN_FLIGHT_UNIVERSAL_TRANSITION_BATCH = batch;
-		}
-	} catch (error) {
-		batch.pendingSignals--;
-		tickUniversalTransitionCount(-1);
-		if (ownsBatch) {
-			batch.closed = true;
-			queueUniversalTransitionPromotion(batch);
-		}
-		throw error;
-	} finally {
-		ACTIVE_UNIVERSAL_TRANSITION_BATCH = parentBatch;
-		UNIVERSAL_TRANSITION_DEPTH--;
-	}
-	if (ownsBatch) batch.closed = true;
-	if (then !== null) {
-		UNIVERSAL_ASYNC_TRANSITION_COUNT++;
-		let settled = false;
-		const settle = () => {
-			if (settled) return;
-			settled = true;
-			batch.pendingActions--;
-			UNIVERSAL_ASYNC_TRANSITION_COUNT--;
-			if (batch.pendingActions === 0 && IN_FLIGHT_UNIVERSAL_TRANSITION_BATCH === batch) {
-				IN_FLIGHT_UNIVERSAL_TRANSITION_BATCH = null;
-			}
-			queueUniversalTransitionPromotion(batch);
-		};
-		try {
-			then.call(result, settle, settle);
-		} catch (error) {
-			settle();
-			throw error;
-		}
-	} else {
-		queueUniversalTransitionPromotion(batch);
-	}
+	UNIVERSAL_TRANSITIONS.start(fn);
 }
 
 export function requestFormReset(): void {

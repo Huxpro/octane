@@ -357,6 +357,18 @@ in §3 and the extraction-first decision in §5.
   base versus 0.040/0.040 ms on this slice, while the 4k clean-root control was
   6.764/6.571 versus 6.927/6.615 ms (dirty control remained 33–35 ms). Treat
   those small sign/magnitude changes as noise, not a performance claim.
+  The transition-batch slice moves active/in-flight state, nested/async
+  entanglement, pending listeners, promotion, cross-root settlement, and
+  promotion re-homing into a host-neutral controller. Universal core injects
+  owner-to-root lookup, queue membership, update enqueueing,
+  `scheduleTransition`, `discardTransitionBatch`, root/fallback microtasks, and
+  the discrete notification scope; root implementation and hook-queue replay
+  remain renderer-owned. A public-root guard pins pending `false → true →
+  false` around the staged `0 → 1` owner update; deliberate microtask-service
+  removal leaves it stuck at `true/0`. Same-window B/A/B/A transition medians
+  (7 samples × 200 public transitions) were 0.0559/0.0576 ms on the owner-seam
+  base versus 0.0591/0.0579 ms here: the first-window difference did not
+  reproduce, so this is equivalence evidence, not a performance claim.
 - **L3 (direct first-screen, first slice):** `renderFirstScreenNow` applies
   the rendered record tree straight to the Element PAPI
   (`applyLynxFirstScreenDirect`): no command staging, cloned record maps, or
