@@ -339,10 +339,10 @@ in §3 and the extraction-first decision in §5.
   byte-for-byte (differential-tested), so the representation swap lands with
   adoption identity and the whole Lynx test surface unchanged. Binding the
   same env directly to PAPI is the L3 cutover. Module-level size: raw and
-  minified at or below the plan encoding; gzip 10–22% larger on the fixture
-  modules because repeated JSON keys compress better than code — accepted as
-  an L1 trade, re-audited at L5 when the interpreter and batch pipeline leave
-  the main-thread bundle.
+  minified at or below the plan encoding. **The gzip trade this bullet
+  originally recorded as "10–22% larger, because repeated JSON keys compress
+  better than code" was wrong on both counts** — see the create-function local
+  naming entry below.
 
 - **L2 (kernel-extraction spike):** `universal-kernel.ts` holds the
   host-neutral hook-cell slice (see §5 spike result); the seam inventory
@@ -447,6 +447,31 @@ in §3 and the extraction-first decision in §5.
   iterative, architecture floor 1038.0 ms. **The ranges overlap almost entirely;
   this is a no-regression result, not a speedup.** Raw bundle grows 506 B on
   489 KB.
+
+- **L1 (create-function local naming).** The gzip penalty was neither bounded
+  at 10–22% nor caused by JSON keys compressing well. It was caused by the
+  emitter naming every host local from a per-node counter, so each repeated
+  subtree differed from the last by the bytes of its identifier — which is what
+  LZ77 matches on — and the penalty therefore grew without bound in node count.
+  A host local is live only from its own creation until the `env.a` that appends
+  it, and that window nests exactly with tree depth, so siblings can share a
+  name. Naming locals by depth makes repeated subtrees byte-identical.
+  Deterministic, measured on a toolbar ladder compiled at both targets:
+
+  | fixture | gzip vs interpreted, before | after |
+  |---|---:|---:|
+  | toolbar-4 | +14.9% | +4.8% |
+  | toolbar-40 | +81.5% | +1.8% |
+  | toolbar-120 | +128.6% | **−2.9%** |
+
+  Raw output, already the smaller of the two, improves from −6.8% to −15.0% at
+  120 nodes. On the `lynx-table` app — one small row template, so the shallow
+  end of the ladder — gzipped bundles shrink 273 B (web) and 367 B (lynx).
+  `lynx-target-template-size.test.ts` pins the structural property (identifier
+  count bounded by depth, not node count) and a ≤1.10× gzip ratio across the
+  ladder. Same-window FCP@10k, n=5, quiet host: 1604.1 ms (1547.5–1687.4)
+  before versus 1584.6 ms (1524.0–1607.3) after — overlapping, no runtime
+  change. **The L5 bundle re-audit no longer has this trade to repay.**
 
 - **L3 (direct first-screen, event-channel refusal).** The staged path runs
   `assertNoMainThreadEventCollision` over the batch's final host set during
