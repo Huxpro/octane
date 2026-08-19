@@ -317,6 +317,47 @@ in §3 and the extraction-first decision in §5.
 
 ## 8. Landed increments
 
+- **L2 Phase 0 (update-path attribution, decision gate: NO-GO for the delta
+  candidate).** The stage harness decomposed only `create`, `replace`, and
+  `append`, so the operations the A4/A5 wire cutover targets had a wall-clock
+  total and no owner. `update10th`, `updateStorm`, and `select` are now
+  decomposed on the real dual-thread web-core path
+  (`benchmarks/lynx-table/stages/results/live-10000.md`). Same-window, n=5,
+  quiet host, AB/BA, fresh page per sample:
+
+  | cell | `mt_prepare` + `wire_clone_transfer` | `bg_replay` | `presentation_residual` |
+  |---|---:|---:|---:|
+  | update10th@10k | 3.4% | 49.5% | 33.1% |
+  | updateStorm@10k | 2.3% | 12.3% | 74.9% |
+  | select@10k | 0.1% | 62.0% | 35.7% |
+
+  **The gate fails by an order of magnitude.** A typed delta plus main-thread
+  slot dispatch can only remove host prop-patch planning and wire cost, and
+  together those are 3.4% / 2.3% / 0.1% against a 10% owner gate. The wire is
+  not merely small, it is already change-sized: `select` flips one row's class
+  in a 10,000-row table and sends **289 B**, yet spends **126.7 ms** on the
+  background thread producing it. `bg_replay` is instrumented from the native
+  event batch arriving on the background thread to the commit message being
+  ready, so it covers event dispatch, render, reconcile, and batch
+  construction. The update path's cost is therefore proportional to the tree,
+  while its output is proportional to the change — an owner no wire
+  representation can reach.
+
+  The conclusion survives the instrumentation caveat. Profile/control is
+  1.40× on `update10th` and 1.47× on `select`, the largest of any cell; even
+  charging that entire delta to `bg_replay` leaves it at 29.4% and 44.4%
+  respectively, still an order of magnitude above the delta candidate's share.
+  `updateStorm` sits at the flush/layout floor exactly as predicted, which
+  bounds what any upstream change can win there. Absolute milliseconds come
+  from a 4-CPU container and are not comparable with the 32-core sessions
+  recorded elsewhere in this section; only the within-window shares are.
+
+  Consequence for the roadmap: the A4/A5 wire cutover is **not** the
+  update-path lever. `delta-protocol.ts` remains worth completing for
+  correctness and for the validation simplification (§3.4, header-only checks),
+  but it must not be justified by update-path milliseconds. Re-aiming belongs
+  to background render/reconcile.
+
 - **L2 (typed delta protocol):** `packages/lynx/src/core/delta-protocol.ts`
   defines the versioned, flat, self-delimiting transport planned in §3.4.
   `RUN`, `SET`, `REMOVE`, `MOVE`, and `BRANCH` round-trip through explicit

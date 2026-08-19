@@ -126,10 +126,7 @@ test('every measured cell but create is reported, in table order', () => {
 	]);
 	// Derived, not listed: adding an operation must not be able to measure a cell
 	// the report then omits.
-	assert.deepEqual(
-		mutationOperations({ create: {}, alpha: {}, beta: {} }),
-		['alpha', 'beta'],
-	);
+	assert.deepEqual(mutationOperations({ create: {}, alpha: {}, beta: {} }), ['alpha', 'beta']);
 });
 
 test('only the storm gets the long deadline', () => {
@@ -168,6 +165,12 @@ test('report labels', () => {
 	assert.equal(scaleTag(1000), '1k');
 	assert.equal(scaleTag(10000), '10k');
 	assert.equal(scaleTag(1500), '1500');
-	assert.equal(describeTarget({ kind: 'button', label: 'Append 1,000 rows' }), 'Append 1,000 rows button');
-	assert.equal(describeTarget({ kind: 'cell', rowIndex: 1, class: 'col-label' }), 'row 1 col-label cell');
+	assert.equal(
+		describeTarget({ kind: 'button', label: 'Append 1,000 rows' }),
+		'Append 1,000 rows button',
+	);
+	assert.equal(
+		describeTarget({ kind: 'cell', rowIndex: 1, class: 'col-label' }),
+		'row 1 col-label cell',
+	);
 });
