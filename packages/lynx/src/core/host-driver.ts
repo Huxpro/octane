@@ -34,6 +34,7 @@ import {
 } from './first-screen.js';
 import {
 	LYNX_CSS_SCOPE_PROP,
+	classifyLynxHostPropUpdate,
 	planLynxHostPropPatch,
 	type LynxHostPropPatch,
 	type LynxMainThreadRefDescriptor,
@@ -5586,7 +5587,7 @@ export function createLynxHostDriver<
 				previous: Readonly<Record<string, unknown>>,
 				next: Readonly<Record<string, unknown>>,
 			) {
-				return planLynxHostPropPatch(type, previous, next).requiresRecreate ? 'recreate' : 'update';
+				return classifyLynxHostPropUpdate(type, previous, next);
 			},
 		}),
 		prepareBatch(container, batch, _context) {

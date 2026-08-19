@@ -18,7 +18,7 @@ import {
 	type LynxPublicHandleDelta,
 	type LynxHostAttachmentChange,
 } from './protocol.js';
-import { planLynxHostPropPatch } from './host-props.js';
+import { classifyLynxHostPropUpdate } from './host-props.js';
 import { parseLynxNativeEventProp } from './native-events.js';
 import { isLynxNativeResource } from '../resource.js';
 import {
@@ -1473,7 +1473,7 @@ export function createLynxClientDriver(
 				previous: Readonly<Record<string, unknown>>,
 				next: Readonly<Record<string, unknown>>,
 			) {
-				return planLynxHostPropPatch(type, previous, next).requiresRecreate ? 'recreate' : 'update';
+				return classifyLynxHostPropUpdate(type, previous, next);
 			},
 		}),
 		prepareBatch() {
