@@ -37,6 +37,9 @@ benchmarks/baselines/ratios.suggested.json
 # reference bundles under benchmarks/lynx-table/reference/ ARE committed.
 benchmarks/lynx-table/app/dist*/
 benchmarks/lynx-table/results/
+# The issue-#58 L0 prototype cell's assembled bundles; its results/ session
+# records ARE committed as the L0 evidence (see prototype/README.md).
+benchmarks/lynx-table/prototype/dist*/
 
 # Differential-parity build artifact: the `@tsrx/react`-compiled fixture output the
 # differential test rigs regenerate under each package's tests on every run.
