@@ -155,6 +155,13 @@ async function realmSnapshots(page) {
 		for (const key of Object.keys(value)) {
 			if (typeof value[key] === 'number') copy[key] = value[key];
 		}
+		// The app's own Row-body counter lives in the profile build beside these
+		// (see app/src/App.lynx.tsrx). It is the render-breadth number the
+		// runtime counters cannot see, because a memoized item body is invoked
+		// directly rather than through any instrumented runtime entry.
+		if (typeof globalThis.__BENCH_ROW_RENDERS__ === 'number') {
+			copy.rowRenders = globalThis.__BENCH_ROW_RENDERS__;
+		}
 		return copy;
 	};
 	const snapshots = [];
@@ -171,6 +178,7 @@ async function realmSnapshots(page) {
 
 async function resetProfiles(page) {
 	const reset = () => {
+		if (typeof globalThis.__BENCH_ROW_RENDERS__ === 'number') globalThis.__BENCH_ROW_RENDERS__ = 0;
 		const profile = globalThis.__OCTANE_LYNX_PROF;
 		if (profile === undefined) return;
 		for (const key of Object.keys(profile)) profile[key] = 0;
@@ -319,10 +327,10 @@ function round(value, digits = 2) {
 }
 
 function backgroundWorkLine(background) {
-	const renders = background.blockRenders.median;
+	const renders = background.rowRenders.median;
 	const commands = background.hostCommands.median;
 	const ratio = commands === 0 ? 'no host commands' : `${round(renders / commands, 1)} per command`;
-	return `Background work: ${Math.round(renders).toLocaleString('en-US')} block renders producing ${Math.round(commands).toLocaleString('en-US')} host commands (${ratio}).`;
+	return `Background work: ${Math.round(renders).toLocaleString('en-US')} row-body renders over ${Math.round(background.flushes.median)} update drains, producing ${Math.round(commands).toLocaleString('en-US')} host commands (${ratio}).`;
 }
 
 function markdown(report) {
@@ -500,13 +508,15 @@ function summarizeCount(cell, read) {
 function summarizeWire(cell, side, field) {
 	return summarizeCount(cell, (sample) => sample.wire[side][field]);
 }
-// Block renders are the background half of the same question the wire counts
-// ask on the main side: how much work the frame did, independent of how long
-// the host took to do it. Unlike milliseconds these are fixed for a given app
-// and interaction, which is what makes them gateable.
+// The background half of the question the wire counts ask on the main side:
+// how much work the frame did, independent of how long the host took to do it.
+// Unlike milliseconds these are fixed for a given app and interaction, which is
+// what makes them gateable. Row bodies are render breadth; drains are how many
+// times the update pass ran; commands are what any of it produced.
 function summarizeBackgroundWork(cell) {
 	return {
-		blockRenders: summarizeCount(cell, (sample) => sample.realms.background.bgRenderBlocks ?? 0),
+		rowRenders: summarizeCount(cell, (sample) => sample.realms.background.rowRenders ?? 0),
+		flushes: summarizeCount(cell, (sample) => sample.realms.background.bgFlushes ?? 0),
 		hostCommands: summarizeCount(cell, (sample) => sample.realms.background.commands ?? 0),
 	};
 }
@@ -570,33 +580,37 @@ function deltaEncodingVerdict() {
 	};
 }
 // Phase 0's gate fired NO-GO on the delta candidate and instructed the next
-// phase to aim at whatever segment actually costs. `bg_render_reconcile` is
-// that segment's timed half. Block renders per host command is its
-// deterministic half, and the one that says *why* rather than *how much*: work
-// proportional to the tree producing output proportional to the change.
-const RENDER_OWNER_GATE = 0.1;
-function renderAmplificationVerdict() {
+// phase to aim at whatever segment actually costs. `bg_flush` is that segment's
+// timed half: the update drain — render, reconcile, commit, effects.
+//
+// Row-body renders are the deterministic half, and they answer a different
+// question than the share does. If the drain owns the frame while row bodies
+// stay proportional to the change, the cost is in walking the list, not in
+// re-rendering it, and a candidate aimed at render breadth is aimed at the
+// wrong thing.
+const FLUSH_OWNER_GATE = 0.1;
+function backgroundOwnerVerdict() {
 	const cells = ['update10th', 'select'];
 	const measured = cells.map((operation) => {
 		const cell = mutationReports[operation];
 		return {
 			operation,
-			share: cell.attribution.stages.bg_render_reconcile.share,
-			renders: cell.background.blockRenders.median,
+			share: cell.attribution.stages.bg_flush.share,
+			renders: cell.background.rowRenders.median,
 			commands: cell.background.hostCommands.median,
 		};
 	});
-	const owners = measured.filter((row) => row.share >= RENDER_OWNER_GATE);
+	const owners = measured.filter((row) => row.share >= FLUSH_OWNER_GATE);
 	const text = measured
 		.map(
 			(row) =>
-				`${row.operation} ${(row.share * 100).toFixed(1)}% with ${Math.round(row.renders).toLocaleString('en-US')} block renders for ${Math.round(row.commands).toLocaleString('en-US')} host commands`,
+				`${row.operation} ${(row.share * 100).toFixed(1)}% with ${Math.round(row.renders).toLocaleString('en-US')} row-body renders for ${Math.round(row.commands).toLocaleString('en-US')} host commands`,
 		)
 		.join(', ');
 	return {
-		step: '#66 Phase 2 re-aim: background render/reconcile owner',
+		step: '#66 Phase 2 re-aim: background update-drain owner',
 		verdict: owners.length === cells.length ? 'GO' : owners.length === 0 ? 'NO-GO' : 'SPLIT',
-		reason: `bg_render_reconcile is ${text}. The gate is ${RENDER_OWNER_GATE * 100}% in every cell named here. The block-render counts are deterministic for this app and interaction, so a candidate that claims to cut background cost has to move them, not just the milliseconds.`,
+		reason: `bg_flush is ${text}. The gate is ${FLUSH_OWNER_GATE * 100}% in every cell named here. The row-render counts are deterministic for this app and interaction: where they already track the change while the drain still owns the frame, the remaining cost is list traversal rather than render breadth.`,
 	};
 }
 const createWire = {
@@ -666,7 +680,7 @@ const report = {
 	...mutationReports,
 	verdicts: [
 		deltaEncodingVerdict(),
-		renderAmplificationVerdict(),
+		backgroundOwnerVerdict(),
 		{
 			step: '#47 wire/encoding candidate',
 			verdict: 'NO-GO',

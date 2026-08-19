@@ -27,8 +27,8 @@ export function instrumentLynxStageSources(repositoryRoot) {
 				`\t/** Main: acknowledgement handle computation + dispatch time. */
 \tackMs: number;
 \tbgReplayMs?: number;
-\tbgRenderMs?: number;
-\tbgRenderBlocks?: number;
+\tbgFlushMs?: number;
+\tbgFlushes?: number;
 \tmtExpandMs?: number;
 \tfirstScreenPlanMs?: number;
 \tmtSliceEvalMs?: number;
@@ -78,37 +78,28 @@ export function instrumentLynxStageSources(repositoryRoot) {
 			);
 		});
 
-		// Splits the background replay stage into the render/reconcile pass and
-		// everything else (event delivery, scheduling, batch construction). The
-		// count is the deterministic half and the reason this patch exists: a
-		// block-render total that scales with the table while the commit does
-		// not is visible without trusting a single millisecond.
+		// Splits the background replay stage into the update drain and everything
+		// else (event delivery, the handler itself, scheduling, batch
+		// construction). `flushWork` is the drain: render, reconcile, commit,
+		// effects. It is guarded against re-entry by the runtime, so a single
+		// accumulator cannot double-count.
 		//
-		// It counts Block renders, which is not the same as component bodies
-		// run: `@for` item bodies promoted to pure, and the two rows a keyed
-		// selection rewrites, are invoked directly and never reach here. The
-		// count therefore reads high exactly where those specializations are
-		// NOT applying, which is what makes it useful — but it is a floor on
-		// body invocations, not a total.
+		// The boundary is the drain, NOT `renderBlock`. On the table's mutation
+		// path `renderBlock` is never reached — item bodies run directly through
+		// the keyed for-block's survivor and call-site caches — so timing it
+		// would report a confident zero.
 		update('packages/octane/src/runtime.ts', (source, file) =>
 			replaceOnce(
 				source,
-				`export function renderBlock(block: Block): void {
-\tconst hydration = activeHydration();
-\tif (hydration !== null && !hydration.owns(block)) {
-\t\thydration.suspend(() => renderBlockInner(block));
-\t\treturn;
-\t}
-\trenderBlockInner(block);
-}
+				`function flushWork(): void {
+\tinFlush = true;
 `,
-				`let __benchRenderDepth = 0;
-let __benchRenderRecord: any = null;
+				`let __benchFlushRecord: any = null;
 
 // The Lynx profile record is this realm's counter home, and either module may
 // reach it first, so the fields are defaulted rather than assumed.
-function __benchRenderProfile(): any {
-\tif (__benchRenderRecord !== null) return __benchRenderRecord;
+function __benchFlushProfile(): any {
+\tif (__benchFlushRecord !== null) return __benchFlushRecord;
 \tconst globals = globalThis as any;
 \tconst record = (globals.__OCTANE_LYNX_PROF ??= {
 \t\tcommits: 0,
@@ -125,33 +116,25 @@ function __benchRenderProfile(): any {
 \t\tdeltaOps: 0,
 \t\tdeltaBytes: 0,
 \t});
-\trecord.bgRenderMs ??= 0;
-\trecord.bgRenderBlocks ??= 0;
-\t__benchRenderRecord = record;
+\trecord.bgFlushMs ??= 0;
+\trecord.bgFlushes ??= 0;
+\t__benchFlushRecord = record;
 \treturn record;
 }
 
-export function renderBlock(block: Block): void {
-\tconst __benchProfile = __benchRenderProfile();
-\t__benchProfile.bgRenderBlocks += 1;
-\t// Only the outermost render is timed; nested renders are already inside it,
-\t// so accumulating every level would count the same milliseconds repeatedly.
-\tconst __benchOutermost = __benchRenderDepth === 0;
-\tconst __benchStarted = __benchOutermost ? performance.now() : 0;
-\t__benchRenderDepth += 1;
+function flushWork(): void {
+\tconst __benchProfile = __benchFlushProfile();
+\t__benchProfile.bgFlushes += 1;
+\tconst __benchStarted = performance.now();
 \ttry {
-\t\tconst hydration = activeHydration();
-\t\tif (hydration !== null && !hydration.owns(block)) {
-\t\t\thydration.suspend(() => renderBlockInner(block));
-\t\t\treturn;
-\t\t}
-\t\trenderBlockInner(block);
+\t\t__benchFlushWork();
 \t} finally {
-\t\t__benchRenderDepth -= 1;
-\t\tif (__benchOutermost)
-\t\t\t__benchProfile.bgRenderMs += performance.now() - __benchStarted;
+\t\t__benchProfile.bgFlushMs += performance.now() - __benchStarted;
 \t}
 }
+
+function __benchFlushWork(): void {
+\tinFlush = true;
 `,
 				file,
 			),
