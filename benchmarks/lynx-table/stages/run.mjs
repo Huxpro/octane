@@ -318,6 +318,13 @@ function round(value, digits = 2) {
 	return Number(value.toFixed(digits));
 }
 
+function backgroundWorkLine(background) {
+	const renders = background.blockRenders.median;
+	const commands = background.hostCommands.median;
+	const ratio = commands === 0 ? 'no host commands' : `${round(renders / commands, 1)} per command`;
+	return `Background work: ${Math.round(renders).toLocaleString('en-US')} block renders producing ${Math.round(commands).toLocaleString('en-US')} host commands (${ratio}).`;
+}
+
 function markdown(report) {
 	const lines = [
 		`# Lynx ${report.meta.rows.toLocaleString('en-US')}-row stage decomposition`,
@@ -360,6 +367,7 @@ function markdown(report) {
 		'',
 		`Raw create: profile ${round(report.create.rawProfile.median)} ms (${round(report.create.rawProfile.min)}–${round(report.create.rawProfile.max)}), control ${round(report.create.rawControl.median)} ms, vue-vdom ${round(report.create.vueVdom.median)} ms; same-window profile/control ${round(report.create.rawProfile.median / report.create.rawControl.median, 3)}×, profile/vue-vdom ${round(report.create.rawProfile.median / report.create.vueVdom.median, 3)}×.`,
 		`Wire: MTS→BTS ${Math.round(report.create.wire.toBts.bytes.median).toLocaleString('en-US')} B / ${round(report.create.wire.toBts.messages.median)} messages; BTS→MTS ${Math.round(report.create.wire.toMts.bytes.median).toLocaleString('en-US')} B / ${round(report.create.wire.toMts.messages.median)} messages.`,
+		backgroundWorkLine(report.create.background),
 	);
 	for (const operation of mutationNames) {
 		const cell = report[operation];
@@ -376,6 +384,7 @@ function markdown(report) {
 		lines.push(
 			'',
 			`Raw ${operation}: profile ${round(cell.rawProfile.median)} ms, control ${round(cell.rawControl.median)} ms, vue-vdom ${round(cell.vueVdom.median)} ms. Wire: MTS→BTS ${Math.round(cell.wire.toBts.bytes.median).toLocaleString('en-US')} B / ${round(cell.wire.toBts.messages.median)} messages; BTS→MTS ${Math.round(cell.wire.toMts.bytes.median).toLocaleString('en-US')} B / ${round(cell.wire.toMts.messages.median)} messages.`,
+			backgroundWorkLine(cell.background),
 		);
 	}
 	lines.push(
@@ -478,13 +487,28 @@ function summarizeRaw(cell) {
 		cell.map((sample) => ({ totalMs: sample.rawMs, stages: { raw: sample.rawMs } })),
 	).total;
 }
-function summarizeWire(cell, side, field) {
+// Deterministic per-sample counts reuse the sample summarizer by standing in
+// for a duration; only the median/min/max are read back.
+function summarizeCount(cell, read) {
 	return summarizeSamples(
 		cell.map((sample) => {
-			const value = sample.wire[side][field];
+			const value = read(sample);
 			return { totalMs: value, stages: { raw: value } };
 		}),
 	).total;
+}
+function summarizeWire(cell, side, field) {
+	return summarizeCount(cell, (sample) => sample.wire[side][field]);
+}
+// Block renders are the background half of the same question the wire counts
+// ask on the main side: how much work the frame did, independent of how long
+// the host took to do it. Unlike milliseconds these are fixed for a given app
+// and interaction, which is what makes them gateable.
+function summarizeBackgroundWork(cell) {
+	return {
+		blockRenders: summarizeCount(cell, (sample) => sample.realms.background.bgRenderBlocks ?? 0),
+		hostCommands: summarizeCount(cell, (sample) => sample.realms.background.commands ?? 0),
+	};
 }
 function mutationReport(operation) {
 	const cell = samples[operation];
@@ -500,6 +524,7 @@ function mutationReport(operation) {
 		rawControl: summarizeRaw(cell.control),
 		rawProfile: summarizeRaw(cell.profile),
 		vueVdom: summarizeRaw(cell.vueVdom),
+		background: summarizeBackgroundWork(cell.profile),
 		wire: {
 			toBts: {
 				bytes: summarizeWire(cell.profile, 'toBts', 'bytes'),
@@ -542,6 +567,36 @@ function deltaEncodingVerdict() {
 		step: '#66 A4/A5 delta-encoding candidate (pure-mutation cells)',
 		verdict: clears.length === cells.length ? 'GO' : clears.length === 0 ? 'NO-GO' : 'SPLIT',
 		reason: `mt_prepare plus clone/transfer is ${text}. The gate is ${DELTA_OWNER_GATE * 100}% in every pure-mutation cell, because a typed delta plus slot dispatch can only remove host prop-patch planning and wire cost; it cannot touch PAPI apply.`,
+	};
+}
+// Phase 0's gate fired NO-GO on the delta candidate and instructed the next
+// phase to aim at whatever segment actually costs. `bg_render_reconcile` is
+// that segment's timed half. Block renders per host command is its
+// deterministic half, and the one that says *why* rather than *how much*: work
+// proportional to the tree producing output proportional to the change.
+const RENDER_OWNER_GATE = 0.1;
+function renderAmplificationVerdict() {
+	const cells = ['update10th', 'select'];
+	const measured = cells.map((operation) => {
+		const cell = mutationReports[operation];
+		return {
+			operation,
+			share: cell.attribution.stages.bg_render_reconcile.share,
+			renders: cell.background.blockRenders.median,
+			commands: cell.background.hostCommands.median,
+		};
+	});
+	const owners = measured.filter((row) => row.share >= RENDER_OWNER_GATE);
+	const text = measured
+		.map(
+			(row) =>
+				`${row.operation} ${(row.share * 100).toFixed(1)}% with ${Math.round(row.renders).toLocaleString('en-US')} block renders for ${Math.round(row.commands).toLocaleString('en-US')} host commands`,
+		)
+		.join(', ');
+	return {
+		step: '#66 Phase 2 re-aim: background render/reconcile owner',
+		verdict: owners.length === cells.length ? 'GO' : owners.length === 0 ? 'NO-GO' : 'SPLIT',
+		reason: `bg_render_reconcile is ${text}. The gate is ${RENDER_OWNER_GATE * 100}% in every cell named here. The block-render counts are deterministic for this app and interaction, so a candidate that claims to cut background cost has to move them, not just the milliseconds.`,
 	};
 }
 const createWire = {
@@ -587,6 +642,7 @@ const report = {
 	},
 	create: {
 		attribution: createAttribution,
+		background: summarizeBackgroundWork(samples.create.profile),
 		wire: createWire,
 		rawControl: summarizeSamples(
 			samples.create.control.map((sample) => ({
@@ -610,6 +666,7 @@ const report = {
 	...mutationReports,
 	verdicts: [
 		deltaEncodingVerdict(),
+		renderAmplificationVerdict(),
 		{
 			step: '#47 wire/encoding candidate',
 			verdict: 'NO-GO',

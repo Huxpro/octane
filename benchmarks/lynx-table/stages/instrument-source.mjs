@@ -27,6 +27,8 @@ export function instrumentLynxStageSources(repositoryRoot) {
 				`\t/** Main: acknowledgement handle computation + dispatch time. */
 \tackMs: number;
 \tbgReplayMs?: number;
+\tbgRenderMs?: number;
+\tbgRenderBlocks?: number;
 \tmtExpandMs?: number;
 \tfirstScreenPlanMs?: number;
 \tmtSliceEvalMs?: number;
@@ -75,6 +77,78 @@ export function instrumentLynxStageSources(repositoryRoot) {
 				file,
 			);
 		});
+
+		// Splits the background replay stage into the render/reconcile pass and
+		// everything else (event delivery, scheduling, batch construction). The
+		// count is the deterministic half and the reason this patch exists: a
+		// block-render total that scales with the table while the commit does
+		// not is visible without trusting a single millisecond.
+		update('packages/octane/src/runtime.ts', (source, file) =>
+			replaceOnce(
+				source,
+				`export function renderBlock(block: Block): void {
+\tconst hydration = activeHydration();
+\tif (hydration !== null && !hydration.owns(block)) {
+\t\thydration.suspend(() => renderBlockInner(block));
+\t\treturn;
+\t}
+\trenderBlockInner(block);
+}
+`,
+				`let __benchRenderDepth = 0;
+let __benchRenderRecord: any = null;
+
+// The Lynx profile record is this realm's counter home, and either module may
+// reach it first, so the fields are defaulted rather than assumed.
+function __benchRenderProfile(): any {
+\tif (__benchRenderRecord !== null) return __benchRenderRecord;
+\tconst globals = globalThis as any;
+\tconst record = (globals.__OCTANE_LYNX_PROF ??= {
+\t\tcommits: 0,
+\t\tcommands: 0,
+\t\tbytes: 0,
+\t\tselfcheckMs: 0,
+\t\tdispatchMs: 0,
+\t\tvalidateMs: 0,
+\t\tprepareMs: 0,
+\t\tapplyMs: 0,
+\t\tackMs: 0,
+\t\tdeltaCommits: 0,
+\t\tdeltaMisses: 0,
+\t\tdeltaOps: 0,
+\t\tdeltaBytes: 0,
+\t});
+\trecord.bgRenderMs ??= 0;
+\trecord.bgRenderBlocks ??= 0;
+\t__benchRenderRecord = record;
+\treturn record;
+}
+
+export function renderBlock(block: Block): void {
+\tconst __benchProfile = __benchRenderProfile();
+\t__benchProfile.bgRenderBlocks += 1;
+\t// Only the outermost render is timed; nested renders are already inside it,
+\t// so accumulating every level would count the same milliseconds repeatedly.
+\tconst __benchOutermost = __benchRenderDepth === 0;
+\tconst __benchStarted = __benchOutermost ? performance.now() : 0;
+\t__benchRenderDepth += 1;
+\ttry {
+\t\tconst hydration = activeHydration();
+\t\tif (hydration !== null && !hydration.owns(block)) {
+\t\t\thydration.suspend(() => renderBlockInner(block));
+\t\t\treturn;
+\t\t}
+\t\trenderBlockInner(block);
+\t} finally {
+\t\t__benchRenderDepth -= 1;
+\t\tif (__benchOutermost)
+\t\t\t__benchProfile.bgRenderMs += performance.now() - __benchStarted;
+\t}
+}
+`,
+				file,
+			),
+		);
 
 		update('packages/lynx/src/core/papi.ts', (source, file) => {
 			let next = replaceOnce(

@@ -55,8 +55,17 @@ export function analyzeCreateSample({ wallMs, background, main }) {
 	if (papiCreateMs > applyMs + 0.5) {
 		throw new Error('create PAPI element creation exceeds the enclosing main-thread apply stage.');
 	}
+	const bgReplayMs = observed(background?.bgReplayMs, 'bgReplayMs');
+	const bgRenderMs = observed(background?.bgRenderMs, 'bgRenderMs');
+	// The render pass runs inside the replay window by construction, so a
+	// render total larger than its container means the two clocks disagree and
+	// no share computed from them is worth reporting.
+	if (bgRenderMs > bgReplayMs + 0.5) {
+		throw new Error('background render exceeds the enclosing replay stage.');
+	}
 	const stages = {
-		bg_replay: observed(background?.bgReplayMs, 'bgReplayMs'),
+		bg_render_reconcile: bgRenderMs,
+		bg_replay_other: Math.max(0, bgReplayMs - bgRenderMs),
 		wire_clone_transfer: observed(background?.dispatchMs, 'dispatchMs'),
 		mt_validate: observed(main?.validateMs, 'validateMs'),
 		mt_expand: observed(main?.mtExpandMs, 'mtExpandMs'),

@@ -10,12 +10,16 @@ import { build } from 'esbuild';
 import { instrumentLynxStageSources } from './instrument-source.mjs';
 
 const repositoryRoot = path.resolve(import.meta.dirname, '../../..');
+// The background replay stage is split by timing Octane's render entry point,
+// so the harness now reaches outside `@octanejs/lynx` and this list has to say
+// so — a framework source left instrumented would poison every later build.
 const sourceFiles = [
 	'packages/lynx/src/core/profiling.ts',
 	'packages/lynx/src/core/papi.ts',
 	'packages/lynx/src/core/transport.ts',
 	'packages/lynx/src/main-renderer.ts',
 	'packages/lynx/src/main-thread.ts',
+	'packages/octane/src/runtime.ts',
 ];
 
 test('instruments an isolated Lynx source copy and restores every byte', () => {
@@ -48,6 +52,10 @@ test('instruments an isolated Lynx source copy and restores every byte', () => {
 		assert.match(
 			fs.readFileSync(path.join(temporary, 'packages/lynx/src/core/papi.ts'), 'utf8'),
 			/papiCreateMs/,
+		);
+		assert.match(
+			fs.readFileSync(path.join(temporary, 'packages/octane/src/runtime.ts'), 'utf8'),
+			/bgRenderBlocks/,
 		);
 		restore();
 		for (const relative of sourceFiles) {
