@@ -13,6 +13,11 @@ import {
 	prepareLynxHostBatch,
 } from '../src/core/host-driver.js';
 import { LYNX_FIRST_TREE_STATE } from '../src/core/first-screen.js';
+import {
+	attachThreadFunction,
+	createLynxMainThreadWorkletRegistry,
+	registerMainThreadWorklet,
+} from '../src/core/worklets.js';
 import type { LynxElementPAPI } from '../src/core/papi.js';
 import {
 	defineUniversalComponent,
@@ -137,7 +142,10 @@ function shape(node: FakeNode): unknown {
 const ROW_PLAN = universalPlan('lynx', {
 	kind: 'host',
 	type: 'view',
-	bindings: [['class', 0]],
+	bindings: [
+		['class', 0],
+		['main-thread:bindtap', 3],
+	],
 	children: [
 		{
 			kind: 'host',
@@ -148,6 +156,18 @@ const ROW_PLAN = universalPlan('lynx', {
 		},
 	],
 });
+
+// The main graph authors `main-thread:` event props as tagged callables. The
+// adoption snapshot crosses the ContextProxy wire, so both appliers must
+// journal the plain worklet descriptor, never the callable itself — a real
+// web-core MessagePort structured-clones the snapshot and rejects functions.
+registerMainThreadWorklet('first-screen-direct.test:tap', undefined, function rowTapMTS() {});
+const rowTapMTS = attachThreadFunction(
+	function rowTapMTS() {},
+	'main-thread',
+	'first-screen-direct.test:tap',
+	() => [{ step: 8 }],
+);
 
 const SCENE_PLAN = universalPlan('lynx', {
 	kind: 'host',
@@ -176,10 +196,16 @@ const Scene = defineUniversalComponent(
 			universalFor(
 				rows,
 				(row) => row.id,
-				(row) => universalValue(ROW_PLAN, [row.active ? 'row active' : 'row', () => {}, row.label]),
+				(row) =>
+					universalValue(ROW_PLAN, [
+						row.active ? 'row active' : 'row',
+						() => {},
+						row.label,
+						rowTapMTS,
+					]),
 			),
 			universalActivity('hidden', () =>
-				universalValue(ROW_PLAN, ['row hidden-row', () => {}, 'hidden label']),
+				universalValue(ROW_PLAN, ['row hidden-row', () => {}, 'hidden label', rowTapMTS]),
 			),
 		]);
 	},
@@ -195,13 +221,19 @@ describe('direct first-screen applier', () => {
 		const result = renderScene();
 
 		const directPapi = createFakePAPI();
-		const direct = createLynxHostContainer(directPapi, { root: 1 });
+		const direct = createLynxHostContainer(directPapi, {
+			root: 1,
+			worklets: createLynxMainThreadWorkletRegistry(),
+		});
 		expect(applyLynxFirstScreenDirect(direct, result.nodes, result.batch)).toBe(true);
 		const directTree = captureLynxFirstTree(direct);
 
 		const stagedResult = renderScene();
 		const stagedPapi = createFakePAPI();
-		const staged = createLynxHostContainer(stagedPapi, { root: 1 });
+		const staged = createLynxHostContainer(stagedPapi, {
+			root: 1,
+			worklets: createLynxMainThreadWorkletRegistry(),
+		});
 		const prepared = prepareLynxHostBatch(staged, stagedResult.batch);
 		prepared.apply();
 		const stagedTree = captureLynxFirstTree(staged);
@@ -213,13 +245,30 @@ describe('direct first-screen applier', () => {
 			[...stagedTree![LYNX_FIRST_TREE_STATE].eventsByToken.keys()].sort(),
 		);
 		expect(shape(directPapi.pages[0]!)).toEqual(shape(stagedPapi.pages[0]!));
+
+		// Snapshot props must hold the wire-safe worklet descriptor, never the
+		// tagged callable — the snapshot rides a structured-clone MessagePort on
+		// real hosts, where a journaled function faults the whole page lifetime.
+		const mtsValues = directTree!.snapshot.nodes
+			.map((node) => node.props['main-thread:bindtap'])
+			.filter((value) => value !== undefined);
+		expect(mtsValues.length).toBeGreaterThan(0);
+		for (const value of mtsValues) {
+			expect(value).toEqual({
+				_wkltId: 'first-screen-direct.test:tap',
+				_c: { values: [{ step: 8 }] },
+			});
+		}
 	});
 
 	it('keeps the staged fault discipline on a mid-walk PAPI throw', () => {
 		const result = renderScene();
 		// Fail deep into the walk so hosts exist on both sides of the fault.
 		const papi = createFakePAPI({ failCreateAt: 5 });
-		const container = createLynxHostContainer(papi, { root: 1 });
+		const container = createLynxHostContainer(papi, {
+			root: 1,
+			worklets: createLynxMainThreadWorkletRegistry(),
+		});
 		expect(() => applyLynxFirstScreenDirect(container, result.nodes, result.batch)).toThrowError(
 			'injected create fault',
 		);
@@ -237,7 +286,10 @@ describe('direct first-screen applier', () => {
 	it('rejects a foreign or unversioned batch envelope before touching PAPI', () => {
 		const result = renderScene();
 		const papi = createFakePAPI();
-		const container = createLynxHostContainer(papi, { root: 1 });
+		const container = createLynxHostContainer(papi, {
+			root: 1,
+			worklets: createLynxMainThreadWorkletRegistry(),
+		});
 		expect(() =>
 			applyLynxFirstScreenDirect(container, result.nodes, {
 				...result.batch,
@@ -268,7 +320,10 @@ describe('direct first-screen applier', () => {
 			],
 		};
 		const papi = createFakePAPI();
-		const container = createLynxHostContainer(papi, { root: 1 });
+		const container = createLynxHostContainer(papi, {
+			root: 1,
+			worklets: createLynxMainThreadWorkletRegistry(),
+		});
 		expect(applyLynxFirstScreenDirect(container, listResult.nodes, listResult.batch as never)).toBe(
 			false,
 		);
