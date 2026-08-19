@@ -2,11 +2,21 @@ import type { UniversalHostBatch, UniversalHostTemplateProgram } from 'octane/un
 import {
 	encodeLynxDeltaMessage,
 	type LynxDeltaOperation,
+	type LynxDeltaValue,
 	type LynxEncodedDeltaMessage,
+	type LynxSlotAddress,
 } from './delta-protocol.js';
+
+/**
+ * The container the root commands mount into. Instance handles are dense and
+ * monotonic from there, so the shadow allocates its own rather than reusing
+ * command-batch node ids, which are per-node and not per-instance.
+ */
+const ROOT_INSTANCE = 1;
 
 interface ShadowInstance {
 	readonly firstId: number;
+	readonly handle: number;
 	readonly templateId: number;
 	readonly program: UniversalHostTemplateProgram;
 	readonly parent: number | null;
@@ -21,6 +31,7 @@ interface ShadowHost {
 export interface LynxDeltaShadowSnapshot {
 	readonly instances: readonly {
 		readonly firstId: number;
+		readonly handle: number;
 		readonly templateId: number;
 		readonly parent: number | null;
 		readonly values: readonly unknown[];
@@ -46,6 +57,7 @@ export interface LynxDeltaShadow {
 interface ShadowState {
 	templates: Map<UniversalHostTemplateProgram, number>;
 	nextTemplateId: number;
+	nextInstance: number;
 	instances: Map<number, ShadowInstance>;
 	hosts: Map<number, ShadowHost>;
 	order: Map<number | null, number[]>;
@@ -55,6 +67,7 @@ function cloneState(source: ShadowState): ShadowState {
 	return {
 		templates: new Map(source.templates),
 		nextTemplateId: source.nextTemplateId,
+		nextInstance: source.nextInstance,
 		instances: new Map(
 			[...source.instances].map(([id, instance]) => [
 				id,
@@ -78,15 +91,21 @@ function snapshotState(state: ShadowState): LynxDeltaShadowSnapshot {
 	return {
 		instances: [...state.instances.values()]
 			.sort((left, right) => left.firstId - right.firstId)
-			.map(({ firstId, templateId, parent, values }) => ({
+			.map(({ firstId, handle, templateId, parent, values }) => ({
 				firstId,
+				handle,
 				templateId,
 				parent,
 				values: [...values],
 			})),
 		order: [...state.order]
 			.sort(([left], [right]) => (left ?? -1) - (right ?? -1))
-			.map(([parent, instances]) => ({ parent, instances: [...instances] })),
+			.map(([parent, instances]) => ({
+				parent,
+				// Reported as wire handles: physical order is what a delta applier
+				// reconstructs, and it addresses instances, not command node ids.
+				instances: instances.map((firstId) => state.instances.get(firstId)?.handle ?? -1),
+			})),
 	};
 }
 
@@ -99,6 +118,44 @@ function removeInstance(state: ShadowState, firstId: number): void {
 	}
 	const order = state.order.get(instance.parent);
 	if (order !== undefined) order.splice(order.indexOf(firstId), 1);
+}
+
+/**
+ * Resolves a command-batch host id to the instance/slot pair the wire needs.
+ *
+ * The slot is the parent node's index within its own template. That is a stable
+ * per-template address of the right cardinality, but it is not yet the
+ * compiler's range-site slot: the command ABI records which host a mount landed
+ * under, never which hole of that host's template owns the range. Only the
+ * instance qualification is claimed here; the final slot numbering arrives with
+ * the range-site kinds and is Phase 2's to wire.
+ */
+function siteOf(state: ShadowState, host: number | null): LynxSlotAddress | null {
+	if (host === null) return { instance: ROOT_INSTANCE, slot: 0 };
+	const entry = state.hosts.get(host);
+	if (entry === undefined) return null;
+	const instance = state.instances.get(entry.firstId);
+	if (instance === undefined) return null;
+	return { instance: instance.handle, slot: entry.nodeIndex };
+}
+
+/**
+ * Values reaching the wire must be scalars, because that restriction is what
+ * makes the frame checkable by its header alone. A structured value is not a
+ * shadow bug; it is a batch this ABI cannot yet carry, so it declines.
+ */
+function scalarValues(values: readonly unknown[]): LynxDeltaValue[] | null {
+	const scalars: LynxDeltaValue[] = [];
+	for (const value of values) {
+		if (value === null) {
+			scalars.push(null);
+			continue;
+		}
+		const type = typeof value;
+		if (type !== 'string' && type !== 'number' && type !== 'boolean') return null;
+		scalars.push(value as LynxDeltaValue);
+	}
+	return scalars;
 }
 
 function hostProps(instance: ShadowInstance, nodeIndex: number): Record<string, unknown> {
@@ -119,6 +176,7 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 	let state: ShadowState = {
 		templates: new Map(),
 		nextTemplateId: 1,
+		nextInstance: ROOT_INSTANCE + 1,
 		instances: new Map(),
 		hosts: new Map(),
 		order: new Map(),
@@ -138,6 +196,11 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 						return null;
 					const stride = valueStride(command.program);
 					if (stride * command.count !== command.values.length) return null;
+					const runValues = scalarValues(command.values);
+					if (runValues === null) return null;
+					const parentSite = siteOf(next, command.parent);
+					if (parentSite === null) return null;
+					const firstInstance = next.nextInstance;
 					let templateId = next.templates.get(command.program);
 					if (templateId === undefined) {
 						templateId = next.nextTemplateId++;
@@ -154,6 +217,7 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 						);
 						next.instances.set(firstId, {
 							firstId,
+							handle: next.nextInstance++,
 							templateId,
 							program: command.program,
 							parent,
@@ -167,9 +231,11 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 					operations.push({
 						op: 'run',
 						templateId,
-						anchorSlot: parent ?? 0,
+						parent: parentSite,
+						before: null,
+						firstInstance,
 						count: command.count,
-						values: command.values,
+						values: runValues,
 					});
 					continue;
 				}
@@ -187,12 +253,14 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 					for (const binding of bindings) {
 						const value = command.props[binding.name];
 						if (Object.is(instance.values[binding.valueIndex], value)) continue;
+						const scalar = scalarValues([value]);
+						if (scalar === null) return null;
 						instance.values[binding.valueIndex] = value;
 						operations.push({
 							op: 'set',
-							instance: instance.firstId,
-							slotIndex: binding.valueIndex,
-							value,
+							instance: instance.handle,
+							slot: binding.valueIndex,
+							value: scalar[0]!,
 						});
 					}
 					continue;
@@ -205,6 +273,8 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 					if (host.nodeIndex !== 0 || (before != null && before.nodeIndex !== 0)) return null;
 					const instance = next.instances.get(host.firstId)!;
 					if (instance.parent !== command.parent) return null;
+					const moveSite = siteOf(next, command.parent);
+					if (moveSite === null) return null;
 					const order = next.order.get(instance.parent)!;
 					order.splice(order.indexOf(instance.firstId), 1);
 					const beforeId = before?.firstId ?? null;
@@ -213,7 +283,16 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 						0,
 						instance.firstId,
 					);
-					operations.push({ op: 'move', instance: instance.firstId, before: beforeId });
+					const beforeInstance =
+						beforeId === null ? null : (next.instances.get(beforeId)?.handle ?? null);
+					if (beforeId !== null && beforeInstance === null) return null;
+					operations.push({
+						op: 'move',
+						instance: instance.handle,
+						parent: moveSite,
+						// Anchors name the instance root, which is slot 0 by construction.
+						before: beforeInstance === null ? null : { instance: beforeInstance, slot: 0 },
+					});
 					continue;
 				}
 				if (command.op === 'remove') {
@@ -223,7 +302,7 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 					for (let index = 0; index < instance.program.nodes.length; index++) {
 						removedHosts.add(instance.firstId + index);
 					}
-					operations.push({ op: 'remove', target: { kind: 'instance', instance: host.firstId } });
+					operations.push({ op: 'remove', firstInstance: instance.handle, count: 1 });
 					removeInstance(next, host.firstId);
 					continue;
 				}
