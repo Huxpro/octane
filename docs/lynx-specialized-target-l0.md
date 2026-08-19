@@ -448,6 +448,19 @@ in §3 and the extraction-first decision in §5.
   this is a no-regression result, not a speedup.** Raw bundle grows 506 B on
   489 KB.
 
+- **L1 × L3 (runtime coverage of the shipped pair).** The `lynx` vitest project
+  compiles its fixtures with the background preset, so `target: 'lynx'` output
+  had never been executed by a committed test: L1's differential compares
+  compile output and first-screen batches without reaching `host-driver.ts`, and
+  L3's differential never saw a template-encoded plan (#87). The pair production
+  ships was therefore uncovered. `lynx-target-first-screen.test.ts` closes it —
+  one fixture compiled at both targets, rendered, and applied through both the
+  direct and staged appliers, four cells compared on physical tree and adoption
+  snapshot. It is a differential across encoding × applier, so it catches
+  divergence between cells and not a regression that moves all four together;
+  its fixture also adds `@if`/`@else` to the covered shapes, which L1's `@for`-only
+  fixture lacked. `@try`/`@pending` through the template encoding stays open.
+
 - **L1 (create-function local naming).** The gzip penalty was neither bounded
   at 10–22% nor caused by JSON keys compressing well. It was caused by the
   emitter naming every host local from a per-node counter, so each repeated
