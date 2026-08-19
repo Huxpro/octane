@@ -331,6 +331,22 @@ in §3 and the extraction-first decision in §5.
   an L1 trade, re-audited at L5 when the interpreter and batch pipeline leave
   the main-thread bundle.
 
+- **L2 (kernel-extraction spike):** `universal-kernel.ts` holds the
+  host-neutral hook-cell slice (see §5 spike result); the seam inventory
+  there sequences the rest of the extraction.
+- **L3 (direct first-screen, first slice):** `renderFirstScreenNow` applies
+  the rendered record tree straight to the Element PAPI
+  (`applyLynxFirstScreenDirect`): no command staging, cloned record maps, or
+  operation replay, with container state indistinguishable from the staged
+  path so adoption capture, mismatch repair, and buffered-event replay are
+  untouched (pinned by a differential snapshot/journal/physical-tree test).
+  Native-list trees keep the staged path. Same-window mount-create FCP@10k
+  (`prototype/results/fcp-10000-l3.md`): pre-L3 stack 1782.9 ms → L1+L3
+  stack 1542.8 ms (**0.865×, −240 ms**), architecture floor 979.1 ms. The
+  remaining gap is owned by the still-built command batch and record graph,
+  background-thread boot, capture validation, and the engine floor —
+  candidates for the next L3 slices.
+
 ## 9. Open questions carried into L1+
 
 1. How much static structure can live in native `.lynx.bundle`

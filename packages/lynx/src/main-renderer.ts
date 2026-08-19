@@ -1029,8 +1029,25 @@ function freezeBatch(commands: UniversalHostCommand[]): UniversalHostBatch {
 	return Object.freeze({ renderer: 'lynx', version: 1, commands: Object.freeze(commands) });
 }
 
+/** Structural node view consumed by the direct first-screen applier. */
+export interface LynxFirstScreenResultNode {
+	readonly kind: 'host' | 'range';
+	readonly id: number;
+	readonly type?: string;
+	readonly props?: Readonly<Record<string, unknown>>;
+	readonly visibility?: 'visible' | 'hidden';
+	readonly children: readonly LynxFirstScreenResultNode[];
+}
+
 export interface LynxFirstScreenRenderResult {
 	readonly batch: UniversalHostBatch;
+	/**
+	 * The rendered record tree, id-assigned, for direct PAPI emission
+	 * (issue-58 L3). The batch stays the wire/adoption product; the applier
+	 * reads listener ids from the batch's event commands so their
+	 * deterministic assignment stays single-sourced here.
+	 */
+	readonly nodes: readonly LynxFirstScreenResultNode[];
 	readonly hostCount: number;
 	readonly logicalCount: number;
 }
@@ -1108,6 +1125,7 @@ export function renderLynxFirstScreen<Props>(
 	for (const host of hidden) commands.push({ op: 'visibility', id: host.id, state: 'hidden' });
 	return Object.freeze({
 		batch: freezeBatch(commands),
+		nodes,
 		hostCount,
 		logicalCount: attempt.nextId - 1,
 	});

@@ -28,6 +28,10 @@ const { values: args } = parseArgs({
 		reps: { type: 'string', default: '5' },
 		port: { type: 'string', default: '8378' },
 		'allow-busy-host': { type: 'boolean', default: false },
+		'out-suffix': { type: 'string', default: '' },
+		// Repeatable `id=path` cells measured in the same window (for example a
+		// preserved pre-change octane build as a same-harness baseline).
+		extra: { type: 'string', multiple: true, default: [] },
 	},
 });
 const ROWS = Number(args.rows);
@@ -37,6 +41,14 @@ const PORT = Number(args.port);
 const CELLS = [
 	{ id: 'octane', bundle: path.join(root, `app/dist-rows${ROWS}/main.web.bundle`) },
 	{ id: 'octane-direct', bundle: path.join(here, `dist-rows${ROWS}/main.web.bundle`) },
+	...args.extra.map((entry) => {
+		const separator = entry.indexOf('=');
+		if (separator === -1) throw new Error(`--extra expects id=path, got ${entry}`);
+		return {
+			id: entry.slice(0, separator),
+			bundle: path.resolve(root, entry.slice(separator + 1)),
+		};
+	}),
 ];
 for (const cell of CELLS) {
 	if (!fs.existsSync(cell.bundle)) {
@@ -163,9 +175,9 @@ const report = lines.join('\n') + '\n';
 console.log('\n' + report);
 const outDir = path.join(here, 'results');
 fs.mkdirSync(outDir, { recursive: true });
-fs.writeFileSync(path.join(outDir, `fcp-${ROWS}.md`), report);
+fs.writeFileSync(path.join(outDir, `fcp-${ROWS}${args['out-suffix']}.md`), report);
 fs.writeFileSync(
-	path.join(outDir, `fcp-${ROWS}.json`),
+	path.join(outDir, `fcp-${ROWS}${args['out-suffix']}.json`),
 	JSON.stringify({ rows: ROWS, reps: REPS, samples }, null, 2) + '\n',
 );
-console.log(`[fcp] wrote prototype/results/fcp-${ROWS}.md`);
+console.log(`[fcp] wrote prototype/results/fcp-${ROWS}${args['out-suffix']}.md`);

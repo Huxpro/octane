@@ -2863,6 +2863,183 @@ function firstTreeOwner<Node extends LynxElementRef>(
  * portal while rendering, long before a host container exists. They defend only
  * a direct call to this function, where a fault is the right report.
  */
+
+/**
+ * Structural view of the first-screen renderer's node records. Hosts carry
+ * type/props/visibility; ranges only pass their children through to the
+ * nearest host ancestor. Ids are the pre-order ids the background renderer
+ * will independently assign, so adoption identity is positional, not minted.
+ */
+export interface LynxFirstScreenDirectNode {
+	readonly kind: 'host' | 'range';
+	readonly id: number;
+	readonly type?: string;
+	readonly props?: Readonly<Record<string, unknown>>;
+	readonly visibility?: 'visible' | 'hidden';
+	readonly children: readonly LynxFirstScreenDirectNode[];
+}
+
+function firstScreenTreeHasList(nodes: readonly LynxFirstScreenDirectNode[]): boolean {
+	for (const node of nodes) {
+		if (node.kind === 'host' && (node.type === 'list' || node.type === 'list-item')) return true;
+		if (firstScreenTreeHasList(node.children)) return true;
+	}
+	return false;
+}
+
+/**
+ * Issue-58 L3: apply a first-screen tree with direct Element PAPI emission —
+ * no command staging, no cloned record maps, no operation replay — while
+ * leaving the container state indistinguishable from the batch path so
+ * `captureLynxFirstTree` and background adoption stay byte-compatible. The
+ * batch is consulted only for its `event` commands (the deterministic
+ * listener-id assignment stays single-sourced in the renderer) and its
+ * version. Trees containing native lists return false and take the staged
+ * path unchanged; nothing else falls back.
+ */
+export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
+	container: LynxHostContainer<Node>,
+	roots: readonly LynxFirstScreenDirectNode[],
+	batch: UniversalHostBatch,
+): boolean {
+	const state = container[LYNX_HOST_STATE];
+	if (state.disposed || state.disposing || state.faulted || state.applying) {
+		throw hostError('first-screen container is not accepting an initial tree.');
+	}
+	if (state.acceptedVersion !== 0 || state.records.size !== 0) {
+		throw hostError('direct first-screen apply requires an empty container.');
+	}
+	if (firstScreenTreeHasList(roots)) return false;
+	// Same envelope contract as the staged path: the applier is exported, so a
+	// future caller must not be able to hand it an unvalidated batch.
+	if (batch.renderer !== LYNX_RENDERER_ID) {
+		throw hostError(`batch renderer ${JSON.stringify(batch.renderer)} is not "lynx".`);
+	}
+	if (!Number.isSafeInteger(batch.version) || batch.version <= 0) {
+		throw hostError(`batch version ${String(batch.version)} is not a positive safe integer.`);
+	}
+	const eventsByHost = new Map<number, [string, UniversalEventListenerDescriptor][]>();
+	for (const command of batch.commands) {
+		// First-screen batches never remove listeners; a null descriptor cannot
+		// occur here and is skipped rather than journaled.
+		if (command.op !== 'event' || command.listener === null) continue;
+		let entries = eventsByHost.get(command.id);
+		if (entries === undefined) {
+			entries = [];
+			eventsByHost.set(command.id, entries);
+		}
+		entries.push([command.type, command.listener]);
+	}
+	const papi = state.papi;
+	const append =
+		papi.append ?? ((parent: Node, child: Node) => papi.insertBefore(parent, child, null));
+	const visit = (
+		node: LynxFirstScreenDirectNode,
+		parentRecord: LynxHostRecord<Node> | null,
+		parentId: number | null,
+		physicalParent: Node,
+		parentVisible: boolean,
+	): void => {
+		if (node.kind !== 'host') {
+			for (const child of node.children) {
+				visit(child, parentRecord, parentId, physicalParent, parentVisible);
+			}
+			return;
+		}
+		const type = node.type!;
+		const props = node.props ?? EMPTY_HOST_PROPS;
+		const visible = parentVisible && node.visibility !== 'hidden';
+		const patch =
+			type === '#text' && props[LYNX_CSS_SCOPE_PROP] == null
+				? EMPTY_RAW_TEXT_CREATE_PATCH
+				: planLynxHostPropPatch(type, EMPTY_HOST_PROPS, props);
+		if (patch.mainThreadEvents.length !== 0 || patch.mainThreadRef !== undefined) {
+			state.hasMainThreadProps = true;
+		}
+		const handle = createHandle(container.root, node.id, type, 1);
+		state.generations.set(node.id, 1);
+		const hostEvents = eventsByHost.get(node.id);
+		const record: LynxHostRecord<Node> = {
+			node: null,
+			type,
+			props,
+			visible,
+			parent: parentId,
+			children: EMPTY_HOST_CHILDREN,
+			events:
+				hostEvents === undefined
+					? EMPTY_HOST_EVENTS
+					: new Map(hostEvents as Iterable<[string, UniversalEventListenerDescriptor]>),
+			handle,
+			selectorInstalled: false,
+		};
+		state.records.set(node.id, record);
+		if (parentRecord !== null) {
+			if (parentRecord.children === EMPTY_HOST_CHILDREN) parentRecord.children = [];
+			parentRecord.children.push(node.id);
+		} else {
+			state.rootChildren.push(node.id);
+		}
+		const papiNode = papi.createElement(type, container.pageComponentUniqueId, textValue(props));
+		state.ownedNodes.add(papiNode);
+		record.node = papiNode;
+		ensureNodesRefSelector(state, record);
+		applyProps(
+			state,
+			papiNode,
+			type,
+			EMPTY_HOST_PROPS,
+			props,
+			patch,
+			true,
+			visible,
+			visible && state.hasMainThreadProps,
+		);
+		if (!visible && type !== '#text' && type !== 'raw-text') {
+			papi.setAttribute(papiNode, 'hidden', true);
+		}
+		if (visible && hostEvents !== undefined) {
+			for (const [eventType, listener] of hostEvents) {
+				installNativeEvent(state, papiNode, container.root, node.id, 1, eventType, listener);
+			}
+		}
+		for (const child of node.children) {
+			visit(child, record, node.id, papiNode, visible);
+		}
+		if (parentId === null) state.ownedPageRoots.add(papiNode);
+		append(physicalParent, papiNode);
+	};
+	state.applying = true;
+	try {
+		let applicationError: unknown = null;
+		try {
+			for (const root of roots) visit(root, null, null, container.page as Node, true);
+			state.acceptedVersion = batch.version;
+		} catch (error) {
+			applicationError = error;
+		}
+		// Mirror the staged applier's fault discipline: the flush obligation
+		// survives a mid-walk fault (terminal disposal retries it), and directly
+		// installed main-thread worklets must be invalidated before any native
+		// callback can fire against a faulted container.
+		try {
+			papi.flush(container.page as Node);
+			state.cleanupNeedsFlush = false;
+		} catch (error) {
+			state.cleanupNeedsFlush = true;
+			if (applicationError === null) applicationError = error;
+		}
+		if (applicationError !== null) {
+			state.faulted = true;
+			invalidateMainThreadLifetimesAfterFault(state);
+			throw applicationError;
+		}
+	} finally {
+		state.applying = false;
+	}
+	return true;
+}
+
 export function captureLynxFirstTree<Node extends LynxElementRef>(
 	container: LynxHostContainer<Node>,
 	options: CaptureLynxFirstTreeOptions = {},
