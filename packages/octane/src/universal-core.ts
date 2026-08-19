@@ -1001,65 +1001,44 @@ interface DraftRecord {
 	retained?: boolean;
 }
 
-type EffectPhase = 'insertion' | 'layout' | 'passive';
-type UniversalVisibility = 'visible' | 'activity-hidden' | 'suspense-hidden';
+import {
+	type AppliedUniversalHookUpdates as KernelAppliedUniversalHookUpdates,
+	type AppliedUniversalLaneUpdates as KernelAppliedUniversalLaneUpdates,
+	type AppliedUniversalUrgentUpdates as KernelAppliedUniversalUrgentUpdates,
+	type EffectEventCell,
+	type EffectEventHook,
+	type EffectHook as KernelEffectHook,
+	type EffectPhase,
+	type IdHook,
+	type LinkedStateHook,
+	type LinkedStateOptions,
+	type LinkedStatePrevious,
+	type MemoHook,
+	type ParkedUniversalLinkedDraft,
+	type RefHook,
+	type StateHook,
+	type ReducerHook,
+	type UniversalHookUpdateQueue as KernelUniversalHookUpdateQueue,
+	type UniversalTrackedThenable,
+	type UniversalTransitionUpdate,
+	type UniversalVisibility,
+	deactivateEffectEventCells,
+	depsEqual,
+	isThenable,
+	runEffectCleanup,
+	runEffectCreate,
+	trackUniversalThenable,
+} from './universal-kernel.js';
 
-interface StateHook<T = unknown> {
-	kind: 'state';
-	value: T;
-	set: (value: T | ((previous: T) => T)) => void;
-	get: () => T;
-}
+export type { LinkedStateOptions, LinkedStatePrevious } from './universal-kernel.js';
 
-export interface LinkedStatePrevious<Source, Value> {
-	source: Source;
-	value: Value;
-}
-
-export interface LinkedStateOptions<Source, Value> {
-	sourceEqual?: (previous: Source, next: Source) => boolean;
-	valueEqual?: (previous: Value, next: Value) => boolean;
-}
-
-interface LinkedStateHook<Source = unknown, Value = unknown> {
-	kind: 'state';
-	linked: true;
-	source: Source;
-	generation: number;
-	generationBase: Value;
-	value: Value;
-	valueEqual: (previous: Value, next: Value) => boolean;
-	set: (value: Value | ((previous: Value) => Value)) => void;
-	get?: () => Value;
-}
-
-interface ParkedUniversalLinkedDraft<Source = unknown, Value = unknown> {
-	source: Source;
-	value: Value;
-	valueEqual: (previous: Value, next: Value) => boolean;
-	generation: number;
-	updated: boolean;
-}
+type EffectHook = KernelEffectHook<UniversalOwnerRecord>;
 
 // Retained Suspense commits the old primary owner while discarding its speculative
 // replacement owner. Preserve only linked-state source drafts here; ordinary
 // state hooks never allocate, consult, or change this optional side table.
 let PARKED_UNIVERSAL_LINKED_DRAFTS: WeakMap<object, ParkedUniversalLinkedDraft<any, any>> | null =
 	null;
-
-interface ReducerHook<S = unknown, A = unknown> {
-	kind: 'reducer';
-	value: S;
-	reducer: (state: S, action: A) => S;
-	dispatch: (action: A) => void;
-	get: () => S;
-}
-
-interface MemoHook<T = unknown> {
-	kind: 'memo';
-	value: T;
-	deps: readonly unknown[] | null;
-}
 
 interface ComponentMemoHook<P = any> {
 	kind: 'component-memo';
@@ -1068,41 +1047,6 @@ interface ComponentMemoHook<P = any> {
 	props: P;
 	value: UniversalRenderable;
 	contextReads: Map<UniversalContext<any>, unknown> | null;
-}
-
-interface RefHook<T = unknown> {
-	kind: 'ref';
-	current: T;
-	value: { current: T };
-}
-
-interface IdHook {
-	kind: 'id';
-	value: string;
-}
-
-interface EffectEventHook {
-	kind: 'effect-event';
-	cell: EffectEventCell;
-	next: (...args: any[]) => any;
-	value: (...args: any[]) => any;
-}
-
-interface EffectEventCell {
-	impl: (...args: any[]) => any;
-	active: boolean;
-}
-
-interface EffectHook {
-	kind: 'effect';
-	owner: UniversalOwnerRecord;
-	slot: unknown;
-	phase: EffectPhase;
-	create: () => void | (() => void);
-	deps: readonly unknown[] | null;
-	cleanup: (() => void) | null;
-	mounted: boolean;
-	previous: EffectHook | null;
 }
 
 type UniversalHook =
@@ -1292,35 +1236,10 @@ let NEXT_PORTAL_ROOT = 1;
 let NEXT_TRANSPORT_ROOT = 1;
 const EVENT_DISPATCHERS = new Map<number, (payload: unknown) => unknown>();
 const UNIVERSAL_SLOT_STACK: unknown[] = [];
-interface UniversalTransitionUpdate {
-	readonly kind: 'state' | 'reducer';
-}
-
-interface UniversalHookUpdateQueue extends Array<unknown> {
-	kind?: 'state' | 'reducer';
-	baseState?: unknown;
-	batches?: (UniversalTransitionBatch | null)[];
-	rebases?: boolean[];
-}
-
-interface AppliedUniversalUrgentUpdates {
-	readonly lane: false;
-	readonly queue: UniversalHookUpdateQueue;
-	readonly consumed: number;
-	readonly baseState: unknown;
-}
-
-interface AppliedUniversalLaneUpdates {
-	readonly lane: true;
-	readonly queue: UniversalHookUpdateQueue;
-	readonly consumed: number;
-	readonly baseState: unknown;
-	readonly remainingValues: unknown[];
-	readonly remainingBatches: (UniversalTransitionBatch | null)[];
-	readonly remainingRebases: boolean[];
-}
-
-type AppliedUniversalHookUpdates = AppliedUniversalUrgentUpdates | AppliedUniversalLaneUpdates;
+type UniversalHookUpdateQueue = KernelUniversalHookUpdateQueue<UniversalTransitionBatch>;
+type AppliedUniversalUrgentUpdates = KernelAppliedUniversalUrgentUpdates<UniversalTransitionBatch>;
+type AppliedUniversalLaneUpdates = KernelAppliedUniversalLaneUpdates<UniversalTransitionBatch>;
+type AppliedUniversalHookUpdates = KernelAppliedUniversalHookUpdates<UniversalTransitionBatch>;
 
 interface UniversalTransitionBatch {
 	readonly updates: Map<UniversalOwnerRecord, Map<unknown, UniversalTransitionUpdate>>;
@@ -4727,14 +4646,6 @@ function runCommitTasks(tasks: readonly (() => void)[]): void {
 	if (hasError) throw firstError;
 }
 
-function depsEqual(left: readonly unknown[] | null, right: readonly unknown[] | null): boolean {
-	if (left === null || right === null || left.length !== right.length) return false;
-	for (let index = 0; index < left.length; index++) {
-		if (!Object.is(left[index], right[index])) return false;
-	}
-	return true;
-}
-
 function suspendedOwnerPathEqual(
 	left: readonly SuspendedOwnerSegment[],
 	right: readonly SuspendedOwnerSegment[],
@@ -4753,13 +4664,6 @@ function suspendedOwnerPathEqual(
 		}
 	}
 	return true;
-}
-
-function isThenable(value: unknown): value is PromiseLike<unknown> {
-	return (
-		(value !== null && typeof value === 'object' && typeof (value as any).then === 'function') ||
-		(typeof value === 'function' && typeof (value as any).then === 'function')
-	);
 }
 
 function findSuspendedMemo(
@@ -5942,32 +5846,6 @@ export function useContext<T>(context: UniversalContext<T>): T {
 	return readOwnerContext(currentDraftOwner(), context);
 }
 
-type UniversalTrackedThenable<T = unknown> = PromiseLike<T> & {
-	status?: 'pending' | 'fulfilled' | 'rejected';
-	value?: T;
-	reason?: unknown;
-};
-
-function trackUniversalThenable<T>(thenable: UniversalTrackedThenable<T>): void {
-	if (
-		thenable.status === 'pending' ||
-		thenable.status === 'fulfilled' ||
-		thenable.status === 'rejected'
-	)
-		return;
-	thenable.status = 'pending';
-	thenable.then(
-		(value) => {
-			thenable.status = 'fulfilled';
-			thenable.value = value;
-		},
-		(error) => {
-			thenable.status = 'rejected';
-			thenable.reason = error;
-		},
-	);
-}
-
 interface UniversalWarmEntry {
 	readonly deps: readonly unknown[];
 	readonly value: unknown;
@@ -6457,21 +6335,6 @@ export function createPortal(children: UniversalRenderable, target: unknown): Un
 /** Compiler sentinel for the supported universal Activity descriptor. */
 export const Activity: unique symbol = Symbol.for('octane.Activity') as any;
 
-function runEffectCreate(hook: EffectHook): void {
-	const cleanup = (hook.create as (...args: unknown[]) => void | (() => void))(
-		...(hook.deps ?? []),
-	);
-	hook.cleanup = typeof cleanup === 'function' ? cleanup : null;
-	hook.mounted = true;
-}
-
-function runEffectCleanup(hook: EffectHook): void {
-	const cleanup = hook.cleanup;
-	hook.cleanup = null;
-	hook.mounted = false;
-	cleanup?.();
-}
-
 /**
  * Root error-callback handlers live OFF the root's shape (mirroring the DOM
  * runtime's Block-keyed WeakMap): registered only for roots created with at
@@ -6666,10 +6529,6 @@ function collectEffectEventCells(owners: readonly UniversalOwnerRecord[]): Effec
 		}
 	}
 	return cells;
-}
-
-function deactivateEffectEventCells(cells: readonly EffectEventCell[]): void {
-	for (const cell of cells) cell.active = false;
 }
 
 function snapshotHostAttachmentIds(value: readonly number[], label: string): readonly number[] {

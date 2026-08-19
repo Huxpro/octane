@@ -246,6 +246,32 @@ decision point is early in L2, after a spike that extracts only the hook-cell
 module; drift found there is cheap, drift found after a full fresh core is
 not.
 
+**Spike result (landed):** `packages/octane/src/universal-kernel.ts` now holds
+the host-neutral first slice — every hook cell shape (state, linked state,
+reducer, memo, ref, id, effect, effect-event), the hook update-queue value
+types (batch type as a parameter), and the pure helpers (`depsEqual`,
+`isThenable`, thenable tracking, effect create/cleanup runners, effect-event
+deactivation) — with `universal-core.ts` binding the generics and re-exporting
+the public types, all with zero behavior change against the guard suites. The
+inventory of remaining seams, in extraction order for the L2 core proper:
+
+1. `EffectHook.owner` and every setter closure capture the owner record; the
+   kernel keeps the owner as a type parameter, so the next slice needs an
+   owner abstraction (hooks map + update queues + disposed/needsRender flags).
+2. `scheduleOwner` → `root.scheduleOwned` and profiling: a one-function
+   injected callback.
+3. Transition batches: `universalTransitionBatchForUpdate` and staging depend
+   on module globals and three root services (`scheduleTransition`,
+   `discardTransitionBatch`, `__scheduleMicrotask`).
+4. Root services used inside hooks: `formatUniversalId` (useId), the warm
+   memo cache keyed by root (useMemo/useBatch), `readBridgeContext`
+   (useContext fallback).
+5. `currentDraftOwner`/`resolveHookSlot` reach owner claiming
+   (`claimChildOwner`) — the reconciler-side boundary, last to move.
+
+`ComponentMemoHook` stays renderer-facing (its value is a renderable), and
+the hook union stays in `universal-core.ts` composing kernel cells with it.
+
 ## 6. What the specialized path deletes (mapped to measured cost)
 
 Generic command vocabulary and per-command recursive validation
