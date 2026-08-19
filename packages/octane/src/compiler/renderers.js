@@ -8,7 +8,7 @@
 
 export const DOM_RENDERER_ID = 'dom';
 export const DOM_RENDERER_MODULE = 'octane';
-export const RENDERER_CONFIG_VERSION = 4;
+export const RENDERER_CONFIG_VERSION = 5;
 
 const RENDERER_ID = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/;
 const MODULE_EXPORT_NAME = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
@@ -205,8 +205,8 @@ function normalizeRegistryEntry(id, value, path) {
 		assertKnownKeys(value, REGISTRY_ENTRY_KEYS, path);
 		moduleId = validateModuleId(value.module, `${path}.module`);
 		target = value.target ?? 'universal';
-		if (target !== 'dom' && target !== 'universal') {
-			throw configError(`${path}.target must be "dom" or "universal".`);
+		if (target !== 'dom' && target !== 'universal' && target !== 'lynx') {
+			throw configError(`${path}.target must be "dom", "universal", or "lynx".`);
 		}
 
 		server = value.server ?? (target === 'dom' ? 'render' : 'unsupported');
@@ -218,7 +218,7 @@ function normalizeRegistryEntry(id, value, path) {
 		if (target === 'dom' && server !== 'render') {
 			throw configError(`${path}.server must be "render" for the DOM renderer.`);
 		}
-		if (target === 'universal' && server === 'render') {
+		if (target !== 'dom' && server === 'render') {
 			throw configError(
 				`${path}.server cannot be "render" until the universal renderer provides a validated server serializer.`,
 			);

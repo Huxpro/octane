@@ -25,7 +25,7 @@ describe('renderer configuration', () => {
 			boundaries: {},
 			rules: [],
 		});
-		expect(config.signature).toMatch(/^octane-renderers-v4:/);
+		expect(config.signature).toMatch(/^octane-renderers-v5:/);
 		expect(resolveRendererForFile(config, '/src/App.tsrx')).toEqual({
 			id: 'dom',
 			module: 'octane',
@@ -34,6 +34,35 @@ describe('renderer configuration', () => {
 			text: 'host',
 			capabilities: [],
 		});
+	});
+
+	it('accepts the lynx target with universal-family server rules', () => {
+		const config = normalizeRendererConfig({
+			registry: {
+				lynx: {
+					module: '@octanejs/lynx/main-renderer',
+					target: 'lynx',
+					text: 'host',
+					capabilities: ['main-thread-render-only'],
+				},
+			},
+			rules: [{ include: '**/*.lynx.tsrx', renderer: 'lynx' }],
+		});
+		expect(config.registry.lynx.target).toBe('lynx');
+		expect(config.registry.lynx.server).toBe('unsupported');
+		expect(resolveRendererForFile(config, '/src/App.lynx.tsrx')?.target).toBe('lynx');
+		expect(() =>
+			normalizeRendererConfig({
+				registry: {
+					lynx: { module: '@octanejs/lynx/main-renderer', target: 'lynx', server: 'render' },
+				},
+			}),
+		).toThrowError(/server cannot be "render"/);
+		expect(() =>
+			normalizeRendererConfig({
+				registry: { odd: { module: '@octanejs/odd', target: 'native' } },
+			}),
+		).toThrowError(/target must be "dom", "universal", or "lynx"/);
 	});
 
 	it('normalizes compiler and runtime metadata for a client-only renderer', () => {

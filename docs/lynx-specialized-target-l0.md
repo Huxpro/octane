@@ -289,7 +289,23 @@ Secondary observations, same session:
 The L0 exit gate is satisfied; proceed to L1 (compiler backend) with the spec
 in §3 and the extraction-first decision in §5.
 
-## 8. Open questions carried into L1+
+## 8. Landed increments
+
+- **L1 (compiler backend, first slice):** `target: 'lynx'` is accepted by the
+  renderer config (v5) and routed through the shared universal front-end;
+  eligible host-only templates emit create functions + slot-kind tables, and
+  ineligible plans keep the interpreted encoding. `lynxMainThreadRenderer`
+  runs on the new target; its first-screen renderer executes create programs
+  through a record-building env that reproduces the plan path's host batch
+  byte-for-byte (differential-tested), so the representation swap lands with
+  adoption identity and the whole Lynx test surface unchanged. Binding the
+  same env directly to PAPI is the L3 cutover. Module-level size: raw and
+  minified at or below the plan encoding; gzip 10–22% larger on the fixture
+  modules because repeated JSON keys compress better than code — accepted as
+  an L1 trade, re-audited at L5 when the interpreter and batch pipeline leave
+  the main-thread bundle.
+
+## 9. Open questions carried into L1+
 
 1. How much static structure can live in native `.lynx.bundle`
    element-template sections versus create functions — needs the native
