@@ -1000,6 +1000,28 @@ function visitHosts(
 	}
 }
 
+/**
+ * Walk hosts carrying resolved visibility, using the same inheritance rule the
+ * host driver applies: a host is visible when it is not itself hidden and no
+ * host above it is. Hidden hosts are still created and still receive their
+ * props; only what the host may *announce* is gated.
+ */
+function visitHostsWithVisibility(
+	nodes: readonly FirstScreenNode[],
+	parentVisible: boolean,
+	visit: (host: FirstScreenHost, visible: boolean) => void,
+): void {
+	for (const node of nodes) {
+		if (node.kind !== 'host') {
+			visitHostsWithVisibility(node.children, parentVisible, visit);
+			continue;
+		}
+		const visible = parentVisible && node.visibility !== 'hidden';
+		visit(node, visible);
+		visitHostsWithVisibility(node.children, visible, visit);
+	}
+}
+
 function physicalChildren(
 	nodes: readonly FirstScreenNode[],
 	output: FirstScreenHost[] = [],
@@ -1100,7 +1122,16 @@ export function renderLynxFirstScreen<Props>(
 		hostCount++;
 		commands.push({ op: 'create', id: host.id, type: host.type, props: host.props });
 	});
-	visitHosts(nodes, (host) => {
+	// The background gates first-screen event emission on the host's resolved
+	// visibility (`universal-core.ts`, `isVisible &&`), announcing a listener
+	// only once the subtree is shown. Emitting one here for a hidden host makes
+	// the two batches disagree by exactly that command, and a first screen whose
+	// event bindings do not match the background's is unadoptable: it repaints
+	// from scratch on every launch and the taps buffered in between are dropped.
+	// A hidden tab, a collapsed drawer, and a pre-rendered off-screen route are
+	// all this shape.
+	visitHostsWithVisibility(nodes, true, (host, visible) => {
+		if (!visible) return;
 		for (const [type, priority] of host.events) {
 			commands.push({
 				op: 'event',
