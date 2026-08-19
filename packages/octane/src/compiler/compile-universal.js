@@ -3964,7 +3964,7 @@ function lynxEnvCallAst(method, args, origin) {
 	return inheritGeneratedOrigin(b.stmt(b.call(b.member(b.id('env'), method), ...args)), origin);
 }
 
-function lynxTemplateCreateStatementsAst(node, parentName, statements, naming, origin) {
+function lynxTemplateCreateStatementsAst(node, parentName, statements, naming, origin, depth) {
 	if (node.kind === 'text') {
 		if (node.slot === undefined) {
 			const value = node.value ?? '';
@@ -3984,16 +3984,27 @@ function lynxTemplateCreateStatementsAst(node, parentName, statements, naming, o
 		);
 		return;
 	}
-	const name = `n${naming.next++}`;
+	// Locals are named by depth, not by a per-node counter. A host's binding is
+	// live only from its own creation until the `env.a` that appends it, and
+	// that window nests exactly with tree depth, so siblings can share a name.
+	// Unique names would make every repeated subtree differ from the last by the
+	// bytes of its identifier, which is what LZ77 matches on: the raw output is
+	// slightly smaller than the interpreted encoding either way, but with unique
+	// names the gzipped output grows without bound in node count.
+	const name = `n${depth}`;
+	const create = b.call(
+		b.member(b.id('env'), 'h'),
+		b.literal(node.type, JSON.stringify(node.type)),
+	);
 	statements.push(
 		inheritGeneratedOrigin(
-			b.const(
-				name,
-				b.call(b.member(b.id('env'), 'h'), b.literal(node.type, JSON.stringify(node.type))),
-			),
+			naming.declared.has(depth)
+				? b.stmt(b.assignment('=', b.id(name), create))
+				: b.let(name, create),
 			origin,
 		),
 	);
+	naming.declared.add(depth);
 	for (const [propName, value] of Object.entries(node.props || {})) {
 		statements.push(
 			lynxEnvCallAst(
@@ -4018,7 +4029,7 @@ function lynxTemplateCreateStatementsAst(node, parentName, statements, naming, o
 		);
 	}
 	for (const child of node.children || []) {
-		lynxTemplateCreateStatementsAst(child, name, statements, naming, origin);
+		lynxTemplateCreateStatementsAst(child, name, statements, naming, origin, depth + 1);
 	}
 	if (parentName !== null) {
 		statements.push(lynxEnvCallAst('a', [b.id(parentName), b.id(name)], origin));
@@ -4028,8 +4039,8 @@ function lynxTemplateCreateStatementsAst(node, parentName, statements, naming, o
 
 function lynxTemplateObjectAst(root, origin) {
 	const statements = [];
-	const naming = { next: 0, rootName: null };
-	lynxTemplateCreateStatementsAst(root, null, statements, naming, origin);
+	const naming = { declared: new Set(), rootName: null };
+	lynxTemplateCreateStatementsAst(root, null, statements, naming, origin, 0);
 	statements.push(inheritGeneratedOrigin(b.return(b.id(naming.rootName)), origin));
 	const kinds = lynxTemplateSlotKinds(root, []);
 	const slotsAst = b.array(
