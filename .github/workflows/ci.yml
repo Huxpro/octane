@@ -4,7 +4,11 @@ on:
   push:
     branches: [main, new-lynx]
   pull_request:
-    branches: [main, new-lynx]
+    # No base-branch filter: stacked agent PRs target intermediate stack
+    # branches, and filtering to the integration branches left them with no
+    # checks at all. Cost stays bounded because every expensive job below is
+    # already gated on the PR leaving draft, so a stack still runs CI exactly
+    # once per PR — when it is marked ready ahead of its merge.
     types: [opened, reopened, synchronize, ready_for_review, converted_to_draft, closed]
 
 concurrency:
