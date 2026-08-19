@@ -536,6 +536,28 @@ function textOnlyPropNames(names: readonly string[]): boolean {
 	return true;
 }
 
+function directMainThreadTextPropName(names: readonly string[]): string | undefined {
+	for (const name of names) {
+		if (name !== 'main-thread:ref' && parseLynxMainThreadEventProp(name) === null) continue;
+		return name;
+	}
+	return undefined;
+}
+
+/** Raw text has no Element surface, so it can host no direct main-thread prop. */
+function assertNoDirectMainThreadTextProps(
+	previousNames: readonly string[],
+	nextNames: readonly string[],
+): void {
+	const directProp =
+		directMainThreadTextPropName(previousNames) ?? directMainThreadTextPropName(nextNames);
+	if (directProp !== undefined) {
+		throw propError(
+			`raw-text hosts cannot own direct main-thread prop ${JSON.stringify(directProp)}.`,
+		);
+	}
+}
+
 function planTextOnlyHostPropPatch(
 	previous: Readonly<Record<string, unknown>>,
 	next: Readonly<Record<string, unknown>>,
@@ -588,24 +610,7 @@ export function planLynxHostPropPatch(
 			: classHostPropPatch(next[nextNames[0]!] as string);
 	}
 	if (type === '#text' || type === 'raw-text') {
-		let directProp: string | undefined;
-		for (const name of previousNames) {
-			if (name !== 'main-thread:ref' && parseLynxMainThreadEventProp(name) === null) continue;
-			directProp = name;
-			break;
-		}
-		if (directProp === undefined) {
-			for (const name of nextNames) {
-				if (name !== 'main-thread:ref' && parseLynxMainThreadEventProp(name) === null) continue;
-				directProp = name;
-				break;
-			}
-		}
-		if (directProp !== undefined) {
-			throw propError(
-				`raw-text hosts cannot own direct main-thread prop ${JSON.stringify(directProp)}.`,
-			);
-		}
+		assertNoDirectMainThreadTextProps(previousNames, nextNames);
 		if (type === '#text' && textOnlyPropNames(previousNames) && textOnlyPropNames(nextNames)) {
 			return planTextOnlyHostPropPatch(previous, next);
 		}
@@ -707,4 +712,134 @@ export function planLynxHostPropPatch(
 	if (attributes !== undefined) patch.attributes = Object.freeze(attributes);
 	if (mainThreadEvents !== undefined) patch.mainThreadEvents = Object.freeze(mainThreadEvents);
 	return Object.freeze(patch);
+}
+
+/** Whether an in-place prop update is representable on the public PAPI. */
+export type LynxHostUpdateKind = 'update' | 'recreate';
+
+/**
+ * The dataset normalizer rejects exactly one name and otherwise only reads. Both
+ * are reproduced: the read matters because skipping it would leave the two paths
+ * touching a different set of the bag's own properties.
+ */
+function visitDatasetNames(
+	props: Readonly<Record<string, unknown>>,
+	names: readonly string[],
+): void {
+	for (const name of names) {
+		if (!name.startsWith('data-')) continue;
+		if (name.length === 5) throw propError('dataset prop `data-` requires a non-empty key.');
+		void props[name];
+	}
+}
+
+function scopeUpdateKind(
+	previous: Readonly<Record<string, unknown>>,
+	next: Readonly<Record<string, unknown>>,
+): LynxHostUpdateKind {
+	const previousScope = decodeLynxCSSScopeMetadata(previous[LYNX_CSS_SCOPE_PROP]);
+	const nextScope = decodeLynxCSSScopeMetadata(next[LYNX_CSS_SCOPE_PROP]);
+	return !sameScope(previousScope, nextScope) && nextScope === null && previousScope !== null
+		? 'recreate'
+		: 'update';
+}
+
+/**
+ * Answer the renderer's `updates.classify` question without building the diff.
+ *
+ * The verdict is exactly `planLynxHostPropPatch(...).requiresRecreate`, and
+ * every validation that function performs still runs here in the same order, so
+ * the two differ only in what they allocate. Losing a CSS scope is the sole
+ * reason a host cannot be updated in place, and that answer needs neither the
+ * attribute diff, the dataset bag, the class composition, nor the patch object
+ * — all of which the main thread rebuilds from the same props bag anyway.
+ *
+ * What is skipped is construction and comparison, never a rejection and never a
+ * property read: `normalizeLynxClass` cannot reject a value, `attributeValue`
+ * coerces only `<image>` sources, and the dataset normalizer rejects exactly one
+ * name, so each walk is kept and only its allocation dropped.
+ * `host-prop-classification.test.ts` pins verdict and throw parity against
+ * `planLynxHostPropPatch` so the two cannot drift.
+ */
+export function classifyLynxHostPropUpdate(
+	type: string,
+	previous: Readonly<Record<string, unknown>>,
+	next: Readonly<Record<string, unknown>>,
+): LynxHostUpdateKind {
+	const previousNames = Object.keys(previous);
+	const nextNames = Object.keys(next);
+	if (
+		(type === 'view' || type === 'text') &&
+		previousNames.length === 0 &&
+		(nextNames.length === 0 ||
+			(nextNames.length === 1 &&
+				(nextNames[0] === 'class' || nextNames[0] === 'className') &&
+				typeof next[nextNames[0]] === 'string')) &&
+		localPlainPropBag(previous) &&
+		localPlainPropBag(next)
+	) {
+		return 'update';
+	}
+	if (type === '#text' || type === 'raw-text') {
+		assertNoDirectMainThreadTextProps(previousNames, nextNames);
+		if (type === '#text' && textOnlyPropNames(previousNames) && textOnlyPropNames(nextNames)) {
+			return scopeUpdateKind(previous, next);
+		}
+	}
+	if (hasOwn(next, LYNX_NODES_REF_ATTRIBUTE)) {
+		throw propError(
+			`${JSON.stringify(LYNX_NODES_REF_ATTRIBUTE)} is reserved for generation-scoped query handles.`,
+		);
+	}
+	for (const name of nextNames) {
+		if (name.includes(':') && classifyLynxHostPropName(name) === 'reserved') {
+			throw propError(
+				`namespaced prop ${JSON.stringify(name)} is not a supported Lynx host capability.`,
+			);
+		}
+	}
+	for (const name of mainThreadEventPropNames(previousNames, nextNames)) {
+		const binding = parseLynxMainThreadEventProp(name)!;
+		decodeMainThreadWorklet(previous[name], name);
+		const nextValue = decodeMainThreadWorklet(next[name], name);
+		const ordinaryName = `${binding.prefix}${binding.name}`;
+		if (nextValue !== null && next[ordinaryName] !== null && next[ordinaryName] !== undefined) {
+			throw propError(
+				`${JSON.stringify(name)} conflicts with ${JSON.stringify(ordinaryName)} on the same native event channel.`,
+			);
+		}
+	}
+	decodeMainThreadRef(previous['main-thread:ref']);
+	decodeMainThreadRef(next['main-thread:ref']);
+	// These four run for their rejections, and for the property reads that go
+	// with them; their results feed only the patch. `String` is how the planner
+	// coerces an `id`, and inline styles are the one normalizer that rejects.
+	if (previous.id != null) String(previous.id);
+	if (next.id != null) String(next.id);
+	void classProp(previous);
+	void classProp(next);
+	normalizeLynxInlineStyle(previous.style);
+	normalizeLynxInlineStyle(next.style);
+	visitDatasetNames(previous, previousNames);
+	visitDatasetNames(next, nextNames);
+	const kind = scopeUpdateKind(previous, next);
+	// Only `<image>` sources coerce, and only coercion can reject; every other
+	// attribute passes through a null-coalesce. The walk is kept for both so the
+	// two paths read the same properties in the same order, and the coercion is
+	// applied only where it can throw.
+	const coerces = type === 'image';
+	for (const name of nextNames) {
+		if (classifyLynxHostPropName(name) !== 'attribute') continue;
+		const nextValue = next[name];
+		if (coerces) attributeValue(type, name, nextValue);
+		if (!hasOwn(previous, name)) continue;
+		const previousValue = previous[name];
+		if (coerces) attributeValue(type, name, previousValue);
+	}
+	for (const name of previousNames) {
+		if (hasOwn(next, name) || classifyLynxHostPropName(name) !== 'attribute') continue;
+		const previousValue = previous[name];
+		if (coerces) attributeValue(type, name, previousValue);
+	}
+	return kind;
 }
