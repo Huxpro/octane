@@ -381,6 +381,21 @@ in §3 and the extraction-first decision in §5.
   6.654/6.565 versus 6.628/6.093 ms, with dirty controls 33.87–36.97 ms. The
   microsecond scoped difference has no whole-path corroboration; treat the
   result as inconclusive and keep measuring, not as a performance claim.
+  The final claiming seam is also extraction-viable: a host-neutral controller
+  now distinguishes nullable active-owner probes from strict hook access,
+  activates lazy keyed owners through an injected `claimChildOwner` callback,
+  and owns explicit/implicit compiler slot composition. Record creation,
+  identity buckets, replay ordinals, and reconciler adoption stay in universal
+  core. The first draft incorrectly required an active universal attempt for a
+  DOM-owned renderer-region probe (22 guard failures); splitting nullable probe
+  from strict hook access restored all mixed-boundary behavior. Deliberately
+  disabling lazy-scope claiming then made a keyed getter list reuse item A's
+  state for item B, proving the guard reaches the injected claim path. Final
+  B/A/B/A: 4k scoped leaf 0.039/0.039 ms base versus 0.042/0.040 ms candidate;
+  4k list-item 0.203/0.217 versus 0.192/0.195 ms; clean-root 6.490/6.368 versus
+  6.683/6.382 ms, with dirty controls 34–37 ms. Differences change magnitude
+  or direction across windows/scenarios, so this is equivalence evidence only.
+  **Extraction remains GO; the fresh-core fallback is not selected.**
 - **L3 (direct first-screen, first slice):** `renderFirstScreenNow` applies
   the rendered record tree straight to the Element PAPI
   (`applyLynxFirstScreenDirect`): no command staging, cloned record maps, or
