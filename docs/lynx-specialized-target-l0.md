@@ -416,6 +416,38 @@ in §3 and the extraction-first decision in §5.
   make this encoding authoritative and remove full-prop update bags /
   background `updates.classify`; the shadow proves the table workload needs no
   lossy fallback.
+
+- **L2 (background update classification):** `updates.classify` no longer runs
+  the semantic prop planner to keep one boolean. `classifyLynxHostPropUpdate`
+  answers `update`/`recreate` directly on both the background client driver and
+  the main-thread host driver; losing a CSS scope is the only condition that
+  makes a host un-updatable in place. Every rejection still fires in the same
+  order and both paths still read the same own-properties of the bag, so only
+  the construction is gone — pinned by a differential over 7,168 type × fragment
+  pairs plus 21,504 merged-bag pairs that compares verdict *and* thrown message
+  against `planLynxHostPropPatch`, red-green verified across six deliberate
+  breaks. Same-window seam A/B over the 4,000 real triples captured from
+  `lynx-table@10k`: 178 → 40 ns per call, **0.224×**, ranges separated.
+  Same-window end-to-end `runTable(10000)`, n=7: 7,367.2 → 7,263.3 ms,
+  **0.986× with overlapping ranges — no whole-path performance is claimed**, and
+  the arithmetic agrees (51,065 calls × ~138 ns ≈ 7 ms of ~7,300 ms). The value
+  is the removed allocation and the prop-bag-independent classification contract
+  the remaining A4/A5 slices need, not a measurable FCP or commit win.
+
+- **L3 (direct first-screen, depth).** The direct applier and the
+  `firstScreenTreeHasList` predicate ahead of it each consumed a call frame per
+  tree level, so the first screen became the only stack-bound stage in a
+  pipeline whose staged path walks a flat command array; trees the renderer
+  produces failed the applier with `RangeError` (#90). Both are explicit work
+  stacks now. The attach stays bottom-up and roots and siblings stay in authored
+  order — properties of the walk that the snapshot and physical-tree
+  differentials cannot see, since a top-down attach builds the identical final
+  tree, so they are pinned directly. Same-window FCP@10k, n=5, quiet host:
+  1694.6 ms (1464.6–1728.1) recursive versus 1557.1 ms (1510.2–1725.2)
+  iterative, architecture floor 1038.0 ms. **The ranges overlap almost entirely;
+  this is a no-regression result, not a speedup.** Raw bundle grows 506 B on
+  489 KB.
+
 - **L3 (direct first-screen, first slice):** `renderFirstScreenNow` applies
   the rendered record tree straight to the Element PAPI
   (`applyLynxFirstScreenDirect`): no command staging, cloned record maps, or

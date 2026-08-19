@@ -11,6 +11,7 @@ import {
 	createLynxHostContainer,
 	disposeLynxHostContainer,
 	prepareLynxHostBatch,
+	type LynxFirstScreenDirectNode,
 } from '../src/core/host-driver.js';
 import { LYNX_FIRST_TREE_STATE } from '../src/core/first-screen.js';
 import {
@@ -304,6 +305,106 @@ describe('direct first-screen applier', () => {
 		).toThrowError(/positive safe integer/);
 		expect(container.instanceCount).toBe(0);
 		expect(papi.flushes()).toBe(0);
+	});
+
+	// Issue-66 / #90: the staged path this applier replaced walks a flat command
+	// array, so its depth capacity is bounded only by the heap. A recursive
+	// applier makes the first screen the first stack-bound stage in the
+	// pipeline, and refuses trees the renderer upstream of it can produce. The
+	// tree here is built iteratively and handed to the applier directly, so the
+	// depth under test is the applier's own and not the renderer's or this
+	// file's — which is what keeps the assertion independent of the host's stack
+	// size rather than pinned to whatever ceiling one machine happens to have.
+	it('paints a tree deeper than any call stack, as the staged path does', () => {
+		const LEVELS = 20_000;
+		let node: LynxFirstScreenDirectNode = {
+			kind: 'host',
+			id: LEVELS + 1,
+			type: 'view',
+			props: { class: 'leaf' },
+			children: [],
+		};
+		for (let level = LEVELS; level >= 1; level--) {
+			node = { kind: 'host', id: level, type: 'view', props: {}, children: [node] };
+		}
+		const batch = { renderer: 'lynx', version: 1, commands: [] } as const;
+
+		const papi = createFakePAPI();
+		const container = createLynxHostContainer(papi, { root: 1 });
+		expect(applyLynxFirstScreenDirect(container, [node], batch)).toBe(true);
+
+		// Bottom-up attachment is what the staged path produces, so the leaf must
+		// be the deepest descendant of the single page root.
+		let depth = 0;
+		let cursor: FakeNode | undefined = papi.pages[0]!.children[0];
+		while (cursor !== undefined) {
+			depth++;
+			cursor = cursor.children[0];
+		}
+		expect(depth).toBe(LEVELS + 1);
+		expect(captureLynxFirstTree(container)).not.toBeNull();
+	});
+
+	// The applier attaches a host to its parent only once the host's own subtree
+	// is complete, and walks roots and siblings in authored order. Both are
+	// properties of the walk rather than of the finished tree, so the snapshot
+	// and physical-tree differentials above cannot see them: a top-down attach
+	// builds the identical final tree while publishing empty nodes into the live
+	// page and filling them afterwards.
+	it('attaches each host bottom-up and walks roots and siblings in order', () => {
+		const host = (
+			id: number,
+			children: LynxFirstScreenDirectNode[] = [],
+		): LynxFirstScreenDirectNode => ({ kind: 'host', id, type: 'view', props: {}, children });
+		const roots = [host(1, [host(2, [host(3), host(4)]), host(5)]), host(6, [host(7, [host(8)])])];
+		const batch = { renderer: 'lynx', version: 1, commands: [] } as const;
+
+		const papi = createFakePAPI();
+		const attachments: [number, number][] = [];
+		const container = createLynxHostContainer(
+			{
+				...papi,
+				insertBefore(parent: FakeNode, child: FakeNode, before: FakeNode | null) {
+					attachments.push([parent.uid, child.uid]);
+					papi.insertBefore(parent, child, before);
+				},
+			},
+			{ root: 1 },
+		);
+		expect(applyLynxFirstScreenDirect(container, roots, batch)).toBe(true);
+		expect(attachments).toHaveLength(8);
+
+		const attachedAt = new Map<number, number>();
+		attachments.forEach(([, child], index) => attachedAt.set(child, index));
+		for (const [index, [parent, child]] of attachments.entries()) {
+			const parentIndex = attachedAt.get(parent);
+			// The page itself is never attached, so it has no index to compare.
+			if (parentIndex === undefined) continue;
+			expect(index, `host ${child} attached after its parent ${parent}`).toBeLessThan(parentIndex);
+		}
+		// Authored order, read off the finished tree. The fake PAPI hands out uids
+		// in creation order, so this pins both the order hosts were created in and
+		// the order they ended up in under each parent: page, then hosts 1..8.
+		const uidTree = (node: FakeNode): unknown => [node.uid, node.children.map(uidTree)];
+		expect(uidTree(papi.pages[0]!)).toEqual([
+			1,
+			[
+				[
+					2,
+					[
+						[
+							3,
+							[
+								[4, []],
+								[5, []],
+							],
+						],
+						[6, []],
+					],
+				],
+				[7, [[8, [[9, []]]]]],
+			],
+		]);
 	});
 
 	it('declines native-list trees so the staged path keeps owning them', () => {

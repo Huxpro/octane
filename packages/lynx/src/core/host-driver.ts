@@ -2881,9 +2881,15 @@ export interface LynxFirstScreenDirectNode {
 }
 
 function firstScreenTreeHasList(nodes: readonly LynxFirstScreenDirectNode[]): boolean {
-	for (const node of nodes) {
-		if (node.kind === 'host' && (node.type === 'list' || node.type === 'list-item')) return true;
-		if (firstScreenTreeHasList(node.children)) return true;
+	// Iterative for the same reason the applier below is: nothing in the
+	// first-screen pipeline may impose a tree-depth ceiling the renderer that
+	// produced the tree does not have.
+	const stack: (readonly LynxFirstScreenDirectNode[])[] = [nodes];
+	while (stack.length !== 0) {
+		for (const node of stack.pop()!) {
+			if (node.kind === 'host' && (node.type === 'list' || node.type === 'list-item')) return true;
+			if (node.children.length !== 0) stack.push(node.children);
+		}
 	}
 	return false;
 }
@@ -2934,17 +2940,54 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 	const papi = state.papi;
 	const append =
 		papi.append ?? ((parent: Node, child: Node) => papi.insertBefore(parent, child, null));
-	const visit = (
+	/**
+	 * One pending step of the walk. A frame with a `node` materializes that
+	 * node; a frame with a `papiNode` instead is the deferred attach that must
+	 * run once the node's whole subtree is complete, which is what keeps the
+	 * bottom-up attach order the staged path produces.
+	 */
+	interface WalkFrame {
+		readonly node: LynxFirstScreenDirectNode | null;
+		readonly papiNode: Node | null;
+		readonly parentRecord: LynxHostRecord<Node> | null;
+		readonly parentId: number | null;
+		readonly physicalParent: Node;
+		readonly parentVisible: boolean;
+	}
+	// An explicit stack, not recursion. The staged path this replaced walks a
+	// flat command array and so has no depth ceiling; one frame per tree level
+	// would make the direct applier the first stack-bound stage in the
+	// first-screen pipeline and refuse trees the renderer can produce.
+	const stack: WalkFrame[] = [];
+	const pushChildren = (
 		node: LynxFirstScreenDirectNode,
 		parentRecord: LynxHostRecord<Node> | null,
 		parentId: number | null,
 		physicalParent: Node,
 		parentVisible: boolean,
 	): void => {
+		// Reversed, so the stack pops siblings in authored order.
+		for (let index = node.children.length - 1; index >= 0; index--) {
+			stack.push({
+				node: node.children[index]!,
+				papiNode: null,
+				parentRecord,
+				parentId,
+				physicalParent,
+				parentVisible,
+			});
+		}
+	};
+	const visit = (frame: WalkFrame): void => {
+		const { node, parentRecord, parentId, physicalParent, parentVisible } = frame;
+		if (node === null) {
+			const attached = frame.papiNode!;
+			if (parentId === null) state.ownedPageRoots.add(attached);
+			append(physicalParent, attached);
+			return;
+		}
 		if (node.kind !== 'host') {
-			for (const child of node.children) {
-				visit(child, parentRecord, parentId, physicalParent, parentVisible);
-			}
+			pushChildren(node, parentRecord, parentId, physicalParent, parentVisible);
 			return;
 		}
 		const type = node.type!;
@@ -3011,17 +3054,32 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 				installNativeEvent(state, papiNode, container.root, node.id, 1, eventType, listener);
 			}
 		}
-		for (const child of node.children) {
-			visit(child, record, node.id, papiNode, visible);
-		}
-		if (parentId === null) state.ownedPageRoots.add(papiNode);
-		append(physicalParent, papiNode);
+		// The attach is queued before the children so it pops after them.
+		stack.push({
+			node: null,
+			papiNode,
+			parentRecord: null,
+			parentId,
+			physicalParent,
+			parentVisible,
+		});
+		pushChildren(node, record, node.id, papiNode, visible);
 	};
 	state.applying = true;
 	try {
 		let applicationError: unknown = null;
 		try {
-			for (const root of roots) visit(root, null, null, container.page as Node, true);
+			for (let index = roots.length - 1; index >= 0; index--) {
+				stack.push({
+					node: roots[index]!,
+					papiNode: null,
+					parentRecord: null,
+					parentId: null,
+					physicalParent: container.page as Node,
+					parentVisible: true,
+				});
+			}
+			while (stack.length !== 0) visit(stack.pop()!);
 			state.acceptedVersion = batch.version;
 		} catch (error) {
 			applicationError = error;
