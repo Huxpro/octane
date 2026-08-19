@@ -7,6 +7,11 @@
 // composed-tree observer, and `derive` covers the cases whose predicate is only
 // knowable from the pre-click table state.
 
+// A storm runs fifty rounds back to back, so it needs far more than the
+// per-operation default before the shared driver gives up.
+export const STORM_TIMEOUT_MS = 240_000;
+export const DEFAULT_TIMEOUT_MS = 120_000;
+
 const CREATE_LABELS = new Map([
 	[1000, 'Create 1,000 rows'],
 	[3000, 'Create 3,000 rows'],
@@ -56,6 +61,15 @@ export function buildOperations(rows) {
 			target: { kind: 'button', label: 'Update every 10th row' },
 			derive: { type: 'labelSuffix', index: 0, suffix: ' !!!' },
 		},
+		// Fifty successive update rounds. Expected to sit at the flush/layout
+		// floor, so it bounds what any wire or replanning change could win.
+		updateStorm: {
+			scale: rows,
+			setup: createSetup,
+			target: { kind: 'button', label: 'Update storm' },
+			predicate: { type: 'labelAt', index: 0, equals: 'bench 50' },
+			timeoutMs: STORM_TIMEOUT_MS,
+		},
 		// Single-row class flip driven by a main-thread event round trip.
 		select: {
 			scale: rows,
@@ -70,6 +84,10 @@ export function buildOperations(rows) {
 // new operation cannot be measured and then silently left out of the report.
 export function mutationOperations(operations) {
 	return Object.keys(operations).filter((name) => name !== 'create');
+}
+
+export function operationTimeout(operation) {
+	return operation.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 }
 
 export function describeTarget(target) {

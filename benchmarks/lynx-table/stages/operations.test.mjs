@@ -2,11 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+	DEFAULT_TIMEOUT_MS,
+	STORM_TIMEOUT_MS,
 	buildOperations,
 	createButtonLabel,
 	derivedPredicate,
 	describeTarget,
 	mutationOperations,
+	operationTimeout,
 	scaleTag,
 } from './operations.mjs';
 
@@ -62,6 +65,16 @@ test('the pure-mutation cells set up their own table at the measured scale', () 
 		target: { kind: 'button', label: 'Update every 10th row' },
 		derive: { type: 'labelSuffix', index: 0, suffix: ' !!!' },
 	});
+	assert.deepEqual(operations.updateStorm, {
+		scale: 10000,
+		setup: {
+			target: { kind: 'button', label: 'Create 10,000 rows' },
+			predicate: { type: 'rowCount', value: 10000 },
+		},
+		target: { kind: 'button', label: 'Update storm' },
+		predicate: { type: 'labelAt', index: 0, equals: 'bench 50' },
+		timeoutMs: STORM_TIMEOUT_MS,
+	});
 	assert.deepEqual(operations.select, {
 		scale: 10000,
 		setup: {
@@ -77,7 +90,7 @@ test('a cell measured at the create scale follows the requested scale', () => {
 	for (const rows of [1000, 3000, 30000]) {
 		const operations = buildOperations(rows);
 		const label = createButtonLabel(rows);
-		for (const name of ['create', 'update10th', 'select']) {
+		for (const name of ['create', 'update10th', 'updateStorm', 'select']) {
 			assert.equal(operations[name].scale, rows, `${name} scale`);
 		}
 		assert.equal(operations.update10th.setup.target.label, label);
@@ -104,13 +117,30 @@ test('every operation closes on a predicate the shared driver understands', () =
 
 test('every measured cell but create is reported, in table order', () => {
 	const operations = buildOperations(10000);
-	assert.deepEqual(mutationOperations(operations), ['replace', 'append', 'update10th', 'select']);
+	assert.deepEqual(mutationOperations(operations), [
+		'replace',
+		'append',
+		'update10th',
+		'updateStorm',
+		'select',
+	]);
 	// Derived, not listed: adding an operation must not be able to measure a cell
 	// the report then omits.
 	assert.deepEqual(
 		mutationOperations({ create: {}, alpha: {}, beta: {} }),
 		['alpha', 'beta'],
 	);
+});
+
+test('only the storm gets the long deadline', () => {
+	const operations = buildOperations(10000);
+	// Fifty rounds cannot finish inside the per-operation default, and the
+	// shared driver would reject the sample as a timeout rather than a result.
+	assert.equal(operationTimeout(operations.updateStorm), STORM_TIMEOUT_MS);
+	assert.ok(STORM_TIMEOUT_MS > DEFAULT_TIMEOUT_MS);
+	for (const name of ['create', 'replace', 'append', 'update10th', 'select']) {
+		assert.equal(operationTimeout(operations[name]), DEFAULT_TIMEOUT_MS, `${name} deadline`);
+	}
 });
 
 test('the derived predicate stamps the observed label', () => {

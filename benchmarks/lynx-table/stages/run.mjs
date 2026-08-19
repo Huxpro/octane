@@ -22,10 +22,12 @@ import {
 } from '../web/driver-client.mjs';
 import { buildTableApp } from '../scripts/build-app.mjs';
 import {
+	DEFAULT_TIMEOUT_MS,
 	buildOperations,
 	derivedPredicate,
 	describeTarget,
 	mutationOperations,
+	operationTimeout,
 	scaleTag,
 } from './operations.mjs';
 
@@ -240,12 +242,15 @@ async function targetRect(page, target) {
 		: page.evaluate((spec) => globalThis.__x.cellRect(spec.rowIndex, spec.class), target);
 }
 
-async function clickAndWait(page, target, predicate) {
+async function clickAndWait(page, target, predicate, timeoutMs) {
 	await page.waitForFunction(() => globalThis.__x.findText('Benchmark on Lynx'), undefined, {
 		timeout: 60000,
 	});
 	await page.evaluate(() => globalThis.__x.settle());
-	const armed = page.evaluate((spec) => globalThis.__x.arm(spec, 120000), predicate);
+	const armed = page.evaluate(
+		(request) => globalThis.__x.arm(request.predicate, request.timeoutMs),
+		{ predicate, timeoutMs },
+	);
 	const rectangle = await targetRect(page, target);
 	if (rectangle === null) throw new Error(`${describeTarget(target)} not found.`);
 	await page.mouse.click(rectangle.x, rectangle.y);
@@ -269,14 +274,14 @@ async function runOperation(browser, variant, profile, operationName) {
 	try {
 		const operation = operations[operationName];
 		if (operation.setup !== undefined) {
-			await clickAndWait(page, operation.setup.target, operation.setup.predicate);
+			await clickAndWait(page, operation.setup.target, operation.setup.predicate, DEFAULT_TIMEOUT_MS);
 			await page.evaluate(() => globalThis.__x.settle());
 		}
 		const oracle = await page.evaluate(() => globalThis.__x.tableOracle());
 		const predicate = await resolvePredicate(page, operation, oracle);
 		if (profile) await resetProfiles(page);
 		const beforeWire = await wireSnapshot(page);
-		const rawMs = await clickAndWait(page, operation.target, predicate);
+		const rawMs = await clickAndWait(page, operation.target, predicate, operationTimeout(operation));
 		const afterWire = await wireSnapshot(page);
 		const wire = wireDelta(beforeWire, afterWire);
 		if (!profile) return { rawMs, wire };
