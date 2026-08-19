@@ -3940,13 +3940,20 @@ function lynxTemplateEligible(node) {
 	return (node.children || []).every(lynxTemplateEligible);
 }
 
+/**
+ * A slot kind selects which operation may write the slot, so a scalar hole and
+ * a range site must not share one. `c` is content the writer sets in place; `r`
+ * is a range site whose members are instantiated and removed, which is every
+ * directive and component hole. Conflating them leaves the dispatch from
+ * operation to slot undecidable (see the closure analysis on #61).
+ */
 function lynxTemplateSlotKinds(node, kinds) {
 	if (node.kind === 'text') {
 		if (node.slot !== undefined) kinds[node.slot] = 'c';
 		return kinds;
 	}
 	if (node.kind === 'slot') {
-		kinds[node.slot] = 'c';
+		kinds[node.slot] = 'r';
 		return kinds;
 	}
 	for (const binding of node.bindings || []) {
