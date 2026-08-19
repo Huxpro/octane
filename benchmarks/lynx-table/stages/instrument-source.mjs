@@ -83,6 +83,13 @@ export function instrumentLynxStageSources(repositoryRoot) {
 		// count is the deterministic half and the reason this patch exists: a
 		// block-render total that scales with the table while the commit does
 		// not is visible without trusting a single millisecond.
+		//
+		// It counts Block renders, which is not the same as component bodies
+		// run: `@for` item bodies promoted to pure, and the two rows a keyed
+		// selection rewrites, are invoked directly and never reach here. The
+		// count therefore reads high exactly where those specializations are
+		// NOT applying, which is what makes it useful — but it is a floor on
+		// body invocations, not a total.
 		update('packages/octane/src/runtime.ts', (source, file) =>
 			replaceOnce(
 				source,
