@@ -396,6 +396,26 @@ in §3 and the extraction-first decision in §5.
   6.683/6.382 ms, with dirty controls 34–37 ms. Differences change magnitude
   or direction across windows/scenarios, so this is equivalence evidence only.
   **Extraction remains GO; the fresh-core fallback is not selected.**
+
+- **L2 (background delta emission, shadow slice):** the profiling build now
+  maps accepted `mount-template-run`, binding-only `update`, keyed `move`, and
+  instance `remove` command commits into the typed protocol without changing
+  the production wire or acknowledgement ABI. The encoder is transactional:
+  unsupported commands/props return a miss without mutating shadow state, and
+  a prepared shadow publishes only after host acknowledgement callbacks
+  succeed. A command-reference versus encode/decode/delta-applier differential
+  pins RUN/SET/MOVE/REMOVE after every commit; production-fold tests prove the
+  entire shadow is absent when profiling is disabled. The real 1k+10k
+  `lynx-table` sequence covered all 166 measured commits with **0 misses** while
+  preserving existing wire/identity/event controls. At 10k, encoded delta
+  payload estimates versus current command commit bytes were: create
+  349,778/350,619; update10th 36,755/69,874; select 40/225; swap 27/368;
+  50-tick update storm 1,133,250/2,789,296; 30-tick select storm 1,346/6,956.
+  These are cutover projections, not shipped performance gains: transport and
+  main-thread application still consume the command batch. The next slice can
+  make this encoding authoritative and remove full-prop update bags /
+  background `updates.classify`; the shadow proves the table workload needs no
+  lossy fallback.
 - **L3 (direct first-screen, first slice):** `renderFirstScreenNow` applies
   the rendered record tree straight to the Element PAPI
   (`applyLynxFirstScreenDirect`): no command staging, cloned record maps, or

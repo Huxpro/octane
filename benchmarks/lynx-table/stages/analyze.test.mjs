@@ -120,7 +120,7 @@ test('parses cross-realm snapshots by value without prototype identity', () => {
 	);
 });
 
-test('folds stage instrumentation out of a default production bundle', async () => {
+test('folds stage instrumentation and delta shadow code out of a default production bundle', async () => {
 	const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'octane-lynx-stage-profile-'));
 	const entry = path.join(temporary, 'entry.ts');
 	const control = path.join(temporary, 'control.ts');
@@ -130,8 +130,12 @@ test('folds stage instrumentation out of a default production bundle', async () 
 			"import { lynxWireProfile } from '" +
 				path.resolve('packages/lynx/src/core/profiling.ts').replaceAll('\\', '/') +
 				"';",
+			"import { createLynxDeltaShadow } from '" +
+				path.resolve('packages/lynx/src/core/delta-shadow.ts').replaceAll('\\', '/') +
+				"';",
 			'if (__OCTANE_LYNX_PROFILE__) {',
 			"\tconst profile = lynxWireProfile(); profile['octane-stage-profile-marker'] = 1;",
+			"\tconst shadow = createLynxDeltaShadow(); shadow['octane-delta-shadow-marker'] = 1;",
 			'}',
 			'globalThis.__octaneProfileFoldProbe = 1;',
 		].join('\n'),
@@ -151,7 +155,10 @@ test('folds stage instrumentation out of a default production bundle', async () 
 			).outputFiles[0].text;
 		const output = await bundle(entry);
 		const controlOutput = await bundle(control);
-		assert.doesNotMatch(output, /octane-stage-profile-marker|mtSliceEvalMs|bgReplayMs/);
+		assert.doesNotMatch(
+			output,
+			/octane-stage-profile-marker|octane-delta-shadow-marker|mtSliceEvalMs|bgReplayMs/,
+		);
 		assert.equal(output, controlOutput);
 	} finally {
 		fs.rmSync(temporary, { recursive: true, force: true });

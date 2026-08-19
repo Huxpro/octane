@@ -45,6 +45,14 @@ export interface LynxWireProfile {
 	applyMs: number;
 	/** Main: acknowledgement handle computation + dispatch time. */
 	ackMs: number;
+	/** Profiling-only shadow commits fully expressible by the typed delta ABI. */
+	deltaCommits: number;
+	/** Profiling-only shadow commits that still require the command ABI. */
+	deltaMisses: number;
+	/** Typed delta operations produced by expressible shadow commits. */
+	deltaOps: number;
+	/** Encoded typed-delta JSON bytes, excluding the unchanged transport envelope. */
+	deltaBytes: number;
 }
 
 interface LynxProfileGlobals {
@@ -64,6 +72,10 @@ export function lynxWireProfile(): LynxWireProfile {
 		prepareMs: 0,
 		applyMs: 0,
 		ackMs: 0,
+		deltaCommits: 0,
+		deltaMisses: 0,
+		deltaOps: 0,
+		deltaBytes: 0,
 	});
 }
 
