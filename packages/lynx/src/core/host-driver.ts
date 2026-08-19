@@ -3028,7 +3028,14 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			return;
 		}
 		const type = node.type!;
-		const props = node.props ?? EMPTY_HOST_PROPS;
+		// The rendered records carry the main graph's raw props, where a
+		// `main-thread:` event prop is still a tagged callable. Records feed
+		// `captureLynxFirstTree`, whose snapshot crosses the ContextProxy wire, so
+		// the stored props must be the same wire-safe clones the staged applier
+		// journals — cloneProps unwraps tagged callables to plain worklet
+		// descriptors and rejects everything structured clone would refuse.
+		const props =
+			node.props == null ? EMPTY_HOST_PROPS : cloneProps(node.props, 'first-screen host props');
 		const visible = parentVisible && node.visibility !== 'hidden';
 		const patch =
 			type === '#text' && props[LYNX_CSS_SCOPE_PROP] == null
