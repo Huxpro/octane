@@ -357,6 +357,63 @@ describe('Lynx main-thread first-screen renderer', () => {
 		);
 	});
 
+	// Issue #81: the background gates first-screen event emission on the host's
+	// resolved visibility, so a handler inside a hidden `<Activity>` announces
+	// no listener until the subtree is shown. The main renderer walked every
+	// host with no gate, so the two batches disagreed by exactly one `event`
+	// command — and a first screen whose event bindings do not match can never
+	// be adopted: it repaints from scratch on every launch and drops the taps
+	// buffered in between. A hidden tab, a collapsed drawer, and a pre-rendered
+	// off-screen route are all this shape.
+	const shellPlan = universalPlan('lynx', {
+		kind: 'host',
+		type: 'view',
+		children: [{ kind: 'slot', slot: 0 }],
+	});
+	const handlerInActivity = (mode: 'visible' | 'hidden') =>
+		defineUniversalComponent('lynx', (props: { readonly handler: () => void }) =>
+			universalValue(shellPlan, [
+				universalActivity(mode, () =>
+					universalValue(rowPlan, [universalProps([['set', 'bindtap', props.handler]])]),
+				),
+			]),
+		);
+
+	it('emits no listener for a handler hidden by an Activity, as background does', () => {
+		const HiddenHandler = handlerInActivity('hidden');
+		const props = { handler: () => {} };
+		const main = renderLynxFirstScreen(HiddenHandler, props);
+
+		expect(main.batch).toEqual(captureBackgroundBatch(HiddenHandler, props));
+		expect(main.batch.commands.filter((command) => command.op === 'event')).toEqual([]);
+		// The fixture really does hide a host, so the assertion above is not
+		// vacuously true of a tree with nothing to gate.
+		expect(main.batch.commands.filter((command) => command.op === 'visibility')).not.toEqual([]);
+	});
+
+	it('still emits the listener once the same handler is visible', () => {
+		const VisibleHandler = handlerInActivity('visible');
+		const props = { handler: () => {} };
+		const main = renderLynxFirstScreen(VisibleHandler, props);
+
+		// Deliberately not compared against the background batch. The background
+		// seeds listener IDs from a per-process root counter
+		// (`NEXT_EVENT_ROOT++ * 1_000_000`) while the first-screen renderer always
+		// starts at 1_000_000, so the two agree only for the first root built in
+		// a process — which is production's arrangement but not a suite's. What
+		// this case has to show is that the visibility gate is not over-broad:
+		// the same handler, shown, still announces exactly one listener.
+		expect(main.batch.commands.filter((command) => command.op === 'event')).toEqual([
+			{
+				op: 'event',
+				id: 3,
+				type: 'bindtap',
+				listener: { id: 1_000_000, priority: 'discrete' },
+			},
+		]);
+		expect(main.batch.commands.filter((command) => command.op === 'visibility')).toEqual([]);
+	});
+
 	it('matches background range IDs for production-compiled ownerless leaf loops', () => {
 		const ProductionLeafLoop = defineUniversalComponent(
 			'lynx',

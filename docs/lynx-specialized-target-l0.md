@@ -448,6 +448,22 @@ in §3 and the extraction-first decision in §5.
   this is a no-regression result, not a speedup.** Raw bundle grows 506 B on
   489 KB.
 
+- **First-screen adoption (hidden `<Activity>` handlers).** The background gates
+  first-screen event emission on a host's resolved visibility; the main renderer
+  walked every host with no gate. A `bind*`/`catch*` handler anywhere inside a
+  hidden `<Activity>` therefore made the two batches disagree by exactly one
+  `event` command, and a first screen whose event bindings do not match is
+  unadoptable — the paint is thrown away and rebuilt on every launch, native node
+  identity with it, and the taps buffered in between are discarded (#81,
+  pre-existing rather than stack drift). The main renderer now walks with the
+  same inherited-visibility rule the host driver applies, which is also the rule
+  the direct applier already used when *installing* events — the batch was the
+  half that disagreed. Pinned twice: the main and background batches must be
+  equal for that shape, and the retained-integration adoption round now carries a
+  handler on its hidden Activity and asserts no mismatch diagnostic. Without the
+  gate that round reports `first-screen mismatch at snapshot.nodes[13].events:
+  the event binding count differs`.
+
 - **L1 × L3 (runtime coverage of the shipped pair).** The `lynx` vitest project
   compiles its fixtures with the background preset, so `target: 'lynx'` output
   had never been executed by a committed test: L1's differential compares

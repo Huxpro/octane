@@ -35,6 +35,7 @@ interface RetainedSceneProps {
 	readonly capturePrimary: (handle: LynxPublicHandle | null) => void;
 	readonly captureActivity: (handle: LynxPublicHandle | null) => void;
 	readonly captureErrorReset: (reset: () => void) => void;
+	readonly onActivityTap: () => void;
 }
 
 interface InstalledEnvironment {
@@ -116,6 +117,11 @@ const BackgroundActivity = defineUniversalComponent('lynx', (props: RetainedScen
 		universalProps([
 			['set', 'id', 'activity'],
 			['set', 'ref', props.captureActivity],
+			// Issue #81: a handler inside the hidden Activity is what made the two
+			// first-screen batches disagree, and an unadoptable first screen is a
+			// rebuild on every launch. The scene carries one so the adoption round
+			// below covers it.
+			['set', 'bindtap', props.onActivityTap],
 		]),
 		'activity',
 	]);
@@ -175,6 +181,7 @@ const FirstScreenActivity = firstScreen.defineUniversalComponent(
 			firstScreen.universalProps([
 				['set', 'id', 'activity'],
 				['set', 'ref', props.captureActivity],
+				['set', 'bindtap', props.onActivityTap],
 			]),
 			'activity',
 		]),
@@ -299,6 +306,7 @@ describe.sequential('Lynx Milestone 8 retained integration', () => {
 			capturePrimary: (handle: LynxPublicHandle | null) => primaryRefs.push(handle),
 			captureActivity: (handle: LynxPublicHandle | null) => activityRefs.push(handle),
 			captureErrorReset: (reset: () => void) => errorResets.push(reset),
+			onActivityTap: () => log.push('activity:tap'),
 		};
 		const props = (
 			pending: Promise<string> | null,
@@ -337,6 +345,12 @@ describe.sequential('Lynx Milestone 8 retained integration', () => {
 		await adopting;
 		await flushBackgroundWork();
 
+		// Adoption has to succeed for the identity assertions below to mean
+		// anything: a mismatch retires the first screen and rebuilds it, and the
+		// rebuilt nodes would fail those comparisons for the wrong reason. The
+		// hidden Activity carries a `bindtap`, which is the shape that made the
+		// main and background first-screen batches disagree (#81).
+		expect(main.diagnostics()).toEqual([]);
 		expect(page.querySelector('#fallback')).toBe(firstFallback);
 		expect(page.querySelector('#caught')).toBe(firstError);
 		expect(page.querySelector('#activity')).toBe(firstActivity);
