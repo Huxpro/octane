@@ -145,6 +145,7 @@ try {
 		for (const mode of MODES) {
 			let signature = null;
 			let result = null;
+			let drifted = false;
 			for (let rep = 0; rep < REPS; rep++) {
 				result = await workload.runBlockTable(rows, mode);
 				if (result.diagnostics.length !== 0) {
@@ -165,10 +166,13 @@ try {
 				if (signature === null) signature = next;
 				else if (signature !== next) {
 					failures.push(`rows=${rows} ${mode}: counts drifted across repetitions.`);
+					drifted = true;
 					break;
 				}
 			}
-			if (result === null || result.diagnostics.length !== 0) continue;
+			// A drifted cell's numbers are exactly the non-invariant the check
+			// exists to reject — never record, print, or wire-compare them.
+			if (result === null || result.diagnostics.length !== 0 || drifted) continue;
 
 			// The ladder ends with the select storm, whose last tick selects row 1
 			// and whose update storm left every tenth label at `bench 50`. A cell
