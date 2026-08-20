@@ -21,6 +21,15 @@ import {
 	makeBenchHtml,
 } from '../web/driver-client.mjs';
 import { buildTableApp } from '../scripts/build-app.mjs';
+import {
+	DEFAULT_TIMEOUT_MS,
+	buildOperations,
+	derivedPredicate,
+	describeTarget,
+	mutationOperations,
+	operationTimeout,
+	scaleTag,
+} from './operations.mjs';
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(import.meta.dirname, '..');
@@ -223,44 +232,41 @@ async function runFcp(browser, variant, profile) {
 	}
 }
 
-const createLabels = new Map([
-	[1000, 'Create 1,000 rows'],
-	[3000, 'Create 3,000 rows'],
-	[5000, 'Create 5,000 rows'],
-	[10000, 'Create 10,000 rows'],
-	[20000, 'Create 20,000 rows'],
-	[30000, 'Create 30,000 rows'],
-]);
+const operations = buildOperations(rows);
+const operationNames = Object.keys(operations);
+const mutationNames = mutationOperations(operations);
 
-const operations = {
-	create: {
-		label: createLabels.get(rows),
-		predicate: { type: 'rowCount', value: rows },
-	},
-	replace: {
-		label: 'Create 1,000 rows',
-		setup: 'Create 1,000 rows',
-	},
-	append: {
-		label: 'Append 1,000 rows',
-		setup: 'Create 1,000 rows',
-		predicate: { type: 'rowCount', value: 2000 },
-	},
-};
-if (operations.create.label === undefined) {
-	throw new Error(`the shared app has no create button for ${rows} rows.`);
+async function targetRect(page, target) {
+	return target.kind === 'button'
+		? page.evaluate((text) => globalThis.__x.buttonRect(text), target.label)
+		: page.evaluate((spec) => globalThis.__x.cellRect(spec.rowIndex, spec.class), target);
 }
 
-async function clickAndWait(page, label, predicate) {
+async function clickAndWait(page, target, predicate, timeoutMs) {
 	await page.waitForFunction(() => globalThis.__x.findText('Benchmark on Lynx'), undefined, {
 		timeout: 60000,
 	});
 	await page.evaluate(() => globalThis.__x.settle());
-	const armed = page.evaluate((spec) => globalThis.__x.arm(spec, 120000), predicate);
-	const rectangle = await page.evaluate((text) => globalThis.__x.buttonRect(text), label);
-	if (rectangle === null) throw new Error(`${label} button not found.`);
+	const armed = page.evaluate(
+		(request) => globalThis.__x.arm(request.predicate, request.timeoutMs),
+		{ predicate, timeoutMs },
+	);
+	const rectangle = await targetRect(page, target);
+	if (rectangle === null) throw new Error(`${describeTarget(target)} not found.`);
 	await page.mouse.click(rectangle.x, rectangle.y);
 	return (await armed).ms;
+}
+
+// `update10th` stamps a suffix onto labels the setup click chose, so its
+// predicate is only knowable once the table exists.
+async function resolvePredicate(page, operation, oracle) {
+	if (operation.derive === undefined)
+		return operation.predicate ?? { type: 'checksumNot', value: oracle.checksum };
+	const before = await page.evaluate(
+		(index) => globalThis.__x.labelAt(index),
+		operation.derive.index,
+	);
+	return derivedPredicate(operation.derive, before);
 }
 
 async function runOperation(browser, variant, profile, operationName) {
@@ -268,14 +274,24 @@ async function runOperation(browser, variant, profile, operationName) {
 	try {
 		const operation = operations[operationName];
 		if (operation.setup !== undefined) {
-			await clickAndWait(page, operation.setup, { type: 'rowCount', value: 1000 });
+			await clickAndWait(
+				page,
+				operation.setup.target,
+				operation.setup.predicate,
+				DEFAULT_TIMEOUT_MS,
+			);
 			await page.evaluate(() => globalThis.__x.settle());
 		}
 		const oracle = await page.evaluate(() => globalThis.__x.tableOracle());
-		const predicate = operation.predicate ?? { type: 'checksumNot', value: oracle.checksum };
+		const predicate = await resolvePredicate(page, operation, oracle);
 		if (profile) await resetProfiles(page);
 		const beforeWire = await wireSnapshot(page);
-		const rawMs = await clickAndWait(page, operation.label, predicate);
+		const rawMs = await clickAndWait(
+			page,
+			operation.target,
+			predicate,
+			operationTimeout(operation),
+		);
 		const afterWire = await wireSnapshot(page);
 		const wire = wireDelta(beforeWire, afterWire);
 		if (!profile) return { rawMs, wire };
@@ -345,9 +361,15 @@ function markdown(report) {
 		`Raw create: profile ${round(report.create.rawProfile.median)} ms (${round(report.create.rawProfile.min)}–${round(report.create.rawProfile.max)}), control ${round(report.create.rawControl.median)} ms, vue-vdom ${round(report.create.vueVdom.median)} ms; same-window profile/control ${round(report.create.rawProfile.median / report.create.rawControl.median, 3)}×, profile/vue-vdom ${round(report.create.rawProfile.median / report.create.vueVdom.median, 3)}×.`,
 		`Wire: MTS→BTS ${Math.round(report.create.wire.toBts.bytes.median).toLocaleString('en-US')} B / ${round(report.create.wire.toBts.messages.median)} messages; BTS→MTS ${Math.round(report.create.wire.toMts.bytes.median).toLocaleString('en-US')} B / ${round(report.create.wire.toMts.messages.median)} messages.`,
 	);
-	for (const operation of ['replace', 'append']) {
+	for (const operation of mutationNames) {
 		const cell = report[operation];
-		lines.push('', `## ${operation}@1k`, '', '| segment | median ms | share |', '|---|---:|---:|');
+		lines.push(
+			'',
+			`## ${operation}@${scaleTag(cell.scale)}`,
+			'',
+			'| segment | median ms | share |',
+			'|---|---:|---:|',
+		);
 		for (const [name, stage] of Object.entries(cell.attribution.stages)) {
 			lines.push(`| ${name} | ${round(stage.median)} | ${(stage.share * 100).toFixed(1)}% |`);
 		}
@@ -380,12 +402,10 @@ const browser = await chromium.launch({
 });
 const browserVersion = browser.version();
 const loadStart = os.loadavg();
-const samples = {
-	fcp: { control: [], profile: [] },
-	create: { control: [], profile: [], vueVdom: [] },
-	replace: { control: [], profile: [], vueVdom: [] },
-	append: { control: [], profile: [], vueVdom: [] },
-};
+const samples = { fcp: { control: [], profile: [] } };
+for (const operation of operationNames) {
+	samples[operation] = { control: [], profile: [], vueVdom: [] };
+}
 try {
 	const schedule = args.smoke ? [['control', 'profile']] : interleavedABSchedule(repetitions);
 	for (const [first, second] of schedule) {
@@ -394,21 +414,24 @@ try {
 			const fcp = await runFcp(browser, variant, profile);
 			samples.fcp[variant].push(fcp);
 			const measured = {};
-			for (const operation of Object.keys(operations)) {
+			for (const operation of operationNames) {
 				measured[operation] = await runOperation(browser, variant, profile, operation);
 				samples[operation][variant].push(measured[operation]);
 			}
-			console.log(
-				`[stage] ${variant} fcp=${fcp.rawMs.toFixed(1)} create=${measured.create.rawMs.toFixed(1)} replace=${measured.replace.rawMs.toFixed(1)} append=${measured.append.rawMs.toFixed(1)}`,
-			);
+			const measuredText = operationNames
+				.map((operation) => `${operation}=${measured[operation].rawMs.toFixed(1)}`)
+				.join(' ');
+			console.log(`[stage] ${variant} fcp=${fcp.rawMs.toFixed(1)} ${measuredText}`);
 		}
 		const reference = {};
-		for (const operation of Object.keys(operations)) {
+		for (const operation of operationNames) {
 			reference[operation] = await runOperation(browser, 'vue-vdom', false, operation);
 			samples[operation].vueVdom.push(reference[operation]);
 		}
 		console.log(
-			`[stage] vue-vdom create=${reference.create.rawMs.toFixed(1)} replace=${reference.replace.rawMs.toFixed(1)} append=${reference.append.rawMs.toFixed(1)}`,
+			`[stage] vue-vdom ${operationNames
+				.map((operation) => `${operation}=${reference[operation].rawMs.toFixed(1)}`)
+				.join(' ')}`,
 		);
 	}
 } finally {
@@ -466,6 +489,7 @@ function summarizeWire(cell, side, field) {
 function mutationReport(operation) {
 	const cell = samples[operation];
 	return {
+		scale: operations[operation].scale,
 		attribution: summarizeSamples(
 			cell.profile.map((sample) => sample.attribution),
 			{
@@ -488,8 +512,38 @@ function mutationReport(operation) {
 		},
 	};
 }
-const replaceReport = mutationReport('replace');
-const appendReport = mutationReport('append');
+const mutationReports = Object.fromEntries(
+	mutationNames.map((operation) => [operation, mutationReport(operation)]),
+);
+const { replace: replaceReport, append: appendReport } = mutationReports;
+// Issue #66 A4/A5 propose replacing the full prop bag on the wire with a typed
+// delta and dispatching it through a main-thread slot table. What that can
+// remove is `mt_prepare` (host prop-patch planning) plus whatever the wire
+// costs, so those two stages together are the candidate's owner share. The
+// pure-mutation cells decide it: `create` already answered NO-GO for the wire
+// under #47, and the exit gate needs an owner in the cells A5 actually targets.
+const DELTA_OWNER_STAGES = ['mt_prepare', 'wire_clone_transfer'];
+const DELTA_OWNER_GATE = 0.1;
+function deltaOwnerShare(operation) {
+	const { stages } = mutationReports[operation].attribution;
+	return DELTA_OWNER_STAGES.reduce((sum, name) => sum + stages[name].share, 0);
+}
+function deltaEncodingVerdict() {
+	const cells = ['update10th', 'select'];
+	const shares = cells.map((operation) => [operation, deltaOwnerShare(operation)]);
+	const clears = shares.filter(([, share]) => share >= DELTA_OWNER_GATE);
+	const text = shares
+		.map(
+			([operation, share]) =>
+				`${operation} ${(share * 100).toFixed(1)}% (mt_prepare ${round(mutationReports[operation].attribution.stages.mt_prepare.median)} ms of ${round(mutationReports[operation].attribution.total.median)} ms)`,
+		)
+		.join(', ');
+	return {
+		step: '#66 A4/A5 delta-encoding candidate (pure-mutation cells)',
+		verdict: clears.length === cells.length ? 'GO' : clears.length === 0 ? 'NO-GO' : 'SPLIT',
+		reason: `mt_prepare plus clone/transfer is ${text}. The gate is ${DELTA_OWNER_GATE * 100}% in every pure-mutation cell, because a typed delta plus slot dispatch can only remove host prop-patch planning and wire cost; it cannot touch PAPI apply.`,
+	};
+}
 const createWire = {
 	toBts: {
 		bytes: summarizeWire(samples.create.profile, 'toBts', 'bytes'),
@@ -514,8 +568,7 @@ const report = {
 		reportable: !args.smoke,
 		loadStart,
 		loadEnd: os.loadavg(),
-		protocol:
-			'fresh page per operation sample; control/profile order alternates AB/BA; one vue-vdom create/replace/append triplet follows each pair; no other benchmark process ran in this window',
+		protocol: `fresh page per operation sample (each mutation cell re-creates its own table first); control/profile order alternates AB/BA; one vue-vdom pass over ${operationNames.join('/')} follows each pair; no other benchmark process ran in this window`,
 	},
 	fcp: {
 		attribution: fcpAttribution,
@@ -554,9 +607,9 @@ const report = {
 			})),
 		).total,
 	},
-	replace: replaceReport,
-	append: appendReport,
+	...mutationReports,
 	verdicts: [
+		deltaEncodingVerdict(),
 		{
 			step: '#47 wire/encoding candidate',
 			verdict: 'NO-GO',
