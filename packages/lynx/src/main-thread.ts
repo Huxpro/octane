@@ -1906,7 +1906,10 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			// cannot be built at all, and that is a diagnostic the application needs
 			// rather than a page to skip, so such a tree keeps going and fails where
 			// it fails today.
-			if (papi.list !== undefined && firstScreenTreeIsUnadoptable(result.nodes)) {
+			if (
+				papi.list !== undefined &&
+				firstScreenTreeIsUnadoptable(result.nodes, result.envelope.events)
+			) {
 				retireFirstScreen(null, 'skipped', 'unadoptable');
 				return null;
 			}
