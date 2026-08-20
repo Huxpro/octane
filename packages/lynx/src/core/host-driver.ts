@@ -3162,17 +3162,31 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		}
 		entries.push([binding.type, binding.listener]);
 	}
-	// The staged path runs this over the batch's final host set during prepare,
-	// so a collision costs zero PAPI calls. The direct path has no prepare stage,
-	// so it pre-walks: refusing after the walk has begun would leave a
+	// The staged path runs both of these over the batch's final host set during
+	// prepare, so a refusal costs zero PAPI calls. The direct path has no prepare
+	// stage, so it pre-walks: refusing after the walk has begun would leave a
 	// half-painted page, which is exactly the state the staged path never
-	// produces. Only hosts the envelope gave a background listener can collide,
-	// and a page with no background listeners at all skips the walk entirely.
-	if (eventsByHost.size !== 0) {
-		const pending: (readonly LynxFirstScreenDirectNode[])[] = [roots];
+	// produces.
+	//
+	// The walk is unconditional. A background listener is announced by the
+	// envelope, so a page with none could skip a collision-only walk entirely; a
+	// duplicated `main-thread:ref` is announced by nothing but the hosts' own
+	// props. This applier is exported, so an envelope field claiming a tree holds
+	// no refs would put a correctness check at its caller's discretion. What it
+	// costs is a second read-only pass over a tree this function already scans
+	// for a `<list>` before it creates anything — the same price as the list
+	// pre-walk above, paid for the same reason.
+	{
+		const refOwners = new Map<string, number>();
+		const pending: [readonly LynxFirstScreenDirectNode[], boolean][] = [[roots, true]];
 		while (pending.length !== 0) {
-			for (const node of pending.pop()!) {
-				if (node.kind === 'host' && node.props !== undefined) {
+			const [nodes, parentVisible] = pending.pop()!;
+			for (const node of nodes) {
+				// Ranges are transparent here exactly as they are in the walk below:
+				// they carry no props of their own and pass visibility through.
+				const visible =
+					node.kind === 'host' ? parentVisible && node.visibility !== 'hidden' : parentVisible;
+				if (node.kind === 'host' && node.props != null) {
 					const entries = eventsByHost.get(node.id);
 					if (entries !== undefined) {
 						assertNoMainThreadEventCollisionForTypes(
@@ -3180,8 +3194,24 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 							entries.map(([type]) => type),
 						);
 					}
+					// Hidden hosts are skipped for the same reason the staged path skips
+					// them: an invisible host installs no main-thread props, so it owns no
+					// ref to collide over. A malformed descriptor is left to the prop
+					// planner, which reports it precisely; guessing here would report a
+					// duplicate that is really a bad value.
+					const ref = node.props['main-thread:ref'] as
+						LynxMainThreadRefDescriptor | null | undefined;
+					if (visible && ref != null && typeof ref._wvid === 'string') {
+						const previousOwner = refOwners.get(ref._wvid);
+						if (previousOwner !== undefined && previousOwner !== node.id) {
+							throw hostError(
+								`main-thread ref ${JSON.stringify(ref._wvid)} is assigned to hosts ${previousOwner} and ${node.id}.`,
+							);
+						}
+						refOwners.set(ref._wvid, node.id);
+					}
 				}
-				if (node.children.length !== 0) pending.push(node.children);
+				if (node.children.length !== 0) pending.push([node.children, visible]);
 			}
 		}
 	}
