@@ -86,6 +86,16 @@ from a degraded run.
   references on the same host in the same session.
 - A cell that cannot be driven end-to-end is reported "not measured", never as
   a number from a degraded run.
+- Cells are interleaved `AB / BA / AB / ...` across repetitions, so host drift
+  over the run cannot land on whichever cell went second. The report records
+  one-minute/five/fifteen load at both ends of the window; unlike the stage
+  harness this instrument records the load rather than gating on it, because it
+  also serves the cross-framework chart, and a reader cannot judge a same-window
+  ratio without knowing how quiet the window was.
+- Deterministic floor counts are reported separately from milliseconds and
+  carry across hosts and sessions; their spread must be 0. A count that models
+  the architecture is reported beside the count the fixture actually incurred,
+  never in place of it.
 
 ## 3. Stage-decomposition instrument (`stages/run.mjs`, informational)
 

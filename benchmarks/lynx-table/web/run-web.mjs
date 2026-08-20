@@ -178,6 +178,7 @@ const READ_FLOOR = () => {
 		rowVisits: main?.rowVisits ?? 0,
 		writes: main?.writes ?? 0,
 		rowScans: background?.rowScans ?? 0,
+		blockLookups: background?.blockLookups ?? 0,
 	};
 };
 const RESET_FLOOR = () => {
@@ -187,7 +188,10 @@ const RESET_FLOOR = () => {
 		main.writes = 0;
 	}
 	const background = globalThis.__BENCH_DIRECT_BG__;
-	if (background !== undefined) background.rowScans = 0;
+	if (background !== undefined) {
+		background.rowScans = 0;
+		background.blockLookups = 0;
+	}
 };
 
 async function eachRealm(page, fn) {
@@ -204,6 +208,7 @@ async function readFloorCounters(page) {
 		rowVisits: Math.max(...seen.map((value) => value.rowVisits)),
 		writes: Math.max(...seen.map((value) => value.writes)),
 		rowScans: Math.max(...seen.map((value) => value.rowScans)),
+		blockLookups: Math.max(...seen.map((value) => value.blockLookups)),
 	};
 }
 
@@ -284,7 +289,7 @@ async function runRep(browser, cell, rows) {
 }
 
 const OPS = ['create', 'update10th', 'select', 'updateStorm', 'selectStorm'];
-const FLOOR_FIELDS = ['rowVisits', 'writes', 'rowScans'];
+const FLOOR_FIELDS = ['rowVisits', 'writes', 'rowScans', 'blockLookups'];
 
 // Floor counters are deterministic for a given op and scale, so the spread is
 // reported alongside the value: a non-zero spread means the count is not the
@@ -310,7 +315,16 @@ function countsByOp(countSamples) {
 	return summary;
 }
 
+/** 1/5/15-minute load averages, as the session header prints them. */
+function formatLoad(load) {
+	return load.map((value) => value.toFixed(2)).join('/');
+}
+
 async function main() {
+	// Load is recorded, not gated: this harness reports whole-operation medians
+	// whose absolute milliseconds are already declared host-bound, and a reader
+	// cannot judge a same-window ratio without knowing how quiet the window was.
+	const startLoad = os.loadavg();
 	if (wanted.has('octane') && !args['skip-app-build']) buildTableApp();
 
 	const missing = CELLS.filter((cell) => !fs.existsSync(cell.bundle));
@@ -337,39 +351,58 @@ async function main() {
 
 	// cellId -> scale -> op -> stats|null
 	const results = {};
+	// Raw per-rep accumulators, filled by the interleaved schedule below and
+	// summarized after the browser closes.
+	const collected = {};
+	for (const cell of runnable) {
+		results[cell.id] = {};
+		collected[cell.id] = {};
+		for (const rows of SCALES) collected[cell.id][rows] = { samples: {}, countSamples: {}, dnf: 0 };
+	}
 	try {
-		for (const cell of runnable) {
-			results[cell.id] = {};
-			for (const rows of SCALES) {
-				const samples = {};
-				const countSamples = {};
-				const dnf = {};
-				for (let rep = 0; rep < REPS; rep++) {
+		for (const rows of SCALES) {
+			for (let rep = 0; rep < REPS; rep++) {
+				// AB/BA: reverse the cell order every other repetition. Running all
+				// of one cell's repetitions and then all of another's would let any
+				// host drift over the run land entirely on the cell that went second,
+				// which is exactly the error a same-window comparison exists to avoid.
+				const order = rep % 2 === 0 ? runnable : [...runnable].reverse();
+				for (const cell of order) {
+					const bucket = collected[cell.id][rows];
 					try {
 						const { counts, ...timings } = await runRep(browser, cell, rows);
-						for (const [op, ms] of Object.entries(timings)) (samples[op] ??= []).push(ms);
+						for (const [op, ms] of Object.entries(timings)) (bucket.samples[op] ??= []).push(ms);
 						for (const [op, value] of Object.entries(counts ?? {}))
-							(countSamples[op] ??= []).push(value);
+							(bucket.countSamples[op] ??= []).push(value);
 					} catch (error) {
 						if (process.env.LYNX_BENCH_DEBUG) console.log('[debug] rep error:', String(error));
 						if (!String(error).includes('timeout')) throw error;
-						dnf.rep = (dnf.rep ?? 0) + 1;
+						bucket.dnf += 1;
 					}
 				}
-				const ops = {};
-				for (const op of OPS) ops[op] = samples[op] ? stats(samples[op]) : null;
-				const counts = countsByOp(countSamples);
-				results[cell.id][rows] = { ops, counts, dnf: dnf.rep ?? 0 };
-				const cellText = OPS.map(
-					(op) => `${op}=${ops[op] ? ops[op].median.toFixed(0) : 'DNF'}`,
-				).join(' ');
-				console.log(`[web] ${cell.id.padEnd(10)} rows=${String(rows).padStart(5)} ${cellText}`);
 			}
 		}
 	} finally {
 		await browser.close();
 		server.close();
 	}
+	for (const cell of runnable) {
+		for (const rows of SCALES) {
+			const bucket = collected[cell.id][rows];
+			const ops = {};
+			for (const op of OPS) ops[op] = bucket.samples[op] ? stats(bucket.samples[op]) : null;
+			results[cell.id][rows] = {
+				ops,
+				counts: countsByOp(bucket.countSamples),
+				dnf: bucket.dnf,
+			};
+			const cellText = OPS.map((op) => `${op}=${ops[op] ? ops[op].median.toFixed(0) : 'DNF'}`).join(
+				' ',
+			);
+			console.log(`[web] ${cell.id.padEnd(10)} rows=${String(rows).padStart(5)} ${cellText}`);
+		}
+	}
+	const endLoad = os.loadavg();
 
 	// --- markdown report -----------------------------------------------------
 	const lines = [];
@@ -377,7 +410,10 @@ async function main() {
 	lines.push('');
 	lines.push(`- date: ${new Date().toISOString()}`);
 	lines.push(
-		`- host: ${os.cpus().length}× ${os.cpus()[0]?.model ?? 'unknown'} (medians of n=${REPS}; absolute ms are host-bound, ratios are the portable claim)`,
+		`- host: ${os.cpus().length}× ${os.cpus()[0]?.model ?? 'unknown'} (medians of n=${REPS}, cells interleaved AB/BA per repetition; absolute ms are host-bound, ratios are the portable claim)`,
+	);
+	lines.push(
+		`- host load: start ${formatLoad(startLoad)}, end ${formatLoad(endLoad)} (1/5/15m over ${os.cpus().length} CPUs)`,
 	);
 	if (manifest) lines.push(`- references: ${manifest.source} @ ${manifest.commit}`);
 	for (const cell of missing) lines.push(`- ${cell.id}: not measured (bundle missing)`);
@@ -409,14 +445,20 @@ async function main() {
 				`### ${cell.id} — deterministic floor counts (${rows.toLocaleString('en-US')} rows)`,
 			);
 			lines.push('');
-			lines.push('| op | row regions visited | slot writes | background row scans | spread |');
-			lines.push('|---|---:|---:|---:|---:|');
+			lines.push(
+				'Counts, not milliseconds: deterministic for this app and interaction, so they carry across hosts and sessions where the medians above do not. "Row regions visited" and "slot writes" are main-thread; "keyed block lookups" is what a keyed core touches on the background thread and "background row scans" is what this stub actually touched, which is larger wherever the stub keeps state in an array instead of a key map. Spread is the summed median-to-extreme range over all four columns and must be 0.',
+			);
+			lines.push('');
+			lines.push(
+				'| op | row regions visited | slot writes | keyed block lookups | background row scans | spread |',
+			);
+			lines.push('|---|---:|---:|---:|---:|---:|');
 			for (const op of OPS) {
 				const value = counts[op];
 				if (!value) continue;
 				const spread = FLOOR_FIELDS.reduce((sum, field) => sum + value[field].spread, 0);
 				lines.push(
-					`| ${op} | ${value.rowVisits.median.toLocaleString('en-US')} | ${value.writes.median.toLocaleString('en-US')} | ${value.rowScans.median.toLocaleString('en-US')} | ${spread} |`,
+					`| ${op} | ${value.rowVisits.median.toLocaleString('en-US')} | ${value.writes.median.toLocaleString('en-US')} | ${value.blockLookups.median.toLocaleString('en-US')} | ${value.rowScans.median.toLocaleString('en-US')} | ${spread} |`,
 				);
 			}
 		}
@@ -436,6 +478,8 @@ async function main() {
 					node: process.version,
 					cpus: os.cpus().length,
 					cpuModel: os.cpus()[0]?.model,
+					loadStart: startLoad,
+					loadEnd: endLoad,
 					reps: REPS,
 					scales: SCALES,
 					reference: manifest,
