@@ -124,3 +124,47 @@ export function shape(node: FakeNode): unknown {
 		children: node.children.map(shape),
 	};
 }
+
+// `r{root}-h{id}-g{generation}`, the shape `host-driver.ts` writes into the
+// nodes-ref selector.
+const SELECTOR = /^r(\d+)-h\d+-g(\d+)$/;
+
+/**
+ * Strip the two places `shape()` carries an allocator's choice of number rather
+ * than a property of the tree: the native event token, which encodes the host id
+ * and the listener id, and the nodes-ref selector, which is the host id spelled
+ * out. Two scenes that reach the same tree by different command sequences run
+ * different id sequences to get there, so comparing those numbers would report a
+ * difference that is not one.
+ *
+ * What survives is everything the numbers were standing in for. Event *sites*
+ * must still match exactly — which node carries which `kind:name` — and the
+ * selector keeps its root and its **generation**, because a generation bump
+ * means an instance was replaced rather than reused, which is precisely what
+ * these tests exist to catch.
+ */
+export function withoutAllocatorIdentity(node: unknown): unknown {
+	const value = node as {
+		events: [string, unknown][];
+		children: unknown[];
+		selector: string;
+	};
+	const selector =
+		value.selector === ''
+			? ''
+			: value.selector.replace(SELECTOR, (_, root, generation) => {
+					return `r${root}-h*-g${generation}`;
+				});
+	// A selector this pattern does not recognise would be silently compared as
+	// itself, which would make the normalization look sound while hiding a
+	// format change. Fail instead.
+	if (value.selector !== '' && selector === value.selector) {
+		throw new Error(`unrecognised nodes-ref selector ${JSON.stringify(value.selector)}`);
+	}
+	return {
+		...(value as object),
+		selector,
+		events: value.events.map(([name]) => name),
+		children: value.children.map(withoutAllocatorIdentity),
+	};
+}
