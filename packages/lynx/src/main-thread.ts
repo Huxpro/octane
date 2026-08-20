@@ -1901,9 +1901,10 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			});
 			// Issue-58 L3: the first screen materializes through direct PAPI
 			// emission; trees the direct path declines keep the staged batch path.
-			// Native lists are what it declines, and they are painted and adopted
-			// through the staged path (issue #66 C2). Extending direct emission to
-			// them is C3.
+			// Native lists go direct too now (issue #66 C3). What still falls back
+			// is a page whose host offers no list PAPI, which is owed that
+			// diagnostic, and a list topology the direct applier will not start
+			// building because it could not finish without faulting halfway.
 			if (!applyLynxFirstScreenDirect(source, result.nodes, result.envelope)) {
 				const prepared = prepareLynxHostBatch(source, result.batch);
 				prepared.apply();
