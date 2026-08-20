@@ -490,3 +490,74 @@ describe('Lynx block root — identity discipline', () => {
 		expect(taps).toEqual([]);
 	});
 });
+
+describe('Lynx block root — event identity and batch completeness', () => {
+	it('refuses an event stamped against a superseded batch version', async () => {
+		const { main, root, core, slot } = scene();
+		core.fillForSlot(
+			slot,
+			ROW_TEMPLATE,
+			rows(1),
+			(row) => row.id,
+			(row) => rowValues(row, null),
+		);
+		const only = slot.items.get(1)!;
+		const taps: string[] = [];
+		root.bindListeners(only, [() => taps.push('label'), () => taps.push('remove')]);
+		await commitAndAck(root, main);
+
+		// A delivery queued before a later commit restructured the tree carries
+		// the old version. It must be refused, not run against post-commit state.
+		expect(() =>
+			root.dispatchTransportEvent({
+				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
+				renderer: LYNX_TRANSPORT_RENDERER,
+				root: 1,
+				version: 0,
+				type: 'event',
+				priority: 'discrete',
+				deliveries: [{ listener: only.firstListenerId!, payload: null }],
+			}),
+		).toThrowError(/version 0 does not match batch 1/);
+		expect(taps).toEqual([]);
+	});
+
+	it('runs every pre-validated delivery even when an earlier handler throws', async () => {
+		const { main, root, core, slot } = scene();
+		core.fillForSlot(
+			slot,
+			ROW_TEMPLATE,
+			rows(2),
+			(row) => row.id,
+			(row) => rowValues(row, null),
+		);
+		const first = slot.items.get(1)!;
+		const second = slot.items.get(2)!;
+		const taps: string[] = [];
+		root.bindListeners(first, [
+			() => {
+				throw new Error('handler one failed');
+			},
+			null,
+		]);
+		root.bindListeners(second, [() => taps.push('second ran'), null]);
+		await commitAndAck(root, main);
+
+		expect(() =>
+			root.dispatchTransportEvent({
+				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
+				renderer: LYNX_TRANSPORT_RENDERER,
+				root: 1,
+				version: 1,
+				type: 'event',
+				priority: 'discrete',
+				deliveries: [
+					{ listener: first.firstListenerId!, payload: null },
+					{ listener: second.firstListenerId!, payload: null },
+				],
+			}),
+		).toThrowError('handler one failed');
+		// The throw is reported, but the valid batch was dispatched completely.
+		expect(taps).toEqual(['second ran']);
+	});
+});
