@@ -185,16 +185,25 @@ export interface LynxBlockCore {
 		key: (item: Item, index: number) => unknown,
 		values: (item: Item, index: number) => readonly UniversalHostTemplateProgramValue[],
 	): void;
-	/** Keyed reconcile with an LIS survivor pass, as `runtime.ts` does. */
+	/**
+	 * Keyed reconcile with an LIS survivor pass, as `runtime.ts` does.
+	 * `departed` is invoked for every block that leaves the range, before its
+	 * run is destroyed — the window in which an owner must release the block's
+	 * listeners and any other per-block resources it holds.
+	 */
 	reconcileForSlot<Item>(
 		slot: LynxBlockForSlot,
 		template: LynxBlockTemplate,
 		items: readonly Item[],
 		key: (item: Item, index: number) => unknown,
 		values: (item: Item, index: number) => readonly UniversalHostTemplateProgramValue[],
+		departed?: (block: LynxBlock) => void,
 	): void;
-	/** Tear down every member of a range site. */
-	clearForSlot(slot: LynxBlockForSlot): void;
+	/**
+	 * Tear down every member of a range site. `departed` fires per member
+	 * before destruction, with the same release obligation as reconcile.
+	 */
+	clearForSlot(slot: LynxBlockForSlot, departed?: (block: LynxBlock) => void): void;
 	/** The scoped write. One key lookup, one command, independent of list size. */
 	setKeyedSlotValue(
 		slot: LynxBlockForSlot,
@@ -408,18 +417,29 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		if (items.length === 0) return;
 		const rows = items.map((item, index) => values(item, index));
 		const keys = items.map((item, index) => key(item, index));
+		// Refused, not mis-rendered: a duplicate key would overwrite its twin in
+		// the key map, leaking a mounted run no later reconcile or clear can
+		// reach. The same stance `runtime.ts` takes for keyed for-blocks.
+		const seen = new Set<unknown>();
+		for (const itemKey of keys) {
+			if (seen.has(itemKey)) fail(`duplicate key ${String(itemKey)} in a keyed range`);
+			seen.add(itemKey);
+		}
 		const blocks = mountRun(slot.parent, null, template, rows, keys);
 		for (const block of blocks) slot.items.set(block.key, block);
 		link(slot, blocks);
 	};
 
-	const clearForSlot = (slot: LynxBlockForSlot): void => {
+	const clearForSlot = (slot: LynxBlockForSlot, departed?: (block: LynxBlock) => void): void => {
 		if (slot.size === 0) return;
 		// The range site owns every child of its parent node, which is the
 		// condition `delta-protocol.ts` states for `CLEAR` — but the command
 		// vocabulary has no clear, so this pays `destroyBlock` per member. See
 		// its comment: the gap is the protocol's, not this core's.
-		for (const block of slot.items.values()) destroyBlock(slot.parent, block);
+		for (const block of slot.items.values()) {
+			departed?.(block);
+			destroyBlock(slot.parent, block);
+		}
 		slot.items.clear();
 		slot.head = null;
 		slot.tail = null;
@@ -448,7 +468,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 
 		clearForSlot,
 
-		reconcileForSlot(slot, template, items, key, values) {
+		reconcileForSlot(slot, template, items, key, values, departed) {
 			const previous = slot.items;
 			if (previous.size === 0) {
 				fillForSlot(slot, template, items, key, values);
@@ -469,8 +489,14 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			}
 			const sequence: number[] = new Array(items.length);
 			const matched = new Set<LynxBlock>();
+			// Refused, not mis-rendered: with a duplicate key the same survivor
+			// would match twice, its second placement would anchor a move on
+			// itself, and `slot.size` would diverge from the item count.
+			const seen = new Set<unknown>();
 			for (let index = 0; index < items.length; index++) {
 				const itemKey = key(items[index]!, index);
+				if (seen.has(itemKey)) fail(`duplicate key ${String(itemKey)} in a keyed range`);
+				seen.add(itemKey);
 				keys[index] = itemKey;
 				const survivor = previous.get(itemKey);
 				blockLookups++;
@@ -488,6 +514,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			// that is about to leave.
 			for (const [itemKey, block] of previous) {
 				if (matched.has(block)) continue;
+				departed?.(block);
 				destroyBlock(slot.parent, block);
 				previous.delete(itemKey);
 			}

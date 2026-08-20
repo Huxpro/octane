@@ -390,3 +390,66 @@ describe('Lynx block core — the tree it paints', () => {
 		]);
 	});
 });
+
+describe('Lynx block core — refusing corrupt input, reporting departures', () => {
+	it('refuses duplicate keys instead of mis-rendering the range', () => {
+		const built = scene(rows(3), null);
+		const twin = [rows(1)[0]!, rows(1)[0]!];
+		expect(() =>
+			built.core.reconcileForSlot(
+				built.slot,
+				ROW_TEMPLATE,
+				twin,
+				(row) => row.id,
+				(row) => rowValues(row, null),
+			),
+		).toThrowError(/duplicate key/);
+		// The guard fires before any removal or move, so the range is untouched
+		// and still paints — refusal must not leave a half-reconciled list.
+		built.core.reconcileForSlot(
+			built.slot,
+			ROW_TEMPLATE,
+			rows(3),
+			(row) => row.id,
+			(row) => rowValues(row, null),
+		);
+		built.apply();
+		expect(built.slot.size).toBe(3);
+	});
+
+	it('refuses duplicate keys on the empty-range fill path', () => {
+		const papi = createFakePAPI();
+		createLynxHostContainer(papi, { root: 1 });
+		const core = createLynxBlockCore();
+		const page = core.mount(null, null, PAGE_TEMPLATE, []);
+		const slot = core.openForSlot(page, 1);
+		expect(() =>
+			core.fillForSlot(
+				slot,
+				ROW_TEMPLATE,
+				[rows(1)[0]!, rows(1)[0]!],
+				(row) => row.id,
+				(row) => rowValues(row, null),
+			),
+		).toThrowError(/duplicate key/);
+		expect(slot.size).toBe(0);
+	});
+
+	it('reports every departing block before its run is destroyed', () => {
+		const built = scene(rows(4), null);
+		const departedKeys: unknown[] = [];
+		built.core.reconcileForSlot(
+			built.slot,
+			ROW_TEMPLATE,
+			rows(2),
+			(row) => row.id,
+			(row) => rowValues(row, null),
+			(block) => departedKeys.push(block.key),
+		);
+		expect(departedKeys.sort()).toEqual([3, 4]);
+		const cleared: unknown[] = [];
+		built.core.clearForSlot(built.slot, (block) => cleared.push(block.key));
+		expect(cleared.sort()).toEqual([1, 2]);
+		expect(built.slot.size).toBe(0);
+	});
+});
