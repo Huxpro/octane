@@ -404,11 +404,14 @@ in §3 and the extraction-first decision in §5.
 
   Two deterministic counts for the same interaction, disagreeing by three orders
   of magnitude. Row renders track the change; reconciled blueprints track the
-  list, linearly (`rows + changed + 42`). The semantic floor is the
-  `changed-rows-model` the wire gates already use — `1 + 42` for `select` — so
-  the standing debt is a factor of ~235 at 10k. This is the number the
-  scoped-commit slice has to move, and unlike a share of a wall clock it can be
-  asserted.
+  list, and the ladder fixes the law exactly rather than approximately:
+  `rows + changed + 41`, where 41 is the app's fixed chrome. It reproduces at
+  both scales and in all three cells (`select` 1,000+1+41 = 1,042 and
+  10,000+1+41 = 10,042; `update10th` 1,000+100+41 = 1,141 and
+  10,000+1,000+41 = 11,041). The semantic floor is the `changed-rows-model` the
+  wire gates already use — `changed + 41`, so 42 for `select` — which puts the
+  standing debt at a factor of 239 at 10k. This is the number the scoped-commit
+  slice has to move, and unlike a share of a wall clock it can be asserted.
 
   It is **not** wired into `ratios.json` yet, and the reason is a real
   constraint rather than an omission. That gate runs `workload.ts` in-process
