@@ -1,6 +1,7 @@
 import type { UniversalHostBatch, UniversalHostTemplateProgram } from 'octane/universal/native';
 import {
 	encodeLynxDeltaMessage,
+	isLynxDeltaValue,
 	type LynxDeltaOperation,
 	type LynxDeltaValue,
 	type LynxEncodedDeltaMessage,
@@ -147,13 +148,8 @@ function siteOf(state: ShadowState, host: number | null): LynxSlotAddress | null
 function scalarValues(values: readonly unknown[]): LynxDeltaValue[] | null {
 	const scalars: LynxDeltaValue[] = [];
 	for (const value of values) {
-		if (value === null) {
-			scalars.push(null);
-			continue;
-		}
-		const type = typeof value;
-		if (type !== 'string' && type !== 'number' && type !== 'boolean') return null;
-		scalars.push(value as LynxDeltaValue);
+		if (!isLynxDeltaValue(value)) return null;
+		scalars.push(value);
 	}
 	return scalars;
 }
@@ -253,14 +249,13 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 					for (const binding of bindings) {
 						const value = command.props[binding.name];
 						if (Object.is(instance.values[binding.valueIndex], value)) continue;
-						const scalar = scalarValues([value]);
-						if (scalar === null) return null;
+						if (!isLynxDeltaValue(value)) return null;
 						instance.values[binding.valueIndex] = value;
 						operations.push({
 							op: 'set',
 							instance: instance.handle,
 							slot: binding.valueIndex,
-							value: scalar[0]!,
+							value,
 						});
 					}
 					continue;
