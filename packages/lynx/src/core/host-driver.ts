@@ -2977,9 +2977,13 @@ function firstScreenHostChildren(
  * is skipped is therefore only ever a build whose outcome is already settled,
  * never a build that would have reported something.
  *
- * Ranges are transparent. `@for` and friends produce no record, and the staged
- * checks read a record's host parent, so a `<list-item>` under a range under a
- * `<list>` is placed correctly — the shape every list fixture has.
+ * Ranges are transparent, which is what makes this fire on real code rather than
+ * only on hand-built trees. `@for` and friends produce no record, so a `<list>`
+ * taking its rows from a keyed loop — every authored list — does not own those
+ * rows as children. A reader stopping at the immediate children would validate
+ * an empty list and decline, swallowing every row defect on the way. The staged
+ * checks read a record's *host* parent for the same reason, so a `<list-item>`
+ * under a range under a `<list>` is placed correctly on both paths.
  */
 export function firstScreenTreeIsUnadoptable(nodes: readonly LynxFirstScreenDirectNode[]): boolean {
 	// Iterative for the same reason its neighbours are: nothing in the
