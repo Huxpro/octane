@@ -376,6 +376,82 @@ in §3 and the extraction-first decision in §5.
   but it must not be justified by update-path milliseconds. Re-aiming belongs
   to background render/reconcile.
 
+- **L2 Phase 2 (re-aim: the update path's owner is the background drain, and
+  the reason is that a transported root cannot scope an update).** Phase 0's
+  gate said that if the wire did not explain the cost, Phase 2 was to be
+  re-aimed at the segment that does, and that the gate's output outranks the
+  original plan. This is that re-aim, and it required fixing the measurement
+  twice before it could be trusted.
+
+  Two boundaries were tried and both reported a confident zero. `renderBlock`
+  is never reached on the table's mutation path, because item bodies run
+  through the keyed for-block's survivor and call-site caches. The DOM
+  runtime's `flushWork` is never reached at all — the Lynx background thread
+  reaches Octane through `octane/universal/native`, which is
+  `universal-core.ts`, a *different renderer* from `runtime.ts`. A profile
+  bundle built against that patch contains zero occurrences of its counter
+  while the neighbouring `bgReplayMs` and `papiCreateMs` are both present. A
+  stage that reads zero because it is watching an unreachable function is worse
+  than no stage, so the rule the harness now follows is to confirm a non-zero
+  count at low scale before trusting a full run.
+
+  The drain is `UniversalRoot.prepare()`: render, reconcile, and host-batch
+  construction. It is gated on a replay-window flag the transport publishes, so
+  the first screen's own prepare cannot leak into the update stage. Same-window,
+  n=5, quiet host, AB/BA, fresh page per sample:
+
+  | cell | `bg_prepare` | `bg_replay_other` | `mt_prepare` + wire | `presentation_residual` |
+  |---|---:|---:|---:|---:|
+  | update10th@10k | **36.0%** | 0.2% | 4.6% | 47.9% |
+  | updateStorm@10k | **9.9%** | 0.1% | 2.5% | 77.3% |
+  | select@10k | **43.3%** | 0.2% | 0.3% | 51.5% |
+
+  Event delivery, the handler, scheduling, and the commit hand-off together are
+  0.1–0.2% of the replay window. The window *is* the drain. Phase 0's
+  instrumentation caveat is also gone: profile/control is 0.96× on update10th,
+  1.07× on select, 0.92× on updateStorm and 0.93× on append — within noise in
+  both directions, against 1.40×/1.47× in the Phase 0 window.
+
+  **The drain is tree-sized while its output is change-sized.** At 10,000 rows
+  the three mutation cells span three orders of magnitude of change and less
+  than a factor of two of drain:
+
+  | cell | row-body renders | host commands | `bg_prepare` |
+  |---|---:|---:|---:|
+  | select@10k | 1 | 1 | 64.2 ms |
+  | update10th@10k | 1,000 | 1,000 | 96.0 ms |
+  | updateStorm@10k | 4,000 | 4,000 | 100.8 ms |
+
+  `select` flips one row's class and sends 289 B, and the row-render counts are
+  deterministic for this app and interaction, so auto-memoization is already
+  keeping render *breadth* proportional to the change. Holding that change
+  fixed and varying the list instead moves the drain 12.1 ms at 1k to 64.2 ms
+  at 10k, with non-overlapping per-sample ranges ([12.1, 13.8] against
+  [60.0, 128.0]) — roughly 6 ms fixed plus ~5.8 µs per row of *untouched* list.
+  (The two windows are adjacent rather than interleaved, so the same-window
+  change-size comparison above is the stronger of the two arguments.)
+
+  **The mechanism is in the source, not inferred from the numbers.**
+  `prepareOwnedUpdate` in `universal-core.ts` is the scoped, O(change) update
+  path: it re-renders only the owner that owns the updated hook. It returns
+  `null` unconditionally when `this.transport !== null`, and `root.ts`
+  constructs every Lynx background root with a transport, so every Lynx update
+  falls through to the full-root `prepareWithReplay`. Its own comment gives the
+  reason: a transported commit is acknowledged against a whole-tree version, so
+  a scoped batch would need its own ACK/rollback protocol on the far side
+  before it could be accepted independently.
+
+  Consequence for the roadmap. The A4/A5 wire cutover stays NO-GO (`mt_prepare`
+  plus clone/transfer is 4.6% / 2.5% / 0.3%). The lever is a **scoped commit
+  for transported roots**: letting the background acknowledge a sub-tree batch
+  rather than a whole-tree version. That is precisely the capability the v2
+  delta protocol's instance-addressed `(instance, slot)` pairs exist to
+  provide, which is why Phase 1 remains worth having even though it was refused
+  as a performance argument. Designing that ACK/rollback protocol is the next
+  slice; it is a runtime and transport change, not a wire-encoding change.
+  `updateStorm` is excluded from any such claim — 77.3% of it is the
+  flush/layout residual, which bounds what any upstream change can win there.
+
 - **L2 Phase 1 (delta protocol v2, and one amendment that could not be
   implemented as specified).** `delta-protocol.ts` is rewritten to the opcode
   set the closure analysis on #61 settled: every address is an `(instance,
