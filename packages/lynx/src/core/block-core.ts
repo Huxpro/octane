@@ -121,6 +121,13 @@ export function compileLynxBlockTemplate(program: UniversalHostTemplateProgram):
 export interface LynxBlock {
 	readonly template: LynxBlockTemplate;
 	readonly firstId: number;
+	/**
+	 * First listener id of this block's own event run, or `null` for a template
+	 * with no event sites. A site's id is `firstListenerId + siteIndex`, which is
+	 * what lets an inbound delivery be routed back to the block that owns it
+	 * without shipping a listener table across the wire.
+	 */
+	readonly firstListenerId: number | null;
 	readonly values: UniversalHostTemplateProgramValue[];
 	readonly key: unknown;
 	/** Survivor list, as in `runtime.ts` — the LIS operates over this order. */
@@ -324,6 +331,12 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			blocks[row] = {
 				template,
 				firstId: firstId + row * template.hostCount,
+				// The listener run is dense in exactly the way the host run is, so a
+				// block's own base is its row offset into the run's base. This is the
+				// `firstListenerId + rowIndex * eventCount + siteIndex` derivation the
+				// applier already uses, resolved once at mount instead of per delivery.
+				firstListenerId:
+					firstListenerId === null ? null : firstListenerId + row * template.eventCount,
 				values: [...rows[row]!],
 				key: keys[row],
 				prev: null,
