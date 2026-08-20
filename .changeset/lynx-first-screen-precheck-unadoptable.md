@@ -24,12 +24,14 @@ reads.
 A list-free page pays only the walk, 0.063 ms median over that same 4,002-host
 tree, or 0.06% of its ~108 ms first screen, and its host traffic is unchanged.
 
-Ranges are transparent to the walk, which is what makes it fire on real code
-rather than only on hand-built trees: a `<list>` takes its rows from a keyed
-`@for`, so in the record tree a range sits between the list and every
-`<list-item>` and the rows are not the list's own children. A reader that
-stopped at the list's immediate children would find no rows, validate an empty
-list, and decline — swallowing every row defect on the way. Both walks are also
+What compiled pages look like decided the shape of the walk. `<list>` lowers to
+a `template` create program rather than a `host` plan node, with its rows in one
+child hole as a keyed `@for`; the record tree that renders is `host <list>` over
+one range per row, each holding one `host <list-item>`. So the template-created
+list still reads as an ordinary `list` host — and ranges have to be transparent,
+because the rows are not the list's own children. A reader stopping at the
+immediate children would validate an empty list, decline, and swallow every row
+defect on the way, while still passing a decline test. Both walks are also
 iterative, because a range chain is a chain of nested directives and nothing in
 the first-screen pipeline may cap a depth the renderer accepted.
 

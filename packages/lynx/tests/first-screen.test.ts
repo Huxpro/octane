@@ -254,6 +254,39 @@ const KeyedFeedScene = defineFirstScreenComponent(
 		]),
 );
 
+// The lowering the compiler actually emits for `<list id="native-feed">`: a
+// `template` create program, not a `host` plan node. Verified against
+// `tests/_fixtures/native-list.lynx.tsrx` compiled with `lynxMainThreadRenderer`,
+// which produces exactly this `kind`/`slots`/`create` shape with the rows as a
+// keyed `@for` in the single child hole. The record tree it renders is what the
+// pre-check reads, so this is the fixture that proves the pre-check fires on
+// compiled pages rather than only on hand-built plans.
+const templateFeedPlan = firstScreenPlan('lynx', {
+	kind: 'template',
+	slots: ['r'],
+	create: (env, values) => {
+		const list = env.h('list');
+		env.p(list, 'id', 'feed');
+		env.s(list, values[0]);
+		return list;
+	},
+});
+
+const TemplateFeedScene = defineFirstScreenComponent(
+	'lynx',
+	(props: { readonly rows: readonly (readonly [key: string, itemKey: string])[] }) =>
+		firstScreenValue(templateFeedPlan, [
+			firstScreenFor(
+				props.rows,
+				(row) => row[0],
+				(row) => firstScreenValue(keyedRowPlan, [row[1]]),
+				null,
+				true,
+				true,
+			),
+		]),
+);
+
 interface FirstScreenLinkedRuntime {
 	useLinkedState?<Source, Value>(
 		source: Source,
@@ -1066,6 +1099,49 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 					['k0', 'row-0'],
 					['k1', 'row-1'],
 					['k2', 'row-0'],
+				],
+			}),
+		).toThrow(/item-key "row-0" is duplicated in one <list>/);
+		expect(main.firstScreenSnapshot()).toBeNull();
+	});
+
+	it('declines a native list the compiler lowered to a template', () => {
+		// A template-created `<list>` still records as an ordinary `list` host, which
+		// is the property the pre-check depends on. If that lowering ever recorded
+		// the template opaquely instead, declining would silently stop firing on
+		// every compiled page while every hand-built fixture above kept passing.
+		const painted: string[] = [];
+		const { dom, main } = installEnvironment((target) => {
+			const hostFlush = target.__FlushElementTree as (...args: unknown[]) => void;
+			target.__FlushElementTree = (...args: unknown[]) => {
+				hostFlush.apply(target, args);
+				painted.push((args[0] as { innerHTML?: string } | undefined)?.innerHTML ?? '');
+			};
+		});
+
+		expect(
+			firstScreenRoot.render(TemplateFeedScene, {
+				rows: [
+					['k0', 'row-0'],
+					['k1', 'row-1'],
+				],
+			}),
+		).toBeNull();
+
+		expect(painted.every((html) => !html.includes('id="feed"'))).toBe(true);
+		expect(dom.window.document.querySelector('#feed')).toBeNull();
+		expect(main.firstScreenSnapshot()).toBeNull();
+		expect(main.diagnostics()).toEqual([]);
+	});
+
+	it('still reports a duplicated item-key under a template-lowered list', () => {
+		const { main } = installEnvironment();
+
+		expect(() =>
+			firstScreenRoot.render(TemplateFeedScene, {
+				rows: [
+					['k0', 'row-0'],
+					['k1', 'row-0'],
 				],
 			}),
 		).toThrow(/item-key "row-0" is duplicated in one <list>/);

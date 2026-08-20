@@ -375,14 +375,22 @@ in §3 and the extraction-first decision in §5.
   validators over 1,000 descriptors. 0.063 ms is 0.06% of that page's first
   screen.
 
-  Ranges are transparent to the walk, which is what makes it fire on real code
-  rather than only on hand-built trees: a `<list>` takes its rows from a keyed
-  `@for`, so a range sits between the list and every `<list-item>` and the rows
-  are not the list's own children in the record tree. A reader stopping at the
-  list's immediate children would validate an empty list, decline, and swallow
-  every row defect on the way. Both walks are iterative for the reason the
-  neighbouring first-screen walks are (#90): a range chain is a chain of nested
-  directives, and nothing here may cap a depth the renderer accepted.
+  What compiled pages actually look like decided the shape of the walk, and was
+  checked rather than assumed: `tests/_fixtures/native-list.lynx.tsrx` compiled
+  with `lynxMainThreadRenderer` lowers `<list id="native-feed">` to a `template`
+  create program — not a `host` plan node — with its rows in one child hole as a
+  keyed `@for`. Rendering that emits a record tree of `host <list>` over one
+  `range` per row, each holding one `host <list-item>`.
+
+  Two properties follow. The template-created `<list>` still records as an
+  ordinary `list` host, which is what the pre-check reads. And ranges must be
+  transparent to it: the rows are not the list's own children, so a reader
+  stopping at the immediate children would validate an *empty* list, decline,
+  and swallow every row defect — while still passing a decline test, which is
+  why a decline test alone is not evidence. Both walks are also iterative, for
+  the reason the neighbouring first-screen walks are (#90): a range chain is a
+  chain of nested directives, and nothing here may cap a depth the renderer
+  accepted.
 
   The pre-check answers `true` only for a tree the staged path would have
   accepted, because skipping a build must never skip a diagnostic. Rather than
@@ -390,7 +398,7 @@ in §3 and the extraction-first decision in §5.
   `planLynxListUpdate` over the same nodes and treats a throw as "not a decline",
   tracking the prepare walk's nested-`<list>` and `<list-item>`-placement rules
   alongside; a host offering no list PAPI is excluded too, since a page that
-  cannot build a `<list>` at all needs that diagnostic rather than a skip. Six
+  cannot build a `<list>` at all needs that diagnostic rather than a skip. Seven
   tests hold each of those diagnostics to its current site. `captureLynxFirstTree`
   stays the authority: a shape the pre-check does not claim settles exactly as it
   does today, having paid for the paint.
