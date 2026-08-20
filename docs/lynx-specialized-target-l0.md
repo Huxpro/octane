@@ -337,6 +337,59 @@ in §3 and the extraction-first decision in §5.
 
 ## 8. Landed increments
 
+- **L5 cutover gate: NO-GO (issue #66 Phase D).** #58's L5 milestone ends by
+  flipping `lynxRendererRules` and deprecating the universal Lynx path, gated on
+  three clauses. Judged on the same two arms as the bundle re-audit below —
+  `origin/new-lynx` `5d61724` against the stack tip `566700e`, one window, eight
+  minutes apart. The full report is
+  [`benchmarks/lynx-table/stages/results/stack-66-cutover-gate.md`](../benchmarks/lynx-table/stages/results/stack-66-cutover-gate.md).
+
+  **One clause of three passes.**
+
+  | clause | verdict |
+  | --- | --- |
+  | create@10k materially below 1,201 ms, PAPI dominance reduced | **FAIL** |
+  | main-thread gzip ≤1.5× the ~51 KB median | **FAIL** on the gated fixture |
+  | no wire-floor regressions | **PASS** |
+
+  The 1,201 ms figure is not comparable — different host, and taken at the
+  pre-correction background boundary — so the clause was judged against the
+  same-window base instead. Control create is 1,825.5 ms on the base and
+  1,901.8 ms on the head, and PAPI-stage dominance is 77.2% → 77.4%. Neither
+  moved. Inside that unchanged total, +92.8 ms of PAPI element creation traded
+  against −67.6 ms of other host apply; both timers are untouched across the
+  stack, so that is work relocating, not re-attribution.
+
+  The wire clause passes outright: byte-identical ratio counters on both arms,
+  and create@10k differs by 4 bytes out and 10 bytes in at identical message
+  counts.
+
+  **The mismatch is the finding.** #58's L5 gate is written about the create
+  path; #66 Phases B–C were executed against the first-screen path. On this app
+  those are different code paths — create is a button-driven background render
+  through the staged batch, the first screen is the direct applier — and the
+  evidence shows work on one did not move the other. Where Phases B–C were
+  aimed, they landed: FCP@10k control fell 2,577.6 → 2,382.5 ms (−7.6%), with
+  `plan_interpretation` down a third, 117 → 77.9 ms.
+
+  That same FCP row also says #58's L3 exit gate is still open: it wanted plan
+  interpretation *eliminated*, and at 77.9 ms / 3.2% it is neither gone nor
+  negligible. The direct applier bypasses the interpreter for trees it accepts;
+  the interpreter still ships and still runs.
+
+  **A small unexplained excess on the mutation cells is recorded, not
+  dismissed.** Six alternating AB/BA passes settle `selectStorm@10k` at 0.997
+  head/base — the apparent +34% was window noise — but leave create at 1.032,
+  update10th at 1.042, and updateStorm at 1.076, consistent in both orderings
+  and corroborated by the stage arm's +4.2%. Mechanism unidentified. The
+  hypothesis to test first is that #109's record-shape change sits on a path
+  shared with the staged update route, so the mutation cells pay for a
+  first-screen optimization they never use.
+
+  Closing the create clause needs a milestone that owns host materialization:
+  PAPI creation plus other apply is 77% of create and has been at every
+  measurement since `live-report.md`. More first-screen work will not move it.
+
 - **L5 bundle re-audit, on the unmerged #66 stack (issue #66 Phase D).** #58's
   cutover gate wants main-thread gzip "meaningfully toward the ~51 KB median
   (propose ≤1.5×)", and #66 §6 records that #95 already repaid #63's module-level
