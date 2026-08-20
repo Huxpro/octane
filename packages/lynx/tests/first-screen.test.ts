@@ -208,6 +208,67 @@ const StrayRowScene = defineFirstScreenComponent('lynx', () =>
 	firstScreenValue(strayRowPlan, ['feed-shell', 'feed', 'row-0', 'stray-row']),
 );
 
+// Non-list defects the prepare walk reports. The list beside them is valid on
+// purpose: a page the pre-check declines never reaches that walk, so these are
+// exactly the diagnostics a skipped build could swallow.
+const collidingFeedPlan = firstScreenPlan('lynx', {
+	kind: 'host',
+	type: 'view',
+	bindings: [['id', 0]],
+	children: [
+		{
+			kind: 'host',
+			type: 'list',
+			bindings: [['id', 1]],
+			children: [{ kind: 'host', type: 'list-item', bindings: [['item-key', 2]] }],
+		},
+		{
+			kind: 'host',
+			type: 'view',
+			bindings: [
+				['bindtap', 3],
+				['main-thread:bindtap', 4],
+			],
+		},
+	],
+});
+
+const CollidingFeedScene = defineFirstScreenComponent('lynx', () =>
+	firstScreenValue(collidingFeedPlan, [
+		'feed-shell',
+		'feed',
+		'row-0',
+		() => {},
+		{ _wkltId: 'gate:tap' },
+	]),
+);
+
+const duplicateRefFeedPlan = firstScreenPlan('lynx', {
+	kind: 'host',
+	type: 'view',
+	bindings: [['id', 0]],
+	children: [
+		{
+			kind: 'host',
+			type: 'list',
+			bindings: [['id', 1]],
+			children: [{ kind: 'host', type: 'list-item', bindings: [['item-key', 2]] }],
+		},
+		{ kind: 'host', type: 'view', bindings: [['main-thread:ref', 3]] },
+		{ kind: 'host', type: 'view', bindings: [['main-thread:ref', 4]] },
+	],
+});
+
+const DuplicateRefFeedScene = defineFirstScreenComponent('lynx', () =>
+	firstScreenValue(duplicateRefFeedPlan, [
+		'feed-shell',
+		'feed',
+		'row-0',
+		{ _wvid: 'gate:ref' },
+		{ _wvid: 'gate:ref' },
+	]),
+);
+
 // The shape authored code actually produces. A `<list>` gets its rows from a
 // keyed `@for`, so a range sits between the list and every `<list-item>` and the
 // rows are not the list's own children in the record tree. The fixtures above
@@ -1184,6 +1245,27 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 
 		expect(() => firstScreenRoot.render(StrayRowScene, {})).toThrow(
 			/must be placed directly under a <list>/,
+		);
+		expect(main.firstScreenSnapshot()).toBeNull();
+	});
+
+	it('still reports a main-thread event collision rather than declining it silently', () => {
+		// The colliding host sits beside a valid list, so the pre-check's skip
+		// verdict is otherwise settled — the prepare walk that raises this
+		// diagnostic on the staged path would never run.
+		const { main } = installEnvironment();
+
+		expect(() => firstScreenRoot.render(CollidingFeedScene, {})).toThrow(
+			/conflicts with background event/,
+		);
+		expect(main.firstScreenSnapshot()).toBeNull();
+	});
+
+	it('still reports a duplicated main-thread ref rather than declining it silently', () => {
+		const { main } = installEnvironment();
+
+		expect(() => firstScreenRoot.render(DuplicateRefFeedScene, {})).toThrow(
+			/is assigned to hosts \d+ and \d+/,
 		);
 		expect(main.firstScreenSnapshot()).toBeNull();
 	});

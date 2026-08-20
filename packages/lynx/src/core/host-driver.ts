@@ -2996,12 +2996,19 @@ function firstScreenHostChildren(
  * caller skip building what it would only discard.
  *
  * The answer is true **only** for a tree the staged apply would have accepted.
- * Every list diagnostic that path can raise has to keep firing from where it
- * fires today, so this runs the same validators against the same nodes — the
- * two `list.js` entry points below, plus the two placement rules the prepare
- * walk owns — and reports a tree that trips any of them as ordinary work. What
- * is skipped is therefore only ever a build whose outcome is already settled,
- * never a build that would have reported something.
+ * Every diagnostic that path can raise has to keep firing from where it fires
+ * today. The list diagnostics fire by running the same validators against the
+ * same nodes — the two `list.js` entry points below, plus the two placement
+ * rules the prepare walk owns — and a tree that trips any of them is reported
+ * as ordinary work, left for the staged path to throw at. The prepare walk's
+ * two non-list diagnostics — a `main-thread:` event prop colliding with a
+ * background listener of the same type, and one main-thread ref descriptor
+ * assigned to two visible hosts — cannot be deferred the same way, because a
+ * skipped build never reaches the walk that raises them; they are replayed
+ * here and THROWN, so a defective page settles as `failed` with its error
+ * reported, exactly as the staged path settles it. What is skipped is
+ * therefore only ever a build whose outcome is already settled, never a build
+ * that would have reported something.
  *
  * Ranges are transparent, which is what makes this fire on real code rather than
  * only on hand-built trees. `@for` and friends produce no record, so a `<list>`
@@ -3011,7 +3018,10 @@ function firstScreenHostChildren(
  * checks read a record's *host* parent for the same reason, so a `<list-item>`
  * under a range under a `<list>` is placed correctly on both paths.
  */
-export function firstScreenTreeIsUnadoptable(nodes: readonly LynxFirstScreenDirectNode[]): boolean {
+export function firstScreenTreeIsUnadoptable(
+	nodes: readonly LynxFirstScreenDirectNode[],
+	events: readonly LynxFirstScreenDirectEvent[],
+): boolean {
 	// Iterative for the same reason its neighbours are: nothing in the
 	// first-screen pipeline may impose a tree-depth ceiling the renderer that
 	// produced the tree does not have. Each frame carries the nearest enclosing
@@ -3055,7 +3065,48 @@ export function firstScreenTreeIsUnadoptable(nodes: readonly LynxFirstScreenDire
 			if (node.children.length !== 0) stack.push({ nodes: node.children, hostParent, insideList });
 		}
 	}
-	return found;
+	if (!found) return false;
+	// The skip verdict is settled; replay the prepare walk's non-list
+	// diagnostics before granting it. These throw rather than return false:
+	// returning would route the defective tree into a build whose sole purpose
+	// is to be discarded, and the staged walk would then raise the same error
+	// after paying for the paint.
+	const eventTypesByHost = new Map<number, string[]>();
+	for (const event of events) {
+		const entry = eventTypesByHost.get(event.id);
+		if (entry === undefined) eventTypesByHost.set(event.id, [event.type]);
+		else entry.push(event.type);
+	}
+	const mainThreadRefOwners = new Map<string, number>();
+	const diagnostics: {
+		nodes: readonly LynxFirstScreenDirectNode[];
+		visible: boolean;
+	}[] = [{ nodes, visible: true }];
+	while (diagnostics.length !== 0) {
+		const frame = diagnostics.pop()!;
+		for (const node of frame.nodes) {
+			const visible = frame.visible && node.visibility !== 'hidden';
+			if (node.kind === 'host' && node.props !== undefined) {
+				const types = eventTypesByHost.get(node.id);
+				if (types !== undefined) {
+					assertNoMainThreadEventCollisionForTypes(node.props, types);
+				}
+				const mainThreadRef = node.props['main-thread:ref'] as
+					LynxMainThreadRefDescriptor | null | undefined;
+				if (mainThreadRef != null && visible) {
+					const previousOwner = mainThreadRefOwners.get(mainThreadRef._wvid);
+					if (previousOwner !== undefined && previousOwner !== node.id) {
+						throw hostError(
+							`main-thread ref ${JSON.stringify(mainThreadRef._wvid)} is assigned to hosts ${previousOwner} and ${node.id}.`,
+						);
+					}
+					mainThreadRefOwners.set(mainThreadRef._wvid, node.id);
+				}
+			}
+			if (node.children.length !== 0) diagnostics.push({ nodes: node.children, visible });
+		}
+	}
+	return true;
 }
 
 function firstScreenTreeHasList(nodes: readonly LynxFirstScreenDirectNode[]): boolean {
