@@ -485,6 +485,15 @@ const EMPTY_HOST_CHILDREN: number[] = [];
 // Most hosts never own a background event. Keep the shared map private and
 // replace it before the first write so ordinary hosts allocate no event table.
 const EMPTY_HOST_EVENTS = new Map<string, UniversalEventListenerDescriptor>();
+
+/**
+ * The two empty lists a first-tree node snapshot can hold. A large page is
+ * mostly leaves with no background events, and copying-then-freezing an empty
+ * array for each of them is one allocation per record for a value that is the
+ * same value every time.
+ */
+const EMPTY_FIRST_TREE_CHILDREN: readonly number[] = Object.freeze([]);
+const EMPTY_FIRST_TREE_EVENTS: readonly LynxFirstTreeEventSnapshot[] = Object.freeze([]);
 // Raw text is initialized by __CreateRawText itself. Its synthetic `value`
 // attribute is never forwarded, so an unscoped creation needs no prop diff.
 const EMPTY_RAW_TEXT_CREATE_PATCH: LynxHostPropPatch = Object.freeze({
@@ -2814,13 +2823,22 @@ function snapshotFirstTreeValue(
 	}
 }
 
+/**
+ * Snapshot one record's props. The caller owns the scratch pair and this clears
+ * it, so every record still clones against a memo scoped to its own props —
+ * exactly what a freshly allocated pair gave it — without allocating a `Set`
+ * and a `Map` per record on a page with tens of thousands of them.
+ */
 function snapshotFirstTreeProps(
 	props: Readonly<Record<string, unknown>>,
+	state: FirstTreeSnapshotCloneState,
 ): Readonly<Record<string, UniversalSerializableValue>> {
-	return snapshotFirstTreeValue(props as Readonly<Record<string, UniversalSerializableValue>>, {
-		active: new Set(),
-		clones: new Map(),
-	}) as Readonly<Record<string, UniversalSerializableValue>>;
+	state.active.clear();
+	state.clones.clear();
+	return snapshotFirstTreeValue(
+		props as Readonly<Record<string, UniversalSerializableValue>>,
+		state,
+	) as Readonly<Record<string, UniversalSerializableValue>>;
 }
 
 function mismatch(
@@ -3190,6 +3208,7 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 	}
 	const eventsByToken = new Map<string, LynxResolvedFirstTreeEvent>();
 	const nodes: LynxFirstTreeNodeSnapshot[] = [];
+	const cloneState: FirstTreeSnapshotCloneState = { active: new Set(), clones: new Map() };
 	const ids = [...state.records.keys()].sort((first, second) => first - second);
 	for (const id of ids) {
 		const record = state.records.get(id)!;
@@ -3207,51 +3226,83 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 		}
 		const nativeId = state.papi.getUniqueId(record.node);
 		assertSafeId(nativeId, `first-tree host ${id} native ID`);
-		const events: LynxFirstTreeEventSnapshot[] = [];
-		const eventEntries = [...record.events].sort(([first], [second]) =>
-			first < second ? -1 : first > second ? 1 : 0,
-		);
-		for (const [type, descriptor] of eventEntries) {
-			const event = Object.freeze({
-				host: id,
-				generation: record.handle.generation,
-				type,
-				listener: descriptor.id,
-				priority: descriptor.priority,
-			});
-			events.push(event);
-			const registration = state.nativeEvents.get(record.node)?.get(type);
-			if (record.visible) {
-				if (registration?.source !== 'background') {
-					throw hostError(`first-tree host ${id} is missing native event ${JSON.stringify(type)}.`);
+		// Most records on a large page bind nothing: in the benchmark fixture two
+		// of every seven hosts carry an event and the rest carry none. Sorting the
+		// spread of an empty map, into an array that stays empty, is three
+		// allocations apiece for a result that is always the same empty list.
+		let events: readonly LynxFirstTreeEventSnapshot[] = EMPTY_FIRST_TREE_EVENTS;
+		if (record.events.size !== 0) {
+			const bound: LynxFirstTreeEventSnapshot[] = [];
+			const eventEntries = [...record.events].sort(([first], [second]) =>
+				first < second ? -1 : first > second ? 1 : 0,
+			);
+			for (const [type, descriptor] of eventEntries) {
+				const event = Object.freeze({
+					host: id,
+					generation: record.handle.generation,
+					type,
+					listener: descriptor.id,
+					priority: descriptor.priority,
+				});
+				bound.push(event);
+				const registration = state.nativeEvents.get(record.node)?.get(type);
+				if (record.visible) {
+					if (registration?.source !== 'background') {
+						throw hostError(
+							`first-tree host ${id} is missing native event ${JSON.stringify(type)}.`,
+						);
+					}
+					eventsByToken.set(registration.listener, event);
+				} else if (registration !== undefined) {
+					throw hostError(
+						`hidden first-tree host ${id} retains native event ${JSON.stringify(type)}.`,
+					);
 				}
-				eventsByToken.set(registration.listener, event);
-			} else if (registration !== undefined) {
-				throw hostError(
-					`hidden first-tree host ${id} retains native event ${JSON.stringify(type)}.`,
-				);
+			}
+			events = Object.freeze(bound);
+		}
+		// Planning a whole prop patch per record, only to read back which
+		// main-thread bindings that record expects, is the per-node capture cost
+		// issue #62 names. Two facts remove nearly all of it without weakening
+		// what is asserted.
+		//
+		// `state.hasMainThreadProps` is sticky, and every path that accepts props
+		// — `create`, `recreate`, `update`, and the direct first-screen walk —
+		// sets it from exactly this predicate, so a false value proves no record
+		// under this root can expect a main-thread event or ref. And an unscoped
+		// raw `#text` record's props are a string `value` and nothing else, which
+		// `assertTextProps` enforces at the boundary and both appliers already act
+		// on by substituting a constant patch rather than planning one.
+		//
+		// The ref comparison below still runs for every record, because it asserts
+		// the *absence* of an unexpected ref rather than the presence of an
+		// expected one, and skipping it would stop checking anything.
+		const mainThreadPatch =
+			state.hasMainThreadProps &&
+			!(record.type === '#text' && record.props[LYNX_CSS_SCOPE_PROP] == null)
+				? planLynxHostPropPatch(record.type, EMPTY_HOST_PROPS, record.props)
+				: null;
+		if (mainThreadPatch !== null) {
+			for (const event of mainThreadPatch.mainThreadEvents) {
+				if (event.value === null) continue;
+				const registration = state.nativeEvents.get(record.node)?.get(event.binding.prop);
+				if (
+					record.visible &&
+					(registration?.source !== 'main-thread' ||
+						!sameSnapshotValue(registration.descriptor, event.value))
+				) {
+					throw hostError(
+						`first-tree host ${id} is missing main-thread event ${JSON.stringify(event.binding.prop)}.`,
+					);
+				}
+				if (!record.visible && registration !== undefined) {
+					throw hostError(
+						`hidden first-tree host ${id} retains main-thread event ${JSON.stringify(event.binding.prop)}.`,
+					);
+				}
 			}
 		}
-		const mainThreadPatch = planLynxHostPropPatch(record.type, {}, record.props);
-		for (const event of mainThreadPatch.mainThreadEvents) {
-			if (event.value === null) continue;
-			const registration = state.nativeEvents.get(record.node)?.get(event.binding.prop);
-			if (
-				record.visible &&
-				(registration?.source !== 'main-thread' ||
-					!sameSnapshotValue(registration.descriptor, event.value))
-			) {
-				throw hostError(
-					`first-tree host ${id} is missing main-thread event ${JSON.stringify(event.binding.prop)}.`,
-				);
-			}
-			if (!record.visible && registration !== undefined) {
-				throw hostError(
-					`hidden first-tree host ${id} retains main-thread event ${JSON.stringify(event.binding.prop)}.`,
-				);
-			}
-		}
-		const expectedRef = mainThreadPatch.mainThreadRef?.value ?? null;
+		const expectedRef = mainThreadPatch?.mainThreadRef?.value ?? null;
 		const mountedRef = state.mainThreadRefs.get(record.node) ?? null;
 		if (
 			(record.visible && !sameSnapshotValue(expectedRef, mountedRef)) ||
@@ -3266,10 +3317,13 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 				type: record.type,
 				generation: record.handle.generation,
 				parent: record.parent,
-				children: Object.freeze([...record.children]),
-				props: snapshotFirstTreeProps(record.props),
+				children:
+					record.children.length === 0
+						? EMPTY_FIRST_TREE_CHILDREN
+						: Object.freeze([...record.children]),
+				props: snapshotFirstTreeProps(record.props, cloneState),
 				visible: record.visible,
-				events: Object.freeze(events),
+				events,
 			}),
 		);
 	}
