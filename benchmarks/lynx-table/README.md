@@ -171,6 +171,37 @@ Downstream verdicts use a declared direct-share gate: `GO` requires a directly
 observed target segment (or target segment sum) to contribute at least 10% of
 the operation's median attribution. Residual time never authorizes a step.
 
+## 4. Specialized-core count harness (`block-counts.mjs`, on demand)
+
+```bash
+node block-counts.mjs --scales 1000 --reps 2
+pnpm bench:block --out prototype/results/u0-block-core-counts
+```
+
+Issue #103 U0 asked what the update path's architectural ceiling is, and
+answered with a hand-written op emitter whose "keyed block lookups" column was
+derived by hand because no keyed core existed yet. This runner puts the real
+`LynxBlockCore` (`packages/lynx/src/core/block-core.ts`) on the real background
+transport against the real main-thread receiver — `block-workload.ts` shares
+`workload.ts`'s chassis, so only the background core differs — and reports the
+counter the core keeps itself.
+
+Two columns run the same core over the same ladder and differ only in which
+entry point a state change reaches: **scoped** writes the changed rows' slots by
+key, as a compiled block program with per-row reactive slots would; **reconcile**
+hands the whole next list to the keyed reconciler, as the app's own
+`setRows(next)` does today. Reporting only the first would credit the Block
+model with a win that belongs to the scoped write. The runner fails if the two
+columns send different wire, if a cell's counts differ between repetitions, or
+if the ladder did not paint the tree it should.
+
+Everything reported is a count, so no quiet host is needed and no wall clock is
+measured. Both columns are ceilings in the same sense the `octane-direct`
+prototype is a floor: the block program is hand-written, with no hooks, no
+compiler, and no component bodies. `prototype/results/u0-block-core-counts.*`
+is the committed record, beside `web-u0-update-ceiling.*`: they are the two
+halves of the same #103 U0 gate.
+
 ## Claims and non-claims
 
 Command counts and commit bytes are Octane-owned costs and are gated. The

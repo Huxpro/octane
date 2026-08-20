@@ -54,3 +54,8 @@ same-host copy of the stage decomposition — the canonical cross-session stage
 records stay in `../stages/results/`. `web-u0-update-ceiling.*` is the issue-#103
 U0 session: octane against this cell over the mutation ops, with the
 deterministic floor counts the update-path gate is written against.
+`u0-block-core-counts.*` is that gate's second half, written by
+`../block-counts.mjs` rather than by anything in this directory: the real
+specialized core (`packages/lynx/src/core/block-core.ts`) over the same ladder,
+which replaces the hand-derived "keyed block lookups" column above with the
+counter the core keeps itself.
