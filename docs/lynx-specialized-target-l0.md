@@ -376,6 +376,50 @@ in §3 and the extraction-first decision in §5.
   but it must not be justified by update-path milliseconds. Re-aiming belongs
   to background render/reconcile.
 
+- **L2 Phase 3 (the re-aimed target as a deterministic count; the flag this
+  phase was written to gate does not exist).** Phase 3 was specified as
+  same-window flag on/off over Phase 2's delta path, then wired into
+  `benchmarks/baselines/ratios.json`. Phase 2's decision gate re-aimed away from
+  that path, so there is no flag to toggle and no delta path to gate. Recording
+  that rather than inventing a subject for it.
+
+  What Phase 3 can still deliver against the actual Phase 2 outcome is the thing
+  a gate needs: a deterministic quantity that tracks the drain. None of the 24
+  committed `lynx-table` gates can see it. Commands, bytes, row renders, handle
+  deltas, and commits are all *downstream* of the reconciler and all already sit
+  at their floors — which is exactly why Phases 0 and 2 had to be measured by
+  hand.
+
+  `reconcileChildren` is the reconciler's per-child entry, and the number of
+  child blueprints it visits is fixed for a given app and interaction. Counted
+  under the same replay-window gate as the drain timer, with zero spread across
+  five samples per cell:
+
+  | cell | row renders | host commands | wire out | reconciled blueprints |
+  |---|---:|---:|---:|---:|
+  | select@10k | 1 | 1 | 289 B | **10,042** |
+  | update10th@10k | 1,000 | 1,000 | 70,022 B | 11,041 |
+  | updateStorm@10k | 4,000 | 4,000 | 223,539 B | 11,041 |
+  | select@1k | 1 | 1 | 289 B | **1,042** |
+
+  Two deterministic counts for the same interaction, disagreeing by three orders
+  of magnitude. Row renders track the change; reconciled blueprints track the
+  list, linearly (`rows + changed + 42`). The semantic floor is the
+  `changed-rows-model` the wire gates already use — `1 + 42` for `select` — so
+  the standing debt is a factor of ~235 at 10k. This is the number the
+  scoped-commit slice has to move, and unlike a share of a wall clock it can be
+  asserted.
+
+  It is **not** wired into `ratios.json` yet, and the reason is a real
+  constraint rather than an omission. That gate runs `workload.ts` in-process
+  against uninstrumented sources, so it can only read counters that exist
+  permanently in the shipped packages behind a build flag — the arrangement
+  `packages/lynx/src/core/profiling.ts` already documents for the wire counters.
+  The equivalent counter for the reconciler belongs in `universal-core.ts`, and
+  it belongs with the slice that changes what it measures: landing a permanent
+  core counter ahead of the change it exists to gate would pin today's cost as
+  though it were the contract.
+
 - **L2 Phase 2 (re-aim: the update path's owner is the background drain, and
   the reason is that a transported root cannot scope an update).** Phase 0's
   gate said that if the wire did not explain the cost, Phase 2 was to be
