@@ -399,6 +399,30 @@ function sameStructuredValue(first: unknown, second: unknown): boolean {
 	});
 }
 
+/**
+ * Whether two authored values for one `main-thread:` prop name the same thing.
+ *
+ * `bindThreadFunction` returns a fresh tagged function on every render, so
+ * reference equality on a worklet slot is never true and a caller that trusts
+ * `Object.is` re-sends an unchanged handler forever. `planLynxHostPropPatch`
+ * does not have that problem because it decodes first and compares structurally;
+ * this exposes the same two steps to callers that hold a slot value rather than
+ * a prop bag, so the two paths cannot disagree about what "changed" means.
+ */
+export function sameLynxMainThreadPropValue(
+	name: string,
+	previous: unknown,
+	next: unknown,
+): boolean {
+	if (Object.is(previous, next)) return true;
+	return name === 'main-thread:ref'
+		? sameStructuredValue(decodeMainThreadRef(previous), decodeMainThreadRef(next))
+		: sameStructuredValue(
+				decodeMainThreadWorklet(previous, name),
+				decodeMainThreadWorklet(next, name),
+			);
+}
+
 const NO_MAIN_THREAD_EVENT_PROPS: readonly string[] = Object.freeze([]);
 const NO_MAIN_THREAD_EVENT_PATCHES: readonly LynxMainThreadEventPatch[] = Object.freeze([]);
 const NO_ATTRIBUTE_PATCHES: readonly LynxAttributePatch[] = Object.freeze([]);

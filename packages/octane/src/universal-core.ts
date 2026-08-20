@@ -528,9 +528,23 @@ export interface UniversalHostTemplateProgram {
 	readonly events: readonly UniversalHostTemplateProgramEvent[];
 }
 
-/** Encoded primitive that can be transported directly without object reconstruction. */
+/**
+ * Encoded primitive that can be transported directly without object
+ * reconstruction.
+ *
+ * A renderer-owned opaque value is admitted only for a slot whose binding names
+ * a renderer-namespaced prop, and the driver that consumes the program owns
+ * validating it: the core cannot know what a renderer's namespaced value means.
+ * `isUniversalHostTemplateProgramValue` stays scalar-only because it guards the
+ * core's own program derivation, which never produces such a slot.
+ */
 export type UniversalHostTemplateProgramValue =
-	string | number | boolean | bigint | null | undefined;
+	string | number | boolean | bigint | null | undefined | UniversalHostTemplateProgramOpaqueValue;
+
+/** Renderer-namespaced slot payload the core forwards without interpreting. */
+export interface UniversalHostTemplateProgramOpaqueValue {
+	readonly [field: string]: unknown;
+}
 
 function isUniversalHostTemplateProgramValue(
 	value: unknown,
