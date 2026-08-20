@@ -97,6 +97,21 @@
 		}
 	}
 
+	// -- floor counters --------------------------------------------------------
+	//
+	// The background half of the #103 U0 floor. `rowScans` counts row entries
+	// this program examines to service an update. It is reported separately from
+	// the main thread's region visits because it measures a different thing: the
+	// state lookup, not the tree walk.
+	//
+	// It is also the one place this stub is honestly worse than the core it
+	// models. `selectById` finds a row by scanning a plain id array; a Block core
+	// holds the row's block directly and would visit one. The scan is counted
+	// rather than optimized away so the floor is reported as measured, and it
+	// costs microseconds against tens of milliseconds either way.
+	var floorCounters = { rowScans: 0 };
+	globalThis.__BENCH_DIRECT_BG__ = floorCounters;
+
 	// -- wire ------------------------------------------------------------------
 	function sendDelta(ops) {
 		var app = typeof lynx !== 'undefined' && lynx.getNativeApp ? lynx.getNativeApp() : null;
@@ -138,6 +153,7 @@
 	function updateEveryTenth() {
 		var ops = [];
 		for (var i = 0; i < ids.length; i += 10) {
+			floorCounters.rowScans += 1;
 			labels[i] = labels[i] + ' !!!';
 			ops.push(OP_SET_LABEL, i, labels[i]);
 		}
@@ -147,6 +163,7 @@
 	function selectById(id) {
 		var prev = selectedId === -1 ? -1 : ids.indexOf(selectedId);
 		var next = id === -1 ? -1 : ids.indexOf(id);
+		floorCounters.rowScans += (prev === -1 ? 0 : prev + 1) + (next === -1 ? 0 : next + 1);
 		selectedId = id;
 		return [OP_SELECT, prev, next];
 	}
@@ -197,6 +214,7 @@
 		runStorm(STORM_UPDATE_TICKS, function (t) {
 			var ops = [];
 			for (var i = 0; i < ids.length; i += 10) {
+				floorCounters.rowScans += 1;
 				labels[i] = 'bench ' + t;
 				ops.push(OP_SET_LABEL, i, labels[i]);
 			}

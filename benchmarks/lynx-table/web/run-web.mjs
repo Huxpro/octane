@@ -166,6 +166,51 @@ class Driver {
 	}
 }
 
+// Deterministic floor counters, read from whichever realms publish them (issue
+// #103 U0). Only the octane-direct cell defines them; every other cell reports
+// null and the report omits the column, exactly as a cell that cannot be driven
+// reports "not measured" rather than a zero.
+const READ_FLOOR = () => {
+	const main = globalThis.__BENCH_DIRECT_MAIN__;
+	const background = globalThis.__BENCH_DIRECT_BG__;
+	if (main === undefined && background === undefined) return null;
+	return {
+		rowVisits: main?.rowVisits ?? 0,
+		writes: main?.writes ?? 0,
+		rowScans: background?.rowScans ?? 0,
+	};
+};
+const RESET_FLOOR = () => {
+	const main = globalThis.__BENCH_DIRECT_MAIN__;
+	if (main !== undefined) {
+		main.rowVisits = 0;
+		main.writes = 0;
+	}
+	const background = globalThis.__BENCH_DIRECT_BG__;
+	if (background !== undefined) background.rowScans = 0;
+};
+
+async function eachRealm(page, fn) {
+	const results = [];
+	for (const frame of page.frames()) results.push(await frame.evaluate(fn).catch(() => null));
+	for (const worker of page.workers()) results.push(await worker.evaluate(fn).catch(() => null));
+	return results;
+}
+
+async function readFloorCounters(page) {
+	const seen = (await eachRealm(page, READ_FLOOR)).filter((value) => value !== null);
+	if (seen.length === 0) return null;
+	return {
+		rowVisits: Math.max(...seen.map((value) => value.rowVisits)),
+		writes: Math.max(...seen.map((value) => value.writes)),
+		rowScans: Math.max(...seen.map((value) => value.rowScans)),
+	};
+}
+
+async function resetFloorCounters(page) {
+	await eachRealm(page, RESET_FLOOR);
+}
+
 async function loadCell(browser, cell) {
 	const page = await browser.newPage();
 	if (process.env.LYNX_BENCH_DEBUG) {
@@ -194,33 +239,43 @@ async function runRep(browser, cell, rows) {
 	const page = await loadCell(browser, cell);
 	const driver = new Driver(page);
 	const sample = {};
+	// Counters are zeroed immediately before the click and read immediately
+	// after the op's predicate resolves, so each op's counts cover that op only.
+	const measure = async (name, run) => {
+		await resetFloorCounters(page);
+		sample[name] = await run();
+		const counts = await readFloorCounters(page);
+		if (counts !== null) (sample.counts ??= {})[name] = counts;
+	};
 	try {
 		await driver.settle();
-		sample.create = await driver.measureButton(
-			button,
-			{ type: 'rowCount', value: rows },
-			STORM_TIMEOUT_MS,
+		await measure('create', () =>
+			driver.measureButton(button, { type: 'rowCount', value: rows }, STORM_TIMEOUT_MS),
 		);
 		await driver.settle();
 		const before = await driver.labelAt(0);
-		sample.update10th = await driver.measureButton('Update every 10th row', {
-			type: 'labelAt',
-			index: 0,
-			equals: `${before} !!!`,
-		});
-		await driver.settle();
-		sample.select = await driver.measureCell(1, 'col-label', { type: 'dangerAt', index: 1 });
-		await driver.settle();
-		sample.updateStorm = await driver.measureButton(
-			'Update storm',
-			{ type: 'labelAt', index: 0, equals: 'bench 50' },
-			STORM_TIMEOUT_MS,
+		await measure('update10th', () =>
+			driver.measureButton('Update every 10th row', {
+				type: 'labelAt',
+				index: 0,
+				equals: `${before} !!!`,
+			}),
 		);
 		await driver.settle();
-		sample.selectStorm = await driver.measureButton(
-			'Select storm',
-			{ type: 'dangerAt', index: 0 },
-			STORM_TIMEOUT_MS,
+		await measure('select', () =>
+			driver.measureCell(1, 'col-label', { type: 'dangerAt', index: 1 }),
+		);
+		await driver.settle();
+		await measure('updateStorm', () =>
+			driver.measureButton(
+				'Update storm',
+				{ type: 'labelAt', index: 0, equals: 'bench 50' },
+				STORM_TIMEOUT_MS,
+			),
+		);
+		await driver.settle();
+		await measure('selectStorm', () =>
+			driver.measureButton('Select storm', { type: 'dangerAt', index: 0 }, STORM_TIMEOUT_MS),
 		);
 	} finally {
 		await page.close();
@@ -229,6 +284,31 @@ async function runRep(browser, cell, rows) {
 }
 
 const OPS = ['create', 'update10th', 'select', 'updateStorm', 'selectStorm'];
+const FLOOR_FIELDS = ['rowVisits', 'writes', 'rowScans'];
+
+// Floor counters are deterministic for a given op and scale, so the spread is
+// reported alongside the value: a non-zero spread means the count is not the
+// invariant it is claimed to be, and the number should not be quoted as one.
+function countsByOp(countSamples) {
+	const entries = Object.entries(countSamples).filter(([, values]) => values.length > 0);
+	if (entries.length === 0) return null;
+	const summary = {};
+	for (const [op, values] of entries) {
+		summary[op] = {};
+		for (const field of FLOOR_FIELDS) {
+			const observed = values.map((value) => value[field]);
+			const min = Math.min(...observed);
+			const max = Math.max(...observed);
+			summary[op][field] = {
+				median: observed.sort((a, b) => a - b)[observed.length >> 1],
+				min,
+				max,
+				spread: max - min,
+			};
+		}
+	}
+	return summary;
+}
 
 async function main() {
 	if (wanted.has('octane') && !args['skip-app-build']) buildTableApp();
@@ -262,11 +342,14 @@ async function main() {
 			results[cell.id] = {};
 			for (const rows of SCALES) {
 				const samples = {};
+				const countSamples = {};
 				const dnf = {};
 				for (let rep = 0; rep < REPS; rep++) {
 					try {
-						const sample = await runRep(browser, cell, rows);
-						for (const [op, ms] of Object.entries(sample)) (samples[op] ??= []).push(ms);
+						const { counts, ...timings } = await runRep(browser, cell, rows);
+						for (const [op, ms] of Object.entries(timings)) (samples[op] ??= []).push(ms);
+						for (const [op, value] of Object.entries(counts ?? {}))
+							(countSamples[op] ??= []).push(value);
 					} catch (error) {
 						if (process.env.LYNX_BENCH_DEBUG) console.log('[debug] rep error:', String(error));
 						if (!String(error).includes('timeout')) throw error;
@@ -275,7 +358,8 @@ async function main() {
 				}
 				const ops = {};
 				for (const op of OPS) ops[op] = samples[op] ? stats(samples[op]) : null;
-				results[cell.id][rows] = { ops, dnf: dnf.rep ?? 0 };
+				const counts = countsByOp(countSamples);
+				results[cell.id][rows] = { ops, counts, dnf: dnf.rep ?? 0 };
 				const cellText = OPS.map(
 					(op) => `${op}=${ops[op] ? ops[op].median.toFixed(0) : 'DNF'}`,
 				).join(' ');
@@ -316,6 +400,25 @@ async function main() {
 				return `${stat.median.toFixed(0)} ±${stat.ci95?.toFixed(0) ?? '0'}${ratio}`;
 			});
 			lines.push(`| ${op} | ${row.join(' | ')} |`);
+		}
+		for (const cell of runnable) {
+			const counts = results[cell.id][rows].counts;
+			if (!counts) continue;
+			lines.push('');
+			lines.push(
+				`### ${cell.id} — deterministic floor counts (${rows.toLocaleString('en-US')} rows)`,
+			);
+			lines.push('');
+			lines.push('| op | row regions visited | slot writes | background row scans | spread |');
+			lines.push('|---|---:|---:|---:|---:|');
+			for (const op of OPS) {
+				const value = counts[op];
+				if (!value) continue;
+				const spread = FLOOR_FIELDS.reduce((sum, field) => sum + value[field].spread, 0);
+				lines.push(
+					`| ${op} | ${value.rowVisits.median.toLocaleString('en-US')} | ${value.writes.median.toLocaleString('en-US')} | ${value.rowScans.median.toLocaleString('en-US')} | ${spread} |`,
+				);
+			}
 		}
 	}
 	const report = lines.join('\n') + '\n';

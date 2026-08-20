@@ -189,6 +189,20 @@
 		}
 	}
 
+	// -- floor counters --------------------------------------------------------
+	//
+	// The architecture floor's answer to `reconcileChildren` visits (issue #103
+	// U0). `rowVisits` is how many row regions a patch touches; `writes` is how
+	// many PAPI slot writes it performs. Both are deterministic for a given
+	// operation, which is what makes them comparable with the octane cell's
+	// blueprint count rather than with a wall clock.
+	//
+	// Unconditional rather than build-flagged: a patch performs O(change)
+	// increments, so `select` pays two integer adds against tens of
+	// milliseconds. The measured cell and the counted cell are the same bundle.
+	var floorCounters = { rowVisits: 0, writes: 0 };
+	globalThis.__BENCH_DIRECT_MAIN__ = floorCounters;
+
 	// -- slot-delta applier: table dispatch into pre-bound PAPI writes ---------
 	function applyDelta(ops) {
 		var i = 0;
@@ -197,26 +211,35 @@
 			var op = ops[i++];
 			if (op === OP_RUN_ROWS) {
 				var count = ops[i++];
+				floorCounters.rowVisits += count;
+				floorCounters.writes += count * 2;
 				for (var k = 0; k < count; k++) {
 					createRow(ops[i], ops[i + 1], false);
 					i += 2;
 				}
 			} else if (op === OP_CLEAR) {
+				floorCounters.rowVisits += rowViews.length;
 				for (var c = rowViews.length - 1; c >= 0; c--) __RemoveElement(rowsParent, rowViews[c]);
 				rowViews.length = 0;
 				labelRaws.length = 0;
 				selectedIndex = -1;
 			} else if (op === OP_SET_LABEL) {
 				var index = ops[i++];
+				floorCounters.rowVisits += 1;
+				floorCounters.writes += 1;
 				__SetAttribute(labelRaws[index], 'text', ops[i++]);
 			} else if (op === OP_SELECT) {
 				var prev = ops[i++];
 				var next = ops[i++];
+				var touched = (prev === -1 ? 0 : 1) + (next === -1 ? 0 : 1);
+				floorCounters.rowVisits += touched;
+				floorCounters.writes += touched;
 				if (prev !== -1) __SetClasses(rowViews[prev], 'row');
 				if (next !== -1) __SetClasses(rowViews[next], 'row danger');
 				selectedIndex = next;
 			} else if (op === OP_REMOVE) {
 				var at = ops[i++];
+				floorCounters.rowVisits += 1;
 				__RemoveElement(rowsParent, rowViews[at]);
 				rowViews.splice(at, 1);
 				labelRaws.splice(at, 1);
@@ -225,6 +248,7 @@
 			} else if (op === OP_SWAP) {
 				var a = ops[i++];
 				var b = ops[i++];
+				floorCounters.rowVisits += 2;
 				var rowA = rowViews[a];
 				var rowB = rowViews[b];
 				var afterB = b + 1 < rowViews.length ? rowViews[b + 1] : null;
