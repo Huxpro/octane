@@ -15,6 +15,7 @@ import {
 	createLynxHostDriver,
 	disposeLynxFirstTree,
 	disposeLynxHostContainer,
+	firstScreenTreeIsUnadoptable,
 	getLynxHostPublicState,
 	getLynxHostEventListener,
 	isLynxHostAttached,
@@ -1894,15 +1895,34 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		let source: LynxHostContainer<Node> | null = null;
 		try {
 			const result = renderLynxFirstScreen(component, props);
+			// The page renders correctly but holds a composition the background
+			// cannot adopt, so the capture below would decline it — and nothing about
+			// that verdict depends on the tree having been built. Building it means
+			// creating every element and then removing every one again, so decline
+			// here instead: no container, no PAPI traffic, and no command batch
+			// either, since `result.batch` is never read on this path.
+			//
+			// Gated on the host actually offering the list PAPI. Without it a `<list>`
+			// cannot be built at all, and that is a diagnostic the application needs
+			// rather than a page to skip, so such a tree keeps going and fails where
+			// it fails today.
+			if (
+				papi.list !== undefined &&
+				firstScreenTreeIsUnadoptable(result.nodes, result.envelope.events)
+			) {
+				retireFirstScreen(null, 'skipped', 'unadoptable');
+				return null;
+			}
 			source = createLynxHostContainer(papi, {
 				root: FIRST_SCREEN_ROOT_ID,
 				page,
 				worklets: hostWorklets,
 			});
 			// Issue-58 L3: the first screen materializes through direct PAPI
-			// emission; trees the direct path declines (native lists) keep the
-			// staged batch path, which is also what the adoption capture below
-			// will settle as `skipped`.
+			// emission; trees the direct path declines keep the staged batch path.
+			// The pre-check above already turned away every adoptable-refusing tree
+			// the two agree on, so what reaches the staged path here is a list
+			// topology the staged apply rejects with a diagnostic of its own.
 			if (!applyLynxFirstScreenDirect(source, result.nodes, result.envelope)) {
 				const prepared = prepareLynxHostBatch(source, result.batch);
 				prepared.apply();
@@ -1919,10 +1939,10 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				// `failed` and raises no error against an application that is entitled
 				// to the element. `null` tells the caller its paint was declined.
 				//
-				// The batch is built before any of this is applied, so a `<list>` is in
-				// principle knowable before the tree is created; declining that early
-				// would avoid building and tearing down a first screen that is never
-				// kept. That needs the prepared batch to publish what it stages.
+				// The pre-check above answers the same question against the record
+				// tree, so a tree it recognizes never gets here. This stays the
+				// authority: capture owns the verdict, and a shape the pre-check does
+				// not claim still settles correctly, just after paying for the paint.
 				retireFirstScreen(source, 'skipped', 'unadoptable');
 				return null;
 			}

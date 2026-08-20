@@ -46,12 +46,12 @@ and no error is raised.
 The synchronous first screen is still unavailable for pages containing a `<list>`;
 this makes that outcome ordinary and quiet rather than a reported defect.
 
-One thing is deliberately left open. The first screen is still built and then torn
-back out, and that is avoidable: the batch is prepared before any of it is
-applied, and preparation already stages each node's type, so the decline could
-happen before a single element is created. Taking it there needs the prepared
-batch to publish what it staged, which is a wider change than this fix; until
-then a page with a `<list>` pays for a screen it never keeps.
+One thing this fix left open has since been closed. The first screen was still
+built and then torn back out, which is avoidable — and the way there was not the
+prepared batch publishing what it staged, but the renderer's record tree, which
+already carries every element type and prop the verdict reads. A separate change
+asks the question there, so a page with a `<list>` no longer pays for a screen it
+never keeps.
 
 Portals reject capture through the same function and keep throwing. That is not a
 half-finished migration: the main renderer rejects a portal while rendering, so
