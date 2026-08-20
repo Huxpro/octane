@@ -163,12 +163,33 @@ BA base 1854/1757/1733 against head 1892/1815/1839. The stage decomposition
 agrees independently at +4.2% control.
 
 Two same-window protocols agreeing on direction is more than noise and less than
-a demonstrated regression. **The mechanism is unidentified.** The hypothesis
-worth testing first is that Phase B's record-shape change (#109, first-screen
-host records without spread-and-delete) is on a path shared with the staged
-update route, so the mutation cells pay for a first-screen optimization they
-never use. That is a hypothesis, not a finding; it is written down so the next
-session starts from it instead of rediscovering the number.
+a demonstrated regression. **The mechanism is not a logic change on the mutation
+path — the diff rules that out.** The stack edits nine source files:
+
+| file | reaches a mutation cell? |
+|---|---|
+| `core/block-core.ts`, `core/block-root.ts` | no — new, behind a per-root flag |
+| `core/delta-protocol.ts`, `core/delta-shadow.ts` | no — profiling-only, constructed only under `LYNX_PROFILE` |
+| `main-renderer.ts`, `core/first-screen.ts` | no — first-screen render only |
+| `main-thread.ts` | no — the direct-applier call site |
+| `core/host-driver.ts` | no — every hunk lands in `applyLynxFirstScreenDirect`, `captureLynxFirstTree`, `compareFirstTree`, `transferFirstTree`, the native-list constructors, or the once-per-root `firstTreeAction === 'adopt'` branch of `prepareLynxHostBatch` |
+| `compiler/compile-universal.js` | no — one slot kind flips `'c'` → `'r'`; `slots` is read only by `main-renderer.ts`, which validates and copies it and branches on neither value |
+
+Nothing a mutation cell executes after adoption was edited. That leaves two
+candidates, and this report claims neither:
+
+1. **The bigger main-thread bundle.** The stack adds +4,202 B raw / +1,721 B
+   gzip to the main program, and every mutation cell runs inside it. Parse cost,
+   code layout, and JIT behaviour all move with bundle size. If this is the
+   mechanism, the excess is the trade the bundle re-audit already priced in
+   bytes, seen in milliseconds — not a defect.
+2. **Slow drift the AB/BA design does not control.** Alternation controls
+   ordering within a window; it does not control a host trending over an
+   afternoon, and both protocols ran on the same container in the same
+   afternoon.
+
+Separating them needs a dedicated session. The first is directly testable: pad
+the base bundle with dead bytes to the head's size and re-run the AB/BA sweep.
 
 ## 6. The gate, clause by clause
 
