@@ -124,8 +124,8 @@ export function P(props: { t: string; o: boolean; xs: string[] }) @{
 
 	it('keeps prop and event slot kinds naming the prop they write', () => {
 		const kinds = new Set(slotTablesOf(compileScene('lynx')).flat());
-		expect([...kinds].some((kind) => kind.startsWith('p:'))).toBe(true);
-		expect([...kinds].some((kind) => kind.startsWith('e:'))).toBe(true);
+		expect([...kinds].some((kind) => kind?.startsWith('p:'))).toBe(true);
+		expect([...kinds].some((kind) => kind?.startsWith('e:'))).toBe(true);
 		// The scene's only eligible template holds the keyed `@for`, so its
 		// renderable hole is a range site and not a scalar.
 		expect(kinds).toContain('r');
