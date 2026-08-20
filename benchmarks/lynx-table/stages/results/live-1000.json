@@ -10,16 +10,8 @@
     "repetitions": 5,
     "rows": 1000,
     "reportable": true,
-    "loadStart": [
-      1.28,
-      1.38,
-      1.72
-    ],
-    "loadEnd": [
-      1.75,
-      1.55,
-      1.75
-    ],
+    "loadStart": [1.28, 1.38, 1.72],
+    "loadEnd": [1.75, 1.55, 1.75],
     "protocol": "fresh page per operation sample (each mutation cell re-creates its own table first); control/profile order alternates AB/BA; one vue-vdom pass over create/replace/append/update10th/updateStorm/select follows each pair; no other benchmark process ran in this window"
   },
   "fcp": {
