@@ -140,35 +140,53 @@ Everything else in the template has no per-instance state at all.
 
 ### 3.4 Delta opcodes (background → main)
 
-Typed, flat, slot-addressed; the applier is a table dispatch into pre-bound
-PAPI setters. Opcode families:
+Typed, flat, and instance-addressed; the applier is a table dispatch into
+pre-bound PAPI setters. **Protocol version 2** (`delta-protocol.ts`), after the
+closure analysis on #61 refuted the draft below it.
 
-- `RUN(templateId, anchorSlot, count, values…)` — create `count` instances of
-  a template appended at an anchor; the value stride is the template's dynamic
-  slot count (the existing `mount-template-run` generalized to every
-  template).
-- `SET(instance, slotIndex, value)` — one slot write; the slot's compile-time
-  kind (text, class list, attribute, style prop, event token) selects the
-  setter, so no per-prop classification or prop-bag diff exists on either
-  side.
-- `REMOVE(instance | range)`, `MOVE(instance, before)` — keyed-range
-  maintenance; `MOVE`s are the LIS output of the background reconciler, so
-  final DOM order and survivor identity keep today's guarantees.
-- `BRANCH(slot, templateId | none, values…)` — `@if`/`@switch` arm swap: both
-  arms are compile-time-known templates; the slot is the branch anchor.
-- Range framing for `@for`/`@empty` and `@try`/`@pending`/`@catch` boundaries:
-  a range is (anchorSlot, member list) owned by the background core; boundary
-  swaps are `BRANCH` at the boundary's anchor.
+Every address is a pair `(instance, slot)`. A bare slot cannot be an address:
+slot indices are per-template, so one index names one anchor *per instance* —
+in a 10,000-row list, 10,000 of them. Instance handle `0` is the `END`
+sentinel; handles are dense, monotonic, and never reused.
 
-Validation shrinks to a header/type check (protocol version, opcode bounds,
-value arity); there is no recursive structural walk of arbitrary prop values
-because no arbitrary prop values cross the wire — only slot-typed scalars and
-the value arrays of runs.
+- `RUN(templateId, (Ip,sp), (Ib,sb), first, count, values…)` — instantiate
+  `count` instances of a template into range site `(Ip,sp)`, before anchor
+  `(Ib,sb)` or appended when the anchor is `END`, taking handles
+  `first … first+count-1`. Generalizes today's `mount-template-run`.
+- `SET(instance, slot, value)` — one slot write. The slot's compile-time kind
+  selects the setter, so no per-prop classification or prop-bag diff exists on
+  either side.
+- `REMOVE(first, count)` — destroy a contiguous handle run.
+- `CLEAR((Ip,sp))` — destroy every member of a range site, valid only where the
+  site owns all of its parent node's children.
+- `MOVE(instance, (Ip,sp), (Ib,sb))` — reposition, possibly under a different
+  parent, which is what portal retargeting emits. `MOVE`s are the LIS output of
+  the background reconciler, so final DOM order and survivor identity keep
+  today's guarantees. Anchors name identities and are position-invariant across
+  the message, so "before or after the other moves" does not arise.
+- `VIS(instance, hidden | visible)` — Activity and retained Suspense are
+  visibility transitions over instances whose identity does not change. The
+  applier composes it with the authored `hidden` prop and owns native-event
+  teardown and reinstall, so a flip carries no event ops.
+
+Two opcodes from the draft are gone. **`BRANCH` is deleted**: retained Suspense
+keeps the committed arm and the pending arm live simultaneously, which a
+single-arm opcode cannot express, and every arm swap is already `REMOVE` +
+`RUN` into the same range site. **`RECREATE` was never added**: a template's CSS
+scope is baked into its create function, so an instance cannot change scope and
+a scope change is a different template.
+
+Values are scalars — string, number, boolean, null. All structure travels as
+ops. This is the premise header-only validation rests on: a structured value
+would have to be walked to be checked, which is the recursive cost this format
+exists to delete. Validation is therefore a single forward scan with no
+recursion and no allocation (protocol version, opcode bounds, frame arity, one
+`typeof` per value).
 
 Batching: one message per commit (today's model). Finer-grained scheduling is
 deferred until a lane scheduler exists (issue #58 open question 4); the
-protocol does not preclude it because messages are self-delimiting op
-sequences.
+protocol does not preclude framing it, though the dense-handle invariant would
+need revisiting.
 
 ### 3.5 Events
 
@@ -358,7 +376,46 @@ in §3 and the extraction-first decision in §5.
   but it must not be justified by update-path milliseconds. Re-aiming belongs
   to background render/reconcile.
 
-- **L2 (typed delta protocol):** `packages/lynx/src/core/delta-protocol.ts`
+- **L2 Phase 1 (delta protocol v2, and one amendment that could not be
+  implemented as specified).** `delta-protocol.ts` is rewritten to the opcode
+  set the closure analysis on #61 settled: every address is an `(instance,
+  slot)` pair, `BRANCH` is deleted, `CLEAR` and `VIS` are added, and values are
+  restricted to scalars so a frame is checkable by its header alone.
+  `LYNX_DELTA_PROTOCOL_VERSION` is 2; §3.4 above is the normative description.
+  The #78 shadow now emits v2 and allocates dense instance handles of its own
+  rather than reusing command-batch node ids, and its differential oracle
+  addresses instances by handle — which is the property instance-qualified
+  addressing exists to provide. The worked examples from #61's Cases 1–3 are
+  encoded as tests and were verified to fail against v1 first.
+
+  **A6 could not be completed, and the reason is a finding rather than a
+  shortfall.** The amendment asks for the range-site kind `r` to be split from
+  the scalar kind `c` in `lynxTemplateSlotKinds`. That split is not available
+  there: the universal plan IR has no scalar hole to split off. `kind: 'text'`
+  is produced only for *static* text and never carries a slot, and every
+  dynamic hole — a bare `{expr}`, a cast `{expr as string}`, `@if`, `@for`,
+  `@switch`, `@try`, Activity, and a component call — reaches
+  `addDynamicAst` and becomes one indistinguishable `{kind:'slot'}` node. The
+  `as string` cast is a type assertion the compiler strips, so it leaves no
+  trace in the plan. Compiling all four forms and comparing their emitted slot
+  tables shows them identical.
+
+  What did land is the truthful half: every renderable hole is now `r`, because
+  every one of them is a range site — a bare expression can evaluate to an
+  array or a component exactly as a directive can. That is enough for the
+  validator rule requiring a `RUN`/`CLEAR` parent slot to be a range site, and
+  it is pinned by a test over all four hole forms. A scalar kind has no
+  producer today, so introducing one is an IR change — the compiler would have
+  to mark a hole it can prove is text-scalar — and it belongs with the applier
+  work that would consume it, not here. Recorded so the next slice does not
+  re-derive it. The `n` (instance root) and `a` (static anchor) kinds from the
+  same amendment are likewise deferred to the applier.
+
+  No measurement is claimed: the protocol remains deliberately unwired, and
+  Phase 0 established that the update path's cost is not in the wire.
+
+- **L2 (typed delta protocol, superseded by v2 above):**
+  `packages/lynx/src/core/delta-protocol.ts`
   defines the versioned, flat, self-delimiting transport planned in §3.4.
   `RUN`, `SET`, `REMOVE`, `MOVE`, and `BRANCH` round-trip through explicit
   operation arities; `REMOVE` distinguishes instance and range addresses,

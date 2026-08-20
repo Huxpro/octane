@@ -50,12 +50,23 @@ export function Scene() @{
 
 type SceneComponent = Parameters<typeof MainRenderer.renderLynxFirstScreen>[0];
 
-function compileScene(target: 'lynx' | 'universal'): string {
-	return compile(SOURCE, '/src/Scene.lynx.tsrx', {
+function compileSource(source: string, target: 'lynx' | 'universal'): string {
+	return compile(source, '/src/Scene.lynx.tsrx', {
 		hmr: false,
 		renderer: { ...lynxMainThreadRenderer, target, id: 'lynx' },
 		universalRuntime: { runtime: 'lynx', thread: 'main-thread' },
 	}).code;
+}
+
+/** Every emitted template's slot-kind table, holes included as `null`. */
+function slotTablesOf(code: string): (string | null)[][] {
+	return [...code.matchAll(/"slots":\s*(\[[^\]]*\])/g)].map(
+		(match) => JSON.parse(match[1]!.replace(/\s+/g, ' ')) as (string | null)[],
+	);
+}
+
+function compileScene(target: 'lynx' | 'universal'): string {
+	return compileSource(SOURCE, target);
 }
 
 function evaluateScene(compiled: string): SceneComponent {
@@ -80,6 +91,44 @@ describe('lynx-target template emission', () => {
 		// modules keep the interpreted encoding where templates are ineligible.
 		expect(lynxCode).toContain('{ "kind": "slot", "slot": 0 }');
 		expect(universalCode).not.toContain('"kind": "template"');
+	});
+
+	it('marks every renderable hole as a range site', () => {
+		// A slot kind selects which operation may write the slot, so a hole that
+		// holds instantiated members must not look like one the writer sets in
+		// place. Every renderable hole is the former: a bare expression can
+		// evaluate to an array or a component just as a directive can, so all of
+		// them are ranges and none is a scalar.
+		const forms = {
+			'cast text child': `<view class="a"><text class="l">{props.t as string}</text></view>`,
+			'bare hole': `<view class="a"><text class="l">{props.t}</text></view>`,
+			conditional: `<view class="a">@if (props.o) { <text class="b">{'s'}</text> }</view>`,
+			keyed: `<view class="a">@for (const x of props.xs; key x) { <text class="b">{'s'}</text> }</view>`,
+		};
+		for (const [label, body] of Object.entries(forms)) {
+			const slots = slotTablesOf(
+				compileSource(
+					`/** @jsxImportSource @octanejs/lynx/intrinsics */
+export function P(props: { t: string; o: boolean; xs: string[] }) @{
+	${body}
+}
+`,
+					'lynx',
+				),
+			);
+			const holes = slots.flat().filter((kind) => kind !== null && !kind.includes(':'));
+			expect(holes, label).toEqual(holes.map(() => 'r'));
+			expect(holes.length, label).toBeGreaterThan(0);
+		}
+	});
+
+	it('keeps prop and event slot kinds naming the prop they write', () => {
+		const kinds = new Set(slotTablesOf(compileScene('lynx')).flat());
+		expect([...kinds].some((kind) => kind?.startsWith('p:'))).toBe(true);
+		expect([...kinds].some((kind) => kind?.startsWith('e:'))).toBe(true);
+		// The scene's only eligible template holds the keyed `@for`, so its
+		// renderable hole is a range site and not a scalar.
+		expect(kinds).toContain('r');
 	});
 
 	it('renders the identical first-screen batch through templates and plans', () => {
