@@ -636,38 +636,79 @@ function eventPriority(name: string): UniversalEventPriority | null {
 			: 'default';
 }
 
+/**
+ * Read only. Every host that binds nothing shares this, so nothing may write
+ * to it; the one writer, `TEMPLATE_ENV.e`, only ever holds a map `h` made for
+ * that host.
+ */
+const NO_FIRST_SCREEN_EVENTS: ReadonlyMap<string, UniversalEventPriority> = new Map();
+
 function hostNode(
 	type: string,
 	rawProps: Readonly<Record<string, unknown>>,
 	children: FirstScreenNode[],
 ): FirstScreenHost {
-	const props: Record<string, unknown> = { ...rawProps };
-	const key = normalizeKey(props.key);
-	delete props.key;
-	delete props.ref;
-	delete props.children;
-	const events = new Map<string, UniversalEventPriority>();
-	for (const name of Object.keys(props)) {
-		if (isLynxNativeResource(props[name])) {
+	// Copy the props we keep rather than spreading and then deleting the four
+	// kinds we do not. `delete` on a fresh object drops it out of fast
+	// properties for the rest of its life, and these objects live as long as
+	// the first screen does: the applier reads them, and so does adoption
+	// capture. One pass also folds in the event scan, which used to walk the
+	// copy a second time.
+	const props: Record<string, unknown> = {};
+	let events: Map<string, UniversalEventPriority> | null = null;
+	for (const name of Object.keys(rawProps)) {
+		if (name === 'key' || name === 'ref' || name === 'children') continue;
+		const value = rawProps[name];
+		if (isLynxNativeResource(value)) {
 			throw new TypeError(
 				`Lynx first-screen rendering does not support native resource prop ${JSON.stringify(name)} on <${type}>; native resources are background-only.`,
 			);
 		}
 		const priority = eventPriority(name);
-		if (priority === null) continue;
-		const value = props[name];
-		delete props[name];
-		if (value === FIRST_SCREEN_EVENT || typeof value === 'function') events.set(name, priority);
+		if (priority !== null) {
+			// An event-named prop leaves the props bag whether or not it carries
+			// something callable, which is what the spread-and-delete did too.
+			if (value === FIRST_SCREEN_EVENT || typeof value === 'function') {
+				(events ??= new Map()).set(name, priority);
+			}
+			continue;
+		}
+		props[name] = value;
 	}
+	const key = normalizeKey(rawProps.key);
 	return {
 		kind: 'host',
 		key,
 		id: 0,
 		type,
 		props: Object.freeze(props),
-		events,
+		events: events ?? NO_FIRST_SCREEN_EVENTS,
 		visibility: currentOwner().visibility,
 		children,
+	};
+}
+
+/**
+ * A raw text record, built without the generic host path.
+ *
+ * `#text` is the one host type whose props are fully known at the call site: a
+ * string `value`, no key, no ref, no children, and no event-named prop. That is
+ * the same shape `assertTextProps` enforces on the driver side, and it is why
+ * the host driver's `create` already shortcuts raw text rather than planning a
+ * patch for it. Going through `hostNode` would walk that one-key literal
+ * looking for props it cannot contain and allocate an event map that stays
+ * empty. Three of every seven hosts in the benchmark fixture are one of these.
+ */
+function textNode(value: string): FirstScreenHost {
+	return {
+		kind: 'host',
+		key: null,
+		id: 0,
+		type: '#text',
+		props: Object.freeze({ value }),
+		events: NO_FIRST_SCREEN_EVENTS,
+		visibility: currentOwner().visibility,
+		children: [],
 	};
 }
 
@@ -731,7 +772,7 @@ const TEMPLATE_ENV = Object.freeze({
 		if (priority !== null) (node.events as Map<string, UniversalEventPriority>).set(name, priority);
 	},
 	t(node: FirstScreenHost, value: string): void {
-		node.children.push(hostNode('#text', { value: String(value) }, []));
+		node.children.push(textNode(String(value)));
 	},
 	s(node: FirstScreenHost, value: unknown): void {
 		node.children.push(...materialize(value, null));
@@ -977,7 +1018,7 @@ function materialize(value: unknown, key: UniversalKey | null): FirstScreenNode[
 		return output;
 	}
 	if (typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint') {
-		return [hostNode('#text', { value: String(value) }, [])];
+		return [textNode(String(value))];
 	}
 	throw new TypeError(
 		`Unsupported Lynx first-screen child ${Object.prototype.toString.call(value)}.`,
