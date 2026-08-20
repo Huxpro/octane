@@ -2894,6 +2894,29 @@ export interface LynxFirstScreenDirectNode {
 	readonly children: readonly LynxFirstScreenDirectNode[];
 }
 
+/** One background listener the first-screen renderer assigned, by host id. */
+export interface LynxFirstScreenDirectEvent {
+	readonly id: number;
+	readonly type: string;
+	readonly listener: UniversalEventListenerDescriptor;
+}
+
+/**
+ * Everything the direct applier reads that is not the tree itself: the envelope
+ * fields it validates, and the background listeners the renderer assigned.
+ *
+ * This is deliberately not the command batch. The applier only ever consulted
+ * the batch's `event` commands, so taking the batch obliged the renderer to
+ * build one — at 10k fixture rows, six figures of frozen command objects that
+ * this function then walked past. `LynxFirstScreenRenderResult.envelope` is the
+ * renderer's matching shape; hand-built trees supply their own.
+ */
+export interface LynxFirstScreenDirectEnvelope {
+	readonly renderer: string;
+	readonly version: number;
+	readonly events: readonly LynxFirstScreenDirectEvent[];
+}
+
 function firstScreenTreeHasList(nodes: readonly LynxFirstScreenDirectNode[]): boolean {
 	// Iterative for the same reason the applier below is: nothing in the
 	// first-screen pipeline may impose a tree-depth ceiling the renderer that
@@ -2913,15 +2936,15 @@ function firstScreenTreeHasList(nodes: readonly LynxFirstScreenDirectNode[]): bo
  * no command staging, no cloned record maps, no operation replay — while
  * leaving the container state indistinguishable from the batch path so
  * `captureLynxFirstTree` and background adoption stay byte-compatible. The
- * batch is consulted only for its `event` commands (the deterministic
- * listener-id assignment stays single-sourced in the renderer) and its
- * version. Trees containing native lists return false and take the staged
- * path unchanged; nothing else falls back.
+ * renderer hands over an envelope rather than a batch: its version, and the
+ * background listeners it assigned (the deterministic listener-id assignment
+ * stays single-sourced there). Trees containing native lists return false and
+ * take the staged path unchanged; nothing else falls back.
  */
 export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 	container: LynxHostContainer<Node>,
 	roots: readonly LynxFirstScreenDirectNode[],
-	batch: UniversalHostBatch,
+	envelope: LynxFirstScreenDirectEnvelope,
 ): boolean {
 	const state = container[LYNX_HOST_STATE];
 	if (state.disposed || state.disposing || state.faulted || state.applying) {
@@ -2932,31 +2955,32 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 	}
 	if (firstScreenTreeHasList(roots)) return false;
 	// Same envelope contract as the staged path: the applier is exported, so a
-	// future caller must not be able to hand it an unvalidated batch.
-	if (batch.renderer !== LYNX_RENDERER_ID) {
-		throw hostError(`batch renderer ${JSON.stringify(batch.renderer)} is not "lynx".`);
+	// future caller must not be able to hand it an unvalidated envelope.
+	if (envelope.renderer !== LYNX_RENDERER_ID) {
+		throw hostError(
+			`first-screen envelope renderer ${JSON.stringify(envelope.renderer)} is not "lynx".`,
+		);
 	}
-	if (!Number.isSafeInteger(batch.version) || batch.version <= 0) {
-		throw hostError(`batch version ${String(batch.version)} is not a positive safe integer.`);
+	if (!Number.isSafeInteger(envelope.version) || envelope.version <= 0) {
+		throw hostError(
+			`first-screen envelope version ${String(envelope.version)} is not a positive safe integer.`,
+		);
 	}
 	const eventsByHost = new Map<number, [string, UniversalEventListenerDescriptor][]>();
-	for (const command of batch.commands) {
-		// First-screen batches never remove listeners; a null descriptor cannot
-		// occur here and is skipped rather than journaled.
-		if (command.op !== 'event' || command.listener === null) continue;
-		let entries = eventsByHost.get(command.id);
+	for (const binding of envelope.events) {
+		let entries = eventsByHost.get(binding.id);
 		if (entries === undefined) {
 			entries = [];
-			eventsByHost.set(command.id, entries);
+			eventsByHost.set(binding.id, entries);
 		}
-		entries.push([command.type, command.listener]);
+		entries.push([binding.type, binding.listener]);
 	}
 	// The staged path runs this over the batch's final host set during prepare,
 	// so a collision costs zero PAPI calls. The direct path has no prepare stage,
 	// so it pre-walks: refusing after the walk has begun would leave a
 	// half-painted page, which is exactly the state the staged path never
-	// produces. Only hosts the batch gave a background listener can collide, and
-	// a page with no background listeners at all skips the walk entirely.
+	// produces. Only hosts the envelope gave a background listener can collide,
+	// and a page with no background listeners at all skips the walk entirely.
 	if (eventsByHost.size !== 0) {
 		const pending: (readonly LynxFirstScreenDirectNode[])[] = [roots];
 		while (pending.length !== 0) {
@@ -3117,7 +3141,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 				});
 			}
 			while (stack.length !== 0) visit(stack.pop()!);
-			state.acceptedVersion = batch.version;
+			state.acceptedVersion = envelope.version;
 		} catch (error) {
 			applicationError = error;
 		}

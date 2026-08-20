@@ -1903,7 +1903,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			// emission; trees the direct path declines (native lists) keep the
 			// staged batch path, which is also what the adoption capture below
 			// will settle as `skipped`.
-			if (!applyLynxFirstScreenDirect(source, result.nodes, result.batch)) {
+			if (!applyLynxFirstScreenDirect(source, result.nodes, result.envelope)) {
 				const prepared = prepareLynxHostBatch(source, result.batch);
 				prepared.apply();
 				if (!prepared.mutationStarted) {
