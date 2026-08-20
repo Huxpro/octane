@@ -51,4 +51,6 @@ end-to-end is "not measured", never a number from a degraded run.
 session records backing the L0 verdict (each carries its session's host/load
 header): the FCP A/B reports, and `stages-10000-l0-session.*`, this session's
 same-host copy of the stage decomposition — the canonical cross-session stage
-records stay in `../stages/results/`.
+records stay in `../stages/results/`. `web-u0-update-ceiling.*` is the issue-#103
+U0 session: octane against this cell over the mutation ops, with the
+deterministic floor counts the update-path gate is written against.
