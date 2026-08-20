@@ -56,16 +56,17 @@ export function analyzeCreateSample({ wallMs, background, main }) {
 		throw new Error('create PAPI element creation exceeds the enclosing main-thread apply stage.');
 	}
 	const bgReplayMs = observed(background?.bgReplayMs, 'bgReplayMs');
-	const bgFlushMs = observed(background?.bgFlushMs, 'bgFlushMs');
-	// The update drain runs inside the replay window by construction, so a
-	// drain total larger than its container means the two clocks disagree and
-	// no share computed from them is worth reporting.
-	if (bgFlushMs > bgReplayMs + 0.5) {
-		throw new Error('background flush exceeds the enclosing replay stage.');
+	const bgPrepareMs = observed(background?.bgPrepareMs, 'bgPrepareMs');
+	// The drain runs inside the replay window by construction — its probe is
+	// gated on the window flag — so a drain total larger than its container
+	// means the two clocks disagree and no share computed from them is worth
+	// reporting.
+	if (bgPrepareMs > bgReplayMs + 0.5) {
+		throw new Error('background drain exceeds the enclosing replay stage.');
 	}
 	const stages = {
-		bg_flush: bgFlushMs,
-		bg_replay_other: Math.max(0, bgReplayMs - bgFlushMs),
+		bg_prepare: bgPrepareMs,
+		bg_replay_other: Math.max(0, bgReplayMs - bgPrepareMs),
 		wire_clone_transfer: observed(background?.dispatchMs, 'dispatchMs'),
 		mt_validate: observed(main?.validateMs, 'validateMs'),
 		mt_expand: observed(main?.mtExpandMs, 'mtExpandMs'),

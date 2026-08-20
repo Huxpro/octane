@@ -162,6 +162,14 @@ async function realmSnapshots(page) {
 		if (typeof globalThis.__BENCH_ROW_RENDERS__ === 'number') {
 			copy.rowRenders = globalThis.__BENCH_ROW_RENDERS__;
 		}
+		// The universal renderer's drain probe keeps its own globals rather than
+		// writing into a profile record it does not own (see
+		// stages/instrument-source.mjs). Fold them in under the names the
+		// attribution reads.
+		if (typeof globalThis.__BENCH_BG_PREPARE_MS__ === 'number') {
+			copy.bgPrepareMs = globalThis.__BENCH_BG_PREPARE_MS__;
+			copy.bgPrepares = globalThis.__BENCH_BG_PREPARES__ ?? 0;
+		}
 		return copy;
 	};
 	const snapshots = [];
@@ -179,6 +187,10 @@ async function realmSnapshots(page) {
 async function resetProfiles(page) {
 	const reset = () => {
 		if (typeof globalThis.__BENCH_ROW_RENDERS__ === 'number') globalThis.__BENCH_ROW_RENDERS__ = 0;
+		if (typeof globalThis.__BENCH_BG_PREPARE_MS__ === 'number') {
+			globalThis.__BENCH_BG_PREPARE_MS__ = 0;
+			globalThis.__BENCH_BG_PREPARES__ = 0;
+		}
 		const profile = globalThis.__OCTANE_LYNX_PROF;
 		if (profile === undefined) return;
 		for (const key of Object.keys(profile)) profile[key] = 0;
@@ -330,7 +342,7 @@ function backgroundWorkLine(background) {
 	const renders = background.rowRenders.median;
 	const commands = background.hostCommands.median;
 	const ratio = commands === 0 ? 'no host commands' : `${round(renders / commands, 1)} per command`;
-	return `Background work: ${Math.round(renders).toLocaleString('en-US')} row-body renders over ${Math.round(background.flushes.median)} update drains, producing ${Math.round(commands).toLocaleString('en-US')} host commands (${ratio}).`;
+	return `Background work: ${Math.round(renders).toLocaleString('en-US')} row-body renders over ${Math.round(background.prepares.median)} replay drains, producing ${Math.round(commands).toLocaleString('en-US')} host commands (${ratio}).`;
 }
 
 function markdown(report) {
@@ -516,7 +528,7 @@ function summarizeWire(cell, side, field) {
 function summarizeBackgroundWork(cell) {
 	return {
 		rowRenders: summarizeCount(cell, (sample) => sample.realms.background.rowRenders ?? 0),
-		flushes: summarizeCount(cell, (sample) => sample.realms.background.bgFlushes ?? 0),
+		prepares: summarizeCount(cell, (sample) => sample.realms.background.bgPrepares ?? 0),
 		hostCommands: summarizeCount(cell, (sample) => sample.realms.background.commands ?? 0),
 	};
 }
@@ -580,27 +592,29 @@ function deltaEncodingVerdict() {
 	};
 }
 // Phase 0's gate fired NO-GO on the delta candidate and instructed the next
-// phase to aim at whatever segment actually costs. `bg_flush` is that segment's
-// timed half: the update drain — render, reconcile, commit, effects.
+// phase to aim at whatever segment actually costs. `bg_prepare` is that
+// segment's timed half: the background drain — render, reconcile, and
+// host-batch construction — measured at the universal renderer's `prepare`,
+// which is the entry the Lynx background thread actually runs.
 //
 // Row-body renders are the deterministic half, and they answer a different
 // question than the share does. If the drain owns the frame while row bodies
 // stay proportional to the change, the cost is in walking the list, not in
 // re-rendering it, and a candidate aimed at render breadth is aimed at the
 // wrong thing.
-const FLUSH_OWNER_GATE = 0.1;
+const DRAIN_OWNER_GATE = 0.1;
 function backgroundOwnerVerdict() {
 	const cells = ['update10th', 'select'];
 	const measured = cells.map((operation) => {
 		const cell = mutationReports[operation];
 		return {
 			operation,
-			share: cell.attribution.stages.bg_flush.share,
+			share: cell.attribution.stages.bg_prepare.share,
 			renders: cell.background.rowRenders.median,
 			commands: cell.background.hostCommands.median,
 		};
 	});
-	const owners = measured.filter((row) => row.share >= FLUSH_OWNER_GATE);
+	const owners = measured.filter((row) => row.share >= DRAIN_OWNER_GATE);
 	const text = measured
 		.map(
 			(row) =>
@@ -610,7 +624,7 @@ function backgroundOwnerVerdict() {
 	return {
 		step: '#66 Phase 2 re-aim: background update-drain owner',
 		verdict: owners.length === cells.length ? 'GO' : owners.length === 0 ? 'NO-GO' : 'SPLIT',
-		reason: `bg_flush is ${text}. The gate is ${FLUSH_OWNER_GATE * 100}% in every cell named here. The row-render counts are deterministic for this app and interaction: where they already track the change while the drain still owns the frame, the remaining cost is list traversal rather than render breadth.`,
+		reason: `bg_prepare is ${text}. The gate is ${DRAIN_OWNER_GATE * 100}% in every cell named here. The row-render counts are deterministic for this app and interaction: where they already track the change while the drain still owns the frame, the remaining cost is list traversal rather than render breadth.`,
 	};
 }
 const createWire = {

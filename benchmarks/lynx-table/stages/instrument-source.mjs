@@ -27,8 +27,6 @@ export function instrumentLynxStageSources(repositoryRoot) {
 				`\t/** Main: acknowledgement handle computation + dispatch time. */
 \tackMs: number;
 \tbgReplayMs?: number;
-\tbgFlushMs?: number;
-\tbgFlushes?: number;
 \tmtExpandMs?: number;
 \tfirstScreenPlanMs?: number;
 \tmtSliceEvalMs?: number;
@@ -79,62 +77,55 @@ export function instrumentLynxStageSources(repositoryRoot) {
 		});
 
 		// Splits the background replay stage into the update drain and everything
-		// else (event delivery, the handler itself, scheduling, batch
-		// construction). `flushWork` is the drain: render, reconcile, commit,
-		// effects. It is guarded against re-entry by the runtime, so a single
-		// accumulator cannot double-count.
+		// else (event delivery, the handler itself, scheduling, the awaits, and
+		// the commit hand-off). The drain is `prepare()` on the universal root:
+		// render, reconcile, and host-batch construction.
 		//
-		// The boundary is the drain, NOT `renderBlock`. On the table's mutation
-		// path `renderBlock` is never reached — item bodies run directly through
-		// the keyed for-block's survivor and call-site caches — so timing it
-		// would report a confident zero.
-		update('packages/octane/src/runtime.ts', (source, file) =>
+		// The boundary is `prepare`, and neither of the two tried before it.
+		// `renderBlock` is never reached on the table's mutation path. The DOM
+		// runtime's `flushWork` is never reached at all, because the Lynx
+		// background thread runs `universal-core.ts` — a different renderer from
+		// `runtime.ts`, reached through `octane/universal/native`. A profile
+		// bundle built with that patch contains no trace of it. Both boundaries
+		// reported a confident zero for the segment they were built to expose.
+		//
+		// `prepare` re-enters (a boundary invalidation prepares through the same
+		// method), so only the outermost call is timed. It also runs outside any
+		// replay — the first screen prepares too — while `bgReplayMs` covers only
+		// the replay window, so the accumulator is gated on the window flag the
+		// transport patch below publishes. Ungated, the drain could exceed its
+		// own enclosing stage and analyze.mjs would reject the sample.
+		//
+		// The counters are plain globals rather than fields on the Lynx profile
+		// record: this module does not own that record's shape, and creating it
+		// here with a partial default would leave `lynxWireProfile()` accepting
+		// it and accumulating onto undefined. run.mjs folds them into the
+		// background snapshot the same way it folds the app's row-body counter.
+		update('packages/octane/src/universal-core.ts', (source, file) =>
 			replaceOnce(
 				source,
-				`function flushWork(): void {
-\tinFlush = true;
+				`	prepare(component: UniversalComponent<any>, props: any): UniversalPreparedAttempt {
 `,
-				`let __benchFlushRecord: any = null;
+				`	prepare(component: UniversalComponent<any>, props: any): UniversalPreparedAttempt {
+		const __benchGlobals = globalThis as any;
+		if (
+			__benchGlobals.__BENCH_REPLAY_ACTIVE__ !== true ||
+			__benchGlobals.__BENCH_PREPARE_DEPTH__ === true
+		)
+			return this.__benchPrepare(component, props);
+		__benchGlobals.__BENCH_BG_PREPARES__ = (__benchGlobals.__BENCH_BG_PREPARES__ ?? 0) + 1;
+		__benchGlobals.__BENCH_PREPARE_DEPTH__ = true;
+		const __benchStarted = performance.now();
+		try {
+			return this.__benchPrepare(component, props);
+		} finally {
+			__benchGlobals.__BENCH_PREPARE_DEPTH__ = false;
+			__benchGlobals.__BENCH_BG_PREPARE_MS__ =
+				(__benchGlobals.__BENCH_BG_PREPARE_MS__ ?? 0) + performance.now() - __benchStarted;
+		}
+	}
 
-// The Lynx profile record is this realm's counter home, and either module may
-// reach it first, so the fields are defaulted rather than assumed.
-function __benchFlushProfile(): any {
-\tif (__benchFlushRecord !== null) return __benchFlushRecord;
-\tconst globals = globalThis as any;
-\tconst record = (globals.__OCTANE_LYNX_PROF ??= {
-\t\tcommits: 0,
-\t\tcommands: 0,
-\t\tbytes: 0,
-\t\tselfcheckMs: 0,
-\t\tdispatchMs: 0,
-\t\tvalidateMs: 0,
-\t\tprepareMs: 0,
-\t\tapplyMs: 0,
-\t\tackMs: 0,
-\t\tdeltaCommits: 0,
-\t\tdeltaMisses: 0,
-\t\tdeltaOps: 0,
-\t\tdeltaBytes: 0,
-\t});
-\trecord.bgFlushMs ??= 0;
-\trecord.bgFlushes ??= 0;
-\t__benchFlushRecord = record;
-\treturn record;
-}
-
-function flushWork(): void {
-\tconst __benchProfile = __benchFlushProfile();
-\t__benchProfile.bgFlushes += 1;
-\tconst __benchStarted = performance.now();
-\ttry {
-\t\t__benchFlushWork();
-\t} finally {
-\t\t__benchProfile.bgFlushMs += performance.now() - __benchStarted;
-\t}
-}
-
-function __benchFlushWork(): void {
-\tinFlush = true;
+	__benchPrepare(component: UniversalComponent<any>, props: any): UniversalPreparedAttempt {
 `,
 				file,
 			),
@@ -379,7 +370,15 @@ export function createLynxElementPAPI<Node extends LynxElementRef = LynxElementR
 			let next = replaceOnce(
 				source,
 				'\tlet pageDestroyHandlerInvoked = false;\n',
-				'\tlet pageDestroyHandlerInvoked = false;\n\tlet replayStartedAt: number | null = null;\n',
+				`\tlet pageDestroyHandlerInvoked = false;
+\tlet replayStartedAt: number | null = null;
+\t// The replay window, published for the universal renderer's drain probe:
+\t// only a prepare() inside this window belongs to the replay stage.
+\tconst benchReplayWindow = (started: number | null): void => {
+\t\treplayStartedAt = started;
+\t\t(globalThis as { __BENCH_REPLAY_ACTIVE__?: boolean }).__BENCH_REPLAY_ACTIVE__ = started !== null;
+\t};
+`,
 				file,
 			);
 			next = replaceOnce(
@@ -392,7 +391,7 @@ export function createLynxElementPAPI<Node extends LynxElementRef = LynxElementR
 \t\t\tprofileOutboundMessage(profile, message);
 \t\t\tif ((message as { readonly type?: unknown }).type === 'commit' && replayStartedAt !== null) {
 \t\t\t\tprofile.bgReplayMs = (profile.bgReplayMs ?? 0) + startedSelfCheck - replayStartedAt;
-\t\t\t\treplayStartedAt = null;
+\t\t\t\tbenchReplayWindow(null);
 \t\t\t}
 \t\t\treturn;
 `,
@@ -406,22 +405,22 @@ export function createLynxElementPAPI<Node extends LynxElementRef = LynxElementR
 `,
 				`\t\tdispatchNativeEventBatch(deliveries) {
 \t\t\tif (deliveries.length === 0) return;
-\t\t\tif (replayStartedAt === null) replayStartedAt = performance.now();
+\t\t\tif (replayStartedAt === null) benchReplayWindow(performance.now());
 \t\t\tif (closedError !== null) {
-\t\t\t\treplayStartedAt = null;
+\t\t\t\tbenchReplayWindow(null);
 `,
 				file,
 			);
 			next = replaceOnce(
 				next,
 				'\t\t\t\tif (transportRoot !== null && identity.root !== transportRoot) {\n',
-				'\t\t\t\tif (transportRoot !== null && identity.root !== transportRoot) {\n\t\t\t\t\treplayStartedAt = null;\n',
+				'\t\t\t\tif (transportRoot !== null && identity.root !== transportRoot) {\n\t\t\t\t\tbenchReplayWindow(null);\n',
 				file,
 			);
 			return replaceOnce(
 				next,
 				"\t\t\t\tif (identity.priority !== priority) {\n\t\t\t\t\treport(new Error('Octane Lynx native event batch mixes listener priorities.'));\n",
-				"\t\t\t\tif (identity.priority !== priority) {\n\t\t\t\t\treplayStartedAt = null;\n\t\t\t\t\treport(new Error('Octane Lynx native event batch mixes listener priorities.'));\n",
+				"\t\t\t\tif (identity.priority !== priority) {\n\t\t\t\t\tbenchReplayWindow(null);\n\t\t\t\t\treport(new Error('Octane Lynx native event batch mixes listener priorities.'));\n",
 				file,
 			);
 		});

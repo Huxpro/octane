@@ -19,7 +19,7 @@ const sourceFiles = [
 	'packages/lynx/src/core/transport.ts',
 	'packages/lynx/src/main-renderer.ts',
 	'packages/lynx/src/main-thread.ts',
-	'packages/octane/src/runtime.ts',
+	'packages/octane/src/universal-core.ts',
 ];
 
 test('instruments an isolated Lynx source copy and restores every byte', () => {
@@ -54,8 +54,8 @@ test('instruments an isolated Lynx source copy and restores every byte', () => {
 			/papiCreateMs/,
 		);
 		assert.match(
-			fs.readFileSync(path.join(temporary, 'packages/octane/src/runtime.ts'), 'utf8'),
-			/bgFlushes/,
+			fs.readFileSync(path.join(temporary, 'packages/octane/src/universal-core.ts'), 'utf8'),
+			/__BENCH_BG_PREPARES__/,
 		);
 		restore();
 		for (const relative of sourceFiles) {
