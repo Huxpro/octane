@@ -22,7 +22,7 @@ import type { LynxElementEventListener } from '../../packages/lynx/src/core/papi
 import type { LynxWireProfile } from '../../packages/lynx/src/core/profiling.js';
 import { App } from './app/src/App.lynx.tsrx';
 
-interface FakeNode {
+export interface FakeNode {
 	readonly sign: number;
 	readonly type: string;
 	parent: FakeNode | null;
@@ -36,7 +36,7 @@ interface FakeNode {
 
 type Listener = (event: LynxContextProxyEvent) => void;
 
-interface WireMessageSnapshot {
+export interface WireMessageSnapshot {
 	readonly direction: 'background-to-main' | 'main-to-background';
 	readonly type: string;
 	readonly bytes: number;
@@ -51,7 +51,7 @@ interface WireMessageSnapshot {
  * immediately: this harness measures per-commit wire cost, not the
  * backpressure coalescing an asynchronous main thread produces.
  */
-function createContextPair(): {
+export function createContextPair(): {
 	background: LynxContextProxy;
 	main: LynxContextProxy;
 	messages: WireMessageSnapshot[];
@@ -118,7 +118,7 @@ function createContextPair(): {
 	};
 }
 
-class FakeElementPAPI {
+export class FakeElementPAPI {
 	private nextSign = 1;
 	readonly nodes = new Map<number, FakeNode>();
 	flushes = 0;
@@ -212,17 +212,23 @@ class FakeElementPAPI {
 	}
 }
 
-interface Harness {
+/**
+ * Everything below a background root: the cross-wired ContextProxy pair, the
+ * fake Element PAPI, the real main-thread receiver, and the background-thread
+ * globals a root reads. It is shared with `block-workload.ts`, which puts a
+ * different background core on the same wire, so a count from either column is
+ * a count over the same main thread and the same message accounting.
+ */
+export interface WireChassis {
 	readonly papi: FakeElementPAPI;
-	readonly root: LynxRoot;
+	readonly contexts: ReturnType<typeof createContextPair>;
 	readonly main: ReturnType<typeof installLynxMainThread>;
 	readonly diagnostics: Error[];
 	readonly backgroundTarget: Record<string, unknown>;
 	readonly wireMessages: WireMessageSnapshot[];
-	dispose(): Promise<void>;
 }
 
-function createHarness(): Harness {
+export function createWireChassis(): WireChassis {
 	const contexts = createContextPair();
 	const papi = new FakeElementPAPI();
 	const diagnostics: Error[] = [];
@@ -250,20 +256,42 @@ function createHarness(): Harness {
 		},
 		queueMicrotask: (callback: () => void) => queueMicrotask(callback),
 	};
-	const root = createLynxRoot({
-		target: backgroundTarget,
-		onDiagnostic: (error) => diagnostics.push(error),
-	});
 	return {
 		papi,
-		root,
+		contexts,
 		main,
 		diagnostics,
 		wireMessages: contexts.messages,
 		backgroundTarget: backgroundTarget as unknown as Record<string, unknown>,
+	};
+}
+
+interface Harness {
+	readonly papi: FakeElementPAPI;
+	readonly root: LynxRoot;
+	readonly main: ReturnType<typeof installLynxMainThread>;
+	readonly diagnostics: Error[];
+	readonly backgroundTarget: Record<string, unknown>;
+	readonly wireMessages: WireMessageSnapshot[];
+	dispose(): Promise<void>;
+}
+
+function createHarness(): Harness {
+	const chassis = createWireChassis();
+	const root = createLynxRoot({
+		target: chassis.backgroundTarget,
+		onDiagnostic: (error) => chassis.diagnostics.push(error),
+	});
+	return {
+		papi: chassis.papi,
+		root,
+		main: chassis.main,
+		diagnostics: chassis.diagnostics,
+		wireMessages: chassis.wireMessages,
+		backgroundTarget: chassis.backgroundTarget,
 		async dispose() {
 			await root.unmount();
-			main.close();
+			chassis.main.close();
 		},
 	};
 }
@@ -275,7 +303,7 @@ interface ProfileGlobals {
 	__BENCH_ROW_RENDERS__?: number;
 }
 
-function profileSnapshot(): {
+export function profileSnapshot(): {
 	commits: number;
 	commands: number;
 	bytes: number;
@@ -317,7 +345,7 @@ function addCounts(target: Record<string, number>, source: Readonly<Record<strin
 	for (const [name, count] of Object.entries(source)) target[name] = (target[name] ?? 0) + count;
 }
 
-function summarizeWire(
+export function summarizeWire(
 	messages: readonly WireMessageSnapshot[],
 ): Pick<
 	OpCounters,
