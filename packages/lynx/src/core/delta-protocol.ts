@@ -142,16 +142,20 @@ function requireAddress(value: LynxSlotAddress | undefined, name: string): LynxS
 }
 
 /**
- * The whole of the value check: one `typeof` per value, never a walk. A
- * structured value is rejected on its own type, so a hostile getter is never
- * reached.
+ * The single definition of "what is a wire scalar", shared with every producer
+ * that must decline rather than encode a structured value (the delta shadow).
+ * One `typeof`, never a walk — a hostile getter is never reached.
  */
-function requireValue(value: unknown, name: string): LynxDeltaValue {
-	if (value === null) return null;
+export function isLynxDeltaValue(value: unknown): value is LynxDeltaValue {
+	if (value === null) return true;
 	const type = typeof value;
-	if (type !== 'string' && type !== 'number' && type !== 'boolean')
-		fail(`${name} must be a string, number, boolean, or null`);
-	return value as LynxDeltaValue;
+	return type === 'string' || type === 'number' || type === 'boolean';
+}
+
+/** The whole of the value check: `isLynxDeltaValue`, spelled as a demand. */
+function requireValue(value: unknown, name: string): LynxDeltaValue {
+	if (!isLynxDeltaValue(value)) fail(`${name} must be a string, number, boolean, or null`);
+	return value;
 }
 
 function encodeAnchor(anchor: LynxDeltaAnchor, name: string): readonly [number, number] {

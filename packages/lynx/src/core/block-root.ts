@@ -162,6 +162,15 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 			if (message.root !== transportRoot) {
 				throw new Error('Octane Lynx block root event belongs to a stale or foreign root.');
 			}
+			if (message.version !== acceptedVersion) {
+				// The same identity discipline `universal-core.ts` applies to events:
+				// a delivery stamped against a superseded batch was aimed at a tree
+				// this root no longer paints, and must be refused rather than run
+				// against post-commit state.
+				throw new Error(
+					`Octane Lynx block root event version ${String(message.version)} does not match batch ${acceptedVersion}.`,
+				);
+			}
 			// Validate the whole propagation batch before invoking any handler, as
 			// `universal-core.ts` does: a renderer must not be able to prefix a
 			// stale or priority-forged listener with a valid delivery and thereby
@@ -177,9 +186,24 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 					);
 				}
 			}
-			const results: unknown[] = [];
-			for (const { listener, payload } of message.deliveries) {
-				results.push(listeners.get(listener)!.handler(payload));
+			// Every pre-validated delivery runs even when an earlier handler
+			// throws, as `universal-core.ts` guarantees: a partially-dispatched
+			// valid batch is exactly the outcome pre-validation exists to prevent.
+			const results = new Array<unknown>(message.deliveries.length);
+			let errors: unknown[] | null = null;
+			for (let index = 0; index < message.deliveries.length; index++) {
+				const { listener, payload } = message.deliveries[index]!;
+				try {
+					results[index] = listeners.get(listener)!.handler(payload);
+				} catch (error) {
+					(errors ??= []).push(error);
+				}
+			}
+			if (errors !== null) {
+				if (errors.length === 1) throw errors[0];
+				throw typeof AggregateError === 'function'
+					? new AggregateError(errors, 'Multiple Lynx block listeners failed.')
+					: errors[0];
 			}
 			return Object.freeze(results);
 		},
