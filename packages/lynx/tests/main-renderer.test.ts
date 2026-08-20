@@ -459,6 +459,24 @@ describe('Lynx main-thread first-screen renderer', () => {
 		]);
 	});
 
+	// A prop whose name is an event channel is the renderer's to interpret, and
+	// it interprets a non-callable one as "no handler". What it must not do is
+	// leave the value in the props bag: the background does not put it there,
+	// so a first screen that did would disagree with the background's create
+	// command and lose adoption for the whole page — and the value would reach
+	// the platform as a real attribute on that channel.
+	it('drops an event-named prop that carries no handler, as background does', () => {
+		const StringHandler = defineUniversalComponent('lynx', () =>
+			universalValue(rowPlan, [universalProps([['set', 'bindtap', 'not-a-handler']])]),
+		);
+		const result = renderLynxFirstScreen(StringHandler, {});
+
+		expect(result.batch.commands).toEqual([
+			{ op: 'create', id: 1, type: 'view', props: {} },
+			{ op: 'insert', parent: null, id: 1, before: null },
+		]);
+	});
+
 	it('uses initial hook values and never publishes effects, refs, or updates', () => {
 		const effect = vi.fn();
 		const layout = vi.fn();

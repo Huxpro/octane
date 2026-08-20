@@ -335,6 +335,39 @@ in §3 and the extraction-first decision in §5.
 
 ## 8. Landed increments
 
+- **First-screen records built without spread-and-delete (issue #66 Phase B).**
+  Every host the first screen rendered copied its incoming props into a new
+  object and then deleted `key`, `ref`, `children`, and each event-named prop
+  off that copy. A `delete` on a fresh object drops it out of V8's fast
+  properties for the rest of its life, and these are not scratch objects: they
+  are the first screen's props bags, read again by the direct applier and again
+  by adoption capture. The bag is now built by copying only the keys it keeps,
+  in the same pass that classifies events; a host that binds nothing shares one
+  frozen empty event map; and raw `#text` records — three of every seven hosts
+  in the fixture row template, 30,000 of them at 10,000 rows — are constructed
+  directly, since their props are a string `value` and nothing else, which is
+  what `assertTextProps` already enforces.
+
+  Same protocol as the increment below (three alternated rounds, 10,000 rows,
+  n=30 per side, GC-isolated phases), measured against that increment's head:
+
+  | phase | before | after | change |
+  | --- | --- | --- | --- |
+  | first-screen render | 139.0 ms | 79.3 ms | −42.9% |
+  | first-tree capture | 218.1 ms | 214.3 ms | −1.7% |
+  | direct apply | 429.1 ms | 407.1 ms | −5.1% |
+  | direct-path total | 794.6 ms | 731.8 ms | −7.9% |
+
+  Minima shown. Render is the only phase this touches and it moves in every
+  round individually; capture and apply sit inside noise in both directions
+  across rounds, which is the expected result for an untouched applier. On-demand
+  batch construction also gets 15–19% cheaper without being changed, because it
+  reads the same props bags back and a fast-mode object is cheaper to read than
+  a dictionary-mode one. One behaviour changed and is covered by a test: an
+  event-named prop whose value is neither a handler nor the first-screen
+  sentinel is now dropped rather than kept, which is what the background
+  renderer does with the same input.
+
 - **First-screen materialization off the batch (issue #66 Phase B).** The
   synchronous first screen paints through direct Element PAPI emission, which
   needs the rendered node tree and the background listeners the renderer
