@@ -285,6 +285,48 @@ const DuplicateRefFeedScene = defineFirstScreenComponent('lynx', () =>
 	]),
 );
 
+const duplicateRefRowPlan = firstScreenPlan('lynx', {
+	kind: 'host',
+	type: 'view',
+	bindings: [['id', 0]],
+	children: [
+		{
+			kind: 'host',
+			type: 'list',
+			bindings: [['id', 1]],
+			children: [
+				{
+					kind: 'host',
+					type: 'list-item',
+					bindings: [
+						['item-key', 2],
+						['main-thread:ref', 4],
+					],
+				},
+				{
+					kind: 'host',
+					type: 'list-item',
+					bindings: [
+						['item-key', 3],
+						['main-thread:ref', 5],
+					],
+				},
+			],
+		},
+	],
+});
+
+const DuplicateRefRowScene = defineFirstScreenComponent('lynx', () =>
+	firstScreenValue(duplicateRefRowPlan, [
+		'feed-shell',
+		'feed',
+		'row-0',
+		'row-1',
+		{ _wvid: 'gate:row-ref' },
+		{ _wvid: 'gate:row-ref' },
+	]),
+);
+
 // The shape authored code actually produces. A `<list>` gets its rows from a
 // keyed `@for`, so a range sits between the list and every `<list-item>` and the
 // rows are not the list's own children in the record tree. The fixtures above
@@ -1374,21 +1416,40 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		// The colliding host sits beside a valid list, so the pre-check's skip
 		// verdict is otherwise settled — the prepare walk that raises this
 		// diagnostic on the staged path would never run.
-		const { main } = installEnvironment();
+		const { dom, main } = installEnvironment();
 
 		expect(() => firstScreenRoot.render(CollidingFeedScene, {})).toThrow(
 			/conflicts with background event/,
 		);
 		expect(main.firstScreenSnapshot()).toBeNull();
+		// Reported before anything was painted, which is the part that makes this
+		// the same refusal the staged path gives: a page the applier declines
+		// leaves no half-built tree behind for the platform to show.
+		expect(dom.window.document.querySelectorAll('view')).toHaveLength(0);
 	});
 
 	it('still reports a duplicated main-thread ref rather than declining it silently', () => {
-		const { main } = installEnvironment();
+		const { dom, main } = installEnvironment();
 
 		expect(() => firstScreenRoot.render(DuplicateRefFeedScene, {})).toThrow(
 			/is assigned to hosts \d+ and \d+/,
 		);
 		expect(main.firstScreenSnapshot()).toBeNull();
+		expect(dom.window.document.querySelectorAll('view')).toHaveLength(0);
+	});
+
+	it('reports a duplicated main-thread ref carried by two rows of one native list', () => {
+		// Rows own no element until the platform asks for a cell, so neither ref is
+		// ever installed during the first screen and a mid-walk check would see
+		// nothing wrong. The staged path refuses this page from its record set, so
+		// this one owes the same refusal.
+		const { dom, main } = installEnvironment();
+
+		expect(() => firstScreenRoot.render(DuplicateRefRowScene, {})).toThrow(
+			/is assigned to hosts \d+ and \d+/,
+		);
+		expect(main.firstScreenSnapshot()).toBeNull();
+		expect(dom.window.document.querySelectorAll('list')).toHaveLength(0);
 	});
 
 	it('still reports a host that cannot build a list rather than declining it silently', () => {
