@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, new-lynx]
   pull_request:
-    branches: [main]
+    branches: [main, new-lynx]
     types: [opened, reopened, synchronize, ready_for_review, converted_to_draft, closed]
 
 concurrency:
