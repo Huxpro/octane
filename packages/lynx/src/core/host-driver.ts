@@ -485,6 +485,15 @@ const EMPTY_HOST_CHILDREN: number[] = [];
 // Most hosts never own a background event. Keep the shared map private and
 // replace it before the first write so ordinary hosts allocate no event table.
 const EMPTY_HOST_EVENTS = new Map<string, UniversalEventListenerDescriptor>();
+
+/**
+ * The two empty lists a first-tree node snapshot can hold. A large page is
+ * mostly leaves with no background events, and copying-then-freezing an empty
+ * array for each of them is one allocation per record for a value that is the
+ * same value every time.
+ */
+const EMPTY_FIRST_TREE_CHILDREN: readonly number[] = Object.freeze([]);
+const EMPTY_FIRST_TREE_EVENTS: readonly LynxFirstTreeEventSnapshot[] = Object.freeze([]);
 // Raw text is initialized by __CreateRawText itself. Its synthetic `value`
 // attribute is never forwarded, so an unscoped creation needs no prop diff.
 const EMPTY_RAW_TEXT_CREATE_PATCH: LynxHostPropPatch = Object.freeze({
@@ -2814,13 +2823,22 @@ function snapshotFirstTreeValue(
 	}
 }
 
+/**
+ * Snapshot one record's props. The caller owns the scratch pair and this clears
+ * it, so every record still clones against a memo scoped to its own props —
+ * exactly what a freshly allocated pair gave it — without allocating a `Set`
+ * and a `Map` per record on a page with tens of thousands of them.
+ */
 function snapshotFirstTreeProps(
 	props: Readonly<Record<string, unknown>>,
+	state: FirstTreeSnapshotCloneState,
 ): Readonly<Record<string, UniversalSerializableValue>> {
-	return snapshotFirstTreeValue(props as Readonly<Record<string, UniversalSerializableValue>>, {
-		active: new Set(),
-		clones: new Map(),
-	}) as Readonly<Record<string, UniversalSerializableValue>>;
+	state.active.clear();
+	state.clones.clear();
+	return snapshotFirstTreeValue(
+		props as Readonly<Record<string, UniversalSerializableValue>>,
+		state,
+	) as Readonly<Record<string, UniversalSerializableValue>>;
 }
 
 function mismatch(
@@ -2894,6 +2912,29 @@ export interface LynxFirstScreenDirectNode {
 	readonly children: readonly LynxFirstScreenDirectNode[];
 }
 
+/** One background listener the first-screen renderer assigned, by host id. */
+export interface LynxFirstScreenDirectEvent {
+	readonly id: number;
+	readonly type: string;
+	readonly listener: UniversalEventListenerDescriptor;
+}
+
+/**
+ * Everything the direct applier reads that is not the tree itself: the envelope
+ * fields it validates, and the background listeners the renderer assigned.
+ *
+ * This is deliberately not the command batch. The applier only ever consulted
+ * the batch's `event` commands, so taking the batch obliged the renderer to
+ * build one — at 10k fixture rows, six figures of frozen command objects that
+ * this function then walked past. `LynxFirstScreenRenderResult.envelope` is the
+ * renderer's matching shape; hand-built trees supply their own.
+ */
+export interface LynxFirstScreenDirectEnvelope {
+	readonly renderer: string;
+	readonly version: number;
+	readonly events: readonly LynxFirstScreenDirectEvent[];
+}
+
 function firstScreenTreeHasList(nodes: readonly LynxFirstScreenDirectNode[]): boolean {
 	// Iterative for the same reason the applier below is: nothing in the
 	// first-screen pipeline may impose a tree-depth ceiling the renderer that
@@ -2913,15 +2954,15 @@ function firstScreenTreeHasList(nodes: readonly LynxFirstScreenDirectNode[]): bo
  * no command staging, no cloned record maps, no operation replay — while
  * leaving the container state indistinguishable from the batch path so
  * `captureLynxFirstTree` and background adoption stay byte-compatible. The
- * batch is consulted only for its `event` commands (the deterministic
- * listener-id assignment stays single-sourced in the renderer) and its
- * version. Trees containing native lists return false and take the staged
- * path unchanged; nothing else falls back.
+ * renderer hands over an envelope rather than a batch: its version, and the
+ * background listeners it assigned (the deterministic listener-id assignment
+ * stays single-sourced there). Trees containing native lists return false and
+ * take the staged path unchanged; nothing else falls back.
  */
 export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 	container: LynxHostContainer<Node>,
 	roots: readonly LynxFirstScreenDirectNode[],
-	batch: UniversalHostBatch,
+	envelope: LynxFirstScreenDirectEnvelope,
 ): boolean {
 	const state = container[LYNX_HOST_STATE];
 	if (state.disposed || state.disposing || state.faulted || state.applying) {
@@ -2932,31 +2973,32 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 	}
 	if (firstScreenTreeHasList(roots)) return false;
 	// Same envelope contract as the staged path: the applier is exported, so a
-	// future caller must not be able to hand it an unvalidated batch.
-	if (batch.renderer !== LYNX_RENDERER_ID) {
-		throw hostError(`batch renderer ${JSON.stringify(batch.renderer)} is not "lynx".`);
+	// future caller must not be able to hand it an unvalidated envelope.
+	if (envelope.renderer !== LYNX_RENDERER_ID) {
+		throw hostError(
+			`first-screen envelope renderer ${JSON.stringify(envelope.renderer)} is not "lynx".`,
+		);
 	}
-	if (!Number.isSafeInteger(batch.version) || batch.version <= 0) {
-		throw hostError(`batch version ${String(batch.version)} is not a positive safe integer.`);
+	if (!Number.isSafeInteger(envelope.version) || envelope.version <= 0) {
+		throw hostError(
+			`first-screen envelope version ${String(envelope.version)} is not a positive safe integer.`,
+		);
 	}
 	const eventsByHost = new Map<number, [string, UniversalEventListenerDescriptor][]>();
-	for (const command of batch.commands) {
-		// First-screen batches never remove listeners; a null descriptor cannot
-		// occur here and is skipped rather than journaled.
-		if (command.op !== 'event' || command.listener === null) continue;
-		let entries = eventsByHost.get(command.id);
+	for (const binding of envelope.events) {
+		let entries = eventsByHost.get(binding.id);
 		if (entries === undefined) {
 			entries = [];
-			eventsByHost.set(command.id, entries);
+			eventsByHost.set(binding.id, entries);
 		}
-		entries.push([command.type, command.listener]);
+		entries.push([binding.type, binding.listener]);
 	}
 	// The staged path runs this over the batch's final host set during prepare,
 	// so a collision costs zero PAPI calls. The direct path has no prepare stage,
 	// so it pre-walks: refusing after the walk has begun would leave a
 	// half-painted page, which is exactly the state the staged path never
-	// produces. Only hosts the batch gave a background listener can collide, and
-	// a page with no background listeners at all skips the walk entirely.
+	// produces. Only hosts the envelope gave a background listener can collide,
+	// and a page with no background listeners at all skips the walk entirely.
 	if (eventsByHost.size !== 0) {
 		const pending: (readonly LynxFirstScreenDirectNode[])[] = [roots];
 		while (pending.length !== 0) {
@@ -3117,7 +3159,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 				});
 			}
 			while (stack.length !== 0) visit(stack.pop()!);
-			state.acceptedVersion = batch.version;
+			state.acceptedVersion = envelope.version;
 		} catch (error) {
 			applicationError = error;
 		}
@@ -3166,6 +3208,7 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 	}
 	const eventsByToken = new Map<string, LynxResolvedFirstTreeEvent>();
 	const nodes: LynxFirstTreeNodeSnapshot[] = [];
+	const cloneState: FirstTreeSnapshotCloneState = { active: new Set(), clones: new Map() };
 	const ids = [...state.records.keys()].sort((first, second) => first - second);
 	for (const id of ids) {
 		const record = state.records.get(id)!;
@@ -3183,51 +3226,83 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 		}
 		const nativeId = state.papi.getUniqueId(record.node);
 		assertSafeId(nativeId, `first-tree host ${id} native ID`);
-		const events: LynxFirstTreeEventSnapshot[] = [];
-		const eventEntries = [...record.events].sort(([first], [second]) =>
-			first < second ? -1 : first > second ? 1 : 0,
-		);
-		for (const [type, descriptor] of eventEntries) {
-			const event = Object.freeze({
-				host: id,
-				generation: record.handle.generation,
-				type,
-				listener: descriptor.id,
-				priority: descriptor.priority,
-			});
-			events.push(event);
-			const registration = state.nativeEvents.get(record.node)?.get(type);
-			if (record.visible) {
-				if (registration?.source !== 'background') {
-					throw hostError(`first-tree host ${id} is missing native event ${JSON.stringify(type)}.`);
+		// Most records on a large page bind nothing: in the benchmark fixture two
+		// of every seven hosts carry an event and the rest carry none. Sorting the
+		// spread of an empty map, into an array that stays empty, is three
+		// allocations apiece for a result that is always the same empty list.
+		let events: readonly LynxFirstTreeEventSnapshot[] = EMPTY_FIRST_TREE_EVENTS;
+		if (record.events.size !== 0) {
+			const bound: LynxFirstTreeEventSnapshot[] = [];
+			const eventEntries = [...record.events].sort(([first], [second]) =>
+				first < second ? -1 : first > second ? 1 : 0,
+			);
+			for (const [type, descriptor] of eventEntries) {
+				const event = Object.freeze({
+					host: id,
+					generation: record.handle.generation,
+					type,
+					listener: descriptor.id,
+					priority: descriptor.priority,
+				});
+				bound.push(event);
+				const registration = state.nativeEvents.get(record.node)?.get(type);
+				if (record.visible) {
+					if (registration?.source !== 'background') {
+						throw hostError(
+							`first-tree host ${id} is missing native event ${JSON.stringify(type)}.`,
+						);
+					}
+					eventsByToken.set(registration.listener, event);
+				} else if (registration !== undefined) {
+					throw hostError(
+						`hidden first-tree host ${id} retains native event ${JSON.stringify(type)}.`,
+					);
 				}
-				eventsByToken.set(registration.listener, event);
-			} else if (registration !== undefined) {
-				throw hostError(
-					`hidden first-tree host ${id} retains native event ${JSON.stringify(type)}.`,
-				);
+			}
+			events = Object.freeze(bound);
+		}
+		// Planning a whole prop patch per record, only to read back which
+		// main-thread bindings that record expects, is the per-node capture cost
+		// issue #62 names. Two facts remove nearly all of it without weakening
+		// what is asserted.
+		//
+		// `state.hasMainThreadProps` is sticky, and every path that accepts props
+		// — `create`, `recreate`, `update`, and the direct first-screen walk —
+		// sets it from exactly this predicate, so a false value proves no record
+		// under this root can expect a main-thread event or ref. And an unscoped
+		// raw `#text` record's props are a string `value` and nothing else, which
+		// `assertTextProps` enforces at the boundary and both appliers already act
+		// on by substituting a constant patch rather than planning one.
+		//
+		// The ref comparison below still runs for every record, because it asserts
+		// the *absence* of an unexpected ref rather than the presence of an
+		// expected one, and skipping it would stop checking anything.
+		const mainThreadPatch =
+			state.hasMainThreadProps &&
+			!(record.type === '#text' && record.props[LYNX_CSS_SCOPE_PROP] == null)
+				? planLynxHostPropPatch(record.type, EMPTY_HOST_PROPS, record.props)
+				: null;
+		if (mainThreadPatch !== null) {
+			for (const event of mainThreadPatch.mainThreadEvents) {
+				if (event.value === null) continue;
+				const registration = state.nativeEvents.get(record.node)?.get(event.binding.prop);
+				if (
+					record.visible &&
+					(registration?.source !== 'main-thread' ||
+						!sameSnapshotValue(registration.descriptor, event.value))
+				) {
+					throw hostError(
+						`first-tree host ${id} is missing main-thread event ${JSON.stringify(event.binding.prop)}.`,
+					);
+				}
+				if (!record.visible && registration !== undefined) {
+					throw hostError(
+						`hidden first-tree host ${id} retains main-thread event ${JSON.stringify(event.binding.prop)}.`,
+					);
+				}
 			}
 		}
-		const mainThreadPatch = planLynxHostPropPatch(record.type, {}, record.props);
-		for (const event of mainThreadPatch.mainThreadEvents) {
-			if (event.value === null) continue;
-			const registration = state.nativeEvents.get(record.node)?.get(event.binding.prop);
-			if (
-				record.visible &&
-				(registration?.source !== 'main-thread' ||
-					!sameSnapshotValue(registration.descriptor, event.value))
-			) {
-				throw hostError(
-					`first-tree host ${id} is missing main-thread event ${JSON.stringify(event.binding.prop)}.`,
-				);
-			}
-			if (!record.visible && registration !== undefined) {
-				throw hostError(
-					`hidden first-tree host ${id} retains main-thread event ${JSON.stringify(event.binding.prop)}.`,
-				);
-			}
-		}
-		const expectedRef = mainThreadPatch.mainThreadRef?.value ?? null;
+		const expectedRef = mainThreadPatch?.mainThreadRef?.value ?? null;
 		const mountedRef = state.mainThreadRefs.get(record.node) ?? null;
 		if (
 			(record.visible && !sameSnapshotValue(expectedRef, mountedRef)) ||
@@ -3242,10 +3317,13 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 				type: record.type,
 				generation: record.handle.generation,
 				parent: record.parent,
-				children: Object.freeze([...record.children]),
-				props: snapshotFirstTreeProps(record.props),
+				children:
+					record.children.length === 0
+						? EMPTY_FIRST_TREE_CHILDREN
+						: Object.freeze([...record.children]),
+				props: snapshotFirstTreeProps(record.props, cloneState),
 				visible: record.visible,
-				events: Object.freeze(events),
+				events,
 			}),
 		);
 	}

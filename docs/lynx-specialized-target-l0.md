@@ -335,6 +335,42 @@ in §3 and the extraction-first decision in §5.
 
 ## 8. Landed increments
 
+- **First-screen materialization off the batch (issue #66 Phase B).** The
+  synchronous first screen paints through direct Element PAPI emission, which
+  needs the rendered node tree and the background listeners the renderer
+  assigned — never the command batch. `applyLynxFirstScreenDirect` nonetheless
+  took a `UniversalHostBatch` and read only its `event` commands, so every
+  render built one first: at 10,000 fixture rows, 160,094 frozen command
+  objects, 140,082 of which the direct path walks past. It now takes an
+  envelope carrying the renderer, the version, and exactly those 20,012
+  listener bindings, and `batch` became a cached lazy property built from the
+  same bindings, so the staged path and the native-list fallback are unchanged
+  and the direct path stops paying for it. First-tree capture lost four
+  per-record allocations in the same slice: a whole prop patch planned only to
+  read back expected main-thread bindings, an empty event table spread and
+  sorted into an array that stayed empty, an empty child list copied and
+  frozen, and a per-record `Set`/`Map` cycle-tracking pair.
+
+  Same host, same session, alternated before/after/before/after over three
+  rounds, 10,000 rows, n=30 per side, each phase timed on a collected heap so
+  garbage one phase produces is not billed to the next:
+
+  | phase | before | after | change |
+  | --- | --- | --- | --- |
+  | first-screen render | 205.9 ms | 134.9 ms | −34.5% |
+  | direct apply | 468.2 ms | 412.4 ms | −11.9% |
+  | first-tree capture | 291.8 ms | 213.8 ms | −26.7% |
+  | direct-path total | 965.9 ms | 761.1 ms | −21.2% |
+
+  Minima shown; p25 and median agree within two points on every row. Without
+  that phase isolation the same experiment reads −8% overall with apply
+  appearing 8% *slower*, because the old arrangement's eager batch was
+  collected during the apply phase; forcing the collection out of the timed
+  spans is what separates the two. Building the batch on demand costs 50.1 ms
+  when something does read it, which on the direct path is never. The command
+  count is unchanged at 160,094 and byte-identical in shape, which is the
+  deterministic half of the claim.
+
 - **L2 Phase 0 (update-path attribution, decision gate: NO-GO for the delta
   candidate).** The stage harness decomposed only `create`, `replace`, and
   `append`, so the operations the A4/A5 wire cutover targets had a wall-clock

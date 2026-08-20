@@ -88,7 +88,7 @@ function paint(target: 'lynx' | 'universal', applier: 'direct' | 'staged'): Cell
 	const papi = createFakePAPI();
 	const container = createLynxHostContainer(papi, { root: 1 });
 	if (applier === 'direct') {
-		expect(applyLynxFirstScreenDirect(container, result.nodes, result.batch)).toBe(true);
+		expect(applyLynxFirstScreenDirect(container, result.nodes, result.envelope)).toBe(true);
 	} else {
 		prepareLynxHostBatch(container, result.batch).apply();
 	}

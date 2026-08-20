@@ -11,6 +11,7 @@ import {
 	createLynxHostContainer,
 	disposeLynxHostContainer,
 	prepareLynxHostBatch,
+	type LynxFirstScreenDirectEnvelope,
 	type LynxFirstScreenDirectNode,
 } from '../src/core/host-driver.js';
 import { LYNX_FIRST_TREE_STATE } from '../src/core/first-screen.js';
@@ -115,7 +116,7 @@ describe('direct first-screen applier', () => {
 			root: 1,
 			worklets: createLynxMainThreadWorkletRegistry(),
 		});
-		expect(applyLynxFirstScreenDirect(direct, result.nodes, result.batch)).toBe(true);
+		expect(applyLynxFirstScreenDirect(direct, result.nodes, result.envelope)).toBe(true);
 		const directTree = captureLynxFirstTree(direct);
 
 		const stagedResult = renderScene();
@@ -151,6 +152,44 @@ describe('direct first-screen applier', () => {
 		}
 	});
 
+	// The command batch is a view of the finished render rather than a step in
+	// it: the direct applier reads the envelope, so on a tree it accepts nothing
+	// materializes a batch at all. Which means whether some unrelated caller
+	// happened to read `result.batch` first must not decide what the user sees,
+	// and a batch read afterwards must still describe the page that was painted.
+	it('paints the same first screen whether or not the command batch was materialized', () => {
+		const eager = renderScene();
+		// Materialized before painting; the applier must neither need nor notice it.
+		const eagerCommands = eager.batch.commands;
+		expect(eagerCommands.length).toBeGreaterThan(0);
+		const eagerPapi = createFakePAPI();
+		const eagerContainer = createLynxHostContainer(eagerPapi, {
+			root: 1,
+			worklets: createLynxMainThreadWorkletRegistry(),
+		});
+		expect(applyLynxFirstScreenDirect(eagerContainer, eager.nodes, eager.envelope)).toBe(true);
+		const eagerTree = captureLynxFirstTree(eagerContainer);
+
+		const lazy = renderScene();
+		const lazyPapi = createFakePAPI();
+		const lazyContainer = createLynxHostContainer(lazyPapi, {
+			root: 1,
+			worklets: createLynxMainThreadWorkletRegistry(),
+		});
+		expect(applyLynxFirstScreenDirect(lazyContainer, lazy.nodes, lazy.envelope)).toBe(true);
+		const lazyTree = captureLynxFirstTree(lazyContainer);
+
+		expect(eagerTree).not.toBeNull();
+		expect(lazyTree).not.toBeNull();
+		expect(lazyTree!.snapshot).toEqual(eagerTree!.snapshot);
+		expect([...lazyTree![LYNX_FIRST_TREE_STATE].eventsByToken.keys()].sort()).toEqual(
+			[...eagerTree![LYNX_FIRST_TREE_STATE].eventsByToken.keys()].sort(),
+		);
+		expect(shape(lazyPapi.pages[0]!)).toEqual(shape(eagerPapi.pages[0]!));
+		// Read only now, after this render already painted a page.
+		expect(lazy.batch.commands).toEqual(eagerCommands);
+	});
+
 	it('keeps the staged fault discipline on a mid-walk PAPI throw', () => {
 		const result = renderScene();
 		// Fail deep into the walk so hosts exist on both sides of the fault.
@@ -159,14 +198,14 @@ describe('direct first-screen applier', () => {
 			root: 1,
 			worklets: createLynxMainThreadWorkletRegistry(),
 		});
-		expect(() => applyLynxFirstScreenDirect(container, result.nodes, result.batch)).toThrowError(
+		expect(() => applyLynxFirstScreenDirect(container, result.nodes, result.envelope)).toThrowError(
 			'injected create fault',
 		);
 		// The flush obligation survives the fault, further applies are refused,
 		// and the container still disposes cleanly — the same terminal contract
 		// the staged applier honors.
 		expect(papi.flushes()).toBe(1);
-		expect(() => applyLynxFirstScreenDirect(container, result.nodes, result.batch)).toThrowError(
+		expect(() => applyLynxFirstScreenDirect(container, result.nodes, result.envelope)).toThrowError(
 			/not accepting an initial tree/,
 		);
 		expect(() => disposeLynxHostContainer(container)).not.toThrowError();
@@ -182,15 +221,15 @@ describe('direct first-screen applier', () => {
 		});
 		expect(() =>
 			applyLynxFirstScreenDirect(container, result.nodes, {
-				...result.batch,
+				...result.envelope,
 				renderer: 'three',
-			} as never),
+			}),
 		).toThrowError(/is not "lynx"/);
 		expect(() =>
 			applyLynxFirstScreenDirect(container, result.nodes, {
-				...result.batch,
+				...result.envelope,
 				version: 0,
-			} as never),
+			}),
 		).toThrowError(/positive safe integer/);
 		expect(container.instanceCount).toBe(0);
 		expect(papi.flushes()).toBe(0);
@@ -216,11 +255,11 @@ describe('direct first-screen applier', () => {
 		for (let level = LEVELS; level >= 1; level--) {
 			node = { kind: 'host', id: level, type: 'view', props: {}, children: [node] };
 		}
-		const batch = { renderer: 'lynx', version: 1, commands: [] } as const;
+		const envelope: LynxFirstScreenDirectEnvelope = { renderer: 'lynx', version: 1, events: [] };
 
 		const papi = createFakePAPI();
 		const container = createLynxHostContainer(papi, { root: 1 });
-		expect(applyLynxFirstScreenDirect(container, [node], batch)).toBe(true);
+		expect(applyLynxFirstScreenDirect(container, [node], envelope)).toBe(true);
 
 		// Bottom-up attachment is what the staged path produces, so the leaf must
 		// be the deepest descendant of the single page root.
@@ -246,7 +285,7 @@ describe('direct first-screen applier', () => {
 			children: LynxFirstScreenDirectNode[] = [],
 		): LynxFirstScreenDirectNode => ({ kind: 'host', id, type: 'view', props: {}, children });
 		const roots = [host(1, [host(2, [host(3), host(4)]), host(5)]), host(6, [host(7, [host(8)])])];
-		const batch = { renderer: 'lynx', version: 1, commands: [] } as const;
+		const envelope: LynxFirstScreenDirectEnvelope = { renderer: 'lynx', version: 1, events: [] };
 
 		const papi = createFakePAPI();
 		const attachments: [number, number][] = [];
@@ -260,7 +299,7 @@ describe('direct first-screen applier', () => {
 			},
 			{ root: 1 },
 		);
-		expect(applyLynxFirstScreenDirect(container, roots, batch)).toBe(true);
+		expect(applyLynxFirstScreenDirect(container, roots, envelope)).toBe(true);
 		expect(attachments).toHaveLength(8);
 
 		const attachedAt = new Map<number, number>();
@@ -323,17 +362,15 @@ describe('direct first-screen applier', () => {
 				],
 			},
 		];
-		const batch = {
+		const envelope: LynxFirstScreenDirectEnvelope = {
 			renderer: 'lynx',
 			version: 1,
-			commands: [
-				{ op: 'event', id: 2, type: 'bindtap', listener: { id: 7, priority: 'discrete' } },
-			],
-		} as unknown as Parameters<typeof applyLynxFirstScreenDirect>[2];
+			events: [{ id: 2, type: 'bindtap', listener: { id: 7, priority: 'discrete' } }],
+		};
 
 		const papi = createFakePAPI();
 		const container = createLynxHostContainer(papi, { root: 1 });
-		expect(() => applyLynxFirstScreenDirect(container, roots, batch)).toThrowError(
+		expect(() => applyLynxFirstScreenDirect(container, roots, envelope)).toThrowError(
 			/main-thread event "main-thread:bindtap" conflicts with background event "bindtap"/,
 		);
 		// Refused, not half-painted: the page is untouched and nothing flushed.
@@ -355,23 +392,21 @@ describe('direct first-screen applier', () => {
 		// Same host, different native channel: not a collision. Installing the
 		// worklet needs a registry this container has no reason to own, so the
 		// assertion is scoped to the rejection under test rather than to paint.
-		const batch = {
+		const envelope: LynxFirstScreenDirectEnvelope = {
 			renderer: 'lynx',
 			version: 1,
-			commands: [
-				{ op: 'event', id: 1, type: 'bindlongpress', listener: { id: 7, priority: 'discrete' } },
-			],
-		} as unknown as Parameters<typeof applyLynxFirstScreenDirect>[2];
+			events: [{ id: 1, type: 'bindlongpress', listener: { id: 7, priority: 'discrete' } }],
+		};
 
 		const container = createLynxHostContainer(createFakePAPI(), { root: 1 });
-		expect(() => applyLynxFirstScreenDirect(container, roots, batch)).not.toThrowError(
+		expect(() => applyLynxFirstScreenDirect(container, roots, envelope)).not.toThrowError(
 			/conflicts with background event/,
 		);
 	});
 
 	it('declines native-list trees so the staged path keeps owning them', () => {
 		const listResult = {
-			batch: Object.freeze({ renderer: 'lynx', version: 1, commands: Object.freeze([]) }),
+			envelope: Object.freeze({ renderer: 'lynx', version: 1, events: Object.freeze([]) }),
 			nodes: [
 				{
 					kind: 'host' as const,
@@ -387,7 +422,7 @@ describe('direct first-screen applier', () => {
 			root: 1,
 			worklets: createLynxMainThreadWorkletRegistry(),
 		});
-		expect(applyLynxFirstScreenDirect(container, listResult.nodes, listResult.batch as never)).toBe(
+		expect(applyLynxFirstScreenDirect(container, listResult.nodes, listResult.envelope)).toBe(
 			false,
 		);
 		expect(container.instanceCount).toBe(0);

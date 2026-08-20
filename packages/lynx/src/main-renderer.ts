@@ -10,6 +10,7 @@ import type {
 	LinkedStatePrevious,
 	UniversalComponent,
 	UniversalContext,
+	UniversalEventListenerDescriptor,
 	UniversalEventPriority,
 	UniversalHostBatch,
 	UniversalHostCommand,
@@ -1001,25 +1002,47 @@ function visitHosts(
 }
 
 /**
- * Walk hosts carrying resolved visibility, using the same inheritance rule the
- * host driver applies: a host is visible when it is not itself hidden and no
- * host above it is. Hidden hosts are still created and still receive their
- * props; only what the host may *announce* is gated.
+ * The one walk the first screen always pays: count hosts, and give every
+ * visible host's authored events their deterministic listener ids. Visibility
+ * inherits the way the host driver applies it — a host is visible when it is
+ * not itself hidden and no host above it is. Hidden hosts are still created and
+ * still receive their props; only what the host may *announce* is gated.
+ *
+ * The background gates first-screen event emission on that same resolved
+ * visibility (`universal-core.ts`, `isVisible &&`), announcing a listener only
+ * once the subtree is shown. Assigning one here for a hidden host makes the two
+ * sides disagree by exactly that binding, and a first screen whose event
+ * bindings do not match the background's is unadoptable: it repaints from
+ * scratch on every launch and the taps buffered in between are dropped. A
+ * hidden tab, a collapsed drawer, and a pre-rendered off-screen route are all
+ * this shape.
  */
-function visitHostsWithVisibility(
+function collectFirstScreenEvents(
 	nodes: readonly FirstScreenNode[],
 	parentVisible: boolean,
-	visit: (host: FirstScreenHost, visible: boolean) => void,
-): void {
+	attempt: FirstScreenAttempt,
+	events: LynxFirstScreenResultEvent[],
+): number {
+	let hosts = 0;
 	for (const node of nodes) {
 		if (node.kind !== 'host') {
-			visitHostsWithVisibility(node.children, parentVisible, visit);
+			hosts += collectFirstScreenEvents(node.children, parentVisible, attempt, events);
 			continue;
 		}
+		hosts++;
 		const visible = parentVisible && node.visibility !== 'hidden';
-		visit(node, visible);
-		visitHostsWithVisibility(node.children, visible, visit);
+		if (visible) {
+			for (const [type, priority] of node.events) {
+				// The array is frozen once at the end; the bindings themselves are
+				// not, because unlike the batch they are never handed across a
+				// boundary — and a page with a listener on every row would pay one
+				// freeze per binding for a value only the applier next door reads.
+				events.push({ id: node.id, type, listener: { id: attempt.nextListener++, priority } });
+			}
+		}
+		hosts += collectFirstScreenEvents(node.children, visible, attempt, events);
 	}
+	return hosts;
 }
 
 function physicalChildren(
@@ -1046,9 +1069,56 @@ function stagePlacements(
 	}
 }
 
+const FIRST_SCREEN_RENDERER = 'lynx';
+const FIRST_SCREEN_VERSION = 1;
+
 function freezeBatch(commands: UniversalHostCommand[]): UniversalHostBatch {
 	for (const command of commands) Object.freeze(command);
-	return Object.freeze({ renderer: 'lynx', version: 1, commands: Object.freeze(commands) });
+	return Object.freeze({
+		renderer: FIRST_SCREEN_RENDERER,
+		version: FIRST_SCREEN_VERSION,
+		commands: Object.freeze(commands),
+	});
+}
+
+/**
+ * The wire product: one `create` per host, the placements, the root inserts,
+ * and the hidden tail. At 10k fixture rows that is well over a hundred thousand
+ * command objects, each frozen — and on a tree the direct applier accepts,
+ * nothing reads a single one of them. So it is built the first time
+ * `result.batch` is read and not before: the native-list fallback and callers
+ * that want the batch as a value still get it, and the path that does not need
+ * it stops paying for it.
+ *
+ * The `event` commands are re-projected from the bindings the envelope already
+ * carries rather than assigned a second time here, so the listener ids the two
+ * paths see cannot drift apart no matter when — or whether — this runs.
+ */
+function buildFirstScreenBatch(
+	nodes: readonly FirstScreenNode[],
+	events: readonly LynxFirstScreenResultEvent[],
+): UniversalHostBatch {
+	const commands: UniversalHostCommand[] = [];
+	visitHosts(nodes, (host) => {
+		commands.push({ op: 'create', id: host.id, type: host.type, props: host.props });
+	});
+	for (const binding of events) {
+		commands.push({ op: 'event', id: binding.id, type: binding.type, listener: binding.listener });
+	}
+	stagePlacements(nodes, commands);
+	for (const host of physicalChildren(nodes)) {
+		commands.push({ op: 'insert', parent: null, id: host.id, before: null });
+	}
+	const hidden: FirstScreenHost[] = [];
+	const collectHiddenPostOrder = (children: readonly FirstScreenNode[]): void => {
+		for (const child of children) {
+			collectHiddenPostOrder(child.children);
+			if (child.kind === 'host' && child.visibility === 'hidden') hidden.push(child);
+		}
+	};
+	collectHiddenPostOrder(nodes);
+	for (const host of hidden) commands.push({ op: 'visibility', id: host.id, state: 'hidden' });
+	return freezeBatch(commands);
 }
 
 /** Structural node view consumed by the direct first-screen applier. */
@@ -1061,15 +1131,42 @@ export interface LynxFirstScreenResultNode {
 	readonly children: readonly LynxFirstScreenResultNode[];
 }
 
+/** One background listener this pass assigned, addressed to a rendered host. */
+export interface LynxFirstScreenResultEvent {
+	readonly id: number;
+	readonly type: string;
+	readonly listener: UniversalEventListenerDescriptor;
+}
+
+/**
+ * What the direct applier reads in place of the command batch: the envelope
+ * fields it validates, and the background listeners this pass assigned. The
+ * applier declares the same shape as `LynxFirstScreenDirectEnvelope` rather
+ * than importing this one, for the reason the module header gives — this file
+ * stays free of the host driver.
+ */
+export interface LynxFirstScreenResultEnvelope {
+	readonly renderer: string;
+	readonly version: number;
+	readonly events: readonly LynxFirstScreenResultEvent[];
+}
+
 export interface LynxFirstScreenRenderResult {
+	/**
+	 * The batch as a value, built on first read and then cached. It stays the
+	 * wire and staged-apply product; it is no longer on the direct path, which
+	 * reads `envelope` instead.
+	 */
 	readonly batch: UniversalHostBatch;
 	/**
 	 * The rendered record tree, id-assigned, for direct PAPI emission
 	 * (issue-58 L3). The batch stays the wire/adoption product; the applier
-	 * reads listener ids from the batch's event commands so their
-	 * deterministic assignment stays single-sourced here.
+	 * takes its listener ids from `envelope` below, so their deterministic
+	 * assignment stays single-sourced here whether or not a batch is built.
 	 */
 	readonly nodes: readonly LynxFirstScreenResultNode[];
+	/** Envelope for `applyLynxFirstScreenDirect`; costs one walk, not a batch. */
+	readonly envelope: LynxFirstScreenResultEnvelope;
 	readonly hostCount: number;
 	readonly logicalCount: number;
 }
@@ -1116,47 +1213,20 @@ export function renderLynxFirstScreen<Props>(
 		CURRENT_ATTEMPT = null;
 	}
 
-	const commands: UniversalHostCommand[] = [];
-	let hostCount = 0;
-	visitHosts(nodes, (host) => {
-		hostCount++;
-		commands.push({ op: 'create', id: host.id, type: host.type, props: host.props });
+	const events: LynxFirstScreenResultEvent[] = [];
+	const hostCount = collectFirstScreenEvents(nodes, true, attempt, events);
+	const envelope: LynxFirstScreenResultEnvelope = Object.freeze({
+		renderer: FIRST_SCREEN_RENDERER,
+		version: FIRST_SCREEN_VERSION,
+		events: Object.freeze(events),
 	});
-	// The background gates first-screen event emission on the host's resolved
-	// visibility (`universal-core.ts`, `isVisible &&`), announcing a listener
-	// only once the subtree is shown. Emitting one here for a hidden host makes
-	// the two batches disagree by exactly that command, and a first screen whose
-	// event bindings do not match the background's is unadoptable: it repaints
-	// from scratch on every launch and the taps buffered in between are dropped.
-	// A hidden tab, a collapsed drawer, and a pre-rendered off-screen route are
-	// all this shape.
-	visitHostsWithVisibility(nodes, true, (host, visible) => {
-		if (!visible) return;
-		for (const [type, priority] of host.events) {
-			commands.push({
-				op: 'event',
-				id: host.id,
-				type,
-				listener: { id: attempt.nextListener++, priority },
-			});
-		}
-	});
-	stagePlacements(nodes, commands);
-	for (const host of physicalChildren(nodes)) {
-		commands.push({ op: 'insert', parent: null, id: host.id, before: null });
-	}
-	const hidden: FirstScreenHost[] = [];
-	const collectHiddenPostOrder = (children: readonly FirstScreenNode[]): void => {
-		for (const child of children) {
-			collectHiddenPostOrder(child.children);
-			if (child.kind === 'host' && child.visibility === 'hidden') hidden.push(child);
-		}
-	};
-	collectHiddenPostOrder(nodes);
-	for (const host of hidden) commands.push({ op: 'visibility', id: host.id, state: 'hidden' });
+	let batch: UniversalHostBatch | null = null;
 	return Object.freeze({
-		batch: freezeBatch(commands),
+		get batch(): UniversalHostBatch {
+			return (batch ??= buildFirstScreenBatch(nodes, events));
+		},
 		nodes,
+		envelope,
 		hostCount,
 		logicalCount: attempt.nextId - 1,
 	});
