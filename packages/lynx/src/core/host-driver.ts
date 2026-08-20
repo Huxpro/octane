@@ -2935,6 +2935,99 @@ export interface LynxFirstScreenDirectEnvelope {
 	readonly events: readonly LynxFirstScreenDirectEvent[];
 }
 
+/**
+ * Direct host children of one node, with ranges transparent, as records see
+ * them. Iterative for the same reason its caller is: a chain of ranges is a
+ * chain of nested directives, and nothing here may cap a depth the renderer
+ * that produced the tree accepted. Children are pushed in reverse so hosts come
+ * back in document order, which is the order the list plan indexes them by.
+ */
+function firstScreenHostChildren(
+	nodes: readonly LynxFirstScreenDirectNode[],
+): LynxFirstScreenDirectNode[] {
+	const output: LynxFirstScreenDirectNode[] = [];
+	const stack: LynxFirstScreenDirectNode[] = [];
+	for (let index = nodes.length - 1; index >= 0; index--) stack.push(nodes[index]!);
+	while (stack.length !== 0) {
+		const node = stack.pop()!;
+		if (node.kind === 'host') {
+			output.push(node);
+			continue;
+		}
+		for (let index = node.children.length - 1; index >= 0; index--) {
+			stack.push(node.children[index]!);
+		}
+	}
+	return output;
+}
+
+/**
+ * Would background adoption refuse a first screen of this shape?
+ * `captureLynxFirstTree` returns null for any root holding a native `<list>`,
+ * whose rows the platform materializes through main-local recycling callbacks
+ * rather than as ordinary hosts. Such a first screen is painted and then
+ * immediately taken back out, so answering before the container exists lets the
+ * caller skip building what it would only discard.
+ *
+ * The answer is true **only** for a tree the staged apply would have accepted.
+ * Every list diagnostic that path can raise has to keep firing from where it
+ * fires today, so this runs the same validators against the same nodes — the
+ * two `list.js` entry points below, plus the two placement rules the prepare
+ * walk owns — and reports a tree that trips any of them as ordinary work. What
+ * is skipped is therefore only ever a build whose outcome is already settled,
+ * never a build that would have reported something.
+ *
+ * Ranges are transparent. `@for` and friends produce no record, and the staged
+ * checks read a record's host parent, so a `<list-item>` under a range under a
+ * `<list>` is placed correctly — the shape every list fixture has.
+ */
+export function firstScreenTreeIsUnadoptable(nodes: readonly LynxFirstScreenDirectNode[]): boolean {
+	// Iterative for the same reason its neighbours are: nothing in the
+	// first-screen pipeline may impose a tree-depth ceiling the renderer that
+	// produced the tree does not have. Each frame carries the nearest enclosing
+	// host type, which ranges pass through unchanged, and whether any ancestor
+	// was a list.
+	const stack: {
+		nodes: readonly LynxFirstScreenDirectNode[];
+		hostParent: string | undefined;
+		insideList: boolean;
+	}[] = [{ nodes, hostParent: undefined, insideList: false }];
+	let found = false;
+	while (stack.length !== 0) {
+		const frame = stack.pop()!;
+		for (const node of frame.nodes) {
+			let hostParent = frame.hostParent;
+			let insideList = frame.insideList;
+			if (node.kind === 'host') {
+				if (node.type === 'list') {
+					// `nested <list> hosts are not supported by the initial recycling
+					// contract.`, raised by the prepare walk.
+					if (frame.insideList) return false;
+					try {
+						// Everything `listItems` validates when the native list state is
+						// built: child type, item-key presence and shape, the optional
+						// metadata types, and key uniqueness across one list.
+						const items = firstScreenHostChildren(node.children).map((child) =>
+							createLynxListItemDescriptor(child.id, child.type ?? '', child.props ?? {}),
+						);
+						planLynxListUpdate([], items);
+					} catch {
+						return false;
+					}
+					found = true;
+					insideList = true;
+				} else if (node.type === 'list-item' && frame.hostParent !== 'list') {
+					// `<list-item> N must be placed directly under a <list>.`
+					return false;
+				}
+				hostParent = node.type;
+			}
+			if (node.children.length !== 0) stack.push({ nodes: node.children, hostParent, insideList });
+		}
+	}
+	return found;
+}
+
 function firstScreenTreeHasList(nodes: readonly LynxFirstScreenDirectNode[]): boolean {
 	// Iterative for the same reason the applier below is: nothing in the
 	// first-screen pipeline may impose a tree-depth ceiling the renderer that

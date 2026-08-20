@@ -335,6 +335,66 @@ in §3 and the extraction-first decision in §5.
 
 ## 8. Landed increments
 
+- **An unadoptable first screen is declined before it is painted (issue #66
+  Phase C).** A page holding a native `<list>` built its whole command batch,
+  created a host container, ran the staged prepare and apply, planned the native
+  list, failed adoption capture, and tore all of it back out — to reach a verdict
+  that never depended on any of it having happened. `captureLynxFirstTree`
+  refuses every root holding a `<list>`, and the renderer's record tree already
+  carries every element type and prop that refusal reads. The question is now
+  asked there, before the container exists, and a page whose answer is "decline"
+  retires with no container and no host traffic at all.
+
+  Measured on the real `installLynxMainThread` first-screen path over a 1,000-row
+  fixture — 4,002 logical hosts, one `<view>` shell wrapping the container, three
+  `<view>` children per row — with the arms taken by stashing the change, 21
+  samples per pass after 3 warmups, each in a fresh environment. A second fixture
+  differing only in element types (`view`/`view` instead of `list`/`list-item`) is
+  the regression control:
+
+  | fixture | PAPI calls | median first screen |
+  | --- | --- | --- |
+  | native list, before | 18 | 37.8 ms |
+  | native list, after | 0 | 5.1 ms |
+  | list-free control, before | 20,012 | 107.9 ms |
+  | list-free control, after | 20,012 | 111.2 ms |
+
+  Medians of four before-passes and three after-passes. The list distributions
+  are disjoint: the slowest after-sample is 12.0 ms and the fastest before-sample
+  30.8 ms. Almost none of the removed cost was host traffic — an unscrolled
+  native list creates no cells, because the platform materializes rows through
+  the recycling callbacks — so those 18 calls stand for the batch, the container,
+  the prepare and apply walks, the list plan over 1,000 descriptors, the capture,
+  and the teardown behind them. The 5.1 ms that remains is the render that
+  produces the records the verdict reads.
+
+  The control resolves nothing end to end: its between-arm spread is the size of
+  its within-arm spread. Timed directly instead, over 200 calls after 200
+  warmups on the same rendered tree, the walk costs 0.063 ms median (p95 0.117 ms)
+  on the list-free tree and 0.501 ms on the list tree, where it runs the real
+  validators over 1,000 descriptors. 0.063 ms is 0.06% of that page's first
+  screen.
+
+  Ranges are transparent to the walk, which is what makes it fire on real code
+  rather than only on hand-built trees: a `<list>` takes its rows from a keyed
+  `@for`, so a range sits between the list and every `<list-item>` and the rows
+  are not the list's own children in the record tree. A reader stopping at the
+  list's immediate children would validate an empty list, decline, and swallow
+  every row defect on the way. Both walks are iterative for the reason the
+  neighbouring first-screen walks are (#90): a range chain is a chain of nested
+  directives, and nothing here may cap a depth the renderer accepted.
+
+  The pre-check answers `true` only for a tree the staged path would have
+  accepted, because skipping a build must never skip a diagnostic. Rather than
+  restating the list rules it calls `createLynxListItemDescriptor` and
+  `planLynxListUpdate` over the same nodes and treats a throw as "not a decline",
+  tracking the prepare walk's nested-`<list>` and `<list-item>`-placement rules
+  alongside; a host offering no list PAPI is excluded too, since a page that
+  cannot build a `<list>` at all needs that diagnostic rather than a skip. Six
+  tests hold each of those diagnostics to its current site. `captureLynxFirstTree`
+  stays the authority: a shape the pre-check does not claim settles exactly as it
+  does today, having paid for the paint.
+
 - **First-screen records built without spread-and-delete (issue #66 Phase B).**
   Every host the first screen rendered copied its incoming props into a new
   object and then deleted `key`, `ref`, `children`, and each event-named prop

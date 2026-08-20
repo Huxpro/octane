@@ -118,6 +118,142 @@ const FeedScene = defineFirstScreenComponent('lynx', () =>
 	firstScreenValue(feedPlan, ['feed-shell', 'feed', 'row-0']),
 );
 
+// Two list topologies the staged apply rejects. They exist so the pre-check
+// that declines an unadoptable first screen before building it cannot quietly
+// swallow a diagnostic: it must report a malformed tree as ordinary work and
+// leave the staged path to throw.
+const nestedFeedPlan = firstScreenPlan('lynx', {
+	kind: 'host',
+	type: 'view',
+	bindings: [['id', 0]],
+	children: [
+		{
+			kind: 'host',
+			type: 'list',
+			bindings: [['id', 1]],
+			children: [
+				{
+					kind: 'host',
+					type: 'list-item',
+					bindings: [['item-key', 2]],
+					children: [{ kind: 'host', type: 'list', bindings: [['id', 3]] }],
+				},
+			],
+		},
+	],
+});
+
+const NestedFeedScene = defineFirstScreenComponent('lynx', () =>
+	firstScreenValue(nestedFeedPlan, ['feed-shell', 'feed', 'row-0', 'inner-feed']),
+);
+
+const listChildPlan = firstScreenPlan('lynx', {
+	kind: 'host',
+	type: 'view',
+	bindings: [['id', 0]],
+	children: [
+		{
+			kind: 'host',
+			type: 'list',
+			bindings: [['id', 1]],
+			children: [{ kind: 'host', type: 'view', bindings: [['id', 2]] }],
+		},
+	],
+});
+
+const ListChildScene = defineFirstScreenComponent('lynx', () =>
+	firstScreenValue(listChildPlan, ['feed-shell', 'feed', 'not-a-row']),
+);
+
+const duplicateRowPlan = firstScreenPlan('lynx', {
+	kind: 'host',
+	type: 'view',
+	bindings: [['id', 0]],
+	children: [
+		{
+			kind: 'host',
+			type: 'list',
+			bindings: [['id', 1]],
+			children: [
+				{ kind: 'host', type: 'list-item', bindings: [['item-key', 2]] },
+				{ kind: 'host', type: 'list-item', bindings: [['item-key', 3]] },
+			],
+		},
+	],
+});
+
+const DuplicateRowScene = defineFirstScreenComponent('lynx', () =>
+	firstScreenValue(duplicateRowPlan, ['feed-shell', 'feed', 'row-0', 'row-0']),
+);
+
+// The stray row sits beside a well-formed list on purpose: a tree with no list
+// at all is never a decline candidate, so it would not exercise the placement
+// rule the pre-check has to honour.
+const strayRowPlan = firstScreenPlan('lynx', {
+	kind: 'host',
+	type: 'view',
+	bindings: [['id', 0]],
+	children: [
+		{
+			kind: 'host',
+			type: 'list',
+			bindings: [['id', 1]],
+			children: [{ kind: 'host', type: 'list-item', bindings: [['item-key', 2]] }],
+		},
+		{ kind: 'host', type: 'list-item', bindings: [['item-key', 3]] },
+	],
+});
+
+const StrayRowScene = defineFirstScreenComponent('lynx', () =>
+	firstScreenValue(strayRowPlan, ['feed-shell', 'feed', 'row-0', 'stray-row']),
+);
+
+// The shape authored code actually produces. A `<list>` gets its rows from a
+// keyed `@for`, so a range sits between the list and every `<list-item>` and the
+// rows are not the list's own children in the record tree. The fixtures above
+// nest the rows directly, which no `.tsrx` does; a reader of the record tree
+// that stopped at the list's immediate children would find no rows here.
+const keyedRowPlan = firstScreenPlan('lynx', {
+	kind: 'host',
+	type: 'list-item',
+	bindings: [['item-key', 0]],
+});
+
+const keyedFeedPlan = firstScreenPlan('lynx', {
+	kind: 'host',
+	type: 'view',
+	bindings: [['id', 0]],
+	children: [
+		{
+			kind: 'host',
+			type: 'list',
+			bindings: [['id', 1]],
+			children: [{ kind: 'slot', slot: 2 }],
+		},
+	],
+});
+
+// Rows carry their loop key and their `item-key` separately, because they are
+// separate contracts: `@for` rejects a duplicate loop key on its own, before any
+// list rule is consulted, so a fixture reusing one value for both could never
+// reach the list's own uniqueness check.
+const KeyedFeedScene = defineFirstScreenComponent(
+	'lynx',
+	(props: { readonly rows: readonly (readonly [key: string, itemKey: string])[] }) =>
+		firstScreenValue(keyedFeedPlan, [
+			'feed-shell',
+			'feed',
+			firstScreenFor(
+				props.rows,
+				(row) => row[0],
+				(row) => firstScreenValue(keyedRowPlan, [row[1]]),
+				null,
+				true,
+				true,
+			),
+		]),
+);
+
 interface FirstScreenLinkedRuntime {
 	useLinkedState?<Source, Value>(
 		source: Source,
@@ -801,7 +937,7 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 	// rows through main-local callbacks and owns the resulting cells. Declining
 	// the synchronous paint is therefore an ordinary outcome, and must not be
 	// reported the way the broken host in the next test is.
-	it('declines a synchronous first screen holding a native list without faulting', () => {
+	it('declines a synchronous first screen holding a native list without painting it', () => {
 		// The renderer captures the flush when the runtime installs, so this has to
 		// wrap it before that; each flush reports the page as the batch left it.
 		const painted: string[] = [];
@@ -819,9 +955,11 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 
 		expect(firstScreenRoot.render(FeedScene, {})).toBeNull();
 
-		// The tree really was built, then retired, so the background owns the page
-		// alone rather than rendering beneath a duplicate.
-		expect(painted.some((html) => html.includes('id="feed"'))).toBe(true);
+		// The verdict does not depend on the tree existing, so the tree is never
+		// built: the platform is never asked to compose a page that is only going
+		// to be taken back out from under the background.
+		expect(painted.every((html) => !html.includes('id="feed"'))).toBe(true);
+		expect(painted.every((html) => !html.includes('id="feed-shell"'))).toBe(true);
 		expect(dom.window.document.querySelector('#feed')).toBeNull();
 		expect(dom.window.document.querySelector('#feed-shell')).toBeNull();
 		expect(main.firstScreenSnapshot()).toBeNull();
@@ -844,13 +982,17 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		]);
 	});
 
-	it('retries deferred cleanup for a declined first screen before announcing readiness', () => {
-		let allowCleanup = false;
+	it('announces readiness for a declined first screen with no cleanup to defer', () => {
+		// A removal that always throws is what a declined first screen used to have
+		// to survive: it was painted first, so retiring it had to take every element
+		// back out, and a failing remove withheld background readiness until a retry
+		// succeeded. Nothing is built now, so nothing is removed, and readiness is
+		// announced on the first attempt with the hostile remove never called.
+		let removals = 0;
 		const { dom, main } = installEnvironment((target) => {
-			const remove = target.__RemoveElement as (parent: object, child: object) => unknown;
-			target.__RemoveElement = (parent: object, child: object) => {
-				if (!allowCleanup) throw new Error('transient declined-source remove failure');
-				return remove(parent, child);
+			target.__RemoveElement = () => {
+				removals++;
+				throw new Error('declined first screens must have nothing to remove');
 			};
 		});
 		const inbound: LynxBackgroundInboundMessage[] = [];
@@ -860,11 +1002,12 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 
 		expect(firstScreenRoot.render(FeedScene, {})).toBeNull();
 
-		expect(dom.window.document.querySelector('#feed-shell')).not.toBeNull();
+		expect(removals).toBe(0);
+		expect(dom.window.document.querySelector('#feed-shell')).toBeNull();
 		expect(main.firstScreenSnapshot()).toBeNull();
-		expect(inbound).toEqual([]);
+		expect(main.diagnostics()).toEqual([]);
+		expect(inbound).toEqual([expect.objectContaining({ type: 'main-ready', request: 0 })]);
 
-		allowCleanup = true;
 		backgroundContext().dispatchEvent({
 			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
 			data: {
@@ -874,10 +1017,114 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 				request: 52,
 			},
 		});
+		expect(removals).toBe(0);
+		expect(inbound).toEqual([
+			expect.objectContaining({ type: 'main-ready', request: 0 }),
+			expect.objectContaining({ type: 'main-ready', request: 52 }),
+		]);
+	});
 
+	it('declines a native list whose rows come from a keyed loop', () => {
+		// Rows reach a `<list>` through `@for` in every real page, which puts a
+		// range between the list and each `<list-item>`. Declining has to see
+		// through that, or it would only ever fire on a shape no `.tsrx` produces.
+		const painted: string[] = [];
+		const { dom, main } = installEnvironment((target) => {
+			const hostFlush = target.__FlushElementTree as (...args: unknown[]) => void;
+			target.__FlushElementTree = (...args: unknown[]) => {
+				hostFlush.apply(target, args);
+				painted.push((args[0] as { innerHTML?: string } | undefined)?.innerHTML ?? '');
+			};
+		});
+
+		expect(
+			firstScreenRoot.render(KeyedFeedScene, {
+				rows: [
+					['k0', 'row-0'],
+					['k1', 'row-1'],
+					['k2', 'row-2'],
+				],
+			}),
+		).toBeNull();
+
+		expect(painted.every((html) => !html.includes('id="feed"'))).toBe(true);
+		expect(dom.window.document.querySelector('#feed')).toBeNull();
 		expect(dom.window.document.querySelector('#feed-shell')).toBeNull();
 		expect(main.firstScreenSnapshot()).toBeNull();
-		expect(inbound).toEqual([expect.objectContaining({ type: 'main-ready', request: 52 })]);
+		expect(main.diagnostics()).toEqual([]);
+	});
+
+	it('still reports a duplicated item-key a keyed loop produced', () => {
+		// The same range transparency has to carry the diagnostics too: rows the
+		// pre-check cannot see are rows whose defects it cannot rule out, and it
+		// would then decline a tree the staged apply would have rejected.
+		const { main } = installEnvironment();
+
+		expect(() =>
+			firstScreenRoot.render(KeyedFeedScene, {
+				rows: [
+					['k0', 'row-0'],
+					['k1', 'row-1'],
+					['k2', 'row-0'],
+				],
+			}),
+		).toThrow(/item-key "row-0" is duplicated in one <list>/);
+		expect(main.firstScreenSnapshot()).toBeNull();
+	});
+
+	// Declining before the tree is built must not cost a diagnostic. Each of
+	// these is a list defect the staged apply reports, and each has to keep being
+	// reported from where it is reported today rather than settling as a quiet
+	// `skipped`.
+	it('still reports a nested native list rather than declining it silently', () => {
+		const { main } = installEnvironment();
+
+		expect(() => firstScreenRoot.render(NestedFeedScene, {})).toThrow(
+			/nested <list> hosts are not supported/,
+		);
+		expect(main.firstScreenSnapshot()).toBeNull();
+	});
+
+	it('still reports a non-list-item child of a list rather than declining it silently', () => {
+		const { main } = installEnvironment();
+
+		expect(() => firstScreenRoot.render(ListChildScene, {})).toThrow(
+			/<list> child \d+ must be a <list-item>/,
+		);
+		expect(main.firstScreenSnapshot()).toBeNull();
+	});
+
+	it('still reports a duplicated item-key rather than declining it silently', () => {
+		const { main } = installEnvironment();
+
+		expect(() => firstScreenRoot.render(DuplicateRowScene, {})).toThrow(
+			/item-key "row-0" is duplicated in one <list>/,
+		);
+		expect(main.firstScreenSnapshot()).toBeNull();
+	});
+
+	it('still reports a list item outside a list rather than declining it silently', () => {
+		const { main } = installEnvironment();
+
+		expect(() => firstScreenRoot.render(StrayRowScene, {})).toThrow(
+			/must be placed directly under a <list>/,
+		);
+		expect(main.firstScreenSnapshot()).toBeNull();
+	});
+
+	it('still reports a host that cannot build a list rather than declining it silently', () => {
+		// Without the list PAPI pair a `<list>` cannot be built at all. That is a
+		// fact about the host, not a page to skip quietly, so the tree keeps going
+		// and fails where it fails today.
+		const { main } = installEnvironment((target) => {
+			delete target.__CreateList;
+			delete target.__UpdateListCallbacks;
+		});
+
+		expect(() => firstScreenRoot.render(FeedScene, {})).toThrow(
+			/requires __CreateList and __UpdateListCallbacks/,
+		);
+		expect(main.firstScreenSnapshot()).toBeNull();
 	});
 
 	it('retains a failed pre-capture source and retries cleanup for background readiness', () => {
