@@ -381,10 +381,16 @@ in §3 and the extraction-first decision in §5.
   dismissed.** Six alternating AB/BA passes settle `selectStorm@10k` at 0.997
   head/base — the apparent +34% was window noise — but leave create at 1.032,
   update10th at 1.042, and updateStorm at 1.076, consistent in both orderings
-  and corroborated by the stage arm's +4.2%. Mechanism unidentified. The
-  hypothesis to test first is that #109's record-shape change sits on a path
-  shared with the staged update route, so the mutation cells pay for a
-  first-screen optimization they never use.
+  and corroborated by the stage arm's +4.2%. **It is not a logic change on the
+  mutation path**: of the nine source files the stack edits, two are behind a
+  per-root flag, two are profiling-only, three are first-screen, the compiler's
+  one-character slot-kind flip is read by nothing that branches on it, and every
+  `host-driver.ts` hunk lands in a first-screen function or the once-per-root
+  adoption branch of `prepareLynxHostBatch`. Nothing a mutation cell runs after
+  adoption was edited. The remaining candidates are the bigger main-thread
+  bundle every cell executes inside (+4,202 B raw) and slow host drift that AB/BA
+  alternation does not control; neither is claimed, and the first is testable by
+  padding the base bundle to the head's size.
 
   Closing the create clause needs a milestone that owns host materialization:
   PAPI creation plus other apply is 77% of create and has been at every
