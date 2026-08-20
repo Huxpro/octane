@@ -2400,16 +2400,21 @@ function invokeNativeListCallback<Node extends LynxElementRef, Result>(
 	}
 }
 
-function createNativeListNode<Node extends LynxElementRef>(
+/**
+ * The three recycling callbacks Lynx invokes against a live `<list>`, bound to
+ * one host state and container.
+ *
+ * The list state arrives through `resolve` rather than as a value because
+ * creation is circular: `__CreateList` needs the callbacks, and the state needs
+ * the node that call returns. Adoption has no such problem — it holds a state
+ * that already exists — but both callers go through the same indirection so
+ * that what a live list does is defined once instead of twice.
+ */
+function bindNativeListCallbacks<Node extends LynxElementRef>(
 	state: LynxHostState<Node>,
 	container: LynxHostContainer<Node>,
-	record: LynxHostRecord<Node>,
-): Node {
-	const listPAPI = state.papi.list;
-	if (listPAPI === undefined) {
-		throw hostError('<list> requires __CreateList and __UpdateListCallbacks.');
-	}
-	let listState: LynxNativeListState<Node> | undefined;
+	resolve: () => LynxNativeListState<Node> | undefined,
+): Pick<LynxNativeListState<Node>, 'componentAtIndex' | 'enqueueComponent' | 'componentAtIndexes'> {
 	const componentAtIndex: LynxListComponentAtIndex<Node> = (
 		_list,
 		_listId,
@@ -2418,6 +2423,7 @@ function createNativeListNode<Node extends LynxElementRef>(
 		enableReuseNotification,
 	) =>
 		invokeNativeListCallback(state, -1, () => {
+			const listState = resolve();
 			if (listState === undefined || listState.disposed) return -1;
 			const result = materializeListItem(state, container, listState, index);
 			state.papi.flush(result.tree.node, {
@@ -2440,6 +2446,7 @@ function createNativeListNode<Node extends LynxElementRef>(
 		});
 	const enqueueComponent: LynxListEnqueueComponent<Node> = (_list, _listId, sign) => {
 		invokeNativeListCallback(state, undefined, () => {
+			const listState = resolve();
 			if (listState === undefined || listState.disposed) return;
 			const cell = listState.cellsBySign.get(sign);
 			if (cell === undefined) return;
@@ -2461,9 +2468,10 @@ function createNativeListNode<Node extends LynxElementRef>(
 		asyncFlush,
 	) => {
 		invokeNativeListCallback(state, undefined, () => {
+			const listState = resolve();
 			if (listState === undefined || listState.disposed) return;
 			const results = indexes.map((index) =>
-				materializeListItem(state, container, listState!, index),
+				materializeListItem(state, container, listState, index),
 			);
 			if (asyncFlush) {
 				for (const result of results) {
@@ -2496,6 +2504,24 @@ function createNativeListNode<Node extends LynxElementRef>(
 			emitAttachments(state, attachments);
 		});
 	};
+	return { componentAtIndex, enqueueComponent, componentAtIndexes };
+}
+
+function createNativeListNode<Node extends LynxElementRef>(
+	state: LynxHostState<Node>,
+	container: LynxHostContainer<Node>,
+	record: LynxHostRecord<Node>,
+): Node {
+	const listPAPI = state.papi.list;
+	if (listPAPI === undefined) {
+		throw hostError('<list> requires __CreateList and __UpdateListCallbacks.');
+	}
+	let listState: LynxNativeListState<Node> | undefined;
+	const { componentAtIndex, enqueueComponent, componentAtIndexes } = bindNativeListCallbacks(
+		state,
+		container,
+		() => listState,
+	);
 	const node = listPAPI.create(
 		container.pageComponentUniqueId,
 		componentAtIndex,
