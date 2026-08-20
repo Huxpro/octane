@@ -14,6 +14,12 @@ export function instrumentLynxStageSources(repositoryRoot) {
 	const originals = new Map();
 	const update = (relative, transform) => {
 		const file = path.join(repositoryRoot, relative);
+		// One update() per file. A second call would overwrite the pristine
+		// source in `originals` with the already-instrumented text, so restore
+		// would leave a framework source patched and poison every later build.
+		// Apply several patches to one file by chaining replaceOnce inside a
+		// single transform.
+		if (originals.has(file)) throw new Error(`stage instrument patched ${relative} twice.`);
 		const source = fs.readFileSync(file, 'utf8');
 		originals.set(file, source);
 		fs.writeFileSync(file, transform(source, relative));
@@ -101,9 +107,35 @@ export function instrumentLynxStageSources(repositoryRoot) {
 		// here with a partial default would leave `lynxWireProfile()` accepting
 		// it and accumulating onto undefined. run.mjs folds them into the
 		// background snapshot the same way it folds the app's row-body counter.
-		update('packages/octane/src/universal-core.ts', (source, file) =>
-			replaceOnce(
+		// Counts reconciled child blueprints per replay drain. This is the
+		// deterministic half of the drain: milliseconds are host-bound, but the
+		// number of children the reconciler visits is fixed for a given app and
+		// interaction, which is what makes a target gateable. It sits under the
+		// same replay-window gate as the timer, so first-screen reconciliation
+		// stays out of it.
+		update('packages/octane/src/universal-core.ts', (source, file) => {
+			const next = replaceOnce(
 				source,
+				`		const reconcileChildren = (
+			oldChildren: readonly LogicalRecord[],
+			blueprints: readonly BlueprintNode[],
+		): DraftRecord[] => {
+`,
+				`		const reconcileChildren = (
+			oldChildren: readonly LogicalRecord[],
+			blueprints: readonly BlueprintNode[],
+		): DraftRecord[] => {
+			const __benchVisitGlobals = globalThis as any;
+			if (__benchVisitGlobals.__BENCH_REPLAY_ACTIVE__ === true) {
+				__benchVisitGlobals.__BENCH_RECONCILE_VISITS__ =
+					(__benchVisitGlobals.__BENCH_RECONCILE_VISITS__ ?? 0) + blueprints.length;
+			}
+`,
+				file,
+			);
+
+			return replaceOnce(
+				next,
 				`	prepare(component: UniversalComponent<any>, props: any): UniversalPreparedAttempt {
 `,
 				`	prepare(component: UniversalComponent<any>, props: any): UniversalPreparedAttempt {
@@ -128,8 +160,8 @@ export function instrumentLynxStageSources(repositoryRoot) {
 	__benchPrepare(component: UniversalComponent<any>, props: any): UniversalPreparedAttempt {
 `,
 				file,
-			),
-		);
+			);
+		});
 
 		update('packages/lynx/src/core/papi.ts', (source, file) => {
 			let next = replaceOnce(

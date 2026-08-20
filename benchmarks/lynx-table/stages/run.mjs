@@ -169,6 +169,7 @@ async function realmSnapshots(page) {
 		if (typeof globalThis.__BENCH_BG_PREPARE_MS__ === 'number') {
 			copy.bgPrepareMs = globalThis.__BENCH_BG_PREPARE_MS__;
 			copy.bgPrepares = globalThis.__BENCH_BG_PREPARES__ ?? 0;
+			copy.reconcileVisits = globalThis.__BENCH_RECONCILE_VISITS__ ?? 0;
 		}
 		return copy;
 	};
@@ -190,6 +191,7 @@ async function resetProfiles(page) {
 		if (typeof globalThis.__BENCH_BG_PREPARE_MS__ === 'number') {
 			globalThis.__BENCH_BG_PREPARE_MS__ = 0;
 			globalThis.__BENCH_BG_PREPARES__ = 0;
+			globalThis.__BENCH_RECONCILE_VISITS__ = 0;
 		}
 		const profile = globalThis.__OCTANE_LYNX_PROF;
 		if (profile === undefined) return;
@@ -342,7 +344,7 @@ function backgroundWorkLine(background) {
 	const renders = background.rowRenders.median;
 	const commands = background.hostCommands.median;
 	const ratio = commands === 0 ? 'no host commands' : `${round(renders / commands, 1)} per command`;
-	return `Background work: ${Math.round(renders).toLocaleString('en-US')} row-body renders over ${Math.round(background.prepares.median)} replay drains, producing ${Math.round(commands).toLocaleString('en-US')} host commands (${ratio}).`;
+	return `Background work: ${Math.round(renders).toLocaleString('en-US')} row-body renders over ${Math.round(background.prepares.median)} replay drains, reconciling ${Math.round(background.reconcileVisits.median).toLocaleString('en-US')} child blueprints, producing ${Math.round(commands).toLocaleString('en-US')} host commands (${ratio}).`;
 }
 
 function markdown(report) {
@@ -529,6 +531,10 @@ function summarizeBackgroundWork(cell) {
 	return {
 		rowRenders: summarizeCount(cell, (sample) => sample.realms.background.rowRenders ?? 0),
 		prepares: summarizeCount(cell, (sample) => sample.realms.background.bgPrepares ?? 0),
+		reconcileVisits: summarizeCount(
+			cell,
+			(sample) => sample.realms.background.reconcileVisits ?? 0,
+		),
 		hostCommands: summarizeCount(cell, (sample) => sample.realms.background.commands ?? 0),
 	};
 }
@@ -612,19 +618,20 @@ function backgroundOwnerVerdict() {
 			share: cell.attribution.stages.bg_prepare.share,
 			renders: cell.background.rowRenders.median,
 			commands: cell.background.hostCommands.median,
+			visits: cell.background.reconcileVisits.median,
 		};
 	});
 	const owners = measured.filter((row) => row.share >= DRAIN_OWNER_GATE);
 	const text = measured
 		.map(
 			(row) =>
-				`${row.operation} ${(row.share * 100).toFixed(1)}% with ${Math.round(row.renders).toLocaleString('en-US')} row-body renders for ${Math.round(row.commands).toLocaleString('en-US')} host commands`,
+				`${row.operation} ${(row.share * 100).toFixed(1)}% with ${Math.round(row.renders).toLocaleString('en-US')} row-body renders and ${Math.round(row.visits).toLocaleString('en-US')} reconciled child blueprints for ${Math.round(row.commands).toLocaleString('en-US')} host commands`,
 		)
 		.join(', ');
 	return {
 		step: '#66 Phase 2 re-aim: background update-drain owner',
 		verdict: owners.length === cells.length ? 'GO' : owners.length === 0 ? 'NO-GO' : 'SPLIT',
-		reason: `bg_prepare is ${text}. The gate is ${DRAIN_OWNER_GATE * 100}% in every cell named here. The row-render counts are deterministic for this app and interaction: where they already track the change while the drain still owns the frame, the remaining cost is list traversal rather than render breadth.`,
+		reason: `bg_prepare is ${text}. The gate is ${DRAIN_OWNER_GATE * 100}% in every cell named here. Both counts are deterministic for this app and interaction, and they disagree: row renders already track the change while reconciled blueprints track the list, so where the drain owns the frame the remaining cost is traversal rather than render breadth. The blueprint count is the number a candidate has to move.`,
 	};
 }
 const createWire = {
