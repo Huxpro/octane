@@ -66,6 +66,16 @@ export function createFakePAPI(
 			return child.parent === parent;
 		},
 		insertBefore(parent, child, before) {
+			// `__InsertElementBefore` delegates to DOM `appendChild`/`insertBefore`
+			// on a real host, so an already-attached child is REPARENTED rather than
+			// duplicated. `host-driver.ts` relies on exactly that: a `move` command
+			// emits one `insertBefore` with no preceding `remove`, so a fixture that
+			// only spliced would leave the node in both places and report a tree the
+			// host would never produce.
+			if (child.parent !== null) {
+				const attached = child.parent.children.indexOf(child);
+				if (attached !== -1) child.parent.children.splice(attached, 1);
+			}
 			const index = before === null ? parent.children.length : parent.children.indexOf(before);
 			parent.children.splice(index, 0, child);
 			child.parent = parent;
