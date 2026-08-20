@@ -1440,6 +1440,22 @@
     "note": "Deterministic source-level allocation gate: a 12-cell visible window over 1,000 logical rows currently allocates 0.012x as many physical cell roots as an eager one-cell-per-row model. The 0.02 ceiling catches loss of bounded native recycling without relying on timing."
   },
   {
+    "suite": "lynx-list",
+    "op": "reuse_writes",
+    "target": "octane-lynx",
+    "reference": "slot-write-floor",
+    "maxRatio": 3,
+    "note": "Element PAPI writes per recycle on the 3-node row, against writing only the values that differ between the outgoing and incoming rows. Today it is 3x: 2 setAttribute calls, which is the floor exactly, plus 4 setRefSelector calls that clear the nodes-ref selector on each of the row's 2 element nodes and reinstall it for the incoming logical host. The prop write path has no slack; the ceiling protects that."
+  },
+  {
+    "suite": "lynx-list",
+    "op": "wide_reuse_writes",
+    "target": "octane-lynx",
+    "reference": "slot-write-floor",
+    "maxRatio": 5,
+    "note": "The same measurement on a 9-node row with 3 varying values and 6 static props: 15 writes against a floor of 3. setAttribute stays at 3 — the prop diff is independent of row width — and the residual is 12 setRefSelector calls, two per element node. The two ceilings together say the gap is nodes-ref selector lifetime, not prop rebinding."
+  },
+  {
     "suite": "lynx-table",
     "op": "create_commands_1k",
     "target": "octane-lynx",
