@@ -135,10 +135,17 @@ comparison, but decode/fetch before slice evaluation is outside the four-stage
 attribution.
 
 **create@10k** starts at the byte-identical page driver's `pointerdown` boundary
-and ends when that same driver sees 10,000 rows:
+and ends when that same driver sees 10,000 rows. The mutation cells
+(`update10th`, `updateStorm`, `select`) share the same boundary and stages, and
+end when their own settle predicate resolves; their `bg_replay` window is split
+into `bg_prepare` (`UniversalRoot.prepare()` — render, reconcile, host-batch
+construction, gated on the transport's replay-window flag so first-screen
+preparation stays out) and `bg_replay_other` (the remainder of the window:
+event delivery, the handler, scheduling, and the commit hand-off).
 
 1. `bg_replay`: native-event delivery through completion of background render,
    diff, command staging, and plan folding, stopping before outbound self-check.
+   In mutation-cell reports this appears as `bg_prepare` + `bg_replay_other`.
 2. `wire_clone_transfer`: the existing ContextProxy `dispatchEvent` interval.
 3. `mt_expand`: main-thread wire-shape preparation before host preparation.
    Historical plan-wire samples measure `instantiate` expansion; rebased
