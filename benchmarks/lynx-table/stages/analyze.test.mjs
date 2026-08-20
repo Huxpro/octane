@@ -67,7 +67,7 @@ test('attributes only exclusive observed time and assigns the remainder to named
 	assert.deepEqual(
 		analyzeCreateSample({
 			wallMs: 200,
-			background: { bgReplayMs: 40, dispatchMs: 20 },
+			background: { bgReplayMs: 40, bgPrepareMs: 28, dispatchMs: 20 },
 			main: {
 				validateMs: 5,
 				mtExpandMs: 10,
@@ -80,7 +80,8 @@ test('attributes only exclusive observed time and assigns the remainder to named
 		{
 			totalMs: 200,
 			stages: {
-				bg_replay: 40,
+				bg_prepare: 28,
+				bg_replay_other: 12,
 				wire_clone_transfer: 20,
 				mt_validate: 5,
 				mt_expand: 10,
@@ -100,6 +101,25 @@ test('attributes only exclusive observed time and assigns the remainder to named
 				main: { applyMs: 10, papiCreateMs: 11 },
 			}),
 		/exceeds the enclosing/,
+	);
+	// The drain is nested inside the replay window, so a drain total that
+	// outgrows it means the two clocks disagree and the split is not
+	// reportable.
+	assert.throws(
+		() =>
+			analyzeCreateSample({
+				wallMs: 100,
+				background: { bgReplayMs: 10, bgPrepareMs: 11 },
+				main: {},
+			}),
+		/background drain exceeds the enclosing replay stage/,
+	);
+	// A run recorded before the drain split existed still decomposes: the whole
+	// replay window lands in the unattributed half rather than vanishing.
+	assert.deepEqual(
+		analyzeCreateSample({ wallMs: 50, background: { bgReplayMs: 30 }, main: {} }).stages
+			.bg_replay_other,
+		30,
 	);
 });
 

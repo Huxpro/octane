@@ -155,6 +155,22 @@ async function realmSnapshots(page) {
 		for (const key of Object.keys(value)) {
 			if (typeof value[key] === 'number') copy[key] = value[key];
 		}
+		// The app's own Row-body counter lives in the profile build beside these
+		// (see app/src/App.lynx.tsrx). It is the render-breadth number the
+		// runtime counters cannot see, because a memoized item body is invoked
+		// directly rather than through any instrumented runtime entry.
+		if (typeof globalThis.__BENCH_ROW_RENDERS__ === 'number') {
+			copy.rowRenders = globalThis.__BENCH_ROW_RENDERS__;
+		}
+		// The universal renderer's drain probe keeps its own globals rather than
+		// writing into a profile record it does not own (see
+		// stages/instrument-source.mjs). Fold them in under the names the
+		// attribution reads.
+		if (typeof globalThis.__BENCH_BG_PREPARE_MS__ === 'number') {
+			copy.bgPrepareMs = globalThis.__BENCH_BG_PREPARE_MS__;
+			copy.bgPrepares = globalThis.__BENCH_BG_PREPARES__ ?? 0;
+			copy.reconcileVisits = globalThis.__BENCH_RECONCILE_VISITS__ ?? 0;
+		}
 		return copy;
 	};
 	const snapshots = [];
@@ -171,6 +187,12 @@ async function realmSnapshots(page) {
 
 async function resetProfiles(page) {
 	const reset = () => {
+		if (typeof globalThis.__BENCH_ROW_RENDERS__ === 'number') globalThis.__BENCH_ROW_RENDERS__ = 0;
+		if (typeof globalThis.__BENCH_BG_PREPARE_MS__ === 'number') {
+			globalThis.__BENCH_BG_PREPARE_MS__ = 0;
+			globalThis.__BENCH_BG_PREPARES__ = 0;
+			globalThis.__BENCH_RECONCILE_VISITS__ = 0;
+		}
 		const profile = globalThis.__OCTANE_LYNX_PROF;
 		if (profile === undefined) return;
 		for (const key of Object.keys(profile)) profile[key] = 0;
@@ -318,6 +340,13 @@ function round(value, digits = 2) {
 	return Number(value.toFixed(digits));
 }
 
+function backgroundWorkLine(background) {
+	const renders = background.rowRenders.median;
+	const commands = background.hostCommands.median;
+	const ratio = commands === 0 ? 'no host commands' : `${round(renders / commands, 1)} per command`;
+	return `Background work: ${Math.round(renders).toLocaleString('en-US')} row-body renders over ${Math.round(background.prepares.median)} replay drains, reconciling ${Math.round(background.reconcileVisits.median).toLocaleString('en-US')} child blueprints, producing ${Math.round(commands).toLocaleString('en-US')} host commands (${ratio}).`;
+}
+
 function markdown(report) {
 	const lines = [
 		`# Lynx ${report.meta.rows.toLocaleString('en-US')}-row stage decomposition`,
@@ -360,6 +389,7 @@ function markdown(report) {
 		'',
 		`Raw create: profile ${round(report.create.rawProfile.median)} ms (${round(report.create.rawProfile.min)}–${round(report.create.rawProfile.max)}), control ${round(report.create.rawControl.median)} ms, vue-vdom ${round(report.create.vueVdom.median)} ms; same-window profile/control ${round(report.create.rawProfile.median / report.create.rawControl.median, 3)}×, profile/vue-vdom ${round(report.create.rawProfile.median / report.create.vueVdom.median, 3)}×.`,
 		`Wire: MTS→BTS ${Math.round(report.create.wire.toBts.bytes.median).toLocaleString('en-US')} B / ${round(report.create.wire.toBts.messages.median)} messages; BTS→MTS ${Math.round(report.create.wire.toMts.bytes.median).toLocaleString('en-US')} B / ${round(report.create.wire.toMts.messages.median)} messages.`,
+		backgroundWorkLine(report.create.background),
 	);
 	for (const operation of mutationNames) {
 		const cell = report[operation];
@@ -376,6 +406,7 @@ function markdown(report) {
 		lines.push(
 			'',
 			`Raw ${operation}: profile ${round(cell.rawProfile.median)} ms, control ${round(cell.rawControl.median)} ms, vue-vdom ${round(cell.vueVdom.median)} ms. Wire: MTS→BTS ${Math.round(cell.wire.toBts.bytes.median).toLocaleString('en-US')} B / ${round(cell.wire.toBts.messages.median)} messages; BTS→MTS ${Math.round(cell.wire.toMts.bytes.median).toLocaleString('en-US')} B / ${round(cell.wire.toMts.messages.median)} messages.`,
+			backgroundWorkLine(cell.background),
 		);
 	}
 	lines.push(
@@ -478,13 +509,34 @@ function summarizeRaw(cell) {
 		cell.map((sample) => ({ totalMs: sample.rawMs, stages: { raw: sample.rawMs } })),
 	).total;
 }
-function summarizeWire(cell, side, field) {
+// Deterministic per-sample counts reuse the sample summarizer by standing in
+// for a duration; only the median/min/max are read back.
+function summarizeCount(cell, read) {
 	return summarizeSamples(
 		cell.map((sample) => {
-			const value = sample.wire[side][field];
+			const value = read(sample);
 			return { totalMs: value, stages: { raw: value } };
 		}),
 	).total;
+}
+function summarizeWire(cell, side, field) {
+	return summarizeCount(cell, (sample) => sample.wire[side][field]);
+}
+// The background half of the question the wire counts ask on the main side:
+// how much work the frame did, independent of how long the host took to do it.
+// Unlike milliseconds these are fixed for a given app and interaction, which is
+// what makes them gateable. Row bodies are render breadth; drains are how many
+// times the update pass ran; commands are what any of it produced.
+function summarizeBackgroundWork(cell) {
+	return {
+		rowRenders: summarizeCount(cell, (sample) => sample.realms.background.rowRenders ?? 0),
+		prepares: summarizeCount(cell, (sample) => sample.realms.background.bgPrepares ?? 0),
+		reconcileVisits: summarizeCount(
+			cell,
+			(sample) => sample.realms.background.reconcileVisits ?? 0,
+		),
+		hostCommands: summarizeCount(cell, (sample) => sample.realms.background.commands ?? 0),
+	};
 }
 function mutationReport(operation) {
 	const cell = samples[operation];
@@ -500,6 +552,7 @@ function mutationReport(operation) {
 		rawControl: summarizeRaw(cell.control),
 		rawProfile: summarizeRaw(cell.profile),
 		vueVdom: summarizeRaw(cell.vueVdom),
+		background: summarizeBackgroundWork(cell.profile),
 		wire: {
 			toBts: {
 				bytes: summarizeWire(cell.profile, 'toBts', 'bytes'),
@@ -542,6 +595,43 @@ function deltaEncodingVerdict() {
 		step: '#66 A4/A5 delta-encoding candidate (pure-mutation cells)',
 		verdict: clears.length === cells.length ? 'GO' : clears.length === 0 ? 'NO-GO' : 'SPLIT',
 		reason: `mt_prepare plus clone/transfer is ${text}. The gate is ${DELTA_OWNER_GATE * 100}% in every pure-mutation cell, because a typed delta plus slot dispatch can only remove host prop-patch planning and wire cost; it cannot touch PAPI apply.`,
+	};
+}
+// Phase 0's gate fired NO-GO on the delta candidate and instructed the next
+// phase to aim at whatever segment actually costs. `bg_prepare` is that
+// segment's timed half: the background drain — render, reconcile, and
+// host-batch construction — measured at the universal renderer's `prepare`,
+// which is the entry the Lynx background thread actually runs.
+//
+// Row-body renders are the deterministic half, and they answer a different
+// question than the share does. If the drain owns the frame while row bodies
+// stay proportional to the change, the cost is in walking the list, not in
+// re-rendering it, and a candidate aimed at render breadth is aimed at the
+// wrong thing.
+const DRAIN_OWNER_GATE = 0.1;
+function backgroundOwnerVerdict() {
+	const cells = ['update10th', 'select'];
+	const measured = cells.map((operation) => {
+		const cell = mutationReports[operation];
+		return {
+			operation,
+			share: cell.attribution.stages.bg_prepare.share,
+			renders: cell.background.rowRenders.median,
+			commands: cell.background.hostCommands.median,
+			visits: cell.background.reconcileVisits.median,
+		};
+	});
+	const owners = measured.filter((row) => row.share >= DRAIN_OWNER_GATE);
+	const text = measured
+		.map(
+			(row) =>
+				`${row.operation} ${(row.share * 100).toFixed(1)}% with ${Math.round(row.renders).toLocaleString('en-US')} row-body renders and ${Math.round(row.visits).toLocaleString('en-US')} reconciled child blueprints for ${Math.round(row.commands).toLocaleString('en-US')} host commands`,
+		)
+		.join(', ');
+	return {
+		step: '#66 Phase 2 re-aim: background update-drain owner',
+		verdict: owners.length === cells.length ? 'GO' : owners.length === 0 ? 'NO-GO' : 'SPLIT',
+		reason: `bg_prepare is ${text}. The gate is ${DRAIN_OWNER_GATE * 100}% in every cell named here. Both counts are deterministic for this app and interaction, and they disagree: row renders already track the change while reconciled blueprints track the list, so where the drain owns the frame the remaining cost is traversal rather than render breadth. The blueprint count is the number a candidate has to move.`,
 	};
 }
 const createWire = {
@@ -587,6 +677,7 @@ const report = {
 	},
 	create: {
 		attribution: createAttribution,
+		background: summarizeBackgroundWork(samples.create.profile),
 		wire: createWire,
 		rawControl: summarizeSamples(
 			samples.create.control.map((sample) => ({
@@ -610,6 +701,7 @@ const report = {
 	...mutationReports,
 	verdicts: [
 		deltaEncodingVerdict(),
+		backgroundOwnerVerdict(),
 		{
 			step: '#47 wire/encoding candidate',
 			verdict: 'NO-GO',
