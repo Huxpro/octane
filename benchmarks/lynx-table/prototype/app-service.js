@@ -97,6 +97,27 @@
 		}
 	}
 
+	// -- floor counters --------------------------------------------------------
+	//
+	// The background half of the #103 U0 floor. `rowScans` counts row entries
+	// this program examines to service an update. It is reported separately from
+	// the main thread's region visits because it measures a different thing: the
+	// state lookup, not the tree walk.
+	//
+	// It is also the one place this stub is honestly worse than the core it
+	// models. `selectById` finds a row by scanning a plain id array; a Block core
+	// holds the row's block directly and would visit one. The scan is counted
+	// rather than optimized away so the floor is reported as measured, and it
+	// costs microseconds against tens of milliseconds either way.
+	//
+	// `blockLookups` is the same accounting without that artifact: the number of
+	// rows a keyed core would touch, because `ForSlot.items` is a `Map<key,
+	// Block>` and the lookup is O(1). It is the count that answers "what does the
+	// architecture visit", where `rowScans` answers "what did this stub visit".
+	// Both are reported; neither is inferred from the other.
+	var floorCounters = { rowScans: 0, blockLookups: 0 };
+	globalThis.__BENCH_DIRECT_BG__ = floorCounters;
+
 	// -- wire ------------------------------------------------------------------
 	function sendDelta(ops) {
 		var app = typeof lynx !== 'undefined' && lynx.getNativeApp ? lynx.getNativeApp() : null;
@@ -138,6 +159,8 @@
 	function updateEveryTenth() {
 		var ops = [];
 		for (var i = 0; i < ids.length; i += 10) {
+			floorCounters.rowScans += 1;
+			floorCounters.blockLookups += 1;
 			labels[i] = labels[i] + ' !!!';
 			ops.push(OP_SET_LABEL, i, labels[i]);
 		}
@@ -147,6 +170,8 @@
 	function selectById(id) {
 		var prev = selectedId === -1 ? -1 : ids.indexOf(selectedId);
 		var next = id === -1 ? -1 : ids.indexOf(id);
+		floorCounters.rowScans += (prev === -1 ? 0 : prev + 1) + (next === -1 ? 0 : next + 1);
+		floorCounters.blockLookups += (prev === -1 ? 0 : 1) + (next === -1 ? 0 : 1);
 		selectedId = id;
 		return [OP_SELECT, prev, next];
 	}
@@ -154,6 +179,8 @@
 	function removeById(id) {
 		var index = ids.indexOf(id);
 		if (index === -1) return [];
+		floorCounters.rowScans += index + 1;
+		floorCounters.blockLookups += 1;
 		ids.splice(index, 1);
 		labels.splice(index, 1);
 		if (selectedId === id) selectedId = -1;
@@ -162,6 +189,7 @@
 
 	function swapRows() {
 		if (ids.length <= 998) return [];
+		floorCounters.blockLookups += 2;
 		var idA = ids[1];
 		ids[1] = ids[998];
 		ids[998] = idA;
@@ -197,6 +225,8 @@
 		runStorm(STORM_UPDATE_TICKS, function (t) {
 			var ops = [];
 			for (var i = 0; i < ids.length; i += 10) {
+				floorCounters.rowScans += 1;
+				floorCounters.blockLookups += 1;
 				labels[i] = 'bench ' + t;
 				ops.push(OP_SET_LABEL, i, labels[i]);
 			}
