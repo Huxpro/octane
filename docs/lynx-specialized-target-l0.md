@@ -337,6 +337,51 @@ in §3 and the extraction-first decision in §5.
 
 ## 8. Landed increments
 
+- **A native `<list>` is painted by direct emission (issue #66 Phase C).** The
+  direct first-screen applier writes the rendered record tree straight to the
+  Element PAPI — no command batch, no prepared operation list, no cloned record
+  maps — and refused any tree containing a `<list>`. That was right while such a
+  page could not be adopted anyway; once it could (below), the refusal was the
+  remaining cost on exactly the pages a fast first screen exists for.
+
+  A `<list>` breaks the applier's shape twice. Its element comes from
+  `__CreateList` with the recycling callbacks passed at creation, not from
+  `__CreateElement`. And its rows are not attached to it, so the walk records
+  every row and descendant without creating anything — the same operations the
+  staged path skips.
+
+  The element is still created **on the way down**, so its unique ID lands in the
+  order the staged path assigns it; a list whose element were created after its
+  subtree would hand a later sibling the lower ID, and the differential fixture
+  carries a sibling after the list precisely to hold that. Only the row metadata
+  waits for the way back up, because it is read off records the walk has not
+  created yet. `createNativeListNode` split in two for this, and the staged path
+  calls the composition.
+
+  Emitting as it walks means the applier cannot discover a malformed list halfway
+  and stop — a half-painted page is the one state the staged path never produces
+  — so it runs the real validators first and hands anything it cannot vouch for
+  back to the staged path with nothing created, where the diagnostic is raised
+  from where it has always been raised. A host with no `__CreateList` falls back
+  for the same reason: that page is owed the report.
+
+  | page | arm | first paint | total main-thread | PAPI |
+  | --- | --- | --- | --- | --- |
+  | 1,000 rows | staged | 42.5 ms | 120.6 ms | 21 |
+  | 1,000 rows | direct | **29.5 ms** | 102.3 ms | 21 |
+  | 50 rows | staged | 3.1 / 2.9 ms | 9.3 / 7.7 ms | 21 |
+  | 50 rows | direct | **2.3 / 2.5 ms** | 6.7 / 6.9 ms | 21 |
+
+  Each cell is a median of 21 samples. The 1,000-row rows take the middle of
+  three passes (paint: staged 42.5 / 40.9 / 45.7, direct 28.5 / 29.5 / 31.4 —
+  disjoint); the 50-row page ran two passes each, so both are given rather than
+  averaged. Element PAPI traffic is identical in both arms at both sizes, which
+  is the point: what this removes is Octane's own staging, not one host call.
+
+  On the same 1,000-row page across the whole phase: **70.4 ms** before adoption
+  could carry a list (the page waited for the background), **42.8 ms** once it
+  could, **29.5 ms** through the direct path.
+
 - **A native `<list>` page paints synchronously and is adopted (issue #66
   Phase C).** Adoption refused every tree holding a `<list>`, so the app shape a
   fast first screen exists for was the one shape that never got one. It is
