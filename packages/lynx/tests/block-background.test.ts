@@ -218,6 +218,35 @@ describe('Lynx block background core', () => {
 		expect(taps).toEqual([2]);
 	});
 
+	it('serializes overlapping renders: the second becomes an update, never a second mount', async () => {
+		const harness = scene();
+		const { main, background } = harness;
+		const program = tableProgram();
+		let mounts = 0;
+		const baseMount = program.mount.bind(program);
+		const counting: typeof program = {
+			...program,
+			mount(context, props) {
+				mounts++;
+				return baseMount(context, props);
+			},
+		};
+		const component = withLynxBlockProgram(
+			(() => null) as unknown as LynxComponent<ProgramProps>,
+			counting,
+		);
+
+		// Issued back to back without awaiting — the pattern the universal core
+		// supports and coalesces. Both must succeed, the program must mount once,
+		// and the painted page must be the second render's rows.
+		const first = background.renderAsync(component as never, { labels: ['a', 'b'] });
+		const second = background.renderAsync(component as never, { labels: ['a', 'b', 'c'] });
+		await settle(harness, Promise.all([first, second]));
+
+		expect(mounts).toBe(1);
+		expect(rowLabels(paint(main.commits))).toEqual(['a', 'b', 'c']);
+	});
+
 	it('re-renders through update() and refuses a program that has none', async () => {
 		const harness = scene();
 		const { main, background } = harness;

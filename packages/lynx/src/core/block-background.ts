@@ -163,6 +163,12 @@ export function createLynxBlockBackgroundCore(
 		},
 	});
 	let mounted: LynxBlockProgram<never> | null = null;
+	// Renders serialize. `mounted` is only assigned after `program.mount`
+	// yields, so two un-awaited renderAsync calls would otherwise both read
+	// `mounted === null` and mount the program twice over one page tree; the
+	// universal core supports and coalesces exactly that calling pattern, so
+	// the second render must instead run after the first and become an update.
+	let renderQueue: Promise<unknown> = Promise.resolve();
 	// Every commit this core starts, so `flushTransport` and `unmountAsync` wait
 	// for work a program started and did not await rather than tearing the
 	// transport down underneath it.
@@ -181,7 +187,7 @@ export function createLynxBlockBackgroundCore(
 		): Promise<UniversalTransaction> {
 			const program = readLynxBlockProgram(component as unknown as LynxComponent<unknown>);
 			if (program === undefined) missingComponentLayer();
-			const run = (async () => {
+			const run = renderQueue.then(async () => {
 				if (mounted === null) {
 					await program.mount(context, props);
 					mounted = program as unknown as LynxBlockProgram<never>;
@@ -196,7 +202,13 @@ export function createLynxBlockBackgroundCore(
 					);
 				}
 				return committedTransaction(await blockRoot.commit());
-			})();
+			});
+			// A rejected render surfaces to its own caller through `run`; it must
+			// not wedge every later render behind the same rejection.
+			renderQueue = run.then(
+				() => undefined,
+				() => undefined,
+			);
 			return track(run);
 		},
 
