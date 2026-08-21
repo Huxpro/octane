@@ -997,6 +997,89 @@ describe('universal prepared host SDK', () => {
 		}
 	});
 
+	it('carries a renderer-namespaced binding through a run and refuses the same value plain', () => {
+		// A program's values are scalars because the core derives them and validates
+		// them from the program header alone. A renderer that namespaces a prop owns
+		// a value shape the core cannot read, so that slot — and only that slot — may
+		// carry it; Lynx uses this for a `main-thread:` worklet on a keyed row.
+		const rowPlan = (name: string) =>
+			universalPlan('object', {
+				kind: 'host',
+				type: 'row',
+				bindings: [[name, 0]],
+				children: [{ kind: 'host', type: 'action', children: [{ kind: 'slot', slot: 1 }] }],
+			});
+		// One plan per scene, hoisted: rows coalesce into a run only when they share
+		// a program, which is what a compiled module's module-level plan gives them.
+		const scene = (name: string) => {
+			const plan = rowPlan(name);
+			return defineUniversalComponent('object', ({ ids }: { ids: readonly string[] }) =>
+				universalFor(
+					ids,
+					(id) => id,
+					(id) => universalValue(plan, [{ handle: id }, `label-${id}`]),
+					null,
+					false,
+					false,
+					true,
+				),
+			);
+		};
+
+		const container = createObjectContainer();
+		const root = createUniversalRoot(container, createTemplateObjectDriver(true, true, true, true));
+		const prepared = root.prepare(scene('renderer:handle'), { ids: ['a', 'b', 'c'] });
+		if (prepared.status !== 'prepared') throw new Error('Expected a prepared transaction.');
+		const runs = prepared.batch.commands.filter((command) => command.op === 'mount-template-run');
+		expect(runs).toHaveLength(1);
+		const run = runs[0];
+		if (run.op !== 'mount-template-run') throw new Error('Expected a contiguous intrinsic run.');
+		expect(run.count).toBe(3);
+		expect(run.values).toEqual([
+			{ handle: 'a' },
+			'label-a',
+			{ handle: 'b' },
+			'label-b',
+			{ handle: 'c' },
+			'label-c',
+		]);
+		prepared.commit();
+		expect(container.children.map((row) => row.props['renderer:handle'])).toEqual([
+			{ handle: 'a' },
+			{ handle: 'b' },
+			{ handle: 'c' },
+		]);
+		root.unmount();
+
+		// The same value in a slot the program did not namespace is still refused, so
+		// the permission is per-slot rather than a blanket one, and the rows mount
+		// through the ordinary create path with the tree unchanged.
+		const plainContainer = createObjectContainer();
+		const plainRoot = createUniversalRoot(
+			plainContainer,
+			createTemplateObjectDriver(true, true, true, true),
+		);
+		const plain = plainRoot.prepare(scene('handle'), { ids: ['a', 'b', 'c'] });
+		if (plain.status !== 'prepared') throw new Error('Expected a prepared transaction.');
+		expect(
+			plain.batch.commands.some(
+				(command) => command.op === 'mount-template-run' || command.op === 'mount-template-range',
+			),
+		).toBe(false);
+		plain.commit();
+		expect(plainContainer.children.map((row) => row.props.handle)).toEqual([
+			{ handle: 'a' },
+			{ handle: 'b' },
+			{ handle: 'c' },
+		]);
+		expect(plainContainer.children.map((row) => row.children[0].children[0].props.value)).toEqual([
+			'label-a',
+			'label-b',
+			'label-c',
+		]);
+		plainRoot.unmount();
+	});
+
 	it('preserves stateful scalar prop codecs unless the renderer opts into stable encoding', () => {
 		const container = createObjectContainer();
 		const base = createTemplateObjectDriver();

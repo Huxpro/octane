@@ -541,10 +541,17 @@ export interface UniversalHostTemplateProgram {
 export type UniversalHostTemplateProgramValue =
 	string | number | boolean | bigint | null | undefined | UniversalHostTemplateProgramOpaqueValue;
 
-/** Renderer-namespaced slot payload the core forwards without interpreting. */
-export interface UniversalHostTemplateProgramOpaqueValue {
-	readonly [field: string]: unknown;
-}
+/**
+ * Renderer-namespaced slot payload the core forwards without interpreting.
+ *
+ * `object` rather than a record of unknown fields: a renderer's descriptor is a
+ * declared interface, TypeScript gives an interface no implicit index signature,
+ * and a record type would therefore make this escape hatch unusable by the very
+ * renderers it exists for. The core reads no field here, so a field shape would
+ * be a claim it never checks. What the value must not be is enforced where the
+ * core can enforce it, in `isUniversalHostTemplateProgramSlotValue` below.
+ */
+export type UniversalHostTemplateProgramOpaqueValue = object;
 
 function isUniversalHostTemplateProgramValue(
 	value: unknown,
@@ -557,6 +564,21 @@ function isUniversalHostTemplateProgramValue(
 		typeof value === 'boolean' ||
 		typeof value === 'bigint'
 	);
+}
+
+/**
+ * Whether a value may occupy the slot the program bound to `name`.
+ *
+ * A renderer-namespaced slot is the one place a non-scalar belongs, and the core
+ * checks only that the renderer's encoder produced something transportable: the
+ * core cannot know what such a value means, and the driver that consumes the
+ * program owns validating it. A function is the one shape refused outright — it
+ * is what the encoder exists to replace, so one surviving here means the
+ * renderer declined to encode and the run must not carry it.
+ */
+function isUniversalHostTemplateProgramSlotValue(name: string, value: unknown): boolean {
+	if (isUniversalHostTemplateProgramValue(value)) return true;
+	return typeof value === 'object' && value !== null && name.includes(':');
 }
 
 export type UniversalHostCommand =
@@ -3956,16 +3978,21 @@ function prepareCollapsedTemplateValues(
 			values[index] = String(source);
 			continue;
 		}
+		// A renderer-namespaced binding is authored as whatever the renderer's
+		// encoder understands — for Lynx, the tagged function a worklet compiles to —
+		// so the source is checked for what it must not be rather than for being a
+		// scalar, and the encoded result is what has to be transportable.
+		const namespaced = binding.name.includes(':');
 		if (
-			!isUniversalHostTemplateProgramValue(source) ||
+			(!namespaced && !isUniversalHostTemplateProgramValue(source)) ||
 			root.classifyLifecycle(binding.name, source) !== null ||
 			root.classifyLocalCallback(binding.name, source) !== null
 		) {
 			return null;
 		}
 		const encoded = root.encodeHostProp(program.shape[binding.node].type, binding.name, source);
-		if (!isUniversalHostTemplateProgramValue(encoded)) return null;
-		values[index] = encoded;
+		if (!isUniversalHostTemplateProgramSlotValue(binding.name, encoded)) return null;
+		values[index] = encoded as UniversalHostTemplateProgramValue;
 	}
 	return Object.freeze(values);
 }
@@ -4341,14 +4368,11 @@ function compiledCollapsedTemplateProgram(
 			}
 		}
 		for (const [name] of node.bindings ?? []) {
-			if (
-				name === 'ref' ||
-				name === 'key' ||
-				name === 'children' ||
-				name.startsWith('main-thread:')
-			) {
-				return false;
-			}
+			// A renderer-namespaced prop stays eligible as a *binding*: it names a
+			// per-instance slot, which is exactly what a program describes. The static
+			// loop above is unchanged, so a static `main-thread:` prop is still
+			// refused — a worklet is produced by setup and never written as a literal.
+			if (name === 'ref' || name === 'key' || name === 'children') return false;
 		}
 		plans.push(node);
 		for (const child of node.children ?? []) if (!visit(child)) return false;
