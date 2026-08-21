@@ -1485,11 +1485,11 @@ export function createLynxBackgroundTransport(
 				type: 'commit',
 				batch: preparedBatch,
 			};
-			// The announcements this batch carries were decided here, while the
-			// commands were built. Dispatch happens after main readiness resolves, so
-			// reading the negotiated capability there would claim announcements for a
-			// batch composed before the reply that granted it ever arrived.
-			const announcedPublicInstances = lazyPublicInstances;
+			// Deferring this commit's handle deltas needs the negotiated capability,
+			// captured here rather than read at dispatch: dispatch happens after main
+			// readiness resolves, so a batch composed before the reply that granted it
+			// would claim a deferral the peer never agreed to.
+			const deferrablePublicInstances = lazyPublicInstances;
 			try {
 				selfCheckLynxBackgroundOutboundMessage(commit);
 			} catch (error) {
@@ -1558,7 +1558,7 @@ export function createLynxBackgroundTransport(
 								Object.isFrozen(incrementalRun.values);
 							const deferPublicInstances =
 								compact &&
-								announcedPublicInstances &&
+								deferrablePublicInstances &&
 								(accepted === null ||
 									(postFirstTreeLazyPublicInstances &&
 										preparedBatch.commands.every(
@@ -1570,9 +1570,11 @@ export function createLynxBackgroundTransport(
 									(command) =>
 										command.op === 'mount-template-range' || command.op === 'mount-template-run',
 								);
-							const announces = announcedPublicInstances
-								? ({ announces: LYNX_ANNOUNCED_PUBLIC_INSTANCES } as const)
-								: null;
+							// The announcement is a property of this background rather than
+							// of the session: every batch it composes names the hosts it
+							// will query, so every commit — the pre-handshake first one
+							// included — carries the promise unconditionally.
+							const announces = { announces: LYNX_ANNOUNCED_PUBLIC_INSTANCES } as const;
 							const outboundCommit: LynxTransportCommitMessage = compact
 								? {
 										...commit,
@@ -1580,9 +1582,7 @@ export function createLynxBackgroundTransport(
 										...(deferPublicInstances ? { instances: LYNX_LAZY_PUBLIC_INSTANCES } : null),
 										...announces,
 									}
-								: announces === null
-									? commit
-									: { ...commit, ...announces };
+								: { ...commit, ...announces };
 							let dispatchError: Error | null = null;
 							dispatchingCommit = entry;
 							try {

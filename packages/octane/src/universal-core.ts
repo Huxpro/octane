@@ -364,6 +364,15 @@ export interface UniversalHostCapabilities {
 	readonly templateProgramMount?: boolean;
 	/** Defers renderer-owned public-instance metadata until explicitly requested by core. */
 	readonly lazyPublicInstances?: boolean;
+	/**
+	 * Names every host a batch will query with `ensure-public-instance`, whatever
+	 * the renderer has negotiated. A renderer whose peer decides at mount whether
+	 * a host is addressable needs the announcement in the batch that mounts it,
+	 * and a root's first batch is composed before any reply can grant a
+	 * capability, so an announcement waiting on one would arrive after the
+	 * decision it exists to inform.
+	 */
+	readonly publicInstanceAnnouncements?: boolean;
 	/** Accepts consecutive contiguous instances of one immutable intrinsic host program. */
 	readonly templateProgramRuns?: boolean;
 }
@@ -10618,8 +10627,13 @@ class UniversalRootImpl<Container, PublicInstance>
 			(record) => record.localCallbacks,
 		);
 		const publicInstanceCommands: UniversalHostCommand[] = [];
+		// Either capability calls for the announcement, for different reasons: a
+		// peer deferring public-instance metadata cannot produce a handle without
+		// being asked, and a peer that announces always is one whose mount-time
+		// decisions depend on being told before the batch ends.
 		if (
-			this.driver.capabilities?.lazyPublicInstances === true &&
+			(this.driver.capabilities?.publicInstanceAnnouncements === true ||
+				this.driver.capabilities?.lazyPublicInstances === true) &&
 			(treeFeatures &
 				(UNIVERSAL_TREE_REF | UNIVERSAL_TREE_LIFECYCLE | UNIVERSAL_TREE_LOCAL_CALLBACK)) !==
 				0

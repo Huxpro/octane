@@ -58,7 +58,6 @@ import {
 	selfCheckLynxBackgroundInboundMessage,
 	validateLynxBackgroundInboundMessage,
 	validateLynxBackgroundOutboundMessage,
-	lynxLazyPublicInstancesNegotiated,
 	type LynxBackgroundInboundMessage,
 	type LynxBackgroundFunctionWireDescriptor,
 	type LynxAdoptionReadyMessage,
@@ -2076,12 +2075,14 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			reject(identity, new Error('Octane Lynx rejected unnegotiated lazy public instances.'));
 			return;
 		}
-		if (announcesPublicInstances && !lynxLazyPublicInstancesNegotiated(peerCapabilities)) {
-			reject(identity, new Error('Octane Lynx rejected unnegotiated announced public instances.'));
-			return;
-		}
-		// Deferring this commit's handle deltas is only safe once its hosts are
-		// announced, so the narrower flag may not travel without the broader one.
+		// The announcement itself needs no negotiation. A background names the hosts
+		// it will query from what it knows while composing, which is why the flag
+		// can appear on the first batch of a root — the one composed before any
+		// reply of ours could have granted anything.
+		//
+		// Deferring that commit's handle deltas is a different claim, and it is only
+		// safe once its hosts are announced, so the narrower flag may not travel
+		// without the broader one.
 		if (message.instances === LYNX_LAZY_PUBLIC_INSTANCES && !announcesPublicInstances) {
 			reject(
 				identity,
