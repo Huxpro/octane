@@ -323,6 +323,12 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 	let nextListenerId = options.firstListenerId ?? 1;
 	const templateRunsAllowed = options.templateRuns ?? (() => true);
 	let commands: UniversalHostCommand[] = [];
+	// Where this frame's live `update` sits, per host id. An `update` carries the
+	// node's complete next props, so a later write to the same host makes the
+	// earlier command dead payload: applying only the last leaves the same tree.
+	// Rewriting it in place keeps the frame's length proportional to the hosts
+	// that changed rather than to the writes that changed them.
+	let pendingUpdates = new Map<number, number>();
 	let version = 0;
 	let blockLookups = 0;
 	let commandCount = 0;
@@ -493,7 +499,13 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 	const destroyBlock = (parent: UniversalHostParent, block: LynxBlock): void => {
 		emit({ op: 'remove', parent, id: block.firstId });
 		for (let node = block.template.hostCount - 1; node >= 0; node--) {
-			emit({ op: 'destroy', id: block.firstId + node });
+			const id = block.firstId + node;
+			// The frame may still carry an `update` for this host; it stays where
+			// it is, ahead of the destroy, and is harmless. What must not survive
+			// is its index: ids are never reused, but leaving the entry would keep
+			// a dead block's row in the map for the rest of the frame.
+			pendingUpdates.delete(id);
+			emit({ op: 'destroy', id });
 		}
 	};
 
@@ -519,12 +531,6 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		}
 		// An unchanged slot emits nothing. The live value lives here, so deciding
 		// that costs one comparison and never a round trip.
-		//
-		// Two changed slots on the same host node emit two `update` commands
-		// rather than one merged command. Both are correct — each carries the
-		// node's complete live props and the applier diffs them in order — and
-		// merging is a coalescing decision this slice deliberately leaves to the
-		// scheduler (U1 §3) rather than hiding inside the write.
 		if (Object.is(block.values[valueIndex], value)) return false;
 		block.values[valueIndex] = value;
 		const nodeIndex = template.valueNodes[valueIndex]!;
@@ -537,7 +543,26 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			if (template.valueNodes[slot] !== nodeIndex) continue;
 			props[template.valueNames[slot]!] = block.values[slot];
 		}
-		emit({ op: 'update', id: block.firstId + nodeIndex, props: Object.freeze(props) });
+		const id = block.firstId + nodeIndex;
+		const command: UniversalHostCommand = { op: 'update', id, props: Object.freeze(props) };
+		// Supersede rather than append. The command above is built from the block's
+		// live values, so it already states everything the command it replaces
+		// stated: the host lands in the same place and the wire is strictly
+		// shorter. This is not the slot-merging U1 §3 left to a scheduler — that
+		// asks whether two *different* changes may share one command; this drops a
+		// command the core itself has already invalidated.
+		//
+		// Rewriting at the original index rather than appending keeps the command
+		// ordered against this frame's structural work: a `move` or `remove` for
+		// the same host does not read its props, and no other host's command can
+		// observe them, so the earlier position stays correct.
+		const superseded = pendingUpdates.get(id);
+		if (superseded !== undefined) {
+			commands[superseded] = command;
+			return true;
+		}
+		pendingUpdates.set(id, commands.length);
+		emit(command);
 		return true;
 	};
 
@@ -716,6 +741,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 				commands: Object.freeze(commands),
 			};
 			commands = [];
+			pendingUpdates = new Map();
 			return batch;
 		},
 

@@ -245,6 +245,66 @@ describe('Lynx block core — change-proportionality', () => {
 		expect(built.core.flush()).toBeNull();
 	});
 
+	// A storm writes the same slot on every tick, and a frame flushed once per
+	// several ticks therefore holds several commands for the same host. Only the
+	// last one is observable: an `update` carries that node's complete next
+	// props, so applying the last alone leaves the tree the whole sequence would
+	// have left. Shipping the rest is payload the core already knows is dead.
+	//
+	// Measured in product before this held: 50,000 commands and 2.78 MB for one
+	// 10,000-row update storm, against the universal core's 4,000 and 224 KB.
+	it('supersedes a stale command when a slot is written again before the frame flushes', () => {
+		const size = 100;
+		const built = scene(rows(size), null);
+		built.core.resetCounters();
+
+		for (let tick = 1; tick <= 50; tick++) {
+			for (let id = 1; id <= size; id += 10) {
+				built.core.setKeyedSlotValue(built.slot, id, ROW_LABEL, `bench ${tick}`);
+			}
+		}
+		built.apply();
+
+		// One command per changed host, not one per write. The lookups do not
+		// move: every write is still a real write against the live value, and
+		// suppressing them would be a different (and wrong) optimization.
+		expect(built.core.counters()).toEqual({ blockLookups: 500, commands: 10 });
+
+		const expected = rows(size).map((row) =>
+			row.id % 10 === 1 ? { id: row.id, label: 'bench 50' } : row,
+		);
+		expect(withoutAllocatorIdentity(built.tree())).toEqual(
+			withoutAllocatorIdentity(scene(expected, null).tree()),
+		);
+	});
+
+	// Supersession rewrites a command already sitting in the frame, so the one
+	// thing it must not do is outlive the host that command names. A frame that
+	// writes a row, reconciles it away, and writes its neighbour has to paint
+	// what a fresh mount of the survivors paints.
+	it('keeps a superseded frame correct across a structural change in the same frame', () => {
+		const built = scene(rows(6), null);
+		built.core.resetCounters();
+
+		built.core.setKeyedSlotValue(built.slot, 2, ROW_LABEL, 'doomed');
+		built.core.setKeyedSlotValue(built.slot, 4, ROW_LABEL, 'first');
+		const survivors = rows(6).filter((row) => row.id !== 2);
+		built.core.reconcileForSlot(
+			built.slot,
+			ROW_TEMPLATE,
+			survivors,
+			(row) => row.id,
+			(row) => rowValues(row.id === 4 ? { id: 4, label: 'first' } : row, null),
+		);
+		built.core.setKeyedSlotValue(built.slot, 4, ROW_LABEL, 'second');
+		built.apply();
+
+		const expected = survivors.map((row) => (row.id === 4 ? { id: 4, label: 'second' } : row));
+		expect(withoutAllocatorIdentity(built.tree())).toEqual(
+			withoutAllocatorIdentity(scene(expected, null).tree()),
+		);
+	});
+
 	it('mounts a whole list with one command regardless of its size', () => {
 		for (const size of [10, 10_000]) {
 			const papi = createFakePAPI();
