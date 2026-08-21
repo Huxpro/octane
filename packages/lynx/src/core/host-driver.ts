@@ -189,6 +189,21 @@ interface LynxNativeListState<Node extends LynxElementRef> {
 	disposed: boolean;
 }
 
+/**
+ * One number that moves whenever a native list's recycling callbacks touch a
+ * cell. Capture journals it and adoption compares it against the live list,
+ * so the two sides must agree on the formula — which is why it exists as one
+ * function rather than two copies of the arithmetic.
+ */
+function listRecyclingEpoch(list: {
+	readonly enterCount: number;
+	readonly leaveCount: number;
+	readonly createdCells: number;
+	readonly reusedCells: number;
+}): number {
+	return list.enterCount + list.leaveCount + list.createdCells + list.reusedCells;
+}
+
 interface LynxHostState<Node extends LynxElementRef> {
 	readonly papi: LynxElementPAPI<Node>;
 	readonly worklets?: LynxMainThreadWorkletRegistry;
@@ -3689,7 +3704,7 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 			Object.freeze({
 				host: hostId,
 				items: list.items,
-				epoch: list.enterCount + list.leaveCount + list.createdCells + list.reusedCells,
+				epoch: listRecyclingEpoch(list),
 			}),
 		);
 	}
@@ -3816,7 +3831,7 @@ function compareFirstTree<Node extends LynxElementRef>(
 		// Every recycling callback moves this. A list that materialized a cell
 		// between capture and adoption holds physical state the captured tree does
 		// not describe, so the tree is stale and the page repairs.
-		const epoch = live.enterCount + live.leaveCount + live.createdCells + live.reusedCells;
+		const epoch = listRecyclingEpoch(live);
 		if (epoch !== capturedList.epoch) {
 			return mismatch(
 				firstTree,
