@@ -337,6 +337,41 @@ in §3 and the extraction-first decision in §5.
 
 ## 8. Landed increments
 
+- **L6 ABI decision: the Lynx-only universal surface stays, and L6's dependency
+  is reordered (issue #66 Phase E).** #58's L6 proposes deleting the Lynx-only
+  capabilities and compensation layers from `octane/universal`. The inventory
+  that decision needs is now recorded in
+  [`universal-renderer-architecture.md` §9](universal-renderer-architecture.md):
+  four compiler capability strings, six driver flags, and the
+  `mount-template-run` command, against three flags Three uses and two both
+  share.
+
+  **Nothing is removed, and the reason is not the Phase D verdict.** The
+  specialized target never replaced the descriptor ABI: `lynxMainThreadRenderer`
+  lowers only eligible host-only templates into create functions and otherwise
+  keeps it, and the background half of the same path is
+  `lynxBackgroundRenderer` — `target: 'universal'`, and the renderer that
+  declares `template-program-mount`. Both halves of the shipping path run
+  through `octane/universal`, so this surface is load-bearing whatever the
+  cutover decides.
+
+  That reorders the milestone. #58 makes the removal downstream of the L5
+  cutover; it is really downstream of a background core that stops speaking the
+  descriptor ABI at all — §3's Block-over-wire core (#103), behind a per-root
+  flag today. Both preconditions are open, and they are independent.
+
+  **Open question §9.2 is answered: Three does not want slot tables.** It
+  declares none of the template capabilities and its driver has no
+  `mount-template-run` arm; it has no boundary to amortize a collapse across,
+  since the driver runs in the host's own realm. The headroom settles it —
+  `mount_1k` in `benchmarks/three` at n=20 is 7.7 ms for Octane against 4.1 ms
+  for plain Three, so 53% of the biggest creation cell is Three's own object
+  construction and the whole declarative overhead above that floor is 3.6 ms per
+  1,000 objects, of which slot tables reach only the descriptor share. Octane
+  already leads `@react-three/fiber` 9.6.1 on seven of the suite's eight
+  operations. The mechanism costs Lynx +1,721 B main-thread gzip plus a compiler
+  backend and a second driver path.
+
 - **L5 cutover gate: NO-GO (issue #66 Phase D).** #58's L5 milestone ends by
   flipping `lynxRendererRules` and deprecating the universal Lynx path, gated on
   three clauses. Judged on the same two arms as the bundle re-audit below —
@@ -1132,7 +1167,15 @@ in §3 and the extraction-first decision in §5.
 1. How much static structure can live in native `.lynx.bundle`
    element-template sections versus create functions — needs the native
    encoder surface; the web path measured the code-side form only.
-2. Whether `@octanejs/three` wants the slot-table mechanism (informing what
-   remains in `octane/universal`) — deferred to the L6 ABI decision.
+2. ~~Whether `@octanejs/three` wants the slot-table mechanism (informing what
+   remains in `octane/universal`) — deferred to the L6 ABI decision.~~
+   **Answered: no** (issue #66 Phase E). Three declares none of the template
+   capabilities, its driver cannot receive a `mount-template-run`, and it has no
+   boundary to amortize a collapse across. The headroom is 3.6 ms per 1,000
+   objects — `mount_1k` is 7.7 ms for Octane against 4.1 ms for plain Three, so
+   over half of the biggest creation cell is Three's own object construction —
+   and slot tables could recover only the descriptor share of that. Reasoning and
+   the capability inventory it came from are in
+   [`universal-renderer-architecture.md` §9](universal-renderer-architecture.md).
 3. Delta batching granularity beyond per-commit once a lane scheduler exists.
 4. The exact kernel-extraction boundary (§5) — settled by the L2 spike.
