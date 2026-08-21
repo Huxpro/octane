@@ -30,6 +30,24 @@ export const DRIVER_CLIENT_JS = `(() => {
   };
   x.findByClass = findByClass;
 
+  // Count nodes carrying an attribute, over the same composed tree. A timing
+  // number for a change that installs or skips a per-node attribute is
+  // unreadable without it: it says which regime the arm actually ran in, so a
+  // run where both arms behave identically cannot be read as a null result.
+  x.countAttribute = (name) => {
+    let n = 0;
+    const walk = (node) => {
+      if (!node) return;
+      if (node.nodeType === 1) {
+        if (node.hasAttribute && node.hasAttribute(name)) n += 1;
+        if (node.shadowRoot) walk(node.shadowRoot);
+      }
+      for (const child of node.childNodes || []) walk(child);
+    };
+    walk(document.body);
+    return n;
+  };
+
   x.findText = (needle) => {
     const walk = (node) => {
       if (!node) return false;

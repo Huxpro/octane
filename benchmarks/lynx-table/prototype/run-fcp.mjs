@@ -127,7 +127,12 @@ async function sampleFcp(cell) {
 		if (observation.dnf) throw new Error(`${cell.id}: FCP DNF`);
 		const rowCount = await page.evaluate(() => globalThis.__x.rowCount());
 		if (rowCount < ROWS) throw new Error(`${cell.id}: only ${rowCount} rows after settle`);
-		return { fcp: observation.fcp, settled: observation.settled };
+		// Which selector regime this arm actually ran in. A cell that installs a
+		// `nodes-ref` selector on every node and one that installs none look the
+		// same in the FCP column alone, so an unchanged number has to be
+		// distinguishable from an unchanged build.
+		const selectors = await page.evaluate(() => globalThis.__x.countAttribute('octane-ref'));
+		return { fcp: observation.fcp, settled: observation.settled, selectors };
 	} finally {
 		await page.close();
 	}
@@ -140,7 +145,7 @@ for (let rep = 0; rep < REPS; rep += 1) {
 		const observation = await sampleFcp(cell);
 		(samples[cell.id] ??= []).push(observation);
 		console.log(
-			`[fcp] rep=${rep} ${cell.id.padEnd(13)} fcp=${observation.fcp.toFixed(1)}ms settled=${observation.settled.toFixed(1)}ms`,
+			`[fcp] rep=${rep} ${cell.id.padEnd(13)} fcp=${observation.fcp.toFixed(1)}ms settled=${observation.settled.toFixed(1)}ms selectors=${observation.selectors}`,
 		);
 	}
 }
@@ -149,7 +154,7 @@ await browser.close();
 server.close();
 
 const lines = [];
-lines.push(`# Mount-create FCP@${ROWS} — octane universal path vs direct-emission prototype`);
+lines.push(`# Mount-create FCP@${ROWS} — ${CELLS.map((cell) => cell.id).join(' vs ')}`);
 lines.push('');
 lines.push(`- date: ${new Date().toISOString()}`);
 lines.push(
@@ -158,13 +163,14 @@ lines.push(
 lines.push(`- protocol: fresh page per sample; cells alternate AB/BA; n=${REPS} per cell`);
 lines.push('- boundary: view attach → first frame with the shared composed-tree predicate');
 lines.push('');
-lines.push('| cell | median fcp ms | min–max | median settled ms |');
-lines.push('|---|---:|---:|---:|');
+lines.push('| cell | median fcp ms | min–max | median settled ms | selector attrs |');
+lines.push('|---|---:|---:|---:|---:|');
 for (const cell of CELLS) {
 	const fcpStats = stats(samples[cell.id].map((sample) => sample.fcp));
 	const settledStats = stats(samples[cell.id].map((sample) => sample.settled));
+	const selectors = [...new Set(samples[cell.id].map((sample) => sample.selectors))];
 	lines.push(
-		`| ${cell.id} | ${fcpStats.median.toFixed(1)} | ${fcpStats.min.toFixed(1)}–${fcpStats.max.toFixed(1)} | ${settledStats.median.toFixed(1)} |`,
+		`| ${cell.id} | ${fcpStats.median.toFixed(1)} | ${fcpStats.min.toFixed(1)}–${fcpStats.max.toFixed(1)} | ${settledStats.median.toFixed(1)} | ${selectors.join('/')} |`,
 	);
 }
 const octaneMedian = stats(samples['octane'].map((sample) => sample.fcp)).median;
