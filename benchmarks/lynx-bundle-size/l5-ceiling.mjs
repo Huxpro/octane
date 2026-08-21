@@ -207,6 +207,14 @@ if (baseline?.checksums !== undefined) {
 			throw new Error(`${arm} changed the authored application: ${result.checksums}`);
 		}
 	}
+} else {
+	// Checksums come only from measureRun; the inventory harness carries none,
+	// so this run's arms were NOT validated against the baseline application.
+	// Say so loudly rather than printing the byte deltas as if they were.
+	console.warn(
+		'\nWARNING: semantic-checksum control DID NOT RUN (no checksums in this harness mode);' +
+			'\nan arm that changed the authored application would not have been caught.\n',
+	);
 }
 
 const cell = (value) => (value === undefined ? '' : String(value).padStart(11));
