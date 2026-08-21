@@ -43,6 +43,7 @@ import {
 } from './core/native-events.js';
 import {
 	LYNX_BACKGROUND_TO_MAIN_EVENT,
+	LYNX_ANNOUNCED_PUBLIC_INSTANCES,
 	LYNX_CAPABILITY_READY_REQUEST_BASE,
 	LYNX_COMPACT_ACKNOWLEDGEMENT,
 	LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS,
@@ -2082,6 +2083,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			message.instances === LYNX_LAZY_PUBLIC_INSTANCES && active !== null;
 		const incrementalRun =
 			message.batch.commands.length === 1 ? message.batch.commands[0] : undefined;
+		const announcesPublicInstances = message.announces === LYNX_ANNOUNCED_PUBLIC_INSTANCES;
 		if (
 			message.instances === LYNX_LAZY_PUBLIC_INSTANCES &&
 			(peerCapabilities?.lazyPublicInstances !== 1 ||
@@ -2094,6 +2096,19 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 						))))
 		) {
 			reject(identity, new Error('Octane Lynx rejected unnegotiated lazy public instances.'));
+			return;
+		}
+		if (announcesPublicInstances && !lynxLazyPublicInstancesNegotiated(peerCapabilities)) {
+			reject(identity, new Error('Octane Lynx rejected unnegotiated announced public instances.'));
+			return;
+		}
+		// Deferring this commit's handle deltas is only safe once its hosts are
+		// announced, so the narrower flag may not travel without the broader one.
+		if (message.instances === LYNX_LAZY_PUBLIC_INSTANCES && !announcesPublicInstances) {
+			reject(
+				identity,
+				new Error('Octane Lynx rejected deferred public instances the commit never announced.'),
+			);
 			return;
 		}
 		if (peerCapabilities?.templateProgram !== 1 || peerCapabilities.templateRuns !== 1) {
@@ -2144,10 +2159,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 						root: message.root,
 						page,
 						worklets: hostWorklets,
-						// Only a peer that negotiated lazy public instances announces the
-						// hosts it will query, and only then can a list cell skip carrying
-						// a nodes-ref selector nobody asked for.
-						announcesPublicInstances: lynxLazyPublicInstancesNegotiated(peerCapabilities),
+						// Only a commit composed under the negotiated capability announces
+						// the hosts it will query, and only then can a mounted host skip
+						// carrying a nodes-ref selector nobody asked for. The session's own
+						// capability is not enough: a background composes its first batch
+						// before the reply granting it arrives.
+						announcesPublicInstances,
 						onAttachments: submitHostAttachments,
 						onCallbackFault: failAcceptedRoot,
 					}),
@@ -2175,15 +2192,21 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				candidateFirstTree === null
 					? provisional && message.ack === LYNX_COMPACT_ACKNOWLEDGEMENT
 						? message.instances === LYNX_LAZY_PUBLIC_INSTANCES
-							? { compact: true, lazyPublicInstances: true }
-							: { compact: true }
+							? { compact: true, lazyPublicInstances: true, announcesPublicInstances }
+							: { compact: true, announcesPublicInstances }
 						: postFirstTreeIncrementalCompact
-							? { compact: true, incrementalCompact: true, lazyPublicInstances: true }
+							? {
+									compact: true,
+									incrementalCompact: true,
+									lazyPublicInstances: true,
+									announcesPublicInstances,
+								}
 							: postFirstTreeLazyPublicInstances
-								? { lazyPublicInstances: true }
-								: undefined
+								? { lazyPublicInstances: true, announcesPublicInstances }
+								: { announcesPublicInstances }
 					: {
 							firstTree: candidateFirstTree,
+							announcesPublicInstances,
 							onMismatch(error) {
 								report(error, 'Octane Lynx repaired a first-screen mismatch.');
 							},

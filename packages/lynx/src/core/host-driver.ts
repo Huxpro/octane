@@ -217,13 +217,18 @@ interface LynxHostState<Node extends LynxElementRef> {
 	readonly mainThreadRefOwners: Map<string, Node>;
 	readonly lists: Map<number, LynxNativeListState<Node>>;
 	/**
-	 * The peer announces every public instance it needs, so a native list cell
-	 * carries a `nodes-ref` selector only for hosts that asked. A peer that never
-	 * sends `ensure-public-instance` — one negotiated below that capability, or
-	 * one that announced no capabilities at all — keeps the eager install, because
-	 * for it an uninstalled selector is a ref that addresses nothing.
+	 * The peer announces every public instance it needs, so a mounted host carries
+	 * a `nodes-ref` selector only where one was asked for. A peer that never sends
+	 * `ensure-public-instance` — one negotiated below that capability, or one that
+	 * announced no capabilities at all — keeps the eager install, because for it
+	 * an uninstalled selector is a ref that addresses nothing.
+	 *
+	 * Monotonic, and set from each commit rather than from the session, because a
+	 * background composes its first batch before the reply granting the capability
+	 * reaches it: that batch names none of its hosts however the session was
+	 * negotiated. Once a commit says it announced, every later one does too.
 	 */
-	readonly announcesPublicInstances: boolean;
+	announcesPublicInstances: boolean;
 	readonly onAttachments?: (version: number, deltas: readonly LynxHostAttachmentDelta[]) => void;
 	readonly onCallbackFault?: (version: number, error: unknown) => void;
 	/** Monotonic: ordinary trees never need direct-worklet connectivity walks. */
@@ -271,10 +276,11 @@ export interface CreateLynxHostContainerOptions<Node extends LynxElementRef = Ly
 	/** Main-local execution and ref lifetime registry shared across first-screen adoption. */
 	readonly worklets?: LynxMainThreadWorkletRegistry;
 	/**
-	 * True when the peer negotiated `lazyPublicInstances`, so it announces every
-	 * host it will query. Native list cells then install a `nodes-ref` selector on
-	 * request rather than on every recycle. Defaults to the eager install, which
-	 * is the only safe choice for a peer that announces nothing.
+	 * True when the commit creating this container announced every host it will
+	 * query, so a mounted host installs a `nodes-ref` selector on request rather
+	 * than on sight. Defaults to the eager install, which is the only safe choice
+	 * for a batch that announces nothing. Later batches latch it on through
+	 * {@link PrepareLynxHostBatchOptions.announcesPublicInstances}.
 	 */
 	readonly announcesPublicInstances?: boolean;
 	/** Main-thread bridge for callback-driven list ref/query attachment state. */
@@ -311,6 +317,11 @@ export interface PrepareLynxHostBatchOptions<Node extends LynxElementRef> {
 	readonly incrementalCompact?: boolean;
 	/** Negotiated safe program mounts install private ref selectors on demand. */
 	readonly lazyPublicInstances?: boolean;
+	/**
+	 * This batch was composed knowing the negotiated capability, so it names every
+	 * host it will query. Latches the container into demand installs for good.
+	 */
+	readonly announcesPublicInstances?: boolean;
 }
 
 export interface LynxHostDriver<
@@ -1622,13 +1633,13 @@ function ensureNodesRefSelector<Node extends LynxElementRef>(
 /**
  * Decide the selector for a host that has just been given a physical node.
  *
- * A peer that announces every host it will query is answered from the
+ * A commit that announces every host it will query is answered from the
  * announcement: `ensure-public-instance` is ordered after the creates in the
  * same commit, so a fresh host that needs a handle still gets its selector
  * before the batch ends, and one that never asks costs nothing. A host that
  * asked earlier keeps it, because an installed selector is a promise to keep
- * answering across a physical rebind. Every other peer keeps the eager install:
- * for it an uninstalled selector is a ref that addresses nothing.
+ * answering across a physical rebind. Every other commit keeps the eager
+ * install: for it an uninstalled selector is a ref that addresses nothing.
  */
 function bindNodesRefSelector<Node extends LynxElementRef>(
 	state: LynxHostState<Node>,
@@ -4021,6 +4032,9 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 	const deletedRecords = new Set<number>();
 	const stagedGenerations = new Map<number, number>();
 	const initiallyNoGenerations = state.generations.size === 0;
+	// A commit that announced its hosts proves the peer composes under the
+	// negotiated capability, which no later commit can undo.
+	if (options?.announcesPublicInstances === true) state.announcesPublicInstances = true;
 	const acceptedLazyPublicInstances =
 		options?.lazyPublicInstances === true &&
 		!initiallyEmpty &&

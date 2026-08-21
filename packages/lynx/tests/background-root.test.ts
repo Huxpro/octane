@@ -1213,6 +1213,55 @@ describe.sequential('@octanejs/lynx background root in the official JS environme
 		expect(rowB.getAttribute('title')).toBe('addressed-b');
 	});
 
+	it('addresses a ref the background asked for before the main thread was there', async () => {
+		// A Lynx background bundle starts before its main thread does, so its first
+		// commit is composed without knowing what the session will negotiate — and a
+		// commit composed then names none of the hosts it will query, whatever the
+		// reply that arrives before it is dispatched goes on to grant.
+		const dom = new JSDOM('<!doctype html><html><body></body></html>');
+		installLynxTestingEnv(globalThis, {
+			window: dom.window as unknown as Window & typeof globalThis,
+		});
+		const env = globalThis.lynxTestingEnv;
+		env.switchToBackgroundThread();
+
+		let counterHandle: LynxPublicHandle | null = null;
+		backgroundRoot = createLynxRoot();
+		const rendered = backgroundRoot.render(fixture, {
+			label: 'initial',
+			items: [{ id: 'a', value: 'A' }],
+			showDetails: false,
+			fail: false,
+			log() {},
+			captureActions() {},
+			captureRow() {},
+			counterRef(handle) {
+				if (handle !== null) counterHandle = handle;
+			},
+		});
+
+		env.switchToMainThread();
+		installed = { dom, env, main: installLynxMainThread() };
+		env.switchToBackgroundThread();
+
+		await rendered;
+		await backgroundRoot.flushTransport();
+
+		const page = dom.window.document.querySelector('page')!;
+		const counter = page.querySelector('#counter')!;
+		expect(
+			page.querySelector(
+				createLynxNodesRefSelector(
+					counterHandle!.root,
+					counterHandle!.id,
+					counterHandle!.generation,
+				),
+			),
+		).toBe(counter);
+		await counterHandle!.setNativeProps({ title: 'addressed' });
+		expect(counter.getAttribute('title')).toBe('addressed');
+	});
+
 	it('mounts, updates state/context/conditionals, reorders keyed hosts, and unmounts', async () => {
 		const { dom, main } = installEnvironment();
 		const logs: string[] = [];

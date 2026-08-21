@@ -45,6 +45,7 @@ export const LYNX_TEMPLATE_RUN_READY_REQUEST_BASE = 2 ** 42;
 export const LYNX_COMPACT_ACKNOWLEDGEMENT = 'compact-v1';
 export const LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS = 16;
 export const LYNX_LAZY_PUBLIC_INSTANCES = 'lazy-v1';
+export const LYNX_ANNOUNCED_PUBLIC_INSTANCES = 'announced-v1';
 
 export interface LynxContextProxyEvent<T = unknown> {
 	readonly type: string;
@@ -95,6 +96,12 @@ export interface LynxMainThreadCapabilities {
  * without the other: a main thread that skips the selector while the background
  * skips the announcement strips refs with no error anywhere, so neither side
  * may derive this for itself.
+ *
+ * The negotiated capability is a property of the session, not of any one
+ * commit. A background composes its first batch before the reply carrying this
+ * capability reaches it, so that batch names none of its hosts however the
+ * session later negotiates. `commit.announces` is what tells the main thread which
+ * commits were composed knowing the capability, and only those may skip.
  */
 export function lynxLazyPublicInstancesNegotiated(
 	capabilities: LynxMainThreadCapabilities | undefined,
@@ -111,6 +118,14 @@ export interface LynxTransportCommitMessage extends UniversalTransportCommitMess
 	readonly ack?: typeof LYNX_COMPACT_ACKNOWLEDGEMENT;
 	/** Present only on an explicitly negotiated, compact initial intrinsic mount. */
 	readonly instances?: typeof LYNX_LAZY_PUBLIC_INSTANCES;
+	/**
+	 * Present only when this batch was composed while the negotiated
+	 * `lazyPublicInstances` capability was already live, so every host it will
+	 * query is named by an `ensure-public-instance` command inside it. A batch
+	 * composed before the main-ready reply arrived carries no announcements and
+	 * therefore no flag, whatever the session went on to negotiate.
+	 */
+	readonly announces?: typeof LYNX_ANNOUNCED_PUBLIC_INSTANCES;
 }
 
 /** Root-independent native page lifetime teardown broadcast to the background runtime. */
@@ -1714,6 +1729,7 @@ export function validateLynxBackgroundOutboundMessage(
 	if (message.type === 'commit') {
 		const hasCompactAck = Object.prototype.hasOwnProperty.call(message, 'ack');
 		const hasLazyPublicInstances = Object.prototype.hasOwnProperty.call(message, 'instances');
+		const hasAnnouncedPublicInstances = Object.prototype.hasOwnProperty.call(message, 'announces');
 		exactKeys(
 			message,
 			[
@@ -1725,6 +1741,7 @@ export function validateLynxBackgroundOutboundMessage(
 				'batch',
 				...(hasCompactAck ? ['ack'] : []),
 				...(hasLazyPublicInstances ? ['instances'] : []),
+				...(hasAnnouncedPublicInstances ? ['announces'] : []),
 			],
 			'commit',
 		);
@@ -1736,6 +1753,12 @@ export function validateLynxBackgroundOutboundMessage(
 		}
 		if (hasLazyPublicInstances && !hasCompactAck) {
 			fail('commit.instances', 'requires a compact acknowledgement.');
+		}
+		if (
+			hasAnnouncedPublicInstances &&
+			(message as { announces?: unknown }).announces !== LYNX_ANNOUNCED_PUBLIC_INSTANCES
+		) {
+			fail('commit.announces', `must be ${JSON.stringify(LYNX_ANNOUNCED_PUBLIC_INSTANCES)}.`);
 		}
 		assertBatch(message.batch, message);
 		return message as unknown as LynxTransportCommitMessage;

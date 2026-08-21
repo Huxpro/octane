@@ -22,6 +22,7 @@ import {
 	type LynxClientContainer,
 } from './client-driver.js';
 import {
+	LYNX_ANNOUNCED_PUBLIC_INSTANCES,
 	LYNX_BACKGROUND_TO_MAIN_EVENT,
 	LYNX_COMPACT_ACKNOWLEDGEMENT,
 	LYNX_LAZY_PUBLIC_INSTANCES,
@@ -1484,6 +1485,11 @@ export function createLynxBackgroundTransport(
 				type: 'commit',
 				batch: preparedBatch,
 			};
+			// The announcements this batch carries were decided here, while the
+			// commands were built. Dispatch happens after main readiness resolves, so
+			// reading the negotiated capability there would claim announcements for a
+			// batch composed before the reply that granted it ever arrived.
+			const announcedPublicInstances = lazyPublicInstances;
 			try {
 				selfCheckLynxBackgroundOutboundMessage(commit);
 			} catch (error) {
@@ -1552,7 +1558,7 @@ export function createLynxBackgroundTransport(
 								Object.isFrozen(incrementalRun.values);
 							const deferPublicInstances =
 								compact &&
-								lazyPublicInstances &&
+								announcedPublicInstances &&
 								(accepted === null ||
 									(postFirstTreeLazyPublicInstances &&
 										preparedBatch.commands.every(
@@ -1564,13 +1570,19 @@ export function createLynxBackgroundTransport(
 									(command) =>
 										command.op === 'mount-template-range' || command.op === 'mount-template-run',
 								);
+							const announces = announcedPublicInstances
+								? ({ announces: LYNX_ANNOUNCED_PUBLIC_INSTANCES } as const)
+								: null;
 							const outboundCommit: LynxTransportCommitMessage = compact
 								? {
 										...commit,
 										ack: LYNX_COMPACT_ACKNOWLEDGEMENT,
 										...(deferPublicInstances ? { instances: LYNX_LAZY_PUBLIC_INSTANCES } : null),
+										...announces,
 									}
-								: commit;
+								: announces === null
+									? commit
+									: { ...commit, ...announces };
 							let dispatchError: Error | null = null;
 							dispatchingCommit = entry;
 							try {

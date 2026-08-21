@@ -7,12 +7,13 @@ export const LYNX_NODES_REF_ATTRIBUTE = 'octane-ref';
 /**
  * Build the immutable selector installed for one root/host generation.
  *
- * A node carries this attribute only where a public instance was requested. On
- * a peer that announces its requests, every host it never names — a mounted row,
- * a native list cell nobody queried — carries none, and it is the request rather
- * than the attribute that survives a recycle onto whatever physical cell the row
- * lands on next. The first screen is the exception: it paints before a peer
- * exists, so it installs eagerly and adoption overwrites what it wrote.
+ * A node carries this attribute only where a public instance was requested. In
+ * a commit that announces its requests, every host it never names — a mounted
+ * row, a native list cell nobody queried — carries none, and it is the request
+ * rather than the attribute that survives a recycle onto whatever physical cell
+ * the row lands on next. A commit composed before the capability reached the
+ * background announces nothing and installs eagerly, as does the first screen,
+ * which paints before a peer exists at all; adoption overwrites what it wrote.
  */
 export function createLynxNodesRefSelector(root: number, id: number, generation: number): string {
 	positiveSafeInteger(root, 'selector root');

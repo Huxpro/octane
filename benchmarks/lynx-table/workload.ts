@@ -46,6 +46,7 @@ export interface WireMessageSnapshot {
 	/** The commit's acknowledgement and public-instance regime, verbatim. */
 	readonly ack: string | null;
 	readonly instances: string | null;
+	readonly announces: string | null;
 	/** The capabilities a `ready` reply carried, verbatim. */
 	readonly capabilities: Readonly<Record<string, unknown>> | null;
 }
@@ -116,6 +117,7 @@ export function createContextPair(): {
 				handleOps,
 				ack: typeof data.ack === 'string' ? data.ack : null,
 				instances: typeof data.instances === 'string' ? data.instances : null,
+				announces: typeof data.announces === 'string' ? data.announces : null,
 				capabilities:
 					data.capabilities !== null && typeof data.capabilities === 'object'
 						? (data.capabilities as Record<string, unknown>)
@@ -433,10 +435,12 @@ export function summarizeRegime(messages: readonly WireMessageSnapshot[]): {
 	capabilities: Readonly<Record<string, unknown>> | null;
 	commitAcks: Record<string, number>;
 	commitInstances: Record<string, number>;
+	commitAnnouncements: Record<string, number>;
 } {
 	let capabilities: Readonly<Record<string, unknown>> | null = null;
 	const commitAcks: Record<string, number> = {};
 	const commitInstances: Record<string, number> = {};
+	const commitAnnouncements: Record<string, number> = {};
 	for (const message of messages) {
 		if (message.capabilities !== null) capabilities ??= message.capabilities;
 		if (message.type !== 'commit') continue;
@@ -444,8 +448,12 @@ export function summarizeRegime(messages: readonly WireMessageSnapshot[]): {
 		commitAcks[ack] = (commitAcks[ack] ?? 0) + 1;
 		const instances = message.instances ?? '<eager>';
 		commitInstances[instances] = (commitInstances[instances] ?? 0) + 1;
+		// Whether the commit was composed knowing the negotiated capability, which
+		// is what decides eager against demand for the hosts it mounts.
+		const announces = message.announces ?? '<unannounced>';
+		commitAnnouncements[announces] = (commitAnnouncements[announces] ?? 0) + 1;
 	}
-	return { capabilities, commitAcks, commitInstances };
+	return { capabilities, commitAcks, commitInstances, commitAnnouncements };
 }
 
 // -- fake-tree queries -------------------------------------------------------
