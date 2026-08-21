@@ -245,6 +245,25 @@ model with a win that belongs to the scoped write. The runner fails if the two
 columns send different wire, if a cell's counts differ between repetitions, or
 if the ladder did not paint the tree it should.
 
+The ladder's last two rows, `updateStormOneFrame` and `selectStormOneFrame`,
+repeat the two storms with every tick landing in **one** frame rather than its
+own. Every other row here — and every row `run.mjs` reports — flushes once per
+tick, so a command the core invalidates while the frame is still open cannot
+exist in them, let alone be counted. The browser does not run that way: the
+app's storm ticks schedule through a `MessageChannel` and land faster than the
+renderer commits, and the 10,000-row stage decomposition observed four ticks of
+a 1,000-row change inside a single drain. A core that emits eagerly has to be
+measured in that column, because it is the only one where its own redundancy is
+reachable.
+
+`commands floor` is the second gate axis those rows exist for: what the frame
+strictly has to carry, against what it carried. `selectStormOneFrame`'s floor is
+zero — the burst ends exactly where it opened — so the commands it does send are
+the distinct hosts it touched, which is what superseding a pending command can
+reach and no further. That distance is a reported residual, not a failure; the
+runner fails only if a frame carries *fewer* commands than its floor, which
+would mean it does not state its own outcome.
+
 Everything reported is a count, so no quiet host is needed and no wall clock is
 measured. Both columns are ceilings in the same sense the `octane-direct`
 prototype is a floor: the block program is hand-written, with no hooks, no
