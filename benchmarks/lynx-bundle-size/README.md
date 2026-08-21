@@ -48,3 +48,18 @@ separate because compressed deltas are not additive.
 
 The checked execution report is
 [`results/production-inventory.md`](results/production-inventory.md).
+
+## Background core switch
+
+`node benchmarks/lynx-bundle-size/core-switch.mjs` builds the same fixture twice
+through the real production pipeline, changing only `pluginOctane({ core })`, and
+reports the background program's size for each core beside a presence probe for
+each core's own diagnostic strings (issue #103 B0).
+
+It is a control before it is a measurement: a branch on a constant the bundler
+declines to fold ships both cores and still passes every unit test, so the run
+fails if either core's strings survive in the other's bundle, if a core is
+missing its own strings (stale probes), or if the main-thread program is not
+byte-identical across the switch. The plan constructors a compiled `.tsrx`
+component calls are reported separately, because they belong to the application
+module rather than to a core and are reachable under either flag.

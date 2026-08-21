@@ -6,7 +6,11 @@ import {
 } from '@octanejs/lynx/config';
 import { OctaneRspackPlugin } from '@octanejs/rspack-plugin';
 
-import { applyLynxApplication, exposeLynxTemplatePlugin } from './application.js';
+import {
+	applyLynxApplication,
+	applyLynxBackgroundCore,
+	exposeLynxTemplatePlugin,
+} from './application.js';
 import { configureLynxCSS } from './css.js';
 import {
 	applyLynxEntryLayer,
@@ -57,6 +61,7 @@ function normalizeOptions(value) {
 		throw new TypeError(`${PLUGIN_NAME}: options must be an object.`);
 	}
 	const allowed = new Set([
+		'core',
 		'dev',
 		'environments',
 		'exclude',
@@ -67,6 +72,9 @@ function normalizeOptions(value) {
 	]);
 	for (const key of Object.keys(options)) {
 		if (!allowed.has(key)) throw new TypeError(`${PLUGIN_NAME}: unknown option \`${key}\`.`);
+	}
+	if (options.core !== undefined && options.core !== 'universal' && options.core !== 'block') {
+		throw new TypeError(`${PLUGIN_NAME}: \`core\` must be 'universal' or 'block'.`);
 	}
 	for (const key of ['dev', 'hmr', 'profile', 'requireDirective']) {
 		if (options[key] !== undefined && typeof options[key] !== 'boolean') {
@@ -79,6 +87,7 @@ function normalizeOptions(value) {
 	return Object.freeze({
 		...layer,
 		application,
+		core: options.core ?? 'universal',
 		thread,
 		renderers:
 			thread === 'main-thread' ? lynxRspeedyMainThreadRenderers : lynxRspeedyBackgroundRenderers,
@@ -159,6 +168,7 @@ export function pluginOctane(value) {
 				handler(chain, context) {
 					const { environment } = context;
 					if (!appliesToEnvironment(environment)) return;
+					applyLynxBackgroundCore(chain, options.core);
 					if (options.application) {
 						const rspeedyConfig =
 							api.useExposed?.(Symbol.for('rspeedy.api'))?.config ?? api.getRsbuildConfig?.() ?? {};
