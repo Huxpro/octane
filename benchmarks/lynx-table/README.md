@@ -288,8 +288,20 @@ Both arms are zero because a background names the hosts it will query from what
 it knows while composing, rather than from a reply it has not received, so its
 first batch announces like every other. That is what this harness exists to
 hold: when the announcement waited on the negotiated capability instead, the
-after-render arm read **4,028** and **40,028** — every node but the page, on the
-arm that matches how production starts.
+after-render arm read **4,028** and **40,028** — every node but the page.
+
+**These arms describe the background-commit path, not a default production
+first screen.** `packages/rspeedy-plugin-octane/src/main-thread-entry.js`
+installs the main thread with `firstScreen: true`, so an app built by the plugin
+paints its first screen through main-thread direct emission and the background
+adopts what was painted. Both of those install a selector on every node by
+construction, for reasons recorded at their call sites, and neither consults a
+commit's announcement. Measured in Chromium at 10,000 rows, a plugin-default
+build reads **40,028** selector attributes whether or not the background
+announces — the same number, and the same first paint to within 0.2 ms. The
+arms above therefore bound what announcing is worth wherever the background owns
+the first commit: a `<list>` topology direct emission declines, a host that does
+not enable the first screen, or any commit after the first.
 
 The report records each arm's announcement regime beside its install count,
 because the count is unreadable without it: `announced-v1` is the commit
@@ -299,6 +311,22 @@ that could not — a peer too old to announce at all.
 Everything reported is a count, so no quiet host is needed and no wall clock is
 measured; the runner fails if two repetitions of a cell disagree or if an arm
 did not paint the rows it claims. `prototype/results/first-screen-selectors.*`
+is the committed record.
+
+**What the counts are worth in wall clock: not much, on Web.** `prototype/run-fcp.mjs`
+ran the same 10,000-row app in Chromium with the background owning the first
+commit, n=5 per arm, AB/BA, fresh page per sample, host at 0.12 load. Removing
+all 40,028 selector writes moved median view-attach FCP from **2,134.9 ms to
+2,102.2 ms** — about 1.5% — and the arms' ranges overlap: the eager arm's
+fastest sample (2,048.7 ms) beat every announcing sample. At this n that is not
+a detectable win, which is the honest reading of 40,000 `setAttribute` calls
+against a 2.1-second first paint. Announcing is worth doing for the wire
+contract and the per-node work it removes, not as a first-paint lever. The same
+run also puts the background-commit path **~560 ms behind** main-thread direct
+emission at this scale (2,102.2 ms vs 1,540.6 ms), which is the measurement
+standing behind the plugin's `firstScreen: true` default. Both figures are
+Lynx-for-Web in headless Chromium; native `__SetAttribute` crosses into engine
+code and is not measured here. `prototype/results/fcp-10000-selector-announce.*`
 is the committed record.
 
 ## 5. Specialized-core count harness (`block-counts.mjs`, on demand)
