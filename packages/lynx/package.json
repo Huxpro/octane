@@ -45,6 +45,7 @@
     "./main-renderer": "./src/main-renderer.ts",
     "./main-worklets": "./src/main-worklets.ts",
     "./first-screen": "./src/first-screen.ts",
+    "./block": "./src/block.ts",
     "./intrinsics": "./src/intrinsics.ts",
     "./intrinsics/jsx-runtime": "./src/intrinsics.ts",
     "./main-thread": "./src/main-thread.ts",

@@ -46,12 +46,20 @@ and no error is raised.
 The synchronous first screen is still unavailable for pages containing a `<list>`;
 this makes that outcome ordinary and quiet rather than a reported defect.
 
-One thing this fix left open has since been closed. The first screen was still
-built and then torn back out, which is avoidable — and the way there was not the
-prepared batch publishing what it staged, but the renderer's record tree, which
-already carries every element type and prop the verdict reads. A separate change
-asks the question there, so a page with a `<list>` no longer pays for a screen it
-never keeps.
+Both things this fix left open have since been closed, in this same release.
+
+The build-then-discard is gone, and the way there was not the prepared batch
+publishing what it staged but the renderer's record tree, which already carries
+every element type and prop the verdict reads.
+
+Then the decline itself went. The prediction above — that adopting a list would
+mean adopting ReactLynx's shape, a serializable descriptor and stable callback
+identities — turned out to be answering a question that was not being asked.
+Octane's list state never crosses the wire at all: it is main-local, so adoption
+moves it by reference. What it costs is rebinding three closures against the
+container being adopted into. A page holding a `<list>` is painted and adopted
+now, so the paragraph above describing the synchronous first screen as
+unavailable to it no longer holds.
 
 Portals reject capture through the same function and keep throwing. That is not a
 half-finished migration: the main renderer rejects a portal while rendering, so

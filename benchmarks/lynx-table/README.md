@@ -116,6 +116,49 @@ records the source commit. If a reference bundle is absent the harness prints
 "not measured" for that cell and continues — it never substitutes a number
 from a degraded run.
 
+### The `octane-block` cell (issue #103 B0)
+
+```bash
+BENCH_CORE=block node scripts/build-app.mjs               # scoped writes
+BENCH_BLOCK_MODE=reconcile BENCH_CORE=block node scripts/build-app.mjs
+node web/run-web.mjs --cells octane,octane-block --scales 1000,10000 --reps 5
+```
+
+The same application entry, the same page driver, and the same bundle recipe,
+built with `pluginOctane({ core: 'block' })` so the issue-#103 Block core drives
+background updates instead of the universal one. One bundle carries exactly one
+core: `__OCTANE_LYNX_BACKGROUND_CORE__` folds in `app/src/index.ts`, so the
+`universal` build carries none of `app/src/block-program.ts` and none of the
+Block core behind it. The build flag is therefore the only variable, which is
+what makes `octane-block ÷ octane` a same-window A/B rather than a comparison of
+two applications that resemble each other.
+
+Three things must travel with any number from this cell:
+
+- **It is an architecture ceiling, not a framework measurement.** The Block core
+  has no component layer yet — no hook cells, so a compiled `.tsrx` component has
+  no program to be — so the cell is driven by a hand-written block program
+  (`app/src/block-program.ts`), exactly as `block-workload.ts` and `prototype/`
+  are. `octane` is the second number and neither is quoted without the other.
+- **Two drive modes.** `octane-block` writes the slot that changed, by key, the
+  way a lowering with per-row reactive cells would. `octane-block-reconcile`
+  hands the whole next list to the keyed reconciler, the way `setRows(next)` does
+  today. Build both before quoting either: reporting only the first credits the
+  Block model with a win that belongs to the scoped write. Structural operations
+  (create, swap, remove) are the same in both.
+- **The first screen is not comparable.** The main-thread first-screen program is
+  the same either way, but the Block core has no adoption story for it: its first
+  commit mounts its own tree, main finds a mismatch and repairs, and the painted
+  first screen is discarded. FCP for this cell measures that repair rather than
+  adoption, so it is not an octane-vs-block comparison of the same path. The
+  table operations are: `run-web.mjs` waits for the mount and then `settle()`s
+  before the first click, so `create` and everything after it run on a settled
+  tree — the block cell simply enters from a repaired tree instead of an adopted
+  one.
+
+`prototype/run-fcp.mjs` picks the cell up automatically once
+`app/dist-block-rows<N>/main.web.bundle` exists.
+
 ### Measurement honesty rules (non-negotiable)
 
 - No octane-only bespoke workloads: the app mirrors the reference apps'
@@ -276,6 +319,25 @@ hands the whole next list to the keyed reconciler, as the app's own
 model with a win that belongs to the scoped write. The runner fails if the two
 columns send different wire, if a cell's counts differ between repetitions, or
 if the ladder did not paint the tree it should.
+
+The ladder's last two rows, `updateStormOneFrame` and `selectStormOneFrame`,
+repeat the two storms with every tick landing in **one** frame rather than its
+own. Every other row here — and every row `run.mjs` reports — flushes once per
+tick, so a command the core invalidates while the frame is still open cannot
+exist in them, let alone be counted. The browser does not run that way: the
+app's storm ticks schedule through a `MessageChannel` and land faster than the
+renderer commits, and the 10,000-row stage decomposition observed four ticks of
+a 1,000-row change inside a single drain. A core that emits eagerly has to be
+measured in that column, because it is the only one where its own redundancy is
+reachable.
+
+`commands floor` is the second gate axis those rows exist for: what the frame
+strictly has to carry, against what it carried. `selectStormOneFrame`'s floor is
+zero — the burst ends exactly where it opened — so the commands it does send are
+the distinct hosts it touched, which is what superseding a pending command can
+reach and no further. That distance is a reported residual, not a failure; the
+runner fails only if a frame carries *fewer* commands than its floor, which
+would mean it does not state its own outcome.
 
 Everything reported is a count, so no quiet host is needed and no wall clock is
 measured. Both columns are ceilings in the same sense the `octane-direct`

@@ -77,7 +77,41 @@ const REUSE_FLOOR = Object.freeze({
 	nodesTouched: new Set(ROW_SLOTS.filter((slot) => slot.varies).map((slot) => slot.node)).size,
 });
 
-function listMountCommands(itemCount: number): UniversalHostCommand[] {
+/**
+ * The per-row strings, generated once so both arms of a retention comparison
+ * hold the *same* string instances. What is then measured is the structure each
+ * arm builds on top of the application's own data, not the data itself.
+ */
+export interface RowData {
+	readonly itemKeys: readonly string[];
+	/** The values that differ between rows, in template-slot order. */
+	readonly values: readonly (readonly string[])[];
+}
+
+export function narrowRowData(itemCount: number): RowData {
+	const itemKeys: string[] = [];
+	const values: string[][] = [];
+	for (let index = 0; index < itemCount; index++) {
+		itemKeys.push(`item-${index}`);
+		values.push([`Row ${index}`]);
+	}
+	return Object.freeze({ itemKeys, values });
+}
+
+export function wideRowData(itemCount: number): RowData {
+	const itemKeys: string[] = [];
+	const values: string[][] = [];
+	for (let index = 0; index < itemCount; index++) {
+		itemKeys.push(`item-${index}`);
+		values.push([`Title ${index}`, `Sub ${index}`]);
+	}
+	return Object.freeze({ itemKeys, values });
+}
+
+function listMountCommands(
+	itemCount: number,
+	data: RowData = narrowRowData(itemCount),
+): UniversalHostCommand[] {
 	const commands: UniversalHostCommand[] = [
 		{ op: 'create', id: 1, type: 'list', props: { id: 'allocation-bench' } },
 	];
@@ -88,10 +122,10 @@ function listMountCommands(itemCount: number): UniversalHostCommand[] {
 				op: 'create',
 				id: ids.item,
 				type: 'list-item',
-				props: { 'item-key': `item-${index}`, 'reuse-identifier': 'bench-row' },
+				props: { 'item-key': data.itemKeys[index]!, 'reuse-identifier': 'bench-row' },
 			},
 			{ op: 'create', id: ids.text, type: 'text', props: {} },
-			{ op: 'create', id: ids.raw, type: '#text', props: { value: `Row ${index}` } },
+			{ op: 'create', id: ids.raw, type: '#text', props: { value: data.values[index]![0]! } },
 			{ op: 'insert', parent: ids.text, id: ids.raw, before: null },
 			{ op: 'insert', parent: ids.item, id: ids.text, before: null },
 			{ op: 'insert', parent: 1, id: ids.item, before: null },
@@ -536,6 +570,27 @@ function spread(values: readonly number[]): WorkSpread {
 	});
 }
 
+/**
+ * One recycle step measured through one window: release the outgoing cell,
+ * sample the enqueue half, admit the incoming item, close the sample. The
+ * narrow and wide workloads compare their numbers against each other, so the
+ * measurement window MUST be the same on both arms — which is why it exists
+ * once here rather than inline in each loop.
+ */
+function sampleRecycle(
+	environment: FakeLynxPAPI,
+	list: FakeNode,
+	releasedSign: number,
+	index: number,
+): { sign: number; enqueueWork: SampledPapiWork; stepWork: SampledPapiWork } {
+	environment.beginSample();
+	environment.leave(list, releasedSign);
+	const enqueueWork = environment.sampleSoFar();
+	const sign = environment.enter(list, index);
+	const stepWork = environment.endSample();
+	return { sign, enqueueWork, stepWork };
+}
+
 export function runLynxListAllocationWorkload(): LynxListAllocationResult {
 	const environment = new FakeLynxPAPI();
 	const attachments = createAttachmentDelivery(environment);
@@ -596,11 +651,7 @@ export function runLynxListAllocationWorkload(): LynxListAllocationResult {
 		const releasedSign = activeSigns.shift();
 		if (releasedSign === undefined) throw new Error('active native list window became empty.');
 		attachments.reset();
-		environment.beginSample();
-		environment.leave(list, releasedSign);
-		const enqueueWork = environment.sampleSoFar();
-		const sign = environment.enter(list, index);
-		const stepWork = environment.endSample();
+		const { sign, enqueueWork, stepWork } = sampleRecycle(environment, list, releasedSign, index);
 		enqueueWrites.push(enqueueWork.writes);
 		requestWrites.push(stepWork.writes - enqueueWork.writes);
 		reuseWrites.push(stepWork.writes);
@@ -736,7 +787,10 @@ function wideRowText(index: number): string {
 	return `Title ${index}Sub ${index}NEW`;
 }
 
-function wideListMountCommands(itemCount: number): UniversalHostCommand[] {
+function wideListMountCommands(
+	itemCount: number,
+	data: RowData = wideRowData(itemCount),
+): UniversalHostCommand[] {
 	const commands: UniversalHostCommand[] = [
 		{ op: 'create', id: 1, type: 'list', props: { id: 'wide-row-bench' } },
 	];
@@ -747,13 +801,13 @@ function wideListMountCommands(itemCount: number): UniversalHostCommand[] {
 				op: 'create',
 				id: id[0]!,
 				type: 'list-item',
-				props: { 'item-key': `item-${index}`, 'reuse-identifier': 'wide-row' },
+				props: { 'item-key': data.itemKeys[index]!, 'reuse-identifier': 'wide-row' },
 			},
 			{ op: 'create', id: id[1]!, type: 'view', props: { class: 'card', style: 'padding:8px' } },
 			{ op: 'create', id: id[2]!, type: 'text', props: { class: 'title' } },
-			{ op: 'create', id: id[3]!, type: '#text', props: { value: `Title ${index}` } },
+			{ op: 'create', id: id[3]!, type: '#text', props: { value: data.values[index]![0]! } },
 			{ op: 'create', id: id[4]!, type: 'text', props: { class: 'subtitle' } },
-			{ op: 'create', id: id[5]!, type: '#text', props: { value: `Sub ${index}` } },
+			{ op: 'create', id: id[5]!, type: '#text', props: { value: data.values[index]![1]! } },
 			{ op: 'create', id: id[6]!, type: 'view', props: { class: 'badges' } },
 			{ op: 'create', id: id[7]!, type: 'text', props: { class: 'badge' } },
 			{ op: 'create', id: id[8]!, type: '#text', props: { value: 'NEW' } },
@@ -818,11 +872,7 @@ export function runWideRowReuseWorkload(): WideRowReuseResult {
 		const releasedSign = activeSigns.shift();
 		if (releasedSign === undefined) throw new Error('active native list window became empty.');
 		attachments.reset();
-		environment.beginSample();
-		environment.leave(list, releasedSign);
-		const enqueueWork = environment.sampleSoFar();
-		const sign = environment.enter(list, index);
-		const stepWork = environment.endSample();
+		const { sign, enqueueWork, stepWork } = sampleRecycle(environment, list, releasedSign, index);
 		enqueueWrites.push(enqueueWork.writes);
 		requestWrites.push(stepWork.writes - enqueueWork.writes);
 		writes.push(stepWork.writes);
@@ -868,6 +918,77 @@ export function runWideRowReuseWorkload(): WideRowReuseResult {
 		}),
 		failures: Object.freeze(failures),
 	});
+}
+
+/**
+ * A live native list, held so a retention sample can measure it. Nothing is
+ * scrolled: this is the steady state right after mount, where every logical row
+ * is a record and only the window the platform asked for is physical.
+ */
+export interface RetainedList {
+	readonly logicalHosts: number;
+	readonly physicalCells: number;
+	dispose(): void;
+}
+
+export function buildRetainedList(kind: 'narrow' | 'wide', data: RowData): RetainedList {
+	const environment = new FakeLynxPAPI();
+	const container = createLynxHostContainer(environment.papi, { root: 1 });
+	const commands =
+		kind === 'narrow'
+			? listMountCommands(data.itemKeys.length, data)
+			: wideListMountCommands(data.itemKeys.length, data);
+	prepareLynxHostBatch(container, batch(1, commands)).apply();
+	const list = environment.getListNode();
+	const signs: number[] = [];
+	for (let index = 0; index < VISIBLE_WINDOW_SIZE; index++) {
+		signs.push(environment.enter(list, index));
+	}
+	return {
+		logicalHosts: container.instanceCount,
+		physicalCells: environment.createdNodeCount('list-item'),
+		dispose: () => {
+			for (const sign of signs) environment.leave(list, sign);
+			disposeLynxHostContainer(container);
+		},
+	};
+}
+
+/**
+ * What a deferred run would retain for the same page: one compiled program,
+ * shared by every row, plus one value row per logical item. The values are the
+ * caller's own strings — this allocates the arrays that hold them and nothing
+ * else, which is the point of the comparison.
+ */
+export interface DeferredRunModel {
+	readonly program: unknown;
+	readonly rows: readonly (readonly unknown[])[];
+}
+
+export function buildDeferredRunModel(kind: 'narrow' | 'wide', data: RowData): DeferredRunModel {
+	const program =
+		kind === 'narrow'
+			? Object.freeze([
+					Object.freeze({ type: 'list-item', props: { 'reuse-identifier': 'bench-row' }, slot: 0 }),
+					Object.freeze({ type: 'text', props: {}, slot: -1 }),
+					Object.freeze({ type: '#text', props: {}, slot: 1 }),
+				])
+			: Object.freeze([
+					Object.freeze({ type: 'list-item', props: { 'reuse-identifier': 'wide-row' }, slot: 0 }),
+					Object.freeze({ type: 'view', props: { class: 'card', style: 'padding:8px' }, slot: -1 }),
+					Object.freeze({ type: 'text', props: { class: 'title' }, slot: -1 }),
+					Object.freeze({ type: '#text', props: {}, slot: 1 }),
+					Object.freeze({ type: 'text', props: { class: 'subtitle' }, slot: -1 }),
+					Object.freeze({ type: '#text', props: {}, slot: 2 }),
+					Object.freeze({ type: 'view', props: { class: 'badges' }, slot: -1 }),
+					Object.freeze({ type: 'text', props: { class: 'badge' }, slot: -1 }),
+					Object.freeze({ type: '#text', props: { value: 'NEW' }, slot: -1 }),
+				]);
+	const rows: unknown[][] = [];
+	for (let index = 0; index < data.itemKeys.length; index++) {
+		rows.push([data.itemKeys[index]!, ...data.values[index]!]);
+	}
+	return { program, rows };
 }
 
 export interface EagerListAllocationResult {
