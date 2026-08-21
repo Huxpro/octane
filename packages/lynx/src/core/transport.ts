@@ -16,7 +16,6 @@ import {
 	applyLynxHostAttachments,
 	invalidateLynxClientContainer,
 	isLynxClientEventTarget,
-	LYNX_PUBLIC_INSTANCE_ANNOUNCEMENTS,
 	prepareLynxCompactHandleDeltas,
 	prepareLynxHandleDeltas,
 	setLynxClientCapabilities,
@@ -1491,11 +1490,6 @@ export function createLynxBackgroundTransport(
 			// readiness resolves, so a batch composed before the reply that granted it
 			// would claim a deferral the peer never agreed to.
 			const deferrablePublicInstances = lazyPublicInstances;
-			// The announcement is a property of this background rather than of the
-			// session. Every batch it composes names the hosts it will query, so the
-			// first one can say so too — which is the batch the flag matters most for,
-			// since it mounts the whole first screen.
-			const announcedPublicInstances = LYNX_PUBLIC_INSTANCE_ANNOUNCEMENTS;
 			try {
 				selfCheckLynxBackgroundOutboundMessage(commit);
 			} catch (error) {
@@ -1576,9 +1570,11 @@ export function createLynxBackgroundTransport(
 									(command) =>
 										command.op === 'mount-template-range' || command.op === 'mount-template-run',
 								);
-							const announces = announcedPublicInstances
-								? ({ announces: LYNX_ANNOUNCED_PUBLIC_INSTANCES } as const)
-								: null;
+							// The announcement is a property of this background rather than
+							// of the session: every batch it composes names the hosts it
+							// will query, so every commit — the pre-handshake first one
+							// included — carries the promise unconditionally.
+							const announces = { announces: LYNX_ANNOUNCED_PUBLIC_INSTANCES } as const;
 							const outboundCommit: LynxTransportCommitMessage = compact
 								? {
 										...commit,
@@ -1586,9 +1582,7 @@ export function createLynxBackgroundTransport(
 										...(deferPublicInstances ? { instances: LYNX_LAZY_PUBLIC_INSTANCES } : null),
 										...announces,
 									}
-								: announces === null
-									? commit
-									: { ...commit, ...announces };
+								: { ...commit, ...announces };
 							let dispatchError: Error | null = null;
 							dispatchingCommit = entry;
 							try {

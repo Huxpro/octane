@@ -381,8 +381,13 @@ export function createLynxClientContainer(
  * grant a capability reaches the background. An announcement that waited for
  * that reply would arrive after the decision it exists to inform, which is the
  * whole first screen installing selectors nothing will ever query.
+ *
+ * An invariant, not a switch: the transport attaches `announces` to every
+ * commit unconditionally, and the main thread rejects a lazy commit from a
+ * peer that never announced, so nothing is prepared to run with this false.
+ * The literal type keeps any future branch on it visibly dead.
  */
-export const LYNX_PUBLIC_INSTANCE_ANNOUNCEMENTS: boolean = true;
+export const LYNX_PUBLIC_INSTANCE_ANNOUNCEMENTS = true;
 
 /** @internal Publish capabilities only from this container's correlated ready reply. */
 export function setLynxClientCapabilities(

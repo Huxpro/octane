@@ -3977,10 +3977,11 @@ function compareFirstTree<Node extends LynxElementRef>(
 	for (let index = 0; index < operations.length; index++) {
 		const operation = operations[index]!;
 		// `ensure-public-instance` is admissible because it neither creates nor
-		// mutates a node: it names a host the batch will query. Adoption stamps
-		// every adopted record with a selector unconditionally, for the identity
-		// reason recorded at the transfer site, so the announcement is already
-		// answered by the time it would have been replayed.
+		// mutates a node: it names a host the batch will query. Adoption replays
+		// it — alone among the batch's operations — because the unconditional
+		// selector stamp at the transfer site only reaches hosts that own a
+		// physical node, and a native list row owns none until a cell
+		// materializes it.
 		if (
 			operation.op !== 'create' &&
 			operation.op !== 'mount-template' &&
@@ -5928,7 +5929,15 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 								}
 							}
 						}
-						const applicationOperations = firstTreeAction === 'adopt' ? [] : operations;
+						// Adoption replays no structural work, but a public-instance request
+						// still has to land: the stamping loop above answers it only for
+						// hosts that own a physical node, and a native list row owns none
+						// until a cell materializes it, so the request must survive as the
+						// record's wanted flag or the row's ref addresses nothing forever.
+						const applicationOperations =
+							firstTreeAction === 'adopt'
+								? operations.filter((operation) => operation.op === 'ensure-public-instance')
+								: operations;
 						for (const operation of applicationOperations) {
 							if (hasNativeListTopology && retiredPhysicalIds.has(operation.id)) continue;
 							if (operation.op === 'mount-template') {
