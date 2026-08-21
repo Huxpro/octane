@@ -728,6 +728,13 @@ interface LynxValidatedTemplateProgram {
 	readonly hosts: number;
 	readonly values: number;
 	readonly events: number;
+	/**
+	 * Value slots a `main-thread:` binding owns, or `null` when the program has
+	 * none. Every other slot stays a wire scalar so a frame is validated by its
+	 * header alone; a worklet descriptor is an object, so the program has to say
+	 * which slots may hold one before the values are read.
+	 */
+	readonly mainThreadValues: readonly boolean[] | null;
 }
 
 /** Reuse canonical decimal keys across repeated, bounded scalar-array validations. */
@@ -767,7 +774,13 @@ function assertTemplateArray(value: unknown, label: string): readonly unknown[] 
 }
 
 /** Validate each dynamic array slot exactly once without ever evaluating its getter. */
-function assertTemplateScalarValues(value: unknown, expected: number, index: number): void {
+function assertTemplateScalarValues(
+	value: unknown,
+	expected: number,
+	index: number,
+	mainThreadValues: readonly boolean[] | null,
+	arity: number,
+): void {
 	if (!Array.isArray(value)) {
 		fail(COMMANDS_LABEL, 'must be an array.', index, 'values');
 	}
@@ -809,7 +822,18 @@ function assertTemplateScalarValues(value: unknown, expected: number, index: num
 			);
 		}
 		if (!isWireLeaf(descriptor.value)) {
-			fail(composePath(COMMANDS_LABEL, index, 'values'), 'must contain only scalar values.', slot);
+			// A worklet descriptor is an object, so the slot a program bound to a
+			// `main-thread:` prop is the one place a non-scalar belongs. It is walked
+			// by the same validator a `create` command's main-thread prop is walked
+			// by, so the two paths cannot disagree about what a descriptor may hold.
+			if (mainThreadValues?.[slot % arity] !== true) {
+				fail(
+					composePath(COMMANDS_LABEL, index, 'values'),
+					'must contain only scalar values.',
+					slot,
+				);
+			}
+			assertWireValue(descriptor.value, composePath(COMMANDS_LABEL, index, 'values'));
 		}
 		// Frozen own data slots force proxy reads to return the exact descriptor
 		// value. Mutable cross-realm arrays retain the older observable-read
@@ -920,6 +944,7 @@ function assertTemplateProgram(
 	if (nodes.length === 0) fail(`${label}.nodes`, 'must be a non-empty array.');
 	let immutable = Object.isFrozen(program) && Object.isFrozen(nodes) && Object.isFrozen(events);
 	let maxValue = -1;
+	let mainThreadValues: boolean[] | null = null;
 	const usedValues = new Set<number>();
 	for (let index = 0; index < nodes.length; index++) {
 		const nodeLabel = `${label}.nodes[${index}]`;
@@ -964,18 +989,22 @@ function assertTemplateProgram(
 			if (immutable && !Object.isFrozen(binding)) immutable = false;
 			exactKeys(binding, TEMPLATE_PROGRAM_BINDING_KEYS, bindingLabel);
 			nonEmptyString(binding.name, `${bindingLabel}.name`);
+			const mainThread = (binding.name as string).startsWith('main-thread:');
 			if (
 				binding.name === 'ref' ||
 				binding.name === 'key' ||
 				binding.name === 'children' ||
-				(binding.name as string).startsWith('main-thread:') ||
 				names.has(binding.name as string)
 			) {
 				fail(`${bindingLabel}.name`, 'must be a unique ordinary host-prop name.');
 			}
+			if (mainThread && (node.type === '#text' || node.type === 'raw-text')) {
+				fail(`${bindingLabel}.name`, 'must not bind a main-thread prop on raw text.');
+			}
 			names.add(binding.name as string);
 			nonNegativeInteger(binding.valueIndex, `${bindingLabel}.valueIndex`);
 			const valueIndex = binding.valueIndex as number;
+			if (mainThread) (mainThreadValues ??= [])[valueIndex] = true;
 			usedValues.add(valueIndex);
 			if (valueIndex > maxValue) maxValue = valueIndex;
 		}
@@ -1007,7 +1036,16 @@ function assertTemplateProgram(
 		}
 		eventNames.add(key);
 	}
-	const validated = { hosts: nodes.length, values: maxValue + 1, events: events.length };
+	if (mainThreadValues !== null) {
+		for (let slot = 0; slot <= maxValue; slot++) mainThreadValues[slot] ??= false;
+		Object.freeze(mainThreadValues);
+	}
+	const validated = {
+		hosts: nodes.length,
+		values: maxValue + 1,
+		events: events.length,
+		mainThreadValues,
+	};
 	if (immutable) {
 		if (state.lastTemplateProgram !== undefined) {
 			const cache = (state.validatedTemplatePrograms ??= new WeakMap<
@@ -1058,7 +1096,13 @@ function assertTemplateRangeCommand(
 	}
 	starts.push(firstId);
 	ends.push(lastId);
-	assertTemplateScalarValues(command.values, program.values, index);
+	assertTemplateScalarValues(
+		command.values,
+		program.values,
+		index,
+		program.mainThreadValues,
+		program.values,
+	);
 	if (program.events === 0) {
 		if (command.firstListenerId !== null) {
 			fail(
@@ -1139,7 +1183,13 @@ function assertTemplateRunCommand(
 	if (!Number.isSafeInteger(valueCount)) {
 		fail(COMMANDS_LABEL, 'overflows the intrinsic dynamic-value count.', index, 'count');
 	}
-	assertTemplateScalarValues(command.values, valueCount, index);
+	assertTemplateScalarValues(
+		command.values,
+		valueCount,
+		index,
+		program.mainThreadValues,
+		program.values,
+	);
 	if (program.events === 0) {
 		if (command.firstListenerId !== null) {
 			fail(

@@ -20,10 +20,12 @@ import { createLynxBackgroundTransport, type LynxBackgroundTransport } from './c
 import type { LynxContextProxy, LynxMainThreadWorkletWireDescriptor } from './core/protocol.js';
 import type { LynxCreateSelectorQuery } from './core/nodes-ref.js';
 import {
+	LYNX_BLOCK_BACKGROUND_CORE,
 	lynxEnvironmentIsInjected,
 	readAmbientQueueMicrotask,
 	readLynxEnvironment,
 } from './core/environment.js';
+import { createLynxBlockBackgroundCore, type LynxBackgroundCore } from './core/block-background.js';
 import {
 	createLynxBackgroundFunctionRegistry,
 	installBackgroundCallBridge,
@@ -155,35 +157,35 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 		const executions = getLynxClientWorkletBatchExecutions(batch);
 		if (executions === undefined && acceptedWorklets.size === 0) return;
 		let releaseCandidates: Set<string> | undefined;
+		// Ownership is per host, so one template run assigns to as many hosts as it
+		// installed callbacks on and each is replaced or destroyed on its own.
+		const assign = (id: number, ids: ReadonlySet<string> | undefined): void => {
+			const previous = acceptedWorklets.get(id);
+			if (previous !== undefined) {
+				for (const execution of previous) {
+					releaseAcceptedExecution(execution);
+					(releaseCandidates ??= new Set()).add(execution);
+				}
+			}
+			if (ids === undefined) {
+				if (previous !== undefined) acceptedWorklets.delete(id);
+				return;
+			}
+			acceptedWorklets.set(id, ids);
+			for (const execution of ids) {
+				retainAcceptedExecution(execution);
+				(releaseCandidates ??= new Set()).add(execution);
+			}
+		};
 		for (let index = 0; index < batch.commands.length; index++) {
 			const command = batch.commands[index]!;
 			if (command.op === 'create' || command.op === 'update' || command.op === 'recreate') {
-				const previous = acceptedWorklets.get(command.id);
-				if (previous !== undefined) {
-					for (const execution of previous) {
-						releaseAcceptedExecution(execution);
-						(releaseCandidates ??= new Set()).add(execution);
-					}
-				}
-				const ids = executions?.get(index);
-				if (ids === undefined) {
-					if (previous !== undefined) acceptedWorklets.delete(command.id);
-				} else {
-					acceptedWorklets.set(command.id, ids);
-					for (const execution of ids) {
-						retainAcceptedExecution(execution);
-						(releaseCandidates ??= new Set()).add(execution);
-					}
-				}
+				assign(command.id, executions?.get(index)?.get(command.id));
+			} else if (command.op === 'mount-template-run' || command.op === 'mount-template-range') {
+				const owners = executions?.get(index);
+				if (owners !== undefined) for (const [id, ids] of owners) assign(id, ids);
 			} else if (command.op === 'destroy') {
-				const previous = acceptedWorklets.get(command.id);
-				if (previous !== undefined) {
-					for (const execution of previous) {
-						releaseAcceptedExecution(execution);
-						(releaseCandidates ??= new Set()).add(execution);
-					}
-					acceptedWorklets.delete(command.id);
-				}
+				assign(command.id, undefined);
 			}
 		}
 		if (releaseCandidates !== undefined) {
@@ -195,9 +197,11 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 	const rejectWorkletBatch = (batch: UniversalHostBatch): void => {
 		const executions = getLynxClientWorkletBatchExecutions(batch);
 		if (executions === undefined) return;
-		for (const ids of executions.values()) {
-			for (const execution of ids) {
-				if (!acceptedExecutionCounts.has(execution)) worklets.release(execution);
+		for (const owners of executions.values()) {
+			for (const ids of owners.values()) {
+				for (const execution of ids) {
+					if (!acceptedExecutionCounts.has(execution)) worklets.release(execution);
+				}
 			}
 		}
 	};
@@ -238,13 +242,20 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 			throw error;
 		}
 	})();
-	const universalRoot = (() => {
+	// The compile-time core switch (issue #103 B0). `LYNX_BLOCK_BACKGROUND_CORE`
+	// folds to a literal from the build plugin's `core` option, so exactly one
+	// arm survives in a production bundle and the other core's whole closure
+	// tree-shakes out. Everything around this — container, worklets, transport,
+	// lifecycle, native events — is shared, because only the core differs.
+	const backgroundCore: LynxBackgroundCore = (() => {
 		try {
-			const root = createUniversalRoot<LynxClientContainer, LynxPublicHandle>(
-				container,
-				createLynxClientDriver(container),
-				{ scheduleMicrotask, transport },
-			);
+			const root = LYNX_BLOCK_BACKGROUND_CORE
+				? createLynxBlockBackgroundCore({ container, transport })
+				: createUniversalRoot<LynxClientContainer, LynxPublicHandle>(
+						container,
+						createLynxClientDriver(container),
+						{ scheduleMicrotask, transport },
+					);
 			transport.bindRoot(root);
 			return root;
 		} catch (error) {
@@ -330,13 +341,13 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 			if (typeof component !== 'function') {
 				return Promise.reject(new TypeError('Lynx root render() requires a component function.'));
 			}
-			return universalRoot.renderAsync(
+			return backgroundCore.renderAsync(
 				component as UniversalComponent<Props>,
 				props === undefined ? ({} as Props) : props,
 			);
 		},
 		flushTransport() {
-			return universalRoot.flushTransport();
+			return backgroundCore.flushTransport();
 		},
 		get ready() {
 			return transport.ready;
@@ -359,7 +370,7 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 				let unmountFailed = false;
 				let unmountError: unknown;
 				try {
-					await universalRoot.unmountAsync();
+					await backgroundCore.unmountAsync();
 				} catch (error) {
 					unmountFailed = true;
 					unmountError = error;
@@ -367,7 +378,7 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 				if (unmountFailed && transport.closedReason() !== null) {
 					transport.enableLogicalTeardown();
 					try {
-						await universalRoot.unmountAsync();
+						await backgroundCore.unmountAsync();
 					} catch (cleanupError) {
 						if (unmountError === undefined) unmountError = cleanupError;
 					}

@@ -442,12 +442,40 @@ export interface UniversalHostCallbackCapability {
 
 export type UniversalHostUpdateKind = 'update' | 'recreate';
 
+/**
+ * A renderer's answer to "do these two values for this prop name the same
+ * thing?", consulted only after the core has already decided they differ.
+ */
+export type UniversalHostPropEquality = (name: string, previous: unknown, next: unknown) => boolean;
+
 export interface UniversalHostUpdateCapability {
 	classify(
 		type: string,
 		previous: Readonly<Record<string, unknown>>,
 		next: Readonly<Record<string, unknown>>,
 	): UniversalHostUpdateKind;
+	/**
+	 * Whether two values name the same thing for a prop whose value shape this
+	 * renderer owns — the escape hatch for values the core cannot compare.
+	 *
+	 * The core's own definition of equal is structural to a bounded depth and
+	 * falls back to identity below it (`sameUniversalHostPropValue`), which is
+	 * the right answer for everything the core can read. It is the wrong answer
+	 * for a value only the renderer can decode: a Lynx worklet descriptor wraps
+	 * a function the compiler rebuilds every render, so identity is never true
+	 * and an unchanged handler is re-sent on every commit — one full-prop-bag
+	 * update per worklet-bearing host, forever.
+	 *
+	 * Consulted only for a prop the core has already judged changed, so a
+	 * renderer can widen equality and never narrow it: implementing this can
+	 * only remove update commands, never add or reorder them, and a renderer
+	 * that claims nothing leaves every existing decision exactly as it was.
+	 * Answer `false` for any name this renderer does not own.
+	 *
+	 * The obligation this takes on: equal here must mean the renderer's own
+	 * applier would have made no change from the update being suppressed.
+	 */
+	same?: UniversalHostPropEquality;
 }
 
 /**
@@ -528,9 +556,30 @@ export interface UniversalHostTemplateProgram {
 	readonly events: readonly UniversalHostTemplateProgramEvent[];
 }
 
-/** Encoded primitive that can be transported directly without object reconstruction. */
+/**
+ * Encoded primitive that can be transported directly without object
+ * reconstruction.
+ *
+ * A renderer-owned opaque value is admitted only for a slot whose binding names
+ * a renderer-namespaced prop, and the driver that consumes the program owns
+ * validating it: the core cannot know what a renderer's namespaced value means.
+ * `isUniversalHostTemplateProgramValue` stays scalar-only because it guards the
+ * core's own program derivation, which never produces such a slot.
+ */
 export type UniversalHostTemplateProgramValue =
-	string | number | boolean | bigint | null | undefined;
+	string | number | boolean | bigint | null | undefined | UniversalHostTemplateProgramOpaqueValue;
+
+/**
+ * Renderer-namespaced slot payload the core forwards without interpreting.
+ *
+ * `object` rather than a record of unknown fields: a renderer's descriptor is a
+ * declared interface, TypeScript gives an interface no implicit index signature,
+ * and a record type would therefore make this escape hatch unusable by the very
+ * renderers it exists for. The core reads no field here, so a field shape would
+ * be a claim it never checks. What the value must not be is enforced where the
+ * core can enforce it, in `isUniversalHostTemplateProgramSlotValue` below.
+ */
+export type UniversalHostTemplateProgramOpaqueValue = object;
 
 function isUniversalHostTemplateProgramValue(
 	value: unknown,
@@ -543,6 +592,21 @@ function isUniversalHostTemplateProgramValue(
 		typeof value === 'boolean' ||
 		typeof value === 'bigint'
 	);
+}
+
+/**
+ * Whether a value may occupy the slot the program bound to `name`.
+ *
+ * A renderer-namespaced slot is the one place a non-scalar belongs, and the core
+ * checks only that the renderer's encoder produced something transportable: the
+ * core cannot know what such a value means, and the driver that consumes the
+ * program owns validating it. A function is the one shape refused outright — it
+ * is what the encoder exists to replace, so one surviving here means the
+ * renderer declined to encode and the run must not carry it.
+ */
+function isUniversalHostTemplateProgramSlotValue(name: string, value: unknown): boolean {
+	if (isUniversalHostTemplateProgramValue(value)) return true;
+	return typeof value === 'object' && value !== null && name.includes(':');
 }
 
 export type UniversalHostCommand =
@@ -3942,16 +4006,21 @@ function prepareCollapsedTemplateValues(
 			values[index] = String(source);
 			continue;
 		}
+		// A renderer-namespaced binding is authored as whatever the renderer's
+		// encoder understands — for Lynx, the tagged function a worklet compiles to —
+		// so the source is checked for what it must not be rather than for being a
+		// scalar, and the encoded result is what has to be transportable.
+		const namespaced = binding.name.includes(':');
 		if (
-			!isUniversalHostTemplateProgramValue(source) ||
+			(!namespaced && !isUniversalHostTemplateProgramValue(source)) ||
 			root.classifyLifecycle(binding.name, source) !== null ||
 			root.classifyLocalCallback(binding.name, source) !== null
 		) {
 			return null;
 		}
 		const encoded = root.encodeHostProp(program.shape[binding.node].type, binding.name, source);
-		if (!isUniversalHostTemplateProgramValue(encoded)) return null;
-		values[index] = encoded;
+		if (!isUniversalHostTemplateProgramSlotValue(binding.name, encoded)) return null;
+		values[index] = encoded as UniversalHostTemplateProgramValue;
 	}
 	return Object.freeze(values);
 }
@@ -4142,9 +4211,16 @@ export function sameUniversalHostPropValue(left: unknown, right: unknown, depth 
 	return leftCount === rightCount;
 }
 
+/**
+ * `same` is consulted only after the core's own definition has already said
+ * "changed", so an unchanged prop costs exactly what it did before the hook
+ * existed and a renderer that claims nothing costs one null check per changed
+ * prop.
+ */
 function shallowPropsEqual(
 	left: Readonly<Record<string, unknown>>,
 	right: Readonly<Record<string, unknown>>,
+	same: UniversalHostPropEquality | null,
 	rightCountHint = -1,
 ): boolean {
 	if (left === right) return true;
@@ -4152,7 +4228,13 @@ function shallowPropsEqual(
 	for (const key in left) {
 		if (!hasOwnProp.call(left, key)) continue;
 		leftCount++;
-		if (!hasOwnProp.call(right, key) || !sameUniversalHostPropValue(left[key], right[key])) {
+		if (!hasOwnProp.call(right, key)) return false;
+		const previous = left[key];
+		const next = right[key];
+		if (
+			!sameUniversalHostPropValue(previous, next) &&
+			(same === null || !same(key, previous, next))
+		) {
 			return false;
 		}
 	}
@@ -4167,6 +4249,7 @@ function shallowPropsEqual(
 function collapsedTemplateRootPropsEqual(
 	previous: CommittedCollapsedTemplate | undefined,
 	next: BlueprintCollapsedTemplate | undefined,
+	same: UniversalHostPropEquality | null,
 ): boolean | null {
 	if (
 		previous?.prepared === undefined ||
@@ -4177,8 +4260,17 @@ function collapsedTemplateRootPropsEqual(
 		return null;
 	}
 	for (let index = 0; index < previous.prepared.values.length; index++) {
-		if (previous.prepared.values[index].node !== 0) break;
-		if (!Object.is(previous.values[index], next.values[index])) return false;
+		const binding = previous.prepared.values[index];
+		if (binding.node !== 0) break;
+		// A slot's own rule is identity, not the structural walk a prop bag gets:
+		// the value came from the renderer's encoder for exactly this slot, so two
+		// renders that mean the same thing normally produce the same reference.
+		// When they do not, only the renderer can say whether they still agree.
+		const accepted = previous.values[index];
+		const source = next.values[index];
+		if (!Object.is(accepted, source) && (same === null || !same(binding.name, accepted, source))) {
+			return false;
+		}
 	}
 	return true;
 }
@@ -4327,14 +4419,11 @@ function compiledCollapsedTemplateProgram(
 			}
 		}
 		for (const [name] of node.bindings ?? []) {
-			if (
-				name === 'ref' ||
-				name === 'key' ||
-				name === 'children' ||
-				name.startsWith('main-thread:')
-			) {
-				return false;
-			}
+			// A renderer-namespaced prop stays eligible as a *binding*: it names a
+			// per-instance slot, which is exactly what a program describes. The static
+			// loop above is unchanged, so a static `main-thread:` prop is still
+			// refused — a worklet is produced by setup and never written as a literal.
+			if (name === 'ref' || name === 'key' || name === 'children') return false;
 		}
 		plans.push(node);
 		for (const child of node.children ?? []) if (!visit(child)) return false;
@@ -6461,6 +6550,12 @@ class UniversalRootImpl<Container, PublicInstance>
 	private readonly passiveTasks: (() => void)[] = [];
 	private hostAttachments: UniversalHostAttachmentState | null = null;
 	private collapsedTemplates: Set<LogicalRecord> | null = null;
+	/**
+	 * The driver's `updates.same`, resolved once. Null when the driver claims no
+	 * prop names, which is what keeps the diff sites free of a per-prop call for
+	 * every renderer that does not need one.
+	 */
+	private readonly widenedPropEquality: UniversalHostPropEquality | null;
 
 	constructor(
 		private readonly container: Container,
@@ -6476,6 +6571,14 @@ class UniversalRootImpl<Container, PublicInstance>
 			);
 		}
 		this.renderer = driver.id;
+		const updates = driver.updates;
+		if (updates?.same !== undefined && typeof updates.same !== 'function') {
+			throw new TypeError('A universal update capability’s same() must be a function.');
+		}
+		this.widenedPropEquality =
+			updates?.same === undefined
+				? null
+				: (name, previous, next) => updates.same!(name, previous, next);
 		this.rootRecord = {
 			id: 0,
 			kind: 'range',
@@ -8850,6 +8953,7 @@ class UniversalRootImpl<Container, PublicInstance>
 			type: string;
 			listener: UniversalEventListenerDescriptor;
 		}[] = [];
+		const same = this.widenedPropEquality;
 		const stageUpdate = (
 			type: string,
 			id: number,
@@ -8870,7 +8974,7 @@ class UniversalRootImpl<Container, PublicInstance>
 			return kind;
 		};
 		for (const { record, blueprint: host } of shells) {
-			if (!shallowPropsEqual(record.props, host.props)) {
+			if (!shallowPropsEqual(record.props, host.props, same)) {
 				stageUpdate(host.type, record.id, record.props, host.props);
 			}
 		}
@@ -8882,8 +8986,16 @@ class UniversalRootImpl<Container, PublicInstance>
 				const values = list.values[row];
 				let previousChangedNode = -1;
 				for (let valueIndex = 0; valueIndex < program.values.length; valueIndex++) {
-					if (Object.is(accepted.values![valueIndex], values[valueIndex])) continue;
-					const index = program.values[valueIndex].node;
+					const acceptedValue = accepted.values![valueIndex];
+					const sourceValue = values[valueIndex];
+					const binding = program.values[valueIndex];
+					if (
+						Object.is(acceptedValue, sourceValue) ||
+						(same !== null && same(binding.name, acceptedValue, sourceValue))
+					) {
+						continue;
+					}
+					const index = binding.node;
 					if (previousChangedNode === index) continue;
 					previousChangedNode = index;
 					const next = materializePreparedCollapsedHostProps(program, values, index);
@@ -9118,6 +9230,7 @@ class UniversalRootImpl<Container, PublicInstance>
 		for (const { list } of matches) {
 			for (let index = 0; index < list.keys.length; index++) this.compactLeafProps(list, index);
 		}
+		const same = this.widenedPropEquality;
 		const commands: UniversalHostCommand[] = [];
 		for (const { list, records, start } of matches) {
 			const host = list.host!;
@@ -9132,7 +9245,7 @@ class UniversalRootImpl<Container, PublicInstance>
 						!hasOwnProp.call(record.props, lastBinding) ||
 						!hasOwnProp.call(hostProps, lastBinding) ||
 						Object.is(record.props[lastBinding], hostProps[lastBinding])) &&
-					shallowPropsEqual(record.props, hostProps, list.propCount)
+					shallowPropsEqual(record.props, hostProps, same, list.propCount)
 				) {
 					continue;
 				}
@@ -9207,6 +9320,7 @@ class UniversalRootImpl<Container, PublicInstance>
 
 		if (!this.stableAttemptOwnersEqual(attempt)) return null;
 
+		const same = this.widenedPropEquality;
 		const hostRecords: LogicalRecord[] = [];
 		const hostBlueprints: BlueprintHost[] = [];
 		const commands: UniversalHostCommand[] = [];
@@ -9240,7 +9354,7 @@ class UniversalRootImpl<Container, PublicInstance>
 		for (let index = 0; index < hostRecords.length; index++) {
 			const record = hostRecords[index];
 			const host = hostBlueprints[index];
-			if (shallowPropsEqual(record.props, host.props)) continue;
+			if (shallowPropsEqual(record.props, host.props, same)) continue;
 			const kind = this.driver.updates?.classify(host.type, record.props, host.props) ?? 'update';
 			const frozenProps = Object.freeze(host.props);
 			if (kind === 'update') {
@@ -9370,6 +9484,7 @@ class UniversalRootImpl<Container, PublicInstance>
 		scopeFeatures = 0,
 		scopePlacement: { parent: number | null; endAnchor: number | null } | null = null,
 	): UniversalTransactionImpl<Container, PublicInstance> {
+		const same = this.widenedPropEquality;
 		let nextId = this.nextId;
 		let nextLogicalRangeId = this.nextLogicalRangeId;
 		const scoped = scopeRecord !== this.rootRecord;
@@ -9809,7 +9924,8 @@ class UniversalRootImpl<Container, PublicInstance>
 				collapsedTemplateRootPropsEqual(
 					draft.record.collapsedTemplate,
 					blueprintHost.collapsedTemplate,
-				) ?? shallowPropsEqual(draft.record.props, blueprintHost.props)
+					same,
+				) ?? shallowPropsEqual(draft.record.props, blueprintHost.props, same)
 			)) {
 				const props = Object.freeze(blueprintHost.props);
 				const kind =
@@ -10138,8 +10254,16 @@ class UniversalRootImpl<Container, PublicInstance>
 				let previousChangedNode = -1;
 				let recreatedNodes: Set<number> | null = null;
 				for (let valueIndex = 0; valueIndex < program.values.length; valueIndex++) {
-					if (Object.is(previous.values[valueIndex], next.values[valueIndex])) continue;
-					const index = program.values[valueIndex].node;
+					const acceptedValue = previous.values[valueIndex];
+					const sourceValue = next.values[valueIndex];
+					const binding = program.values[valueIndex];
+					if (
+						Object.is(acceptedValue, sourceValue) ||
+						(same !== null && same(binding.name, acceptedValue, sourceValue))
+					) {
+						continue;
+					}
+					const index = binding.node;
 					if (index === previousChangedNode) continue;
 					previousChangedNode = index;
 					const sourceProps = materializePreparedCollapsedHostProps(program, next.values, index);
@@ -10250,7 +10374,7 @@ class UniversalRootImpl<Container, PublicInstance>
 				const source = nextNodes[index];
 				const accepted = previousNodes[index];
 				const acceptedId = accepted.id ?? previous.firstId! + index;
-				const propsChanged = !shallowPropsEqual(accepted.props, source.props);
+				const propsChanged = !shallowPropsEqual(accepted.props, source.props, same);
 				let recreatedNode = false;
 				if (propsChanged) {
 					Object.freeze(source.props);
