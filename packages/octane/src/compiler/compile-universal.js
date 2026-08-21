@@ -2381,7 +2381,7 @@ function isTemplateProgramForExpression(node) {
 	return false;
 }
 
-function isTemplateProgramForHost(node) {
+function isTemplateProgramForHost(node, state) {
 	if (
 		(node.type !== 'JSXElement' && node.type !== 'Element') ||
 		isComponentElement(node) ||
@@ -2397,7 +2397,9 @@ function isTemplateProgramForHost(node) {
 		if (attribute.type === 'JSXSpreadAttribute' || attribute.type === 'SpreadAttribute') {
 			return false;
 		}
-		const name = attributeName(attribute);
+		// A `main-thread:` prop is a namespaced name, which `attributeName` cannot
+		// read, so resolving it here is what lets one be considered at all.
+		const name = hostAttributeName(attribute, state);
 		if (
 			name === null ||
 			name === 'key' ||
@@ -2405,12 +2407,25 @@ function isTemplateProgramForHost(node) {
 			name === 'children' ||
 			name === 'hidden' ||
 			name === 'attach' ||
-			name === 'onUpdate' ||
-			name.startsWith('main-thread:')
+			name === 'onUpdate'
 		) {
 			return false;
 		}
 		const value = attribute.value;
+		if (name.startsWith('main-thread:')) {
+			// A worklet and a ref cell are both produced by the setup body and never
+			// written as a literal, so a main-thread prop belongs in a program exactly
+			// when it arrives as a per-instance binding. A literal one is refused,
+			// which is the same answer the program derivation gives a static one.
+			if (
+				value?.type !== 'JSXExpressionContainer' ||
+				value.expression?.type === 'JSXEmptyExpression' ||
+				!isTemplateProgramForExpression(value.expression)
+			) {
+				return false;
+			}
+			continue;
+		}
 		if (value === null || value?.type === 'Literal') continue;
 		if (value?.type !== 'JSXExpressionContainer') return false;
 		const expression = value.expression;
@@ -2430,7 +2445,7 @@ function isTemplateProgramForHost(node) {
 			if (!isTemplateProgramForExpression(child.expression)) return false;
 			continue;
 		}
-		if (!isTemplateProgramForHost(child)) return false;
+		if (!isTemplateProgramForHost(child, state)) return false;
 	}
 	return true;
 }
@@ -2447,7 +2462,7 @@ function templateProgramForHost(node, state) {
 	const body = (node.body?.body ?? []).filter(
 		(statement) => statement.type !== 'JSXText' || normalizeJsxText(statement.value ?? '') !== '',
 	);
-	return body.length === 1 && isTemplateProgramForHost(body[0]);
+	return body.length === 1 && isTemplateProgramForHost(body[0], state);
 }
 
 function templateProgramForComponent(node, state) {

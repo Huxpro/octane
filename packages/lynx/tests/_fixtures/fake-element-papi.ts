@@ -2,7 +2,12 @@
 // fixture rather than a test so the `octane` project can drive the same host
 // while compiling `.tsrx` at `target: 'lynx'`, which the `lynx` project cannot
 // do: its plugin is configured with the background renderer.
-import type { LynxElementPAPI } from '../../src/core/papi.js';
+import type {
+	LynxElementPAPI,
+	LynxListComponentAtIndex,
+	LynxListComponentAtIndexes,
+	LynxListEnqueueComponent,
+} from '../../src/core/papi.js';
 
 export interface FakeNode {
 	readonly uid: number;
@@ -17,12 +22,32 @@ export interface FakeNode {
 	text: string;
 }
 
+/**
+ * One native list the host built, with the callback trio it currently holds.
+ * Mutable because `__UpdateListCallbacks` retargets a live list in place, which
+ * is how a list survives being adopted into another container.
+ */
+export interface FakeList {
+	readonly node: FakeNode;
+	componentAtIndex: LynxListComponentAtIndex<FakeNode>;
+	enqueueComponent: LynxListEnqueueComponent<FakeNode>;
+	componentAtIndexes: LynxListComponentAtIndexes<FakeNode>;
+}
+
 export function createFakePAPI(
-	options: { failCreateAt?: number } = {},
-): LynxElementPAPI<FakeNode> & { readonly pages: FakeNode[]; flushes(): number } {
+	options: { failCreateAt?: number; list?: boolean } = {},
+): LynxElementPAPI<FakeNode> & {
+	readonly pages: FakeNode[];
+	flushes(): number;
+	readonly lists: FakeList[];
+} {
 	let nextUid = 1;
 	let created = 0;
 	let flushCount = 0;
+	// Off by default. A host without `__CreateList` is a real configuration —
+	// one a page using `<list>` is owed a diagnostic about — so opting in keeps
+	// that case testable rather than making every fake host list-capable.
+	const lists: FakeList[] = [];
 	const pages: FakeNode[] = [];
 	const node = (type: string, text = ''): FakeNode => ({
 		uid: nextUid++,
@@ -38,9 +63,40 @@ export function createFakePAPI(
 	});
 	return {
 		pages,
+		lists,
 		flushes() {
 			return flushCount;
 		},
+		...(options.list === true
+			? {
+					list: {
+						create(
+							_parentComponentUniqueId,
+							componentAtIndex,
+							enqueueComponent,
+							componentAtIndexes,
+						) {
+							const listNode = node('list');
+							lists.push({
+								node: listNode,
+								componentAtIndex,
+								enqueueComponent,
+								componentAtIndexes,
+							});
+							return listNode;
+						},
+						updateCallbacks(listNode, componentAtIndex, enqueueComponent, componentAtIndexes) {
+							const handle = lists.find((entry) => entry.node === listNode);
+							if (handle === undefined) {
+								throw new Error('__UpdateListCallbacks called for an unknown list');
+							}
+							handle.componentAtIndex = componentAtIndex;
+							handle.enqueueComponent = enqueueComponent;
+							handle.componentAtIndexes = componentAtIndexes;
+						},
+					},
+				}
+			: null),
 		createPage() {
 			const page = node('page');
 			pages.push(page);

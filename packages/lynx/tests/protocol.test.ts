@@ -1076,15 +1076,55 @@ describe('@octanejs/lynx transported protocol', () => {
 				program: {
 					...first.program,
 					nodes: [
-						{
-							...first.program.nodes[0],
-							bindings: [{ name: 'main-thread:bindtap', valueIndex: 0 }],
-						},
+						{ ...first.program.nodes[0], bindings: [{ name: 'ref', valueIndex: 0 }] },
 						first.program.nodes[1],
 					],
 				},
 			},
 			/ordinary host-prop name/,
+		);
+		// A `main-thread:` binding is the one exception, and it is the program
+		// rather than the frame that grants it: the slot it names may hold a
+		// descriptor, every other slot stays a scalar, and raw text can hold
+		// neither because it has no Element surface to own one.
+		const workletProgram = {
+			...first.program,
+			nodes: [
+				{
+					...first.program.nodes[0],
+					bindings: [{ name: 'main-thread:bindtap', valueIndex: 0 }],
+				},
+				first.program.nodes[1],
+			],
+		};
+		expect(
+			validateLynxBackgroundOutboundMessage({
+				...commit,
+				batch: {
+					...batch,
+					commands: [{ ...first, program: workletProgram, values: [{ _wkltId: 'tap' }, 'label'] }],
+				},
+			}),
+		).toMatchObject({ batch: { commands: [{ firstId: first.firstId }] } });
+		rejectCommand(
+			{ ...first, program: workletProgram, values: ['row', { _wkltId: 'tap' }] },
+			/only scalar values/,
+		);
+		rejectCommand(
+			{
+				...first,
+				program: {
+					...first.program,
+					nodes: [
+						first.program.nodes[0],
+						{
+							...first.program.nodes[1],
+							bindings: [{ name: 'main-thread:bindtap', valueIndex: 1 }],
+						},
+					],
+				},
+			},
+			/must not bind a main-thread prop on raw text/,
 		);
 		expect(() =>
 			validateLynxBackgroundOutboundMessage({
