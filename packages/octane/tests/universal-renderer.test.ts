@@ -2102,6 +2102,44 @@ export function Scene() @{
 		root.unmount();
 	});
 
+	it('keeps a keyed row program-eligible when it binds a main-thread prop', () => {
+		// A worklet is produced by the setup body and bound per row, which is exactly
+		// what a per-instance program slot is. Refusing one cost the whole list its
+		// program, so a 1,000-row list with one `main-thread:bindtap` mounted in
+		// 6,002 commands instead of 3 (#103 §1).
+		const source = (value: string) => `
+			export function Scene({items, select}) @{
+				const onTap = () => {
+					'main thread';
+					return select();
+				};
+				@for (const item of items; key item.id) {
+					<node id={item.id} main-thread:bindtap=${value}>{item.label as string}</node>
+				}
+			}
+		`;
+		const supported = {
+			...renderer,
+			capabilities: ['template-program-mount', 'thread-functions'],
+		} as const;
+		const build = (value: string) =>
+			compile(source(value), '/src/ProgramWorklet.object.tsrx', {
+				renderer: supported,
+				hmr: false,
+				universalRuntime: { runtime: 'object', thread: 'background' },
+			}).code;
+
+		const bound = build('{onTap}');
+		expect(bound).toMatch(/,\s*null,\s*false,\s*false,\s*true\s*\)/);
+		expect(bound).toContain('"bindings": [["id", 0], ["main-thread:bindtap", 1]]');
+
+		// A literal stays refused, which is the answer the core's program derivation
+		// gives a static main-thread prop too: a worklet never arrives as one.
+		const literal = build('"inert"');
+		expect(literal).not.toMatch(/,\s*null,\s*false,\s*false,\s*true\s*\)/);
+		expect(literal).toContain('"main-thread:bindtap": "inert"');
+	});
+
 	it('classifies each stable leaf once when one retained host must be recreated', () => {
 		const container = createObjectContainer();
 		const classified: string[] = [];

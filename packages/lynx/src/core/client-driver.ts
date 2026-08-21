@@ -4,6 +4,7 @@ import type {
 	UniversalHostDriver,
 	UniversalHostPropCodecContext,
 	UniversalHostTemplateProgram,
+	UniversalHostTemplateProgramValue,
 	UniversalPortalTargetContext,
 	UniversalPortalTargetRegistration,
 	UniversalSerializableValue,
@@ -398,16 +399,70 @@ function collectWorkletExecutionIds(
 	for (const entry of Object.values(value)) collectWorkletExecutionIds(entry, output, seen);
 }
 
-/** Background-only ownership recorded without adding fields to the cross-thread batch. */
+/**
+ * Which value slots of a template program carry a retained main-thread worklet,
+ * and which node of an instance owns each one.
+ *
+ * A `main-thread:ref` is not here: the create path does not retain one either,
+ * because a ref cell holds no background closure to give an execution lifetime.
+ *
+ * The applier, the outbound self-check and the Block core each derive the same
+ * fact inside a walk they already perform for their own validation. This layer
+ * has no such walk, so it derives it once per program and caches it with the
+ * program, which is the same lifetime the other three get from their caches.
+ */
+interface LynxTemplateProgramWorkletSlots {
+	/** Value slots one instance occupies, so a run's flat array can be indexed. */
+	readonly arity: number;
+	readonly slots: readonly (LynxTemplateProgramWorkletSlot | undefined)[];
+}
+
+interface LynxTemplateProgramWorkletSlot {
+	readonly node: number;
+	readonly name: string;
+}
+
+const TEMPLATE_PROGRAM_WORKLET_SLOTS = new WeakMap<
+	UniversalHostTemplateProgram,
+	LynxTemplateProgramWorkletSlots | null
+>();
+
+function templateProgramWorkletSlots(
+	program: UniversalHostTemplateProgram,
+): LynxTemplateProgramWorkletSlots | null {
+	const cached = TEMPLATE_PROGRAM_WORKLET_SLOTS.get(program);
+	if (cached !== undefined) return cached;
+	let slots: (LynxTemplateProgramWorkletSlot | undefined)[] | null = null;
+	let arity = 0;
+	for (let node = 0; node < program.nodes.length; node++) {
+		for (const binding of program.nodes[node]!.bindings ?? []) {
+			if (binding.valueIndex + 1 > arity) arity = binding.valueIndex + 1;
+			if (!binding.name.startsWith('main-thread:') || binding.name === 'main-thread:ref') {
+				continue;
+			}
+			(slots ??= [])[binding.valueIndex] = Object.freeze({ node, name: binding.name });
+		}
+	}
+	const derived = slots === null ? null : Object.freeze({ arity, slots: Object.freeze(slots) });
+	TEMPLATE_PROGRAM_WORKLET_SLOTS.set(program, derived);
+	return derived;
+}
+
+/**
+ * Background-only ownership recorded without adding fields to the cross-thread
+ * batch, keyed by the host that owns the callbacks rather than by the command:
+ * one template run installs worklets on many hosts, and each is replaced or
+ * destroyed on its own.
+ */
 const PREPARED_WORKLET_EXECUTIONS = new WeakMap<
 	UniversalHostBatch,
-	ReadonlyMap<number, ReadonlySet<string>>
+	ReadonlyMap<number, ReadonlyMap<number, ReadonlySet<string>>>
 >();
 
 /** @internal Background execution ownership for commands that actually retained callbacks. */
 export function getLynxClientWorkletBatchExecutions(
 	batch: UniversalHostBatch,
-): ReadonlyMap<number, ReadonlySet<string>> | undefined {
+): ReadonlyMap<number, ReadonlyMap<number, ReadonlySet<string>>> | undefined {
 	return PREPARED_WORKLET_EXECUTIONS.get(batch);
 }
 
@@ -419,11 +474,55 @@ export function prepareLynxClientWorkletBatch(
 	const worklets = containerState(container).worklets;
 	if (worklets === undefined) return batch;
 	let retained: Set<string> | undefined;
-	let executions: Map<number, ReadonlySet<string>> | undefined;
+	let executions: Map<number, ReadonlyMap<number, ReadonlySet<string>>> | undefined;
 	let commands: Array<UniversalHostBatch['commands'][number]> | undefined;
 	try {
 		for (let index = 0; index < batch.commands.length; index++) {
 			const command = batch.commands[index]!;
+			if (command.op === 'mount-template-run' || command.op === 'mount-template-range') {
+				const program = templateProgramWorkletSlots(command.program);
+				if (program === null) continue;
+				const hostCount = command.program.nodes.length;
+				let values: UniversalHostTemplateProgramValue[] | undefined;
+				let owners: Map<number, Set<string>> | undefined;
+				for (let slot = 0; slot < command.values.length; slot++) {
+					const binding = program.slots[slot % program.arity];
+					if (binding === undefined) continue;
+					const value = command.values[slot];
+					if (value === null || value === undefined) continue;
+					// The prop codec already ran, so this is the descriptor rather than the
+					// tagged function the `create` path sees. Accepting both keeps one
+					// error for a value neither step could make sense of.
+					const descriptor = isLynxMainThreadWorkletDescriptor(value)
+						? value
+						: getThreadFunctionDescriptor(value);
+					if (!isLynxMainThreadWorkletDescriptor(descriptor)) {
+						throw new TypeError(
+							`Octane Lynx ${JSON.stringify(binding.name)} requires a compiler-transformed main-thread function.`,
+						);
+					}
+					const bound = worklets.retain(descriptor);
+					// The host that owns this slot, not the run: an `update` later replaces
+					// exactly this host's callbacks, and its `destroy` is what releases them.
+					const owner =
+						command.firstId + Math.floor(slot / program.arity) * hostCount + binding.node;
+					let ids = owners?.get(owner);
+					if (ids === undefined) (owners ??= new Map()).set(owner, (ids = new Set()));
+					collectWorkletExecutionIds(bound, ids);
+					for (const execution of ids) (retained ??= new Set()).add(execution);
+					(values ??= [...command.values])[slot] = bound;
+				}
+				if (values === undefined) continue;
+				(commands ??= [...batch.commands])[index] = Object.freeze({
+					...command,
+					values: Object.freeze(values),
+				});
+				if (owners !== undefined) {
+					for (const [owner, ids] of owners) if (ids.size === 0) owners.delete(owner);
+					if (owners.size !== 0) (executions ??= new Map()).set(index, owners);
+				}
+				continue;
+			}
 			if (command.op !== 'create' && command.op !== 'update' && command.op !== 'recreate') {
 				continue;
 			}
@@ -450,7 +549,7 @@ export function prepareLynxClientWorkletBatch(
 				props: Object.freeze(props),
 			});
 			if (commandExecutions !== undefined && commandExecutions.size !== 0) {
-				(executions ??= new Map()).set(index, commandExecutions);
+				(executions ??= new Map()).set(index, new Map([[command.id, commandExecutions]]));
 			}
 		}
 		if (commands === undefined) return batch;

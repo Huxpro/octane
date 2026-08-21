@@ -155,35 +155,35 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 		const executions = getLynxClientWorkletBatchExecutions(batch);
 		if (executions === undefined && acceptedWorklets.size === 0) return;
 		let releaseCandidates: Set<string> | undefined;
+		// Ownership is per host, so one template run assigns to as many hosts as it
+		// installed callbacks on and each is replaced or destroyed on its own.
+		const assign = (id: number, ids: ReadonlySet<string> | undefined): void => {
+			const previous = acceptedWorklets.get(id);
+			if (previous !== undefined) {
+				for (const execution of previous) {
+					releaseAcceptedExecution(execution);
+					(releaseCandidates ??= new Set()).add(execution);
+				}
+			}
+			if (ids === undefined) {
+				if (previous !== undefined) acceptedWorklets.delete(id);
+				return;
+			}
+			acceptedWorklets.set(id, ids);
+			for (const execution of ids) {
+				retainAcceptedExecution(execution);
+				(releaseCandidates ??= new Set()).add(execution);
+			}
+		};
 		for (let index = 0; index < batch.commands.length; index++) {
 			const command = batch.commands[index]!;
 			if (command.op === 'create' || command.op === 'update' || command.op === 'recreate') {
-				const previous = acceptedWorklets.get(command.id);
-				if (previous !== undefined) {
-					for (const execution of previous) {
-						releaseAcceptedExecution(execution);
-						(releaseCandidates ??= new Set()).add(execution);
-					}
-				}
-				const ids = executions?.get(index);
-				if (ids === undefined) {
-					if (previous !== undefined) acceptedWorklets.delete(command.id);
-				} else {
-					acceptedWorklets.set(command.id, ids);
-					for (const execution of ids) {
-						retainAcceptedExecution(execution);
-						(releaseCandidates ??= new Set()).add(execution);
-					}
-				}
+				assign(command.id, executions?.get(index)?.get(command.id));
+			} else if (command.op === 'mount-template-run' || command.op === 'mount-template-range') {
+				const owners = executions?.get(index);
+				if (owners !== undefined) for (const [id, ids] of owners) assign(id, ids);
 			} else if (command.op === 'destroy') {
-				const previous = acceptedWorklets.get(command.id);
-				if (previous !== undefined) {
-					for (const execution of previous) {
-						releaseAcceptedExecution(execution);
-						(releaseCandidates ??= new Set()).add(execution);
-					}
-					acceptedWorklets.delete(command.id);
-				}
+				assign(command.id, undefined);
 			}
 		}
 		if (releaseCandidates !== undefined) {
@@ -195,9 +195,11 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 	const rejectWorkletBatch = (batch: UniversalHostBatch): void => {
 		const executions = getLynxClientWorkletBatchExecutions(batch);
 		if (executions === undefined) return;
-		for (const ids of executions.values()) {
-			for (const execution of ids) {
-				if (!acceptedExecutionCounts.has(execution)) worklets.release(execution);
+		for (const owners of executions.values()) {
+			for (const ids of owners.values()) {
+				for (const execution of ids) {
+					if (!acceptedExecutionCounts.has(execution)) worklets.release(execution);
+				}
 			}
 		}
 	};
