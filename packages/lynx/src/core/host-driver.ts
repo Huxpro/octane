@@ -125,6 +125,14 @@ interface LynxHostRecord<Node extends LynxElementRef> {
 	children: number[];
 	events: Map<string, UniversalEventListenerDescriptor>;
 	handle: LynxHostHandle;
+	/**
+	 * Sticky: someone asked this host for a public instance, so a `nodes-ref`
+	 * selector must follow it onto whatever physical node it lands on next. A
+	 * native list cell changes nodes on every recycle, and nothing re-renders to
+	 * re-announce the request, so the want has to outlive the node.
+	 */
+	selectorWanted: boolean;
+	/** Per physical node: the selector is currently installed on `node`. */
 	selectorInstalled: boolean;
 }
 
@@ -208,6 +216,14 @@ interface LynxHostState<Node extends LynxElementRef> {
 	readonly mainThreadRefs: Map<Node, LynxMainThreadRefDescriptor>;
 	readonly mainThreadRefOwners: Map<string, Node>;
 	readonly lists: Map<number, LynxNativeListState<Node>>;
+	/**
+	 * The peer announces every public instance it needs, so a native list cell
+	 * carries a `nodes-ref` selector only for hosts that asked. A peer that never
+	 * sends `ensure-public-instance` — one negotiated below that capability, or
+	 * one that announced no capabilities at all — keeps the eager install, because
+	 * for it an uninstalled selector is a ref that addresses nothing.
+	 */
+	readonly announcesPublicInstances: boolean;
 	readonly onAttachments?: (version: number, deltas: readonly LynxHostAttachmentDelta[]) => void;
 	readonly onCallbackFault?: (version: number, error: unknown) => void;
 	/** Monotonic: ordinary trees never need direct-worklet connectivity walks. */
@@ -254,6 +270,13 @@ export interface CreateLynxHostContainerOptions<Node extends LynxElementRef = Ly
 	readonly page?: Node;
 	/** Main-local execution and ref lifetime registry shared across first-screen adoption. */
 	readonly worklets?: LynxMainThreadWorkletRegistry;
+	/**
+	 * True when the peer negotiated `lazyPublicInstances`, so it announces every
+	 * host it will query. Native list cells then install a `nodes-ref` selector on
+	 * request rather than on every recycle. Defaults to the eager install, which
+	 * is the only safe choice for a peer that announces nothing.
+	 */
+	readonly announcesPublicInstances?: boolean;
 	/** Main-thread bridge for callback-driven list ref/query attachment state. */
 	readonly onAttachments?: (version: number, deltas: readonly LynxHostAttachmentDelta[]) => void;
 	/** Accepted-root fault bridge for native callbacks that run after a commit settles. */
@@ -511,6 +534,7 @@ class LynxCompactHostRecord<Node extends LynxElementRef> implements LynxHostReco
 	node: Node | null = null;
 	visible = true;
 	children = EMPTY_HOST_CHILDREN;
+	selectorWanted = false;
 	selectorInstalled = false;
 	private eventTable = EMPTY_HOST_EVENTS;
 	private cachedHandle: LynxHostHandle | null = null;
@@ -1382,6 +1406,7 @@ function cloneRecord<Node extends LynxElementRef>(
 		children: record.children.length === 0 ? EMPTY_HOST_CHILDREN : [...record.children],
 		events: record.events.size === 0 ? EMPTY_HOST_EVENTS : new Map(record.events),
 		handle: record.handle,
+		selectorWanted: record.selectorWanted,
 		selectorInstalled: record.selectorInstalled,
 	};
 }
@@ -1589,6 +1614,22 @@ function ensureNodesRefSelector<Node extends LynxElementRef>(
 	if (record.selectorInstalled || record.node === null) return;
 	installNodesRefSelector(state.papi, record.node, record.handle);
 	record.selectorInstalled = true;
+	// An installed selector is a promise to keep answering, so a later physical
+	// rebind has to restore it rather than decide again.
+	record.selectorWanted = true;
+}
+
+/**
+ * Record that a public instance was requested, then install if the host owns a
+ * physical node right now. A detached native list cell owns none, and the
+ * request must survive until the cell is next materialized.
+ */
+function wantNodesRefSelector<Node extends LynxElementRef>(
+	state: LynxHostState<Node>,
+	record: LynxHostRecord<Node>,
+): void {
+	record.selectorWanted = true;
+	ensureNodesRefSelector(state, record);
 }
 
 function nativeEventMap<Node extends LynxElementRef>(
@@ -2036,7 +2077,9 @@ function createPhysicalTree<Node extends LynxElementRef>(
 	state.ownedNodes.add(node);
 	record.node = node;
 	record.selectorInstalled = false;
-	ensureNodesRefSelector(state, record);
+	if (record.selectorWanted || !state.announcesPublicInstances) {
+		ensureNodesRefSelector(state, record);
+	}
 	applyProps(
 		state,
 		node,
@@ -2139,7 +2182,16 @@ function clearPhysicalTreeAttachment<Node extends LynxElementRef>(
 	}
 	removeAllNativeEvents(state, tree.node);
 	removeMainThreadRef(state, tree.node);
-	if (tree.type !== '#text' && tree.type !== 'raw-text') state.papi.setRefSelector(tree.node, '');
+	// A cell heading back to the pool must stop answering its old selector — but
+	// only if it ever answered one. Clearing a node that was never selected is
+	// the cost this path used to pay on every recycle for every element node.
+	if (
+		tree.type !== '#text' &&
+		tree.type !== 'raw-text' &&
+		(record === undefined || record.selectorInstalled)
+	) {
+		state.papi.setRefSelector(tree.node, '');
+	}
 	if (record?.node === tree.node) {
 		record.node = null;
 		record.selectorInstalled = false;
@@ -2199,7 +2251,9 @@ function rebindPhysicalTree<Node extends LynxElementRef>(
 	removeMainThreadRef(state, tree.node);
 	desired.node = tree.node;
 	desired.selectorInstalled = false;
-	ensureNodesRefSelector(state, desired);
+	if (desired.selectorWanted || !state.announcesPublicInstances) {
+		ensureNodesRefSelector(state, desired);
+	}
 	applyProps(
 		state,
 		tree.node,
@@ -2614,6 +2668,7 @@ export function createLynxHostContainer<Node extends LynxElementRef>(
 		mainThreadRefs: new Map(),
 		mainThreadRefOwners: new Map(),
 		lists: new Map(),
+		announcesPublicInstances: options.announcesPublicInstances === true,
 		onAttachments: options.onAttachments,
 		onCallbackFault: options.onCallbackFault,
 		hasMainThreadProps: false,
@@ -3249,6 +3304,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 					? EMPTY_HOST_EVENTS
 					: new Map(hostEvents as Iterable<[string, UniversalEventListenerDescriptor]>),
 			handle,
+			selectorWanted: false,
 			selectorInstalled: false,
 		};
 		state.records.set(node.id, record);
@@ -4470,6 +4526,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 								children: EMPTY_HOST_CHILDREN,
 								events: EMPTY_HOST_EVENTS,
 								handle: createHandle(container.root, id, type, generation),
+								selectorWanted: false,
 								selectorInstalled: false,
 							};
 					if (events !== undefined && !compactCandidate) {
@@ -4610,6 +4667,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 					children: EMPTY_HOST_CHILDREN,
 					events: EMPTY_HOST_EVENTS,
 					handle,
+					selectorWanted: false,
 					selectorInstalled: false,
 				};
 				if (descriptor.events !== undefined) {
@@ -4731,6 +4789,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				children: EMPTY_HOST_CHILDREN,
 				events: EMPTY_HOST_EVENTS,
 				handle,
+				selectorWanted: false,
 				selectorInstalled: false,
 			};
 			stagedRecordCount += 1;
@@ -5789,7 +5848,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 								if (operation.parent === null) state.ownedPageRoots.delete(node);
 							} else if (operation.op === 'ensure-public-instance') {
 								const record = state.records.get(operation.id);
-								if (record !== undefined) ensureNodesRefSelector(state, record);
+								if (record !== undefined) wantNodesRefSelector(state, record);
 							} else if (operation.op === 'visibility') {
 								if (!activeNodes.has(operation.id)) continue;
 								const record = state.records.get(operation.id)!;
@@ -5918,11 +5977,27 @@ export function createLynxHostDriver<
 			const state = container[LYNX_HOST_STATE];
 			const record = state.records.get(id);
 			if (record === undefined) return null;
-			ensureNodesRefSelector(state, record);
+			wantNodesRefSelector(state, record);
 			return record.handle;
 		},
 	};
 	return Object.freeze(driver);
+}
+
+/**
+ * One host's identity, without requesting a public instance.
+ *
+ * `driver.getPublicInstance` is the demand path for a `nodes-ref` selector and
+ * installs one as a side effect. A caller that only needs to know whether a
+ * host exists at a given generation must not pay for that, and must not make
+ * every host it asks about permanently selectable — the native list attachment
+ * stream asks about every node of every cell on every recycle.
+ */
+export function getLynxHostHandle<Node extends LynxElementRef>(
+	container: LynxHostContainer<Node>,
+	id: number,
+): LynxHostHandle | null {
+	return container[LYNX_HOST_STATE].records.get(id)?.handle ?? null;
 }
 
 export function getLynxHostEventListener<Node extends LynxElementRef>(

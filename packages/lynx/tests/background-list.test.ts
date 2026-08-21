@@ -9,6 +9,7 @@ import {
 	type LynxContextProxy,
 	type LynxContextProxyEvent,
 } from '../src/core/protocol.js';
+import { createLynxNodesRefSelector } from '../src/core/nodes-ref.js';
 import { NativeListLifecycleFixture } from './_fixtures/native-list-lifecycle.lynx.tsrx';
 import { NativeListFixture } from './_fixtures/native-list.lynx.tsrx';
 
@@ -146,6 +147,7 @@ describe.sequential('Lynx recycled list background integration', () => {
 
 		const refLog: string[] = [];
 		const tapLog: string[] = [];
+		const refHandles = new Map<string, LynxPublicHandle>();
 		const items = Array.from({ length: 1_000 }, (_, index) => ({
 			id: String(index),
 			label: `Row ${index}`,
@@ -155,6 +157,7 @@ describe.sequential('Lynx recycled list background integration', () => {
 			items,
 			captureRef(id, handle) {
 				refLog.push(`${id}:${handle === null ? 'detach' : 'attach'}`);
+				if (handle !== null) refHandles.set(id, handle);
 			},
 			onTap(id) {
 				tapLog.push(id);
@@ -164,12 +167,29 @@ describe.sequential('Lynx recycled list background integration', () => {
 		const list = dom.window.document.querySelector('#native-feed')!;
 		expect(list.children).toHaveLength(0);
 		expect(refLog).toEqual([]);
+		/**
+		 * What the cell the background's own handle addresses is currently showing,
+		 * or null when nothing answers it.
+		 *
+		 * A ref is only useful if its selector resolves to the node showing that row
+		 * right now, and a recycled row changes nodes without re-rendering. The
+		 * physical identity of that node is pinned separately, by `firstCell`.
+		 */
+		const addressed = (id: string): string | null => {
+			const handle = refHandles.get(id);
+			if (handle === undefined) throw new Error(`Expected a captured ref for row ${id}.`);
+			return (
+				list.querySelector(createLynxNodesRefSelector(handle.root, handle.id, handle.generation))
+					?.textContent ?? null
+			);
+		};
 
 		environment.switchToMainThread();
 		const firstSign = globalThis.elementTree.enterListItemAtIndex(list as never, 0);
 		const firstCell = list.firstElementChild!;
 		expect(firstCell.textContent).toBe('Row 0');
 		expect(refLog).toEqual(['0:attach']);
+		expect(addressed('0')).toBe('Row 0');
 		const firstToken = registrations.findLast(
 			(entry) => entry.name === 'tap' && entry.listener !== undefined,
 		)?.listener;
@@ -179,6 +199,7 @@ describe.sequential('Lynx recycled list background integration', () => {
 
 		globalThis.elementTree.leaveListItem(list as never, firstSign);
 		expect(refLog).toEqual(['0:attach', '0:detach']);
+		expect(addressed('0')).toBeNull();
 		main.dispatchNativeEvent(firstToken, { type: 'tap', detail: { stale: true } });
 		expect(tapLog).toEqual(['0']);
 
@@ -187,6 +208,10 @@ describe.sequential('Lynx recycled list background integration', () => {
 		expect(list.firstElementChild).toBe(firstCell);
 		expect(firstCell.textContent).toBe('Row 1');
 		expect(refLog).toEqual(['0:attach', '0:detach', '1:attach']);
+		// Row 1 was announced long before it owned a cell, and it addresses the one
+		// row 0 vacated; row 0 addresses nothing while it owns none.
+		expect(addressed('1')).toBe('Row 1');
+		expect(addressed('0')).toBeNull();
 		const secondToken = registrations.findLast(
 			(entry) => entry.name === 'tap' && entry.listener !== undefined,
 		)?.listener;

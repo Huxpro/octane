@@ -86,6 +86,26 @@ export interface LynxMainThreadCapabilities {
 	readonly templateRuns?: 1;
 }
 
+/**
+ * Whether both peers are in lazy-public-instance mode, from the one reply they
+ * both read.
+ *
+ * The background announces every host it will query, and the main thread stops
+ * installing `nodes-ref` selectors nobody asked for. Each half is unsound
+ * without the other: a main thread that skips the selector while the background
+ * skips the announcement strips refs with no error anywhere, so neither side
+ * may derive this for itself.
+ */
+export function lynxLazyPublicInstancesNegotiated(
+	capabilities: LynxMainThreadCapabilities | undefined,
+): boolean {
+	return (
+		capabilities?.templateMount === 1 &&
+		capabilities.templateProgram === 1 &&
+		capabilities.lazyPublicInstances === 1
+	);
+}
+
 export interface LynxTransportCommitMessage extends UniversalTransportCommitMessage {
 	/** Present only after this background and main explicitly negotiated it. */
 	readonly ack?: typeof LYNX_COMPACT_ACKNOWLEDGEMENT;

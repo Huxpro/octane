@@ -14,6 +14,7 @@ import {
 	LYNX_TRANSPORT_RENDERER,
 	LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS,
 	countLynxCompactAcknowledgementHosts,
+	lynxLazyPublicInstancesNegotiated,
 	type LynxMainThreadCapabilities,
 	type LynxPublicHandleDelta,
 	type LynxHostAttachmentChange,
@@ -379,7 +380,7 @@ export function setLynxClientCapabilities(
 	state.templateMount = capabilities?.templateMount === 1;
 	state.templateProgramMount = state.templateMount && capabilities?.templateProgram === 1;
 	state.templateProgramRuns = state.templateProgramMount && capabilities?.templateRuns === 1;
-	state.lazyPublicInstances = state.templateProgramMount && capabilities?.lazyPublicInstances === 1;
+	state.lazyPublicInstances = lynxLazyPublicInstancesNegotiated(capabilities);
 }
 
 function collectWorkletExecutionIds(
