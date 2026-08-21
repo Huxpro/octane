@@ -337,6 +337,37 @@ in §3 and the extraction-first decision in §5.
 
 ## 8. Landed increments
 
+- **What the L5 repayment is worth (issue #103 §5, issue #66 Phase D).** §6 above
+  names per-command recursive validation and plan interpretation/batch prepare
+  among the things the specialized path deletes, and #58 makes deleting them from
+  the main-thread bundle the L5 repayment. Neither said what the deletion is
+  worth. Measured by ablation on the #103 U4 stack tip `cfae829` — each target
+  removed by exported entry, production tree-shaking computing the closure, every
+  arm reproducing the baseline's semantic checksums. The full report is
+  [`benchmarks/lynx-bundle-size/results/l5-ceiling.md`](../benchmarks/lynx-bundle-size/results/l5-ceiling.md).
+
+  | arm | preview main gzip | ratio | rows-0 main gzip | ratio |
+  |---|---:|---:|---:|---:|
+  | baseline | 81,068 | 1.582× | 60,683 | 1.185× |
+  | recursive validator | 73,000 | 1.425× | 53,376 | 1.042× |
+  | plan interpreter + batch pipeline | 55,139 | 1.076× | 40,657 | 0.794× |
+  | both | 46,411 | **0.906×** | 33,178 | **0.648×** |
+
+  **The repayment is worth 34,657 B gzip, 42.7% of the Lynx main-thread program,
+  and the ≤1.5× gate's gap is 4,226 B — 12.2% of it.** Either half clears the
+  preview arm alone; the IFR arm needs the batch pipeline, where the validator
+  alone falls 976 B short. The two fixtures disagreed about the gate in the
+  re-audit and do not disagree about this.
+
+  Three qualifications hold. It is a **ceiling**: each arm deletes outright where
+  the shipping change replaces — #66 §3's exit gate keeps header checks, and
+  `prepareLynxHostBatch` stays reachable while the staged path is the direct
+  applier's native-`<list>` fallback. Compressed deltas stay non-additive, here
+  slightly super-additive (8,068 + 25,929 against 34,657 measured together). And
+  it does not close the **complete-artifact** ratio #58's motivation quotes,
+  which is 3.214× at baseline and 2.361× with both gone. The batch arm leaves the
+  background program byte-identical on both fixtures, which is the independent
+  evidence that it is main-thread-only code.
 - **L6 ABI decision: the Lynx-only universal surface stays, and L6's dependency
   is reordered (issue #66 Phase E).** #58's L6 proposes deleting the Lynx-only
   capabilities and compensation layers from `octane/universal`. The inventory

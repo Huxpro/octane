@@ -48,3 +48,23 @@ separate because compressed deltas are not additive.
 
 The checked execution report is
 [`results/production-inventory.md`](results/production-inventory.md).
+
+## L5 ceiling ablation
+
+`l5-ceiling.mjs` answers a question the budgets cannot: what #58's L5 bullet is
+worth. It rebuilds both fixtures above with the plan interpreter, the batch
+pipeline, and the recursive validator absent — by exported entry, letting
+production tree-shaking compute each closure, so a helper the direct first-screen
+path still calls stays and is not counted.
+
+```bash
+node benchmarks/lynx-bundle-size/l5-ceiling.mjs
+```
+
+It is an operator tool and not a CI gate: it rewrites `packages/lynx/src/core`
+so a build can be taken with a target gone, refuses to start unless those sources
+are clean, and restores them in a `finally`. Every arm must reproduce the
+baseline's semantic checksums or the run fails, and the ablated artifacts are
+measurement devices rather than functional runtimes.
+
+The checked execution report is [`results/l5-ceiling.md`](results/l5-ceiling.md).
