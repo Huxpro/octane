@@ -22,6 +22,7 @@ import {
 	type LynxClientContainer,
 } from './client-driver.js';
 import {
+	LYNX_ANNOUNCED_PUBLIC_INSTANCES,
 	LYNX_BACKGROUND_TO_MAIN_EVENT,
 	LYNX_COMPACT_ACKNOWLEDGEMENT,
 	LYNX_LAZY_PUBLIC_INSTANCES,
@@ -1484,6 +1485,11 @@ export function createLynxBackgroundTransport(
 				type: 'commit',
 				batch: preparedBatch,
 			};
+			// Deferring this commit's handle deltas needs the negotiated capability,
+			// captured here rather than read at dispatch: dispatch happens after main
+			// readiness resolves, so a batch composed before the reply that granted it
+			// would claim a deferral the peer never agreed to.
+			const deferrablePublicInstances = lazyPublicInstances;
 			try {
 				selfCheckLynxBackgroundOutboundMessage(commit);
 			} catch (error) {
@@ -1552,7 +1558,7 @@ export function createLynxBackgroundTransport(
 								Object.isFrozen(incrementalRun.values);
 							const deferPublicInstances =
 								compact &&
-								lazyPublicInstances &&
+								deferrablePublicInstances &&
 								(accepted === null ||
 									(postFirstTreeLazyPublicInstances &&
 										preparedBatch.commands.every(
@@ -1564,13 +1570,19 @@ export function createLynxBackgroundTransport(
 									(command) =>
 										command.op === 'mount-template-range' || command.op === 'mount-template-run',
 								);
+							// The announcement is a property of this background rather than
+							// of the session: every batch it composes names the hosts it
+							// will query, so every commit — the pre-handshake first one
+							// included — carries the promise unconditionally.
+							const announces = { announces: LYNX_ANNOUNCED_PUBLIC_INSTANCES } as const;
 							const outboundCommit: LynxTransportCommitMessage = compact
 								? {
 										...commit,
 										ack: LYNX_COMPACT_ACKNOWLEDGEMENT,
 										...(deferPublicInstances ? { instances: LYNX_LAZY_PUBLIC_INSTANCES } : null),
+										...announces,
 									}
-								: commit;
+								: { ...commit, ...announces };
 							let dispatchError: Error | null = null;
 							dispatchingCommit = entry;
 							try {

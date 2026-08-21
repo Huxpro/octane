@@ -35,6 +35,45 @@ root runner:
 node benchmarks/bench.mjs --only lynx-table --ratios
 ```
 
+### Who asks about a mounted node
+
+A second reference target, `eager-selector-model`, measures one thing the
+command counts cannot see: how many `nodes-ref` selectors the main thread writes
+while mounting the rows. The model is one write per element node mounted — what
+the main thread costs if it stamps every node whether or not anything can ever
+query it.
+
+| rows | element nodes mounted | selector writes | announced public instances |
+| ---: | ---: | ---: | ---: |
+| 1,000 | 4,000 | **0** | 0 |
+| 10,000 | 40,000 | **0** | 0 |
+
+The zero is the contract, and the last column is why it is correct rather than
+lossy. A `nodes-ref` selector exists to answer a public-instance query, and a
+commit composed under the negotiated lazy-public-instance capability announces
+every host it will query with `ensure-public-instance` — ordered after the
+creates in the same commit, so a host that needs a handle still gets its selector
+before the batch ends. This app holds no `ref`, no host lifecycle, and no
+main-thread callback, so it announces none and pays none.
+
+The commit, not the session, is what carries that promise, and `wireRegime`
+records which commits made it. A background that composes a batch before the
+main-ready reply granting the capability reaches it names no hosts in that batch
+however the session was negotiated, so the main thread installs eagerly for it;
+this harness is synchronous end to end, so every one of its commits is composed
+after the handshake and announces. What the other order costs is measured
+separately, in the first-screen selector harness below.
+
+That makes these numbers the best case, not the average. An app whose rows carry
+a ref announces one host per row and pays one write for each, and the ratio rises
+to match. What the 0.01 ceiling catches is the regression that used to be here:
+installing on every node regardless of who asked, which reads as 1.00x.
+
+The run line prints this as `create=1 (1000r, 0/4000 refs)`. `meta.rows_*` also
+records `wireRegime` — the negotiated capabilities, and the acknowledgement,
+public-instance, and announcement regime every commit went out under — because an
+install count is unreadable without knowing whether the commit announced at all.
+
 Because the in-process ContextProxy is synchronous, acknowledgements return
 immediately and the storm gates see one commit per tick; the asynchronous
 "renders while a commit is in flight coalesce into the next commit" contract
@@ -221,7 +260,76 @@ Downstream verdicts use a declared direct-share gate: `GO` requires a directly
 observed target segment (or target segment sum) to contribute at least 10% of
 the operation's median attribution. Residual time never authorizes a step.
 
-## 4. Specialized-core count harness (`block-counts.mjs`, on demand)
+## 4. First-screen selector harness (`first-screen-selectors.mjs`, on demand)
+
+```bash
+node first-screen-selectors.mjs --scales 1000,10000 --reps 2
+pnpm bench:first-screen-selectors -- --out prototype/results/first-screen-selectors
+```
+
+The gates above measure a first screen whose commit was composed after the
+handshake, because this chassis installs its main thread before the first render
+and its wire is synchronous. A production Lynx background bundle starts the
+other way round: it renders and composes its first batch before the main-ready
+reply reaches it. This runner drives the same app, the same chassis, and the
+same counters through two arms that differ in one thing — whether the main
+thread exists when the background first renders — with the table already
+populated at mount so the first commit carries the rows rather than an empty
+shell.
+
+| rows | arm | element nodes | selector writes |
+| ---: | --- | ---: | ---: |
+| 1,000 | before-render | 4,029 | **0** |
+| 1,000 | after-render | 4,029 | **0** |
+| 10,000 | before-render | 40,029 | **0** |
+| 10,000 | after-render | 40,029 | **0** |
+
+Both arms are zero because a background names the hosts it will query from what
+it knows while composing, rather than from a reply it has not received, so its
+first batch announces like every other. That is what this harness exists to
+hold: when the announcement waited on the negotiated capability instead, the
+after-render arm read **4,028** and **40,028** — every node but the page.
+
+**These arms describe the background-commit path, not a default production
+first screen.** `packages/rspeedy-plugin-octane/src/main-thread-entry.js`
+installs the main thread with `firstScreen: true`, so an app built by the plugin
+paints its first screen through main-thread direct emission and the background
+adopts what was painted. Both of those install a selector on every node by
+construction, for reasons recorded at their call sites, and neither consults a
+commit's announcement. Measured in Chromium at 10,000 rows, a plugin-default
+build reads **40,028** selector attributes whether or not the background
+announces — the same number, and the same first paint to within 0.2 ms. The
+arms above therefore bound what announcing is worth wherever the background owns
+the first commit: a `<list>` topology direct emission declines, a host that does
+not enable the first screen, or any commit after the first.
+
+The report records each arm's announcement regime beside its install count,
+because the count is unreadable without it: `announced-v1` is the commit
+promising it named every host it will query, and `<unannounced>` is a commit
+that could not — a peer too old to announce at all.
+
+Everything reported is a count, so no quiet host is needed and no wall clock is
+measured; the runner fails if two repetitions of a cell disagree or if an arm
+did not paint the rows it claims. `prototype/results/first-screen-selectors.*`
+is the committed record.
+
+**What the counts are worth in wall clock: not much, on Web.** `prototype/run-fcp.mjs`
+ran the same 10,000-row app in Chromium with the background owning the first
+commit, n=5 per arm, AB/BA, fresh page per sample, host at 0.12 load. Removing
+all 40,028 selector writes moved median view-attach FCP from **2,134.9 ms to
+2,102.2 ms** — about 1.5% — and the arms' ranges overlap: the eager arm's
+fastest sample (2,048.7 ms) beat every announcing sample. At this n that is not
+a detectable win, which is the honest reading of 40,000 `setAttribute` calls
+against a 2.1-second first paint. Announcing is worth doing for the wire
+contract and the per-node work it removes, not as a first-paint lever. The same
+run also puts the background-commit path **~560 ms behind** main-thread direct
+emission at this scale (2,102.2 ms vs 1,540.6 ms), which is the measurement
+standing behind the plugin's `firstScreen: true` default. Both figures are
+Lynx-for-Web in headless Chromium; native `__SetAttribute` crosses into engine
+code and is not measured here. `prototype/results/fcp-10000-selector-announce.*`
+is the committed record.
+
+## 5. Specialized-core count harness (`block-counts.mjs`, on demand)
 
 ```bash
 node block-counts.mjs --scales 1000 --reps 2

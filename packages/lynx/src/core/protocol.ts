@@ -45,6 +45,7 @@ export const LYNX_TEMPLATE_RUN_READY_REQUEST_BASE = 2 ** 42;
 export const LYNX_COMPACT_ACKNOWLEDGEMENT = 'compact-v1';
 export const LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS = 16;
 export const LYNX_LAZY_PUBLIC_INSTANCES = 'lazy-v1';
+export const LYNX_ANNOUNCED_PUBLIC_INSTANCES = 'announced-v1';
 
 export interface LynxContextProxyEvent<T = unknown> {
 	readonly type: string;
@@ -86,11 +87,49 @@ export interface LynxMainThreadCapabilities {
 	readonly templateRuns?: 1;
 }
 
+/**
+ * Whether both peers are in lazy-public-instance mode, from the one reply they
+ * both read.
+ *
+ * The background announces every host it will query, and the main thread stops
+ * installing `nodes-ref` selectors nobody asked for. Each half is unsound
+ * without the other: a main thread that skips the selector while the background
+ * skips the announcement strips refs with no error anywhere, so neither side
+ * may derive this for itself.
+ *
+ * This capability is a property of the session, and it governs whether handle
+ * deltas may be deferred — not whether a commit named the hosts it will query.
+ * That second question is `commit.announces`, which a background answers from
+ * what it knows while composing, so it can be answered on the first batch of a
+ * root: the one composed before the reply carrying this capability arrives.
+ */
+export function lynxLazyPublicInstancesNegotiated(
+	capabilities: LynxMainThreadCapabilities | undefined,
+): boolean {
+	return (
+		capabilities?.templateMount === 1 &&
+		capabilities.templateProgram === 1 &&
+		capabilities.lazyPublicInstances === 1
+	);
+}
+
 export interface LynxTransportCommitMessage extends UniversalTransportCommitMessage {
 	/** Present only after this background and main explicitly negotiated it. */
 	readonly ack?: typeof LYNX_COMPACT_ACKNOWLEDGEMENT;
 	/** Present only on an explicitly negotiated, compact initial intrinsic mount. */
 	readonly instances?: typeof LYNX_LAZY_PUBLIC_INSTANCES;
+	/**
+	 * Present when every host this batch will query is named by an
+	 * `ensure-public-instance` command inside it, which lets the main thread skip
+	 * a `nodes-ref` selector on every host the batch did not name.
+	 *
+	 * It is a property of the background that composed the batch, not of the
+	 * session: a background that announces from what it knows while composing can
+	 * say so on its very first batch, which is composed before any reply could
+	 * have granted a capability. That batch is the one this matters most for,
+	 * because it mounts the whole first screen.
+	 */
+	readonly announces?: typeof LYNX_ANNOUNCED_PUBLIC_INSTANCES;
 }
 
 /** Root-independent native page lifetime teardown broadcast to the background runtime. */
@@ -1744,6 +1783,7 @@ export function validateLynxBackgroundOutboundMessage(
 	if (message.type === 'commit') {
 		const hasCompactAck = Object.prototype.hasOwnProperty.call(message, 'ack');
 		const hasLazyPublicInstances = Object.prototype.hasOwnProperty.call(message, 'instances');
+		const hasAnnouncedPublicInstances = Object.prototype.hasOwnProperty.call(message, 'announces');
 		exactKeys(
 			message,
 			[
@@ -1755,6 +1795,7 @@ export function validateLynxBackgroundOutboundMessage(
 				'batch',
 				...(hasCompactAck ? ['ack'] : []),
 				...(hasLazyPublicInstances ? ['instances'] : []),
+				...(hasAnnouncedPublicInstances ? ['announces'] : []),
 			],
 			'commit',
 		);
@@ -1766,6 +1807,12 @@ export function validateLynxBackgroundOutboundMessage(
 		}
 		if (hasLazyPublicInstances && !hasCompactAck) {
 			fail('commit.instances', 'requires a compact acknowledgement.');
+		}
+		if (
+			hasAnnouncedPublicInstances &&
+			(message as { announces?: unknown }).announces !== LYNX_ANNOUNCED_PUBLIC_INSTANCES
+		) {
+			fail('commit.announces', `must be ${JSON.stringify(LYNX_ANNOUNCED_PUBLIC_INSTANCES)}.`);
 		}
 		assertBatch(message.batch, message);
 		return message as unknown as LynxTransportCommitMessage;

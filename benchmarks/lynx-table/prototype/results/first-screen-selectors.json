@@ -1,0 +1,126 @@
+{
+  "suite": "lynx-table-first-screen-selectors",
+  "reps": 2,
+  "host": {
+    "cpus": "4× Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "node": "v22.22.2"
+  },
+  "cells": {
+    "1k/before-render": {
+      "rows": 1000,
+      "arm": "before-render",
+      "rowsPainted": 1000,
+      "createdElements": 7042,
+      "createdSelectable": 4029,
+      "refSelectorInstalls": 0,
+      "refSelectorClears": 0,
+      "commits": 1,
+      "commands": 95,
+      "wireRegime": {
+        "capabilities": {
+          "compactAck": 1,
+          "templateMount": 1,
+          "templateProgram": 1,
+          "lazyPublicInstances": 1,
+          "templateRuns": 1
+        },
+        "commitAcks": {
+          "compact-v1": 1
+        },
+        "commitInstances": {
+          "lazy-v1": 1
+        },
+        "commitAnnouncements": {
+          "announced-v1": 1
+        }
+      }
+    },
+    "1k/after-render": {
+      "rows": 1000,
+      "arm": "after-render",
+      "rowsPainted": 1000,
+      "createdElements": 7042,
+      "createdSelectable": 4029,
+      "refSelectorInstalls": 0,
+      "refSelectorClears": 0,
+      "commits": 1,
+      "commands": 16094,
+      "wireRegime": {
+        "capabilities": {
+          "compactAck": 1,
+          "templateMount": 1,
+          "templateProgram": 1,
+          "lazyPublicInstances": 1,
+          "templateRuns": 1
+        },
+        "commitAcks": {
+          "compact-v1": 1
+        },
+        "commitInstances": {
+          "<eager>": 1
+        },
+        "commitAnnouncements": {
+          "announced-v1": 1
+        }
+      }
+    },
+    "10k/before-render": {
+      "rows": 10000,
+      "arm": "before-render",
+      "rowsPainted": 10000,
+      "createdElements": 70042,
+      "createdSelectable": 40029,
+      "refSelectorInstalls": 0,
+      "refSelectorClears": 0,
+      "commits": 1,
+      "commands": 95,
+      "wireRegime": {
+        "capabilities": {
+          "compactAck": 1,
+          "templateMount": 1,
+          "templateProgram": 1,
+          "lazyPublicInstances": 1,
+          "templateRuns": 1
+        },
+        "commitAcks": {
+          "compact-v1": 1
+        },
+        "commitInstances": {
+          "lazy-v1": 1
+        },
+        "commitAnnouncements": {
+          "announced-v1": 1
+        }
+      }
+    },
+    "10k/after-render": {
+      "rows": 10000,
+      "arm": "after-render",
+      "rowsPainted": 10000,
+      "createdElements": 70042,
+      "createdSelectable": 40029,
+      "refSelectorInstalls": 0,
+      "refSelectorClears": 0,
+      "commits": 1,
+      "commands": 160094,
+      "wireRegime": {
+        "capabilities": {
+          "compactAck": 1,
+          "templateMount": 1,
+          "templateProgram": 1,
+          "lazyPublicInstances": 1,
+          "templateRuns": 1
+        },
+        "commitAcks": {
+          "compact-v1": 1
+        },
+        "commitInstances": {
+          "<eager>": 1
+        },
+        "commitAnnouncements": {
+          "announced-v1": 1
+        }
+      }
+    }
+  }
+}

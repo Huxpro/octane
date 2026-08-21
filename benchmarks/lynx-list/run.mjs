@@ -45,6 +45,8 @@ function stableSignature(result) {
 		lateCallbackSign: result.lateCallbackSign,
 		reuseWrites: result.reuseWork.writes.median,
 		reuseNodesTouched: result.reuseWork.nodesTouched.median,
+		reuseAttachmentDeltas: result.reuseWork.attachmentDeltas.median,
+		reuseAttachmentWrites: result.reuseWork.attachmentWrites.median,
 	});
 }
 
@@ -112,6 +114,16 @@ try {
 					reuse_nodes_touched: countStat(lynx.reuseWork.nodesTouched.median, iterations),
 					wide_reuse_writes: countStat(wide.reuseWork.writes.median, iterations),
 					wide_reuse_nodes_touched: countStat(wide.reuseWork.nodesTouched.median, iterations),
+					reuse_attachment_deltas: countStat(lynx.reuseWork.attachmentDeltas.median, iterations),
+					reuse_attachment_writes: countStat(lynx.reuseWork.attachmentWrites.median, iterations),
+					wide_reuse_attachment_deltas: countStat(
+						wide.reuseWork.attachmentDeltas.median,
+						iterations,
+					),
+					wide_reuse_attachment_writes: countStat(
+						wide.reuseWork.attachmentWrites.median,
+						iterations,
+					),
 				},
 				meta: { ...lynx, wideRow: wide },
 			},
@@ -163,6 +175,13 @@ try {
 	console.log(
 		`per-recycle spread: writes ${work.writes.min}-${work.writes.max}, ` +
 			`nodes ${work.nodesTouched.min}-${work.nodesTouched.max}`,
+	);
+	console.log(
+		`attachment delivery: ${work.attachmentDeltas.median} deltas per recycle ` +
+			`(${work.attachmentDeltas.min}-${work.attachmentDeltas.max}), ` +
+			`${work.attachmentWrites.median} of the writes above; wide row ` +
+			`${wide.reuseWork.attachmentDeltas.median} deltas, ` +
+			`${wide.reuseWork.attachmentWrites.median} writes`,
 	);
 	const breakdown = Object.entries(work.stepBreakdown)
 		.sort((first, second) => second[1] - first[1] || first[0].localeCompare(second[0]))

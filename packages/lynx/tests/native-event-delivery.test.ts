@@ -259,7 +259,7 @@ describe.sequential('@octanejs/lynx native background event delivery', () => {
 	});
 
 	it('drops a tap that names a host the background never accepts', async () => {
-		const { dom } = installEnvironment();
+		const { dom, main } = installEnvironment();
 		const log: string[] = [];
 		const diagnostics: Error[] = [];
 		backgroundRoot = createLynxRoot({ onDiagnostic: (error) => diagnostics.push(error) });
@@ -268,8 +268,7 @@ describe.sequential('@octanejs/lynx native background event delivery', () => {
 
 		// Reuse the live root id so the token is genuinely this root's, and name a
 		// host id it never accepted.
-		const selector = dom.window.document.querySelector('#target')!.getAttribute('octane-ref')!;
-		const root = Number(/^r(\d+)-/.exec(selector)![1]);
+		const root = main.activeIdentity()!.root;
 		const engine = (globalThis as unknown as { lynxCoreInject: { tt: Record<string, unknown> } })
 			.lynxCoreInject.tt;
 		const publishEvent = engine.publishEvent as (handler: unknown, event: unknown) => unknown;

@@ -15,6 +15,7 @@ import {
 	LYNX_TRANSPORT_RENDERER,
 	LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS,
 	countLynxCompactAcknowledgementHosts,
+	lynxLazyPublicInstancesNegotiated,
 	type LynxMainThreadCapabilities,
 	type LynxPublicHandleDelta,
 	type LynxHostAttachmentChange,
@@ -371,6 +372,23 @@ export function createLynxClientContainer(
 	return container;
 }
 
+/**
+ * A Lynx background names every host it will query in the batch that mounts it,
+ * whatever the session has negotiated.
+ *
+ * The main thread decides at mount whether a host carries a `nodes-ref`
+ * selector, and a root's first batch is composed before the reply that could
+ * grant a capability reaches the background. An announcement that waited for
+ * that reply would arrive after the decision it exists to inform, which is the
+ * whole first screen installing selectors nothing will ever query.
+ *
+ * An invariant, not a switch: the transport attaches `announces` to every
+ * commit unconditionally, and the main thread rejects a lazy commit from a
+ * peer that never announced, so nothing is prepared to run with this false.
+ * The literal type keeps any future branch on it visibly dead.
+ */
+export const LYNX_PUBLIC_INSTANCE_ANNOUNCEMENTS = true;
+
 /** @internal Publish capabilities only from this container's correlated ready reply. */
 export function setLynxClientCapabilities(
 	container: LynxClientContainer,
@@ -380,7 +398,7 @@ export function setLynxClientCapabilities(
 	state.templateMount = capabilities?.templateMount === 1;
 	state.templateProgramMount = state.templateMount && capabilities?.templateProgram === 1;
 	state.templateProgramRuns = state.templateProgramMount && capabilities?.templateRuns === 1;
-	state.lazyPublicInstances = state.templateProgramMount && capabilities?.lazyPublicInstances === 1;
+	state.lazyPublicInstances = lynxLazyPublicInstancesNegotiated(capabilities);
 }
 
 /**
@@ -1455,6 +1473,7 @@ export function createLynxClientDriver(
 			get lazyPublicInstances() {
 				return negotiatedState?.lazyPublicInstances === true;
 			},
+			publicInstanceAnnouncements: LYNX_PUBLIC_INSTANCE_ANNOUNCEMENTS,
 		}),
 		portals: Object.freeze({
 			prepareTarget({

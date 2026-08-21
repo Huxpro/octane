@@ -25,14 +25,46 @@ changed values" from "it tracks the row's size":
 
 | row | nodes | varying values | writes per recycle | floor | ratio |
 | --- | --- | --- | --- | --- | --- |
-| `list-item > text > #text` | 3 | 2 | 6 | 2 | 3.00x |
-| card row with a nested badge | 9 | 3 | 15 | 3 | 5.00x |
+| `list-item > text > #text` | 3 | 2 | 2 | 2 | 1.00x |
+| card row with a nested badge | 9 | 3 | 3 | 3 | 1.00x |
 
-`setAttribute` is **2 and 3** — the floor exactly, at both widths. The residual is
-`setRefSelector`: two calls per *element* node per recycle, clearing the
-`nodes-ref` selector when the cell is enqueued and reinstalling it for the
-incoming logical host. So per-recycle PAPI traffic is bounded by the row's
-element count, not by its prop count, and the prop write path has no slack in it.
+Every write is a `setAttribute`, and there are exactly as many as there are
+values that changed. The wide row has three times the element nodes and pays
+nothing extra, which is what says per-recycle traffic tracks the changed values
+rather than the row's width.
+
+Nodes touched does not reach its floor — 3 against 2, and 4 against 3 — because
+`getUniqueId` and `flush` name the `<list>` node itself once per recycle. That is
+list bookkeeping, not per-row work, and it does not grow with the row.
+
+### Who asks about a cell
+
+A recycle also emits attachment deltas: one per node of the outgoing cell and
+one per node of the incoming one. The main thread filters that batch by looking
+up each host's identity and comparing generations, so the container here wires
+`onAttachments` and replays that predicate.
+
+| row | attachment deltas per recycle | writes the predicate performed |
+| --- | --- | --- |
+| `list-item > text > #text` | 6 | 0 |
+| card row with a nested badge | 18 | 0 |
+
+The zero is a contract, not an accident, and this is where it is enforced. A
+`nodes-ref` selector exists only where a public instance was requested, and the
+predicate has no idea whether one was — so asking must not install one. Pointing
+it back at `getPublicInstance`, which does install, would put one write per
+element node per recycle into this column and breach the ratio guards above.
+
+The container here is built with `announcesPublicInstances`, which is what the
+main thread does for a peer that negotiated `lazyPublicInstances` — a peer that
+announces every host it will query. A peer below that capability keeps the eager
+install, because for it an uninstalled selector is a ref that addresses nothing;
+this suite does not measure that fallback.
+
+These rows carry no ref, no lifecycle, and no main-thread callback, so nothing
+announces them and the floor is reachable. A row that does carry one is
+announced, and each announced node pays the same clear-and-reinstall pair it
+always did. The saving is therefore per node that nobody queries, not per row.
 
 These are deterministic call counts, not timings, so they carry across hosts and
 sessions. They do not measure the CPU the host spends deciding what to write.

@@ -17,6 +17,7 @@ import {
 	disposeLynxHostContainer,
 	getLynxHostPublicState,
 	getLynxHostEventListener,
+	getLynxHostHandle,
 	isLynxHostAttached,
 	prepareLynxHostBatch,
 	resolveLynxHostNativeEvent,
@@ -41,6 +42,7 @@ import {
 } from './core/native-events.js';
 import {
 	LYNX_BACKGROUND_TO_MAIN_EVENT,
+	LYNX_ANNOUNCED_PUBLIC_INSTANCES,
 	LYNX_CAPABILITY_READY_REQUEST_BASE,
 	LYNX_COMPACT_ACKNOWLEDGEMENT,
 	LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS,
@@ -415,7 +417,6 @@ function publicHandleUpsert(
 }
 
 function acknowledgementHandles<Node extends LynxElementRef>(
-	driver: LynxHostDriver<Node>,
 	container: LynxHostContainer<Node>,
 	prepared: LynxPreparedHostBatch,
 	batch: UniversalHostBatch,
@@ -439,7 +440,7 @@ function acknowledgementHandles<Node extends LynxElementRef>(
 	}
 	for (const command of batch.commands) {
 		if (command.op !== 'update' || alreadyPublished(command.id)) continue;
-		const handle = driver.getPublicInstance(container, command.id);
+		const handle = getLynxHostHandle(container, command.id);
 		if (handle !== null) {
 			handles.push(publicHandleUpsert(handle, getLynxHostPublicState(container, command.id)));
 			publishedIds!.add(command.id);
@@ -1546,7 +1547,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				firstTarget === undefined
 					? resolveLynxHostNativeEvent(active!.container, delivery.token)
 					: (() => {
-							const handle = driver.getPublicInstance(active!.container, firstTarget.host);
+							const handle = getLynxHostHandle(active!.container, firstTarget.host);
 							if (
 								handle === null ||
 								handle.generation !== firstTarget.generation ||
@@ -1651,7 +1652,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			throw new Error('Octane Lynx received a stale or foreign list attachment batch.');
 		}
 		const changes = deltas.filter((delta) => {
-			const handle = driver.getPublicInstance(active!.container, delta.id);
+			const handle = getLynxHostHandle(active!.container, delta.id);
 			return handle !== null && handle.generation === delta.generation;
 		});
 		if (changes.length === 0) return;
@@ -2059,6 +2060,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			message.instances === LYNX_LAZY_PUBLIC_INSTANCES && active !== null;
 		const incrementalRun =
 			message.batch.commands.length === 1 ? message.batch.commands[0] : undefined;
+		const announcesPublicInstances = message.announces === LYNX_ANNOUNCED_PUBLIC_INSTANCES;
 		if (
 			message.instances === LYNX_LAZY_PUBLIC_INSTANCES &&
 			(peerCapabilities?.lazyPublicInstances !== 1 ||
@@ -2071,6 +2073,21 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 						))))
 		) {
 			reject(identity, new Error('Octane Lynx rejected unnegotiated lazy public instances.'));
+			return;
+		}
+		// The announcement itself needs no negotiation. A background names the hosts
+		// it will query from what it knows while composing, which is why the flag
+		// can appear on the first batch of a root — the one composed before any
+		// reply of ours could have granted anything.
+		//
+		// Deferring that commit's handle deltas is a different claim, and it is only
+		// safe once its hosts are announced, so the narrower flag may not travel
+		// without the broader one.
+		if (message.instances === LYNX_LAZY_PUBLIC_INSTANCES && !announcesPublicInstances) {
+			reject(
+				identity,
+				new Error('Octane Lynx rejected deferred public instances the commit never announced.'),
+			);
 			return;
 		}
 		if (peerCapabilities?.templateProgram !== 1 || peerCapabilities.templateRuns !== 1) {
@@ -2121,6 +2138,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 						root: message.root,
 						page,
 						worklets: hostWorklets,
+						// Only a commit composed under the negotiated capability announces
+						// the hosts it will query, and only then can a mounted host skip
+						// carrying a nodes-ref selector nobody asked for. The session's own
+						// capability is not enough: a background composes its first batch
+						// before the reply granting it arrives.
+						announcesPublicInstances,
 						onAttachments: submitHostAttachments,
 						onCallbackFault: failAcceptedRoot,
 					}),
@@ -2148,15 +2171,21 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				candidateFirstTree === null
 					? provisional && message.ack === LYNX_COMPACT_ACKNOWLEDGEMENT
 						? message.instances === LYNX_LAZY_PUBLIC_INSTANCES
-							? { compact: true, lazyPublicInstances: true }
-							: { compact: true }
+							? { compact: true, lazyPublicInstances: true, announcesPublicInstances }
+							: { compact: true, announcesPublicInstances }
 						: postFirstTreeIncrementalCompact
-							? { compact: true, incrementalCompact: true, lazyPublicInstances: true }
+							? {
+									compact: true,
+									incrementalCompact: true,
+									lazyPublicInstances: true,
+									announcesPublicInstances,
+								}
 							: postFirstTreeLazyPublicInstances
-								? { lazyPublicInstances: true }
-								: undefined
+								? { lazyPublicInstances: true, announcesPublicInstances }
+								: { announcesPublicInstances }
 					: {
 							firstTree: candidateFirstTree,
+							announcesPublicInstances,
 							onMismatch(error) {
 								report(error, 'Octane Lynx repaired a first-screen mismatch.');
 							},
@@ -2246,7 +2275,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				? {
 						...identity,
 						type: 'ack',
-						handles: acknowledgementHandles(driver, record.container, prepared, message.batch),
+						handles: acknowledgementHandles(record.container, prepared, message.batch),
 						...(prepared.firstTreeAction === 'none'
 							? null
 							: {

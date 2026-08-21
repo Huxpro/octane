@@ -4,7 +4,19 @@ import { hasOwnSymbolFields } from './own-symbols.js';
 /** Compiler-inaccessible native attribute used by the public selector-query API. */
 export const LYNX_NODES_REF_ATTRIBUTE = 'octane-ref';
 
-/** Build the immutable selector installed for one root/host generation. */
+/**
+ * Build the immutable selector installed for one root/host generation.
+ *
+ * A node carries this attribute only where a public instance was requested. In
+ * a commit that announces its requests, every host it never names — a mounted
+ * row, a native list cell nobody queried — carries none, and it is the request
+ * rather than the attribute that survives a recycle onto whatever physical cell
+ * the row lands on next. A background announces from what it knows while
+ * composing, so its first batch announces too, which is what keeps the largest
+ * tree a root ever mounts from paying for hosts nothing will query. Two paths
+ * still install eagerly by construction: the first screen, which paints before
+ * a peer exists at all, and adoption, which overwrites what it wrote.
+ */
 export function createLynxNodesRefSelector(root: number, id: number, generation: number): string {
 	positiveSafeInteger(root, 'selector root');
 	positiveSafeInteger(id, 'selector id');
