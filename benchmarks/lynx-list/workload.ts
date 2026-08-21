@@ -4,9 +4,12 @@ import type {
 } from '../../packages/octane/src/universal-core.js';
 import {
 	createLynxHostContainer,
+	createLynxHostDriver,
 	disposeLynxHostContainer,
 	getLynxListDiagnostics,
 	prepareLynxHostBatch,
+	type LynxHostAttachmentDelta,
+	type LynxHostContainer,
 } from '../../packages/lynx/src/core/host-driver.js';
 import type {
 	LynxElementPAPI,
@@ -190,6 +193,8 @@ class FakeLynxPAPI {
 	private recording = false;
 	private readonly recordedOps = new Map<string, number>();
 	private readonly recordedNodes = new Set<FakeNode>();
+	/** Running write total, so a nested window can be measured without summarizing. */
+	private recordedWrites = 0;
 
 	constructor() {
 		this.papi = {
@@ -301,12 +306,21 @@ class FakeLynxPAPI {
 	}
 
 	/**
+	 * Writes recorded since `beginSample`. Read from inside a callback the host
+	 * invokes, it brackets a sub-window of the surrounding sample.
+	 */
+	get writeCount(): number {
+		return this.recordedWrites;
+	}
+
+	/**
 	 * Start counting Element PAPI traffic. Counting is off outside a sample so
 	 * mount and teardown, which dwarf one recycle, never leak into it.
 	 */
 	beginSample(): void {
 		this.recordedOps.clear();
 		this.recordedNodes.clear();
+		this.recordedWrites = 0;
 		this.recording = true;
 	}
 
@@ -359,6 +373,7 @@ class FakeLynxPAPI {
 		if (this.recording) {
 			this.recordedOps.set(op, (this.recordedOps.get(op) ?? 0) + 1);
 			this.recordedNodes.add(node);
+			if (WRITE_OPS.has(op)) this.recordedWrites += 1;
 		}
 		return node;
 	}
@@ -430,6 +445,70 @@ class FakeLynxPAPI {
 	}
 }
 
+/**
+ * The main thread's own attachment delivery, replayed against this fake host.
+ *
+ * One recycle emits an attachment delta per node of the outgoing cell and per
+ * node of the incoming one. `main-thread.ts` filters that batch by asking the
+ * host driver for each host's public instance and comparing generations, and
+ * `getPublicInstance` installs the node's `nodes-ref` selector as a side
+ * effect. The predicate is therefore an install site, not a read — so a
+ * benchmark that leaves `onAttachments` unwired measures a recycle in a shape
+ * production never runs, and cannot see what a demand-installed selector would
+ * actually save.
+ */
+interface AttachmentDelivery {
+	/** Wire this as the container's `onAttachments`. */
+	readonly hook: (version: number, deltas: readonly LynxHostAttachmentDelta[]) => void;
+	bind(container: LynxHostContainer<FakeNode>): void;
+	/** Deltas the predicate examined since the last `reset`. */
+	readonly examined: number;
+	/** Of those, the ones whose generation still matched — what the wire carries. */
+	readonly delivered: number;
+	/** Element PAPI writes the predicate itself performed since the last `reset`. */
+	readonly writes: number;
+	reset(): void;
+}
+
+function createAttachmentDelivery(environment: FakeLynxPAPI): AttachmentDelivery {
+	const driver = createLynxHostDriver<FakeNode>();
+	let container: LynxHostContainer<FakeNode> | null = null;
+	let examined = 0;
+	let delivered = 0;
+	let writes = 0;
+	return {
+		hook(_version, deltas) {
+			if (container === null) {
+				throw new Error('attachment delivery ran before its container was bound.');
+			}
+			const before = environment.writeCount;
+			for (const delta of deltas) {
+				examined += 1;
+				const handle = driver.getPublicInstance(container, delta.id);
+				if (handle !== null && handle.generation === delta.generation) delivered += 1;
+			}
+			writes += environment.writeCount - before;
+		},
+		bind(next: LynxHostContainer<FakeNode>): void {
+			container = next;
+		},
+		get examined(): number {
+			return examined;
+		},
+		get delivered(): number {
+			return delivered;
+		},
+		get writes(): number {
+			return writes;
+		},
+		reset(): void {
+			examined = 0;
+			delivered = 0;
+			writes = 0;
+		},
+	};
+}
+
 export interface WorkSpread {
 	readonly min: number;
 	readonly median: number;
@@ -453,6 +532,13 @@ export interface ReuseWorkProfile {
 	readonly queries: WorkSpread;
 	readonly floorWrites: number;
 	readonly floorNodesTouched: number;
+	/** Attachment deltas the main thread's delivery predicate examined per recycle. */
+	readonly attachmentDeltas: WorkSpread;
+	/**
+	 * Element PAPI writes that predicate performed, counted inside `writes` above
+	 * rather than added to it. Zero while every selector is installed eagerly.
+	 */
+	readonly attachmentWrites: WorkSpread;
 	/** One representative step, by Element PAPI entry point. */
 	readonly stepBreakdown: Readonly<Record<string, number>>;
 }
@@ -509,7 +595,12 @@ function sampleRecycle(
 
 export function runLynxListAllocationWorkload(): LynxListAllocationResult {
 	const environment = new FakeLynxPAPI();
-	const container = createLynxHostContainer(environment.papi, { root: 1 });
+	const attachments = createAttachmentDelivery(environment);
+	const container = createLynxHostContainer(environment.papi, {
+		root: 1,
+		onAttachments: attachments.hook,
+	});
+	attachments.bind(container);
 	const failures: string[] = [];
 	const check = (condition: boolean, message: string): void => {
 		if (!condition) failures.push(message);
@@ -553,9 +644,12 @@ export function runLynxListAllocationWorkload(): LynxListAllocationResult {
 	const reuseCreates: number[] = [];
 	const reuseStructural: number[] = [];
 	const reuseQueries: number[] = [];
+	const reuseAttachmentDeltas: number[] = [];
+	const reuseAttachmentWrites: number[] = [];
 	for (let index = VISIBLE_WINDOW_SIZE; index < LOGICAL_ITEM_COUNT; index++) {
 		const releasedSign = activeSigns.shift();
 		if (releasedSign === undefined) throw new Error('active native list window became empty.');
+		attachments.reset();
 		const { sign, enqueueWork, stepWork } = sampleRecycle(environment, list, releasedSign, index);
 		enqueueWrites.push(enqueueWork.writes);
 		requestWrites.push(stepWork.writes - enqueueWork.writes);
@@ -564,7 +658,14 @@ export function runLynxListAllocationWorkload(): LynxListAllocationResult {
 		reuseCreates.push(stepWork.creates);
 		reuseStructural.push(stepWork.structural);
 		reuseQueries.push(stepWork.queries);
+		reuseAttachmentDeltas.push(attachments.examined);
+		reuseAttachmentWrites.push(attachments.writes);
 		if (index === STEP_BREAKDOWN_INDEX) stepBreakdown = stepWork.byOp;
+		check(
+			attachments.delivered === attachments.examined,
+			`item ${index} emitted ${attachments.examined - attachments.delivered} attachment delta(s) ` +
+				'the main thread would drop on a generation mismatch.',
+		);
 		check(sign === releasedSign, `item ${index} did not reuse the released native cell identity.`);
 		check(
 			initialSigns.has(sign),
@@ -649,6 +750,8 @@ export function runLynxListAllocationWorkload(): LynxListAllocationResult {
 			queries: spread(reuseQueries),
 			floorWrites: REUSE_FLOOR.writes,
 			floorNodesTouched: REUSE_FLOOR.nodesTouched,
+			attachmentDeltas: spread(reuseAttachmentDeltas),
+			attachmentWrites: spread(reuseAttachmentWrites),
 			stepBreakdown,
 		}),
 		failures: Object.freeze(failures),
@@ -738,7 +841,12 @@ export interface WideRowReuseResult {
  */
 export function runWideRowReuseWorkload(): WideRowReuseResult {
 	const environment = new FakeLynxPAPI();
-	const container = createLynxHostContainer(environment.papi, { root: 1 });
+	const attachments = createAttachmentDelivery(environment);
+	const container = createLynxHostContainer(environment.papi, {
+		root: 1,
+		onAttachments: attachments.hook,
+	});
+	attachments.bind(container);
 	const failures: string[] = [];
 	prepareLynxHostBatch(container, batch(1, wideListMountCommands(LOGICAL_ITEM_COUNT))).apply();
 	const list = environment.getListNode();
@@ -754,9 +862,12 @@ export function runWideRowReuseWorkload(): WideRowReuseResult {
 	const creates: number[] = [];
 	const structural: number[] = [];
 	const queries: number[] = [];
+	const attachmentDeltas: number[] = [];
+	const attachmentWrites: number[] = [];
 	for (let index = VISIBLE_WINDOW_SIZE; index < LOGICAL_ITEM_COUNT; index++) {
 		const releasedSign = activeSigns.shift();
 		if (releasedSign === undefined) throw new Error('active native list window became empty.');
+		attachments.reset();
 		const { sign, enqueueWork, stepWork } = sampleRecycle(environment, list, releasedSign, index);
 		enqueueWrites.push(enqueueWork.writes);
 		requestWrites.push(stepWork.writes - enqueueWork.writes);
@@ -765,7 +876,15 @@ export function runWideRowReuseWorkload(): WideRowReuseResult {
 		creates.push(stepWork.creates);
 		structural.push(stepWork.structural);
 		queries.push(stepWork.queries);
+		attachmentDeltas.push(attachments.examined);
+		attachmentWrites.push(attachments.writes);
 		if (index === STEP_BREAKDOWN_INDEX) stepBreakdown = stepWork.byOp;
+		if (attachments.delivered !== attachments.examined) {
+			failures.push(
+				`wide row ${index} emitted ${attachments.examined - attachments.delivered} attachment ` +
+					'delta(s) the main thread would drop on a generation mismatch.',
+			);
+		}
 		activeSigns.push(sign);
 		const text = environment.textForSign(sign);
 		if (text !== wideRowText(index)) {
@@ -789,6 +908,8 @@ export function runWideRowReuseWorkload(): WideRowReuseResult {
 			queries: spread(queries),
 			floorWrites: WIDE_ROW_FLOOR.writes,
 			floorNodesTouched: WIDE_ROW_FLOOR.nodesTouched,
+			attachmentDeltas: spread(attachmentDeltas),
+			attachmentWrites: spread(attachmentWrites),
 			stepBreakdown,
 		}),
 		failures: Object.freeze(failures),
