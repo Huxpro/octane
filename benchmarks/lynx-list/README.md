@@ -34,6 +34,30 @@ changed values" from "it tracks the row's size":
 incoming logical host. So per-recycle PAPI traffic is bounded by the row's
 element count, not by its prop count, and the prop write path has no slack in it.
 
+### Who installs the selector
+
+A recycle also emits attachment deltas: one per node of the outgoing cell and
+one per node of the incoming one. The main thread filters that batch by asking
+the host driver for each host's public instance and comparing generations, and
+`getPublicInstance` installs the node's `nodes-ref` selector as a side effect.
+The predicate is therefore an install site, not a read, so the container here
+wires `onAttachments` and replays it — a benchmark that leaves it unwired
+measures a recycle in a shape production never runs.
+
+| row | attachment deltas per recycle | writes the predicate performed |
+| --- | --- | --- |
+| `list-item > text > #text` | 6 | 0 |
+| card row with a nested badge | 18 | 0 |
+
+Zero, because every selector is already installed by the time the predicate
+runs. That is the point of reporting it: the `setRefSelector` residual above
+cannot be removed by installing selectors on demand at the create and rebind
+paths alone. Doing that relocates the same calls into this column instead of
+removing them, because the predicate reinstalls what the enqueue cleared. The
+residual only goes to zero if the predicate stops installing too, and that is a
+protocol question — the background builds a selector string on first query
+without asking the main thread for one — not a local change to the list path.
+
 These are deterministic call counts, not timings, so they carry across hosts and
 sessions. They do not measure the CPU the host spends deciding what to write.
 
