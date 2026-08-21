@@ -105,6 +105,10 @@ try {
 	const failures = [];
 	const octaneOps = {};
 	const modelOps = {};
+	// A second reference: not a floor but the ceiling the main thread used to
+	// pay, one `nodes-ref` write per element node mounted whether or not anything
+	// could ever query it.
+	const eagerSelectorOps = {};
 	const meta = {};
 
 	for (const rows of SCALES) {
@@ -120,7 +124,12 @@ try {
 				break;
 			}
 			const nextSignature = JSON.stringify({
-				create: [result.create.commands, result.create.itemRenders],
+				create: [
+					result.create.commands,
+					result.create.itemRenders,
+					result.create.refSelectorInstalls,
+					result.create.createdSelectable,
+				],
 				update10th: [result.update10th.commands, result.update10th.itemRenders],
 				select: [result.select.commands, result.select.bytes, result.select.itemRenders],
 				swap: {
@@ -164,6 +173,10 @@ try {
 		}
 
 		octaneOps[`create_commands_${suffix}`] = countStat(result.create.commands, iterations);
+		octaneOps[`create_ref_installs_${suffix}`] = countStat(
+			result.create.refSelectorInstalls,
+			iterations,
+		);
 		octaneOps[`update10th_commands_${suffix}`] = countStat(result.update10th.commands, iterations);
 		octaneOps[`update10th_item_renders_${suffix}`] = countStat(
 			result.update10th.itemRenders,
@@ -248,9 +261,21 @@ try {
 			iterations,
 		);
 
+		// One `nodes-ref` write per element node the create mounts: what the main
+		// thread costs if it stamps every node whether or not anything can query
+		// it. Guarded separately because it is a ceiling, not a semantic floor.
+		eagerSelectorOps[`create_ref_installs_${suffix}`] = countStat(
+			result.create.createdSelectable,
+			iterations,
+		);
+
 		meta[`rows_${suffix}`] = {
 			rows,
 			createdElements: result.createdElements,
+			wireRegime: result.wireRegime,
+			createRefInstalls: result.create.refSelectorInstalls,
+			createSelectableElements: result.create.createdSelectable,
+			createAnnouncedPublicInstances: result.create.commandOps['ensure-public-instance'] ?? 0,
 			createBytes: result.create.bytes,
 			createItemRenders: result.create.itemRenders,
 			update10thBytes: result.update10th.bytes,
@@ -279,7 +304,8 @@ try {
 		};
 
 		console.log(
-			`rows=${String(rows).padStart(5)}  create=${result.create.commands} (${result.create.itemRenders}r)  ` +
+			`rows=${String(rows).padStart(5)}  create=${result.create.commands} (${result.create.itemRenders}r, ` +
+				`${result.create.refSelectorInstalls}/${result.create.createdSelectable} refs)  ` +
 				`update10th=${result.update10th.commands} (${result.update10th.itemRenders}r)  ` +
 				`select=${result.select.commands} (${result.select.bytes}B, ${result.select.itemRenders}r)  ` +
 				`swap=${result.swap.commands} (${result.swap.wireToMainBytes + result.swap.wireToBackgroundBytes}B, ${result.swap.itemRenders}r)  ` +
@@ -294,6 +320,7 @@ try {
 		targets: [
 			{ name: 'octane-lynx', ops: octaneOps, meta },
 			{ name: 'changed-rows-model', ops: modelOps, meta: {} },
+			{ name: 'eager-selector-model', ops: eagerSelectorOps, meta: {} },
 		],
 		...(failures.length === 0 ? null : { failed: failures.join(' | ') }),
 	};

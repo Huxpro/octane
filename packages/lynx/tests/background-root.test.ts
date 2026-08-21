@@ -34,7 +34,7 @@ import {
 	useInitDataChanged,
 } from '../src/platform.js';
 import { readAmbientQueueMicrotask } from '../src/core/environment.js';
-import { LYNX_NODES_REF_ATTRIBUTE } from '../src/core/nodes-ref.js';
+import { createLynxNodesRefSelector, LYNX_NODES_REF_ATTRIBUTE } from '../src/core/nodes-ref.js';
 import { LYNX_CSS_SCOPE_PROP } from '../src/core/host-props.js';
 import {
 	LYNX_BACKGROUND_TO_MAIN_EVENT,
@@ -1151,6 +1151,115 @@ describe.sequential('@octanejs/lynx background root in the official JS environme
 		expect(logs).toEqual(expect.arrayContaining(['layout-cleanup:0', 'passive-cleanup:0']));
 		await expect(destroyedRoot.render(fixture, props)).rejects.toThrow(/unmounted Lynx root/);
 		expect(main.diagnostics()).toEqual([]);
+	});
+
+	it('addresses only the hosts a ref asked for, including ones a later commit creates', async () => {
+		const { dom } = installEnvironment();
+		const rowRefs = new Map<string, LynxPublicHandle>();
+		let counterHandle: LynxPublicHandle | null = null;
+		const props = (items: readonly FixtureItem[], showDetails: boolean): FixtureProps => ({
+			label: 'initial',
+			items,
+			showDetails,
+			fail: false,
+			log() {},
+			captureActions() {},
+			captureRow(id, handle) {
+				if (handle !== null) rowRefs.set(id, handle);
+			},
+			counterRef(handle) {
+				if (handle !== null) counterHandle = handle;
+			},
+		});
+
+		backgroundRoot = createLynxRoot();
+		await backgroundRoot.render(fixture, props([{ id: 'a', value: 'A' }], false));
+		await backgroundRoot.flushTransport();
+
+		const page = dom.window.document.querySelector('page')!;
+		/** The node the handle's own selector resolves to, or null if none answers. */
+		const addressed = (handle: LynxPublicHandle): Element | null =>
+			page.querySelector(createLynxNodesRefSelector(handle.root, handle.id, handle.generation));
+
+		expect(addressed(counterHandle!)).toBe(page.querySelector('#counter'));
+		expect(addressed(rowRefs.get('a')!)).toBe(page.querySelector('#row-a'));
+		// Nothing can obtain a handle for these, so nothing can query them, and a
+		// selector on them would be an attribute written for no reader.
+		for (const id of ['#summary', '#rows', '#healthy']) {
+			expect(page.querySelector(id)!.hasAttribute(LYNX_NODES_REF_ATTRIBUTE)).toBe(false);
+		}
+
+		// A host created by an ordinary later commit, not by the first screen: the
+		// request for it travels in the same commit that creates it.
+		await backgroundRoot.render(
+			fixture,
+			props(
+				[
+					{ id: 'a', value: 'A' },
+					{ id: 'b', value: 'B' },
+				],
+				true,
+			),
+		);
+		await backgroundRoot.flushTransport();
+
+		const rowB = page.querySelector('#row-b')!;
+		expect(addressed(rowRefs.get('b')!)).toBe(rowB);
+		expect(page.querySelector('#details')!.hasAttribute(LYNX_NODES_REF_ATTRIBUTE)).toBe(false);
+		// The first row keeps answering across the commit that added a sibling.
+		expect(addressed(rowRefs.get('a')!)).toBe(page.querySelector('#row-a'));
+		// And the selector is what the public query path actually resolves.
+		await rowRefs.get('b')!.setNativeProps({ title: 'addressed-b' });
+		expect(rowB.getAttribute('title')).toBe('addressed-b');
+	});
+
+	it('addresses a ref the background asked for before the main thread was there', async () => {
+		// A Lynx background bundle starts before its main thread does, so its first
+		// commit is composed without knowing what the session will negotiate — and a
+		// commit composed then names none of the hosts it will query, whatever the
+		// reply that arrives before it is dispatched goes on to grant.
+		const dom = new JSDOM('<!doctype html><html><body></body></html>');
+		installLynxTestingEnv(globalThis, {
+			window: dom.window as unknown as Window & typeof globalThis,
+		});
+		const env = globalThis.lynxTestingEnv;
+		env.switchToBackgroundThread();
+
+		let counterHandle: LynxPublicHandle | null = null;
+		backgroundRoot = createLynxRoot();
+		const rendered = backgroundRoot.render(fixture, {
+			label: 'initial',
+			items: [{ id: 'a', value: 'A' }],
+			showDetails: false,
+			fail: false,
+			log() {},
+			captureActions() {},
+			captureRow() {},
+			counterRef(handle) {
+				if (handle !== null) counterHandle = handle;
+			},
+		});
+
+		env.switchToMainThread();
+		installed = { dom, env, main: installLynxMainThread() };
+		env.switchToBackgroundThread();
+
+		await rendered;
+		await backgroundRoot.flushTransport();
+
+		const page = dom.window.document.querySelector('page')!;
+		const counter = page.querySelector('#counter')!;
+		expect(
+			page.querySelector(
+				createLynxNodesRefSelector(
+					counterHandle!.root,
+					counterHandle!.id,
+					counterHandle!.generation,
+				),
+			),
+		).toBe(counter);
+		await counterHandle!.setNativeProps({ title: 'addressed' });
+		expect(counter.getAttribute('title')).toBe('addressed');
 	});
 
 	it('mounts, updates state/context/conditionals, reorders keyed hosts, and unmounts', async () => {

@@ -35,6 +35,44 @@ root runner:
 node benchmarks/bench.mjs --only lynx-table --ratios
 ```
 
+### Who asks about a mounted node
+
+A second reference target, `eager-selector-model`, measures one thing the
+command counts cannot see: how many `nodes-ref` selectors the main thread writes
+while mounting the rows. The model is one write per element node mounted — what
+the main thread costs if it stamps every node whether or not anything can ever
+query it.
+
+| rows | element nodes mounted | selector writes | announced public instances |
+| ---: | ---: | ---: | ---: |
+| 1,000 | 4,000 | **0** | 0 |
+| 10,000 | 40,000 | **0** | 0 |
+
+The zero is the contract, and the last column is why it is correct rather than
+lossy. A `nodes-ref` selector exists to answer a public-instance query, and a
+commit composed under the negotiated lazy-public-instance capability announces
+every host it will query with `ensure-public-instance` — ordered after the
+creates in the same commit, so a host that needs a handle still gets its selector
+before the batch ends. This app holds no `ref`, no host lifecycle, and no
+main-thread callback, so it announces none and pays none.
+
+The commit, not the session, is what carries that promise, and `wireRegime`
+records which commits made it. A background that composes a batch before the
+main-ready reply granting the capability reaches it names no hosts in that batch
+however the session was negotiated, so the main thread installs eagerly for it;
+this harness is synchronous end to end, so every one of its commits is composed
+after the handshake and announces.
+
+That makes these numbers the best case, not the average. An app whose rows carry
+a ref announces one host per row and pays one write for each, and the ratio rises
+to match. What the 0.01 ceiling catches is the regression that used to be here:
+installing on every node regardless of who asked, which reads as 1.00x.
+
+The run line prints this as `create=1 (1000r, 0/4000 refs)`. `meta.rows_*` also
+records `wireRegime` — the negotiated capabilities, and the acknowledgement,
+public-instance, and announcement regime every commit went out under — because an
+install count is unreadable without knowing whether the commit announced at all.
+
 Because the in-process ContextProxy is synchronous, acknowledgements return
 immediately and the storm gates see one commit per tick; the asynchronous
 "renders while a commit is in flight coalesce into the next commit" contract

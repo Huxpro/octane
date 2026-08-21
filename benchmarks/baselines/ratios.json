@@ -1648,6 +1648,22 @@
     "note": "30 select ticks x 2 changed rows = 60 commands, measured exactly 1.0x the floor on 2026-08-08 (was 900000 before the fix)."
   },
   {
+    "suite": "lynx-table",
+    "op": "create_ref_installs_1k",
+    "target": "octane-lynx",
+    "reference": "eager-selector-model",
+    "maxRatio": 0.01,
+    "note": "`nodes-ref` selector writes while mounting 1,000 rows, against one write per element node mounted. It is 0x: this app holds no ref, lifecycle, or main-thread callback, so the background announces no public instance and the main thread installs no selector. The ceiling is not zero because an app that does hold refs legitimately pays for those nodes; what it catches is a return to installing on every node regardless, which reads as 1.00x."
+  },
+  {
+    "suite": "lynx-table",
+    "op": "create_ref_installs_10k",
+    "target": "octane-lynx",
+    "reference": "eager-selector-model",
+    "maxRatio": 0.01,
+    "note": "`nodes-ref` selector writes while mounting 10,000 rows, against one write per element node mounted. It is 0x: this app holds no ref, lifecycle, or main-thread callback, so the background announces no public instance and the main thread installs no selector. The ceiling is not zero because an app that does hold refs legitimately pays for those nodes; what it catches is a return to installing on every node regardless, which reads as 1.00x."
+  },
+  {
     "suite": "lynx-render",
     "op": "create_1k_rows_ms",
     "target": "octane-lynx",
