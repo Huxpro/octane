@@ -353,6 +353,8 @@ type LynxApplyOperation<Node extends LynxElementRef> =
 			readonly program?: LynxPreparedTemplateProgram;
 			readonly firstListenerId?: number | null;
 			readonly lazyPublicInstances?: true;
+			/** Set when an instance of this run carries a main-thread worklet or ref. */
+			readonly mainThreadProps?: true;
 	  }
 	| {
 			readonly op: 'create';
@@ -626,6 +628,17 @@ interface LynxPreparedTemplateProgram {
 	readonly eventSites: readonly LynxPreparedTemplateProgramEvent[];
 	readonly eventCount: number;
 	readonly valueCount: number;
+	/**
+	 * Which value slots a `main-thread:` binding owns, or `null` when the program
+	 * has none — which is every program the universal path produces today.
+	 *
+	 * A worklet descriptor is an object, and every other slot in this format is a
+	 * scalar so a frame can be validated by its header alone. Naming the worklet
+	 * slots in the program keeps that property: the shape is checked once here and
+	 * cached, and a slot bound to `class` that arrives carrying an object is still
+	 * the error it always was.
+	 */
+	readonly mainThreadValues: readonly boolean[] | null;
 }
 
 interface LynxDenseTeardownPlan<Node extends LynxElementRef> {
@@ -1125,6 +1138,8 @@ function prepareTemplateProgram(value: unknown, label: string): LynxPreparedTemp
 		shape.types.length,
 	);
 	const dynamicRoutes: (0 | 1 | 2)[] = new Array(shape.types.length).fill(0);
+	let mainThreadValues: boolean[] | null = null;
+	const mainThreadBindings: (string[] | undefined)[] = new Array(shape.types.length);
 	const eventSites: (LynxPreparedTemplateProgramEvent[] | undefined)[] = new Array(
 		shape.types.length,
 	);
@@ -1184,6 +1199,20 @@ function prepareTemplateProgram(value: unknown, label: string): LynxPreparedTemp
 				}
 				seenValues.add(binding.valueIndex);
 				valueCount = Math.max(valueCount, binding.valueIndex + 1);
+				if (binding.name.startsWith('main-thread:')) {
+					(mainThreadBindings[nodeIndex] ??= []).push(binding.name);
+					// Raw text has no Element surface to own a worklet or a ref, which is
+					// why `assertTextProps` refuses every prop but `value` there. Saying so
+					// at program time reports the authoring mistake once rather than once
+					// per instance.
+					const boundType = shape.types[nodeIndex]!;
+					if (boundType === '#text' || boundType === 'raw-text') {
+						throw hostError(
+							`${label}.program.nodes[${nodeIndex}] cannot bind main-thread prop ${JSON.stringify(binding.name)} on ${boundType}.`,
+						);
+					}
+					(mainThreadValues ??= [])[binding.valueIndex] = true;
+				}
 				copied[bindingIndex] = Object.freeze({
 					name: binding.name,
 					valueIndex: binding.valueIndex,
@@ -1264,6 +1293,22 @@ function prepareTemplateProgram(value: unknown, label: string): LynxPreparedTemp
 		immutable &&= Object.isFrozen(event);
 	}
 	for (const events of eventSites) if (events !== undefined) Object.freeze(events);
+	if (mainThreadValues !== null) {
+		// The same channel cannot carry both a worklet and a background listener,
+		// and a program says both statically: the binding names one, the event
+		// sites name the other. Refusing here costs nothing per instance and
+		// reports the collision with the same words every other applier uses.
+		for (let nodeIndex = 0; nodeIndex < mainThreadBindings.length; nodeIndex++) {
+			const names = mainThreadBindings[nodeIndex];
+			const events = eventSites[nodeIndex];
+			if (names === undefined || events === undefined) continue;
+			assertNoMainThreadEventCollisionForTypes(
+				Object.fromEntries(names.map((name) => [name, true])),
+				events.map((event) => event.type),
+			);
+		}
+		for (let slot = 0; slot < valueCount; slot++) mainThreadValues[slot] ??= false;
+	}
 	const prepared = Object.freeze({
 		shape,
 		props: Object.freeze(staticProps),
@@ -1274,6 +1319,7 @@ function prepareTemplateProgram(value: unknown, label: string): LynxPreparedTemp
 		eventSites: Object.freeze(orderedEvents),
 		eventCount: program.events.length,
 		valueCount,
+		mainThreadValues: mainThreadValues === null ? null : Object.freeze(mainThreadValues),
 	});
 	if (immutable) PREPARED_TEMPLATE_PROGRAMS.set(value, prepared);
 	return prepared;
@@ -4557,6 +4603,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			) {
 				throw hostError(`${label}.values must match the program's scalar binding count.`);
 			}
+			const mainThreadValues = program.mainThreadValues;
 			for (let valueIndex = 0; valueIndex < command.values.length; valueIndex++) {
 				const value = command.values[valueIndex];
 				if (
@@ -4567,9 +4614,20 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 					typeof value !== 'boolean' &&
 					typeof value !== 'bigint'
 				) {
-					throw hostError(`${label}.values[${valueIndex}] must be a scalar.`);
+					// A worklet descriptor is an object, so the slot its program bound to
+					// a `main-thread:` prop is the one place a non-scalar belongs. Its
+					// shape is checked where every other authored main-thread value is
+					// checked — `planLynxHostPropPatch` below — rather than by a second
+					// validator that could disagree with the first.
+					if (mainThreadValues?.[valueIndex % program.valueCount] !== true) {
+						throw hostError(`${label}.values[${valueIndex}] must be a scalar.`);
+					}
 				}
 			}
+			// A run that installs main-thread props is not compact-acknowledgeable and
+			// its hosts need real records, so the decision is taken before the first
+			// instance rather than abandoned partway through building them.
+			if (mainThreadValues !== null) abandonCompact();
 			if (program.eventCount === 0) {
 				if (command.firstListenerId !== null) {
 					throw hostError(`${label}.firstListenerId must be null without event sites.`);
@@ -4727,6 +4785,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			if (incrementalCompactCandidate) abandonCompact();
 			const templateRecords: LynxHostRecord<Node>[] = new Array(hostCount);
 			const templatePatches: LynxHostPropPatch[] = new Array(hostCount);
+			let runMainThreadProps = false;
 			for (let rowIndex = 0; rowIndex < count; rowIndex++) {
 				const rowOffset = rowIndex * shape.types.length;
 				const rowFirstId = command.firstId + rowOffset;
@@ -4767,7 +4826,14 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 									? EMPTY_RAW_TEXT_CREATE_PATCH
 									: planLynxHostPropPatch(type, EMPTY_HOST_PROPS, props);
 							if (patch.mainThreadEvents.length !== 0 || patch.mainThreadRef !== undefined) {
-								throw hostError(`${label} host ${id} cannot contain direct main-thread props.`);
+								// Reachable only from a bound slot: a static main-thread prop is
+								// an object, and `prepareTemplateProgram` refuses a non-scalar
+								// static prop before any instance exists.
+								if (mainThreadValues === null) {
+									throw hostError(`${label} host ${id} cannot contain direct main-thread props.`);
+								}
+								hasMainThreadProps = true;
+								runMainThreadProps = true;
 							}
 						}
 					}
@@ -4871,6 +4937,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				(compactCandidate || acceptedLazyPublicInstances)
 					? { lazyPublicInstances: true }
 					: null),
+				...(runMainThreadProps ? { mainThreadProps: true as const } : null),
 			});
 			if (compactCandidate) {
 				sawCompactRange = true;
@@ -5869,6 +5936,16 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 								const rows = operation.count ?? 1;
 								const width = operation.parents.length;
 								const sparse = firstId !== undefined && sparseCompactNodes;
+								// Worklet lifetime is owned by connectivity, not by insertion order:
+								// a detached subtree installs nothing and `insert` activates it later.
+								// A template mount inserts its own root, so the answer is the parent's
+								// and it is the same for every instance — one walk for the run rather
+								// than one per row.
+								const templateParent =
+									operation.mainThreadProps === true ? parentHostId(operation.parent) : undefined;
+								const templateInteractive =
+									templateParent !== undefined &&
+									(templateParent === null || isAcceptedHostConnected(state, templateParent));
 								for (let rowIndex = 0; rowIndex < rows; rowIndex++) {
 									const rowOffset = rowIndex * width;
 									for (let nodeIndex = 0; nodeIndex < width; nodeIndex++) {
@@ -5907,7 +5984,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 												patch,
 												true,
 												true,
-												false,
+												templateInteractive,
 											);
 										}
 									}
