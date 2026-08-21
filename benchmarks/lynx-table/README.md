@@ -61,7 +61,8 @@ records which commits made it. A background that composes a batch before the
 main-ready reply granting the capability reaches it names no hosts in that batch
 however the session was negotiated, so the main thread installs eagerly for it;
 this harness is synchronous end to end, so every one of its commits is composed
-after the handshake and announces.
+after the handshake and announces. What the other order costs is measured
+separately, in the first-screen selector harness below.
 
 That makes these numbers the best case, not the average. An app whose rows carry
 a ref announces one host per row and pays one write for each, and the ratio rises
@@ -259,7 +260,43 @@ Downstream verdicts use a declared direct-share gate: `GO` requires a directly
 observed target segment (or target segment sum) to contribute at least 10% of
 the operation's median attribution. Residual time never authorizes a step.
 
-## 4. Specialized-core count harness (`block-counts.mjs`, on demand)
+## 4. First-screen selector harness (`first-screen-selectors.mjs`, on demand)
+
+```bash
+node first-screen-selectors.mjs --scales 1000,10000 --reps 2
+pnpm bench:first-screen-selectors -- --out prototype/results/first-screen-selectors
+```
+
+The gates above measure a first screen whose commit was composed after the
+handshake, because this chassis installs its main thread before the first render
+and its wire is synchronous. A production Lynx background bundle starts the
+other way round: it renders and composes its first batch before the main-ready
+reply reaches it, and a batch composed then names none of the hosts it will
+query, so the main thread has to install a selector on every node of it.
+
+This runner drives the same app, the same chassis, and the same counters through
+two arms that differ in one thing — whether the main thread exists when the
+background first renders — with the table already populated at mount so the
+first commit carries the rows rather than an empty shell.
+
+| rows | arm | element nodes | selector writes |
+| ---: | --- | ---: | ---: |
+| 1,000 | before-render | 4,029 | **0** |
+| 1,000 | after-render | 4,029 | **4,028** |
+| 10,000 | before-render | 40,029 | **0** |
+| 10,000 | after-render | 40,029 | **40,028** |
+
+Every node but the page, on the arm that matches how production starts. The
+report records each arm's announcement regime beside its install count, because
+the count is unreadable without it: `announced-v1` is the commit promising it
+named every host it will query, and `<unannounced>` is the commit that could not.
+
+Everything reported is a count, so no quiet host is needed and no wall clock is
+measured; the runner fails if two repetitions of a cell disagree or if an arm
+did not paint the rows it claims. `prototype/results/first-screen-selectors.*`
+is the committed record.
+
+## 5. Specialized-core count harness (`block-counts.mjs`, on demand)
 
 ```bash
 node block-counts.mjs --scales 1000 --reps 2
