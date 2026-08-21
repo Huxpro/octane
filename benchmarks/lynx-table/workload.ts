@@ -19,6 +19,7 @@ import type {
 	LynxContextProxyEvent,
 } from '../../packages/lynx/src/core/protocol.js';
 import type { LynxElementEventListener } from '../../packages/lynx/src/core/papi.js';
+import { LYNX_NODES_REF_ATTRIBUTE } from '../../packages/lynx/src/core/nodes-ref.js';
 import type { LynxWireProfile } from '../../packages/lynx/src/core/profiling.js';
 import { App } from './app/src/App.lynx.tsrx';
 
@@ -42,6 +43,11 @@ export interface WireMessageSnapshot {
 	readonly bytes: number;
 	readonly commandOps: Readonly<Record<string, number>>;
 	readonly handleOps: Readonly<Record<string, number>>;
+	/** The commit's acknowledgement and public-instance regime, verbatim. */
+	readonly ack: string | null;
+	readonly instances: string | null;
+	/** The capabilities a `ready` reply carried, verbatim. */
+	readonly capabilities: Readonly<Record<string, unknown>> | null;
 }
 
 /**
@@ -79,6 +85,9 @@ export function createContextPair(): {
 		dispatchEvent(event) {
 			const data = event.data as {
 				type?: unknown;
+				ack?: unknown;
+				instances?: unknown;
+				capabilities?: unknown;
 				batch?: { commands?: readonly { op?: unknown }[] };
 				handles?: readonly { op?: unknown }[];
 			};
@@ -105,6 +114,12 @@ export function createContextPair(): {
 				bytes,
 				commandOps,
 				handleOps,
+				ack: typeof data.ack === 'string' ? data.ack : null,
+				instances: typeof data.instances === 'string' ? data.instances : null,
+				capabilities:
+					data.capabilities !== null && typeof data.capabilities === 'object'
+						? (data.capabilities as Record<string, unknown>)
+						: null,
 			});
 			const list = other.get(event.type);
 			if (list === undefined) return;
@@ -123,6 +138,20 @@ export class FakeElementPAPI {
 	readonly nodes = new Map<number, FakeNode>();
 	flushes = 0;
 	createdElements = 0;
+	/**
+	 * `nodes-ref` selector installs and clears, counted separately from ordinary
+	 * attribute writes. The main thread installs one wherever a public instance
+	 * can be requested; a node nobody ever queries pays the write anyway, and
+	 * this is the only place that difference is visible.
+	 */
+	refSelectorInstalls = 0;
+	refSelectorClears = 0;
+	/**
+	 * Nodes a `nodes-ref` selector can be installed on. Raw text has no
+	 * CSS-selectable surface, so it is the element nodes that an eager install
+	 * would charge one write each.
+	 */
+	createdSelectable = 0;
 	page: FakeNode | null = null;
 
 	private create(type: string, text = ''): FakeNode {
@@ -140,6 +169,7 @@ export class FakeElementPAPI {
 		};
 		this.nodes.set(sign, node);
 		this.createdElements++;
+		if (type !== 'raw-text' && type !== '#text') this.createdSelectable++;
 		return node;
 	}
 
@@ -187,7 +217,13 @@ export class FakeElementPAPI {
 			__SetCSSId: (_node: FakeNode, _id: number, _entryName?: string) => {},
 			__SetAttribute: (node: FakeNode, name: string, value: unknown) => {
 				if (name === 'text') node.text = String(value);
-				else (node.attributes ??= new Map()).set(name, value);
+				else {
+					if (name === LYNX_NODES_REF_ATTRIBUTE) {
+						if (value === '') this.refSelectorClears++;
+						else this.refSelectorInstalls++;
+					}
+					(node.attributes ??= new Map()).set(name, value);
+				}
 			},
 			__SetDataset: (node: FakeNode, value: unknown) => {
 				(node.attributes ??= new Map()).set('dataset', value);
@@ -388,6 +424,30 @@ export function summarizeWire(
 	};
 }
 
+/**
+ * The regime every commit in a run went out under, plus the capabilities the one
+ * `ready` reply carried. Both peers derive their behavior from that reply, so it
+ * is the only place a run says whether lazy public instances were in force.
+ */
+export function summarizeRegime(messages: readonly WireMessageSnapshot[]): {
+	capabilities: Readonly<Record<string, unknown>> | null;
+	commitAcks: Record<string, number>;
+	commitInstances: Record<string, number>;
+} {
+	let capabilities: Readonly<Record<string, unknown>> | null = null;
+	const commitAcks: Record<string, number> = {};
+	const commitInstances: Record<string, number> = {};
+	for (const message of messages) {
+		if (message.capabilities !== null) capabilities ??= message.capabilities;
+		if (message.type !== 'commit') continue;
+		const ack = message.ack ?? '<full>';
+		commitAcks[ack] = (commitAcks[ack] ?? 0) + 1;
+		const instances = message.instances ?? '<eager>';
+		commitInstances[instances] = (commitInstances[instances] ?? 0) + 1;
+	}
+	return { capabilities, commitAcks, commitInstances };
+}
+
 // -- fake-tree queries -------------------------------------------------------
 
 const hasClass = (node: FakeNode, cls: string): boolean => node.classes.split(/\s+/).includes(cls);
@@ -507,6 +567,10 @@ export interface OpCounters {
 	readonly deltaMisses: number;
 	readonly deltaOps: number;
 	readonly deltaBytes: number;
+	readonly refSelectorInstalls: number;
+	readonly refSelectorClears: number;
+	readonly createdElements: number;
+	readonly createdSelectable: number;
 }
 
 export interface TableRunResult {
@@ -520,6 +584,18 @@ export interface TableRunResult {
 	readonly updateStorm: OpCounters;
 	readonly selectStorm: OpCounters;
 	readonly createdElements: number;
+	/**
+	 * Which regime the run actually negotiated and used, rather than which one the
+	 * source permits. A commit's public-instance regime decides whether the main
+	 * thread installs a `nodes-ref` selector on every node it mounts or only on
+	 * the hosts the background announced, so a count of installs is unreadable
+	 * without it.
+	 */
+	readonly wireRegime: {
+		readonly capabilities: Readonly<Record<string, unknown>> | null;
+		readonly commitAcks: Readonly<Record<string, number>>;
+		readonly commitInstances: Readonly<Record<string, number>>;
+	};
 	readonly diagnostics: readonly string[];
 }
 
@@ -559,9 +635,17 @@ export async function runTable(rows: number): Promise<TableRunResult> {
 		const measure = async (drive: () => Promise<void>): Promise<OpCounters> => {
 			const before = profileSnapshot();
 			const wireStart = harness.wireMessages.length;
+			const refInstallsBefore = harness.papi.refSelectorInstalls;
+			const refClearsBefore = harness.papi.refSelectorClears;
+			const elementsBefore = harness.papi.createdElements;
+			const selectableBefore = harness.papi.createdSelectable;
 			await drive();
 			const after = profileSnapshot();
 			return {
+				refSelectorInstalls: harness.papi.refSelectorInstalls - refInstallsBefore,
+				refSelectorClears: harness.papi.refSelectorClears - refClearsBefore,
+				createdElements: harness.papi.createdElements - elementsBefore,
+				createdSelectable: harness.papi.createdSelectable - selectableBefore,
 				commits: after.commits - before.commits,
 				commands: after.commands - before.commands,
 				bytes: after.bytes - before.bytes,
@@ -670,6 +754,7 @@ export async function runTable(rows: number): Promise<TableRunResult> {
 			updateStorm,
 			selectStorm,
 			createdElements: harness.papi.createdElements,
+			wireRegime: summarizeRegime(harness.wireMessages),
 			diagnostics: harness.diagnostics.map((error) => error.message),
 		};
 	} finally {
