@@ -215,7 +215,9 @@ prerequisites.
 Native list descriptors and recycling callbacks port as-is; a list cell body
 is a template, so `componentAtIndex` calls its create function directly and
 cell updates are `SET` deltas. The native-lists-excluded-from-adoption
-divergence is revisited in L4, not here.
+divergence is closed: issue #66 Phase C made a painted `<list>` adoptable on the
+universal path (§8), so L4 inherits an adoptable list rather than an excluded
+one.
 
 ## 4. Cost model
 
@@ -366,6 +368,272 @@ in §3 and the extraction-first decision in §5.
   which is 3.214× at baseline and 2.361× with both gone. The batch arm leaves the
   background program byte-identical on both fixtures, which is the independent
   evidence that it is main-thread-only code.
+- **L6 ABI decision: the Lynx-only universal surface stays, and L6's dependency
+  is reordered (issue #66 Phase E).** #58's L6 proposes deleting the Lynx-only
+  capabilities and compensation layers from `octane/universal`. The inventory
+  that decision needs is now recorded in
+  [`universal-renderer-architecture.md` §9](universal-renderer-architecture.md):
+  four compiler capability strings, six driver flags, and the
+  `mount-template-run` command, against three flags Three uses and two both
+  share.
+
+  **Nothing is removed, and the reason is not the Phase D verdict.** The
+  specialized target never replaced the descriptor ABI: `lynxMainThreadRenderer`
+  lowers only eligible host-only templates into create functions and otherwise
+  keeps it, and the background half of the same path is
+  `lynxBackgroundRenderer` — `target: 'universal'`, and the renderer that
+  declares `template-program-mount`. Both halves of the shipping path run
+  through `octane/universal`, so this surface is load-bearing whatever the
+  cutover decides.
+
+  That reorders the milestone. #58 makes the removal downstream of the L5
+  cutover; it is really downstream of a background core that stops speaking the
+  descriptor ABI at all — §3's Block-over-wire core (#103), behind a per-root
+  flag today. Both preconditions are open, and they are independent.
+
+  **Open question §9.2 is answered: Three does not want slot tables.** It
+  declares none of the template capabilities and its driver has no
+  `mount-template-run` arm; it has no boundary to amortize a collapse across,
+  since the driver runs in the host's own realm. The headroom settles it —
+  `mount_1k` in `benchmarks/three` at n=20 is 7.7 ms for Octane against 4.1 ms
+  for plain Three, so 53% of the biggest creation cell is Three's own object
+  construction and the whole declarative overhead above that floor is 3.6 ms per
+  1,000 objects, of which slot tables reach only the descriptor share. Octane
+  already leads `@react-three/fiber` 9.6.1 on seven of the suite's eight
+  operations. The mechanism costs Lynx +1,721 B main-thread gzip plus a compiler
+  backend and a second driver path.
+
+- **L5 cutover gate: NO-GO (issue #66 Phase D).** #58's L5 milestone ends by
+  flipping `lynxRendererRules` and deprecating the universal Lynx path, gated on
+  three clauses. Judged on the same two arms as the bundle re-audit below —
+  `origin/new-lynx` `5d61724` against the stack tip `566700e`, one window, eight
+  minutes apart. The full report is
+  [`benchmarks/lynx-table/stages/results/stack-66-cutover-gate.md`](../benchmarks/lynx-table/stages/results/stack-66-cutover-gate.md).
+
+  **One clause of three passes.**
+
+  | clause | verdict |
+  | --- | --- |
+  | create@10k materially below 1,201 ms, PAPI dominance reduced | **FAIL** |
+  | main-thread gzip ≤1.5× the ~51 KB median | **FAIL** on the gated fixture |
+  | no wire-floor regressions | **PASS** |
+
+  The 1,201 ms figure is not comparable — different host, and taken at the
+  pre-correction background boundary — so the clause was judged against the
+  same-window base instead. Control create is 1,825.5 ms on the base and
+  1,901.8 ms on the head, and PAPI-stage dominance is 77.2% → 77.4%. Neither
+  moved. Inside that unchanged total, +92.8 ms of PAPI element creation traded
+  against −67.6 ms of other host apply; both timers are untouched across the
+  stack, so that is work relocating, not re-attribution.
+
+  The wire clause passes outright: byte-identical ratio counters on both arms,
+  and create@10k differs by 4 bytes out and 10 bytes in at identical message
+  counts.
+
+  **The mismatch is the finding.** #58's L5 gate is written about the create
+  path; #66 Phases B–C were executed against the first-screen path. On this app
+  those are different code paths — create is a button-driven background render
+  through the staged batch, the first screen is the direct applier — and the
+  evidence shows work on one did not move the other. Where Phases B–C were
+  aimed, they landed: FCP@10k control fell 2,577.6 → 2,382.5 ms (−7.6%), with
+  `plan_interpretation` down a third, 117 → 77.9 ms.
+
+  That same FCP row also says #58's L3 exit gate is still open: it wanted plan
+  interpretation *eliminated*, and at 77.9 ms / 3.2% it is neither gone nor
+  negligible. The direct applier bypasses the interpreter for trees it accepts;
+  the interpreter still ships and still runs.
+
+  **A small unexplained excess on the mutation cells is recorded, not
+  dismissed.** Six alternating AB/BA passes settle `selectStorm@10k` at 0.997
+  head/base — the apparent +34% was window noise — but leave create at 1.032,
+  update10th at 1.042, and updateStorm at 1.076, consistent in both orderings
+  and corroborated by the stage arm's +4.2%. **It is not a logic change on the
+  mutation path**: of the nine source files the stack edits, two are behind a
+  per-root flag, two are profiling-only, three are first-screen, the compiler's
+  one-character slot-kind flip is read by nothing that branches on it, and every
+  `host-driver.ts` hunk lands in a first-screen function or the once-per-root
+  adoption branch of `prepareLynxHostBatch`. Nothing a mutation cell runs after
+  adoption was edited. The remaining candidates are the bigger main-thread
+  bundle every cell executes inside (+4,202 B raw) and slow host drift that AB/BA
+  alternation does not control; neither is claimed, and the first is testable by
+  padding the base bundle to the head's size.
+
+  Closing the create clause needs a milestone that owns host materialization:
+  PAPI creation plus other apply is 77% of create and has been at every
+  measurement since `live-report.md`. More first-screen work will not move it.
+
+- **L5 bundle re-audit, on the unmerged #66 stack (issue #66 Phase D).** #58's
+  cutover gate wants main-thread gzip "meaningfully toward the ~51 KB median
+  (propose ≤1.5×)", and #66 §6 records that #95 already repaid #63's module-level
+  trade, so this milestone re-verifies rather than re-pays. Two arms, same host,
+  deterministic bytes: `origin/new-lynx` `5d61724` against the stack tip
+  `566700e`. The full report is
+  [`benchmarks/lynx-bundle-size/results/stack-66-reaudit.md`](../benchmarks/lynx-bundle-size/results/stack-66-reaudit.md).
+
+  Four findings.
+
+  **The #63 trade stays repaid.** Nothing in the stack re-incurs it.
+
+  **Every frozen budget but one is already breached on `new-lynx`**, before a
+  commit of this stack — they were calibrated on upstream `ffadd397`. The suite
+  fails on the base and on the head, first at `preview main gzip` both times. A
+  gate that is red on its own base cannot report a regression, so it needs a
+  deliberate recalibration on a chosen tree; doing that from the branch that grew
+  the number would launder the growth into the baseline, so this audit does not.
+
+  **The stack costs +1,721 B main gzip (+2.17%), and the ladder says exactly
+  where.** Seven cut points, preview main gzip:
+
+  | arm | preview main gzip | Δ base | step |
+  | --- | ---: | ---: | ---: |
+  | base `new-lynx` | 79,491 | — | — |
+  | #103 U2b block core | 79,491 | +0 | **+0** |
+  | Phase B end | 79,794 | +303 | +303 |
+  | C1 decline | 80,108 | +617 | +314 |
+  | C2a binding | 80,161 | +670 | +53 |
+  | C2b adoption | 80,682 | +1,191 | +521 |
+  | C3 direct lists | 81,212 | **+1,721** | +530 |
+
+  The specialized background core taxes the main thread **nothing** — 0 bytes on
+  preview main, −1 on IFR main — and puts its whole +1,468 B where it runs, on
+  the background program. Every byte of main-thread growth is first-screen work,
+  and it is a trade with a measured other side: the 1,000-row native-list page
+  appears at 29.5 ms instead of 70.4 ms. On the rows-0 app the split is total:
+  main raw +4,202 B, background raw **+0**.
+
+  **The ≤1.5× target is missed on the gated fixture, and was missed before this
+  stack.** Preview main gzip is 1.585× the 51,228 B median, from 1.552× on the
+  base; the rows-0 app's main program is 1.187× and meets it. The two fixtures
+  disagree because they are different applications, and #58 does not say which
+  answers the gate. Closing it needs what that bullet actually names — deleting
+  the plan interpreter, batch pipeline, and recursive validator from the main
+  bundle — and none is deletable yet: the staged path is still the fallback the
+  direct applier needs, and `validateLynxBackgroundInboundMessage` still runs on
+  every inbound message. The median itself is a carried constant, not a
+  reproducible measurement: only the three references' web fixtures are vendored,
+  and nothing here rebuilds the five Lynx-mode configs it was taken over.
+
+- **A native `<list>` is painted by direct emission (issue #66 Phase C).** The
+  direct first-screen applier writes the rendered record tree straight to the
+  Element PAPI — no command batch, no prepared operation list, no cloned record
+  maps — and refused any tree containing a `<list>`. That was right while such a
+  page could not be adopted anyway; once it could (below), the refusal was the
+  remaining cost on exactly the pages a fast first screen exists for.
+
+  A `<list>` breaks the applier's shape twice. Its element comes from
+  `__CreateList` with the recycling callbacks passed at creation, not from
+  `__CreateElement`. And its rows are not attached to it, so the walk records
+  every row and descendant without creating anything — the same operations the
+  staged path skips.
+
+  The element is still created **on the way down**, so its unique ID lands in the
+  order the staged path assigns it; a list whose element were created after its
+  subtree would hand a later sibling the lower ID, and the differential fixture
+  carries a sibling after the list precisely to hold that. Only the row metadata
+  waits for the way back up, because it is read off records the walk has not
+  created yet. `createNativeListNode` split in two for this, and the staged path
+  calls the composition.
+
+  Emitting as it walks means the applier cannot discover a malformed list halfway
+  and stop — a half-painted page is the one state the staged path never produces
+  — so it runs the real validators first and hands anything it cannot vouch for
+  back to the staged path with nothing created, where the diagnostic is raised
+  from where it has always been raised. A host with no `__CreateList` falls back
+  for the same reason: that page is owed the report.
+
+  | page | arm | first paint | total main-thread | PAPI |
+  | --- | --- | --- | --- | --- |
+  | 1,000 rows | staged | 42.5 ms | 120.6 ms | 21 |
+  | 1,000 rows | direct | **29.5 ms** | 102.3 ms | 21 |
+  | 50 rows | staged | 3.1 / 2.9 ms | 9.3 / 7.7 ms | 21 |
+  | 50 rows | direct | **2.3 / 2.5 ms** | 6.7 / 6.9 ms | 21 |
+
+  Each cell is a median of 21 samples. The 1,000-row rows take the middle of
+  three passes (paint: staged 42.5 / 40.9 / 45.7, direct 28.5 / 29.5 / 31.4 —
+  disjoint); the 50-row page ran two passes each, so both are given rather than
+  averaged. Element PAPI traffic is identical in both arms at both sizes, which
+  is the point: what this removes is Octane's own staging, not one host call.
+
+  On the same 1,000-row page across the whole phase: **70.4 ms** before adoption
+  could carry a list (the page waited for the background), **42.8 ms** once it
+  could, **29.5 ms** through the direct path.
+
+- **A native `<list>` page paints synchronously and is adopted (issue #66
+  Phase C).** Adoption refused every tree holding a `<list>`, so the app shape a
+  fast first screen exists for was the one shape that never got one. It is
+  adoptable now, and the reason it looked impossible is a measurement nobody had
+  taken: at first screen a native list has **no cells at all**. The platform
+  materializes a row through `componentAtIndex` when it needs one, so a
+  1,000-row feed paints exactly one node — the `<list>` itself — and every row is
+  a live record with no element behind it.
+
+  That collapses the problem twice. What is painted is one node, so transfer is
+  one node. And the state that cannot be serialized — cells by native sign,
+  recycle pools, retained items, the three recycling callbacks — is main-local
+  and never crosses the wire, so adoption **moves it by reference** instead of
+  describing it. Only the callbacks cannot come along: they close over the
+  container adoption is about to empty, so they are rebound against the target
+  through `bindNativeListCallbacks` and installed with
+  `listPAPI.updateCallbacks`. No wire format changes. The snapshot keeps
+  `format: 1` and its one-painted-node-each contract; the rows live in the
+  main-local journal beside it, because a peer that validates every inbound
+  message would reject a widened format to describe nodes no peer reads.
+
+  What adoption must prove for a list is therefore: the painted nodes agree, the
+  list's items agree, and the platform has not materialized a cell since capture.
+  The last one is a recycling epoch — `enterCount + leaveCount + createdCells +
+  reusedCells` — read at capture and re-read at adoption. A list that woke up in
+  between holds physical state the captured tree does not describe, so the page
+  repairs. Capture declines only a list that had already materialized a cell,
+  which is why the Phase C opener's pre-check below is deleted here: it cannot
+  predict that, and left in place it would decline every list page.
+
+  Measured on the real `installLynxMainThread` first-screen path against the
+  lowering compiled `.tsrx` produces (a `template`-created shell wrapping the
+  `<list>`, rows through a keyed `@for`), with the background thread stood in for
+  by a second render whose batch is dispatched over the real ContextProxy. Arms
+  taken by checking out the three changed source files; 21 samples per pass after
+  3 warmups, each in a fresh environment. Every head sample was asserted to have
+  actually adopted (`ack.adoption === 'adopted'`, no diagnostics), so these are
+  adoption timings and not repairs:
+
+  | page | arm | first paint | total main-thread | PAPI |
+  | --- | --- | --- | --- | --- |
+  | 1,000 rows | declines | 70.4 ms | 70.4 ms | 12 |
+  | 1,000 rows | paints and adopts | **42.8 ms** | 117.1 ms | 21 |
+  | 50 rows | declines | 5.6 ms | 5.6 ms | 12 |
+  | 50 rows | paints and adopts | **2.9 ms** | 7.1 ms | 21 |
+
+  The extra total work is not the compare walk, which is what I expected and it
+  is wrong. Timed directly at 1,000 rows: the paint is 43.2 ms, `compareFirstTree`
+  11.1 ms, `transferFirstTree` 0.8 ms, and the commit's remaining 59.0 ms is the
+  same `prepareLynxHostBatch` record walk the declining arm also pays — adoption
+  skips the mutation, not the preparation. Transfer is 0.8 ms because two nodes
+  are physical. So the trade is: the page appears after the paint instead of
+  after the background's commit, and the main thread pays for the paint plus a
+  12 ms agreement check to make that happen.
+
+  Adoption's host traffic is **constant, not per-row**: 21 calls against 12 at
+  both 50 and 1,000 rows, because an unscrolled list materializes no cells at any
+  size.
+
+  Both numbers understate the case. The harness dispatches the background commit
+  immediately, charging the declining arm 3.6 ms for "the background produced its
+  first commit" where a real page pays a bundle load and a cold render on another
+  thread — which the painting arm's first paint does not wait for at all.
+
+  Two checks in the comparison are unguarded, and both are declared rather than
+  quietly kept. The list-items check cannot fail alone today: every descriptor
+  field comes from a row's id, its position, and four props, all of which the node
+  walk already compares more strictly, so a differing row set differs there first.
+  It states the `update-list-info` agreement where adoption relies on it, and it
+  becomes load-bearing the moment list metadata stops being a plain prop. The
+  ownership equality — relaxed from "every record owns a node" to "every record
+  owns a node or is a logical row" — is likewise unreachable from any test, and
+  that is not new: disabling it entirely on the parent commit leaves all 434 lynx
+  tests passing. It is an internal invariant no black-box test can violate, and
+  the relaxation keeps it an exact count of the logical rows the capture walk
+  itself emitted rather than weakening it to an inequality.
 
 - **An unadoptable first screen is declined before it is painted (issue #66
   Phase C).** A page holding a native `<list>` built its whole command batch,
@@ -434,6 +702,10 @@ in §3 and the extraction-first decision in §5.
   tests hold each of those diagnostics to its current site. `captureLynxFirstTree`
   stays the authority: a shape the pre-check does not claim settles exactly as it
   does today, having paid for the paint.
+
+  **Deleted by the increment above**, which made a list page adoptable and so
+  left this predicate declining pages that no longer need declining. Its
+  measurement stands as the record of what build-and-discard cost.
 
 - **First-screen records built without spread-and-delete (issue #66 Phase B).**
   Every host the first screen rendered copied its incoming props into a new
@@ -926,7 +1198,15 @@ in §3 and the extraction-first decision in §5.
 1. How much static structure can live in native `.lynx.bundle`
    element-template sections versus create functions — needs the native
    encoder surface; the web path measured the code-side form only.
-2. Whether `@octanejs/three` wants the slot-table mechanism (informing what
-   remains in `octane/universal`) — deferred to the L6 ABI decision.
+2. ~~Whether `@octanejs/three` wants the slot-table mechanism (informing what
+   remains in `octane/universal`) — deferred to the L6 ABI decision.~~
+   **Answered: no** (issue #66 Phase E). Three declares none of the template
+   capabilities, its driver cannot receive a `mount-template-run`, and it has no
+   boundary to amortize a collapse across. The headroom is 3.6 ms per 1,000
+   objects — `mount_1k` is 7.7 ms for Octane against 4.1 ms for plain Three, so
+   over half of the biggest creation cell is Three's own object construction —
+   and slot tables could recover only the descriptor share of that. Reasoning and
+   the capability inventory it came from are in
+   [`universal-renderer-architecture.md` §9](universal-renderer-architecture.md).
 3. Delta batching granularity beyond per-commit once a lane scheduler exists.
 4. The exact kernel-extraction boundary (§5) — settled by the L2 spike.

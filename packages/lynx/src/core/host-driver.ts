@@ -27,7 +27,10 @@ import {
 	LynxFirstTreeMismatchError,
 	type CaptureLynxFirstTreeOptions,
 	type LynxFirstTree,
+	type LynxFirstTreeCapturedNode,
 	type LynxFirstTreeEventSnapshot,
+	type LynxFirstTreeListJournal,
+	type LynxFirstTreeLogicalNodeSnapshot,
 	type LynxFirstTreeNodeSnapshot,
 	type LynxFirstTreeSnapshot,
 	type LynxResolvedFirstTreeEvent,
@@ -185,6 +188,21 @@ interface LynxNativeListState<Node extends LynxElementRef> {
 	enterCount: number;
 	leaveCount: number;
 	disposed: boolean;
+}
+
+/**
+ * One number that moves whenever a native list's recycling callbacks touch a
+ * cell. Capture journals it and adoption compares it against the live list,
+ * so the two sides must agree on the formula — which is why it exists as one
+ * function rather than two copies of the arithmetic.
+ */
+function listRecyclingEpoch(list: {
+	readonly enterCount: number;
+	readonly leaveCount: number;
+	readonly createdCells: number;
+	readonly reusedCells: number;
+}): number {
+	return list.enterCount + list.leaveCount + list.createdCells + list.reusedCells;
 }
 
 interface LynxHostState<Node extends LynxElementRef> {
@@ -2447,16 +2465,21 @@ function invokeNativeListCallback<Node extends LynxElementRef, Result>(
 	}
 }
 
-function createNativeListNode<Node extends LynxElementRef>(
+/**
+ * The three recycling callbacks Lynx invokes against a live `<list>`, bound to
+ * one host state and container.
+ *
+ * The list state arrives through `resolve` rather than as a value because
+ * creation is circular: `__CreateList` needs the callbacks, and the state needs
+ * the node that call returns. Adoption has no such problem — it holds a state
+ * that already exists — but both callers go through the same indirection so
+ * that what a live list does is defined once instead of twice.
+ */
+function bindNativeListCallbacks<Node extends LynxElementRef>(
 	state: LynxHostState<Node>,
 	container: LynxHostContainer<Node>,
-	record: LynxHostRecord<Node>,
-): Node {
-	const listPAPI = state.papi.list;
-	if (listPAPI === undefined) {
-		throw hostError('<list> requires __CreateList and __UpdateListCallbacks.');
-	}
-	let listState: LynxNativeListState<Node> | undefined;
+	resolve: () => LynxNativeListState<Node> | undefined,
+): Pick<LynxNativeListState<Node>, 'componentAtIndex' | 'enqueueComponent' | 'componentAtIndexes'> {
 	const componentAtIndex: LynxListComponentAtIndex<Node> = (
 		_list,
 		_listId,
@@ -2465,6 +2488,7 @@ function createNativeListNode<Node extends LynxElementRef>(
 		enableReuseNotification,
 	) =>
 		invokeNativeListCallback(state, -1, () => {
+			const listState = resolve();
 			if (listState === undefined || listState.disposed) return -1;
 			const result = materializeListItem(state, container, listState, index);
 			state.papi.flush(result.tree.node, {
@@ -2487,6 +2511,7 @@ function createNativeListNode<Node extends LynxElementRef>(
 		});
 	const enqueueComponent: LynxListEnqueueComponent<Node> = (_list, _listId, sign) => {
 		invokeNativeListCallback(state, undefined, () => {
+			const listState = resolve();
 			if (listState === undefined || listState.disposed) return;
 			const cell = listState.cellsBySign.get(sign);
 			if (cell === undefined) return;
@@ -2508,9 +2533,10 @@ function createNativeListNode<Node extends LynxElementRef>(
 		asyncFlush,
 	) => {
 		invokeNativeListCallback(state, undefined, () => {
+			const listState = resolve();
 			if (listState === undefined || listState.disposed) return;
 			const results = indexes.map((index) =>
-				materializeListItem(state, container, listState!, index),
+				materializeListItem(state, container, listState, index),
 			);
 			if (asyncFlush) {
 				for (const result of results) {
@@ -2543,6 +2569,34 @@ function createNativeListNode<Node extends LynxElementRef>(
 			emitAttachments(state, attachments);
 		});
 	};
+	return { componentAtIndex, enqueueComponent, componentAtIndexes };
+}
+
+/**
+ * Create the native list and register its main-local state, without publishing
+ * any rows.
+ *
+ * Split from the item publication below because the direct first-screen applier
+ * has to do these two things at different points in one walk: the element is
+ * created on the way down, so its unique ID is assigned in the same order the
+ * staged path assigns it, but the rows it publishes are records that only exist
+ * once the subtree has been walked.
+ */
+function beginNativeListNode<Node extends LynxElementRef>(
+	state: LynxHostState<Node>,
+	container: LynxHostContainer<Node>,
+	record: LynxHostRecord<Node>,
+): Node {
+	const listPAPI = state.papi.list;
+	if (listPAPI === undefined) {
+		throw hostError('<list> requires __CreateList and __UpdateListCallbacks.');
+	}
+	let listState: LynxNativeListState<Node> | undefined;
+	const { componentAtIndex, enqueueComponent, componentAtIndexes } = bindNativeListCallbacks(
+		state,
+		container,
+		() => listState,
+	);
 	const node = listPAPI.create(
 		container.pageComponentUniqueId,
 		componentAtIndex,
@@ -2567,11 +2621,36 @@ function createNativeListNode<Node extends LynxElementRef>(
 		disposed: false,
 	};
 	state.lists.set(record.handle.id, listState);
+	return node;
+}
+
+/**
+ * Publish a freshly created list's rows as `update-list-info`. Reads the rows
+ * off the records, so every child of the list must already be recorded.
+ */
+function publishNativeListItems<Node extends LynxElementRef>(
+	state: LynxHostState<Node>,
+	record: LynxHostRecord<Node>,
+): void {
+	const listState = state.lists.get(record.handle.id);
+	if (listState === undefined) {
+		throw hostError(`<list> ${record.handle.id} has no native list state.`);
+	}
 	const initialItems = listItems((id) => state.records.get(id), record.handle.id);
 	listState.items = initialItems;
 	const initialUpdate = planLynxListUpdate([], initialItems);
-	if (hasListUpdate(initialUpdate))
-		state.papi.setAttribute(node, 'update-list-info', initialUpdate);
+	if (hasListUpdate(initialUpdate)) {
+		state.papi.setAttribute(listState.node, 'update-list-info', initialUpdate);
+	}
+}
+
+function createNativeListNode<Node extends LynxElementRef>(
+	state: LynxHostState<Node>,
+	container: LynxHostContainer<Node>,
+	record: LynxHostRecord<Node>,
+): Node {
+	const node = beginNativeListNode(state, container, record);
+	publishNativeListItems(state, record);
 	return node;
 }
 
@@ -3009,40 +3088,29 @@ function firstScreenHostChildren(
 }
 
 /**
- * Would background adoption refuse a first screen of this shape?
- * `captureLynxFirstTree` returns null for any root holding a native `<list>`,
- * whose rows the platform materializes through main-local recycling callbacks
- * rather than as ordinary hosts. Such a first screen is painted and then
- * immediately taken back out, so answering before the container exists lets the
- * caller skip building what it would only discard.
+ * Can the direct applier finish every native `<list>` in this tree?
  *
- * The answer is true **only** for a tree the staged apply would have accepted.
- * Every diagnostic that path can raise has to keep firing from where it fires
- * today. The list diagnostics fire by running the same validators against the
- * same nodes — the two `list.js` entry points below, plus the two placement
- * rules the prepare walk owns — and a tree that trips any of them is reported
- * as ordinary work, left for the staged path to throw at. The prepare walk's
- * two non-list diagnostics — a `main-thread:` event prop colliding with a
- * background listener of the same type, and one main-thread ref descriptor
- * assigned to two visible hosts — cannot be deferred the same way, because a
- * skipped build never reaches the walk that raises them; they are replayed
- * here and THROWN, so a defective page settles as `failed` with its error
- * reported, exactly as the staged path settles it. What is skipped is
- * therefore only ever a build whose outcome is already settled, never a build
- * that would have reported something.
+ * It emits straight to the Element PAPI, so it cannot discover a malformed list
+ * halfway through and stop: that leaves a half-painted page, which is the one
+ * state the staged path never produces. So it asks before mutating anything,
+ * and hands a tree it cannot vouch for back to the staged path, which raises
+ * every list diagnostic from where it raises it today.
  *
- * Ranges are transparent, which is what makes this fire on real code rather than
- * only on hand-built trees. `@for` and friends produce no record, so a `<list>`
+ * Rather than restating those rules this runs the real validators over the same
+ * nodes — the two `list.js` entry points, plus the two placement rules the
+ * prepare walk owns and this walk tracks alongside. A tree with no `<list>` in
+ * it is trivially buildable and pays one pass.
+ *
+ * Ranges are transparent, which is what makes this read real code rather than
+ * only hand-built trees. `@for` and friends produce no record, so a `<list>`
  * taking its rows from a keyed loop — every authored list — does not own those
  * rows as children. A reader stopping at the immediate children would validate
- * an empty list and decline, swallowing every row defect on the way. The staged
- * checks read a record's *host* parent for the same reason, so a `<list-item>`
- * under a range under a `<list>` is placed correctly on both paths.
+ * an *empty* list and wave it through, and the applier would then fault on the
+ * first row. The staged checks read a record's *host* parent for the same
+ * reason, so a `<list-item>` under a range under a `<list>` is placed correctly
+ * on both paths.
  */
-export function firstScreenTreeIsUnadoptable(
-	nodes: readonly LynxFirstScreenDirectNode[],
-	events: readonly LynxFirstScreenDirectEvent[],
-): boolean {
+function firstScreenListsAreDirectBuildable(nodes: readonly LynxFirstScreenDirectNode[]): boolean {
 	// Iterative for the same reason its neighbours are: nothing in the
 	// first-screen pipeline may impose a tree-depth ceiling the renderer that
 	// produced the tree does not have. Each frame carries the nearest enclosing
@@ -3053,7 +3121,6 @@ export function firstScreenTreeIsUnadoptable(
 		hostParent: string | undefined;
 		insideList: boolean;
 	}[] = [{ nodes, hostParent: undefined, insideList: false }];
-	let found = false;
 	while (stack.length !== 0) {
 		const frame = stack.pop()!;
 		for (const node of frame.nodes) {
@@ -3075,7 +3142,6 @@ export function firstScreenTreeIsUnadoptable(
 					} catch {
 						return false;
 					}
-					found = true;
 					insideList = true;
 				} else if (node.type === 'list-item' && frame.hostParent !== 'list') {
 					// `<list-item> N must be placed directly under a <list>.`
@@ -3084,47 +3150,6 @@ export function firstScreenTreeIsUnadoptable(
 				hostParent = node.type;
 			}
 			if (node.children.length !== 0) stack.push({ nodes: node.children, hostParent, insideList });
-		}
-	}
-	if (!found) return false;
-	// The skip verdict is settled; replay the prepare walk's non-list
-	// diagnostics before granting it. These throw rather than return false:
-	// returning would route the defective tree into a build whose sole purpose
-	// is to be discarded, and the staged walk would then raise the same error
-	// after paying for the paint.
-	const eventTypesByHost = new Map<number, string[]>();
-	for (const event of events) {
-		const entry = eventTypesByHost.get(event.id);
-		if (entry === undefined) eventTypesByHost.set(event.id, [event.type]);
-		else entry.push(event.type);
-	}
-	const mainThreadRefOwners = new Map<string, number>();
-	const diagnostics: {
-		nodes: readonly LynxFirstScreenDirectNode[];
-		visible: boolean;
-	}[] = [{ nodes, visible: true }];
-	while (diagnostics.length !== 0) {
-		const frame = diagnostics.pop()!;
-		for (const node of frame.nodes) {
-			const visible = frame.visible && node.visibility !== 'hidden';
-			if (node.kind === 'host' && node.props !== undefined) {
-				const types = eventTypesByHost.get(node.id);
-				if (types !== undefined) {
-					assertNoMainThreadEventCollisionForTypes(node.props, types);
-				}
-				const mainThreadRef = node.props['main-thread:ref'] as
-					LynxMainThreadRefDescriptor | null | undefined;
-				if (mainThreadRef != null && visible) {
-					const previousOwner = mainThreadRefOwners.get(mainThreadRef._wvid);
-					if (previousOwner !== undefined && previousOwner !== node.id) {
-						throw hostError(
-							`main-thread ref ${JSON.stringify(mainThreadRef._wvid)} is assigned to hosts ${previousOwner} and ${node.id}.`,
-						);
-					}
-					mainThreadRefOwners.set(mainThreadRef._wvid, node.id);
-				}
-			}
-			if (node.children.length !== 0) diagnostics.push({ nodes: node.children, visible });
 		}
 	}
 	return true;
@@ -3151,8 +3176,9 @@ function firstScreenTreeHasList(nodes: readonly LynxFirstScreenDirectNode[]): bo
  * `captureLynxFirstTree` and background adoption stay byte-compatible. The
  * renderer hands over an envelope rather than a batch: its version, and the
  * background listeners it assigned (the deterministic listener-id assignment
- * stays single-sourced there). Trees containing native lists return false and
- * take the staged path unchanged; nothing else falls back.
+ * stays single-sourced there). A native `<list>` is built here too (issue #66
+ * C3); only a tree whose host offers no list PAPI, or whose list topology this
+ * applier cannot finish, falls back to the staged path.
  */
 export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 	container: LynxHostContainer<Node>,
@@ -3166,7 +3192,17 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 	if (state.acceptedVersion !== 0 || state.records.size !== 0) {
 		throw hostError('direct first-screen apply requires an empty container.');
 	}
-	if (firstScreenTreeHasList(roots)) return false;
+	// A native `<list>` is built here now (issue #66 C3). Two trees still go back
+	// to the staged path: one whose host offers no list PAPI, because a page that
+	// cannot build a `<list>` at all is owed that diagnostic rather than a silent
+	// fallback, and one whose list topology this applier cannot vouch for
+	// finishing without faulting mid-walk.
+	if (
+		firstScreenTreeHasList(roots) &&
+		(state.papi.list === undefined || !firstScreenListsAreDirectBuildable(roots))
+	) {
+		return false;
+	}
 	// Same envelope contract as the staged path: the applier is exported, so a
 	// future caller must not be able to hand it an unvalidated envelope.
 	if (envelope.renderer !== LYNX_RENDERER_ID) {
@@ -3188,17 +3224,31 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		}
 		entries.push([binding.type, binding.listener]);
 	}
-	// The staged path runs this over the batch's final host set during prepare,
-	// so a collision costs zero PAPI calls. The direct path has no prepare stage,
-	// so it pre-walks: refusing after the walk has begun would leave a
+	// The staged path runs both of these over the batch's final host set during
+	// prepare, so a refusal costs zero PAPI calls. The direct path has no prepare
+	// stage, so it pre-walks: refusing after the walk has begun would leave a
 	// half-painted page, which is exactly the state the staged path never
-	// produces. Only hosts the envelope gave a background listener can collide,
-	// and a page with no background listeners at all skips the walk entirely.
-	if (eventsByHost.size !== 0) {
-		const pending: (readonly LynxFirstScreenDirectNode[])[] = [roots];
+	// produces.
+	//
+	// The walk is unconditional. A background listener is announced by the
+	// envelope, so a page with none could skip a collision-only walk entirely; a
+	// duplicated `main-thread:ref` is announced by nothing but the hosts' own
+	// props. This applier is exported, so an envelope field claiming a tree holds
+	// no refs would put a correctness check at its caller's discretion. What it
+	// costs is a second read-only pass over a tree this function already scans
+	// for a `<list>` before it creates anything — the same price as the list
+	// pre-walk above, paid for the same reason.
+	{
+		const refOwners = new Map<string, number>();
+		const pending: [readonly LynxFirstScreenDirectNode[], boolean][] = [[roots, true]];
 		while (pending.length !== 0) {
-			for (const node of pending.pop()!) {
-				if (node.kind === 'host' && node.props !== undefined) {
+			const [nodes, parentVisible] = pending.pop()!;
+			for (const node of nodes) {
+				// Ranges are transparent here exactly as they are in the walk below:
+				// they carry no props of their own and pass visibility through.
+				const visible =
+					node.kind === 'host' ? parentVisible && node.visibility !== 'hidden' : parentVisible;
+				if (node.kind === 'host' && node.props != null) {
 					const entries = eventsByHost.get(node.id);
 					if (entries !== undefined) {
 						assertNoMainThreadEventCollisionForTypes(
@@ -3206,8 +3256,24 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 							entries.map(([type]) => type),
 						);
 					}
+					// Hidden hosts are skipped for the same reason the staged path skips
+					// them: an invisible host installs no main-thread props, so it owns no
+					// ref to collide over. A malformed descriptor is left to the prop
+					// planner, which reports it precisely; guessing here would report a
+					// duplicate that is really a bad value.
+					const ref = node.props['main-thread:ref'] as
+						LynxMainThreadRefDescriptor | null | undefined;
+					if (visible && ref != null && typeof ref._wvid === 'string') {
+						const previousOwner = refOwners.get(ref._wvid);
+						if (previousOwner !== undefined && previousOwner !== node.id) {
+							throw hostError(
+								`main-thread ref ${JSON.stringify(ref._wvid)} is assigned to hosts ${previousOwner} and ${node.id}.`,
+							);
+						}
+						refOwners.set(ref._wvid, node.id);
+					}
 				}
-				if (node.children.length !== 0) pending.push(node.children);
+				if (node.children.length !== 0) pending.push([node.children, visible]);
 			}
 		}
 	}
@@ -3223,10 +3289,24 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 	interface WalkFrame {
 		readonly node: LynxFirstScreenDirectNode | null;
 		readonly papiNode: Node | null;
+		/**
+		 * Set on the deferred frame that publishes a `<list>`'s rows. The element
+		 * itself is created on the way down, so its unique ID lands in the order
+		 * the staged path assigns it; only the row metadata has to wait, because it
+		 * is read off records the subtree walk has not created yet.
+		 */
+		readonly listRecord: LynxHostRecord<Node> | null;
 		readonly parentRecord: LynxHostRecord<Node> | null;
 		readonly parentId: number | null;
 		readonly physicalParent: Node;
 		readonly parentVisible: boolean;
+		/**
+		 * True for a `<list>`'s rows and everything beneath them. Such a record is
+		 * built without an element: the platform materializes a row through
+		 * `componentAtIndex` when it needs one, and the staged path skips exactly
+		 * the same `create` operations.
+		 */
+		readonly insideList: boolean;
 	}
 	// An explicit stack, not recursion. The staged path this replaced walks a
 	// flat command array and so has no depth ceiling; one frame per tree level
@@ -3239,32 +3319,86 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		parentId: number | null,
 		physicalParent: Node,
 		parentVisible: boolean,
+		insideList: boolean,
 	): void => {
 		// Reversed, so the stack pops siblings in authored order.
 		for (let index = node.children.length - 1; index >= 0; index--) {
 			stack.push({
 				node: node.children[index]!,
 				papiNode: null,
+				listRecord: null,
 				parentRecord,
 				parentId,
 				physicalParent,
 				parentVisible,
+				insideList,
 			});
 		}
 	};
+	/**
+	 * Everything a created host owes its container once its element exists.
+	 * Shared with the deferred `<list>` frame, whose element is created after its
+	 * subtree rather than before it, so the two cannot share a call site.
+	 */
+	const emitHostNode = (
+		record: LynxHostRecord<Node>,
+		id: number,
+		type: string,
+		props: Readonly<Record<string, unknown>>,
+		patch: LynxHostPropPatch,
+		visible: boolean,
+		hostEvents: [string, UniversalEventListenerDescriptor][] | undefined,
+		papiNode: Node,
+	): void => {
+		state.ownedNodes.add(papiNode);
+		record.node = papiNode;
+		ensureNodesRefSelector(state, record);
+		applyProps(
+			state,
+			papiNode,
+			type,
+			EMPTY_HOST_PROPS,
+			props,
+			patch,
+			true,
+			visible,
+			visible && state.hasMainThreadProps,
+		);
+		if (!visible && type !== '#text' && type !== 'raw-text') {
+			papi.setAttribute(papiNode, 'hidden', true);
+		}
+		if (visible && hostEvents !== undefined) {
+			for (const [eventType, listener] of hostEvents) {
+				installNativeEvent(state, papiNode, container.root, id, 1, eventType, listener);
+			}
+		}
+	};
 	const visit = (frame: WalkFrame): void => {
-		const { node, parentRecord, parentId, physicalParent, parentVisible } = frame;
+		const { node, parentRecord, parentId, physicalParent, parentVisible, insideList } = frame;
 		if (node === null) {
+			const listRecord = frame.listRecord;
+			if (listRecord !== null) {
+				// The rows are records now, which is what publication reads. The
+				// platform materializes them later through the callbacks the list was
+				// created with; nothing physical is built here.
+				publishNativeListItems(state, listRecord);
+				return;
+			}
 			const attached = frame.papiNode!;
 			if (parentId === null) state.ownedPageRoots.add(attached);
 			append(physicalParent, attached);
 			return;
 		}
 		if (node.kind !== 'host') {
-			pushChildren(node, parentRecord, parentId, physicalParent, parentVisible);
+			pushChildren(node, parentRecord, parentId, physicalParent, parentVisible, insideList);
 			return;
 		}
 		const type = node.type!;
+		// Sticky, and set for the rows as well as the list, exactly as the staged
+		// prepare sets it from its `create` commands. It is what tells every later
+		// batch on this container that the compact and lazy-public-instance fast
+		// paths — which assume ordinary physical parentage — do not apply here.
+		if (type === 'list' || type === 'list-item') state.hasNativeListTopology = true;
 		// The rendered records carry the main graph's raw props, where a
 		// `main-thread:` event prop is still a tagged callable. Records feed
 		// `captureLynxFirstTree`, whose snapshot crosses the ContextProxy wire, so
@@ -3305,39 +3439,53 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		} else {
 			state.rootChildren.push(node.id);
 		}
-		const papiNode = papi.createElement(type, container.pageComponentUniqueId, textValue(props));
-		state.ownedNodes.add(papiNode);
-		record.node = papiNode;
-		ensureNodesRefSelector(state, record);
-		applyProps(
-			state,
-			papiNode,
-			type,
-			EMPTY_HOST_PROPS,
-			props,
-			patch,
-			true,
-			visible,
-			visible && state.hasMainThreadProps,
-		);
-		if (!visible && type !== '#text' && type !== 'raw-text') {
-			papi.setAttribute(papiNode, 'hidden', true);
+		if (insideList) {
+			// A row, or something under one. It owns no element until the platform
+			// asks for its cell, so there is nothing to create, apply, attach, or
+			// bind an event to — the cell does all of that when it materializes. The
+			// record is what the list reads to publish its metadata, and what
+			// `captureLynxFirstTree` journals as a logical node.
+			pushChildren(node, record, node.id, physicalParent, visible, true);
+			return;
 		}
-		if (visible && hostEvents !== undefined) {
-			for (const [eventType, listener] of hostEvents) {
-				installNativeEvent(state, papiNode, container.root, node.id, 1, eventType, listener);
-			}
-		}
+		const papiNode =
+			type === 'list'
+				? beginNativeListNode(state, container, record)
+				: papi.createElement(type, container.pageComponentUniqueId, textValue(props));
+		emitHostNode(record, node.id, type, props, patch, visible, hostEvents, papiNode);
 		// The attach is queued before the children so it pops after them.
 		stack.push({
 			node: null,
 			papiNode,
+			listRecord: null,
 			parentRecord: null,
 			parentId,
 			physicalParent,
 			parentVisible,
+			insideList: false,
 		});
-		pushChildren(node, record, node.id, papiNode, visible);
+		if (type === 'list') {
+			// Queued after the attach and before the children, so it pops between
+			// them: every row is a record by then, and the list still publishes them
+			// before it joins the page, which is the order the staged path produces.
+			stack.push({
+				node: null,
+				papiNode: null,
+				listRecord: record,
+				parentRecord: null,
+				parentId,
+				physicalParent,
+				parentVisible,
+				insideList: false,
+			});
+			// A row owns no element, and neither does anything under it, so the
+			// physical parent handed down is never used. The list is passed anyway
+			// rather than something arbitrary, so a future reader of this frame sees
+			// the truthful parent.
+			pushChildren(node, record, node.id, papiNode, visible, true);
+			return;
+		}
+		pushChildren(node, record, node.id, papiNode, visible, false);
 	};
 	state.applying = true;
 	try {
@@ -3347,10 +3495,12 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 				stack.push({
 					node: roots[index]!,
 					papiNode: null,
+					listRecord: null,
 					parentRecord: null,
 					parentId: null,
 					physicalParent: container.page as Node,
 					parentVisible: true,
+					insideList: false,
 				});
 			}
 			while (stack.length !== 0) visit(stack.pop()!);
@@ -3397,30 +3547,57 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 	) {
 		throw hostError('first-tree plan must be a non-empty string when provided.');
 	}
-	if (state.lists.size !== 0) return null;
+	for (const list of state.lists.values()) {
+		// A cell the platform already materialized is a physical subtree keyed by a
+		// native sign, and nothing here can establish that it survives the window
+		// between capture and adoption without a device to observe. Carry the shape a
+		// first screen actually has — the `<list>` painted, every row still logical —
+		// and decline the rest exactly as this did before.
+		if (list.cellsBySign.size !== 0) return null;
+	}
 	if (state.portalChildren.size !== 0) {
 		throw hostError('portals cannot be captured before background adoption.');
 	}
 	const eventsByToken = new Map<string, LynxResolvedFirstTreeEvent>();
 	const nodes: LynxFirstTreeNodeSnapshot[] = [];
+	const logicalNodes = new Map<number, LynxFirstTreeLogicalNodeSnapshot>();
 	const cloneState: FirstTreeSnapshotCloneState = { active: new Set(), clones: new Map() };
+	// Everything beneath a native `<list>`. The list host is painted; its rows are
+	// records the platform has not asked for yet, and so are their descendants.
+	// Walked from the list rather than inferred from a null node, so that a
+	// missing node anywhere else stays the fault it has always been.
+	const insideList = new Set<number>();
+	for (const hostId of state.lists.keys()) {
+		const pending = [...(state.records.get(hostId)?.children ?? [])];
+		while (pending.length !== 0) {
+			const id = pending.pop()!;
+			if (insideList.has(id)) continue;
+			insideList.add(id);
+			const record = state.records.get(id);
+			if (record !== undefined) pending.push(...record.children);
+		}
+	}
 	const ids = [...state.records.keys()].sort((first, second) => first - second);
 	for (const id of ids) {
 		const record = state.records.get(id)!;
-		if (record.node === null || record.parent === undefined) {
+		const node = record.node;
+		if (record.parent === undefined || (node === null && !insideList.has(id))) {
 			throw hostError(`first-tree host ${id} must own an attached physical node.`);
+		}
+		if (node !== null && insideList.has(id)) {
+			throw hostError(`first-tree list row ${id} was materialized before capture.`);
 		}
 		if (isPortalParent(record.parent)) {
 			throw hostError('portals cannot be captured before background adoption.');
 		}
-		// A `<list>` whose native state was never materialized is still a list the
-		// background cannot adopt.
-		if (record.type === 'list') return null;
-		if (!state.ownedNodes.has(record.node)) {
+		if (node !== null && !state.ownedNodes.has(node)) {
 			throw hostError(`first-tree host ${id} is missing from the physical ownership journal.`);
 		}
-		const nativeId = state.papi.getUniqueId(record.node);
-		assertSafeId(nativeId, `first-tree host ${id} native ID`);
+		let nativeId = 0;
+		if (node !== null) {
+			nativeId = state.papi.getUniqueId(node);
+			assertSafeId(nativeId, `first-tree host ${id} native ID`);
+		}
 		// Most records on a large page bind nothing: in the benchmark fixture two
 		// of every seven hosts carry an event and the rest carry none. Sorting the
 		// spread of an empty map, into an array that stays empty, is three
@@ -3440,7 +3617,10 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 					priority: descriptor.priority,
 				});
 				bound.push(event);
-				const registration = state.nativeEvents.get(record.node)?.get(type);
+				// An unmaterialized row installs its listeners when its cell is
+				// created, so there is no registration to reconcile against yet.
+				if (node === null) continue;
+				const registration = state.nativeEvents.get(node)?.get(type);
 				if (record.visible) {
 					if (registration?.source !== 'background') {
 						throw hostError(
@@ -3455,6 +3635,27 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 				}
 			}
 			events = Object.freeze(bound);
+		}
+		const children =
+			record.children.length === 0
+				? EMPTY_FIRST_TREE_CHILDREN
+				: Object.freeze([...record.children]);
+		if (node === null) {
+			logicalNodes.set(
+				id,
+				Object.freeze({
+					id,
+					nativeId: null,
+					type: record.type,
+					generation: record.handle.generation,
+					parent: record.parent,
+					children,
+					props: snapshotFirstTreeProps(record.props, cloneState),
+					visible: record.visible,
+					events,
+				}),
+			);
+			continue;
 		}
 		// Planning a whole prop patch per record, only to read back which
 		// main-thread bindings that record expects, is the per-node capture cost
@@ -3480,7 +3681,7 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 		if (mainThreadPatch !== null) {
 			for (const event of mainThreadPatch.mainThreadEvents) {
 				if (event.value === null) continue;
-				const registration = state.nativeEvents.get(record.node)?.get(event.binding.prop);
+				const registration = state.nativeEvents.get(node)?.get(event.binding.prop);
 				if (
 					record.visible &&
 					(registration?.source !== 'main-thread' ||
@@ -3498,7 +3699,7 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 			}
 		}
 		const expectedRef = mainThreadPatch?.mainThreadRef?.value ?? null;
-		const mountedRef = state.mainThreadRefs.get(record.node) ?? null;
+		const mountedRef = state.mainThreadRefs.get(node) ?? null;
 		if (
 			(record.visible && !sameSnapshotValue(expectedRef, mountedRef)) ||
 			(!record.visible && mountedRef !== null)
@@ -3512,17 +3713,17 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 				type: record.type,
 				generation: record.handle.generation,
 				parent: record.parent,
-				children:
-					record.children.length === 0
-						? EMPTY_FIRST_TREE_CHILDREN
-						: Object.freeze([...record.children]),
+				children,
 				props: snapshotFirstTreeProps(record.props, cloneState),
 				visible: record.visible,
 				events,
 			}),
 		);
 	}
-	if (state.ownedNodes.size !== state.records.size) {
+	// Still an equality, not a bound. Every record is accounted for exactly once:
+	// painted ones by the physical ownership journal, native list rows by the
+	// logical map. An untracked node cannot hide behind an unmaterialized row.
+	if (state.ownedNodes.size !== state.records.size - logicalNodes.size) {
 		throw hostError('first-tree physical ownership contains untracked nodes.');
 	}
 	if (state.ownedPageRoots.size !== state.rootChildren.length) {
@@ -3543,7 +3744,24 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 		roots: Object.freeze([...state.rootChildren]),
 		nodes: Object.freeze(nodes),
 	});
-	const firstTree = createLynxFirstTree<Node>(snapshot, container, eventsByToken);
+	const lists = new Map<number, LynxFirstTreeListJournal>();
+	for (const [hostId, list] of state.lists) {
+		lists.set(
+			hostId,
+			Object.freeze({
+				host: hostId,
+				items: list.items,
+				epoch: listRecyclingEpoch(list),
+			}),
+		);
+	}
+	const firstTree = createLynxFirstTree<Node>(
+		snapshot,
+		container,
+		eventsByToken,
+		logicalNodes,
+		lists,
+	);
 	state.firstTree = firstTree;
 	return firstTree;
 }
@@ -3611,8 +3829,63 @@ function compareFirstTree<Node extends LynxElementRef>(
 	) {
 		return mismatch(firstTree, 'snapshot.owner', 'the captured host owner is not stable.');
 	}
-	if (sourceState.lists.size !== 0 || listUpdates.length !== 0) {
-		return mismatch(firstTree, 'snapshot.nodes', 'native list materializations require repair.');
+	// A native list is adoptable, but only against the same list. The main thread
+	// already wrote `update-list-info` onto the node being adopted; `listUpdates`
+	// is what the background would have written onto a node it created itself.
+	// Adoption is sound exactly when those agree, so compare them rather than
+	// replaying either.
+	//
+	// The two checks below state that agreement where adoption relies on it; today
+	// they cannot fail alone. Every field of a descriptor comes from a row's `id`,
+	// its position among the list's children, and four props, and the walk below
+	// compares ids, child order, and props already — more strictly, since an absent
+	// `reuse-identifier` and an empty one are one descriptor but two prop sets. A
+	// row set that differs at all differs there first. They become load-bearing the
+	// moment list metadata stops being a plain prop, or row props stop being
+	// compared one-for-one. The epoch check that follows is not in that position:
+	// it reads live state no snapshot holds.
+	//
+	// Not a count comparison: a list with no rows produces no prepared update at
+	// all, because there is nothing to insert. An empty feed is an ordinary page,
+	// so absence here is agreement, not disagreement.
+	const journal = firstTree[LYNX_FIRST_TREE_STATE];
+	for (const update of listUpdates) {
+		const capturedList = journal.lists.get(update.hostId);
+		if (capturedList === undefined) {
+			return mismatch(
+				firstTree,
+				`snapshot.lists[${update.hostId}]`,
+				'the background builds a native list the capture does not hold.',
+			);
+		}
+		if (!sameListItems(capturedList.items, update.next)) {
+			return mismatch(
+				firstTree,
+				`snapshot.lists[${update.hostId}].items`,
+				'the captured and background list items differ.',
+			);
+		}
+	}
+	for (const [hostId, capturedList] of journal.lists) {
+		const live = sourceState.lists.get(hostId);
+		if (live === undefined || live.disposed) {
+			return mismatch(
+				firstTree,
+				`snapshot.lists[${hostId}]`,
+				'the captured native list is no longer live.',
+			);
+		}
+		// Every recycling callback moves this. A list that materialized a cell
+		// between capture and adoption holds physical state the captured tree does
+		// not describe, so the tree is stale and the page repairs.
+		const epoch = listRecyclingEpoch(live);
+		if (epoch !== capturedList.epoch) {
+			return mismatch(
+				firstTree,
+				`snapshot.lists[${hostId}].epoch`,
+				'the native list materialized cells after capture.',
+			);
+		}
 	}
 	for (let index = 0; index < operations.length; index++) {
 		const operation = operations[index]!;
@@ -3630,13 +3903,19 @@ function compareFirstTree<Node extends LynxElementRef>(
 			);
 		}
 	}
-	if (snapshot.nodes.length !== finalIds.size || sourceState.records.size !== finalIds.size) {
+	if (
+		snapshot.nodes.length + journal.logicalNodes.size !== finalIds.size ||
+		sourceState.records.size !== finalIds.size
+	) {
 		return mismatch(firstTree, 'snapshot.nodes', 'the host counts differ.');
 	}
 	if (!sameIds(snapshot.roots, finalRoots)) {
 		return mismatch(firstTree, 'snapshot.roots', 'the root child order differs.');
 	}
-	const snapshotsById = new Map(snapshot.nodes.map((node) => [node.id, node]));
+	const snapshotsById = new Map<number, LynxFirstTreeCapturedNode>(
+		snapshot.nodes.map((node) => [node.id, node]),
+	);
+	for (const [id, node] of journal.logicalNodes) snapshotsById.set(id, node);
 	for (const id of [...finalIds].sort((first, second) => first - second)) {
 		const captured = snapshotsById.get(id);
 		const next = getRecord(id);
@@ -3675,20 +3954,35 @@ function compareFirstTree<Node extends LynxElementRef>(
 		) {
 			return mismatch(firstTree, `snapshot.nodes[${id}].props`, 'the host props differ.');
 		}
-		if (
-			sourceRecord.node === null ||
-			sourceState.papi.getUniqueId(sourceRecord.node) !== captured.nativeId
-		) {
-			return mismatch(
-				firstTree,
-				`snapshot.nodes[${id}].nativeId`,
-				'the physical node identity changed.',
-			);
-		}
-		const physicalParent =
-			captured.parent === null ? source.page : sourceState.records.get(captured.parent)?.node;
-		if (physicalParent == null || !sourceState.papi.isChild(physicalParent, sourceRecord.node)) {
-			return mismatch(firstTree, `snapshot.nodes[${id}].parent`, 'the physical parent changed.');
+		// A native list row was captured without an element, because the platform
+		// had not asked for one. There is no physical identity or parentage to
+		// compare — the cell that materializes it later establishes both — but the
+		// row must still be unpainted now, or the capture describes a tree that has
+		// moved on.
+		if (captured.nativeId === null) {
+			if (sourceRecord.node !== null) {
+				return mismatch(
+					firstTree,
+					`snapshot.nodes[${id}].nativeId`,
+					'a captured native list row was materialized after capture.',
+				);
+			}
+		} else {
+			if (
+				sourceRecord.node === null ||
+				sourceState.papi.getUniqueId(sourceRecord.node) !== captured.nativeId
+			) {
+				return mismatch(
+					firstTree,
+					`snapshot.nodes[${id}].nativeId`,
+					'the physical node identity changed.',
+				);
+			}
+			const physicalParent =
+				captured.parent === null ? source.page : sourceState.records.get(captured.parent)?.node;
+			if (physicalParent == null || !sourceState.papi.isChild(physicalParent, sourceRecord.node)) {
+				return mismatch(firstTree, `snapshot.nodes[${id}].parent`, 'the physical parent changed.');
+			}
 		}
 		const nextEvents = [...next.events].sort(([first], [second]) =>
 			first < second ? -1 : first > second ? 1 : 0,
@@ -3738,8 +4032,18 @@ function transferFirstTree<Node extends LynxElementRef>(
 ): void {
 	const targetState = target[LYNX_HOST_STATE];
 	const sourceState = source[LYNX_HOST_STATE];
+	const journal = firstTree[LYNX_FIRST_TREE_STATE];
 	for (const [id, targetRecord] of targetState.records) {
 		const sourceRecord = sourceState.records.get(id);
+		// A native list row was never painted, so there is nothing to move. It
+		// stays a record with no node, and the list's callbacks give it one when
+		// the platform asks — the same way it would on a root that never adopted.
+		if (journal.logicalNodes.has(id)) {
+			if (sourceRecord?.node != null) {
+				throw hostError(`captured first-tree list row ${id} gained a physical node.`);
+			}
+			continue;
+		}
 		if (sourceRecord?.node === null || sourceRecord?.node === undefined) {
 			throw hostError(`captured first-tree host ${id} lost its physical node.`);
 		}
@@ -3755,6 +4059,37 @@ function transferFirstTree<Node extends LynxElementRef>(
 			targetState.mainThreadRefs.set(node, mainThreadRef);
 			targetState.mainThreadRefOwners.set(mainThreadRef._wvid, node);
 		}
+	}
+
+	// Native lists move whole. Their cells, pools, signs and recycling counters
+	// are main-local bookkeeping that never crossed the wire, so adoption carries
+	// the state itself rather than rebuilding it. What cannot come along is the
+	// callback trio the platform holds: those close over the source, and would
+	// materialize cells into a container this function is about to empty. Rebind
+	// them against the target and hand the replacements over through the same
+	// `updateCallbacks` seam `applyListUpdate` uses.
+	//
+	// Nothing above or below calls the Element PAPI before that rebind lands, so
+	// no native callback can interleave with the move. Adding a `flush`, an
+	// `insertBefore` or a `setAttribute` here would open that window.
+	if (sourceState.lists.size !== 0) {
+		const listPAPI = targetState.papi.list;
+		if (listPAPI === undefined) {
+			throw hostError('<list> requires __CreateList and __UpdateListCallbacks.');
+		}
+		for (const [hostId, list] of sourceState.lists) {
+			let moved: LynxNativeListState<Node> | undefined;
+			const rebound = bindNativeListCallbacks<Node>(targetState, target, () => moved);
+			moved = { ...list, ...rebound };
+			targetState.lists.set(hostId, moved);
+			listPAPI.updateCallbacks(
+				list.node,
+				rebound.componentAtIndex,
+				rebound.enqueueComponent,
+				rebound.componentAtIndexes,
+			);
+		}
+		sourceState.lists.clear();
 	}
 
 	// From this point the background journal is the only disposal authority.
@@ -3777,7 +4112,6 @@ function transferFirstTree<Node extends LynxElementRef>(
 	sourceState.cleanupNeedsFlush = false;
 	sourceState.disposing = false;
 	sourceState.disposed = true;
-	const journal = firstTree[LYNX_FIRST_TREE_STATE];
 	journal.owner = null;
 	journal.status = 'transferred';
 }
@@ -5463,8 +5797,13 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 					try {
 						if (applicationFailed) throw applicationError;
 						if (firstTreeAction === 'adopt') {
+							const logicalRows = firstTree![LYNX_FIRST_TREE_STATE].logicalNodes;
 							transferFirstTree(container, firstTree!, firstTreeSource!, activeNodes);
 							for (const [id, record] of state.records) {
+								// A native list row owns no element yet. Its selector, listeners
+								// and main-thread props are installed by the cell that
+								// materializes it, exactly as on a root that never adopted.
+								if (logicalRows.has(id)) continue;
 								const node = nodeFor(activeNodes, id, 'first-tree adoption');
 								record.node = node;
 								record.selectorInstalled = false;

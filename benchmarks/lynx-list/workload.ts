@@ -17,6 +17,8 @@ import type {
 
 export const LOGICAL_ITEM_COUNT = 1_000;
 export const VISIBLE_WINDOW_SIZE = 12;
+/** A steady-state step, far from both ends of the scroll. */
+const STEP_BREAKDOWN_INDEX = LOGICAL_ITEM_COUNT >> 1;
 
 interface FakeNode {
 	readonly sign: number;
@@ -48,7 +50,65 @@ function batch(version: number, commands: readonly UniversalHostCommand[]): Univ
 	return { renderer: 'lynx', version, commands };
 }
 
-function listMountCommands(itemCount: number): UniversalHostCommand[] {
+/**
+ * The row template this fixture repeats, stated once so the reuse floor below is
+ * derived from the same source the rows are built from rather than restated as a
+ * constant. Every row is `list-item > text > #text`; `reuse-identifier` is the
+ * same string on every row, `item-key` and the text value are not.
+ */
+const ROW_SLOTS = Object.freeze([
+	Object.freeze({ node: 'list-item' as const, name: 'item-key', varies: true }),
+	Object.freeze({ node: 'list-item' as const, name: 'reuse-identifier', varies: false }),
+	Object.freeze({ node: '#text' as const, name: 'text', varies: true }),
+]);
+
+/**
+ * What one recycle costs a renderer that keeps the row as a slot table: write the
+ * slots whose value differs between the outgoing row and the incoming one, and
+ * touch only the nodes that own them. It is a floor, not a target — a real
+ * implementation also has list bookkeeping to do — and it is what the measured
+ * per-reuse work is reported against.
+ */
+const REUSE_FLOOR = Object.freeze({
+	writes: ROW_SLOTS.filter((slot) => slot.varies).length,
+	nodesTouched: new Set(ROW_SLOTS.filter((slot) => slot.varies).map((slot) => slot.node)).size,
+});
+
+/**
+ * The per-row strings, generated once so both arms of a retention comparison
+ * hold the *same* string instances. What is then measured is the structure each
+ * arm builds on top of the application's own data, not the data itself.
+ */
+export interface RowData {
+	readonly itemKeys: readonly string[];
+	/** The values that differ between rows, in template-slot order. */
+	readonly values: readonly (readonly string[])[];
+}
+
+export function narrowRowData(itemCount: number): RowData {
+	const itemKeys: string[] = [];
+	const values: string[][] = [];
+	for (let index = 0; index < itemCount; index++) {
+		itemKeys.push(`item-${index}`);
+		values.push([`Row ${index}`]);
+	}
+	return Object.freeze({ itemKeys, values });
+}
+
+export function wideRowData(itemCount: number): RowData {
+	const itemKeys: string[] = [];
+	const values: string[][] = [];
+	for (let index = 0; index < itemCount; index++) {
+		itemKeys.push(`item-${index}`);
+		values.push([`Title ${index}`, `Sub ${index}`]);
+	}
+	return Object.freeze({ itemKeys, values });
+}
+
+function listMountCommands(
+	itemCount: number,
+	data: RowData = narrowRowData(itemCount),
+): UniversalHostCommand[] {
 	const commands: UniversalHostCommand[] = [
 		{ op: 'create', id: 1, type: 'list', props: { id: 'allocation-bench' } },
 	];
@@ -59,10 +119,10 @@ function listMountCommands(itemCount: number): UniversalHostCommand[] {
 				op: 'create',
 				id: ids.item,
 				type: 'list-item',
-				props: { 'item-key': `item-${index}`, 'reuse-identifier': 'bench-row' },
+				props: { 'item-key': data.itemKeys[index]!, 'reuse-identifier': 'bench-row' },
 			},
 			{ op: 'create', id: ids.text, type: 'text', props: {} },
-			{ op: 'create', id: ids.raw, type: '#text', props: { value: `Row ${index}` } },
+			{ op: 'create', id: ids.raw, type: '#text', props: { value: data.values[index]![0]! } },
 			{ op: 'insert', parent: ids.text, id: ids.raw, before: null },
 			{ op: 'insert', parent: ids.item, id: ids.text, before: null },
 			{ op: 'insert', parent: 1, id: ids.item, before: null },
@@ -89,12 +149,47 @@ function listUnmountCommands(itemCount: number): UniversalHostCommand[] {
 	return commands;
 }
 
+/** One recorded window of Element PAPI traffic, by kind. */
+export interface SampledPapiWork {
+	/** Value-carrying calls: every `set*` entry point. */
+	readonly writes: number;
+	/** Element creation, including the list itself. */
+	readonly creates: number;
+	/** Tree edits: insert, remove, replace. */
+	readonly structural: number;
+	/** Non-mutating questions the host asked the platform. */
+	readonly queries: number;
+	readonly flushes: number;
+	/** Distinct native nodes any call above named. */
+	readonly nodesTouched: number;
+	/** Every entry point that fired, by name, so a total can be explained. */
+	readonly byOp: Readonly<Record<string, number>>;
+}
+
+const WRITE_OPS = new Set([
+	'setAttribute',
+	'setClasses',
+	'setInlineStyles',
+	'setCssId',
+	'setRefSelector',
+	'setDataset',
+	'setEvent',
+	'setId',
+	'list.updateComponents',
+]);
+const CREATE_OPS = new Set(['createElement', 'createPage', 'list.create']);
+const STRUCTURAL_OPS = new Set(['insertBefore', 'remove', 'replace']);
+const QUERY_OPS = new Set(['getUniqueId', 'isChild']);
+
 class FakeLynxPAPI {
 	readonly papi: LynxElementPAPI<FakeNode>;
 	private nextSign = 1;
 	private flushes = 0;
 	private readonly nodes = new Map<number, FakeNode>();
 	private readonly callbacks = new Map<FakeNode, FakeListCallbacks>();
+	private recording = false;
+	private readonly recordedOps = new Map<string, number>();
+	private readonly recordedNodes = new Set<FakeNode>();
 
 	constructor() {
 		this.papi = {
@@ -106,6 +201,7 @@ class FakeLynxPAPI {
 					componentAtIndexes: LynxListComponentAtIndexes<FakeNode>,
 				) => {
 					const node = this.createNode('list');
+					this.record('list.create', node);
 					this.callbacks.set(node, {
 						componentAtIndex,
 						componentAtIndexes,
@@ -119,6 +215,7 @@ class FakeLynxPAPI {
 					enqueueComponent: LynxListEnqueueComponent<FakeNode>,
 					componentAtIndexes: LynxListComponentAtIndexes<FakeNode>,
 				) => {
+					this.record('list.updateCallbacks', node);
 					this.callbacks.set(node, {
 						componentAtIndex,
 						componentAtIndexes,
@@ -126,14 +223,17 @@ class FakeLynxPAPI {
 					});
 				},
 				updateComponents: (node: FakeNode, components: readonly string[]) => {
+					this.record('list.updateComponents', node);
 					node.attributes.set('list-components', [...components]);
 				},
 			}),
-			createPage: () => this.createNode('page'),
-			createElement: (type, _parentComponentUniqueId, text) => this.createNode(type, text),
-			getUniqueId: (node) => node.sign,
-			isChild: (parent, child) => child.parent === parent,
+			createPage: () => this.record('createPage', this.createNode('page')),
+			createElement: (type, _parentComponentUniqueId, text) =>
+				this.record('createElement', this.createNode(type, text)),
+			getUniqueId: (node) => this.record('getUniqueId', node).sign,
+			isChild: (parent, child) => child.parent === this.record('isChild', parent),
 			insertBefore: (parent, child, before) => {
+				this.record('insertBefore', child);
 				this.detach(child);
 				const index = before === null ? parent.children.length : parent.children.indexOf(before);
 				if (index < 0) throw new Error('fake PAPI insertBefore target is not a child.');
@@ -141,6 +241,7 @@ class FakeLynxPAPI {
 				child.parent = parent;
 			},
 			remove: (parent, child) => {
+				this.record('remove', child);
 				const index = parent.children.indexOf(child);
 				if (index < 0 || child.parent !== parent) {
 					throw new Error('fake PAPI remove target is not a child.');
@@ -149,6 +250,8 @@ class FakeLynxPAPI {
 				child.parent = null;
 			},
 			replace: (replacement, previous) => {
+				this.record('replace', replacement);
+				this.record('replace', previous);
 				const parent = previous.parent;
 				if (parent === null) throw new Error('fake PAPI cannot replace a detached node.');
 				const index = parent.children.indexOf(previous);
@@ -158,29 +261,36 @@ class FakeLynxPAPI {
 				replacement.parent = parent;
 				previous.parent = null;
 			},
-			setClasses: (node, value) => node.attributes.set('class', value),
-			setInlineStyles: (node, value) => node.attributes.set('style', value),
+			setClasses: (node, value) => this.record('setClasses', node).attributes.set('class', value),
+			setInlineStyles: (node, value) =>
+				this.record('setInlineStyles', node).attributes.set('style', value),
 			setCssId: (node, id, entryName) => {
+				this.record('setCssId', node);
 				node.attributes.set('css-id', id);
 				if (entryName !== undefined) node.attributes.set('css-entry-name', entryName);
 			},
 			setAttribute: (node, name, value) => {
+				this.record('setAttribute', node);
 				if (value === null || value === undefined) node.attributes.delete(name);
 				else node.attributes.set(name, value);
 				if (name === 'text') node.text = value == null ? '' : String(value);
 			},
-			setRefSelector: (node, value) => node.attributes.set('lynx-ref', value),
-			setDataset: (node, value) => node.attributes.set('dataset', value),
+			setRefSelector: (node, value) =>
+				this.record('setRefSelector', node).attributes.set('lynx-ref', value),
+			setDataset: (node, value) => this.record('setDataset', node).attributes.set('dataset', value),
 			setEvent: (node, kind, name, listener) => {
+				this.record('setEvent', node);
 				const key = `${kind}:${name}`;
 				if (listener === undefined) node.events.delete(key);
 				else node.events.set(key, listener);
 			},
 			setId: (node, id) => {
+				this.record('setId', node);
 				if (id === null) node.attributes.delete('id');
 				else node.attributes.set('id', id);
 			},
-			flush: () => {
+			flush: (page) => {
+				this.record('flush', page);
 				this.flushes += 1;
 			},
 		};
@@ -188,6 +298,69 @@ class FakeLynxPAPI {
 
 	get flushCount(): number {
 		return this.flushes;
+	}
+
+	/**
+	 * Start counting Element PAPI traffic. Counting is off outside a sample so
+	 * mount and teardown, which dwarf one recycle, never leak into it.
+	 */
+	beginSample(): void {
+		this.recordedOps.clear();
+		this.recordedNodes.clear();
+		this.recording = true;
+	}
+
+	/**
+	 * The traffic recorded so far, without ending the sample — so one recycle can
+	 * be reported both as its two native callbacks and as a single window whose
+	 * node count is a true union rather than a sum of two overlapping sets.
+	 */
+	sampleSoFar(): SampledPapiWork {
+		return this.summarize();
+	}
+
+	endSample(): SampledPapiWork {
+		const summary = this.summarize();
+		this.recording = false;
+		return summary;
+	}
+
+	private summarize(): SampledPapiWork {
+		let writes = 0;
+		let creates = 0;
+		let structural = 0;
+		let queries = 0;
+		let flushes = 0;
+		for (const [op, count] of this.recordedOps) {
+			if (WRITE_OPS.has(op)) writes += count;
+			else if (CREATE_OPS.has(op)) creates += count;
+			else if (STRUCTURAL_OPS.has(op)) structural += count;
+			else if (QUERY_OPS.has(op)) queries += count;
+			else if (op === 'flush') flushes += count;
+			else throw new Error(`fake PAPI recorded an unclassified op ${JSON.stringify(op)}.`);
+		}
+		return Object.freeze({
+			writes,
+			creates,
+			structural,
+			queries,
+			flushes,
+			nodesTouched: this.recordedNodes.size,
+			byOp: Object.freeze(Object.fromEntries(this.recordedOps)),
+		});
+	}
+
+	/**
+	 * Returns the node so a call site can stay an expression. Every Element PAPI
+	 * entry point routes through here, so a new one that forgets to is visible as
+	 * work this benchmark cannot see rather than as a silently lower count.
+	 */
+	private record(op: string, node: FakeNode): FakeNode {
+		if (this.recording) {
+			this.recordedOps.set(op, (this.recordedOps.get(op) ?? 0) + 1);
+			this.recordedNodes.add(node);
+		}
+		return node;
 	}
 
 	getListNode(): FakeNode {
@@ -257,6 +430,33 @@ class FakeLynxPAPI {
 	}
 }
 
+export interface WorkSpread {
+	readonly min: number;
+	readonly median: number;
+	readonly max: number;
+	readonly total: number;
+}
+
+/**
+ * What one scroll step costs at the Element PAPI, split the way the platform
+ * splits it: `enqueueComponent` gives a cell back, `componentAtIndex` asks for
+ * the next row. Their sum is one recycle.
+ */
+export interface ReuseWorkProfile {
+	readonly samples: number;
+	readonly enqueueWrites: WorkSpread;
+	readonly requestWrites: WorkSpread;
+	readonly writes: WorkSpread;
+	readonly nodesTouched: WorkSpread;
+	readonly creates: WorkSpread;
+	readonly structural: WorkSpread;
+	readonly queries: WorkSpread;
+	readonly floorWrites: number;
+	readonly floorNodesTouched: number;
+	/** One representative step, by Element PAPI entry point. */
+	readonly stepBreakdown: Readonly<Record<string, number>>;
+}
+
 export interface LynxListAllocationResult {
 	readonly logicalItems: number;
 	readonly visibleWindow: number;
@@ -271,7 +471,40 @@ export interface LynxListAllocationResult {
 	readonly flushes: number;
 	readonly remainingCellsAfterTeardown: number;
 	readonly lateCallbackSign: number;
+	readonly reuseWork: ReuseWorkProfile;
 	readonly failures: readonly string[];
+}
+
+function spread(values: readonly number[]): WorkSpread {
+	if (values.length === 0) return Object.freeze({ min: 0, median: 0, max: 0, total: 0 });
+	const sorted = [...values].sort((first, second) => first - second);
+	return Object.freeze({
+		min: sorted[0]!,
+		median: sorted[sorted.length >> 1]!,
+		max: sorted[sorted.length - 1]!,
+		total: values.reduce((sum, value) => sum + value, 0),
+	});
+}
+
+/**
+ * One recycle step measured through one window: release the outgoing cell,
+ * sample the enqueue half, admit the incoming item, close the sample. The
+ * narrow and wide workloads compare their numbers against each other, so the
+ * measurement window MUST be the same on both arms — which is why it exists
+ * once here rather than inline in each loop.
+ */
+function sampleRecycle(
+	environment: FakeLynxPAPI,
+	list: FakeNode,
+	releasedSign: number,
+	index: number,
+): { sign: number; enqueueWork: SampledPapiWork; stepWork: SampledPapiWork } {
+	environment.beginSample();
+	environment.leave(list, releasedSign);
+	const enqueueWork = environment.sampleSoFar();
+	const sign = environment.enter(list, index);
+	const stepWork = environment.endSample();
+	return { sign, enqueueWork, stepWork };
 }
 
 export function runLynxListAllocationWorkload(): LynxListAllocationResult {
@@ -309,11 +542,29 @@ export function runLynxListAllocationWorkload(): LynxListAllocationResult {
 		`visible window used ${initialSigns.size} distinct cells instead of ${VISIBLE_WINDOW_SIZE}.`,
 	);
 
+	// One sample per scroll step, recorded around the two native callbacks that
+	// make up a recycle. The counts are deterministic, so the spread reported
+	// below is a property of the path, not of the host this ran on.
+	let stepBreakdown: Readonly<Record<string, number>> = {};
+	const enqueueWrites: number[] = [];
+	const requestWrites: number[] = [];
+	const reuseWrites: number[] = [];
+	const reuseNodes: number[] = [];
+	const reuseCreates: number[] = [];
+	const reuseStructural: number[] = [];
+	const reuseQueries: number[] = [];
 	for (let index = VISIBLE_WINDOW_SIZE; index < LOGICAL_ITEM_COUNT; index++) {
 		const releasedSign = activeSigns.shift();
 		if (releasedSign === undefined) throw new Error('active native list window became empty.');
-		environment.leave(list, releasedSign);
-		const sign = environment.enter(list, index);
+		const { sign, enqueueWork, stepWork } = sampleRecycle(environment, list, releasedSign, index);
+		enqueueWrites.push(enqueueWork.writes);
+		requestWrites.push(stepWork.writes - enqueueWork.writes);
+		reuseWrites.push(stepWork.writes);
+		reuseNodes.push(stepWork.nodesTouched);
+		reuseCreates.push(stepWork.creates);
+		reuseStructural.push(stepWork.structural);
+		reuseQueries.push(stepWork.queries);
+		if (index === STEP_BREAKDOWN_INDEX) stepBreakdown = stepWork.byOp;
 		check(sign === releasedSign, `item ${index} did not reuse the released native cell identity.`);
 		check(
 			initialSigns.has(sign),
@@ -387,8 +638,232 @@ export function runLynxListAllocationWorkload(): LynxListAllocationResult {
 		flushes: environment.flushCount,
 		remainingCellsAfterTeardown,
 		lateCallbackSign,
+		reuseWork: Object.freeze({
+			samples: reuseWrites.length,
+			enqueueWrites: spread(enqueueWrites),
+			requestWrites: spread(requestWrites),
+			writes: spread(reuseWrites),
+			nodesTouched: spread(reuseNodes),
+			creates: spread(reuseCreates),
+			structural: spread(reuseStructural),
+			queries: spread(reuseQueries),
+			floorWrites: REUSE_FLOOR.writes,
+			floorNodesTouched: REUSE_FLOOR.nodesTouched,
+			stepBreakdown,
+		}),
 		failures: Object.freeze(failures),
 	});
+}
+
+/**
+ * A second row shape, because the narrow row above cannot separate two very
+ * different answers. It has three values that change between rows and six props
+ * that never do, spread over nine nodes instead of three. If per-recycle Element
+ * PAPI traffic tracks the changed values, it stays at three writes here; if it
+ * tracks the row's size, it grows with the six static props and the extra nodes.
+ *
+ *   list-item[item-key*, reuse-identifier]
+ *     view[class, style]
+ *       text[class]   > #text(title*)
+ *       text[class]   > #text(subtitle*)
+ *       view[class]
+ *         text[class] > #text("NEW")
+ *
+ * Starred props vary per row.
+ */
+const WIDE_ROW_NODE_COUNT = 9;
+const WIDE_ROW_FLOOR = Object.freeze({ writes: 3, nodesTouched: 3 });
+
+function wideRowIds(index: number): number[] {
+	const base = index * WIDE_ROW_NODE_COUNT + 2;
+	return Array.from({ length: WIDE_ROW_NODE_COUNT }, (_, offset) => base + offset);
+}
+
+function wideRowText(index: number): string {
+	return `Title ${index}Sub ${index}NEW`;
+}
+
+function wideListMountCommands(
+	itemCount: number,
+	data: RowData = wideRowData(itemCount),
+): UniversalHostCommand[] {
+	const commands: UniversalHostCommand[] = [
+		{ op: 'create', id: 1, type: 'list', props: { id: 'wide-row-bench' } },
+	];
+	for (let index = 0; index < itemCount; index++) {
+		const id = wideRowIds(index);
+		commands.push(
+			{
+				op: 'create',
+				id: id[0]!,
+				type: 'list-item',
+				props: { 'item-key': data.itemKeys[index]!, 'reuse-identifier': 'wide-row' },
+			},
+			{ op: 'create', id: id[1]!, type: 'view', props: { class: 'card', style: 'padding:8px' } },
+			{ op: 'create', id: id[2]!, type: 'text', props: { class: 'title' } },
+			{ op: 'create', id: id[3]!, type: '#text', props: { value: data.values[index]![0]! } },
+			{ op: 'create', id: id[4]!, type: 'text', props: { class: 'subtitle' } },
+			{ op: 'create', id: id[5]!, type: '#text', props: { value: data.values[index]![1]! } },
+			{ op: 'create', id: id[6]!, type: 'view', props: { class: 'badges' } },
+			{ op: 'create', id: id[7]!, type: 'text', props: { class: 'badge' } },
+			{ op: 'create', id: id[8]!, type: '#text', props: { value: 'NEW' } },
+			{ op: 'insert', parent: id[2]!, id: id[3]!, before: null },
+			{ op: 'insert', parent: id[4]!, id: id[5]!, before: null },
+			{ op: 'insert', parent: id[7]!, id: id[8]!, before: null },
+			{ op: 'insert', parent: id[6]!, id: id[7]!, before: null },
+			{ op: 'insert', parent: id[1]!, id: id[2]!, before: null },
+			{ op: 'insert', parent: id[1]!, id: id[4]!, before: null },
+			{ op: 'insert', parent: id[1]!, id: id[6]!, before: null },
+			{ op: 'insert', parent: id[0]!, id: id[1]!, before: null },
+			{ op: 'insert', parent: 1, id: id[0]!, before: null },
+		);
+	}
+	commands.push({ op: 'insert', parent: null, id: 1, before: null });
+	return commands;
+}
+
+export interface WideRowReuseResult {
+	readonly logicalItems: number;
+	readonly visibleWindow: number;
+	readonly rowNodes: number;
+	readonly reuseWork: ReuseWorkProfile;
+	readonly failures: readonly string[];
+}
+
+/**
+ * Same scroll, wider row, and only the per-recycle question: what does one
+ * recycle cost at the Element PAPI, against the floor of writing the values that
+ * actually differ? Physical-cell allocation is the narrow workload's subject and
+ * is not re-asserted here.
+ */
+export function runWideRowReuseWorkload(): WideRowReuseResult {
+	const environment = new FakeLynxPAPI();
+	const container = createLynxHostContainer(environment.papi, { root: 1 });
+	const failures: string[] = [];
+	prepareLynxHostBatch(container, batch(1, wideListMountCommands(LOGICAL_ITEM_COUNT))).apply();
+	const list = environment.getListNode();
+	const activeSigns: number[] = [];
+	for (let index = 0; index < VISIBLE_WINDOW_SIZE; index++) {
+		activeSigns.push(environment.enter(list, index));
+	}
+	let stepBreakdown: Readonly<Record<string, number>> = {};
+	const enqueueWrites: number[] = [];
+	const requestWrites: number[] = [];
+	const writes: number[] = [];
+	const nodes: number[] = [];
+	const creates: number[] = [];
+	const structural: number[] = [];
+	const queries: number[] = [];
+	for (let index = VISIBLE_WINDOW_SIZE; index < LOGICAL_ITEM_COUNT; index++) {
+		const releasedSign = activeSigns.shift();
+		if (releasedSign === undefined) throw new Error('active native list window became empty.');
+		const { sign, enqueueWork, stepWork } = sampleRecycle(environment, list, releasedSign, index);
+		enqueueWrites.push(enqueueWork.writes);
+		requestWrites.push(stepWork.writes - enqueueWork.writes);
+		writes.push(stepWork.writes);
+		nodes.push(stepWork.nodesTouched);
+		creates.push(stepWork.creates);
+		structural.push(stepWork.structural);
+		queries.push(stepWork.queries);
+		if (index === STEP_BREAKDOWN_INDEX) stepBreakdown = stepWork.byOp;
+		activeSigns.push(sign);
+		const text = environment.textForSign(sign);
+		if (text !== wideRowText(index)) {
+			failures.push(`wide row ${index} rendered ${JSON.stringify(text)}.`);
+		}
+	}
+	for (const sign of activeSigns) environment.leave(list, sign);
+	disposeLynxHostContainer(container);
+	return Object.freeze({
+		logicalItems: LOGICAL_ITEM_COUNT,
+		visibleWindow: VISIBLE_WINDOW_SIZE,
+		rowNodes: WIDE_ROW_NODE_COUNT,
+		reuseWork: Object.freeze({
+			samples: writes.length,
+			enqueueWrites: spread(enqueueWrites),
+			requestWrites: spread(requestWrites),
+			writes: spread(writes),
+			nodesTouched: spread(nodes),
+			creates: spread(creates),
+			structural: spread(structural),
+			queries: spread(queries),
+			floorWrites: WIDE_ROW_FLOOR.writes,
+			floorNodesTouched: WIDE_ROW_FLOOR.nodesTouched,
+			stepBreakdown,
+		}),
+		failures: Object.freeze(failures),
+	});
+}
+
+/**
+ * A live native list, held so a retention sample can measure it. Nothing is
+ * scrolled: this is the steady state right after mount, where every logical row
+ * is a record and only the window the platform asked for is physical.
+ */
+export interface RetainedList {
+	readonly logicalHosts: number;
+	readonly physicalCells: number;
+	dispose(): void;
+}
+
+export function buildRetainedList(kind: 'narrow' | 'wide', data: RowData): RetainedList {
+	const environment = new FakeLynxPAPI();
+	const container = createLynxHostContainer(environment.papi, { root: 1 });
+	const commands =
+		kind === 'narrow'
+			? listMountCommands(data.itemKeys.length, data)
+			: wideListMountCommands(data.itemKeys.length, data);
+	prepareLynxHostBatch(container, batch(1, commands)).apply();
+	const list = environment.getListNode();
+	const signs: number[] = [];
+	for (let index = 0; index < VISIBLE_WINDOW_SIZE; index++) {
+		signs.push(environment.enter(list, index));
+	}
+	return {
+		logicalHosts: container.instanceCount,
+		physicalCells: environment.createdNodeCount('list-item'),
+		dispose: () => {
+			for (const sign of signs) environment.leave(list, sign);
+			disposeLynxHostContainer(container);
+		},
+	};
+}
+
+/**
+ * What a deferred run would retain for the same page: one compiled program,
+ * shared by every row, plus one value row per logical item. The values are the
+ * caller's own strings — this allocates the arrays that hold them and nothing
+ * else, which is the point of the comparison.
+ */
+export interface DeferredRunModel {
+	readonly program: unknown;
+	readonly rows: readonly (readonly unknown[])[];
+}
+
+export function buildDeferredRunModel(kind: 'narrow' | 'wide', data: RowData): DeferredRunModel {
+	const program =
+		kind === 'narrow'
+			? Object.freeze([
+					Object.freeze({ type: 'list-item', props: { 'reuse-identifier': 'bench-row' }, slot: 0 }),
+					Object.freeze({ type: 'text', props: {}, slot: -1 }),
+					Object.freeze({ type: '#text', props: {}, slot: 1 }),
+				])
+			: Object.freeze([
+					Object.freeze({ type: 'list-item', props: { 'reuse-identifier': 'wide-row' }, slot: 0 }),
+					Object.freeze({ type: 'view', props: { class: 'card', style: 'padding:8px' }, slot: -1 }),
+					Object.freeze({ type: 'text', props: { class: 'title' }, slot: -1 }),
+					Object.freeze({ type: '#text', props: {}, slot: 1 }),
+					Object.freeze({ type: 'text', props: { class: 'subtitle' }, slot: -1 }),
+					Object.freeze({ type: '#text', props: {}, slot: 2 }),
+					Object.freeze({ type: 'view', props: { class: 'badges' }, slot: -1 }),
+					Object.freeze({ type: 'text', props: { class: 'badge' }, slot: -1 }),
+					Object.freeze({ type: '#text', props: { value: 'NEW' }, slot: -1 }),
+				]);
+	const rows: unknown[][] = [];
+	for (let index = 0; index < data.itemKeys.length; index++) {
+		rows.push([data.itemKeys[index]!, ...data.values[index]!]);
+	}
+	return { program, rows };
 }
 
 export interface EagerListAllocationResult {
