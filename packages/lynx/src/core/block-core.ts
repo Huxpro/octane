@@ -29,6 +29,7 @@
  * or by the caller, rather than mis-rendered.
  */
 
+import { sameLynxUniversalHostPropValue } from './host-props.js';
 import type {
 	UniversalHostBatch,
 	UniversalHostCommand,
@@ -58,6 +59,13 @@ export interface LynxBlockTemplate {
 	readonly valueNames: readonly string[];
 	/** Static props per host node, so an `update` can carry complete next props. */
 	readonly staticProps: readonly Readonly<Record<string, unknown>>[];
+	/**
+	 * Which slots a `main-thread:` binding owns, or `null` when the template has
+	 * none. A worklet slot is the one slot whose value is an object rather than a
+	 * scalar, which changes both what may be written to it and how "unchanged" is
+	 * decided — see `write()`.
+	 */
+	readonly mainThreadValues: readonly boolean[] | null;
 }
 
 function fail(message: string): never {
@@ -83,6 +91,7 @@ export function compileLynxBlockTemplate(program: UniversalHostTemplateProgram):
 	const source: readonly UniversalHostTemplateProgramNode[] = program.nodes;
 	const valueNodes: number[] = [];
 	const valueNames: string[] = [];
+	let mainThreadValues: boolean[] | null = null;
 	const staticProps: Readonly<Record<string, unknown>>[] = new Array(source.length);
 	const nodes: UniversalHostTemplateProgramNode[] = new Array(source.length);
 	for (let index = 0; index < source.length; index++) {
@@ -107,10 +116,20 @@ export function compileLynxBlockTemplate(program: UniversalHostTemplateProgram):
 			}
 			valueNodes[binding.valueIndex] = index;
 			valueNames[binding.valueIndex] = binding.name;
+			if (binding.name.startsWith('main-thread:')) {
+				// Raw text owns no Element surface, so it can hold neither a worklet
+				// nor a ref. The applier refuses it too; refusing at compile time
+				// reports the authoring mistake before any instance exists.
+				if (node.type === '#text' || node.type === 'raw-text') {
+					fail(`slot ${binding.valueIndex} binds ${binding.name} on ${node.type}`);
+				}
+				(mainThreadValues ??= [])[binding.valueIndex] = true;
+			}
 		}
 	}
 	for (let slot = 0; slot < valueNodes.length; slot++) {
 		if (valueNodes[slot] === undefined) fail(`value slot ${slot} is declared but never bound`);
+		if (mainThreadValues !== null) mainThreadValues[slot] ??= false;
 	}
 	// A deeply frozen copy, not the caller's object.
 	//
@@ -135,6 +154,7 @@ export function compileLynxBlockTemplate(program: UniversalHostTemplateProgram):
 		valueNodes: Object.freeze(valueNodes),
 		valueNames: Object.freeze(valueNames),
 		staticProps: Object.freeze(staticProps),
+		mainThreadValues: mainThreadValues === null ? null : Object.freeze(mainThreadValues),
 	});
 }
 
@@ -531,7 +551,25 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		}
 		// An unchanged slot emits nothing. The live value lives here, so deciding
 		// that costs one comparison and never a round trip.
-		if (Object.is(block.values[valueIndex], value)) return false;
+		// A worklet slot carries an object the compiler rebuilds every render, so
+		// identity is never true there and an identity-only compare would re-send an
+		// unchanged handler on every re-render. The structural compare runs only for
+		// the slots the template marked, so an ordinary slot still costs one
+		// `Object.is`. The catching comparator is load-bearing: a malformed
+		// descriptor already in the slot must decline equality and ship the update
+		// (the applier reports it in its own words), never throw here — otherwise a
+		// later valid value could not repair the slot through this API.
+		if (
+			template.mainThreadValues?.[valueIndex] === true
+				? sameLynxUniversalHostPropValue(
+						template.valueNames[valueIndex]!,
+						block.values[valueIndex],
+						value,
+					)
+				: Object.is(block.values[valueIndex], value)
+		) {
+			return false;
+		}
 		block.values[valueIndex] = value;
 		const nodeIndex = template.valueNodes[valueIndex]!;
 		// `update` carries the node's complete next props; the applier diffs it

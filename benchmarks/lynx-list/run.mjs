@@ -43,6 +43,8 @@ function stableSignature(result) {
 		semanticChecksum: result.semanticChecksum,
 		remainingCellsAfterTeardown: result.remainingCellsAfterTeardown,
 		lateCallbackSign: result.lateCallbackSign,
+		reuseWrites: result.reuseWork.writes.median,
+		reuseNodesTouched: result.reuseWork.nodesTouched.median,
 	});
 }
 
@@ -63,11 +65,15 @@ try {
 	const lynxRuns = [];
 	const eagerRuns = [];
 	const failures = [];
+	const wideRuns = [];
 	for (let iteration = 0; iteration < iterations; iteration++) {
 		const lynx = workload.runLynxListAllocationWorkload();
 		const eager = workload.runEagerListAllocationReference();
+		const wide = workload.runWideRowReuseWorkload();
 		lynxRuns.push(lynx);
 		eagerRuns.push(eager);
+		wideRuns.push(wide);
+		for (const failure of wide.failures) failures.push(`run ${iteration + 1}: ${failure}`);
 		for (const failure of lynx.failures) failures.push(`run ${iteration + 1}: ${failure}`);
 		if (eager.semanticChecksum !== lynx.expectedChecksum) {
 			failures.push(
@@ -78,6 +84,7 @@ try {
 
 	const lynx = lynxRuns[0];
 	const eager = eagerRuns[0];
+	const wide = wideRuns[0];
 	const lynxSignature = stableSignature(lynx);
 	for (let iteration = 1; iteration < lynxRuns.length; iteration++) {
 		if (stableSignature(lynxRuns[iteration]) !== lynxSignature) {
@@ -101,8 +108,12 @@ try {
 					created_cells: countStat(lynx.createdCells, iterations),
 					reused_cells: countStat(lynx.reusedCells, iterations),
 					remaining_cells_after_teardown: countStat(lynx.remainingCellsAfterTeardown, iterations),
+					reuse_writes: countStat(lynx.reuseWork.writes.median, iterations),
+					reuse_nodes_touched: countStat(lynx.reuseWork.nodesTouched.median, iterations),
+					wide_reuse_writes: countStat(wide.reuseWork.writes.median, iterations),
+					wide_reuse_nodes_touched: countStat(wide.reuseWork.nodesTouched.median, iterations),
 				},
-				meta: lynx,
+				meta: { ...lynx, wideRow: wide },
 			},
 			{
 				name: 'eager-list-model',
@@ -111,6 +122,24 @@ try {
 					created_cells: countStat(eager.physicalCells, iterations),
 				},
 				meta: eager,
+			},
+			{
+				// Not an implementation: the per-recycle cost of writing only the row
+				// slots whose value differs between the outgoing and incoming rows.
+				// It is the denominator the recycling path is reported against.
+				name: 'slot-write-floor',
+				ops: {
+					reuse_writes: countStat(lynx.reuseWork.floorWrites, iterations),
+					reuse_nodes_touched: countStat(lynx.reuseWork.floorNodesTouched, iterations),
+					wide_reuse_writes: countStat(wide.reuseWork.floorWrites, iterations),
+					wide_reuse_nodes_touched: countStat(wide.reuseWork.floorNodesTouched, iterations),
+				},
+				meta: {
+					reuseWrites: lynx.reuseWork.floorWrites,
+					reuseNodesTouched: lynx.reuseWork.floorNodesTouched,
+					wideReuseWrites: wide.reuseWork.floorWrites,
+					wideReuseNodesTouched: wide.reuseWork.floorNodesTouched,
+				},
 			},
 		],
 		...(failures.length === 0 ? null : { failed: failures.join(' | ') }),
@@ -124,6 +153,41 @@ try {
 		`Eager reference: ${eager.logicalItems} logical items, ${eager.physicalCells} physical cells`,
 	);
 	console.log(`allocation ratio: ${(lynx.physicalCells / eager.physicalCells).toFixed(3)}x eager`);
+	const work = lynx.reuseWork;
+	console.log(
+		`per recycle (${work.samples} samples): ${work.writes.median} writes ` +
+			`(${work.enqueueWrites.median} enqueue + ${work.requestWrites.median} request), ` +
+			`${work.nodesTouched.median} nodes touched, ${work.creates.median} creates, ` +
+			`${work.structural.median} structural, ${work.queries.median} queries`,
+	);
+	console.log(
+		`per-recycle spread: writes ${work.writes.min}-${work.writes.max}, ` +
+			`nodes ${work.nodesTouched.min}-${work.nodesTouched.max}`,
+	);
+	const breakdown = Object.entries(work.stepBreakdown)
+		.sort((first, second) => second[1] - first[1] || first[0].localeCompare(second[0]))
+		.map(([op, count]) => `${op} x${count}`)
+		.join(', ');
+	console.log(`one steady-state recycle at the PAPI: ${breakdown}`);
+	console.log(
+		`slot-write floor: ${work.floorWrites} writes on ${work.floorNodesTouched} nodes — ` +
+			`ratio ${(work.writes.median / work.floorWrites).toFixed(2)}x writes, ` +
+			`${(work.nodesTouched.median / work.floorNodesTouched).toFixed(2)}x nodes`,
+	);
+	const wideWork = wide.reuseWork;
+	const wideBreakdown = Object.entries(wideWork.stepBreakdown)
+		.sort((first, second) => second[1] - first[1] || first[0].localeCompare(second[0]))
+		.map(([op, count]) => `${op} x${count}`)
+		.join(', ');
+	console.log(
+		`wide row (${wide.rowNodes} nodes, 3 varying values): ${wideWork.writes.median} writes ` +
+			`(${wideWork.enqueueWrites.median} enqueue + ${wideWork.requestWrites.median} request), ` +
+			`${wideWork.nodesTouched.median} nodes touched; floor ${wideWork.floorWrites} writes ` +
+			`on ${wideWork.floorNodesTouched} nodes — ratio ` +
+			`${(wideWork.writes.median / wideWork.floorWrites).toFixed(2)}x writes, ` +
+			`${(wideWork.nodesTouched.median / wideWork.floorNodesTouched).toFixed(2)}x nodes`,
+	);
+	console.log(`one steady-state wide recycle at the PAPI: ${wideBreakdown}`);
 	if (failures.length !== 0) process.exitCode = 1;
 } catch (error) {
 	const message = error instanceof Error ? error.stack || error.message : String(error);
