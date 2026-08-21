@@ -11,6 +11,6 @@ program to a component: a universal build ignores the attachment and renders the
 component, and a block build runs the program, so one application entry can be
 driven by either core. A block build handed a component with no attached program
 refuses it, naming the missing component layer, rather than rendering partially.
-Measured on the bundle-size fixture: the background program drops 35,779 B gzip
-(75,517 → 39,738) with the main-thread program byte-identical
+Measured on the bundle-size fixture: the background program drops 35,411 B gzip
+(75,516 → 40,105) and 133,794 B raw, with the main-thread program byte-identical
 (`benchmarks/lynx-bundle-size/core-switch.mjs`).
