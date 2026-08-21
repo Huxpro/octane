@@ -110,9 +110,12 @@ Three things must travel with any number from this cell:
 - **The first screen is not comparable.** The main-thread first-screen program is
   the same either way, but the Block core has no adoption story for it: its first
   commit mounts its own tree, main finds a mismatch and repairs, and the painted
-  first screen is discarded. `create` and FCP for this cell measure that path,
-  not adoption. `update10th`, `select` and the storms are all post-first-screen
-  and are the comparable numbers.
+  first screen is discarded. FCP for this cell measures that repair rather than
+  adoption, so it is not an octane-vs-block comparison of the same path. The
+  table operations are: `run-web.mjs` waits for the mount and then `settle()`s
+  before the first click, so `create` and everything after it run on a settled
+  tree — the block cell simply enters from a repaired tree instead of an adopted
+  one.
 
 `prototype/run-fcp.mjs` picks the cell up automatically once
 `app/dist-block-rows<N>/main.web.bundle` exists.
