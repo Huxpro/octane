@@ -7,6 +7,11 @@
  * stages/run.mjs reports as "raw view-attach FCP").
  *
  *   node prototype/run-fcp.mjs --rows 10000 --reps 5
+ *
+ * The issue-#103 `octane-block` cell joins automatically once its bundle
+ * exists:
+ *
+ *   BENCH_CORE=block BENCH_AUTOROWS=10000 node scripts/build-app.mjs
  */
 import fs from 'node:fs';
 import http from 'node:http';
@@ -38,9 +43,16 @@ const ROWS = Number(args.rows);
 const REPS = Number(args.reps);
 const PORT = Number(args.port);
 
+// Issue-#103 B0: the Block-core build of the same application entry, present
+// only when it has been built (`BENCH_CORE=block BENCH_AUTOROWS=<rows> node
+// scripts/build-app.mjs`). Absent, it is simply not a cell — a bundle that
+// cannot be driven reports nothing rather than a number from a degraded run.
+const BLOCK_BUNDLE = path.join(root, `app/dist-block-rows${ROWS}/main.web.bundle`);
+
 const CELLS = [
 	{ id: 'octane', bundle: path.join(root, `app/dist-rows${ROWS}/main.web.bundle`) },
 	{ id: 'octane-direct', bundle: path.join(here, `dist-rows${ROWS}/main.web.bundle`) },
+	...(fs.existsSync(BLOCK_BUNDLE) ? [{ id: 'octane-block', bundle: BLOCK_BUNDLE }] : []),
 	...args.extra.map((entry) => {
 		const separator = entry.indexOf('=');
 		if (separator === -1) throw new Error(`--extra expects id=path, got ${entry}`);

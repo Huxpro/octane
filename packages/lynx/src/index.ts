@@ -9,6 +9,11 @@ export type LynxRootAvailability = typeof lynxRootAvailability;
 
 export { createLynxRoot, root } from './root.js';
 export type { CreateLynxRootOptions, LynxRoot } from './root.js';
+// Issue #103 B0: attach a Block-core program to a component. A bundle built
+// with the default `core: 'universal'` ignores the attachment and renders the
+// component; a bundle built with `core: 'block'` runs the program.
+export { withLynxBlockProgram } from './core/block-program.js';
+export type { LynxBlockProgram, LynxBlockProgramContext } from './core/block-program.js';
 export { useMainThreadRef } from './renderer.js';
 export {
 	runOnBackground,

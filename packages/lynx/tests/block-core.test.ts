@@ -11,7 +11,7 @@
 //    update do not move when the list grows by three orders of magnitude. This
 //    is the #103 U0 gate, restated against a real key map and a real LIS rather
 //    than the hand-written stub U0 measured.
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 import { createLynxHostContainer, prepareLynxHostBatch } from '../src/core/host-driver.js';
 import {
@@ -21,6 +21,11 @@ import {
 	type LynxBlockForSlot,
 	type LynxBlockTemplate,
 } from '../src/core/block-core.js';
+import type { UniversalHostCommand } from 'octane/universal/native';
+import {
+	createLynxMainThreadWorkletRegistry,
+	registerMainThreadWorklet,
+} from '../src/core/worklets.js';
 import {
 	createFakePAPI,
 	shape,
@@ -245,6 +250,66 @@ describe('Lynx block core — change-proportionality', () => {
 		expect(built.core.flush()).toBeNull();
 	});
 
+	// A storm writes the same slot on every tick, and a frame flushed once per
+	// several ticks therefore holds several commands for the same host. Only the
+	// last one is observable: an `update` carries that node's complete next
+	// props, so applying the last alone leaves the tree the whole sequence would
+	// have left. Shipping the rest is payload the core already knows is dead.
+	//
+	// Measured in product before this held: 50,000 commands and 2.78 MB for one
+	// 10,000-row update storm, against the universal core's 4,000 and 224 KB.
+	it('supersedes a stale command when a slot is written again before the frame flushes', () => {
+		const size = 100;
+		const built = scene(rows(size), null);
+		built.core.resetCounters();
+
+		for (let tick = 1; tick <= 50; tick++) {
+			for (let id = 1; id <= size; id += 10) {
+				built.core.setKeyedSlotValue(built.slot, id, ROW_LABEL, `bench ${tick}`);
+			}
+		}
+		built.apply();
+
+		// One command per changed host, not one per write. The lookups do not
+		// move: every write is still a real write against the live value, and
+		// suppressing them would be a different (and wrong) optimization.
+		expect(built.core.counters()).toEqual({ blockLookups: 500, commands: 10 });
+
+		const expected = rows(size).map((row) =>
+			row.id % 10 === 1 ? { id: row.id, label: 'bench 50' } : row,
+		);
+		expect(withoutAllocatorIdentity(built.tree())).toEqual(
+			withoutAllocatorIdentity(scene(expected, null).tree()),
+		);
+	});
+
+	// Supersession rewrites a command already sitting in the frame, so the one
+	// thing it must not do is outlive the host that command names. A frame that
+	// writes a row, reconciles it away, and writes its neighbour has to paint
+	// what a fresh mount of the survivors paints.
+	it('keeps a superseded frame correct across a structural change in the same frame', () => {
+		const built = scene(rows(6), null);
+		built.core.resetCounters();
+
+		built.core.setKeyedSlotValue(built.slot, 2, ROW_LABEL, 'doomed');
+		built.core.setKeyedSlotValue(built.slot, 4, ROW_LABEL, 'first');
+		const survivors = rows(6).filter((row) => row.id !== 2);
+		built.core.reconcileForSlot(
+			built.slot,
+			ROW_TEMPLATE,
+			survivors,
+			(row) => row.id,
+			(row) => rowValues(row.id === 4 ? { id: 4, label: 'first' } : row, null),
+		);
+		built.core.setKeyedSlotValue(built.slot, 4, ROW_LABEL, 'second');
+		built.apply();
+
+		const expected = survivors.map((row) => (row.id === 4 ? { id: 4, label: 'second' } : row));
+		expect(withoutAllocatorIdentity(built.tree())).toEqual(
+			withoutAllocatorIdentity(scene(expected, null).tree()),
+		);
+	});
+
 	it('mounts a whole list with one command regardless of its size', () => {
 		for (const size of [10, 10_000]) {
 			const papi = createFakePAPI();
@@ -412,5 +477,249 @@ describe('Lynx block core — refusing corrupt input, reporting departures', () 
 		built.core.clearForSlot(built.slot, (block) => cleared.push(block.key));
 		expect(cleared.sort()).toEqual([1, 2]);
 		expect(built.slot.size).toBe(0);
+	});
+});
+
+// Issue-#103 U4: a worklet is the one prop whose value is an object rather than
+// a scalar, and every layer under the Block core refused it for that reason.
+// What these protect is that the refusal moved to exactly the slots a program
+// did not mark, and that worklet lifetime is the same lifetime the record path
+// has always given a main-thread prop.
+describe('Lynx block core — main-thread worklets on a template run', () => {
+	const WORKLET_ROW = compileLynxBlockTemplate({
+		nodes: [
+			{
+				type: 'view',
+				parent: -1,
+				props: { class: 'row' },
+				bindings: [
+					{ name: 'main-thread:bindtap', valueIndex: 0 },
+					{ name: 'main-thread:ref', valueIndex: 1 },
+				],
+			},
+		],
+		events: [],
+	});
+
+	interface WorkletScene {
+		readonly core: LynxBlockCore;
+		readonly slot: LynxBlockForSlot;
+		readonly papi: ReturnType<typeof createFakePAPI>;
+		/** Paint whatever the core has accumulated, and report what it sent. */
+		apply(): UniversalHostCommand['op'][];
+		rows(): readonly FakeNode[];
+	}
+
+	function workletScene(): WorkletScene {
+		const papi = createFakePAPI();
+		const container = createLynxHostContainer(papi, {
+			root: 1,
+			worklets: createLynxMainThreadWorkletRegistry(),
+		});
+		const core = createLynxBlockCore();
+		const page = core.mount(null, null, PAGE_TEMPLATE, []);
+		const slot = core.openForSlot(page, 1);
+		const apply = (): UniversalHostCommand['op'][] => {
+			const batch = core.flush();
+			if (batch === null) return [];
+			prepareLynxHostBatch(container, batch).apply();
+			return batch.commands.map((command) => command.op);
+		};
+		apply();
+		return {
+			core,
+			slot,
+			papi,
+			apply,
+			rows: () => papi.pages[0]!.children[0]!.children[0]!.children,
+		};
+	}
+
+	function tapListener(node: FakeNode): unknown {
+		return node.events.get('bindEvent:tap');
+	}
+
+	beforeAll(() => {
+		registerMainThreadWorklet('block-core:tap', undefined, function () {
+			return null;
+		});
+	});
+
+	it('gives every row of a run its own live main-thread handler in one command', () => {
+		const built = workletScene();
+		built.core.fillForSlot(
+			built.slot,
+			WORKLET_ROW,
+			[1, 2, 3],
+			(id) => id,
+			(id) => [{ _wkltId: 'block-core:tap', _c: { values: [id] } }, { _wvid: `row:${id}` }],
+		);
+		// The whole list is one command, which is the point: a worklet used to
+		// cost the run and take the list back to a create per host.
+		expect(built.apply()).toEqual(['mount-template-run']);
+
+		const painted = built.rows();
+		expect(painted).toHaveLength(3);
+		// Each row carries its own captures, and the registry handed each its own
+		// activation — a shared descriptor would show one token on all three.
+		const captures = painted.map(
+			(row) => (tapListener(row) as { value: { _c: { values: unknown[] } } }).value._c.values[0],
+		);
+		expect(captures).toEqual([1, 2, 3]);
+		const activations = painted.map(
+			(row) => (tapListener(row) as { value: { _owlt: number } }).value._owlt,
+		);
+		expect(new Set(activations).size).toBe(3);
+	});
+
+	it('leaves a handler alone when the worklet and its captures are unchanged', () => {
+		const built = workletScene();
+		built.core.fillForSlot(
+			built.slot,
+			WORKLET_ROW,
+			[1],
+			(id) => id,
+			(id) => [{ _wkltId: 'block-core:tap', _c: { values: [id] } }, { _wvid: `row:${id}` }],
+		);
+		built.apply();
+		const installed = tapListener(built.rows()[0]!);
+
+		// A compiler rebuilds the descriptor on every render, so this is a
+		// different object carrying the same worklet. Identity says "changed";
+		// the contract says otherwise, and the host must not be told anything.
+		expect(
+			built.core.setKeyedSlotValue(built.slot, 1, 0, {
+				_wkltId: 'block-core:tap',
+				_c: { values: [1] },
+			}),
+		).toBe(false);
+		expect(built.core.flush()).toBeNull();
+		expect(tapListener(built.rows()[0]!)).toBe(installed);
+	});
+
+	it('replaces a handler whose captures changed', () => {
+		const built = workletScene();
+		built.core.fillForSlot(
+			built.slot,
+			WORKLET_ROW,
+			[1],
+			(id) => id,
+			(id) => [{ _wkltId: 'block-core:tap', _c: { values: [id] } }, { _wvid: `row:${id}` }],
+		);
+		built.apply();
+
+		expect(
+			built.core.setKeyedSlotValue(built.slot, 1, 0, {
+				_wkltId: 'block-core:tap',
+				_c: { values: [99] },
+			}),
+		).toBe(true);
+		built.apply();
+		expect(
+			(tapListener(built.rows()[0]!) as { value: { _c: { values: unknown[] } } }).value._c
+				.values[0],
+		).toBe(99);
+	});
+
+	it('lets a valid value repair a slot holding a malformed descriptor', () => {
+		const built = workletScene();
+		built.core.fillForSlot(
+			built.slot,
+			WORKLET_ROW,
+			[1],
+			(id) => id,
+			(id) => [{ _wkltId: 'block-core:tap', _c: { values: [id] } }, { _wvid: `row:${id}` }],
+		);
+		built.apply();
+
+		// The core does not validate slot values — the applier reports a malformed
+		// descriptor in its own words at its own point in the commit.
+		expect(built.core.setKeyedSlotValue(built.slot, 1, 0, { _wkltId: '' })).toBe(true);
+		expect(() => built.apply()).toThrowError();
+
+		// The write API must stay usable afterwards: comparing the replacement
+		// against the malformed previous value declines equality rather than
+		// throwing, so the repair ships instead of the slot being wedged forever.
+		expect(
+			built.core.setKeyedSlotValue(built.slot, 1, 0, {
+				_wkltId: 'block-core:tap',
+				_c: { values: [7] },
+			}),
+		).toBe(true);
+		expect(built.core.flush()).not.toBeNull();
+	});
+
+	it('refuses a run whose rows would claim one main-thread ref twice', () => {
+		const built = workletScene();
+		built.core.fillForSlot(
+			built.slot,
+			WORKLET_ROW,
+			[1, 2],
+			(id) => id,
+			(id) => [{ _wkltId: 'block-core:tap', _c: { values: [id] } }, { _wvid: 'shared' }],
+		);
+		expect(() => built.apply()).toThrowError(/main-thread ref "shared" is assigned to hosts/);
+		// Nothing was painted: the refusal happens before the run reaches PAPI.
+		expect(built.papi.pages[0]!.children[0]!.children[0]!.children).toHaveLength(0);
+	});
+
+	it('refuses a template that binds a main-thread event on a channel it already owns', () => {
+		const built = workletScene();
+		const collided = compileLynxBlockTemplate({
+			nodes: [
+				{
+					type: 'view',
+					parent: -1,
+					props: {},
+					bindings: [{ name: 'main-thread:bindtap', valueIndex: 0 }],
+				},
+			],
+			events: [{ node: 0, type: 'bindtap', priority: 'default' }],
+		});
+		built.core.fillForSlot(
+			built.slot,
+			collided,
+			[1],
+			(id) => id,
+			() => [{ _wkltId: 'block-core:tap' }],
+		);
+		expect(() => built.apply()).toThrowError(
+			/conflicts with background event "bindtap" on the same native channel/,
+		);
+	});
+
+	it('refuses an object in a slot the template did not bind to a main-thread prop', () => {
+		const built = workletScene();
+		const ordinary = compileLynxBlockTemplate({
+			nodes: [
+				{ type: 'view', parent: -1, props: {}, bindings: [{ name: 'class', valueIndex: 0 }] },
+			],
+			events: [],
+		});
+		built.core.fillForSlot(
+			built.slot,
+			ordinary,
+			[1],
+			(id) => id,
+			() => [{ _wkltId: 'block-core:tap' } as never],
+		);
+		expect(() => built.apply()).toThrowError(/values\[0\] must be a scalar/);
+	});
+
+	it('refuses a template that binds a main-thread prop on raw text', () => {
+		expect(() =>
+			compileLynxBlockTemplate({
+				nodes: [
+					{ type: 'text', parent: -1, props: {} },
+					{
+						type: '#text',
+						parent: 0,
+						props: { value: '' },
+						bindings: [{ name: 'main-thread:bindtap', valueIndex: 0 }],
+					},
+				],
+				events: [],
+			}),
+		).toThrowError(/binds main-thread:bindtap on #text/);
 	});
 });

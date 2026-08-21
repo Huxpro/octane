@@ -60,7 +60,16 @@ if (!Number.isSafeInteger(REPS) || REPS <= 0)
 	throw new TypeError('reps must be a positive integer.');
 
 const MODES = ['scoped', 'reconcile'];
-const OPS = ['create', 'update10th', 'select', 'swap', 'updateStorm', 'selectStorm'];
+const OPS = [
+	'create',
+	'update10th',
+	'select',
+	'swap',
+	'updateStorm',
+	'selectStorm',
+	'updateStormOneFrame',
+	'selectStormOneFrame',
+];
 const scaleLabel = (rows) => (rows % 1000 === 0 ? `${rows / 1000}k` : String(rows));
 
 /**
@@ -83,9 +92,54 @@ function blockLookupFloor(op, rows, ticks) {
 		case 'select':
 			return 2;
 		case 'updateStorm':
+		case 'updateStormOneFrame':
+			return ticks.update * changed;
+		case 'selectStorm':
+		case 'selectStormOneFrame':
+			return ticks.select * 2;
+		default:
+			return null;
+	}
+}
+
+/**
+ * The semantic floor for each op, in commands: what the frame the operation
+ * produces strictly has to carry.
+ *
+ * This is the axis the per-tick columns cannot exercise. Where a tick is its
+ * own frame, the floor is the sum of the ticks' floors, because a frame that
+ * has already been handed over cannot be revised. Where the whole storm shares
+ * a frame the floor collapses to what the frame *ends up* saying:
+ *
+ * - `updateStormOneFrame` ends with every tenth label at `bench <last tick>`,
+ *   so one `update` per changed row states it completely.
+ * - `selectStormOneFrame` ends where it started — the last tick selects row 0,
+ *   which was already selected when the frame opened, and every row it touched
+ *   in between is back to `row`. The floor is **zero**: a core that compared
+ *   each slot against its value at frame entry would send nothing at all. What
+ *   the core does send is the distinct-host count, which is what supersession
+ *   can reach and no more. Naming both is the point of the cell.
+ *
+ * `swap` has no entry for the same reason it has no lookup floor: this slice
+ * has no scoped move.
+ */
+function commandFloor(op, rows, ticks) {
+	const changed = Math.ceil(rows / 10);
+	switch (op) {
+		case 'create':
+			return 1;
+		case 'update10th':
+			return changed;
+		case 'select':
+			return 2;
+		case 'updateStorm':
 			return ticks.update * changed;
 		case 'selectStorm':
 			return ticks.select * 2;
+		case 'updateStormOneFrame':
+			return changed;
+		case 'selectStormOneFrame':
+			return 0;
 		default:
 			return null;
 	}
@@ -205,6 +259,7 @@ try {
 							bytes: result[op].bytes,
 							commandOps: result[op].commandOps,
 							floor: blockLookupFloor(op, rows, ticks),
+							commandFloor: commandFloor(op, rows, ticks),
 						},
 					]),
 				),
@@ -225,6 +280,14 @@ try {
 			for (const op of OPS) {
 				const a = scoped.ops[op];
 				const b = reconcile.ops[op];
+				// Above the floor is a residual to report. Below it is a frame that
+				// does not state its own outcome, which no amount of coalescing can
+				// make correct.
+				if (a.commandFloor !== null && a.commands < a.commandFloor) {
+					failures.push(
+						`rows=${rows} ${op}: sent ${a.commands} commands, under the ${a.commandFloor}-command semantic floor.`,
+					);
+				}
 				if (a.commands !== b.commands || a.bytes !== b.bytes || a.commits !== b.commits) {
 					failures.push(
 						`rows=${rows} ${op}: the two drive modes sent different wire (${a.commits}/${a.commands}/${a.bytes}B vs ${b.commits}/${b.commands}/${b.bytes}B).`,
@@ -277,10 +340,27 @@ function markdown(record) {
 		'  whole next list to the keyed reconciler.',
 		'',
 		"`lookups` is the core's own `blockLookups` counter: blocks visited to",
-		'service the operation. `floor` is the semantic lower bound — what a change',
-		'of that size strictly implies. `swap` has no floor because this slice has',
-		'no scoped move, so a structural reorder goes through the keyed reconciler',
-		'in both columns; that gap is named rather than scored.',
+		'service the operation. Each `floor` is the semantic lower bound — what a',
+		'change of that size strictly implies, in blocks and in commands. `swap` has',
+		'neither, because this slice has no scoped move, so a structural reorder goes',
+		'through the keyed reconciler in both columns; that gap is named rather than',
+		'scored.',
+		'',
+		'The two `OneFrame` rows repeat the storms above with every tick landing in',
+		'one frame instead of its own. That is not a synthetic shape: the app schedules',
+		'storm ticks through a `MessageChannel`, they land faster than the renderer',
+		'commits, and the 10,000-row stage decomposition observed four ticks of a',
+		'1,000-row change inside a single drain. It is also the only column in which a',
+		'redundant command can exist at all — a core that emits eagerly can invalidate',
+		'its own command only while the frame is still open, and every other row here',
+		'closes the frame before it gets the chance.',
+		'',
+		'`selectStormOneFrame` has a commands floor of zero on purpose. Its last tick',
+		'reselects the row that was already selected when the frame opened, and every',
+		'row it touched in between ends back at `row`, so the frame says nothing. What',
+		'the core sends instead is one command per distinct host it touched: the floor',
+		'supersession can reach, not the semantic one. The distance between the two is',
+		'a real residual, and it is reported rather than rounded away.',
 		'',
 	);
 	lines.push(
@@ -299,14 +379,16 @@ function markdown(record) {
 		lines.push(`## ${rows.toLocaleString('en-US')} rows`);
 		lines.push('');
 		lines.push(
-			'| op | commits | commands | wire bytes | lookups (scoped) | lookups (reconcile) | floor |',
+			'| op | commits | commands | commands floor | wire bytes | lookups (scoped) | lookups (reconcile) | lookups floor |',
 		);
-		lines.push('|---|---:|---:|---:|---:|---:|---:|');
+		lines.push('|---|---:|---:|---:|---:|---:|---:|---:|');
 		for (const op of OPS) {
 			const a = scoped.ops[op];
 			const b = reconcile.ops[op];
 			lines.push(
-				`| ${op} | ${a.commits} | ${a.commands.toLocaleString('en-US')} | ${a.bytes.toLocaleString('en-US')} | ` +
+				`| ${op} | ${a.commits} | **${a.commands.toLocaleString('en-US')}** | ` +
+					`${a.commandFloor === null ? '—' : a.commandFloor.toLocaleString('en-US')} | ` +
+					`${a.bytes.toLocaleString('en-US')} | ` +
 					`**${a.blockLookups.toLocaleString('en-US')}** | ${b.blockLookups.toLocaleString('en-US')} | ` +
 					`${a.floor === null ? '—' : a.floor.toLocaleString('en-US')} |`,
 			);

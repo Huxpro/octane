@@ -18,6 +18,10 @@ declare const lynx: unknown;
 declare const NativeModules: unknown;
 declare const lynxCoreInject: LynxCoreInject | undefined;
 
+// The build plugin's `core` option arrives as this define. It is deliberately
+// not an option on `createLynxRoot`: see LYNX_BLOCK_BACKGROUND_CORE below.
+declare const __OCTANE_LYNX_BACKGROUND_CORE__: string;
+
 // This package compiles without Node types on purpose: a native bundle has no
 // Node globals. Rspeedy, Rspack, and Vite all substitute `process.env.NODE_ENV`
 // with a literal, so the reference below folds to a constant and its guarded
@@ -33,6 +37,24 @@ declare const process: { readonly env?: { readonly NODE_ENV?: string } } | undef
  */
 export const LYNX_DEVELOPMENT: boolean =
 	typeof process !== 'undefined' && process?.env?.NODE_ENV !== 'production';
+
+/**
+ * Whether this bundle carries the Lynx-specialized Block core (issue #103)
+ * instead of the shared universal core.
+ *
+ * A compile-time constant rather than a per-root option, by owner decision on
+ * #103: a bundle carries exactly one core. `@octanejs/rspeedy-plugin`'s `core`
+ * option substitutes the define, this folds to a literal, and the unselected
+ * core loses its last reference so production tree-shaking drops its closure.
+ * An unsubstituted bundle — a source test, a host that does not run the plugin
+ * — reads as `universal`, which is what it is.
+ *
+ * The main-thread first-screen path does not read this: it renders from the
+ * compiled template either way, and only the background driver changes.
+ */
+export const LYNX_BLOCK_BACKGROUND_CORE: boolean =
+	typeof __OCTANE_LYNX_BACKGROUND_CORE__ !== 'undefined' &&
+	__OCTANE_LYNX_BACKGROUND_CORE__ === 'block';
 
 function injectedLynx(): unknown {
 	return typeof lynx === 'undefined' ? undefined : lynx;

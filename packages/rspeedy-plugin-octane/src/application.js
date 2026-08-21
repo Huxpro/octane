@@ -22,6 +22,9 @@ const MAIN_THREAD_ASSET = /main-thread(?:\.[A-Fa-f0-9]+)?\.js$/;
 // Build-time constant the generated main-thread entry reads to pick its
 // first-screen render mode per platform. See FirstScreenRenderModePlugin.
 const FIRST_SCREEN_RENDER_DEFINE = '__OCTANE_LYNX_FIRST_SCREEN_RENDER__';
+// Build-time constant `@octanejs/lynx` reads to bind its background core. See
+// BackgroundCorePlugin and packages/lynx/src/core/environment.ts.
+const BACKGROUND_CORE_DEFINE = '__OCTANE_LYNX_BACKGROUND_CORE__';
 const ENTRY_METADATA_KEYS = new Set([
 	'asyncChunks',
 	'baseUri',
@@ -98,6 +101,44 @@ class FirstScreenRenderModePlugin {
 		}
 		new DefinePlugin({ [FIRST_SCREEN_RENDER_DEFINE]: JSON.stringify(this.mode) }).apply(compiler);
 	}
+}
+
+/**
+ * Inject the selected background core as a build-time constant `@octanejs/lynx`
+ * reads at module scope.
+ *
+ * The switch is compile-time rather than a per-root runtime option so a bundle
+ * carries exactly one core: the branch folds to a literal, the unselected core
+ * has no remaining reference, and production tree-shaking drops its closure. A
+ * runtime option would ship both cores in every bundle to pay for a choice
+ * almost no application makes twice.
+ */
+class BackgroundCorePlugin {
+	constructor(core) {
+		this.core = core;
+	}
+
+	apply(compiler) {
+		const DefinePlugin = compiler.webpack?.DefinePlugin;
+		if (typeof DefinePlugin !== 'function') {
+			throw new TypeError(
+				`${PLUGIN_NAME}: this Rspack compiler does not expose webpack.DefinePlugin.`,
+			);
+		}
+		new DefinePlugin({ [BACKGROUND_CORE_DEFINE]: JSON.stringify(this.core) }).apply(compiler);
+	}
+}
+
+/**
+ * Bind the background core for one bundler chain.
+ *
+ * Applied for every graph the plugin owns, not only the application graph: an
+ * isolated `thread` compile is how the background bundle is inspected and
+ * source-tested, and it would otherwise read as an undefined constant and fall
+ * back rather than carry the configured core.
+ */
+export function applyLynxBackgroundCore(chain, core) {
+	chain.plugin(`${PLUGIN_NAME}:background-core`).use(BackgroundCorePlugin, [core]);
 }
 
 function environmentKind(name) {
