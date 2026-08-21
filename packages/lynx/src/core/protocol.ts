@@ -97,11 +97,11 @@ export interface LynxMainThreadCapabilities {
  * skips the announcement strips refs with no error anywhere, so neither side
  * may derive this for itself.
  *
- * The negotiated capability is a property of the session, not of any one
- * commit. A background composes its first batch before the reply carrying this
- * capability reaches it, so that batch names none of its hosts however the
- * session later negotiates. `commit.announces` is what tells the main thread which
- * commits were composed knowing the capability, and only those may skip.
+ * This capability is a property of the session, and it governs whether handle
+ * deltas may be deferred — not whether a commit named the hosts it will query.
+ * That second question is `commit.announces`, which a background answers from
+ * what it knows while composing, so it can be answered on the first batch of a
+ * root: the one composed before the reply carrying this capability arrives.
  */
 export function lynxLazyPublicInstancesNegotiated(
 	capabilities: LynxMainThreadCapabilities | undefined,
@@ -119,11 +119,15 @@ export interface LynxTransportCommitMessage extends UniversalTransportCommitMess
 	/** Present only on an explicitly negotiated, compact initial intrinsic mount. */
 	readonly instances?: typeof LYNX_LAZY_PUBLIC_INSTANCES;
 	/**
-	 * Present only when this batch was composed while the negotiated
-	 * `lazyPublicInstances` capability was already live, so every host it will
-	 * query is named by an `ensure-public-instance` command inside it. A batch
-	 * composed before the main-ready reply arrived carries no announcements and
-	 * therefore no flag, whatever the session went on to negotiate.
+	 * Present when every host this batch will query is named by an
+	 * `ensure-public-instance` command inside it, which lets the main thread skip
+	 * a `nodes-ref` selector on every host the batch did not name.
+	 *
+	 * It is a property of the background that composed the batch, not of the
+	 * session: a background that announces from what it knows while composing can
+	 * say so on its very first batch, which is composed before any reply could
+	 * have granted a capability. That batch is the one this matters most for,
+	 * because it mounts the whole first screen.
 	 */
 	readonly announces?: typeof LYNX_ANNOUNCED_PUBLIC_INSTANCES;
 }

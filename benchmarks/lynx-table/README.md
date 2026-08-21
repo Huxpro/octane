@@ -228,25 +228,30 @@ The gates above measure a first screen whose commit was composed after the
 handshake, because this chassis installs its main thread before the first render
 and its wire is synchronous. A production Lynx background bundle starts the
 other way round: it renders and composes its first batch before the main-ready
-reply reaches it, and a batch composed then names none of the hosts it will
-query, so the main thread has to install a selector on every node of it.
-
-This runner drives the same app, the same chassis, and the same counters through
-two arms that differ in one thing — whether the main thread exists when the
-background first renders — with the table already populated at mount so the
-first commit carries the rows rather than an empty shell.
+reply reaches it. This runner drives the same app, the same chassis, and the
+same counters through two arms that differ in one thing — whether the main
+thread exists when the background first renders — with the table already
+populated at mount so the first commit carries the rows rather than an empty
+shell.
 
 | rows | arm | element nodes | selector writes |
 | ---: | --- | ---: | ---: |
 | 1,000 | before-render | 4,029 | **0** |
-| 1,000 | after-render | 4,029 | **4,028** |
+| 1,000 | after-render | 4,029 | **0** |
 | 10,000 | before-render | 40,029 | **0** |
-| 10,000 | after-render | 40,029 | **40,028** |
+| 10,000 | after-render | 40,029 | **0** |
 
-Every node but the page, on the arm that matches how production starts. The
-report records each arm's announcement regime beside its install count, because
-the count is unreadable without it: `announced-v1` is the commit promising it
-named every host it will query, and `<unannounced>` is the commit that could not.
+Both arms are zero because a background names the hosts it will query from what
+it knows while composing, rather than from a reply it has not received, so its
+first batch announces like every other. That is what this harness exists to
+hold: when the announcement waited on the negotiated capability instead, the
+after-render arm read **4,028** and **40,028** — every node but the page, on the
+arm that matches how production starts.
+
+The report records each arm's announcement regime beside its install count,
+because the count is unreadable without it: `announced-v1` is the commit
+promising it named every host it will query, and `<unannounced>` is a commit
+that could not — a peer too old to announce at all.
 
 Everything reported is a count, so no quiet host is needed and no wall clock is
 measured; the runner fails if two repetitions of a cell disagree or if an arm

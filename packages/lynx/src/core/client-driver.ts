@@ -371,6 +371,18 @@ export function createLynxClientContainer(
 	return container;
 }
 
+/**
+ * A Lynx background names every host it will query in the batch that mounts it,
+ * whatever the session has negotiated.
+ *
+ * The main thread decides at mount whether a host carries a `nodes-ref`
+ * selector, and a root's first batch is composed before the reply that could
+ * grant a capability reaches the background. An announcement that waited for
+ * that reply would arrive after the decision it exists to inform, which is the
+ * whole first screen installing selectors nothing will ever query.
+ */
+export const LYNX_PUBLIC_INSTANCE_ANNOUNCEMENTS: boolean = true;
+
 /** @internal Publish capabilities only from this container's correlated ready reply. */
 export function setLynxClientCapabilities(
 	container: LynxClientContainer,
@@ -1344,6 +1356,7 @@ export function createLynxClientDriver(
 			get lazyPublicInstances() {
 				return negotiatedState?.lazyPublicInstances === true;
 			},
+			publicInstanceAnnouncements: LYNX_PUBLIC_INSTANCE_ANNOUNCEMENTS,
 		}),
 		portals: Object.freeze({
 			prepareTarget({

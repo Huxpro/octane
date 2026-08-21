@@ -16,6 +16,7 @@ import {
 	applyLynxHostAttachments,
 	invalidateLynxClientContainer,
 	isLynxClientEventTarget,
+	LYNX_PUBLIC_INSTANCE_ANNOUNCEMENTS,
 	prepareLynxCompactHandleDeltas,
 	prepareLynxHandleDeltas,
 	setLynxClientCapabilities,
@@ -1485,11 +1486,16 @@ export function createLynxBackgroundTransport(
 				type: 'commit',
 				batch: preparedBatch,
 			};
-			// The announcements this batch carries were decided here, while the
-			// commands were built. Dispatch happens after main readiness resolves, so
-			// reading the negotiated capability there would claim announcements for a
-			// batch composed before the reply that granted it ever arrived.
-			const announcedPublicInstances = lazyPublicInstances;
+			// Deferring this commit's handle deltas needs the negotiated capability,
+			// captured here rather than read at dispatch: dispatch happens after main
+			// readiness resolves, so a batch composed before the reply that granted it
+			// would claim a deferral the peer never agreed to.
+			const deferrablePublicInstances = lazyPublicInstances;
+			// The announcement is a property of this background rather than of the
+			// session. Every batch it composes names the hosts it will query, so the
+			// first one can say so too — which is the batch the flag matters most for,
+			// since it mounts the whole first screen.
+			const announcedPublicInstances = LYNX_PUBLIC_INSTANCE_ANNOUNCEMENTS;
 			try {
 				selfCheckLynxBackgroundOutboundMessage(commit);
 			} catch (error) {
@@ -1558,7 +1564,7 @@ export function createLynxBackgroundTransport(
 								Object.isFrozen(incrementalRun.values);
 							const deferPublicInstances =
 								compact &&
-								announcedPublicInstances &&
+								deferrablePublicInstances &&
 								(accepted === null ||
 									(postFirstTreeLazyPublicInstances &&
 										preparedBatch.commands.every(

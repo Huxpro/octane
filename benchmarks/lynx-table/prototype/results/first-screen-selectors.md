@@ -22,7 +22,7 @@ makes it may have its hosts skipped.
 | rows | arm | selectable | installs | commits | announcement regime |
 | ---: | --- | ---: | ---: | ---: | --- |
 | 1,000 | before-render | 4,029 | 0 | 1 | `announced-v1` ×1 |
-| 1,000 | after-render | 4,029 | 4,028 | 1 | `<unannounced>` ×1 |
+| 1,000 | after-render | 4,029 | 0 | 1 | `announced-v1` ×1 |
 | 10,000 | before-render | 40,029 | 0 | 1 | `announced-v1` ×1 |
-| 10,000 | after-render | 40,029 | 40,028 | 1 | `<unannounced>` ×1 |
+| 10,000 | after-render | 40,029 | 0 | 1 | `announced-v1` ×1 |
 

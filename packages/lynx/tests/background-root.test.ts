@@ -1215,9 +1215,11 @@ describe.sequential('@octanejs/lynx background root in the official JS environme
 
 	it('addresses a ref the background asked for before the main thread was there', async () => {
 		// A Lynx background bundle starts before its main thread does, so its first
-		// commit is composed without knowing what the session will negotiate — and a
-		// commit composed then names none of the hosts it will query, whatever the
-		// reply that arrives before it is dispatched goes on to grant.
+		// commit is composed without knowing what the session will negotiate. That
+		// commit still names the hosts it will query, because the background
+		// answers that from what it knows while composing rather than from a reply
+		// it has not received — which is what lets the first screen, the largest
+		// tree a root ever mounts, skip selectors nobody asked for.
 		const dom = new JSDOM('<!doctype html><html><body></body></html>');
 		installLynxTestingEnv(globalThis, {
 			window: dom.window as unknown as Window & typeof globalThis,
@@ -1260,6 +1262,11 @@ describe.sequential('@octanejs/lynx background root in the official JS environme
 		).toBe(counter);
 		await counterHandle!.setNativeProps({ title: 'addressed' });
 		expect(counter.getAttribute('title')).toBe('addressed');
+		// The other half of the same contract: this first screen was composed
+		// before the handshake, and it still pays for nothing it cannot query.
+		for (const id of ['#summary', '#rows', '#healthy']) {
+			expect(page.querySelector(id)!.hasAttribute(LYNX_NODES_REF_ATTRIBUTE)).toBe(false);
+		}
 	});
 
 	it('mounts, updates state/context/conditionals, reorders keyed hosts, and unmounts', async () => {

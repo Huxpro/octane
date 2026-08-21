@@ -223,10 +223,9 @@ interface LynxHostState<Node extends LynxElementRef> {
 	 * announced no capabilities at all — keeps the eager install, because for it
 	 * an uninstalled selector is a ref that addresses nothing.
 	 *
-	 * Monotonic, and set from each commit rather than from the session, because a
-	 * background composes its first batch before the reply granting the capability
-	 * reaches it: that batch names none of its hosts however the session was
-	 * negotiated. Once a commit says it announced, every later one does too.
+	 * Monotonic, and set from each commit rather than from the session, because
+	 * whether a batch named its hosts is a property of the background that
+	 * composed it. Once a commit says it announced, every later one does too.
 	 */
 	announcesPublicInstances: boolean;
 	readonly onAttachments?: (version: number, deltas: readonly LynxHostAttachmentDelta[]) => void;
@@ -279,7 +278,8 @@ export interface CreateLynxHostContainerOptions<Node extends LynxElementRef = Ly
 	 * True when the commit creating this container announced every host it will
 	 * query, so a mounted host installs a `nodes-ref` selector on request rather
 	 * than on sight. Defaults to the eager install, which is the only safe choice
-	 * for a batch that announces nothing. Later batches latch it on through
+	 * for a batch that announces nothing — a peer too old to announce at all.
+	 * Later batches latch it on through
 	 * {@link PrepareLynxHostBatchOptions.announcesPublicInstances}.
 	 */
 	readonly announcesPublicInstances?: boolean;
@@ -318,8 +318,8 @@ export interface PrepareLynxHostBatchOptions<Node extends LynxElementRef> {
 	/** Negotiated safe program mounts install private ref selectors on demand. */
 	readonly lazyPublicInstances?: boolean;
 	/**
-	 * This batch was composed knowing the negotiated capability, so it names every
-	 * host it will query. Latches the container into demand installs for good.
+	 * This batch names every host it will query. Latches the container into demand
+	 * installs for good.
 	 */
 	readonly announcesPublicInstances?: boolean;
 }
@@ -3656,12 +3656,18 @@ function compareFirstTree<Node extends LynxElementRef>(
 	}
 	for (let index = 0; index < operations.length; index++) {
 		const operation = operations[index]!;
+		// `ensure-public-instance` is admissible because it neither creates nor
+		// mutates a node: it names a host the batch will query. Adoption stamps
+		// every adopted record with a selector unconditionally, for the identity
+		// reason recorded at the transfer site, so the announcement is already
+		// answered by the time it would have been replayed.
 		if (
 			operation.op !== 'create' &&
 			operation.op !== 'mount-template' &&
 			operation.op !== 'insert' &&
 			operation.op !== 'event' &&
-			operation.op !== 'visibility'
+			operation.op !== 'visibility' &&
+			operation.op !== 'ensure-public-instance'
 		) {
 			return mismatch(
 				firstTree,
