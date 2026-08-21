@@ -2,6 +2,12 @@ import type { RsbuildPlugin } from '@rsbuild/core';
 
 export type OctaneLynxThread = 'background' | 'main-thread';
 
+/**
+ * Which background core the emitted bundle carries. One bundle carries exactly
+ * one core; there is no per-root runtime choice.
+ */
+export type OctaneLynxBackgroundCore = 'universal' | 'block';
+
 export interface OctaneLynxUniversalRuntime {
 	readonly runtime: 'lynx';
 	readonly thread: OctaneLynxThread;
@@ -14,6 +20,13 @@ export interface OctaneRspeedyPluginOptions {
 	 * main-thread first screen followed by background runtime adoption.
 	 */
 	thread?: OctaneLynxThread;
+	/**
+	 * Select the background core (issue #103). `universal` — the default — keeps
+	 * today's shared universal core driving background commits. `block` selects
+	 * the Lynx-specialized Block core. The main-thread first-screen path is the
+	 * same either way; only the background driver changes.
+	 */
+	core?: OctaneLynxBackgroundCore;
 	/** Restrict the plugin to named Rspeedy environments. */
 	environments?: string[];
 	/** Override component HMR for the selected graph. */

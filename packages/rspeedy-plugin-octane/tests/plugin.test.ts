@@ -794,5 +794,46 @@ export function App() @{ <view /> }
 	it('rejects unknown options and thread names at configuration time', () => {
 		expect(() => pluginOctane({ thread: 'worker' as never })).toThrow(/thread.*background/);
 		expect(() => pluginOctane({ synthetic: true } as never)).toThrow(/unknown option/);
+		expect(() => pluginOctane({ core: 'blocks' as never })).toThrow(/core.*universal.*block/);
+	});
+
+	it('binds the background core as a build-time define, universal by default', () => {
+		// Issue #103 B0. The bundle carries one core, so the choice has to reach
+		// `@octanejs/lynx` as a constant rather than as a per-root option. The
+		// application graph and an isolated thread graph both carry it: the
+		// isolated graph is how the background bundle is inspected and source
+		// tested, and it would otherwise read as unsubstituted and fall back.
+		const applicationEntries = { app: ['./src/App.lynx.tsrx'] };
+		for (const [options, expected] of [
+			[undefined, 'universal'],
+			[{ core: 'universal' as const }, 'universal'],
+			[{ core: 'block' as const }, 'block'],
+			[{ thread: 'background' as const, core: 'block' as const }, 'block'],
+		] as const) {
+			const state = applyPlugin(
+				options as Parameters<typeof pluginOctane>[0],
+				'lynx',
+				{},
+				applicationEntries,
+			);
+			const registered = state.plugins.get('@octanejs/rspeedy-plugin:background-core');
+			expect(registered?.options).toEqual([expected]);
+
+			const defines: Record<string, unknown>[] = [];
+			const compiler = {
+				webpack: {
+					DefinePlugin: class {
+						constructor(values: Record<string, unknown>) {
+							defines.push(values);
+						}
+						apply() {}
+					},
+				},
+			};
+			new (registered!.implementation as new (core: string) => { apply(c: unknown): void })(
+				expected,
+			).apply(compiler);
+			expect(defines).toEqual([{ __OCTANE_LYNX_BACKGROUND_CORE__: JSON.stringify(expected) }]);
+		}
 	});
 });

@@ -997,6 +997,219 @@ describe('universal prepared host SDK', () => {
 		}
 	});
 
+	it('carries a renderer-namespaced binding through a run and refuses the same value plain', () => {
+		// A program's values are scalars because the core derives them and validates
+		// them from the program header alone. A renderer that namespaces a prop owns
+		// a value shape the core cannot read, so that slot — and only that slot — may
+		// carry it; Lynx uses this for a `main-thread:` worklet on a keyed row.
+		const rowPlan = (name: string) =>
+			universalPlan('object', {
+				kind: 'host',
+				type: 'row',
+				bindings: [[name, 0]],
+				children: [{ kind: 'host', type: 'action', children: [{ kind: 'slot', slot: 1 }] }],
+			});
+		// One plan per scene, hoisted: rows coalesce into a run only when they share
+		// a program, which is what a compiled module's module-level plan gives them.
+		const scene = (name: string) => {
+			const plan = rowPlan(name);
+			return defineUniversalComponent('object', ({ ids }: { ids: readonly string[] }) =>
+				universalFor(
+					ids,
+					(id) => id,
+					(id) => universalValue(plan, [{ handle: id }, `label-${id}`]),
+					null,
+					false,
+					false,
+					true,
+				),
+			);
+		};
+
+		const container = createObjectContainer();
+		const root = createUniversalRoot(container, createTemplateObjectDriver(true, true, true, true));
+		const prepared = root.prepare(scene('renderer:handle'), { ids: ['a', 'b', 'c'] });
+		if (prepared.status !== 'prepared') throw new Error('Expected a prepared transaction.');
+		const runs = prepared.batch.commands.filter((command) => command.op === 'mount-template-run');
+		expect(runs).toHaveLength(1);
+		const run = runs[0];
+		if (run.op !== 'mount-template-run') throw new Error('Expected a contiguous intrinsic run.');
+		expect(run.count).toBe(3);
+		expect(run.values).toEqual([
+			{ handle: 'a' },
+			'label-a',
+			{ handle: 'b' },
+			'label-b',
+			{ handle: 'c' },
+			'label-c',
+		]);
+		prepared.commit();
+		expect(container.children.map((row) => row.props['renderer:handle'])).toEqual([
+			{ handle: 'a' },
+			{ handle: 'b' },
+			{ handle: 'c' },
+		]);
+		root.unmount();
+
+		// The same value in a slot the program did not namespace is still refused, so
+		// the permission is per-slot rather than a blanket one, and the rows mount
+		// through the ordinary create path with the tree unchanged.
+		const plainContainer = createObjectContainer();
+		const plainRoot = createUniversalRoot(
+			plainContainer,
+			createTemplateObjectDriver(true, true, true, true),
+		);
+		const plain = plainRoot.prepare(scene('handle'), { ids: ['a', 'b', 'c'] });
+		if (plain.status !== 'prepared') throw new Error('Expected a prepared transaction.');
+		expect(
+			plain.batch.commands.some(
+				(command) => command.op === 'mount-template-run' || command.op === 'mount-template-range',
+			),
+		).toBe(false);
+		plain.commit();
+		expect(plainContainer.children.map((row) => row.props.handle)).toEqual([
+			{ handle: 'a' },
+			{ handle: 'b' },
+			{ handle: 'c' },
+		]);
+		expect(plainContainer.children.map((row) => row.children[0].children[0].props.value)).toEqual([
+			'label-a',
+			'label-b',
+			'label-c',
+		]);
+		plainRoot.unmount();
+	});
+
+	it('lets a renderer widen prop equality but never narrow it', () => {
+		// The core's definition of "unchanged" is identity, then a bounded
+		// structural walk, and it says so: a class instance, a function, or a handle
+		// falls back to identity because the core cannot know what its fields mean.
+		// That is the right answer everywhere except for a value the renderer
+		// itself builds fresh each render — a Lynx worklet descriptor, whose
+		// captures sit below the walk's depth — where it re-sends an unchanged prop
+		// on every commit. `updates.same` is where the renderer answers instead,
+		// consulted only for a prop the core already judged changed, so the answer
+		// can remove an update and can never add or force one.
+		class Handle {
+			constructor(readonly name: string) {}
+		}
+		const asked: string[] = [];
+		const base = createTemplateObjectDriver(true, true, true, true);
+		const driver = {
+			...base,
+			updates: {
+				classify: () => 'update' as const,
+				same(name: string, previous: unknown, next: unknown) {
+					asked.push(name);
+					// Claims one prop name and answers about it by reading a field only
+					// this renderer knows is there. Every other name it declines.
+					if (name !== 'renderer:handle') return false;
+					return (previous as Handle).name === (next as Handle).name;
+				},
+			},
+		};
+		const shellPlan = universalPlan('object', {
+			kind: 'host',
+			type: 'shell',
+			propsSlot: 0,
+			children: [{ kind: 'slot', slot: 1 }],
+		});
+		const rowPlan = universalPlan('object', {
+			kind: 'host',
+			type: 'row',
+			bindings: [
+				['renderer:handle', 0],
+				['label', 1],
+			],
+		});
+		const Scene = defineUniversalComponent(
+			'object',
+			({ ids, salt }: { ids: readonly string[]; salt: string }) =>
+				universalValue(shellPlan, [
+					{ 'renderer:handle': new Handle(salt), label: 'shell' },
+					universalFor(
+						ids,
+						(id) => id,
+						(id) => universalValue(rowPlan, [new Handle(`${salt}:${id}`), `label-${id}`]),
+						null,
+						false,
+						false,
+						true,
+					),
+				]),
+		);
+
+		const container = createObjectContainer();
+		const root = createUniversalRoot(container, driver);
+		root.render(Scene, { ids: ['a', 'b'], salt: 'first' });
+		asked.length = 0;
+
+		// Same rows, freshly built handles. The core sees a different instance in the
+		// shell's prop bag and in every row's program slot, asks, is told each names
+		// the same thing, and emits nothing at all.
+		const unchanged = root.prepare(Scene, { ids: ['a', 'b'], salt: 'first' });
+		if (unchanged.status !== 'prepared') throw new Error('Expected a prepared transaction.');
+		expect(unchanged.batch.commands).toEqual([]);
+		// `label` is unchanged and the core can see that for itself, so the renderer
+		// is never asked about it. That ordering is also why a renderer answering
+		// `false` for a name it does not own cannot turn an equal prop into an
+		// update: by then the core has already decided.
+		expect([...new Set(asked)]).toEqual(['renderer:handle']);
+		unchanged.commit();
+
+		// A handle naming something else is a change only the renderer can see, and
+		// it produces the update it always would have, carrying the whole prop bag.
+		const changed = root.prepare(Scene, { ids: ['a', 'b'], salt: 'second' });
+		if (changed.status !== 'prepared') throw new Error('Expected a prepared transaction.');
+		const updated = changed.batch.commands.flatMap((command) =>
+			command.op === 'update' ? [command] : [],
+		);
+		expect(updated).toHaveLength(3);
+		for (const command of updated) {
+			expect((command.props['renderer:handle'] as Handle).name).toMatch(/^second/);
+		}
+		changed.commit();
+		root.unmount();
+	});
+
+	it("keeps the core's own answer when a driver claims no prop names", () => {
+		// The hook is additive. The same scene through a driver that supplies no
+		// `same` re-sends the handle every render, which is what every renderer did
+		// before `updates.same` existed and still does without it.
+		class Handle {
+			constructor(readonly name: string) {}
+		}
+		const rowPlan = universalPlan('object', {
+			kind: 'host',
+			type: 'row',
+			bindings: [
+				['renderer:handle', 0],
+				['label', 1],
+			],
+		});
+		const Scene = defineUniversalComponent(
+			'object',
+			({ ids, salt }: { ids: readonly string[]; salt: string }) =>
+				universalFor(
+					ids,
+					(id) => id,
+					(id) => universalValue(rowPlan, [new Handle(`${salt}:${id}`), `label-${id}`]),
+					null,
+					false,
+					false,
+					true,
+				),
+		);
+		const container = createObjectContainer();
+		const root = createUniversalRoot(container, createTemplateObjectDriver(true, true, true, true));
+		root.render(Scene, { ids: ['a', 'b'], salt: 'first' });
+		const resent = root.prepare(Scene, { ids: ['a', 'b'], salt: 'first' });
+		if (resent.status !== 'prepared') throw new Error('Expected a prepared transaction.');
+		expect(resent.batch.commands.filter((command) => command.op === 'update')).toHaveLength(2);
+		resent.commit();
+		root.unmount();
+	});
+
 	it('preserves stateful scalar prop codecs unless the renderer opts into stable encoding', () => {
 		const container = createObjectContainer();
 		const base = createTemplateObjectDriver();

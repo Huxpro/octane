@@ -636,6 +636,7 @@ interface UniversalHostDriver<Container, PublicInstance> {
 	};
 	readonly updates?: {
 		classify(type: string, previous: object, next: object): 'update' | 'recreate';
+		same?(name: string, previous: unknown, next: unknown): boolean;
 	};
 	readonly portals?: UniversalPortalCapability<Container>;
 	prepareBatch(
@@ -1204,6 +1205,7 @@ declare, implement, or reject these independently.
 | Hydration / serialization | Client-only renderers preserve server exports, omit declared regions, and expose stable manifest identity for one client mount without serializing the host tree. | A live renderer serializer/adopter must define seed identity and mismatch behavior separately; absence remains valid. |
 | Layout measurement | Local public instances are available after commit. A transported adapter installs a cloned public/layout snapshot before acknowledgement; refs and layout effects run only after that acknowledgement. There is no neutral live measure call. | A native renderer may add an explicitly asynchronous measure capability; it must not imply synchronous access to a remote live object. |
 | Specialized collections | Not forced into generic child insertion. | Add renderer-namespaced commands/capabilities for Three `attach`, render lists, native collections, or other ownership models. |
+| Template programs | A renderer declaring `template-program-mount` gets keyed loop bodies lowered to one `mount-template-run` command carrying a program plus a flat value run, instead of per-node descriptors. Six driver flags gate the runtime half. Only the Lynx renderers declare any of it; `@octanejs/three` declares none and its driver has no `mount-template-run` arm. | Measured on Three and declined — see the inventory below. A renderer wanting this must have a boundary to amortize the collapse across; without one the mechanism buys descriptor allocation only. |
 
 The serializable descriptor capabilities are compiler/tooling metadata; driver
 capabilities are independently checked at the owning root. The compiler now
@@ -1211,6 +1213,69 @@ fails closed for Activity and authored text when statically knowable, while the
 prop codec and driver catch runtime values. It still cannot prove every
 renderer-specific host type or property. Unsupported cases must produce a
 renderer-naming diagnostic, never a DOM interpretation.
+
+### Renderer-specific capability inventory (#58 L6 ABI decision)
+
+#58's L6 milestone proposes removing the Lynx-only capabilities and compensation
+layers from `octane/universal` once the specialized Lynx target has replaced the
+universal Lynx path. This is the inventory that decision needs, taken on
+`origin/new-lynx` `5d61724`. **Nothing is removed yet**, for the reason below.
+
+Compiler-side, gated through `rendererHasCapability` in `compile-universal.js`:
+
+| capability | gates | declared by |
+| --- | --- | --- |
+| `template-program-mount` | `templateProgramForHost`, `templateProgramForComponent` | `lynxBackgroundRenderer` |
+| `class-name-alias` | host class canonicalization | both Lynx renderers |
+| `thread-functions` | worklet lowering | both Lynx renderers |
+| `main-thread-render-only` | main-thread API rejection | `lynxMainThreadRenderer` |
+| `visibility` | Activity/retained-Suspense commands | Lynx **and** Three — shared |
+
+Runtime-side, read off `driver.capabilities` in `universal-core.ts`:
+
+| flag | declared by |
+| --- | --- |
+| `templateMount`, `templateProgramMount`, `templateProgramRuns`, `lazyPublicInstances` | Lynx host driver unconditionally; Lynx client driver by transport negotiation |
+| `collapsedTemplateMount`, `stableStaticHostProps` | Lynx drivers |
+| `localHostCallbacks`, `compilerLeafProps` | Three (and the default driver) — not Lynx |
+| `text`, `visibility` | both — shared |
+
+The `mount-template-run` command itself, including its coalescing path, is
+produced and consumed by Lynx alone; the Three driver's command switch has no arm
+for it.
+
+**Why none of it is removable today, and what actually unblocks it.** The
+specialized target did not replace the descriptor ABI. `lynxMainThreadRenderer`
+is `target: 'lynx'`, but it lowers only *eligible host-only templates* into create
+functions and otherwise keeps the universal descriptor ABI, and the background
+half of the same path is `lynxBackgroundRenderer` — `target: 'universal'`, and the
+renderer that declares `template-program-mount`. Both halves of the shipping Lynx
+path run through `octane/universal`, so this surface is load-bearing regardless
+of what the cutover decides.
+
+That reorders L6's dependency. #58 makes the removal downstream of the L5
+cutover; it is really downstream of a background core that stops speaking the
+descriptor ABI at all — the Block-over-wire core from #103, which is behind a
+per-root flag today. The L5 cutover is separately NO-GO
+([Phase D](../benchmarks/lynx-table/stages/results/stack-66-cutover-gate.md)), so
+both preconditions are open.
+
+**Whether `@octanejs/three` wants the slot-table mechanism: no.** This closes the
+open question `docs/lynx-specialized-target-l0.md` §9 carried to this decision.
+Three declares none of the template capabilities and its driver cannot receive a
+`mount-template-run`. It has no boundary to amortize a collapse across — the
+driver runs in the host's own realm, and the package's only transport reference
+is a guard refusing one portal case. And the headroom is small: in
+`benchmarks/three` at 20 iterations, `mount_1k` is 7.7 ms for Octane against
+4.1 ms for plain Three, so 53% of the biggest creation cell is Three's own object
+construction and the entire declarative overhead above that floor is 3.6 ms per
+1,000 objects — of which slot tables could recover only the descriptor share,
+never the component and hook execution. Octane already leads
+`@react-three/fiber` 9.6.1 on seven of the suite's eight operations
+(`node benchmarks/bench.mjs --only three-renderer --ratios`, medians of n=20).
+Against a
+mechanism that costs Lynx +1,721 B of main-thread gzip plus a compiler backend
+and a second driver path, that is not a trade Three should take.
 
 ## 10. Invariants
 

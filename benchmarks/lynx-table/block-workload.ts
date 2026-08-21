@@ -269,6 +269,37 @@ function driveUpdateTenth(program: BlockProgram, core: BlockCore, mode: BlockDri
 	});
 }
 
+/** One update-storm tick: every tenth label becomes `bench <tick>`. */
+function driveUpdateStormTick(
+	program: BlockProgram,
+	core: BlockCore,
+	mode: BlockDriveMode,
+	tick: number,
+): void {
+	const next = program.rows.slice();
+	for (let index = 0; index < next.length; index += 10) {
+		next[index] = { id: next[index]!.id, label: `bench ${tick}` };
+	}
+	applyRows(program, core, mode, next, (changed) => {
+		for (let index = 0; index < changed.length; index += 10) {
+			core.setKeyedSlotValue(
+				program.slot,
+				changed[index]!.id,
+				ROW_LABEL_SLOT,
+				changed[index]!.label,
+			);
+		}
+	});
+}
+
+/**
+ * The row the select storm selects on tick `t`. The last tick returns to row 0,
+ * which is what the ladder's end-state check reads.
+ */
+function selectStormTarget(ids: readonly number[], tick: number): number {
+	return tick < STORM_SELECT_TICKS ? ids[(tick * 97) % ids.length]! : ids[0]!;
+}
+
 /** `select`: move `.danger` from one row to another. */
 function driveSelect(
 	program: BlockProgram,
@@ -357,6 +388,8 @@ export interface BlockRunResult {
 	readonly swap: BlockOpCounters;
 	readonly updateStorm: BlockOpCounters;
 	readonly selectStorm: BlockOpCounters;
+	readonly updateStormOneFrame: BlockOpCounters;
+	readonly selectStormOneFrame: BlockOpCounters;
 	readonly createdElements: number;
 	readonly mountedRows: number;
 	readonly firstRowClasses: string;
@@ -449,20 +482,7 @@ export async function runBlockTable(rows: number, mode: BlockDriveMode): Promise
 
 		const updateStorm = await measure(async () => {
 			for (let tick = 1; tick <= STORM_UPDATE_TICKS; tick++) {
-				const next = live.rows.slice();
-				for (let index = 0; index < next.length; index += 10) {
-					next[index] = { id: next[index]!.id, label: `bench ${tick}` };
-				}
-				applyRows(live, core, mode, next, (changed) => {
-					for (let index = 0; index < changed.length; index += 10) {
-						core.setKeyedSlotValue(
-							live.slot,
-							changed[index]!.id,
-							ROW_LABEL_SLOT,
-							changed[index]!.label,
-						);
-					}
-				});
+				driveUpdateStormTick(live, core, mode, tick);
 				await live.commit();
 			}
 		});
@@ -470,10 +490,39 @@ export async function runBlockTable(rows: number, mode: BlockDriveMode): Promise
 		const selectStorm = await measure(async () => {
 			const ids = live.rows.map((row) => row.id);
 			for (let tick = 1; tick <= STORM_SELECT_TICKS; tick++) {
-				const id = tick < STORM_SELECT_TICKS ? ids[(tick * 97) % ids.length]! : ids[0]!;
-				driveSelect(live, core, mode, id);
+				driveSelect(live, core, mode, selectStormTarget(ids, tick));
 				await live.commit();
 			}
+		});
+
+		// The same two storms, with every tick landing in ONE frame.
+		//
+		// Everything above flushes after each tick, and so does `run.mjs`. A
+		// command the core invalidates *within* a frame is therefore invisible to
+		// both: there is never more than one tick's worth of writes in flight. The
+		// browser does not run that way. The app's storm ticks schedule through a
+		// MessageChannel and land faster than the renderer commits, so several
+		// share a frame — the 10,000-row stage decomposition observed four ticks'
+		// worth of a 1,000-row change (4,000 row renders, 4,000 host commands)
+		// inside a single drain.
+		//
+		// These two cells drive that shape deterministically: every tick's writes,
+		// then one commit. They are the column a core that emits eagerly has to be
+		// measured in, because it is the only one where a redundant command can
+		// exist at all.
+		const updateStormOneFrame = await measure(async () => {
+			for (let tick = 1; tick <= STORM_UPDATE_TICKS; tick++) {
+				driveUpdateStormTick(live, core, mode, tick);
+			}
+			await live.commit();
+		});
+
+		const selectStormOneFrame = await measure(async () => {
+			const ids = live.rows.map((row) => row.id);
+			for (let tick = 1; tick <= STORM_SELECT_TICKS; tick++) {
+				driveSelect(live, core, mode, selectStormTarget(ids, tick));
+			}
+			await live.commit();
 		});
 
 		const painted = rowViews(chassis.papi);
@@ -487,6 +536,8 @@ export async function runBlockTable(rows: number, mode: BlockDriveMode): Promise
 			swap,
 			updateStorm,
 			selectStorm,
+			updateStormOneFrame,
+			selectStormOneFrame,
 			createdElements: chassis.papi.createdElements,
 			mountedRows: painted.length,
 			firstRowClasses: first === undefined ? '' : first.classes,
