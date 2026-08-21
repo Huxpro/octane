@@ -1444,16 +1444,16 @@
     "op": "reuse_writes",
     "target": "octane-lynx",
     "reference": "slot-write-floor",
-    "maxRatio": 3,
-    "note": "Element PAPI writes per recycle on the 3-node row, against writing only the values that differ between the outgoing and incoming rows. Today it is 3x: 2 setAttribute calls, which is the floor exactly, plus 4 setRefSelector calls that clear the nodes-ref selector on each of the row's 2 element nodes and reinstall it for the incoming logical host. The prop write path has no slack; the ceiling protects that."
+    "maxRatio": 1,
+    "note": "Element PAPI writes per recycle on the 3-node row, against writing only the values that differ between the outgoing and incoming rows. It is 1x: the 2 setAttribute calls and nothing else. A nodes-ref selector is installed only where a public instance was requested, so a row nobody queried costs no setRefSelector traffic on either side of a recycle. Above 1x means either the prop write path grew slack or something started installing selectors for hosts that did not ask."
   },
   {
     "suite": "lynx-list",
     "op": "wide_reuse_writes",
     "target": "octane-lynx",
     "reference": "slot-write-floor",
-    "maxRatio": 5,
-    "note": "The same measurement on a 9-node row with 3 varying values and 6 static props: 15 writes against a floor of 3. setAttribute stays at 3 — the prop diff is independent of row width — and the residual is 12 setRefSelector calls, two per element node. The two ceilings together say the gap is nodes-ref selector lifetime, not prop rebinding."
+    "maxRatio": 1,
+    "note": "The same measurement on a 9-node row with 3 varying values and 6 static props: 3 writes against a floor of 3. Holding both ceilings at 1x is what says per-recycle traffic tracks the changed values rather than the row's width — the wide row has three times the element nodes and pays nothing extra."
   },
   {
     "suite": "lynx-table",

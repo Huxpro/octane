@@ -17,6 +17,7 @@ import {
 	disposeLynxHostContainer,
 	getLynxHostPublicState,
 	getLynxHostEventListener,
+	getLynxHostHandle,
 	isLynxHostAttached,
 	prepareLynxHostBatch,
 	resolveLynxHostNativeEvent,
@@ -56,6 +57,7 @@ import {
 	selfCheckLynxBackgroundInboundMessage,
 	validateLynxBackgroundInboundMessage,
 	validateLynxBackgroundOutboundMessage,
+	lynxLazyPublicInstancesNegotiated,
 	type LynxBackgroundInboundMessage,
 	type LynxBackgroundFunctionWireDescriptor,
 	type LynxAdoptionReadyMessage,
@@ -415,7 +417,6 @@ function publicHandleUpsert(
 }
 
 function acknowledgementHandles<Node extends LynxElementRef>(
-	driver: LynxHostDriver<Node>,
 	container: LynxHostContainer<Node>,
 	prepared: LynxPreparedHostBatch,
 	batch: UniversalHostBatch,
@@ -439,7 +440,7 @@ function acknowledgementHandles<Node extends LynxElementRef>(
 	}
 	for (const command of batch.commands) {
 		if (command.op !== 'update' || alreadyPublished(command.id)) continue;
-		const handle = driver.getPublicInstance(container, command.id);
+		const handle = getLynxHostHandle(container, command.id);
 		if (handle !== null) {
 			handles.push(publicHandleUpsert(handle, getLynxHostPublicState(container, command.id)));
 			publishedIds!.add(command.id);
@@ -1546,7 +1547,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				firstTarget === undefined
 					? resolveLynxHostNativeEvent(active!.container, delivery.token)
 					: (() => {
-							const handle = driver.getPublicInstance(active!.container, firstTarget.host);
+							const handle = getLynxHostHandle(active!.container, firstTarget.host);
 							if (
 								handle === null ||
 								handle.generation !== firstTarget.generation ||
@@ -1651,7 +1652,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			throw new Error('Octane Lynx received a stale or foreign list attachment batch.');
 		}
 		const changes = deltas.filter((delta) => {
-			const handle = driver.getPublicInstance(active!.container, delta.id);
+			const handle = getLynxHostHandle(active!.container, delta.id);
 			return handle !== null && handle.generation === delta.generation;
 		});
 		if (changes.length === 0) return;
@@ -2121,6 +2122,10 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 						root: message.root,
 						page,
 						worklets: hostWorklets,
+						// Only a peer that negotiated lazy public instances announces the
+						// hosts it will query, and only then can a list cell skip carrying
+						// a nodes-ref selector nobody asked for.
+						announcesPublicInstances: lynxLazyPublicInstancesNegotiated(peerCapabilities),
 						onAttachments: submitHostAttachments,
 						onCallbackFault: failAcceptedRoot,
 					}),
@@ -2246,7 +2251,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				? {
 						...identity,
 						type: 'ack',
-						handles: acknowledgementHandles(driver, record.container, prepared, message.batch),
+						handles: acknowledgementHandles(record.container, prepared, message.batch),
 						...(prepared.firstTreeAction === 'none'
 							? null
 							: {

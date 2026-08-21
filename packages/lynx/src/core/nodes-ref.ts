@@ -4,7 +4,14 @@ import { hasOwnSymbolFields } from './own-symbols.js';
 /** Compiler-inaccessible native attribute used by the public selector-query API. */
 export const LYNX_NODES_REF_ATTRIBUTE = 'octane-ref';
 
-/** Build the immutable selector installed for one root/host generation. */
+/**
+ * Build the immutable selector installed for one root/host generation.
+ *
+ * A node carries this attribute only where a public instance was requested. On
+ * a peer that announces its requests, a native list cell nobody queried carries
+ * none, and it is the request rather than the attribute that survives a
+ * recycle onto whatever physical cell the row lands on next.
+ */
 export function createLynxNodesRefSelector(root: number, id: number, generation: number): string {
 	positiveSafeInteger(root, 'selector root');
 	positiveSafeInteger(id, 'selector id');

@@ -226,16 +226,25 @@ describe('Lynx native list recycling', () => {
 			expect(isLynxHostAttached(container, idsAt(1).raw)).toBe(true);
 
 			const last = idsAt(itemCount - 1);
+			// A cell answers a NodesRef selector only where a public instance was
+			// requested, so ask on the row that is about to move.
 			prepareLynxHostBatch(
 				container,
-				batch(2, [{ op: 'move', parent: 1, id: idsAt(1).item, before: null }]),
+				batch(2, [
+					{ op: 'ensure-public-instance', id: idsAt(1).item },
+					{ op: 'move', parent: 1, id: idsAt(1).item, before: null },
+				]),
 			).apply();
+			const movedSelector = firstCell.getAttribute(LYNX_NODES_REF_ATTRIBUTE);
+			expect(movedSelector).toMatch(/^r1-h\d+-g1$/);
 			const moveAttachmentStart = attachmentBatches.length;
 			const movedSign = globalThis.elementTree.enterListItemAtIndex(list as never, itemCount - 1);
 			expect(movedSign).not.toBe(secondSign);
 			expect(list.children).toHaveLength(2);
+			// The moved row is the same logical host on a new physical cell: its
+			// selector follows it there, and the cell it vacated stops answering.
 			expect(firstCell.getAttribute(LYNX_NODES_REF_ATTRIBUTE)).toBe('');
-			const movedSelector = list.lastElementChild!.getAttribute(LYNX_NODES_REF_ATTRIBUTE);
+			expect(list.lastElementChild!.getAttribute(LYNX_NODES_REF_ATTRIBUTE)).toBe(movedSelector);
 			expect(
 				list.querySelectorAll(`[${LYNX_NODES_REF_ATTRIBUTE}="${movedSelector}"]`),
 			).toHaveLength(1);
@@ -961,4 +970,102 @@ describe('Lynx native list recycling', () => {
 			}
 		},
 	);
+
+	it('addresses only the cells a public instance was requested for, across recycles', () => {
+		const dom = new JSDOM();
+		installLynxTestingEnv(globalThis, { window: dom.window as never });
+		const environment = globalThis.lynxTestingEnv;
+		environment.clearGlobal();
+		environment.switchToMainThread();
+		try {
+			const papi = createLynxElementPAPI(globalThis);
+			const container = createLynxHostContainer(papi, {
+				root: 1,
+				announcesPublicInstances: true,
+			});
+			prepareLynxHostBatch(container, batch(1, largeListMount(4))).apply();
+			const page = container.page as unknown as Element;
+			const list = page.querySelector('#feed')!;
+			/** Every value a NodesRef query could currently resolve inside the list. */
+			const addressable = (): string[] =>
+				[...list.querySelectorAll(`[${LYNX_NODES_REF_ATTRIBUTE}]`)]
+					.map((node) => node.getAttribute(LYNX_NODES_REF_ATTRIBUTE)!)
+					.filter((value) => value !== '');
+
+			const firstSign = globalThis.elementTree.enterListItemAtIndex(list as never, 0);
+			globalThis.elementTree.enterListItemAtIndex(list as never, 1);
+			expect(list.children).toHaveLength(2);
+			expect(addressable()).toEqual([]);
+
+			// Requested before the row has ever owned a physical cell, so the request
+			// has to outlive every node it could have been recorded against.
+			const requested = idsAt(3).item;
+			prepareLynxHostBatch(
+				container,
+				batch(2, [{ op: 'ensure-public-instance', id: requested }]),
+			).apply();
+			expect(addressable()).toEqual([]);
+
+			const selector = `r1-h${requested}-g1`;
+			globalThis.elementTree.leaveListItem(list as never, firstSign);
+			const reusedSign = globalThis.elementTree.enterListItemAtIndex(list as never, 3);
+			expect(reusedSign).toBe(firstSign);
+			expect(list.children).toHaveLength(2);
+			expect(addressable()).toEqual([selector]);
+			expect(
+				list.querySelectorAll(`[${LYNX_NODES_REF_ATTRIBUTE}="${selector}"]`)[0]!.textContent,
+			).toBe('Row 3');
+
+			// Back to the pool: nothing answers for the row while it owns no cell.
+			globalThis.elementTree.leaveListItem(list as never, reusedSign);
+			expect(addressable()).toEqual([]);
+
+			// And returning to the same row addresses it again, exactly once.
+			expect(globalThis.elementTree.enterListItemAtIndex(list as never, 3)).toBe(reusedSign);
+			expect(addressable()).toEqual([selector]);
+
+			prepareLynxHostBatch(container, batch(3, largeListUnmount(4))).apply();
+			expect(disposeLynxHostContainer(container).errors).toEqual([]);
+		} finally {
+			environment.clearGlobal();
+			uninstallLynxTestingEnv(globalThis);
+			dom.window.close();
+		}
+	});
+
+	it('keeps list-cell selectors eager for a peer that announces no public instances', () => {
+		const dom = new JSDOM();
+		installLynxTestingEnv(globalThis, { window: dom.window as never });
+		const environment = globalThis.lynxTestingEnv;
+		environment.clearGlobal();
+		environment.switchToMainThread();
+		try {
+			const papi = createLynxElementPAPI(globalThis);
+			// No `announcesPublicInstances`: this peer never sends
+			// `ensure-public-instance`, so a selector it was never asked for is the
+			// only thing that can make its refs address anything.
+			const container = createLynxHostContainer(papi, { root: 1 });
+			prepareLynxHostBatch(container, batch(1, largeListMount(4))).apply();
+			const page = container.page as unknown as Element;
+			const list = page.querySelector('#feed')!;
+			const addressable = (): string[] =>
+				[...list.querySelectorAll(`[${LYNX_NODES_REF_ATTRIBUTE}]`)]
+					.map((node) => node.getAttribute(LYNX_NODES_REF_ATTRIBUTE)!)
+					.filter((value) => value !== '');
+
+			const firstSign = globalThis.elementTree.enterListItemAtIndex(list as never, 0);
+			expect(addressable()).toEqual([`r1-h${idsAt(0).item}-g1`, `r1-h${idsAt(0).text}-g1`]);
+
+			globalThis.elementTree.leaveListItem(list as never, firstSign);
+			expect(globalThis.elementTree.enterListItemAtIndex(list as never, 3)).toBe(firstSign);
+			expect(addressable()).toEqual([`r1-h${idsAt(3).item}-g1`, `r1-h${idsAt(3).text}-g1`]);
+
+			prepareLynxHostBatch(container, batch(2, largeListUnmount(4))).apply();
+			expect(disposeLynxHostContainer(container).errors).toEqual([]);
+		} finally {
+			environment.clearGlobal();
+			uninstallLynxTestingEnv(globalThis);
+			dom.window.close();
+		}
+	});
 });

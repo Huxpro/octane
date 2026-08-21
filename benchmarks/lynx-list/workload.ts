@@ -4,8 +4,8 @@ import type {
 } from '../../packages/octane/src/universal-core.js';
 import {
 	createLynxHostContainer,
-	createLynxHostDriver,
 	disposeLynxHostContainer,
+	getLynxHostHandle,
 	getLynxListDiagnostics,
 	prepareLynxHostBatch,
 	type LynxHostAttachmentDelta,
@@ -449,13 +449,12 @@ class FakeLynxPAPI {
  * The main thread's own attachment delivery, replayed against this fake host.
  *
  * One recycle emits an attachment delta per node of the outgoing cell and per
- * node of the incoming one. `main-thread.ts` filters that batch by asking the
- * host driver for each host's public instance and comparing generations, and
- * `getPublicInstance` installs the node's `nodes-ref` selector as a side
- * effect. The predicate is therefore an install site, not a read — so a
- * benchmark that leaves `onAttachments` unwired measures a recycle in a shape
- * production never runs, and cannot see what a demand-installed selector would
- * actually save.
+ * node of the incoming one, and `main-thread.ts` filters that batch by looking
+ * up each host's identity and comparing generations. Asking that question must
+ * not install a `nodes-ref` selector, because a selector exists only where a
+ * public instance was requested and the predicate has no idea whether one was.
+ * The writes column below is what enforces it: a predicate that installs turns
+ * an untouched zero into one write per element node per recycle.
  */
 interface AttachmentDelivery {
 	/** Wire this as the container's `onAttachments`. */
@@ -471,7 +470,6 @@ interface AttachmentDelivery {
 }
 
 function createAttachmentDelivery(environment: FakeLynxPAPI): AttachmentDelivery {
-	const driver = createLynxHostDriver<FakeNode>();
 	let container: LynxHostContainer<FakeNode> | null = null;
 	let examined = 0;
 	let delivered = 0;
@@ -484,7 +482,7 @@ function createAttachmentDelivery(environment: FakeLynxPAPI): AttachmentDelivery
 			const before = environment.writeCount;
 			for (const delta of deltas) {
 				examined += 1;
-				const handle = driver.getPublicInstance(container, delta.id);
+				const handle = getLynxHostHandle(container, delta.id);
 				if (handle !== null && handle.generation === delta.generation) delivered += 1;
 			}
 			writes += environment.writeCount - before;
@@ -598,6 +596,9 @@ export function runLynxListAllocationWorkload(): LynxListAllocationResult {
 	const attachments = createAttachmentDelivery(environment);
 	const container = createLynxHostContainer(environment.papi, {
 		root: 1,
+		// The regime the product runs in: the background negotiated lazy public
+		// instances, so it announces every host it will query.
+		announcesPublicInstances: true,
 		onAttachments: attachments.hook,
 	});
 	attachments.bind(container);
@@ -844,6 +845,9 @@ export function runWideRowReuseWorkload(): WideRowReuseResult {
 	const attachments = createAttachmentDelivery(environment);
 	const container = createLynxHostContainer(environment.papi, {
 		root: 1,
+		// The regime the product runs in: the background negotiated lazy public
+		// instances, so it announces every host it will query.
+		announcesPublicInstances: true,
 		onAttachments: attachments.hook,
 	});
 	attachments.bind(container);
