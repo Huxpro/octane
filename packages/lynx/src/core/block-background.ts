@@ -48,7 +48,7 @@ import type {
 	UniversalTransportEventMessage,
 } from 'octane/universal/native';
 import type { LynxComponent } from '../intrinsics.js';
-import type { LynxClientContainer } from './client-driver.js';
+import { lynxClientTemplateRunsNegotiated, type LynxClientContainer } from './client-driver.js';
 import { createLynxBlockCore, type LynxBlockCore } from './block-core.js';
 import { createLynxBlockRoot } from './block-root.js';
 import {
@@ -137,7 +137,17 @@ export function createLynxBlockBackgroundCore(
 	options: LynxBlockBackgroundCoreOptions,
 ): LynxBackgroundCore {
 	const { container, transport } = options;
-	const core = options.core ?? createLynxBlockCore();
+	// The negotiation the Block core has to respect, read per mount. A main
+	// thread that painted a first screen keeps template runs dormant until the
+	// background's first batch has adopted or repaired it, so the first commit
+	// mounts in the legacy vocabulary and every later one is a run. Without this
+	// the whole first mount is rejected as an unnegotiated template run and the
+	// page never leaves its first screen.
+	const core =
+		options.core ??
+		createLynxBlockCore({
+			templateRuns: () => lynxClientTemplateRunsNegotiated(container),
+		});
 	const blockRoot = createLynxBlockRoot({
 		container,
 		transport,

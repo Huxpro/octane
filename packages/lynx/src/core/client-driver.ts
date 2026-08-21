@@ -382,6 +382,19 @@ export function setLynxClientCapabilities(
 	state.lazyPublicInstances = state.templateProgramMount && capabilities?.lazyPublicInstances === 1;
 }
 
+/**
+ * @internal Whether the peer has negotiated intrinsic template runs.
+ *
+ * `createLynxClientDriver` answers the same question through its capability
+ * bag, but a core that never builds a driver — the issue-#103 Block core —
+ * still has to respect the negotiation, and pulling the whole driver in to read
+ * one flag would put the universal renderer back into a bundle that selected
+ * the other core.
+ */
+export function lynxClientTemplateRunsNegotiated(container: LynxClientContainer): boolean {
+	return containerState(container).templateProgramRuns;
+}
+
 function collectWorkletExecutionIds(
 	value: unknown,
 	output: Set<string>,

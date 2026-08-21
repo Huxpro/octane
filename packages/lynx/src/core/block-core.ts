@@ -34,6 +34,7 @@ import type {
 	UniversalHostCommand,
 	UniversalHostParent,
 	UniversalHostTemplateProgram,
+	UniversalHostTemplateProgramNode,
 	UniversalHostTemplateProgramValue,
 } from 'octane/universal/native';
 
@@ -74,19 +75,33 @@ function fail(message: string): never {
  * ambiguous.
  */
 export function compileLynxBlockTemplate(program: UniversalHostTemplateProgram): LynxBlockTemplate {
-	const nodes = program.nodes;
-	if (!Array.isArray(nodes) || nodes.length === 0) fail('a template needs at least one host node');
+	if (!Array.isArray(program.nodes) || program.nodes.length === 0) {
+		fail('a template needs at least one host node');
+	}
+	// Annotated rather than inferred: `Array.isArray` widens a `readonly T[]` to
+	// `any[]`, which would make every node below implicitly `any`.
+	const source: readonly UniversalHostTemplateProgramNode[] = program.nodes;
 	const valueNodes: number[] = [];
 	const valueNames: string[] = [];
-	const staticProps: Readonly<Record<string, unknown>>[] = new Array(nodes.length);
-	for (let index = 0; index < nodes.length; index++) {
-		const node = nodes[index]!;
+	const staticProps: Readonly<Record<string, unknown>>[] = new Array(source.length);
+	const nodes: UniversalHostTemplateProgramNode[] = new Array(source.length);
+	for (let index = 0; index < source.length; index++) {
+		const node = source[index]!;
 		if (node.type === 'list' || node.type === 'list-item') {
 			fail('native lists are not in the specialized core (issue #103 U2 scope)');
 		}
-		staticProps[index] = node.props;
-		if (node.bindings === undefined) continue;
-		for (const binding of node.bindings) {
+		const props = Object.freeze({ ...node.props });
+		const bindings = node.bindings;
+		staticProps[index] = props;
+		nodes[index] = Object.freeze({
+			...node,
+			props,
+			...(bindings === undefined
+				? null
+				: { bindings: Object.freeze(bindings.map((binding) => Object.freeze({ ...binding }))) }),
+		});
+		if (bindings === undefined) continue;
+		for (const binding of bindings) {
 			if (valueNodes[binding.valueIndex] !== undefined) {
 				fail(`value slot ${binding.valueIndex} is bound by more than one host node`);
 			}
@@ -97,11 +112,26 @@ export function compileLynxBlockTemplate(program: UniversalHostTemplateProgram):
 	for (let slot = 0; slot < valueNodes.length; slot++) {
 		if (valueNodes[slot] === undefined) fail(`value slot ${slot} is declared but never bound`);
 	}
+	// A deeply frozen copy, not the caller's object.
+	//
+	// The wire treats a template program as immutable shared data: it hands the
+	// same program to the main thread commit after commit without cloning, and
+	// `countLynxCompactAcknowledgementHosts` will only cache its verdict for a
+	// program whose nodes, props and bindings are all frozen. A program that is
+	// still mutable is therefore re-walked on every mount, and — because the
+	// compact acknowledgement it asks for is only *accepted* in its incremental
+	// form, which requires a frozen run — a second commit carrying one is
+	// rejected outright. Copying rather than freezing in place keeps that out of
+	// the caller's object, which it may still own and reuse.
+	const frozen: UniversalHostTemplateProgram = Object.freeze({
+		nodes: Object.freeze(nodes),
+		events: Object.freeze(program.events.map((event) => Object.freeze({ ...event }))),
+	});
 	return Object.freeze({
-		program,
+		program: frozen,
 		hostCount: nodes.length,
 		valueCount: valueNodes.length,
-		eventCount: program.events.length,
+		eventCount: frozen.events.length,
 		valueNodes: Object.freeze(valueNodes),
 		valueNames: Object.freeze(valueNames),
 		staticProps: Object.freeze(staticProps),
@@ -169,6 +199,22 @@ export interface LynxBlockCoreOptions {
 	/** First host id this root may allocate. Ids are dense and monotonic. */
 	readonly firstId?: number;
 	readonly firstListenerId?: number;
+	/**
+	 * Whether the peer has negotiated intrinsic template runs (issue #103 B0).
+	 *
+	 * Asked per mount rather than once, because the capability arrives late. A
+	 * main thread that painted a first screen keeps every optional wire
+	 * behaviour dormant until the background's first batch has adopted or
+	 * repaired that screen — a first tree is compared against a legacy batch,
+	 * so `templateRuns` is off for exactly one commit and on afterwards
+	 * (`transport.ts`, `main-thread.ts`). A core that assumed otherwise would
+	 * have its whole mount rejected as an unnegotiated template run, which is
+	 * how this was found.
+	 *
+	 * Defaults to always-on: a caller that drives the core without a wire has
+	 * no negotiation to respect.
+	 */
+	readonly templateRuns?: () => boolean;
 }
 
 export interface LynxBlockCore {
@@ -275,6 +321,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 	// deterministic render, which is what U1 §4 turns adoption into.
 	let nextId = options.firstId ?? 1;
 	let nextListenerId = options.firstListenerId ?? 1;
+	const templateRunsAllowed = options.templateRuns ?? (() => true);
 	let commands: UniversalHostCommand[] = [];
 	let version = 0;
 	let blockLookups = 0;
@@ -325,16 +372,25 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 				values[row * template.valueCount + slot] = source[slot];
 			}
 		}
-		emit({
-			op: 'mount-template-run',
-			parent,
-			before,
-			program: template.program,
-			firstId,
-			firstListenerId,
-			count,
-			values: Object.freeze(values),
-		});
+		if (templateRunsAllowed()) {
+			// Frozen, like the program it carries: the incremental compact
+			// acknowledgement the wire offers for a post-first-screen run is only
+			// accepted for a command the producer promised not to mutate.
+			emit(
+				Object.freeze({
+					op: 'mount-template-run' as const,
+					parent,
+					before,
+					program: template.program,
+					firstId,
+					firstListenerId,
+					count,
+					values: Object.freeze(values),
+				}),
+			);
+		} else {
+			mountRunLegacy(parent, before, template, values, firstId, firstListenerId, count);
+		}
 		const blocks: LynxBlock[] = new Array(count);
 		for (let row = 0; row < count; row++) {
 			blocks[row] = {
@@ -353,6 +409,72 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			};
 		}
 		return blocks;
+	};
+
+	/**
+	 * The same mount, spelled in the vocabulary every peer understands.
+	 *
+	 * Command-proportional to the hosts rather than to the sites, which is the
+	 * cost `mount-template-run` exists to avoid — so this runs only where the
+	 * protocol leaves no choice: the one commit that has to adopt or repair a
+	 * main-painted first screen. Ids and listener ids are the ones the run
+	 * already allocated, so a block mounted this way is indistinguishable
+	 * afterwards and a scoped write addresses the same host either way.
+	 */
+	const mountRunLegacy = (
+		parent: UniversalHostParent,
+		before: number | null,
+		template: LynxBlockTemplate,
+		values: readonly UniversalHostTemplateProgramValue[],
+		firstId: number,
+		firstListenerId: number | null,
+		count: number,
+	): void => {
+		const nodes = template.program.nodes;
+		const hostCount = template.hostCount;
+		const valueCount = template.valueCount;
+		for (let row = 0; row < count; row++) {
+			const base = firstId + row * hostCount;
+			const rowValues = row * valueCount;
+			// Every host first: a child's `insert` needs its parent to exist, and
+			// the program's pre-order guarantee only orders parents before children
+			// within one pass.
+			for (let node = 0; node < hostCount; node++) {
+				const descriptor = nodes[node]!;
+				let props: Record<string, unknown> = template.staticProps[node]!;
+				if (descriptor.bindings !== undefined) {
+					props = { ...props };
+					for (const binding of descriptor.bindings) {
+						props[binding.name] = values[rowValues + binding.valueIndex];
+					}
+				}
+				emit({
+					op: 'create',
+					id: base + node,
+					type: descriptor.type,
+					props: Object.freeze(props),
+				});
+			}
+			for (let node = 0; node < hostCount; node++) {
+				const descriptor = nodes[node]!;
+				emit(
+					descriptor.parent === -1
+						? { op: 'insert', parent, id: base + node, before }
+						: { op: 'insert', parent: base + descriptor.parent, id: base + node, before: null },
+				);
+			}
+			if (firstListenerId === null) continue;
+			const rowListener = firstListenerId + row * template.eventCount;
+			for (let site = 0; site < template.eventCount; site++) {
+				const event = template.program.events[site]!;
+				emit({
+					op: 'event',
+					id: base + event.node,
+					type: event.type,
+					listener: { id: rowListener + site, priority: event.priority },
+				});
+			}
+		}
 	};
 
 	/**

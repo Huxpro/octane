@@ -57,6 +57,20 @@ const ALL_CELLS = [
 	// main-thread/background programs a `target: 'lynx'` backend would emit.
 	// Build it with `node prototype/build.mjs`; it is opt-in via --cells.
 	{ id: 'octane-direct', bundle: path.join(root, 'prototype/dist/main.web.bundle') },
+	// Issue-#103 B0: the same application entry and the same page driver, built
+	// with `pluginOctane({ core: 'block' })` so the Block core drives background
+	// updates instead of the universal one. The program it runs is hand-written
+	// (app/src/block-program.ts), so this cell is an architecture ceiling, not a
+	// framework measurement — read it beside `octane`, never instead of it.
+	// `-reconcile` is the same core driven by whole-list reconciles rather than
+	// scoped slot writes; build it with BENCH_BLOCK_MODE=reconcile.
+	{ id: 'octane-block', bundle: path.join(root, 'app/dist-block/main.web.bundle'), core: 'block' },
+	{
+		id: 'octane-block-reconcile',
+		bundle: path.join(root, 'app/dist-block-reconcile/main.web.bundle'),
+		core: 'block',
+		blockMode: 'reconcile',
+	},
 	{ id: 'vue-vdom', bundle: path.join(root, 'reference/vdom-ifr-et/main.web.bundle') },
 	{ id: 'vue-vapor', bundle: path.join(root, 'reference/vapor-ifr/main.web.bundle') },
 	{ id: 'react', bundle: path.join(root, 'reference/react/main.web.bundle') },
@@ -325,7 +339,14 @@ async function main() {
 	// whose absolute milliseconds are already declared host-bound, and a reader
 	// cannot judge a same-window ratio without knowing how quiet the window was.
 	const startLoad = os.loadavg();
-	if (wanted.has('octane') && !args['skip-app-build']) buildTableApp();
+	if (!args['skip-app-build']) {
+		if (wanted.has('octane')) buildTableApp();
+		for (const cell of ALL_CELLS) {
+			if (cell.core === 'block' && wanted.has(cell.id)) {
+				buildTableApp({ core: 'block', blockMode: cell.blockMode ?? 'scoped' });
+			}
+		}
+	}
 
 	const missing = CELLS.filter((cell) => !fs.existsSync(cell.bundle));
 	const runnable = CELLS.filter((cell) => fs.existsSync(cell.bundle));
