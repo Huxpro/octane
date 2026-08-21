@@ -73,6 +73,33 @@ sessions. They do not measure the CPU the host spends deciding what to write.
 node benchmarks/bench.mjs --quick --ratios lynx-list
 ```
 
+## What a mounted list retains
+
+A separate script, because it is a byte measurement and this suite's guards are
+deterministic counts:
+
+```bash
+node --expose-gc benchmarks/lynx-list/retention.mjs 5
+```
+
+`createPhysicalTree` materializes a row from `state.records` and throws
+`native list requested missing host` if the record is absent, so **every logical
+row's records must exist and be retained** even though only the visible window is
+ever physical. The script measures that against what a deferred run would hold
+for the same page — one compiled program plus one value row per item — with both
+arms handed the same row strings, so each delta is the structure built on top of
+the application's own data.
+
+Every sample runs in its own process. Measuring both arms in one process makes
+the second arm's baseline depend on what the first left behind, which showed up
+as a spread wide enough to move the ratio by half; one build per process removes
+that history and the readings become exactly reproducible.
+
+The logical-host counts are exact and carry anywhere. The byte figures are
+`heapUsed` deltas, so they are host-bound and only the ratio inside one sitting
+is portable. The deferred arm is modelled generously — a plain JS array per row,
+heavier than a packed slot table — so the gap it reports is a lower bound.
+
 This is deliberately not a timing, memory, layout, or device-lifecycle claim.
 Those behaviors still require the Android and iOS probes described in the Lynx
 renderer plan.

@@ -118,10 +118,26 @@ const FeedScene = defineFirstScreenComponent('lynx', () =>
 	firstScreenValue(feedPlan, ['feed-shell', 'feed', 'row-0']),
 );
 
-// Two list topologies the staged apply rejects. They exist so the pre-check
-// that declines an unadoptable first screen before building it cannot quietly
-// swallow a diagnostic: it must report a malformed tree as ordinary work and
-// leave the staged path to throw.
+const emptyFeedPlan = firstScreenPlan('lynx', {
+	kind: 'host',
+	type: 'view',
+	bindings: [['id', 0]],
+	children: [{ kind: 'host', type: 'list', bindings: [['id', 1]] }],
+});
+
+/** A `<list>` with no rows: the one shape whose commit carries no list update. */
+const EmptyFeedScene = defineFirstScreenComponent('lynx', () =>
+	firstScreenValue(emptyFeedPlan, ['feed-shell', 'feed']),
+);
+
+/** The same feed with the row's `item-key` under the caller's control. */
+const RowKeyFeedScene = defineFirstScreenComponent('lynx', (props: { readonly itemKey: string }) =>
+	firstScreenValue(feedPlan, ['feed-shell', 'feed', props.itemKey]),
+);
+
+// Two list topologies the staged apply rejects. They exist so that painting a
+// list cannot quietly swallow a diagnostic: a malformed tree must still throw
+// from the staged path rather than settling as a quiet `skipped`.
 const nestedFeedPlan = firstScreenPlan('lynx', {
 	kind: 'host',
 	type: 'view',
@@ -266,6 +282,48 @@ const DuplicateRefFeedScene = defineFirstScreenComponent('lynx', () =>
 		'row-0',
 		{ _wvid: 'gate:ref' },
 		{ _wvid: 'gate:ref' },
+	]),
+);
+
+const duplicateRefRowPlan = firstScreenPlan('lynx', {
+	kind: 'host',
+	type: 'view',
+	bindings: [['id', 0]],
+	children: [
+		{
+			kind: 'host',
+			type: 'list',
+			bindings: [['id', 1]],
+			children: [
+				{
+					kind: 'host',
+					type: 'list-item',
+					bindings: [
+						['item-key', 2],
+						['main-thread:ref', 4],
+					],
+				},
+				{
+					kind: 'host',
+					type: 'list-item',
+					bindings: [
+						['item-key', 3],
+						['main-thread:ref', 5],
+					],
+				},
+			],
+		},
+	],
+});
+
+const DuplicateRefRowScene = defineFirstScreenComponent('lynx', () =>
+	firstScreenValue(duplicateRefRowPlan, [
+		'feed-shell',
+		'feed',
+		'row-0',
+		'row-1',
+		{ _wvid: 'gate:row-ref' },
+		{ _wvid: 'gate:row-ref' },
 	]),
 );
 
@@ -1031,9 +1089,12 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 	// rows through main-local callbacks and owns the resulting cells. Declining
 	// the synchronous paint is therefore an ordinary outcome, and must not be
 	// reported the way the broken host in the next test is.
-	it('declines a synchronous first screen holding a native list without painting it', () => {
-		// The renderer captures the flush when the runtime installs, so this has to
-		// wrap it before that; each flush reports the page as the batch left it.
+	it('paints a first screen holding a native list, with its rows still logical', () => {
+		// The divergence this closes: a page holding a `<list>` used to get no
+		// synchronous first screen at all, because capture refused every root that
+		// held one. It paints now — and only the list paints. Rows are records the
+		// platform has not asked for, materialized later through `componentAtIndex`,
+		// so a five-row feed still creates exactly one element beneath the shell.
 		const painted: string[] = [];
 		const { dom, main } = installEnvironment((target) => {
 			const hostFlush = target.__FlushElementTree as (...args: unknown[]) => void;
@@ -1047,18 +1108,19 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 			inbound.push(event.data as LynxBackgroundInboundMessage);
 		});
 
-		expect(firstScreenRoot.render(FeedScene, {})).toBeNull();
+		expect(firstScreenRoot.render(FeedScene, {})).toMatchObject({ hostCount: 3 });
 
-		// The verdict does not depend on the tree existing, so the tree is never
-		// built: the platform is never asked to compose a page that is only going
-		// to be taken back out from under the background.
-		expect(painted.every((html) => !html.includes('id="feed"'))).toBe(true);
-		expect(painted.every((html) => !html.includes('id="feed-shell"'))).toBe(true);
-		expect(dom.window.document.querySelector('#feed')).toBeNull();
-		expect(dom.window.document.querySelector('#feed-shell')).toBeNull();
-		expect(main.firstScreenSnapshot()).toBeNull();
+		expect(painted.some((html) => html.includes('id="feed"'))).toBe(true);
+		const list = dom.window.document.querySelector('#feed');
+		expect(dom.window.document.querySelector('#feed-shell')).not.toBeNull();
+		expect(list).not.toBeNull();
+		expect(list!.children).toHaveLength(0);
+		expect(main.firstScreenSnapshot()).toMatchObject({ root: 1, version: 1 });
 		expect(main.diagnostics()).toEqual([]);
 
+		// A painted list gates background startup like any other painted page —
+		// where a declined one used to settle readiness immediately, leaving the
+		// background to build the whole feed itself.
 		backgroundContext().dispatchEvent({
 			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
 			data: {
@@ -1068,68 +1130,177 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 				request: 51,
 			},
 		});
-		// Declining settles readiness immediately, exactly as an entry that never
-		// rendered a first screen does, so the background is not left waiting.
+		expect(inbound).toEqual([]);
+
+		main.markFirstScreenSyncReady();
 		expect(inbound).toEqual([
-			expect.objectContaining({ type: 'main-ready', request: 0 }),
-			expect.objectContaining({ type: 'main-ready', request: 51 }),
+			expect.objectContaining({
+				type: 'main-ready',
+				request: 51,
+				firstTree: expect.objectContaining({ root: 1, version: 1 }),
+			}),
 		]);
 	});
 
-	it('announces readiness for a declined first screen with no cleanup to defer', () => {
-		// A removal that always throws is what a declined first screen used to have
-		// to survive: it was painted first, so retiring it had to take every element
-		// back out, and a failing remove withheld background readiness until a retry
-		// succeeded. Nothing is built now, so nothing is removed, and readiness is
-		// announced on the first attempt with the hostile remove never called.
-		let removals = 0;
-		const { dom, main } = installEnvironment((target) => {
-			target.__RemoveElement = () => {
-				removals++;
-				throw new Error('declined first screens must have nothing to remove');
-			};
-		});
+	it('adopts a painted native list, and the adopted list still materializes rows', () => {
+		// The list's cells, pools, signs and recycling counters are main-local
+		// bookkeeping that never crossed the wire, so adoption moves the state
+		// itself. The three callbacks Lynx holds cannot come along — they close over
+		// the container adoption is about to empty — so they are rebound against the
+		// target. Driving a row in afterwards is what proves that happened: a trio
+		// still pointed at the retired source could not produce a cell.
+		const { dom, main } = installEnvironment();
+		firstScreenRoot.render(FeedScene, {});
+		const paintedShell = dom.window.document.querySelector('#feed-shell');
+		const paintedList = dom.window.document.querySelector('#feed');
 		const inbound: LynxBackgroundInboundMessage[] = [];
 		mainContext().addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
 			inbound.push(event.data as LynxBackgroundInboundMessage);
 		});
+		main.markFirstScreenSyncReady();
 
-		expect(firstScreenRoot.render(FeedScene, {})).toBeNull();
-
-		expect(removals).toBe(0);
-		expect(dom.window.document.querySelector('#feed-shell')).toBeNull();
-		expect(main.firstScreenSnapshot()).toBeNull();
-		expect(main.diagnostics()).toEqual([]);
-		expect(inbound).toEqual([expect.objectContaining({ type: 'main-ready', request: 0 })]);
-
+		const background = renderLynxFirstScreen(FeedScene, {});
 		backgroundContext().dispatchEvent({
 			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
 			data: {
 				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 				renderer: LYNX_TRANSPORT_RENDERER,
-				type: 'main-ready-request',
-				request: 52,
+				root: 1,
+				version: 1,
+				type: 'commit',
+				batch: background.batch,
 			},
 		});
-		expect(removals).toBe(0);
-		expect(inbound).toEqual([
-			expect.objectContaining({ type: 'main-ready', request: 0 }),
-			expect.objectContaining({ type: 'main-ready', request: 52 }),
+
+		expect(inbound.find((message) => message.type === 'ack')).toMatchObject({
+			type: 'ack',
+			adoption: 'adopted',
+		});
+		expect(dom.window.document.querySelector('#feed-shell')).toBe(paintedShell);
+		expect(dom.window.document.querySelector('#feed')).toBe(paintedList);
+		expect(main.diagnostics()).toEqual([]);
+
+		const sign = globalThis.elementTree.enterListItemAtIndex(paintedList as never, 0);
+		expect(sign).toBeGreaterThanOrEqual(0);
+		expect(paintedList!.children).toHaveLength(1);
+	});
+
+	it('adopts a native list that has no rows at all', () => {
+		// An empty feed is a real page — a filtered search, a cleared inbox — and it
+		// is the one shape whose background commit carries no list update at all,
+		// because there is nothing to insert. Adoption must not read that absence as
+		// disagreement.
+		const { dom, main } = installEnvironment();
+		firstScreenRoot.render(EmptyFeedScene, {});
+		const paintedList = dom.window.document.querySelector('#feed');
+		const inbound: LynxBackgroundInboundMessage[] = [];
+		mainContext().addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
+			inbound.push(event.data as LynxBackgroundInboundMessage);
+		});
+		main.markFirstScreenSyncReady();
+
+		const background = renderLynxFirstScreen(EmptyFeedScene, {});
+		backgroundContext().dispatchEvent({
+			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
+			data: {
+				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
+				renderer: LYNX_TRANSPORT_RENDERER,
+				root: 1,
+				version: 1,
+				type: 'commit',
+				batch: background.batch,
+			},
+		});
+
+		expect(inbound.find((message) => message.type === 'ack')).toMatchObject({
+			type: 'ack',
+			adoption: 'adopted',
+		});
+		expect(dom.window.document.querySelector('#feed')).toBe(paintedList);
+		expect(main.diagnostics()).toEqual([]);
+	});
+
+	it('repairs when the background list holds different rows', () => {
+		// `update-list-info` was already written onto the painted node by the main
+		// thread. The background says what it would have written through its own
+		// prepared list update, and adoption is sound exactly when the two agree.
+		const { dom, main } = installEnvironment();
+		firstScreenRoot.render(RowKeyFeedScene, { itemKey: 'row-0' });
+		const paintedList = dom.window.document.querySelector('#feed');
+		const inbound: LynxBackgroundInboundMessage[] = [];
+		mainContext().addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
+			inbound.push(event.data as LynxBackgroundInboundMessage);
+		});
+		main.markFirstScreenSyncReady();
+
+		const background = renderLynxFirstScreen(RowKeyFeedScene, { itemKey: 'row-9' });
+		backgroundContext().dispatchEvent({
+			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
+			data: {
+				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
+				renderer: LYNX_TRANSPORT_RENDERER,
+				root: 1,
+				version: 1,
+				type: 'commit',
+				batch: background.batch,
+			},
+		});
+
+		expect(inbound.find((message) => message.type === 'ack')).toMatchObject({
+			type: 'ack',
+			adoption: 'repaired',
+		});
+		expect(dom.window.document.querySelector('#feed')).not.toBe(paintedList);
+		expect(main.diagnostics()).toEqual([
+			expect.objectContaining({ code: 'OCTANE_LYNX_FIRST_SCREEN_MISMATCH' }),
 		]);
 	});
 
-	it('declines a native list whose rows come from a keyed loop', () => {
-		// Rows reach a `<list>` through `@for` in every real page, which puts a
-		// range between the list and each `<list-item>`. Declining has to see
-		// through that, or it would only ever fire on a shape no `.tsrx` produces.
-		const painted: string[] = [];
-		const { dom, main } = installEnvironment((target) => {
-			const hostFlush = target.__FlushElementTree as (...args: unknown[]) => void;
-			target.__FlushElementTree = (...args: unknown[]) => {
-				hostFlush.apply(target, args);
-				painted.push((args[0] as { innerHTML?: string } | undefined)?.innerHTML ?? '');
-			};
+	it('repairs when the platform materialized a row between capture and adoption', () => {
+		// A cell created after capture is physical state the captured tree does not
+		// describe. Adoption re-reads the list's recycling counters and repairs
+		// rather than adopting a picture that has moved on.
+		const { dom, main } = installEnvironment();
+		firstScreenRoot.render(FeedScene, {});
+		const paintedList = dom.window.document.querySelector('#feed');
+		const inbound: LynxBackgroundInboundMessage[] = [];
+		mainContext().addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
+			inbound.push(event.data as LynxBackgroundInboundMessage);
 		});
+		main.markFirstScreenSyncReady();
+		globalThis.elementTree.enterListItemAtIndex(paintedList as never, 0);
+
+		const background = renderLynxFirstScreen(FeedScene, {});
+		backgroundContext().dispatchEvent({
+			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
+			data: {
+				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
+				renderer: LYNX_TRANSPORT_RENDERER,
+				root: 1,
+				version: 1,
+				type: 'commit',
+				batch: background.batch,
+			},
+		});
+
+		expect(inbound.find((message) => message.type === 'ack')).toMatchObject({
+			type: 'ack',
+			adoption: 'repaired',
+		});
+		expect(main.diagnostics()).toEqual([
+			expect.objectContaining({
+				code: 'OCTANE_LYNX_FIRST_SCREEN_MISMATCH',
+				path: 'snapshot.lists[2].epoch',
+			}),
+		]);
+	});
+
+	it('paints a native list whose rows come from a keyed loop', () => {
+		// Rows reach a `<list>` through `@for` in every real page, which puts a
+		// range between the list and each `<list-item>`. Capture reads records
+		// rather than the record tree, so ranges never reach it — but a fixture
+		// that only ever nested rows directly under the list would not prove that.
+		const { dom, main } = installEnvironment();
 
 		expect(
 			firstScreenRoot.render(KeyedFeedScene, {
@@ -1139,19 +1310,19 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 					['k2', 'row-2'],
 				],
 			}),
-		).toBeNull();
+		).not.toBeNull();
 
-		expect(painted.every((html) => !html.includes('id="feed"'))).toBe(true);
-		expect(dom.window.document.querySelector('#feed')).toBeNull();
-		expect(dom.window.document.querySelector('#feed-shell')).toBeNull();
-		expect(main.firstScreenSnapshot()).toBeNull();
+		const list = dom.window.document.querySelector('#feed');
+		expect(dom.window.document.querySelector('#feed-shell')).not.toBeNull();
+		expect(list).not.toBeNull();
+		expect(list!.children).toHaveLength(0);
+		expect(main.firstScreenSnapshot()).toMatchObject({ root: 1, version: 1 });
 		expect(main.diagnostics()).toEqual([]);
 	});
 
 	it('still reports a duplicated item-key a keyed loop produced', () => {
-		// The same range transparency has to carry the diagnostics too: rows the
-		// pre-check cannot see are rows whose defects it cannot rule out, and it
-		// would then decline a tree the staged apply would have rejected.
+		// Painting a list must not cost a diagnostic the staged apply owns: a
+		// duplicate `item-key` is rejected where it has always been rejected.
 		const { main } = installEnvironment();
 
 		expect(() =>
@@ -1166,19 +1337,11 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		expect(main.firstScreenSnapshot()).toBeNull();
 	});
 
-	it('declines a native list the compiler lowered to a template', () => {
-		// A template-created `<list>` still records as an ordinary `list` host, which
-		// is the property the pre-check depends on. If that lowering ever recorded
-		// the template opaquely instead, declining would silently stop firing on
-		// every compiled page while every hand-built fixture above kept passing.
-		const painted: string[] = [];
-		const { dom, main } = installEnvironment((target) => {
-			const hostFlush = target.__FlushElementTree as (...args: unknown[]) => void;
-			target.__FlushElementTree = (...args: unknown[]) => {
-				hostFlush.apply(target, args);
-				painted.push((args[0] as { innerHTML?: string } | undefined)?.innerHTML ?? '');
-			};
-		});
+	it('paints a native list the compiler lowered to a template', () => {
+		// A template-created `<list>` still records as an ordinary `list` host,
+		// which is what lets capture treat it like any other painted node while
+		// leaving its rows logical.
+		const { dom, main } = installEnvironment();
 
 		expect(
 			firstScreenRoot.render(TemplateFeedScene, {
@@ -1187,11 +1350,12 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 					['k1', 'row-1'],
 				],
 			}),
-		).toBeNull();
+		).not.toBeNull();
 
-		expect(painted.every((html) => !html.includes('id="feed"'))).toBe(true);
-		expect(dom.window.document.querySelector('#feed')).toBeNull();
-		expect(main.firstScreenSnapshot()).toBeNull();
+		const list = dom.window.document.querySelector('#feed');
+		expect(list).not.toBeNull();
+		expect(list!.children).toHaveLength(0);
+		expect(main.firstScreenSnapshot()).toMatchObject({ root: 1, version: 1 });
 		expect(main.diagnostics()).toEqual([]);
 	});
 
@@ -1209,10 +1373,9 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		expect(main.firstScreenSnapshot()).toBeNull();
 	});
 
-	// Declining before the tree is built must not cost a diagnostic. Each of
-	// these is a list defect the staged apply reports, and each has to keep being
-	// reported from where it is reported today rather than settling as a quiet
-	// `skipped`.
+	// Painting a list must not cost a diagnostic. Each of these is a list defect
+	// the staged apply reports, and each has to keep being reported from where it
+	// is reported today rather than settling as a quiet `skipped`.
 	it('still reports a nested native list rather than declining it silently', () => {
 		const { main } = installEnvironment();
 
@@ -1253,21 +1416,40 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		// The colliding host sits beside a valid list, so the pre-check's skip
 		// verdict is otherwise settled — the prepare walk that raises this
 		// diagnostic on the staged path would never run.
-		const { main } = installEnvironment();
+		const { dom, main } = installEnvironment();
 
 		expect(() => firstScreenRoot.render(CollidingFeedScene, {})).toThrow(
 			/conflicts with background event/,
 		);
 		expect(main.firstScreenSnapshot()).toBeNull();
+		// Reported before anything was painted, which is the part that makes this
+		// the same refusal the staged path gives: a page the applier declines
+		// leaves no half-built tree behind for the platform to show.
+		expect(dom.window.document.querySelectorAll('view')).toHaveLength(0);
 	});
 
 	it('still reports a duplicated main-thread ref rather than declining it silently', () => {
-		const { main } = installEnvironment();
+		const { dom, main } = installEnvironment();
 
 		expect(() => firstScreenRoot.render(DuplicateRefFeedScene, {})).toThrow(
 			/is assigned to hosts \d+ and \d+/,
 		);
 		expect(main.firstScreenSnapshot()).toBeNull();
+		expect(dom.window.document.querySelectorAll('view')).toHaveLength(0);
+	});
+
+	it('reports a duplicated main-thread ref carried by two rows of one native list', () => {
+		// Rows own no element until the platform asks for a cell, so neither ref is
+		// ever installed during the first screen and a mid-walk check would see
+		// nothing wrong. The staged path refuses this page from its record set, so
+		// this one owes the same refusal.
+		const { dom, main } = installEnvironment();
+
+		expect(() => firstScreenRoot.render(DuplicateRefRowScene, {})).toThrow(
+			/is assigned to hosts \d+ and \d+/,
+		);
+		expect(main.firstScreenSnapshot()).toBeNull();
+		expect(dom.window.document.querySelectorAll('list')).toHaveLength(0);
 	});
 
 	it('still reports a host that cannot build a list rather than declining it silently', () => {

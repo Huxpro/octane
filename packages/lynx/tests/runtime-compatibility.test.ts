@@ -103,6 +103,16 @@ describe('Lynx runtime compatibility evidence', () => {
 		expect(runtimeSourceGraph(resolve(LYNX_ROOT, 'src/root.ts'))).toEqual({
 			files: [
 				'src/core/background-lifecycle.ts',
+				// Issue #103 B0: both background cores are in the *source* graph,
+				// because the compile-time switch is a branch in `root.ts` and the
+				// bundler folds it. Exactly one survives a production build; the
+				// bytes are the claim and `benchmarks/lynx-bundle-size/core-switch.mjs`
+				// is what checks it. What this guard still owns is the thing it
+				// always owned: no main-thread-only module reaches the background.
+				'src/core/block-background.ts',
+				'src/core/block-core.ts',
+				'src/core/block-program.ts',
+				'src/core/block-root.ts',
 				'src/core/client-driver.ts',
 				'src/core/delta-protocol.ts',
 				'src/core/delta-shadow.ts',

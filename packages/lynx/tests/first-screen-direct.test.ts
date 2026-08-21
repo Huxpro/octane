@@ -404,7 +404,11 @@ describe('direct first-screen applier', () => {
 		);
 	});
 
-	it('declines native-list trees so the staged path keeps owning them', () => {
+	// A host with no `__CreateList` cannot build a `<list>` at all, and a page
+	// using a documented element is owed that diagnostic rather than a silent
+	// fallback. So this tree goes back to the staged path, which raises it. Every
+	// other list tree is built here now (issue #66 C3).
+	it('hands a native-list tree back to the staged path when the host offers no list PAPI', () => {
 		const listResult = {
 			envelope: Object.freeze({ renderer: 'lynx', version: 1, events: Object.freeze([]) }),
 			nodes: [
@@ -426,5 +430,202 @@ describe('direct first-screen applier', () => {
 			false,
 		);
 		expect(container.instanceCount).toBe(0);
+	});
+});
+
+// Issue #66 C3: the direct applier builds native lists too. A `<list>` is the
+// one host whose element is not created by `__CreateElement` and whose children
+// are not attached to it — the platform materializes a row through
+// `componentAtIndex` when it needs one — so the walk has to hold two orders at
+// once: create the list on the way down, where its unique ID lands, and publish
+// its rows on the way back up, once they are records.
+const FEED_ROW_PLAN = universalPlan('lynx', {
+	kind: 'host',
+	type: 'list-item',
+	bindings: [
+		['item-key', 0],
+		['reuse-identifier', 1],
+	],
+	children: [
+		{
+			kind: 'host',
+			type: 'text',
+			props: { class: 'row-label' },
+			children: [{ kind: 'slot', slot: 2 }],
+		},
+	],
+});
+
+// A sibling after the `<list>` on purpose. It is the node that would expose a
+// creation order the staged path does not produce: a list whose element were
+// created after its subtree would hand this sibling the lower unique ID.
+const FEED_PLAN = universalPlan('lynx', {
+	kind: 'host',
+	type: 'view',
+	props: { class: 'feed-shell' },
+	children: [
+		{
+			kind: 'host',
+			type: 'list',
+			props: { id: 'feed' },
+			children: [{ kind: 'slot', slot: 0 }],
+		},
+		{
+			kind: 'host',
+			type: 'text',
+			props: { class: 'feed-footer' },
+			children: [{ kind: 'text', value: 'end' }],
+		},
+	],
+});
+
+const Feed = defineUniversalComponent(
+	'lynx',
+	function Feed() {
+		const rows = [
+			{ key: 'a', label: 'alpha' },
+			{ key: 'b', label: 'beta' },
+			{ key: 'c', label: 'gamma' },
+		];
+		return universalValue(FEED_PLAN, [
+			universalFor(
+				rows,
+				(row) => row.key,
+				(row) => universalValue(FEED_ROW_PLAN, [row.key, 'feed-row', row.label]),
+			),
+		]);
+	},
+	{ module: '@octanejs/lynx/main-renderer' },
+);
+
+// The rows carry their loop key and their `item-key` separately, because they
+// are separate contracts: `@for` rejects a duplicate loop key on its own, before
+// any list rule is consulted, so a fixture reusing one value for both could
+// never reach the list's own uniqueness check.
+const DuplicateRowFeed = defineUniversalComponent(
+	'lynx',
+	function DuplicateRowFeed() {
+		const rows = [
+			{ key: 'a', itemKey: 'row', label: 'alpha' },
+			{ key: 'b', itemKey: 'row', label: 'beta' },
+		];
+		return universalValue(FEED_PLAN, [
+			universalFor(
+				rows,
+				(row) => row.key,
+				(row) => universalValue(FEED_ROW_PLAN, [row.itemKey, 'feed-row', row.label]),
+			),
+		]);
+	},
+	{ module: '@octanejs/lynx/main-renderer' },
+);
+
+function renderFeed() {
+	return renderLynxFirstScreen(Feed as never, {});
+}
+
+function listContainer() {
+	const papi = createFakePAPI({ list: true });
+	return {
+		papi,
+		container: createLynxHostContainer(papi, {
+			root: 1,
+			worklets: createLynxMainThreadWorkletRegistry(),
+		}),
+	};
+}
+
+describe('direct first-screen applier, native lists', () => {
+	it('paints a native list into the container the staged path would have produced', () => {
+		const direct = listContainer();
+		const directResult = renderFeed();
+		expect(
+			applyLynxFirstScreenDirect(direct.container, directResult.nodes, directResult.envelope),
+		).toBe(true);
+		const directTree = captureLynxFirstTree(direct.container);
+
+		const staged = listContainer();
+		const stagedResult = renderFeed();
+		prepareLynxHostBatch(staged.container, stagedResult.batch).apply();
+		const stagedTree = captureLynxFirstTree(staged.container);
+
+		expect(directTree).not.toBeNull();
+		expect(stagedTree).not.toBeNull();
+		// Includes every native id, so it also pins that the two appliers assign
+		// element identity in the same order — the list before its later sibling.
+		expect(directTree!.snapshot).toEqual(stagedTree!.snapshot);
+		expect(shape(direct.papi.pages[0]!)).toEqual(shape(staged.papi.pages[0]!));
+
+		// The rows are the half the snapshot deliberately does not carry: they were
+		// never painted, so they live in the main-local journal instead.
+		const directJournal = directTree![LYNX_FIRST_TREE_STATE];
+		const stagedJournal = stagedTree![LYNX_FIRST_TREE_STATE];
+		expect([...directJournal.logicalNodes.values()]).toEqual([
+			...stagedJournal.logicalNodes.values(),
+		]);
+		expect([...directJournal.lists.values()]).toEqual([...stagedJournal.lists.values()]);
+		expect([...directJournal.logicalNodes.values()].map((row) => row.type)).toEqual([
+			'list-item',
+			'text',
+			'#text',
+			'list-item',
+			'text',
+			'#text',
+			'list-item',
+			'text',
+			'#text',
+		]);
+	});
+
+	// The applier emits as it walks, so a list it cannot finish would fault
+	// halfway and leave a half-painted page — the one state the staged path never
+	// produces. It asks first instead, and a tree it cannot vouch for goes back to
+	// the staged path with nothing created, where the diagnostic is raised from
+	// where it has always been raised.
+	//
+	// The rows here reach the list through a keyed `@for`, so a range sits between
+	// the list and each `<list-item>` and the rows are not the list's own children
+	// in the tree the question is asked of. A reader stopping at the immediate
+	// children would find an empty list, wave it through, and fault at publish —
+	// which is exactly the half-painted page this exists to prevent.
+	it('refuses a malformed list before painting any of it', () => {
+		const { papi, container } = listContainer();
+		const result = renderLynxFirstScreen(DuplicateRowFeed as never, {});
+
+		expect(applyLynxFirstScreenDirect(container, result.nodes, result.envelope)).toBe(false);
+		expect(container.instanceCount).toBe(0);
+		expect(papi.pages[0]!.children).toHaveLength(0);
+
+		// Same container, same tree, staged: the report the application is owed.
+		expect(() => prepareLynxHostBatch(container, result.batch).apply()).toThrowError(
+			'item-key "row" is duplicated in one <list>.',
+		);
+	});
+
+	it('publishes the rows the platform will ask for, on a list it built directly', () => {
+		const { papi, container } = listContainer();
+		const result = renderFeed();
+		expect(applyLynxFirstScreenDirect(container, result.nodes, result.envelope)).toBe(true);
+
+		expect(papi.lists).toHaveLength(1);
+		const list = papi.lists[0]!;
+		// The rows reached native as metadata rather than as elements: three
+		// insertions, in authored order, and no child under the list itself.
+		expect(list.node.attributes['update-list-info']).toMatchObject({
+			insertAction: [
+				{ position: 0, type: 'list-item', 'item-key': 'a', 'reuse-identifier': 'feed-row' },
+				{ position: 1, type: 'list-item', 'item-key': 'b', 'reuse-identifier': 'feed-row' },
+				{ position: 2, type: 'list-item', 'item-key': 'c', 'reuse-identifier': 'feed-row' },
+			],
+		});
+		expect(list.node.children).toHaveLength(0);
+
+		// Driving the platform's own entry point is what proves the callbacks the
+		// list was created with are live and pointed at this container: a cell
+		// materializes, under the list, from a row that had no element at all.
+		const sign = list.componentAtIndex(list.node, papi.getUniqueId(list.node), 0, 0, false);
+		expect(sign).toBeGreaterThan(0);
+		expect(list.node.children).toHaveLength(1);
+		expect(shape(list.node.children[0]!)).toMatchObject({ type: 'list-item' });
 	});
 });

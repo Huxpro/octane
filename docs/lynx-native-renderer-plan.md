@@ -1294,6 +1294,7 @@ as a browser example.
 | --- | --- | --- |
 | Framework lifecycle/event hooks are private or React-specific | Prove public extension points or upstream a framework-neutral API before porting | Milestone 0 |
 | `universal.ts` pulls DOM runtime into native/PrimJS bundles | Extract a host-neutral native entry and protect DOM/Three output with tests/size baselines | Milestone 1 |
+| The universal ABI carries Lynx-only capabilities no other renderer uses | Inventoried in [`universal-renderer-architecture.md` §9](universal-renderer-architecture.md) — four compiler capability strings, six driver flags, and `mount-template-run`. Removal is gated on a background core that stops speaking the descriptor ABI (the Block-over-wire core, #103), not on the L5 cutover: both halves of today's Lynx path run through `octane/universal`, including `lynxBackgroundRenderer` at `target: 'universal'` | #58 L6 |
 | Rspeedy and Octane resolve incompatible Rsbuild/Rspack copies | Pin one tested graph; reject duplicate-core configurations with a diagnostic | Milestone 0–1 |
 | PAPI or template formats change across fast-moving 0.x releases | Exact initial pin, crosswalk, minimum/current lanes, protocol feature detection | Milestone 0 and 9 |
 | Generic host commands cannot express list recycling efficiently | Dedicated spike and capability; do not ship list as an eager scroll-view alias | Milestone 4 |
