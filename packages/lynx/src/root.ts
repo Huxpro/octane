@@ -20,10 +20,12 @@ import { createLynxBackgroundTransport, type LynxBackgroundTransport } from './c
 import type { LynxContextProxy, LynxMainThreadWorkletWireDescriptor } from './core/protocol.js';
 import type { LynxCreateSelectorQuery } from './core/nodes-ref.js';
 import {
+	LYNX_BLOCK_BACKGROUND_CORE,
 	lynxEnvironmentIsInjected,
 	readAmbientQueueMicrotask,
 	readLynxEnvironment,
 } from './core/environment.js';
+import { createLynxBlockBackgroundCore, type LynxBackgroundCore } from './core/block-background.js';
 import {
 	createLynxBackgroundFunctionRegistry,
 	installBackgroundCallBridge,
@@ -240,13 +242,20 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 			throw error;
 		}
 	})();
-	const universalRoot = (() => {
+	// The compile-time core switch (issue #103 B0). `LYNX_BLOCK_BACKGROUND_CORE`
+	// folds to a literal from the build plugin's `core` option, so exactly one
+	// arm survives in a production bundle and the other core's whole closure
+	// tree-shakes out. Everything around this — container, worklets, transport,
+	// lifecycle, native events — is shared, because only the core differs.
+	const backgroundCore: LynxBackgroundCore = (() => {
 		try {
-			const root = createUniversalRoot<LynxClientContainer, LynxPublicHandle>(
-				container,
-				createLynxClientDriver(container),
-				{ scheduleMicrotask, transport },
-			);
+			const root = LYNX_BLOCK_BACKGROUND_CORE
+				? createLynxBlockBackgroundCore({ container, transport })
+				: createUniversalRoot<LynxClientContainer, LynxPublicHandle>(
+						container,
+						createLynxClientDriver(container),
+						{ scheduleMicrotask, transport },
+					);
 			transport.bindRoot(root);
 			return root;
 		} catch (error) {
@@ -332,13 +341,13 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 			if (typeof component !== 'function') {
 				return Promise.reject(new TypeError('Lynx root render() requires a component function.'));
 			}
-			return universalRoot.renderAsync(
+			return backgroundCore.renderAsync(
 				component as UniversalComponent<Props>,
 				props === undefined ? ({} as Props) : props,
 			);
 		},
 		flushTransport() {
-			return universalRoot.flushTransport();
+			return backgroundCore.flushTransport();
 		},
 		get ready() {
 			return transport.ready;
@@ -361,7 +370,7 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 				let unmountFailed = false;
 				let unmountError: unknown;
 				try {
-					await universalRoot.unmountAsync();
+					await backgroundCore.unmountAsync();
 				} catch (error) {
 					unmountFailed = true;
 					unmountError = error;
@@ -369,7 +378,7 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 				if (unmountFailed && transport.closedReason() !== null) {
 					transport.enableLogicalTeardown();
 					try {
-						await universalRoot.unmountAsync();
+						await backgroundCore.unmountAsync();
 					} catch (cleanupError) {
 						if (unmountError === undefined) unmountError = cleanupError;
 					}
