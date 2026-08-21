@@ -29,7 +29,7 @@
  * or by the caller, rather than mis-rendered.
  */
 
-import { sameLynxMainThreadPropValue } from './host-props.js';
+import { sameLynxUniversalHostPropValue } from './host-props.js';
 import type {
 	UniversalHostBatch,
 	UniversalHostCommand,
@@ -427,10 +427,13 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		// identity is never true there and an identity-only compare would re-send an
 		// unchanged handler on every re-render. The structural compare runs only for
 		// the slots the template marked, so an ordinary slot still costs one
-		// `Object.is`.
+		// `Object.is`. The catching comparator is load-bearing: a malformed
+		// descriptor already in the slot must decline equality and ship the update
+		// (the applier reports it in its own words), never throw here — otherwise a
+		// later valid value could not repair the slot through this API.
 		if (
 			template.mainThreadValues?.[valueIndex] === true
-				? sameLynxMainThreadPropValue(
+				? sameLynxUniversalHostPropValue(
 						template.valueNames[valueIndex]!,
 						block.values[valueIndex],
 						value,
