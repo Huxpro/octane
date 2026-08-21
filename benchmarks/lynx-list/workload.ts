@@ -452,6 +452,27 @@ function spread(values: readonly number[]): WorkSpread {
 	});
 }
 
+/**
+ * One recycle step measured through one window: release the outgoing cell,
+ * sample the enqueue half, admit the incoming item, close the sample. The
+ * narrow and wide workloads compare their numbers against each other, so the
+ * measurement window MUST be the same on both arms — which is why it exists
+ * once here rather than inline in each loop.
+ */
+function sampleRecycle(
+	environment: FakeLynxPAPI,
+	list: FakeNode,
+	releasedSign: number,
+	index: number,
+): { sign: number; enqueueWork: SampledPapiWork; stepWork: SampledPapiWork } {
+	environment.beginSample();
+	environment.leave(list, releasedSign);
+	const enqueueWork = environment.sampleSoFar();
+	const sign = environment.enter(list, index);
+	const stepWork = environment.endSample();
+	return { sign, enqueueWork, stepWork };
+}
+
 export function runLynxListAllocationWorkload(): LynxListAllocationResult {
 	const environment = new FakeLynxPAPI();
 	const container = createLynxHostContainer(environment.papi, { root: 1 });
@@ -501,11 +522,7 @@ export function runLynxListAllocationWorkload(): LynxListAllocationResult {
 	for (let index = VISIBLE_WINDOW_SIZE; index < LOGICAL_ITEM_COUNT; index++) {
 		const releasedSign = activeSigns.shift();
 		if (releasedSign === undefined) throw new Error('active native list window became empty.');
-		environment.beginSample();
-		environment.leave(list, releasedSign);
-		const enqueueWork = environment.sampleSoFar();
-		const sign = environment.enter(list, index);
-		const stepWork = environment.endSample();
+		const { sign, enqueueWork, stepWork } = sampleRecycle(environment, list, releasedSign, index);
 		enqueueWrites.push(enqueueWork.writes);
 		requestWrites.push(stepWork.writes - enqueueWork.writes);
 		reuseWrites.push(stepWork.writes);
@@ -703,11 +720,7 @@ export function runWideRowReuseWorkload(): WideRowReuseResult {
 	for (let index = VISIBLE_WINDOW_SIZE; index < LOGICAL_ITEM_COUNT; index++) {
 		const releasedSign = activeSigns.shift();
 		if (releasedSign === undefined) throw new Error('active native list window became empty.');
-		environment.beginSample();
-		environment.leave(list, releasedSign);
-		const enqueueWork = environment.sampleSoFar();
-		const sign = environment.enter(list, index);
-		const stepWork = environment.endSample();
+		const { sign, enqueueWork, stepWork } = sampleRecycle(environment, list, releasedSign, index);
 		enqueueWrites.push(enqueueWork.writes);
 		requestWrites.push(stepWork.writes - enqueueWork.writes);
 		writes.push(stepWork.writes);
