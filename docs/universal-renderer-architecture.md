@@ -636,6 +636,7 @@ interface UniversalHostDriver<Container, PublicInstance> {
 	};
 	readonly updates?: {
 		classify(type: string, previous: object, next: object): 'update' | 'recreate';
+		same?(name: string, previous: unknown, next: unknown): boolean;
 	};
 	readonly portals?: UniversalPortalCapability<Container>;
 	prepareBatch(

@@ -561,6 +561,34 @@ describe('Lynx block core — main-thread worklets on a template run', () => {
 		).toBe(99);
 	});
 
+	it('lets a valid value repair a slot holding a malformed descriptor', () => {
+		const built = workletScene();
+		built.core.fillForSlot(
+			built.slot,
+			WORKLET_ROW,
+			[1],
+			(id) => id,
+			(id) => [{ _wkltId: 'block-core:tap', _c: { values: [id] } }, { _wvid: `row:${id}` }],
+		);
+		built.apply();
+
+		// The core does not validate slot values — the applier reports a malformed
+		// descriptor in its own words at its own point in the commit.
+		expect(built.core.setKeyedSlotValue(built.slot, 1, 0, { _wkltId: '' })).toBe(true);
+		expect(() => built.apply()).toThrowError();
+
+		// The write API must stay usable afterwards: comparing the replacement
+		// against the malformed previous value declines equality rather than
+		// throwing, so the repair ships instead of the slot being wedged forever.
+		expect(
+			built.core.setKeyedSlotValue(built.slot, 1, 0, {
+				_wkltId: 'block-core:tap',
+				_c: { values: [7] },
+			}),
+		).toBe(true);
+		expect(built.core.flush()).not.toBeNull();
+	});
+
 	it('refuses a run whose rows would claim one main-thread ref twice', () => {
 		const built = workletScene();
 		built.core.fillForSlot(

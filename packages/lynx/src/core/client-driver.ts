@@ -19,7 +19,7 @@ import {
 	type LynxPublicHandleDelta,
 	type LynxHostAttachmentChange,
 } from './protocol.js';
-import { classifyLynxHostPropUpdate } from './host-props.js';
+import { classifyLynxHostPropUpdate, sameLynxUniversalHostPropValue } from './host-props.js';
 import { parseLynxNativeEventProp } from './native-events.js';
 import { isLynxNativeResource } from '../resource.js';
 import {
@@ -1574,6 +1574,7 @@ export function createLynxClientDriver(
 			) {
 				return classifyLynxHostPropUpdate(type, previous, next);
 			},
+			same: sameLynxUniversalHostPropValue,
 		}),
 		prepareBatch() {
 			throw new Error(
