@@ -3,6 +3,7 @@ import { installLynxTestingEnv, uninstallLynxTestingEnv } from '@lynx-js/testing
 import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
 import {
+	captureLynxFirstTree,
 	createLynxHostContainer,
 	disposeLynxHostContainer,
 	getLynxListDiagnostics,
@@ -1025,6 +1026,64 @@ describe('Lynx native list recycling', () => {
 			expect(addressable()).toEqual([selector]);
 
 			prepareLynxHostBatch(container, batch(3, largeListUnmount(4))).apply();
+			expect(disposeLynxHostContainer(container).errors).toEqual([]);
+		} finally {
+			environment.clearGlobal();
+			uninstallLynxTestingEnv(globalThis);
+			dom.window.close();
+		}
+	});
+
+	it('honors a first-batch public-instance request for a list row across adoption', () => {
+		const dom = new JSDOM();
+		installLynxTestingEnv(globalThis, { window: dom.window as never });
+		const environment = globalThis.lynxTestingEnv;
+		environment.clearGlobal();
+		environment.switchToMainThread();
+		try {
+			const papi = createLynxElementPAPI(globalThis);
+			const page = papi.createPage('entry', 0);
+			// The first screen paints the same list before the background exists.
+			const source = createLynxHostContainer(papi, { root: 1, page });
+			prepareLynxHostBatch(source, batch(1, largeListMount(2))).apply();
+			const firstTree = captureLynxFirstTree(source);
+
+			// The background's first batch adopts it, and — announcing — names the
+			// row a ref will query. The row is logical, so the request must survive
+			// adoption until a cell materializes it.
+			const container = createLynxHostContainer(papi, {
+				root: 1,
+				page,
+				announcesPublicInstances: true,
+			});
+			const requested = idsAt(1).item;
+			const prepared = prepareLynxHostBatch(
+				container,
+				batch(1, [...largeListMount(2), { op: 'ensure-public-instance', id: requested }]),
+				{ firstTree },
+			);
+			expect(prepared.firstTreeAction).toBe('adopt');
+			prepared.apply();
+
+			const list = (container.page as unknown as Element).querySelector('#feed')!;
+			const addressable = (): string[] =>
+				[...list.querySelectorAll(`[${LYNX_NODES_REF_ATTRIBUTE}]`)]
+					.map((node) => node.getAttribute(LYNX_NODES_REF_ATTRIBUTE)!)
+					.filter((value) => value !== '');
+
+			// A row nothing asked for materializes unaddressed…
+			globalThis.elementTree.enterListItemAtIndex(list as never, 0);
+			expect(addressable()).toEqual([]);
+
+			// …and the requested row answers the moment it owns a cell.
+			const selector = `r1-h${requested}-g1`;
+			globalThis.elementTree.enterListItemAtIndex(list as never, 1);
+			expect(addressable()).toEqual([selector]);
+			expect(
+				list.querySelectorAll(`[${LYNX_NODES_REF_ATTRIBUTE}="${selector}"]`)[0]!.textContent,
+			).toBe('Row 1');
+
+			prepareLynxHostBatch(container, batch(2, largeListUnmount(2))).apply();
 			expect(disposeLynxHostContainer(container).errors).toEqual([]);
 		} finally {
 			environment.clearGlobal();
