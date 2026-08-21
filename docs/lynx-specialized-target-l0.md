@@ -215,7 +215,9 @@ prerequisites.
 Native list descriptors and recycling callbacks port as-is; a list cell body
 is a template, so `componentAtIndex` calls its create function directly and
 cell updates are `SET` deltas. The native-lists-excluded-from-adoption
-divergence is revisited in L4, not here.
+divergence is closed: issue #66 Phase C made a painted `<list>` adoptable on the
+universal path (§8), so L4 inherits an adoptable list rather than an excluded
+one.
 
 ## 4. Cost model
 
@@ -335,6 +337,83 @@ in §3 and the extraction-first decision in §5.
 
 ## 8. Landed increments
 
+- **A native `<list>` page paints synchronously and is adopted (issue #66
+  Phase C).** Adoption refused every tree holding a `<list>`, so the app shape a
+  fast first screen exists for was the one shape that never got one. It is
+  adoptable now, and the reason it looked impossible is a measurement nobody had
+  taken: at first screen a native list has **no cells at all**. The platform
+  materializes a row through `componentAtIndex` when it needs one, so a
+  1,000-row feed paints exactly one node — the `<list>` itself — and every row is
+  a live record with no element behind it.
+
+  That collapses the problem twice. What is painted is one node, so transfer is
+  one node. And the state that cannot be serialized — cells by native sign,
+  recycle pools, retained items, the three recycling callbacks — is main-local
+  and never crosses the wire, so adoption **moves it by reference** instead of
+  describing it. Only the callbacks cannot come along: they close over the
+  container adoption is about to empty, so they are rebound against the target
+  through `bindNativeListCallbacks` and installed with
+  `listPAPI.updateCallbacks`. No wire format changes. The snapshot keeps
+  `format: 1` and its one-painted-node-each contract; the rows live in the
+  main-local journal beside it, because a peer that validates every inbound
+  message would reject a widened format to describe nodes no peer reads.
+
+  What adoption must prove for a list is therefore: the painted nodes agree, the
+  list's items agree, and the platform has not materialized a cell since capture.
+  The last one is a recycling epoch — `enterCount + leaveCount + createdCells +
+  reusedCells` — read at capture and re-read at adoption. A list that woke up in
+  between holds physical state the captured tree does not describe, so the page
+  repairs. Capture declines only a list that had already materialized a cell,
+  which is why the Phase C opener's pre-check below is deleted here: it cannot
+  predict that, and left in place it would decline every list page.
+
+  Measured on the real `installLynxMainThread` first-screen path against the
+  lowering compiled `.tsrx` produces (a `template`-created shell wrapping the
+  `<list>`, rows through a keyed `@for`), with the background thread stood in for
+  by a second render whose batch is dispatched over the real ContextProxy. Arms
+  taken by checking out the three changed source files; 21 samples per pass after
+  3 warmups, each in a fresh environment. Every head sample was asserted to have
+  actually adopted (`ack.adoption === 'adopted'`, no diagnostics), so these are
+  adoption timings and not repairs:
+
+  | page | arm | first paint | total main-thread | PAPI |
+  | --- | --- | --- | --- | --- |
+  | 1,000 rows | declines | 70.4 ms | 70.4 ms | 12 |
+  | 1,000 rows | paints and adopts | **42.8 ms** | 117.1 ms | 21 |
+  | 50 rows | declines | 5.6 ms | 5.6 ms | 12 |
+  | 50 rows | paints and adopts | **2.9 ms** | 7.1 ms | 21 |
+
+  The extra total work is not the compare walk, which is what I expected and it
+  is wrong. Timed directly at 1,000 rows: the paint is 43.2 ms, `compareFirstTree`
+  11.1 ms, `transferFirstTree` 0.8 ms, and the commit's remaining 59.0 ms is the
+  same `prepareLynxHostBatch` record walk the declining arm also pays — adoption
+  skips the mutation, not the preparation. Transfer is 0.8 ms because two nodes
+  are physical. So the trade is: the page appears after the paint instead of
+  after the background's commit, and the main thread pays for the paint plus a
+  12 ms agreement check to make that happen.
+
+  Adoption's host traffic is **constant, not per-row**: 21 calls against 12 at
+  both 50 and 1,000 rows, because an unscrolled list materializes no cells at any
+  size.
+
+  Both numbers understate the case. The harness dispatches the background commit
+  immediately, charging the declining arm 3.6 ms for "the background produced its
+  first commit" where a real page pays a bundle load and a cold render on another
+  thread — which the painting arm's first paint does not wait for at all.
+
+  Two checks in the comparison are unguarded, and both are declared rather than
+  quietly kept. The list-items check cannot fail alone today: every descriptor
+  field comes from a row's id, its position, and four props, all of which the node
+  walk already compares more strictly, so a differing row set differs there first.
+  It states the `update-list-info` agreement where adoption relies on it, and it
+  becomes load-bearing the moment list metadata stops being a plain prop. The
+  ownership equality — relaxed from "every record owns a node" to "every record
+  owns a node or is a logical row" — is likewise unreachable from any test, and
+  that is not new: disabling it entirely on the parent commit leaves all 434 lynx
+  tests passing. It is an internal invariant no black-box test can violate, and
+  the relaxation keeps it an exact count of the logical rows the capture walk
+  itself emitted rather than weakening it to an inequality.
+
 - **An unadoptable first screen is declined before it is painted (issue #66
   Phase C).** A page holding a native `<list>` built its whole command batch,
   created a host container, ran the staged prepare and apply, planned the native
@@ -402,6 +481,10 @@ in §3 and the extraction-first decision in §5.
   tests hold each of those diagnostics to its current site. `captureLynxFirstTree`
   stays the authority: a shape the pre-check does not claim settles exactly as it
   does today, having paid for the paint.
+
+  **Deleted by the increment above**, which made a list page adoptable and so
+  left this predicate declining pages that no longer need declining. Its
+  measurement stands as the record of what build-and-discard cost.
 
 - **First-screen records built without spread-and-delete (issue #66 Phase B).**
   Every host the first screen rendered copied its incoming props into a new

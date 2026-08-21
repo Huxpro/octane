@@ -1,4 +1,5 @@
 import type { UniversalEventPriority, UniversalSerializableValue } from 'octane/universal/native';
+import type { LynxListItemDescriptor } from './list.js';
 import type { LynxElementRef } from './papi.js';
 
 /** Clone-safe event identity retained while ordinary events wait for adoption. */
@@ -21,6 +22,50 @@ export interface LynxFirstTreeNodeSnapshot {
 	readonly props: Readonly<Record<string, UniversalSerializableValue>>;
 	readonly visible: boolean;
 	readonly events: readonly LynxFirstTreeEventSnapshot[];
+}
+
+/**
+ * A record the main runtime painted logically but not physically.
+ *
+ * Native list rows are the only such records. The platform materializes a row
+ * through `componentAtIndex` when it needs one, so an unscrolled first screen
+ * holds every row as a live record with no element behind it — a five-row list
+ * paints exactly one node, the `<list>` itself.
+ *
+ * These stay in the main-local journal rather than in the snapshot. The
+ * snapshot's contract is one painted physical node each, which is what its
+ * `nativeId` means and what its wire validator enforces; widening that to carry
+ * rows would change a format every peer validates on receipt, to describe nodes
+ * no peer reads. The background only ever tests whether a first tree was offered
+ * at all.
+ */
+export interface LynxFirstTreeLogicalNodeSnapshot {
+	readonly id: number;
+	/** Never painted, so there is no physical identity to compare. */
+	readonly nativeId: null;
+	readonly type: string;
+	readonly generation: number;
+	readonly parent: number | null;
+	readonly children: readonly number[];
+	readonly props: Readonly<Record<string, UniversalSerializableValue>>;
+	readonly visible: boolean;
+	readonly events: readonly LynxFirstTreeEventSnapshot[];
+}
+
+/** Either half of a captured tree: painted nodes and the rows behind them. */
+export type LynxFirstTreeCapturedNode =
+	LynxFirstTreeNodeSnapshot | LynxFirstTreeLogicalNodeSnapshot;
+
+/** Main-local record of one native list as the captured tree left it. */
+export interface LynxFirstTreeListJournal {
+	readonly host: number;
+	readonly items: readonly LynxListItemDescriptor[];
+	/**
+	 * Native recycling traffic this list had seen when it was captured. Adoption
+	 * re-reads it: any `componentAtIndex` or `enqueueComponent` call in between
+	 * moves it, and a moved epoch means the captured picture is stale.
+	 */
+	readonly epoch: number;
 }
 
 /**
@@ -72,6 +117,10 @@ export interface LynxFirstTreeState<Node extends LynxElementRef> {
 	owner: unknown;
 	status: 'available' | 'transferred' | 'disposed' | 'released';
 	readonly eventsByToken: Map<string, LynxResolvedFirstTreeEvent>;
+	/** Records under a native list that the platform has not asked for yet. */
+	readonly logicalNodes: Map<number, LynxFirstTreeLogicalNodeSnapshot>;
+	/** One entry per native list the captured tree holds, keyed by host ID. */
+	readonly lists: Map<number, LynxFirstTreeListJournal>;
 }
 
 /** Opaque main-local ownership journal paired with its clone-safe snapshot. */
@@ -84,11 +133,15 @@ export function createLynxFirstTree<Node extends LynxElementRef>(
 	snapshot: LynxFirstTreeSnapshot,
 	owner: unknown,
 	eventsByToken: Map<string, LynxResolvedFirstTreeEvent>,
+	logicalNodes: Map<number, LynxFirstTreeLogicalNodeSnapshot>,
+	lists: Map<number, LynxFirstTreeListJournal>,
 ): LynxFirstTree<Node> {
 	const state: LynxFirstTreeState<Node> = {
 		owner,
 		status: 'available',
 		eventsByToken,
+		logicalNodes,
+		lists,
 	};
 	return Object.freeze({ snapshot, [LYNX_FIRST_TREE_STATE]: state });
 }
@@ -102,6 +155,8 @@ export function releaseLynxFirstTree(firstTree: LynxFirstTree): void {
 	}
 	state.owner = null;
 	state.eventsByToken.clear();
+	state.logicalNodes.clear();
+	state.lists.clear();
 	state.status = 'released';
 }
 

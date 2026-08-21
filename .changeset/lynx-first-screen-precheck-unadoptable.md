@@ -49,3 +49,9 @@ and that is a diagnostic the application needs rather than a page to skip.
 `captureLynxFirstTree` remains the authority on adoption. A shape the pre-check
 does not claim still settles exactly as it does today, having paid for the
 paint.
+
+Removed again in this same release, by the change that taught adoption to carry
+a native `<list>`. A page holding a list is painted and adopted now, so a
+predicate that declines every such tree would decline exactly the pages that
+gained a first screen. What it measured stands: that is what building a first
+screen and discarding it cost.
