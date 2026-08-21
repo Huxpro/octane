@@ -423,6 +423,37 @@ export function sameLynxMainThreadPropValue(
 			);
 }
 
+/**
+ * The universal core's `updates.same` for a Lynx host: which props this
+ * renderer will answer about, and its answer.
+ *
+ * The core consults this only for a prop it has already judged changed, so
+ * every `false` here leaves the commit exactly as it would have been. The one
+ * name worth answering about is a `main-thread:` prop, whose value wraps a
+ * function the compiler rebuilds every render — identity is never true there,
+ * so without this the core re-sends an unchanged handler on every commit, one
+ * full-prop-bag update per worklet-bearing host.
+ *
+ * Saying "equal" here is sound because `planLynxHostPropPatch` decides the same
+ * question the same way: it decodes both sides and compares structurally, so an
+ * update this suppresses is one the applier would have turned into an empty
+ * patch. A malformed descriptor stays the applier's to report — decoding throws
+ * there in its own words at its own point in the commit, and declining to call
+ * it equal ships the update that lets it.
+ */
+export function sameLynxUniversalHostPropValue(
+	name: string,
+	previous: unknown,
+	next: unknown,
+): boolean {
+	if (!name.startsWith(MAIN_THREAD_PREFIX)) return false;
+	try {
+		return sameLynxMainThreadPropValue(name, previous, next);
+	} catch {
+		return false;
+	}
+}
+
 const NO_MAIN_THREAD_EVENT_PROPS: readonly string[] = Object.freeze([]);
 const NO_MAIN_THREAD_EVENT_PATCHES: readonly LynxMainThreadEventPatch[] = Object.freeze([]);
 const NO_ATTRIBUTE_PATCHES: readonly LynxAttributePatch[] = Object.freeze([]);

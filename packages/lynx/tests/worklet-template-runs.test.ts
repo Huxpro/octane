@@ -109,6 +109,29 @@ const Scene = defineUniversalComponent(
 	},
 );
 
+/**
+ * The same shape with a capture the caller can move, so "the handler changed"
+ * and "the handler was rebuilt" can be told apart.
+ */
+const CapturingScene = defineUniversalComponent(
+	LYNX_TRANSPORT_RENDERER,
+	({ rows, armed }: { rows: readonly Row[]; armed: boolean }) => {
+		const record = bindThreadFunction('background', RECORD, () => []);
+		const onTap = bindThreadFunction('main-thread', TAP, () => [record, armed]);
+		return universalValue(PAGE_PLAN, [
+			universalFor(
+				rows,
+				(row) => row.id,
+				(row) => universalValue(ROW_PLAN, [row.id, onTap, row.label]),
+				null,
+				false,
+				false,
+				true,
+			),
+		]);
+	},
+);
+
 interface InstalledEnvironment {
 	readonly dom: JSDOM;
 	readonly env: LynxTestingEnv;
@@ -271,19 +294,45 @@ describe('Lynx worklet template runs', () => {
 		// the host the run installed it on, and that host's `destroy` released it.
 		await expect(call(executions[1])).rejects.toThrow();
 
-		// The survivors are still callable — through the execution this frame
-		// carries for them, not the one the run did. `bindThreadFunction` returns a
-		// fresh tagged function every render, so the universal path sees the prop
-		// change and re-sends it, and taking ownership of the new execution is what
-		// releases the old. That re-send is a cost of its own, measured and left to
-		// the next unit on #103; what it must not do is drop a live callback.
-		const replaced = removal.flatMap((command) => (command.op === 'update' ? [command] : []));
-		expect(replaced).toHaveLength(2);
-		for (const command of replaced) {
+		// The survivors keep the executions the run gave them. Their handler names
+		// the same thing this render as last, so the frame carries nothing for them
+		// and there is nothing to take their executions away: a row's teardown
+		// reaches that row's hosts and stops there.
+		await expect(call(executions[0])).resolves.toBe('recorded');
+		await expect(call(executions[2])).resolves.toBe('recorded');
+	});
+
+	it('re-sends a row handler only when the handler changes', async () => {
+		const { commits } = installEnvironment();
+		const list = rows(3);
+
+		backgroundRoot = createLynxRoot();
+		await backgroundRoot.render(CapturingScene, { rows: list, armed: false });
+		await backgroundRoot.flushTransport();
+		const mounted = commits.length;
+
+		// `bindThreadFunction` returns a fresh tagged function every render, so an
+		// identity-only prop diff would call every row's handler changed and re-send
+		// its whole prop bag — one update per worklet-bearing row, per render,
+		// forever. The list is unchanged here, so a plain row emits nothing and a
+		// worklet row must emit nothing too.
+		await backgroundRoot.render(CapturingScene, { rows: [...list], armed: false });
+		await backgroundRoot.flushTransport();
+		expect(commits.slice(mounted).flat()).toEqual([]);
+
+		// The handler's captures are what it will act on, so a change in them is a
+		// change in the handler: suppressing that update would leave every row
+		// tapping on stale state. Only the rows whose capture moved are re-sent.
+		await backgroundRoot.render(CapturingScene, { rows: list, armed: true });
+		await backgroundRoot.flushTransport();
+		const armed = commits.slice(mounted).flat();
+		expect(armed.map((command) => command.op)).toEqual(['update', 'update', 'update']);
+		for (const command of armed) {
+			if (command.op !== 'update') throw new Error('Expected an update.');
 			const descriptor = command.props['main-thread:bindtap'] as {
-				_c: { values: readonly Record<string, unknown>[] };
+				_c: { values: readonly unknown[] };
 			};
-			await expect(call(descriptor._c.values[0]!._execId)).resolves.toBe('recorded');
+			expect(descriptor._c.values[1]).toBe(true);
 		}
 	});
 });

@@ -36,6 +36,7 @@ import {
 	LYNX_CSS_SCOPE_PROP,
 	classifyLynxHostPropUpdate,
 	planLynxHostPropPatch,
+	sameLynxUniversalHostPropValue,
 	type LynxHostPropPatch,
 	type LynxMainThreadRefDescriptor,
 	type LynxMainThreadWorkletDescriptor,
@@ -5987,6 +5988,7 @@ export function createLynxHostDriver<
 			) {
 				return classifyLynxHostPropUpdate(type, previous, next);
 			},
+			same: sameLynxUniversalHostPropValue,
 		}),
 		prepareBatch(container, batch, _context) {
 			return prepareLynxHostBatch(container, batch);
