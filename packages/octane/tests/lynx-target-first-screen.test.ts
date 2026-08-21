@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 import { compile } from '../src/compiler/compile.js';
 import { lynxMainThreadRenderer } from '../../lynx/src/config.js';
 import * as MainRenderer from '../../lynx/src/main-renderer.js';
+import * as MainWorklets from '../../lynx/src/main-worklets.js';
 import {
 	applyLynxFirstScreenDirect,
 	captureLynxFirstTree,
@@ -22,6 +23,7 @@ import {
 	prepareLynxHostBatch,
 } from '../../lynx/src/core/host-driver.js';
 import { LYNX_FIRST_TREE_STATE } from '../../lynx/src/core/first-screen.js';
+import { createLynxMainThreadWorkletRegistry } from '../../lynx/src/core/worklets.js';
 import { createFakePAPI, shape } from '../../lynx/tests/_fixtures/fake-element-papi.js';
 
 const SOURCE = `import { useCallback, useState } from 'octane';
@@ -73,15 +75,15 @@ function compiled(target: 'lynx' | 'universal'): string {
 function componentFor(compiledCode: string, exportName: string): SceneComponent {
 	const rewritten = compiledCode
 		.replace(
-			/import\s*\{([\s\S]*?)\}\s*from\s*["']@octanejs\/lynx\/main-renderer["'];/g,
+			/import\s*\{([\s\S]*?)\}\s*from\s*["']@octanejs\/lynx(?:\/[\w-]+)?["'];/g,
 			(_match, specifiers: string) =>
 				`const {${specifiers.replace(/\s+as\s+/g, ': ')}} = __universal;`,
 		)
-		.replace(/import\s*\{([\s\S]*?)\}\s*from\s*["']@octanejs\/lynx\/main-worklets["'];/g, '')
 		.replace(`export const ${exportName} =`, `const ${exportName} =`);
-	return new Function('__universal', `${rewritten}\nreturn ${exportName};`)(
-		MainRenderer,
-	) as SceneComponent;
+	return new Function('__universal', `${rewritten}\nreturn ${exportName};`)({
+		...MainRenderer,
+		...MainWorklets,
+	}) as SceneComponent;
 }
 
 function sceneFor(target: 'lynx' | 'universal'): SceneComponent {
@@ -299,5 +301,101 @@ describe('lynx-target native list, end to end', () => {
 		expect(lynx).toContain('"type": "list"');
 
 		expectSameAcrossCells(HELD_SOURCE, 'Held');
+	});
+});
+
+// The last encoding this pairing ships and nothing drives: a `main-thread:` prop.
+// `lynxTemplateEligible` refuses a bare `ref` binding but says nothing about a
+// namespaced one, so `main-thread:ref` and a main-thread event lower into the
+// create function — and `p:main-thread:ref` is verbatim one of the slot kinds
+// #87 read out of the real Rspeedy `main.lynx.bundle` string table.
+//
+// Every committed test of that wiring hands the driver a hand-written
+// `{_wvid}`/`{_wkltId}` descriptor. This compiles one, so the worklet the
+// compiler actually emits — id, captures, and all — is the one that gets
+// painted.
+const WORKLET_SOURCE = `import { useMainThreadRef } from '@octanejs/lynx';
+
+export function Panel() @{
+	const boxRef = useMainThreadRef<unknown>(null);
+	function onTapMTS(event: unknown) {
+		'main thread';
+		boxRef.current;
+	}
+	<view class="panel">
+		<view class="box" main-thread:ref={boxRef} main-thread:bindtap={onTapMTS}>
+			<text class="caption">tap</text>
+		</view>
+	</view>
+}
+`;
+
+interface WorkletCell {
+	readonly tree: unknown;
+	readonly snapshot: unknown;
+}
+
+function paintWorklet(target: 'lynx' | 'universal', applier: 'direct' | 'staged'): WorkletCell {
+	const component = componentFor(
+		compileAt(WORKLET_SOURCE, '/src/Panel.lynx.tsrx', target),
+		'Panel',
+	);
+	const result = MainRenderer.renderLynxFirstScreen(component, {});
+	const papi = createFakePAPI();
+	const container = createLynxHostContainer(papi, {
+		root: 1,
+		worklets: createLynxMainThreadWorkletRegistry(),
+	});
+	if (applier === 'direct') {
+		expect(applyLynxFirstScreenDirect(container, result.nodes, result.envelope)).toBe(true);
+	} else {
+		prepareLynxHostBatch(container, result.batch).apply();
+	}
+	const captured = captureLynxFirstTree(container);
+	expect(captured).not.toBeNull();
+	return { tree: shape(papi.pages[0]!), snapshot: captured!.snapshot };
+}
+
+describe('lynx-target main-thread worklets, end to end', () => {
+	it('lowers a namespaced main-thread prop into the create function', () => {
+		const lynx = compileAt(WORKLET_SOURCE, '/src/Panel.lynx.tsrx', 'lynx');
+		const universal = compileAt(WORKLET_SOURCE, '/src/Panel.lynx.tsrx', 'universal');
+		// The slot kinds, not just the presence of a template: these two strings
+		// are what the production bundle carries, so a lowering that stopped
+		// emitting them would be a different program than the one that ships.
+		expect(lynx).toContain('"slots": ["p:main-thread:ref", "p:main-thread:bindtap"]');
+		expect(lynx).toContain('.h("view")');
+		expect(universal).not.toContain('"kind": "template"');
+	});
+
+	it('paints the compiler-emitted worklet, with its captures, on every cell', () => {
+		const universalStaged = paintWorklet('universal', 'staged');
+
+		// Non-vacuity is asserted, not assumed: the four cells could agree on a
+		// tree that wired nothing at all. The descriptor has to be on the node,
+		// and its capture has to be the same ref cell the prop bound.
+		const box = (universalStaged.tree as { children: { children: unknown[] }[] }).children[0]!
+			.children[0] as {
+			classes: string;
+			events: [string, { type: string; value: { _wkltId: string; _c: { values: unknown[] } } }][];
+		};
+		expect(box.classes).toBe('box');
+		const [name, descriptor] = box.events[0]!;
+		expect(name).toBe('bindEvent:tap');
+		expect(descriptor.type).toBe('worklet');
+		expect(descriptor.value._wkltId).toMatch(/^tf_/);
+		const capture = descriptor.value._c.values[0] as { _wvid: string };
+		const refProp = (
+			universalStaged.snapshot as { nodes: { props: Record<string, { _wvid?: string }> }[] }
+		).nodes[1]!.props['main-thread:ref']!;
+		expect(capture._wvid).toBe(refProp._wvid);
+
+		for (const [cell, painted] of [
+			['universal+direct', paintWorklet('universal', 'direct')],
+			['lynx+staged', paintWorklet('lynx', 'staged')],
+			['lynx+direct', paintWorklet('lynx', 'direct')],
+		] as const) {
+			expect({ cell, ...painted }).toEqual({ cell, ...universalStaged });
+		}
 	});
 });
