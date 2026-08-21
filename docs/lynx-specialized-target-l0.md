@@ -337,6 +337,57 @@ in §3 and the extraction-first decision in §5.
 
 ## 8. Landed increments
 
+- **L5 bundle re-audit, on the unmerged #66 stack (issue #66 Phase D).** #58's
+  cutover gate wants main-thread gzip "meaningfully toward the ~51 KB median
+  (propose ≤1.5×)", and #66 §6 records that #95 already repaid #63's module-level
+  trade, so this milestone re-verifies rather than re-pays. Two arms, same host,
+  deterministic bytes: `origin/new-lynx` `5d61724` against the stack tip
+  `566700e`. The full report is
+  [`benchmarks/lynx-bundle-size/results/stack-66-reaudit.md`](../benchmarks/lynx-bundle-size/results/stack-66-reaudit.md).
+
+  Four findings.
+
+  **The #63 trade stays repaid.** Nothing in the stack re-incurs it.
+
+  **Every frozen budget but one is already breached on `new-lynx`**, before a
+  commit of this stack — they were calibrated on upstream `ffadd397`. The suite
+  fails on the base and on the head, first at `preview main gzip` both times. A
+  gate that is red on its own base cannot report a regression, so it needs a
+  deliberate recalibration on a chosen tree; doing that from the branch that grew
+  the number would launder the growth into the baseline, so this audit does not.
+
+  **The stack costs +1,721 B main gzip (+2.17%), and the ladder says exactly
+  where.** Seven cut points, preview main gzip:
+
+  | arm | preview main gzip | Δ base | step |
+  | --- | ---: | ---: | ---: |
+  | base `new-lynx` | 79,491 | — | — |
+  | #103 U2b block core | 79,491 | +0 | **+0** |
+  | Phase B end | 79,794 | +303 | +303 |
+  | C1 decline | 80,108 | +617 | +314 |
+  | C2a binding | 80,161 | +670 | +53 |
+  | C2b adoption | 80,682 | +1,191 | +521 |
+  | C3 direct lists | 81,212 | **+1,721** | +530 |
+
+  The specialized background core taxes the main thread **nothing** — 0 bytes on
+  preview main, −1 on IFR main — and puts its whole +1,468 B where it runs, on
+  the background program. Every byte of main-thread growth is first-screen work,
+  and it is a trade with a measured other side: the 1,000-row native-list page
+  appears at 29.5 ms instead of 70.4 ms. On the rows-0 app the split is total:
+  main raw +4,202 B, background raw **+0**.
+
+  **The ≤1.5× target is missed on the gated fixture, and was missed before this
+  stack.** Preview main gzip is 1.585× the 51,228 B median, from 1.552× on the
+  base; the rows-0 app's main program is 1.187× and meets it. The two fixtures
+  disagree because they are different applications, and #58 does not say which
+  answers the gate. Closing it needs what that bullet actually names — deleting
+  the plan interpreter, batch pipeline, and recursive validator from the main
+  bundle — and none is deletable yet: the staged path is still the fallback the
+  direct applier needs, and `validateLynxBackgroundInboundMessage` still runs on
+  every inbound message. The median itself is a carried constant, not a
+  reproducible measurement: only the three references' web fixtures are vendored,
+  and nothing here rebuilds the five Lynx-mode configs it was taken over.
+
 - **A native `<list>` is painted by direct emission (issue #66 Phase C).** The
   direct first-screen applier writes the rendered record tree straight to the
   Element PAPI — no command batch, no prepared operation list, no cloned record
