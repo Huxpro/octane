@@ -266,7 +266,28 @@ export interface WireChassis {
 	readonly wireMessages: WireMessageSnapshot[];
 }
 
-export function createWireChassis(): WireChassis {
+/**
+ * The same chassis with its main thread not yet installed.
+ *
+ * A production Lynx background bundle starts before the main thread replies to
+ * its readiness request, so every batch composed in that window is composed
+ * without the negotiated capabilities. Nothing in the synchronous chassis can
+ * reach that state — installing the main thread first makes the handshake
+ * complete before the first render — so a caller that wants to measure it needs
+ * to choose when the handshake happens relative to the background's first
+ * render.
+ */
+export interface DeferredWireChassis {
+	readonly papi: FakeElementPAPI;
+	readonly contexts: ReturnType<typeof createContextPair>;
+	readonly diagnostics: Error[];
+	readonly backgroundTarget: Record<string, unknown>;
+	readonly wireMessages: WireMessageSnapshot[];
+	/** Install the real main-thread receiver on the main end of the pair. */
+	installMainThread(): ReturnType<typeof installLynxMainThread>;
+}
+
+export function createDeferredWireChassis(): DeferredWireChassis {
 	const contexts = createContextPair();
 	const papi = new FakeElementPAPI();
 	const diagnostics: Error[] = [];
@@ -275,11 +296,6 @@ export function createWireChassis(): WireChassis {
 		...papi.globals(),
 		lynx: { getJSContext: () => contexts.main },
 	};
-	const main = installLynxMainThread({
-		target: mainTarget,
-		context: contexts.main,
-		onDiagnostic: (error) => diagnostics.push(error),
-	});
 	const backgroundTarget = {
 		lynxCoreInject: { tt: {} as Record<string, unknown> },
 		lynx: {
@@ -297,10 +313,27 @@ export function createWireChassis(): WireChassis {
 	return {
 		papi,
 		contexts,
-		main,
 		diagnostics,
 		wireMessages: contexts.messages,
 		backgroundTarget: backgroundTarget as unknown as Record<string, unknown>,
+		installMainThread: () =>
+			installLynxMainThread({
+				target: mainTarget,
+				context: contexts.main,
+				onDiagnostic: (error) => diagnostics.push(error),
+			}),
+	};
+}
+
+export function createWireChassis(): WireChassis {
+	const chassis = createDeferredWireChassis();
+	return {
+		papi: chassis.papi,
+		contexts: chassis.contexts,
+		main: chassis.installMainThread(),
+		diagnostics: chassis.diagnostics,
+		wireMessages: chassis.wireMessages,
+		backgroundTarget: chassis.backgroundTarget,
 	};
 }
 
@@ -506,7 +539,7 @@ function labelTextOf(row: FakeNode): string {
 
 const macrotask = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
-async function settle(harness: Harness): Promise<void> {
+async function settle(harness: Pick<Harness, 'root'>): Promise<void> {
 	await harness.root.flushTransport();
 	for (let turn = 0; turn < 8; turn++) await Promise.resolve();
 }
@@ -517,7 +550,7 @@ async function settle(harness: Harness): Promise<void> {
  * MessageChannel, so every tick needs its own turn of the Node event loop.
  */
 async function until(
-	harness: Harness,
+	harness: Pick<Harness, 'root'>,
 	predicate: () => boolean,
 	what: string,
 	turns = 20_000,
@@ -768,6 +801,85 @@ export async function runTable(rows: number): Promise<TableRunResult> {
 	} finally {
 		await harness.dispose();
 		Math.random = previousRandom;
+	}
+}
+
+/**
+ * What the first screen costs in `nodes-ref` selectors, on both sides of the
+ * handshake.
+ *
+ * A `nodes-ref` selector is installed on demand: a commit that announces the
+ * hosts it will query lets the main thread skip every node nobody named. Only a
+ * commit composed while the negotiated capability was already live can make that
+ * announcement, and a production background composes its first batch before the
+ * main-ready reply reaches it. `runTable` cannot see the difference, because its
+ * main thread is installed before the first render and its wire is synchronous,
+ * so every commit it sends was composed after the handshake.
+ *
+ * These two arms differ in exactly one thing — whether the main thread exists
+ * when the background renders — and are otherwise the same app, the same tree,
+ * and the same counters. `before-render` is what `runTable` measures;
+ * `after-render` is the order production starts in.
+ *
+ * Build the workload with `__BENCH_AUTOROWS__` set to `rows`, or the first
+ * commit carries the shell alone and the rows arrive in a later one.
+ */
+export interface FirstScreenSelectorResult {
+	readonly rows: number;
+	readonly handshake: FirstScreenHandshake;
+	readonly rowsPainted: number;
+	readonly createdElements: number;
+	readonly createdSelectable: number;
+	readonly refSelectorInstalls: number;
+	readonly refSelectorClears: number;
+	readonly commits: number;
+	readonly commands: number;
+	readonly wireRegime: ReturnType<typeof summarizeRegime>;
+	readonly diagnostics: readonly string[];
+}
+
+export type FirstScreenHandshake = 'before-render' | 'after-render';
+
+export async function runFirstScreenSelectors(
+	rows: number,
+	handshake: FirstScreenHandshake,
+): Promise<FirstScreenSelectorResult> {
+	const chassis = createDeferredWireChassis();
+	const root = createLynxRoot({
+		target: chassis.backgroundTarget,
+		onDiagnostic: (error) => chassis.diagnostics.push(error),
+	});
+	let main: ReturnType<typeof installLynxMainThread> | null = null;
+	const previousRandom = Math.random;
+	Math.random = seededRandom(0x0c7a_4e11);
+	const before = profileSnapshot();
+	try {
+		if (handshake === 'before-render') main = chassis.installMainThread();
+		// The first render mounts synchronously, so the batch is composed by the
+		// time `render` returns. Installing the main thread here is what puts the
+		// reply behind the compose rather than in front of it.
+		const rendered = root.render(App, {});
+		if (main === null) main = chassis.installMainThread();
+		await rendered;
+		await until({ root }, () => rowViews(chassis.papi).length === rows, `${rows} rows at mount`);
+		const after = profileSnapshot();
+		return {
+			rows,
+			handshake,
+			rowsPainted: rowViews(chassis.papi).length,
+			createdElements: chassis.papi.createdElements,
+			createdSelectable: chassis.papi.createdSelectable,
+			refSelectorInstalls: chassis.papi.refSelectorInstalls,
+			refSelectorClears: chassis.papi.refSelectorClears,
+			commits: after.commits - before.commits,
+			commands: after.commands - before.commands,
+			wireRegime: summarizeRegime(chassis.wireMessages),
+			diagnostics: chassis.diagnostics.map((error) => error.message),
+		};
+	} finally {
+		Math.random = previousRandom;
+		await root.unmount();
+		main?.close();
 	}
 }
 
