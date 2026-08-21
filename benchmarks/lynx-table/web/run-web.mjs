@@ -458,6 +458,31 @@ async function main() {
 			});
 			lines.push(`| ${op} | ${row.join(' | ')} |`);
 		}
+		// Issue-#103 B0: the A/B the core switch exists to produce, printed as its
+		// own ratio rather than left to be divided out of the vue-vdom column.
+		// Same window, same page driver, same application entry — the build flag
+		// is the only variable — but the block column runs a hand-written program
+		// (app/src/block-program.ts), so it is an architecture ceiling and is
+		// labelled as one wherever it is quoted.
+		const universal = results['octane']?.[rows]?.ops;
+		for (const cell of runnable) {
+			if (cell.core !== 'block' || universal === undefined) continue;
+			const block = results[cell.id][rows].ops;
+			lines.push('');
+			lines.push(`### ${cell.id} ÷ octane (${rows.toLocaleString('en-US')} rows, same window)`);
+			lines.push('');
+			lines.push('| op | octane | ' + cell.id + ' | ratio |');
+			lines.push('|---|---:|---:|---:|');
+			for (const op of OPS) {
+				const before = universal[op];
+				const after = block[op];
+				lines.push(
+					`| ${op} | ${before ? before.median.toFixed(0) : 'DNF'} | ${after ? after.median.toFixed(0) : 'DNF'} | ${
+						before && after ? `${(after.median / before.median).toFixed(2)}×` : 'not measured'
+					} |`,
+				);
+			}
+		}
 		for (const cell of runnable) {
 			const counts = results[cell.id][rows].counts;
 			if (!counts) continue;

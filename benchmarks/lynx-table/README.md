@@ -77,6 +77,46 @@ records the source commit. If a reference bundle is absent the harness prints
 "not measured" for that cell and continues — it never substitutes a number
 from a degraded run.
 
+### The `octane-block` cell (issue #103 B0)
+
+```bash
+BENCH_CORE=block node scripts/build-app.mjs               # scoped writes
+BENCH_BLOCK_MODE=reconcile BENCH_CORE=block node scripts/build-app.mjs
+node web/run-web.mjs --cells octane,octane-block --scales 1000,10000 --reps 5
+```
+
+The same application entry, the same page driver, and the same bundle recipe,
+built with `pluginOctane({ core: 'block' })` so the issue-#103 Block core drives
+background updates instead of the universal one. One bundle carries exactly one
+core: `__OCTANE_LYNX_BACKGROUND_CORE__` folds in `app/src/index.ts`, so the
+`universal` build carries none of `app/src/block-program.ts` and none of the
+Block core behind it. The build flag is therefore the only variable, which is
+what makes `octane-block ÷ octane` a same-window A/B rather than a comparison of
+two applications that resemble each other.
+
+Three things must travel with any number from this cell:
+
+- **It is an architecture ceiling, not a framework measurement.** The Block core
+  has no component layer yet — no hook cells, so a compiled `.tsrx` component has
+  no program to be — so the cell is driven by a hand-written block program
+  (`app/src/block-program.ts`), exactly as `block-workload.ts` and `prototype/`
+  are. `octane` is the second number and neither is quoted without the other.
+- **Two drive modes.** `octane-block` writes the slot that changed, by key, the
+  way a lowering with per-row reactive cells would. `octane-block-reconcile`
+  hands the whole next list to the keyed reconciler, the way `setRows(next)` does
+  today. Build both before quoting either: reporting only the first credits the
+  Block model with a win that belongs to the scoped write. Structural operations
+  (create, swap, remove) are the same in both.
+- **The first screen is not comparable.** The main-thread first-screen program is
+  the same either way, but the Block core has no adoption story for it: its first
+  commit mounts its own tree, main finds a mismatch and repairs, and the painted
+  first screen is discarded. `create` and FCP for this cell measure that path,
+  not adoption. `update10th`, `select` and the storms are all post-first-screen
+  and are the comparable numbers.
+
+`prototype/run-fcp.mjs` picks the cell up automatically once
+`app/dist-block-rows<N>/main.web.bundle` exists.
+
 ### Measurement honesty rules (non-negotiable)
 
 - No octane-only bespoke workloads: the app mirrors the reference apps'
