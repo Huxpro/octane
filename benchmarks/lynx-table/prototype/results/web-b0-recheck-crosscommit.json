@@ -1,0 +1,288 @@
+{
+  "meta": {
+    "date": "2026-08-22T20:32:26.093Z",
+    "node": "v22.22.2",
+    "cpus": 4,
+    "cpuModel": "Intel(R) Xeon(R) Processor @ 2.80GHz",
+    "loadStart": [0.47, 0.87, 0.92],
+    "loadEnd": [1.8, 1.41, 1.13],
+    "reps": 7,
+    "scales": [1000, 10000],
+    "reference": {
+      "source": "https://github.com/Huxpro/vue-lynx",
+      "branch": "claude/lynx-implementation-review-n2r0ie",
+      "commit": "02376ecd1cd62d3797ff1de1209d82dc2f9d91d9",
+      "builtAt": "2026-08-07",
+      "build": "pnpm install && pnpm --filter \"vue-lynx...\" build && cd packages/benchmark && node harness/build-unified.mjs --only=vdom-ifr-et,vapor-ifr,react",
+      "cells": {
+        "vdom-ifr-et": {
+          "description": "Vue Lynx vdom top config (vdom +b +ifr; legacy id vdom-ifr-et)",
+          "app": "packages/benchmark/apps/ui-vdom",
+          "framework": "vue 3.6.0-beta.17 (vue-lynx fork)"
+        },
+        "vapor-ifr": {
+          "description": "Vue Lynx vapor top config (vapor +b +ifr; legacy id vapor-ifr)",
+          "app": "packages/benchmark/apps/ui-vapor",
+          "framework": "vue 3.6.0-beta.17 (vue-lynx fork, vapor mode)"
+        },
+        "react": {
+          "description": "ReactLynx default config",
+          "app": "packages/benchmark/apps/ui-react",
+          "framework": "@lynx-js/react 0.122.1"
+        }
+      },
+      "note": "Black-box fixtures: only the .web.bundle files are vendored. They are served unmodified into <lynx-view> by web/run-web.mjs; the app workloads mirror app/src operation-for-operation. The harness host runs @lynx-js/web-core 0.22.2 for every cell (the fork built against 0.22.1 — the host runtime is shared, so the comparison stays same-host)."
+    },
+    "notMeasured": []
+  },
+  "results": {
+    "octane": {
+      "1000": {
+        "ops": {
+          "create": {
+            "n": 7,
+            "min": 196.60000000009313,
+            "max": 227.79999999981374,
+            "mean": 204.1142857142591,
+            "median": 201.5,
+            "std": 10.0747816099298,
+            "ci95": 7.463502662885134
+          },
+          "update10th": {
+            "n": 7,
+            "min": 32.89999999990687,
+            "max": 46,
+            "mean": 38.15714285715616,
+            "median": 36.3000000002794,
+            "std": 4.099427535933235,
+            "ci95": 3.036898417786699
+          },
+          "select": {
+            "n": 7,
+            "min": 25.199999999720603,
+            "max": 37,
+            "mean": 30.24285714281723,
+            "median": 31.200000000186265,
+            "std": 3.694342061210951,
+            "ci95": 2.7368068985515817
+          },
+          "updateStorm": {
+            "n": 7,
+            "min": 92.89999999990687,
+            "max": 148.20000000018626,
+            "mean": 108.3571428572759,
+            "median": 102.5,
+            "std": 17.641174008844253,
+            "ci95": 13.068764593533112
+          },
+          "selectStorm": {
+            "n": 7,
+            "min": 15.599999999627471,
+            "max": 32.799999999813735,
+            "mean": 25.59999999982704,
+            "median": 27.299999999813735,
+            "std": 5.393647056676772,
+            "ci95": 3.9956696560542264
+          },
+          "clear": {
+            "n": 7,
+            "min": 94.3000000002794,
+            "max": 104.90000000037253,
+            "mean": 98.20000000011974,
+            "median": 97.5,
+            "std": 3.1414282466703822,
+            "ci95": 2.32720261262818
+          }
+        },
+        "counts": null,
+        "wire": null,
+        "dnf": 0
+      },
+      "10000": {
+        "ops": {
+          "create": {
+            "n": 7,
+            "min": 1686.7999999998137,
+            "max": 1798.6999999997206,
+            "mean": 1733.9142857141394,
+            "median": 1713.6999999997206,
+            "std": 39.2276662053324,
+            "ci95": 29.060261801973446
+          },
+          "update10th": {
+            "n": 7,
+            "min": 225.89999999990687,
+            "max": 272.10000000009313,
+            "mean": 255.17142857145518,
+            "median": 260.10000000009313,
+            "std": 14.504552416966828,
+            "ci95": 10.745122800606616
+          },
+          "select": {
+            "n": 7,
+            "min": 116.5,
+            "max": 137.10000000009313,
+            "mean": 123.68571428582072,
+            "median": 119.3000000002794,
+            "std": 7.183200355484105,
+            "ci95": 5.321389292285277
+          },
+          "updateStorm": {
+            "n": 7,
+            "min": 877.5,
+            "max": 1066.3999999999069,
+            "mean": 1004.6428571428571,
+            "median": 1032.2000000001863,
+            "std": 65.93905968267171,
+            "ci95": 48.84833900962259
+          },
+          "selectStorm": {
+            "n": 7,
+            "min": 187.20000000018626,
+            "max": 248.90000000037253,
+            "mean": 213.08571428579413,
+            "median": 210.29999999981374,
+            "std": 18.759335091204818,
+            "ci95": 13.897109915431436
+          },
+          "clear": {
+            "n": 7,
+            "min": 861.8999999999069,
+            "max": 1067,
+            "mean": 918.3857142856743,
+            "median": 903,
+            "std": 63.007696322917354,
+            "ci95": 46.67675464298509
+          }
+        },
+        "counts": null,
+        "wire": null,
+        "dnf": 0
+      }
+    },
+    "octane-b0": {
+      "1000": {
+        "ops": {
+          "create": {
+            "n": 7,
+            "min": 191.39999999990687,
+            "max": 209.6999999997206,
+            "mean": 197.45714285716946,
+            "median": 196.3000000002794,
+            "std": 5.950715957449744,
+            "ci95": 4.40835207293478
+          },
+          "update10th": {
+            "n": 7,
+            "min": 27.899999999906868,
+            "max": 39.799999999813735,
+            "mean": 33.81428571417928,
+            "median": 34.799999999813735,
+            "std": 3.941511157416586,
+            "ci95": 2.9199123274469803
+          },
+          "select": {
+            "n": 7,
+            "min": 14.600000000093132,
+            "max": 31.600000000093132,
+            "mean": 25.228571428584733,
+            "median": 27.399999999906868,
+            "std": 6.655333905046478,
+            "ci95": 4.930340353357815
+          },
+          "updateStorm": {
+            "n": 7,
+            "min": 87.6999999997206,
+            "max": 132.70000000018626,
+            "mean": 114.04285714283053,
+            "median": 116.60000000009313,
+            "std": 14.509096372819426,
+            "ci95": 10.748489010209859
+          },
+          "selectStorm": {
+            "n": 7,
+            "min": 15.399999999906868,
+            "max": 36.5,
+            "mean": 27.22857142851821,
+            "median": 27.200000000186265,
+            "std": 5.998503214648521,
+            "ci95": 4.443753368482815
+          },
+          "clear": {
+            "n": 7,
+            "min": 92.10000000009313,
+            "max": 112.79999999981374,
+            "mean": 98.60000000002661,
+            "median": 96.60000000009313,
+            "std": 6.3850271281810675,
+            "ci95": 4.73009429075905
+          }
+        },
+        "counts": null,
+        "wire": null,
+        "dnf": 0
+      },
+      "10000": {
+        "ops": {
+          "create": {
+            "n": 7,
+            "min": 1662,
+            "max": 1861.1000000000931,
+            "mean": 1776.5571428571295,
+            "median": 1741.3999999999069,
+            "std": 72.59680939750903,
+            "ci95": 53.7804690199184
+          },
+          "update10th": {
+            "n": 7,
+            "min": 248.20000000018626,
+            "max": 301.89999999990687,
+            "mean": 265.77142857141524,
+            "median": 259.6999999997206,
+            "std": 18.7528065926366,
+            "ci95": 13.892273536010512
+          },
+          "select": {
+            "n": 7,
+            "min": 118.10000000009313,
+            "max": 149.8000000002794,
+            "mean": 128.02857142866455,
+            "median": 125.60000000009313,
+            "std": 9.59921340321353,
+            "ci95": 7.111196805087477
+          },
+          "updateStorm": {
+            "n": 7,
+            "min": 854.2999999998137,
+            "max": 1107.9000000003725,
+            "mean": 1004.6285714286247,
+            "median": 999.2999999998137,
+            "std": 74.84115968966631,
+            "ci95": 55.44310698374812
+          },
+          "selectStorm": {
+            "n": 7,
+            "min": 162.3000000002794,
+            "max": 255.89999999990687,
+            "mean": 205.70000000005322,
+            "median": 210,
+            "std": 30.62431340323613,
+            "ci95": 22.68680885437817
+          },
+          "clear": {
+            "n": 7,
+            "min": 846.5,
+            "max": 1025.7999999998137,
+            "mean": 944.9999999999335,
+            "median": 940.7000000001863,
+            "std": 67.70142433619347,
+            "ci95": 50.153917015558726
+          }
+        },
+        "counts": null,
+        "wire": null,
+        "dnf": 0
+      }
+    }
+  }
+}

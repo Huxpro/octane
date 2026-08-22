@@ -3,8 +3,14 @@
 The unified cross-framework table benchmark for Octane's Lynx renderer: the
 krausest-style row table (`app/`, mirrored operation-for-operation from the
 Vue Lynx unified benchmark matrix) driven through create / update-every-10th /
-select and the update (×50) / select (×30) storms, where every storm tick runs
-in its own MessageChannel macrotask so app-layer batching cannot merge them.
+select / clear and the update (×50) / select (×30) storms, where every storm
+tick runs in its own MessageChannel macrotask so app-layer batching cannot
+merge them.
+
+App-layer batching is the only thing that separation rules out. A renderer is
+still free to coalesce, and both Octane cells do — see
+[What the storm cells actually measure](#what-the-storm-cells-actually-measure),
+which is where the storm numbers have to be read from.
 
 It has two halves with different claims:
 
@@ -87,6 +93,14 @@ Lynx first-screen integration tests and the real-browser harness below.
 ```bash
 node web/run-web.mjs               # octane + all vendored references
 node web/run-web.mjs --scales 1000,10000,30000 --reps 3 --cells octane,vue-vdom
+
+# wire counts beside the milliseconds: serve the OCTANE_LYNX_PROFILE=1 bundles
+OCTANE_LYNX_PROFILE=1 node scripts/build-app.mjs
+node web/run-web.mjs --cells octane --counter-build
+
+# "did this regress since commit X": build X's bundle in a worktree and drive
+# both through one instrument in one window
+node web/run-web.mjs --cells octane --cell-bundle octane-x=/path/to/x/main.web.bundle
 ```
 
 Builds the app's `main.web.bundle` with the repo's own Rspeedy toolchain
@@ -133,7 +147,7 @@ Block core behind it. The build flag is therefore the only variable, which is
 what makes `octane-block ÷ octane` a same-window A/B rather than a comparison of
 two applications that resemble each other.
 
-Three things must travel with any number from this cell:
+Four things must travel with any number from this cell:
 
 - **It is an architecture ceiling, not a framework measurement.** The Block core
   has no component layer yet — no hook cells, so a compiled `.tsrx` component has
@@ -155,9 +169,62 @@ Three things must travel with any number from this cell:
   before the first click, so `create` and everything after it run on a settled
   tree — the block cell simply enters from a repaired tree instead of an adopted
   one.
+- **The storm cells and `clear` are not where this cell wins.** Both cores
+  coalesce a storm rather than paying per tick, and on `selectStorm` the
+  universal one coalesces harder — see
+  [What the storm cells actually measure](#what-the-storm-cells-actually-measure)
+  for the counts and for why a storm ratio may not be carried between sessions.
+  `clear` is the one op where the block cell is consistently the slower of the
+  two — 1.27× and 1.24× at 10,000 rows in the two sessions recorded under
+  `prototype/results/web-b0-recheck*` — while shipping 20% fewer host commands
+  for it (80,000 against 100,000). Measured, unexplained, and open.
 
 `prototype/run-fcp.mjs` picks the cell up automatically once
 `app/dist-block-rows<N>/main.web.bundle` exists.
+
+### What the storm cells actually measure
+
+The storms exist so a mutation cell cannot be won by batching: each of the 50
+update ticks and 30 select ticks is posted through its own `MessageChannel`
+macrotask, so nothing in the app can merge them. That rules out app-layer
+batching and nothing else. A renderer may still coalesce — a tick that renders
+while a commit is in flight folds into the next commit — and both Octane cells
+do, heavily. Measured at 10,000 rows with `--counter-build`
+(`prototype/results/web-b0-recheck-counts.*`):
+
+| op | cell | bg commits | of those, empty | host commands |
+| --- | --- | ---: | ---: | ---: |
+| updateStorm (50 ticks) | `octane` | 7 | 3 | 4,000 |
+| updateStorm (50 ticks) | `octane-block` | 3 | 0 | 3,000 |
+| selectStorm (30 ticks) | `octane` | 7 | 6 | **2** |
+| selectStorm (30 ticks) | `octane-block` | 2 | 0 | **32** |
+
+Read those two `selectStorm` rows before quoting either cell. Thirty ticks reach
+the host as **two** commands on the universal core — precisely the difference
+between the tree before the storm and the tree after it — so every intermediate
+selection renders and none of it is ever spoken. The block core emits eagerly
+and supersedes only within the frame it is filling, so it ships 32: one per
+distinct host its ticks touched. **The cell that coalesces harder here is
+`octane`, not `octane-block`**, and neither cell's storm number is a smaller
+job dressed up as a faster one — but the storms are not 30 or 50 discrete
+paints for anybody, and a reader who assumes they are will misread every number
+in the column.
+
+Two consequences travel with any storm figure:
+
+- **A storm ratio is same-window or it is nothing.** How much coalesces is a
+  race between the tick and the commit round-trip, and that race moves with host
+  speed and load: `octane`'s `selectStorm` commit count ranged 4–9 inside one
+  n=5 session on one host. The B0 window recorded `selectStorm` at 0.83× and a
+  later window on a different host recorded 1.31× from unchanged code. Carrying
+  a storm ratio between sessions measures the hosts.
+- **A cross-framework storm comparison is not equal work.** The reference cells
+  are vendored black boxes with no counters, so what they coalesce cannot be
+  stated. A storm ratio against one of them compares two unknown coalescing
+  regimes, not two speeds at the same job, and should be quoted with that said.
+
+`create`, `update10th`, `select`, and `clear` are one commit each and carry none
+of this: they are single state changes and the counts are invariant.
 
 ### Measurement honesty rules (non-negotiable)
 
