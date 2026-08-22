@@ -21,12 +21,10 @@ import {
 } from './profiling.js';
 import { getRendererHostFlusher } from './renderer-bridge.js';
 import {
-	cloneSerializableValue,
 	compiledUniversalTemplateProgram,
 	createUniversalHostEncoder,
 	EMPTY_STATIC_HOST_PROPS,
 	hasCrossRealmPlainPrototype,
-	isUniversalHostTemplateProgramValue,
 	prepareUniversalTemplateProgram,
 	prepareUniversalTemplateProgramValues,
 	universalHostTemplateShape,
@@ -607,7 +605,7 @@ export type UniversalHostTemplateProgramValue =
  * and a record type would therefore make this escape hatch unusable by the very
  * renderers it exists for. The core reads no field here, so a field shape would
  * be a claim it never checks. What the value must not be is enforced where the
- * core can enforce it, in `isUniversalHostTemplateProgramSlotValue` below.
+ * core can enforce it, in `universal-template-program.ts`'s slot-value check.
  */
 export type UniversalHostTemplateProgramOpaqueValue = object;
 
