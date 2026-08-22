@@ -40,9 +40,11 @@ import {
 	LYNX_BACKGROUND_TO_MAIN_EVENT,
 	LYNX_CAPABILITY_READY_REQUEST_BASE,
 	LYNX_COMPACT_ACKNOWLEDGEMENT,
+	LYNX_DEFERRED_TEMPLATE_RUN_READY_REQUEST_BASE,
 	LYNX_LAZY_PUBLIC_INSTANCES,
 	LYNX_MAIN_TO_BACKGROUND_EVENT,
 	LYNX_READY_ANNOUNCEMENT_REQUEST,
+	LYNX_TEMPLATE_RUN_READY_REQUEST_BASE,
 	LYNX_TRANSPORT_PROTOCOL_VERSION,
 	LYNX_TRANSPORT_RENDERER,
 	type LynxBackgroundInboundMessage,
@@ -1482,6 +1484,105 @@ describe.sequential('@octanejs/lynx background root in the official JS environme
 		const host = page.querySelector('#older-peer-host');
 		expect(host?.hasAttribute(LYNX_NODES_REF_ATTRIBUTE)).toBe(true);
 		expect(main.activeIdentity()).toMatchObject({ root: 509, version: 1 });
+	});
+
+	// Issue #135 item 2 (#103 U3b-b) — a run that declares its instances instead
+	// of building them is a separate grant from runs themselves, because a main
+	// thread that accepts runs but predates deferral rejects the field outright.
+	it('grants deferred intrinsic runs only to a peer that asked for them', () => {
+		const { dom, main } = installEnvironment();
+		const context = backgroundContext();
+		const inbound: LynxBackgroundInboundMessage[] = [];
+		context.addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
+			inbound.push(event.data as LynxBackgroundInboundMessage);
+		});
+		const page = dom.window.document.querySelector('page')!;
+		const rowProgram = Object.freeze({
+			nodes: Object.freeze([
+				Object.freeze({
+					type: 'list-item',
+					parent: -1,
+					props: Object.freeze({ 'reuse-identifier': 'feed-row' }),
+					bindings: Object.freeze([Object.freeze({ name: 'item-key', valueIndex: 0 })]),
+				}),
+				Object.freeze({
+					type: 'text',
+					parent: 0,
+					props: Object.freeze({}),
+					bindings: Object.freeze([Object.freeze({ name: 'id', valueIndex: 1 })]),
+				}),
+			]),
+			events: Object.freeze([]),
+		});
+		const mountDeferredRows = (version: number): void => {
+			context.dispatchEvent({
+				type: LYNX_BACKGROUND_TO_MAIN_EVENT,
+				data: {
+					...identity(517, version),
+					type: 'commit',
+					batch: {
+						renderer: 'lynx',
+						version,
+						commands: [
+							{ op: 'create', id: 1, type: 'list', props: { id: 'feed' } },
+							{
+								op: 'mount-template-run',
+								parent: 1,
+								before: null,
+								program: rowProgram,
+								firstId: 100,
+								firstListenerId: null,
+								count: 3,
+								values: ['a', 'row-a', 'b', 'row-b', 'c', 'row-c'],
+								deferred: true,
+							},
+							{ op: 'insert', parent: null, id: 1, before: null },
+						],
+					},
+				},
+			});
+		};
+		const readinessAt = (request: number): void => {
+			context.dispatchEvent({
+				type: LYNX_BACKGROUND_TO_MAIN_EVENT,
+				data: {
+					protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
+					renderer: LYNX_TRANSPORT_RENDERER,
+					type: 'main-ready-request',
+					request,
+				},
+			});
+		};
+
+		// A peer that knows runs but not deferral: the key it cannot read is not
+		// published to it, which is what the separate probe base buys.
+		readinessAt(LYNX_TEMPLATE_RUN_READY_REQUEST_BASE + 23);
+		const runPeerReply = inbound.at(-1);
+		expect(runPeerReply).toMatchObject({ type: 'main-ready', capabilities: { templateRuns: 1 } });
+		expect(runPeerReply).not.toMatchObject({ capabilities: { deferredTemplateRuns: 1 } });
+
+		mountDeferredRows(1);
+		expect(inbound.at(-1)).toMatchObject({
+			type: 'reject',
+			error: { message: expect.stringMatching(/unnegotiated deferred intrinsic template run/) },
+		});
+		expect(page.querySelector('#feed')).toBeNull();
+		expect(main.activeIdentity()).toBeNull();
+
+		readinessAt(LYNX_DEFERRED_TEMPLATE_RUN_READY_REQUEST_BASE + 23);
+		expect(inbound.at(-1)).toMatchObject({
+			type: 'main-ready',
+			capabilities: { templateRuns: 1, deferredTemplateRuns: 1 },
+		});
+
+		// The same commit, once granted: the list is told about all three rows and
+		// none of them is built. That is what makes the rejection above a statement
+		// about the session rather than about the command.
+		mountDeferredRows(2);
+		const list = page.querySelector('#feed')!;
+		expect(JSON.parse(list.getAttribute('update-list-info')!)[0].insertAction).toHaveLength(3);
+		expect(list.children).toHaveLength(0);
+		expect(main.activeIdentity()).toMatchObject({ root: 517, version: 2 });
 	});
 
 	it('rejects a fully staged invalid batch without changing the accepted public tree', () => {

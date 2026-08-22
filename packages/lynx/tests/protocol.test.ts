@@ -34,6 +34,7 @@ import {
 	LYNX_CAPABILITY_READY_REQUEST_BASE,
 	LYNX_COMPACT_ACKNOWLEDGEMENT,
 	LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS,
+	LYNX_DEFERRED_TEMPLATE_RUN_READY_REQUEST_BASE,
 	LYNX_LAZY_PUBLIC_INSTANCES,
 	LYNX_LAZY_PUBLIC_INSTANCE_READY_REQUEST_BASE,
 	LYNX_TEMPLATE_RUN_READY_REQUEST_BASE,
@@ -740,6 +741,35 @@ describe('@octanejs/lynx transported protocol', () => {
 				capabilities: { ...runCapabilities, templateRuns: 2 },
 			}),
 		).toThrow(/templateRuns.*must be 1/);
+		const deferredCapabilities = { ...runCapabilities, deferredTemplateRuns: 1 };
+		expect(() =>
+			validateLynxBackgroundInboundMessage({
+				...readiness,
+				request: LYNX_TEMPLATE_RUN_READY_REQUEST_BASE + 7,
+				capabilities: deferredCapabilities,
+			}),
+		).toThrow(/deferredTemplateRuns.*deferred-template-run readiness request/);
+		expect(
+			validateLynxBackgroundInboundMessage({
+				...readiness,
+				request: LYNX_DEFERRED_TEMPLATE_RUN_READY_REQUEST_BASE + 7,
+				capabilities: deferredCapabilities,
+			}),
+		).toMatchObject({ capabilities: { deferredTemplateRuns: 1 } });
+		expect(() =>
+			validateLynxBackgroundInboundMessage({
+				...readiness,
+				request: LYNX_DEFERRED_TEMPLATE_RUN_READY_REQUEST_BASE + 7,
+				capabilities: { ...lazyCapabilities, deferredTemplateRuns: 1 },
+			}),
+		).toThrow(/deferredTemplateRuns.*requires the templateRuns capability/);
+		expect(() =>
+			validateLynxBackgroundInboundMessage({
+				...readiness,
+				request: LYNX_DEFERRED_TEMPLATE_RUN_READY_REQUEST_BASE + 7,
+				capabilities: { ...deferredCapabilities, deferredTemplateRuns: 2 },
+			}),
+		).toThrow(/deferredTemplateRuns.*must be 1/);
 		expect(() => validateLynxBackgroundInboundMessage({ ...readiness, request: 1 })).toThrow(
 			/capability-tagged readiness request/,
 		);
@@ -3015,6 +3045,42 @@ describe('@octanejs/lynx transported protocol', () => {
 		await ensured;
 		expect(container.getPublicHandle(3)?.active).toBe(true);
 		transport.close();
+	});
+
+	// Issue #135 item 2 (#103 U3b-b) — the background half of the deferred-run
+	// grant. Nothing emits `deferred` yet; this is the bit that will decide.
+	it('records deferral separately from runs, and never without them', async () => {
+		const runOnly = {
+			compactAck: 1,
+			templateMount: 1,
+			templateProgram: 1,
+			lazyPublicInstances: 1,
+			templateRuns: 1,
+		} as const;
+		const negotiate = async (capabilities: LynxMainThreadCapabilities) => {
+			const context = new FakeContextProxy();
+			installMainHarness(context, true, capabilities);
+			const container = createLynxClientContainer();
+			const driver = createLynxClientDriver(container);
+			const transport = createLynxBackgroundTransport(context, container);
+			await transport.ready;
+			const negotiated = {
+				runs: driver.capabilities?.templateProgramRuns,
+				deferred: driver.capabilities?.deferredTemplateProgramRuns,
+			};
+			transport.close();
+			return negotiated;
+		};
+
+		// A peer that grants runs and stops there leaves deferral off, which is the
+		// state every session built before this slice stays in. A grant that
+		// arrived without the runs it qualifies never reaches here at all: the
+		// inbound validator refuses that reply, pinned above.
+		expect(await negotiate(runOnly)).toEqual({ runs: true, deferred: false });
+		expect(await negotiate({ ...runOnly, deferredTemplateRuns: 1 })).toEqual({
+			runs: true,
+			deferred: true,
+		});
 	});
 
 	it('negotiates one contiguous template run and derives all compact host identities in bulk', async () => {

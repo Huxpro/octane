@@ -42,6 +42,12 @@ export const LYNX_CAPABILITY_READY_REQUEST_BASE = 2 ** 40;
 export const LYNX_LAZY_PUBLIC_INSTANCE_READY_REQUEST_BASE = 2 ** 41;
 /** Distinct from the lazy-instance probe so older strict lazy peers never see a new key. */
 export const LYNX_TEMPLATE_RUN_READY_REQUEST_BASE = 2 ** 42;
+/**
+ * Distinct again: a background that understands runs but not deferral validates
+ * the reply with an exact key set, so it would reject the newer key outright.
+ * The probe is how this background says which keys it can already read.
+ */
+export const LYNX_DEFERRED_TEMPLATE_RUN_READY_REQUEST_BASE = 2 ** 43;
 export const LYNX_COMPACT_ACKNOWLEDGEMENT = 'compact-v1';
 export const LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS = 16;
 export const LYNX_LAZY_PUBLIC_INSTANCES = 'lazy-v1';
@@ -85,6 +91,15 @@ export interface LynxMainThreadCapabilities {
 	readonly lazyPublicInstances?: 1;
 	/** One intrinsic command can mount a contiguous run of sibling program instances. */
 	readonly templateRuns?: 1;
+	/**
+	 * A run under a native `<list>` may declare its instances without building
+	 * them, leaving the host to materialize a cell when it is about to show it.
+	 *
+	 * Separate from `templateRuns` because the two are different peers: a main
+	 * thread that accepts runs but predates deferral rejects `deferred` as an
+	 * unknown field on a command it otherwise understands completely.
+	 */
+	readonly deferredTemplateRuns?: 1;
 }
 
 /**
@@ -1692,6 +1707,10 @@ function assertReady(value: unknown, reply: boolean): LynxMainReadyRequest | Lyn
 			'lazyPublicInstances',
 		);
 		const hasTemplateRuns = Object.prototype.hasOwnProperty.call(capabilities, 'templateRuns');
+		const hasDeferredTemplateRuns = Object.prototype.hasOwnProperty.call(
+			capabilities,
+			'deferredTemplateRuns',
+		);
 		exactKeys(
 			capabilities,
 			[
@@ -1700,6 +1719,7 @@ function assertReady(value: unknown, reply: boolean): LynxMainReadyRequest | Lyn
 				...(hasTemplateProgram ? ['templateProgram'] : []),
 				...(hasLazyPublicInstances ? ['lazyPublicInstances'] : []),
 				...(hasTemplateRuns ? ['templateRuns'] : []),
+				...(hasDeferredTemplateRuns ? ['deferredTemplateRuns'] : []),
 			],
 			`${label}.capabilities`,
 		);
@@ -1738,6 +1758,23 @@ function assertReady(value: unknown, reply: boolean): LynxMainReadyRequest | Lyn
 		}
 		if (hasTemplateRuns && (message.request as number) < LYNX_TEMPLATE_RUN_READY_REQUEST_BASE) {
 			fail(`${label}.capabilities.templateRuns`, 'requires a template-run readiness request.');
+		}
+		if (hasDeferredTemplateRuns && capabilities.deferredTemplateRuns !== 1) {
+			fail(`${label}.capabilities.deferredTemplateRuns`, 'must be 1.');
+		}
+		// Deferral is a property of a run, so it cannot be granted to a peer that
+		// does not have runs at all.
+		if (hasDeferredTemplateRuns && !hasTemplateRuns) {
+			fail(`${label}.capabilities.deferredTemplateRuns`, 'requires the templateRuns capability.');
+		}
+		if (
+			hasDeferredTemplateRuns &&
+			(message.request as number) < LYNX_DEFERRED_TEMPLATE_RUN_READY_REQUEST_BASE
+		) {
+			fail(
+				`${label}.capabilities.deferredTemplateRuns`,
+				'requires a deferred-template-run readiness request.',
+			);
 		}
 	}
 	return message as unknown as LynxMainReadyRequest | LynxMainReadyReply;

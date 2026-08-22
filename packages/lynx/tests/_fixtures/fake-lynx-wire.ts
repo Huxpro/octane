@@ -182,9 +182,11 @@ export function installMainSide(context: FakeContextProxy, compact = false): Mai
 				request: message.request,
 				// A main thread that can consume template runs says so here, and the
 				// background then asks for the compact acknowledgement instead of a
-				// delta per host. The transport always tags its readiness request at
-				// the template-run base, so this is a choice about main, not about
-				// what the background is willing to negotiate.
+				// delta per host. The transport tags its readiness request at the
+				// newest base it understands, so this is a choice about main, not
+				// about what the background is willing to negotiate. Stopping at
+				// `templateRuns` makes this fixture a peer that takes runs eagerly,
+				// which is what every suite reading it means to model.
 				...(compact
 					? {
 							capabilities: {
