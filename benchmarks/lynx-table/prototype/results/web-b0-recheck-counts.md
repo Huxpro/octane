@@ -33,6 +33,16 @@ What each cell does with the same driver script:
   scale); the block cell ships fewer copies of it because it flushed fewer
   times.
 
+Why `octane` dispatches those empty commits is **not** established by these
+counters. The designed mechanism is pinned — one commit is in flight at a time
+and renders scheduled during that window coalesce into the latest state
+(`packages/octane/tests/universal-transport.test.ts`, "coalesces renders
+scheduled while a commit awaits acknowledgement into the latest state") — but
+that contract predicts commits carrying the net change since the previous
+commit, not six carrying nothing. What is established is the wire total: 2
+commands for 30 ticks. Six of seven commits in a select storm being pure
+round-trips is its own finding and its own follow-up.
+
 Neither cell is mislabeled and no driver script needs correcting. What does
 need saying is that a storm's wall clock is a function of how many ticks landed
 inside each in-flight window — a race between the tick and the commit
