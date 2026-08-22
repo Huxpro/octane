@@ -22,7 +22,6 @@ import {
 	createLynxHostContainer,
 	prepareLynxHostBatch,
 } from '../../lynx/src/core/host-driver.js';
-import { LYNX_FIRST_TREE_STATE } from '../../lynx/src/core/first-screen.js';
 import { createLynxMainThreadWorkletRegistry } from '../../lynx/src/core/worklets.js';
 import { createFakePAPI, shape } from '../../lynx/tests/_fixtures/fake-element-papi.js';
 
@@ -211,8 +210,6 @@ ${FEED_ROWS}	const held: unknown[] = [];
 interface ListCell {
 	readonly tree: unknown;
 	readonly snapshot: unknown;
-	readonly logicalNodes: unknown[];
-	readonly lists: unknown[];
 	readonly published: unknown;
 	readonly materialized: unknown;
 }
@@ -237,7 +234,6 @@ function paintList(
 	}
 	const captured = captureLynxFirstTree(container);
 	expect(captured).not.toBeNull();
-	const journal = captured![LYNX_FIRST_TREE_STATE];
 	expect(papi.lists).toHaveLength(1);
 	const list = papi.lists[0]!;
 	// Read before the platform asks for anything, so this stays the first screen
@@ -248,11 +244,13 @@ function paintList(
 	// owns no element has to become one here, whichever encoding described it.
 	const sign = list.componentAtIndex(list.node, papi.getUniqueId(list.node), 0, 0, false);
 	expect(sign).toBeGreaterThan(0);
+	// Row-level agreement is observed through the published `update-list-info`
+	// and the cell the platform materializes, not through the private capture
+	// journal: the snapshot is the artifact adoption clones, and those two are
+	// what a consumer of the painted list can see.
 	return {
 		tree,
 		snapshot: captured!.snapshot,
-		logicalNodes: [...journal.logicalNodes.values()],
-		lists: [...journal.lists.values()],
 		published: list.node.attributes['update-list-info'],
 		materialized: shape(list.node.children[0]!),
 	};
@@ -363,7 +361,9 @@ describe('lynx-target main-thread worklets, end to end', () => {
 		// The slot kinds, not just the presence of a template: these two strings
 		// are what the production bundle carries, so a lowering that stopped
 		// emitting them would be a different program than the one that ships.
-		expect(lynx).toContain('"slots": ["p:main-thread:ref", "p:main-thread:bindtap"]');
+		// The kinds are the published artifact; serializer layout is not.
+		expect(lynx).toContain('"p:main-thread:ref"');
+		expect(lynx).toContain('"p:main-thread:bindtap"');
 		expect(lynx).toContain('.h("view")');
 		expect(universal).not.toContain('"kind": "template"');
 	});
