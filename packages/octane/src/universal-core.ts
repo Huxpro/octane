@@ -394,6 +394,16 @@ export interface UniversalHostCapabilities {
 	readonly publicInstanceAnnouncements?: boolean;
 	/** Accepts consecutive contiguous instances of one immutable intrinsic host program. */
 	readonly templateProgramRuns?: boolean;
+	/**
+	 * Accepts a run that declares its instances without building them.
+	 *
+	 * A renderer that owns which of its children are on screen — a native list —
+	 * asks for an instance when it is about to display it, so building every one
+	 * at mount retains a host per declared instance and shows none of them
+	 * sooner. Where such a run is allowed to appear is the renderer's own
+	 * contract; this only says the renderer has one.
+	 */
+	readonly deferredTemplateProgramRuns?: boolean;
 }
 
 export interface UniversalResourceHandle {

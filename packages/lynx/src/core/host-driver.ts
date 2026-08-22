@@ -6775,6 +6775,7 @@ export function createLynxHostDriver<
 			templateMount: true,
 			templateProgramMount: true,
 			templateProgramRuns: true,
+			deferredTemplateProgramRuns: true,
 			lazyPublicInstances: true,
 			stableStaticHostProps: true,
 		},

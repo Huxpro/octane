@@ -46,6 +46,7 @@ import {
 	LYNX_CAPABILITY_READY_REQUEST_BASE,
 	LYNX_COMPACT_ACKNOWLEDGEMENT,
 	LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS,
+	LYNX_DEFERRED_TEMPLATE_RUN_READY_REQUEST_BASE,
 	LYNX_LAZY_PUBLIC_INSTANCES,
 	LYNX_LAZY_PUBLIC_INSTANCE_READY_REQUEST_BASE,
 	LYNX_TEMPLATE_RUN_READY_REQUEST_BASE,
@@ -1335,6 +1336,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 							driver.capabilities?.templateProgramRuns === true
 								? { templateRuns: 1 as const }
 								: null),
+							...(request >= LYNX_DEFERRED_TEMPLATE_RUN_READY_REQUEST_BASE &&
+							driver.capabilities?.templateProgramMount === true &&
+							driver.capabilities?.templateProgramRuns === true &&
+							driver.capabilities?.deferredTemplateProgramRuns === true
+								? { deferredTemplateRuns: 1 as const }
+								: null),
 						},
 					}),
 		};
@@ -2090,7 +2097,15 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			);
 			return;
 		}
-		if (peerCapabilities?.templateProgram !== 1 || peerCapabilities.templateRuns !== 1) {
+		// The scan is skipped outright for a peer holding every one of these, which
+		// is what a current background and a current host driver negotiate; a peer
+		// missing one pays a per-command `op` read, and is exactly the peer the
+		// scan exists for.
+		if (
+			peerCapabilities?.templateProgram !== 1 ||
+			peerCapabilities.templateRuns !== 1 ||
+			peerCapabilities.deferredTemplateRuns !== 1
+		) {
 			for (const command of message.batch.commands) {
 				if (command.op === 'mount-template-range' && peerCapabilities?.templateProgram !== 1) {
 					reject(
@@ -2103,6 +2118,21 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 					reject(
 						identity,
 						new Error('Octane Lynx rejected an unnegotiated intrinsic template run.'),
+					);
+					return;
+				}
+				// A run that declares its instances instead of building them is a
+				// separate grant, and this is where refusing it stays cheap: the
+				// driver would accept the command on its own terms, so nothing below
+				// would notice that the session never allowed it.
+				if (
+					command.op === 'mount-template-run' &&
+					command.deferred === true &&
+					peerCapabilities?.deferredTemplateRuns !== 1
+				) {
+					reject(
+						identity,
+						new Error('Octane Lynx rejected an unnegotiated deferred intrinsic template run.'),
 					);
 					return;
 				}

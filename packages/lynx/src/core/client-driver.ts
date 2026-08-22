@@ -271,6 +271,7 @@ interface LynxClientContainerState {
 	templateMount: boolean;
 	templateProgramMount: boolean;
 	templateProgramRuns: boolean;
+	deferredTemplateProgramRuns: boolean;
 	lazyPublicInstances: boolean;
 }
 
@@ -367,6 +368,7 @@ export function createLynxClientContainer(
 		templateMount: false,
 		templateProgramMount: false,
 		templateProgramRuns: false,
+		deferredTemplateProgramRuns: false,
 		lazyPublicInstances: false,
 	});
 	return container;
@@ -398,6 +400,8 @@ export function setLynxClientCapabilities(
 	state.templateMount = capabilities?.templateMount === 1;
 	state.templateProgramMount = state.templateMount && capabilities?.templateProgram === 1;
 	state.templateProgramRuns = state.templateProgramMount && capabilities?.templateRuns === 1;
+	state.deferredTemplateProgramRuns =
+		state.templateProgramRuns && capabilities?.deferredTemplateRuns === 1;
 	state.lazyPublicInstances = lynxLazyPublicInstancesNegotiated(capabilities);
 }
 
@@ -1469,6 +1473,9 @@ export function createLynxClientDriver(
 			},
 			get templateProgramRuns() {
 				return negotiatedState?.templateProgramRuns === true;
+			},
+			get deferredTemplateProgramRuns() {
+				return negotiatedState?.deferredTemplateProgramRuns === true;
 			},
 			get lazyPublicInstances() {
 				return negotiatedState?.lazyPublicInstances === true;
