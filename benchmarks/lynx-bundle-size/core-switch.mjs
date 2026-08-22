@@ -105,10 +105,14 @@ function nativeScriptBytes(script) {
 // to be removed by.
 //
 // It is therefore pinned where the difference actually exists: in the source,
-// after the plugin's banner stage and before minification. Both builds are
-// pinned to the same constant, and the constant keeps a digest's length and hex
-// alphabet, so raw bytes are unchanged and compressed bytes stay a bundle's.
-// Any real change to the main-thread program still moves the hash.
+// after the plugin's banner stage and before minification. Any real change to
+// the main-thread program still moves the hash.
+//
+// Only the main-thread asset is pinned. The same perturbation reaches the
+// background program — on one tree it moved `core: 'block'` by 105 gzip bytes,
+// against a delta this harness reports to the byte — and the background program
+// is the measurement rather than the assertion. Normalizing an artifact nobody
+// compares would buy nothing and cost the number.
 const PINNED_DIGEST = createHash('sha1').update('octane-core-switch').digest('hex');
 const PINNED_RELEASE = `debugmetadata:${PINNED_DIGEST}`;
 const BUILD_DIGEST = /debugmetadata:[0-9a-f]{40}/g;
@@ -124,8 +128,11 @@ class PinBuildDigestPlugin {
 				{ name: 'PinBuildDigest', stage: PROCESS_ASSETS_STAGE_ADDITIONS + 2 },
 				() => {
 					for (const name of Object.keys(compilation.assets)) {
-						if (!name.endsWith('.js')) continue;
-						const before = compilation.getAsset(name).source.source().toString();
+						const asset = compilation.getAsset(name);
+						// The same flag `@lynx-js/debug-metadata-rsbuild-plugin` reads to
+						// tell the two thread programs apart.
+						if (!name.endsWith('.js') || asset?.info?.['lynx:main-thread'] !== true) continue;
+						const before = asset.source.source().toString();
 						const after = before.replace(BUILD_DIGEST, PINNED_RELEASE);
 						if (after !== before) compilation.updateAsset(name, new RawSource(after));
 					}
@@ -135,17 +142,19 @@ class PinBuildDigestPlugin {
 	}
 }
 
-// The control for the pin. A stage that stopped running, or a plugin that moved
-// its banner past the minifier, would otherwise come back as an unexplained
-// byte difference in the identity check below.
-function assertDigestPinned(core, thread, text, required) {
+// The control for the pin. A stage that stopped running, an asset flag that
+// stopped being set, or a plugin that moved its banner past the minifier would
+// otherwise come back as an unexplained byte difference in the identity check.
+function assertMainDigestPinned(core, text) {
 	const found = text.match(BUILD_DIGEST) ?? [];
+	if (found.length === 0) {
+		throw new Error(`${core}: the main-thread program carries no build digest to pin`);
+	}
 	const unpinned = found.filter((digest) => digest !== PINNED_RELEASE);
 	if (unpinned.length !== 0) {
-		throw new Error(`${core}: the ${thread} program kept an unpinned build digest: ${unpinned[0]}`);
-	}
-	if (required && found.length === 0) {
-		throw new Error(`${core}: the ${thread} program carries no build digest to pin`);
+		throw new Error(
+			`${core}: the main-thread program kept an unpinned build digest: ${unpinned[0]}`,
+		);
 	}
 }
 
@@ -196,8 +205,7 @@ async function buildWithCore(core, outputRoot) {
 	const main = decodedScript(decoded, 'main-thread-script');
 	if (background.bytes.length === 0) throw new Error(`${core}: background program is empty`);
 	if (main.bytes.length === 0) throw new Error(`${core}: main program is empty`);
-	assertDigestPinned(core, 'main-thread', main.text, true);
-	assertDigestPinned(core, 'background', background.text, false);
+	assertMainDigestPinned(core, main.text);
 	return {
 		core,
 		backgroundRaw: background.bytes.length,
