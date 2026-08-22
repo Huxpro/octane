@@ -82,3 +82,15 @@ missing its own strings (stale probes), or if the main-thread program is not
 byte-identical across the switch. The plan constructors a compiled `.tsrx`
 component calls are reported separately, because they belong to the application
 module rather than to a core and are reachable under either flag.
+
+That last check needs the build digest pinned to survive. Lynx's debug-metadata
+plugin prepends a per-chunk release digest to each chunk's source before the
+minifier runs, and the digest moves whenever the bundle moves — so across the
+switch the two main-thread programs reach the minifier as text differing in
+forty characters. The mangler orders its identifier alphabet by character
+frequency over that text, and the rarest characters sit close enough together
+that a digest carrying seven `4`s against one carrying two reverses `4` and `6`,
+renaming three identifiers. Normalizing the digest in the decoded output cannot
+undo a naming decision already made, so the harness pins it in the source
+instead, between the plugin's banner stage and minification, and fails by name
+if an unpinned digest survives.
