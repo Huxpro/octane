@@ -96,11 +96,19 @@ const wanted = new Set(
 );
 const COUNTER_BUILD = args['counter-build'];
 // A counter build is the same dist path with `-profile` appended, which is what
-// `scripts/build-app.mjs` writes under OCTANE_LYNX_PROFILE=1. Reference cells are
-// vendored black boxes with no counters to turn on, so they keep their bundle.
+// `scripts/build-app.mjs` writes under OCTANE_LYNX_PROFILE=1 — so the auto-build
+// below must run under that same flag, or it would stage a fresh default dist
+// while the session serves whatever `-profile` dist was already on disk.
+// Reference cells are vendored black boxes with no counters to turn on, so they
+// keep their bundle.
+if (COUNTER_BUILD) process.env.OCTANE_LYNX_PROFILE = '1';
 const CELLS = ALL_CELLS.filter((cell) => wanted.has(cell.id)).map((cell) =>
 	COUNTER_BUILD && cell.bundle.includes('/app/dist')
-		? { ...cell, bundle: cell.bundle.replace(/(\/app\/dist[^/]*)\//, '$1-profile/') }
+		? {
+				...cell,
+				bundle: cell.bundle.replace(/(\/app\/dist[^/]*)\//, '$1-profile/'),
+				profiled: true,
+			}
 		: cell,
 );
 // An injected cell is compared against `octane` explicitly, because the reason
@@ -311,10 +319,13 @@ const RESET_WIRE = () => {
 // separate records under the same global name, and they count opposite ends of
 // the same wire: background counts what it dispatched, main counts what it
 // applied. Reporting their sum would hide exactly the question these counters
-// exist to answer, so they stay apart. Lynx-for-Web runs the background in a
-// worker and the main thread in a hidden iframe, but the split here is by which
-// fields a realm filled rather than by realm kind, so it does not depend on that
-// hosting choice: a realm that dispatched nothing contributes nothing to `bg`.
+// exist to answer, so they stay apart. The split is by realm kind: Lynx-for-Web
+// runs the background renderer in a worker and the main thread in a hidden
+// iframe, and since both records carry the same field names, realm kind is the
+// only signal there is. That makes this classification a property of the
+// Lynx-for-Web hosting choice — a hosting that ran the background renderer in a
+// frame would need a different split, and until one exists this stays honest by
+// saying so rather than by pretending to be hosting-independent.
 async function eachRealmTagged(page, fn) {
 	const seen = [];
 	for (const frame of page.frames()) {
@@ -422,11 +433,14 @@ async function runRep(browser, cell, rows) {
 		// schedule comparable with the sessions recorded before it. A cell whose
 		// app has no Clear button reports the op "not measured" rather than
 		// failing the whole repetition — the same stance the harness takes for a
-		// bundle it cannot drive.
+		// bundle it cannot drive, and a different fact from a DNF, so the sample
+		// records which one this was.
 		if (await driver.hasButton('Clear')) {
 			await measure('clear', () =>
 				driver.measureButton('Clear', { type: 'rowCount', value: 0 }, STORM_TIMEOUT_MS),
 			);
+		} else {
+			(sample.notMeasured ??= []).push('clear');
 		}
 	} finally {
 		await page.close();
@@ -523,7 +537,13 @@ async function main() {
 		results[cell.id] = {};
 		collected[cell.id] = {};
 		for (const rows of SCALES)
-			collected[cell.id][rows] = { samples: {}, countSamples: {}, wireSamples: {}, dnf: 0 };
+			collected[cell.id][rows] = {
+				samples: {},
+				countSamples: {},
+				wireSamples: {},
+				notMeasured: new Set(),
+				dnf: 0,
+			};
 	}
 	try {
 		for (const rows of SCALES) {
@@ -536,7 +556,8 @@ async function main() {
 				for (const cell of order) {
 					const bucket = collected[cell.id][rows];
 					try {
-						const { counts, wire, ...timings } = await runRep(browser, cell, rows);
+						const { counts, wire, notMeasured, ...timings } = await runRep(browser, cell, rows);
+						for (const op of notMeasured ?? []) bucket.notMeasured.add(op);
 						for (const [op, ms] of Object.entries(timings)) (bucket.samples[op] ??= []).push(ms);
 						for (const [op, value] of Object.entries(counts ?? {}))
 							(bucket.countSamples[op] ??= []).push(value);
@@ -563,11 +584,16 @@ async function main() {
 				ops,
 				counts: countsByOp(bucket.countSamples),
 				wire: statsByOp(bucket.wireSamples, WIRE_FIELDS),
+				notMeasured: [...bucket.notMeasured],
 				dnf: bucket.dnf,
 			};
-			const cellText = OPS.map((op) => `${op}=${ops[op] ? ops[op].median.toFixed(0) : 'DNF'}`).join(
-				' ',
-			);
+			// "not measured" is the op-not-present outcome (the app has no such
+			// button); DNF is the op-timed-out outcome. Conflating them would report
+			// an older bundle's missing Clear button as a failure.
+			const missing = (op) => (bucket.notMeasured.has(op) ? 'not measured' : 'DNF');
+			const cellText = OPS.map(
+				(op) => `${op}=${ops[op] ? ops[op].median.toFixed(0) : missing(op)}`,
+			).join(' ');
 			console.log(`[web] ${cell.id.padEnd(10)} rows=${String(rows).padStart(5)} ${cellText}`);
 		}
 	}
@@ -586,8 +612,10 @@ async function main() {
 	);
 	if (manifest) lines.push(`- references: ${manifest.source} @ ${manifest.commit}`);
 	if (COUNTER_BUILD) {
+		const profiled = runnable.filter((cell) => cell.profiled).map((cell) => cell.id);
+		const kept = runnable.filter((cell) => !cell.profiled).map((cell) => cell.id);
 		lines.push(
-			"- **counter build**: the octane cells were served from `OCTANE_LYNX_PROFILE=1` bundles, which carry the wire profiler's branches. The wire-count tables below are the result of this run; the milliseconds are not the shipping configuration and must not be quoted beside a default-build session.",
+			`- **counter build**: ${profiled.length === 0 ? 'no cell was' : `${profiled.join(', ')} ${profiled.length === 1 ? 'was' : 'were'}`} served from \`OCTANE_LYNX_PROFILE=1\` bundles, which carry the wire profiler's branches. The wire-count tables below are the result of this run; those cells' milliseconds are not the shipping configuration and must not be quoted beside a default-build session${kept.length === 0 ? '' : `, nor ratioed against the cells that kept their default or vendored builds (${kept.join(', ')})`}.`,
 		);
 	}
 	for (const cell of missing) lines.push(`- ${cell.id}: not measured (bundle missing)`);
@@ -598,10 +626,12 @@ async function main() {
 		lines.push(`| op | ${runnable.map((cell) => cell.id).join(' | ')} |`);
 		lines.push(`|---|${runnable.map(() => '---').join('|')}|`);
 		const reference = results['vue-vdom']?.[rows]?.ops;
+		const missingLabel = (cellId, op) =>
+			results[cellId][rows].notMeasured.includes(op) ? 'not measured' : 'DNF';
 		for (const op of OPS) {
 			const row = runnable.map((cell) => {
 				const stat = results[cell.id][rows].ops[op];
-				if (!stat) return 'DNF';
+				if (!stat) return missingLabel(cell.id, op);
 				const referenceMedian = reference?.[op]?.median;
 				const ratio =
 					referenceMedian && cell.id !== 'vue-vdom'
@@ -618,21 +648,38 @@ async function main() {
 		// (app/src/block-program.ts), so it is an architecture ceiling and is
 		// labelled as one wherever it is quoted.
 		const universal = results['octane']?.[rows]?.ops;
+		const octaneProfiled = Boolean(runnable.find((cell) => cell.id === 'octane')?.profiled);
 		for (const cell of runnable) {
 			if ((cell.core !== 'block' && cell.compare !== 'octane') || universal === undefined) continue;
+			// A ratio is a same-configuration claim on top of the same-window one.
+			// Under --counter-build only the app-dist cells are redirected to
+			// profiler bundles, so a cell that kept its default build (octane-direct,
+			// an injected --cell-bundle) would divide default-build milliseconds by
+			// profiler-instrumented ones — the cross-configuration quote the header
+			// forbids. Print the medians for the record; withhold the ratio.
+			const comparable = Boolean(cell.profiled) === octaneProfiled;
 			const block = results[cell.id][rows].ops;
 			lines.push('');
 			lines.push(`### ${cell.id} ÷ octane (${rows.toLocaleString('en-US')} rows, same window)`);
 			lines.push('');
+			if (!comparable) {
+				lines.push(
+					`> ${octaneProfiled ? 'octane' : cell.id} was served from an \`OCTANE_LYNX_PROFILE=1\` bundle and ${octaneProfiled ? cell.id : 'octane'} was not, so these columns are different build configurations: medians are printed for the record, ratios are withheld.`,
+				);
+				lines.push('');
+			}
 			lines.push('| op | octane | ' + cell.id + ' | ratio |');
 			lines.push('|---|---:|---:|---:|');
 			for (const op of OPS) {
 				const before = universal[op];
 				const after = block[op];
+				const ratio = !comparable
+					? 'withheld (cross-build)'
+					: before && after
+						? `${(after.median / before.median).toFixed(2)}×`
+						: 'not measured';
 				lines.push(
-					`| ${op} | ${before ? before.median.toFixed(0) : 'DNF'} | ${after ? after.median.toFixed(0) : 'DNF'} | ${
-						before && after ? `${(after.median / before.median).toFixed(2)}×` : 'not measured'
-					} |`,
+					`| ${op} | ${before ? before.median.toFixed(0) : missingLabel('octane', op)} | ${after ? after.median.toFixed(0) : missingLabel(cell.id, op)} | ${ratio} |`,
 				);
 			}
 		}

@@ -327,6 +327,7 @@ export function createLynxElementPAPI<Node extends LynxElementRef = LynxElementR
 \t\t\t\t\tcommits: 0,
 \t\t\t\t\tpacedCommits: 0,
 \t\t\t\t\tcommands: 0,
+\t\t\t\t\temptyCommits: 0,
 \t\t\t\t\tbytes: 0,
 \t\t\t\t\tselfcheckMs: 0,
 \t\t\t\t\tdispatchMs: 0,
