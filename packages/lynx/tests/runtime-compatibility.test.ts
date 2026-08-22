@@ -110,6 +110,7 @@ describe('Lynx runtime compatibility evidence', () => {
 				// is what checks it. What this guard still owns is the thing it
 				// always owned: no main-thread-only module reaches the background.
 				'src/core/block-background.ts',
+				'src/core/block-component.ts',
 				'src/core/block-core.ts',
 				'src/core/block-program.ts',
 				'src/core/block-root.ts',
@@ -133,7 +134,11 @@ describe('Lynx runtime compatibility evidence', () => {
 				'src/resource.ts',
 				'src/root.ts',
 			],
-			packages: ['octane/universal/native'],
+			// Issue #135 item 1b: the plan → wire template lowering is published on
+			// its own subpath, and `block-component.ts` is its only importer here.
+			// Like the block modules above it is folded by the compile-time switch,
+			// and like them it owns no main-thread surface.
+			packages: ['octane/universal/native', 'octane/universal/template-program'],
 		});
 		expect(runtimeSourceGraph(resolve(LYNX_ROOT, 'src/main-thread.ts'))).toEqual({
 			files: [

@@ -165,10 +165,14 @@ function rowLabels(papi: ReturnType<typeof createFakePAPI>): string[] {
 const plainComponent = (() => null) as unknown as LynxComponent<ProgramProps>;
 
 describe('Lynx block background core', () => {
-	it('refuses a component that carries no block program, naming the missing layer', async () => {
+	it('refuses a component that is neither carrying a program nor compiled', async () => {
 		const { background } = scene();
+		// A component that carries no program is derived from what it renders
+		// (`block-component.ts`), so this is what is left once that path exists:
+		// a plain function the compiler never lowered has nothing to derive from.
+		// The derivation itself is covered end to end in `block-component.test.ts`.
 		await expect(background.renderAsync(plainComponent as never, { labels: [] })).rejects.toThrow(
-			/no component layer yet/,
+			/did not return a compiled template/,
 		);
 	});
 
@@ -322,10 +326,11 @@ describe('Lynx background core switch', () => {
 			scheduleMicrotask: (callback) => void Promise.resolve().then(callback),
 		});
 		try {
-			// The switch is what is under test: a universal root would render this
-			// component, and a block root cannot, because it has no component layer.
+			// The switch is what is under test, so the distinguisher is a component
+			// the two cores answer differently: a universal root renders one that
+			// returns `null`, and the Block core has nothing to lower it from.
 			await expect(root.render(plainComponent, { labels: [] })).rejects.toThrow(
-				/no component layer yet/,
+				/cannot lower component plainComponent onto the Block core/,
 			);
 		} finally {
 			await root.unmount().catch(() => undefined);
