@@ -4991,6 +4991,166 @@ function visibleStateValue<T>(record: UniversalOwnerRecord, slot: unknown, fallb
 	return value;
 }
 
+/**
+ * Hook cells for a renderer core that is not a universal root.
+ *
+ * `useState` and its neighbours find their cell through two pieces of module
+ * state — the render attempt and the owner the claim controller resolves —
+ * and only `UniversalRootImpl` ever sets them. A second core in this family,
+ * one that owns its own commit protocol and never builds a universal root, has
+ * no way to run a compiled component's setup as a result, even though the hook
+ * implementations are already linked into its bundle by the application module
+ * that calls them.
+ *
+ * This is the seam that lets it. The scope owns one component's cells and
+ * nothing else: no child owners, no effects, no transitions, no suspended
+ * replay. What it hands back is the render/commit/abort protocol the universal
+ * root already uses, so a core that adopts it inherits the update-queue
+ * semantics instead of restating them — which is the point, because a restated
+ * queue is where semantic drift enters.
+ *
+ * Nothing in `UniversalRootImpl` becomes reachable from a core that uses this:
+ * the owner record's root is a two-member stand-in, and the one call the hook
+ * path makes on it is forwarded to `services.scheduleRender`.
+ */
+export interface UniversalHookScopeServices {
+	/** The renderer id the cells render under. */
+	readonly renderer: string;
+	/**
+	 * Render this component again, because a committed setter raised an update
+	 * while no render of this scope was in flight. An update raised *during* a
+	 * render settles inside that render, so this is never re-entrant.
+	 */
+	scheduleRender(): void;
+}
+
+export interface UniversalHookScope {
+	/**
+	 * Run one render of the owning component with its cells installed. A setup
+	 * that writes its own state settles before this returns, so what comes back
+	 * is the output of the last pass rather than the first.
+	 */
+	render<T>(setup: () => T): T;
+	/** Publish the last render's cells and drop the updates it consumed. */
+	commit(): void;
+	/** Drop the last render's cells, leaving the committed ones in place. */
+	abort(): void;
+	/** Release the cells. A setter that fires afterwards is ignored. */
+	dispose(): void;
+}
+
+const HOOK_SCOPE_IDENTITY: readonly unknown[] = Object.freeze([]);
+const HOOK_SCOPE_REPLAY: readonly SuspendedOwnerSegment[] = Object.freeze([]);
+const HOOK_SCOPE_BATCHES: ReadonlySet<UniversalTransitionBatch> =
+	new Set<UniversalTransitionBatch>();
+const HOOK_SCOPE_REPLAY_ENTRIES: readonly SuspendedMemoEntry[] = Object.freeze([]);
+
+export function createUniversalHookScope(services: UniversalHookScopeServices): UniversalHookScope {
+	// The hook path reads exactly two members off a root: the renderer id, which
+	// the owner record copies once, and `scheduleOwned`, which `scheduleOwner`
+	// calls for an update raised outside a render. Standing those two up is
+	// cheaper than a root and — more to the point — keeps every other line of
+	// `UniversalRootImpl` unreachable from a core that only wants cells.
+	const root = {
+		renderer: services.renderer,
+		scheduleOwned(): void {
+			services.scheduleRender();
+		},
+	} as unknown as UniversalRootImpl<any, any>;
+	const hookRoot: KernelHookRootServices<UniversalContext<any>> = {
+		warmMemoToken: {},
+		formatId(index: number): string {
+			return `:octane-h${index.toString(36)}:`;
+		},
+		// No bridge, so every context reads its default — the same answer a
+		// universal root with no bridge gives. A core that wants provider values
+		// needs the owner chain, which this scope deliberately does not have.
+		readBridgeContext<T>(context: UniversalContext<T>): T {
+			return context.defaultValue;
+		},
+	};
+	const record = createOwnerRecord(root, null, null, HOOK_SCOPE_IDENTITY, null);
+	let draft: DraftOwner | null = null;
+	let nextUniversalId = 0;
+	return {
+		render<T>(setup: () => T): T {
+			if (record.disposed) {
+				throw new Error('Octane universal hook scope: this scope was disposed.');
+			}
+			if (CURRENT_ATTEMPT !== null) {
+				throw new Error('Octane universal hook scope: a render is already in flight.');
+			}
+			const owner = draftOwner(record, null, HOOK_SCOPE_REPLAY);
+			const attempt: RenderAttempt = {
+				root,
+				hookRoot,
+				owner,
+				scope: null,
+				owners: [owner],
+				treeFeatures: 0,
+				replayEntries: HOOK_SCOPE_REPLAY_ENTRIES,
+				retryThenables: new Set(),
+				nextUniversalId,
+				implicitSlot: 0,
+				transitionBatches: HOOK_SCOPE_BATCHES,
+				transitionRender: false,
+				bridgeContextReads: null,
+				retainEligible: false,
+				retainedCount: 0,
+				dirtyEpoch: 0,
+			};
+			CURRENT_ATTEMPT = attempt;
+			CURRENT_OWNER = owner;
+			try {
+				// A setup that writes its own state settles inside this attempt,
+				// on this draft — the same loop and the same cap `executeOwner`
+				// runs. Rebuilding the draft instead would drop the write, and
+				// committing between passes would publish a state the component
+				// has already moved off.
+				let produced: T;
+				for (let pass = 0; ; pass++) {
+					if (pass === 25) throw new Error('Too many universal render-phase updates.');
+					owner.needsRender = false;
+					owner.implicitSlot = 0;
+					produced = setup();
+					if (!owner.needsRender) break;
+				}
+				draft = owner;
+				nextUniversalId = attempt.nextUniversalId;
+				return produced;
+			} finally {
+				CURRENT_ATTEMPT = null;
+				CURRENT_OWNER = null;
+			}
+		},
+		commit(): void {
+			const owner = draft;
+			if (owner === null) return;
+			draft = null;
+			record.hooks = owner.hooks;
+			record.componentProps = owner.componentProps;
+			// Same drain as an accepted universal commit: an update the render
+			// folded into a cell is gone, one it skipped is still owed.
+			for (const [slot, applied] of owner.appliedUpdates) {
+				const queue = record.updates.get(slot);
+				if (queue !== applied.queue || applied.lane) continue;
+				queue.splice(0, applied.consumed);
+				if (queue.length === 0) record.updates.delete(slot);
+			}
+			record.mounted = true;
+		},
+		abort(): void {
+			draft = null;
+		},
+		dispose(): void {
+			draft = null;
+			record.disposed = true;
+			record.hooks.clear();
+			record.updates.clear();
+		},
+	};
+}
+
 export function useState<T>(
 	initial: T | (() => T),
 	slot?: unknown,
