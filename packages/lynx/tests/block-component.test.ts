@@ -531,20 +531,137 @@ describe('Lynx compiled component on the Block core', () => {
 	});
 });
 
-describe('Lynx compiled component the Block core refuses', () => {
-	it('names the missing hook layer rather than half-rendering a hooked setup', async () => {
-		const block = blockColumn();
-		const Hooked = defineUniversalComponent(
+describe('Lynx compiled component with its own state on the Block core', () => {
+	/**
+	 * A page that reads a cell, and a tap that writes it.
+	 *
+	 * The cell is spelled rather than counted because `paint` rewrites every
+	 * digit it finds into an allocator token — which is what makes its trees
+	 * comparable across two cores, and what would make `n:0` and `n:1` the same
+	 * string here.
+	 */
+	const TALLY = ['none', 'once', 'twice', 'thrice'] as const;
+	const Counter = defineUniversalComponent(
+		LYNX_TRANSPORT_RENDERER,
+		function Counter(props: { readonly base: string }) {
+			const [taps, setTaps] = useState(0);
+			return universalValue(CARD_PLAN, [
+				'card',
+				`${props.base}-${TALLY[taps] ?? 'many'}`,
+				'card-meta',
+				() => setTaps((previous) => previous + 1),
+				'detail',
+			]);
+		},
+	);
+
+	it('repaints the page when a tap writes a cell the page owns', async () => {
+		const block = blockColumn<{ readonly base: string }>();
+		await block.render(Counter as LynxComponent<{ readonly base: string }>, { base: 'n' });
+		expect(paint(block.main.commits).tree).toContain('n-none');
+
+		// The tap runs a setter with no render in flight and no caller left to
+		// re-render the page, so what repaints it is the scope's own schedule.
+		deliverTo(block, boundListener(block.main.commits));
+		await block.settle(Promise.resolve());
+		expect(paint(block.main.commits).tree).toContain('n-once');
+
+		deliverTo(block, boundListener(block.main.commits));
+		await block.settle(Promise.resolve());
+		expect(paint(block.main.commits).tree).toContain('n-twice');
+	});
+
+	it('keeps the cell across a re-render driven by new props', async () => {
+		const block = blockColumn<{ readonly base: string }>();
+		const render = (base: string) =>
+			block.render(Counter as LynxComponent<{ readonly base: string }>, { base });
+
+		await render('a');
+		deliverTo(block, boundListener(block.main.commits));
+		await block.settle(Promise.resolve());
+		expect(paint(block.main.commits).tree).toContain('a-once');
+
+		// New props, same component: the cell is the page's, not the render's,
+		// so the tap it already took survives the prop change.
+		await render('b');
+		expect(paint(block.main.commits).tree).toContain('b-once');
+	});
+
+	it('never paints a frame with only one of two cells a tap wrote', async () => {
+		const block = blockColumn<{ readonly base: string }>();
+		const Two = defineUniversalComponent(
 			LYNX_TRANSPORT_RENDERER,
-			function Hooked(props: CardProps) {
-				const [label] = useState(props.label);
-				return universalValue(CARD_PLAN, ['card', label, 'card-meta', props.onTap, props.detail]);
+			function Two(props: { readonly base: string }) {
+				const [left, setLeft] = useState(false);
+				const [right, setRight] = useState(false);
+				return universalValue(CARD_PLAN, [
+					'card',
+					`${props.base}-${left ? 'L' : 'l'}${right ? 'R' : 'r'}`,
+					'card-meta',
+					() => {
+						setLeft(true);
+						setRight(true);
+					},
+					'detail',
+				]);
 			},
 		);
 
+		await block.render(Two as LynxComponent<{ readonly base: string }>, { base: 'n' });
+		const mounted = block.main.commits.length;
+
+		deliverTo(block, boundListener(block.main.commits));
+		await block.settle(Promise.resolve());
+		expect(paint(block.main.commits).tree).toContain('n-LR');
+
+		// The handler wrote two cells, and no frame in between shows one of them
+		// moved without the other. A render on the setter's own stack would
+		// paint `n-Lr` first, which is a state this component was never in.
+		const everyFrame = block.main.commits.map(
+			(_, index) => paint(block.main.commits.slice(0, index + 1)).tree,
+		);
+		expect(everyFrame.some((tree) => tree.includes('n-Lr') || tree.includes('n-lR'))).toBe(false);
+		// And the pair did land, so the check above is not vacuous.
+		expect(everyFrame.at(-1)).toContain('n-LR');
+		expect(block.main.commits.length).toBeGreaterThan(mounted);
+	});
+});
+
+describe('Lynx compiled component the Block core refuses', () => {
+	it('names the missing row-cell layer rather than half-rendering a hooked row', async () => {
+		const block = blockColumn<TableProps>();
+		const HookedRow = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function HookedRow(props: { readonly row: TableRow }) {
+				const [label] = useState(props.row.label);
+				return universalValue(ROW_PLAN, ['row', String(props.row.id), noop, label]);
+			},
+		);
+		const Listed = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Listed(props: TableProps) {
+				return universalValue(TABLE_PLAN, [
+					universalFor(
+						props.rows,
+						(row: TableRow) => row.id,
+						(row: TableRow) =>
+							universalComponent(
+								LYNX_TRANSPORT_RENDERER,
+								HookedRow,
+								universalProps([['set', 'row', row]]),
+							),
+					),
+				]);
+			},
+		);
+
+		// The page's own cells exist now; a row's do not, and the refusal names
+		// the row rather than the page that contains it.
 		await expect(
-			block.settle(block.background.renderAsync(Hooked as never, LADDER[0]!)),
-		).rejects.toThrow(/Hooked.*calls a hook.*item 1b/s);
+			block.settle(
+				block.background.renderAsync(Listed as never, table([1], undefined, noop) as never),
+			),
+		).rejects.toThrow(/HookedRow.*calls a hook/s);
 	});
 
 	it('names a template that is not rooted at a host element', async () => {
