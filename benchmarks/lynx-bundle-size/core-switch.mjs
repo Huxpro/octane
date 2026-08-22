@@ -108,11 +108,14 @@ function nativeScriptBytes(script) {
 // after the plugin's banner stage and before minification. Any real change to
 // the main-thread program still moves the hash.
 //
-// Only the main-thread asset is pinned. The same perturbation reaches the
-// background program — on one tree it moved `core: 'block'` by 105 gzip bytes,
-// against a delta this harness reports to the byte — and the background program
-// is the measurement rather than the assertion. Normalizing an artifact nobody
-// compares would buy nothing and cost the number.
+// Only the main-thread asset is pinned, selected by the same `lynx:main-thread`
+// flag the debug-metadata plugin reads to tell the two programs apart. Pinning
+// every chunk reaches the background program too and moves it by a few bytes —
+// 3 on `universal` and 4 on `block` where it was measured — and the background
+// program is the measurement here rather than the assertion. Nothing compares
+// two background programs across the switch, so normalizing one buys nothing
+// and spends the number. Pinned this narrowly, both come back at exactly the
+// bytes an unpinned build reports.
 const PINNED_DIGEST = createHash('sha1').update('octane-core-switch').digest('hex');
 const PINNED_RELEASE = `debugmetadata:${PINNED_DIGEST}`;
 const BUILD_DIGEST = /debugmetadata:[0-9a-f]{40}/g;
