@@ -940,9 +940,36 @@ describe('Lynx compiled component with a keyed range the Block core refuses', ()
 	it('names a row that is not a compiled template', async () => {
 		const Listed = listing(listedPlan([{ kind: 'slot', slot: 0 }]), (id) => `row ${id}`);
 		const block = blockColumn<TableProps>();
+		// The defect is the row's output, not the page's: Listed did return a
+		// compiled template, so the diagnostic must say which level failed.
 		await expect(
 			block.settle(block.background.renderAsync(Listed as never, table([1]))),
-		).rejects.toThrow(/did not return a compiled template/);
+		).rejects.toThrow(/a row of one of its keyed ranges is not a compiled template/);
+	});
+
+	it('mounts nothing when a duplicate key rejects the first render, so a retry paints once', async () => {
+		const block = blockColumn<TableProps>();
+		const duplicated: TableProps = {
+			rows: [
+				{ id: 7, label: 'row 7' },
+				{ id: 7, label: 'row 7 again' },
+			],
+			selected: undefined,
+			onSelect: noop,
+		};
+		await expect(
+			block.settle(block.background.renderAsync(Table as never, duplicated)),
+		).rejects.toThrow(/duplicate key/);
+		expect(block.main.commits).toHaveLength(0);
+
+		// The application fixes its data and renders again. A rejection that had
+		// already mounted the page block would make this paint the page twice.
+		await block.render(Table as LynxComponent<TableProps>, table([1, 2]));
+		const retried = paint(block.main.commits);
+
+		const fresh = blockColumn<TableProps>();
+		await fresh.render(Table as LynxComponent<TableProps>, table([1, 2]));
+		expect(retried.tree).toEqual(paint(fresh.main.commits).tree);
 	});
 
 	it('names two rows that returned different templates', async () => {

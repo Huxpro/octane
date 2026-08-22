@@ -438,15 +438,28 @@ export function lynxBlockProgramForComponent<Props>(
 		// template: the plan is inside the component, so it is called for. The
 		// component boundary itself — its own hooks, its own memo — is the layer
 		// item 1b leaves open, and a row that needs one refuses by its own name.
-		const rendered =
+		let rendered: RenderedPlan;
+		if (
 			produced !== null &&
 			typeof produced === 'object' &&
 			(produced as { $$kind?: unknown }).$$kind === UNIVERSAL_COMPONENT_VALUE
-				? renderPlanValue(
-						(produced as UniversalComponentValue).component as unknown as LynxComponent<never>,
-						forwardedProps(produced as UniversalComponentValue),
-					)
-				: readPlanValue(subject, produced);
+		) {
+			rendered = renderPlanValue(
+				(produced as UniversalComponentValue).component as unknown as LynxComponent<never>,
+				forwardedProps(produced as UniversalComponentValue),
+			);
+		} else {
+			// The page did return a compiled template — the row's output is what
+			// did not — so the diagnostic must say which level failed.
+			const value = produced as UniversalPlanValue | null;
+			if (value === null || typeof value !== 'object' || value.$$kind !== UNIVERSAL_VALUE) {
+				refuse(
+					subject,
+					'a row of one of its keyed ranges is not a compiled template. Only a row the Octane compiler lowered to a universal plan, or one authored as a component that returns one, can mount on a range site.',
+				);
+			}
+			rendered = { source: subject, plan: value.plan, values: value.values };
+		}
 		if (state.plan === null) {
 			const root = rendered.plan.root;
 			if (root.kind !== 'host') {
@@ -516,6 +529,20 @@ export function lynxBlockProgramForComponent<Props>(
 			);
 		}
 		const items = Array.from(list.items as Iterable<unknown>);
+		// The core rejects a duplicate key too, but its rejection lands after the
+		// page block was mounted — mid-write — so a retried render would mount a
+		// second copy of the page. Rejecting here keeps the produce-the-whole-
+		// render-then-apply rule: a render that cannot be applied writes nothing.
+		const seen = new Set<unknown>();
+		for (let index = 0; index < items.length; index++) {
+			const itemKey = list.key(items[index], index);
+			if (seen.has(itemKey)) {
+				throw new Error(
+					`Octane Lynx block core: duplicate key ${String(itemKey)} in a keyed range.`,
+				);
+			}
+			seen.add(itemKey);
+		}
 		const rows: (readonly UniversalHostTemplateProgramValue[])[] = new Array(items.length);
 		const handlers: (readonly (LynxBlockListener | null)[])[] = new Array(items.length);
 		for (let index = 0; index < items.length; index++) {
