@@ -161,6 +161,21 @@ export function createLynxBlockBackgroundCore(
 		commit() {
 			return blockRoot.commit();
 		},
+		scheduleRender(work: () => void): Promise<void> {
+			// The same queue `renderAsync` takes its turn in, for the same
+			// reason: one render at a time, one commit in flight at a time. A
+			// program driving its own re-render out of band would otherwise
+			// overlap a caller's, and both would flush the core.
+			const run = renderQueue.then(async () => {
+				work();
+				await blockRoot.commit();
+			});
+			renderQueue = run.then(
+				() => undefined,
+				() => undefined,
+			);
+			return track(run);
+		},
 	});
 	// A derived program holds the block it mounted, so it belongs to this core
 	// rather than to the component: two roots rendering the same component are

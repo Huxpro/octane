@@ -305,13 +305,19 @@ export function lynxBlockProgramForComponent<Props>(
 	let liveContext: LynxBlockProgramContext | null = null;
 	let liveProps: unknown;
 	/**
-	 * Whether a state-driven re-render is already queued.
+	 * Whether a state-driven re-render is already queued but has not started.
 	 *
-	 * A handler that writes two cells asks for one render, not two. Only the
-	 * render is saved: a second pass would find every slot unchanged and commit
-	 * nothing, so the extra frame was never going to be sent. What it would have
-	 * cost is a second setup call, a second lowering, and a second slot compare
-	 * — per extra `setState`, on the update path this core exists to make cheap.
+	 * A handler that writes two cells asks for one render, not two, and so does
+	 * a storm that writes a cell every tick while the previous render is still
+	 * waiting for its turn. Both fold into the render that has not run yet,
+	 * because it will read the cells as they are when it starts — which is why
+	 * this is cleared then rather than when the microtask fires.
+	 *
+	 * Within a single handler only the render is saved: a second pass would find
+	 * every slot unchanged and commit nothing, so the extra frame was never
+	 * going to be sent. What it would have cost is a second setup call, a second
+	 * lowering, and a second slot compare — and, for a page with a keyed range,
+	 * a second render of every row in it.
 	 */
 	let renderQueued = false;
 
@@ -400,18 +406,45 @@ export function lynxBlockProgramForComponent<Props>(
 	 * cells must produce one frame, and running inside the setter would also
 	 * make a `setState` during render re-enter the render it came from — which
 	 * the scope already settles, on its own draft, without a commit.
+	 *
+	 * `scheduleRender` rather than a bare render and commit: this one has no
+	 * caller to be serialized against, and a page whose cells are written
+	 * faster than it renders would otherwise put two commits on the wire at
+	 * once. It is also what makes a storm cost renders rather than ticks — see
+	 * `renderQueued`, which is cleared when the render *starts*, so every write
+	 * that lands while one is waiting for its turn folds into it.
 	 */
 	function queueStateRender(): void {
 		if (renderQueued) return;
 		renderQueued = true;
 		void Promise.resolve().then(() => {
-			renderQueued = false;
 			const context = liveContext;
 			// Unmounted between the write and the microtask: the block is gone,
 			// so there is nothing to write the new values to.
-			if (context === null || block === null) return;
-			renderAgain(context, liveProps as Props);
-			void context.commit();
+			if (context === null || block === null) {
+				renderQueued = false;
+				return;
+			}
+			void context
+				.scheduleRender(() => {
+					renderQueued = false;
+					// Unmounted while this waited its turn. The core's queue makes
+					// that narrow — `unmountAsync` waits for work a program
+					// started — but a program that has been torn down must not
+					// write, and the check is cheaper than the invariant.
+					if (block === null) return;
+					renderAgain(context, liveProps as Props);
+				})
+				.catch((error: unknown) => {
+					// Nowhere to return this to: the tap that wrote the cell
+					// returned long ago, and the render it asked for is the whole
+					// frame. Rethrown from a timer so it reaches the runtime's
+					// error reporting instead of dying as a rejection the render
+					// queue already marked handled.
+					setTimeout(() => {
+						throw error;
+					}, 0);
+				});
 		});
 	}
 
