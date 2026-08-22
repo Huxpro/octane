@@ -485,6 +485,115 @@ export function compiledUniversalTemplateProgram(
 }
 
 /**
+ * Where a plan slot the program cannot describe sat, and which host node stands
+ * in its place.
+ *
+ * `node` is numbered in the *reduced* program below, because that is the
+ * program its caller mounts; `slot` still names the plan slot, because that is
+ * where the value lives.
+ */
+export interface UniversalTemplateProgramRange {
+	readonly slot: number;
+	readonly node: number;
+}
+
+/** A program with its range holes removed, and where they were. */
+export interface UniversalTemplateProgramWithoutRanges {
+	readonly compiled: CompiledUniversalTemplateProgram;
+	readonly ranges: readonly UniversalTemplateProgramRange[];
+}
+
+const EMPTY_TEMPLATE_PROGRAM_RANGES: readonly UniversalTemplateProgramRange[] =
+	/* @__PURE__ */ Object.freeze([]);
+
+/**
+ * Split a compiled program into the part a template program can describe and
+ * the holes that hold a keyed child range instead.
+ *
+ * A renderable hole is one plan node whatever it holds, so a hole holding a
+ * keyed range arrives here as the same `#text` shape node as a hole holding a
+ * label. A host that renders a range as real children of the hole's parent —
+ * which is what a keyed range *is* — must therefore not mount that `#text` at
+ * all, or the range would be one node short of its own parent and the parent
+ * would carry a stray empty text node forever. Only the caller knows which of
+ * its holes those are, because only the caller has the values, which is why
+ * `isRange` is asked rather than assumed.
+ *
+ * Returns `null` when a range hole is not the last child of its host node. That
+ * is not a shape this refuses on principle: a range appends its members to its
+ * parent, so a *later* static sibling would end up ahead of every row it was
+ * authored after. An earlier sibling is fine and stays.
+ *
+ * Not memoized. The result depends on the caller's values as well as the plan,
+ * and its consumer derives it once per mounted program, so a cache here would
+ * hold the wrong kind of key for no saving. A program with no range hole is
+ * returned as itself rather than as a copy, which is what keeps
+ * `prepareUniversalTemplateProgram`'s memo — keyed on this object's identity —
+ * answering for it.
+ */
+export function universalTemplateProgramWithoutRanges(
+	compiled: CompiledUniversalTemplateProgram,
+	isRange: (slot: number) => boolean,
+): UniversalTemplateProgramWithoutRanges | null {
+	const shape = compiled.shape;
+	const dropped: boolean[] = new Array(shape.length).fill(false);
+	let count = 0;
+	for (let index = 0; index < compiled.plans.length; index++) {
+		const node = compiled.plans[index]!;
+		if (node.kind !== 'slot' || !isRange(node.slot)) continue;
+		// A program's root is the node its parent inserts, so a range cannot be
+		// it: there would be nothing left to insert and nothing to hold the rows.
+		if (shape[index]!.parent === -1) return null;
+		dropped[index] = true;
+		count++;
+	}
+	if (count === 0) return { compiled, ranges: EMPTY_TEMPLATE_PROGRAM_RANGES };
+	// One pass rather than a scan per hole: a node's last child is simply the
+	// last entry naming it, because the shape is pre-order.
+	const lastChild = new Map<number, number>();
+	for (let index = 0; index < shape.length; index++) lastChild.set(shape[index]!.parent, index);
+	const remap: number[] = new Array(shape.length);
+	let next = 0;
+	for (let index = 0; index < shape.length; index++) {
+		if (!dropped[index]) {
+			remap[index] = next++;
+			continue;
+		}
+		remap[index] = -1;
+		if (lastChild.get(shape[index]!.parent) !== index) return null;
+	}
+	const nextShape: UniversalHostTemplateShapeNode[] = [];
+	const nextPlans: (UniversalHostPlan | UniversalTextPlan | UniversalSlotPlan)[] = [];
+	const ranges: UniversalTemplateProgramRange[] = [];
+	for (let index = 0; index < shape.length; index++) {
+		const node = shape[index]!;
+		// A dropped hole is a leaf — the shape pass pushes `text` and `slot` nodes
+		// without descending — so no surviving node's parent is ever a dropped one
+		// and every `remap[parent]` below is a real index.
+		if (dropped[index]) {
+			ranges.push(
+				Object.freeze({
+					slot: (compiled.plans[index] as UniversalSlotPlan).slot,
+					node: remap[node.parent]!,
+				}),
+			);
+			continue;
+		}
+		nextShape.push(
+			node.parent === -1 ? node : Object.freeze({ type: node.type, parent: remap[node.parent]! }),
+		);
+		nextPlans.push(compiled.plans[index]!);
+	}
+	return {
+		compiled: Object.freeze({
+			shape: Object.freeze(nextShape),
+			plans: Object.freeze(nextPlans),
+		}),
+		ranges: Object.freeze(ranges),
+	};
+}
+
+/**
  * Derive the wire program and its slot maps, or `null` when this renderer
  * cannot describe the plan as a program.
  *

@@ -19,11 +19,10 @@ the change; event handlers rebind per render without touching the wire. A
 program attached with `withLynxBlockProgram` still wins, so a component that
 says what it is on the Block core is never second-guessed.
 
-Two shapes are refused by name rather than half-rendered, because a bundle that
-silently rendered nothing would be worse than one that says which piece it
-lacks: a setup that calls a hook or declares an effect, which needs a render
-attempt the Block core does not stand up yet, and a keyed range site, which
-needs the range lowering. Both diagnostics name the component and the remedy.
+A setup that calls a hook or declares an effect is refused by name rather than
+half-rendered, because a bundle that silently rendered nothing would be worse
+than one that says which piece it lacks: it needs a render attempt the Block
+core does not stand up yet. The diagnostic names the component and the remedy.
 
 `LynxBlockRoot` now exposes its `transportRoot`, the identity namespace every
 handle it sends is stamped with.
