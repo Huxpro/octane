@@ -20,7 +20,26 @@ import {
 	__profileTrackComponent,
 } from './profiling.js';
 import { getRendererHostFlusher } from './renderer-bridge.js';
+import {
+	compiledUniversalTemplateProgram,
+	createUniversalHostEncoder,
+	EMPTY_STATIC_HOST_PROPS,
+	hasCrossRealmPlainPrototype,
+	prepareUniversalTemplateProgram,
+	prepareUniversalTemplateProgramValues,
+	universalHostTemplateShape,
+	type CompiledUniversalTemplateProgram,
+	type PreparedUniversalTemplateProgram,
+	type PreparedUniversalTemplateProgramEvent,
+	type PreparedUniversalTemplateProgramValue,
+	type UniversalHostEncoder,
+} from './universal-template-program.js';
 import { resolveLazyDefaultProps } from './shared-value-helpers.js';
+
+// Re-exported from where it now lives: this module has published it since the
+// transported roots landed, and a consumer should not have to follow the
+// extraction to keep importing it.
+export { hasCrossRealmPlainPrototype } from './universal-template-program.js';
 
 declare const __OCTANE_PROFILE_ENABLED__: boolean;
 
@@ -586,37 +605,9 @@ export type UniversalHostTemplateProgramValue =
  * and a record type would therefore make this escape hatch unusable by the very
  * renderers it exists for. The core reads no field here, so a field shape would
  * be a claim it never checks. What the value must not be is enforced where the
- * core can enforce it, in `isUniversalHostTemplateProgramSlotValue` below.
+ * core can enforce it, in `universal-template-program.ts`'s slot-value check.
  */
 export type UniversalHostTemplateProgramOpaqueValue = object;
-
-function isUniversalHostTemplateProgramValue(
-	value: unknown,
-): value is UniversalHostTemplateProgramValue {
-	return (
-		value === null ||
-		value === undefined ||
-		typeof value === 'string' ||
-		typeof value === 'number' ||
-		typeof value === 'boolean' ||
-		typeof value === 'bigint'
-	);
-}
-
-/**
- * Whether a value may occupy the slot the program bound to `name`.
- *
- * A renderer-namespaced slot is the one place a non-scalar belongs, and the core
- * checks only that the renderer's encoder produced something transportable: the
- * core cannot know what such a value means, and the driver that consumes the
- * program owns validating it. A function is the one shape refused outright — it
- * is what the encoder exists to replace, so one surviving here means the
- * renderer declined to encode and the run must not carry it.
- */
-function isUniversalHostTemplateProgramSlotValue(name: string, value: unknown): boolean {
-	if (isUniversalHostTemplateProgramValue(value)) return true;
-	return typeof value === 'object' && value !== null && name.includes(':');
-}
 
 export type UniversalHostCommand =
 	| {
@@ -1060,7 +1051,6 @@ const EMPTY_BLUEPRINT_EVENTS = new Map<string, BlueprintEvent>();
 const EMPTY_BLUEPRINT_HOST_CALLBACKS = new Map<string, BlueprintHostCallback>();
 const EMPTY_COMMITTED_EVENTS = new Map<string, CommittedEvent>();
 const EMPTY_COMMITTED_HOST_CALLBACKS = new Map<string, CommittedHostCallback>();
-const EMPTY_STATIC_HOST_PROPS: Record<string, unknown> = Object.freeze({});
 const EMPTY_STATIC_PROP_NAMES: readonly string[] = Object.freeze([]);
 
 interface DraftRecord {
@@ -3335,7 +3325,7 @@ function materializeValue(
 					const candidatePlan = candidate?.$$kind === UNIVERSAL_VALUE ? candidate.plan : null;
 					const compiled =
 						candidatePlan?.root.kind === 'host'
-							? compiledCollapsedTemplateProgram(candidatePlan.root)
+							? compiledUniversalTemplateProgram(candidatePlan.root)
 							: null;
 					const prepared =
 						compiled === null ? null : attempt.root.prepareCollapsedTemplateProgram(compiled);
@@ -3884,7 +3874,7 @@ function materializeCollapsedTemplate(value: UniversalPlanValue): BlueprintHost 
 	) {
 		return null;
 	}
-	const program = compiledCollapsedTemplateProgram(value.plan.root);
+	const program = compiledUniversalTemplateProgram(value.plan.root);
 	if (program === null) return null;
 	const prepared = root.prepareCollapsedTemplateProgram(program);
 	if (prepared !== null) {
@@ -4001,37 +3991,7 @@ function prepareCollapsedTemplateValues(
 	program: CompiledCollapsedTemplateProgram,
 	prepared: PreparedCollapsedTemplateProgram,
 ): readonly UniversalHostTemplateProgramValue[] | null {
-	for (const site of prepared.events) {
-		if (typeof value.values[site.slot] !== 'function') return null;
-	}
-	const values: UniversalHostTemplateProgramValue[] = new Array(prepared.values.length);
-	for (let index = 0; index < prepared.values.length; index++) {
-		const binding = prepared.values[index];
-		const source = value.values[binding.slot];
-		if (binding.text) {
-			if (typeof source !== 'string' && typeof source !== 'number' && typeof source !== 'bigint') {
-				return null;
-			}
-			values[index] = String(source);
-			continue;
-		}
-		// A renderer-namespaced binding is authored as whatever the renderer's
-		// encoder understands — for Lynx, the tagged function a worklet compiles to —
-		// so the source is checked for what it must not be rather than for being a
-		// scalar, and the encoded result is what has to be transportable.
-		const namespaced = binding.name.includes(':');
-		if (
-			(!namespaced && !isUniversalHostTemplateProgramValue(source)) ||
-			root.classifyLifecycle(binding.name, source) !== null ||
-			root.classifyLocalCallback(binding.name, source) !== null
-		) {
-			return null;
-		}
-		const encoded = root.encodeHostProp(program.shape[binding.node].type, binding.name, source);
-		if (!isUniversalHostTemplateProgramSlotValue(binding.name, encoded)) return null;
-		values[index] = encoded as UniversalHostTemplateProgramValue;
-	}
-	return Object.freeze(values);
+	return prepareUniversalTemplateProgramValues(root.encoder, program, prepared, value.values);
 }
 
 function preparedCollapsedTemplateBlueprint(
@@ -4140,23 +4100,6 @@ function createLogicalRecord(id: number, blueprint: BlueprintNode): LogicalRecor
 		parent: null,
 		children: [],
 	};
-}
-
-/**
- * Cross-realm plain-object test — the universal-side twin of
- * `packages/lynx/src/core/plain-object.ts`.
- *
- * A transported renderer can hand either side values built with a foreign
- * `Object.prototype` (an engine main thread hosted in an iframe realm, an
- * Electron process split, `node:vm`), so an identity test against this realm's
- * prototype misclassifies every structurally plain value that crossed a
- * boundary. Accept a null prototype, or any prototype one hop from null — the
- * shape of every realm's `Object.prototype`; class and built-in instances are
- * still rejected. `value` must already be a non-null, non-array object.
- */
-export function hasCrossRealmPlainPrototype(value: object): boolean {
-	const prototype = Object.getPrototypeOf(value);
-	return prototype === null || Object.getPrototypeOf(prototype) === null;
 }
 
 /**
@@ -4336,115 +4279,15 @@ function stableUniversalPlacementPositions(sources: Int32Array): Uint8Array {
 	return stable;
 }
 
-const UNIVERSAL_HOST_TEMPLATE_SHAPES = new WeakMap<
-	UniversalHostPlan,
-	readonly UniversalHostTemplateShapeNode[] | null
->();
-
-function universalHostTemplateShape(
-	plan: UniversalHostPlan,
-): readonly UniversalHostTemplateShapeNode[] | null {
-	const cached = UNIVERSAL_HOST_TEMPLATE_SHAPES.get(plan);
-	if (cached !== undefined) return cached;
-	const output: UniversalHostTemplateShapeNode[] = [];
-	const visit = (node: UniversalPlanNode, parent: number): boolean => {
-		if (node.kind === 'range') {
-			for (const child of node.children) if (!visit(child, parent)) return false;
-			return true;
-		}
-		if (node.kind === 'text' || node.kind === 'slot') {
-			output.push(Object.freeze({ type: '#text', parent }));
-			return true;
-		}
-		if (node.kind !== 'host') return false;
-		if (node.type === 'list' || node.type === 'list-item') return false;
-		const index = output.length;
-		output.push(Object.freeze({ type: node.type, parent }));
-		for (const child of node.children ?? []) if (!visit(child, index)) return false;
-		return true;
-	};
-	const shape = visit(plan, -1) && output.length > 1 ? Object.freeze(output) : null;
-	UNIVERSAL_HOST_TEMPLATE_SHAPES.set(plan, shape);
-	return shape;
-}
-
-interface CompiledCollapsedTemplateProgram {
-	readonly shape: readonly UniversalHostTemplateShapeNode[];
-	readonly plans: readonly (UniversalHostPlan | UniversalTextPlan | UniversalSlotPlan)[];
-}
-
-interface PreparedCollapsedTemplateValue {
-	readonly node: number;
-	readonly name: string;
-	readonly slot: number;
-	readonly text: boolean;
-}
-
-interface PreparedCollapsedTemplateEvent {
-	readonly node: number;
-	readonly prop: string;
-	readonly slot: number;
-	readonly type: string;
-	readonly priority: UniversalEventPriority;
-}
-
-interface PreparedCollapsedTemplateProgram {
-	readonly wire: UniversalHostTemplateProgram;
-	readonly values: readonly PreparedCollapsedTemplateValue[];
-	readonly events: readonly PreparedCollapsedTemplateEvent[];
-	readonly sharedNodes: readonly (BlueprintCollapsedTemplateNode | null)[];
-}
-
-const COMPILED_COLLAPSED_TEMPLATE_PROGRAMS = new WeakMap<
-	UniversalHostPlan,
-	CompiledCollapsedTemplateProgram | null
->();
-
-function compiledCollapsedTemplateProgram(
-	plan: UniversalHostPlan,
-): CompiledCollapsedTemplateProgram | null {
-	const cached = COMPILED_COLLAPSED_TEMPLATE_PROGRAMS.get(plan);
-	if (cached !== undefined) return cached;
-	const shape = universalHostTemplateShape(plan);
-	if (shape === null) {
-		COMPILED_COLLAPSED_TEMPLATE_PROGRAMS.set(plan, null);
-		return null;
-	}
-	const plans: (UniversalHostPlan | UniversalTextPlan | UniversalSlotPlan)[] = [];
-	const visit = (node: UniversalPlanNode): boolean => {
-		if (node.kind === 'slot' || node.kind === 'text') {
-			plans.push(node);
-			return true;
-		}
-		if (node.kind !== 'host' || node.propsSlot !== undefined) return false;
-		for (const name of Object.keys(node.props ?? EMPTY_STATIC_HOST_PROPS)) {
-			if (
-				name === 'ref' ||
-				name === 'key' ||
-				name === 'children' ||
-				name.startsWith('main-thread:')
-			) {
-				return false;
-			}
-		}
-		for (const [name] of node.bindings ?? []) {
-			// A renderer-namespaced prop stays eligible as a *binding*: it names a
-			// per-instance slot, which is exactly what a program describes. The static
-			// loop above is unchanged, so a static `main-thread:` prop is still
-			// refused — a worklet is produced by setup and never written as a literal.
-			if (name === 'ref' || name === 'key' || name === 'children') return false;
-		}
-		plans.push(node);
-		for (const child of node.children ?? []) if (!visit(child)) return false;
-		return true;
-	};
-	const program =
-		visit(plan) && plans.length === shape.length
-			? Object.freeze({ shape, plans: Object.freeze(plans) })
-			: null;
-	COMPILED_COLLAPSED_TEMPLATE_PROGRAMS.set(plan, program);
-	return program;
-}
+/**
+ * The lowering lives in `universal-template-program.ts` so a core without this
+ * interpreter can perform it. These names stay because the collapsed-template
+ * path reads as itself.
+ */
+type CompiledCollapsedTemplateProgram = CompiledUniversalTemplateProgram;
+type PreparedCollapsedTemplateValue = PreparedUniversalTemplateProgramValue;
+type PreparedCollapsedTemplateEvent = PreparedUniversalTemplateProgramEvent;
+type PreparedCollapsedTemplateProgram = PreparedUniversalTemplateProgram;
 
 interface PendingUniversalHostTemplateMount {
 	readonly shape: readonly UniversalHostTemplateShapeNode[];
@@ -6366,52 +6209,6 @@ function runOwnedCommit(owner: UniversalOwnerRecord | null, work: () => void): v
 	}
 }
 
-function cloneSerializableValue(
-	value: unknown,
-	seen: WeakSet<object> = new WeakSet(),
-): UniversalSerializableValue {
-	if (
-		value === null ||
-		value === undefined ||
-		typeof value === 'string' ||
-		typeof value === 'number' ||
-		typeof value === 'bigint' ||
-		typeof value === 'boolean'
-	) {
-		return value;
-	}
-	if (typeof value !== 'object') {
-		throw new TypeError(`Unsupported serializable host value ${String(value)}.`);
-	}
-	if ((value as Partial<UniversalResourceHandle>).$$kind === 'octane.universal.resource') {
-		throw new TypeError('A resource handle must use the resource encoding branch.');
-	}
-	if (seen.has(value)) throw new TypeError('Serializable host values cannot contain cycles.');
-	seen.add(value);
-	try {
-		if (Array.isArray(value)) {
-			return Object.freeze(value.map((entry) => cloneSerializableValue(entry, seen)));
-		}
-		if (!hasCrossRealmPlainPrototype(value)) {
-			throw new TypeError(
-				`Serializable host values require plain objects, received ${Object.prototype.toString.call(value)}.`,
-			);
-		}
-		const output: Record<string, UniversalSerializableValue> = {};
-		for (const [name, entry] of Object.entries(value)) {
-			Object.defineProperty(output, name, {
-				configurable: true,
-				enumerable: true,
-				value: cloneSerializableValue(entry, seen),
-				writable: true,
-			});
-		}
-		return Object.freeze(output);
-	} finally {
-		seen.delete(value);
-	}
-}
-
 function freezeUniversalHostBatch(
 	renderer: string,
 	version: number,
@@ -6519,15 +6316,6 @@ class UniversalRootImpl<Container, PublicInstance>
 	private acceptedBatchVersion = 0;
 	private treeFeatures = 0;
 	private handlers = new Map<number, CommittedEvent>();
-	private eventDefinitions: Map<string, UniversalEventDefinition | null> | null = null;
-	private staticHostProps: WeakMap<
-		UniversalHostPlan,
-		Readonly<Record<string, unknown>> | null
-	> | null = null;
-	private templatePrograms: WeakMap<
-		CompiledCollapsedTemplateProgram,
-		PreparedCollapsedTemplateProgram | null
-	> | null = null;
 	private localCallbacks = new Map<number, CommittedHostCallback>();
 	private readonly publishedListeners = new Set<number>();
 	private pending: UniversalTransactionImpl<Container, PublicInstance> | null = null;
@@ -6565,6 +6353,12 @@ class UniversalRootImpl<Container, PublicInstance>
 	 * every renderer that does not need one.
 	 */
 	private readonly widenedPropEquality: UniversalHostPropEquality | null;
+	/**
+	 * Everything this root asks its renderer about a prop, an event, or a plan
+	 * node. Held rather than reached for so the per-name and per-plan memos it
+	 * owns live exactly as long as the root does.
+	 */
+	readonly encoder: UniversalHostEncoder;
 
 	constructor(
 		private readonly container: Container,
@@ -6580,6 +6374,13 @@ class UniversalRootImpl<Container, PublicInstance>
 			);
 		}
 		this.renderer = driver.id;
+		this.encoder = createUniversalHostEncoder({
+			driver,
+			container,
+			renderer: driver.id,
+			resourceRoot: this.resourceRoot,
+			transported: transport !== null,
+		});
 		const updates = driver.updates;
 		if (updates?.same !== undefined && typeof updates.same !== 'function') {
 			throw new TypeError('A universal update capability’s same() must be a function.');
@@ -6978,180 +6779,17 @@ class UniversalRootImpl<Container, PublicInstance>
 	}
 
 	classifyEvent(name: string): UniversalEventDefinition | null {
-		const capability = this.driver.events;
-		if (capability === undefined) return null;
-		const definitions = (this.eventDefinitions ??= new Map());
-		const cached = definitions.get(name);
-		if (cached !== undefined) return cached;
-		const definition = capability.classify(name) ?? null;
-		if (definitions.size < 128) definitions.set(name, definition);
-		return definition;
+		return this.encoder.classifyEvent(name);
 	}
 
 	materializeStaticHostProps(node: UniversalHostPlan): Record<string, unknown> | null {
-		if (node.propsSlot !== undefined || (node.bindings?.length ?? 0) !== 0) return null;
-		const source = node.props ?? EMPTY_STATIC_HOST_PROPS;
-		if (source === EMPTY_STATIC_HOST_PROPS) return EMPTY_STATIC_HOST_PROPS;
-		if (
-			this.driver.props !== undefined &&
-			this.driver.capabilities?.stableStaticHostProps !== true
-		) {
-			return null;
-		}
-		const cache = (this.staticHostProps ??= new WeakMap());
-		const cached = cache.get(node);
-		if (cached !== undefined) return cached as Record<string, unknown> | null;
-		if (Object.getOwnPropertySymbols(source).length !== 0) {
-			cache.set(node, null);
-			return null;
-		}
-		const names = Object.keys(source);
-		for (const name of names) {
-			const value = source[name];
-			if (
-				name === 'ref' ||
-				name === 'key' ||
-				name === 'children' ||
-				name.startsWith('main-thread:') ||
-				(value !== null &&
-					(typeof value === 'object' ||
-						typeof value === 'function' ||
-						typeof value === 'symbol')) ||
-				this.classifyLifecycle(name, value) !== null ||
-				this.classifyLocalCallback(name, value) !== null ||
-				this.classifyEvent(name) !== null
-			) {
-				cache.set(node, null);
-				return null;
-			}
-		}
-		let props = source as Record<string, unknown>;
-		for (const name of names) {
-			const encoded = this.encodeHostProp(node.type, name, source[name]);
-			if (!Object.is(encoded, source[name])) {
-				if (props === source) props = { ...source };
-				props[name] = encoded;
-			}
-		}
-		Object.freeze(props);
-		cache.set(node, props);
-		return props;
+		return this.encoder.materializeStaticHostProps(node);
 	}
 
 	prepareCollapsedTemplateProgram(
 		compiled: CompiledCollapsedTemplateProgram,
 	): PreparedCollapsedTemplateProgram | null {
-		if (
-			this.driver.capabilities?.templateProgramMount !== true ||
-			this.driver.capabilities?.stableStaticHostProps !== true ||
-			this.textPolicy() !== 'host'
-		) {
-			return null;
-		}
-		const cache = (this.templatePrograms ??= new WeakMap());
-		const cached = cache.get(compiled);
-		if (cached !== undefined) return cached;
-		const wireNodes: UniversalHostTemplateProgramNode[] = [];
-		const wireEvents: UniversalHostTemplateProgramEvent[] = [];
-		const values: PreparedCollapsedTemplateValue[] = [];
-		const events: PreparedCollapsedTemplateEvent[] = [];
-		const sharedNodes: (BlueprintCollapsedTemplateNode | null)[] = [];
-		const reject = (): null => {
-			cache.set(compiled, null);
-			return null;
-		};
-		for (let index = 0; index < compiled.plans.length; index++) {
-			const node = compiled.plans[index];
-			const shape = compiled.shape[index];
-			if (node.kind === 'slot' || node.kind === 'text') {
-				if (node.kind === 'text' && node.slot === undefined) {
-					const props = Object.freeze({ value: String(node.value ?? '') });
-					wireNodes.push(Object.freeze({ type: shape.type, parent: shape.parent, props }));
-					sharedNodes.push(Object.freeze({ props }));
-				} else {
-					const valueIndex = values.length;
-					values.push({ node: index, name: 'value', slot: node.slot!, text: true });
-					const binding = Object.freeze({ name: 'value', valueIndex });
-					wireNodes.push(
-						Object.freeze({
-							type: shape.type,
-							parent: shape.parent,
-							props: EMPTY_STATIC_HOST_PROPS,
-							bindings: Object.freeze([binding]),
-						}),
-					);
-					sharedNodes.push(null);
-				}
-				continue;
-			}
-			const source = node.props ?? EMPTY_STATIC_HOST_PROPS;
-			const overwritten = new Set<string>();
-			for (const [name] of node.bindings ?? []) {
-				if (overwritten.has(name)) return reject();
-				overwritten.add(name);
-			}
-			let staticProps: Record<string, unknown>;
-			if (overwritten.size === 0) {
-				const shared = this.materializeStaticHostProps(node);
-				if (shared === null) return reject();
-				staticProps = shared;
-			} else {
-				let output: Record<string, unknown> | null = null;
-				for (const name of Object.keys(source)) {
-					if (overwritten.has(name)) continue;
-					const entry = source[name];
-					if (
-						!isUniversalHostTemplateProgramValue(entry) ||
-						this.classifyLifecycle(name, entry) !== null ||
-						this.classifyLocalCallback(name, entry) !== null ||
-						this.classifyEvent(name) !== null
-					) {
-						return reject();
-					}
-					const encoded = this.encodeHostProp(node.type, name, entry);
-					if (!isUniversalHostTemplateProgramValue(encoded)) return reject();
-					(output ??= {})[name] = encoded;
-				}
-				staticProps = output === null ? EMPTY_STATIC_HOST_PROPS : Object.freeze(output);
-			}
-			const bindings: UniversalHostTemplateProgramBinding[] = [];
-			let eventful = false;
-			const types = new Set<string>();
-			for (const [name, slot] of node.bindings ?? []) {
-				const definition = this.classifyEvent(name);
-				if (definition !== null) {
-					if (index === 0 || types.has(definition.type)) return reject();
-					types.add(definition.type);
-					const priority = definition.priority ?? 'default';
-					wireEvents.push(Object.freeze({ node: index, type: definition.type, priority }));
-					events.push({ node: index, prop: name, slot, type: definition.type, priority });
-					eventful = true;
-					continue;
-				}
-				const valueIndex = values.length;
-				values.push({ node: index, name, slot, text: false });
-				bindings.push(Object.freeze({ name, valueIndex }));
-			}
-			wireNodes.push(
-				Object.freeze({
-					type: shape.type,
-					parent: shape.parent,
-					props: staticProps,
-					...(bindings.length === 0 ? null : { bindings: Object.freeze(bindings) }),
-				}),
-			);
-			sharedNodes.push(
-				bindings.length === 0 && !eventful ? Object.freeze({ props: staticProps }) : null,
-			);
-		}
-		const prepared = Object.freeze({
-			wire: Object.freeze({ nodes: Object.freeze(wireNodes), events: Object.freeze(wireEvents) }),
-			values: Object.freeze(values),
-			events: Object.freeze(events),
-			sharedNodes: Object.freeze(sharedNodes),
-		});
-		cache.set(compiled, prepared);
-		return prepared;
+		return prepareUniversalTemplateProgram(this.encoder, compiled);
 	}
 
 	private expandCollapsedTemplate(record: LogicalRecord): void {
@@ -7198,19 +6836,19 @@ class UniversalRootImpl<Container, PublicInstance>
 	}
 
 	classifyLifecycle(name: string, value: unknown): UniversalHostCallbackDefinition | null {
-		return this.driver.lifecycles?.classify(name, value) ?? null;
+		return this.encoder.classifyLifecycle(name, value);
 	}
 
 	classifyLocalCallback(name: string, value: unknown): UniversalHostCallbackDefinition | null {
-		return this.driver.localCallbacks?.classify(name, value) ?? null;
+		return this.encoder.classifyLocalCallback(name, value);
 	}
 
 	textPolicy(): UniversalTextPolicy {
-		return this.driver.capabilities?.text ?? 'reject';
+		return this.encoder.textPolicy();
 	}
 
 	driverCapabilities(): UniversalHostCapabilities {
-		return this.driver.capabilities ?? {};
+		return this.encoder.capabilities();
 	}
 
 	canCompactCompilerLeafProps(): boolean {
@@ -7336,62 +6974,7 @@ class UniversalRootImpl<Container, PublicInstance>
 	}
 
 	encodeHostProp(hostType: string, name: string, value: unknown): unknown {
-		const codec = this.driver.props;
-		if (codec === undefined) {
-			// A local driver may intentionally accept renderer-owned objects. Once a
-			// transport is present, however, every ordinary prop must satisfy the wire
-			// value contract even when the renderer did not install a custom codec.
-			return this.transport === null ? value : cloneSerializableValue(value);
-		}
-		const result = codec.encode({
-			container: this.container,
-			renderer: this.renderer,
-			hostType,
-			name,
-			value,
-			createResourceHandle: (id) => {
-				if ((typeof id !== 'string' && typeof id !== 'number') || String(id).length === 0) {
-					throw new TypeError(
-						'A universal resource handle ID must be a non-empty string or number.',
-					);
-				}
-				return Object.freeze({
-					$$kind: 'octane.universal.resource' as const,
-					renderer: this.renderer,
-					root: this.resourceRoot,
-					id,
-				});
-			},
-		});
-		if (result === null || typeof result !== 'object') {
-			throw new TypeError(
-				`Universal prop codec for ${JSON.stringify(name)} returned an invalid result.`,
-			);
-		}
-		if (result.kind === 'unsupported') {
-			throw new TypeError(
-				result.reason ??
-					`Universal renderer ${JSON.stringify(this.renderer)} does not support host prop ${JSON.stringify(name)}.`,
-			);
-		}
-		if (result.kind === 'value') return cloneSerializableValue(result.value);
-		if (result.kind !== 'resource') {
-			throw new TypeError(
-				`Universal prop codec for ${JSON.stringify(name)} returned unknown encoding ${JSON.stringify((result as any).kind)}.`,
-			);
-		}
-		const handle = result.handle;
-		if (
-			handle?.$$kind !== 'octane.universal.resource' ||
-			handle.renderer !== this.renderer ||
-			handle.root !== this.resourceRoot ||
-			(typeof handle.id !== 'string' && typeof handle.id !== 'number')
-		) {
-			throw new Error(
-				`Universal resource handle for ${JSON.stringify(name)} does not belong to renderer ${JSON.stringify(this.renderer)} and this root.`,
-			);
-		}
-		return handle;
+		return this.encoder.encodeHostProp(hostType, name, value);
 	}
 
 	eventScope<T>(priority: UniversalEventPriority, run: () => T): T {
