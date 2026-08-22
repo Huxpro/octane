@@ -3,11 +3,14 @@ import type {
 	UniversalHostBatch,
 	UniversalHostDriver,
 	UniversalHostPropCodecContext,
+	UniversalHostTemplateCapability,
 	UniversalHostTemplateProgram,
+	UniversalHostTemplateProgramBinding,
 	UniversalHostTemplateProgramValue,
 	UniversalPortalTargetContext,
 	UniversalPortalTargetRegistration,
 	UniversalSerializableValue,
+	UniversalTemplateHostPlacement,
 	UniversalTransportIdentity,
 } from 'octane/universal/native';
 import {
@@ -273,6 +276,42 @@ interface LynxClientContainerState {
 	templateProgramRuns: boolean;
 	deferredTemplateProgramRuns: boolean;
 	lazyPublicInstances: boolean;
+	/** Hosts a deferred run declared, which main never built. */
+	declaredRuns: LynxDeclaredHostRun[] | null;
+}
+
+/**
+ * One contiguous range of host IDs a deferred template run declared.
+ *
+ * Main creates nothing for a declared host, so this side never receives a
+ * transition for one and never holds a handle. The core owns it as an ordinary
+ * host regardless — it updates one whose row scrolled past and destroys one
+ * whose row was removed — so the commands naming it have to be recognized here
+ * rather than refused as naming a handle that went missing.
+ *
+ * `live` counts the declared hosts the core has not destroyed yet. It is a
+ * count and not the set of surviving offsets on purpose: the set would cost one
+ * retained entry per row, which is the cost a deferred run exists to avoid.
+ */
+interface LynxDeclaredHostRun {
+	readonly firstId: number;
+	readonly lastId: number;
+	live: number;
+}
+
+/**
+ * The run that declares `id`, or undefined when no host of this container does.
+ *
+ * A linear scan because a run is one command per native list: a tree carries as
+ * many of these as it has lists, not as it has rows.
+ */
+function declaringHostRun(
+	runs: readonly LynxDeclaredHostRun[] | null,
+	id: number,
+): LynxDeclaredHostRun | undefined {
+	if (runs === null) return undefined;
+	for (const run of runs) if (id >= run.firstId && id <= run.lastId) return run;
+	return undefined;
 }
 
 /** One dense typed range owns every untouched generation-one compact host. */
@@ -370,6 +409,7 @@ export function createLynxClientContainer(
 		templateProgramRuns: false,
 		deferredTemplateProgramRuns: false,
 		lazyPublicInstances: false,
+		declaredRuns: null,
 	});
 	return container;
 }
@@ -968,6 +1008,13 @@ export function prepareLynxHandleDeltas(
 		if (!stagedHandles.has(id)) return compactHandle(state, id);
 		return stagedHandles.get(id) ?? undefined;
 	};
+	// Staged rather than applied while scanning: a preparation that is rolled
+	// back must leave the ledger exactly as it found it, and nothing here reads
+	// a run's liveness during the scan.
+	let stagedDeclaredRuns: LynxDeclaredHostRun[] | null = null;
+	let declaredDestroys: Map<LynxDeclaredHostRun, number> | null = null;
+	const declaredRun = (id: number): LynxDeclaredHostRun | undefined =>
+		declaringHostRun(stagedDeclaredRuns, id) ?? declaringHostRun(state.declaredRuns, id);
 	const transitions = new Map<number, LynxHandleTransition>();
 	const transitionFor = (id: number): LynxHandleTransition => {
 		let transition = transitions.get(id);
@@ -985,6 +1032,19 @@ export function prepareLynxHandleDeltas(
 	};
 	for (const command of batch.commands) {
 		if (command.op === 'mount-template-run') {
+			// A declared instance is not a host yet, so main creates nothing for it
+			// and there is no transition to acknowledge. Remember the range: the
+			// core goes on owning these hosts, and the updates and destroys it
+			// sends for them name handles this side will never hold.
+			if (command.deferred === true) {
+				const hosts = command.program.nodes.length * command.count;
+				(stagedDeclaredRuns ??= []).push({
+					firstId: command.firstId,
+					lastId: command.firstId + hosts - 1,
+					live: hosts,
+				});
+				continue;
+			}
 			const length = command.program.nodes.length;
 			for (let instance = 0; instance < command.count; instance++) {
 				const firstId = command.firstId + instance * length;
@@ -1034,6 +1094,20 @@ export function prepareLynxHandleDeltas(
 			command.op !== 'destroy'
 		) {
 			continue;
+		}
+		const declared = declaredRun(command.id);
+		if (declared !== undefined) {
+			// No handle exists for a declared host, so an update moves no identity
+			// and a destroy releases none. Both are ordinary core commands against
+			// a host main has not built; only building one would be a fault, and
+			// the core does that by mounting it eagerly instead.
+			if (command.op === 'update') continue;
+			if (command.op === 'destroy') {
+				declaredDestroys ??= new Map();
+				declaredDestroys.set(declared, (declaredDestroys.get(declared) ?? 0) + 1);
+				continue;
+			}
+			throw new Error(`Octane Lynx batch rebuilds declared handle ${command.id}.`);
 		}
 		const transition = transitionFor(command.id);
 		if (command.op === 'create') {
@@ -1263,6 +1337,17 @@ export function prepareLynxHandleDeltas(
 				}
 			});
 			nextGenerations.forEach((generation, id) => state.generations.set(id, generation));
+			if (stagedDeclaredRuns !== null || declaredDestroys !== null) {
+				let runs = state.declaredRuns === null ? [] : state.declaredRuns;
+				if (stagedDeclaredRuns !== null) runs = [...runs, ...stagedDeclaredRuns];
+				if (declaredDestroys !== null) {
+					declaredDestroys.forEach((count, run) => {
+						run.live -= count;
+					});
+					runs = runs.filter((run) => run.live > 0);
+				}
+				state.declaredRuns = runs.length === 0 ? null : runs;
+			}
 		},
 		rollback() {
 			if (!applied || rolledBack) return;
@@ -1333,6 +1418,7 @@ export function invalidateLynxClientContainer(container: LynxClientContainer): v
 		state.compactHosts.active = false;
 		state.compactHosts = null;
 	}
+	state.declaredRuns = null;
 	const handles = [...state.handles.values()];
 	const subscribers = [...state.attachmentSubscribers];
 	const detached: number[] = [];
@@ -1454,6 +1540,41 @@ const DISCRETE_EVENTS = new Set([
 	'touchstart',
 ]);
 const CONTINUOUS_EVENTS = new Set(['layoutchange', 'scroll', 'touchmove', 'wheel']);
+
+const EMPTY_TEMPLATE_BINDINGS: readonly UniversalHostTemplateProgramBinding[] = Object.freeze([]);
+
+/**
+ * Where Lynx's two native-list hosts may sit in a template program, and when a
+ * program rooted at a cell may be sent as a declaration.
+ *
+ * A `<list>` stays out of every program: a program has no way to carry the row
+ * descriptors a list needs, and the host driver refuses one that contains it. A
+ * `<list-item>` is a list's cell, so it has exactly one place it can be — which
+ * makes it a program root and never a program's interior — and the only mount
+ * the driver takes for it is a run that declares its instances without building
+ * them.
+ */
+const LYNX_TEMPLATE_HOSTS: UniversalHostTemplateCapability = Object.freeze({
+	placement(type: string): UniversalTemplateHostPlacement {
+		if (type === 'list') return 'none';
+		return type === 'list-item' ? 'root' : 'any';
+	},
+	defer(parentType: string, program: UniversalHostTemplateProgram): boolean {
+		// Every one of these is refused by the host driver rather than degraded,
+		// so answering `false` here is what keeps the command from being sent at
+		// all. A worklet is the interesting one: a declared host is in neither of
+		// the driver's per-commit audits, one of which is what binds main-thread
+		// props, so a row carrying one has to be built.
+		if (parentType !== 'list') return false;
+		for (const node of program.nodes) {
+			for (const binding of node.bindings ?? EMPTY_TEMPLATE_BINDINGS) {
+				if (binding.name.startsWith('main-thread:')) return false;
+			}
+		}
+		return true;
+	},
+});
+
 export function createLynxClientDriver(
 	container?: LynxClientContainer,
 ): UniversalHostDriver<LynxClientContainer, LynxPublicHandle> {
@@ -1482,6 +1603,7 @@ export function createLynxClientDriver(
 			},
 			publicInstanceAnnouncements: LYNX_PUBLIC_INSTANCE_ANNOUNCEMENTS,
 		}),
+		templates: LYNX_TEMPLATE_HOSTS,
 		portals: Object.freeze({
 			prepareTarget({
 				container,

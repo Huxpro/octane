@@ -19,6 +19,7 @@ import {
 	getLynxHostEventListener,
 	getLynxHostHandle,
 	isLynxHostAttached,
+	isLynxHostDeclared,
 	prepareLynxHostBatch,
 	resolveLynxHostNativeEvent,
 	type LynxHostContainer,
@@ -439,16 +440,21 @@ function acknowledgementHandles<Node extends LynxElementRef>(
 			);
 		}
 	}
+	// A declared host has no handle on the background: nothing was built for it
+	// here, so there is no identity to publish and the other side holds nothing
+	// to reconcile one against. That stays true once the row materializes — what
+	// the background holds is what it was told, not what main holds now. The
+	// prepared deltas above already exclude one; these two derive their own.
 	for (const command of batch.commands) {
 		if (command.op !== 'update' || alreadyPublished(command.id)) continue;
 		const handle = getLynxHostHandle(container, command.id);
-		if (handle !== null) {
+		if (handle !== null && !isLynxHostDeclared(container, command.id)) {
 			handles.push(publicHandleUpsert(handle, getLynxHostPublicState(container, command.id)));
 			publishedIds!.add(command.id);
 		}
 	}
 	for (const delta of prepared.listAncestryDelta) {
-		if (alreadyPublished(delta.id)) continue;
+		if (alreadyPublished(delta.id) || isLynxHostDeclared(container, delta.id)) continue;
 		handles.push(
 			Object.freeze({
 				op: 'list-ancestry',

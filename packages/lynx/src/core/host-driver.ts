@@ -2199,8 +2199,16 @@ function emitAttachments<Node extends LynxElementRef>(
 		const delta = deltas[index]!;
 		if (seen.has(delta.id)) continue;
 		seen.add(delta.id);
+		// A declared host was never built here, so the background derived no
+		// handle for it and there is nothing on that side to attach. It cannot
+		// carry a ref either — a template program refuses a `ref` on any node —
+		// so the transition has no observer even in principle. Dropping it at the
+		// source keeps a scroll from posting a message per materialized row that
+		// the other side would only discard.
+		if (declaringRun(state.deferredRuns, delta.id) !== undefined) continue;
 		normalized.push(delta);
 	}
+	if (normalized.length === 0) return;
 	normalized.reverse();
 	state.onAttachments?.(version, Object.freeze(normalized));
 }
@@ -4662,6 +4670,10 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			? undefined
 			: templateRunRecord<Node>(declared.run, declared.offset, getGeneration(id) ?? 1);
 	};
+	/** Whether a deferred run declares `id`, without deriving its record. */
+	const isDeclared = (id: number): boolean =>
+		anyDeferredRuns &&
+		(declaringRun(stagedDeferredRuns, id) ?? declaringRun(state.deferredRuns, id)) !== undefined;
 	/**
 	 * Promote a declared host to a staged record, because a caller is about to
 	 * write it. A written host is no longer derivable from its run, so this is
@@ -6041,6 +6053,11 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			}
 		} else {
 			for (const id of handleOrder) {
+				// A declared host publishes no identity: nothing was built for it here,
+				// so the background holds no handle to create, replace, or remove.
+				// Decided here rather than at acknowledgement because a run is dropped
+				// as its last row is destroyed, and that destroy is in this same batch.
+				if (isDeclared(id)) continue;
 				const previous = state.records.get(id)?.handle;
 				const next = getRecord(id)?.handle;
 				if (previous === undefined && next !== undefined) {
@@ -6817,6 +6834,21 @@ export function getLynxHostHandle<Node extends LynxElementRef>(
 	id: number,
 ): LynxHostHandle | null {
 	return container[LYNX_HOST_STATE].records.get(id)?.handle ?? null;
+}
+
+/**
+ * Whether this thread declared `id` rather than building it.
+ *
+ * Nothing was created here for a declared host, so the background derived no
+ * handle for it and nothing about its identity may be published to that side.
+ * The answer survives materialization: what decides is that the host was never
+ * created, not whether it currently holds a record.
+ */
+export function isLynxHostDeclared<Node extends LynxElementRef>(
+	container: LynxHostContainer<Node>,
+	id: number,
+): boolean {
+	return declaringRun(container[LYNX_HOST_STATE].deferredRuns, id) !== undefined;
 }
 
 export function getLynxHostEventListener<Node extends LynxElementRef>(

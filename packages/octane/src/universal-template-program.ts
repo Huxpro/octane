@@ -54,6 +54,7 @@ import type {
 	UniversalResourceHandle,
 	UniversalSerializableValue,
 	UniversalSlotPlan,
+	UniversalTemplateHostPlacement,
 	UniversalTextPlan,
 	UniversalTextPolicy,
 } from './universal-core.js';
@@ -186,6 +187,14 @@ export interface UniversalHostEncoder {
 	 * a filtered or classified name, or a non-scalar literal.
 	 */
 	materializeStaticHostProps(node: UniversalHostPlan): Record<string, unknown> | null;
+	/** Where a host of this type may sit inside a template program. */
+	templateHostPlacement(type: string): UniversalTemplateHostPlacement;
+	/**
+	 * Whether a program mounted under a host of this type must be declared
+	 * rather than built, memoized because the rows of one range share both
+	 * arguments and the caller reaches this once per row.
+	 */
+	deferTemplateProgram(parentType: string, program: UniversalHostTemplateProgram): boolean;
 	/**
 	 * @internal `prepareUniversalTemplateProgram`'s memo, held here rather than
 	 * in a module map keyed by encoder: the lowering is consulted once per
@@ -195,6 +204,25 @@ export interface UniversalHostEncoder {
 	readonly templatePrograms: WeakMap<
 		CompiledUniversalTemplateProgram,
 		PreparedUniversalTemplateProgram | null
+	>;
+	/**
+	 * @internal `universalHostTemplateShape`'s memo, and `compiledUniversalTemplateProgram`'s
+	 * below it.
+	 *
+	 * These were module maps keyed by plan while the answer was the same for
+	 * every renderer. It stopped being: `templateHostPlacement` is the
+	 * renderer's, and a compiler-hoisted plan is shared by every root that
+	 * renders the module — including, in one process, roots of different
+	 * renderers. A module map would let the first renderer to see a plan answer
+	 * for the second.
+	 */
+	readonly templateShapes: WeakMap<
+		UniversalHostPlan,
+		readonly UniversalHostTemplateShapeNode[] | null
+	>;
+	readonly compiledTemplatePrograms: WeakMap<
+		UniversalHostPlan,
+		CompiledUniversalTemplateProgram | null
 	>;
 }
 
@@ -219,10 +247,14 @@ export function createUniversalHostEncoder<Container>(
 ): UniversalHostEncoder {
 	const { driver, container, renderer, resourceRoot, transported } = options;
 	let eventDefinitions: Map<string, UniversalEventDefinition | null> | null = null;
+	let hostPlacements: Map<string, UniversalTemplateHostPlacement> | null = null;
+	let deferredPrograms: WeakMap<UniversalHostTemplateProgram, Map<string, boolean>> | null = null;
 	let staticHostProps: WeakMap<UniversalHostPlan, Record<string, unknown> | null> | null = null;
 
 	const encoder: UniversalHostEncoder = {
 		templatePrograms: new WeakMap(),
+		templateShapes: new WeakMap(),
+		compiledTemplatePrograms: new WeakMap(),
 
 		capabilities() {
 			return driver.capabilities ?? {};
@@ -248,6 +280,34 @@ export function createUniversalHostEncoder<Container>(
 
 		classifyLifecycle(name, value) {
 			return driver.lifecycles?.classify(name, value) ?? null;
+		},
+
+		templateHostPlacement(type) {
+			const capability = driver.templates;
+			if (capability === undefined) return 'any';
+			const placements = (hostPlacements ??= new Map());
+			const cached = placements.get(type);
+			if (cached !== undefined) return cached;
+			const placement = capability.placement(type);
+			// Bounded for the same reason `classifyEvent` is: the key space is
+			// whatever tag names a page mentions.
+			if (placements.size < 128) placements.set(type, placement);
+			return placement;
+		},
+
+		deferTemplateProgram(parentType, program) {
+			const capability = driver.templates;
+			if (capability === undefined) return false;
+			const programs = (deferredPrograms ??= new WeakMap());
+			let parents = programs.get(program);
+			if (parents === undefined) programs.set(program, (parents = new Map()));
+			const cached = parents.get(parentType);
+			if (cached !== undefined) return cached;
+			const deferred = capability.defer(parentType, program);
+			// Bounded like `templateHostPlacement` above, and for the same reason:
+			// the key space is whatever tag names a page mentions.
+			if (parents.size < 128) parents.set(parentType, deferred);
+			return deferred;
 		},
 
 		classifyLocalCallback(name, value) {
@@ -362,17 +422,18 @@ export function createUniversalHostEncoder<Container>(
  * The static shape a plan paints: one entry per host node, pre-order, each
  * naming its parent's index. `-1` is the root. This is what both the run
  * encoding and the record expansion index into, so it is derived once per plan
- * and shared.
+ * and encoder.
+ *
+ * Which hosts may appear is the renderer's answer, not this pass's: a host that
+ * has exactly one place it can be describes a program that only its own parent
+ * can mount, and a host carrying state a program cannot express describes one
+ * nobody can. `encoder.templateHostPlacement` is where both live.
  */
-const UNIVERSAL_HOST_TEMPLATE_SHAPES = new WeakMap<
-	UniversalHostPlan,
-	readonly UniversalHostTemplateShapeNode[] | null
->();
-
 export function universalHostTemplateShape(
+	encoder: UniversalHostEncoder,
 	plan: UniversalHostPlan,
 ): readonly UniversalHostTemplateShapeNode[] | null {
-	const cached = UNIVERSAL_HOST_TEMPLATE_SHAPES.get(plan);
+	const cached = encoder.templateShapes.get(plan);
 	if (cached !== undefined) return cached;
 	const output: UniversalHostTemplateShapeNode[] = [];
 	const visit = (node: UniversalPlanNode, parent: number): boolean => {
@@ -385,14 +446,15 @@ export function universalHostTemplateShape(
 			return true;
 		}
 		if (node.kind !== 'host') return false;
-		if (node.type === 'list' || node.type === 'list-item') return false;
 		const index = output.length;
+		const placement = encoder.templateHostPlacement(node.type);
+		if (placement === 'none' || (placement === 'root' && index !== 0)) return false;
 		output.push(Object.freeze({ type: node.type, parent }));
 		for (const child of node.children ?? []) if (!visit(child, index)) return false;
 		return true;
 	};
 	const shape = visit(plan, -1) && output.length > 1 ? Object.freeze(output) : null;
-	UNIVERSAL_HOST_TEMPLATE_SHAPES.set(plan, shape);
+	encoder.templateShapes.set(plan, shape);
 	return shape;
 }
 
@@ -425,11 +487,6 @@ export interface PreparedUniversalTemplateProgram {
 	readonly events: readonly PreparedUniversalTemplateProgramEvent[];
 }
 
-const COMPILED_UNIVERSAL_TEMPLATE_PROGRAMS = new WeakMap<
-	UniversalHostPlan,
-	CompiledUniversalTemplateProgram | null
->();
-
 /**
  * Flatten a plan into the node list a template program describes, or `null`
  * when some node is not compile-time host structure.
@@ -439,13 +496,14 @@ const COMPILED_UNIVERSAL_TEMPLATE_PROGRAMS = new WeakMap<
  * describe, so a mismatch means the shape saw a node this did not.
  */
 export function compiledUniversalTemplateProgram(
+	encoder: UniversalHostEncoder,
 	plan: UniversalHostPlan,
 ): CompiledUniversalTemplateProgram | null {
-	const cached = COMPILED_UNIVERSAL_TEMPLATE_PROGRAMS.get(plan);
+	const cached = encoder.compiledTemplatePrograms.get(plan);
 	if (cached !== undefined) return cached;
-	const shape = universalHostTemplateShape(plan);
+	const shape = universalHostTemplateShape(encoder, plan);
 	if (shape === null) {
-		COMPILED_UNIVERSAL_TEMPLATE_PROGRAMS.set(plan, null);
+		encoder.compiledTemplatePrograms.set(plan, null);
 		return null;
 	}
 	const plans: (UniversalHostPlan | UniversalTextPlan | UniversalSlotPlan)[] = [];
@@ -480,7 +538,7 @@ export function compiledUniversalTemplateProgram(
 		visit(plan) && plans.length === shape.length
 			? Object.freeze({ shape, plans: Object.freeze(plans) })
 			: null;
-	COMPILED_UNIVERSAL_TEMPLATE_PROGRAMS.set(plan, program);
+	encoder.compiledTemplatePrograms.set(plan, program);
 	return program;
 }
 
