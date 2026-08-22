@@ -89,16 +89,64 @@ function nativeScriptBytes(script) {
 	return Buffer.alloc(0);
 }
 
-// `@lynx-js/debug-metadata-rsbuild-plugin` stamps one digest over the whole
-// bundle — both thread programs — and embeds it in each. It therefore moves
-// whenever the background program moves, which is exactly what the switch does
-// on purpose. Normalizing it is what lets the main-thread comparison mean "the
-// main-thread program did not change"; any real change to that program still
-// moves the hash.
+// `@lynx-js/debug-metadata-rsbuild-plugin` stamps a release digest for each
+// chunk and prepends it to that chunk's source. It moves whenever the bundle
+// moves, which is exactly what the switch does on purpose — so the two builds
+// hand the minifier main-thread text that differs in forty characters.
+//
+// That is not survivable by normalizing the digest afterwards, which is what
+// this harness used to do. The mangler orders its identifier alphabet by
+// character frequency over the text it is given, and two of the rarest
+// characters sit close enough to swap: a digest carrying seven `4`s against one
+// carrying two is enough to reverse `4` and `6`, which renames three
+// identifiers and leaves the two programs six bytes apart for no reason at all.
+// By the time the digest is normalized in the decoded output the names are
+// already chosen, so the difference survives the normalization it was supposed
+// to be removed by.
+//
+// It is therefore pinned where the difference actually exists: in the source,
+// after the plugin's banner stage and before minification. Both builds are
+// pinned to the same constant, and the constant keeps a digest's length and hex
+// alphabet, so raw bytes are unchanged and compressed bytes stay a bundle's.
+// Any real change to the main-thread program still moves the hash.
+const PINNED_DIGEST = createHash('sha1').update('octane-core-switch').digest('hex');
+const PINNED_RELEASE = `debugmetadata:${PINNED_DIGEST}`;
 const BUILD_DIGEST = /debugmetadata:[0-9a-f]{40}/g;
 
-function normalizeBuildDigest(text) {
-	return text.replace(BUILD_DIGEST, 'debugmetadata:<normalized>');
+class PinBuildDigestPlugin {
+	apply(compiler) {
+		const { RawSource } = compiler.webpack.sources;
+		const { PROCESS_ASSETS_STAGE_ADDITIONS } = compiler.webpack.Compilation;
+		compiler.hooks.thisCompilation.tap('PinBuildDigest', (compilation) => {
+			// The banner lands at `ADDITIONS + 1` and the minifier at
+			// `OPTIMIZE_SIZE`, so this is the one window where the digest is text.
+			compilation.hooks.processAssets.tap(
+				{ name: 'PinBuildDigest', stage: PROCESS_ASSETS_STAGE_ADDITIONS + 2 },
+				() => {
+					for (const name of Object.keys(compilation.assets)) {
+						if (!name.endsWith('.js')) continue;
+						const before = compilation.getAsset(name).source.source().toString();
+						const after = before.replace(BUILD_DIGEST, PINNED_RELEASE);
+						if (after !== before) compilation.updateAsset(name, new RawSource(after));
+					}
+				},
+			);
+		});
+	}
+}
+
+// The control for the pin. A stage that stopped running, or a plugin that moved
+// its banner past the minifier, would otherwise come back as an unexplained
+// byte difference in the identity check below.
+function assertDigestPinned(core, thread, text, required) {
+	const found = text.match(BUILD_DIGEST) ?? [];
+	const unpinned = found.filter((digest) => digest !== PINNED_RELEASE);
+	if (unpinned.length !== 0) {
+		throw new Error(`${core}: the ${thread} program kept an unpinned build digest: ${unpinned[0]}`);
+	}
+	if (required && found.length === 0) {
+		throw new Error(`${core}: the ${thread} program carries no build digest to pin`);
+	}
 }
 
 function decodedScript(decoded, key) {
@@ -124,7 +172,12 @@ async function buildWithCore(core, outputRoot) {
 			},
 			source: { entry: { [ENTRY_NAME]: path.join(ROOT, 'src/entry.ts') } },
 			splitChunks: false,
-			tools: { rspack: { resolve: { modules: [RSPEEDY_MODULES, 'node_modules'] } } },
+			tools: {
+				rspack: {
+					plugins: [new PinBuildDigestPlugin()],
+					resolve: { modules: [RSPEEDY_MODULES, 'node_modules'] },
+				},
+			},
 			plugins: [pluginOctane({ core, hmr: false, dev: false })],
 		},
 	});
@@ -143,13 +196,15 @@ async function buildWithCore(core, outputRoot) {
 	const main = decodedScript(decoded, 'main-thread-script');
 	if (background.bytes.length === 0) throw new Error(`${core}: background program is empty`);
 	if (main.bytes.length === 0) throw new Error(`${core}: main program is empty`);
+	assertDigestPinned(core, 'main-thread', main.text, true);
+	assertDigestPinned(core, 'background', background.text, false);
 	return {
 		core,
 		backgroundRaw: background.bytes.length,
 		backgroundGzip: gzipBytes(background.bytes),
 		mainRaw: main.bytes.length,
 		mainGzip: gzipBytes(main.bytes),
-		mainSha: createHash('sha256').update(normalizeBuildDigest(main.text)).digest('hex'),
+		mainSha: createHash('sha256').update(main.text).digest('hex'),
 		probes: Object.fromEntries(
 			Object.entries(CORE_PROBES).map(([name, markers]) => [
 				name,
@@ -186,7 +241,7 @@ try {
 	}
 	console.log(
 		universal.mainSha === block.mainSha
-			? '\nThe main-thread program is byte-identical across the switch (bundle-wide debug digest normalized).'
+			? '\nThe main-thread program is byte-identical across the switch (build digest pinned in source).'
 			: '\nThe main-thread program DIFFERS across the switch; the switch is not background-only.',
 	);
 
