@@ -223,6 +223,13 @@ interface LynxHostState<Node extends LynxElementRef> {
 	implicitInitialGenerations: boolean;
 	/** Ordinary pure template runs may retain compact metadata solely for certified teardown. */
 	teardownRecords: LynxDenseHostRecordStore<Node> | null;
+	/**
+	 * Template runs the peer declared under a native `<list>` and asked the host
+	 * not to build. `records` holds what has been materialized; these hold what
+	 * has only been declared. Null while no run has ever been deferred, which is
+	 * every tree without a native list.
+	 */
+	deferredRuns: LynxDeferredTemplateRun[] | null;
 	/** Universal root provenance is fixed by the first accepted portal handle. */
 	portalRoot: number | null;
 	/** Portal children stay separate from ordinary authored host children. */
@@ -689,6 +696,91 @@ interface LynxDenseTeardownPlan<Node extends LynxElementRef> {
 }
 
 /**
+ * Everything a template run needs to say what any one of its hosts is.
+ *
+ * A run is `count` copies of one program, so a host's type, static props, bound
+ * props, logical parent, children and listener ids are all arithmetic over the
+ * run plus an offset. Two callers depend on that: the compact first screen,
+ * which keeps a run as a dense store and derives a record whenever something
+ * observes one, and a deferred run under a native `<list>`, which keeps no
+ * records at all until the list asks for a cell. They have to agree about what a
+ * run's host *is*, so the derivation is written once here rather than once in
+ * each.
+ */
+interface LynxTemplateRunDeclaration {
+	readonly root: number;
+	readonly program: LynxPreparedTemplateProgram;
+	readonly firstId: number;
+	readonly count: number;
+	readonly parent: LynxAttachedHostParent;
+	readonly values: readonly UniversalHostTemplateProgramValue[];
+	readonly firstListenerId: number | null;
+}
+
+/** Hosts in a run, counting every node of every instance. */
+function templateRunHostCount(run: LynxTemplateRunDeclaration): number {
+	return run.count * run.program.shape.types.length;
+}
+
+/**
+ * Derive the record for the host at `offset` within `run`.
+ *
+ * The caller owns identity: this allocates a fresh record every call, and
+ * whoever needs writes to a host to stick is the one that has to keep it.
+ */
+function templateRunRecord<Node extends LynxElementRef>(
+	run: LynxTemplateRunDeclaration,
+	offset: number,
+	generation: number,
+): LynxHostRecord<Node> {
+	const program = run.program;
+	const width = program.shape.types.length;
+	const row = Math.floor(offset / width);
+	const node = offset - row * width;
+	const rowFirstId = run.firstId + row * width;
+	const id = rowFirstId + node;
+	const bindings = program.bindings[node];
+	let props = program.props[node]!;
+	if (bindings !== undefined) {
+		const next = Object.create(null) as Record<string, unknown>;
+		for (const name in props) next[name] = props[name];
+		const valueOffset = row * program.valueCount;
+		for (const binding of bindings) {
+			next[binding.name] = run.values[valueOffset + binding.valueIndex];
+		}
+		props = Object.freeze(next);
+	}
+	const parent = node === 0 ? run.parent : rowFirstId + program.shape.parents[node]!;
+	const events = program.events[node];
+	const record: LynxHostRecord<Node> =
+		events === undefined
+			? new LynxCompactHostRecord(
+					run.root,
+					id,
+					generation,
+					program.shape.types[node]!,
+					props,
+					parent,
+				)
+			: new LynxCompactEventHostRecord(
+					run.root,
+					id,
+					generation,
+					program.shape.types[node]!,
+					props,
+					parent,
+					events,
+					run.firstListenerId! + row * program.eventCount,
+				);
+	for (let child = node + 1; child < width; child++) {
+		if (program.shape.parents[child] === node) {
+			hostChildrenForWrite(record).push(rowFirstId + child);
+		}
+	}
+	return record;
+}
+
+/**
  * A compact run already describes every host by a frozen program and identity
  * stride. Keep only physical nodes eagerly; materialize logical records,
  * topology, props, events, and public snapshots when one host is observed.
@@ -703,7 +795,7 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 
 	constructor(
 		private readonly prefix: Map<number, LynxHostRecord<Node>>,
-		private readonly root: number,
+		readonly root: number,
 		readonly program: LynxPreparedTemplateProgram,
 		readonly firstId: number,
 		readonly count: number,
@@ -896,49 +988,8 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 		if (this.removed?.has(offset)) return undefined;
 		const previous = this.materialized.get(offset);
 		if (previous !== undefined) return previous;
-		const width = this.program.shape.types.length;
-		const row = Math.floor(offset / width);
-		const node = offset - row * width;
-		const rowFirstId = this.firstId + row * width;
-		const bindings = this.program.bindings[node];
-		let props = this.program.props[node]!;
-		if (bindings !== undefined) {
-			const next = Object.create(null) as Record<string, unknown>;
-			for (const name in props) next[name] = props[name];
-			const valueOffset = row * this.program.valueCount;
-			for (const binding of bindings)
-				next[binding.name] = this.values[valueOffset + binding.valueIndex];
-			props = Object.freeze(next);
-		}
-		const parent = node === 0 ? this.parent : rowFirstId + this.program.shape.parents[node]!;
-		const events = this.program.events[node];
-		const generation = this.generationAt(offset);
-		const record: LynxHostRecord<Node> =
-			events === undefined
-				? new LynxCompactHostRecord(
-						this.root,
-						id,
-						generation,
-						this.program.shape.types[node]!,
-						props,
-						parent,
-					)
-				: new LynxCompactEventHostRecord(
-						this.root,
-						id,
-						generation,
-						this.program.shape.types[node]!,
-						props,
-						parent,
-						events,
-						this.firstListenerId! + row * this.program.eventCount,
-					);
+		const record = templateRunRecord<Node>(this, offset, this.generationAt(offset));
 		record.node = this.nodes[offset] ?? null;
-		for (let child = node + 1; child < width; child++) {
-			if (this.program.shape.parents[child] === node) {
-				hostChildrenForWrite(record).push(rowFirstId + child);
-			}
-		}
 		this.materialized.set(offset, record);
 		return record;
 	}
@@ -1031,8 +1082,15 @@ function prepareTemplateShape(value: unknown, label: string): LynxPreparedTempla
 		}
 		const entry = candidate as { readonly type: unknown; readonly parent: unknown };
 		assertHostType(entry.type, `${label}.shape[${index}].type`);
-		if (entry.type === 'list' || entry.type === 'list-item') {
+		// A `<list>` stays out entirely: a template program has no way to carry the
+		// row descriptors a list needs. A `<list-item>` is a list's cell, so a run
+		// may declare one — that is what a deferred run under a `<list>` is — but
+		// never nest one, because a cell has exactly one place it can be.
+		if (entry.type === 'list') {
 			throw hostError(`${label} cannot contain native-list hosts.`);
+		}
+		if (entry.type === 'list-item' && index !== 0) {
+			throw hostError(`${label} may only declare a <list-item> as its root.`);
 		}
 		const parent = entry.parent;
 		if (
@@ -2155,12 +2213,114 @@ function physicalChildren<Node extends LynxElementRef>(
 	return record.type === 'list' ? [] : record.children;
 }
 
+/**
+ * A run whose hosts exist as a declaration rather than as records.
+ *
+ * A native `<list>` decides for itself which of its rows are on screen, and it
+ * asks for one only when it is about to display it. Building every declared
+ * instance at mount therefore buys nothing and costs one retained record per
+ * host per row — the reason a 10k-row list retains ~70k records to show ~12.
+ *
+ * So a deferred run keeps the declaration and nothing else. The first read of a
+ * host materializes it into `state.records`, after which it is an ordinary
+ * record and this run no longer answers for it; reads that must not retain —
+ * the per-commit walk that tells the list about every logical row — go through
+ * `peekRecord` instead.
+ */
+interface LynxDeferredTemplateRun extends LynxTemplateRunDeclaration {
+	/**
+	 * Offsets whose host was destroyed after this run was accepted.
+	 *
+	 * A declaration outlives the hosts it declares, so without this a destroyed
+	 * row would be re-derived by the next read that missed `records`.
+	 */
+	removed: Set<number> | null;
+}
+
+/** Whether any run in `runs` already declares a host in `[first, last]`. */
+function runsOverlapRange(
+	runs: readonly LynxDeferredTemplateRun[] | null,
+	first: number,
+	last: number,
+): boolean {
+	if (runs === null) return false;
+	for (const run of runs) {
+		if (first <= run.firstId + (templateRunHostCount(run) - 1) && last >= run.firstId) return true;
+	}
+	return false;
+}
+
+/**
+ * The run in `runs` that declares `id`, or undefined once nothing declares it.
+ *
+ * A linear scan because a run is one command per native list: a tree carries as
+ * many of these as it has lists, not as it has rows.
+ */
+function declaringRun(
+	runs: readonly LynxDeferredTemplateRun[] | null,
+	id: number,
+): { readonly run: LynxDeferredTemplateRun; readonly offset: number } | undefined {
+	if (runs === null) return undefined;
+	for (const run of runs) {
+		const offset = id - run.firstId;
+		if (offset < 0 || offset >= templateRunHostCount(run)) continue;
+		return run.removed?.has(offset) === true ? undefined : { run, offset };
+	}
+	return undefined;
+}
+
+/**
+ * The record for `id`, deriving it from a deferred run without retaining it.
+ *
+ * For readers that only read. The returned record is a fresh object each call,
+ * so a write to it is lost — which is the point: the walk that publishes a
+ * list's logical rows reads every row of a deferred run on every commit, and
+ * retaining what it touched would defeat the deferral.
+ */
+function peekRecord<Node extends LynxElementRef>(
+	state: LynxHostState<Node>,
+	id: number,
+): LynxHostRecord<Node> | undefined {
+	const record = state.records.get(id);
+	if (record !== undefined) return record;
+	const declared = declaringRun(state.deferredRuns, id);
+	return declared === undefined
+		? undefined
+		: templateRunRecord<Node>(declared.run, declared.offset, state.generations.get(id) ?? 1);
+}
+
+/**
+ * The record for `id`, materializing it from a deferred run if that is the only
+ * place it exists.
+ *
+ * For readers that write — everything that binds a physical node into a host.
+ * Materializing is what makes the write stick, and from here on the host is an
+ * ordinary record that the run no longer answers for. Only apply may call this:
+ * it writes `state.records`.
+ */
+function resolveRecord<Node extends LynxElementRef>(
+	state: LynxHostState<Node>,
+	id: number,
+): LynxHostRecord<Node> | undefined {
+	const record = state.records.get(id);
+	if (record !== undefined) return record;
+	const declared = declaringRun(state.deferredRuns, id);
+	if (declared === undefined) return undefined;
+	const materialized = templateRunRecord<Node>(
+		declared.run,
+		declared.offset,
+		state.generations.get(id) ?? 1,
+	);
+	state.records.set(id, materialized);
+	return materialized;
+}
+
 function createPhysicalTree<Node extends LynxElementRef>(
 	state: LynxHostState<Node>,
 	container: LynxHostContainer<Node>,
 	id: number,
 ): LynxPhysicalTree<Node> {
-	const record = state.records.get(id);
+	const record = resolveRecord(state, id);
 	if (record === undefined) throw hostError(`native list requested missing host ${id}.`);
 	const node =
 		record.type === 'list'
@@ -2324,7 +2484,7 @@ function rebindPhysicalTree<Node extends LynxElementRef>(
 	tree: LynxPhysicalTree<Node>,
 	desiredId: number,
 ): LynxPhysicalTree<Node> {
-	const desired = state.records.get(desiredId);
+	const desired = resolveRecord(state, desiredId);
 	if (desired === undefined) throw hostError(`native list requested missing host ${desiredId}.`);
 	const patch = planLynxHostPropPatch(desired.type, tree.props, desired.props);
 	if (
@@ -2717,7 +2877,7 @@ function publishNativeListItems<Node extends LynxElementRef>(
 	if (listState === undefined) {
 		throw hostError(`<list> ${record.handle.id} has no native list state.`);
 	}
-	const initialItems = listItems((id) => state.records.get(id), record.handle.id);
+	const initialItems = listItems((id) => peekRecord(state, id), record.handle.id);
 	listState.items = initialItems;
 	const initialUpdate = planLynxListUpdate([], initialItems);
 	if (hasListUpdate(initialUpdate)) {
@@ -2813,6 +2973,7 @@ export function createLynxHostContainer<Node extends LynxElementRef>(
 		generations: new Map(),
 		implicitInitialGenerations: false,
 		teardownRecords: null,
+		deferredRuns: null,
 		portalRoot: null,
 		portalChildren: new Map(),
 		ownedNodes: new Set(),
@@ -2842,6 +3003,13 @@ export function createLynxHostContainer<Node extends LynxElementRef>(
 		get acceptedVersion() {
 			return state.acceptedVersion;
 		},
+		/**
+		 * Hosts this driver holds a record for.
+		 *
+		 * A deferred run declares hosts without building them, so its instances
+		 * count from the moment the list asks for one rather than from the commit
+		 * that declared them.
+		 */
 		get instanceCount() {
 			return state.records.size;
 		},
@@ -4198,6 +4366,7 @@ function transferFirstTree<Node extends LynxElementRef>(
 	sourceState.mainThreadRefOwners.clear();
 	sourceState.records.clear();
 	sourceState.teardownRecords = null;
+	sourceState.deferredRuns = null;
 	sourceState.rootChildren.length = 0;
 	sourceState.generations.clear();
 	sourceState.portalRoot = null;
@@ -4471,14 +4640,44 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 	let stagedRecordCount = state.records.size;
 	let hasMainThreadProps = state.hasMainThreadProps;
 	let hasNativeListTopology = state.hasNativeListTopology;
+	let stagedDeferredRuns: LynxDeferredTemplateRun[] | null = null;
+	// One boolean rather than two null checks per lookup: a miss is the common
+	// answer on the eager template path, where it is the duplicate-id check.
+	let anyDeferredRuns = state.deferredRuns !== null;
+	/**
+	 * The record a deferred run declares for `id`, without retaining it.
+	 *
+	 * Preparation must not write accepted state, so a declared host observed
+	 * here is derived rather than materialized. A caller that needs the write to
+	 * survive goes through `writeRecord`, which stages it like any other.
+	 */
+	const declaredRecord = (id: number): LynxHostRecord<Node> | undefined => {
+		if (!anyDeferredRuns) return undefined;
+		const declared = declaringRun(stagedDeferredRuns, id) ?? declaringRun(state.deferredRuns, id);
+		return declared === undefined
+			? undefined
+			: templateRunRecord<Node>(declared.run, declared.offset, getGeneration(id) ?? 1);
+	};
+	/**
+	 * Promote a declared host to a staged record, because a caller is about to
+	 * write it. A written host is no longer derivable from its run, so this is
+	 * where a deferred instance stops being free.
+	 */
+	const stageDeclared = (id: number): LynxHostRecord<Node> | undefined => {
+		const record = declaredRecord(id);
+		if (record === undefined) return undefined;
+		stagedRecords.set(id, record);
+		stagedRecordCount++;
+		return record;
+	};
 	const getRecord = initiallyEmpty
-		? (id: number): LynxHostRecord<Node> | undefined => stagedRecords.get(id)
+		? (id: number): LynxHostRecord<Node> | undefined => stagedRecords.get(id) ?? declaredRecord(id)
 		: (id: number): LynxHostRecord<Node> | undefined => {
 				if (deletedRecords.has(id)) return undefined;
-				return stagedRecords.get(id) ?? state.records.get(id);
+				return stagedRecords.get(id) ?? state.records.get(id) ?? declaredRecord(id);
 			};
 	const writeRecord = initiallyEmpty
-		? (id: number): LynxHostRecord<Node> | undefined => stagedRecords.get(id)
+		? (id: number): LynxHostRecord<Node> | undefined => stagedRecords.get(id) ?? stageDeclared(id)
 		: (id: number): LynxHostRecord<Node> | undefined => {
 				if (deletedRecords.has(id)) return undefined;
 				const staged = stagedRecords.get(id);
@@ -4491,7 +4690,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 					return staged;
 				}
 				const accepted = state.records.get(id);
-				if (accepted === undefined) return undefined;
+				if (accepted === undefined) return stageDeclared(id);
 				const clone = cloneRecord(accepted);
 				stagedRecords.set(id, clone);
 				return clone;
@@ -4753,6 +4952,90 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			) {
 				sparseCompactNodes = false;
 			}
+			const deferred = command.op === 'mount-template-run' && command.deferred === true;
+			if (deferred) {
+				// A native `<list>` is the one parent that owns which of its children
+				// are on screen, so it is the one parent for which declaring an
+				// instance and building it are different requests.
+				if (parentRecord?.type !== 'list') {
+					throw hostError(`${label} may only defer directly under a native <list>.`);
+				}
+				if (command.before !== null) {
+					throw hostError(`${label} cannot defer relative to a sibling.`);
+				}
+				if (shape.types[0] !== 'list-item') {
+					throw hostError(`${label} must declare <list-item> instances under a <list>.`);
+				}
+				// Two per-commit audits walk the hosts this driver has materialized:
+				// one collects native lists, one checks main-thread props and refs. A
+				// declared host is in neither walk, so a deferred run may not declare
+				// anything either walk exists to find. `prepareTemplateShape` already
+				// keeps `<list>` out of every program, which leaves this — a property
+				// of the program, decided once for the run rather than once per
+				// instance, which is the whole point of not building them.
+				if (mainThreadValues !== null) {
+					throw hostError(`${label} cannot defer a run binding main-thread props.`);
+				}
+				const declaredFirst = command.firstId;
+				const declaredLast = declaredFirst + (hostCount - 1);
+				if (
+					runsOverlapRange(stagedDeferredRuns, declaredFirst, declaredLast) ||
+					runsOverlapRange(state.deferredRuns, declaredFirst, declaredLast)
+				) {
+					throw hostError(`${label} overlaps another declared host range.`);
+				}
+				for (const id of stagedRecords.keys()) {
+					if (id >= declaredFirst && id <= declaredLast) {
+						throw hostError(`duplicate host id ${id}.`);
+					}
+				}
+				for (const id of state.generations.keys()) {
+					if (id >= declaredFirst && id <= declaredLast) {
+						throw hostError(`duplicate host id ${id}.`);
+					}
+				}
+				// Accepting a run means every instance it declares is valid, including
+				// the ones nothing will ever build. The dense path scans the same
+				// slots for the same reason; this is that scan, over the same values.
+				for (let row = 0; row < count; row++) {
+					const valueOffset = row * program.valueCount;
+					for (let node = 0; node < shape.types.length; node++) {
+						if (program.dynamicRoutes[node] !== 1) continue;
+						const binding = program.bindings[node]![0]!;
+						if (typeof command.values[valueOffset + binding.valueIndex] !== 'string') {
+							throw hostError(
+								`${label} for #text must contain a string value and optional CSS scope.`,
+							);
+						}
+					}
+				}
+				abandonCompact();
+				if (typeof parent === 'number') captureInitialNode(parent);
+				(stagedDeferredRuns ??= []).push({
+					root: container.root,
+					program,
+					firstId: declaredFirst,
+					count,
+					parent,
+					// The declaration outlives the command that carried it, so a mutable
+					// array would let the peer rewrite hosts it already mounted. The copy
+					// costs what the declaration retains anyway.
+					values: Object.isFrozen(command.values)
+						? command.values
+						: Object.freeze(command.values.slice()),
+					firstListenerId: command.firstListenerId,
+					removed: null,
+				});
+				anyDeferredRuns = true;
+				// The list is told about every logical row it owns; only which of them
+				// are on screen is deferred.
+				const declaredSiblings = childrenForWrite(parent);
+				const declaredWidth = shape.types.length;
+				for (let row = 0; row < count; row++) {
+					declaredSiblings.push(declaredFirst + row * declaredWidth);
+				}
+				continue;
+			}
 			if (
 				parentRecord?.type === 'list' ||
 				(hasNativeListTopology &&
@@ -4762,6 +5045,13 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				throw hostError(`${label} cannot target a native-list host or descendant.`);
 			}
 			const rootType = shape.types[0]!;
+			if (rootType === 'list-item') {
+				// The shape allows a `<list-item>` root so a deferred run can declare a
+				// native list's cells. Building one eagerly is the part that cannot
+				// follow: a mount that targets a native list is refused above, so an
+				// eager cell has no list to be a cell of.
+				throw hostError(`${label} may only mount a <list-item> template as a deferred run.`);
+			}
 			if ((rootType === '#text' || rootType === 'raw-text') && parentRecord?.type !== 'text') {
 				throw hostError(`${rootType} template host may only be placed directly under a text host.`);
 			}
@@ -5067,6 +5357,10 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				throw hostError(`${label} cannot target a native-list host or descendant.`);
 			}
 			const rootType = shape.types[0]!;
+			// Only a deferred run may mount a cell; see the same refusal above.
+			if (rootType === 'list-item') {
+				throw hostError(`${label} may only mount a <list-item> template as a deferred run.`);
+			}
 			if ((rootType === '#text' || rootType === 'raw-text') && parentRecord?.type !== 'text') {
 				throw hostError(`${rootType} template host may only be placed directly under a text host.`);
 			}
@@ -5696,7 +5990,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 	Object.freeze(listAncestryDelta);
 	const listUpdates: LynxPreparedListUpdate[] = [];
 	for (const hostId of listIds) {
-		const previous = listItems((id) => state.records.get(id), hostId);
+		const previous = listItems((id) => peekRecord(state, id), hostId);
 		const next = listItems(getRecord, hostId);
 		const update = planLynxListUpdate(previous, next);
 		if (hasListUpdate(update) || previous.length !== next.length || !getRecord(hostId)) {
@@ -5862,6 +6156,29 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				} else {
 					for (const id of deletedRecords) state.records.delete(id);
 					for (const [id, record] of stagedRecords) state.records.set(id, record);
+				}
+				if (stagedDeferredRuns !== null) {
+					state.deferredRuns =
+						state.deferredRuns === null
+							? stagedDeferredRuns
+							: [...state.deferredRuns, ...stagedDeferredRuns];
+				}
+				if (state.deferredRuns !== null && deletedRecords.size !== 0) {
+					// A declaration outlives the hosts it declares, so a destroyed host
+					// has to be struck from it. Otherwise the next read that missed
+					// `records` would derive the host again, and a destroyed row would
+					// come back the moment its list asked for it.
+					for (const id of deletedRecords) {
+						const declared = declaringRun(state.deferredRuns, id);
+						if (declared !== undefined) (declared.run.removed ??= new Set()).add(declared.offset);
+					}
+					// A run declares hosts under one list. Once that list is gone the
+					// declaration answers for nothing, and keeping it would retain the
+					// run's whole value array for a tree that no longer has it.
+					const live = state.deferredRuns.filter(
+						(run) => typeof run.parent !== 'number' || state.records.has(run.parent),
+					);
+					state.deferredRuns = live.length === 0 ? null : live;
 				}
 				if (batch.commands.length !== 0) {
 					state.teardownRecords = acceptedTeardownRecords;
@@ -6839,6 +7156,10 @@ export function disposeLynxHostContainer<Node extends LynxElementRef>(
 		state.lists.clear();
 		state.records.clear();
 		state.teardownRecords = null;
+		// A declaration retains its whole value array, which is the one thing a
+		// deferred run is deliberately large in. Clearing records without it would
+		// keep 10,000 rows of strings alive on a container that has nothing left.
+		state.deferredRuns = null;
 		state.rootChildren.length = 0;
 		state.generations.clear();
 		state.portalRoot = null;
