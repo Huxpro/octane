@@ -11,24 +11,29 @@
  *
  * ## What flag-on can and cannot drive today, stated plainly
  *
- * The Block core has no component layer. `block-root.ts` says so in its own
- * header: there is no `render(component, props)` because there are no hook
- * cells and therefore no program for a component to be. So a bundle built with
- * `core: 'block'` cannot run a compiled `.tsrx` component — and this module
- * refuses one with a diagnostic that says which piece is missing, rather than
- * rendering something partial.
+ * Two things can be a program here, in this order.
  *
- * What it can run is a **block program**: the thing a compiler lowering will
- * eventually emit, and the thing a hand-written benchmark fixture can supply
- * today. `withLynxBlockProgram` attaches one to a component, so a single
- * application entry — `root.render(App)` — is driven by the universal core with
- * the flag off and by the Block core with the flag on. That is what makes an
- * A/B between the two cores a single-variable comparison rather than two
- * applications that merely resemble each other.
+ * A component may **carry** one, attached by `withLynxBlockProgram`. That is
+ * what a hand-written benchmark fixture supplies, and it stays first because it
+ * is the explicit answer: a component that says what it is on the Block core is
+ * never second-guessed by a derivation. A hand-written program is an
+ * architecture floor, not a framework measurement, exactly as
+ * `benchmarks/lynx-table/block-workload.ts` says of its own; any number
+ * produced through one must carry that label.
  *
- * A hand-written program is an architecture floor, not a framework measurement,
- * exactly as `benchmarks/lynx-table/block-workload.ts` says of its own. Any
- * number produced through one must carry that label.
+ * A compiled component that carries nothing is **derived** — `block-component.ts`
+ * runs its setup, lowers the plan it returns to a template program, and makes
+ * its slot values the block's values. That covers the components whose setup
+ * needs no hook runtime; a hooked one and a keyed range site are refused there
+ * by name, because a bundle that silently rendered nothing would be far worse
+ * than one that says which piece it lacks. Deriving is what makes a number from
+ * this core a framework measurement rather than a floor, for the shapes it
+ * reaches.
+ *
+ * Either way a single application entry — `root.render(App)` — is driven by the
+ * universal core with the flag off and by the Block core with the flag on,
+ * which is what makes an A/B between the two cores a single-variable comparison
+ * rather than two applications that merely resemble each other.
  *
  * ## The borrowed transport root id stops being borrowed
  *
@@ -50,6 +55,7 @@ import type {
 import type { LynxComponent } from '../intrinsics.js';
 import { lynxClientTemplateRunsNegotiated, type LynxClientContainer } from './client-driver.js';
 import { createLynxBlockCore, type LynxBlockCore } from './block-core.js';
+import { lynxBlockProgramForComponent } from './block-component.js';
 import { createLynxBlockRoot } from './block-root.js';
 import {
 	readLynxBlockProgram,
@@ -116,15 +122,6 @@ function committedTransaction(batch: UniversalHostBatch | null): UniversalTransa
 	return Object.freeze(settled);
 }
 
-function missingComponentLayer(): never {
-	throw new Error(
-		'Octane Lynx was built with core: "block", which has no component layer yet ' +
-			'(issue #103 U2: no hook cells, so a compiled component has no program to be). ' +
-			'Render a component carrying a block program via withLynxBlockProgram(), or ' +
-			'build with core: "universal".',
-	);
-}
-
 /**
  * Create the background core a `core: 'block'` bundle drives its root with.
  *
@@ -162,6 +159,23 @@ export function createLynxBlockBackgroundCore(
 			return blockRoot.commit();
 		},
 	});
+	// A derived program holds the block it mounted, so it belongs to this core
+	// rather than to the component: two roots rendering the same component are
+	// two programs. The memo is load-bearing for identity, not economy —
+	// deriving only builds closures (the component's setup runs per render
+	// either way), but a second render handed a *fresh* program object would be
+	// refused as a program swap by the mounted-program check below.
+	const derived = new WeakMap<LynxComponent<unknown>, LynxBlockProgram<unknown>>();
+	const programFor = (component: LynxComponent<unknown>): LynxBlockProgram<unknown> => {
+		const carried = readLynxBlockProgram(component);
+		if (carried !== undefined) return carried;
+		let program = derived.get(component);
+		if (program === undefined) {
+			program = lynxBlockProgramForComponent(component);
+			derived.set(component, program);
+		}
+		return program;
+	};
 	let mounted: LynxBlockProgram<never> | null = null;
 	// Renders serialize. `mounted` is only assigned after `program.mount`
 	// yields, so two un-awaited renderAsync calls would otherwise both read
@@ -185,8 +199,7 @@ export function createLynxBlockBackgroundCore(
 			component: UniversalComponent<any>,
 			props: unknown,
 		): Promise<UniversalTransaction> {
-			const program = readLynxBlockProgram(component as unknown as LynxComponent<unknown>);
-			if (program === undefined) missingComponentLayer();
+			const program = programFor(component as unknown as LynxComponent<unknown>);
 			const run = renderQueue.then(async () => {
 				if (mounted === null) {
 					await program.mount(context, props);

@@ -66,6 +66,13 @@ export interface LynxBlockRoot {
 	readonly renderer: typeof LYNX_TRANSPORT_RENDERER;
 	readonly core: LynxBlockCore;
 	/**
+	 * The identity namespace every handle this root sends is stamped with. Read
+	 * by anything that has to mint a handle in the same namespace the root's own
+	 * frames use — a resource handle encoded for a template value, say — so the
+	 * far side's ownership check accepts it.
+	 */
+	readonly transportRoot: number;
+	/**
 	 * Bind this block's event sites, in program order. A `null` entry leaves the
 	 * site unbound, which is how a template with a conditional handler is
 	 * expressed without a second template.
@@ -121,6 +128,7 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 	const root: LynxBlockRoot = {
 		renderer: LYNX_TRANSPORT_RENDERER,
 		core,
+		transportRoot,
 
 		bindListeners(block, bound) {
 			const sites = block.template.program.events;

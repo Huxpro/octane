@@ -43,7 +43,7 @@ const BUNDLE_NAME = 'main.lynx.bundle';
 // as a leak would fail a control for something that is not a core at all;
 // reporting it separately is what keeps the removal claim about the core.
 const CORE_PROBES = Object.freeze({
-	block: ['Octane Lynx block core:', 'Octane Lynx block root', 'no component layer yet'],
+	block: ['Octane Lynx block core:', 'Octane Lynx block root', 'onto the Block core:'],
 	universalRoot: [
 		'Universal roots accept only compiler-defined universal components.',
 		'Duplicate universal list key ',
