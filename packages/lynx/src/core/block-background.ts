@@ -23,8 +23,10 @@
  *
  * A compiled component that carries nothing is **derived** — `block-component.ts`
  * runs its setup, lowers the plan it returns to a template program, and makes
- * its slot values the block's values. That covers the components whose setup
- * needs no hook runtime; a hooked one and a keyed range site are refused there
+ * its slot values the block's values. A keyed range in that plan is lifted out
+ * of the template and becomes a range site on the host node that held it, so a
+ * list is reconciled by the core rather than repainted. That covers the
+ * components whose setup needs no hook runtime; a hooked one is refused there
  * by name, because a bundle that silently rendered nothing would be far worse
  * than one that says which piece it lacks. Deriving is what makes a number from
  * this core a framework measurement rather than a floor, for the shapes it
