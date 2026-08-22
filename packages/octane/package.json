@@ -46,6 +46,7 @@
     "./profiling": "./src/profiling.ts",
     "./universal": "./src/universal.ts",
     "./universal/native": "./src/universal-native.ts",
+    "./universal/template-program": "./src/universal-template-program.ts",
     "./compiler": "./src/compiler/index.js",
     "./compiler/bundler": "./src/compiler/bundler.js",
     "./compiler/register": "./src/compiler/register.js",
@@ -137,6 +138,10 @@
       "./universal/native": {
         "types": "./dist/universal-native.d.ts",
         "default": "./dist/universal-native.js"
+      },
+      "./universal/template-program": {
+        "types": "./dist/universal-template-program.d.ts",
+        "default": "./dist/universal-template-program.js"
       },
       "./compiler": "./dist/compiler/index.js",
       "./compiler/bundler": "./dist/compiler/bundler.js",

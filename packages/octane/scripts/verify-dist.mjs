@@ -494,6 +494,18 @@ export const REQUIRED_PUBLIC_VALUE_EXPORTS = {
 		'warmMemo',
 		'withSlot',
 	],
+	'./universal/template-program': [
+		'EMPTY_STATIC_HOST_PROPS',
+		'cloneSerializableValue',
+		'compiledUniversalTemplateProgram',
+		'createUniversalHostEncoder',
+		'hasCrossRealmPlainPrototype',
+		'isUniversalHostTemplateProgramSlotValue',
+		'isUniversalHostTemplateProgramValue',
+		'prepareUniversalTemplateProgram',
+		'prepareUniversalTemplateProgramValues',
+		'universalHostTemplateShape',
+	],
 	// No `octane` here: the Vite plugin would drag this browser-facing subpath's
 	// module graph into `node:fs`/`node:path`. It stays on `./compiler/vite`.
 	'./compiler': ['__analyzeNativeChangeDiagnostics', 'compile', 'compileToVolarMappings'],
