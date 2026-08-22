@@ -31,6 +31,14 @@ export interface LynxWireProfile {
 	commits: number;
 	/** Host commands across those commits. */
 	commands: number;
+	/**
+	 * Commits that carried no host command at all. `commits` on its own cannot
+	 * tell one large batch split into chunks from a stream that ran a render pass
+	 * per state change and found nothing to say — both read as "more commits than
+	 * changes", and they are opposite facts about a core. Separating them is what
+	 * makes a storm's commit count readable.
+	 */
+	emptyCommits: number;
 	/** Serialized commit size, as JSON bytes — a structured-clone-cost proxy. */
 	bytes: number;
 	/** Background: dev-mode outbound self-check time. */
@@ -65,6 +73,7 @@ export function lynxWireProfile(): LynxWireProfile {
 	return (globals.__OCTANE_LYNX_PROF ??= {
 		commits: 0,
 		commands: 0,
+		emptyCommits: 0,
 		bytes: 0,
 		selfcheckMs: 0,
 		dispatchMs: 0,
@@ -84,6 +93,7 @@ export function profileOutboundMessage(profile: LynxWireProfile, message: unknow
 	const record = message as { type?: unknown; batch?: { commands?: readonly unknown[] } };
 	if (record.type !== 'commit') return;
 	profile.commits += 1;
+	if ((record.batch?.commands?.length ?? 0) === 0) profile.emptyCommits += 1;
 	profile.commands += record.batch?.commands?.length ?? 0;
 	try {
 		profile.bytes += JSON.stringify(message).length;

@@ -36,6 +36,19 @@ const { values: args } = parseArgs({
 		port: { type: 'string', default: '8360' },
 		headed: { type: 'boolean', default: false },
 		'skip-app-build': { type: 'boolean', default: false },
+		// Serve the OCTANE_LYNX_PROFILE=1 bundles for the octane cells, so the
+		// wire counters below have something to read. Those bundles carry the
+		// profiler's branches, so their milliseconds are not the shipping
+		// configuration and the report says so at the top.
+		'counter-build': { type: 'boolean', default: false },
+		// `--cell-bundle id=path`, repeatable: measure a bundle this checkout does
+		// not build, in the same window as the cells it does. The question it
+		// exists for is "did this regress since commit X", which the honesty rules
+		// say may only be answered by driving both bundles through one instrument
+		// in one window — never by dividing a number from one session by a number
+		// from another. Build the other commit's bundle in a worktree, point a
+		// cell at it, and the report prints its ÷ octane ratio beside the rest.
+		'cell-bundle': { type: 'string', multiple: true, default: [] },
 	},
 });
 
@@ -81,7 +94,31 @@ const wanted = new Set(
 		.map((cell) => cell.trim())
 		.filter(Boolean),
 );
-const CELLS = ALL_CELLS.filter((cell) => wanted.has(cell.id));
+const COUNTER_BUILD = args['counter-build'];
+// A counter build is the same dist path with `-profile` appended, which is what
+// `scripts/build-app.mjs` writes under OCTANE_LYNX_PROFILE=1. Reference cells are
+// vendored black boxes with no counters to turn on, so they keep their bundle.
+const CELLS = ALL_CELLS.filter((cell) => wanted.has(cell.id)).map((cell) =>
+	COUNTER_BUILD && cell.bundle.includes('/app/dist')
+		? { ...cell, bundle: cell.bundle.replace(/(\/app\/dist[^/]*)\//, '$1-profile/') }
+		: cell,
+);
+// An injected cell is compared against `octane` explicitly, because the reason
+// to inject one is always "how does this differ from the octane this checkout
+// builds" and that ratio is the only same-window claim available for it.
+for (const spec of args['cell-bundle']) {
+	const separator = spec.indexOf('=');
+	if (separator < 1) {
+		throw new Error(`--cell-bundle expects id=path, got: ${spec}`);
+	}
+	const id = spec.slice(0, separator);
+	const bundle = path.resolve(spec.slice(separator + 1));
+	if (ALL_CELLS.some((cell) => cell.id === id)) {
+		throw new Error(`--cell-bundle ${id}: that id is a built-in cell; pick another name.`);
+	}
+	CELLS.push({ id, bundle, compare: 'octane', injected: true });
+	ALL_CELLS.push({ id, bundle });
+}
 
 const CREATE_BUTTON = {
 	1000: 'Create 1,000 rows',
@@ -120,7 +157,13 @@ function startServer() {
 		if (url.pathname.startsWith('/webcore/')) {
 			filePath = path.join(webCoreRoot, url.pathname.slice(9));
 		} else if (url.pathname.startsWith('/bundles/')) {
-			const cell = ALL_CELLS.find((entry) => url.pathname === `/bundles/${entry.id}`);
+			// Resolve against the selected cells first: that is where a
+			// `--counter-build` cell carries its redirected bundle path, and serving
+			// the default-build bundle for it would silently measure the wrong
+			// artifact under the right name.
+			const cell =
+				CELLS.find((entry) => url.pathname === `/bundles/${entry.id}`) ??
+				ALL_CELLS.find((entry) => url.pathname === `/bundles/${entry.id}`);
 			filePath = cell?.bundle ?? null;
 		}
 		if (!filePath || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
@@ -151,6 +194,9 @@ class Driver {
 	}
 	settle() {
 		return this.ev(() => globalThis.__x.settle());
+	}
+	async hasButton(label) {
+		return (await this.ev((l) => globalThis.__x.buttonRect(l), label)) !== null;
 	}
 	async clickButton(label) {
 		const rect = await this.ev((l) => globalThis.__x.buttonRect(l), label);
@@ -230,6 +276,77 @@ async function resetFloorCounters(page) {
 	await eachRealm(page, RESET_FLOOR);
 }
 
+// Wire counters: how many commits each cell actually put on the wire for one
+// operation, and how many host commands rode in them. `@octanejs/lynx` keeps
+// these per realm under `__OCTANE_LYNX_PROF` (core/profiling.ts) behind the
+// `__OCTANE_LYNX_PROFILE__` build flag, so they read as null unless the cell was
+// served from a `--counter-build` bundle, and they are core-agnostic: both
+// background cores dispatch through the same transport.
+//
+// Unlike the floor counts above these are NOT invariants, and the report must
+// not present them as ones. A storm's tick can render while a commit is still in
+// flight, and what the renderer has not yet flushed coalesces into the next
+// commit — so the commit count is a function of how the ticks and the flushes
+// interleaved on this host, and its run-to-run range is the measurement, not
+// noise to be averaged away.
+const READ_WIRE = () => {
+	const profile = globalThis.__OCTANE_LYNX_PROF;
+	if (profile === undefined) return null;
+	return {
+		commits: profile.commits ?? 0,
+		commands: profile.commands ?? 0,
+		emptyCommits: profile.emptyCommits ?? 0,
+	};
+};
+const RESET_WIRE = () => {
+	const profile = globalThis.__OCTANE_LYNX_PROF;
+	if (profile === undefined) return null;
+	profile.commits = 0;
+	profile.commands = 0;
+	profile.emptyCommits = 0;
+	return true;
+};
+
+// The background renderer and the main-thread receiver are separate realms with
+// separate records under the same global name, and they count opposite ends of
+// the same wire: background counts what it dispatched, main counts what it
+// applied. Reporting their sum would hide exactly the question these counters
+// exist to answer, so they stay apart. Lynx-for-Web runs the background in a
+// worker and the main thread in a hidden iframe, but the split here is by which
+// fields a realm filled rather than by realm kind, so it does not depend on that
+// hosting choice: a realm that dispatched nothing contributes nothing to `bg`.
+async function eachRealmTagged(page, fn) {
+	const seen = [];
+	for (const frame of page.frames()) {
+		const value = await frame.evaluate(fn).catch(() => null);
+		if (value !== null) seen.push({ kind: 'frame', value });
+	}
+	for (const worker of page.workers()) {
+		const value = await worker.evaluate(fn).catch(() => null);
+		if (value !== null) seen.push({ kind: 'worker', value });
+	}
+	return seen;
+}
+
+async function readWireCounters(page) {
+	const seen = await eachRealmTagged(page, READ_WIRE);
+	if (seen.length === 0) return null;
+	const bg = seen.filter((realm) => realm.kind === 'worker');
+	const mt = seen.filter((realm) => realm.kind === 'frame');
+	const sum = (realms, field) => realms.reduce((total, realm) => total + realm.value[field], 0);
+	return {
+		bgCommits: sum(bg, 'commits'),
+		bgCommands: sum(bg, 'commands'),
+		bgEmptyCommits: sum(bg, 'emptyCommits'),
+		mtCommits: sum(mt, 'commits'),
+		mtCommands: sum(mt, 'commands'),
+	};
+}
+
+async function resetWireCounters(page) {
+	await eachRealmTagged(page, RESET_WIRE);
+}
+
 async function loadCell(browser, cell) {
 	const page = await browser.newPage();
 	if (process.env.LYNX_BENCH_DEBUG) {
@@ -262,9 +379,12 @@ async function runRep(browser, cell, rows) {
 	// after the op's predicate resolves, so each op's counts cover that op only.
 	const measure = async (name, run) => {
 		await resetFloorCounters(page);
+		await resetWireCounters(page);
 		sample[name] = await run();
 		const counts = await readFloorCounters(page);
 		if (counts !== null) (sample.counts ??= {})[name] = counts;
+		const wire = await readWireCounters(page);
+		if (wire !== null) (sample.wire ??= {})[name] = wire;
 	};
 	try {
 		await driver.settle();
@@ -296,30 +416,47 @@ async function runRep(browser, cell, rows) {
 		await measure('selectStorm', () =>
 			driver.measureButton('Select storm', { type: 'dangerAt', index: 0 }, STORM_TIMEOUT_MS),
 		);
+		await driver.settle();
+		// `clear` empties the table, so it runs last: every op above it sees the
+		// same tree it saw before this op existed, which is what keeps this
+		// schedule comparable with the sessions recorded before it. A cell whose
+		// app has no Clear button reports the op "not measured" rather than
+		// failing the whole repetition — the same stance the harness takes for a
+		// bundle it cannot drive.
+		if (await driver.hasButton('Clear')) {
+			await measure('clear', () =>
+				driver.measureButton('Clear', { type: 'rowCount', value: 0 }, STORM_TIMEOUT_MS),
+			);
+		}
 	} finally {
 		await page.close();
 	}
 	return sample;
 }
 
-const OPS = ['create', 'update10th', 'select', 'updateStorm', 'selectStorm'];
+const OPS = ['create', 'update10th', 'select', 'updateStorm', 'selectStorm', 'clear'];
 const FLOOR_FIELDS = ['rowVisits', 'writes', 'rowScans', 'blockLookups'];
+const WIRE_FIELDS = ['bgCommits', 'bgCommands', 'bgEmptyCommits', 'mtCommits', 'mtCommands'];
 
-// Floor counters are deterministic for a given op and scale, so the spread is
-// reported alongside the value: a non-zero spread means the count is not the
-// invariant it is claimed to be, and the number should not be quoted as one.
-function countsByOp(countSamples) {
-	const entries = Object.entries(countSamples).filter(([, values]) => values.length > 0);
+/**
+ * Per-op median and observed range for one family of per-rep count records.
+ * The range travels with the median in both families, but it means opposite
+ * things: for the floor counts a non-zero spread means the number is not the
+ * invariant it is claimed to be, while for the wire counts it is the reportable
+ * result — how much the tick/flush interleaving moved on this host.
+ */
+function statsByOp(samples, fields) {
+	const entries = Object.entries(samples).filter(([, values]) => values.length > 0);
 	if (entries.length === 0) return null;
 	const summary = {};
 	for (const [op, values] of entries) {
 		summary[op] = {};
-		for (const field of FLOOR_FIELDS) {
+		for (const field of fields) {
 			const observed = values.map((value) => value[field]);
 			const min = Math.min(...observed);
 			const max = Math.max(...observed);
 			summary[op][field] = {
-				median: observed.sort((a, b) => a - b)[observed.length >> 1],
+				median: observed.slice().sort((a, b) => a - b)[observed.length >> 1],
 				min,
 				max,
 				spread: max - min,
@@ -327,6 +464,13 @@ function countsByOp(countSamples) {
 		}
 	}
 	return summary;
+}
+
+// Floor counters are deterministic for a given op and scale, so the spread is
+// reported alongside the value: a non-zero spread means the count is not the
+// invariant it is claimed to be, and the number should not be quoted as one.
+function countsByOp(countSamples) {
+	return statsByOp(countSamples, FLOOR_FIELDS);
 }
 
 /** 1/5/15-minute load averages, as the session header prints them. */
@@ -378,7 +522,8 @@ async function main() {
 	for (const cell of runnable) {
 		results[cell.id] = {};
 		collected[cell.id] = {};
-		for (const rows of SCALES) collected[cell.id][rows] = { samples: {}, countSamples: {}, dnf: 0 };
+		for (const rows of SCALES)
+			collected[cell.id][rows] = { samples: {}, countSamples: {}, wireSamples: {}, dnf: 0 };
 	}
 	try {
 		for (const rows of SCALES) {
@@ -391,10 +536,12 @@ async function main() {
 				for (const cell of order) {
 					const bucket = collected[cell.id][rows];
 					try {
-						const { counts, ...timings } = await runRep(browser, cell, rows);
+						const { counts, wire, ...timings } = await runRep(browser, cell, rows);
 						for (const [op, ms] of Object.entries(timings)) (bucket.samples[op] ??= []).push(ms);
 						for (const [op, value] of Object.entries(counts ?? {}))
 							(bucket.countSamples[op] ??= []).push(value);
+						for (const [op, value] of Object.entries(wire ?? {}))
+							(bucket.wireSamples[op] ??= []).push(value);
 					} catch (error) {
 						if (process.env.LYNX_BENCH_DEBUG) console.log('[debug] rep error:', String(error));
 						if (!String(error).includes('timeout')) throw error;
@@ -415,6 +562,7 @@ async function main() {
 			results[cell.id][rows] = {
 				ops,
 				counts: countsByOp(bucket.countSamples),
+				wire: statsByOp(bucket.wireSamples, WIRE_FIELDS),
 				dnf: bucket.dnf,
 			};
 			const cellText = OPS.map((op) => `${op}=${ops[op] ? ops[op].median.toFixed(0) : 'DNF'}`).join(
@@ -437,6 +585,11 @@ async function main() {
 		`- host load: start ${formatLoad(startLoad)}, end ${formatLoad(endLoad)} (1/5/15m over ${os.cpus().length} CPUs)`,
 	);
 	if (manifest) lines.push(`- references: ${manifest.source} @ ${manifest.commit}`);
+	if (COUNTER_BUILD) {
+		lines.push(
+			"- **counter build**: the octane cells were served from `OCTANE_LYNX_PROFILE=1` bundles, which carry the wire profiler's branches. The wire-count tables below are the result of this run; the milliseconds are not the shipping configuration and must not be quoted beside a default-build session.",
+		);
+	}
 	for (const cell of missing) lines.push(`- ${cell.id}: not measured (bundle missing)`);
 	for (const rows of SCALES) {
 		lines.push('');
@@ -466,7 +619,7 @@ async function main() {
 		// labelled as one wherever it is quoted.
 		const universal = results['octane']?.[rows]?.ops;
 		for (const cell of runnable) {
-			if (cell.core !== 'block' || universal === undefined) continue;
+			if ((cell.core !== 'block' && cell.compare !== 'octane') || universal === undefined) continue;
 			const block = results[cell.id][rows].ops;
 			lines.push('');
 			lines.push(`### ${cell.id} ÷ octane (${rows.toLocaleString('en-US')} rows, same window)`);
@@ -505,6 +658,34 @@ async function main() {
 				const spread = FLOOR_FIELDS.reduce((sum, field) => sum + value[field].spread, 0);
 				lines.push(
 					`| ${op} | ${value.rowVisits.median.toLocaleString('en-US')} | ${value.writes.median.toLocaleString('en-US')} | ${value.blockLookups.median.toLocaleString('en-US')} | ${value.rowScans.median.toLocaleString('en-US')} | ${spread} |`,
+				);
+			}
+		}
+		// Wire counts: what each cell actually put on the wire for the same driver
+		// script. Two cells whose milliseconds differ by more than their work does
+		// are separated here or nowhere — a cell that ships fewer commits for the
+		// same script is not faster at the same job, it is doing a smaller one.
+		for (const cell of runnable) {
+			const wire = results[cell.id][rows].wire;
+			if (!wire) continue;
+			lines.push('');
+			lines.push(`### ${cell.id} — wire counts (${rows.toLocaleString('en-US')} rows)`);
+			lines.push('');
+			lines.push(
+				'Commits dispatched by the background renderer and applied by the main thread, and the host commands they carried, per operation. "Of those, empty" is how many dispatched commits carried no host command at all, which is what separates a large batch split into chunks from a render pass that found nothing to say. These are counts rather than milliseconds, but unlike the floor counts above they are **not** invariants: a tick that renders while a commit is in flight folds into the next commit, so the count depends on how ticks and flushes interleaved on this host. The observed range is printed for that reason and must not be read as noise. The two ends are read across a live boundary, so bg and mt commit counts may differ by one where a commit crossed it; the command totals are what the two ends must agree on.',
+			);
+			lines.push('');
+			lines.push('| op | bg commits | of those, empty | mt commits | bg commands | mt commands |');
+			lines.push('|---|---:|---:|---:|---:|---:|');
+			const cellRange = (field) =>
+				field.spread === 0
+					? field.median.toLocaleString('en-US')
+					: `${field.median.toLocaleString('en-US')} (${field.min.toLocaleString('en-US')}–${field.max.toLocaleString('en-US')})`;
+			for (const op of OPS) {
+				const value = wire[op];
+				if (!value) continue;
+				lines.push(
+					`| ${op} | ${cellRange(value.bgCommits)} | ${cellRange(value.bgEmptyCommits)} | ${cellRange(value.mtCommits)} | ${cellRange(value.bgCommands)} | ${cellRange(value.mtCommands)} |`,
 				);
 			}
 		}

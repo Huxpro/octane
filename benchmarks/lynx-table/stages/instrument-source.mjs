@@ -173,6 +173,7 @@ export function instrumentLynxStageSources(repositoryRoot) {
 \t\tcommits: 0,
 \t\tpacedCommits: 0,
 \t\tcommands: 0,
+\t\temptyCommits: 0,
 \t\tbytes: 0,
 \t\tselfcheckMs: 0,
 \t\tdispatchMs: 0,
