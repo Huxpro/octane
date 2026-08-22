@@ -161,9 +161,10 @@ export function createLynxBlockBackgroundCore(
 	});
 	// A derived program holds the block it mounted, so it belongs to this core
 	// rather than to the component: two roots rendering the same component are
-	// two programs. Memoized because deriving runs the component's setup, and a
-	// second render must not run it again for the sake of rebuilding a program
-	// the first render already made.
+	// two programs. The memo is load-bearing for identity, not economy —
+	// deriving only builds closures (the component's setup runs per render
+	// either way), but a second render handed a *fresh* program object would be
+	// refused as a program swap by the mounted-program check below.
 	const derived = new WeakMap<LynxComponent<unknown>, LynxBlockProgram<unknown>>();
 	const programFor = (component: LynxComponent<unknown>): LynxBlockProgram<unknown> => {
 		const carried = readLynxBlockProgram(component);

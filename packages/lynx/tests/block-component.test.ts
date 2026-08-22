@@ -444,10 +444,43 @@ describe('Lynx compiled component on the Block core', () => {
 		expect(taps).toEqual([]);
 	});
 
+	it("leaves a conditional handler's site unbound until a render supplies one", async () => {
+		const block = blockColumn();
+		const taps: string[] = [];
+		const conditional = (handler: (() => void) | undefined): CardProps => ({
+			label: 'alpha',
+			detail: 'one',
+			active: false,
+			onTap: handler as never,
+		});
+
+		// An empty hole is how a template expresses a conditional handler — the
+		// same shape `block-root.ts` documents a `null` listener entry for — so a
+		// render that has no handler yet must mount rather than be refused.
+		await block.render(Card as LynxComponent<CardProps>, conditional(undefined));
+		await block.render(
+			Card as LynxComponent<CardProps>,
+			conditional(() => taps.push('later')),
+		);
+		const listener = boundListener(block.main.commits);
+		deliverTo(block, listener);
+		expect(taps).toEqual(['later']);
+
+		// And a render that withdraws the handler unbinds the site: a delivery
+		// must not reach a closure the current render no longer returns.
+		await block.render(Card as LynxComponent<CardProps>, conditional(undefined));
+		expect(() => deliverTo(block, listener)).toThrow(/listener/i);
+		expect(taps).toEqual(['later']);
+	});
+
 	it('still prefers a program a component carries over deriving one', async () => {
 		const block = blockColumn();
 		let mounted = 0;
-		const carrier = withLynxBlockProgram(Card as LynxComponent<CardProps>, {
+		// A wrapper rather than the shared Card: `withLynxBlockProgram` defines
+		// the program on the component it is given, and the suite's other cases
+		// must keep exercising the derivation.
+		const CarrierCard = (props: CardProps) => Card(props);
+		const carrier = withLynxBlockProgram(CarrierCard as LynxComponent<CardProps>, {
 			mount() {
 				mounted++;
 			},

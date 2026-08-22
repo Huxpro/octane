@@ -91,6 +91,14 @@ const REMEDY =
 	'Attach a block program with withLynxBlockProgram(), or build with core: "universal".';
 
 /**
+ * Stands in for an empty conditional-handler hole through the values pass,
+ * whose event check exists for the universal core's fall-back-on-decline. It
+ * never runs and never reaches the wire: event slots carry no wire value, and
+ * `listenersFor` maps the empty hole to an unbound site.
+ */
+const CONDITIONAL_HANDLER_STUB: () => void = () => undefined;
+
+/**
  * The renderer's own driver, with the one capability the wire owns rather than
  * the core answered here.
  *
@@ -243,11 +251,31 @@ export function lynxBlockProgramForComponent<Props>(
 		context: LynxBlockProgramContext,
 		slotValues: readonly unknown[],
 	): readonly UniversalHostTemplateProgramValue[] => {
+		// An event hole may legitimately be empty — a conditional handler is a
+		// site the render left unbound, the shape `block-root.ts` documents a
+		// `null` listener entry for. The values pass insists every event slot
+		// holds a function because the universal core falls back to its ordinary
+		// path on a decline; a block has no ordinary path, so the empty hole is
+		// stood in for here and the site stays unbound in `listenersFor`. The
+		// stub never reaches the wire: event slots carry no wire value.
+		let eventPatched = slotValues;
+		for (const site of prepared!.events) {
+			const handler = slotValues[site.slot];
+			if (typeof handler === 'function') continue;
+			if (handler !== null && handler !== undefined) {
+				refuse(
+					subject,
+					`an event site of its template holds a ${typeof handler} rather than a handler function or an empty conditional hole.`,
+				);
+			}
+			if (eventPatched === slotValues) eventPatched = slotValues.slice();
+			(eventPatched as unknown[])[site.slot] = CONDITIONAL_HANDLER_STUB;
+		}
 		const values = prepareUniversalTemplateProgramValues(
 			encoderFor(context),
 			compiled!,
 			prepared!,
-			slotValues,
+			eventPatched,
 		);
 		if (values === null) {
 			refuse(
@@ -259,8 +287,11 @@ export function lynxBlockProgramForComponent<Props>(
 	};
 
 	/** Every event site's handler for this render, in the program's site order. */
-	const listenersFor = (slotValues: readonly unknown[]): readonly LynxBlockListener[] =>
-		prepared!.events.map((site) => slotValues[site.slot] as LynxBlockListener);
+	const listenersFor = (slotValues: readonly unknown[]): readonly (LynxBlockListener | null)[] =>
+		prepared!.events.map((site) => {
+			const handler = slotValues[site.slot];
+			return typeof handler === 'function' ? (handler as LynxBlockListener) : null;
+		});
 
 	return {
 		mount(context, props) {
@@ -333,8 +364,12 @@ export function lynxBlockProgramForComponent<Props>(
 			// Handlers are fresh closures every render, closing over this render's
 			// props, so the binding is replaced rather than kept. The wire is
 			// untouched: a listener id belongs to the block, and rebinding moves
-			// only which function that id reaches.
+			// only which function that id reaches. Released first because binding
+			// skips an empty conditional hole rather than clearing it — a site
+			// whose handler this render withdrew must stop reaching the previous
+			// render's closure.
 			if (prepared!.events.length !== 0) {
+				context.root.releaseListeners(block!);
 				context.root.bindListeners(block!, listenersFor(rendered.values));
 			}
 		},
