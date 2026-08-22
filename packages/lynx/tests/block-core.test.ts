@@ -478,6 +478,25 @@ describe('Lynx block core — refusing corrupt input, reporting departures', () 
 		expect(cleared.sort()).toEqual([1, 2]);
 		expect(built.slot.size).toBe(0);
 	});
+
+	it('reports every departing block when the range reconciles to empty', () => {
+		// Emptying a range is the one departure an owner cannot anticipate member
+		// by member: every other member leaves through the removal sweep, so an
+		// owner that only released there would keep every listener and every
+		// closure of the last list it held, for as long as the root lives.
+		const built = scene(rows(3), null);
+		const departedKeys: unknown[] = [];
+		built.core.reconcileForSlot(
+			built.slot,
+			ROW_TEMPLATE,
+			[],
+			(row) => row.id,
+			(row) => rowValues(row, null),
+			(block) => departedKeys.push(block.key),
+		);
+		expect(departedKeys.sort()).toEqual([1, 2, 3]);
+		expect(built.slot.size).toBe(0);
+	});
 });
 
 // Issue-#103 U4: a worklet is the one prop whose value is an object rather than
