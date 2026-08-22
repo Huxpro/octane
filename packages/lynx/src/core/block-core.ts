@@ -673,7 +673,11 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 				return;
 			}
 			if (items.length === 0) {
-				clearForSlot(slot);
+				// `departed` travels with the clear. A range that empties is the one
+				// departure path an owner cannot see coming: every other member leaves
+				// through the removal sweep below, so an owner that released listeners
+				// there would still leak every listener of the last list it held.
+				clearForSlot(slot, departed);
 				return;
 			}
 			const keys: unknown[] = new Array(items.length);
