@@ -402,6 +402,67 @@ describe('@octanejs/lynx transported protocol', () => {
 		expect(validateLynxBackgroundInboundMessage(foreign.reply)).toBe(foreign.reply);
 	});
 
+	it('carries a deferred template run and refuses every other spelling of it', () => {
+		// A deferred run declares instances the host builds on demand. The wire has
+		// to say so, and has to refuse a run that says it in a way the host cannot
+		// act on — otherwise the disagreement surfaces at a scroll position.
+		const program = Object.freeze({
+			nodes: Object.freeze([
+				Object.freeze({
+					type: 'list-item',
+					parent: -1,
+					props: Object.freeze({}),
+					bindings: Object.freeze([Object.freeze({ name: 'item-key', valueIndex: 0 })]),
+				}),
+			]),
+			events: Object.freeze([]),
+		});
+		const run = Object.freeze({
+			op: 'mount-template-run' as const,
+			parent: 1,
+			before: null,
+			program,
+			firstId: 100,
+			firstListenerId: null,
+			count: 2,
+			values: Object.freeze(['row-0', 'row-1']),
+			deferred: true as const,
+		});
+		const commit = (command: unknown): unknown => ({
+			...identity(1, 1),
+			type: 'commit',
+			batch: {
+				renderer: LYNX_TRANSPORT_RENDERER,
+				version: 1,
+				commands: [command],
+			},
+		});
+
+		const deferred = commit(run);
+		expect(validateLynxBackgroundOutboundMessage(deferred)).toBe(deferred);
+		// Absence is the eager spelling, and it is the only one: a run without the
+		// field means exactly what it meant before the field existed.
+		const { deferred: _absent, ...withoutField } = run;
+		const plain = commit({ ...withoutField, parent: null });
+		expect(validateLynxBackgroundOutboundMessage(plain)).toBe(plain);
+
+		// A field with two spellings for one meaning is a field two peers can
+		// disagree about, so neither `false` nor an explicit `undefined` is eager.
+		for (const spelling of [false, undefined, 1, 'true']) {
+			expect(() =>
+				validateLynxBackgroundOutboundMessage(commit({ ...run, deferred: spelling })),
+			).toThrow(/must be true when present/);
+		}
+		// The host that owns the recycling owns the order, so a deferred run has
+		// neither a sibling to sit before nor a root to sit at.
+		expect(() => validateLynxBackgroundOutboundMessage(commit({ ...run, before: 4 }))).toThrow(
+			/must be null when the run is deferred/,
+		);
+		expect(() => validateLynxBackgroundOutboundMessage(commit({ ...run, parent: null }))).toThrow(
+			/must name a host parent when the run is deferred/,
+		);
+	});
+
 	it('pins the universal protocol and strictly validates every envelope', () => {
 		expect(LYNX_TRANSPORT_PROTOCOL_VERSION).toBe(UNIVERSAL_TRANSPORT_PROTOCOL_VERSION);
 		const commit: UniversalTransportCommitMessage = {

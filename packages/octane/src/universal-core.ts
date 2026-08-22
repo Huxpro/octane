@@ -641,6 +641,22 @@ export type UniversalHostCommand =
 			readonly firstListenerId: number | null;
 			readonly count: number;
 			readonly values: readonly UniversalHostTemplateProgramValue[];
+			/**
+			 * Declare the run's hosts without materializing them.
+			 *
+			 * A renderer that owns its own recycling — a native list — asks for a
+			 * cell only when it is about to display it, so materializing every
+			 * instance at mount buys nothing and retains one host record per
+			 * declared instance. A deferred run says the same thing an eager one
+			 * says, and leaves the host free to build an instance from
+			 * `(program, values)` at the moment it needs one.
+			 *
+			 * Optional because the eager meaning is the default: a run without this
+			 * field means exactly what it meant before the field existed. Whether a
+			 * host accepts it at all, and where, is the host's own contract; the
+			 * Lynx driver accepts it only directly under a native `<list>`.
+			 */
+			readonly deferred?: true;
 	  }
 	| {
 			readonly op: 'update';

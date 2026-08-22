@@ -734,6 +734,10 @@ const TEMPLATE_RUN_KEYS = Object.freeze([
 	'count',
 	'values',
 ]);
+// A deferred run is one command per native list, not one per row, so it is not
+// worth an ordered fast path of its own: it is recognized by the presence of the
+// field and then checked against this list exactly.
+const TEMPLATE_RUN_DEFERRED_KEYS = Object.freeze([...TEMPLATE_RUN_KEYS, 'deferred']);
 const TEMPLATE_PROGRAM_KEYS = Object.freeze(['nodes', 'events']);
 const TEMPLATE_PROGRAM_NODE_KEYS = Object.freeze(['type', 'parent', 'props']);
 const TEMPLATE_PROGRAM_BOUND_NODE_KEYS = Object.freeze(['type', 'parent', 'props', 'bindings']);
@@ -996,8 +1000,15 @@ function assertTemplateProgram(
 			nodeLabel,
 		);
 		nonEmptyString(node.type, `${nodeLabel}.type`);
-		if (node.type === 'list' || node.type === 'list-item') {
+		// A `<list>` never appears in a program: nothing here can carry the row
+		// descriptors a list needs. A `<list-item>` is a list's cell, so a run may
+		// declare one as its root — that is what a deferred run under a `<list>`
+		// is — but never nest one, because a cell has exactly one place it can be.
+		if (node.type === 'list') {
 			fail(`${nodeLabel}.type`, 'must not be a native-list host.');
+		}
+		if (node.type === 'list-item' && index !== 0) {
+			fail(`${nodeLabel}.type`, 'must not nest a native-list cell.');
 		}
 		if (
 			!Number.isSafeInteger(node.parent) ||
@@ -1187,6 +1198,23 @@ function assertTemplateRunCommand(
 		fail(COMMANDS_LABEL, 'must not target a portal.', index, 'parent');
 	}
 	nullableHostId(command.before, COMMANDS_LABEL, index, 'before');
+	// Absence is the eager spelling, so the field carries exactly one value. A
+	// second spelling of the same meaning is something two peers can disagree
+	// about, and an explicit `undefined` is one.
+	if (Object.prototype.hasOwnProperty.call(command, 'deferred') && command.deferred !== true) {
+		fail(COMMANDS_LABEL, 'must be true when present.', index, 'deferred');
+	}
+	if (command.deferred === true) {
+		// A deferred run declares instances the host will build on demand, so it
+		// cannot also be a placement relative to a sibling: the host that owns the
+		// recycling owns the order, and `before` would be a second answer.
+		if (command.parent === null) {
+			fail(COMMANDS_LABEL, 'must name a host parent when the run is deferred.', index, 'parent');
+		}
+		if (command.before !== null) {
+			fail(COMMANDS_LABEL, 'must be null when the run is deferred.', index, 'before');
+		}
+	}
 	positiveInteger(command.count, COMMANDS_LABEL, index, 'count');
 	positiveInteger(command.firstId, COMMANDS_LABEL, index, 'firstId');
 	const count = command.count as number;
@@ -1307,7 +1335,9 @@ function commandRecord(value: unknown, index: number): Record<string, unknown> {
 			: operation === 'mount-template-run'
 				? orderedRun
 					? null
-					: TEMPLATE_RUN_KEYS
+					: Object.prototype.hasOwnProperty.call(value, 'deferred')
+						? TEMPLATE_RUN_DEFERRED_KEYS
+						: TEMPLATE_RUN_KEYS
 				: null;
 	if (schema !== null) {
 		for (const required of schema) {
