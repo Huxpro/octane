@@ -2203,6 +2203,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			profile.prepareMs += performance.now() - startedPrepare;
 			profile.commits += 1;
 			profile.commands += message.batch.commands.length;
+			if (message.batch.commands.length === 0) profile.emptyCommits += 1;
 		}
 		let applyFailed = false;
 		let applyError: unknown;

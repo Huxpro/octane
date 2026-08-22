@@ -1,0 +1,1060 @@
+{
+  "meta": {
+    "date": "2026-08-22T20:25:09.580Z",
+    "node": "v22.22.2",
+    "cpus": 4,
+    "cpuModel": "Intel(R) Xeon(R) Processor @ 2.80GHz",
+    "loadStart": [0.4, 0.94, 0.91],
+    "loadEnd": [1.73, 1.23, 1.02],
+    "reps": 5,
+    "scales": [1000, 10000],
+    "reference": {
+      "source": "https://github.com/Huxpro/vue-lynx",
+      "branch": "claude/lynx-implementation-review-n2r0ie",
+      "commit": "02376ecd1cd62d3797ff1de1209d82dc2f9d91d9",
+      "builtAt": "2026-08-07",
+      "build": "pnpm install && pnpm --filter \"vue-lynx...\" build && cd packages/benchmark && node harness/build-unified.mjs --only=vdom-ifr-et,vapor-ifr,react",
+      "cells": {
+        "vdom-ifr-et": {
+          "description": "Vue Lynx vdom top config (vdom +b +ifr; legacy id vdom-ifr-et)",
+          "app": "packages/benchmark/apps/ui-vdom",
+          "framework": "vue 3.6.0-beta.17 (vue-lynx fork)"
+        },
+        "vapor-ifr": {
+          "description": "Vue Lynx vapor top config (vapor +b +ifr; legacy id vapor-ifr)",
+          "app": "packages/benchmark/apps/ui-vapor",
+          "framework": "vue 3.6.0-beta.17 (vue-lynx fork, vapor mode)"
+        },
+        "react": {
+          "description": "ReactLynx default config",
+          "app": "packages/benchmark/apps/ui-react",
+          "framework": "@lynx-js/react 0.122.1"
+        }
+      },
+      "note": "Black-box fixtures: only the .web.bundle files are vendored. They are served unmodified into <lynx-view> by web/run-web.mjs; the app workloads mirror app/src operation-for-operation. The harness host runs @lynx-js/web-core 0.22.2 for every cell (the fork built against 0.22.1 — the host runtime is shared, so the comparison stays same-host)."
+    },
+    "notMeasured": []
+  },
+  "results": {
+    "octane": {
+      "1000": {
+        "ops": {
+          "create": {
+            "n": 5,
+            "min": 208.19999999995343,
+            "max": 245.89999999990687,
+            "mean": 232.93999999999068,
+            "median": 244,
+            "std": 15.308376791837066,
+            "ci95": 13.418383883637308
+          },
+          "update10th": {
+            "n": 5,
+            "min": 35.9000000001397,
+            "max": 49.800000000046566,
+            "mean": 39.86000000005588,
+            "median": 36.60000000009313,
+            "std": 5.246560778262164,
+            "ci95": 4.598813286925132
+          },
+          "select": {
+            "n": 5,
+            "min": 24.100000000093132,
+            "max": 29,
+            "mean": 27.22000000006519,
+            "median": 27.800000000046566,
+            "std": 1.655777762845625,
+            "ci95": 1.4513532002752945
+          },
+          "updateStorm": {
+            "n": 5,
+            "min": 116.10000000009313,
+            "max": 150.79999999981374,
+            "mean": 131.7,
+            "median": 131.9000000001397,
+            "std": 12.257079586805052,
+            "ci95": 10.743803959394683
+          },
+          "selectStorm": {
+            "n": 5,
+            "min": 18.0999999998603,
+            "max": 40.9000000001397,
+            "mean": 27.520000000018626,
+            "median": 22,
+            "std": 8.915694028021774,
+            "ci95": 7.814950381992276
+          },
+          "clear": {
+            "n": 5,
+            "min": 93.19999999995343,
+            "max": 138.5,
+            "mean": 108.60000000004656,
+            "median": 105.9000000001397,
+            "std": 15.791136754517966,
+            "ci95": 13.841541648238252
+          }
+        },
+        "counts": null,
+        "wire": {
+          "create": {
+            "bgCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "bgCommands": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "bgEmptyCommits": {
+              "median": 0,
+              "min": 0,
+              "max": 0,
+              "spread": 0
+            },
+            "mtCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "mtCommands": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            }
+          },
+          "update10th": {
+            "bgCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "bgCommands": {
+              "median": 100,
+              "min": 100,
+              "max": 100,
+              "spread": 0
+            },
+            "bgEmptyCommits": {
+              "median": 0,
+              "min": 0,
+              "max": 0,
+              "spread": 0
+            },
+            "mtCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "mtCommands": {
+              "median": 100,
+              "min": 100,
+              "max": 100,
+              "spread": 0
+            }
+          },
+          "select": {
+            "bgCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "bgCommands": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "bgEmptyCommits": {
+              "median": 0,
+              "min": 0,
+              "max": 0,
+              "spread": 0
+            },
+            "mtCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "mtCommands": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            }
+          },
+          "updateStorm": {
+            "bgCommits": {
+              "median": 9,
+              "min": 8,
+              "max": 11,
+              "spread": 3
+            },
+            "bgCommands": {
+              "median": 500,
+              "min": 500,
+              "max": 700,
+              "spread": 200
+            },
+            "bgEmptyCommits": {
+              "median": 4,
+              "min": 3,
+              "max": 4,
+              "spread": 1
+            },
+            "mtCommits": {
+              "median": 7,
+              "min": 7,
+              "max": 10,
+              "spread": 3
+            },
+            "mtCommands": {
+              "median": 500,
+              "min": 500,
+              "max": 700,
+              "spread": 200
+            }
+          },
+          "selectStorm": {
+            "bgCommits": {
+              "median": 8,
+              "min": 5,
+              "max": 9,
+              "spread": 4
+            },
+            "bgCommands": {
+              "median": 2,
+              "min": 2,
+              "max": 4,
+              "spread": 2
+            },
+            "bgEmptyCommits": {
+              "median": 7,
+              "min": 4,
+              "max": 7,
+              "spread": 3
+            },
+            "mtCommits": {
+              "median": 7,
+              "min": 5,
+              "max": 9,
+              "spread": 4
+            },
+            "mtCommands": {
+              "median": 2,
+              "min": 2,
+              "max": 4,
+              "spread": 2
+            }
+          },
+          "clear": {
+            "bgCommits": {
+              "median": 8,
+              "min": 7,
+              "max": 12,
+              "spread": 5
+            },
+            "bgCommands": {
+              "median": 10000,
+              "min": 10000,
+              "max": 10000,
+              "spread": 0
+            },
+            "bgEmptyCommits": {
+              "median": 7,
+              "min": 6,
+              "max": 11,
+              "spread": 5
+            },
+            "mtCommits": {
+              "median": 7,
+              "min": 6,
+              "max": 8,
+              "spread": 2
+            },
+            "mtCommands": {
+              "median": 10000,
+              "min": 10000,
+              "max": 10000,
+              "spread": 0
+            }
+          }
+        },
+        "dnf": 0
+      },
+      "10000": {
+        "ops": {
+          "create": {
+            "n": 5,
+            "min": 1795.1000000000931,
+            "max": 1966.2000000001863,
+            "mean": 1848.7600000001025,
+            "median": 1821.3000000000466,
+            "std": 60.70978833767964,
+            "ci95": 53.214475740088844
+          },
+          "update10th": {
+            "n": 5,
+            "min": 241.39999999990687,
+            "max": 268.9000000001397,
+            "mean": 256.12000000001865,
+            "median": 256.60000000009313,
+            "std": 11.304406220631641,
+            "ci95": 9.908748935804702
+          },
+          "select": {
+            "n": 5,
+            "min": 108.39999999990687,
+            "max": 131.69999999995343,
+            "mean": 119.35999999996275,
+            "median": 114.5,
+            "std": 8.883152593520279,
+            "ci95": 7.786426557017041
+          },
+          "updateStorm": {
+            "n": 5,
+            "min": 901.1000000000931,
+            "max": 1079.5999999998603,
+            "mean": 987.8399999999907,
+            "median": 987,
+            "std": 56.62383243822023,
+            "ci95": 49.63297748353989
+          },
+          "selectStorm": {
+            "n": 5,
+            "min": 165.69999999995343,
+            "max": 205.9000000001397,
+            "mean": 189.6800000000745,
+            "median": 202.20000000018626,
+            "std": 17.279629625757593,
+            "ci95": 15.146263175931585
+          },
+          "clear": {
+            "n": 5,
+            "min": 844.3000000000466,
+            "max": 999.1000000000931,
+            "mean": 929.0399999999906,
+            "median": 909.6999999999534,
+            "std": 60.76247526226637,
+            "ci95": 53.26065786569017
+          }
+        },
+        "counts": null,
+        "wire": {
+          "create": {
+            "bgCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "bgCommands": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "bgEmptyCommits": {
+              "median": 0,
+              "min": 0,
+              "max": 0,
+              "spread": 0
+            },
+            "mtCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "mtCommands": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            }
+          },
+          "update10th": {
+            "bgCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "bgCommands": {
+              "median": 1000,
+              "min": 1000,
+              "max": 1000,
+              "spread": 0
+            },
+            "bgEmptyCommits": {
+              "median": 0,
+              "min": 0,
+              "max": 0,
+              "spread": 0
+            },
+            "mtCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "mtCommands": {
+              "median": 1000,
+              "min": 1000,
+              "max": 1000,
+              "spread": 0
+            }
+          },
+          "select": {
+            "bgCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "bgCommands": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "bgEmptyCommits": {
+              "median": 0,
+              "min": 0,
+              "max": 0,
+              "spread": 0
+            },
+            "mtCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "mtCommands": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            }
+          },
+          "updateStorm": {
+            "bgCommits": {
+              "median": 7,
+              "min": 7,
+              "max": 8,
+              "spread": 1
+            },
+            "bgCommands": {
+              "median": 4000,
+              "min": 4000,
+              "max": 4000,
+              "spread": 0
+            },
+            "bgEmptyCommits": {
+              "median": 3,
+              "min": 3,
+              "max": 4,
+              "spread": 1
+            },
+            "mtCommits": {
+              "median": 6,
+              "min": 6,
+              "max": 7,
+              "spread": 1
+            },
+            "mtCommands": {
+              "median": 4000,
+              "min": 4000,
+              "max": 4000,
+              "spread": 0
+            }
+          },
+          "selectStorm": {
+            "bgCommits": {
+              "median": 7,
+              "min": 4,
+              "max": 9,
+              "spread": 5
+            },
+            "bgCommands": {
+              "median": 2,
+              "min": 2,
+              "max": 2,
+              "spread": 0
+            },
+            "bgEmptyCommits": {
+              "median": 6,
+              "min": 3,
+              "max": 8,
+              "spread": 5
+            },
+            "mtCommits": {
+              "median": 6,
+              "min": 4,
+              "max": 9,
+              "spread": 5
+            },
+            "mtCommands": {
+              "median": 2,
+              "min": 2,
+              "max": 2,
+              "spread": 0
+            }
+          },
+          "clear": {
+            "bgCommits": {
+              "median": 7,
+              "min": 5,
+              "max": 7,
+              "spread": 2
+            },
+            "bgCommands": {
+              "median": 100000,
+              "min": 100000,
+              "max": 100000,
+              "spread": 0
+            },
+            "bgEmptyCommits": {
+              "median": 6,
+              "min": 4,
+              "max": 6,
+              "spread": 2
+            },
+            "mtCommits": {
+              "median": 6,
+              "min": 5,
+              "max": 8,
+              "spread": 3
+            },
+            "mtCommands": {
+              "median": 100000,
+              "min": 100000,
+              "max": 100000,
+              "spread": 0
+            }
+          }
+        },
+        "dnf": 0
+      }
+    },
+    "octane-block": {
+      "1000": {
+        "ops": {
+          "create": {
+            "n": 5,
+            "min": 188.30000000004657,
+            "max": 225.10000000009313,
+            "mean": 202.06000000000932,
+            "median": 200.5,
+            "std": 12.937635023478819,
+            "ci95": 11.340337101187645
+          },
+          "update10th": {
+            "n": 5,
+            "min": 16.899999999906868,
+            "max": 26,
+            "mean": 20.679999999934807,
+            "median": 18.0999999998603,
+            "std": 4.084311447454443,
+            "ci95": 3.580056830813168
+          },
+          "select": {
+            "n": 5,
+            "min": 9.699999999953434,
+            "max": 12.699999999953434,
+            "mean": 11.379999999981374,
+            "median": 11.599999999860302,
+            "std": 1.1685888926135017,
+            "ci95": 1.0243133270409166
+          },
+          "updateStorm": {
+            "n": 5,
+            "min": 26.200000000186265,
+            "max": 68.30000000004657,
+            "mean": 48.320000000018624,
+            "median": 40.799999999813735,
+            "std": 16.135104585894418,
+            "ci95": 14.143042745826376
+          },
+          "selectStorm": {
+            "n": 5,
+            "min": 11.5,
+            "max": 30.0999999998603,
+            "mean": 21.760000000009313,
+            "median": 21.800000000046566,
+            "std": 5.98351067514438,
+            "ci95": 5.24477835257765
+          },
+          "clear": {
+            "n": 5,
+            "min": 120.89999999990687,
+            "max": 140,
+            "mean": 128.61999999997207,
+            "median": 125.80000000004657,
+            "std": 7.244142461329592,
+            "ci95": 6.349770833032439
+          }
+        },
+        "counts": null,
+        "wire": {
+          "create": {
+            "bgCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "bgCommands": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "bgEmptyCommits": {
+              "median": 0,
+              "min": 0,
+              "max": 0,
+              "spread": 0
+            },
+            "mtCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "mtCommands": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            }
+          },
+          "update10th": {
+            "bgCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "bgCommands": {
+              "median": 100,
+              "min": 100,
+              "max": 100,
+              "spread": 0
+            },
+            "bgEmptyCommits": {
+              "median": 0,
+              "min": 0,
+              "max": 0,
+              "spread": 0
+            },
+            "mtCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "mtCommands": {
+              "median": 100,
+              "min": 100,
+              "max": 100,
+              "spread": 0
+            }
+          },
+          "select": {
+            "bgCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "bgCommands": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "bgEmptyCommits": {
+              "median": 0,
+              "min": 0,
+              "max": 0,
+              "spread": 0
+            },
+            "mtCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "mtCommands": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            }
+          },
+          "updateStorm": {
+            "bgCommits": {
+              "median": 3,
+              "min": 3,
+              "max": 4,
+              "spread": 1
+            },
+            "bgCommands": {
+              "median": 300,
+              "min": 300,
+              "max": 400,
+              "spread": 100
+            },
+            "bgEmptyCommits": {
+              "median": 0,
+              "min": 0,
+              "max": 0,
+              "spread": 0
+            },
+            "mtCommits": {
+              "median": 3,
+              "min": 3,
+              "max": 4,
+              "spread": 1
+            },
+            "mtCommands": {
+              "median": 300,
+              "min": 300,
+              "max": 400,
+              "spread": 100
+            }
+          },
+          "selectStorm": {
+            "bgCommits": {
+              "median": 2,
+              "min": 2,
+              "max": 2,
+              "spread": 0
+            },
+            "bgCommands": {
+              "median": 32,
+              "min": 32,
+              "max": 32,
+              "spread": 0
+            },
+            "bgEmptyCommits": {
+              "median": 0,
+              "min": 0,
+              "max": 0,
+              "spread": 0
+            },
+            "mtCommits": {
+              "median": 2,
+              "min": 2,
+              "max": 2,
+              "spread": 0
+            },
+            "mtCommands": {
+              "median": 32,
+              "min": 32,
+              "max": 32,
+              "spread": 0
+            }
+          },
+          "clear": {
+            "bgCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "bgCommands": {
+              "median": 8000,
+              "min": 8000,
+              "max": 8000,
+              "spread": 0
+            },
+            "bgEmptyCommits": {
+              "median": 0,
+              "min": 0,
+              "max": 0,
+              "spread": 0
+            },
+            "mtCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "mtCommands": {
+              "median": 8000,
+              "min": 8000,
+              "max": 8000,
+              "spread": 0
+            }
+          }
+        },
+        "dnf": 0
+      },
+      "10000": {
+        "ops": {
+          "create": {
+            "n": 5,
+            "min": 1550.1999999999534,
+            "max": 1705.6999999999534,
+            "mean": 1615.8399999999906,
+            "median": 1619.1999999999534,
+            "std": 56.94076220070669,
+            "ci95": 49.91077866880082
+          },
+          "update10th": {
+            "n": 5,
+            "min": 174.80000000004657,
+            "max": 191.19999999995343,
+            "mean": 182.40000000004656,
+            "median": 179.80000000004657,
+            "std": 7.232150440872438,
+            "ci95": 6.339259363643971
+          },
+          "select": {
+            "n": 5,
+            "min": 70.89999999990687,
+            "max": 108,
+            "mean": 86.58000000002794,
+            "median": 88.80000000004657,
+            "std": 13.89969783848263,
+            "ci95": 12.183622339553189
+          },
+          "updateStorm": {
+            "n": 5,
+            "min": 534.0999999998603,
+            "max": 837.9000000001397,
+            "mean": 680.2199999999721,
+            "median": 700.9000000001397,
+            "std": 120.02158805823198,
+            "ci95": 105.203560428948
+          },
+          "selectStorm": {
+            "n": 5,
+            "min": 165.69999999995343,
+            "max": 265.0999999998603,
+            "mean": 205.45999999996275,
+            "median": 172.69999999995343,
+            "std": 44.05753511030583,
+            "ci95": 38.618132223669186
+          },
+          "clear": {
+            "n": 5,
+            "min": 1124.1999999999534,
+            "max": 1385.6000000000931,
+            "mean": 1182.3000000000466,
+            "median": 1132.3000000000466,
+            "std": 101.93560712530856,
+            "ci95": 89.35049916908153
+          }
+        },
+        "counts": null,
+        "wire": {
+          "create": {
+            "bgCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "bgCommands": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "bgEmptyCommits": {
+              "median": 0,
+              "min": 0,
+              "max": 0,
+              "spread": 0
+            },
+            "mtCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "mtCommands": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            }
+          },
+          "update10th": {
+            "bgCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "bgCommands": {
+              "median": 1000,
+              "min": 1000,
+              "max": 1000,
+              "spread": 0
+            },
+            "bgEmptyCommits": {
+              "median": 0,
+              "min": 0,
+              "max": 0,
+              "spread": 0
+            },
+            "mtCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "mtCommands": {
+              "median": 1000,
+              "min": 1000,
+              "max": 1000,
+              "spread": 0
+            }
+          },
+          "select": {
+            "bgCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "bgCommands": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "bgEmptyCommits": {
+              "median": 0,
+              "min": 0,
+              "max": 0,
+              "spread": 0
+            },
+            "mtCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "mtCommands": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            }
+          },
+          "updateStorm": {
+            "bgCommits": {
+              "median": 3,
+              "min": 2,
+              "max": 3,
+              "spread": 1
+            },
+            "bgCommands": {
+              "median": 3000,
+              "min": 2000,
+              "max": 3000,
+              "spread": 1000
+            },
+            "bgEmptyCommits": {
+              "median": 0,
+              "min": 0,
+              "max": 0,
+              "spread": 0
+            },
+            "mtCommits": {
+              "median": 3,
+              "min": 2,
+              "max": 3,
+              "spread": 1
+            },
+            "mtCommands": {
+              "median": 3000,
+              "min": 2000,
+              "max": 3000,
+              "spread": 1000
+            }
+          },
+          "selectStorm": {
+            "bgCommits": {
+              "median": 2,
+              "min": 2,
+              "max": 2,
+              "spread": 0
+            },
+            "bgCommands": {
+              "median": 32,
+              "min": 32,
+              "max": 32,
+              "spread": 0
+            },
+            "bgEmptyCommits": {
+              "median": 0,
+              "min": 0,
+              "max": 0,
+              "spread": 0
+            },
+            "mtCommits": {
+              "median": 2,
+              "min": 2,
+              "max": 2,
+              "spread": 0
+            },
+            "mtCommands": {
+              "median": 32,
+              "min": 32,
+              "max": 32,
+              "spread": 0
+            }
+          },
+          "clear": {
+            "bgCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "bgCommands": {
+              "median": 80000,
+              "min": 80000,
+              "max": 80000,
+              "spread": 0
+            },
+            "bgEmptyCommits": {
+              "median": 0,
+              "min": 0,
+              "max": 0,
+              "spread": 0
+            },
+            "mtCommits": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0
+            },
+            "mtCommands": {
+              "median": 80000,
+              "min": 80000,
+              "max": 80000,
+              "spread": 0
+            }
+          }
+        },
+        "dnf": 0
+      }
+    }
+  }
+}
