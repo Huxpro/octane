@@ -1622,4 +1622,148 @@ describe('Lynx deferred template runs', () => {
 			expect(disposeLynxHostContainer(container).errors).toEqual([]);
 		});
 	});
+
+	it('bumps the generation when a destroyed materialized row id is reused', () => {
+		withList(({ container }) => {
+			prepareLynxHostBatch(container, batch(1, deferredListMount(2))).apply();
+			const list = (container.page as unknown as Element).querySelector('#feed')!;
+			const row = rowIdsAt(0);
+			const sign = globalThis.elementTree.enterListItemAtIndex(list as never, 0);
+			expect(sign).toBeGreaterThan(0);
+			globalThis.elementTree.leaveListItem(list as never, sign);
+
+			prepareLynxHostBatch(
+				container,
+				batch(2, [
+					{ op: 'remove', parent: row.text, id: row.raw },
+					{ op: 'destroy', id: row.raw },
+					{ op: 'remove', parent: row.item, id: row.text },
+					{ op: 'destroy', id: row.text },
+					{ op: 'remove', parent: 1, id: row.item },
+					{ op: 'destroy', id: row.item },
+				]),
+			).apply();
+
+			// A host that lived and died must not be impersonated by its successor:
+			// every consumer keyed on (root, id, generation) — stale events, handle
+			// deltas — relies on the reused id announcing a higher generation, the
+			// same contract every eager creation path keeps.
+			prepareLynxHostBatch(
+				container,
+				batch(3, [
+					{ op: 'create', id: row.item, type: 'view', props: { id: 'successor' } },
+					{ op: 'insert', parent: null, id: row.item, before: null },
+				]),
+			).apply();
+			const successor = (container.page as unknown as Element).querySelector('#successor')!;
+			expect(successor.getAttribute(LYNX_NODES_REF_ATTRIBUTE)).toBe(`r1-h${row.item}-g2`);
+
+			expect(disposeLynxHostContainer(container).errors).toEqual([]);
+		});
+	});
+
+	it('refuses a deferred range that collides with compact-accepted hosts', () => {
+		withList(({ container }) => {
+			// A compact commit accepts hosts whose generations stay implicit, so an
+			// id-collision guard that only reads the generation map cannot see them.
+			const program: UniversalHostTemplateProgram = Object.freeze({
+				nodes: Object.freeze([
+					Object.freeze({ type: 'view', parent: -1, props: Object.freeze({ class: 'card' }) }),
+					Object.freeze({ type: 'text', parent: 0, props: Object.freeze({}) }),
+					Object.freeze({
+						type: '#text',
+						parent: 1,
+						props: Object.freeze({}),
+						bindings: Object.freeze([Object.freeze({ name: 'value', valueIndex: 0 })]),
+					}),
+				]),
+				events: Object.freeze([]),
+			});
+			prepareLynxHostBatch(
+				container,
+				batch(1, [
+					{ op: 'create', id: 2, type: 'view', props: { id: 'shell' } },
+					{ op: 'insert', parent: null, id: 2, before: null },
+				]),
+			).apply();
+			prepareLynxHostBatch(
+				container,
+				batch(2, [
+					{
+						op: 'mount-template-run',
+						parent: 2,
+						before: null,
+						program,
+						firstId: FIRST_ROW_ID,
+						firstListenerId: null,
+						count: 2,
+						values: Object.freeze(['One', 'Two']),
+					},
+				]),
+				{ compact: true, incrementalCompact: true, lazyPublicInstances: true },
+			).apply();
+			prepareLynxHostBatch(
+				container,
+				batch(3, [
+					{ op: 'create', id: 1, type: 'list', props: { id: 'feed' } },
+					{ op: 'insert', parent: null, id: 1, before: null },
+				]),
+			).apply();
+
+			// The same ids in an eager run are refused as duplicates; declaring them
+			// must be refused the same way, or the run aliases living hosts.
+			expect(() => prepareLynxHostBatch(container, batch(4, [deferredRun(2)]))).toThrow(
+				/duplicate host id/,
+			);
+
+			expect(disposeLynxHostContainer(container).errors).toEqual([]);
+		});
+	});
+
+	it('validates every declared #text value at accept, not only the value-only route', () => {
+		withList(({ container }) => {
+			// A #text carrying a CSS scope beside its bound value leaves the
+			// value-only fast route, but accepting a run still means every instance
+			// it declares is valid — the fault belongs to the commit, not to the
+			// scroll position that would first build the row.
+			const scoped: UniversalHostTemplateProgram = Object.freeze({
+				nodes: Object.freeze([
+					Object.freeze({
+						type: 'list-item',
+						parent: -1,
+						props: Object.freeze({ 'reuse-identifier': 'feed-row' }),
+						bindings: Object.freeze([Object.freeze({ name: 'item-key', valueIndex: 0 })]),
+					}),
+					Object.freeze({ type: 'text', parent: 0, props: Object.freeze({ class: 'row' }) }),
+					Object.freeze({
+						type: '#text',
+						parent: 1,
+						props: Object.freeze({ [LYNX_CSS_SCOPE_PROP]: 'scope-a' }),
+						bindings: Object.freeze([Object.freeze({ name: 'value', valueIndex: 1 })]),
+					}),
+				]),
+				events: Object.freeze([]),
+			});
+			prepareLynxHostBatch(
+				container,
+				batch(1, [
+					{ op: 'create', id: 1, type: 'list', props: { id: 'feed' } },
+					{ op: 'insert', parent: null, id: 1, before: null },
+				]),
+			).apply();
+			expect(() =>
+				prepareLynxHostBatch(
+					container,
+					batch(2, [
+						deferredRun(2, {
+							program: scoped,
+							values: Object.freeze(['item-0', 'Row 0', 'item-1', 7]),
+						}),
+					]),
+				),
+			).toThrow(/must contain a string value/);
+
+			expect(disposeLynxHostContainer(container).errors).toEqual([]);
+		});
+	});
 });

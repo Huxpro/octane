@@ -2312,6 +2312,10 @@ function resolveRecord<Node extends LynxElementRef>(
 		state.generations.get(id) ?? 1,
 	);
 	state.records.set(id, materialized);
+	// A materialized host is an ordinary record from here on, and ordinary
+	// records announce their generation: without this a later destroy-and-reuse
+	// of the id would mint a second host with the same (root, id, generation).
+	if (!state.generations.has(id)) state.generations.set(id, materialized.handle.generation);
 	return materialized;
 }
 
@@ -4668,6 +4672,12 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 		if (record === undefined) return undefined;
 		stagedRecords.set(id, record);
 		stagedRecordCount++;
+		// Promotion is a creation as far as the generation ledger is concerned:
+		// a promoted host must announce its generation so a reuse of the id after
+		// its destruction bumps rather than repeats it.
+		if (!stagedGenerations.has(id) && !state.generations.has(id)) {
+			stagedGenerations.set(id, record.handle.generation);
+		}
 		return record;
 	};
 	const getRecord = initiallyEmpty
@@ -4984,28 +4994,36 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				) {
 					throw hostError(`${label} overlaps another declared host range.`);
 				}
-				for (const id of stagedRecords.keys()) {
-					if (id >= declaredFirst && id <= declaredLast) {
-						throw hostError(`duplicate host id ${id}.`);
-					}
-				}
-				for (const id of state.generations.keys()) {
-					if (id >= declaredFirst && id <= declaredLast) {
+				// Walk the range through the same lookups an eager mount would hit:
+				// a record answers for every host the driver holds — including one a
+				// compact commit accepted with its generation left implicit, which a
+				// scan of the generation map alone would miss — and a generation
+				// answers for every host that ever lived under the id.
+				for (let id = declaredFirst; id <= declaredLast; id++) {
+					if (getRecord(id) !== undefined || getGeneration(id) !== undefined) {
 						throw hostError(`duplicate host id ${id}.`);
 					}
 				}
 				// Accepting a run means every instance it declares is valid, including
-				// the ones nothing will ever build. The dense path scans the same
-				// slots for the same reason; this is that scan, over the same values.
-				for (let row = 0; row < count; row++) {
-					const valueOffset = row * program.valueCount;
-					for (let node = 0; node < shape.types.length; node++) {
-						if (program.dynamicRoutes[node] !== 1) continue;
-						const binding = program.bindings[node]![0]!;
-						if (typeof command.values[valueOffset + binding.valueIndex] !== 'string') {
-							throw hostError(
-								`${label} for #text must contain a string value and optional CSS scope.`,
-							);
+				// the ones nothing will ever build. Unlike the dense path — whose
+				// eligibility refuses route-0 bound nodes outright — a deferred run
+				// admits a #text carrying a CSS scope beside its binding, so the scan
+				// covers every bound #text value rather than only the value-only
+				// route; skipping one would move its fault to the scroll position
+				// that first builds the row.
+				for (let node = 0; node < shape.types.length; node++) {
+					if (shape.types[node] !== '#text') continue;
+					const nodeBindings = program.bindings[node];
+					if (nodeBindings === undefined) continue;
+					for (const binding of nodeBindings) {
+						if (binding.name !== 'value') continue;
+						for (let row = 0; row < count; row++) {
+							const value = command.values[row * program.valueCount + binding.valueIndex];
+							if (typeof value !== 'string') {
+								throw hostError(
+									`${label} for #text must contain a string value and optional CSS scope.`,
+								);
+							}
 						}
 					}
 				}
