@@ -67,6 +67,22 @@ const TITLE = 'Octane UI Benchmark on Lynx · ready';
 
 type TemplateNode = LynxBlockTemplate['program']['nodes'][number];
 
+/**
+ * What `createLynxClientDriver` classifies `bindtap` as, so the two cells
+ * declare the same thing for the same site.
+ *
+ * The Block core never branches on a priority — it carries the declaration to
+ * the listener descriptor, and `block-root.ts` refuses a delivery whose
+ * transported priority disagrees with it. So this is not a scheduling knob
+ * here, and correcting it does not move a number. It matters because the `octane`
+ * cell reaches `discrete` through the driver (`tap` is in `DISCRETE_EVENTS`),
+ * and because the lowering that will replace this file asks the driver rather
+ * than restating an answer: a hand-written `'default'` would have shown up as a
+ * diff the day the compiled program landed, in the cell whose whole purpose is
+ * to hold every variable but one fixed.
+ */
+const TAP_PRIORITY = 'discrete' as const;
+
 function pageTemplate(): LynxBlockTemplate {
 	const nodes: TemplateNode[] = [
 		{ type: 'view', parent: -1, props: { class: 'page' } },
@@ -74,13 +90,13 @@ function pageTemplate(): LynxBlockTemplate {
 		{ type: '#text', parent: 1, props: { value: TITLE } },
 		{ type: 'view', parent: 0, props: { class: 'toolbar' } },
 	];
-	const events: { node: number; type: string; priority: 'default' }[] = [];
+	const events: { node: number; type: string; priority: typeof TAP_PRIORITY }[] = [];
 	for (const label of BUTTON_LABELS) {
 		const button = nodes.length;
 		nodes.push({ type: 'view', parent: 3, props: { class: 'btn' } });
 		nodes.push({ type: 'text', parent: button, props: { class: 'btn-text' } });
 		nodes.push({ type: '#text', parent: button + 1, props: { value: label } });
-		events.push({ node: button, type: 'bindtap', priority: 'default' });
+		events.push({ node: button, type: 'bindtap', priority: TAP_PRIORITY });
 	}
 	nodes.push({ type: 'view', parent: 0, props: { class: 'rows' } });
 	return compileLynxBlockTemplate({ nodes, events });
@@ -126,8 +142,8 @@ function rowTemplate(): LynxBlockTemplate {
 			{ type: '#text', parent: 5, props: { value: 'x' } },
 		],
 		events: [
-			{ node: 3, type: 'bindtap', priority: 'default' },
-			{ node: 5, type: 'bindtap', priority: 'default' },
+			{ node: 3, type: 'bindtap', priority: TAP_PRIORITY },
+			{ node: 5, type: 'bindtap', priority: TAP_PRIORITY },
 		],
 	});
 }
