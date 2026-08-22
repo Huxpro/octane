@@ -139,9 +139,10 @@ function lynxEncoder() {
 }
 
 function lower(plan: UniversalPlan) {
-	const compiled = compiledUniversalTemplateProgram(plan.root as UniversalHostPlan);
+	const encoder = lynxEncoder();
+	const compiled = compiledUniversalTemplateProgram(encoder, plan.root as UniversalHostPlan);
 	expect(compiled).not.toBeNull();
-	const prepared = prepareUniversalTemplateProgram(lynxEncoder(), compiled!);
+	const prepared = prepareUniversalTemplateProgram(encoder, compiled!);
 	expect(prepared).not.toBeNull();
 	return { compiled: compiled!, prepared: prepared! };
 }

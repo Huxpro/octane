@@ -468,7 +468,7 @@ export function lynxBlockProgramForComponent<Props>(
 					`a row of one of its keyed ranges is rooted at a ${JSON.stringify(root.kind)} node rather than a host element, and a range mounts one host subtree per row.`,
 				);
 			}
-			const program = compiledUniversalTemplateProgram(root);
+			const program = compiledUniversalTemplateProgram(encoderFor(context), root);
 			if (program === null) {
 				refuse(
 					subject,
@@ -622,7 +622,7 @@ export function lynxBlockProgramForComponent<Props>(
 					`its template is rooted at a ${JSON.stringify(root.kind)} node rather than a host element, and a block mounts one host subtree.`,
 				);
 			}
-			const program = compiledUniversalTemplateProgram(root);
+			const program = compiledUniversalTemplateProgram(encoderFor(context), root);
 			if (program === null) {
 				refuse(
 					subject,

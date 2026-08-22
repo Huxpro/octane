@@ -837,6 +837,40 @@ function isValidPreparedHostBatch(
 
 function noopUniversalCommitTask(): void {}
 
+/**
+ * Where a host of this type may sit inside a template program.
+ *
+ * - `'any'` — anywhere, which is what an ordinary host is.
+ * - `'root'` — only as the program's root. A renderer says this about a host
+ *   that has exactly one place it can be, so nesting one inside a program would
+ *   describe a tree the renderer cannot build.
+ * - `'none'` — nowhere. The host carries state a program has no way to express,
+ *   so it is mounted one at a time or not at all.
+ *
+ * Absence of the capability means `'any'` for every type, which is what every
+ * renderer without a constrained host wants.
+ */
+export type UniversalTemplateHostPlacement = 'any' | 'root' | 'none';
+
+export interface UniversalHostTemplateCapability {
+	placement(type: string): UniversalTemplateHostPlacement;
+	/**
+	 * Whether this program, mounted under a host of `parentType`, must be a run
+	 * that declares its instances without building them.
+	 *
+	 * Asked only for a program whose root the renderer placed at `'root'`, and
+	 * answered by the renderer because the conditions are its own: which parent
+	 * owns what is on screen, and which programs it will take that way. `false`
+	 * means the mount is not available here at all — core falls back to mounting
+	 * the hosts one at a time rather than sending a run the renderer refuses.
+	 *
+	 * The answer must depend on nothing but the two arguments: the rows of one
+	 * keyed range share both, so this is asked once for the range rather than
+	 * once per row, and the memo outlives the commit.
+	 */
+	defer(parentType: string, program: UniversalHostTemplateProgram): boolean;
+}
+
 export interface UniversalHostDriver<Container = unknown, PublicInstance = unknown> {
 	readonly id: string;
 	readonly capabilities?: UniversalHostCapabilities;
@@ -847,6 +881,7 @@ export interface UniversalHostDriver<Container = unknown, PublicInstance = unkno
 	readonly props?: UniversalHostPropCodec<Container>;
 	readonly updates?: UniversalHostUpdateCapability;
 	readonly portals?: UniversalPortalCapability<Container>;
+	readonly templates?: UniversalHostTemplateCapability;
 	/** Validate and stage a batch without mutating the public host. */
 	prepareBatch(
 		container: Container,
@@ -998,6 +1033,16 @@ interface BlueprintCollapsedTemplate {
 	readonly owner?: UniversalOwnerRecord;
 	ids: number[] | null;
 	firstId?: number;
+	/**
+	 * Mount this as a run that declares its instances rather than building them.
+	 *
+	 * Decided during reconciliation, because that is the last point where the
+	 * subtree is still blueprints: a host the renderer places only at a program's
+	 * root has no eager mount to fall back to, so a template that cannot be
+	 * declared has to stop being a template while its children can still become
+	 * ordinary ones.
+	 */
+	deferred?: true;
 }
 
 interface BlueprintPortal {
@@ -3351,7 +3396,7 @@ function materializeValue(
 					const candidatePlan = candidate?.$$kind === UNIVERSAL_VALUE ? candidate.plan : null;
 					const compiled =
 						candidatePlan?.root.kind === 'host'
-							? compiledUniversalTemplateProgram(candidatePlan.root)
+							? compiledUniversalTemplateProgram(attempt.root.encoder, candidatePlan.root)
 							: null;
 					const prepared =
 						compiled === null ? null : attempt.root.prepareCollapsedTemplateProgram(compiled);
@@ -3900,7 +3945,7 @@ function materializeCollapsedTemplate(value: UniversalPlanValue): BlueprintHost 
 	) {
 		return null;
 	}
-	const program = compiledUniversalTemplateProgram(value.plan.root);
+	const program = compiledUniversalTemplateProgram(root.encoder, value.plan.root);
 	if (program === null) return null;
 	const prepared = root.prepareCollapsedTemplateProgram(program);
 	if (prepared !== null) {
@@ -4320,6 +4365,8 @@ interface PendingUniversalHostTemplateMount {
 	readonly drafts: readonly DraftRecord[];
 	readonly nodes: UniversalHostTemplateNode[] | null;
 	readonly collapsed?: BlueprintCollapsedTemplate;
+	/** Decided where the parent and the commit's placements are known. */
+	readonly deferred?: true;
 	range?: {
 		op: 'mount-template-range';
 		parent: UniversalHostParent;
@@ -4338,6 +4385,7 @@ interface PendingUniversalHostTemplateMount {
 		firstListenerId: number | null;
 		count: number;
 		values: UniversalHostTemplateProgramValue[];
+		deferred?: true;
 	};
 	runIndex?: number;
 }
@@ -9109,6 +9157,19 @@ class UniversalRootImpl<Container, PublicInstance>
 		const treeFeatures = (scoped ? scopeFeatures : this.treeFeatures) | attempt.treeFeatures;
 		const templateExcludedFeatures =
 			UNIVERSAL_TREE_PORTAL | UNIVERSAL_TREE_REGION | UNIVERSAL_TREE_HIDDEN;
+		// Only a renderer that constrains where a host may sit pays for any of this.
+		const templates = this.driver.templates;
+		const canDeferTemplates =
+			templates !== undefined &&
+			this.driver.capabilities?.templateProgramRuns === true &&
+			this.driver.capabilities.deferredTemplateProgramRuns === true &&
+			// A run that declares its instances is appended or not made at all, so
+			// it may only exist where `planPlacements` appends unconditionally: a
+			// parent with no committed children. That holds for every placement in
+			// this commit except a scoped one whose frame anchors its appends before
+			// an out-of-scope sibling, which is the one call that hands a `before`
+			// to a parent whose children are all new.
+			(scopePlacement === null || scopePlacement.endAnchor === null);
 		// Owner ranges never reach the host, but interleaving their logical IDs
 		// with host IDs splits component-owned template instances into separate
 		// runs. Keep their transactional identity in a disjoint namespace only
@@ -9159,9 +9220,48 @@ class UniversalRootImpl<Container, PublicInstance>
 				expandCollapsedTemplateBlueprint(next);
 			}
 		};
+		// The nearest enclosing host and whether it committed with no children —
+		// which is what decides, below, whether a declaration can be appended.
+		let hostFrameType: string | null = null;
+		let hostFrameAppendOnly = false;
+		const reconcileHostChildren = (record: LogicalRecord, next: BlueprintNode): DraftRecord[] => {
+			if (templates === undefined || record.kind !== 'host') {
+				return reconcileChildren(record.children, next.children);
+			}
+			const savedType = hostFrameType;
+			const savedAppendOnly = hostFrameAppendOnly;
+			hostFrameType = record.type;
+			hostFrameAppendOnly = record.children.length === 0;
+			const children = reconcileChildren(record.children, next.children);
+			hostFrameType = savedType;
+			hostFrameAppendOnly = savedAppendOnly;
+			return children;
+		};
 		const reserveCollapsedTemplateIds = (record: LogicalRecord, next: BlueprintNode): void => {
 			if (next.kind !== 'host' || next.collapsedTemplate === undefined) return;
 			const collapsed = next.collapsedTemplate;
+			if (templates !== undefined && this.encoder.templateHostPlacement(next.type) === 'root') {
+				// This host has one place it can be, and the renderer will not build
+				// one before the moment it shows it, so there is no eager mount to
+				// fall back to. Where a declaration is unavailable — the renderer
+				// cannot take one, will not take this program, the parent already
+				// holds children the rows would have to be placed against, or there
+				// is no host parent at all — the template stops being a template
+				// here, while its descendants are still blueprints and can still
+				// become ordinary hosts.
+				if (
+					canDeferTemplates &&
+					collapsed.prepared !== undefined &&
+					hostFrameAppendOnly &&
+					hostFrameType !== null &&
+					this.encoder.deferTemplateProgram(hostFrameType, collapsed.prepared.wire)
+				) {
+					collapsed.deferred = true;
+				} else {
+					expandCollapsedTemplateBlueprint(next);
+					return;
+				}
+			}
 			if (collapsed.prepared !== undefined) {
 				collapsed.firstId = record.id;
 				nextId += collapsed.program.shape.length - 1;
@@ -9201,7 +9301,7 @@ class UniversalRootImpl<Container, PublicInstance>
 					const draft: DraftRecord = {
 						record,
 						blueprint: child,
-						children: reconcileChildren(record.children, child.children),
+						children: reconcileHostChildren(record, child),
 						isNew: true,
 						hostUpdate: null,
 					};
@@ -9231,7 +9331,7 @@ class UniversalRootImpl<Container, PublicInstance>
 					const draft: DraftRecord = {
 						record,
 						blueprint,
-						children: reconcileChildren(record.children, blueprint.children),
+						children: reconcileHostChildren(record, blueprint),
 						isNew: false,
 						hostUpdate: null,
 					};
@@ -9317,7 +9417,7 @@ class UniversalRootImpl<Container, PublicInstance>
 				const draft: DraftRecord = {
 					record,
 					blueprint: child,
-					children: reconcileChildren(record.children, child.children),
+					children: reconcileHostChildren(record, child),
 					isNew,
 					hostUpdate: null,
 				};
@@ -9338,7 +9438,7 @@ class UniversalRootImpl<Container, PublicInstance>
 		const draftRoot: DraftRecord = {
 			record: scopeRecord,
 			blueprint,
-			children: reconcileChildren(scopeRecord.children, blueprint.children),
+			children: reconcileHostChildren(scopeRecord, blueprint),
 			isNew: false,
 			hostUpdate: null,
 		};
@@ -9499,11 +9599,19 @@ class UniversalRootImpl<Container, PublicInstance>
 						nodes:
 							collapsed.prepared === undefined ? new Array(collapsed.program.shape.length) : null,
 						collapsed,
+						...(collapsed.deferred === true ? { deferred: true as const } : null),
 					});
 					templatedRecords.add(draft.record);
-				} else if (blueprintHost.templatePlan !== undefined) {
+				} else if (
+					blueprintHost.templatePlan !== undefined &&
+					// A host the renderer places only at a program's root has no
+					// eager mount, and this path has only eager mounts. Its drafts
+					// are real, so declining is simply not templating them.
+					(templates === undefined ||
+						this.encoder.templateHostPlacement(blueprintHost.type) !== 'root')
+				) {
 					const plan = blueprintHost.templatePlan;
-					const shape = universalHostTemplateShape(plan);
+					const shape = universalHostTemplateShape(this.encoder, plan);
 					if (shape !== null) {
 						const drafts = collectUniversalHostTemplateDrafts(draft, shape);
 						if (drafts !== null) {
@@ -9585,6 +9693,8 @@ class UniversalRootImpl<Container, PublicInstance>
 				if (this.driver.capabilities?.templateProgramRuns === true) {
 					const previous = placements[placements.length - 1];
 					if (
+						// Deferral is not compared: it is decided from the program's root
+						// and the parent, and this already requires both to be the same.
 						previous?.op === 'mount-template-run' &&
 						previous.program === collapsed.prepared.wire &&
 						Object.is(previous.parent, parent) &&
@@ -9606,6 +9716,7 @@ class UniversalRootImpl<Container, PublicInstance>
 						firstListenerId: null as number | null,
 						count: 1,
 						values: [...collapsed.values!],
+						...(template.deferred === true ? { deferred: true as const } : null),
 					};
 					template.run = run;
 					template.runIndex = 0;
