@@ -20,7 +20,7 @@
 // taken, so what each delta measures is the structure the arm builds on top of
 // the application's own data.
 //
-// The three states each arm is measured in are what separate "a declaration is
+// The five states each arm is measured in are what separate "a declaration is
 // cheap" from "a declaration stays cheap":
 //
 //   mounted   the commit landed and nothing has been shown
@@ -83,7 +83,7 @@ function exerciseFor(state, rows) {
 }
 
 const STATES = ['mounted', 'idle', 'half', 'written', 'scrolled'];
-/** Real arms, in the order they are printed. `model` is measured idle only. */
+/** Real arms, in the order they are printed. `model` is measured `mounted` only. */
 const ARMS = ['eager', 'declared'];
 
 // ---------------------------------------------------------------- child mode
