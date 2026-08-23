@@ -1,6 +1,7 @@
 import type {
 	UniversalHostBatch,
 	UniversalHostCommand,
+	UniversalHostTemplateProgram,
 } from '../../packages/octane/src/universal-core.js';
 import {
 	createLynxHostContainer,
@@ -150,6 +151,139 @@ function listUnmountCommands(itemCount: number): UniversalHostCommand[] {
 	}
 	commands.push({ op: 'remove', parent: null, id: 1 }, { op: 'destroy', id: 1 });
 	return commands;
+}
+
+/**
+ * The narrow row as a wire program, describing exactly what
+ * `listMountCommands` builds by hand above.
+ *
+ * The two have to agree node for node and prop for prop, or a comparison
+ * between them measures two different pages rather than two ways of holding
+ * one. Slot 0 is `item-key` and slot 1 is the row's text; `reuse-identifier` is
+ * the same string on every row, so it is a static prop rather than a slot —
+ * which is also why a run's values array is two entries per row and not three.
+ */
+const NARROW_ROW_PROGRAM: UniversalHostTemplateProgram = Object.freeze({
+	nodes: Object.freeze([
+		Object.freeze({
+			type: 'list-item',
+			parent: -1,
+			props: Object.freeze({ 'reuse-identifier': 'bench-row' }),
+			bindings: Object.freeze([Object.freeze({ name: 'item-key', valueIndex: 0 })]),
+		}),
+		Object.freeze({ type: 'text', parent: 0, props: Object.freeze({}) }),
+		Object.freeze({
+			type: '#text',
+			parent: 1,
+			props: Object.freeze({}),
+			bindings: Object.freeze([Object.freeze({ name: 'value', valueIndex: 1 })]),
+		}),
+	]),
+	events: Object.freeze([]),
+});
+
+/** The wide row as a wire program; same correspondence as the narrow one. */
+const WIDE_ROW_PROGRAM: UniversalHostTemplateProgram = Object.freeze({
+	nodes: Object.freeze([
+		Object.freeze({
+			type: 'list-item',
+			parent: -1,
+			props: Object.freeze({ 'reuse-identifier': 'wide-row' }),
+			bindings: Object.freeze([Object.freeze({ name: 'item-key', valueIndex: 0 })]),
+		}),
+		Object.freeze({
+			type: 'view',
+			parent: 0,
+			props: Object.freeze({ class: 'card', style: 'padding:8px' }),
+		}),
+		Object.freeze({ type: 'text', parent: 1, props: Object.freeze({ class: 'title' }) }),
+		Object.freeze({
+			type: '#text',
+			parent: 2,
+			props: Object.freeze({}),
+			bindings: Object.freeze([Object.freeze({ name: 'value', valueIndex: 1 })]),
+		}),
+		Object.freeze({ type: 'text', parent: 1, props: Object.freeze({ class: 'subtitle' }) }),
+		Object.freeze({
+			type: '#text',
+			parent: 4,
+			props: Object.freeze({}),
+			bindings: Object.freeze([Object.freeze({ name: 'value', valueIndex: 2 })]),
+		}),
+		Object.freeze({ type: 'view', parent: 1, props: Object.freeze({ class: 'badges' }) }),
+		Object.freeze({ type: 'text', parent: 6, props: Object.freeze({ class: 'badge' }) }),
+		Object.freeze({ type: '#text', parent: 7, props: Object.freeze({ value: 'NEW' }) }),
+	]),
+	events: Object.freeze([]),
+});
+
+/** The wire program for a row shape. */
+function rowProgram(kind: 'narrow' | 'wide'): UniversalHostTemplateProgram {
+	return kind === 'narrow' ? NARROW_ROW_PROGRAM : WIDE_ROW_PROGRAM;
+}
+
+/**
+ * The same page as `listMountCommands`, declared rather than built: one `<list>`
+ * and one deferred `mount-template-run` carrying every row's values.
+ *
+ * Host ids are laid out `firstId + row * width`, which is what
+ * `templateRunRecord` derives from and what `idsAt`/`wideRowIds` already
+ * produce — so a row's ids are the same integers in both arms and an update
+ * addressed to one is addressed to the same row in the other.
+ */
+function deferredListMountCommands(
+	kind: 'narrow' | 'wide',
+	itemCount: number,
+	data: RowData,
+): UniversalHostCommand[] {
+	const program = rowProgram(kind);
+	const values: string[] = [];
+	for (let index = 0; index < itemCount; index++) {
+		values.push(data.itemKeys[index]!, ...data.values[index]!);
+	}
+	return [
+		{
+			op: 'create',
+			id: 1,
+			type: 'list',
+			props: { id: kind === 'narrow' ? 'allocation-bench' : 'wide-row-bench' },
+		},
+		{
+			op: 'mount-template-run',
+			parent: 1,
+			before: null,
+			program,
+			firstId: 2,
+			firstListenerId: null,
+			count: itemCount,
+			values: Object.freeze(values),
+			deferred: true,
+		},
+		{ op: 'insert', parent: null, id: 1, before: null },
+	];
+}
+
+/**
+ * One `update` per row against the `#text` that carries the row's first varying
+ * value — the commit a re-render produces when that value changed.
+ *
+ * The `#text` is node 2 of the narrow program and node 3 of the wide one, and a
+ * host's id is its row's base plus its index in the program, which is the same
+ * layout `idsAt`/`wideRowIds` produce and the one `templateRunRecord` derives
+ * from. So these ids name the same rows in both arms.
+ */
+function rowTextUpdates(kind: 'narrow' | 'wide', rows: number): UniversalHostCommand[] {
+	const width = rowProgram(kind).nodes.length;
+	const textNode = kind === 'narrow' ? 2 : 3;
+	const updates: UniversalHostCommand[] = [];
+	for (let index = 0; index < rows; index++) {
+		updates.push({
+			op: 'update',
+			id: 2 + index * width + textNode,
+			props: { value: `Renamed ${index}` },
+		});
+	}
+	return updates;
 }
 
 /** One recorded window of Element PAPI traffic, by kind. */
@@ -921,6 +1055,80 @@ export function runWideRowReuseWorkload(): WideRowReuseResult {
 }
 
 /**
+ * How far a retention arm was driven past its mount, so both arms can be driven
+ * the same way. A ratio between two arms holding different amounts of the page
+ * is not a measurement of how they hold it.
+ */
+export interface RetentionExercise {
+	/**
+	 * Rows whose text is rewritten by a second commit, one `update` each — the
+	 * shape a re-render has when a row's data changed.
+	 */
+	readonly writtenRows?: number;
+	/**
+	 * Rows the platform is scrolled across after the first window is entered.
+	 * Recycling means this creates no new physical cell; what it does create is
+	 * a read of every row it passes.
+	 */
+	readonly scrolledRows?: number;
+	/**
+	 * Cells the platform asks for at all, defaulting to a full first screen.
+	 * Zero is the state right after the commit lands, before anything has been
+	 * shown — the only state in which a declaration has been read by nothing.
+	 */
+	readonly visibleRows?: number;
+}
+
+/**
+ * Enter the first window, then scroll it across `scrolledRows` further rows,
+ * leaving the window entered at the end. One row enters as one leaves, which is
+ * what a native list does and what keeps the physical cell count flat.
+ */
+function scrollWindow(
+	environment: FakeLynxPAPI,
+	list: FakeNode,
+	rows: number,
+	exercise: RetentionExercise,
+): number[] {
+	const window = Math.min(rows, exercise.visibleRows ?? VISIBLE_WINDOW_SIZE);
+	const signs: number[] = [];
+	for (let index = 0; index < window; index++) signs.push(environment.enter(list, index));
+	if (window === 0) return signs;
+	const last = Math.min(rows, window + (exercise.scrolledRows ?? 0));
+	for (let index = window; index < last; index++) {
+		const released = signs.shift();
+		if (released === undefined) throw new Error('active native list window became empty.');
+		environment.leave(list, released);
+		signs.push(environment.enter(list, index));
+	}
+	return signs;
+}
+
+/**
+ * Prove the write commit reached the screen, in the arm that just ran it.
+ *
+ * A retention arm whose writes silently went nowhere reads as a finding: the
+ * eager arm's record count is supposed not to move under writes, so a count is
+ * no receipt there, and skipping the commit entirely would look exactly like
+ * "the eager arm does not grow". The painted row is the receipt both arms can
+ * give, so both give it.
+ */
+function assertWritesPainted(
+	environment: FakeLynxPAPI,
+	signs: readonly number[],
+	exercise: RetentionExercise,
+	arm: string,
+): void {
+	if ((exercise.writtenRows ?? 0) === 0) return;
+	// A scrolled window no longer holds row 0, and no state combines the two.
+	if ((exercise.scrolledRows ?? 0) !== 0 || signs.length === 0) return;
+	const painted = environment.textForSign(signs[0]!);
+	if (!painted.includes('Renamed 0')) {
+		throw new Error(`${arm}: row 0 painted ${JSON.stringify(painted)} after its text was written.`);
+	}
+}
+
+/**
  * A live native list, held so a retention sample can measure it. Nothing is
  * scrolled: this is the steady state right after mount, where every logical row
  * is a record and only the window the platform asked for is physical.
@@ -931,22 +1139,96 @@ export interface RetainedList {
 	dispose(): void;
 }
 
-export function buildRetainedList(kind: 'narrow' | 'wide', data: RowData): RetainedList {
+export function buildRetainedList(
+	kind: 'narrow' | 'wide',
+	data: RowData,
+	exercise: RetentionExercise = {},
+): RetainedList {
+	const rows = data.itemKeys.length;
 	const environment = new FakeLynxPAPI();
 	const container = createLynxHostContainer(environment.papi, { root: 1 });
 	const commands =
-		kind === 'narrow'
-			? listMountCommands(data.itemKeys.length, data)
-			: wideListMountCommands(data.itemKeys.length, data);
+		kind === 'narrow' ? listMountCommands(rows, data) : wideListMountCommands(rows, data);
 	prepareLynxHostBatch(container, batch(1, commands)).apply();
-	const list = environment.getListNode();
-	const signs: number[] = [];
-	for (let index = 0; index < VISIBLE_WINDOW_SIZE; index++) {
-		signs.push(environment.enter(list, index));
+	const written = exercise.writtenRows ?? 0;
+	const beforeWrite = container.instanceCount;
+	if (written > 0) {
+		prepareLynxHostBatch(container, batch(2, rowTextUpdates(kind, written))).apply();
 	}
+	// The control's whole value is that its record count does not move, so a
+	// write that changed it would mean the two arms are not being asked the same
+	// question.
+	if (container.instanceCount !== beforeWrite) {
+		throw new Error(`writing ${written} rows changed the eager arm's record count.`);
+	}
+	const list = environment.getListNode();
+	const signs = scrollWindow(environment, list, rows, exercise);
+	assertWritesPainted(environment, signs, exercise, 'eager');
 	return {
 		logicalHosts: container.instanceCount,
 		physicalCells: environment.createdNodeCount('list-item'),
+		dispose: () => {
+			for (const sign of signs) environment.leave(list, sign);
+			disposeLynxHostContainer(container);
+		},
+	};
+}
+
+/**
+ * The same page as `buildRetainedList`, declared instead of built.
+ *
+ * Same container, same fake PAPI, same row strings, same window entered — the
+ * only difference is that the rows arrive as one deferred `mount-template-run`
+ * rather than as three `create`s each. So the delta between the two arms is
+ * what the driver retains for a row nothing has asked for, which is the whole
+ * subject.
+ *
+ * `exercise` is what drives it past that mount: `writtenRows` rewrites rows the
+ * platform has never shown, and `scrolledRows` shows them. A written or shown
+ * host cannot be derived from its run any more, so either promotes it to an
+ * ordinary record permanently. That is this slice's ceiling, and driving it
+ * here is how it gets measured rather than argued.
+ */
+export interface DeclaredList {
+	/** Records the driver holds — the number a declaration exists to keep down. */
+	readonly logicalHosts: number;
+	readonly physicalCells: number;
+	/** Records held when the run had been accepted and nothing had read a row. */
+	readonly afterDeclare: number;
+	/** Records held once the update commit landed, before the window was entered. */
+	readonly afterWrite: number;
+	dispose(): void;
+}
+
+export function buildDeclaredList(
+	kind: 'narrow' | 'wide',
+	data: RowData,
+	exercise: RetentionExercise = {},
+): DeclaredList {
+	const rows = data.itemKeys.length;
+	const environment = new FakeLynxPAPI();
+	const container = createLynxHostContainer(environment.papi, { root: 1 });
+	prepareLynxHostBatch(container, batch(1, deferredListMountCommands(kind, rows, data))).apply();
+	const afterDeclare = container.instanceCount;
+	const written = exercise.writtenRows ?? 0;
+	if (written > 0) {
+		prepareLynxHostBatch(container, batch(2, rowTextUpdates(kind, written))).apply();
+	}
+	const afterWrite = container.instanceCount;
+	// A retention arm that silently did nothing reads as a win. `written` is only
+	// a measurement if the writes landed where the ids said they would, and one
+	// write promotes exactly one host, so the count is the receipt.
+	if (afterWrite - afterDeclare !== written) {
+		throw new Error(`writing ${written} rows promoted ${afterWrite - afterDeclare} hosts.`);
+	}
+	const list = environment.getListNode();
+	const signs = scrollWindow(environment, list, rows, exercise);
+	assertWritesPainted(environment, signs, exercise, 'declared');
+	return {
+		logicalHosts: container.instanceCount,
+		physicalCells: environment.createdNodeCount('list-item'),
+		afterDeclare,
+		afterWrite,
 		dispose: () => {
 			for (const sign of signs) environment.leave(list, sign);
 			disposeLynxHostContainer(container);
