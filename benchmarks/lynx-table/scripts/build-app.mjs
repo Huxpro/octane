@@ -9,6 +9,8 @@
 //   OCTANE_LYNX_PROFILE=1 node scripts/build-app.mjs   # wire-counter build
 //   BENCH_AUTOROWS=1000 node scripts/build-app.mjs     # pre-populated table
 //   BENCH_CORE=block node scripts/build-app.mjs        # issue-#103 Block core
+//   BENCH_CORE=block BENCH_BLOCK_MODE=derived node scripts/build-app.mjs
+//                                                     # …driven by the compiled app
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -21,8 +23,11 @@ const repo = path.resolve(root, '../..');
 
 const STAGE_NAME = 'lynx-table-bench';
 
+/** The Block core's drive modes, as app/lynx.config.mjs spells them. */
+const BLOCK_MODES = new Set(['scoped', 'reconcile', 'derived']);
+
 /**
- * @param {{silent?: boolean, core?: 'universal'|'block', blockMode?: 'scoped'|'reconcile'}} [options]
+ * @param {{silent?: boolean, core?: 'universal'|'block', blockMode?: 'scoped'|'reconcile'|'derived'}} [options]
  * @returns {string} the staged dist directory
  */
 export function buildTableApp({ silent = false, core = 'universal', blockMode = 'scoped' } = {}) {
@@ -46,7 +51,7 @@ export function buildTableApp({ silent = false, core = 'universal', blockMode = 
 	// suffix has to be spelled the same here and in app/lynx.config.mjs, which
 	// derives its own dist path from the same two variables.
 	const coreSuffix =
-		core === 'block' ? (blockMode === 'reconcile' ? '-block-reconcile' : '-block') : '';
+		core === 'block' ? (blockMode === 'scoped' ? '-block' : `-block-${blockMode}`) : '';
 	const label = core === 'block' ? `octane table app (${core}/${blockMode})` : 'octane table app';
 	if (!silent) console.log(`[lynx-table] building ${label} (production)…`);
 	try {
@@ -79,6 +84,8 @@ const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPat
 if (isMain) {
 	buildTableApp({
 		core: process.env.BENCH_CORE === 'block' ? 'block' : 'universal',
-		blockMode: process.env.BENCH_BLOCK_MODE === 'reconcile' ? 'reconcile' : 'scoped',
+		blockMode: BLOCK_MODES.has(process.env.BENCH_BLOCK_MODE)
+			? /** @type {'scoped'|'reconcile'|'derived'} */ (process.env.BENCH_BLOCK_MODE)
+			: 'scoped',
 	});
 }

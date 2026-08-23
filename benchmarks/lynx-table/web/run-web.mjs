@@ -72,17 +72,29 @@ const ALL_CELLS = [
 	{ id: 'octane-direct', bundle: path.join(root, 'prototype/dist/main.web.bundle') },
 	// Issue-#103 B0: the same application entry and the same page driver, built
 	// with `pluginOctane({ core: 'block' })` so the Block core drives background
-	// updates instead of the universal one. The program it runs is hand-written
-	// (app/src/block-program.ts), so this cell is an architecture ceiling, not a
-	// framework measurement — read it beside `octane`, never instead of it.
-	// `-reconcile` is the same core driven by whole-list reconciles rather than
-	// scoped slot writes; build it with BENCH_BLOCK_MODE=reconcile.
+	// updates instead of the universal one. The program `octane-block` runs is
+	// hand-written (app/src/block-program.ts), so that cell is an architecture
+	// ceiling, not a framework measurement — read it beside `octane`, never
+	// instead of it. `-reconcile` is the same core driven by whole-list
+	// reconciles rather than scoped slot writes.
 	{ id: 'octane-block', bundle: path.join(root, 'app/dist-block/main.web.bundle'), core: 'block' },
 	{
 		id: 'octane-block-reconcile',
 		bundle: path.join(root, 'app/dist-block-reconcile/main.web.bundle'),
 		core: 'block',
 		blockMode: 'reconcile',
+	},
+	// Issue-#135 item 1b: the Block core driven by the compiled `App` itself,
+	// through the same lowering the framework ships, with no hand-written
+	// program in the bundle at all. This is the cell that answers the question
+	// the two above can only bound: what Octane on the Block core costs. Its
+	// claim is the ÷ octane ratio printed beside it, read against the ceiling
+	// `octane-block` records in the same window.
+	{
+		id: 'octane-block-derived',
+		bundle: path.join(root, 'app/dist-block-derived/main.web.bundle'),
+		core: 'block',
+		blockMode: 'derived',
 	},
 	{ id: 'vue-vdom', bundle: path.join(root, 'reference/vdom-ifr-et/main.web.bundle') },
 	{ id: 'vue-vapor', bundle: path.join(root, 'reference/vapor-ifr/main.web.bundle') },

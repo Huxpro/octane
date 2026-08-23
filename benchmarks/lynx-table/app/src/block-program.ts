@@ -2,21 +2,26 @@
  * Issue-#103 B0 — the `octane-block` cell's background program.
  *
  * `App.lynx.tsrx` is the same benchmark UI written the way an Octane
- * application is written: hooks, a `Row` component, a keyed `@for`. The Block
- * core cannot run it, and says so by name rather than rendering something
- * partial — it has no hook cells, so a compiled component has no program to be
- * (`packages/lynx/src/core/block-background.ts`). This module is what stands in
- * until it does: the same page, host-for-host, driven directly against the
- * core.
+ * application is written: hooks, a `Row` component, a keyed `@for`. When the
+ * Block core could not run that — no hook cells, so a compiled component had no
+ * program to be — this module is what stood in: the same page, host-for-host,
+ * driven directly against the core.
  *
- * ## Read every number from this cell as an architecture ceiling
+ * It runs it now (issue-#135 item 1b), and `BENCH_BLOCK_MODE=derived` is that
+ * cell: the compiled `App` lowered onto the same core by the framework, with
+ * this module folded out of the bundle. That is the number to quote for what
+ * Octane on the Block core costs.
+ *
+ * ## Read every number from *this* module's modes as an architecture ceiling
  *
  * Hand-written, exactly as `benchmarks/lynx-table/block-workload.ts` says of
- * its own program. It is what the update path *could* cost once a lowering
- * emits this shape, never what Octane on Lynx costs today. The `octane` cell is
- * the second number, and the two are only comparable because they are one
- * application entry, one bundle recipe, and one page driver, with the build
- * flag as the single variable.
+ * its own program. `scoped` and `reconcile` are what the update path *could*
+ * cost for a page shaped like this one, and they stay because they are what
+ * `derived` is read against — a lowering that drifts off the ceiling shows up
+ * as the gap between the two cells in one window. The `octane` cell is the
+ * third number, and none of them is quoted alone: they are comparable only
+ * because they are one application entry, one bundle recipe, and one page
+ * driver, with the build flag as the single variable.
  *
  * ## Two drive modes, because one of them would over-claim alone
  *
