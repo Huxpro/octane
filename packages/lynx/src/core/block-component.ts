@@ -303,7 +303,6 @@ const EMPTY_RANGES: readonly RangeState[] = Object.freeze([]);
 interface RangeRender {
 	readonly state: RangeState;
 	readonly items: readonly unknown[];
-	readonly key: (item: unknown, index: number) => unknown;
 	readonly rows: readonly (readonly UniversalHostTemplateProgramValue[])[];
 	readonly handlers: readonly (readonly (LynxBlockListener | null)[])[];
 	/** This render's keys, in order, so the write path needs no second pass. */
@@ -641,6 +640,11 @@ export function lynxBlockProgramForComponent<Props>(
 		context: LynxBlockProgramContext,
 		state: RangeState,
 		produced: unknown,
+		// The component and props `renderRange` already derived from `produced`
+		// for the memo comparison — threaded through rather than re-derived, so
+		// the row is called with exactly what was compared.
+		component: LynxComponent<never> | null,
+		props: unknown,
 	): {
 		readonly values: readonly UniversalHostTemplateProgramValue[];
 		readonly listeners: readonly (LynxBlockListener | null)[];
@@ -653,15 +657,8 @@ export function lynxBlockProgramForComponent<Props>(
 		// cells, no context, and no effects is a function of the props it is
 		// handed, so props that compare equal produce what they produced.
 		let rendered: RenderedPlan;
-		if (
-			produced !== null &&
-			typeof produced === 'object' &&
-			(produced as { $$kind?: unknown }).$$kind === UNIVERSAL_COMPONENT_VALUE
-		) {
-			rendered = renderPlanValue(
-				(produced as UniversalComponentValue).component as unknown as LynxComponent<never>,
-				forwardedProps(produced as UniversalComponentValue),
-			);
+		if (component !== null) {
+			rendered = renderPlanValue(component, props);
 		} else {
 			// The page did return a compiled template — the row's output is what
 			// did not — so the diagnostic must say which level failed.
@@ -803,7 +800,7 @@ export function lynxBlockProgramForComponent<Props>(
 					continue;
 				}
 			}
-			const row = renderRow(context, state, produced);
+			const row = renderRow(context, state, produced, component, props);
 			rows[index] = row.values;
 			handlers[index] = row.listeners;
 			rendered.push(index);
@@ -814,7 +811,7 @@ export function lynxBlockProgramForComponent<Props>(
 					: { component, props, values: row.values, listeners: row.listeners },
 			);
 		}
-		return { state, items, key: list.key, rows, handlers, keys, retained, structural, rendered };
+		return { state, items, rows, handlers, keys, retained, structural, rendered };
 	};
 
 	/**
@@ -884,7 +881,12 @@ export function lynxBlockProgramForComponent<Props>(
 			state.site!,
 			state.template,
 			render.items,
-			render.key,
+			// The keys `renderRange` already derived and duplicate-checked, not
+			// the user's key function again: the reconciler must mount under
+			// exactly the keys `state.keys` records, or an impure key function
+			// could let a later render's same-sequence check pass against keys
+			// the range is not actually holding.
+			(_item, index) => render.keys[index]!,
 			(_item, index) => render.rows[index]!,
 			(member) => {
 				context.root.releaseListeners(member);
