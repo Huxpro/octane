@@ -7,15 +7,20 @@
  * architecture floor rather than a framework measurement, which is why item 1
  * exists at all.
  *
- * This closes the half of that gap which needs no hook runtime. A compiled
- * component's body is `universalValue(plan, values)` — a plan reference plus a
- * flat slot array — and #136 published the plan → wire-program lowering on
- * `octane/universal/template-program`. So for a component whose setup runs
- * without a hook runtime, calling it hands you both halves of a block program:
- * the plan lowers to the template, and the slot values become the block's
- * values. Nothing here is Block-specific except the last step; the lowering is
- * the same one the universal core uses, asked of the same driver, which is what
- * keeps the two cores from drifting apart on what a component means.
+ * A compiled component's body is `universalValue(plan, values)` — a plan
+ * reference plus a flat slot array — and #136 published the plan → wire-program
+ * lowering on `octane/universal/template-program`. So calling the component
+ * hands you both halves of a block program: the plan lowers to the template,
+ * and the slot values become the block's values. Nothing here is Block-specific
+ * except the last step; the lowering is the same one the universal core uses,
+ * asked of the same driver, which is what keeps the two cores from drifting
+ * apart on what a component means.
+ *
+ * The page's setup runs inside a `createUniversalHookScope` (item 1b), so a
+ * page that holds state is a program like any other, and a setter it hands to a
+ * tap repaints it: the scope schedules, this module re-renders and commits. The
+ * cells are the universal core's own, not a second implementation of them — a
+ * restated update queue is where two cores drift.
  *
  * ## A keyed range is a hole the template must not describe (item 1c)
  *
@@ -35,13 +40,13 @@
  *
  * ## What this deliberately does not cover, and why the refusals are loud
  *
- * A component that calls a hook reaches `universal-core.ts`'s claim controller,
- * whose current-attempt and owner bindings are module-private: the hooks are
- * physically present in a `core: 'block'` bundle and are not reachable from it.
- * Whether that layer arrives by extracting the hook module or by some other
- * route is an open design decision, so a hooked component is refused here by
- * name rather than half-rendered — and so is a hooked row component, which is
- * the same layer one level down.
+ * A **row** component that calls a hook is still refused by name. Rows render
+ * outside the page's scope, and giving each one a scope of its own is giving
+ * each one an owner — the per-row cost this core exists to avoid — so whether a
+ * row can afford cells is its own question with its own measurement. Effects
+ * and context reads are refused at both levels: an effect needs a commit phase
+ * this core does not have, and a context read needs the owner chain a single
+ * scope deliberately does not build.
  *
  * A range nested inside a range is refused too. Its rows would need range state
  * of their own, carried through every reconcile of the outer list, and that is
@@ -61,6 +66,18 @@ import type {
 	UniversalPlanValue,
 	UniversalPropsValue,
 	UniversalRenderContext,
+} from 'octane/universal/native';
+// The one value import of the universal core, and the reason it is here: a
+// compiled component's setup needs hook cells, and the cells live behind
+// module state only `universal-core.ts` can reach. The hook functions the
+// application calls are already linked into this bundle by the application
+// module itself, so what this adds to the graph is the scope factory and the
+// two record constructors it uses — not the reconciler, not a root.
+import {
+	createUniversalHookScope,
+	UNIVERSAL_HOOK_SCOPE_CONTEXT_REFUSED,
+	UNIVERSAL_HOOK_SCOPE_EFFECTS_REFUSED,
+	type UniversalHookScope,
 } from 'octane/universal/native';
 import {
 	compiledUniversalTemplateProgram,
@@ -113,7 +130,7 @@ const HOOKS_WITHOUT_ATTEMPT =
 
 /** Why an effect is the same refusal as a hook, said once. */
 const EFFECTS_UNSUPPORTED =
-	'its setup declares an effect, and an effect is a hook cell the Block core does not have yet (issue #135 item 1b).';
+	'its setup declares an effect, and an effect needs a commit phase the Block core does not have yet (issue #135 item 1b).';
 
 /** The two ways out of every refusal below, so they read the same. */
 const REMEDY =
@@ -241,19 +258,19 @@ export function lynxBlockProgramForComponent<Props>(
 	 * Which component the refusals below are about.
 	 *
 	 * A range whose rows are `<Row />` calls a second component per row, and a
-	 * hook in *that* setup is the row's problem, not the page's. Tracking the
+	 * hook in *that* setup is the row's problem, not the page's — the page has
+	 * cells now and the row does not. Tracking the
 	 * component being called is what lets one shared render context name it.
 	 */
 	let rendering: LynxComponent<never> = subject;
 	/**
 	 * The second argument a compiled component is called with.
 	 *
-	 * Every member of it needs the render attempt this slice does not stand up —
-	 * an effect is a hook cell by another name, and reading a context walks the
-	 * owner chain. Passing `undefined` would refuse them too, with a TypeError
-	 * naming a property rather than the layer. These refuse by name instead, so
-	 * a component that takes an effect is diagnosed the same way as one that
-	 * takes a hook, which is what it is.
+	 * The page's scope stands up cells, not a commit phase and not an owner
+	 * chain: an effect needs somewhere to run after the host accepts the frame,
+	 * and reading a context needs ancestors to search. Passing `undefined` would
+	 * refuse them too, with a TypeError naming a property rather than the layer.
+	 * These refuse by name instead.
 	 */
 	const renderContext: UniversalRenderContext = Object.freeze({
 		renderer: LYNX_TRANSPORT_RENDERER,
@@ -273,6 +290,42 @@ export function lynxBlockProgramForComponent<Props>(
 			refuse(rendering, EFFECTS_UNSUPPORTED);
 		},
 	});
+	/**
+	 * The page component's hook cells.
+	 *
+	 * One scope, for the subject only. A row component still gets none: a
+	 * per-row scope is a per-row owner, which is the cost this core exists to
+	 * avoid paying, and whether a row can afford one is its own measurement. So
+	 * a hooked row keeps refusing by name — see `renderPlanValue`, which now
+	 * only ever catches a row.
+	 */
+	let scope: UniversalHookScope | null = null;
+	/**
+	 * What a state-driven re-render needs, and the only reason they are kept.
+	 *
+	 * A render raised by a setter has no new props and no caller: the tap
+	 * handler that ran it is long gone by the time the microtask lands. These
+	 * are the two halves of `update`'s signature, recorded on the way through.
+	 */
+	let liveContext: LynxBlockProgramContext | null = null;
+	let liveProps: unknown;
+	/**
+	 * Whether a state-driven re-render is already queued but has not started.
+	 *
+	 * A handler that writes two cells asks for one render, not two, and so does
+	 * a storm that writes a cell every tick while the previous render is still
+	 * waiting for its turn. Both fold into the render that has not run yet,
+	 * because it will read the cells as they are when it starts — which is why
+	 * this is cleared then rather than when the render is queued.
+	 *
+	 * Within a single handler only the render is saved: a second pass would find
+	 * every slot unchanged and commit nothing, so the extra frame was never
+	 * going to be sent. What it would have cost is a second setup call, a second
+	 * lowering, and a second slot compare — and, for a page with a keyed range,
+	 * a second render of every row in it.
+	 */
+	let renderQueued = false;
+
 	let encoder: UniversalHostEncoder | null = null;
 	let plan: UniversalPlan | null = null;
 	let compiled: CompiledUniversalTemplateProgram | null = null;
@@ -295,9 +348,9 @@ export function lynxBlockProgramForComponent<Props>(
 	/**
 	 * Call a component and read the plan value it returned.
 	 *
-	 * The call is bare — no render attempt, no owner. That is the whole scope
-	 * boundary of this slice: a hook-free setup needs neither, and a hooked one
-	 * throws out of the claim controller, which is caught here and reported as
+	 * The page reaches this inside its hook scope, which is why the catch below
+	 * now only ever fires for a **row**: rows render after the page's scope has
+	 * closed, so a hooked one throws out of the claim controller. Reported as
 	 * the missing layer rather than as an internal error naming a module the
 	 * application never mentioned.
 	 */
@@ -313,7 +366,7 @@ export function lynxBlockProgramForComponent<Props>(
 			if (error instanceof Error && error.message === HOOKS_WITHOUT_ATTEMPT) {
 				refuse(
 					source,
-					'its setup calls a hook, and the Block core has no hook cells (issue #135 item 1b).',
+					'its setup calls a hook, and a row of a keyed range has no hook cells on the Block core (issue #135 item 1b). The page that contains it does.',
 				);
 			}
 			throw error;
@@ -322,6 +375,90 @@ export function lynxBlockProgramForComponent<Props>(
 		}
 		return readPlanValue(source, produced);
 	};
+
+	/**
+	 * Render the page component with its hook cells installed.
+	 *
+	 * Committing here rather than after the block is written is deliberate and
+	 * narrow: every way out of `mount` and `update` below this point either
+	 * succeeds or throws, and a throw from either is terminal for the program —
+	 * a `refuse` names a shape the component will still have next render, and a
+	 * duplicate key is the core rejecting a list it will still be handed. There
+	 * is no later render for uncommitted cells to be right for.
+	 */
+	const renderSubject = (context: LynxBlockProgramContext, props: unknown): RenderedPlan => {
+		liveContext = context;
+		liveProps = props;
+		const cells = (scope ??= createUniversalHookScope({
+			renderer: LYNX_TRANSPORT_RENDERER,
+			scheduleRender: queueStateRender,
+		}));
+		let rendered: RenderedPlan;
+		try {
+			rendered = cells.render(() => renderPlanValue(subject, props));
+		} catch (error) {
+			cells.abort();
+			// The scope refuses capabilities it does not implement with stable
+			// messages; renamed here to the layer the application can see, the
+			// same way a row's HOOKS_WITHOUT_ATTEMPT is renamed in
+			// renderPlanValue.
+			if (error instanceof Error && error.message === UNIVERSAL_HOOK_SCOPE_EFFECTS_REFUSED) {
+				refuse(subject, EFFECTS_UNSUPPORTED);
+			}
+			if (error instanceof Error && error.message === UNIVERSAL_HOOK_SCOPE_CONTEXT_REFUSED) {
+				refuse(
+					subject,
+					'its setup reads a context, which needs the owner chain the Block core does not have yet (issue #135 item 1b).',
+				);
+			}
+			throw error;
+		}
+		cells.commit();
+		return rendered;
+	};
+
+	/**
+	 * Re-render the page because one of its own cells changed.
+	 *
+	 * `scheduleRender` rather than rendering on the setter's own stack. Three
+	 * things come from taking a turn in the core's queue instead:
+	 *
+	 * - The render runs after the handler returns, so a handler that writes two
+	 *   cells produces one frame rather than a torn one.
+	 * - It cannot overlap a render a caller started. A commit flushes the core,
+	 *   so two in flight means a second batch leaves with the first
+	 *   unacknowledged.
+	 * - A storm costs renders rather than ticks: `renderQueued` clears when the
+	 *   render *starts*, so every write that lands while this one waits for its
+	 *   turn folds into it.
+	 */
+	function queueStateRender(): void {
+		if (renderQueued) return;
+		const context = liveContext;
+		// Unmounted, so there is nothing left to write the new values to.
+		if (context === null || block === null) return;
+		renderQueued = true;
+		void context
+			.scheduleRender(() => {
+				renderQueued = false;
+				// Unmounted while this waited its turn. The core's queue makes
+				// that narrow — `unmountAsync` waits for work a program started
+				// — but a program that has been torn down must not write, and
+				// the check is cheaper than the invariant.
+				if (block === null) return;
+				renderAgain(context, liveProps as Props);
+			})
+			.catch((error: unknown) => {
+				// Nowhere to return this to: the tap that wrote the cell returned
+				// long ago, and the render it asked for is the whole frame.
+				// Rethrown from a timer so it reaches the runtime's error
+				// reporting instead of dying as a rejection the render queue
+				// already marked handled.
+				setTimeout(() => {
+					throw error;
+				}, 0);
+			});
+	}
 
 	/**
 	 * One encoder for the life of the program.
@@ -612,9 +749,66 @@ export function lynxBlockProgramForComponent<Props>(
 		});
 	};
 
-	return {
+	/**
+	 * One later render of the page, whether its props changed or one of its
+	 * own cells did. Named rather than inlined on the program because a
+	 * state-driven render has no caller to reach it through.
+	 */
+	const renderAgain = (context: LynxBlockProgramContext, props: Props): void => {
+		const rendered = renderSubject(context, props);
+		// A block program mounts one template. A component that returns a
+		// different plan on a later render is a different program, and
+		// `block-background.ts` already refuses to swap the program it mounted;
+		// this is that refusal one level down, where the plan is what changed
+		// rather than the component.
+		if (rendered.plan !== plan) {
+			refuse(
+				subject,
+				'a later render returned a different compiled template than the one it mounted, and a block holds one template for its lifetime.',
+			);
+		}
+		const values = valuesFor(context, rendered.values);
+		// Every row of every range is rendered before the first slot is
+		// written, so a render that refuses anywhere leaves the block exactly as
+		// the last one left it rather than partly moved on.
+		const rows = renderRanges(context, rendered.values);
+		// The live values are the core's, not a copy kept here: a shadow of them
+		// could only ever drift, and comparing against what the block actually
+		// holds is what the core itself compares against.
+		const held = block!.values;
+		const worklets = block!.template.mainThreadValues;
+		for (let index = 0; index < values.length; index++) {
+			// The scoped write: only the slots a render moved reach the core, which
+			// is what keeps `blockLookups` a count of the change rather than of the
+			// template. `Object.is` because that is exactly the comparator the core
+			// applies to an ordinary slot, so skipping here decides what
+			// `setSlotValue` would have decided.
+			//
+			// A worklet slot is never skipped. Its value is an object the compiler
+			// rebuilds every render, so identity cannot answer for it, and the
+			// core's structural comparator is the only one that can — including
+			// for the case where the slot holds a malformed descriptor that a
+			// later write has to repair.
+			if (worklets?.[index] !== true && Object.is(values[index], held[index])) continue;
+			context.core.setSlotValue(block!, index, values[index]!);
+		}
+		// Handlers are fresh closures every render, closing over this render's
+		// props, so the binding is replaced rather than kept. The wire is
+		// untouched: a listener id belongs to the block, and rebinding moves
+		// only which function that id reaches. Released first because binding
+		// skips an empty conditional hole rather than clearing it — a site
+		// whose handler this render withdrew must stop reaching the previous
+		// render's closure.
+		if (prepared!.events.length !== 0) {
+			context.root.releaseListeners(block!);
+			context.root.bindListeners(block!, listenersFor(rendered.values));
+		}
+		for (const row of rows) applyRange(context, row);
+	};
+
+	const program: LynxBlockProgram<Props> = {
 		mount(context, props) {
-			const rendered = renderPlanValue(subject, props);
+			const rendered = renderSubject(context, props);
 			const root = rendered.plan.root;
 			if (root.kind !== 'host') {
 				refuse(
@@ -676,57 +870,7 @@ export function lynxBlockProgramForComponent<Props>(
 			}
 		},
 
-		update(context, props) {
-			const rendered = renderPlanValue(subject, props);
-			// A block program mounts one template. A component that returns a
-			// different plan on a later render is a different program, and
-			// `block-background.ts` already refuses to swap the program it mounted;
-			// this is that refusal one level down, where the plan is what changed
-			// rather than the component.
-			if (rendered.plan !== plan) {
-				refuse(
-					subject,
-					'a later render returned a different compiled template than the one it mounted, and a block holds one template for its lifetime.',
-				);
-			}
-			const values = valuesFor(context, rendered.values);
-			// Every row of every range is rendered before the first slot is
-			// written, so a render that refuses anywhere leaves the block exactly as
-			// the last one left it rather than partly moved on.
-			const rows = renderRanges(context, rendered.values);
-			// The live values are the core's, not a copy kept here: a shadow of them
-			// could only ever drift, and comparing against what the block actually
-			// holds is what the core itself compares against.
-			const held = block!.values;
-			const worklets = block!.template.mainThreadValues;
-			for (let index = 0; index < values.length; index++) {
-				// The scoped write: only the slots a render moved reach the core, which
-				// is what keeps `blockLookups` a count of the change rather than of the
-				// template. `Object.is` because that is exactly the comparator the core
-				// applies to an ordinary slot, so skipping here decides what
-				// `setSlotValue` would have decided.
-				//
-				// A worklet slot is never skipped. Its value is an object the compiler
-				// rebuilds every render, so identity cannot answer for it, and the
-				// core's structural comparator is the only one that can — including
-				// for the case where the slot holds a malformed descriptor that a
-				// later write has to repair.
-				if (worklets?.[index] !== true && Object.is(values[index], held[index])) continue;
-				context.core.setSlotValue(block!, index, values[index]!);
-			}
-			// Handlers are fresh closures every render, closing over this render's
-			// props, so the binding is replaced rather than kept. The wire is
-			// untouched: a listener id belongs to the block, and rebinding moves
-			// only which function that id reaches. Released first because binding
-			// skips an empty conditional hole rather than clearing it — a site
-			// whose handler this render withdrew must stop reaching the previous
-			// render's closure.
-			if (prepared!.events.length !== 0) {
-				context.root.releaseListeners(block!);
-				context.root.bindListeners(block!, listenersFor(rendered.values));
-			}
-			for (const row of rows) applyRange(context, row);
-		},
+		update: renderAgain,
 
 		unmount(context) {
 			// Release, do not tear down: the core has no way to destroy a
@@ -747,8 +891,17 @@ export function lynxBlockProgramForComponent<Props>(
 			}
 			block = null;
 			ranges = EMPTY_RANGES;
+			// The cells outlive nothing: a setter captured by a handler this
+			// program bound can still be called after release, and a disposed
+			// scope answers it by doing nothing rather than scheduling a render
+			// against a block that is gone.
+			scope?.dispose();
+			scope = null;
+			liveContext = null;
+			liveProps = undefined;
 		},
 	};
+	return program;
 }
 
 /**

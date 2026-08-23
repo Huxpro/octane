@@ -25,12 +25,13 @@
  * runs its setup, lowers the plan it returns to a template program, and makes
  * its slot values the block's values. A keyed range in that plan is lifted out
  * of the template and becomes a range site on the host node that held it, so a
- * list is reconciled by the core rather than repainted. That covers the
- * components whose setup needs no hook runtime; a hooked one is refused there
- * by name, because a bundle that silently rendered nothing would be far worse
- * than one that says which piece it lacks. Deriving is what makes a number from
- * this core a framework measurement rather than a floor, for the shapes it
- * reaches.
+ * list is reconciled by the core rather than repainted. The page's setup runs
+ * inside a hook scope of the universal core's own cells (item 1b), so a page
+ * that holds state — and a tap that writes it — is an ordinary program here. A
+ * hooked *row* is still refused there by name, because a bundle that silently
+ * rendered nothing would be far worse than one that says which piece it lacks.
+ * Deriving is what makes a number from this core a framework measurement rather
+ * than a floor, for the shapes it reaches.
  *
  * Either way a single application entry — `root.render(App)` — is driven by the
  * universal core with the flag off and by the Block core with the flag on,
@@ -159,6 +160,21 @@ export function createLynxBlockBackgroundCore(
 		container,
 		commit() {
 			return blockRoot.commit();
+		},
+		scheduleRender(work: () => void): Promise<void> {
+			// The same queue `renderAsync` takes its turn in, for the same
+			// reason: one render at a time, one commit in flight at a time. A
+			// program driving its own re-render out of band would otherwise
+			// overlap a caller's, and both would flush the core.
+			const run = renderQueue.then(async () => {
+				work();
+				await blockRoot.commit();
+			});
+			renderQueue = run.then(
+				() => undefined,
+				() => undefined,
+			);
+			return track(run);
 		},
 	});
 	// A derived program holds the block it mounted, so it belongs to this core

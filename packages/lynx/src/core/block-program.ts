@@ -31,6 +31,20 @@ export interface LynxBlockProgramContext {
 	 * empty one.
 	 */
 	commit(): Promise<UniversalHostBatch | null>;
+	/**
+	 * Run `work`, then commit it, serialized against every other render of this
+	 * root.
+	 *
+	 * A program that re-renders itself — because a cell it owns changed, not
+	 * because a caller handed it new props — has no caller to be serialized
+	 * against. It matters because a commit flushes: two of them in flight at
+	 * once means a second batch leaves with the first still unacknowledged, and
+	 * the root rejects an acknowledgement that arrives behind a later accepted
+	 * version. The returned promise settles when that frame is acknowledged and
+	 * rejects with whatever the render or the commit threw, so a self-driven
+	 * render has somewhere to report to.
+	 */
+	scheduleRender(work: () => void): Promise<void>;
 }
 
 /**
