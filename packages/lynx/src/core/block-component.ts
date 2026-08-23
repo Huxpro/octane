@@ -311,7 +311,7 @@ export function lynxBlockProgramForComponent<Props>(
 	 * a storm that writes a cell every tick while the previous render is still
 	 * waiting for its turn. Both fold into the render that has not run yet,
 	 * because it will read the cells as they are when it starts — which is why
-	 * this is cleared then rather than when the microtask fires.
+	 * this is cleared then rather than when the render is queued.
 	 *
 	 * Within a single handler only the render is saved: a second pass would find
 	 * every slot unchanged and commit nothing, so the extra frame was never
@@ -402,50 +402,44 @@ export function lynxBlockProgramForComponent<Props>(
 	/**
 	 * Re-render the page because one of its own cells changed.
 	 *
-	 * A microtask rather than the setter's own stack: a handler that writes two
-	 * cells must produce one frame, and running inside the setter would also
-	 * make a `setState` during render re-enter the render it came from — which
-	 * the scope already settles, on its own draft, without a commit.
+	 * `scheduleRender` rather than rendering on the setter's own stack. Three
+	 * things come from taking a turn in the core's queue instead:
 	 *
-	 * `scheduleRender` rather than a bare render and commit: this one has no
-	 * caller to be serialized against, and a page whose cells are written
-	 * faster than it renders would otherwise put two commits on the wire at
-	 * once. It is also what makes a storm cost renders rather than ticks — see
-	 * `renderQueued`, which is cleared when the render *starts*, so every write
-	 * that lands while one is waiting for its turn folds into it.
+	 * - The render runs after the handler returns, so a handler that writes two
+	 *   cells produces one frame rather than a torn one.
+	 * - It cannot overlap a render a caller started. A commit flushes the core,
+	 *   so two in flight means a second batch leaves with the first
+	 *   unacknowledged.
+	 * - A storm costs renders rather than ticks: `renderQueued` clears when the
+	 *   render *starts*, so every write that lands while this one waits for its
+	 *   turn folds into it.
 	 */
 	function queueStateRender(): void {
 		if (renderQueued) return;
+		const context = liveContext;
+		// Unmounted, so there is nothing left to write the new values to.
+		if (context === null || block === null) return;
 		renderQueued = true;
-		void Promise.resolve().then(() => {
-			const context = liveContext;
-			// Unmounted between the write and the microtask: the block is gone,
-			// so there is nothing to write the new values to.
-			if (context === null || block === null) {
+		void context
+			.scheduleRender(() => {
 				renderQueued = false;
-				return;
-			}
-			void context
-				.scheduleRender(() => {
-					renderQueued = false;
-					// Unmounted while this waited its turn. The core's queue makes
-					// that narrow — `unmountAsync` waits for work a program
-					// started — but a program that has been torn down must not
-					// write, and the check is cheaper than the invariant.
-					if (block === null) return;
-					renderAgain(context, liveProps as Props);
-				})
-				.catch((error: unknown) => {
-					// Nowhere to return this to: the tap that wrote the cell
-					// returned long ago, and the render it asked for is the whole
-					// frame. Rethrown from a timer so it reaches the runtime's
-					// error reporting instead of dying as a rejection the render
-					// queue already marked handled.
-					setTimeout(() => {
-						throw error;
-					}, 0);
-				});
-		});
+				// Unmounted while this waited its turn. The core's queue makes
+				// that narrow — `unmountAsync` waits for work a program started
+				// — but a program that has been torn down must not write, and
+				// the check is cheaper than the invariant.
+				if (block === null) return;
+				renderAgain(context, liveProps as Props);
+			})
+			.catch((error: unknown) => {
+				// Nowhere to return this to: the tap that wrote the cell returned
+				// long ago, and the render it asked for is the whole frame.
+				// Rethrown from a timer so it reaches the runtime's error
+				// reporting instead of dying as a rejection the render queue
+				// already marked handled.
+				setTimeout(() => {
+					throw error;
+				}, 0);
+			});
 	}
 
 	/**
