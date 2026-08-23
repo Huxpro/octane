@@ -587,6 +587,100 @@ describe('Lynx compiled component with its own state on the Block core', () => {
 		expect(paint(block.main.commits).tree).toContain('b-once');
 	});
 
+	it('reads the pending value through the third member of the tuple', async () => {
+		// `getState` projects the updates already queued, which is what lets a
+		// handler write twice off its own arithmetic. The pair is the contract:
+		// the same handler written against the rendered value lands on one,
+		// because both writes computed the same next value from the same
+		// snapshot.
+		const twice = (useProjected: boolean) =>
+			defineUniversalComponent(
+				LYNX_TRANSPORT_RENDERER,
+				function Adder(props: { readonly base: string }) {
+					const [taps, setTaps, getTaps] = useState(0, 'taps');
+					return universalValue(CARD_PLAN, [
+						'card',
+						`${props.base}-${TALLY[taps] ?? 'many'}`,
+						'card-meta',
+						() => {
+							setTaps((useProjected ? getTaps() : taps) + 1);
+							setTaps((useProjected ? getTaps() : taps) + 1);
+						},
+						'detail',
+					]);
+				},
+			);
+
+		const projected = blockColumn<{ readonly base: string }>();
+		await projected.render(twice(true) as LynxComponent<{ readonly base: string }>, {
+			base: 'n',
+		});
+		deliverTo(projected, boundListener(projected.main.commits));
+		await projected.settle(Promise.resolve());
+		expect(paint(projected.main.commits).tree).toContain('n-twice');
+
+		const rendered = blockColumn<{ readonly base: string }>();
+		await rendered.render(twice(false) as LynxComponent<{ readonly base: string }>, {
+			base: 'n',
+		});
+		deliverTo(rendered, boundListener(rendered.main.commits));
+		await rendered.settle(Promise.resolve());
+		expect(paint(rendered.main.commits).tree).toContain('n-once');
+	});
+
+	it('keeps a cell that belongs to a hook a render skipped', async () => {
+		// Hooks are keyed by call-site slot, not by call order, so a hook may sit
+		// behind a condition. Two things have to hold across that: the cell of the
+		// hook that did not run is still there when it runs again, and the hook
+		// that ran either way never picks up the other's cell.
+		const NAMES = ['first', 'second', 'third'] as const;
+		let leadInits = 0;
+		const Conditional = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Conditional(props: { readonly base: string; readonly extra: boolean }) {
+				let lead = 'skipped';
+				if (props.extra) {
+					const [value] = useState(() => NAMES[leadInits++] ?? 'many', 'lead');
+					lead = value;
+				}
+				const [tail, setTail] = useState('quiet', 'tail');
+				return universalValue(CARD_PLAN, [
+					'card',
+					`${props.base}-${tail}`,
+					'card-meta',
+					() => setTail('loud'),
+					lead,
+				]);
+			},
+		);
+
+		const block = blockColumn<{ readonly base: string; readonly extra: boolean }>();
+		const render = (extra: boolean) =>
+			block.render(
+				Conditional as LynxComponent<{ readonly base: string; readonly extra: boolean }>,
+				{ base: 'n', extra },
+			);
+
+		await render(true);
+		expect(paint(block.main.commits).tree).toContain('first');
+		expect(paint(block.main.commits).tree).toContain('n-quiet');
+
+		deliverTo(block, boundListener(block.main.commits));
+		await block.settle(Promise.resolve());
+		expect(paint(block.main.commits).tree).toContain('n-loud');
+
+		// The conditional hook does not run this render.
+		await render(false);
+		expect(paint(block.main.commits).tree).toContain('skipped');
+		expect(paint(block.main.commits).tree).toContain('n-loud');
+
+		// And it comes back to the cell it left, rather than to a fresh one or to
+		// the cell of the hook that kept running.
+		await render(true);
+		expect(paint(block.main.commits).tree).toContain('first');
+		expect(paint(block.main.commits).tree).toContain('n-loud');
+	});
+
 	it('never paints a frame with only one of two cells a tap wrote', async () => {
 		const block = blockColumn<{ readonly base: string }>();
 		const Two = defineUniversalComponent(
