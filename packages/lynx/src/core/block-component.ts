@@ -73,7 +73,12 @@ import type {
 // application calls are already linked into this bundle by the application
 // module itself, so what this adds to the graph is the scope factory and the
 // two record constructors it uses — not the reconciler, not a root.
-import { createUniversalHookScope, type UniversalHookScope } from 'octane/universal/native';
+import {
+	createUniversalHookScope,
+	UNIVERSAL_HOOK_SCOPE_CONTEXT_REFUSED,
+	UNIVERSAL_HOOK_SCOPE_EFFECTS_REFUSED,
+	type UniversalHookScope,
+} from 'octane/universal/native';
 import {
 	compiledUniversalTemplateProgram,
 	createUniversalHostEncoder,
@@ -393,6 +398,19 @@ export function lynxBlockProgramForComponent<Props>(
 			rendered = cells.render(() => renderPlanValue(subject, props));
 		} catch (error) {
 			cells.abort();
+			// The scope refuses capabilities it does not implement with stable
+			// messages; renamed here to the layer the application can see, the
+			// same way a row's HOOKS_WITHOUT_ATTEMPT is renamed in
+			// renderPlanValue.
+			if (error instanceof Error && error.message === UNIVERSAL_HOOK_SCOPE_EFFECTS_REFUSED) {
+				refuse(subject, EFFECTS_UNSUPPORTED);
+			}
+			if (error instanceof Error && error.message === UNIVERSAL_HOOK_SCOPE_CONTEXT_REFUSED) {
+				refuse(
+					subject,
+					'its setup reads a context, which needs the owner chain the Block core does not have yet (issue #135 item 1b).',
+				);
+			}
 			throw error;
 		}
 		cells.commit();

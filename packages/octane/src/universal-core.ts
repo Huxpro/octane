@@ -4738,6 +4738,21 @@ function universalTransitionBatchForUpdate(): UniversalTransitionBatch | null {
 	return UNIVERSAL_TRANSITIONS.batchForUpdate(UNIVERSAL_DISCRETE_EVENT_DEPTH > 0);
 }
 
+/**
+ * A hook scope's stand-in root has no microtask scheduler, no promotion, and
+ * no batch membership, so an update staged into a transition batch would fault
+ * when the batch promotes — and batch eligibility is module-global, so even a
+ * foreign root's in-flight async transition would otherwise catch a
+ * scope-owned setter. A transition is a scheduling hint rather than a
+ * semantic, so a scope-owned update runs urgently instead of being staged.
+ */
+function universalTransitionBatchForRecordUpdate(
+	record: UniversalOwnerRecord,
+): UniversalTransitionBatch | null {
+	if ((record.root as { hookScopeStandIn?: boolean }).hookScopeStandIn === true) return null;
+	return universalTransitionBatchForUpdate();
+}
+
 function stageUniversalTransitionUpdate(
 	batch: UniversalTransitionBatch,
 	owner: UniversalOwnerRecord,
@@ -5044,6 +5059,22 @@ const HOOK_SCOPE_REPLAY: readonly SuspendedOwnerSegment[] = Object.freeze([]);
 const HOOK_SCOPE_BATCHES: ReadonlySet<UniversalTransitionBatch> =
 	new Set<UniversalTransitionBatch>();
 const HOOK_SCOPE_REPLAY_ENTRIES: readonly SuspendedMemoEntry[] = Object.freeze([]);
+// Keeps every scope's `useId` values distinct from every other scope's — and,
+// through the `h`/`u` prefix split, from every root's — the same promise
+// `UniversalRootImpl.formatId` makes across roots.
+let NEXT_HOOK_SCOPE_ID = 0;
+
+/**
+ * What a scope render throws for a capability the scope does not implement.
+ * These are contracts a consumer may match on to name its own refusal, so the
+ * strings are stable: a component whose effect never runs, or whose context
+ * read silently answered the default value, would otherwise render cleanly and
+ * misbehave later — the exact failure mode a loud refusal exists to prevent.
+ */
+export const UNIVERSAL_HOOK_SCOPE_EFFECTS_REFUSED =
+	'Octane universal hook scope: the component declared an effect, and this scope has no commit phase to run one.';
+export const UNIVERSAL_HOOK_SCOPE_CONTEXT_REFUSED =
+	'Octane universal hook scope: the component read a context, and this scope has no provider chain to serve one.';
 
 export function createUniversalHookScope(services: UniversalHookScopeServices): UniversalHookScope {
 	// The hook path reads exactly two members off a root: the renderer id, which
@@ -5053,20 +5084,28 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 	// `UniversalRootImpl` unreachable from a core that only wants cells.
 	const root = {
 		renderer: services.renderer,
+		// The brand the setter path reads to keep a scope-owned update out of
+		// transition batches, which would promote through root machinery this
+		// stand-in deliberately does not have.
+		hookScopeStandIn: true,
 		scheduleOwned(): void {
 			services.scheduleRender();
 		},
 	} as unknown as UniversalRootImpl<any, any>;
+	const scopeId = (NEXT_HOOK_SCOPE_ID++).toString(36);
 	const hookRoot: KernelHookRootServices<UniversalContext<any>> = {
 		warmMemoToken: {},
 		formatId(index: number): string {
-			return `:octane-h${index.toString(36)}:`;
+			return `:octane-h${scopeId}-${index.toString(36)}:`;
 		},
-		// No bridge, so every context reads its default — the same answer a
-		// universal root with no bridge gives. A core that wants provider values
-		// needs the owner chain, which this scope deliberately does not have.
-		readBridgeContext<T>(context: UniversalContext<T>): T {
-			return context.defaultValue;
+		// A context read reaching the bridge means no provider answered — and a
+		// scope has no provider chain at all, so the default value is the only
+		// answer it could ever give. Silently giving it would make a component
+		// under a provider render the wrong value with no diagnostic, so the
+		// scope refuses instead; a core that wants provider values needs the
+		// owner chain this scope deliberately does not build.
+		readBridgeContext(): never {
+			throw new Error(UNIVERSAL_HOOK_SCOPE_CONTEXT_REFUSED);
 		},
 	};
 	const record = createOwnerRecord(root, null, null, HOOK_SCOPE_IDENTITY, null);
@@ -5101,6 +5140,11 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 			};
 			CURRENT_ATTEMPT = attempt;
 			CURRENT_OWNER = owner;
+			// The same per-pass housekeeping `executeOwner` does: the warm-plan
+			// stack truncates to its checkpoint so a `useBatch` warm plan neither
+			// leaks across renders nor replays a stale pass's speculation, and the
+			// effect list resets so only the settled pass's effects are judged.
+			const warmPlanCheckpoint = ACTIVE_UNIVERSAL_WARM_PLANS.length;
 			try {
 				// A setup that writes its own state settles inside this attempt,
 				// on this draft — the same loop and the same cap `executeOwner`
@@ -5110,15 +5154,24 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 				let produced: T;
 				for (let pass = 0; ; pass++) {
 					if (pass === 25) throw new Error('Too many universal render-phase updates.');
+					ACTIVE_UNIVERSAL_WARM_PLANS.length = warmPlanCheckpoint;
+					owner.seenEffects = [];
 					owner.needsRender = false;
 					owner.implicitSlot = 0;
 					produced = setup();
 					if (!owner.needsRender) break;
 				}
+				// An effect cell with nothing to run it is a subscription that
+				// silently never happens, so a setup that declared one on its
+				// settled pass is refused rather than committed.
+				if (owner.seenEffects.length !== 0) {
+					throw new Error(UNIVERSAL_HOOK_SCOPE_EFFECTS_REFUSED);
+				}
 				draft = owner;
 				nextUniversalId = attempt.nextUniversalId;
 				return produced;
 			} finally {
+				ACTIVE_UNIVERSAL_WARM_PLANS.length = warmPlanCheckpoint;
 				CURRENT_ATTEMPT = null;
 				CURRENT_OWNER = null;
 			}
@@ -5177,7 +5230,7 @@ export function useState<T>(
 					draft.needsRender = true;
 					return;
 				}
-				const transition = universalTransitionBatchForUpdate();
+				const transition = universalTransitionBatchForRecordUpdate(record);
 				const previous =
 					transition === null
 						? visibleStateValue(record, resolved, initialValue)
@@ -5254,7 +5307,7 @@ function universalLinkedStateHook<Source, Value>(
 
 				const committed = record.hooks.get(resolved) as LinkedStateHook<Source, Value> | undefined;
 				if (committed?.linked !== true) return;
-				const transition = universalTransitionBatchForUpdate();
+				const transition = universalTransitionBatchForRecordUpdate(record);
 				const parked = PARKED_UNIVERSAL_LINKED_DRAFTS?.get(committed) as
 					ParkedUniversalLinkedDraft<Source, Value> | undefined;
 				if (
@@ -5472,7 +5525,7 @@ export function useReducer<S, A, I = S>(
 					draft.needsRender = true;
 					return;
 				}
-				const transition = universalTransitionBatchForUpdate();
+				const transition = universalTransitionBatchForRecordUpdate(record);
 				if (transition !== null) {
 					stageUniversalTransitionUpdate(transition, record, resolved, 'reducer', action);
 					return;

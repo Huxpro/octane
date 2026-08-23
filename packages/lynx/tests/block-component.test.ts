@@ -29,6 +29,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	createContext,
 	createUniversalRoot,
 	defineUniversalComponent,
 	universalComponent,
@@ -36,6 +37,8 @@ import {
 	universalPlan,
 	universalProps,
 	universalValue,
+	useContext,
+	useEffect,
 	useState,
 	type UniversalRenderable,
 } from 'octane/universal/native';
@@ -756,6 +759,53 @@ describe('Lynx compiled component the Block core refuses', () => {
 				block.background.renderAsync(Listed as never, table([1], undefined, noop) as never),
 			),
 		).rejects.toThrow(/HookedRow.*calls a hook/s);
+	});
+
+	it('refuses a page that declares an effect rather than never running it', async () => {
+		const block = blockColumn();
+		// The page has hook cells now, so its useEffect reaches the scope rather
+		// than throwing HOOKS_WITHOUT_ATTEMPT — and the scope has no commit
+		// phase to run it. Mounting anyway would be a subscription that silently
+		// never happens, which is the failure this refusal exists to prevent.
+		const Subscribed = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Subscribed({ label, detail, active, onTap }: CardProps) {
+				useEffect(() => undefined, [], 'subscribe');
+				return universalValue(CARD_PLAN, [
+					active ? 'card active' : 'card',
+					label,
+					active ? 'card-meta on' : 'card-meta',
+					onTap,
+					detail,
+				]);
+			},
+		);
+		await expect(
+			block.settle(block.background.renderAsync(Subscribed as never, LADDER[0]!)),
+		).rejects.toThrow(/Subscribed.*declares an effect/s);
+	});
+
+	it('refuses a page that reads a context rather than answering the default', async () => {
+		const block = blockColumn();
+		const Theme = createContext('light');
+		// A scope has no provider chain, so the default is the only value a read
+		// could produce — and under a provider that value is silently wrong.
+		const Themed = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Themed({ label, detail, active, onTap }: CardProps) {
+				const theme = useContext(Theme);
+				return universalValue(CARD_PLAN, [
+					`card ${theme}`,
+					label,
+					active ? 'card-meta on' : 'card-meta',
+					onTap,
+					detail,
+				]);
+			},
+		);
+		await expect(
+			block.settle(block.background.renderAsync(Themed as never, LADDER[0]!)),
+		).rejects.toThrow(/Themed.*reads a context/s);
 	});
 
 	it('names a template that is not rooted at a host element', async () => {

@@ -21,8 +21,13 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	createContext,
 	createUniversalHookScope,
+	startTransition,
 	useCallback,
+	useContext,
+	useEffect,
+	useId,
 	useMemo,
 	useRef,
 	useState,
@@ -196,6 +201,79 @@ describe('universal hook scope', () => {
 		set(5);
 		expect(scheduled).toEqual([]);
 		expect(() => scope.render(() => undefined)).toThrow(/disposed/);
+	});
+
+	it('refuses a setup that declares an effect instead of never running it', () => {
+		const { scope } = scopeWithLog();
+		// The refusal is the contract: a scope has no commit phase, so an
+		// accepted effect would be a subscription that silently never happens.
+		expect(() =>
+			scope.render(() => {
+				useState(0, 'count');
+				useEffect(() => undefined, [], 'subscribe');
+			}),
+		).toThrow(/declared an effect/);
+		// The refused render left no draft, so nothing publishes.
+		scope.commit();
+		expect(scope.render(() => useState(3, 'count')[0])).toBe(3);
+		scope.dispose();
+	});
+
+	it('judges effects by the settled pass, not by every pass a render took', () => {
+		const { scope } = scopeWithLog();
+		// The first pass declares an effect and then writes state, so the render
+		// runs again; the settled pass declares none. Judging the accumulated
+		// list would refuse a component whose final render is effect-free.
+		expect(
+			scope.render(() => {
+				const [value, update] = useState(0, 'count');
+				if (value === 0) {
+					useEffect(() => undefined, [], 'subscribe');
+					update(1);
+				}
+				return value;
+			}),
+		).toBe(1);
+		scope.dispose();
+	});
+
+	it('refuses a context read instead of silently answering the default value', () => {
+		const { scope } = scopeWithLog();
+		const Theme = createContext('light');
+		// A scope has no provider chain, so the default is the only answer it
+		// could ever give — and under a provider that answer is silently wrong,
+		// which is why the read refuses rather than resolves.
+		expect(() => scope.render(() => useContext(Theme))).toThrow(/read a context/);
+		scope.dispose();
+	});
+
+	it('keeps useId values distinct across scopes, as roots keep them across roots', () => {
+		const { scope, pass } = scopeWithLog();
+		const other = scopeWithLog();
+		const a = pass(() => useId('id'));
+		const b = other.pass(() => useId('id'));
+		expect(a).not.toBe(b);
+		scope.dispose();
+		other.scope.dispose();
+	});
+
+	it('runs a committed setter urgently inside startTransition instead of staging it', () => {
+		const { scope, scheduled, pass } = scopeWithLog();
+		let set!: (value: number) => void;
+		pass(() => {
+			const [, update] = useState(0, 'count');
+			set = update;
+		});
+
+		// A transition is a scheduling hint. The scope's stand-in root has no
+		// promotion machinery, so the update runs on the urgent path: it
+		// schedules a render now and the value is there when it runs.
+		startTransition(() => {
+			set(5);
+		});
+		expect(scheduled).toEqual([1]);
+		expect(pass(() => useState(0, 'count')[0])).toBe(5);
+		scope.dispose();
 	});
 
 	it('refuses a second render while one is in flight', () => {
