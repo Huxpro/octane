@@ -30,6 +30,7 @@
  */
 
 import { sameLynxUniversalHostPropValue } from './host-props.js';
+import { LYNX_PROFILE } from './profiling.js';
 import type {
 	UniversalHostBatch,
 	UniversalHostCommand,
@@ -215,6 +216,38 @@ export interface LynxBlockCoreCounters {
 	readonly commands: number;
 }
 
+/**
+ * Where a profile build publishes its cores' counters.
+ *
+ * A core's counters live in its closure, so only the code that created it can
+ * read them. That is right for production and useless for measurement: the
+ * cell whose cost this core decides is a compiled application, and nothing in
+ * it holds the core — the lowering does. A harness driving that application
+ * from outside the bundle has no other way to ask what the background thread
+ * visited, and a visit is one of the costs no wire counter can see: a core that
+ * walked ten thousand blocks to write one sends exactly what a core that walked
+ * one sends.
+ *
+ * An array rather than a record: a realm may host more than one root, and
+ * summing them is the harness's decision to make, not this module's. Nothing
+ * prunes it, so a core that is finished is still retained by its entry — which
+ * is what a measurement build is for, and is why this is behind the flag rather
+ * than beside `counters()`.
+ *
+ * Gated on `__OCTANE_LYNX_PROFILE__` like every other counter here, so a
+ * production bundle neither publishes nor retains anything — see
+ * `core/profiling.ts`, which is the same flag and the same reasoning.
+ */
+export interface LynxBlockCoreProfileGlobals {
+	__OCTANE_LYNX_BLOCK_CORES__?: LynxBlockCoreProfileEntry[];
+}
+
+/** One published core: what it has visited, and how to start counting again. */
+export interface LynxBlockCoreProfileEntry {
+	counters(): LynxBlockCoreCounters;
+	resetCounters(): void;
+}
+
 export interface LynxBlockCoreOptions {
 	/** First host id this root may allocate. Ids are dense and monotonic. */
 	readonly firstId?: number;
@@ -277,6 +310,27 @@ export interface LynxBlockCore {
 	 * before destruction, with the same release obligation as reconcile.
 	 */
 	clearForSlot(slot: LynxBlockForSlot, departed?: (block: LynxBlock) => void): void;
+	/**
+	 * Every slot of one row of a range, by key, in one visit.
+	 *
+	 * `setKeyedSlotValue` is the primitive for a caller that knows which slot
+	 * moved. A component lowering does not: it knows the row's whole next value
+	 * array and lets the per-slot comparison decide, which is the same decision
+	 * `reconcileForSlot` makes for a survivor — but for one named row rather than
+	 * for the list. Without this a caller would reach the same place through
+	 * `valueCount` separate keyed writes, paying a map lookup and a `blockLookups`
+	 * tick per slot for a single block it visited once.
+	 *
+	 * Returns the block it visited, so a caller that has to rebind that row's
+	 * listeners too does not pay a second lookup for a key this one just
+	 * resolved. `undefined` when the range holds no such row, which is how
+	 * `setKeyedSlotValue` answers the same question.
+	 */
+	writeKeyedValues(
+		slot: LynxBlockForSlot,
+		key: unknown,
+		values: readonly UniversalHostTemplateProgramValue[],
+	): LynxBlock | undefined;
 	/** The scoped write. One key lookup, one command, independent of list size. */
 	setKeyedSlotValue(
 		slot: LynxBlockForSlot,
@@ -644,7 +698,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		slot.size = 0;
 	};
 
-	return {
+	const core: LynxBlockCore = {
 		mount(parent, before, template, values) {
 			return mountRun(parent, before, template, [values], [undefined])[0]!;
 		},
@@ -758,6 +812,20 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			link(slot, ordered);
 		},
 
+		writeKeyedValues(slot, key, values) {
+			blockLookups++;
+			const block = slot.items.get(key);
+			if (block === undefined) return undefined;
+			const template = block.template;
+			if (values.length !== template.valueCount) {
+				fail(`a row supplied ${values.length} values for a ${template.valueCount}-slot template`);
+			}
+			for (let valueIndex = 0; valueIndex < template.valueCount; valueIndex++) {
+				write(block, valueIndex, values[valueIndex]!);
+			}
+			return block;
+		},
+
 		setKeyedSlotValue(slot, key, valueIndex, value) {
 			// The whole architectural claim in three lines: one map lookup, one
 			// comparison, at most one command. The list's size does not appear.
@@ -796,4 +864,12 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			commandCount = 0;
 		},
 	};
+	if (LYNX_PROFILE) {
+		const globals = globalThis as LynxBlockCoreProfileGlobals;
+		(globals.__OCTANE_LYNX_BLOCK_CORES__ ??= []).push({
+			counters: () => core.counters(),
+			resetCounters: () => core.resetCounters(),
+		});
+	}
+	return core;
 }

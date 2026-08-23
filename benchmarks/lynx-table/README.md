@@ -94,7 +94,8 @@ Lynx first-screen integration tests and the real-browser harness below.
 node web/run-web.mjs               # octane + all vendored references
 node web/run-web.mjs --scales 1000,10000,30000 --reps 3 --cells octane,vue-vdom
 
-# wire counts beside the milliseconds: serve the OCTANE_LYNX_PROFILE=1 bundles
+# wire and background-work counts beside the milliseconds: serve the
+# OCTANE_LYNX_PROFILE=1 bundles
 OCTANE_LYNX_PROFILE=1 node scripts/build-app.mjs
 node web/run-web.mjs --cells octane --counter-build
 
@@ -161,17 +162,22 @@ Four things must travel with any number from these cells:
   the Block core costs; the other two say what the update path *could* cost for
   a page shaped like this one. `octane` is the fourth number and none is quoted
   without it.
-- **Three drive modes, and the derived one is a reconcile.** `octane-block`
-  writes the slot that changed, by key, the way a lowering with per-row reactive
-  cells would. `octane-block-reconcile` hands the whole next list to the keyed
-  reconciler, the way `setRows(next)` does today. Build both before quoting
-  either: reporting only the first credits the Block model with a win that
-  belongs to the scoped write. Structural operations (create, swap, remove) are
-  the same in both. **`octane-block-derived` belongs beside `reconcile`, not
-  beside `scoped`**: the app's state lives in a cell the page owns, so a write
-  re-renders the page and hands the whole list back to the reconciler. Reading
-  it against the scoped ceiling measures the scoping that is not built yet, not
-  the lowering that is.
+- **Three drive modes, and which ceiling the derived one is read against
+  depends on the op.** `octane-block` writes the slot that changed, by key, the
+  way a lowering with per-row reactive cells does. `octane-block-reconcile`
+  hands the whole next list to the keyed reconciler, the way `setRows(next)`
+  did before the lowering scoped it. Build both before quoting either:
+  reporting only the first credits the Block model with a win that belongs to
+  the scoped write. Structural operations (create, swap, remove) are the same in
+  both. **`octane-block-derived` belongs beside `scoped` for a change that moves
+  no key, and beside `reconcile` for one that does.** The app's state still
+  lives in a cell the page owns, so a write still re-renders the page — but the
+  lowering no longer hands the whole list back for it: a row whose component and
+  props are unchanged is not re-rendered, and a render that mounted, removed,
+  and moved nothing writes only the rows it called, by key. What the lowering
+  costs over a program that was told which row to write is the gap between those
+  two cells in one window, and the background-work counts below are where that
+  gap is visible at all.
 - **The first screen is not comparable.** The main-thread first-screen program is
   the same either way, but the Block core has no adoption story for it: its first
   commit mounts its own tree, main finds a mismatch and repairs, and the painted
@@ -193,6 +199,43 @@ Four things must travel with any number from these cells:
 
 `prototype/run-fcp.mjs` picks the cell up automatically once
 `app/dist-block-rows<N>/main.web.bundle` exists.
+
+### Background work, and why no other column can see it
+
+A `--counter-build` session also reports, per operation, what the background
+thread actually did to produce the paint:
+
+- **row bodies** — how many times the app's `Row` component body ran, counted
+  by the app itself (`app/src/App.lynx.tsrx`).
+- **block visits** — how many blocks the Block core looked up
+  (`packages/lynx/src/core/block-core.ts`, published on the realm under the
+  same build flag).
+
+A cell publishes a counter or it does not, and the report drops a column rather
+than filling it with a zero: the `octane` cell has no Block core, and the two
+hand-written cells have no component body — which is the same fact as their
+being ceilings. The derived cell publishes both, which is what makes it the
+cell to read.
+
+These exist because they are the only columns that separate two cores that
+paint the same tree for different amounts of work. A core that re-renders every
+row and then discovers that one of them changed sends exactly what a core that
+re-rendered one row sends: same commit, same command, same bytes. The wire
+counts come out identical, the milliseconds differ by whatever the host allows,
+and the work that actually differs appears nowhere else.
+
+`create`, `update10th`, `select`, and `clear` are single state changes, so both
+counts are invariants for this app and interaction and carry across hosts and
+sessions; the report prints "rows changed" beside them and their spread must be
+0. That column is read against a body count directly and against a visit count
+with one offset: `create` and `clear` mount and destroy rather than revisit, so
+a keyed core looks nothing up for either and the visit floor there is 0 rather
+than the table — the same thing `block-counts.mjs` says of its own `create`
+row. The storms are not invariants, for the reason their commit counts are not:
+two ticks that land before the scheduler flushes are answered by one render,
+exactly as two renders that land before a commit flushes ride in one commit. A
+storm's counts are therefore a property of the run, and the report prints the
+observed range rather than a model of it.
 
 ### What the storm cells actually measure
 

@@ -192,6 +192,41 @@ function refuse(component: LynxComponent<never>, reason: string): never {
 	);
 }
 
+/**
+ * `universal-core.ts`'s own props comparator, reproduced for the same reason
+ * the value tags above are: importing it would name the module this core exists
+ * to leave out of the bundle.
+ *
+ * Reproduced, so it can drift, which is why the parity is a test rather than a
+ * comment: `paints what the universal core paints while the row objects never
+ * change` runs one ladder through both cores and compares the painted tree at
+ * every rung, so a comparator that answered differently here is red rather than
+ * merely different.
+ */
+function blockShallowEqual(previous: unknown, next: unknown): boolean {
+	if (Object.is(previous, next)) return true;
+	if (
+		previous === null ||
+		next === null ||
+		typeof previous !== 'object' ||
+		typeof next !== 'object'
+	) {
+		return false;
+	}
+	const previousKeys = Object.keys(previous);
+	const nextKeys = Object.keys(next);
+	if (previousKeys.length !== nextKeys.length) return false;
+	for (const key of previousKeys) {
+		if (
+			!Object.prototype.hasOwnProperty.call(next, key) ||
+			!Object.is((previous as Record<string, unknown>)[key], (next as Record<string, unknown>)[key])
+		) {
+			return false;
+		}
+	}
+	return true;
+}
+
 /** Whether a hole's value is a keyed range rather than something a slot carries. */
 function isRangeValue(value: unknown): value is UniversalForValue {
 	return (
@@ -226,6 +261,40 @@ interface RangeState {
 	compiled: CompiledUniversalTemplateProgram | null;
 	prepared: PreparedUniversalTemplateProgram | null;
 	template: LynxBlockTemplate | null;
+	/**
+	 * What the last applied render produced, per key, for the rows it can be
+	 * asked about again.
+	 *
+	 * Only a row authored as `<Row … />` is in here. Such a row is a component
+	 * call with a props object, so "would this row render the same thing" is
+	 * answerable without calling it — the question the universal core answers
+	 * for the same shape with the same comparator when it retains a component
+	 * record. An inline `@for` body has no props object between the range and
+	 * the row's values, so nothing can stand in for calling it, and those rows
+	 * are simply never retained.
+	 *
+	 * Rebuilt whole on every applied render rather than mutated, so it holds
+	 * exactly the live keys and a range that shrinks cannot leak the rows it
+	 * dropped.
+	 */
+	retained: Map<unknown, RetainedRow | null> | null;
+	/**
+	 * The key sequence the last applied render left in the range.
+	 *
+	 * A render whose keys are the same list in the same order moved no block, so
+	 * there is nothing for the keyed reconciler to decide: every row is a
+	 * survivor of itself. Recording the sequence is what lets the next render
+	 * find that out for the price of the key comparisons it already makes.
+	 */
+	keys: readonly unknown[] | null;
+}
+
+/** One row's last render: what produced it, and what it produced. */
+interface RetainedRow {
+	readonly component: LynxComponent<never>;
+	readonly props: unknown;
+	readonly values: readonly UniversalHostTemplateProgramValue[];
+	readonly listeners: readonly (LynxBlockListener | null)[];
 }
 
 const EMPTY_RANGES: readonly RangeState[] = Object.freeze([]);
@@ -234,9 +303,16 @@ const EMPTY_RANGES: readonly RangeState[] = Object.freeze([]);
 interface RangeRender {
 	readonly state: RangeState;
 	readonly items: readonly unknown[];
-	readonly key: (item: unknown, index: number) => unknown;
 	readonly rows: readonly (readonly UniversalHostTemplateProgramValue[])[];
 	readonly handlers: readonly (readonly (LynxBlockListener | null)[])[];
+	/** This render's keys, in order, so the write path needs no second pass. */
+	readonly keys: readonly unknown[];
+	/** What the next render compares against, adopted only once this one applies. */
+	readonly retained: Map<unknown, RetainedRow | null>;
+	/** Whether any block has to be mounted, removed, or moved. */
+	readonly structural: boolean;
+	/** Indices of the rows this render actually called; the rest were retained. */
+	readonly rendered: readonly number[];
 }
 
 const EMPTY_RANGE_RENDERS: readonly RangeRender[] = Object.freeze([]);
@@ -563,28 +639,26 @@ export function lynxBlockProgramForComponent<Props>(
 	const renderRow = (
 		context: LynxBlockProgramContext,
 		state: RangeState,
-		list: UniversalForValue,
-		item: unknown,
-		index: number,
+		produced: unknown,
+		// The component and props `renderRange` already derived from `produced`
+		// for the memo comparison — threaded through rather than re-derived, so
+		// the row is called with exactly what was compared.
+		component: LynxComponent<never> | null,
+		props: unknown,
 	): {
 		readonly values: readonly UniversalHostTemplateProgramValue[];
 		readonly listeners: readonly (LynxBlockListener | null)[];
 	} => {
-		const produced = list.render(item, index);
 		// A row authored as `<Row … />` is a component invocation rather than a
-		// template: the plan is inside the component, so it is called for. The
-		// component boundary itself — its own hooks, its own memo — is the layer
-		// item 1b leaves open, and a row that needs one refuses by its own name.
+		// template: the plan is inside the component, so it is called for. Its
+		// own hooks are the layer item 1b leaves open, and a row that needs one
+		// refuses by its own name — which is also what makes the memo in
+		// `renderRange` sound rather than merely likely. A row with no hook
+		// cells, no context, and no effects is a function of the props it is
+		// handed, so props that compare equal produce what they produced.
 		let rendered: RenderedPlan;
-		if (
-			produced !== null &&
-			typeof produced === 'object' &&
-			(produced as { $$kind?: unknown }).$$kind === UNIVERSAL_COMPONENT_VALUE
-		) {
-			rendered = renderPlanValue(
-				(produced as UniversalComponentValue).component as unknown as LynxComponent<never>,
-				forwardedProps(produced as UniversalComponentValue),
-			);
+		if (component !== null) {
+			rendered = renderPlanValue(component, props);
 		} else {
 			// The page did return a compiled template — the row's output is what
 			// did not — so the diagnostic must say which level failed.
@@ -666,57 +740,153 @@ export function lynxBlockProgramForComponent<Props>(
 			);
 		}
 		const items = Array.from(list.items as Iterable<unknown>);
-		// The core rejects a duplicate key too, but its rejection lands after the
-		// page block was mounted — mid-write — so a retried render would mount a
-		// second copy of the page. Rejecting here keeps the produce-the-whole-
-		// render-then-apply rule: a render that cannot be applied writes nothing.
-		const seen = new Set<unknown>();
+		const rows: (readonly UniversalHostTemplateProgramValue[])[] = new Array(items.length);
+		const handlers: (readonly (LynxBlockListener | null)[])[] = new Array(items.length);
+		const keys: unknown[] = new Array(items.length);
+		// Every key, so the duplicate check below covers the whole range; a value
+		// only where one can be reused, so an inline row body costs no allocation
+		// for a memo it can never take.
+		const retained = new Map<unknown, RetainedRow | null>();
+		const rendered: number[] = [];
+		const previous = state.retained;
+		const previousKeys = state.keys;
+		// A first render, or one whose key list is a different length, has moved
+		// something by definition; below, a key that differs at its own position
+		// settles it for the rest.
+		let structural = previousKeys === null || previousKeys.length !== items.length;
 		for (let index = 0; index < items.length; index++) {
-			const itemKey = list.key(items[index], index);
-			if (seen.has(itemKey)) {
+			const item = items[index];
+			const itemKey = list.key(item, index);
+			// The core rejects a duplicate key too, but its rejection lands after
+			// the page block was mounted — mid-write — so a retried render would
+			// mount a second copy of the page. Rejecting here keeps the
+			// produce-the-whole-render-then-apply rule: a render that cannot be
+			// applied writes nothing. `retained` is the set that answers it, so the
+			// check costs the map this render was already building rather than a
+			// second pass and a second structure.
+			if (retained.has(itemKey)) {
 				throw new Error(
 					`Octane Lynx block core: duplicate key ${String(itemKey)} in a keyed range.`,
 				);
 			}
-			seen.add(itemKey);
-		}
-		const rows: (readonly UniversalHostTemplateProgramValue[])[] = new Array(items.length);
-		const handlers: (readonly (LynxBlockListener | null)[])[] = new Array(items.length);
-		for (let index = 0; index < items.length; index++) {
-			const row = renderRow(context, state, list, items[index], index);
+			keys[index] = itemKey;
+			if (!structural && !Object.is(previousKeys![index], itemKey)) structural = true;
+			// The `@for` body, which builds the row's props but does not call it.
+			// Lifted out of `renderRow` for exactly that reason: a row is skippable
+			// only if what it would be called with can be compared first.
+			const produced = list.render(item, index);
+			const component =
+				produced !== null &&
+				typeof produced === 'object' &&
+				(produced as { $$kind?: unknown }).$$kind === UNIVERSAL_COMPONENT_VALUE
+					? ((produced as UniversalComponentValue).component as unknown as LynxComponent<never>)
+					: null;
+			const props = component === null ? null : forwardedProps(produced as UniversalComponentValue);
+			if (component !== null) {
+				const prior = previous?.get(itemKey);
+				if (
+					prior != null &&
+					prior.component === component &&
+					blockShallowEqual(prior.props, props)
+				) {
+					// Same component, same props: the body is a function of its props,
+					// so it would produce what it produced last time. Its listeners are
+					// reused with its values — they close over props this comparison
+					// just found equal, so last render's closures reach the same
+					// functions and the same item as fresh ones would.
+					rows[index] = prior.values;
+					handlers[index] = prior.listeners;
+					retained.set(itemKey, prior);
+					continue;
+				}
+			}
+			const row = renderRow(context, state, produced, component, props);
 			rows[index] = row.values;
 			handlers[index] = row.listeners;
+			rendered.push(index);
+			retained.set(
+				itemKey,
+				component === null
+					? null
+					: { component, props, values: row.values, listeners: row.listeners },
+			);
 		}
-		return { state, items, key: list.key, rows, handlers };
+		return { state, items, rows, handlers, keys, retained, structural, rendered };
 	};
 
 	/**
 	 * Bring one range site level with the render above.
 	 *
-	 * Handlers are rebound over the range in final order rather than only for
-	 * the rows that arrived: a row's handlers close over that row's item and
-	 * this render's props, so a survivor that kept its hosts still needs this
-	 * render's closures. The linked list is already in item order once the
-	 * reconcile returns, so that costs a walk rather than a lookup per row.
-	 * A row that has an empty hole this render is released before it is rebound,
-	 * for the reason `update` releases the block's own: binding skips an empty
-	 * conditional hole rather than clearing it, so a row that withdrew a handler
-	 * would otherwise keep reaching the closure of the render that last supplied
-	 * one. Only such a row, because a row whose every site holds a function has
-	 * every one of those sites overwritten by the bind — releasing it first
-	 * would be two map writes per site to reach the state it is already in, on
-	 * every row of every list on every render.
+	 * Two paths, chosen by whether this render moved anything. A render whose
+	 * key sequence is the one already mounted mounts, removes, and moves
+	 * nothing, so there is no reconcile to run: what is left is the rows that
+	 * were actually called, each reached by its key. A render that did move
+	 * something hands the whole list to the keyed reconciler, which is the only
+	 * thing that can decide the survivors. Both leave the range holding what
+	 * the render produced and differ only in how much they visit to do it,
+	 * which is why deleting the first changes no test — only counts.
+	 *
+	 * Through the reconciler, handlers are rebound over the range in final
+	 * order rather than only for the rows that arrived: a row's handlers close
+	 * over that row's item and this render's props, so a survivor that kept its
+	 * hosts still needs this render's closures. The linked list is already in
+	 * item order once the reconcile returns, so that costs a walk rather than a
+	 * lookup per row. The scoped path rebinds fewer rows because it knows more
+	 * about them: a row it did not call was retained on props this render found
+	 * equal, so the closures already bound reach the same functions and the
+	 * same item that fresh ones would.
+	 *
+	 * On either path, a row that has an empty hole this render is released
+	 * before it is rebound, for the reason `update` releases the block's own:
+	 * binding skips an empty conditional hole rather than clearing it, so a row
+	 * that withdrew a handler would otherwise keep reaching the closure of the
+	 * render that last supplied one. Only such a row, because a row whose every
+	 * site holds a function has every one of those sites overwritten by the
+	 * bind — releasing it first would be two map writes per site to reach the
+	 * state it is already in, on every row of every list on every render.
 	 */
 	const applyRange = (context: LynxBlockProgramContext, render: RangeRender): void => {
 		const state = render.state;
 		// A list that has never had a row has no template to reconcile against,
 		// and nothing mounted to reconcile.
 		if (state.template === null) return;
+		state.retained = render.retained;
+		state.keys = render.keys;
+		if (!render.structural) {
+			// The same keys in the same order: every row is a survivor of itself,
+			// so there is no mount, no removal, and no move for the reconciler to
+			// decide. What is left is the rows this render actually called — the
+			// rest produced what they already hold — and each of those is one keyed
+			// visit rather than a walk of the list.
+			//
+			// This is the scoped write the hand-written ceiling program makes by
+			// hand, reached from a component instead: `benchmarks/lynx-table/app/
+			// src/block-program.ts`'s `select` writes the two rows whose class
+			// moved, and so does this, without the page having told it which two.
+			const events = state.prepared!.events.length !== 0;
+			for (const index of render.rendered) {
+				const member = context.core.writeKeyedValues(
+					state.site!,
+					render.keys[index],
+					render.rows[index]!,
+				);
+				if (!events || member === undefined) continue;
+				const handlers = render.handlers[index]!;
+				if (handlers.includes(null)) context.root.releaseListeners(member);
+				context.root.bindListeners(member, handlers);
+			}
+			return;
+		}
 		context.core.reconcileForSlot(
 			state.site!,
 			state.template,
 			render.items,
-			render.key,
+			// The keys `renderRange` already derived and duplicate-checked, not
+			// the user's key function again: the reconciler must mount under
+			// exactly the keys `state.keys` records, or an impure key function
+			// could let a later render's same-sequence check pass against keys
+			// the range is not actually holding.
+			(_item, index) => render.keys[index]!,
 			(_item, index) => render.rows[index]!,
 			(member) => {
 				context.root.releaseListeners(member);
@@ -853,6 +1023,8 @@ export function lynxBlockProgramForComponent<Props>(
 							compiled: null,
 							prepared: null,
 							template: null,
+							retained: null,
+							keys: null,
 						}));
 			const template: LynxBlockTemplate = compileLynxBlockTemplate(wire.wire);
 			const values = valuesFor(context, rendered.values);
