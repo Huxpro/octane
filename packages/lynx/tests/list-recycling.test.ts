@@ -1766,4 +1766,108 @@ describe('Lynx deferred template runs', () => {
 			expect(disposeLynxHostContainer(container).errors).toEqual([]);
 		});
 	});
+
+	// Issue #135 item 2 (#103 U3b-b3) — the two ways a declared host stops being
+	// one. Both are promotions, and they are not the same size; the retained-heap
+	// figures those counts explain are in `benchmarks/lynx-list/retention.mjs`.
+	it('promotes the host an update wrote and leaves the rest of its row declared', () => {
+		withList(({ container }) => {
+			const rows = 1_000;
+			const before = container.instanceCount;
+			prepareLynxHostBatch(container, batch(1, deferredListMount(rows))).apply();
+			expect(container.instanceCount - before).toBe(1);
+
+			// One `update` per row against the `#text` that carries its value — the
+			// commit a re-render produces when that value changed, for rows the list
+			// has never asked for. A written host cannot be derived from its
+			// declaration any more, so it becomes a record.
+			prepareLynxHostBatch(
+				container,
+				batch(
+					2,
+					Array.from({ length: rows }, (_unused, index) => ({
+						op: 'update' as const,
+						id: rowIdsAt(index).raw,
+						props: { value: `Renamed ${index}` },
+					})),
+				),
+			).apply();
+
+			// One host per row, not one row per row. Rewriting every row of a
+			// 1,000-row list leaves the driver holding 1,001 records where an eager
+			// mount holds 3,001 — a third, not all of it.
+			expect(container.instanceCount - before).toBe(1 + rows);
+
+			// The two hosts the update did not name are still declared, and the row
+			// still paints from the values its own instance carries — the rewritten
+			// one from the record, the rest from the run.
+			const list = (container.page as unknown as Element).querySelector('#feed')!;
+			globalThis.elementTree.enterListItemAtIndex(list as never, 815, 11, false);
+			expect(list.firstElementChild?.textContent).toBe('Renamed 815');
+			expect(list.firstElementChild?.getAttribute('item-key')).toBe('item-815');
+			expect(container.instanceCount - before).toBe(1 + rows + 2);
+
+			expect(disposeLynxHostContainer(container).errors).toEqual([]);
+		});
+	});
+
+	it('keeps a write to a declared row across a recycle', () => {
+		withList(({ container }) => {
+			// The invariant a release-on-enqueue optimization must not break. A row
+			// the list has never shown is rewritten, shown, recycled away, and shown
+			// again: the second paint has to be the written value, because the
+			// declaration still holds the value the write replaced. Releasing a
+			// promoted host back to its run on enqueue would paint `Row 3` here.
+			prepareLynxHostBatch(container, batch(1, deferredListMount(50))).apply();
+			prepareLynxHostBatch(
+				container,
+				batch(2, [{ op: 'update', id: rowIdsAt(3).raw, props: { value: 'Renamed 3' } }]),
+			).apply();
+			const list = (container.page as unknown as Element).querySelector('#feed')!;
+			const sign = globalThis.elementTree.enterListItemAtIndex(list as never, 3, 11, false);
+			expect(list.firstElementChild?.textContent).toBe('Renamed 3');
+
+			globalThis.elementTree.leaveListItem(list as never, sign);
+			globalThis.elementTree.enterListItemAtIndex(list as never, 9, 12, false);
+			globalThis.elementTree.enterListItemAtIndex(list as never, 3, 13, false);
+			expect([...list.children].map((child) => child.textContent)).toContain('Renamed 3');
+
+			expect(disposeLynxHostContainer(container).errors).toEqual([]);
+		});
+	});
+
+	it('holds what an eager mount holds once the list has been scrolled end to end', () => {
+		// Deferral is deferral, not release: a row promotes when the list asks for
+		// it and stays promoted after the cell is enqueued, so a list the user has
+		// scrolled through converges on the eager count exactly rather than
+		// approximately. That is the ceiling on this slice, and releasing an
+		// unwritten host back to its declaration on enqueue is what would lift it.
+		const rows = 200;
+		const window = 12;
+		const scrollThrough = (mount: readonly UniversalHostCommand[]): number =>
+			withList(({ container }) => {
+				const before = container.instanceCount;
+				prepareLynxHostBatch(container, batch(1, mount)).apply();
+				const list = (container.page as unknown as Element).querySelector('#feed')!;
+				const signs: number[] = [];
+				for (let index = 0; index < window; index++) {
+					signs.push(globalThis.elementTree.enterListItemAtIndex(list as never, index, 11, false));
+				}
+				for (let index = window; index < rows; index++) {
+					globalThis.elementTree.leaveListItem(list as never, signs.shift()!);
+					signs.push(globalThis.elementTree.enterListItemAtIndex(list as never, index, 11, false));
+				}
+				const held = container.instanceCount - before;
+				expect(disposeLynxHostContainer(container).errors).toEqual([]);
+				return held;
+			});
+
+		const eagerMount: UniversalHostCommand[] = [
+			{ op: 'create', id: 1, type: 'list', props: { id: 'feed' } },
+			...eagerRows(rows),
+			{ op: 'insert', parent: null, id: 1, before: null },
+		];
+		expect(scrollThrough(deferredListMount(rows))).toBe(1 + rows * ROW_HOSTS);
+		expect(scrollThrough(eagerMount)).toBe(1 + rows * ROW_HOSTS);
+	});
 });
