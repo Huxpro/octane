@@ -11,14 +11,21 @@ const autoSuffix = autoRows > 0 ? `-rows${autoRows}` : '';
 // default bundle measures the shipping configuration.
 const profile = process.env.OCTANE_LYNX_PROFILE === '1';
 
+/** The Block core's drive modes, spelled once. `scoped` carries no suffix. */
+const BLOCK_MODES = new Set(['scoped', 'reconcile', 'derived']);
+
 // BENCH_CORE=block builds the issue-#103 Block background core instead of the
-// universal one, and BENCH_BLOCK_MODE picks how that core is driven on a
-// value-only change (see app/src/block-program.ts). The main-thread first
-// screen is the same program either way; only the background driver changes.
+// universal one, and BENCH_BLOCK_MODE picks what drives that core: `scoped` and
+// `reconcile` are the hand-written program's two modes (see
+// app/src/block-program.ts), and `derived` is the compiled `App` itself, lowered
+// onto the core by the framework (issue-#135 item 1b). The main-thread first
+// screen is the same program in every case; only the background driver changes.
 const core = process.env.BENCH_CORE === 'block' ? 'block' : 'universal';
-const blockMode = process.env.BENCH_BLOCK_MODE === 'reconcile' ? 'reconcile' : 'scoped';
+const blockMode = BLOCK_MODES.has(process.env.BENCH_BLOCK_MODE)
+	? process.env.BENCH_BLOCK_MODE
+	: 'scoped';
 const coreSuffix =
-	core === 'block' ? (blockMode === 'reconcile' ? '-block-reconcile' : '-block') : '';
+	core === 'block' ? (blockMode === 'scoped' ? '-block' : `-block-${blockMode}`) : '';
 
 export default defineConfig(({ command }) => {
 	// BENCH_DEV=1 keeps development diagnostics (transport self-checks, error
