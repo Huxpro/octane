@@ -162,15 +162,27 @@ try {
 	const mib = (bytes) => (bytes / 1024 / 1024).toFixed(2);
 	const range = (values) => `${mib(Math.min(...values))}-${mib(Math.max(...values))}`;
 
+	// The report names the shape it measured from the constants the samples read,
+	// so a workload edit cannot leave the header describing a different list.
+	const workloadShape = await import(pathToFileURL(bundlePath).href);
+	const logicalRows = workloadShape.LOGICAL_ITEM_COUNT;
+	const windowSize = workloadShape.VISIBLE_WINDOW_SIZE;
+
 	for (const kind of ['narrow', 'wide']) {
-		console.log(`\n${kind} row — 1,000 logical rows, 12-cell window\n`);
+		console.log(
+			`\n${kind} row — ${logicalRows.toLocaleString('en-US')} logical rows, ${windowSize}-cell window\n`,
+		);
 		const bytesByCell = new Map();
 		const hostsByCell = new Map();
 		for (const state of STATES) {
 			// AB then BA across process launches, so an ordering effect in the host
-			// cannot land on one arm.
+			// cannot land on one arm. The #120 model arm is sampled only at
+			// `mounted`, and it rides the same rotation for the same reason: a
+			// block of model launches at the end would collect the whole run's
+			// drift in the one column that is ratioed against `declared/mounted`.
+			const arms = state === 'mounted' ? [...ARMS, 'model'] : ARMS;
 			for (let pair = 0; pair < PAIRS; pair++) {
-				const order = pair % 2 === 0 ? ARMS : [...ARMS].reverse();
+				const order = pair % 2 === 0 ? arms : [...arms].reverse();
 				for (const arm of order) {
 					const result = sample(kind, arm, state);
 					if (result.bytes <= 0) throw new Error(`${kind}/${arm}/${state}: sample did not settle.`);
@@ -212,14 +224,19 @@ try {
 		}
 
 		// The eager arm is the control: its record count is the same integer in
-		// every state above, so whatever its byte column does across those states
-		// is what this instrument cannot resolve. A declared-arm difference inside
-		// that band is not a reading.
+		// every state above. Its byte column is not expected to be flat, though —
+		// two components genuinely differ between states at that same record
+		// count: the replacement strings a write leaves retained on the rewritten
+		// rows, and the visible window's physical cells, which `mounted` alone
+		// never creates. Both are small (hundreds of short strings, a dozen
+		// cells), so the spread is an upper bound on the instrument plus those,
+		// and a declared-arm difference inside that band is still not a reading.
 		//
-		// One state carrying most of that spread is a heap-sizing step rather than
-		// a floor under the whole table, so it is named instead of quietly widening
-		// every row's error bar. That is derived from the data here, not asserted:
-		// drop the farthest state and see whether the spread collapses.
+		// One state carrying most of the spread — far beyond what those two
+		// components can account for — is a heap-sizing step rather than a floor
+		// under the whole table, so it is named instead of quietly widening every
+		// row's error bar. That is derived from the data here, not asserted: drop
+		// the farthest state and see whether the spread collapses.
 		const spread = (values) => Math.max(...values) - Math.min(...values);
 		const floor = spread(eagerMedians);
 		const centre = median(eagerMedians);
@@ -233,11 +250,14 @@ try {
 		console.log(
 			`\n  instrument floor: the eager arm holds the same ` +
 				`${hostsByCell.get('eager/mounted')} records in every state above, and its byte ` +
-				`column still spans ${mib(floor)} MiB. Nothing smaller than that is a reading` +
+				`column still spans ${mib(floor)} MiB — the instrument, plus the two small ` +
+				`things the states do not share at that record count (a write's retained ` +
+				`replacement strings; the visible window's cells, absent in \`mounted\`). ` +
+				`Nothing smaller than that span is a reading` +
 				(without * 2 < floor
 					? `, and \`${STATES[outlier]}\` carries most of it — without that one state the ` +
-						`control spans ${mib(without)} MiB, so its own byte row is a heap-sizing step ` +
-						'rather than anything either arm retained.'
+						`control spans ${mib(without)} MiB. A step that size, unmatched by neighbours ` +
+						'at the same record count, is the heap resizing rather than a commit retaining.'
 					: '.'),
 		);
 
@@ -245,10 +265,11 @@ try {
 		// one frozen program plus one value row per item, and no container, list,
 		// cell, or record at all. It is a floor, so it is compared against the one
 		// state that has read nothing — `mounted` — and reported as the distance
-		// from that floor rather than retired quietly.
-		const model = [];
-		for (let pair = 0; pair < PAIRS; pair++) model.push(sample(kind, 'model', 'mounted').bytes);
-		const modelMedian = median(model);
+		// from that floor rather than retired quietly. Its samples were collected
+		// in the interleaved rotation above, under the same settle guard as the
+		// two real arms.
+		const modelMedian = median(bytesByCell.get('model/mounted'));
+		const model = bytesByCell.get('model/mounted');
 		const declaredMounted = median(bytesByCell.get('declared/mounted'));
 		console.log(
 			`\n  #120's model (program + values, no container): ${mib(modelMedian)} MiB ` +
