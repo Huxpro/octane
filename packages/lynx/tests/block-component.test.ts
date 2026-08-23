@@ -1411,3 +1411,153 @@ describe('Lynx compiled component with a keyed range the Block core refuses', ()
 		).rejects.toThrow(/mounted a keyed range later held something else/);
 	});
 });
+
+/**
+ * Item 1's widening slice: a row the page re-rendered past.
+ *
+ * Every ladder above rebuilds its rows from scratch each rung, which is a fair
+ * model of `setRows(next)` and no model at all of the other half of what a page
+ * does. `setSelected` leaves `rows` alone: the array, and every object in it,
+ * survives the render that changed the page. A lowering that answers "same
+ * item, same row" would paint that ladder perfectly and still be wrong, because
+ * what moved is a *sibling* prop the row is given rather than anything the row
+ * is keyed by.
+ *
+ * So these rungs hold item identity fixed on purpose and move the page around
+ * it, and the oracle stays the one the file uses everywhere else: the two cores
+ * must paint the same tree at every step.
+ */
+const STABLE_ROWS: readonly TableRow[] = [
+	{ id: 1, label: 'row 1' },
+	{ id: 2, label: 'row 2' },
+	{ id: 3, label: 'row 3' },
+	{ id: 4, label: 'row 4' },
+	{ id: 5, label: 'row 5' },
+];
+
+/** `<Row … />` per row: the shape the benchmark page and every real page use. */
+function stableColumnComponent(): LynxComponent<TableProps> {
+	const Row = defineUniversalComponent(
+		LYNX_TRANSPORT_RENDERER,
+		function Row(props: {
+			readonly row: TableRow;
+			readonly isSelected: boolean;
+			readonly onSelect: (id: number) => void;
+		}) {
+			return universalValue(ROW_PLAN, [
+				props.isSelected ? 'row danger' : 'row',
+				String(props.row.id),
+				() => props.onSelect(props.row.id),
+				props.row.label,
+			]);
+		},
+	);
+	const Listed = defineUniversalComponent(
+		LYNX_TRANSPORT_RENDERER,
+		function Listed(props: TableProps) {
+			return universalValue(TABLE_PLAN, [
+				universalFor(
+					props.rows,
+					(row: TableRow) => row.id,
+					(row: TableRow) =>
+						universalComponent(
+							LYNX_TRANSPORT_RENDERER,
+							Row,
+							universalProps([
+								['set', 'row', row],
+								['set', 'isSelected', row.id === props.selected],
+								['set', 'onSelect', props.onSelect],
+							]),
+						),
+				),
+			]);
+		},
+	);
+	return Listed as LynxComponent<TableProps>;
+}
+
+describe('Lynx compiled component whose rows outlive the render', () => {
+	it('paints what the universal core paints while the row objects never change', async () => {
+		const Listed = stableColumnComponent();
+		// One function for every rung: a fresh one each render would change every
+		// row's props and make the ladder prove nothing about a row left alone.
+		const onSelect = (): void => {};
+		const edited = STABLE_ROWS.map((row) =>
+			row.id === 2 ? { id: 2, label: 'row 2 edited' } : row,
+		);
+		// Every rung reuses the objects of the one before it wherever the page
+		// would. Only `edited` and the reorder build a new array, and even those
+		// keep every row object they did not touch.
+		const ladder: readonly TableProps[] = [
+			{ rows: [], selected: undefined, onSelect },
+			{ rows: STABLE_ROWS, selected: undefined, onSelect },
+			// The selection moves and nothing else does — the rung the older
+			// ladders have no spelling for.
+			{ rows: STABLE_ROWS, selected: 3, onSelect },
+			// …and moves again, so one row gains the class and another loses it.
+			{ rows: STABLE_ROWS, selected: 4, onSelect },
+			// A render that moves nothing at all.
+			{ rows: STABLE_ROWS, selected: 4, onSelect },
+			// One row's own data changes; its four neighbours are the same objects.
+			{ rows: edited, selected: 4, onSelect },
+			// A reorder over surviving objects: keys move, values do not.
+			{ rows: [edited[4]!, ...edited.slice(1, 4), edited[0]!], selected: 4, onSelect },
+			// A removal, then a selection change over what is left.
+			{ rows: [edited[4]!, edited[2]!, edited[3]!, edited[0]!], selected: 4, onSelect },
+			{ rows: [edited[4]!, edited[2]!, edited[3]!, edited[0]!], selected: 3, onSelect },
+			// The removed row returns, so the range grows over surviving objects.
+			{ rows: edited, selected: 3, onSelect },
+			{ rows: [], selected: undefined, onSelect },
+		];
+
+		const universal = universalColumn(Listed);
+		const block = blockColumn<TableProps>();
+		for (const props of ladder) {
+			await universal.render(props);
+			await block.render(Listed, props);
+			expect(paint(block.main.commits).tree).toBe(paint(universal.main.commits).tree);
+		}
+	});
+
+	it('routes a tap to a row the last render left alone', async () => {
+		// The listeners of a row the render did not call are the closures an
+		// earlier render made. They may be kept only because the props they close
+		// over compared equal, so this is the assertion that says they still reach
+		// the right row rather than the row that happened to be there when they
+		// were made.
+		const taps: number[] = [];
+		const Listed = stableColumnComponent();
+		const onSelect = (id: number): void => void taps.push(id);
+		const block = blockColumn<TableProps>();
+		await block.render(Listed, { rows: STABLE_ROWS, selected: undefined, onSelect });
+		// Row 1 is the one that changes; rows 2-5 are left exactly as they were.
+		await block.render(Listed, { rows: STABLE_ROWS, selected: 1, onSelect });
+		deliverTo(block, rowListener(block.main.commits, 3));
+		deliverTo(block, rowListener(block.main.commits, 0));
+		expect(taps).toEqual([4, 1]);
+	});
+
+	it('gives a re-rendered row this render’s handler rather than the one it kept', async () => {
+		// The other half: a row the render *did* call must stop reaching the
+		// closure it had, because that one closes over the previous props.
+		const first: number[] = [];
+		const second: number[] = [];
+		const Listed = stableColumnComponent();
+		const block = blockColumn<TableProps>();
+		await block.render(Listed, {
+			rows: STABLE_ROWS,
+			selected: undefined,
+			onSelect: (id) => first.push(id),
+		});
+		// `onSelect` is a different function this render, so every row's props
+		// differ and every row is called again.
+		await block.render(Listed, {
+			rows: STABLE_ROWS,
+			selected: undefined,
+			onSelect: (id) => second.push(id),
+		});
+		deliverTo(block, rowListener(block.main.commits, 2));
+		expect(first).toEqual([]);
+		expect(second).toEqual([3]);
+	});
+});

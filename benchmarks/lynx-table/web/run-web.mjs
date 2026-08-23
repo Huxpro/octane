@@ -296,6 +296,62 @@ async function resetFloorCounters(page) {
 	await eachRealm(page, RESET_FLOOR);
 }
 
+// What the background thread did to produce one operation's paint, on the two
+// axes the wire cannot show (issue #135 item 1):
+//
+//   rowBodies    `Row` component bodies executed, counted by the app itself
+//                (`app/src/App.lynx.tsrx`). The two hand-written cells never
+//                run one and report nothing.
+//   blockVisits  blocks the Block core looked up, summed over the realm's
+//                cores (`core/block-core.ts`). The universal cell has no
+//                Block core and reports nothing.
+//
+// Both are published behind the same `__OCTANE_LYNX_PROFILE__` flag as the
+// wire counters, so both read as null unless the cell was served from a
+// `--counter-build` bundle, and the vendored reference cells define neither.
+//
+// This is the one place in the report where "the same paint for less work" is
+// visible at all. A core that re-renders ten thousand rows and then discovers
+// one changed sends exactly what a core that re-rendered one sends: same
+// commit, same command, same bytes. Every other column agrees; these two do
+// not.
+const READ_WORK = () => {
+	const bodies = globalThis.__BENCH_ROW_RENDERS__;
+	const cores = globalThis.__OCTANE_LYNX_BLOCK_CORES__;
+	const value = {};
+	if (typeof bodies === 'number') value.rowBodies = bodies;
+	if (Array.isArray(cores) && cores.length !== 0) {
+		value.blockVisits = cores.reduce((total, core) => total + core.counters().blockLookups, 0);
+	}
+	return Object.keys(value).length === 0 ? null : value;
+};
+const RESET_WORK = () => {
+	if (typeof globalThis.__BENCH_ROW_RENDERS__ === 'number') globalThis.__BENCH_ROW_RENDERS__ = 0;
+	const cores = globalThis.__OCTANE_LYNX_BLOCK_CORES__;
+	if (Array.isArray(cores)) for (const core of cores) core.resetCounters();
+	return true;
+};
+
+// Summed rather than maxed across realms, unlike the floor counters: a row body
+// and a block visit each happen once wherever they happen, so two realms that
+// both report are two halves of one number. In this hosting only the background
+// realm reports either.
+async function readWorkCounters(page) {
+	const seen = (await eachRealm(page, READ_WORK)).filter((value) => value !== null);
+	if (seen.length === 0) return null;
+	const total = {};
+	for (const field of WORK_FIELDS) {
+		const reported = seen.filter((value) => typeof value[field] === 'number');
+		if (reported.length === 0) continue;
+		total[field] = reported.reduce((sum, value) => sum + value[field], 0);
+	}
+	return Object.keys(total).length === 0 ? null : total;
+}
+
+async function resetWorkCounters(page) {
+	await eachRealm(page, RESET_WORK);
+}
+
 // Wire counters: how many commits each cell actually put on the wire for one
 // operation, and how many host commands rode in them. `@octanejs/lynx` keeps
 // these per realm under `__OCTANE_LYNX_PROF` (core/profiling.ts) behind the
@@ -403,11 +459,14 @@ async function runRep(browser, cell, rows) {
 	const measure = async (name, run) => {
 		await resetFloorCounters(page);
 		await resetWireCounters(page);
+		await resetWorkCounters(page);
 		sample[name] = await run();
 		const counts = await readFloorCounters(page);
 		if (counts !== null) (sample.counts ??= {})[name] = counts;
 		const wire = await readWireCounters(page);
 		if (wire !== null) (sample.wire ??= {})[name] = wire;
+		const work = await readWorkCounters(page);
+		if (work !== null) (sample.work ??= {})[name] = work;
 	};
 	try {
 		await driver.settle();
@@ -463,6 +522,40 @@ async function runRep(browser, cell, rows) {
 const OPS = ['create', 'update10th', 'select', 'updateStorm', 'selectStorm', 'clear'];
 const FLOOR_FIELDS = ['rowVisits', 'writes', 'rowScans', 'blockLookups'];
 const WIRE_FIELDS = ['bgCommits', 'bgCommands', 'bgEmptyCommits', 'mtCommits', 'mtCommands'];
+const WORK_FIELDS = ['rowBodies', 'blockVisits'];
+
+/**
+ * How many rows each single-change operation changes — what a core that touches
+ * only what changed does the work for.
+ *
+ * `create` fills an empty table, so every row is new. `update10th` relabels
+ * every tenth row. `select` is the first selection this ladder makes, so one
+ * row gains the class and none loses it — a second selection would change two.
+ * `clear` empties the table, and a removed row has neither a body to run nor a
+ * survivor to look up.
+ *
+ * It is read against a body count directly and against a visit count with one
+ * offset: `create` and `clear` mount and destroy rather than revisit, so a
+ * keyed core looks nothing up for either and the visit floor there is 0, not
+ * the table. `block-counts.mjs` says the same of its own `create` row.
+ *
+ * The storms are deliberately absent rather than modelled as their ticks
+ * summed. A tick posts a state change and a render answers it, but two ticks
+ * that land before the scheduler flushes are answered by one render — the same
+ * interleaving the wire section describes for commits, one layer earlier. What
+ * a storm's counts measure is therefore how the ticks and the renders
+ * interleaved on this host, and the observed range is that result.
+ *
+ * This is the change, not a budget: a core may legitimately do more.
+ */
+const WORK_CHANGE_SIZE = {
+	create: (rows) => rows,
+	update10th: (rows) => Math.ceil(rows / 10),
+	select: () => 1,
+	clear: () => 0,
+};
+const WORK_STORM_OPS = new Set(['updateStorm', 'selectStorm']);
+const WORK_FIELD_LABEL = { rowBodies: 'row bodies', blockVisits: 'block visits' };
 
 /**
  * Per-op median and observed range for one family of per-rep count records.
@@ -479,6 +572,10 @@ function statsByOp(samples, fields) {
 		summary[op] = {};
 		for (const field of fields) {
 			const observed = values.map((value) => value[field]);
+			// A field no sample carries is a counter this cell does not publish,
+			// which is a different fact from a zero and is reported as one: the
+			// column is dropped rather than filled in.
+			if (observed.some((value) => typeof value !== 'number')) continue;
 			const min = Math.min(...observed);
 			const max = Math.max(...observed);
 			summary[op][field] = {
@@ -553,6 +650,7 @@ async function main() {
 				samples: {},
 				countSamples: {},
 				wireSamples: {},
+				workSamples: {},
 				notMeasured: new Set(),
 				dnf: 0,
 			};
@@ -568,13 +666,19 @@ async function main() {
 				for (const cell of order) {
 					const bucket = collected[cell.id][rows];
 					try {
-						const { counts, wire, notMeasured, ...timings } = await runRep(browser, cell, rows);
+						const { counts, wire, work, notMeasured, ...timings } = await runRep(
+							browser,
+							cell,
+							rows,
+						);
 						for (const op of notMeasured ?? []) bucket.notMeasured.add(op);
 						for (const [op, ms] of Object.entries(timings)) (bucket.samples[op] ??= []).push(ms);
 						for (const [op, value] of Object.entries(counts ?? {}))
 							(bucket.countSamples[op] ??= []).push(value);
 						for (const [op, value] of Object.entries(wire ?? {}))
 							(bucket.wireSamples[op] ??= []).push(value);
+						for (const [op, value] of Object.entries(work ?? {}))
+							(bucket.workSamples[op] ??= []).push(value);
 					} catch (error) {
 						if (process.env.LYNX_BENCH_DEBUG) console.log('[debug] rep error:', String(error));
 						if (!String(error).includes('timeout')) throw error;
@@ -596,6 +700,7 @@ async function main() {
 				ops,
 				counts: countsByOp(bucket.countSamples),
 				wire: statsByOp(bucket.wireSamples, WIRE_FIELDS),
+				work: statsByOp(bucket.workSamples, WORK_FIELDS),
 				notMeasured: [...bucket.notMeasured],
 				dnf: bucket.dnf,
 			};
@@ -717,6 +822,51 @@ async function main() {
 				const spread = FLOOR_FIELDS.reduce((sum, field) => sum + value[field].spread, 0);
 				lines.push(
 					`| ${op} | ${value.rowVisits.median.toLocaleString('en-US')} | ${value.writes.median.toLocaleString('en-US')} | ${value.blockLookups.median.toLocaleString('en-US')} | ${value.rowScans.median.toLocaleString('en-US')} | ${spread} |`,
+				);
+			}
+		}
+		// Row bodies: how much of the page each cell re-rendered to produce the
+		// same paint. A cell that renders every row and then finds one changed
+		// ships exactly what a cell that rendered one row ships, so this is the
+		// only column in the report where that difference is visible at all.
+		const workRange = (field) =>
+			field.spread === 0
+				? field.median.toLocaleString('en-US')
+				: `${field.median.toLocaleString('en-US')} (${field.min.toLocaleString('en-US')}–${field.max.toLocaleString('en-US')})`;
+		for (const cell of runnable) {
+			const work = results[cell.id][rows].work;
+			if (!work) continue;
+			const present = WORK_FIELDS.filter((field) =>
+				OPS.some((op) => work[op]?.[field] !== undefined),
+			);
+			if (present.length === 0) continue;
+			lines.push('');
+			lines.push(`### ${cell.id} — background work (${rows.toLocaleString('en-US')} rows)`);
+			lines.push('');
+			lines.push(
+				'What the background thread did to produce each operation\'s paint, on the two axes the wire counts below cannot show. "Row bodies" is how many times the app\'s `Row` component body ran, counted by the app itself (`app/src/App.lynx.tsrx`); "block visits" is how many blocks the Block core looked up (`packages/lynx/src/core/block-core.ts`). A cell publishes a counter or it does not: the universal cell has no Block core, the two hand-written cells have no component body, and a column they do not publish is dropped rather than filled with a zero. Both are read under the same `--counter-build` flag as the wire counts. The single-change ops are invariants for this app and interaction, so their spread must be 0 and they carry across hosts and sessions; the storms are not, for the reason their commit counts are not, and their observed range is the result rather than noise. "Rows changed" is what the operation moved, printed beside the counts because they are unreadable without it — it is the change, not a budget, and a core may legitimately do more.',
+			);
+			lines.push('');
+			const heading = present.map((field) => WORK_FIELD_LABEL[field]);
+			lines.push(`| op | ${heading.join(' | ')} | rows changed | spread |`);
+			lines.push(`|---|${present.map(() => '---:').join('|')}|---:|---:|`);
+			for (const op of OPS) {
+				const value = work[op];
+				if (!value) continue;
+				const changed = WORK_CHANGE_SIZE[op]?.(rows);
+				// A field can be dropped for one op and kept for another, so this
+				// prints per op rather than trusting the header: a report that
+				// throws here loses a whole window that has already been measured.
+				const cells = present.map((field) =>
+					value[field] === undefined
+						? '—'
+						: WORK_STORM_OPS.has(op)
+							? workRange(value[field])
+							: value[field].median.toLocaleString('en-US'),
+				);
+				const spread = present.reduce((sum, field) => sum + (value[field]?.spread ?? 0), 0);
+				lines.push(
+					`| ${op} | ${cells.join(' | ')} | ${changed === undefined ? '—' : changed.toLocaleString('en-US')} | ${spread} |`,
 				);
 			}
 		}
