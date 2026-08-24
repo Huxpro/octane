@@ -114,7 +114,7 @@ function describeConstructor(value: object): string {
 }
 
 /**
- * How deep a payload may nest before the codec names it rather than recursing.
+ * How deep a payload may nest before a wire walk names it rather than recursing.
  *
  * `prepare` is recursive, so a cycle is unbounded depth from its point of view,
  * and without a limit it exhausts the stack — a `RangeError` with no path, which
@@ -125,8 +125,14 @@ function describeConstructor(value: object): string {
  * integer compare, names the path where it gave up, and is reached only by a
  * payload no receiver could use: nothing Octane sends nests past single digits,
  * and a hand-built value this deep is a defect either way.
+ *
+ * Exported because `protocol.ts`'s own recursive walk needs the same number.
+ * That walk runs on a live object in the send-side self-check, so it faces the
+ * same cycle, and two independently chosen limits could disagree about which
+ * payload is carryable — the encoder accepting what the self-check refused, or
+ * the reverse.
  */
-const MAX_PREPARE_DEPTH = 512;
+export const LYNX_MAX_WIRE_DEPTH = 512;
 
 interface PrepareState {
 	escaped: boolean;
@@ -142,6 +148,21 @@ interface PrepareState {
  * Copy-on-write matters here: a first-screen batch is tens of thousands of
  * nodes and essentially never contains an escape, so the common path walks the
  * tree once and allocates nothing.
+ *
+ * It also means the common path hands `JSON.stringify` the same graph this
+ * function just walked, so an accessor in the payload is read twice and its
+ * *second* answer is the one that crosses. That is worth stating plainly,
+ * because the receive-boundary validator this replaced refused accessors
+ * outright. It is not a hole in what this module guarantees: the receiver is
+ * handed `JSON.parse` output either way, so it cannot be shown two different
+ * values, and nothing it reads is host-backed. What an incoherent getter can
+ * evade is the value-domain *diagnostic* below — a `Date` produced only on the
+ * second read reaches the wire as an ISO string rather than being named here.
+ * Closing that would cost a descriptor lookup per key, or an allocation per
+ * composite, on the one walk this codec exists to keep cheap; and the same
+ * check would fire on every engine-provided composite reaching
+ * {@link localizeLynxHostValue}, where re-reading a bridged property is
+ * expected to yield a fresh value. So it is documented rather than paid for.
  */
 function prepare(value: unknown, path: string, state: PrepareState, depth = 0): unknown {
 	switch (typeof value) {
@@ -168,10 +189,10 @@ function prepare(value: unknown, path: string, state: PrepareState, depth = 0): 
 	}
 	if (value === null) return null;
 
-	if (depth >= MAX_PREPARE_DEPTH) {
+	if (depth >= LYNX_MAX_WIRE_DEPTH) {
 		throw codecError(
 			path,
-			`nests deeper than ${MAX_PREPARE_DEPTH} levels, which is either a cycle or a structure the wire cannot carry.`,
+			`nests deeper than ${LYNX_MAX_WIRE_DEPTH} levels, which is either a cycle or a structure the wire cannot carry.`,
 		);
 	}
 	const composite = value as object;
@@ -255,9 +276,9 @@ function restore(value: unknown, depth = 0): unknown {
 		return value === UNDEFINED_SENTINEL ? undefined : value.slice(1);
 	}
 	if (value === null || typeof value !== 'object') return value;
-	if (depth >= MAX_PREPARE_DEPTH) {
+	if (depth >= LYNX_MAX_WIRE_DEPTH) {
 		throw new TypeError(
-			`Octane Lynx transport received a payload nesting deeper than ${MAX_PREPARE_DEPTH} levels.`,
+			`Octane Lynx transport received a payload nesting deeper than ${LYNX_MAX_WIRE_DEPTH} levels.`,
 		);
 	}
 	if (Array.isArray(value)) {

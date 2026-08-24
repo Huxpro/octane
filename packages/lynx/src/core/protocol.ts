@@ -1,5 +1,3 @@
-import { hasOwnSymbolFields } from './own-symbols.js';
-import { hasCrossRealmPlainPrototype } from './plain-object.js';
 import type {
 	UNIVERSAL_TRANSPORT_PROTOCOL_VERSION,
 	UniversalHostBatch,
@@ -17,6 +15,7 @@ import type {
 } from 'octane/universal/native';
 import type { LynxFirstTreeSnapshot } from './first-screen.js';
 import { LYNX_DEVELOPMENT } from './environment.js';
+import { LYNX_MAX_WIRE_DEPTH } from './transport-codec.js';
 import { decodeLynxPortalTargetId } from './portal.js';
 import { LYNX_RENDERER_ID } from './renderer-id.js';
 
@@ -490,6 +489,23 @@ function fail(label: string, message: string, index?: number, field?: string): n
 	throw new TypeError(`Octane Lynx transport ${composePath(label, index, field)}: ${message}`);
 }
 
+/**
+ * Narrow one message field to an object.
+ *
+ * This used to also walk the value's own keys, refusing symbols, non-enumerable
+ * properties, accessors, and a foreign prototype, and to re-read each key
+ * afterwards in case it had changed underneath the walk. That was a defense
+ * against a *hostile composite*: a value built on the other thread which could
+ * answer the validator one way and the host driver another.
+ *
+ * The transport now owns encoding (issue #156, slice 1), so everything reaching
+ * a validator is `JSON.parse` output. Such a value has no symbol keys, no
+ * non-enumerable properties, no accessors, no cycles, and this realm's
+ * `Object.prototype`. There is no composite left to be hostile, and a check
+ * whose failing branch cannot be reached is not a weaker check — it is a claim
+ * about where safety comes from that is no longer true. Safety comes from the
+ * boundary; this function's remaining job is schema.
+ */
 function record(
 	value: unknown,
 	label: string,
@@ -498,30 +514,6 @@ function record(
 ): Record<string, unknown> {
 	if (value === null || typeof value !== 'object' || Array.isArray(value)) {
 		return fail(label, 'must be an object.', index, field);
-	}
-	// A background message crosses a realm boundary in production, so its
-	// prototype is that realm's Object.prototype — never identical to this one.
-	if (!hasCrossRealmPlainPrototype(value)) {
-		return fail(label, 'must be a plain object.', index, field);
-	}
-	// Enumerability and accessor freedom are what make a later read of this
-	// message safe: an accessor could hand the validator one value and the host
-	// driver another. One own-key walk covers both symbols and descriptors,
-	// avoiding separate symbol/name arrays for every dynamic template node.
-	for (const key of Reflect.ownKeys(value)) {
-		if (typeof key === 'symbol') {
-			return fail(label, 'contains symbol fields.', index, field);
-		}
-		const descriptor = Object.getOwnPropertyDescriptor(value, key);
-		if (descriptor === undefined) {
-			fail(composePath(label, index, field), 'changed during validation.', undefined, key);
-		}
-		if (!descriptor.enumerable) {
-			fail(composePath(label, index, field), 'must be enumerable.', undefined, key);
-		}
-		if (!Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
-			fail(composePath(label, index, field), 'must not be an accessor.', undefined, key);
-		}
 	}
 	return value as Record<string, unknown>;
 }
@@ -619,48 +611,48 @@ function isWireLeaf(value: unknown): boolean {
 	);
 }
 
-function assertWireValue(value: unknown, label: string, seen: Set<object> | null = null): void {
+/**
+ * Prove a value is carryable data all the way down.
+ *
+ * The symbol check, the dense-array own-name count and the per-index descriptor
+ * triple are gone for the reason given on {@link record}: `JSON.parse` output
+ * cannot express any of them.
+ *
+ * The cycle `Set` is gone for a narrower reason, and it is replaced rather than
+ * dropped. On the receive path a cycle is unrepresentable — JSON has no
+ * back-references — so the `Set` allocated on every descent, and the
+ * `try`/`finally` that unwound it, paid for a shape the wire cannot deliver.
+ * But this same function runs in the development self-check the sender performs
+ * *before* the transport encodes, where the value is still a live object graph
+ * and a cycle is exactly what a mistaken worklet capture produces. Recursing
+ * into one exhausts the stack, and a `RangeError` naming nothing is a worse
+ * report than the "contains a cycle" this used to give. So the walk carries the
+ * transport codec's own depth limit: one integer compare instead of a `Set`
+ * operation per composite, the same number the encoder enforces a moment later,
+ * and a message that says where it gave up.
+ */
+function assertWireValue(value: unknown, label: string, depth = 0): void {
 	if (isWireLeaf(value)) return;
 	if (typeof value !== 'object' || value === null) {
 		fail(label, 'contains a non-serializable value.');
 	}
-	const composite: object = value;
-	if (hasOwnSymbolFields(composite)) {
-		fail(label, 'contains symbol fields.');
+	if (depth >= LYNX_MAX_WIRE_DEPTH) {
+		fail(
+			label,
+			`nests deeper than ${LYNX_MAX_WIRE_DEPTH} levels, which is either a cycle or a structure the wire cannot carry.`,
+		);
 	}
-	// Allocated on the first descent into an object, not once per validated
-	// value: almost every host prop is a leaf.
-	const scope = seen ?? new Set<object>();
-	if (scope.has(composite)) fail(label, 'contains a cycle.');
-	scope.add(composite);
-	try {
-		if (Array.isArray(composite)) {
-			const names = Object.getOwnPropertyNames(composite);
-			if (names.length !== composite.length + 1) {
-				fail(label, 'must be a dense array without extra fields.');
-			}
-			for (let index = 0; index < composite.length; index++) {
-				const descriptor = Object.getOwnPropertyDescriptor(composite, String(index));
-				if (
-					descriptor === undefined ||
-					!descriptor.enumerable ||
-					!Object.prototype.hasOwnProperty.call(descriptor, 'value')
-				) {
-					fail(`${label}[${index}]`, 'must be an enumerable data property.');
-				}
-				if (!isWireLeaf(descriptor.value)) {
-					assertWireValue(descriptor.value, `${label}[${index}]`, scope);
-				}
-			}
-			return;
+	if (Array.isArray(value)) {
+		for (let index = 0; index < value.length; index++) {
+			const child: unknown = value[index];
+			if (!isWireLeaf(child)) assertWireValue(child, `${label}[${index}]`, depth + 1);
 		}
-		const object = record(composite, label);
-		for (const name of Object.keys(object)) {
-			const child = object[name];
-			if (!isWireLeaf(child)) assertWireValue(child, `${label}.${name}`, scope);
-		}
-	} finally {
-		scope.delete(composite);
+		return;
+	}
+	const object = value as Record<string, unknown>;
+	for (const name of Object.keys(object)) {
+		const child = object[name];
+		if (!isWireLeaf(child)) assertWireValue(child, `${label}.${name}`, depth + 1);
 	}
 }
 
@@ -700,9 +692,10 @@ function assertProps(
 	state?: LynxBatchValidationState,
 ): void {
 	// Hoisted scalar plan props retain object identity across thousands of
-	// template instances. A frozen, fully validated leaf bag cannot acquire an
-	// accessor, symbol, prototype change, or different value, so validating it
-	// once per inbound batch preserves the same strict trust boundary.
+	// template instances, so a frozen, already-validated leaf bag is validated
+	// once per batch rather than once per instance. Only the send-side
+	// self-check reaches this: an inbound message is `JSON.parse` output, which
+	// is never frozen and shares nothing, so the receive path takes the walk.
 	if (
 		state?.validatedStaticProps !== undefined &&
 		value !== null &&
@@ -711,9 +704,8 @@ function assertProps(
 	) {
 		return;
 	}
-	// `record` already rejected symbol fields, accessors, and non-enumerable own
-	// keys, so reading each value once here is safe. Leaves skip the walk without
-	// composing a path, which is the common shape of a host prop bag.
+	// Leaves skip the walk without composing a path, which is the common shape
+	// of a host prop bag.
 	const props = record(value, label, index, field);
 	let scalar = true;
 	for (const name of Object.keys(props)) {
@@ -795,43 +787,29 @@ interface LynxValidatedTemplateProgram {
 	readonly mainThreadValues: readonly boolean[] | null;
 }
 
-/** Reuse canonical decimal keys across repeated, bounded scalar-array validations. */
-const MAX_CACHED_TEMPLATE_SCALAR_INDEX = 65_536;
-const TEMPLATE_SCALAR_INDEX_KEYS: string[] = [];
-
-function templateScalarIndexKey(index: number): string {
-	if (index >= MAX_CACHED_TEMPLATE_SCALAR_INDEX) return String(index);
-	while (TEMPLATE_SCALAR_INDEX_KEYS.length <= index) {
-		TEMPLATE_SCALAR_INDEX_KEYS.push(String(TEMPLATE_SCALAR_INDEX_KEYS.length));
-	}
-	return TEMPLATE_SCALAR_INDEX_KEYS[index]!;
-}
-
-/** Reject array accessors/prototype tricks before exposing any dynamic value. */
+/**
+ * Narrow a template sub-array.
+ *
+ * The prototype check, the `Reflect.ownKeys` density count and the per-index
+ * descriptor triple are gone for the reason given on {@link record}: a
+ * `JSON.parse` array is always dense, always ordinary, and never carries an
+ * accessor or a symbol. What remains is the question the schema actually asks.
+ */
 function assertTemplateArray(value: unknown, label: string): readonly unknown[] {
 	if (!Array.isArray(value)) fail(label, 'must be an array.');
-	const prototype = Object.getPrototypeOf(value);
-	if (prototype === null || !hasCrossRealmPlainPrototype(prototype)) {
-		fail(label, 'must have a plain cross-realm array prototype.');
-	}
-	const keys = Reflect.ownKeys(value);
-	if (keys.length !== value.length + 1) {
-		fail(label, 'must be dense and contain no additional or symbol fields.');
-	}
-	for (let index = 0; index < value.length; index++) {
-		const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-		if (
-			descriptor === undefined ||
-			!descriptor.enumerable ||
-			!Object.prototype.hasOwnProperty.call(descriptor, 'value')
-		) {
-			fail(label, 'must contain only enumerable data values.', index);
-		}
-	}
 	return value;
 }
 
-/** Validate each dynamic array slot exactly once without ever evaluating its getter. */
+/**
+ * Validate every dynamic slot of one intrinsic run against its program.
+ *
+ * This used to read each slot through `Object.getOwnPropertyDescriptor` rather
+ * than by index, compare the own-key list against a cached table of canonical
+ * decimal keys, and then re-read the slot to catch a value that changed between
+ * the two reads. All three answered the same question: could this array hand
+ * the validator one value and the host driver another? A `JSON.parse` array
+ * cannot, so the slots are read as slots.
+ */
 function assertTemplateScalarValues(
 	value: unknown,
 	expected: number,
@@ -845,63 +823,17 @@ function assertTemplateScalarValues(
 	if (value.length !== expected) {
 		fail(COMMANDS_LABEL, 'must match the intrinsic program dynamic-value arity.', index, 'values');
 	}
-	const prototype = Object.getPrototypeOf(value);
-	if (prototype === null || !hasCrossRealmPlainPrototype(prototype)) {
-		fail(COMMANDS_LABEL, 'must have a plain cross-realm array prototype.', index, 'values');
-	}
-	const keys = Reflect.ownKeys(value);
-	if (keys.length !== expected + 1 || keys[expected] !== 'length') {
-		fail(
-			COMMANDS_LABEL,
-			'must be dense and contain no additional or symbol fields.',
-			index,
-			'values',
-		);
-	}
 	for (let slot = 0; slot < expected; slot++) {
-		const key = keys[slot]!;
-		if (key !== templateScalarIndexKey(slot)) {
-			fail(
-				composePath(COMMANDS_LABEL, index, 'values'),
-				'must contain ordered canonical dense scalar keys.',
-				slot,
-			);
+		const item: unknown = value[slot];
+		if (isWireLeaf(item)) continue;
+		// A worklet descriptor is an object, so the slot a program bound to a
+		// `main-thread:` prop is the one place a non-scalar belongs. It is walked
+		// by the same validator a `create` command's main-thread prop is walked
+		// by, so the two paths cannot disagree about what a descriptor may hold.
+		if (mainThreadValues?.[slot % arity] !== true) {
+			fail(composePath(COMMANDS_LABEL, index, 'values'), 'must contain only scalar values.', slot);
 		}
-		const descriptor = Object.getOwnPropertyDescriptor(value, key);
-		if (
-			descriptor === undefined ||
-			!descriptor.enumerable ||
-			!Object.prototype.hasOwnProperty.call(descriptor, 'value')
-		) {
-			fail(
-				composePath(COMMANDS_LABEL, index, 'values'),
-				'must contain only enumerable data values.',
-				slot,
-			);
-		}
-		if (!isWireLeaf(descriptor.value)) {
-			// A worklet descriptor is an object, so the slot a program bound to a
-			// `main-thread:` prop is the one place a non-scalar belongs. It is walked
-			// by the same validator a `create` command's main-thread prop is walked
-			// by, so the two paths cannot disagree about what a descriptor may hold.
-			if (mainThreadValues?.[slot % arity] !== true) {
-				fail(
-					composePath(COMMANDS_LABEL, index, 'values'),
-					'must contain only scalar values.',
-					slot,
-				);
-			}
-			assertWireValue(descriptor.value, composePath(COMMANDS_LABEL, index, 'values'));
-		}
-		// Frozen own data slots force proxy reads to return the exact descriptor
-		// value. Mutable cross-realm arrays retain the older observable-read
-		// check so a proxy cannot validate one scalar and deliver another.
-		if (
-			(descriptor.configurable || descriptor.writable) &&
-			!Object.is(value[slot], descriptor.value)
-		) {
-			fail(composePath(COMMANDS_LABEL, index, 'values'), 'changed during validation.', slot);
-		}
+		assertWireValue(item, composePath(COMMANDS_LABEL, index, 'values'));
 	}
 }
 
@@ -1316,32 +1248,20 @@ function commandRecord(value: unknown, index: number): Record<string, unknown> {
 	if (value === null || typeof value !== 'object' || Array.isArray(value)) {
 		return fail(COMMANDS_LABEL, 'must be an object.', index);
 	}
-	if (!hasCrossRealmPlainPrototype(value)) {
-		return fail(COMMANDS_LABEL, 'must be a plain object.', index);
-	}
-	const keys = Reflect.ownKeys(value);
-	let operation: unknown;
+	// The walk that remains is the schema half of what used to be one fused
+	// pass: `op` and whether the key order already matches a template command,
+	// which lets the two hottest shapes skip the exact-keys scan below. The
+	// integrity half — prototype, symbols, descriptors — went with {@link record}.
+	const keys = Object.keys(value);
 	let orderedRange = keys.length === TEMPLATE_RANGE_KEYS.length;
 	let orderedRun = keys.length === TEMPLATE_RUN_KEYS.length;
 	for (let position = 0; position < keys.length; position++) {
 		const key = keys[position]!;
-		if (typeof key === 'symbol') {
-			return fail(COMMANDS_LABEL, 'contains symbol fields.', index);
-		}
-		const descriptor = Object.getOwnPropertyDescriptor(value, key);
-		if (descriptor === undefined) {
-			fail(composePath(COMMANDS_LABEL, index), 'changed during validation.', undefined, key);
-		}
-		if (!descriptor.enumerable) {
-			fail(composePath(COMMANDS_LABEL, index), 'must be enumerable.', undefined, key);
-		}
-		if (!Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
-			fail(composePath(COMMANDS_LABEL, index), 'must not be an accessor.', undefined, key);
-		}
-		if (key === 'op') operation = descriptor.value;
 		if (orderedRange && key !== TEMPLATE_RANGE_KEYS[position]) orderedRange = false;
 		if (orderedRun && key !== TEMPLATE_RUN_KEYS[position]) orderedRun = false;
+		if (!orderedRange && !orderedRun) break;
 	}
+	const operation: unknown = (value as Record<string, unknown>).op;
 	const schema =
 		operation === 'mount-template-range'
 			? orderedRange
@@ -1361,7 +1281,7 @@ function commandRecord(value: unknown, index: number): Record<string, unknown> {
 			}
 		}
 		for (const key of keys) {
-			if (typeof key === 'string' && !schema.includes(key)) {
+			if (!schema.includes(key)) {
 				fail(COMMANDS_LABEL, `contains unknown field ${JSON.stringify(key)}.`, index);
 			}
 		}

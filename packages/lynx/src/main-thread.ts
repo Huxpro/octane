@@ -482,10 +482,14 @@ function acknowledgementHandles<Node extends LynxElementRef>(
 function freezeValidatedIntrinsicRun(
 	run: Extract<UniversalHostBatch['commands'][number], { readonly op: 'mount-template-run' }>,
 ): void {
-	// MessagePort structured-clones worker payloads and drops every frozen
-	// descriptor. Restore immutability only after the complete receive-boundary
-	// validator has rejected hostile prototypes, accessors, symbols, and scalars.
-	// The program is a tiny shared shape; its flat values are frozen in place.
+	// The wire drops every frozen descriptor — `JSON.parse` output is entirely
+	// writable and configurable, as structured clone's was before it — so a
+	// program arrives mutable however the sender left it. The freeze exists to
+	// put that back, because this program is memoized and reused across the
+	// commands of a batch: validated once, then trusted by every later command
+	// that names it. It is no longer a defense against a hostile composite —
+	// issue #156 moved that question to the boundary, and the validator above no
+	// longer asks it — but the memo it protects is real, so the freeze stays.
 	const program = run.program;
 	for (const node of program.nodes) {
 		Object.freeze(node.props);
