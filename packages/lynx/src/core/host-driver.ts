@@ -12,7 +12,7 @@ import type {
 } from 'octane/universal/native';
 import {
 	decodeLynxNativeEventToken,
-	encodeLynxNativeEventToken,
+	encodeCheckedLynxNativeEventToken,
 	encodePrevalidatedLynxNativeEventToken,
 	parseLynxMainThreadEventProp,
 	parseLynxNativeEventProp,
@@ -1858,13 +1858,13 @@ function installNativeEvent<Node extends LynxElementRef>(
 ): void {
 	const binding = parseLynxNativeEventProp(type);
 	if (binding === null) throw hostError(`event ${JSON.stringify(type)} is not a Lynx event prop.`);
-	const token = encodeLynxNativeEventToken({
+	const token = encodeCheckedLynxNativeEventToken(
 		root,
 		id,
 		generation,
-		listener: listener.id,
-		priority: listener.priority,
-	});
+		listener.id,
+		listener.priority,
+	);
 	const events = nativeEventMap(state, node);
 	const current = events.get(type);
 	if (current?.source === 'background' && current.listener === token) return;
@@ -3720,6 +3720,20 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 				? beginNativeListNode(state, container, record)
 				: papi.createElement(type, container.pageComponentUniqueId, textValue(props));
 		emitHostNode(record, node.id, type, props, patch, visible, hostEvents, papiNode);
+		if (type !== 'list' && node.children.length === 0) {
+			// A leaf queues nothing behind its attach, so the deferred frame would
+			// pop with the stack in exactly the state it is in now: same call, same
+			// place in the sequence, one frame and one dispatch fewer. Most of a
+			// large first screen is leaves — every `#text` host is one — so this is
+			// the difference between one frame per host and one per interior host.
+			//
+			// A `<list>` is excluded rather than tested for rows: it queues its row
+			// publication behind its attach, and that frame must still pop first
+			// even when the tree gave it nothing to publish.
+			if (parentId === null) state.ownedPageRoots.add(papiNode);
+			append(physicalParent, papiNode);
+			return;
+		}
 		// The attach is queued before the children so it pops after them.
 		stack.push({
 			node: null,
