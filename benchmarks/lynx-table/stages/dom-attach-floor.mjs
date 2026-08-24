@@ -20,7 +20,8 @@
 // asks the browser the same question with no framework in the page at all.
 //
 // Five arms build the identical tree and differ only in where and when it is
-// attached. Two pairs, plus the allocation floor they all pay:
+// attached, and every arm runs against two element kinds. Two pairs, plus the
+// allocation floor they all pay:
 //
 //   build              every node created, nothing ever attached
 //   live-incremental   rows created and appended one at a time into a
@@ -33,6 +34,15 @@
 //                      an attached container
 //   split-bulk         every row built first, then all of them appended into a
 //                      detached container, then one `appendChild` publishes it
+//
+// The two kinds are `inert`, with the three tags unregistered, and `upgraded`,
+// with the same tags registered as custom elements whose callbacks are empty.
+// The harness page holds the upgraded kind - `@lynx-js/web-elements` defines
+// `x-view`, `x-text`, and `raw-text` - so web-core's publishing `appendChild`
+// runs one reaction per node inside the insertion. `upgraded` therefore
+// decides, and `upgraded` minus `inert` is the platform's price for dispatching
+// a reaction, measured in the same window and isolated from what web-elements
+// does inside one.
 //
 // The `live-*` pair decides. It interleaves creation and attachment exactly as
 // the command stream does, so it needs no deviation from what Octane pays and
@@ -56,21 +66,51 @@
 // oracle branch. If both arms are flat, the rise is web-core's and becomes
 // reducible work with a named owner.
 //
-// Measured outcome: refuted, on both pairs and both readings. The platform
-// charges 0.15-0.21 us per node to insert one, on either shape, at every scale.
-// The single bulk publication - `live-bulk`'s attach span, which is exactly the
-// `rootDom.appendChild(page)` that `__FlushElementTree` performs - costs
-// 0.157 / 0.149 / 0.170 us per node against Octane's `papi_flush` self time of
-// 1.643 / 1.769 / 2.175, so ~91% of publication is not the browser's. That
-// comparison is free of instrument overhead in a way the per-element groups are
-// not: `papi_flush` is two calls in the whole window, against the timed
+// Measured outcome: refuted, on both pairs and both readings. On the deciding
+// pair the platform charges the same per node whichever shape it is handed -
+// bulk over incremental is 1.030x / 1.013x / 1.024x across a 30x range - so it
+// does not reproduce the split, and publication's rise is not the platform's.
+//
+// What the run does settle is how much of publication the platform owns. The
+// cleanest reading is free of instrument overhead on both sides, one call
+// against two: `live-bulk`'s attach span is exactly the
+// `rootDom.appendChild(page)` that `__FlushElementTree` performs, and
+// `papi_flush` is two calls in the whole first-screen window, against the timed
 // variant's 0.50-0.72 us per call.
 //
+//   rows     papi_flush   platform publish   platform share
+//   1,000    1.636        0.543              33.2%
+//   10,000   1.768        0.656              37.1%
+//   30,000   2.175        0.660              30.3%
+//
+// (us per node, `upgraded` kind.) The inert kind puts the same share at
+// 9.6 / 8.7 / 8.1%, which is what the first revision of this probe measured and
+// reported as the whole answer. Registering the tags is three quarters of the
+// platform's bill here, and the harness page registers them.
+//
+// Read wider - `papi_topology + papi_flush` against the control's insertion
+// span - the platform is 24.5 / 26.7 / 24.1% of Octane's first-screen insertion
+// rate and 22.4% of its rise across the range. Same order, weaker precision:
+// `papi_topology` is 7,041 / 70,041 / 210,041 calls, so it carries per-call
+// instrument overhead the flush comparison does not.
+//
+// So about a third of publication is the platform, and the rest is named code -
+// web-core's own `__FlushElementTree` body and the `connectedCallback` bodies
+// `@lynx-js/web-elements` installs, which the empty callbacks here deliberately
+// exclude. Neither is a platform floor, so #148's second oracle branch does not
+// close on publication.
+//
 // Fidelity to what web-core actually builds, so the browser does the same work:
-// the same tag names (`x-view`, `x-text`, `raw-text` - all unregistered, so no
-// custom-element upgrade runs, as in the harness), the same 7 elements per row,
-// the same `text` attribute on each `raw-text`, the same class names, and the
-// same shadow root carrying the app's own stylesheet.
+// the same tag names (`x-view`, `x-text`, `raw-text`), the same 7 elements per
+// row, the same `text` attribute on each `raw-text`, the same class names, and
+// the same shadow root carrying the app's own stylesheet.
+//
+// Registration is an axis here rather than an assumption. The first revision of
+// this probe asserted the three tags were unregistered - read from sources,
+// never checked in the running page - and attributed the whole difference to
+// web-core. They are registered, and the attribution was wrong by a factor of
+// three. Every sample now reports its own registration state and the runner
+// rejects a cell that ran the wrong kind.
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -78,10 +118,11 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 
 import {
-	DECIDING_PAIR,
-	FLAT_DRIFT,
-	LOCALIZING_PAIR,
+	ARM_NAMES,
+	ELEMENT_KINDS,
 	NODES_PER_ROW,
+	cellName,
+	cellNames,
 	summarizeArm,
 	verdictFor,
 } from './dom-attach-analyze.mjs';
@@ -99,13 +140,14 @@ const { values: args } = parseArgs({
 		'allow-busy-host': { type: 'boolean', default: false },
 	},
 });
-// Five arms in two pairs plus a floor. The `live-*` pair interleaves creation
-// and attachment exactly as the command stream does, so its total is directly
-// comparable to Octane's `papi_topology (+ papi_flush)` group and carries no
-// deviation — that pair decides the prediction. The `split-*` pair builds first
-// and attaches second, which costs a deviation but buys a separable `attachMs`,
-// and localizes whatever the live pair finds.
-const ARMS = ['build', 'live-incremental', 'live-bulk', 'split-incremental', 'split-bulk'];
+// Five arms in two pairs plus a floor, measured against both element kinds in
+// one window. The `live-*` pair interleaves creation and attachment exactly as
+// the command stream does, so its total is directly comparable to Octane's
+// `papi_topology (+ papi_flush)` group and carries no deviation — that pair
+// decides the prediction. The `split-*` pair builds first and attaches second,
+// which costs a deviation but buys a separable `attachMs`, and localizes
+// whatever the live pair finds.
+const CELLS = cellNames();
 const scales = args.scales
 	.split(',')
 	.map((value) => Number(value.trim()))
@@ -162,6 +204,30 @@ function buildRow(index) {
   }
   return row;
 }
+
+// The three tags the first screen is built from. The harness page has all of
+// them registered - @lynx-js/web-elements defines each one - so an 'upgraded'
+// sample runs one custom-element reaction per node inside the insertion, as
+// web-core's publishing appendChild does. The callback bodies are empty on
+// purpose: what is being isolated here is the platform's cost of running a
+// reaction, not what web-elements does inside one.
+const TAGS = ['x-view', 'x-text', 'raw-text'];
+globalThis.__upgradeElements = function () {
+  for (const tag of TAGS) {
+    if (customElements.get(tag) !== undefined) continue;
+    customElements.define(
+      tag,
+      class extends HTMLElement {
+        connectedCallback() {}
+        disconnectedCallback() {}
+      },
+    );
+  }
+};
+
+globalThis.__registered = function () {
+  return TAGS.filter((tag) => customElements.get(tag) !== undefined);
+};
 
 globalThis.__domAttachFloor = function (arm, rows) {
   const bulk = arm.endsWith('-bulk');
@@ -225,6 +291,8 @@ globalThis.__domAttachFloor = function (arm, rows) {
       resolve({
         arm,
         rows,
+        registered: globalThis.__registered(),
+        upgraded: built[0].constructor !== HTMLElement,
         buildMs: t1 - t0,
         attachMs: t2 - t1,
         frameMs: t3 - t2,
@@ -268,17 +336,21 @@ const browser = await chromium.launch(chromiumLaunchOptions());
 // the row count each arm reports is the oracle on whether it did the work: an
 // arm that silently attached nothing would otherwise report a very fast wall.
 const samples = Object.fromEntries(
-	scales.map((rows) => [rows, Object.fromEntries(ARMS.map((arm) => [arm, []]))]),
+	scales.map((rows) => [rows, Object.fromEntries(CELLS.map((cell) => [cell, []]))]),
 );
 const loadStart = os.loadavg();
 
 for (const rows of scales) {
-	for (const order of rotatedSchedule(args.reps, ARMS)) {
-		for (const arm of order) {
+	for (const order of rotatedSchedule(args.reps, CELLS)) {
+		for (const cell of order) {
+			const [kind, arm] = cell.split(':');
 			// Fresh page per sample: a second run in the same realm would inherit
-			// the first one's heap and its resolved style rules.
+			// the first one's heap and its resolved style rules — and a realm that
+			// has already registered the tags can never measure the inert kind
+			// again, since `customElements.define` is permanent.
 			const page = await browser.newPage();
 			await page.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
+			if (kind === 'upgraded') await page.evaluate(() => globalThis.__upgradeElements());
 			const sample = await page.evaluate(
 				([armName, rowCount]) => globalThis.__domAttachFloor(armName, rowCount),
 				[arm, rows],
@@ -286,7 +358,7 @@ for (const rows of scales) {
 			await page.close();
 			if (arm === 'build' ? sample.attached !== 0 : sample.attached !== rows) {
 				throw new Error(
-					`${arm}@${rows} published ${sample.attached} rows; the arm did not do its own work.`,
+					`${cell}@${rows} published ${sample.attached} rows; the arm did not do its own work.`,
 				);
 			}
 			// The forced read inside the frame is what puts style and layout on
@@ -294,12 +366,22 @@ for (const rows of scales) {
 			// `frameMs` would be an empty frame reported as a layout.
 			if (!(sample.laidOut > 0)) {
 				throw new Error(
-					`${arm}@${rows} forced no layout: the frame read returned ${sample.laidOut}.`,
+					`${cell}@${rows} forced no layout: the frame read returned ${sample.laidOut}.`,
 				);
 			}
-			samples[rows][arm].push(sample);
+			// The kind is the whole point of this axis, so it is asserted from the
+			// page rather than assumed from the cell name. The claim that failed
+			// the first time this control ran was exactly a registration claim
+			// made from reading sources instead of from the running page.
+			const wantUpgraded = kind === 'upgraded';
+			if (sample.upgraded !== wantUpgraded || sample.registered.length !== (wantUpgraded ? 3 : 0)) {
+				throw new Error(
+					`${cell}@${rows} ran with registered=[${sample.registered}] upgraded=${sample.upgraded}; expected ${wantUpgraded ? 'all three tags registered' : 'none registered'}.`,
+				);
+			}
+			samples[rows][cell].push(sample);
 			console.log(
-				`[floor] rows=${rows} ${arm} build=${sample.buildMs.toFixed(1)} attach=${sample.attachMs.toFixed(1)} frame=${sample.frameMs.toFixed(1)} total=${sample.totalMs.toFixed(1)}`,
+				`[floor] rows=${rows} ${cell} build=${sample.buildMs.toFixed(1)} attach=${sample.attachMs.toFixed(1)} frame=${sample.frameMs.toFixed(1)} total=${sample.totalMs.toFixed(1)}`,
 			);
 		}
 	}
@@ -314,7 +396,7 @@ const round = (value, digits = 1) => Number(value.toFixed(digits));
 
 const perScale = scales.map((rows) => ({
 	rows,
-	arms: Object.fromEntries(ARMS.map((arm) => [arm, summarizeArm(samples[rows][arm], rows)])),
+	arms: Object.fromEntries(CELLS.map((cell) => [cell, summarizeArm(samples[rows][cell], rows)])),
 }));
 
 // --- report ---------------------------------------------------------------
@@ -328,20 +410,22 @@ const meta = {
 	node: process.version,
 	chromium: browser.version?.() ?? 'unknown',
 	repetitions: Number(args.reps),
-	arms: ARMS,
+	arms: ARM_NAMES,
+	kinds: ELEMENT_KINDS,
+	cells: CELLS,
 	scales,
 	nodesPerRow: NODES_PER_ROW,
 	loadStart,
 	loadEnd: os.loadavg(),
 	protocol:
-		'fresh page per sample; arm order rotates across repetitions; no framework, no web-core, and no app bundle is loaded — the page builds the tree itself',
+		'fresh page per sample; cell order rotates across repetitions; no framework, no web-core, and no app bundle is loaded — the page builds the tree itself, and every sample asserts in the page whether its three tags were registered',
 };
 
 // Rendered and decided by the report module, so a finished run can be
 // re-rendered from its frozen samples with `dom-attach-report.mjs` when the
 // rules that decide the claim change.
 const text = renderFloorReport(meta, perScale);
-const verdict = verdictFor(perScale, ARMS);
+const verdict = verdictFor(perScale, CELLS);
 
 const output = path.join(import.meta.dirname, 'results');
 fs.mkdirSync(output, { recursive: true });

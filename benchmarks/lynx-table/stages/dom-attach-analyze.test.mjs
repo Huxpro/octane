@@ -5,9 +5,14 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+	ARM_NAMES,
 	FLAT_DRIFT,
 	NODES_PER_ROW,
+	cellName,
+	cellNames,
 	drift,
+	publishOnlyRates,
+	reactionCost,
 	summarizeArm,
 	verdictFor,
 } from './dom-attach-analyze.mjs';
@@ -19,33 +24,49 @@ const sample = ({ buildMs = 10, attachMs = 1, frameMs = 1, totalMs = 12 }) => ({
 	totalMs,
 });
 
-const ARMS = ['build', 'live-incremental', 'live-bulk', 'split-incremental', 'split-bulk'];
+const ARMS = cellNames();
 
 /**
- * An arm whose published cost is exactly `perNodeUs` per node at `rows`. A
- * `live-*` arm's published cost is its whole loop, so the milliseconds go in
+ * A cell whose command cost is exactly `perNodeUs` per node at `rows`. A
+ * `live-*` arm's command cost is its whole loop, so the milliseconds go in
  * `buildMs`; a `split-*` arm's is its attach span.
  */
 function arm(name, rows, perNodeUs) {
 	const publishedMs = (perNodeUs * rows * NODES_PER_ROW) / 1000;
-	const span = name.startsWith('live-') ? { buildMs: publishedMs } : { attachMs: publishedMs };
+	const span = /(^|:)live-/.test(name) ? { buildMs: publishedMs } : { attachMs: publishedMs };
 	return summarizeArm([sample({ buildMs: 0, attachMs: 0, frameMs: 0, ...span })], rows);
 }
 
-function run({ incremental, bulk, split = null, scales = [1000, 10000, 30000] }) {
+/**
+ * A run at the rates given. The verdict decides on the upgraded kind, so those
+ * are the rates a case states; `inertOffset` gives the inert kind a rate that
+ * much lower, which is what `reactionCost` subtracts.
+ */
+function run({
+	incremental,
+	bulk,
+	split = null,
+	scales = [1000, 10000, 30000],
+	inertOffset = 0.1,
+}) {
+	const rate = (name, index) =>
+		/live-incremental$/.test(name)
+			? incremental[index]
+			: /live-bulk$/.test(name)
+				? bulk[index]
+				: /split-incremental$/.test(name)
+					? (split?.incremental ?? incremental)[index]
+					: (split?.bulk ?? bulk)[index];
 	const perScale = scales.map((rows, index) => ({
 		rows,
-		arms: {
-			build: arm('build', rows, 1),
-			'live-incremental': arm('live-incremental', rows, incremental[index]),
-			'live-bulk': arm('live-bulk', rows, bulk[index]),
-			'split-incremental': arm(
-				'split-incremental',
-				rows,
-				(split?.incremental ?? incremental)[index],
-			),
-			'split-bulk': arm('split-bulk', rows, (split?.bulk ?? bulk)[index]),
-		},
+		arms: Object.fromEntries(
+			ARMS.map((cell) => [
+				cell,
+				cell.endsWith(':build')
+					? arm(cell, rows, 1)
+					: arm(cell, rows, rate(cell, index) - (cell.startsWith('inert:') ? inertOffset : 0)),
+			]),
+		),
 	}));
 	return verdictFor(perScale, ARMS);
 }
@@ -63,8 +84,8 @@ test('refuses to decide a run that measured a single scale', () => {
 	// would publish "refuted" for a run that tested nothing — which is how a
 	// smoke run turns into a campaign verdict.
 	const verdict = run({ incremental: [2.4], bulk: [2.4], scales: [1000] });
-	assert.equal(verdict.drifts['live-incremental'], null);
-	assert.equal(verdict.drifts['live-bulk'], null);
+	assert.equal(verdict.drifts[cellName('upgraded', 'live-incremental')], null);
+	assert.equal(verdict.drifts[cellName('upgraded', 'live-bulk')], null);
 	assert.equal(verdict.evaluable, false);
 	assert.equal(verdict.predictionConfirmed, false);
 	// Refuted must be false too: not-evaluable is its own outcome, not a refusal.
@@ -110,12 +131,18 @@ test('decides on the calls the stream makes, not on the browser frame', () => {
 	const verdict = verdictFor([{ rows, arms }], ARMS);
 	// A split arm reports its attach span; a live arm cannot separate insertion
 	// from creation, so it reports its whole loop. Neither reads `totalMs`.
-	assert.equal(verdict.rates['split-bulk'][0], (70 / nodes) * 1000);
-	assert.equal(verdict.rates['live-bulk'][0], ((900 + 70) / nodes) * 1000);
-	assert.equal(verdict.frames['split-bulk'][0], (140 / nodes) * 1000);
+	assert.equal(verdict.rates[cellName('upgraded', 'split-bulk')][0], (70 / nodes) * 1000);
+	assert.equal(verdict.rates[cellName('upgraded', 'live-bulk')][0], ((900 + 70) / nodes) * 1000);
+	assert.equal(verdict.frames[cellName('upgraded', 'split-bulk')][0], (140 / nodes) * 1000);
 	// The reading registered before the run is kept, not replaced.
-	assert.equal(verdict.registered['split-bulk'][0], ((70 + 140) / nodes) * 1000);
-	assert.equal(verdict.registered['live-bulk'][0], ((900 + 70 + 140) / nodes) * 1000);
+	assert.equal(
+		verdict.registered[cellName('upgraded', 'split-bulk')][0],
+		((70 + 140) / nodes) * 1000,
+	);
+	assert.equal(
+		verdict.registered[cellName('upgraded', 'live-bulk')][0],
+		((900 + 70 + 140) / nodes) * 1000,
+	);
 	assert.equal(summary.nodes, nodes);
 });
 
@@ -125,10 +152,82 @@ test('a bulk rate that falls with the tree does not count as rising', () => {
 	// from data that refutes it, which is the one way this control can publish a
 	// platform-floor attribution it has not earned.
 	const verdict = run({ incremental: [2.4, 2.38, 2.36], bulk: [3.0, 2.6, 2.4] });
-	assert.equal(verdict.drifts['live-bulk'] > FLAT_DRIFT, true);
-	assert.equal(verdict.trends['live-bulk'] < 0, true);
+	assert.equal(verdict.drifts[cellName('upgraded', 'live-bulk')] > FLAT_DRIFT, true);
+	assert.equal(verdict.trends[cellName('upgraded', 'live-bulk')] < 0, true);
 	assert.equal(verdict.bulkRising, false);
 	assert.equal(verdict.predictionConfirmed, false);
+});
+
+test('reaction cost is the upgraded cell minus the inert one, same window', () => {
+	// The reason the kind axis exists. The first run of this control compared
+	// web-core's publishing appendChild — which inserts upgraded custom elements
+	// and runs a reaction per node — against inert tags, and attributed the whole
+	// difference to web-core. Both cells are measured in one window and differ
+	// only in whether `customElements.define` ran, so their difference is the
+	// platform's reaction dispatch and belongs to the floor.
+	const scales = [1000, 10000, 30000];
+	const cellRate = (cell) => (cell.startsWith('upgraded:') ? 2.4 : 1.5);
+	const perScale = scales.map((rows) => ({
+		rows,
+		arms: Object.fromEntries(
+			cellNames().map((cell) => [
+				cell,
+				summarizeArm(
+					[
+						sample({
+							buildMs: 0,
+							attachMs: (cellRate(cell) * rows * NODES_PER_ROW) / 1000,
+							frameMs: 0,
+						}),
+					],
+					rows,
+				),
+			]),
+		),
+	}));
+	for (const arm of ARM_NAMES.filter((name) => name.startsWith('split-'))) {
+		// 2.4 − 1.5 at every scale, and subtracted per scale rather than folded
+		// across them, so a kind that diverges at one scale cannot be averaged
+		// away by the others.
+		assert.deepEqual(
+			reactionCost(perScale, arm).map((value) => Number(value.toFixed(6))),
+			[0.9, 0.9, 0.9],
+		);
+	}
+	// And the verdict still decides on the upgraded kind only — the inert cells
+	// are a subtrahend, never a pair member.
+	const verdict = run({ incremental: [2.4, 2.35, 2.3], bulk: [2.4, 2.35, 2.3] });
+	assert.equal(verdict.deciding.pair.incremental, cellName('upgraded', 'live-incremental'));
+	assert.equal(verdict.localizing.pair.bulk, cellName('upgraded', 'split-bulk'));
+});
+
+test('the publishing call is reported alone, not folded into a loop', () => {
+	// The attribution rests on this one number, because it is the only span here
+	// that is a single call on both sides of the comparison. Reading it from an
+	// arm whose attach span is thousands of appends would compare a bulk publish
+	// against a loop and inflate the platform's share.
+	const rows = 10000;
+	const nodes = rows * NODES_PER_ROW;
+	const perScale = [
+		{
+			rows,
+			arms: {
+				[cellName('upgraded', 'live-bulk')]: summarizeArm(
+					[sample({ buildMs: 126.6, attachMs: 45.9, frameMs: 229.2, totalMs: 401.7 })],
+					rows,
+				),
+				[cellName('inert', 'live-bulk')]: summarizeArm(
+					[sample({ buildMs: 50.8, attachMs: 10.8, frameMs: 226, totalMs: 287.6 })],
+					rows,
+				),
+			},
+		},
+	];
+	assert.deepEqual(publishOnlyRates(perScale, 'upgraded'), [(45.9 / nodes) * 1000]);
+	assert.deepEqual(publishOnlyRates(perScale, 'inert'), [(10.8 / nodes) * 1000]);
+	// The build loop is excluded, so the rate is not the whole-loop command cost.
+	assert.notEqual(publishOnlyRates(perScale, 'upgraded')[0], ((126.6 + 45.9) / nodes) * 1000);
+	assert.throws(() => publishOnlyRates(perScale, 'missing'), /no missing:live-bulk arm/);
 });
 
 test('charging the same for both shapes opens no gap', () => {

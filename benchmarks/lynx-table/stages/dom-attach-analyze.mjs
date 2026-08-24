@@ -63,6 +63,37 @@ export function trend(rates) {
 	return finite[finite.length - 1] / finite[0] - 1;
 }
 
+export const ARM_NAMES = [
+	'build',
+	'live-incremental',
+	'live-bulk',
+	'split-incremental',
+	'split-bulk',
+];
+
+/**
+ * The two element kinds the same arms are measured with. `inert` uses
+ * unregistered tags and is the floor for inserting plain DOM nodes; `upgraded`
+ * registers the same tags as custom elements with an empty `connectedCallback`,
+ * which is what the harness page actually holds — `@lynx-js/web-elements`
+ * defines `x-view`, `x-text`, and `raw-text`, so web-core's publishing
+ * `appendChild` runs one reaction per node inside the insertion.
+ *
+ * Measuring both in one window is the point: `upgraded` minus `inert` is the
+ * platform's cost for running a reaction per node, which is irreducible for
+ * anyone whose host elements are custom elements at all, and it is a
+ * subtraction only if nothing but the registration differs between them.
+ */
+export const ELEMENT_KINDS = ['inert', 'upgraded'];
+
+/** One measured cell: an arm run against one element kind. */
+export const cellName = (kind, arm) => `${kind}:${arm}`;
+
+/** Every cell name, in the order the schedule rotates them. */
+export function cellNames(kinds = ELEMENT_KINDS, arms = ARM_NAMES) {
+	return kinds.flatMap((kind) => arms.map((arm) => cellName(kind, arm)));
+}
+
 // The pair that decides the prediction, and the pair that localizes it.
 //
 // `live-*` interleaves creation and attachment per row, exactly as the command
@@ -70,8 +101,23 @@ export function trend(rates) {
 // (plus `papi_flush` on the bulk side) and it carries no deviation. `split-*`
 // builds first and attaches second, which costs a deviation but buys a
 // separable `attachMs`.
-export const DECIDING_PAIR = { incremental: 'live-incremental', bulk: 'live-bulk' };
-export const LOCALIZING_PAIR = { incremental: 'split-incremental', bulk: 'split-bulk' };
+export const pairsFor = (kind) => ({
+	deciding: {
+		incremental: cellName(kind, 'live-incremental'),
+		bulk: cellName(kind, 'live-bulk'),
+	},
+	localizing: {
+		incremental: cellName(kind, 'split-incremental'),
+		bulk: cellName(kind, 'split-bulk'),
+	},
+});
+
+export const DECIDING_PAIR = pairsFor('upgraded').deciding;
+export const LOCALIZING_PAIR = pairsFor('upgraded').localizing;
+
+// A live arm is one whose loop interleaves creation and attachment, whatever
+// element kind it ran with.
+const isLive = (arm) => /(^|:)live-/.test(arm);
 
 function armAt(perScale, arm) {
 	return perScale.map((scale) => {
@@ -96,7 +142,7 @@ function armAt(perScale, arm) {
  */
 export function commandRates(perScale, arm) {
 	return armAt(perScale, arm).map((summary) =>
-		arm.startsWith('live-')
+		isLive(arm)
 			? summary.perNodeUs.buildMs + summary.perNodeUs.attachMs
 			: summary.perNodeUs.attachMs,
 	);
@@ -127,6 +173,43 @@ export function publishRates(perScale, arm) {
 export function shapeGaps(perScale, pair) {
 	const incremental = commandRates(perScale, pair.incremental);
 	return commandRates(perScale, pair.bulk).map((bulk, index) => bulk / incremental[index]);
+}
+
+// The one arm whose attach span is a single call. `live-bulk` appends every row
+// into a detached container inside its build loop, so its `attachMs` is only the
+// `shadow.appendChild(page)` that publishes the tree — the same one call
+// `__FlushElementTree` makes. Every other arm's attach span is thousands of
+// appends.
+export const PUBLISH_ONLY_ARM = 'live-bulk';
+
+/**
+ * The publishing `appendChild` alone, per node. This is the one comparison in
+ * this control that is free of per-call instrument overhead on both sides: one
+ * call here against the two `papi_flush` calls a first-screen window makes,
+ * where every per-element group is thousands of calls measured through an
+ * instrument that costs 0.5–0.7 µs each. It is reported on its own because it
+ * carries the attribution, and dividing it back out of a table is not something
+ * a reader should have to do.
+ */
+export function publishOnlyRates(perScale, kind) {
+	return armAt(perScale, cellName(kind, PUBLISH_ONLY_ARM)).map(
+		(summary) => summary.perNodeUs.attachMs,
+	);
+}
+
+/**
+ * What registering the tags costs, per node, at each scale: the `upgraded` cell
+ * of an arm minus its `inert` cell. Both are measured in the same window and
+ * differ only in whether `customElements.define` ran, so the difference is the
+ * platform running one reaction per node — irreducible for anyone whose host
+ * elements are custom elements, and therefore part of the floor rather than
+ * part of what #148 W2 can attack.
+ */
+export function reactionCost(perScale, arm) {
+	const inert = commandRates(perScale, cellName('inert', arm));
+	return commandRates(perScale, cellName('upgraded', arm)).map(
+		(upgraded, index) => upgraded - inert[index],
+	);
 }
 
 function decidePair(perScale, drifts, trends, pair) {
@@ -174,14 +257,14 @@ function decidePair(perScale, drifts, trends, pair) {
  * missing drift as a failed flatness test would publish "refuted" for a run
  * that tested nothing.
  */
-export function verdictFor(perScale, arms) {
+export function verdictFor(perScale, arms, pairs = pairsFor('upgraded')) {
 	const rates = Object.fromEntries(arms.map((arm) => [arm, commandRates(perScale, arm)]));
 	const frames = Object.fromEntries(arms.map((arm) => [arm, frameRates(perScale, arm)]));
 	const registered = Object.fromEntries(arms.map((arm) => [arm, publishRates(perScale, arm)]));
 	const drifts = Object.fromEntries(arms.map((arm) => [arm, drift(rates[arm])]));
 	const trends = Object.fromEntries(arms.map((arm) => [arm, trend(rates[arm])]));
-	const deciding = decidePair(perScale, drifts, trends, DECIDING_PAIR);
-	const localizing = decidePair(perScale, drifts, trends, LOCALIZING_PAIR);
+	const deciding = decidePair(perScale, drifts, trends, pairs.deciding);
+	const localizing = decidePair(perScale, drifts, trends, pairs.localizing);
 	return {
 		flatDriftGate: FLAT_DRIFT,
 		rates,

@@ -10,7 +10,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 
-import { DECIDING_PAIR, FLAT_DRIFT, LOCALIZING_PAIR, verdictFor } from './dom-attach-analyze.mjs';
+import {
+	ARM_NAMES,
+	ELEMENT_KINDS,
+	FLAT_DRIFT,
+	PUBLISH_ONLY_ARM,
+	cellName,
+	cellNames,
+	pairsFor,
+	publishOnlyRates,
+	reactionCost,
+	verdictFor,
+} from './dom-attach-analyze.mjs';
 
 const round = (value, digits = 1) => Number(value.toFixed(digits));
 
@@ -20,9 +31,14 @@ const round = (value, digits = 1) => Number(value.toFixed(digits));
  * decides it under the current rules.
  */
 export function renderFloorReport(meta, perScale) {
-	const ARMS = meta.arms;
+	const arms = meta.arms ?? ARM_NAMES;
+	// The kind axis decides which cells exist. A run measured before it was added
+	// carries neither `kinds` nor `cells`, so it renders as the one kind it had.
+	const kinds = meta.kinds ?? ELEMENT_KINDS;
+	const CELLS = meta.cells ?? cellNames(kinds, arms);
+	const decidingKind = kinds[kinds.length - 1];
 	const scales = perScale.map((scale) => scale.rows);
-	const verdict = verdictFor(perScale, ARMS);
+	const verdict = verdictFor(perScale, CELLS, pairsFor(decidingKind));
 	const { deciding, drifts, localizing, rates } = verdict;
 	const loadStart = meta.loadStart;
 	const lines = [
@@ -31,14 +47,21 @@ export function renderFloorReport(meta, perScale) {
 		`- measured: ${meta.date}`,
 		`- host: ${meta.cpus}× ${meta.cpuModel}; ${meta.platform} ${meta.release}; Node ${meta.node}; Chromium ${meta.chromium}`,
 		`- host load: start ${loadStart.map((value) => value.toFixed(2)).join('/')} (1/5/15m), end ${meta.loadEnd.map((value) => value.toFixed(2)).join('/')}`,
-		`- repetitions: n=${meta.repetitions} per arm per scale; arms: ${ARMS.join(', ')}`,
+		`- repetitions: n=${meta.repetitions} per cell per scale; arms: ${arms.join(', ')}; element kinds: ${kinds.join(', ')}`,
 		`- protocol: ${meta.protocol}`,
 		'',
 		'## What this controls for',
 		'',
 		"#148 W2 resolved publication's share into a swap plus a rate. The swap is exact — a detached first screen pays its insertions inside `papi_flush` where the post-mount path pays the identical insertions inside `papi_topology` — and what survives it is a per-node rate that rises with the tree on the first-screen path while staying flat on the post-mount one. This probe asks whether the browser reproduces that split with no framework in the page.",
 		'',
-		'Nothing measured here belongs to Octane or to web-core. `__AppendElement` is `parent.appendChild(child)` and the first flush publishes with `rootDom.appendChild(page)` on a shadow root, so the arms below are those two calls and nothing else. The tree is built with the tag names, per-row shape, attributes, class names, and scoped stylesheet `createElementAPI.js` produces, so the browser resolves the same styles over the same unregistered elements.',
+		'Nothing measured here belongs to Octane or to web-core. `__AppendElement` is `parent.appendChild(child)` and the first flush publishes with `rootDom.appendChild(page)` on a shadow root, so the arms below are those two calls and nothing else. The tree is built with the tag names, per-row shape, attributes, class names, and scoped stylesheet `createElementAPI.js` produces, so the browser resolves the same styles over the same elements.',
+		'',
+		'Every arm is measured against **both element kinds**, in one window, because the harness page has `x-view`, `x-text`, and `raw-text` registered — `@lynx-js/web-elements` defines all three — so web-core publishes a tree of upgraded custom elements and the insertion runs one reaction per node inside itself. An `inert` cell uses the same tags unregistered; an `upgraded` cell registers them with an empty `connectedCallback`, so the difference is the platform running a reaction and not what web-elements does inside one. Each sample asserts its own registration state in the page, so a cell cannot report a kind it did not run.',
+		'',
+		'| kind | what it measures |',
+		'|---|---|',
+		'| `inert` | the floor for inserting plain DOM nodes of this shape |',
+		'| `upgraded` | the same, plus the platform running one custom-element reaction per node — what web-core actually triggers |',
 		'',
 		'| arm | what it does |',
 		'|---|---|',
@@ -53,20 +76,20 @@ export function renderFloorReport(meta, perScale) {
 		'The two pairs answer the same question at different costs. `live-*` interleaves creation and attachment exactly as the command stream does, so it needs no deviation from what Octane pays and its whole loop is comparable to `papi_topology` — plus `papi_flush` on the bulk side. It cannot separate attachment from creation without a clock read per append, so its rate is the loop plus the frame. `split-*` buys a separable `attachMs` by building first and attaching second, which the command stream never does; it localizes whatever the live pair finds and can never overturn it.',
 		'',
 		'The deciding pair is therefore `' +
-			DECIDING_PAIR.incremental +
+			pairsFor(decidingKind).deciding.incremental +
 			'` against `' +
-			DECIDING_PAIR.bulk +
+			pairsFor(decidingKind).deciding.bulk +
 			'`, with `' +
-			LOCALIZING_PAIR.incremental +
+			pairsFor(decidingKind).localizing.incremental +
 			'`/`' +
-			LOCALIZING_PAIR.bulk +
-			'` reported beside it as corroboration.',
+			pairsFor(decidingKind).localizing.bulk +
+			'` reported beside it as corroboration. The upgraded kind decides, because it is the one the harness page holds.',
 		'',
 	];
 
 	for (const [index, scale] of perScale.entries()) {
 		lines.push(
-			`## ${scale.rows.toLocaleString('en-US')} rows — ${scale.arms.build.nodes.toLocaleString('en-US')} nodes`,
+			`## ${scale.rows.toLocaleString('en-US')} rows — ${scale.arms[CELLS[0]].nodes.toLocaleString('en-US')} nodes`,
 			'',
 		);
 		lines.push(
@@ -74,13 +97,13 @@ export function renderFloorReport(meta, perScale) {
 			// rather than being recomputed here. `command` is what the stream itself
 			// pays — a live arm's whole loop, a split arm's attach span — and the
 			// frame is kept beside it rather than folded in.
-			'| arm | build ms | attach ms | frame ms | total ms | command µs/node | frame µs/node |',
+			'| cell | build ms | attach ms | frame ms | total ms | command µs/node | frame µs/node |',
 			'|---|---:|---:|---:|---:|---:|---:|',
 		);
-		for (const arm of ARMS) {
-			const summary = scale.arms[arm];
+		for (const cell of CELLS) {
+			const summary = scale.arms[cell];
 			lines.push(
-				`| \`${arm}\` | ${round(summary.spans.buildMs.median)} | ${round(summary.spans.attachMs.median)} | ${round(summary.spans.frameMs.median)} | ${round(summary.spans.totalMs.median)} | ${round(rates[arm][index], 3)} | ${round(verdict.frames[arm][index], 2)} |`,
+				`| \`${cell}\` | ${round(summary.spans.buildMs.median)} | ${round(summary.spans.attachMs.median)} | ${round(summary.spans.frameMs.median)} | ${round(summary.spans.totalMs.median)} | ${round(rates[cell][index], 3)} | ${round(verdict.frames[cell][index], 2)} |`,
 			);
 		}
 		lines.push('');
@@ -93,10 +116,10 @@ export function renderFloorReport(meta, perScale) {
 	);
 	const scaleColumns = scales.map((rows) => `${rows.toLocaleString('en-US')} µs/node`).join(' | ');
 	lines.push(
-		`| arm | ${scaleColumns} | drift | trend | flat |`,
+		`| cell | ${scaleColumns} | drift | trend | flat |`,
 		'|---|' + scales.map(() => '---:').join('|') + '|---:|---:|---|',
 	);
-	const paired = ARMS.filter((arm) => arm !== 'build');
+	const paired = CELLS.filter((cell) => !cell.endsWith(':build') && cell !== 'build');
 	for (const arm of paired) {
 		const armDrift = drifts[arm];
 		const armTrend = verdict.trends[arm];
@@ -173,6 +196,48 @@ export function renderFloorReport(meta, perScale) {
 				: "Publication's rise is not the platform's, so it belongs to web-core or to Octane with a named owner. W2 stays open.",
 	);
 	lines.push('');
+	// The subtraction the kind axis exists for. Both cells of a row are measured
+	// in the same window and differ only in whether `customElements.define` ran,
+	// so their difference is the platform running one reaction per node — part
+	// of the floor, not part of what W2 can attack.
+	if (kinds.length > 1) {
+		lines.push(
+			'### The single publishing call',
+			'',
+			`\`${PUBLISH_ONLY_ARM}\`'s attach span is one call — every row is appended inside its build loop, into a detached container, so what is left to time is the \`appendChild\` that publishes the page. That is the same one call \`__FlushElementTree\` makes, which makes this the only comparison here free of per-call instrument overhead on both sides: one call against the two \`papi_flush\` calls a first-screen window makes, where every per-element group is thousands of calls read through an instrument costing 0.5–0.7 µs each.`,
+			'',
+			`| kind | ${scaleColumns} |`,
+			'|---|' + scales.map(() => '---:').join('|') + '|',
+		);
+		for (const kind of kinds) {
+			lines.push(
+				`| \`${kind}\` | ${publishOnlyRates(perScale, kind)
+					.map((value) => round(value, 3))
+					.join(' | ')} |`,
+			);
+		}
+		lines.push(
+			'',
+			'µs per node. Which kind to read against a measured `papi_flush` is settled by what the harness page holds, not by which number is more convenient: it registers all three tags, so the `upgraded` row is the comparand and the `inert` row is the floor beneath it.',
+			'',
+			'### What registering the tags costs',
+			'',
+			'`upgraded` minus `inert`, per node, same window. This is the platform dispatching one custom-element reaction per inserted node with an empty callback body — irreducible for anyone whose host elements are custom elements at all, which every Lynx web element is.',
+			'',
+			`| arm | ${scaleColumns} |`,
+			'|---|' + scales.map(() => '---:').join('|') + '|',
+		);
+		for (const arm of arms) {
+			if (arm === 'build') continue;
+			const cost = reactionCost(perScale, arm);
+			lines.push(`| \`${arm}\` | ${cost.map((value) => round(value, 3)).join(' | ')} |`);
+		}
+		lines.push(
+			'',
+			`Read against the same window's inert floor: \`${cellName('inert', 'live-bulk')}\` publishes at ${rates[cellName('inert', 'live-bulk')].map((rate) => round(rate, 3)).join(' / ')} µs/node and \`${cellName('upgraded', 'live-bulk')}\` at ${rates[cellName('upgraded', 'live-bulk')].map((rate) => round(rate, 3)).join(' / ')}.`,
+			'',
+		);
+	}
 	// The registered reading, printed rather than dropped: the run was designed
 	// around it, and a reader must be able to see that both readings agree.
 	lines.push(
@@ -213,8 +278,15 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
 	fs.writeFileSync(path.join(output, `${stem}.md`), text + '\n');
 	// The verdict travels with the samples, so a re-render refreshes it too;
 	// leaving the stale one in the JSON beside a corrected report would let the
-	// two disagree.
-	run.verdict = verdictFor(run.scales, run.meta.arms);
+	// two disagree. It is decided over the same cells and the same pair the
+	// report renders — the measured units are cells, not arms, once the kind axis
+	// exists, and deciding over bare arm names finds no such arm at all.
+	const runKinds = run.meta.kinds ?? ELEMENT_KINDS;
+	run.verdict = verdictFor(
+		run.scales,
+		run.meta.cells ?? cellNames(runKinds, run.meta.arms ?? ARM_NAMES),
+		pairsFor(runKinds[runKinds.length - 1]),
+	);
 	fs.writeFileSync(file, JSON.stringify(run, null, 2) + '\n');
 	console.log(text);
 }

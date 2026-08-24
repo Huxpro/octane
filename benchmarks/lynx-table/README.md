@@ -632,6 +632,24 @@ and differ only in where and when it is attached:
 | `split-incremental` | every row built first, then all of them appended into an attached container |
 | `split-bulk` | every row built first, then all of them appended into a detached container, then one `appendChild` publishes it |
 
+Every arm runs against **two element kinds**, in one window, because the harness
+page has `x-view`, `x-text`, and `raw-text` registered — `@lynx-js/web-elements`
+defines all three — so web-core publishes a tree of upgraded custom elements and
+the insertion runs one reaction per node inside itself.
+
+| kind | what it measures |
+|---|---|
+| `inert` | the floor for inserting plain DOM nodes of this shape |
+| `upgraded` | the same, plus the platform running one custom-element reaction per node — what web-core actually triggers |
+
+The `upgraded` kind decides, since it is the one the harness page holds, and
+`upgraded` minus `inert` is the platform's price for dispatching a reaction:
+the callbacks are empty on purpose, so what the difference isolates is the
+dispatch and not what web-elements does inside one. Each sample asserts its own
+registration state in the page and the runner rejects a cell that ran the wrong
+kind, because the claim this control got wrong the first time was exactly a
+registration claim read from sources instead of from the running page.
+
 ```bash
 node stages/dom-attach-floor.mjs --reps 5 --scales 1000,10000,30000
 ```
@@ -665,6 +683,19 @@ scales, because a drift needs two points and reporting its absence as a failed
 flatness test would publish a verdict for a run that tested nothing.
 `dom-attach-analyze.mjs` holds every one of those decisions as pure functions so
 the claim it generates is tested without spending a measurement window.
+
+The prediction was refuted on both pairs and both readings: the platform charges
+the same per node whichever shape it is handed, so it does not reproduce the
+first-screen-versus-post-mount split. What the run does settle is how much of
+publication the platform owns. Comparing one call against two — `live-bulk`'s
+attach span is exactly the `rootDom.appendChild(page)` that `__FlushElementTree`
+performs, and `papi_flush` is two calls in the whole first-screen window — the
+platform is **33.2% / 37.1% / 30.3%** of `papi_flush` at 1k/10k/30k against the
+same window's `upgraded` cells, where the `inert` cells alone would say 9.6% /
+8.7% / 8.1%. Read wider, as `papi_topology + papi_flush` against the control's
+insertion span, the platform is 24.5% / 26.7% / 24.1% of Octane's first-screen
+insertion rate; that reading is the same order but carries the per-call
+instrument overhead the flush comparison does not.
 
 `papi-predicate-cost.mjs` records what the two window predicates themselves cost
 on a settled tree at each scale. The FCP predicate is the expensive composed-tree
