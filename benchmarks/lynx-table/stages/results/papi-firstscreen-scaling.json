@@ -9,31 +9,12 @@
     "chromium": "141.0.7390.37",
     "clockGranularityMs": 0.09999999962747097,
     "repetitions": 5,
-    "scales": [
-      1000,
-      10000,
-      30000
-    ],
-    "cells": [
-      "octane",
-      "octane-profile"
-    ],
-    "variants": [
-      "control",
-      "counts",
-      "timed"
-    ],
+    "scales": [1000, 10000, 30000],
+    "cells": ["octane", "octane-profile"],
+    "variants": ["control", "counts", "timed"],
     "reportable": true,
-    "loadStart": [
-      0.6,
-      1.01,
-      1.2
-    ],
-    "loadEnd": [
-      1.14,
-      1.37,
-      1.41
-    ],
+    "loadStart": [0.6, 1.01, 1.2],
+    "loadEnd": [1.14, 1.37, 1.41],
     "webCore": "0.22.2",
     "referenceManifest": {
       "source": "https://github.com/Huxpro/vue-lynx",
