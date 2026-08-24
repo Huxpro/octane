@@ -113,6 +113,21 @@ function describeConstructor(value: object): string {
 	return typeof name === 'string' && name.length > 0 ? name : 'non-plain object';
 }
 
+/**
+ * How deep a payload may nest before the codec names it rather than recursing.
+ *
+ * `prepare` is recursive, so a cycle is unbounded depth from its point of view,
+ * and without a limit it exhausts the stack — a `RangeError` with no path, which
+ * is a worse diagnostic than the `TypeError` plain `JSON.stringify` would have
+ * produced. An on-path `Set` would distinguish a true cycle from deep nesting,
+ * but it costs an add and a delete per composite on the first-screen path, which
+ * is the one walk this codec exists to keep cheap. A depth counter costs one
+ * integer compare, names the path where it gave up, and is reached only by a
+ * payload no receiver could use: nothing Octane sends nests past single digits,
+ * and a hand-built value this deep is a defect either way.
+ */
+const MAX_PREPARE_DEPTH = 512;
+
 interface PrepareState {
 	escaped: boolean;
 	/** Development only: every composite seen, to notice a DAG before JSON expands it. */
@@ -128,7 +143,7 @@ interface PrepareState {
  * nodes and essentially never contains an escape, so the common path walks the
  * tree once and allocates nothing.
  */
-function prepare(value: unknown, path: string, state: PrepareState): unknown {
+function prepare(value: unknown, path: string, state: PrepareState, depth = 0): unknown {
 	switch (typeof value) {
 		case 'string':
 			if (value.charCodeAt(0) !== 0) return value;
@@ -153,6 +168,12 @@ function prepare(value: unknown, path: string, state: PrepareState): unknown {
 	}
 	if (value === null) return null;
 
+	if (depth >= MAX_PREPARE_DEPTH) {
+		throw codecError(
+			path,
+			`nests deeper than ${MAX_PREPARE_DEPTH} levels, which is either a cycle or a structure the wire cannot carry.`,
+		);
+	}
 	const composite = value as object;
 	if (state.seen !== null) {
 		const count = state.seen.get(composite);
@@ -167,7 +188,7 @@ function prepare(value: unknown, path: string, state: PrepareState): unknown {
 		let mirror: unknown[] | null = null;
 		for (let index = 0; index < composite.length; index++) {
 			const before = composite[index];
-			const after = prepare(before, `${path}[${index}]`, state);
+			const after = prepare(before, `${path}[${index}]`, state, depth + 1);
 			if (mirror === null) {
 				if (after === before) continue;
 				mirror = composite.slice(0, index);
@@ -203,7 +224,7 @@ function prepare(value: unknown, path: string, state: PrepareState): unknown {
 		const escapedKey =
 			key === PROTO_KEY ? ESCAPED_PROTO_KEY : isProtoEscapeFamily(key) ? NUL + key : key;
 		const before = record[key];
-		const after = prepare(before, `${path}.${key}`, state);
+		const after = prepare(before, `${path}.${key}`, state, depth + 1);
 		if (mirror === null) {
 			if (escapedKey === key && after === before) continue;
 			state.escaped = true;
@@ -220,22 +241,34 @@ function prepare(value: unknown, path: string, state: PrepareState): unknown {
 	return mirror ?? record;
 }
 
-/** Undo `prepare`. Only ever called for a payload whose flags say it escaped. */
-function restore(value: unknown): unknown {
+/**
+ * Undo `prepare`. Only ever called for a payload whose flags say it escaped.
+ *
+ * Depth-capped on the same terms as `prepare`, and for the same reason: this
+ * recurses, and `JSON.parse` is happy to hand back a structure deeper than the
+ * stack. Anything this codec encoded is already under the limit, so the branch
+ * is reached only by a payload some other writer produced.
+ */
+function restore(value: unknown, depth = 0): unknown {
 	if (typeof value === 'string') {
 		if (value.charCodeAt(0) !== 0) return value;
 		return value === UNDEFINED_SENTINEL ? undefined : value.slice(1);
 	}
 	if (value === null || typeof value !== 'object') return value;
+	if (depth >= MAX_PREPARE_DEPTH) {
+		throw new TypeError(
+			`Octane Lynx transport received a payload nesting deeper than ${MAX_PREPARE_DEPTH} levels.`,
+		);
+	}
 	if (Array.isArray(value)) {
 		for (let index = 0; index < value.length; index++) {
-			value[index] = restore(value[index]);
+			value[index] = restore(value[index], depth + 1);
 		}
 		return value;
 	}
 	const record = value as Record<string, unknown>;
 	for (const key of Object.keys(record)) {
-		const restored = restore(record[key]);
+		const restored = restore(record[key], depth + 1);
 		if (key === ESCAPED_PROTO_KEY) {
 			delete record[key];
 			// Defined rather than assigned: `record.__proto__ = x` is a prototype

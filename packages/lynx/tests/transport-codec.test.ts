@@ -235,6 +235,37 @@ describe('Lynx transport codec', () => {
 	// decode, so the codec is run in both directions on it. What has to come
 	// back is a tree the caller owns outright: the engine keeps whatever it kept,
 	// and nothing it still holds can reach the receiver afterwards.
+	// A cycle is the one input a sender can hand this codec that has no encoding
+	// at all. Plain `JSON.stringify` answers it with a named `TypeError`; a
+	// recursive walk that does not notice answers with a `RangeError` carrying no
+	// path, which is a worse diagnostic than the thing it replaced.
+	it('names a cyclic value rather than exhausting the stack', () => {
+		const direct: Record<string, unknown> = { name: 'root' };
+		direct.self = direct;
+		expect(() => encodeLynxTransportValue(direct)).toThrow(TypeError);
+		expect(() => encodeLynxTransportValue(direct)).toThrow(/at \$\.self(\.self)* nests deeper/);
+
+		// Reached through an array and at a distance, so the guard cannot be
+		// passing only for the shape that sits immediately under the root.
+		const parent: Record<string, unknown> = {};
+		const child: Record<string, unknown> = { parent };
+		parent.children = [child];
+		expect(() => encodeLynxTransportValue({ tree: parent })).toThrow(/nests deeper/);
+	});
+
+	it('carries a payload nested as deep as the wire allows', () => {
+		// One below the limit round-trips, so the guard is a ceiling on nesting
+		// rather than a cap that a legitimate payload could run into. Built
+		// iteratively: constructing it by recursion would prove nothing about the
+		// codec and would hit the stack first.
+		let deep: unknown = 'leaf';
+		for (let level = 0; level < 500; level++) deep = { level: deep };
+		const decoded = decodeLynxTransportValue(encodeLynxTransportValue(deep));
+		let walked = decoded;
+		for (let level = 0; level < 500; level++) walked = (walked as { level: unknown }).level;
+		expect(walked).toBe('leaf');
+	});
+
 	it('hands back a tree disjoint from the value that entered', () => {
 		const nested = { name: 'Ada' };
 		const entered = { profile: nested, tags: ['a'] };

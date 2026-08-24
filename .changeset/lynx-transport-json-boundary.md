@@ -19,7 +19,8 @@ back as `undefined`, `__proto__` is an own data property on both sides of the
 wire whatever the engine's `JSON.parse` does with it, and a `bigint`, non-finite
 number, function, symbol, `Date`, `Map`, or class instance is refused at the
 sender, which is the last place that still knows what the value was. A payload
-that literally contains a sentinel round-trips unchanged.
+that literally contains a sentinel round-trips unchanged, and a cyclic value is
+named where it closed rather than exhausting the stack.
 
 Wire payloads are unchanged to the byte: a clean message encodes as exactly its
 own JSON inside a constant 4-byte envelope, measured across the lynx-table gates
