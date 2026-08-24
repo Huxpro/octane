@@ -24,6 +24,33 @@ export const LYNX_TRANSPORT_PROTOCOL_VERSION: typeof UNIVERSAL_TRANSPORT_PROTOCO
 
 export const LYNX_TRANSPORT_RENDERER: typeof LYNX_RENDERER_ID = LYNX_RENDERER_ID;
 
+/**
+ * How much of an inbound message a receiver re-derives before acting on it.
+ *
+ * Since the transport owns encoding (issue #156, slice 1), every inbound
+ * message is `JSON.parse` output: ordinary, acyclic, receiver-local data. What
+ * validation still answers is a schema question — is this the command ABI this
+ * build speaks? — and that question has two honest answers.
+ *
+ * - `checked`, the default, walks the whole message against the schema. It is
+ *   what catches a version-skewed peer, a hand-built message, and this
+ *   package's own drift, and it is what every root gets unless told otherwise.
+ * - `trusted` says the two threads ship together and the sender is this same
+ *   package. Production then checks the envelope — protocol, renderer, root,
+ *   version, discriminant, arity — and declines the O(commands x props) walk
+ *   beneath it. Development still runs the full `checked` walk, so drift fails
+ *   loudly where it is introduced rather than silently where it is deployed.
+ *
+ * Neither mode changes what happens after validation: the compact completion
+ * acknowledgement, backpressure, lifetime, and fault handling are identical.
+ */
+export type LynxValidationMode = 'checked' | 'trusted';
+
+/** Whether a mode re-derives the deep structure of a message in this build. */
+export function lynxValidationTraverses(mode: LynxValidationMode): boolean {
+	return mode !== 'trusted' || LYNX_DEVELOPMENT;
+}
+
 /** Named ContextProxy events; this protocol never falls back to `postMessage`. */
 export const LYNX_BACKGROUND_TO_MAIN_EVENT = 'octane-lynx:background-to-main';
 export const LYNX_MAIN_TO_BACKGROUND_EVENT = 'octane-lynx:main-to-background';
@@ -1369,6 +1396,7 @@ function assertCommand(
 function assertBatch(
 	value: unknown,
 	identity: UniversalTransportIdentity,
+	traverse: boolean,
 ): asserts value is UniversalHostBatch {
 	const batch = record(value, 'commit.batch');
 	exactKeys(batch, ['renderer', 'version', 'commands'], 'commit.batch');
@@ -1376,6 +1404,11 @@ function assertBatch(
 		fail('commit.batch.renderer', 'does not match envelope.');
 	if (batch.version !== identity.version) fail('commit.batch.version', 'does not match envelope.');
 	if (!Array.isArray(batch.commands)) fail('commit.batch.commands', 'must be an array.');
+	// The envelope above is O(1) and stays in both modes: it is what decides
+	// which root a commit belongs to and which version it answers, so skipping
+	// it would not be a trust decision but a routing bug. The commands are the
+	// O(commands x props) half, and they are what `trusted` declines.
+	if (!traverse) return;
 	const validationState: LynxBatchValidationState = {};
 	for (let index = 0; index < batch.commands.length; index++) {
 		assertCommand(batch.commands[index], index, validationState);
@@ -1392,23 +1425,25 @@ function assertRemoteError(
 	if (typeof error.message !== 'string') fail(`${label}.message`, 'must be a string.');
 }
 
-function assertCallArgs(value: unknown, label: string): void {
+function assertCallArgs(value: unknown, label: string, traverse: boolean): void {
 	if (!Array.isArray(value)) fail(label, 'must be an array.');
-	assertWireValue(value, label);
+	if (traverse) assertWireValue(value, label);
 }
 
-function assertMainThreadWorklet(value: unknown, label: string): void {
+function assertMainThreadWorklet(value: unknown, label: string, traverse: boolean): void {
 	const worklet = record(value, label);
 	const hasCaptures = Object.prototype.hasOwnProperty.call(worklet, '_c');
 	exactKeys(worklet, hasCaptures ? ['_wkltId', '_c'] : ['_wkltId'], label);
 	nonEmptyString(worklet._wkltId, `${label}._wkltId`);
 	if (hasCaptures) {
+		// The identity a worklet is dispatched by stays checked in both modes;
+		// only its capture graph is the deep walk `trusted` declines.
 		const captures = record(worklet._c, `${label}._c`);
-		assertWireValue(captures, `${label}._c`);
+		if (traverse) assertWireValue(captures, `${label}._c`);
 	}
 }
 
-function assertBackgroundFunction(value: unknown, label: string): void {
+function assertBackgroundFunction(value: unknown, label: string, traverse: boolean): void {
 	const fn = record(value, label);
 	const hasExecution = Object.prototype.hasOwnProperty.call(fn, '_execId');
 	const hasCaptures = Object.prototype.hasOwnProperty.call(fn, '_c');
@@ -1421,17 +1456,18 @@ function assertBackgroundFunction(value: unknown, label: string): void {
 	if (hasExecution) nonEmptyString(fn._execId, `${label}._execId`);
 	if (hasCaptures) {
 		const captures = record(fn._c, `${label}._c`);
-		assertWireValue(captures, `${label}._c`);
+		if (traverse) assertWireValue(captures, `${label}._c`);
 	}
 }
 
 function assertCallResult(
 	message: Record<string, unknown>,
 	type: 'call-main-result' | 'call-background-result',
+	traverse: boolean,
 ): void {
 	exactKeys(message, ['protocol', 'renderer', 'root', 'version', 'type', 'call', 'value'], type);
 	positiveInteger(message.call, `${type}.call`);
-	assertWireValue(message.value, `${type}.value`);
+	if (traverse) assertWireValue(message.value, `${type}.value`);
 }
 
 function assertCallError(
@@ -1723,7 +1759,9 @@ export function selfCheckLynxBackgroundInboundMessage<Message>(message: Message)
 
 export function validateLynxBackgroundOutboundMessage(
 	value: unknown,
+	mode: LynxValidationMode = 'checked',
 ): LynxBackgroundOutboundMessage {
+	const traverse = lynxValidationTraverses(mode);
 	const message = record(value, 'outbound message');
 	if (message.type === 'main-ready-request')
 		return assertReady(message, false) as LynxMainReadyRequest;
@@ -1750,8 +1788,8 @@ export function validateLynxBackgroundOutboundMessage(
 			'call-main',
 		);
 		positiveInteger(message.call, 'call-main.call');
-		assertMainThreadWorklet(message.worklet, 'call-main.worklet');
-		assertCallArgs(message.args, 'call-main.args');
+		assertMainThreadWorklet(message.worklet, 'call-main.worklet', traverse);
+		assertCallArgs(message.args, 'call-main.args', traverse);
 		return message as unknown as LynxCallMainMessage;
 	}
 	if (message.type === 'cancel-main') {
@@ -1760,7 +1798,7 @@ export function validateLynxBackgroundOutboundMessage(
 		return message as unknown as LynxCancelMainCallMessage;
 	}
 	if (message.type === 'call-background-result') {
-		assertCallResult(message, 'call-background-result');
+		assertCallResult(message, 'call-background-result', traverse);
 		return message as unknown as LynxCallBackgroundResultMessage;
 	}
 	if (message.type === 'call-background-error') {
@@ -1801,7 +1839,7 @@ export function validateLynxBackgroundOutboundMessage(
 		) {
 			fail('commit.announces', `must be ${JSON.stringify(LYNX_ANNOUNCED_PUBLIC_INSTANCES)}.`);
 		}
-		assertBatch(message.batch, message);
+		assertBatch(message.batch, message, traverse);
 		return message as unknown as LynxTransportCommitMessage;
 	}
 	if (message.type === 'abort') {
@@ -1819,7 +1857,11 @@ export function validateLynxBackgroundOutboundMessage(
 	return fail('outbound message', `uses unsupported type ${JSON.stringify(message.type)}.`);
 }
 
-export function validateLynxBackgroundInboundMessage(value: unknown): LynxBackgroundInboundMessage {
+export function validateLynxBackgroundInboundMessage(
+	value: unknown,
+	mode: LynxValidationMode = 'checked',
+): LynxBackgroundInboundMessage {
+	const traverse = lynxValidationTraverses(mode);
 	const message = record(value, 'inbound message');
 	if (message.type === 'main-ready') return assertReady(message, true) as LynxMainReadyReply;
 	if (message.type === 'page-destroy') {
@@ -1848,7 +1890,7 @@ export function validateLynxBackgroundInboundMessage(value: unknown): LynxBackgr
 			fail('page-data.operation', 'must be replace, update, or reset.');
 		}
 		record(message.data, 'page-data.data');
-		assertWireValue(message.data, 'page-data.data');
+		if (traverse) assertWireValue(message.data, 'page-data.data');
 		return message as unknown as LynxPageDataMessage;
 	}
 	if (message.type === 'global-props') {
@@ -1860,7 +1902,7 @@ export function validateLynxBackgroundInboundMessage(value: unknown): LynxBackgr
 			fail('global-props', `renderer must be ${JSON.stringify(LYNX_TRANSPORT_RENDERER)}.`);
 		}
 		record(message.patch, 'global-props.patch');
-		assertWireValue(message.patch, 'global-props.patch');
+		if (traverse) assertWireValue(message.patch, 'global-props.patch');
 		return message as unknown as LynxGlobalPropsMessage;
 	}
 	assertIdentity(message, 'inbound message');
@@ -1871,8 +1913,8 @@ export function validateLynxBackgroundInboundMessage(value: unknown): LynxBackgr
 			'call-background',
 		);
 		positiveInteger(message.call, 'call-background.call');
-		assertBackgroundFunction(message.fn, 'call-background.fn');
-		assertCallArgs(message.args, 'call-background.args');
+		assertBackgroundFunction(message.fn, 'call-background.fn', traverse);
+		assertCallArgs(message.args, 'call-background.args', traverse);
 		return message as unknown as LynxCallBackgroundMessage;
 	}
 	if (message.type === 'cancel-background') {
@@ -1885,7 +1927,7 @@ export function validateLynxBackgroundInboundMessage(value: unknown): LynxBackgr
 		return message as unknown as LynxCancelBackgroundCallMessage;
 	}
 	if (message.type === 'call-main-result') {
-		assertCallResult(message, 'call-main-result');
+		assertCallResult(message, 'call-main-result', traverse);
 		return message as unknown as LynxCallMainResultMessage;
 	}
 	if (message.type === 'call-main-error') {
@@ -1957,7 +1999,7 @@ export function validateLynxBackgroundInboundMessage(value: unknown): LynxBackgr
 			const delivery = record(message.deliveries[index], `event.deliveries[${index}]`);
 			exactKeys(delivery, ['listener', 'payload'], `event.deliveries[${index}]`);
 			positiveInteger(delivery.listener, `event.deliveries[${index}].listener`);
-			assertWireValue(delivery.payload, `event.deliveries[${index}].payload`);
+			if (traverse) assertWireValue(delivery.payload, `event.deliveries[${index}].payload`);
 		}
 		return message as unknown as UniversalTransportEventMessage;
 	}

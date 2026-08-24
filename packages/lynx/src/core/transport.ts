@@ -41,6 +41,7 @@ import {
 	selfCheckLynxBackgroundOutboundMessage,
 	validateLynxBackgroundInboundMessage,
 	validateLynxBackgroundOutboundMessage,
+	type LynxValidationMode,
 	type LynxBackgroundInboundMessage,
 	type LynxBackgroundFunctionWireDescriptor,
 	type LynxCallBackgroundMessage,
@@ -68,6 +69,8 @@ import {
 
 export interface LynxBackgroundTransportOptions {
 	readonly onDiagnostic?: (error: Error) => void;
+	/** How much of an inbound message to re-derive. Defaults to `checked`. */
+	readonly validation?: LynxValidationMode;
 	/** Page-lifetime tombstone checked after receiver attachment and before readiness. */
 	readonly isPageDestroyed?: () => boolean;
 	/** Transactionally bind renderer-local worklet handles at the complete-batch boundary. */
@@ -261,6 +264,11 @@ export function createLynxBackgroundTransport(
 	}
 	if (container.renderer !== LYNX_TRANSPORT_RENDERER) {
 		throw new Error('Octane Lynx background transport received a foreign client container.');
+	}
+
+	const validation: LynxValidationMode = options.validation ?? 'checked';
+	if (validation !== 'checked' && validation !== 'trusted') {
+		throw new TypeError('Octane Lynx validation must be "checked" or "trusted".');
 	}
 
 	const reported: Error[] = [];
@@ -1364,7 +1372,7 @@ export function createLynxBackgroundTransport(
 		if (closedError !== null && terminalDisposeIdentity === null) return;
 		let message: LynxBackgroundInboundMessage;
 		try {
-			message = validateLynxBackgroundInboundMessage(data);
+			message = validateLynxBackgroundInboundMessage(data, validation);
 		} catch (error) {
 			const normalized = report(error, 'Octane Lynx received a malformed inbound message.');
 			rejectExpectedMalformed(data, normalized);

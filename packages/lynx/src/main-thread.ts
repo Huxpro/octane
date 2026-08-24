@@ -60,6 +60,7 @@ import {
 	selfCheckLynxBackgroundInboundMessage,
 	validateLynxBackgroundInboundMessage,
 	validateLynxBackgroundOutboundMessage,
+	type LynxValidationMode,
 	type LynxBackgroundInboundMessage,
 	type LynxBackgroundFunctionWireDescriptor,
 	type LynxAdoptionReadyMessage,
@@ -111,6 +112,8 @@ interface LynxMainThreadGlobals {
 	};
 }
 
+export type { LynxValidationMode } from './core/protocol.js';
+
 export interface InstallLynxMainThreadOptions {
 	/** Main-thread global object containing the public Element PAPI. */
 	readonly target?: object;
@@ -135,6 +138,11 @@ export interface InstallLynxMainThreadOptions {
 	 */
 	readonly firstScreenRender?: 'immediate' | 'engine';
 	readonly onDiagnostic?: (error: Error) => void;
+	/**
+	 * How much of an inbound commit this receiver re-derives before applying it.
+	 * Defaults to `checked`. See {@link LynxValidationMode}.
+	 */
+	readonly validation?: LynxValidationMode;
 	readonly executeMainThreadWorklet?: (
 		worklet: import('./core/protocol.js').LynxMainThreadWorkletWireDescriptor,
 		args: readonly UniversalSerializableValue[],
@@ -517,6 +525,10 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 ): LynxMainThreadController {
 	if (options.firstScreen !== undefined && typeof options.firstScreen !== 'boolean') {
 		throw new TypeError('Octane Lynx firstScreen must be a boolean when provided.');
+	}
+	const validation: LynxValidationMode = options.validation ?? 'checked';
+	if (validation !== 'checked' && validation !== 'trusted') {
+		throw new TypeError('Octane Lynx validation must be "checked" or "trusted".');
 	}
 	if (
 		options.firstScreenSync !== undefined &&
@@ -2565,7 +2577,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		let message: ReturnType<typeof validateLynxBackgroundOutboundMessage>;
 		const startedValidate = LYNX_PROFILE ? performance.now() : 0;
 		try {
-			message = validateLynxBackgroundOutboundMessage(data);
+			message = validateLynxBackgroundOutboundMessage(data, validation);
 			if (LYNX_PROFILE) lynxWireProfile().validateMs += performance.now() - startedValidate;
 		} catch (error) {
 			const normalized = report(error, 'Octane Lynx received a malformed outbound message.');
