@@ -21,7 +21,7 @@ import {
 	type LynxMainThreadWorkletDescriptor,
 } from '../src/core/worklets.js';
 import { installLynxMainThread, type LynxMainThreadController } from '../src/main-thread.js';
-import { unwire, wire } from './_fixtures/lynx-wire.js';
+import { conformingContextProxy, unwire, wire } from './_fixtures/lynx-wire.js';
 
 let dom: JSDOM | null = null;
 let controller: LynxMainThreadController | null = null;
@@ -813,5 +813,93 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 		expect(
 			controller!.diagnostics().filter((error) => /duplicate main-thread call/.test(error.message)),
 		).toHaveLength(3);
+	});
+
+	// #156 asks whether the worklet argument path is string-safe end to end. It
+	// is, and not by a separate arrangement: `runOnMainThread` reaches
+	// `transport.callMain`, `runOnBackground` reaches the controller's
+	// `callBackground`, and both funnel into the same `dispatch` as every other
+	// message — so the arguments, the results, and the cancellations all ride
+	// the four encoded send sites. The strict proxy is what proves it rather
+	// than asserts it: it refuses anything that is not this codec's output, in
+	// either direction, for the whole scenario.
+	it('carries worklet call arguments and results as encoded strings in both directions', async () => {
+		dom = new JSDOM('<!doctype html><html><body></body></html>');
+		installLynxTestingEnv(globalThis, {
+			window: dom.window as unknown as Window & typeof globalThis,
+		});
+		const strict = conformingContextProxy(new AsyncFifoContextProxy());
+		globalThis.lynxTestingEnv.switchToMainThread();
+		controller = installLynxMainThread({ context: strict.context });
+		globalThis.lynxTestingEnv.switchToBackgroundThread();
+
+		const container = createLynxClientContainer();
+		const transport = createLynxBackgroundTransport(strict.context, container);
+		await transport.ready;
+		const echo = registerMainThreadWorklet('test:echo-call-argument', {}, function (...args) {
+			return { seen: (args[0] as { readonly label: string }).label };
+		});
+		const root = 156;
+		const identity = (version: number) => ({
+			protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
+			renderer: LYNX_TRANSPORT_RENDERER,
+			root,
+			version,
+		});
+
+		// Background to main. The argument is mutated the moment the call is
+		// made, so a wire that passed the live object would report the later
+		// value; what the worklet sees is what was sent.
+		const outbound = { label: 'sent' };
+		let call: ReturnType<typeof transport.callMain> | null = null;
+		await transport
+			.prepareBatch(
+				container,
+				{
+					renderer: LYNX_TRANSPORT_RENDERER,
+					version: 1,
+					commands: [
+						{ op: 'create', id: 1, type: 'view', props: { id: 'worklet-args' } },
+						{ op: 'insert', parent: null, id: 1, before: null },
+					] as UniversalHostCommand[],
+				} as UniversalHostBatch,
+				identity(1),
+			)
+			.apply(() => {
+				call = transport.callMain(echo, [outbound]);
+				outbound.label = 'mutated';
+			});
+		expect(await call!.promise).toEqual({ seen: 'sent' });
+
+		// Main to background, which is the direction #156 asked to be confirmed
+		// separately: it leaves through `main-thread.ts`, the fourth send site.
+		const inbound: unknown[] = [];
+		strict.context.addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
+			inbound.push(unwire(event.data));
+		});
+		const backgroundCall = controller!.callBackground({ _jsFnId: 'app:receive' }, [
+			{ label: 'from-main' },
+		]);
+		// This scenario installs no background function registry, so the call is
+		// refused on arrival. That it is refused *there* is the point: the
+		// message reached the background thread as a string and was decoded and
+		// dispatched before anything about the target was known.
+		await expect(backgroundCall.promise).rejects.toThrow(/no background function registry/);
+		expect(
+			inbound.filter(
+				(message) => (message as { readonly type?: unknown }).type === 'call-background',
+			),
+		).toEqual([
+			expect.objectContaining({
+				fn: { _jsFnId: 'app:receive' },
+				args: [{ label: 'from-main' }],
+			}),
+		]);
+
+		// The positive control, and the byte count the PR reports: nothing above
+		// can pass by never reaching the wire.
+		expect(strict.conformance.crossings.length).toBeGreaterThan(0);
+		expect(strict.conformance.bytes()).toBeGreaterThan(0);
+		await transport.dispose();
 	});
 });
