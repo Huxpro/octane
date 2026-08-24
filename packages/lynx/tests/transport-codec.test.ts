@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { decodeLynxTransportValue, encodeLynxTransportValue } from '../src/core/transport-codec.js';
+import {
+	decodeLynxTransportValue,
+	encodeLynxTransportValue,
+	localizeLynxHostValue,
+} from '../src/core/transport-codec.js';
 
 const NUL = '\u0000';
 
@@ -225,5 +229,24 @@ describe('Lynx transport codec', () => {
 		expect(JSON.parse(encodeLynxTransportValue({ ['__proto__']: 1 }))[0]).toBe(1);
 		expect(JSON.parse(encodeLynxTransportValue({ a: `${NUL}x` }))[0]).toBe(1);
 		expect(JSON.parse(encodeLynxTransportValue({ [`${NUL}proto`]: 1 }))[0]).toBe(1);
+	});
+
+	// A value that entered from outside the transport has no encoded form to
+	// decode, so the codec is run in both directions on it. What has to come
+	// back is a tree the caller owns outright: the engine keeps whatever it kept,
+	// and nothing it still holds can reach the receiver afterwards.
+	it('hands back a tree disjoint from the value that entered', () => {
+		const nested = { name: 'Ada' };
+		const entered = { profile: nested, tags: ['a'] };
+		const localized = localizeLynxHostValue(entered) as typeof entered;
+
+		expect(localized).toEqual({ profile: { name: 'Ada' }, tags: ['a'] });
+		expect(localized).not.toBe(entered);
+		expect(localized.profile).not.toBe(nested);
+		expect(localized.tags).not.toBe(entered.tags);
+
+		nested.name = 'mutated';
+		entered.tags.push('b');
+		expect(localized).toEqual({ profile: { name: 'Ada' }, tags: ['a'] });
 	});
 });

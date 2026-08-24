@@ -13,8 +13,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { createLynxRoot, type LynxRoot } from '../src/index.js';
 import { installLynxMainThread, type LynxMainThreadController } from '../src/main-thread.js';
-import type { LynxContextProxy } from '../src/core/protocol.js';
-import { conformingContextProxy } from './_fixtures/lynx-wire.js';
+import type { LynxContextProxy, LynxContextProxyEvent } from '../src/core/protocol.js';
+import { conformingContextProxy, unwire } from './_fixtures/lynx-wire.js';
 
 const LYNX_SRC = fileURLToPath(new URL('../src', import.meta.url));
 
@@ -69,6 +69,32 @@ describe('Lynx transport conformance', () => {
 		expect(sites).toHaveLength(4);
 		for (const site of sites) {
 			expect(site).toMatch(/data:\s*encoded\b|data:\s*encodeLynxTransportValue\(/);
+		}
+	});
+
+	// The receiving half of the same claim. `event.data` is whatever the other
+	// side handed across — a peer thread's encoded string, or, at the engine
+	// lifecycle entries, a value nobody encoded at all. Either way it is the one
+	// expression in the package that may be a host-backed reference, so reading
+	// it anywhere except as the argument to a materializer is the defect.
+	it('reads event.data only through a materializer, at every receive site', () => {
+		const reads: string[] = [];
+		for (const file of sourceFiles(LYNX_SRC)) {
+			for (const line of readFileSync(file, 'utf8').split('\n')) {
+				// Prose about the boundary is not a read of it. Comment lines are
+				// dropped whole, which leaves a trailing comment on a code line
+				// scanned — the conservative direction for a rule like this.
+				const code = line.trimStart();
+				if (code.startsWith('//') || code.startsWith('*') || code.startsWith('/*')) continue;
+				const pattern = /\bevent\.data\b/g;
+				for (let match = pattern.exec(line); match !== null; match = pattern.exec(line)) {
+					reads.push(`${relative(LYNX_SRC, file)}: ${line.slice(0, match.index).trimEnd()}`);
+				}
+			}
+		}
+		expect(reads).toHaveLength(4);
+		for (const read of reads) {
+			expect(read).toMatch(/(?:decodeLynxTransportValue|localizeLynxHostValue)\($/);
 		}
 	});
 
@@ -139,6 +165,78 @@ describe('Lynx transport conformance', () => {
 			// Both directions were exercised, not just the loud one.
 			expect(backgroundWire.conformance.bytes()).toBeGreaterThan(0);
 			expect(mainWire.conformance.bytes()).toBeGreaterThan(0);
+		});
+
+		// The engine lifecycle entry is the one inbound path whose sender is the
+		// native engine rather than Octane's own transport, so it is the one place
+		// a value arrives unencoded. What it produces still has to leave on the
+		// same strict wire as everything else, which is what this drives.
+		it('carries what the engine handed in out across the same strict wire', async () => {
+			dom = new JSDOM('<!doctype html><html><body></body></html>');
+			installLynxTestingEnv(globalThis, {
+				window: dom.window as unknown as Window & typeof globalThis,
+			});
+			const env = globalThis.lynxTestingEnv;
+
+			env.switchToMainThread();
+			const engineListeners = new Map<string, Set<(event: LynxContextProxyEvent) => void>>();
+			const engine: LynxContextProxy = {
+				dispatchEvent(event: LynxContextProxyEvent): unknown {
+					for (const listener of [...(engineListeners.get(event.type) ?? [])]) listener(event);
+					return undefined;
+				},
+				addEventListener(type: string, listener: (event: LynxContextProxyEvent) => void): void {
+					let entries = engineListeners.get(type);
+					if (entries === undefined) engineListeners.set(type, (entries = new Set()));
+					entries.add(listener);
+				},
+				removeEventListener(type: string, listener: (event: LynxContextProxyEvent) => void): void {
+					engineListeners.get(type)?.delete(listener);
+				},
+			};
+			const mainThreadLynx = (
+				globalThis as unknown as {
+					lynx: { getJSContext(): LynxContextProxy; getEngine?: () => LynxContextProxy };
+				}
+			).lynx;
+			// Read during install, so it has to be in place before the controller.
+			mainThreadLynx.getEngine = () => engine;
+			const mainWire = conformingContextProxy(mainThreadLynx.getJSContext());
+			main = installLynxMainThread({ context: mainWire.context });
+
+			env.switchToBackgroundThread();
+			const backgroundWire = conformingContextProxy(
+				(
+					globalThis as unknown as { lynx: { getJSContext(): LynxContextProxy } }
+				).lynx.getJSContext(),
+			);
+			root = createLynxRoot({ context: backgroundWire.context });
+
+			const plan = universalPlan('lynx', { kind: 'host', type: 'view', propsSlot: 0 });
+			const Scene = defineUniversalComponent('lynx', (props: { readonly id: string }) =>
+				universalValue(plan, [universalProps([['set', 'id', props.id]])]),
+			);
+			// Lifecycle records queue until the threads have correlated, so a real
+			// mount is what lets them reach the wire at all.
+			await root.render(Scene, { id: 'lifecycle-host' });
+			await root.flushTransport();
+
+			env.switchToMainThread();
+			engine.dispatchEvent({
+				type: '__RenderPage',
+				data: [{ profile: { name: 'Ada' } }, { initPage: true }],
+			});
+			engine.dispatchEvent({ type: '__UpdateGlobalProps', data: [{ theme: 'dark' }] });
+
+			const delivered = mainWire.conformance.crossings.map(
+				(payload) => unwire(payload) as { readonly type?: unknown },
+			);
+			expect(delivered.filter((message) => message.type === 'page-data')).toEqual([
+				expect.objectContaining({ operation: 'replace', data: { profile: { name: 'Ada' } } }),
+			]);
+			expect(delivered.filter((message) => message.type === 'global-props')).toEqual([
+				expect.objectContaining({ patch: { theme: 'dark' } }),
+			]);
 		});
 	});
 });

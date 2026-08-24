@@ -90,6 +90,7 @@ import { LYNX_PROFILE, lynxWireProfile } from './core/profiling.js';
 import {
 	decodeLynxTransportValue,
 	encodeLynxTransportValue,
+	localizeLynxHostValue,
 	type LynxStructuredValue,
 } from './core/transport-codec.js';
 import {
@@ -251,18 +252,23 @@ function lifecycleTuple(
 			`Octane Lynx engine lifecycle expected ${JSON.stringify(expectedType)}, received ${JSON.stringify(event.type)}.`,
 		);
 	}
-	if (!Array.isArray(event.data) || event.data.length !== length) {
+	// The engine sent this, not Octane's transport, so it is the one inbound
+	// payload nothing has encoded. Materialize it before anything reflects on
+	// it: every read below is written for ordinary local data, and a
+	// host-backed reference answers some of those reads and throws on others.
+	const data = localizeLynxHostValue(event.data);
+	if (!Array.isArray(data) || data.length !== length) {
 		throw new TypeError(`Octane Lynx ${expectedType} data must be an exact ${length}-item tuple.`);
 	}
-	const names = Object.getOwnPropertyNames(event.data);
-	if (names.length !== length + 1 || hasOwnSymbolFields(event.data)) {
+	const names = Object.getOwnPropertyNames(data);
+	if (names.length !== length + 1 || hasOwnSymbolFields(data)) {
 		throw new TypeError(
 			`Octane Lynx ${expectedType} data must be a dense tuple without extra fields.`,
 		);
 	}
 	const tuple: unknown[] = [];
 	for (let index = 0; index < length; index++) {
-		const descriptor = Object.getOwnPropertyDescriptor(event.data, String(index));
+		const descriptor = Object.getOwnPropertyDescriptor(data, String(index));
 		if (
 			descriptor === undefined ||
 			!descriptor.enumerable ||

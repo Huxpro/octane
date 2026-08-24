@@ -1123,7 +1123,7 @@ describe.sequential('Lynx main-thread engine lifecycle bridge', () => {
 		expect(main.diagnostics()).toEqual([]);
 	});
 
-	it('rejects malformed tuples and reloadTemplate without mutating the active host', () => {
+	it('normalizes engine lifecycle records at entry without mutating the active host', () => {
 		const engine = createEngineHarness();
 		const { dom, main } = installEnvironment((target) => installEngine(target, engine));
 		dispatchCommit(backgroundContext(), 121, 1, [
@@ -1156,20 +1156,66 @@ describe.sequential('Lynx main-thread engine lifecycle bridge', () => {
 		expect(() =>
 			engine.dispatch('__UpdatePage', [{ ignored: true }, { reloadTemplate: true }]),
 		).not.toThrow();
-		const symbolicTuple: unknown[] = [{ ignored: true }];
+		const symbolicTuple: unknown[] = [{ shape: 'normalized' }];
 		Object.defineProperty(symbolicTuple, Symbol('extra'), { value: true });
 		expect(() => engine.dispatch('__UpdateGlobalProps', symbolicTuple)).not.toThrow();
 
-		expect(getterRead).toBe(false);
+		// The engine is the one sender that cannot be asked to encode, so its
+		// records are materialized at the entry instead. That draws the line in a
+		// different place than rejecting every unusual shape did: a shape the
+		// materializer can express becomes ordinary local data and the update
+		// proceeds, and only what the value domain cannot carry is refused.
+		//
+		// An accessor is the visible edge of that. Copying a value means reading
+		// it, so the getter runs — once, here, inside the boundary's own
+		// try/catch, rather than at whatever later moment a lazy read happened to
+		// fall on. What the receiver gets is the ordinary `false` it returned.
+		expect(getterRead).toBe(true);
+		// A symbol-keyed field on the tuple was never readable by anything
+		// downstream, which is why it was rejected; materializing drops it, and
+		// what remains is a well-formed one-item tuple.
+		expect(captured.messages.map(({ type }) => type)).toEqual([
+			'main-ready',
+			'page-data',
+			'global-props',
+		]);
+		expect(captured.messages[1]).toMatchObject({ operation: 'update', data: { safe: true } });
+		expect(captured.messages[2]).toMatchObject({ patch: { shape: 'normalized' } });
 		expect(page.querySelector('#lifecycle-host')?.textContent).toBe('stable');
 		expect(main.activeIdentity()).toEqual(identity);
-		expect(captured.messages.map(({ type }) => type)).toEqual(['main-ready']);
 		const diagnostics = main.diagnostics().map(({ message }) => message);
 		expect(diagnostics.some((message) => message.includes('exact 2-item tuple'))).toBe(true);
-		expect(diagnostics.some((message) => message.includes('boolean data property'))).toBe(true);
-		expect(diagnostics.some((message) => message.includes('non-clone-safe'))).toBe(true);
 		expect(diagnostics.some((message) => message.includes('reloadTemplate'))).toBe(true);
-		expect(diagnostics.some((message) => message.includes('dense tuple'))).toBe(true);
+		// A function cannot be expressed, so it is refused — and named where it
+		// sits, which is the part a generic "non-clone-safe" report could not say.
+		expect(diagnostics.some((message) => message.includes('at $[0].invalid is a function'))).toBe(
+			true,
+		);
+	});
+
+	it('keeps the lifecycle channel alive when an engine record leaves the value domain', () => {
+		const engine = createEngineHarness();
+		const { main } = installEnvironment((target) => installEngine(target, engine));
+		const captured = captureMainMessages();
+		requestMainReady(backgroundContext(), 91);
+		const identity = main.activeIdentity();
+
+		// A `bigint` is the case that separates materializing at the entry from
+		// reflecting on the engine's value in place. Nothing between the entry and
+		// the wire used to look at it — the clone copies a bigint through — so it
+		// reached `dispatch`, where encoding refuses it, and a throw there is a
+		// failure to deliver an engine lifecycle update, which tears down the page
+		// lifetime. Refusing it where it entered makes it one dropped record.
+		globalThis.lynxTestingEnv.switchToMainThread();
+		expect(() => engine.dispatch('__UpdatePage', [{ count: 1n }, {}])).not.toThrow();
+		engine.dispatch('__UpdatePage', [{ count: 2 }, {}]);
+
+		expect(main.activeIdentity()).toEqual(identity);
+		expect(captured.messages.map(({ type }) => type)).toEqual(['main-ready', 'page-data']);
+		expect(captured.messages.at(-1)).toMatchObject({ data: { count: 2 } });
+		const diagnostics = main.diagnostics().map(({ message }) => message);
+		expect(diagnostics.some((message) => message.includes('at $[0].count is a bigint'))).toBe(true);
+		expect(diagnostics.some((message) => message.includes('could not deliver'))).toBe(false);
 	});
 
 	it('compacts an overflowing pre-ready lifecycle queue to authoritative current state', async () => {

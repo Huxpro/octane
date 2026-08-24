@@ -324,3 +324,30 @@ export function decodeLynxTransportValue(text: LynxValue): LynxStructuredValue {
 	}
 	return flags === 0 ? envelope[1] : restore(envelope[1]);
 }
+
+/**
+ * Materialize a value that entered Octane from outside the transport.
+ *
+ * The engine lifecycle events — `__RenderPage`, `__UpdatePage`,
+ * `__UpdateGlobalProps` — arrive on the same `ContextProxy` machinery as a
+ * transport message, but their sender is the native engine, which cannot be
+ * asked to encode. So they are the one inbound payload nobody has encoded, and
+ * the invariant that a {@link LynxValueRef} never escapes the transport layer
+ * would be false with that entry left open: everything downstream of it is
+ * written for ordinary local data.
+ *
+ * Encoding and immediately decoding is the materializer. It is deliberately
+ * this codec rather than a bare `JSON.parse(JSON.stringify(value))`, so that a
+ * host-originated record lands in the same value domain as every other message
+ * — `undefined` survives, `__proto__` becomes an own data property on every
+ * engine rather than whichever one `JSON.parse` happens to produce, and a
+ * `bigint` or non-finite number is named where it entered instead of failing
+ * later at the send site that would have carried it.
+ *
+ * The residual is the `Array.isArray` dispatch, which decides array from object
+ * here exactly as it already does in the tuple check this feeds — a value that
+ * lied about being an array would have been rejected there too.
+ */
+export function localizeLynxHostValue(value: LynxValue): LynxStructuredValue {
+	return decodeLynxTransportValue(encodeLynxTransportValue(value));
+}
