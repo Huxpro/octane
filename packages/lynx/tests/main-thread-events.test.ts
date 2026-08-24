@@ -23,6 +23,7 @@ import {
 } from '../src/core/protocol.js';
 import { encodeLynxPortalTargetId } from '../src/core/portal.js';
 import { activateLynxMainThreadWorklet, registerMainThreadWorklet } from '../src/core/worklets.js';
+import { unwire, wire } from './_fixtures/lynx-wire.js';
 
 type Handler = ((payload: unknown) => void) | null;
 
@@ -229,7 +230,7 @@ function captureMainMessages(): {
 	const context = backgroundContext();
 	const messages: LynxBackgroundInboundMessage[] = [];
 	const listener = (event: LynxContextProxyEvent) => {
-		messages.push(event.data as LynxBackgroundInboundMessage);
+		messages.push(unwire(event.data) as LynxBackgroundInboundMessage);
 	};
 	context.addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, listener);
 	return {
@@ -243,12 +244,12 @@ function captureMainMessages(): {
 function requestMainReady(context: LynxContextProxy, request: number): void {
 	context.dispatchEvent({
 		type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-		data: {
+		data: wire({
 			protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 			renderer: LYNX_TRANSPORT_RENDERER,
 			type: 'main-ready-request',
 			request,
-		},
+		}),
 	});
 }
 
@@ -269,14 +270,14 @@ function dispatchCommit(
 ): void {
 	context.dispatchEvent({
 		type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-		data: {
+		data: wire({
 			protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 			renderer: LYNX_TRANSPORT_RENDERER,
 			root,
 			version,
 			type: 'commit',
 			batch: { renderer: LYNX_TRANSPORT_RENDERER, version, commands },
-		},
+		}),
 	});
 }
 
@@ -357,7 +358,7 @@ describe.sequential('Lynx main-thread native event bridge', () => {
 				dispatchEvent(event) {
 					if (
 						event.type === LYNX_MAIN_TO_BACKGROUND_EVENT &&
-						(event.data as { readonly type?: unknown }).type === 'page-destroy'
+						(unwire(event.data) as { readonly type?: unknown }).type === 'page-destroy'
 					) {
 						throw deliveryError;
 					}
@@ -433,7 +434,7 @@ describe.sequential('Lynx main-thread native event bridge', () => {
 				Object.freeze({
 					dispatchEvent(event) {
 						if (event.type === LYNX_MAIN_TO_BACKGROUND_EVENT) {
-							const message = event.data as {
+							const message = unwire(event.data) as {
 								readonly root?: unknown;
 								readonly version?: unknown;
 								readonly type?: unknown;
@@ -485,7 +486,7 @@ describe.sequential('Lynx main-thread native event bridge', () => {
 		const context = backgroundContext();
 		const inbound: LynxBackgroundInboundMessage[] = [];
 		context.addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
-			inbound.push(event.data as LynxBackgroundInboundMessage);
+			inbound.push(unwire(event.data) as LynxBackgroundInboundMessage);
 		});
 
 		dispatchCommit(context, 90, 1, [
@@ -565,7 +566,7 @@ describe.sequential('Lynx main-thread native event bridge', () => {
 		const inbound: LynxBackgroundInboundMessage[] = [];
 		let injectAt: 'complete' | 'reject' | null = 'complete';
 		context.addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
-			const message = event.data as LynxBackgroundInboundMessage;
+			const message = unwire(event.data) as LynxBackgroundInboundMessage;
 			inbound.push(message);
 			if (message.type !== injectAt) return;
 			injectAt = null;
@@ -629,8 +630,14 @@ describe.sequential('Lynx main-thread native event bridge', () => {
 			detail: { phase: 'bind' },
 			target: { id: 'event-target', uid: 2, dataset: { source: 'target' } },
 		});
-		expect(Object.getPrototypeOf(received as object)).toBeNull();
+		// The background gets inert data, never the host's event object. A null
+		// prototype used to say so, but it said so only because the harness handed
+		// the same object across threads; the wire carries the payload as text
+		// now, so what arrives is an ordinary local object with none of the host's
+		// methods on it — which is the property that actually mattered.
+		expect(Object.getPrototypeOf(received as object)).toBe(Object.prototype);
 		expect(received).not.toHaveProperty('preventDefault');
+		expect(received).not.toHaveProperty('stopPropagation');
 
 		await backgroundRoot.render(EventScene, {
 			bindtap: () => log.push('bind:replacement'),
@@ -922,7 +929,7 @@ describe.sequential('Lynx main-thread engine lifecycle bridge', () => {
 			env.switchToBackgroundThread();
 			const inbound: LynxBackgroundInboundMessage[] = [];
 			backgroundContext().addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
-				inbound.push(event.data as LynxBackgroundInboundMessage);
+				inbound.push(unwire(event.data) as LynxBackgroundInboundMessage);
 			});
 			backgroundRoot = createLynxRoot();
 			const rendering = backgroundRoot.render(EventScene, {});
@@ -939,7 +946,9 @@ describe.sequential('Lynx main-thread engine lifecycle bridge', () => {
 				}
 			).lynx.getJSContext();
 			context.addEventListener(LYNX_BACKGROUND_TO_MAIN_EVENT, (event) => {
-				outbound.push(event.data as { readonly type?: unknown; readonly request?: unknown });
+				outbound.push(
+					unwire(event.data) as { readonly type?: unknown; readonly request?: unknown },
+				);
 			});
 			const main = installLynxMainThread();
 			installed = { dom, main, registrations: [] };
@@ -997,7 +1006,7 @@ describe.sequential('Lynx main-thread engine lifecycle bridge', () => {
 			(delegate) =>
 				Object.freeze({
 					dispatchEvent(event) {
-						const data = event.data as { readonly type?: unknown };
+						const data = unwire(event.data) as { readonly type?: unknown };
 						if (data.type === 'page-data' && !reentered) {
 							reentered = true;
 							engine.dispatch('__UpdatePage', [{ sequence: 'reentrant' }, {}]);
@@ -1089,8 +1098,20 @@ describe.sequential('Lynx main-thread engine lifecycle bridge', () => {
 		const renderMessage = captured.messages[0];
 		expect(renderMessage?.type).toBe('page-data');
 		if (renderMessage?.type !== 'page-data') throw new Error('Expected page data.');
-		expect(Object.isFrozen(renderMessage.data)).toBe(true);
-		expect(Object.isFrozen(renderMessage.data.profile)).toBe(true);
+		// Freezing was how the main thread promised not to hand the background a
+		// live view of host data, and it survived only because the harness passed
+		// the same object across. The wire makes the promise structural instead:
+		// what arrives is the background's own tree, parsed from text, sharing
+		// nothing with the main thread — so writing to it reaches nobody.
+		expect(Object.getPrototypeOf(renderMessage.data)).toBe(Object.prototype);
+		expect(renderMessage.data).toEqual({ profile: { name: 'Ada' } });
+		(renderMessage.data as { profile: { name: string } }).profile.name = 'mutated';
+		const laterRender = captured.messages.find(
+			(message, index) => index > 0 && message.type === 'page-data',
+		);
+		expect(laterRender?.type === 'page-data' ? laterRender.data : null).not.toMatchObject({
+			profile: { name: 'mutated' },
+		});
 
 		globalThis.lynxTestingEnv.switchToMainThread();
 		engine.dispatch('__UpdatePage', [{ sequence: 'direct' }, {}]);
@@ -1192,7 +1213,8 @@ describe.sequential('Lynx main-thread engine lifecycle bridge', () => {
 				Object.freeze({
 					dispatchEvent(event) {
 						const result = delegate.dispatchEvent(event);
-						if ((event.data as { readonly type?: unknown }).type === 'page-data') main?.close();
+						if ((unwire(event.data) as { readonly type?: unknown }).type === 'page-data')
+							main?.close();
 						return result;
 					},
 					addEventListener(type, listener) {
@@ -1231,7 +1253,7 @@ describe.sequential('Lynx main-thread engine lifecycle bridge', () => {
 			(delegate) =>
 				Object.freeze({
 					dispatchEvent(event) {
-						const data = event.data as {
+						const data = unwire(event.data) as {
 							readonly type?: unknown;
 							readonly data?: { readonly count?: unknown };
 						};
@@ -1278,7 +1300,7 @@ describe.sequential('Lynx main-thread engine lifecycle bridge', () => {
 			(delegate) =>
 				Object.freeze({
 					dispatchEvent(event) {
-						if ((event.data as { readonly type?: unknown }).type === 'page-data') {
+						if ((unwire(event.data) as { readonly type?: unknown }).type === 'page-data') {
 							throw deliveryError;
 						}
 						return delegate.dispatchEvent(event);
@@ -1331,7 +1353,7 @@ describe.sequential('Lynx main-thread engine lifecycle bridge', () => {
 			env.switchToBackgroundThread();
 			const inbound: LynxBackgroundInboundMessage[] = [];
 			backgroundContext().addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
-				inbound.push(event.data as LynxBackgroundInboundMessage);
+				inbound.push(unwire(event.data) as LynxBackgroundInboundMessage);
 			});
 			backgroundRoot = createLynxRoot();
 			const rendering = backgroundRoot.render(EventScene, {});

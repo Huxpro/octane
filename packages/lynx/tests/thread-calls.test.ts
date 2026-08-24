@@ -21,6 +21,7 @@ import {
 	type LynxMainThreadWorkletDescriptor,
 } from '../src/core/worklets.js';
 import { installLynxMainThread, type LynxMainThreadController } from '../src/main-thread.js';
+import { unwire, wire } from './_fixtures/lynx-wire.js';
 
 let dom: JSDOM | null = null;
 let controller: LynxMainThreadController | null = null;
@@ -99,14 +100,14 @@ function dispatchCommit(
 ): void {
 	context.dispatchEvent({
 		type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-		data: {
+		data: wire({
 			protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 			renderer: LYNX_TRANSPORT_RENDERER,
 			root,
 			version,
 			type: 'commit',
 			batch: { renderer: LYNX_TRANSPORT_RENDERER, version, commands },
-		},
+		}),
 	});
 }
 
@@ -207,9 +208,9 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 				.filter(
 					(event) =>
 						event.type === LYNX_BACKGROUND_TO_MAIN_EVENT &&
-						(event.data as { type?: unknown }).type === 'main-call-publication',
+						(unwire(event.data) as { type?: unknown }).type === 'main-call-publication',
 				)
-				.map((event) => (event.data as { phase: unknown }).phase);
+				.map((event) => (unwire(event.data) as { phase: unknown }).phase);
 		expect(publicationPhases()).toEqual(['open', 'close', 'open', 'close']);
 
 		// The second publication purged the now-unowned cell. A steady-state call
@@ -254,14 +255,14 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 		const publish = (root: number, version: number, phase: 'open' | 'close'): void => {
 			context.dispatchEvent({
 				type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-				data: {
+				data: wire({
 					protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 					renderer: LYNX_TRANSPORT_RENDERER,
 					root,
 					version,
 					type: 'main-call-publication',
 					phase,
-				},
+				}),
 			});
 		};
 
@@ -306,7 +307,7 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 		const context = install();
 		const inbound: LynxBackgroundInboundMessage[] = [];
 		context.addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
-			inbound.push(event.data as LynxBackgroundInboundMessage);
+			inbound.push(unwire(event.data) as LynxBackgroundInboundMessage);
 		});
 		const ref = createLynxMainThreadRefDescriptor('test:realm-stable-state', 0);
 		const retain = registerMainThreadWorklet('octane:retain-main-thread-ref-owner', {
@@ -324,7 +325,7 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 		const call = (root: number, id: number, worklet: LynxMainThreadWorkletDescriptor): void => {
 			context.dispatchEvent({
 				type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-				data: {
+				data: wire({
 					protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 					renderer: LYNX_TRANSPORT_RENDERER,
 					root,
@@ -333,7 +334,7 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 					call: id,
 					worklet,
 					args: [],
-				},
+				}),
 			});
 		};
 		const mount = (root: number): void => {
@@ -356,13 +357,13 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 
 		context.dispatchEvent({
 			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-			data: {
+			data: wire({
 				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 				renderer: LYNX_TRANSPORT_RENDERER,
 				root: 110,
 				version: 1,
 				type: 'terminal-dispose',
-			},
+			}),
 		});
 		mount(111);
 		call(111, 1, retain);
@@ -380,7 +381,7 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 		const context = install();
 		const inbound: LynxBackgroundInboundMessage[] = [];
 		context.addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
-			inbound.push(event.data as LynxBackgroundInboundMessage);
+			inbound.push(unwire(event.data) as LynxBackgroundInboundMessage);
 		});
 
 		const queuedFn = { _jsFnId: 'app:load', _c: { label: 'before' } };
@@ -409,18 +410,18 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 		dispatchCommit(context, 101, 2, [{ op: 'update', id: 1, props: { id: 'new' } }]);
 		context.dispatchEvent({
 			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-			data: {
+			data: wire({
 				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 				renderer: LYNX_TRANSPORT_RENDERER,
 				root: 999,
 				version: 1,
 				type: 'dispose',
-			},
+			}),
 		});
 		const result = { status: 'loaded' };
 		context.dispatchEvent({
 			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-			data: {
+			data: wire({
 				protocol: call.protocol,
 				renderer: call.renderer,
 				root: call.root,
@@ -428,7 +429,7 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 				type: 'call-background-result',
 				call: call.call,
 				value: result,
-			},
+			}),
 		});
 		result.status = 'mutated';
 		const resolved = await queued.promise;
@@ -463,14 +464,14 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 		const inbound: LynxBackgroundInboundMessage[] = [];
 		let acknowledgementCall: ReturnType<LynxMainThreadController['callBackground']> | null = null;
 		context.addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
-			const message = event.data as LynxBackgroundInboundMessage;
+			const message = unwire(event.data) as LynxBackgroundInboundMessage;
 			inbound.push(message);
 			if (message.type !== 'ack' || message.root !== 106 || message.version !== 2) return;
 			// ACK delivery can synchronously publish layout effects. A call created
 			// here must observe the terminal fault before it executes or queues.
 			context.dispatchEvent({
 				type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-				data: {
+				data: wire({
 					protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 					renderer: LYNX_TRANSPORT_RENDERER,
 					root: 106,
@@ -479,7 +480,7 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 					call: 2,
 					worklet: { _wkltId: 'app:ack-reentrant' },
 					args: [],
-				},
+				}),
 			});
 			acknowledgementCall = controller!.callBackground({ _jsFnId: 'app:after-fault' }, []);
 		});
@@ -494,7 +495,7 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 		);
 		context.dispatchEvent({
 			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-			data: {
+			data: wire({
 				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 				renderer: LYNX_TRANSPORT_RENDERER,
 				root: 106,
@@ -503,7 +504,7 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 				call: 1,
 				worklet: { _wkltId: 'app:pending-at-fault' },
 				args: [],
-			},
+			}),
 		});
 
 		failSetId = true;
@@ -522,7 +523,7 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 		});
 		context.dispatchEvent({
 			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-			data: {
+			data: wire({
 				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 				renderer: LYNX_TRANSPORT_RENDERER,
 				root: 106,
@@ -531,7 +532,7 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 				call: 2,
 				worklet: { _wkltId: 'app:ack-reentrant' },
 				args: [],
-			},
+			}),
 		});
 		expect(
 			inbound.filter((message) => message.type === 'call-main-error' && message.call === 2),
@@ -539,7 +540,7 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 
 		context.dispatchEvent({
 			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-			data: {
+			data: wire({
 				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 				renderer: LYNX_TRANSPORT_RENDERER,
 				root: 106,
@@ -548,7 +549,7 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 				call: 3,
 				worklet: { _wkltId: 'app:late-after-fault' },
 				args: [],
-			},
+			}),
 		});
 		const lateBackground = controller!.callBackground({ _jsFnId: 'app:late-after-fault' }, []);
 		await expect(lateBackground.promise).rejects.toThrow('Octane Lynx main-thread root is faulted');
@@ -578,7 +579,7 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 		const context = install();
 		const inbound: LynxBackgroundInboundMessage[] = [];
 		context.addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
-			inbound.push(event.data as LynxBackgroundInboundMessage);
+			inbound.push(unwire(event.data) as LynxBackgroundInboundMessage);
 		});
 		dispatchCommit(context, 105, 1, [
 			{ op: 'create', id: 1, type: 'view', props: {} },
@@ -591,9 +592,12 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 				message.type === 'call-background' && message.fn._jsFnId === 'app:malformed-result',
 		)!;
 		dispatchCommit(context, 105, 2, [{ op: 'update', id: 1, props: { id: 'newer' } }]);
-		context.dispatchEvent({
-			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-			data: {
+		// A function cannot reach the wire at all any more. The transport encodes
+		// before it dispatches, so a value JSON would drop is refused at the
+		// sender — the last place that still knows what it was — rather than
+		// arriving as a hostile payload for the receiver to walk.
+		expect(() =>
+			wire({
 				protocol: call.protocol,
 				renderer: call.renderer,
 				root: call.root,
@@ -601,13 +605,30 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 				type: 'call-background-result',
 				call: call.call,
 				value() {},
-			},
+			}),
+		).toThrow(/at \$\.value is a function/);
+
+		// What can still arrive is a payload that parses and then fails the
+		// schema, and the contract this test exists for is about that: an
+		// exact-identity call has to be settled rather than left hanging.
+		context.dispatchEvent({
+			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
+			data: wire({
+				protocol: call.protocol,
+				renderer: call.renderer,
+				root: call.root,
+				version: call.version,
+				type: 'call-background-result',
+				call: call.call,
+				value: 'unreadable',
+				unexpected: true,
+			}),
 		});
-		await expect(pending.promise).rejects.toThrow(/non-serializable|clone-safe/);
+		await expect(pending.promise).rejects.toThrow(/unknown field "unexpected"/);
 
 		context.dispatchEvent({
 			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-			data: {
+			data: wire({
 				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 				renderer: LYNX_TRANSPORT_RENDERER,
 				root: 105,
@@ -615,8 +636,9 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 				type: 'call-main',
 				call: 8,
 				worklet: { _wkltId: 'app:malformed-call' },
-				args: [() => undefined],
-			},
+				args: [],
+				unexpected: true,
+			}),
 		});
 		expect(
 			inbound.find((message) => message.type === 'call-main-error' && message.call === 8),
@@ -630,7 +652,7 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 		});
 		const inbound: LynxBackgroundInboundMessage[] = [];
 		context.addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
-			inbound.push(event.data as LynxBackgroundInboundMessage);
+			inbound.push(unwire(event.data) as LynxBackgroundInboundMessage);
 		});
 		dispatchCommit(context, 102, 1, [
 			{ op: 'create', id: 1, type: 'view', props: {} },
@@ -643,7 +665,7 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 		] as const) {
 			context.dispatchEvent({
 				type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-				data: {
+				data: wire({
 					protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 					renderer: LYNX_TRANSPORT_RENDERER,
 					root: 102,
@@ -652,7 +674,7 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 					call,
 					worklet: { _wkltId: id },
 					args: ['input'],
-				},
+				}),
 			});
 		}
 		await flushMicrotasks();
@@ -690,7 +712,7 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 		]);
 		secondContext.dispatchEvent({
 			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-			data: {
+			data: wire({
 				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 				renderer: LYNX_TRANSPORT_RENDERER,
 				root: 103,
@@ -699,18 +721,18 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 				call: 9,
 				worklet: { _wkltId: 'app:slow' },
 				args: [],
-			},
+			}),
 		});
 		secondContext.dispatchEvent({
 			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-			data: {
+			data: wire({
 				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 				renderer: LYNX_TRANSPORT_RENDERER,
 				root: 103,
 				version: 1,
 				type: 'cancel-main',
 				call: 9,
-			},
+			}),
 		});
 		release('late');
 		await flushMicrotasks();
@@ -727,7 +749,7 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 		});
 		const inbound: LynxBackgroundInboundMessage[] = [];
 		context.addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
-			inbound.push(event.data as LynxBackgroundInboundMessage);
+			inbound.push(unwire(event.data) as LynxBackgroundInboundMessage);
 		});
 		dispatchCommit(context, 104, 1, [
 			{ op: 'create', id: 1, type: 'view', props: {} },
@@ -737,7 +759,7 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 		const call = (id: number, worklet: string): void => {
 			context.dispatchEvent({
 				type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-				data: {
+				data: wire({
 					protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 					renderer: LYNX_TRANSPORT_RENDERER,
 					root: 104,
@@ -746,7 +768,7 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 					call: id,
 					worklet: { _wkltId: worklet },
 					args: [],
-				},
+				}),
 			});
 		};
 
@@ -759,14 +781,14 @@ describe.sequential('Lynx bidirectional thread calls', () => {
 		call(3, 'app:pending');
 		context.dispatchEvent({
 			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-			data: {
+			data: wire({
 				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 				renderer: LYNX_TRANSPORT_RENDERER,
 				root: 104,
 				version: 1,
 				type: 'cancel-main',
 				call: 3,
-			},
+			}),
 		});
 		call(3, 'app:pending');
 		await flushMicrotasks();
