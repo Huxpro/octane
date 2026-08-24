@@ -614,6 +614,58 @@ more host time than it lasted, phases claiming more than `off_boundary` holds, a
 marker still open at the window's end, an unknown phase name, a window in which
 no first screen ran, and a run in which only some samples carried a split.
 
+### The publication floor — `dom-attach-floor.mjs`
+
+A speed-of-light control with no framework in the page at all. `__AppendElement`
+is `parent.appendChild(child)` and the first flush publishes with
+`rootDom.appendChild(page)` on a shadow root, so the question of what a detached
+first screen costs to attach is a question for the browser, not for Octane or
+web-core. Five arms build the identical tree with the tag names, per-row shape,
+attributes, class names, and scoped stylesheet `createElementAPI.js` produces,
+and differ only in where and when it is attached:
+
+| arm | what it does |
+|---|---|
+| `build` | every node created and linked within its row, nothing ever attached — the allocation floor every other arm also pays |
+| `live-incremental` | rows created and appended one at a time into a container already in the document — the post-mount shape |
+| `live-bulk` | rows created and appended one at a time into a detached container, then one `appendChild` publishes the tree — the first-screen shape |
+| `split-incremental` | every row built first, then all of them appended into an attached container |
+| `split-bulk` | every row built first, then all of them appended into a detached container, then one `appendChild` publishes it |
+
+```bash
+node stages/dom-attach-floor.mjs --reps 5 --scales 1000,10000,30000
+```
+
+The two pairs answer the same question at different costs. `live-*` interleaves
+creation and attachment exactly as the command stream does, so it carries no
+deviation and its whole loop is comparable to `papi_topology` — plus
+`papi_flush` on the bulk side. It cannot separate insertion from creation
+without a clock read per append, so its rate is the loop. `split-*` buys a
+separable `attachMs` by building first and attaching second, which the command
+stream never does; it localizes whatever the live pair finds and never overturns
+it.
+
+The verdict reads **command cost** — the calls the stream makes — and holds the
+browser's frame beside it rather than folding it in, because the rate this
+control exists to explain is `papi_topology (+ papi_flush)` self time, which is
+time inside `appendChild` and contains no style, layout, or paint. The frame is
+measured with a forced layout read on the next animation frame, so it lays out
+the whole tree; first contentful paint does not require that, which makes it an
+upper bound rather than a transfer. The reading registered before the run —
+command plus frame — is printed at the end so the substitution can be checked.
+
+One registered prediction is decided: incremental flat within the 10% gate, bulk
+rising past it, with the bulk arm's rise tested by a signed trend rather than by
+drift alone, so a rate that *falls* across the range cannot be scored as rising.
+Beside it the report prints the same prediction as one number per scale — bulk
+cost over incremental cost — because a platform that charges the same for an
+attached and a detached container has not reproduced the split whatever either
+drift does. The verdict refuses to decide a run that measured fewer than two
+scales, because a drift needs two points and reporting its absence as a failed
+flatness test would publish a verdict for a run that tested nothing.
+`dom-attach-analyze.mjs` holds every one of those decisions as pure functions so
+the claim it generates is tested without spending a measurement window.
+
 `papi-predicate-cost.mjs` records what the two window predicates themselves cost
 on a settled tree at each scale. The FCP predicate is the expensive composed-tree
 walk, so that bound belongs beside the report rather than in a reader's head —
