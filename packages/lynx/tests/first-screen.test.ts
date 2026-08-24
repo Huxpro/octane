@@ -1067,7 +1067,23 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 
 		await firstScreenRoot.unmount();
 		expect(dom.window.document.querySelector('#cleanup-retry')).not.toBeNull();
-		expect(main.firstScreenSnapshot()).not.toBeNull();
+		// Cleanup that cannot finish leaves the captured tree in hand, and what it
+		// answers with is that tree — not what the retrying teardown has left of
+		// the container behind it.
+		expect(main.firstScreenSnapshot()).toMatchObject({
+			root: 1,
+			version: 1,
+			roots: [1],
+			nodes: [
+				expect.objectContaining({
+					id: 1,
+					type: 'view',
+					parent: null,
+					props: { id: 'cleanup-retry' },
+					visible: true,
+				}),
+			],
+		});
 		expect(inbound).toEqual([]);
 
 		backgroundContext().dispatchEvent({

@@ -594,6 +594,100 @@ describe('Lynx Element PAPI host driver', () => {
 		expect(resolveLynxFirstTreeEvent(firstTree, placeholderToken)).toBeNull();
 	});
 
+	it('describes the tree it captured, not what teardown left of its owner', () => {
+		const papi = createFakePAPI();
+		const page = papi.createPage('entry', 0);
+		const source = createLynxHostContainer(papi, { root: 7, page });
+		prepareLynxHostBatch(
+			source,
+			batch(1, [
+				{ op: 'create', id: 1, type: 'view', props: { id: 'row' } },
+				{ op: 'create', id: 2, type: 'text', props: { class: ['label'] } },
+				{ op: 'insert', parent: null, id: 1, before: null },
+				{ op: 'insert', parent: 1, id: 2, before: null },
+			]),
+		).apply();
+		const sourceRoot = page.children[0]!;
+		const sourceChild = sourceRoot.children[0]!;
+		const firstTree = captureLynxFirstTree(source, { plan: 'scene:teardown' })!;
+
+		// Terminal cleanup empties the container a first tree was captured from —
+		// its records, its root children, its ownership journals. The tree is still
+		// the caller's to read: a page controller answers `firstScreenSnapshot()`
+		// throughout unmount, and cleanup that cannot finish leaves the tree in
+		// hand while it retries. What comes back is the captured tree either way.
+		expect(disposeLynxHostContainer(source).complete).toBe(true);
+		expect(source.disposed).toBe(true);
+
+		expect(firstTree.snapshot).toEqual({
+			format: 1,
+			renderer: 'lynx',
+			root: 7,
+			version: 1,
+			plan: 'scene:teardown',
+			roots: [1],
+			nodes: [
+				{
+					id: 1,
+					nativeId: sourceRoot.uid,
+					type: 'view',
+					generation: 1,
+					parent: null,
+					children: [2],
+					props: { id: 'row' },
+					visible: true,
+					events: [],
+				},
+				{
+					id: 2,
+					nativeId: sourceChild.uid,
+					type: 'text',
+					generation: 1,
+					parent: 1,
+					children: [],
+					props: { class: ['label'] },
+					visible: true,
+					events: [],
+				},
+			],
+		});
+		// Clone-safe, so the description a torn-down owner answers with is still
+		// the one a background peer can receive.
+		expect(JSON.parse(JSON.stringify(firstTree.snapshot))).toEqual(firstTree.snapshot);
+	});
+
+	it('drops a released first tree builder without losing a description already read', () => {
+		const papi = createFakePAPI();
+		const page = papi.createPage('entry', 0);
+		const mount = (root: number) => {
+			const source = createLynxHostContainer(papi, { root, page });
+			prepareLynxHostBatch(
+				source,
+				batch(1, [
+					{ op: 'create', id: 1, type: 'view', props: { id: `root-${root}` } },
+					{ op: 'insert', parent: null, id: 1, before: null },
+				]),
+			).apply();
+			return captureLynxFirstTree(source, { plan: `scene:${root}` })!;
+		};
+
+		// Release is what stops a finished first tree retaining the page it
+		// described. A tree something already read keeps that description; a tree
+		// nothing ever read has nothing left to describe and says so.
+		const described = mount(7);
+		const describedSnapshot = described.snapshot;
+		const undescribed = mount(8);
+
+		for (const firstTree of [described, undescribed]) {
+			expect(disposeLynxFirstTree(firstTree).complete).toBe(true);
+			releaseLynxFirstTree(firstTree);
+		}
+
+		expect(described.snapshot).toBe(describedSnapshot);
+		expect(described.snapshot).toMatchObject({ root: 7, plan: 'scene:7', roots: [1] });
+		expect(() => undescribed.snapshot).toThrow(/released/);
+	});
+
 	it('adopts an already-painted host template without replacing its nodes or event behavior', () => {
 		const papi = createFakePAPI();
 		const page = papi.createPage('entry', 0);
