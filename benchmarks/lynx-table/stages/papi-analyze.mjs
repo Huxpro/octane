@@ -98,9 +98,60 @@ function finite(value, label) {
 	return value;
 }
 
+// The slack the boundary identity already allows itself when comparing directly
+// observed parts against a wall clock two different clock reads produced.
+const TOLERANCE_MS = 0.5;
+
 function nonNegative(value, label) {
 	if (finite(value, label) < 0) throw new TypeError(`${label} must not be negative.`);
 	return value;
+}
+
+/** First-screen phases, in the order the framework runs them. */
+export const FIRST_SCREEN_PHASES = Object.freeze(['render', 'publish', 'capture', 'announce']);
+
+/**
+ * Validate the framework-side first-screen split a profile build publishes, or
+ * return null for a page that carries none.
+ *
+ * A page without a profile build is the normal case — the shipping octane cell
+ * and both vendored reference bundles all report null here — so absence is not
+ * an error. What is an error is a half-present split: the two sides only mean
+ * something together, because a phase's off-boundary cost is its wall span
+ * minus the host time observed inside it.
+ */
+function summarizeFirstScreenSplit(split, label) {
+	if (split === null || split === undefined) return null;
+	if (typeof split !== 'object' || Array.isArray(split)) {
+		throw new TypeError(`${label} must be an object when present.`);
+	}
+	if (split.wallMs === null || typeof split.wallMs !== 'object') {
+		throw new TypeError(`${label}.wallMs must carry the framework phase spans.`);
+	}
+	if (split.byPhase === null || typeof split.byPhase !== 'object') {
+		throw new TypeError(`${label}.byPhase must carry the observed host time per phase.`);
+	}
+	if (split.open !== null && split.open !== undefined) {
+		// A phase still open when the window was read means the first screen never
+		// finished, so its spans describe a run that is still going.
+		throw new Error(`${label} was read while its ${split.open} phase was still open.`);
+	}
+	const wallMs = {};
+	const byPhase = {};
+	for (const phase of FIRST_SCREEN_PHASES) {
+		wallMs[phase] = nonNegative(split.wallMs[phase] ?? 0, `${label}.wallMs.${phase}`);
+		const bucket = split.byPhase[phase];
+		byPhase[phase] = {
+			calls: nonNegative(bucket?.calls ?? 0, `${label}.byPhase.${phase}.calls`),
+			selfMs: nonNegative(bucket?.selfMs ?? 0, `${label}.byPhase.${phase}.selfMs`),
+		};
+	}
+	for (const phase of Object.keys(split.byPhase)) {
+		if (!FIRST_SCREEN_PHASES.includes(phase)) {
+			throw new Error(`${label}.byPhase carries an unknown phase ${phase}.`);
+		}
+	}
+	return { timers: split.timers !== false, wallMs, byPhase };
 }
 
 /**
@@ -148,6 +199,7 @@ export function summarizePapiSnapshot(snapshot, label = 'PAPI snapshot') {
 		timers,
 		calls,
 		selfMs,
+		firstScreen: summarizeFirstScreenSplit(snapshot.firstScreen, `${label}.firstScreen`),
 		firstCallEpoch: snapshot.firstCallEpoch ?? null,
 		lastCallEpoch: snapshot.lastCallEpoch ?? null,
 		flushCount,
@@ -164,6 +216,76 @@ export function summarizePapiSnapshot(snapshot, label = 'PAPI snapshot') {
 		})),
 		groups,
 		kinds,
+	};
+}
+
+/**
+ * Split `off_boundary` into the framework's own first-screen phases and the
+ * residue nothing framework-side claims.
+ *
+ * `off_boundary` is the exclusive remainder of the boundary identity: everything
+ * in the window that is neither a host call nor the pre-boundary start delay. It
+ * holds three things at once — the framework's first-screen script, web-core's
+ * own JS between host calls, and the browser's style, layout, paint, and the
+ * frame the FCP predicate observes. Only the first is the framework's to reduce,
+ * and only the last is a platform floor, so leaving them fused is what makes the
+ * remainder unattributable.
+ *
+ * Each phase contributes `wall - selfMs`: the time the framework spent in that
+ * phase, less the host time this boundary observed inside it. Subtracting the
+ * observed host time is what keeps the split from double-counting work the
+ * group terms already carry — publish is mostly host calls, and capture reads a
+ * native ID per record.
+ *
+ * The residue is what is left. It is a remainder like `off_boundary` itself,
+ * never a guess, and a split that claims more than `off_boundary` holds is
+ * refused rather than clamped: that can only mean the two clocks disagree or the
+ * probe is reporting a different window than the one being analyzed, and a
+ * quietly clamped residue would hide both.
+ */
+function splitOffBoundary(split, offBoundaryMs, label) {
+	if (split === null) return null;
+	const ran = FIRST_SCREEN_PHASES.some(
+		(phase) => split.wallMs[phase] > 0 || split.byPhase[phase].calls > 0,
+	);
+	// A window that contains no first screen has nothing to split. Its
+	// `off_boundary` belongs to whatever else ran — an update path, say — and
+	// reporting the whole of it as the residue would read as a platform floor.
+	if (!ran) return null;
+	if (!split.timers) {
+		// A counts build fills the phase buckets with calls and a zero selfMs, so
+		// subtracting them would credit every phase with its whole wall span.
+		throw new Error(`${label} first-screen split came from a counts-only probe.`);
+	}
+	const phases = {};
+	let claimed = 0;
+	for (const phase of FIRST_SCREEN_PHASES) {
+		const wallMs = split.wallMs[phase];
+		const selfMs = split.byPhase[phase].selfMs;
+		if (selfMs - wallMs > TOLERANCE_MS) {
+			throw new Error(
+				`${label} first-screen phase ${phase} observed more host time than it lasted.`,
+			);
+		}
+		const phaseOffBoundaryMs = Math.max(0, wallMs - selfMs);
+		phases[phase] = {
+			wallMs,
+			selfMs,
+			calls: split.byPhase[phase].calls,
+			offBoundaryMs: phaseOffBoundaryMs,
+		};
+		claimed += phaseOffBoundaryMs;
+	}
+	if (claimed - offBoundaryMs > TOLERANCE_MS) {
+		throw new Error(`${label} first-screen phases claim more than off_boundary holds.`);
+	}
+	return {
+		offBoundaryMs,
+		phases,
+		frameworkMs: claimed,
+		// web-core's own script plus the browser's frame: the half a speed-of-light
+		// control has to be built against rather than optimized.
+		residueMs: Math.max(0, offBoundaryMs - claimed),
 	};
 }
 
@@ -197,12 +319,14 @@ export function analyzeBoundarySample({ wallMs, startEpoch, papi }, label = 'sam
 		stages[name] = summary.groups[name].selfMs;
 	}
 	const observed = Object.values(stages).reduce((sum, value) => sum + value, 0);
-	if (observed - totalMs > 0.5) {
+	if (observed - totalMs > TOLERANCE_MS) {
 		throw new Error(`${label} directly observed stages exceed the wall clock.`);
 	}
+	const offBoundaryMs = Math.max(0, totalMs - observed);
 	return {
 		totalMs,
-		stages: { ...stages, off_boundary: Math.max(0, totalMs - observed) },
+		stages: { ...stages, off_boundary: offBoundaryMs },
+		firstScreen: splitOffBoundary(summary.firstScreen, offBoundaryMs, label),
 		counts: {
 			calls: summary.calls,
 			flushCount: summary.flushCount,
@@ -280,6 +404,56 @@ function statOf(values, label) {
  * stage attribution, per-op counts, and the derived per-row and per-call rates
  * that make two cells comparable at different op counts.
  */
+/**
+ * Fold every sample's first-screen split into medians, or null for a cell whose
+ * pages carried no profile build.
+ *
+ * A run where only some samples carried the probe is refused rather than
+ * summarized over the ones that did: the samples alternate cells within one
+ * window by design, so a partial split means the pages disagreed about what they
+ * were measuring, and a median over the half that reported would read as if the
+ * whole run had.
+ */
+function summarizeFirstScreenSplits(samples) {
+	const present = samples.filter(
+		(sample) => sample.firstScreen !== null && sample.firstScreen !== undefined,
+	);
+	if (present.length === 0) return null;
+	if (present.length !== samples.length) {
+		throw new Error(
+			`only ${present.length} of ${samples.length} samples carried a first-screen split.`,
+		);
+	}
+	const phases = {};
+	for (const phase of FIRST_SCREEN_PHASES) {
+		phases[phase] = {
+			offBoundaryMs: statOf(
+				present.map((sample) => sample.firstScreen.phases[phase].offBoundaryMs),
+				`${phase} off-boundary`,
+			),
+			selfMs: statOf(
+				present.map((sample) => sample.firstScreen.phases[phase].selfMs),
+				`${phase} host self time`,
+			),
+			calls: statOf(
+				present.map((sample) => sample.firstScreen.phases[phase].calls),
+				`${phase} calls`,
+			),
+		};
+	}
+	return {
+		phases,
+		frameworkMs: statOf(
+			present.map((sample) => sample.firstScreen.frameworkMs),
+			'framework first-screen off-boundary',
+		),
+		residueMs: statOf(
+			present.map((sample) => sample.firstScreen.residueMs),
+			'off-boundary residue',
+		),
+	};
+}
+
 export function summarizeCell(samples, { rows = null } = {}) {
 	requireMinimumRepetitions(samples.length);
 	// A group absent from one repetition is a zero for that repetition, not a
@@ -335,6 +509,7 @@ export function summarizeCell(samples, { rows = null } = {}) {
 	);
 	return {
 		...attribution,
+		firstScreen: summarizeFirstScreenSplits(samples),
 		counts: { calls, flushCount, byGroup: counts, byKind: kinds },
 		rates: {
 			opSelfMs,

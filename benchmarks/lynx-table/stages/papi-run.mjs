@@ -93,6 +93,16 @@ const CELLS = {
 		bundle: () => path.join(root, 'app/dist/main.web.bundle'),
 		fcpBundle: (rows) => path.join(root, `app/dist-rows${rows}/main.web.bundle`),
 	},
+	// The same app under `OCTANE_LYNX_PROFILE=1`, which is what publishes the
+	// first-screen phase marker the boundary probe reads. It is a different build
+	// configuration from the shipping `octane` cell, so it is a separate cell
+	// rather than a flag on that one: its wall clock is only comparable to
+	// itself, and the report has to be able to say so.
+	'octane-profile': {
+		bundle: () => path.join(root, 'app/dist-profile/main.web.bundle'),
+		fcpBundle: (rows) => path.join(root, `app/dist-rows${rows}-profile/main.web.bundle`),
+		profile: true,
+	},
 	react: {
 		bundle: () => path.join(root, 'reference/react/main.web.bundle'),
 		fcpBundle: () => null,
@@ -113,6 +123,9 @@ const cellIds = args.cells
 for (const id of cellIds) {
 	if (CELLS[id] === undefined) throw new TypeError(`unknown cell ${id}.`);
 }
+// Every cross-cell delta is expressed against octane, so a run without it would
+// have nothing to attribute against.
+if (!cellIds.includes('octane')) throw new TypeError('the octane cell is required.');
 
 const createLabels = new Map([
 	[1000, 'Create 1,000 rows'],
@@ -128,16 +141,21 @@ for (const rows of scales) {
 
 // --- bundles ----------------------------------------------------------------
 
-function buildOctaneVariants() {
-	const previous = process.env.BENCH_AUTOROWS;
+function buildOctaneVariants({ profile = false } = {}) {
+	const previousRows = process.env.BENCH_AUTOROWS;
+	const previousProfile = process.env.OCTANE_LYNX_PROFILE;
 	try {
+		if (profile) process.env.OCTANE_LYNX_PROFILE = '1';
+		else delete process.env.OCTANE_LYNX_PROFILE;
 		for (const autoRows of ['0', ...scales.map(String)]) {
 			process.env.BENCH_AUTOROWS = autoRows;
 			buildTableApp({ silent: true });
 		}
 	} finally {
-		if (previous === undefined) delete process.env.BENCH_AUTOROWS;
-		else process.env.BENCH_AUTOROWS = previous;
+		if (previousRows === undefined) delete process.env.BENCH_AUTOROWS;
+		else process.env.BENCH_AUTOROWS = previousRows;
+		if (previousProfile === undefined) delete process.env.OCTANE_LYNX_PROFILE;
+		else process.env.OCTANE_LYNX_PROFILE = previousProfile;
 	}
 }
 
@@ -374,7 +392,10 @@ async function clockGranularityMs(browser) {
 
 // --- run --------------------------------------------------------------------
 
-if (!args['skip-build'] && cellIds.includes('octane')) buildOctaneVariants();
+if (!args['skip-build']) {
+	if (cellIds.includes('octane')) buildOctaneVariants();
+	if (cellIds.includes('octane-profile')) buildOctaneVariants({ profile: true });
+}
 for (const [name, file] of bundlePaths) {
 	if (!fs.existsSync(file)) throw new Error(`${name} bundle is missing: ${file}`);
 }
@@ -537,6 +558,12 @@ for (const rows of scales) {
 	const deltas = {};
 	for (const id of cellIds) {
 		if (id === 'octane') continue;
+		// The profile cell carries the wire profiler's branches, so it is a
+		// different build configuration from every other cell here. Its numbers
+		// apportion its own window and nothing else; ratioing it against the
+		// shipping build or a vendored reference would compare two builds and
+		// report the difference as a framework gap.
+		if (CELLS[id].profile === true) continue;
 		deltas[id] = {
 			create: attributeDelta({
 				subject: cells.octane.create.timed,

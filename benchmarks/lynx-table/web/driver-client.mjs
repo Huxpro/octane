@@ -377,6 +377,57 @@ const PAPI_INSTRUMENT_TEMPLATE = `(() => {
     flushSelfMs: 0,
   };
 
+  // The framework's profile record, when the page carries a profile build. The
+  // Element PAPI is installed into a separate iframe realm, so the framework's
+  // globalThis is not this one; what makes the record reachable is that
+  // web-core performs the install from page-realm code, which puts that realm's
+  // global in hand here as Object.assign's target. Reading a phase marker from
+  // it is the only way to know which part of a first screen issued a host call:
+  // the first screen is one uninterrupted synchronous run, and the boundary
+  // shows calls, not callers. The framework publishes the marker and never
+  // reads back, so nothing here changes what the framework does.
+  var mainRealm = null;
+  var phases = Object.create(null);
+  // The framework's phase spans accumulate for the life of the realm, but a
+  // window is not the realm: a create click runs long after the first screen
+  // ended. Recording the spans at each window start and reporting the delta is
+  // what keeps one window from being handed another window's first screen.
+  var phaseBase = null;
+
+  // Read at the moment the call is issued, never after it returns: the phase
+  // that issued a call is the one that owns its cost, and reading the marker on
+  // the way out would credit a phase that opened while the call was running. It
+  // is also what makes the two builds agree by construction — a counts build
+  // and a timed build sample the marker at the same instant.
+  var openPhase = function () {
+    if (mainRealm === null) return null;
+    var profile = mainRealm.__OCTANE_LYNX_PROF;
+    if (profile === undefined || profile === null) return null;
+    var phase = profile.firstScreenPhase;
+    return phase === undefined ? null : phase;
+  };
+
+  var phaseWalls = function () {
+    if (mainRealm === null) return null;
+    var profile = mainRealm.__OCTANE_LYNX_PROF;
+    if (profile === undefined || profile === null) return null;
+    if (typeof profile.firstScreenRenderMs !== 'number') return null;
+    return {
+      render: profile.firstScreenRenderMs,
+      publish: profile.firstScreenPublishMs,
+      capture: profile.firstScreenCaptureMs,
+      announce: profile.firstScreenAnnounceMs,
+    };
+  };
+
+  var creditPhase = function (phase, self) {
+    if (phase === null) return;
+    var bucket = phases[phase];
+    if (bucket === undefined) bucket = phases[phase] = { calls: 0, selfMs: 0 };
+    bucket.calls++;
+    bucket.selfMs += self;
+  };
+
   var bucketOf = function (name) {
     var bucket = kinds[name];
     if (bucket === undefined) {
@@ -411,6 +462,7 @@ const PAPI_INSTRUMENT_TEMPLATE = `(() => {
       var callsBefore = isFlush ? state.calls : 0;
       var selfMsBefore = isFlush ? state.selfMs : 0;
       var start = performance.now();
+      var phase = openPhase();
       childStack[childDepth++] = 0;
       try {
         return fn.apply(this, arguments);
@@ -430,6 +482,7 @@ const PAPI_INSTRUMENT_TEMPLATE = `(() => {
         if (state.firstCallEpoch === null) state.firstCallEpoch = origin + start;
         state.lastCallEpoch = origin + end;
         if (isFlush) recordFlush(origin + start, origin + end, self, callsBefore, selfMsBefore);
+        creditPhase(phase, self);
       }
     };
   };
@@ -446,6 +499,9 @@ const PAPI_INSTRUMENT_TEMPLATE = `(() => {
       if (state.firstCallEpoch === null) state.firstCallEpoch = origin + performance.now();
       bucket.calls++;
       state.calls++;
+      // Counts only. This build reads no per-call clock, so the phase buckets it
+      // fills carry calls and a zero selfMs rather than a time it never measured.
+      creditPhase(openPhase(), 0);
       return fn.apply(this, arguments);
     };
   };
@@ -501,6 +557,9 @@ const PAPI_INSTRUMENT_TEMPLATE = `(() => {
     Object.assign = nativeAssign;
     state.attached = true;
     state.attachEpoch = origin + performance.now();
+    // The install target is the main-thread script realm's global — the realm
+    // the framework's own profile record lives on.
+    mainRealm = target;
     return nativeAssign.apply(Object, [target].concat(sources.map(wrapSource)));
   };
 
@@ -530,6 +589,38 @@ const PAPI_INSTRUMENT_TEMPLATE = `(() => {
       flushDetailLimit: FLUSH_DETAIL_LIMIT,
       flushes: flushes.slice(),
       kinds: byKind,
+      firstScreen: firstScreenSnapshot(),
+    };
+  };
+
+  // The first-screen split, or null when the page carries no profile build. Two
+  // halves that only mean something together: wallMs is what the framework
+  // measured for each phase, selfMs is the host time this boundary observed
+  // inside it, and the difference is that phase's off-boundary cost. What no
+  // phase claims is web-core's own script plus the browser's frame.
+  var firstScreenSnapshot = function () {
+    if (mainRealm === null) return null;
+    var profile = mainRealm.__OCTANE_LYNX_PROF;
+    if (profile === undefined || profile === null) return null;
+    var walls = phaseWalls();
+    if (walls === null) return null;
+    var byPhase = {};
+    var names = Object.keys(phases);
+    for (var i = 0; i < names.length; i++) {
+      byPhase[names[i]] = { calls: phases[names[i]].calls, selfMs: phases[names[i]].selfMs };
+    }
+    var base = phaseBase;
+    var wallMs = {};
+    var phaseNames = ['render', 'publish', 'capture', 'announce'];
+    for (var j = 0; j < phaseNames.length; j++) {
+      var key = phaseNames[j];
+      wallMs[key] = walls[key] - (base === null ? 0 : base[key]);
+    }
+    return {
+      timers: TIMERS,
+      open: profile.firstScreenPhase === undefined ? null : profile.firstScreenPhase,
+      wallMs: wallMs,
+      byPhase: byPhase,
     };
   };
 
@@ -537,6 +628,12 @@ const PAPI_INSTRUMENT_TEMPLATE = `(() => {
   // The wrappers stay installed, so a reset never changes what is measured —
   // only the window it is measured over.
   globalThis.__OCTANE_STAGE_PAPI_RESET__ = function () {
+    // Phase buckets are recreated rather than zeroed in place: nothing closed
+    // over them, so there are no detached wrappers to strand. The framework's
+    // spans belong to the framework, so they are baselined here instead: the
+    // window that follows reports what accumulated inside it and nothing older.
+    phases = Object.create(null);
+    phaseBase = phaseWalls();
     // Zero the buckets in place: each wrapper closed over its bucket when the
     // boundary was wrapped, so replacing or dropping them would leave the
     // installed wrappers counting into detached objects and report an empty
