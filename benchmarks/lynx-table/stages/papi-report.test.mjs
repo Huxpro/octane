@@ -3,9 +3,11 @@
 // saying so: apportioning `off_boundary` from a build whose wall clock does not
 // match the shipping one, and a profile cell whose probe read nothing at all.
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { test } from 'node:test';
 
-import { profileTransfer } from './papi-report.mjs';
+import { profileTransfer, renderBoundaryReport } from './papi-report.mjs';
 
 // Only medians are read here; the analyzer's own suite covers how a stat is
 // folded out of its samples.
@@ -73,4 +75,27 @@ test('refuses a profile cell that measured a window but read no profile record',
 		() => profileTransfer(scale({ firstScreen: null })),
 		/carried no first-screen split/,
 	);
+});
+
+// Rendered over the checked-in evidence rather than a fixture: the renderer
+// needs a whole scale report, and the two files below are exactly the two cases
+// — a cross-framework run with no profile cell, and the first-screen run with
+// one. They are the same JSON the report CLI re-renders from.
+const frozen = (stem, rows) =>
+	JSON.parse(
+		fs.readFileSync(path.join(import.meta.dirname, 'results', `${stem}-${rows}.json`), 'utf8'),
+	);
+
+test('describes the split only in a report that carries one', () => {
+	const marker = 'and on a profile-built Octane cell it splits further';
+
+	const withSplit = renderBoundaryReport([frozen('papi-firstscreen', 10000)]);
+	assert.ok(withSplit.includes(marker));
+	assert.ok(withSplit.includes('### Octane first-screen phase split @10000'));
+
+	// The cross-framework run has no profile cell, so a contract paragraph
+	// explaining how to read a split would describe a section that is not there.
+	const withoutSplit = renderBoundaryReport([frozen('papi', 10000)]);
+	assert.ok(!withoutSplit.includes(marker));
+	assert.ok(!withoutSplit.includes('first-screen phase split'));
 });

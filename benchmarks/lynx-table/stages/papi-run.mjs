@@ -2,6 +2,10 @@
 //
 //   node stages/papi-run.mjs --smoke --scales 1000 --allow-busy-host
 //   node stages/papi-run.mjs --reps 5 --scales 1000,10000,30000
+//   node stages/papi-run.mjs --cells octane,octane-profile --label papi-firstscreen
+//
+// `--label` stems every output basename, so a run over a different cell set
+// writes beside the checked-in baseline instead of over it.
 //
 // The instrument is host-side (web/driver-client.mjs `papiInstrumentJs`): it
 // wraps the single `Object.assign` with which @lynx-js/web-core installs the
@@ -58,6 +62,7 @@ const { values: args } = parseArgs({
 		reps: { type: 'string', default: '5' },
 		scales: { type: 'string', default: '1000,10000,30000' },
 		cells: { type: 'string', default: 'octane,react,vue-vdom' },
+		label: { type: 'string', default: 'papi' },
 		port: { type: 'string', default: '8362' },
 		smoke: { type: 'boolean', default: false },
 		'skip-build': { type: 'boolean', default: false },
@@ -74,6 +79,13 @@ const scales = args.scales
 if (scales.length === 0) throw new TypeError('at least one scale is required.');
 for (const rows of scales) {
 	if (!Number.isSafeInteger(rows) || rows <= 0) throw new TypeError('scales must be positive.');
+}
+// Every output basename is stemmed from `--label`, so a run that measures a
+// different cell set writes its own files instead of overwriting the evidence a
+// previous campaign checked in under the default stem.
+const outputStem = args.label.trim();
+if (!/^[a-z0-9][a-z0-9-]*$/.test(outputStem)) {
+	throw new TypeError('--label must be lowercase alphanumeric with dashes.');
 }
 const port = Number(args.port);
 const cpuCount = os.cpus().length;
@@ -472,7 +484,7 @@ fs.mkdirSync(output, { recursive: true });
 
 if (args.smoke) {
 	fs.writeFileSync(
-		path.join(output, 'papi-smoke.json'),
+		path.join(output, `${outputStem}-smoke.json`),
 		JSON.stringify({ meta: { ...meta, reportable: false }, samples }, null, 2) + '\n',
 	);
 	console.log('[papi] smoke passed (not reportable).');
@@ -606,12 +618,12 @@ if (scales.length >= 2) {
 // change never costs another measurement window.
 for (const rows of scales) {
 	fs.writeFileSync(
-		path.join(output, `papi-${rows}.json`),
+		path.join(output, `${outputStem}-${rows}.json`),
 		JSON.stringify({ meta, rows, ...report.scales[rows], samples: samples[rows] }, null, 2) + '\n',
 	);
 }
 fs.writeFileSync(
-	path.join(output, 'papi-scaling.json'),
+	path.join(output, `${outputStem}-scaling.json`),
 	JSON.stringify({ meta, scaling: report.scaling }, null, 2) + '\n',
 );
 const text = renderBoundaryReport(
@@ -622,6 +634,6 @@ const text = renderBoundaryReport(
 		...(index === 0 ? { scaling: report.scaling } : null),
 	})),
 );
-fs.writeFileSync(path.join(output, 'papi-boundary.md'), text + '\n');
+fs.writeFileSync(path.join(output, `${outputStem}-boundary.md`), text + '\n');
 console.log('\n' + text);
-console.log(`[papi] wrote ${path.relative(root, path.join(output, 'papi-boundary.md'))}`);
+console.log(`[papi] wrote ${path.relative(root, path.join(output, `${outputStem}-boundary.md`))}`);

@@ -236,6 +236,12 @@ export function renderBoundaryReport(scaleReports) {
 	const first = scaleReports[0];
 	const meta = first.meta;
 	const cellIds = meta.cells;
+	// One evaluation per scale, before the first line is emitted: the contract
+	// prose below and the tables further down then cannot disagree about whether
+	// this run carries a split, and a broken probe throws before a header claims
+	// otherwise.
+	const transfers = new Map(scaleReports.map((scale) => [scale.rows, profileTransfer(scale)]));
+	const anySplit = [...transfers.values()].some((transfer) => transfer !== null);
 	const lines = [
 		'# Element PAPI boundary decomposition — Octane vs ReactLynx vs Vue vdom+IFR+ET',
 		'',
@@ -261,10 +267,14 @@ export function renderBoundaryReport(scaleReports) {
 		'',
 		"`start_delay` is the observed gap from the window's start boundary to the first host call. Each host group is directly observed and exclusive: a host call re-entered through a framework callback is counted once. `off_boundary` is the named exclusive remainder — framework script, the browser's own style, layout, paint, and observer-frame delay, and the timed probe's own bookkeeping — because the host exposes no boundary separating those. `__FlushElementTree` self time covers the synchronous publication Web Core performs inside it; the browser's layout and paint that follow it stay in `off_boundary`.",
 		'',
-		"`off_boundary` is a remainder for every cell, and on a profile-built Octane cell it splits further. The framework publishes which first-screen phase is running — render, publish, capture, announce — and the probe attributes each host call to the phase that issued it, so a phase's own off-boundary time is its wall span minus the host time observed inside it. What no phase claims is the residue: web-core's own script between host calls, plus the browser's style, layout, paint, and observer frame. The dependency runs one way — the framework publishes a marker and never reads the probe — and `render` crosses the boundary not at all, so its whole span is framework script by construction rather than by subtraction. The marker is compiled out of a shipping bundle, so the split is measured on a separate profile-built cell and no ratio is ever taken across the two builds.",
-		'',
-		"The residue is an upper bound on the platform's share rather than a measurement of it, though a tight one. Framework script before the first host call is `start_delay`, a separate term of the identity, so the bundle's own evaluation and most of the install are already excluded. What can still land in the residue is framework script inside the window but outside the four phases: whatever the entry does after the first screen returns, and any install work that follows the first host call. That is the flattering direction for Octane and the conservative one for a floor claim — a control built against this residue must beat a number that may still hold a little framework cost the split did not measure.",
-		'',
+		...(anySplit
+			? [
+					"`off_boundary` is a remainder for every cell, and on a profile-built Octane cell it splits further. The framework publishes which first-screen phase is running — render, publish, capture, announce — and the probe attributes each host call to the phase that issued it, so a phase's own off-boundary time is its wall span minus the host time observed inside it. What no phase claims is the residue: web-core's own script between host calls, plus the browser's style, layout, paint, and observer frame. The dependency runs one way — the framework publishes a marker and never reads the probe — and `render` crosses the boundary not at all, so its whole span is framework script by construction rather than by subtraction. The marker is compiled out of a shipping bundle, so the split is measured on a separate profile-built cell and no ratio is ever taken across the two builds.",
+					'',
+					"The residue is an upper bound on the platform's share rather than a measurement of it, though a tight one. Framework script before the first host call is `start_delay`, a separate term of the identity, so the bundle's own evaluation and most of the install are already excluded. What can still land in the residue is framework script inside the window but outside the four phases: whatever the entry does after the first screen returns, and any install work that follows the first host call. That is the flattering direction for Octane and the conservative one for a floor claim — a control built against this residue must beat a number that may still hold a little framework cost the split did not measure.",
+					'',
+				]
+			: []),
 		"Host call counts, flush cadence, and start delay are read from the counts build, whose wall clock carries no per-call clock reads. The timed build supplies host self time. Both builds count identically by construction, and the agreement is reported per cell as the control on the timed build's cost.",
 		'',
 		'Two window predicates differ and the difference is not corrected away: the create window resolves on a shallow scan of the row container, while the FCP window resolves on the composed-tree content count `stages/run.mjs` already uses. The FCP predicate is the more expensive walk, so an FCP window carries up to one polling frame of that walk that a create window does not. Host call counts are exact and carry no such term.',
@@ -321,7 +331,7 @@ export function renderBoundaryReport(scaleReports) {
 				'',
 			);
 		}
-		const transfer = profileTransfer(scale);
+		const transfer = transfers.get(rows);
 		if (transfer !== null) {
 			lines.push(
 				`### Octane first-screen phase split @${rows} — what off-boundary time is Octane's`,
@@ -429,25 +439,34 @@ export function renderBoundaryReport(scaleReports) {
 const isMain =
 	process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.meta.filename);
 if (isMain) {
-	const { values } = parseArgs({ options: { scales: { type: 'string' } } });
+	// `--label` mirrors the runner's: it stems every basename, so the evidence a
+	// labelled run wrote is re-renderable under the same name it was written to.
+	const { values } = parseArgs({
+		options: { scales: { type: 'string' }, label: { type: 'string', default: 'papi' } },
+	});
 	const output = path.join(import.meta.dirname, 'results');
+	const stem = values.label.trim();
+	if (!/^[a-z0-9][a-z0-9-]*$/.test(stem)) {
+		throw new TypeError('--label must be lowercase alphanumeric with dashes.');
+	}
+	const scalePattern = new RegExp(`^${stem}-(\\d+)\\.json$`);
 	const scales =
 		values.scales === undefined
 			? fs
 					.readdirSync(output)
-					.map((file) => /^papi-(\d+)\.json$/.exec(file)?.[1])
+					.map((file) => scalePattern.exec(file)?.[1])
 					.filter(Boolean)
 					.map(Number)
 					.sort((left, right) => left - right)
 			: values.scales.split(',').map((value) => Number(value.trim()));
-	if (scales.length === 0) throw new Error('no frozen papi-<rows>.json evidence to render.');
+	if (scales.length === 0) throw new Error(`no frozen ${stem}-<rows>.json evidence to render.`);
 	const reports = scales.map((rows) =>
-		JSON.parse(fs.readFileSync(path.join(output, `papi-${rows}.json`), 'utf8')),
+		JSON.parse(fs.readFileSync(path.join(output, `${stem}-${rows}.json`), 'utf8')),
 	);
 	const scaling = JSON.parse(
-		fs.readFileSync(path.join(output, 'papi-scaling.json'), 'utf8'),
+		fs.readFileSync(path.join(output, `${stem}-scaling.json`), 'utf8'),
 	).scaling;
 	reports[0].scaling = scaling;
-	fs.writeFileSync(path.join(output, 'papi-boundary.md'), renderBoundaryReport(reports) + '\n');
-	console.log(`[papi] rendered results/papi-boundary.md from ${scales.length} frozen scale(s).`);
+	fs.writeFileSync(path.join(output, `${stem}-boundary.md`), renderBoundaryReport(reports) + '\n');
+	console.log(`[papi] rendered results/${stem}-boundary.md from ${scales.length} frozen scale(s).`);
 }
