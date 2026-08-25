@@ -121,6 +121,10 @@ export interface LynxFirstTreeState<Node extends LynxElementRef> {
 	readonly logicalNodes: Map<number, LynxFirstTreeLogicalNodeSnapshot>;
 	/** One entry per native list the captured tree holds, keyed by host ID. */
 	readonly lists: Map<number, LynxFirstTreeListJournal>;
+	/** The description, once something has asked for one. */
+	snapshot: LynxFirstTreeSnapshot | null;
+	/** Builds it; dropped once it has run or the tree is released. */
+	describe: (() => LynxFirstTreeSnapshot) | null;
 }
 
 /** Opaque main-local ownership journal paired with its clone-safe snapshot. */
@@ -129,8 +133,18 @@ export interface LynxFirstTree<Node extends LynxElementRef = LynxElementRef> {
 	readonly [LYNX_FIRST_TREE_STATE]: LynxFirstTreeState<Node>;
 }
 
+/**
+ * Pair the main-local ownership journal with the description the background
+ * clones when it adopts.
+ *
+ * The description is built on first read. Capture already validated the tree, so
+ * building it is pure allocation over an already-validated result — and capture
+ * runs after the page is published to the host, which puts that allocation
+ * between the tree reaching the DOM and the browser painting it. Nothing before
+ * adoption reads the description, so nothing waits for it either.
+ */
 export function createLynxFirstTree<Node extends LynxElementRef>(
-	snapshot: LynxFirstTreeSnapshot,
+	describe: () => LynxFirstTreeSnapshot,
 	owner: unknown,
 	eventsByToken: Map<string, LynxResolvedFirstTreeEvent>,
 	logicalNodes: Map<number, LynxFirstTreeLogicalNodeSnapshot>,
@@ -142,8 +156,23 @@ export function createLynxFirstTree<Node extends LynxElementRef>(
 		eventsByToken,
 		logicalNodes,
 		lists,
+		snapshot: null,
+		describe,
 	};
-	return Object.freeze({ snapshot, [LYNX_FIRST_TREE_STATE]: state });
+	return Object.freeze({
+		get snapshot(): LynxFirstTreeSnapshot {
+			if (state.snapshot !== null) return state.snapshot;
+			const build = state.describe;
+			if (build === null) {
+				throw new Error('Octane Lynx first tree was released before it was described.');
+			}
+			const snapshot = build();
+			state.snapshot = snapshot;
+			state.describe = null;
+			return snapshot;
+		},
+		[LYNX_FIRST_TREE_STATE]: state,
+	});
 }
 
 /** Release clone-unsafe journal state after adoption replay has drained. */
@@ -157,6 +186,9 @@ export function releaseLynxFirstTree(firstTree: LynxFirstTree): void {
 	state.eventsByToken.clear();
 	state.logicalNodes.clear();
 	state.lists.clear();
+	// The builder closes over the source container's records, so dropping it is
+	// what lets a released tree stop retaining the page it described.
+	state.describe = null;
 	state.status = 'released';
 }
 

@@ -75,6 +75,29 @@ describe('Lynx transport codec', () => {
 		}
 	});
 
+	// The adversarial ordering for the escape family: a record carrying both the
+	// literal escaped-proto spelling as a key and a real __proto__ key. Restoring
+	// by renaming in place lets the first key's restoration land on the second's
+	// still-encoded snapshot entry, losing one key and double-restoring the
+	// other; the round-trip must instead keep both, each with its own value.
+	it('round-trips a record whose keys collide with the proto escape family', () => {
+		const source: Record<string, unknown> = {};
+		source[`${NUL}proto`] = 'family';
+		Object.defineProperty(source, '__proto__', {
+			configurable: true,
+			enumerable: true,
+			value: 'realproto',
+			writable: true,
+		});
+		source[`${NUL}${NUL}proto`] = `${NUL}str`;
+		const decoded = roundTrip(source) as Record<string, unknown>;
+		expect(decoded[`${NUL}proto`]).toBe('family');
+		expect(Object.getOwnPropertyDescriptor(decoded, '__proto__')?.value).toBe('realproto');
+		expect(decoded[`${NUL}${NUL}proto`]).toBe(`${NUL}str`);
+		expect(Object.getPrototypeOf(decoded)).toBe(Object.prototype);
+		expect(Object.keys(decoded)).toHaveLength(3);
+	});
+
 	// `main-renderer.ts` deliberately keeps a spread `__proto__` as an own data
 	// property rather than a prototype write, so the wire has to preserve that
 	// decision rather than quietly making it again on the receiver's behalf.

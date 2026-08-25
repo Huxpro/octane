@@ -179,9 +179,39 @@ export function encodeLynxNativeEventToken(
 }
 
 /**
+ * Host fast path for a caller that already holds the identity's five primitives
+ * as separate values rather than as an object it was handed.
+ *
+ * It runs exactly the primitive checks the public encoder runs, in the same
+ * order and with the same messages, and skips only the structural ones — which
+ * ask whether an object is a plain object carrying these five keys and nothing
+ * else. A caller that builds that object itself is asking about a literal it
+ * wrote two lines earlier, and pays a prototype read, a key enumeration, two
+ * array scans and five descriptor reads per event to be told yes. A caller
+ * holding an identity *object* from somewhere else still owes it the full
+ * check, and must keep using `encodeLynxNativeEventToken`.
+ */
+export function encodeCheckedLynxNativeEventToken(
+	root: unknown,
+	id: unknown,
+	generation: unknown,
+	listener: unknown,
+	priority: unknown,
+): LynxNativeEventToken {
+	assertPositiveSafeInteger(root, 'identity.root');
+	assertPositiveSafeInteger(id, 'identity.id');
+	assertPositiveSafeInteger(generation, 'identity.generation');
+	assertPositiveSafeInteger(listener, 'identity.listener');
+	if (!isLynxEventPriority(priority)) {
+		throw tokenError('identity.priority must be discrete, continuous, or default.');
+	}
+	return encodePrevalidatedLynxNativeEventToken(root, id, generation, listener, priority);
+}
+
+/**
  * Internal host fast path: every primitive was already checked while preparing
  * a frozen template program and its contiguous host/listener identity ranges.
- * Untrusted callers must continue to use the validating public encoder above.
+ * Untrusted callers must continue to use one of the checking encoders above.
  */
 export function encodePrevalidatedLynxNativeEventToken(
 	root: number,

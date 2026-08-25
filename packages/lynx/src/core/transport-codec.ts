@@ -287,28 +287,33 @@ function restore(value: unknown, depth = 0): unknown {
 		}
 		return value;
 	}
+	// Rebuilt rather than renamed in place: renaming while iterating lets an
+	// early restoration land on a snapshot key the loop has not reached yet —
+	// `"\u0000\u0000proto"` restores to `"\u0000proto"`, which is exactly the
+	// escaped `__proto__` entry still pending — clobbering it and then
+	// double-restoring the clobbered value. The escape is injective, so writing
+	// each final name into a fresh record is order-independent by construction.
 	const record = value as Record<string, unknown>;
+	const rebuilt: Record<string, unknown> = {};
 	for (const key of Object.keys(record)) {
 		const restored = restore(record[key], depth + 1);
 		if (key === ESCAPED_PROTO_KEY) {
-			delete record[key];
-			// Defined rather than assigned: `record.__proto__ = x` is a prototype
+			// Defined rather than assigned: `rebuilt.__proto__ = x` is a prototype
 			// write on any engine whose `Object.prototype` still carries the
 			// accessor, and this has to be an own data property on every engine.
-			Object.defineProperty(record, PROTO_KEY, {
+			Object.defineProperty(rebuilt, PROTO_KEY, {
 				configurable: true,
 				enumerable: true,
 				value: restored,
 				writable: true,
 			});
 		} else if (isProtoEscapeFamily(key)) {
-			delete record[key];
-			record[key.slice(1)] = restored;
+			rebuilt[key.slice(1)] = restored;
 		} else {
-			record[key] = restored;
+			rebuilt[key] = restored;
 		}
 	}
-	return record;
+	return rebuilt;
 }
 
 /**

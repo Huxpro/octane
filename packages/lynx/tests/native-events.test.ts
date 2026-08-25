@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	decodeLynxNativeEventToken,
+	encodeCheckedLynxNativeEventToken,
 	encodeLynxNativeEventToken,
 	parseLynxMainThreadEventProp,
 	parseLynxNativeEventProp,
@@ -130,6 +131,49 @@ describe('Lynx native event boundary', () => {
 			'octane-lynx:event:1:1:1:9007199254740992:discrete',
 		]) {
 			expect(() => decodeLynxNativeEventToken(token)).toThrow(/native event token/);
+		}
+	});
+
+	// The host installs an event by handing over five primitives it holds
+	// separately, so it never has an identity object to check. Both encoders must
+	// therefore agree on which identities exist and which are refused: an encoder
+	// that skipped a primitive would write a token the decoder cannot read back,
+	// and the host would have already given it to the platform.
+	it('accepts and refuses the same identities however the caller spells them', () => {
+		const identity = {
+			root: 7,
+			id: 11,
+			generation: 3,
+			listener: 29,
+			priority: 'discrete',
+		} as const;
+		const checked = encodeCheckedLynxNativeEventToken(7, 11, 3, 29, 'discrete');
+		expect(checked).toBe(encodeLynxNativeEventToken(identity));
+		expect(decodeLynxNativeEventToken(checked)).toEqual(identity);
+
+		for (const [root, id, generation, listener, priority, message] of [
+			[0, 1, 1, 1, 'discrete', /identity\.root must be a positive safe integer/],
+			[1, -1, 1, 1, 'discrete', /identity\.id must be a positive safe integer/],
+			[1, 1, 1.5, 1, 'discrete', /identity\.generation must be a positive safe integer/],
+			[
+				1,
+				1,
+				1,
+				Number.MAX_SAFE_INTEGER + 1,
+				'discrete',
+				/identity\.listener must be a positive safe integer/,
+			],
+			[1, 1, 1, null, 'discrete', /identity\.listener must be a positive safe integer/],
+			[1, 1, 1, 1, 'urgent', /identity\.priority must be discrete, continuous, or default/],
+			[1, 1, 1, 1, undefined, /identity\.priority must be discrete, continuous, or default/],
+		] as const) {
+			expect(() =>
+				encodeCheckedLynxNativeEventToken(root, id, generation, listener, priority),
+			).toThrow(message);
+			// The object encoder refuses the same identity, and says the same thing.
+			expect(() =>
+				encodeLynxNativeEventToken({ root, id, generation, listener, priority } as never),
+			).toThrow(message);
 		}
 	});
 

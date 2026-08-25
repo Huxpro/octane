@@ -87,7 +87,7 @@ import {
 	type LynxLifecycleDataRecord,
 } from './core/lifecycle-data.js';
 import { createLynxElementPAPI, type LynxElementPAPI, type LynxElementRef } from './core/papi.js';
-import { LYNX_PROFILE, lynxWireProfile } from './core/profiling.js';
+import { LYNX_PROFILE, lynxWireProfile, markFirstScreenPhase } from './core/profiling.js';
 import {
 	decodeLynxTransportValue,
 	encodeLynxTransportValue,
@@ -268,27 +268,14 @@ function lifecycleTuple(
 	if (!Array.isArray(data) || data.length !== length) {
 		throw new TypeError(`Octane Lynx ${expectedType} data must be an exact ${length}-item tuple.`);
 	}
-	const names = Object.getOwnPropertyNames(data);
-	if (names.length !== length + 1 || hasOwnSymbolFields(data)) {
-		throw new TypeError(
-			`Octane Lynx ${expectedType} data must be a dense tuple without extra fields.`,
-		);
-	}
-	const tuple: unknown[] = [];
-	for (let index = 0; index < length; index++) {
-		const descriptor = Object.getOwnPropertyDescriptor(data, String(index));
-		if (
-			descriptor === undefined ||
-			!descriptor.enumerable ||
-			!Object.prototype.hasOwnProperty.call(descriptor, 'value')
-		) {
-			throw new TypeError(
-				`Octane Lynx ${expectedType} data[${index}] must be an enumerable data property.`,
-			);
-		}
-		tuple.push(descriptor.value);
-	}
-	return tuple;
+	// Materialization is also normalization: JSON output is always a dense
+	// ordinary array with exactly its index properties as plain enumerable data
+	// fields and no symbols, so the structural checks the pre-encoding version
+	// of this function ran here (extra own fields, accessor elements, symbol
+	// keys) can never fire again and would only claim a rigor the boundary has
+	// already provided. A hole in the raw tuple arrives as null and is judged by
+	// the per-element validation each caller runs on the values.
+	return data;
 }
 
 function lifecycleBooleanOption(
@@ -1941,7 +1928,16 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		firstScreenRenderInProgress = true;
 		let source: LynxHostContainer<Node> | null = null;
 		try {
+			// The first screen is one uninterrupted synchronous run between the
+			// entry's call and the browser's next frame, so nothing outside it can
+			// observe which part of it is spending the time. These marks are the
+			// seam: they name the phase for a profile build, and a host-boundary
+			// instrument reads the marker to attribute each host call to the phase
+			// that issued it. `render` crosses no boundary at all, which is what
+			// makes it framework cost by construction rather than by subtraction.
+			markFirstScreenPhase('render');
 			const result = renderLynxFirstScreen(component, props);
+			markFirstScreenPhase('publish');
 			source = createLynxHostContainer(papi, {
 				root: FIRST_SCREEN_ROOT_ID,
 				page,
@@ -1960,6 +1956,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 					throw new Error('Octane Lynx first-screen host batch did not cross its apply boundary.');
 				}
 			}
+			markFirstScreenPhase('capture');
 			const captured = captureLynxFirstTree(source);
 			if (captured === null) {
 				// The page rendered correctly but holds a composition the background
@@ -1975,12 +1972,18 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			firstTree = captured;
 			firstScreenState = 'painted';
 			if (firstScreenSync === 'automatic') firstScreenSyncReady = true;
+			markFirstScreenPhase('announce');
 			announceReady();
 			return result;
 		} catch (error) {
 			retireFirstScreen(source, 'failed', 'failed');
 			throw report(error, 'Octane Lynx could not render its synchronous first screen.');
 		} finally {
+			// Closes whichever phase was open, including on the paths that never
+			// reach `announce`: a tree the background cannot adopt returns early,
+			// and a fault settles the source through the `catch`. Neither may leave
+			// a phase open for whatever runs next in this realm.
+			markFirstScreenPhase(null);
 			firstScreenRenderInProgress = false;
 			if (closePending) finalizeDeferredClose?.();
 		}

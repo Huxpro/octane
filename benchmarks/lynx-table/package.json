@@ -8,6 +8,7 @@
     "bench": "node run.mjs",
     "bench:web": "node web/run-web.mjs",
     "bench:stages": "node stages/run.mjs",
+    "bench:papi": "node stages/papi-run.mjs",
     "bench:block": "node block-counts.mjs",
     "bench:first-screen-selectors": "node first-screen-selectors.mjs",
     "build:app": "node scripts/build-app.mjs",
