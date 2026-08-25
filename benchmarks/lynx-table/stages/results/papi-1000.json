@@ -1,0 +1,6112 @@
+{
+  "meta": {
+    "date": "2026-08-23T23:18:52.655Z",
+    "node": "v22.22.2",
+    "cpus": 4,
+    "cpuModel": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "platform": "linux",
+    "release": "6.18.44-fc-v21",
+    "chromium": "141.0.7390.37",
+    "clockGranularityMs": 0.09999999986030161,
+    "repetitions": 5,
+    "scales": [1000, 10000, 30000],
+    "cells": ["octane", "react", "vue-vdom"],
+    "variants": ["control", "counts", "timed"],
+    "reportable": true,
+    "loadStart": [0.43, 1.39, 1.13],
+    "loadEnd": [1.39, 1.61, 1.38],
+    "webCore": "0.22.2",
+    "referenceManifest": {
+      "source": "https://github.com/Huxpro/vue-lynx",
+      "branch": "claude/lynx-implementation-review-n2r0ie",
+      "commit": "02376ecd1cd62d3797ff1de1209d82dc2f9d91d9",
+      "builtAt": "2026-08-07",
+      "build": "pnpm install && pnpm --filter \"vue-lynx...\" build && cd packages/benchmark && node harness/build-unified.mjs --only=vdom-ifr-et,vapor-ifr,react",
+      "cells": {
+        "vdom-ifr-et": {
+          "description": "Vue Lynx vdom top config (vdom +b +ifr; legacy id vdom-ifr-et)",
+          "app": "packages/benchmark/apps/ui-vdom",
+          "framework": "vue 3.6.0-beta.17 (vue-lynx fork)"
+        },
+        "vapor-ifr": {
+          "description": "Vue Lynx vapor top config (vapor +b +ifr; legacy id vapor-ifr)",
+          "app": "packages/benchmark/apps/ui-vapor",
+          "framework": "vue 3.6.0-beta.17 (vue-lynx fork, vapor mode)"
+        },
+        "react": {
+          "description": "ReactLynx default config",
+          "app": "packages/benchmark/apps/ui-react",
+          "framework": "@lynx-js/react 0.122.1"
+        }
+      },
+      "note": "Black-box fixtures: only the .web.bundle files are vendored. They are served unmodified into <lynx-view> by web/run-web.mjs; the app workloads mirror app/src operation-for-operation. The harness host runs @lynx-js/web-core 0.22.2 for every cell (the fork built against 0.22.1 — the host runtime is shared, so the comparison stays same-host)."
+    },
+    "protocol": "fresh page per sample; control/counts/timed order rotates across repetitions in one host window; startup and create are measured in the same page load; the probe is host-side, so every variant runs the same framework bundle"
+  },
+  "rows": 1000,
+  "cells": {
+    "octane": {
+      "startup": {
+        "timed": {
+          "total": {
+            "median": 26.5,
+            "min": 24.599853515625,
+            "max": 29,
+            "spread": 4.400146484375,
+            "n": 5
+          },
+          "stages": {
+            "start_delay": {
+              "median": 18.60009765625,
+              "min": 17.800048828125,
+              "max": 19.300048828125,
+              "spread": 1.5,
+              "n": 5,
+              "share": 0.7018904775943396
+            },
+            "papi_create": {
+              "median": 1.5999999998603016,
+              "min": 1.3000000002793968,
+              "max": 1.7999999995809048,
+              "spread": 0.49999999930150807,
+              "n": 5,
+              "share": 0.0603773584852944
+            },
+            "papi_props": {
+              "median": 0.39999999990686774,
+              "min": 0.09999999986030161,
+              "max": 0.4000000001396984,
+              "spread": 0.3000000002793968,
+              "n": 5,
+              "share": 0.015094339619127085
+            },
+            "papi_events": {
+              "median": 0.8000000000465661,
+              "min": 0.6999999999534339,
+              "max": 0.8000000002793968,
+              "spread": 0.1000000003259629,
+              "n": 5,
+              "share": 0.03018867924704023
+            },
+            "papi_topology": {
+              "median": 0.09999999986030161,
+              "min": 0,
+              "max": 0.19999999995343387,
+              "spread": 0.19999999995343387,
+              "n": 5,
+              "share": 0.00377358490038874
+            },
+            "papi_read": {
+              "median": 0.09999999986030161,
+              "min": 0,
+              "max": 0.10000000009313226,
+              "spread": 0.10000000009313226,
+              "n": 5,
+              "share": 0.00377358490038874
+            },
+            "papi_flush": {
+              "median": 0.8999999999068677,
+              "min": 0.6999999999534339,
+              "max": 1,
+              "spread": 0.30000000004656613,
+              "n": 5,
+              "share": 0.03396226414742897
+            },
+            "off_boundary": {
+              "median": 3.699951172573492,
+              "min": 3.099804687546566,
+              "max": 6.0001953123137355,
+              "spread": 2.9003906247671694,
+              "n": 5,
+              "share": 0.13962079896503743
+            }
+          },
+          "ratios": {},
+          "counts": {
+            "calls": {
+              "median": 195,
+              "min": 195,
+              "max": 195,
+              "spread": 0,
+              "n": 5
+            },
+            "flushCount": {
+              "median": 2,
+              "min": 2,
+              "max": 2,
+              "spread": 0,
+              "n": 5
+            },
+            "byGroup": {
+              "papi_create": {
+                "median": 42,
+                "min": 42,
+                "max": 42,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_props": {
+                "median": 56,
+                "min": 56,
+                "max": 56,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_events": {
+                "median": 12,
+                "min": 12,
+                "max": 12,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_topology": {
+                "median": 41,
+                "min": 41,
+                "max": 41,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_read": {
+                "median": 42,
+                "min": 42,
+                "max": 42,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_flush": {
+                "median": 2,
+                "min": 2,
+                "max": 2,
+                "spread": 0,
+                "n": 5
+              }
+            },
+            "byKind": {
+              "__CreateView": {
+                "median": 15,
+                "min": 15,
+                "max": 15,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreateText": {
+                "median": 13,
+                "min": 13,
+                "max": 13,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreateRawText": {
+                "median": 13,
+                "min": 13,
+                "max": 13,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreatePage": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetClasses": {
+                "median": 28,
+                "min": 28,
+                "max": 28,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetAttribute": {
+                "median": 28,
+                "min": 28,
+                "max": 28,
+                "spread": 0,
+                "n": 5
+              },
+              "__AddEvent": {
+                "median": 12,
+                "min": 12,
+                "max": 12,
+                "spread": 0,
+                "n": 5
+              },
+              "__AppendElement": {
+                "median": 41,
+                "min": 41,
+                "max": 41,
+                "spread": 0,
+                "n": 5
+              },
+              "__GetElementUniqueID": {
+                "median": 42,
+                "min": 42,
+                "max": 42,
+                "spread": 0,
+                "n": 5
+              },
+              "__FlushElementTree": {
+                "median": 2,
+                "min": 2,
+                "max": 2,
+                "spread": 0,
+                "n": 5
+              }
+            }
+          },
+          "rates": {
+            "opSelfMs": 2.9999999995343387,
+            "msPerOp": 0.015384615382227377,
+            "opsPerRow": null,
+            "flushSelfMs": 0.8999999999068677,
+            "msPerFlush": 0.44999999995343387
+          },
+          "rows": null
+        },
+        "counts": {
+          "total": {
+            "median": 27.39990234375,
+            "min": 24.10009765625,
+            "max": 33.5,
+            "spread": 9.39990234375,
+            "n": 5
+          },
+          "startDelay": {
+            "median": 18.5,
+            "min": 17.400146484375,
+            "max": 20.499755859375,
+            "spread": 3.099609375,
+            "n": 5
+          },
+          "counts": {
+            "calls": {
+              "median": 195,
+              "min": 195,
+              "max": 195,
+              "spread": 0,
+              "n": 5
+            },
+            "flushCount": {
+              "median": 2,
+              "min": 2,
+              "max": 2,
+              "spread": 0,
+              "n": 5
+            },
+            "byKind": {
+              "__CreateView": {
+                "median": 15,
+                "min": 15,
+                "max": 15,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreateText": {
+                "median": 13,
+                "min": 13,
+                "max": 13,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreateRawText": {
+                "median": 13,
+                "min": 13,
+                "max": 13,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreatePage": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetClasses": {
+                "median": 28,
+                "min": 28,
+                "max": 28,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetAttribute": {
+                "median": 28,
+                "min": 28,
+                "max": 28,
+                "spread": 0,
+                "n": 5
+              },
+              "__AddEvent": {
+                "median": 12,
+                "min": 12,
+                "max": 12,
+                "spread": 0,
+                "n": 5
+              },
+              "__AppendElement": {
+                "median": 41,
+                "min": 41,
+                "max": 41,
+                "spread": 0,
+                "n": 5
+              },
+              "__GetElementUniqueID": {
+                "median": 42,
+                "min": 42,
+                "max": 42,
+                "spread": 0,
+                "n": 5
+              },
+              "__FlushElementTree": {
+                "median": 2,
+                "min": 2,
+                "max": 2,
+                "spread": 0,
+                "n": 5
+              }
+            }
+          },
+          "opsPerRow": null,
+          "rows": null
+        },
+        "overhead": {
+          "counts": {
+            "probe": {
+              "median": 27.39990234375,
+              "min": 24.10009765625,
+              "max": 33.5,
+              "spread": 9.39990234375,
+              "n": 5
+            },
+            "control": {
+              "median": 29.599853515625,
+              "min": 24.89990234375,
+              "max": 34.300048828125,
+              "spread": 9.400146484375,
+              "n": 5
+            },
+            "ratio": 0.925676957464884,
+            "ceiling": 1.05,
+            "withinCeiling": true
+          },
+          "timed": {
+            "probe": {
+              "median": 26.5,
+              "min": 24.599853515625,
+              "max": 29,
+              "spread": 4.400146484375,
+              "n": 5
+            },
+            "control": {
+              "median": 29.599853515625,
+              "min": 24.89990234375,
+              "max": 34.300048828125,
+              "spread": 9.400146484375,
+              "n": 5
+            },
+            "ratio": 0.8952747008025338,
+            "ceiling": 1.05,
+            "withinCeiling": true
+          }
+        }
+      },
+      "create": {
+        "timed": {
+          "total": {
+            "median": 145.89999999990687,
+            "min": 144.5,
+            "max": 160.60000000009313,
+            "spread": 16.100000000093132,
+            "n": 5
+          },
+          "stages": {
+            "start_delay": {
+              "median": 32.300048828125,
+              "min": 30.699951171875,
+              "max": 32.400146484375,
+              "spread": 1.7001953125,
+              "n": 5,
+              "share": 0.2213848446068925
+            },
+            "papi_create": {
+              "median": 54.70000000158325,
+              "min": 52.49999999953434,
+              "max": 64.30000000353903,
+              "spread": 11.800000004004687,
+              "n": 5,
+              "share": 0.37491432489114573
+            },
+            "papi_props": {
+              "median": 6.499999999534339,
+              "min": 5.099999999627471,
+              "max": 9.100000000791624,
+              "spread": 4.000000001164153,
+              "n": 5,
+              "share": 0.04455106236832411
+            },
+            "papi_events": {
+              "median": 5.59999999916181,
+              "min": 4.399999999906868,
+              "max": 6.199999999254942,
+              "spread": 1.7999999993480742,
+              "n": 5,
+              "share": 0.038382453729714765
+            },
+            "papi_topology": {
+              "median": 16.799999999580905,
+              "min": 14.09999999939464,
+              "max": 20.499999998370185,
+              "spread": 6.399999998975545,
+              "n": 5,
+              "share": 0.11514736120350672
+            },
+            "papi_flush": {
+              "median": 0,
+              "min": 0,
+              "max": 0.10000000009313226,
+              "spread": 0.10000000009313226,
+              "n": 5,
+              "share": 0
+            },
+            "off_boundary": {
+              "median": 32.199951173970476,
+              "min": 28.2000976591371,
+              "max": 35.50004882737994,
+              "spread": 7.299951168242842,
+              "n": 5,
+              "share": 0.22069877432481858
+            }
+          },
+          "ratios": {},
+          "counts": {
+            "calls": {
+              "median": 20001,
+              "min": 20001,
+              "max": 20001,
+              "spread": 0,
+              "n": 5
+            },
+            "flushCount": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0,
+              "n": 5
+            },
+            "byGroup": {
+              "papi_create": {
+                "median": 7000,
+                "min": 7000,
+                "max": 7000,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_props": {
+                "median": 4000,
+                "min": 4000,
+                "max": 4000,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_events": {
+                "median": 2000,
+                "min": 2000,
+                "max": 2000,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_topology": {
+                "median": 7000,
+                "min": 7000,
+                "max": 7000,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_flush": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              }
+            },
+            "byKind": {
+              "__CreateView": {
+                "median": 1000,
+                "min": 1000,
+                "max": 1000,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreateText": {
+                "median": 3000,
+                "min": 3000,
+                "max": 3000,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreateRawText": {
+                "median": 3000,
+                "min": 3000,
+                "max": 3000,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetClasses": {
+                "median": 4000,
+                "min": 4000,
+                "max": 4000,
+                "spread": 0,
+                "n": 5
+              },
+              "__AddEvent": {
+                "median": 2000,
+                "min": 2000,
+                "max": 2000,
+                "spread": 0,
+                "n": 5
+              },
+              "__AppendElement": {
+                "median": 7000,
+                "min": 7000,
+                "max": 7000,
+                "spread": 0,
+                "n": 5
+              },
+              "__FlushElementTree": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              }
+            }
+          },
+          "rates": {
+            "opSelfMs": 83.5999999998603,
+            "msPerOp": 0.004179791010442493,
+            "opsPerRow": 20.001,
+            "flushSelfMs": 0,
+            "msPerFlush": 0
+          },
+          "rows": 1000
+        },
+        "counts": {
+          "total": {
+            "median": 144.69999999995343,
+            "min": 130.5,
+            "max": 157.4000000001397,
+            "spread": 26.9000000001397,
+            "n": 5
+          },
+          "startDelay": {
+            "median": 32.800048828125,
+            "min": 31,
+            "max": 34.900146484375,
+            "spread": 3.900146484375,
+            "n": 5
+          },
+          "counts": {
+            "calls": {
+              "median": 20001,
+              "min": 20001,
+              "max": 20001,
+              "spread": 0,
+              "n": 5
+            },
+            "flushCount": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0,
+              "n": 5
+            },
+            "byKind": {
+              "__CreateView": {
+                "median": 1000,
+                "min": 1000,
+                "max": 1000,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreateText": {
+                "median": 3000,
+                "min": 3000,
+                "max": 3000,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreateRawText": {
+                "median": 3000,
+                "min": 3000,
+                "max": 3000,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetClasses": {
+                "median": 4000,
+                "min": 4000,
+                "max": 4000,
+                "spread": 0,
+                "n": 5
+              },
+              "__AddEvent": {
+                "median": 2000,
+                "min": 2000,
+                "max": 2000,
+                "spread": 0,
+                "n": 5
+              },
+              "__AppendElement": {
+                "median": 7000,
+                "min": 7000,
+                "max": 7000,
+                "spread": 0,
+                "n": 5
+              },
+              "__FlushElementTree": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              }
+            }
+          },
+          "opsPerRow": 20.001,
+          "rows": 1000
+        },
+        "agreement": {
+          "agree": true,
+          "mismatches": [],
+          "timedCalls": 20001,
+          "countsCalls": 20001
+        },
+        "overhead": {
+          "counts": {
+            "probe": {
+              "median": 144.69999999995343,
+              "min": 130.5,
+              "max": 157.4000000001397,
+              "spread": 26.9000000001397,
+              "n": 5
+            },
+            "control": {
+              "median": 137.19999999995343,
+              "min": 123.0999999998603,
+              "max": 161.80000000004657,
+              "spread": 38.700000000186265,
+              "n": 5
+            },
+            "ratio": 1.0546647230320885,
+            "ceiling": 1.05,
+            "withinCeiling": false
+          },
+          "timed": {
+            "probe": {
+              "median": 145.89999999990687,
+              "min": 144.5,
+              "max": 160.60000000009313,
+              "spread": 16.100000000093132,
+              "n": 5
+            },
+            "control": {
+              "median": 137.19999999995343,
+              "min": 123.0999999998603,
+              "max": 161.80000000004657,
+              "spread": 38.700000000186265,
+              "n": 5
+            },
+            "ratio": 1.0634110787168833,
+            "ceiling": 1.05,
+            "withinCeiling": false
+          }
+        }
+      },
+      "fcp": {
+        "measured": true,
+        "timed": {
+          "total": {
+            "median": 198.60009765625,
+            "min": 190.199951171875,
+            "max": 215.400146484375,
+            "spread": 25.2001953125,
+            "n": 5
+          },
+          "stages": {
+            "start_delay": {
+              "median": 19.5,
+              "min": 18.300048828125,
+              "max": 22.300048828125,
+              "spread": 4,
+              "n": 5,
+              "share": 0.09818726289728151
+            },
+            "papi_create": {
+              "median": 61.19999999762513,
+              "min": 55.49999999953434,
+              "max": 69.79999999911524,
+              "spread": 14.299999999580905,
+              "n": 5,
+              "share": 0.3081569481579716
+            },
+            "papi_props": {
+              "median": 8.999999999534339,
+              "min": 7.900000001769513,
+              "max": 12.199999999487773,
+              "spread": 4.29999999771826,
+              "n": 5,
+              "share": 0.045317198257939055
+            },
+            "papi_events": {
+              "median": 6.400000000372529,
+              "min": 5.800000000977889,
+              "max": 7.500000000931323,
+              "spread": 1.6999999999534339,
+              "n": 5,
+              "share": 0.03222556320918868
+            },
+            "papi_topology": {
+              "median": 5.2999999998137355,
+              "min": 4.5,
+              "max": 6.100000000093132,
+              "spread": 1.6000000000931323,
+              "n": 5,
+              "share": 0.026686794530118112
+            },
+            "papi_read": {
+              "median": 1.6000000005587935,
+              "min": 0.8999999999068677,
+              "max": 2.199999999254942,
+              "spread": 1.2999999993480742,
+              "n": 5,
+              "share": 0.008056390804641888
+            },
+            "papi_flush": {
+              "median": 11.5,
+              "min": 11.00000000023283,
+              "max": 14.899999999906868,
+              "spread": 3.899999999674037,
+              "n": 5,
+              "share": 0.057905308888140376
+            },
+            "off_boundary": {
+              "median": 81.80009765829891,
+              "min": 77.90009765746072,
+              "max": 87.40009765559807,
+              "spread": 9.499999998137355,
+              "n": 5,
+              "share": 0.4118834714768562
+            }
+          },
+          "ratios": {},
+          "counts": {
+            "calls": {
+              "median": 31195,
+              "min": 31195,
+              "max": 31195,
+              "spread": 0,
+              "n": 5
+            },
+            "flushCount": {
+              "median": 2,
+              "min": 2,
+              "max": 2,
+              "spread": 0,
+              "n": 5
+            },
+            "byGroup": {
+              "papi_create": {
+                "median": 7042,
+                "min": 7042,
+                "max": 7042,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_props": {
+                "median": 8056,
+                "min": 8056,
+                "max": 8056,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_events": {
+                "median": 2012,
+                "min": 2012,
+                "max": 2012,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_topology": {
+                "median": 7041,
+                "min": 7041,
+                "max": 7041,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_read": {
+                "median": 7042,
+                "min": 7042,
+                "max": 7042,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_flush": {
+                "median": 2,
+                "min": 2,
+                "max": 2,
+                "spread": 0,
+                "n": 5
+              }
+            },
+            "byKind": {
+              "__CreateView": {
+                "median": 1015,
+                "min": 1015,
+                "max": 1015,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreateText": {
+                "median": 3013,
+                "min": 3013,
+                "max": 3013,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreateRawText": {
+                "median": 3013,
+                "min": 3013,
+                "max": 3013,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreatePage": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetClasses": {
+                "median": 4028,
+                "min": 4028,
+                "max": 4028,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetAttribute": {
+                "median": 4028,
+                "min": 4028,
+                "max": 4028,
+                "spread": 0,
+                "n": 5
+              },
+              "__AddEvent": {
+                "median": 2012,
+                "min": 2012,
+                "max": 2012,
+                "spread": 0,
+                "n": 5
+              },
+              "__AppendElement": {
+                "median": 7041,
+                "min": 7041,
+                "max": 7041,
+                "spread": 0,
+                "n": 5
+              },
+              "__GetElementUniqueID": {
+                "median": 7042,
+                "min": 7042,
+                "max": 7042,
+                "spread": 0,
+                "n": 5
+              },
+              "__FlushElementTree": {
+                "median": 2,
+                "min": 2,
+                "max": 2,
+                "spread": 0,
+                "n": 5
+              }
+            }
+          },
+          "rates": {
+            "opSelfMs": 83.49999999790452,
+            "msPerOp": 0.002676711011312855,
+            "opsPerRow": 31.195,
+            "flushSelfMs": 11.5,
+            "msPerFlush": 5.75
+          },
+          "rows": 1000
+        },
+        "counts": {
+          "total": {
+            "median": 183.699951171875,
+            "min": 181.699951171875,
+            "max": 198.900146484375,
+            "spread": 17.2001953125,
+            "n": 5
+          },
+          "startDelay": {
+            "median": 19.60009765625,
+            "min": 18.599853515625,
+            "max": 26.10009765625,
+            "spread": 7.500244140625,
+            "n": 5
+          },
+          "counts": {
+            "calls": {
+              "median": 31195,
+              "min": 31195,
+              "max": 31195,
+              "spread": 0,
+              "n": 5
+            },
+            "flushCount": {
+              "median": 2,
+              "min": 2,
+              "max": 2,
+              "spread": 0,
+              "n": 5
+            },
+            "byKind": {
+              "__CreateView": {
+                "median": 1015,
+                "min": 1015,
+                "max": 1015,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreateText": {
+                "median": 3013,
+                "min": 3013,
+                "max": 3013,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreateRawText": {
+                "median": 3013,
+                "min": 3013,
+                "max": 3013,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreatePage": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetClasses": {
+                "median": 4028,
+                "min": 4028,
+                "max": 4028,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetAttribute": {
+                "median": 4028,
+                "min": 4028,
+                "max": 4028,
+                "spread": 0,
+                "n": 5
+              },
+              "__AddEvent": {
+                "median": 2012,
+                "min": 2012,
+                "max": 2012,
+                "spread": 0,
+                "n": 5
+              },
+              "__AppendElement": {
+                "median": 7041,
+                "min": 7041,
+                "max": 7041,
+                "spread": 0,
+                "n": 5
+              },
+              "__GetElementUniqueID": {
+                "median": 7042,
+                "min": 7042,
+                "max": 7042,
+                "spread": 0,
+                "n": 5
+              },
+              "__FlushElementTree": {
+                "median": 2,
+                "min": 2,
+                "max": 2,
+                "spread": 0,
+                "n": 5
+              }
+            }
+          },
+          "opsPerRow": 31.195,
+          "rows": 1000
+        },
+        "overhead": {
+          "counts": {
+            "probe": {
+              "median": 183.699951171875,
+              "min": 181.699951171875,
+              "max": 198.900146484375,
+              "spread": 17.2001953125,
+              "n": 5
+            },
+            "control": {
+              "median": 182.900146484375,
+              "min": 173.399658203125,
+              "max": 190.39990234375,
+              "spread": 17.000244140625,
+              "n": 5
+            },
+            "ratio": 1.0043729034824382,
+            "ceiling": 1.05,
+            "withinCeiling": true
+          },
+          "timed": {
+            "probe": {
+              "median": 198.60009765625,
+              "min": 190.199951171875,
+              "max": 215.400146484375,
+              "spread": 25.2001953125,
+              "n": 5
+            },
+            "control": {
+              "median": 182.900146484375,
+              "min": 173.399658203125,
+              "max": 190.39990234375,
+              "spread": 17.000244140625,
+              "n": 5
+            },
+            "ratio": 1.0858389207097559,
+            "ceiling": 1.05,
+            "withinCeiling": false
+          }
+        }
+      }
+    },
+    "react": {
+      "startup": {
+        "timed": {
+          "total": {
+            "median": 17.900146484375,
+            "min": 11.89990234375,
+            "max": 24.5,
+            "spread": 12.60009765625,
+            "n": 5
+          },
+          "stages": {
+            "start_delay": {
+              "median": 6.7998046875,
+              "min": 6.099853515625,
+              "max": 9.60009765625,
+              "spread": 3.500244140625,
+              "n": 5,
+              "share": 0.37987424814850174
+            },
+            "papi_create": {
+              "median": 0.9999999997671694,
+              "min": 0.6000000000931323,
+              "max": 1.4000000001396984,
+              "spread": 0.8000000000465661,
+              "n": 5,
+              "share": 0.055865464600530906
+            },
+            "papi_props": {
+              "median": 0.6999999999534339,
+              "min": 0.40000000037252903,
+              "max": 0.900000000372529,
+              "spread": 0.5,
+              "n": 5,
+              "share": 0.03910582522687523
+            },
+            "papi_events": {
+              "median": 0.8000000000465661,
+              "min": 0.6999999999534339,
+              "max": 1.0000000002328306,
+              "spread": 0.3000000002793968,
+              "n": 5,
+              "share": 0.04469237169343192
+            },
+            "papi_topology": {
+              "median": 0.09999999986030161,
+              "min": 0,
+              "max": 0.10000000009313226,
+              "spread": 0.10000000009313226,
+              "n": 5,
+              "share": 0.005586546453549495
+            },
+            "papi_read": {
+              "median": 0,
+              "min": 0,
+              "max": 0.10000000009313226,
+              "spread": 0.10000000009313226,
+              "n": 5,
+              "share": 0
+            },
+            "papi_other": {
+              "median": 0.09999999986030161,
+              "min": 0,
+              "max": 0.20000000018626451,
+              "spread": 0.20000000018626451,
+              "n": 5,
+              "share": 0.005586546453549495
+            },
+            "papi_flush": {
+              "median": 0.8999999999068677,
+              "min": 0.7999999998137355,
+              "max": 1.1000000000931323,
+              "spread": 0.3000000002793968,
+              "n": 5,
+              "share": 0.05027891814698141
+            },
+            "off_boundary": {
+              "median": 6.7999999998137355,
+              "min": 1.1000976560171694,
+              "max": 11.499902343377471,
+              "spread": 10.399804687360302,
+              "n": 5,
+              "share": 0.37988515936165335
+            }
+          },
+          "ratios": {},
+          "counts": {
+            "calls": {
+              "median": 114,
+              "min": 114,
+              "max": 114,
+              "spread": 0,
+              "n": 5
+            },
+            "flushCount": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0,
+              "n": 5
+            },
+            "byGroup": {
+              "papi_create": {
+                "median": 29,
+                "min": 29,
+                "max": 29,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_props": {
+                "median": 42,
+                "min": 42,
+                "max": 42,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_events": {
+                "median": 12,
+                "min": 12,
+                "max": 12,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_topology": {
+                "median": 28,
+                "min": 28,
+                "max": 28,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_read": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_other": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_flush": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              }
+            },
+            "byKind": {
+              "__CreateView": {
+                "median": 15,
+                "min": 15,
+                "max": 15,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreateText": {
+                "median": 13,
+                "min": 13,
+                "max": 13,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreatePage": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetClasses": {
+                "median": 28,
+                "min": 28,
+                "max": 28,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetCSSId": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetAttribute": {
+                "median": 13,
+                "min": 13,
+                "max": 13,
+                "spread": 0,
+                "n": 5
+              },
+              "__AddEvent": {
+                "median": 12,
+                "min": 12,
+                "max": 12,
+                "spread": 0,
+                "n": 5
+              },
+              "__AppendElement": {
+                "median": 28,
+                "min": 28,
+                "max": 28,
+                "spread": 0,
+                "n": 5
+              },
+              "__GetElementUniqueID": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              },
+              "__FlushElementTree": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              },
+              "__OnLifecycleEvent": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              }
+            }
+          },
+          "rates": {
+            "opSelfMs": 2.6999999994877726,
+            "msPerOp": 0.023684210521822565,
+            "opsPerRow": null,
+            "flushSelfMs": 0.8999999999068677,
+            "msPerFlush": 0.8999999999068677
+          },
+          "rows": null
+        },
+        "counts": {
+          "total": {
+            "median": 15.300048828125,
+            "min": 11.900146484375,
+            "max": 18.7001953125,
+            "spread": 6.800048828125,
+            "n": 5
+          },
+          "startDelay": {
+            "median": 6.300048828125,
+            "min": 5.900146484375,
+            "max": 9.800048828125,
+            "spread": 3.89990234375,
+            "n": 5
+          },
+          "counts": {
+            "calls": {
+              "median": 114,
+              "min": 114,
+              "max": 114,
+              "spread": 0,
+              "n": 5
+            },
+            "flushCount": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0,
+              "n": 5
+            },
+            "byKind": {
+              "__CreateView": {
+                "median": 15,
+                "min": 15,
+                "max": 15,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreateText": {
+                "median": 13,
+                "min": 13,
+                "max": 13,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreatePage": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetClasses": {
+                "median": 28,
+                "min": 28,
+                "max": 28,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetCSSId": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetAttribute": {
+                "median": 13,
+                "min": 13,
+                "max": 13,
+                "spread": 0,
+                "n": 5
+              },
+              "__AddEvent": {
+                "median": 12,
+                "min": 12,
+                "max": 12,
+                "spread": 0,
+                "n": 5
+              },
+              "__AppendElement": {
+                "median": 28,
+                "min": 28,
+                "max": 28,
+                "spread": 0,
+                "n": 5
+              },
+              "__GetElementUniqueID": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              },
+              "__FlushElementTree": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              },
+              "__OnLifecycleEvent": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              }
+            }
+          },
+          "opsPerRow": null,
+          "rows": null
+        },
+        "overhead": {
+          "counts": {
+            "probe": {
+              "median": 15.300048828125,
+              "min": 11.900146484375,
+              "max": 18.7001953125,
+              "spread": 6.800048828125,
+              "n": 5
+            },
+            "control": {
+              "median": 11,
+              "min": 9.699951171875,
+              "max": 11.599853515625,
+              "spread": 1.89990234375,
+              "n": 5
+            },
+            "ratio": 1.3909135298295454,
+            "ceiling": 1.05,
+            "withinCeiling": false
+          },
+          "timed": {
+            "probe": {
+              "median": 17.900146484375,
+              "min": 11.89990234375,
+              "max": 24.5,
+              "spread": 12.60009765625,
+              "n": 5
+            },
+            "control": {
+              "median": 11,
+              "min": 9.699951171875,
+              "max": 11.599853515625,
+              "spread": 1.89990234375,
+              "n": 5
+            },
+            "ratio": 1.6272860440340908,
+            "ceiling": 1.05,
+            "withinCeiling": false
+          }
+        }
+      },
+      "create": {
+        "timed": {
+          "total": {
+            "median": 139.80000000004657,
+            "min": 136.60000000009313,
+            "max": 154.5,
+            "spread": 17.899999999906868,
+            "n": 5
+          },
+          "stages": {
+            "start_delay": {
+              "median": 28.300048828125,
+              "min": 26.89990234375,
+              "max": 33.599853515625,
+              "spread": 6.699951171875,
+              "n": 5,
+              "share": 0.20243239505089825
+            },
+            "papi_create": {
+              "median": 49.99999999976717,
+              "min": 45.09999999892898,
+              "max": 53.39999999944121,
+              "spread": 8.300000000512227,
+              "n": 5,
+              "share": 0.3576537911284014
+            },
+            "papi_props": {
+              "median": 16.20000000228174,
+              "min": 13.999999997438863,
+              "max": 17.700000001117587,
+              "spread": 3.700000003678724,
+              "n": 5,
+              "share": 0.11587982834246312
+            },
+            "papi_events": {
+              "median": 4.900000000139698,
+              "min": 3.8999999994412065,
+              "max": 5.599999998696148,
+              "spread": 1.699999999254942,
+              "n": 5,
+              "share": 0.03505007153174582
+            },
+            "papi_topology": {
+              "median": 16.80000000167638,
+              "min": 14.400000000139698,
+              "max": 17.60000000265427,
+              "spread": 3.200000002514571,
+              "n": 5,
+              "share": 0.12017167383169373
+            },
+            "papi_flush": {
+              "median": 0,
+              "min": 0,
+              "max": 0.10000000009313226,
+              "spread": 0.10000000009313226,
+              "n": 5,
+              "share": 0
+            },
+            "off_boundary": {
+              "median": 26.5000976563897,
+              "min": 25.100146483629942,
+              "max": 31.300048829987645,
+              "spread": 6.199902346357703,
+              "n": 5,
+              "share": 0.1895572078424955
+            }
+          },
+          "ratios": {},
+          "counts": {
+            "calls": {
+              "median": 21001,
+              "min": 21001,
+              "max": 21001,
+              "spread": 0,
+              "n": 5
+            },
+            "flushCount": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0,
+              "n": 5
+            },
+            "byGroup": {
+              "papi_create": {
+                "median": 6000,
+                "min": 6000,
+                "max": 6000,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_props": {
+                "median": 7000,
+                "min": 7000,
+                "max": 7000,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_events": {
+                "median": 2000,
+                "min": 2000,
+                "max": 2000,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_topology": {
+                "median": 6000,
+                "min": 6000,
+                "max": 6000,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_flush": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              }
+            },
+            "byKind": {
+              "__CreateView": {
+                "median": 1000,
+                "min": 1000,
+                "max": 1000,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreateText": {
+                "median": 3000,
+                "min": 3000,
+                "max": 3000,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreateRawText": {
+                "median": 2000,
+                "min": 2000,
+                "max": 2000,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetClasses": {
+                "median": 4000,
+                "min": 4000,
+                "max": 4000,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetAttribute": {
+                "median": 3000,
+                "min": 3000,
+                "max": 3000,
+                "spread": 0,
+                "n": 5
+              },
+              "__AddEvent": {
+                "median": 2000,
+                "min": 2000,
+                "max": 2000,
+                "spread": 0,
+                "n": 5
+              },
+              "__AppendElement": {
+                "median": 6000,
+                "min": 6000,
+                "max": 6000,
+                "spread": 0,
+                "n": 5
+              },
+              "__FlushElementTree": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              }
+            }
+          },
+          "rates": {
+            "opSelfMs": 87.90000000386499,
+            "msPerOp": 0.004185514975661397,
+            "opsPerRow": 21.001,
+            "flushSelfMs": 0,
+            "msPerFlush": 0
+          },
+          "rows": 1000
+        },
+        "counts": {
+          "total": {
+            "median": 131.80000000004657,
+            "min": 124.0999999998603,
+            "max": 140,
+            "spread": 15.900000000139698,
+            "n": 5
+          },
+          "startDelay": {
+            "median": 28.10009765625,
+            "min": 26.699951171875,
+            "max": 29,
+            "spread": 2.300048828125,
+            "n": 5
+          },
+          "counts": {
+            "calls": {
+              "median": 21001,
+              "min": 21001,
+              "max": 21001,
+              "spread": 0,
+              "n": 5
+            },
+            "flushCount": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0,
+              "n": 5
+            },
+            "byKind": {
+              "__CreateView": {
+                "median": 1000,
+                "min": 1000,
+                "max": 1000,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreateText": {
+                "median": 3000,
+                "min": 3000,
+                "max": 3000,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreateRawText": {
+                "median": 2000,
+                "min": 2000,
+                "max": 2000,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetClasses": {
+                "median": 4000,
+                "min": 4000,
+                "max": 4000,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetAttribute": {
+                "median": 3000,
+                "min": 3000,
+                "max": 3000,
+                "spread": 0,
+                "n": 5
+              },
+              "__AddEvent": {
+                "median": 2000,
+                "min": 2000,
+                "max": 2000,
+                "spread": 0,
+                "n": 5
+              },
+              "__AppendElement": {
+                "median": 6000,
+                "min": 6000,
+                "max": 6000,
+                "spread": 0,
+                "n": 5
+              },
+              "__FlushElementTree": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              }
+            }
+          },
+          "opsPerRow": 21.001,
+          "rows": 1000
+        },
+        "agreement": {
+          "agree": true,
+          "mismatches": [],
+          "timedCalls": 21001,
+          "countsCalls": 21001
+        },
+        "overhead": {
+          "counts": {
+            "probe": {
+              "median": 131.80000000004657,
+              "min": 124.0999999998603,
+              "max": 140,
+              "spread": 15.900000000139698,
+              "n": 5
+            },
+            "control": {
+              "median": 126.30000000004657,
+              "min": 121.89999999990687,
+              "max": 131.30000000004657,
+              "spread": 9.400000000139698,
+              "n": 5
+            },
+            "ratio": 1.0435471100554075,
+            "ceiling": 1.05,
+            "withinCeiling": true
+          },
+          "timed": {
+            "probe": {
+              "median": 139.80000000004657,
+              "min": 136.60000000009313,
+              "max": 154.5,
+              "spread": 17.899999999906868,
+              "n": 5
+            },
+            "control": {
+              "median": 126.30000000004657,
+              "min": 121.89999999990687,
+              "max": 131.30000000004657,
+              "spread": 9.400000000139698,
+              "n": 5
+            },
+            "ratio": 1.1068883610450913,
+            "ceiling": 1.05,
+            "withinCeiling": false
+          }
+        }
+      },
+      "fcp": {
+        "measured": false,
+        "reason": "the vendored ReactLynx bundle is a fixed black-box artifact, and a pre-populated first screen is a build-time define of the app source; rebuilding the reference would change the bundle hash the featured runs recorded"
+      }
+    },
+    "vue-vdom": {
+      "startup": {
+        "timed": {
+          "total": {
+            "median": 27.5,
+            "min": 20.300048828125,
+            "max": 30.5,
+            "spread": 10.199951171875,
+            "n": 5
+          },
+          "stages": {
+            "start_delay": {
+              "median": 15.600341796875,
+              "min": 14.10009765625,
+              "max": 16.800048828125,
+              "spread": 2.699951171875,
+              "n": 5,
+              "share": 0.56728515625
+            },
+            "papi_create": {
+              "median": 1.3000000002793968,
+              "min": 1,
+              "max": 1.5000000002328306,
+              "spread": 0.5000000002328306,
+              "n": 5,
+              "share": 0.04727272728288716
+            },
+            "papi_props": {
+              "median": 0.9000000001396984,
+              "min": 0.7000000001862645,
+              "max": 0.9999999997671694,
+              "spread": 0.29999999958090484,
+              "n": 5,
+              "share": 0.032727272732352666
+            },
+            "papi_events": {
+              "median": 0.6999999999534339,
+              "min": 0.6999999999534339,
+              "max": 1.1000000000931323,
+              "spread": 0.4000000001396984,
+              "n": 5,
+              "share": 0.02545454545285214
+            },
+            "papi_topology": {
+              "median": 0,
+              "min": 0,
+              "max": 0.19999999995343387,
+              "spread": 0.19999999995343387,
+              "n": 5,
+              "share": 0
+            },
+            "papi_read": {
+              "median": 0,
+              "min": 0,
+              "max": 0,
+              "spread": 0,
+              "n": 5,
+              "share": 0
+            },
+            "papi_flush": {
+              "median": 0.8000000000465661,
+              "min": 0.8000000000465661,
+              "max": 1.1000000000931323,
+              "spread": 0.30000000004656613,
+              "n": 5,
+              "share": 0.029090909092602403
+            },
+            "off_boundary": {
+              "median": 8.399804687593132,
+              "min": 2.299951171502471,
+              "max": 11.000048828544095,
+              "spread": 8.700097657041624,
+              "n": 5,
+              "share": 0.30544744318520484
+            }
+          },
+          "ratios": {},
+          "counts": {
+            "calls": {
+              "median": 144,
+              "min": 144,
+              "max": 144,
+              "spread": 0,
+              "n": 5
+            },
+            "flushCount": {
+              "median": 2,
+              "min": 2,
+              "max": 2,
+              "spread": 0,
+              "n": 5
+            },
+            "byGroup": {
+              "papi_create": {
+                "median": 30,
+                "min": 30,
+                "max": 30,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_props": {
+                "median": 70,
+                "min": 70,
+                "max": 70,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_events": {
+                "median": 12,
+                "min": 12,
+                "max": 12,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_topology": {
+                "median": 29,
+                "min": 29,
+                "max": 29,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_read": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_flush": {
+                "median": 2,
+                "min": 2,
+                "max": 2,
+                "spread": 0,
+                "n": 5
+              }
+            },
+            "byKind": {
+              "__CreateView": {
+                "median": 15,
+                "min": 15,
+                "max": 15,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreateText": {
+                "median": 13,
+                "min": 13,
+                "max": 13,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreateWrapperElement": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreatePage": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetClasses": {
+                "median": 28,
+                "min": 28,
+                "max": 28,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetCSSId": {
+                "median": 29,
+                "min": 29,
+                "max": 29,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetAttribute": {
+                "median": 13,
+                "min": 13,
+                "max": 13,
+                "spread": 0,
+                "n": 5
+              },
+              "__AddEvent": {
+                "median": 12,
+                "min": 12,
+                "max": 12,
+                "spread": 0,
+                "n": 5
+              },
+              "__AppendElement": {
+                "median": 29,
+                "min": 29,
+                "max": 29,
+                "spread": 0,
+                "n": 5
+              },
+              "__GetElementUniqueID": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              },
+              "__FlushElementTree": {
+                "median": 2,
+                "min": 2,
+                "max": 2,
+                "spread": 0,
+                "n": 5
+              }
+            }
+          },
+          "rates": {
+            "opSelfMs": 2.900000000372529,
+            "msPerOp": 0.020138888891475897,
+            "opsPerRow": null,
+            "flushSelfMs": 0.8000000000465661,
+            "msPerFlush": 0.40000000002328306
+          },
+          "rows": null
+        },
+        "counts": {
+          "total": {
+            "median": 22.5,
+            "min": 20.199951171875,
+            "max": 42.500244140625,
+            "spread": 22.30029296875,
+            "n": 5
+          },
+          "startDelay": {
+            "median": 15.7998046875,
+            "min": 14.89990234375,
+            "max": 33.10009765625,
+            "spread": 18.2001953125,
+            "n": 5
+          },
+          "counts": {
+            "calls": {
+              "median": 144,
+              "min": 144,
+              "max": 144,
+              "spread": 0,
+              "n": 5
+            },
+            "flushCount": {
+              "median": 2,
+              "min": 2,
+              "max": 2,
+              "spread": 0,
+              "n": 5
+            },
+            "byKind": {
+              "__CreateView": {
+                "median": 15,
+                "min": 15,
+                "max": 15,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreateText": {
+                "median": 13,
+                "min": 13,
+                "max": 13,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreateWrapperElement": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreatePage": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetClasses": {
+                "median": 28,
+                "min": 28,
+                "max": 28,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetCSSId": {
+                "median": 29,
+                "min": 29,
+                "max": 29,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetAttribute": {
+                "median": 13,
+                "min": 13,
+                "max": 13,
+                "spread": 0,
+                "n": 5
+              },
+              "__AddEvent": {
+                "median": 12,
+                "min": 12,
+                "max": 12,
+                "spread": 0,
+                "n": 5
+              },
+              "__AppendElement": {
+                "median": 29,
+                "min": 29,
+                "max": 29,
+                "spread": 0,
+                "n": 5
+              },
+              "__GetElementUniqueID": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              },
+              "__FlushElementTree": {
+                "median": 2,
+                "min": 2,
+                "max": 2,
+                "spread": 0,
+                "n": 5
+              }
+            }
+          },
+          "opsPerRow": null,
+          "rows": null
+        },
+        "overhead": {
+          "counts": {
+            "probe": {
+              "median": 22.5,
+              "min": 20.199951171875,
+              "max": 42.500244140625,
+              "spread": 22.30029296875,
+              "n": 5
+            },
+            "control": {
+              "median": 23.7998046875,
+              "min": 20,
+              "max": 26.399658203125,
+              "spread": 6.399658203125,
+              "n": 5
+            },
+            "ratio": 0.9453859094825817,
+            "ceiling": 1.05,
+            "withinCeiling": true
+          },
+          "timed": {
+            "probe": {
+              "median": 27.5,
+              "min": 20.300048828125,
+              "max": 30.5,
+              "spread": 10.199951171875,
+              "n": 5
+            },
+            "control": {
+              "median": 23.7998046875,
+              "min": 20,
+              "max": 26.399658203125,
+              "spread": 6.399658203125,
+              "n": 5
+            },
+            "ratio": 1.1554716671453777,
+            "ceiling": 1.05,
+            "withinCeiling": false
+          }
+        }
+      },
+      "create": {
+        "timed": {
+          "total": {
+            "median": 170.5,
+            "min": 156.5,
+            "max": 186,
+            "spread": 29.5,
+            "n": 5
+          },
+          "stages": {
+            "start_delay": {
+              "median": 42,
+              "min": 38.39990234375,
+              "max": 58.89990234375,
+              "spread": 20.5,
+              "n": 5,
+              "share": 0.24633431085043989
+            },
+            "papi_create": {
+              "median": 41.000000002328306,
+              "min": 36.49999999953434,
+              "max": 45.59999999846332,
+              "spread": 9.099999998928979,
+              "n": 5,
+              "share": 0.24046920822479945
+            },
+            "papi_props": {
+              "median": 41.30000000144355,
+              "min": 36.299999999580905,
+              "max": 44.09999999916181,
+              "spread": 7.799999999580905,
+              "n": 5,
+              "share": 0.24222873901139913
+            },
+            "papi_events": {
+              "median": 4.500000000232831,
+              "min": 3.500000000698492,
+              "max": 4.8999999994412065,
+              "spread": 1.3999999987427145,
+              "n": 5,
+              "share": 0.02639296187819842
+            },
+            "papi_topology": {
+              "median": 15.400000001071021,
+              "min": 13.300000000977889,
+              "max": 16.59999999892898,
+              "spread": 3.2999999979510903,
+              "n": 5,
+              "share": 0.09032258065144294
+            },
+            "papi_flush": {
+              "median": 0.09999999986030161,
+              "min": 0,
+              "max": 0.10000000009313226,
+              "spread": 0.10000000009313226,
+              "n": 5,
+              "share": 0.0005865102631102734
+            },
+            "off_boundary": {
+              "median": 27.49995117308572,
+              "min": 23.800097653176636,
+              "max": 33.89999999944121,
+              "spread": 10.099902346264571,
+              "n": 5,
+              "share": 0.16129003620578133
+            }
+          },
+          "ratios": {},
+          "counts": {
+            "calls": {
+              "median": 25001,
+              "min": 25001,
+              "max": 25001,
+              "spread": 0,
+              "n": 5
+            },
+            "flushCount": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0,
+              "n": 5
+            },
+            "byGroup": {
+              "papi_create": {
+                "median": 4000,
+                "min": 4000,
+                "max": 4000,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_props": {
+                "median": 15000,
+                "min": 15000,
+                "max": 15000,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_events": {
+                "median": 2000,
+                "min": 2000,
+                "max": 2000,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_topology": {
+                "median": 4000,
+                "min": 4000,
+                "max": 4000,
+                "spread": 0,
+                "n": 5
+              },
+              "papi_flush": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              }
+            },
+            "byKind": {
+              "__CreateView": {
+                "median": 1000,
+                "min": 1000,
+                "max": 1000,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreateText": {
+                "median": 3000,
+                "min": 3000,
+                "max": 3000,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetClasses": {
+                "median": 4000,
+                "min": 4000,
+                "max": 4000,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetCSSId": {
+                "median": 4000,
+                "min": 4000,
+                "max": 4000,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetAttribute": {
+                "median": 7000,
+                "min": 7000,
+                "max": 7000,
+                "spread": 0,
+                "n": 5
+              },
+              "__AddEvent": {
+                "median": 2000,
+                "min": 2000,
+                "max": 2000,
+                "spread": 0,
+                "n": 5
+              },
+              "__AppendElement": {
+                "median": 4000,
+                "min": 4000,
+                "max": 4000,
+                "spread": 0,
+                "n": 5
+              },
+              "__FlushElementTree": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              }
+            }
+          },
+          "rates": {
+            "opSelfMs": 102.20000000507571,
+            "msPerOp": 0.004087836486743559,
+            "opsPerRow": 25.001,
+            "flushSelfMs": 0.09999999986030161,
+            "msPerFlush": 0.09999999986030161
+          },
+          "rows": 1000
+        },
+        "counts": {
+          "total": {
+            "median": 158.10000000009313,
+            "min": 144.4000000001397,
+            "max": 165,
+            "spread": 20.5999999998603,
+            "n": 5
+          },
+          "startDelay": {
+            "median": 42.400146484375,
+            "min": 38.60009765625,
+            "max": 43.60009765625,
+            "spread": 5,
+            "n": 5
+          },
+          "counts": {
+            "calls": {
+              "median": 25001,
+              "min": 25001,
+              "max": 25001,
+              "spread": 0,
+              "n": 5
+            },
+            "flushCount": {
+              "median": 1,
+              "min": 1,
+              "max": 1,
+              "spread": 0,
+              "n": 5
+            },
+            "byKind": {
+              "__CreateView": {
+                "median": 1000,
+                "min": 1000,
+                "max": 1000,
+                "spread": 0,
+                "n": 5
+              },
+              "__CreateText": {
+                "median": 3000,
+                "min": 3000,
+                "max": 3000,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetClasses": {
+                "median": 4000,
+                "min": 4000,
+                "max": 4000,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetCSSId": {
+                "median": 4000,
+                "min": 4000,
+                "max": 4000,
+                "spread": 0,
+                "n": 5
+              },
+              "__SetAttribute": {
+                "median": 7000,
+                "min": 7000,
+                "max": 7000,
+                "spread": 0,
+                "n": 5
+              },
+              "__AddEvent": {
+                "median": 2000,
+                "min": 2000,
+                "max": 2000,
+                "spread": 0,
+                "n": 5
+              },
+              "__AppendElement": {
+                "median": 4000,
+                "min": 4000,
+                "max": 4000,
+                "spread": 0,
+                "n": 5
+              },
+              "__FlushElementTree": {
+                "median": 1,
+                "min": 1,
+                "max": 1,
+                "spread": 0,
+                "n": 5
+              }
+            }
+          },
+          "opsPerRow": 25.001,
+          "rows": 1000
+        },
+        "agreement": {
+          "agree": true,
+          "mismatches": [],
+          "timedCalls": 25001,
+          "countsCalls": 25001
+        },
+        "overhead": {
+          "counts": {
+            "probe": {
+              "median": 158.10000000009313,
+              "min": 144.4000000001397,
+              "max": 165,
+              "spread": 20.5999999998603,
+              "n": 5
+            },
+            "control": {
+              "median": 146.5,
+              "min": 143.80000000004657,
+              "max": 156.5,
+              "spread": 12.699999999953434,
+              "n": 5
+            },
+            "ratio": 1.0791808873726494,
+            "ceiling": 1.05,
+            "withinCeiling": false
+          },
+          "timed": {
+            "probe": {
+              "median": 170.5,
+              "min": 156.5,
+              "max": 186,
+              "spread": 29.5,
+              "n": 5
+            },
+            "control": {
+              "median": 146.5,
+              "min": 143.80000000004657,
+              "max": 156.5,
+              "spread": 12.699999999953434,
+              "n": 5
+            },
+            "ratio": 1.1638225255972696,
+            "ceiling": 1.05,
+            "withinCeiling": false
+          }
+        }
+      },
+      "fcp": {
+        "measured": false,
+        "reason": "the vendored Vue vdom+IFR+ET bundle is a fixed black-box artifact; see the ReactLynx note"
+      }
+    }
+  },
+  "deltas": {
+    "react": {
+      "create": {
+        "deltaMs": 6.099999999860302,
+        "gate": 0.1,
+        "owners": [
+          {
+            "id": "publication_op_count",
+            "hypothesis": "Publication op count",
+            "deltaMs": -4.1855149756613965,
+            "evidence": "20001 vs 21001 host calls at 0.0042 ms/op (reference rate)",
+            "share": -0.6861499960257788,
+            "verdict": "NO-GO"
+          },
+          {
+            "id": "flush_cadence",
+            "hypothesis": "Flush cadence",
+            "deltaMs": 0,
+            "evidence": "1 vs 1 __FlushElementTree calls",
+            "share": 0,
+            "verdict": "NO-GO"
+          },
+          {
+            "id": "first_paint_scheduling",
+            "hypothesis": "First-paint scheduling",
+            "deltaMs": 4,
+            "evidence": "32.3 vs 28.3 ms to the first host call",
+            "share": 0.6557377049330501,
+            "verdict": "GO"
+          },
+          {
+            "id": "per_element_stream_shape",
+            "hypothesis": "Per-element creation stream shape",
+            "deltaMs": -0.11448502834329055,
+            "evidence": "0.0042 vs 0.0042 ms of host time per call",
+            "share": -0.018768037433756133,
+            "verdict": "NO-GO"
+          },
+          {
+            "id": "off_boundary",
+            "hypothesis": "Framework script and browser paint outside the host boundary",
+            "deltaMs": 5.699853517580777,
+            "evidence": "32.2 vs 26.5 ms off the host boundary",
+            "share": 0.9344022160182478,
+            "verdict": "GO"
+          }
+        ],
+        "attributedMs": 5.39985351357609,
+        "unattributedMs": 0.7001464862842113,
+        "unattributedShare": 0.11477811250823698
+      },
+      "startup": {
+        "deltaMs": 8.599853515625,
+        "gate": 0.1,
+        "owners": [
+          {
+            "id": "publication_op_count",
+            "hypothesis": "Publication op count",
+            "deltaMs": 1.9184210522676277,
+            "evidence": "195 vs 114 host calls at 0.0237 ms/op (reference rate)",
+            "share": 0.223076015048636,
+            "verdict": "GO"
+          },
+          {
+            "id": "flush_cadence",
+            "hypothesis": "Flush cadence",
+            "deltaMs": 0,
+            "evidence": "2 vs 1 __FlushElementTree calls",
+            "share": 0,
+            "verdict": "NO-GO"
+          },
+          {
+            "id": "first_paint_scheduling",
+            "hypothesis": "First-paint scheduling",
+            "deltaMs": 11.80029296875,
+            "evidence": "18.6 vs 6.8 ms to the first host call",
+            "share": 1.3721504613200852,
+            "verdict": "GO"
+          },
+          {
+            "id": "per_element_stream_shape",
+            "hypothesis": "Per-element creation stream shape",
+            "deltaMs": -1.6184210522210616,
+            "evidence": "0.0154 vs 0.0237 ms of host time per call",
+            "share": -0.18819169992611692,
+            "verdict": "NO-GO"
+          },
+          {
+            "id": "off_boundary",
+            "hypothesis": "Framework script and browser paint outside the host boundary",
+            "deltaMs": -3.1000488272402436,
+            "evidence": "3.7 vs 6.8 ms off the host boundary",
+            "share": -0.36047693389286123,
+            "verdict": "NO-GO"
+          }
+        ],
+        "attributedMs": 9.000244141556323,
+        "unattributedMs": -0.4003906259313226,
+        "unattributedShare": 0.046557842549743
+      },
+      "createControlDeltaMs": 10.899999999906868,
+      "createCountsDeltaMs": 12.899999999906868,
+      "startupCountsDeltaMs": 12.099853515625
+    },
+    "vue-vdom": {
+      "create": {
+        "deltaMs": -24.600000000093132,
+        "gate": 0.1,
+        "owners": [
+          {
+            "id": "publication_op_count",
+            "hypothesis": "Publication op count",
+            "deltaMs": -20.439182433717793,
+            "evidence": "20001 vs 25001 host calls at 0.0041 ms/op (reference rate)",
+            "share": null,
+            "verdict": "NO-GO"
+          },
+          {
+            "id": "flush_cadence",
+            "hypothesis": "Flush cadence",
+            "deltaMs": -0.09999999986030161,
+            "evidence": "1 vs 1 __FlushElementTree calls",
+            "share": null,
+            "verdict": "NO-GO"
+          },
+          {
+            "id": "first_paint_scheduling",
+            "hypothesis": "First-paint scheduling",
+            "deltaMs": -9.699951171875,
+            "evidence": "32.3 vs 42.0 ms to the first host call",
+            "share": null,
+            "verdict": "NO-GO"
+          },
+          {
+            "id": "per_element_stream_shape",
+            "hypothesis": "Per-element creation stream shape",
+            "deltaMs": 1.8391824285023866,
+            "evidence": "0.0042 vs 0.0041 ms of host time per call",
+            "share": null,
+            "verdict": "NO-GO"
+          },
+          {
+            "id": "off_boundary",
+            "hypothesis": "Framework script and browser paint outside the host boundary",
+            "deltaMs": 4.7000000008847564,
+            "evidence": "32.2 vs 27.5 ms off the host boundary",
+            "share": null,
+            "verdict": "NO-GO"
+          }
+        ],
+        "attributedMs": -23.69995117606595,
+        "unattributedMs": -0.9000488240271807,
+        "unattributedShare": 0.036587350570072084
+      },
+      "startup": {
+        "deltaMs": -1,
+        "gate": 0.1,
+        "owners": [
+          {
+            "id": "publication_op_count",
+            "hypothesis": "Publication op count",
+            "deltaMs": 1.0270833334652707,
+            "evidence": "195 vs 144 host calls at 0.0201 ms/op (reference rate)",
+            "share": null,
+            "verdict": "NO-GO"
+          },
+          {
+            "id": "flush_cadence",
+            "hypothesis": "Flush cadence",
+            "deltaMs": 0.09999999986030161,
+            "evidence": "2 vs 2 __FlushElementTree calls",
+            "share": null,
+            "verdict": "NO-GO"
+          },
+          {
+            "id": "first_paint_scheduling",
+            "hypothesis": "First-paint scheduling",
+            "deltaMs": 2.999755859375,
+            "evidence": "18.6 vs 15.6 ms to the first host call",
+            "share": null,
+            "verdict": "NO-GO"
+          },
+          {
+            "id": "per_element_stream_shape",
+            "hypothesis": "Per-element creation stream shape",
+            "deltaMs": -0.927083334303461,
+            "evidence": "0.0154 vs 0.0201 ms of host time per call",
+            "share": null,
+            "verdict": "NO-GO"
+          },
+          {
+            "id": "off_boundary",
+            "hypothesis": "Framework script and browser paint outside the host boundary",
+            "deltaMs": -4.69985351501964,
+            "evidence": "3.7 vs 8.4 ms off the host boundary",
+            "share": null,
+            "verdict": "NO-GO"
+          }
+        ],
+        "attributedMs": -1.500097656622529,
+        "unattributedMs": 0.500097656622529,
+        "unattributedShare": 0.500097656622529
+      },
+      "createControlDeltaMs": -9.300000000046566,
+      "createCountsDeltaMs": -13.400000000139698,
+      "startupCountsDeltaMs": 4.89990234375
+    }
+  },
+  "samples": {
+    "octane": {
+      "control": [
+        {
+          "startupMs": 31.300048828125,
+          "createMs": 123.0999999998603
+        },
+        {
+          "startupMs": 34.300048828125,
+          "createMs": 128.19999999995343
+        },
+        {
+          "startupMs": 24.89990234375,
+          "createMs": 161.80000000004657
+        },
+        {
+          "startupMs": 29.599853515625,
+          "createMs": 143
+        },
+        {
+          "startupMs": 27.800048828125,
+          "createMs": 137.19999999995343
+        }
+      ],
+      "counts": [
+        {
+          "startupMs": 33.5,
+          "createMs": 130.5,
+          "startup": {
+            "totalMs": 33.5,
+            "startDelayMs": 18.60009765625,
+            "counts": {
+              "calls": 195,
+              "flushCount": 2,
+              "byGroup": {
+                "papi_create": 42,
+                "papi_props": 56,
+                "papi_events": 12,
+                "papi_topology": 41,
+                "papi_read": 42,
+                "papi_flush": 2
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreateRawText": 13,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetAttribute": 28,
+                "__AddEvent": 12,
+                "__AppendElement": 41,
+                "__GetElementUniqueID": 42,
+                "__FlushElementTree": 2
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526549570.8,
+                "endEpoch": 1787526549571.5999,
+                "selfMs": 0.8000000000465661,
+                "callsBefore": 152
+              },
+              {
+                "index": 1,
+                "startEpoch": 1787526549572.9,
+                "endEpoch": 1787526549573,
+                "selfMs": 0.09999999986030161,
+                "callsBefore": 194
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 130.5,
+            "startDelayMs": 31,
+            "counts": {
+              "calls": 20001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 7000,
+                "papi_props": 4000,
+                "papi_events": 2000,
+                "papi_topology": 7000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__CreateRawText": 3000,
+                "__SetClasses": 4000,
+                "__AddEvent": 2000,
+                "__AppendElement": 7000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526550035.5,
+                "endEpoch": 1787526550035.5,
+                "selfMs": 0,
+                "callsBefore": 20000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        },
+        {
+          "startupMs": 29,
+          "createMs": 157.4000000001397,
+          "startup": {
+            "totalMs": 29,
+            "startDelayMs": 18.5,
+            "counts": {
+              "calls": 195,
+              "flushCount": 2,
+              "byGroup": {
+                "papi_create": 42,
+                "papi_props": 56,
+                "papi_events": 12,
+                "papi_topology": 41,
+                "papi_read": 42,
+                "papi_flush": 2
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreateRawText": 13,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetAttribute": 28,
+                "__AddEvent": 12,
+                "__AppendElement": 41,
+                "__GetElementUniqueID": 42,
+                "__FlushElementTree": 2
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526554941.9,
+                "endEpoch": 1787526554942.8,
+                "selfMs": 0.9000000001396984,
+                "callsBefore": 152
+              },
+              {
+                "index": 1,
+                "startEpoch": 1787526554944,
+                "endEpoch": 1787526554944.0999,
+                "selfMs": 0.09999999986030161,
+                "callsBefore": 194
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 157.4000000001397,
+            "startDelayMs": 31.300048828125,
+            "counts": {
+              "calls": 20001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 7000,
+                "papi_props": 4000,
+                "papi_events": 2000,
+                "papi_topology": 7000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__CreateRawText": 3000,
+                "__SetClasses": 4000,
+                "__AddEvent": 2000,
+                "__AppendElement": 7000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526555442.3,
+                "endEpoch": 1787526555442.4,
+                "selfMs": 0.09999999986030161,
+                "callsBefore": 20000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        },
+        {
+          "startupMs": 24.999755859375,
+          "createMs": 145.10000000009313,
+          "startup": {
+            "totalMs": 24.999755859375,
+            "startDelayMs": 18.19970703125,
+            "counts": {
+              "calls": 195,
+              "flushCount": 2,
+              "byGroup": {
+                "papi_create": 42,
+                "papi_props": 56,
+                "papi_events": 12,
+                "papi_topology": 41,
+                "papi_read": 42,
+                "papi_flush": 2
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreateRawText": 13,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetAttribute": 28,
+                "__AddEvent": 12,
+                "__AppendElement": 41,
+                "__GetElementUniqueID": 42,
+                "__FlushElementTree": 2
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526568351.2998,
+                "endEpoch": 1787526568352.0999,
+                "selfMs": 0.7999999998137355,
+                "callsBefore": 152
+              },
+              {
+                "index": 1,
+                "startEpoch": 1787526568353.7998,
+                "endEpoch": 1787526568353.7998,
+                "selfMs": 0,
+                "callsBefore": 194
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 145.10000000009313,
+            "startDelayMs": 34.10009765625,
+            "counts": {
+              "calls": 20001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 7000,
+                "papi_props": 4000,
+                "papi_events": 2000,
+                "papi_topology": 7000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__CreateRawText": 3000,
+                "__SetClasses": 4000,
+                "__AddEvent": 2000,
+                "__AppendElement": 7000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526568826.5,
+                "endEpoch": 1787526568826.5,
+                "selfMs": 0,
+                "callsBefore": 20000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        },
+        {
+          "startupMs": 27.39990234375,
+          "createMs": 144.69999999995343,
+          "startup": {
+            "totalMs": 27.39990234375,
+            "startDelayMs": 20.499755859375,
+            "counts": {
+              "calls": 195,
+              "flushCount": 2,
+              "byGroup": {
+                "papi_create": 42,
+                "papi_props": 56,
+                "papi_events": 12,
+                "papi_topology": 41,
+                "papi_read": 42,
+                "papi_flush": 2
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreateRawText": 13,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetAttribute": 28,
+                "__AddEvent": 12,
+                "__AppendElement": 41,
+                "__GetElementUniqueID": 42,
+                "__FlushElementTree": 2
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526573731.0999,
+                "endEpoch": 1787526573732,
+                "selfMs": 0.9000000001396984,
+                "callsBefore": 152
+              },
+              {
+                "index": 1,
+                "startEpoch": 1787526573733.5,
+                "endEpoch": 1787526573733.5,
+                "selfMs": 0,
+                "callsBefore": 194
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 144.69999999995343,
+            "startDelayMs": 34.900146484375,
+            "counts": {
+              "calls": 20001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 7000,
+                "papi_props": 4000,
+                "papi_events": 2000,
+                "papi_topology": 7000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__CreateRawText": 3000,
+                "__SetClasses": 4000,
+                "__AddEvent": 2000,
+                "__AppendElement": 7000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526574198.3,
+                "endEpoch": 1787526574198.4,
+                "selfMs": 0.09999999986030161,
+                "callsBefore": 20000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        },
+        {
+          "startupMs": 24.10009765625,
+          "createMs": 135.4000000001397,
+          "startup": {
+            "totalMs": 24.10009765625,
+            "startDelayMs": 17.400146484375,
+            "counts": {
+              "calls": 195,
+              "flushCount": 2,
+              "byGroup": {
+                "papi_create": 42,
+                "papi_props": 56,
+                "papi_events": 12,
+                "papi_topology": 41,
+                "papi_read": 42,
+                "papi_flush": 2
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreateRawText": 13,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetAttribute": 28,
+                "__AddEvent": 12,
+                "__AppendElement": 41,
+                "__GetElementUniqueID": 42,
+                "__FlushElementTree": 2
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526579067.8,
+                "endEpoch": 1787526579068.8,
+                "selfMs": 1,
+                "callsBefore": 152
+              },
+              {
+                "index": 1,
+                "startEpoch": 1787526579070.3,
+                "endEpoch": 1787526579070.4001,
+                "selfMs": 0.10000000009313226,
+                "callsBefore": 194
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 135.4000000001397,
+            "startDelayMs": 32.800048828125,
+            "counts": {
+              "calls": 20001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 7000,
+                "papi_props": 4000,
+                "papi_events": 2000,
+                "papi_topology": 7000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__CreateRawText": 3000,
+                "__SetClasses": 4000,
+                "__AddEvent": 2000,
+                "__AppendElement": 7000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526579538.9001,
+                "endEpoch": 1787526579539,
+                "selfMs": 0.09999999986030161,
+                "callsBefore": 20000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        }
+      ],
+      "timed": [
+        {
+          "startupMs": 25.89990234375,
+          "createMs": 145.80000000004657,
+          "startup": {
+            "totalMs": 25.89990234375,
+            "stages": {
+              "start_delay": 18.60009765625,
+              "papi_create": 1.7999999995809048,
+              "papi_props": 0.4000000001396984,
+              "papi_events": 0.8000000002793968,
+              "papi_topology": 0.19999999995343387,
+              "papi_read": 0.10000000009313226,
+              "papi_flush": 0.8999999999068677,
+              "off_boundary": 3.099804687546566
+            },
+            "counts": {
+              "calls": 195,
+              "flushCount": 2,
+              "byGroup": {
+                "papi_create": 42,
+                "papi_props": 56,
+                "papi_events": 12,
+                "papi_topology": 41,
+                "papi_read": 42,
+                "papi_flush": 2
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreateRawText": 13,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetAttribute": 28,
+                "__AddEvent": 12,
+                "__AppendElement": 41,
+                "__GetElementUniqueID": 42,
+                "__FlushElementTree": 2
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526552233.9,
+                "endEpoch": 1787526552234.7,
+                "selfMs": 0.8000000000465661,
+                "callsBefore": 152
+              },
+              {
+                "index": 1,
+                "startEpoch": 1787526552236.2,
+                "endEpoch": 1787526552236.2998,
+                "selfMs": 0.09999999986030161,
+                "callsBefore": 194
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 145.80000000004657,
+            "stages": {
+              "start_delay": 30.699951171875,
+              "papi_create": 54.70000000158325,
+              "papi_props": 6.399999999906868,
+              "papi_events": 4.399999999906868,
+              "papi_topology": 14.09999999939464,
+              "papi_flush": 0,
+              "off_boundary": 35.50004882737994
+            },
+            "counts": {
+              "calls": 20001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 7000,
+                "papi_props": 4000,
+                "papi_events": 2000,
+                "papi_topology": 7000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__CreateRawText": 3000,
+                "__SetClasses": 4000,
+                "__AddEvent": 2000,
+                "__AppendElement": 7000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526552710.7998,
+                "endEpoch": 1787526552710.7998,
+                "selfMs": 0,
+                "callsBefore": 20000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        },
+        {
+          "startupMs": 26.5,
+          "createMs": 144.5,
+          "startup": {
+            "totalMs": 26.5,
+            "stages": {
+              "start_delay": 19.300048828125,
+              "papi_create": 1.5999999998603016,
+              "papi_props": 0.09999999986030161,
+              "papi_events": 0.6999999999534339,
+              "papi_topology": 0.09999999986030161,
+              "papi_read": 0.09999999986030161,
+              "papi_flush": 0.8999999999068677,
+              "off_boundary": 3.699951172573492
+            },
+            "counts": {
+              "calls": 195,
+              "flushCount": 2,
+              "byGroup": {
+                "papi_create": 42,
+                "papi_props": 56,
+                "papi_events": 12,
+                "papi_topology": 41,
+                "papi_read": 42,
+                "papi_flush": 2
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreateRawText": 13,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetAttribute": 28,
+                "__AddEvent": 12,
+                "__AppendElement": 41,
+                "__GetElementUniqueID": 42,
+                "__FlushElementTree": 2
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526557679.7,
+                "endEpoch": 1787526557680.5,
+                "selfMs": 0.8000000000465661,
+                "callsBefore": 152
+              },
+              {
+                "index": 1,
+                "startEpoch": 1787526557682.3,
+                "endEpoch": 1787526557682.4,
+                "selfMs": 0.09999999986030161,
+                "callsBefore": 194
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 144.5,
+            "stages": {
+              "start_delay": 32.300048828125,
+              "papi_create": 52.49999999953434,
+              "papi_props": 5.099999999627471,
+              "papi_events": 5.59999999916181,
+              "papi_topology": 16.799999999580905,
+              "papi_flush": 0,
+              "off_boundary": 32.199951173970476
+            },
+            "counts": {
+              "calls": 20001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 7000,
+                "papi_props": 4000,
+                "papi_events": 2000,
+                "papi_topology": 7000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__CreateRawText": 3000,
+                "__SetClasses": 4000,
+                "__AddEvent": 2000,
+                "__AppendElement": 7000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526558159.5,
+                "endEpoch": 1787526558159.5,
+                "selfMs": 0,
+                "callsBefore": 20000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        },
+        {
+          "startupMs": 26.699951171875,
+          "createMs": 148.20000000018626,
+          "startup": {
+            "totalMs": 26.699951171875,
+            "stages": {
+              "start_delay": 18.39990234375,
+              "papi_create": 1.5,
+              "papi_props": 0.4000000001396984,
+              "papi_events": 0.8000000000465661,
+              "papi_topology": 0,
+              "papi_read": 0.09999999986030161,
+              "papi_flush": 0.6999999999534339,
+              "off_boundary": 4.800048828125
+            },
+            "counts": {
+              "calls": 195,
+              "flushCount": 2,
+              "byGroup": {
+                "papi_create": 42,
+                "papi_props": 56,
+                "papi_events": 12,
+                "papi_topology": 41,
+                "papi_read": 42,
+                "papi_flush": 2
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreateRawText": 13,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetAttribute": 28,
+                "__AddEvent": 12,
+                "__AppendElement": 41,
+                "__GetElementUniqueID": 42,
+                "__FlushElementTree": 2
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526563027.2,
+                "endEpoch": 1787526563027.9,
+                "selfMs": 0.6999999999534339,
+                "callsBefore": 152
+              },
+              {
+                "index": 1,
+                "startEpoch": 1787526563029.4,
+                "endEpoch": 1787526563029.4,
+                "selfMs": 0,
+                "callsBefore": 194
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 148.20000000018626,
+            "stages": {
+              "start_delay": 30.800048828125,
+              "papi_create": 55.3000000002794,
+              "papi_props": 6.800000000279397,
+              "papi_events": 5.499999999301508,
+              "papi_topology": 20.499999998370185,
+              "papi_flush": 0.10000000009313226,
+              "off_boundary": 29.199951173737645
+            },
+            "counts": {
+              "calls": 20001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 7000,
+                "papi_props": 4000,
+                "papi_events": 2000,
+                "papi_topology": 7000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__CreateRawText": 3000,
+                "__SetClasses": 4000,
+                "__AddEvent": 2000,
+                "__AppendElement": 7000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526563496.1,
+                "endEpoch": 1787526563496.2,
+                "selfMs": 0.10000000009313226,
+                "callsBefore": 20000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        },
+        {
+          "startupMs": 24.599853515625,
+          "createMs": 145.89999999990687,
+          "startup": {
+            "totalMs": 24.599853515625,
+            "stages": {
+              "start_delay": 17.800048828125,
+              "papi_create": 1.3000000002793968,
+              "papi_props": 0.39999999990686774,
+              "papi_events": 0.8000000002793968,
+              "papi_topology": 0,
+              "papi_read": 0,
+              "papi_flush": 0.8000000000465661,
+              "off_boundary": 3.4998046869877726
+            },
+            "counts": {
+              "calls": 195,
+              "flushCount": 2,
+              "byGroup": {
+                "papi_create": 42,
+                "papi_props": 56,
+                "papi_events": 12,
+                "papi_topology": 41,
+                "papi_read": 42,
+                "papi_flush": 2
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreateRawText": 13,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetAttribute": 28,
+                "__AddEvent": 12,
+                "__AppendElement": 41,
+                "__GetElementUniqueID": 42,
+                "__FlushElementTree": 2
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526576361.4001,
+                "endEpoch": 1787526576362.2002,
+                "selfMs": 0.8000000000465661,
+                "callsBefore": 152
+              },
+              {
+                "index": 1,
+                "startEpoch": 1787526576363.6,
+                "endEpoch": 1787526576363.6,
+                "selfMs": 0,
+                "callsBefore": 194
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 145.89999999990687,
+            "stages": {
+              "start_delay": 32.39990234375,
+              "papi_create": 53.1999999973923,
+              "papi_props": 9.100000000791624,
+              "papi_events": 6.199999999254942,
+              "papi_topology": 16.799999999580905,
+              "papi_flush": 0,
+              "off_boundary": 28.2000976591371
+            },
+            "counts": {
+              "calls": 20001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 7000,
+                "papi_props": 4000,
+                "papi_events": 2000,
+                "papi_topology": 7000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__CreateRawText": 3000,
+                "__SetClasses": 4000,
+                "__AddEvent": 2000,
+                "__AppendElement": 7000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526576844.3,
+                "endEpoch": 1787526576844.3,
+                "selfMs": 0,
+                "callsBefore": 20000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        },
+        {
+          "startupMs": 29,
+          "createMs": 160.60000000009313,
+          "startup": {
+            "totalMs": 29,
+            "stages": {
+              "start_delay": 19.2998046875,
+              "papi_create": 1.5999999998603016,
+              "papi_props": 0.3000000002793968,
+              "papi_events": 0.6999999999534339,
+              "papi_topology": 0.10000000009313226,
+              "papi_read": 0,
+              "papi_flush": 1,
+              "off_boundary": 6.0001953123137355
+            },
+            "counts": {
+              "calls": 195,
+              "flushCount": 2,
+              "byGroup": {
+                "papi_create": 42,
+                "papi_props": 56,
+                "papi_events": 12,
+                "papi_topology": 41,
+                "papi_read": 42,
+                "papi_flush": 2
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreateRawText": 13,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetAttribute": 28,
+                "__AddEvent": 12,
+                "__AppendElement": 41,
+                "__GetElementUniqueID": 42,
+                "__FlushElementTree": 2
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526581741.7998,
+                "endEpoch": 1787526581742.7998,
+                "selfMs": 1,
+                "callsBefore": 152
+              },
+              {
+                "index": 1,
+                "startEpoch": 1787526581744.2,
+                "endEpoch": 1787526581744.2,
+                "selfMs": 0,
+                "callsBefore": 194
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 160.60000000009313,
+            "stages": {
+              "start_delay": 32.400146484375,
+              "papi_create": 64.30000000353903,
+              "papi_props": 6.499999999534339,
+              "papi_events": 5.899999998509884,
+              "papi_topology": 17.59999999892898,
+              "papi_flush": 0.10000000009313226,
+              "off_boundary": 33.79985351511277
+            },
+            "counts": {
+              "calls": 20001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 7000,
+                "papi_props": 4000,
+                "papi_events": 2000,
+                "papi_topology": 7000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__CreateRawText": 3000,
+                "__SetClasses": 4000,
+                "__AddEvent": 2000,
+                "__AppendElement": 7000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526582221.5,
+                "endEpoch": 1787526582221.5999,
+                "selfMs": 0.10000000009313226,
+                "callsBefore": 20000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        }
+      ],
+      "fcp": {
+        "control": [
+          {
+            "fcpMs": 189.099853515625
+          },
+          {
+            "fcpMs": 179.900146484375
+          },
+          {
+            "fcpMs": 173.399658203125
+          },
+          {
+            "fcpMs": 182.900146484375
+          },
+          {
+            "fcpMs": 190.39990234375
+          }
+        ],
+        "counts": [
+          {
+            "fcpMs": 182,
+            "fcp": {
+              "totalMs": 182,
+              "startDelayMs": 18.599853515625,
+              "counts": {
+                "calls": 31195,
+                "flushCount": 2,
+                "byGroup": {
+                  "papi_create": 7042,
+                  "papi_props": 8056,
+                  "papi_events": 2012,
+                  "papi_topology": 7041,
+                  "papi_read": 7042,
+                  "papi_flush": 2
+                },
+                "byKind": {
+                  "__CreateView": 1015,
+                  "__CreateText": 3013,
+                  "__CreateRawText": 3013,
+                  "__CreatePage": 1,
+                  "__SetClasses": 4028,
+                  "__SetAttribute": 4028,
+                  "__AddEvent": 2012,
+                  "__AppendElement": 7041,
+                  "__GetElementUniqueID": 7042,
+                  "__FlushElementTree": 2
+                }
+              },
+              "flushes": [
+                {
+                  "index": 0,
+                  "startEpoch": 1787526550331.2998,
+                  "endEpoch": 1787526550347.7998,
+                  "selfMs": 16.5,
+                  "callsBefore": 24152
+                },
+                {
+                  "index": 1,
+                  "startEpoch": 1787526550369.4,
+                  "endEpoch": 1787526550369.4,
+                  "selfMs": 0,
+                  "callsBefore": 31194
+                }
+              ],
+              "flushesTruncated": false
+            }
+          },
+          {
+            "fcpMs": 188.5,
+            "fcp": {
+              "totalMs": 188.5,
+              "startDelayMs": 20,
+              "counts": {
+                "calls": 31195,
+                "flushCount": 2,
+                "byGroup": {
+                  "papi_create": 7042,
+                  "papi_props": 8056,
+                  "papi_events": 2012,
+                  "papi_topology": 7041,
+                  "papi_read": 7042,
+                  "papi_flush": 2
+                },
+                "byKind": {
+                  "__CreateView": 1015,
+                  "__CreateText": 3013,
+                  "__CreateRawText": 3013,
+                  "__CreatePage": 1,
+                  "__SetClasses": 4028,
+                  "__SetAttribute": 4028,
+                  "__AddEvent": 2012,
+                  "__AppendElement": 7041,
+                  "__GetElementUniqueID": 7042,
+                  "__FlushElementTree": 2
+                }
+              },
+              "flushes": [
+                {
+                  "index": 0,
+                  "startEpoch": 1787526555757.4001,
+                  "endEpoch": 1787526555774.3,
+                  "selfMs": 16.9000000001397,
+                  "callsBefore": 24152
+                },
+                {
+                  "index": 1,
+                  "startEpoch": 1787526555795.9001,
+                  "endEpoch": 1787526555796,
+                  "selfMs": 0.10000000009313226,
+                  "callsBefore": 31194
+                }
+              ],
+              "flushesTruncated": false
+            }
+          },
+          {
+            "fcpMs": 198.900146484375,
+            "fcp": {
+              "totalMs": 198.900146484375,
+              "startDelayMs": 18.699951171875,
+              "counts": {
+                "calls": 31195,
+                "flushCount": 2,
+                "byGroup": {
+                  "papi_create": 7042,
+                  "papi_props": 8056,
+                  "papi_events": 2012,
+                  "papi_topology": 7041,
+                  "papi_read": 7042,
+                  "papi_flush": 2
+                },
+                "byKind": {
+                  "__CreateView": 1015,
+                  "__CreateText": 3013,
+                  "__CreateRawText": 3013,
+                  "__CreatePage": 1,
+                  "__SetClasses": 4028,
+                  "__SetAttribute": 4028,
+                  "__AddEvent": 2012,
+                  "__AppendElement": 7041,
+                  "__GetElementUniqueID": 7042,
+                  "__FlushElementTree": 2
+                }
+              },
+              "flushes": [
+                {
+                  "index": 0,
+                  "startEpoch": 1787526569146.4,
+                  "endEpoch": 1787526569164.8,
+                  "selfMs": 18.4000000001397,
+                  "callsBefore": 24152
+                },
+                {
+                  "index": 1,
+                  "startEpoch": 1787526569188,
+                  "endEpoch": 1787526569188.0999,
+                  "selfMs": 0.09999999986030161,
+                  "callsBefore": 31194
+                }
+              ],
+              "flushesTruncated": false
+            }
+          },
+          {
+            "fcpMs": 183.699951171875,
+            "fcp": {
+              "totalMs": 183.699951171875,
+              "startDelayMs": 26.10009765625,
+              "counts": {
+                "calls": 31195,
+                "flushCount": 2,
+                "byGroup": {
+                  "papi_create": 7042,
+                  "papi_props": 8056,
+                  "papi_events": 2012,
+                  "papi_topology": 7041,
+                  "papi_read": 7042,
+                  "papi_flush": 2
+                },
+                "byKind": {
+                  "__CreateView": 1015,
+                  "__CreateText": 3013,
+                  "__CreateRawText": 3013,
+                  "__CreatePage": 1,
+                  "__SetClasses": 4028,
+                  "__SetAttribute": 4028,
+                  "__AddEvent": 2012,
+                  "__AppendElement": 7041,
+                  "__GetElementUniqueID": 7042,
+                  "__FlushElementTree": 2
+                }
+              },
+              "flushes": [
+                {
+                  "index": 0,
+                  "startEpoch": 1787526574477,
+                  "endEpoch": 1787526574493.5,
+                  "selfMs": 16.5,
+                  "callsBefore": 24152
+                },
+                {
+                  "index": 1,
+                  "startEpoch": 1787526574514.6,
+                  "endEpoch": 1787526574514.6,
+                  "selfMs": 0,
+                  "callsBefore": 31194
+                }
+              ],
+              "flushesTruncated": false
+            }
+          },
+          {
+            "fcpMs": 181.699951171875,
+            "fcp": {
+              "totalMs": 181.699951171875,
+              "startDelayMs": 19.60009765625,
+              "counts": {
+                "calls": 31195,
+                "flushCount": 2,
+                "byGroup": {
+                  "papi_create": 7042,
+                  "papi_props": 8056,
+                  "papi_events": 2012,
+                  "papi_topology": 7041,
+                  "papi_read": 7042,
+                  "papi_flush": 2
+                },
+                "byKind": {
+                  "__CreateView": 1015,
+                  "__CreateText": 3013,
+                  "__CreateRawText": 3013,
+                  "__CreatePage": 1,
+                  "__SetClasses": 4028,
+                  "__SetAttribute": 4028,
+                  "__AddEvent": 2012,
+                  "__AppendElement": 7041,
+                  "__GetElementUniqueID": 7042,
+                  "__FlushElementTree": 2
+                }
+              },
+              "flushes": [
+                {
+                  "index": 0,
+                  "startEpoch": 1787526579839.3,
+                  "endEpoch": 1787526579856.7,
+                  "selfMs": 17.4000000001397,
+                  "callsBefore": 24152
+                },
+                {
+                  "index": 1,
+                  "startEpoch": 1787526579879,
+                  "endEpoch": 1787526579879.0999,
+                  "selfMs": 0.10000000009313226,
+                  "callsBefore": 31194
+                }
+              ],
+              "flushesTruncated": false
+            }
+          }
+        ],
+        "timed": [
+          {
+            "fcpMs": 202.100341796875,
+            "fcp": {
+              "totalMs": 202.100341796875,
+              "stages": {
+                "start_delay": 19.2001953125,
+                "papi_create": 59.69999999855645,
+                "papi_props": 12.199999999487773,
+                "papi_events": 6.1000000005587935,
+                "papi_topology": 5.2999999998137355,
+                "papi_read": 2.199999999254942,
+                "papi_flush": 11.899999999906868,
+                "off_boundary": 85.50014648679644
+              },
+              "counts": {
+                "calls": 31195,
+                "flushCount": 2,
+                "byGroup": {
+                  "papi_create": 7042,
+                  "papi_props": 8056,
+                  "papi_events": 2012,
+                  "papi_topology": 7041,
+                  "papi_read": 7042,
+                  "papi_flush": 2
+                },
+                "byKind": {
+                  "__CreateView": 1015,
+                  "__CreateText": 3013,
+                  "__CreateRawText": 3013,
+                  "__CreatePage": 1,
+                  "__SetClasses": 4028,
+                  "__SetAttribute": 4028,
+                  "__AddEvent": 2012,
+                  "__AppendElement": 7041,
+                  "__GetElementUniqueID": 7042,
+                  "__FlushElementTree": 2
+                }
+              },
+              "flushes": [
+                {
+                  "index": 0,
+                  "startEpoch": 1787526553039.1,
+                  "endEpoch": 1787526553051,
+                  "selfMs": 11.899999999906868,
+                  "callsBefore": 24152
+                },
+                {
+                  "index": 1,
+                  "startEpoch": 1787526553076.6,
+                  "endEpoch": 1787526553076.6,
+                  "selfMs": 0,
+                  "callsBefore": 31194
+                }
+              ],
+              "flushesTruncated": false
+            }
+          },
+          {
+            "fcpMs": 198.60009765625,
+            "fcp": {
+              "totalMs": 198.60009765625,
+              "stages": {
+                "start_delay": 19.5,
+                "papi_create": 68.89999999874271,
+                "papi_props": 8.999999999534339,
+                "papi_events": 6.400000000372529,
+                "papi_topology": 4.5,
+                "papi_read": 1.1999999999534339,
+                "papi_flush": 11.200000000186265,
+                "off_boundary": 77.90009765746072
+              },
+              "counts": {
+                "calls": 31195,
+                "flushCount": 2,
+                "byGroup": {
+                  "papi_create": 7042,
+                  "papi_props": 8056,
+                  "papi_events": 2012,
+                  "papi_topology": 7041,
+                  "papi_read": 7042,
+                  "papi_flush": 2
+                },
+                "byKind": {
+                  "__CreateView": 1015,
+                  "__CreateText": 3013,
+                  "__CreateRawText": 3013,
+                  "__CreatePage": 1,
+                  "__SetClasses": 4028,
+                  "__SetAttribute": 4028,
+                  "__AddEvent": 2012,
+                  "__AppendElement": 7041,
+                  "__GetElementUniqueID": 7042,
+                  "__FlushElementTree": 2
+                }
+              },
+              "flushes": [
+                {
+                  "index": 0,
+                  "startEpoch": 1787526558477.6,
+                  "endEpoch": 1787526558488.8,
+                  "selfMs": 11.200000000186265,
+                  "callsBefore": 24152
+                },
+                {
+                  "index": 1,
+                  "startEpoch": 1787526558513,
+                  "endEpoch": 1787526558513,
+                  "selfMs": 0,
+                  "callsBefore": 31194
+                }
+              ],
+              "flushesTruncated": false
+            }
+          },
+          {
+            "fcpMs": 194.400146484375,
+            "fcp": {
+              "totalMs": 194.400146484375,
+              "stages": {
+                "start_delay": 18.300048828125,
+                "papi_create": 61.19999999762513,
+                "papi_props": 8.899999999441206,
+                "papi_events": 5.800000000977889,
+                "papi_topology": 5.599999999860302,
+                "papi_read": 1.7999999998137355,
+                "papi_flush": 11.00000000023283,
+                "off_boundary": 81.80009765829891
+              },
+              "counts": {
+                "calls": 31195,
+                "flushCount": 2,
+                "byGroup": {
+                  "papi_create": 7042,
+                  "papi_props": 8056,
+                  "papi_events": 2012,
+                  "papi_topology": 7041,
+                  "papi_read": 7042,
+                  "papi_flush": 2
+                },
+                "byKind": {
+                  "__CreateView": 1015,
+                  "__CreateText": 3013,
+                  "__CreateRawText": 3013,
+                  "__CreatePage": 1,
+                  "__SetClasses": 4028,
+                  "__SetAttribute": 4028,
+                  "__AddEvent": 2012,
+                  "__AppendElement": 7041,
+                  "__GetElementUniqueID": 7042,
+                  "__FlushElementTree": 2
+                }
+              },
+              "flushes": [
+                {
+                  "index": 0,
+                  "startEpoch": 1787526563804.8,
+                  "endEpoch": 1787526563815.7002,
+                  "selfMs": 10.900000000139698,
+                  "callsBefore": 24152
+                },
+                {
+                  "index": 1,
+                  "startEpoch": 1787526563843,
+                  "endEpoch": 1787526563843.1,
+                  "selfMs": 0.10000000009313226,
+                  "callsBefore": 31194
+                }
+              ],
+              "flushesTruncated": false
+            }
+          },
+          {
+            "fcpMs": 190.199951171875,
+            "fcp": {
+              "totalMs": 190.199951171875,
+              "stages": {
+                "start_delay": 19.599853515625,
+                "papi_create": 55.49999999953434,
+                "papi_props": 7.900000001769513,
+                "papi_events": 6.599999999627471,
+                "papi_topology": 5.2999999998137355,
+                "papi_read": 0.8999999999068677,
+                "papi_flush": 14.899999999906868,
+                "off_boundary": 79.5000976556912
+              },
+              "counts": {
+                "calls": 31195,
+                "flushCount": 2,
+                "byGroup": {
+                  "papi_create": 7042,
+                  "papi_props": 8056,
+                  "papi_events": 2012,
+                  "papi_topology": 7041,
+                  "papi_read": 7042,
+                  "papi_flush": 2
+                },
+                "byKind": {
+                  "__CreateView": 1015,
+                  "__CreateText": 3013,
+                  "__CreateRawText": 3013,
+                  "__CreatePage": 1,
+                  "__SetClasses": 4028,
+                  "__SetAttribute": 4028,
+                  "__AddEvent": 2012,
+                  "__AppendElement": 7041,
+                  "__GetElementUniqueID": 7042,
+                  "__FlushElementTree": 2
+                }
+              },
+              "flushes": [
+                {
+                  "index": 0,
+                  "startEpoch": 1787526577149.9001,
+                  "endEpoch": 1787526577164.7,
+                  "selfMs": 14.800000000046566,
+                  "callsBefore": 24152
+                },
+                {
+                  "index": 1,
+                  "startEpoch": 1787526577188.2,
+                  "endEpoch": 1787526577188.3,
+                  "selfMs": 0.09999999986030161,
+                  "callsBefore": 31194
+                }
+              ],
+              "flushesTruncated": false
+            }
+          },
+          {
+            "fcpMs": 215.400146484375,
+            "fcp": {
+              "totalMs": 215.400146484375,
+              "stages": {
+                "start_delay": 22.300048828125,
+                "papi_create": 69.79999999911524,
+                "papi_props": 9.199999999953434,
+                "papi_events": 7.500000000931323,
+                "papi_topology": 6.100000000093132,
+                "papi_read": 1.6000000005587935,
+                "papi_flush": 11.5,
+                "off_boundary": 87.40009765559807
+              },
+              "counts": {
+                "calls": 31195,
+                "flushCount": 2,
+                "byGroup": {
+                  "papi_create": 7042,
+                  "papi_props": 8056,
+                  "papi_events": 2012,
+                  "papi_topology": 7041,
+                  "papi_read": 7042,
+                  "papi_flush": 2
+                },
+                "byKind": {
+                  "__CreateView": 1015,
+                  "__CreateText": 3013,
+                  "__CreateRawText": 3013,
+                  "__CreatePage": 1,
+                  "__SetClasses": 4028,
+                  "__SetAttribute": 4028,
+                  "__AddEvent": 2012,
+                  "__AppendElement": 7041,
+                  "__GetElementUniqueID": 7042,
+                  "__FlushElementTree": 2
+                }
+              },
+              "flushes": [
+                {
+                  "index": 0,
+                  "startEpoch": 1787526582572.5,
+                  "endEpoch": 1787526582584,
+                  "selfMs": 11.5,
+                  "callsBefore": 24152
+                },
+                {
+                  "index": 1,
+                  "startEpoch": 1787526582609.3,
+                  "endEpoch": 1787526582609.3,
+                  "selfMs": 0,
+                  "callsBefore": 31194
+                }
+              ],
+              "flushesTruncated": false
+            }
+          }
+        ]
+      }
+    },
+    "react": {
+      "control": [
+        {
+          "startupMs": 9.699951171875,
+          "createMs": 124.29999999981374
+        },
+        {
+          "startupMs": 11.10009765625,
+          "createMs": 121.89999999990687
+        },
+        {
+          "startupMs": 11.599853515625,
+          "createMs": 126.30000000004657
+        },
+        {
+          "startupMs": 11,
+          "createMs": 131.30000000004657
+        },
+        {
+          "startupMs": 10.5,
+          "createMs": 129.80000000004657
+        }
+      ],
+      "counts": [
+        {
+          "startupMs": 18.7001953125,
+          "createMs": 124.0999999998603,
+          "startup": {
+            "totalMs": 18.7001953125,
+            "startDelayMs": 6.300048828125,
+            "counts": {
+              "calls": 114,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 29,
+                "papi_props": 42,
+                "papi_events": 12,
+                "papi_topology": 28,
+                "papi_read": 1,
+                "papi_other": 1,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetCSSId": 1,
+                "__SetAttribute": 13,
+                "__AddEvent": 12,
+                "__AppendElement": 28,
+                "__GetElementUniqueID": 1,
+                "__FlushElementTree": 1,
+                "__OnLifecycleEvent": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526550905.5,
+                "endEpoch": 1787526550906.3,
+                "selfMs": 0.8000000000465661,
+                "callsBefore": 113
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 124.0999999998603,
+            "startDelayMs": 27.300048828125,
+            "counts": {
+              "calls": 21001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 6000,
+                "papi_props": 7000,
+                "papi_events": 2000,
+                "papi_topology": 6000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__CreateRawText": 2000,
+                "__SetClasses": 4000,
+                "__SetAttribute": 3000,
+                "__AddEvent": 2000,
+                "__AppendElement": 6000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526551378.2002,
+                "endEpoch": 1787526551378.3,
+                "selfMs": 0.09999999986030161,
+                "callsBefore": 21000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        },
+        {
+          "startupMs": 11.900146484375,
+          "createMs": 140,
+          "startup": {
+            "totalMs": 11.900146484375,
+            "startDelayMs": 7.500244140625,
+            "counts": {
+              "calls": 114,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 29,
+                "papi_props": 42,
+                "papi_events": 12,
+                "papi_topology": 28,
+                "papi_read": 1,
+                "papi_other": 1,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetCSSId": 1,
+                "__SetAttribute": 13,
+                "__AddEvent": 12,
+                "__AppendElement": 28,
+                "__GetElementUniqueID": 1,
+                "__FlushElementTree": 1,
+                "__OnLifecycleEvent": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526556313.8,
+                "endEpoch": 1787526556314.7002,
+                "selfMs": 0.8999999999068677,
+                "callsBefore": 113
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 140,
+            "startDelayMs": 28.60009765625,
+            "counts": {
+              "calls": 21001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 6000,
+                "papi_props": 7000,
+                "papi_events": 2000,
+                "papi_topology": 6000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__CreateRawText": 2000,
+                "__SetClasses": 4000,
+                "__SetAttribute": 3000,
+                "__AddEvent": 2000,
+                "__AppendElement": 6000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526556810.5,
+                "endEpoch": 1787526556810.5,
+                "selfMs": 0,
+                "callsBefore": 21000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        },
+        {
+          "startupMs": 12.400146484375,
+          "createMs": 131.80000000004657,
+          "startup": {
+            "totalMs": 12.400146484375,
+            "startDelayMs": 6.2001953125,
+            "counts": {
+              "calls": 114,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 29,
+                "papi_props": 42,
+                "papi_events": 12,
+                "papi_topology": 28,
+                "papi_read": 1,
+                "papi_other": 1,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetCSSId": 1,
+                "__SetAttribute": 13,
+                "__AddEvent": 12,
+                "__AppendElement": 28,
+                "__GetElementUniqueID": 1,
+                "__FlushElementTree": 1,
+                "__OnLifecycleEvent": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526569695.5,
+                "endEpoch": 1787526569696.2,
+                "selfMs": 0.7000000001862645,
+                "callsBefore": 113
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 131.80000000004657,
+            "startDelayMs": 28.10009765625,
+            "counts": {
+              "calls": 21001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 6000,
+                "papi_props": 7000,
+                "papi_events": 2000,
+                "papi_topology": 6000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__CreateRawText": 2000,
+                "__SetClasses": 4000,
+                "__SetAttribute": 3000,
+                "__AddEvent": 2000,
+                "__AppendElement": 6000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526570169,
+                "endEpoch": 1787526570169,
+                "selfMs": 0,
+                "callsBefore": 21000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        },
+        {
+          "startupMs": 18.699951171875,
+          "createMs": 139.29999999981374,
+          "startup": {
+            "totalMs": 18.699951171875,
+            "startDelayMs": 9.800048828125,
+            "counts": {
+              "calls": 114,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 29,
+                "papi_props": 42,
+                "papi_events": 12,
+                "papi_topology": 28,
+                "papi_read": 1,
+                "papi_other": 1,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetCSSId": 1,
+                "__SetAttribute": 13,
+                "__AddEvent": 12,
+                "__AppendElement": 28,
+                "__GetElementUniqueID": 1,
+                "__FlushElementTree": 1,
+                "__OnLifecycleEvent": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526575024.5999,
+                "endEpoch": 1787526575025.5,
+                "selfMs": 0.8999999999068677,
+                "callsBefore": 113
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 139.29999999981374,
+            "startDelayMs": 29,
+            "counts": {
+              "calls": 21001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 6000,
+                "papi_props": 7000,
+                "papi_events": 2000,
+                "papi_topology": 6000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__CreateRawText": 2000,
+                "__SetClasses": 4000,
+                "__SetAttribute": 3000,
+                "__AddEvent": 2000,
+                "__AppendElement": 6000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526575507,
+                "endEpoch": 1787526575507.0999,
+                "selfMs": 0.10000000009313226,
+                "callsBefore": 21000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        },
+        {
+          "startupMs": 15.300048828125,
+          "createMs": 128,
+          "startup": {
+            "totalMs": 15.300048828125,
+            "startDelayMs": 5.900146484375,
+            "counts": {
+              "calls": 114,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 29,
+                "papi_props": 42,
+                "papi_events": 12,
+                "papi_topology": 28,
+                "papi_read": 1,
+                "papi_other": 1,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetCSSId": 1,
+                "__SetAttribute": 13,
+                "__AddEvent": 12,
+                "__AppendElement": 28,
+                "__GetElementUniqueID": 1,
+                "__FlushElementTree": 1,
+                "__OnLifecycleEvent": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526580407.3,
+                "endEpoch": 1787526580408.1,
+                "selfMs": 0.7999999998137355,
+                "callsBefore": 113
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 128,
+            "startDelayMs": 26.699951171875,
+            "counts": {
+              "calls": 21001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 6000,
+                "papi_props": 7000,
+                "papi_events": 2000,
+                "papi_topology": 6000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__CreateRawText": 2000,
+                "__SetClasses": 4000,
+                "__SetAttribute": 3000,
+                "__AddEvent": 2000,
+                "__AppendElement": 6000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526580898.7002,
+                "endEpoch": 1787526580898.7002,
+                "selfMs": 0,
+                "callsBefore": 21000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        }
+      ],
+      "timed": [
+        {
+          "startupMs": 18.2998046875,
+          "createMs": 138.19999999995343,
+          "startup": {
+            "totalMs": 18.2998046875,
+            "stages": {
+              "start_delay": 6.099853515625,
+              "papi_create": 0.9999999997671694,
+              "papi_props": 0.6999999999534339,
+              "papi_events": 0.8000000000465661,
+              "papi_topology": 0,
+              "papi_read": 0,
+              "papi_other": 0,
+              "papi_flush": 0.8000000000465661,
+              "off_boundary": 8.899951172061265
+            },
+            "counts": {
+              "calls": 114,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 29,
+                "papi_props": 42,
+                "papi_events": 12,
+                "papi_topology": 28,
+                "papi_read": 1,
+                "papi_other": 1,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetCSSId": 1,
+                "__SetAttribute": 13,
+                "__AddEvent": 12,
+                "__AppendElement": 28,
+                "__GetElementUniqueID": 1,
+                "__FlushElementTree": 1,
+                "__OnLifecycleEvent": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526553589.0999,
+                "endEpoch": 1787526553589.9,
+                "selfMs": 0.8000000000465661,
+                "callsBefore": 113
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 138.19999999995343,
+            "stages": {
+              "start_delay": 27.800048828125,
+              "papi_create": 45.09999999892898,
+              "papi_props": 16.20000000228174,
+              "papi_events": 4.599999998463318,
+              "papi_topology": 16.80000000167638,
+              "papi_flush": 0,
+              "off_boundary": 27.699951170478016
+            },
+            "counts": {
+              "calls": 21001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 6000,
+                "papi_props": 7000,
+                "papi_events": 2000,
+                "papi_topology": 6000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__CreateRawText": 2000,
+                "__SetClasses": 4000,
+                "__SetAttribute": 3000,
+                "__AddEvent": 2000,
+                "__AppendElement": 6000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526554077.4,
+                "endEpoch": 1787526554077.4,
+                "selfMs": 0,
+                "callsBefore": 21000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        },
+        {
+          "startupMs": 11.89990234375,
+          "createMs": 154.5,
+          "startup": {
+            "totalMs": 11.89990234375,
+            "stages": {
+              "start_delay": 6.7998046875,
+              "papi_create": 1.3000000002793968,
+              "papi_props": 0.6999999999534339,
+              "papi_events": 0.8000000000465661,
+              "papi_topology": 0.10000000009313226,
+              "papi_read": 0,
+              "papi_other": 0.09999999986030161,
+              "papi_flush": 1,
+              "off_boundary": 1.1000976560171694
+            },
+            "counts": {
+              "calls": 114,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 29,
+                "papi_props": 42,
+                "papi_events": 12,
+                "papi_topology": 28,
+                "papi_read": 1,
+                "papi_other": 1,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetCSSId": 1,
+                "__SetAttribute": 13,
+                "__AddEvent": 12,
+                "__AppendElement": 28,
+                "__GetElementUniqueID": 1,
+                "__FlushElementTree": 1,
+                "__OnLifecycleEvent": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526559034.4,
+                "endEpoch": 1787526559035.4,
+                "selfMs": 1,
+                "callsBefore": 113
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 154.5,
+            "stages": {
+              "start_delay": 32.699951171875,
+              "papi_create": 53.39999999944121,
+              "papi_props": 17.0999999998603,
+              "papi_events": 3.8999999994412065,
+              "papi_topology": 16.09999999939464,
+              "papi_flush": 0,
+              "off_boundary": 31.300048829987645
+            },
+            "counts": {
+              "calls": 21001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 6000,
+                "papi_props": 7000,
+                "papi_events": 2000,
+                "papi_topology": 6000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__CreateRawText": 2000,
+                "__SetClasses": 4000,
+                "__SetAttribute": 3000,
+                "__AddEvent": 2000,
+                "__AppendElement": 6000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526559539.8,
+                "endEpoch": 1787526559539.8,
+                "selfMs": 0,
+                "callsBefore": 21000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        },
+        {
+          "startupMs": 24.5,
+          "createMs": 139.80000000004657,
+          "startup": {
+            "totalMs": 24.5,
+            "stages": {
+              "start_delay": 9.60009765625,
+              "papi_create": 0.8999999999068677,
+              "papi_props": 0.40000000037252903,
+              "papi_events": 0.7999999998137355,
+              "papi_topology": 0.10000000009313226,
+              "papi_read": 0.10000000009313226,
+              "papi_other": 0.20000000018626451,
+              "papi_flush": 0.8999999999068677,
+              "off_boundary": 11.499902343377471
+            },
+            "counts": {
+              "calls": 114,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 29,
+                "papi_props": 42,
+                "papi_events": 12,
+                "papi_topology": 28,
+                "papi_read": 1,
+                "papi_other": 1,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetCSSId": 1,
+                "__SetAttribute": 13,
+                "__AddEvent": 12,
+                "__AppendElement": 28,
+                "__GetElementUniqueID": 1,
+                "__FlushElementTree": 1,
+                "__OnLifecycleEvent": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526564385.8,
+                "endEpoch": 1787526564386.7002,
+                "selfMs": 0.8999999999068677,
+                "callsBefore": 113
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 139.80000000004657,
+            "stages": {
+              "start_delay": 26.89990234375,
+              "papi_create": 49.99999999976717,
+              "papi_props": 13.999999997438863,
+              "papi_events": 5.000000000931323,
+              "papi_topology": 17.400000001769513,
+              "papi_flush": 0,
+              "off_boundary": 26.5000976563897
+            },
+            "counts": {
+              "calls": 21001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 6000,
+                "papi_props": 7000,
+                "papi_events": 2000,
+                "papi_topology": 6000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__CreateRawText": 2000,
+                "__SetClasses": 4000,
+                "__SetAttribute": 3000,
+                "__AddEvent": 2000,
+                "__AppendElement": 6000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526564874.9001,
+                "endEpoch": 1787526564874.9001,
+                "selfMs": 0,
+                "callsBefore": 21000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        },
+        {
+          "startupMs": 17.900146484375,
+          "createMs": 136.60000000009313,
+          "startup": {
+            "totalMs": 17.900146484375,
+            "stages": {
+              "start_delay": 7.900146484375,
+              "papi_create": 0.6000000000931323,
+              "papi_props": 0.900000000372529,
+              "papi_events": 0.6999999999534339,
+              "papi_topology": 0.09999999986030161,
+              "papi_read": 0.10000000009313226,
+              "papi_other": 0,
+              "papi_flush": 0.7999999998137355,
+              "off_boundary": 6.7999999998137355
+            },
+            "counts": {
+              "calls": 114,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 29,
+                "papi_props": 42,
+                "papi_events": 12,
+                "papi_topology": 28,
+                "papi_read": 1,
+                "papi_other": 1,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetCSSId": 1,
+                "__SetAttribute": 13,
+                "__AddEvent": 12,
+                "__AppendElement": 28,
+                "__GetElementUniqueID": 1,
+                "__FlushElementTree": 1,
+                "__OnLifecycleEvent": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526577706.7002,
+                "endEpoch": 1787526577707.5,
+                "selfMs": 0.7999999998137355,
+                "callsBefore": 113
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 136.60000000009313,
+            "stages": {
+              "start_delay": 28.300048828125,
+              "papi_create": 48.19999999785796,
+              "papi_props": 14.600000001257285,
+              "papi_events": 4.900000000139698,
+              "papi_topology": 14.400000000139698,
+              "papi_flush": 0.10000000009313226,
+              "off_boundary": 26.09995117248036
+            },
+            "counts": {
+              "calls": 21001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 6000,
+                "papi_props": 7000,
+                "papi_events": 2000,
+                "papi_topology": 6000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__CreateRawText": 2000,
+                "__SetClasses": 4000,
+                "__SetAttribute": 3000,
+                "__AddEvent": 2000,
+                "__AppendElement": 6000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526578187.8,
+                "endEpoch": 1787526578187.9001,
+                "selfMs": 0.10000000009313226,
+                "callsBefore": 21000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        },
+        {
+          "startupMs": 17.099853515625,
+          "createMs": 152.19999999995343,
+          "startup": {
+            "totalMs": 17.099853515625,
+            "stages": {
+              "start_delay": 6.699951171875,
+              "papi_create": 1.4000000001396984,
+              "papi_props": 0.6999999997206032,
+              "papi_events": 1.0000000002328306,
+              "papi_topology": 0,
+              "papi_read": 0,
+              "papi_other": 0.09999999986030161,
+              "papi_flush": 1.1000000000931323,
+              "off_boundary": 6.099902343703434
+            },
+            "counts": {
+              "calls": 114,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 29,
+                "papi_props": 42,
+                "papi_events": 12,
+                "papi_topology": 28,
+                "papi_read": 1,
+                "papi_other": 1,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetCSSId": 1,
+                "__SetAttribute": 13,
+                "__AddEvent": 12,
+                "__AppendElement": 28,
+                "__GetElementUniqueID": 1,
+                "__FlushElementTree": 1,
+                "__OnLifecycleEvent": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526583123.5,
+                "endEpoch": 1787526583124.6,
+                "selfMs": 1.1000000000931323,
+                "callsBefore": 113
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 152.19999999995343,
+            "stages": {
+              "start_delay": 33.599853515625,
+              "papi_create": 52.499999998137355,
+              "papi_props": 17.700000001117587,
+              "papi_events": 5.599999998696148,
+              "papi_topology": 17.60000000265427,
+              "papi_flush": 0.10000000009313226,
+              "off_boundary": 25.100146483629942
+            },
+            "counts": {
+              "calls": 21001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 6000,
+                "papi_props": 7000,
+                "papi_events": 2000,
+                "papi_topology": 6000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__CreateRawText": 2000,
+                "__SetClasses": 4000,
+                "__SetAttribute": 3000,
+                "__AddEvent": 2000,
+                "__AppendElement": 6000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526583621.6,
+                "endEpoch": 1787526583621.7002,
+                "selfMs": 0.10000000009313226,
+                "callsBefore": 21000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        }
+      ],
+      "fcp": {
+        "control": [],
+        "counts": [],
+        "timed": []
+      }
+    },
+    "vue-vdom": {
+      "control": [
+        {
+          "startupMs": 21.199951171875,
+          "createMs": 146.5
+        },
+        {
+          "startupMs": 20,
+          "createMs": 152.5
+        },
+        {
+          "startupMs": 26.399658203125,
+          "createMs": 145.89999999990687
+        },
+        {
+          "startupMs": 23.7998046875,
+          "createMs": 156.5
+        },
+        {
+          "startupMs": 24.10009765625,
+          "createMs": 143.80000000004657
+        }
+      ],
+      "counts": [
+        {
+          "startupMs": 21.7001953125,
+          "createMs": 150.19999999995343,
+          "startup": {
+            "totalMs": 21.7001953125,
+            "startDelayMs": 15,
+            "counts": {
+              "calls": 144,
+              "flushCount": 2,
+              "byGroup": {
+                "papi_create": 30,
+                "papi_props": 70,
+                "papi_events": 12,
+                "papi_topology": 29,
+                "papi_read": 1,
+                "papi_flush": 2
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreateWrapperElement": 1,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetCSSId": 29,
+                "__SetAttribute": 13,
+                "__AddEvent": 12,
+                "__AppendElement": 29,
+                "__GetElementUniqueID": 1,
+                "__FlushElementTree": 2
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526551564.1,
+                "endEpoch": 1787526551565.3,
+                "selfMs": 1.2000000001862645,
+                "callsBefore": 142
+              },
+              {
+                "index": 1,
+                "startEpoch": 1787526551565.4,
+                "endEpoch": 1787526551565.4,
+                "selfMs": 0,
+                "callsBefore": 143
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 150.19999999995343,
+            "startDelayMs": 38.60009765625,
+            "counts": {
+              "calls": 25001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 4000,
+                "papi_props": 15000,
+                "papi_events": 2000,
+                "papi_topology": 4000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__SetClasses": 4000,
+                "__SetCSSId": 4000,
+                "__SetAttribute": 7000,
+                "__AddEvent": 2000,
+                "__AppendElement": 4000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526552050.9,
+                "endEpoch": 1787526552050.9,
+                "selfMs": 0,
+                "callsBefore": 25000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        },
+        {
+          "startupMs": 42.500244140625,
+          "createMs": 165,
+          "startup": {
+            "totalMs": 42.500244140625,
+            "startDelayMs": 33.10009765625,
+            "counts": {
+              "calls": 144,
+              "flushCount": 2,
+              "byGroup": {
+                "papi_create": 30,
+                "papi_props": 70,
+                "papi_events": 12,
+                "papi_topology": 29,
+                "papi_read": 1,
+                "papi_flush": 2
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreateWrapperElement": 1,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetCSSId": 29,
+                "__SetAttribute": 13,
+                "__AddEvent": 12,
+                "__AppendElement": 29,
+                "__GetElementUniqueID": 1,
+                "__FlushElementTree": 2
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526557059.3,
+                "endEpoch": 1787526557060.3,
+                "selfMs": 1,
+                "callsBefore": 142
+              },
+              {
+                "index": 1,
+                "startEpoch": 1787526557060.3,
+                "endEpoch": 1787526557060.3,
+                "selfMs": 0,
+                "callsBefore": 143
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 165,
+            "startDelayMs": 42.400146484375,
+            "counts": {
+              "calls": 25001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 4000,
+                "papi_props": 15000,
+                "papi_events": 2000,
+                "papi_topology": 4000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__SetClasses": 4000,
+                "__SetCSSId": 4000,
+                "__SetAttribute": 7000,
+                "__AddEvent": 2000,
+                "__AppendElement": 4000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526557499,
+                "endEpoch": 1787526557499.1,
+                "selfMs": 0.10000000009313226,
+                "callsBefore": 25000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        },
+        {
+          "startupMs": 23.7001953125,
+          "createMs": 161.30000000004657,
+          "startup": {
+            "totalMs": 23.7001953125,
+            "startDelayMs": 16.300048828125,
+            "counts": {
+              "calls": 144,
+              "flushCount": 2,
+              "byGroup": {
+                "papi_create": 30,
+                "papi_props": 70,
+                "papi_events": 12,
+                "papi_topology": 29,
+                "papi_read": 1,
+                "papi_flush": 2
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreateWrapperElement": 1,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetCSSId": 29,
+                "__SetAttribute": 13,
+                "__AddEvent": 12,
+                "__AppendElement": 29,
+                "__GetElementUniqueID": 1,
+                "__FlushElementTree": 2
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526570353.4001,
+                "endEpoch": 1787526570354.5,
+                "selfMs": 1.0999999998603016,
+                "callsBefore": 142
+              },
+              {
+                "index": 1,
+                "startEpoch": 1787526570354.5,
+                "endEpoch": 1787526570354.5,
+                "selfMs": 0,
+                "callsBefore": 143
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 161.30000000004657,
+            "startDelayMs": 43.199951171875,
+            "counts": {
+              "calls": 25001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 4000,
+                "papi_props": 15000,
+                "papi_events": 2000,
+                "papi_topology": 4000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__SetClasses": 4000,
+                "__SetCSSId": 4000,
+                "__SetAttribute": 7000,
+                "__AddEvent": 2000,
+                "__AppendElement": 4000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526570845.7002,
+                "endEpoch": 1787526570845.8,
+                "selfMs": 0.09999999986030161,
+                "callsBefore": 25000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        },
+        {
+          "startupMs": 22.5,
+          "createMs": 144.4000000001397,
+          "startup": {
+            "totalMs": 22.5,
+            "startDelayMs": 15.7998046875,
+            "counts": {
+              "calls": 144,
+              "flushCount": 2,
+              "byGroup": {
+                "papi_create": 30,
+                "papi_props": 70,
+                "papi_events": 12,
+                "papi_topology": 29,
+                "papi_read": 1,
+                "papi_flush": 2
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreateWrapperElement": 1,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetCSSId": 29,
+                "__SetAttribute": 13,
+                "__AddEvent": 12,
+                "__AppendElement": 29,
+                "__GetElementUniqueID": 1,
+                "__FlushElementTree": 2
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526575711.7,
+                "endEpoch": 1787526575712.5,
+                "selfMs": 0.7999999998137355,
+                "callsBefore": 142
+              },
+              {
+                "index": 1,
+                "startEpoch": 1787526575712.5,
+                "endEpoch": 1787526575712.5,
+                "selfMs": 0,
+                "callsBefore": 143
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 144.4000000001397,
+            "startDelayMs": 43.60009765625,
+            "counts": {
+              "calls": 25001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 4000,
+                "papi_props": 15000,
+                "papi_events": 2000,
+                "papi_topology": 4000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__SetClasses": 4000,
+                "__SetCSSId": 4000,
+                "__SetAttribute": 7000,
+                "__AddEvent": 2000,
+                "__AppendElement": 4000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526576178.7,
+                "endEpoch": 1787526576178.7998,
+                "selfMs": 0.09999999986030161,
+                "callsBefore": 25000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        },
+        {
+          "startupMs": 20.199951171875,
+          "createMs": 158.10000000009313,
+          "startup": {
+            "totalMs": 20.199951171875,
+            "startDelayMs": 14.89990234375,
+            "counts": {
+              "calls": 144,
+              "flushCount": 2,
+              "byGroup": {
+                "papi_create": 30,
+                "papi_props": 70,
+                "papi_events": 12,
+                "papi_topology": 29,
+                "papi_read": 1,
+                "papi_flush": 2
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreateWrapperElement": 1,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetCSSId": 29,
+                "__SetAttribute": 13,
+                "__AddEvent": 12,
+                "__AppendElement": 29,
+                "__GetElementUniqueID": 1,
+                "__FlushElementTree": 2
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526581066.3,
+                "endEpoch": 1787526581067.0999,
+                "selfMs": 0.7999999998137355,
+                "callsBefore": 142
+              },
+              {
+                "index": 1,
+                "startEpoch": 1787526581067.2,
+                "endEpoch": 1787526581067.2,
+                "selfMs": 0,
+                "callsBefore": 143
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 158.10000000009313,
+            "startDelayMs": 42,
+            "counts": {
+              "calls": 25001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 4000,
+                "papi_props": 15000,
+                "papi_events": 2000,
+                "papi_topology": 4000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__SetClasses": 4000,
+                "__SetCSSId": 4000,
+                "__SetAttribute": 7000,
+                "__AddEvent": 2000,
+                "__AppendElement": 4000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526581552.0999,
+                "endEpoch": 1787526581552.0999,
+                "selfMs": 0,
+                "callsBefore": 25000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        }
+      ],
+      "timed": [
+        {
+          "startupMs": 30.5,
+          "createMs": 170.5,
+          "startup": {
+            "totalMs": 30.5,
+            "stages": {
+              "start_delay": 15.699951171875,
+              "papi_create": 1,
+              "papi_props": 0.9999999997671694,
+              "papi_events": 0.6999999999534339,
+              "papi_topology": 0.19999999995343387,
+              "papi_read": 0,
+              "papi_flush": 0.8999999999068677,
+              "off_boundary": 11.000048828544095
+            },
+            "counts": {
+              "calls": 144,
+              "flushCount": 2,
+              "byGroup": {
+                "papi_create": 30,
+                "papi_props": 70,
+                "papi_events": 12,
+                "papi_topology": 29,
+                "papi_read": 1,
+                "papi_flush": 2
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreateWrapperElement": 1,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetCSSId": 29,
+                "__SetAttribute": 13,
+                "__AddEvent": 12,
+                "__AppendElement": 29,
+                "__GetElementUniqueID": 1,
+                "__FlushElementTree": 2
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526554254.3,
+                "endEpoch": 1787526554255.2,
+                "selfMs": 0.8999999999068677,
+                "callsBefore": 142
+              },
+              {
+                "index": 1,
+                "startEpoch": 1787526554255.2,
+                "endEpoch": 1787526554255.2,
+                "selfMs": 0,
+                "callsBefore": 143
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 170.5,
+            "stages": {
+              "start_delay": 38.800048828125,
+              "papi_create": 42.39999999781139,
+              "papi_props": 41.700000000884756,
+              "papi_events": 4.59999999916181,
+              "papi_topology": 15.400000001071021,
+              "papi_flush": 0.09999999986030161,
+              "off_boundary": 27.49995117308572
+            },
+            "counts": {
+              "calls": 25001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 4000,
+                "papi_props": 15000,
+                "papi_events": 2000,
+                "papi_topology": 4000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__SetClasses": 4000,
+                "__SetCSSId": 4000,
+                "__SetAttribute": 7000,
+                "__AddEvent": 2000,
+                "__AppendElement": 4000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526554754.5,
+                "endEpoch": 1787526554754.5999,
+                "selfMs": 0.09999999986030161,
+                "callsBefore": 25000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        },
+        {
+          "startupMs": 27.900146484375,
+          "createMs": 185.9000000001397,
+          "startup": {
+            "totalMs": 27.900146484375,
+            "stages": {
+              "start_delay": 15.600341796875,
+              "papi_create": 1.3000000002793968,
+              "papi_props": 0.9999999997671694,
+              "papi_events": 0.7999999998137355,
+              "papi_topology": 0,
+              "papi_read": 0,
+              "papi_flush": 0.8000000000465661,
+              "off_boundary": 8.399804687593132
+            },
+            "counts": {
+              "calls": 144,
+              "flushCount": 2,
+              "byGroup": {
+                "papi_create": 30,
+                "papi_props": 70,
+                "papi_events": 12,
+                "papi_topology": 29,
+                "papi_read": 1,
+                "papi_flush": 2
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreateWrapperElement": 1,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetCSSId": 29,
+                "__SetAttribute": 13,
+                "__AddEvent": 12,
+                "__AppendElement": 29,
+                "__GetElementUniqueID": 1,
+                "__FlushElementTree": 2
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526559706.7,
+                "endEpoch": 1787526559707.5,
+                "selfMs": 0.8000000000465661,
+                "callsBefore": 142
+              },
+              {
+                "index": 1,
+                "startEpoch": 1787526559707.6,
+                "endEpoch": 1787526559707.6,
+                "selfMs": 0,
+                "callsBefore": 143
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 185.9000000001397,
+            "stages": {
+              "start_delay": 42,
+              "papi_create": 45.59999999846332,
+              "papi_props": 44.09999999916181,
+              "papi_events": 4.500000000232831,
+              "papi_topology": 15.800000002840534,
+              "papi_flush": 0,
+              "off_boundary": 33.89999999944121
+            },
+            "counts": {
+              "calls": 25001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 4000,
+                "papi_props": 15000,
+                "papi_events": 2000,
+                "papi_topology": 4000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__SetClasses": 4000,
+                "__SetCSSId": 4000,
+                "__SetAttribute": 7000,
+                "__AddEvent": 2000,
+                "__AppendElement": 4000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526560215.8,
+                "endEpoch": 1787526560215.8,
+                "selfMs": 0,
+                "callsBefore": 25000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        },
+        {
+          "startupMs": 27.5,
+          "createMs": 156.5,
+          "startup": {
+            "totalMs": 27.5,
+            "stages": {
+              "start_delay": 14.5,
+              "papi_create": 1,
+              "papi_props": 0.8999999999068677,
+              "papi_events": 0.6999999999534339,
+              "papi_topology": 0,
+              "papi_read": 0,
+              "papi_flush": 0.8000000000465661,
+              "off_boundary": 9.600000000093132
+            },
+            "counts": {
+              "calls": 144,
+              "flushCount": 2,
+              "byGroup": {
+                "papi_create": 30,
+                "papi_props": 70,
+                "papi_events": 12,
+                "papi_topology": 29,
+                "papi_read": 1,
+                "papi_flush": 2
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreateWrapperElement": 1,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetCSSId": 29,
+                "__SetAttribute": 13,
+                "__AddEvent": 12,
+                "__AppendElement": 29,
+                "__GetElementUniqueID": 1,
+                "__FlushElementTree": 2
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526565038.7002,
+                "endEpoch": 1787526565039.5,
+                "selfMs": 0.8000000000465661,
+                "callsBefore": 142
+              },
+              {
+                "index": 1,
+                "startEpoch": 1787526565039.5,
+                "endEpoch": 1787526565039.5,
+                "selfMs": 0,
+                "callsBefore": 143
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 156.5,
+            "stages": {
+              "start_delay": 38.39990234375,
+              "papi_create": 41.000000002328306,
+              "papi_props": 36.299999999580905,
+              "papi_events": 3.7000000001862645,
+              "papi_topology": 13.300000000977889,
+              "papi_flush": 0,
+              "off_boundary": 23.800097653176636
+            },
+            "counts": {
+              "calls": 25001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 4000,
+                "papi_props": 15000,
+                "papi_events": 2000,
+                "papi_topology": 4000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__SetClasses": 4000,
+                "__SetCSSId": 4000,
+                "__SetAttribute": 7000,
+                "__AddEvent": 2000,
+                "__AppendElement": 4000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526565541.5,
+                "endEpoch": 1787526565541.5,
+                "selfMs": 0,
+                "callsBefore": 25000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        },
+        {
+          "startupMs": 20.300048828125,
+          "createMs": 186,
+          "startup": {
+            "totalMs": 20.300048828125,
+            "stages": {
+              "start_delay": 14.10009765625,
+              "papi_create": 1.5000000002328306,
+              "papi_props": 0.9000000001396984,
+              "papi_events": 0.6999999999534339,
+              "papi_topology": 0,
+              "papi_read": 0,
+              "papi_flush": 0.8000000000465661,
+              "off_boundary": 2.299951171502471
+            },
+            "counts": {
+              "calls": 144,
+              "flushCount": 2,
+              "byGroup": {
+                "papi_create": 30,
+                "papi_props": 70,
+                "papi_events": 12,
+                "papi_topology": 29,
+                "papi_read": 1,
+                "papi_flush": 2
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreateWrapperElement": 1,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetCSSId": 29,
+                "__SetAttribute": 13,
+                "__AddEvent": 12,
+                "__AppendElement": 29,
+                "__GetElementUniqueID": 1,
+                "__FlushElementTree": 2
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526578362,
+                "endEpoch": 1787526578362.8,
+                "selfMs": 0.8000000000465661,
+                "callsBefore": 142
+              },
+              {
+                "index": 1,
+                "startEpoch": 1787526578362.9,
+                "endEpoch": 1787526578362.9,
+                "selfMs": 0,
+                "callsBefore": 143
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 186,
+            "stages": {
+              "start_delay": 58.89990234375,
+              "papi_create": 40.60000000055879,
+              "papi_props": 41.30000000144355,
+              "papi_events": 4.8999999994412065,
+              "papi_topology": 13.699999999022111,
+              "papi_flush": 0.10000000009313226,
+              "off_boundary": 26.500097655691206
+            },
+            "counts": {
+              "calls": 25001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 4000,
+                "papi_props": 15000,
+                "papi_events": 2000,
+                "papi_topology": 4000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__SetClasses": 4000,
+                "__SetCSSId": 4000,
+                "__SetAttribute": 7000,
+                "__AddEvent": 2000,
+                "__AppendElement": 4000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526578887.0999,
+                "endEpoch": 1787526578887.2,
+                "selfMs": 0.10000000009313226,
+                "callsBefore": 25000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        },
+        {
+          "startupMs": 25.89990234375,
+          "createMs": 168.60000000009313,
+          "startup": {
+            "totalMs": 25.89990234375,
+            "stages": {
+              "start_delay": 16.800048828125,
+              "papi_create": 1.400000000372529,
+              "papi_props": 0.7000000001862645,
+              "papi_events": 1.1000000000931323,
+              "papi_topology": 0,
+              "papi_read": 0,
+              "papi_flush": 1.1000000000931323,
+              "off_boundary": 4.799853514879942
+            },
+            "counts": {
+              "calls": 144,
+              "flushCount": 2,
+              "byGroup": {
+                "papi_create": 30,
+                "papi_props": 70,
+                "papi_events": 12,
+                "papi_topology": 29,
+                "papi_read": 1,
+                "papi_flush": 2
+              },
+              "byKind": {
+                "__CreateView": 15,
+                "__CreateText": 13,
+                "__CreateWrapperElement": 1,
+                "__CreatePage": 1,
+                "__SetClasses": 28,
+                "__SetCSSId": 29,
+                "__SetAttribute": 13,
+                "__AddEvent": 12,
+                "__AppendElement": 29,
+                "__GetElementUniqueID": 1,
+                "__FlushElementTree": 2
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526583809.3,
+                "endEpoch": 1787526583810.4,
+                "selfMs": 1.1000000000931323,
+                "callsBefore": 142
+              },
+              {
+                "index": 1,
+                "startEpoch": 1787526583810.5,
+                "endEpoch": 1787526583810.5,
+                "selfMs": 0,
+                "callsBefore": 143
+              }
+            ],
+            "flushesTruncated": false
+          },
+          "create": {
+            "totalMs": 168.60000000009313,
+            "stages": {
+              "start_delay": 43.199951171875,
+              "papi_create": 36.49999999953434,
+              "papi_props": 40.39999999967404,
+              "papi_events": 3.500000000698492,
+              "papi_topology": 16.59999999892898,
+              "papi_flush": 0.10000000009313226,
+              "off_boundary": 28.300048829289153
+            },
+            "counts": {
+              "calls": 25001,
+              "flushCount": 1,
+              "byGroup": {
+                "papi_create": 4000,
+                "papi_props": 15000,
+                "papi_events": 2000,
+                "papi_topology": 4000,
+                "papi_flush": 1
+              },
+              "byKind": {
+                "__CreateView": 1000,
+                "__CreateText": 3000,
+                "__SetClasses": 4000,
+                "__SetCSSId": 4000,
+                "__SetAttribute": 7000,
+                "__AddEvent": 2000,
+                "__AppendElement": 4000,
+                "__FlushElementTree": 1
+              }
+            },
+            "flushes": [
+              {
+                "index": 0,
+                "startEpoch": 1787526584301.6,
+                "endEpoch": 1787526584301.7,
+                "selfMs": 0.10000000009313226,
+                "callsBefore": 25000
+              }
+            ],
+            "flushesTruncated": false
+          }
+        }
+      ],
+      "fcp": {
+        "control": [],
+        "counts": [],
+        "timed": []
+      }
+    }
+  }
+}

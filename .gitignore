@@ -41,6 +41,11 @@ benchmarks/lynx-table/results/
 # records ARE committed as the L0 evidence (see prototype/README.md).
 benchmarks/lynx-table/prototype/dist*/
 benchmarks/lynx-table/prototype/baseline-*/
+# `papi-run.mjs --smoke` writes here so a smoke shares the reporting path it is
+# checking, but an n=1 non-interleaved run is not evidence and must never sit
+# beside the reportable records in this directory. The reportable artifacts
+# (papi-<rows>.json, papi-boundary.md, papi-scaling.json) ARE committed.
+benchmarks/lynx-table/stages/results/papi-smoke.json
 
 # Differential-parity build artifact: the `@tsrx/react`-compiled fixture output the
 # differential test rigs regenerate under each package's tests on every run.

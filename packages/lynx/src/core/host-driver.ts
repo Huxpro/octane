@@ -31,7 +31,6 @@ import {
 	type LynxFirstTreeEventSnapshot,
 	type LynxFirstTreeListJournal,
 	type LynxFirstTreeLogicalNodeSnapshot,
-	type LynxFirstTreeNodeSnapshot,
 	type LynxFirstTreeSnapshot,
 	type LynxResolvedFirstTreeEvent,
 } from './first-screen.js';
@@ -3211,6 +3210,11 @@ function snapshotFirstTreeValue(
 	}
 }
 
+/** Freeze one record's child order, sharing the frozen empty for the leaves. */
+function snapshotFirstTreeChildren(children: readonly number[]): readonly number[] {
+	return children.length === 0 ? EMPTY_FIRST_TREE_CHILDREN : Object.freeze([...children]);
+}
+
 /**
  * Snapshot one record's props. The caller owns the scratch pair and this clears
  * it, so every record still clones against a memo scoped to its own props —
@@ -3840,7 +3844,24 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 		throw hostError('portals cannot be captured before background adoption.');
 	}
 	const eventsByToken = new Map<string, LynxResolvedFirstTreeEvent>();
-	const nodes: LynxFirstTreeNodeSnapshot[] = [];
+	// Capture validates eagerly and describes lazily. Validation and the native
+	// ID read stay here because a host that cannot be captured has to fault the
+	// synchronous first screen, while its caller still holds the source to retry
+	// cleanup against. Turning the validated result into the clone-safe
+	// description is what waits: capture runs after the page is already published
+	// to the host, so every allocation it makes sits between the tree reaching
+	// the DOM and the browser painting it, and nothing before background adoption
+	// reads the description.
+	const described: {
+		readonly id: number;
+		readonly nativeId: number;
+		readonly parent: number | null;
+		readonly record: LynxHostRecord<Node>;
+		readonly events: readonly LynxFirstTreeEventSnapshot[];
+	}[] = [];
+	// Logical rows stay eager. They are the half the ownership equality below
+	// counts, and a first screen holds one `<list>` rather than one per host, so
+	// there is no per-row allocation here to move off the paint path.
 	const logicalNodes = new Map<number, LynxFirstTreeLogicalNodeSnapshot>();
 	const cloneState: FirstTreeSnapshotCloneState = { active: new Set(), clones: new Map() };
 	// Everything beneath a native `<list>`. The list host is painted; its rows are
@@ -3917,10 +3938,6 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 			}
 			events = Object.freeze(bound);
 		}
-		const children =
-			record.children.length === 0
-				? EMPTY_FIRST_TREE_CHILDREN
-				: Object.freeze([...record.children]);
 		if (node === null) {
 			logicalNodes.set(
 				id,
@@ -3930,7 +3947,7 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 					type: record.type,
 					generation: record.handle.generation,
 					parent: record.parent,
-					children,
+					children: snapshotFirstTreeChildren(record.children),
 					props: snapshotFirstTreeProps(record.props, cloneState),
 					visible: record.visible,
 					events,
@@ -3987,19 +4004,7 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 		) {
 			throw hostError(`first-tree host ${id} has inconsistent main-thread ref ownership.`);
 		}
-		nodes.push(
-			Object.freeze({
-				id,
-				nativeId,
-				type: record.type,
-				generation: record.handle.generation,
-				parent: record.parent,
-				children,
-				props: snapshotFirstTreeProps(record.props, cloneState),
-				visible: record.visible,
-				events,
-			}),
-		);
+		described.push({ id, nativeId, parent: record.parent, record, events });
 	}
 	// Still an equality, not a bound. Every record is accounted for exactly once:
 	// painted ones by the physical ownership journal, native list rows by the
@@ -4016,15 +4021,35 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 			throw hostError(`first-tree root ${id} is missing from page-root ownership.`);
 		}
 	}
-	const snapshot: LynxFirstTreeSnapshot = Object.freeze({
-		format: 1,
-		renderer: LYNX_RENDERER_ID,
-		root: container.root,
-		version: state.acceptedVersion,
-		plan: options.plan ?? null,
-		roots: Object.freeze([...state.rootChildren]),
-		nodes: Object.freeze(nodes),
-	});
+	// Read now, not from the builder: adoption and terminal cleanup both empty
+	// `rootChildren` and move `acceptedVersion` on, and a description that ran
+	// after either would describe the container's state rather than the capture's.
+	const capturedVersion = state.acceptedVersion;
+	const roots = Object.freeze([...state.rootChildren]);
+	const describe = (): LynxFirstTreeSnapshot =>
+		Object.freeze({
+			format: 1,
+			renderer: LYNX_RENDERER_ID,
+			root: container.root,
+			version: capturedVersion,
+			plan: options.plan ?? null,
+			roots,
+			nodes: Object.freeze(
+				described.map((entry) =>
+					Object.freeze({
+						id: entry.id,
+						nativeId: entry.nativeId,
+						type: entry.record.type,
+						generation: entry.record.handle.generation,
+						parent: entry.parent,
+						children: snapshotFirstTreeChildren(entry.record.children),
+						props: snapshotFirstTreeProps(entry.record.props, cloneState),
+						visible: entry.record.visible,
+						events: entry.events,
+					}),
+				),
+			),
+		});
 	const lists = new Map<number, LynxFirstTreeListJournal>();
 	for (const [hostId, list] of state.lists) {
 		lists.set(
@@ -4037,7 +4062,7 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 		);
 	}
 	const firstTree = createLynxFirstTree<Node>(
-		snapshot,
+		describe,
 		container,
 		eventsByToken,
 		logicalNodes,
