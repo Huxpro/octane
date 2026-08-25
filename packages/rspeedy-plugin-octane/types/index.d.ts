@@ -1,4 +1,5 @@
 import type { RsbuildPlugin } from '@rsbuild/core';
+import type { OctaneMainThreadProgramBackend } from '@octanejs/rspack-plugin';
 
 export type OctaneLynxThread = 'background' | 'main-thread';
 
@@ -27,6 +28,18 @@ export interface OctaneRspeedyPluginOptions {
 	 * same either way; only the background driver changes.
 	 */
 	core?: OctaneLynxBackgroundCore;
+	/**
+	 * @experimental Issue #163. Compile the main-thread chunk's eligible
+	 * templates into create functions instead of the descriptions an interpreter
+	 * walks at run time.
+	 *
+	 * Pass `@octanejs/lynx/compiler` here. It is the caller's to import rather
+	 * than this plugin's, because the backend is TypeScript reaching into the
+	 * renderer's own run-time lowering and this plugin is JavaScript loaded by
+	 * the bundler's Node process. A TypeScript-aware config loader — Rspeedy's
+	 * `lynx.config.ts`, or a test — can import it; plain Node cannot.
+	 */
+	mainThreadProgramBackend?: OctaneMainThreadProgramBackend;
 	/** Restrict the plugin to named Rspeedy environments. */
 	environments?: string[];
 	/** Override component HMR for the selected graph. */

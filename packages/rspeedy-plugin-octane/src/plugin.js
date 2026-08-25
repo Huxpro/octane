@@ -23,13 +23,26 @@ import { assertLynxToolchain } from './toolchain.js';
 const PLUGIN_NAME = '@octanejs/rspeedy-plugin';
 const MAIN_THREAD_FACADE_PLUGIN = `${PLUGIN_NAME}:main-thread-facade`;
 const LYNX_PACKAGE_ROOT = /^@octanejs\/lynx$/;
-const APPLICATION_LAYER_SPECIALIZATIONS = Object.freeze({
-	[LYNX_MAIN_THREAD_LAYER]: Object.freeze({
-		renderers: lynxRspeedyMainThreadRenderers,
-		runtime: '@octanejs/lynx/main-renderer',
-		universalRuntime: LYNX_MAIN_THREAD_RUNTIME,
-	}),
-});
+/**
+ * What the main-thread layer compiles differently from the background one.
+ *
+ * `mainThreadProgramBackend` is issue #163's addition and is the caller's to
+ * supply, not this plugin's to import. The backend is TypeScript that reaches
+ * into the renderer's run-time lowering (see `@octanejs/lynx/compiler`), and
+ * this module is plain JavaScript loaded by the bundler's Node process, which
+ * cannot import it. A build whose config loader handles TypeScript — Rspeedy's
+ * own `lynx.config.ts`, or a test — imports it there and passes it in.
+ */
+function applicationLayerSpecializations(mainThreadProgramBackend) {
+	return Object.freeze({
+		[LYNX_MAIN_THREAD_LAYER]: Object.freeze({
+			renderers: lynxRspeedyMainThreadRenderers,
+			runtime: '@octanejs/lynx/main-renderer',
+			universalRuntime: LYNX_MAIN_THREAD_RUNTIME,
+			...(mainThreadProgramBackend === undefined ? null : { mainThreadProgramBackend }),
+		}),
+	});
+}
 
 class LynxMainThreadFacadePlugin {
 	apply(compiler) {
@@ -66,6 +79,7 @@ function normalizeOptions(value) {
 		'environments',
 		'exclude',
 		'hmr',
+		'mainThreadProgramBackend',
 		'profile',
 		'requireDirective',
 		'thread',
@@ -91,7 +105,15 @@ function normalizeOptions(value) {
 		thread,
 		renderers:
 			thread === 'main-thread' ? lynxRspeedyMainThreadRenderers : lynxRspeedyBackgroundRenderers,
-		...(application ? { layerSpecializations: APPLICATION_LAYER_SPECIALIZATIONS } : null),
+		...(application
+			? { layerSpecializations: applicationLayerSpecializations(options.mainThreadProgramBackend) }
+			: null),
+		// An isolated `thread: 'main-thread'` graph has no layer to specialize, so
+		// the backend is the top-level compiler input there. Both forms reach the
+		// same compile; only the application build has two threads to tell apart.
+		...(!application && thread === 'main-thread' && options.mainThreadProgramBackend !== undefined
+			? { mainThreadProgramBackend: options.mainThreadProgramBackend }
+			: null),
 		...(options.dev === undefined ? null : { dev: options.dev }),
 		...(options.hmr === undefined ? null : { hmr: options.hmr }),
 		...(options.profile === undefined ? null : { profile: options.profile }),
@@ -150,6 +172,9 @@ export function pluginOctane(value) {
 						...(options.layerSpecializations === undefined
 							? null
 							: { layerSpecializations: options.layerSpecializations }),
+						...(options.mainThreadProgramBackend === undefined
+							? null
+							: { mainThreadProgramBackend: options.mainThreadProgramBackend }),
 						...(options.dev === undefined ? null : { dev: options.dev }),
 						...(options.hmr === undefined ? null : { hmr: options.hmr }),
 						...(options.profile === undefined ? null : { profile: options.profile }),

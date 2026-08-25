@@ -24,3 +24,19 @@ export {
 	LynxMainThreadEmitRefusal,
 	type LynxMainThreadProgramEmission,
 } from './emit-main-thread-program.js';
+
+/**
+ * This backend's build identity, for a build's persistent-transform cache.
+ *
+ * A build salts its cached transforms with this, so it names the emitted
+ * output's shape rather than the package: two backends that both exist are not
+ * the same backend, and a cache keyed only on "a backend was configured" would
+ * hand a build compiled create functions an older emitter wrote.
+ *
+ * **Bump the revision whenever anything in `src/compiler/` changes.**
+ * `tests/main-thread-backend-signature.test.ts` pins the backend's source
+ * against this string and fails until it is bumped, so the rule is a gate
+ * rather than a comment. Over-invalidating a cache is the safe direction; a
+ * comment-only edit bumping it costs one cold build and nothing else.
+ */
+export const signature = 'lynx-main-thread-program/1';

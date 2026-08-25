@@ -118,6 +118,11 @@ export default function octaneLoader(source, inputSourceMap) {
 			...(compilerOptions.universalRuntime === undefined
 				? null
 				: { universalRuntime: compilerOptions.universalRuntime }),
+			// Selected by layer, so only the thread whose chunk carries compiled
+			// programs is given one. Every other layer compiles as it always did.
+			...(compilerOptions.mainThreadProgramBackend === undefined
+				? null
+				: { mainThreadProgramBackend: compilerOptions.mainThreadProgramBackend }),
 			...(options.requireDirective === undefined
 				? null
 				: { requireDirective: options.requireDirective }),

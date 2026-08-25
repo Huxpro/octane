@@ -92,10 +92,28 @@ export interface OctaneUniversalRuntimeOptions {
 	readonly thread: 'background' | 'main-thread';
 }
 
+/**
+ * A renderer's build-time backend for compiling a main-thread chunk's template
+ * programs, supplied as the live module rather than a request string: the code
+ * it holds encodes one renderer's applier semantics and cannot be rebuilt from
+ * a name. `signature` names the emitted output's shape, and a build salts its
+ * persistent transform cache with it.
+ */
+export interface OctaneMainThreadProgramBackend {
+	readonly signature: string;
+	readonly deriveLynxMainThreadProgram: (planRoot: unknown) => unknown;
+	readonly emitLynxMainThreadProgram: (
+		program: unknown,
+		options: { readonly name: string },
+	) => { readonly source: string; readonly valueCount: number; readonly eventCount: number };
+}
+
 /** Compiler options selected for modules issued from one Rspack layer. */
 export interface OctaneRspackLoaderLayerSpecializationOptions {
 	renderers?: OctaneRendererConfigOptions | OctaneResolvedRendererConfig;
 	universalRuntime?: OctaneUniversalRuntimeOptions;
+	/** @experimental Compile this layer's eligible templates into main-thread create functions. */
+	mainThreadProgramBackend?: OctaneMainThreadProgramBackend;
 }
 
 /** Plugin-owned compiler and runtime options selected for one Rspack layer. */
@@ -132,6 +150,13 @@ export interface OctaneRspackLoaderOptions {
 	renderers?: OctaneRendererConfigOptions | OctaneResolvedRendererConfig;
 	/** Compile-only host runtime/thread identity for a universal renderer graph. */
 	universalRuntime?: OctaneUniversalRuntimeOptions;
+	/**
+	 * @experimental Compile eligible templates into main-thread create functions
+	 * instead of the descriptions an interpreter walks. A layer specialization
+	 * overrides this; without one every layer inherits it, which is safe because
+	 * the compiler emits a program only for a main-thread universal runtime.
+	 */
+	mainThreadProgramBackend?: OctaneMainThreadProgramBackend;
 	/**
 	 * Compiler options selected by the current module's Rspack layer. Unknown
 	 * layers retain the top-level compiler options. Runtime aliases remain a

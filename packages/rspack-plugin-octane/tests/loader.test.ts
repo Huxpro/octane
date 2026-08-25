@@ -150,6 +150,75 @@ describe('octane Rspack loader', () => {
 		});
 	});
 
+	it('hands a main-thread program backend only to the layer configured for it', () => {
+		// The backend travels through four allowlists between a build's config and
+		// the compiler instance, and a key missing from any of them is silent: the
+		// build succeeds and ships the interpreted encoding. This pins the last
+		// hop, where the loader chooses what the compiler is built with.
+		mocks.transform.mockReturnValue(null);
+		const backend = {
+			signature: 'fixture-backend/1',
+			deriveLynxMainThreadProgram: () => null,
+			emitLynxMainThreadProgram: () => ({ source: '', valueCount: 0, eventCount: 0 }),
+		};
+		const options = {
+			universalRuntime: { runtime: 'lynx', thread: 'background' },
+			layerSpecializations: {
+				'octane:main-thread': {
+					universalRuntime: { runtime: 'lynx', thread: 'main-thread' },
+					mainThreadProgramBackend: backend,
+				},
+			},
+		};
+
+		runLoader({ options, module: { buildInfo: {}, layer: 'octane:main-thread' } });
+		expect(mocks.createOctaneCompiler).toHaveBeenLastCalledWith(
+			expect.objectContaining({ mainThreadProgramBackend: backend }),
+		);
+
+		runLoader({ options, module: { buildInfo: {}, layer: 'octane:background' } });
+		expect(mocks.createOctaneCompiler.mock.lastCall?.[0]).not.toHaveProperty(
+			'mainThreadProgramBackend',
+		);
+	});
+
+	it('inherits a backend configured for the whole graph', () => {
+		// A graph with one thread has no layer to specialize. Inheriting is safe
+		// because the compiler emits a program only for a main-thread universal
+		// runtime, so a background layer that receives one still compiles as it
+		// always did — that gate is asserted where it lives, in the compiler.
+		mocks.transform.mockReturnValue(null);
+		const backend = {
+			signature: 'fixture-backend/1',
+			deriveLynxMainThreadProgram: () => null,
+			emitLynxMainThreadProgram: () => ({ source: '', valueCount: 0, eventCount: 0 }),
+		};
+
+		runLoader({ options: { mainThreadProgramBackend: backend } });
+		expect(mocks.createOctaneCompiler).toHaveBeenLastCalledWith(
+			expect.objectContaining({ mainThreadProgramBackend: backend }),
+		);
+
+		runLoader({
+			options: {
+				mainThreadProgramBackend: backend,
+				layerSpecializations: { 'octane:main-thread': {} },
+			},
+			module: { buildInfo: {}, layer: 'octane:main-thread' },
+		});
+		expect(mocks.createOctaneCompiler).toHaveBeenLastCalledWith(
+			expect.objectContaining({ mainThreadProgramBackend: backend }),
+		);
+	});
+
+	it('builds no backend into a compiler when no build configured one', () => {
+		mocks.transform.mockReturnValue(null);
+		runLoader();
+		expect(mocks.createOctaneCompiler.mock.lastCall?.[0]).not.toHaveProperty(
+			'mainThreadProgramBackend',
+		);
+	});
+
 	it('selects compiler configuration from the current Rspack layer', () => {
 		mocks.transform.mockReturnValue(null);
 		const options = {
