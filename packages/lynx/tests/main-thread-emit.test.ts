@@ -263,10 +263,15 @@ function throughEmission<Item>(
 	const papi = createHost();
 	const page = papi.createPage('0', 0);
 	const pageId = papi.getUniqueId(page);
-	const chrome = instantiate(PAGE, 'createPage')(papi)(...([pageId, page] as never[]));
+	// The emission returns an unattached subtree and leaves the single append to
+	// its caller, so every attach in this file is one the test performs. That is
+	// the contract `assembles the subtree detached` below pins.
+	const chrome = instantiate(PAGE, 'createPage')(papi)(...([pageId] as never[]));
+	papi.insertBefore(page, chrome[0] as never, null);
 	const create = instantiate(template, name)(papi);
 	items.forEach((item, index) => {
-		create(...([pageId, chrome[1], ...args(item, index)] as never[]));
+		const nodes = create(...([pageId, ...args(item, index)] as never[]));
+		papi.insertBefore(chrome[1] as never, nodes[0] as never, null);
 	});
 	return shape(papi.pages[0]!);
 }
@@ -346,22 +351,54 @@ describe('Lynx main-thread program emission', () => {
 		const page = papi.createPage('0', 0);
 		const create = instantiate(ROW, 'createRow')(papi);
 		const nodes = create(
-			...([papi.getUniqueId(page), page, 'row', '1', 'a', 'tok-a', 'tok-b'] as never[]),
+			...([papi.getUniqueId(page), 'row', '1', 'a', 'tok-a', 'tok-b'] as never[]),
 		) as { events: Map<string, unknown> }[];
 		expect([...nodes[3]!.events.entries()]).toEqual([['bindEvent:tap', 'tok-a']]);
 		expect([...nodes[5]!.events.entries()]).toEqual([['bindEvent:tap', 'tok-b']]);
 		expect(nodes[0]!.events.size).toBe(0);
 	});
 
-	it('assembles the subtree detached and enters the live tree with one append', () => {
+	it('crosses to the host for no event site whose listener the caller did not supply', () => {
+		// A site's handler is a plan slot the caller resolves per render, and an
+		// authored `onTap?` that is not passed leaves it undefined. Passing that
+		// straight through would not misroute a tap — a host reads an undefined
+		// listener as *remove this event*, which on a node one statement old is a
+		// no-op — it would spend a crossing saying so. So the claim is about the
+		// crossing, not about the resulting tree, and the resulting tree is what a
+		// fake host that treats `setEvent(…, undefined)` as a delete would let
+		// pass either way. The calls are counted instead.
+		const host = createHost();
+		const calls: unknown[][] = [];
+		const papi = {
+			...host,
+			setEvent(target: never, kind: never, name: never, listener: never) {
+				calls.push([target, kind, name, listener]);
+				host.setEvent(target, kind, name, listener);
+			},
+		};
+		const page = papi.createPage('0', 0);
+		const create = instantiate(ROW, 'createRow')(papi);
+		const nodes = create(
+			...([papi.getUniqueId(page), 'row', '1', 'a', undefined, 'tok-b'] as never[]),
+		) as { events: Map<string, unknown> }[];
+		// One site declared two, and only the supplied one reached the host.
+		expect(calls).toEqual([[nodes[5], 'bindEvent', 'tap', 'tok-b']]);
+		expect(nodes[3]!.events.size).toBe(0);
+		expect([...nodes[5]!.events.entries()]).toEqual([['bindEvent:tap', 'tok-b']]);
+	});
+
+	it("assembles the subtree detached and never touches the caller's tree", () => {
 		// The emitted order is the dense applier's, and this is the part of it
 		// that is a contract rather than a detail: every node is appended to its
-		// own parent first, so the caller's tree is touched exactly once, at the
-		// end. A host that laid out on every insertion would otherwise pay for
-		// the whole subtree instead of for one node — which is the cost #163's
-		// single flush exists to avoid. It is also the only test that drives the
-		// emission's `papi.append` branch; everywhere else the fake host has none
-		// and the `insertBefore` fallback is what runs.
+		// own parent and to nothing else, so the subtree is complete and still
+		// detached when the create returns. The caller performs the one append
+		// that puts it in the page — which is what lets it put a keyed range's
+		// members into a node this program made *before* any of it is live. A
+		// host that laid out on every insertion would otherwise pay for the whole
+		// subtree, and then again per member, instead of for one node. It is also
+		// the only test that drives the emission's `papi.append` branch;
+		// everywhere else the fake host has none and the `insertBefore` fallback
+		// is what runs.
 		const papi = createHost();
 		const appends: [unknown, unknown][] = [];
 		const recording = {
@@ -373,13 +410,14 @@ describe('Lynx main-thread program emission', () => {
 		};
 		const page = recording.createPage('0', 0);
 		const create = instantiate(ROW, 'createRow')(recording);
-		const nodes = create(
-			...([recording.getUniqueId(page), page, 'row', '1', 'a', 1, 2] as never[]),
-		);
-		// One append per node: the program's shape, not a budget.
-		expect(appends.length).toBe(ROW.nodes.length);
-		expect(appends[appends.length - 1]).toEqual([page, nodes[0]]);
-		expect(appends.slice(0, -1).some(([parent]) => parent === page)).toBe(false);
+		const nodes = create(...([recording.getUniqueId(page), 'row', '1', 'a', 1, 2] as never[]));
+		// One append per node the program did not make itself: the program's
+		// shape, not a budget.
+		expect(appends.length).toBe(ROW.nodes.length - 1);
+		expect(appends.some(([parent]) => parent === page)).toBe(false);
+		expect(appends.some(([, child]) => child === nodes[0])).toBe(false);
+		// Still detached, which is the claim: nothing above the root was written.
+		expect(recording.getParent(nodes[0] as never)).toBe(null);
 	});
 
 	it('reports the slot and listener arity the caller has to supply', () => {

@@ -1392,9 +1392,11 @@ function buildFirstScreenBatch(
  *
  * `program` is a compiled main-thread program (issue #163), and it is the one
  * kind carrying no structure: it paints itself, so there is nothing here for a
- * walk to read beyond the IDs and ranges it claimed. The applier that runs one
- * is the host driver's, and until it can (C2d) it refuses this kind by name
- * rather than reading a node it cannot paint as an empty range.
+ * walk to read. What it carries instead is what a mount needs and a walk cannot
+ * recover — the plan whose `bind` produces the create, the value array its
+ * positional arguments are drawn from, and the IDs its hosts took — with
+ * `children` still holding any keyed range's members, which are this renderer's
+ * to materialize rather than the program's to paint.
  */
 export interface LynxFirstScreenResultNode {
 	readonly kind: 'host' | 'range' | 'program';
@@ -1403,6 +1405,10 @@ export interface LynxFirstScreenResultNode {
 	readonly props?: Readonly<Record<string, unknown>>;
 	readonly visibility?: 'visible' | 'hidden';
 	readonly children: readonly LynxFirstScreenResultNode[];
+	readonly plan?: UniversalProgramPlan;
+	readonly values?: readonly unknown[];
+	readonly ids?: readonly number[];
+	readonly spans?: readonly number[];
 }
 
 /** One background listener this pass assigned, addressed to a rendered host. */

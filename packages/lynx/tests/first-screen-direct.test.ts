@@ -15,6 +15,7 @@ import {
 	type LynxFirstScreenDirectNode,
 } from '../src/core/host-driver.js';
 import { LYNX_FIRST_TREE_STATE } from '../src/core/first-screen.js';
+import type { UniversalProgramPlan } from 'octane/universal/native';
 import { createFakePAPI, shape, type FakeNode } from './_fixtures/fake-element-papi.js';
 import {
 	attachThreadFunction,
@@ -681,5 +682,179 @@ describe('direct first-screen applier, native lists', () => {
 		expect(sign).toBeGreaterThan(0);
 		expect(list.node.children).toHaveLength(1);
 		expect(shape(list.node.children[0]!)).toMatchObject({ type: 'list-item' });
+	});
+});
+
+// Issue-#163 C2d: shapes the direct applier declines rather than approximates.
+//
+// This applier is exported, so the trees below are ones a caller can hand it —
+// including the renderer, which produces a hidden subtree and a native list row
+// through ordinary authoring. Each of these is a program this mount cannot
+// finish correctly, and the point of the tests is that it says so instead of
+// painting a page that is wrong with nothing red. The end-to-end differential
+// against the interpreted encoding lives in
+// `packages/octane/tests/lynx-main-thread-program-first-screen.test.ts`.
+
+/** A program that makes `nodes` views and appends each to the one before it. */
+function fakeProgram(overrides: Partial<UniversalProgramPlan> = {}): UniversalProgramPlan {
+	const nodes = overrides.nodes ?? 2;
+	return {
+		kind: 'program',
+		slots: [],
+		nodes,
+		values: [],
+		events: [],
+		ranges: [],
+		bind: (host: unknown) => {
+			const papi = host as { createElement(type: string, pageId: number, text: string): FakeNode };
+			return (...args: unknown[]) => {
+				const pageId = args[0] as number;
+				const made: FakeNode[] = [];
+				for (let index = 0; index < nodes; index++) {
+					made.push(papi.createElement('view', pageId, ''));
+				}
+				return made;
+			};
+		},
+		...overrides,
+	} as UniversalProgramPlan;
+}
+
+function programNode(
+	overrides: Partial<LynxFirstScreenDirectNode> = {},
+): LynxFirstScreenDirectNode {
+	return {
+		kind: 'program',
+		id: 1,
+		children: [],
+		plan: fakeProgram(),
+		values: [],
+		ids: [1, 2],
+		spans: [],
+		...overrides,
+	};
+}
+
+function intrinsicHost(): ReturnType<typeof createFakePAPI> {
+	const papi = createFakePAPI();
+	return {
+		...papi,
+		intrinsics: {
+			view: (pageId: number) => papi.createElement('view', pageId, ''),
+			text: (pageId: number) => papi.createElement('text', pageId, ''),
+			rawText: (value: string) => papi.createElement('#text', 0, value),
+		},
+	};
+}
+
+const PROGRAM_ENVELOPE: LynxFirstScreenDirectEnvelope = {
+	renderer: 'lynx',
+	version: 1,
+	events: [],
+};
+
+function applyProgram(node: LynxFirstScreenDirectNode): () => unknown {
+	const papi = intrinsicHost();
+	const container = createLynxHostContainer(papi, { root: 1 });
+	return () => applyLynxFirstScreenDirect(container, [node], PROGRAM_ENVELOPE);
+}
+
+describe('direct first-screen applier, compiled main-thread programs', () => {
+	it('mounts a program and owns every node it made', () => {
+		// The premise the refusals below are refusals *from*: a well-formed
+		// program paints, and every node it returned is in the physical ownership
+		// journal that disposal reads — a program writes no record, so that
+		// journal is the only thing standing between its nodes and a leak.
+		const papi = intrinsicHost();
+		const container = createLynxHostContainer(papi, { root: 1 });
+		expect(applyLynxFirstScreenDirect(container, [programNode()], PROGRAM_ENVELOPE)).toBe(true);
+		expect(papi.pages[0]!.children).toHaveLength(1);
+		expect(disposeLynxHostContainer(container).complete).toBe(true);
+		expect(papi.pages[0]!.children).toHaveLength(0);
+	});
+
+	it('refuses a program node that carries no plan to mount', () => {
+		expect(applyProgram({ kind: 'program', id: 1, children: [] })).toThrow(
+			/carries no plan, values, or ids/,
+		);
+	});
+
+	it('refuses a program the renderer numbered for a different node count', () => {
+		// The ids are how the background addresses the program's hosts. One short
+		// is an event site or a range parent read against a table with no entry
+		// for it, which is a tap routed nowhere rather than anything red.
+		expect(applyProgram(programNode({ plan: fakeProgram({ nodes: 3 }), ids: [1, 2] }))).toThrow(
+			/declares 3 nodes but was assigned 2 ids/,
+		);
+	});
+
+	it('refuses a program whose create returns a different number of nodes than it declares', () => {
+		// A separate fault from the one above, and the later of the two: the ids
+		// agree with the plan, and the create disagrees with both. The returned
+		// nodes are the only map back into a subtree with no description, so a
+		// program that returned too few would leave this container holding
+		// physical nodes it cannot name — checked before any of them is
+		// journalled, while the fault is still the program's.
+		const short = {
+			...fakeProgram({ nodes: 2 }),
+			bind: (host: unknown) => {
+				const papi = host as { createElement(type: string, id: number, text: string): FakeNode };
+				return (...args: unknown[]) => [papi.createElement('view', args[0] as number, '')];
+			},
+		} as UniversalProgramPlan;
+		expect(applyProgram(programNode({ plan: short }))).toThrow(/declaring 2 nodes returned 1/);
+	});
+
+	it('refuses a program whose member spans do not match its declared ranges', () => {
+		expect(
+			applyProgram(
+				programNode({
+					plan: fakeProgram({ ranges: [{ slot: 0, node: 1, id: 2 }] }),
+					spans: [],
+				}),
+			),
+		).toThrow(/declares 1 keyed ranges but carries 0 member spans/);
+	});
+
+	it('refuses a hidden program, whose raw-text nodes it cannot tell apart', () => {
+		// A hidden host is marked with a `hidden` attribute unless it is raw text,
+		// and which of a program's nodes are raw text is exactly what a program
+		// stopped carrying.
+		expect(applyProgram(programNode({ visibility: 'hidden' }))).toThrow(
+			/cannot yet mount a hidden compiled main-thread program/,
+		);
+	});
+
+	it('refuses a program inside a native list row', () => {
+		const papi = createFakePAPI({ list: true });
+		const host = {
+			...papi,
+			intrinsics: {
+				view: (pageId: number) => papi.createElement('view', pageId, ''),
+				text: (pageId: number) => papi.createElement('text', pageId, ''),
+				rawText: (value: string) => papi.createElement('#text', 0, value),
+			},
+		};
+		const container = createLynxHostContainer(host, { root: 1 });
+		const tree: LynxFirstScreenDirectNode[] = [
+			{
+				kind: 'host',
+				id: 1,
+				type: 'list',
+				props: {},
+				children: [
+					{
+						kind: 'host',
+						id: 2,
+						type: 'list-item',
+						props: { 'item-key': 'a' },
+						children: [programNode({ id: 3, ids: [3, 4] })],
+					},
+				],
+			},
+		];
+		expect(() => applyLynxFirstScreenDirect(container, tree, PROGRAM_ENVELOPE)).toThrow(
+			/cannot yet mount a compiled main-thread program inside a native list row/,
+		);
 	});
 });

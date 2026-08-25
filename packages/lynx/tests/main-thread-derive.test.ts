@@ -178,7 +178,10 @@ function throughEmission(
 		host: unknown,
 	) => (...rest: never[]) => unknown;
 	const page = papi.pages[0]!;
-	bind(papi)(...([page.id, page, ...args] as never[]));
+	// The emission returns an unattached subtree; its caller performs the single
+	// append that puts it in the page.
+	const nodes = bind(papi)(...([page.id, ...args] as never[])) as readonly never[];
+	papi.insertBefore(page as never, nodes[0]!, null);
 	return shape(papi.pages[0]!);
 }
 

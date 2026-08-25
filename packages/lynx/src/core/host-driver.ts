@@ -8,6 +8,7 @@ import type {
 	UniversalHostTemplateProgramValue,
 	UniversalPreparedHostBatch,
 	UniversalPortalTargetHandle,
+	UniversalProgramPlan,
 	UniversalSerializableValue,
 } from 'octane/universal/native';
 import {
@@ -259,6 +260,16 @@ interface LynxHostState<Node extends LynxElementRef> {
 	hasMainThreadProps: boolean;
 	/** Monotonic: ordinary trees never need native-list ancestry bookkeeping. */
 	hasNativeListTopology: boolean;
+	/**
+	 * Monotonic: this container painted a compiled main-thread program (issue
+	 * #163), so part of its physical tree has no record describing it.
+	 *
+	 * That is the point of a program rather than a gap in one — it is compiled so
+	 * that its subtree is never described — but every path that reads the record
+	 * tree as the whole tree has to say so instead of quietly reporting the part
+	 * it can see.
+	 */
+	hasMainThreadProgram: boolean;
 	acceptedVersion: number;
 	disposed: boolean;
 	disposing: boolean;
@@ -2998,6 +3009,7 @@ export function createLynxHostContainer<Node extends LynxElementRef>(
 		onCallbackFault: options.onCallbackFault,
 		hasMainThreadProps: false,
 		hasNativeListTopology: false,
+		hasMainThreadProgram: false,
 		acceptedVersion: 0,
 		disposed: false,
 		disposing: false,
@@ -3302,6 +3314,28 @@ export interface LynxFirstScreenDirectNode {
 	readonly props?: Readonly<Record<string, unknown>>;
 	readonly visibility?: 'visible' | 'hidden';
 	readonly children: readonly LynxFirstScreenDirectNode[];
+	/**
+	 * The compiled program a `program` node paints itself with (issue #163), the
+	 * component value array its positional arguments are drawn from, and the ids
+	 * its hosts took, in program order.
+	 *
+	 * Three members rather than one nested object because they are three separate
+	 * things the renderer already holds: the plan is per component and shared by
+	 * every instance, the values are the instance's own, and the ids belong to
+	 * this pass. Wrapping them would allocate one object per program on the paint
+	 * path to describe a grouping neither side needs.
+	 */
+	readonly plan?: UniversalProgramPlan;
+	readonly values?: readonly unknown[];
+	readonly ids?: readonly number[];
+	/**
+	 * How many of `children` belong to each declared keyed range, in order.
+	 *
+	 * A hole is not a node on either encoding — the interpreted arm splices a
+	 * hole's members straight into their parent — so the members are one flat
+	 * list and this says where each range's share of it begins and ends.
+	 */
+	readonly spans?: readonly number[];
 }
 
 /** One background listener the first-screen renderer assigned, by host id. */
@@ -3481,6 +3515,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			`first-screen envelope version ${String(envelope.version)} is not a positive safe integer.`,
 		);
 	}
+	const papiIntrinsics = state.papi.intrinsics;
 	const eventsByHost = new Map<number, [string, UniversalEventListenerDescriptor][]>();
 	for (const binding of envelope.events) {
 		let entries = eventsByHost.get(binding.id);
@@ -3510,6 +3545,17 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		while (pending.length !== 0) {
 			const [nodes, parentVisible] = pending.pop()!;
 			for (const node of nodes) {
+				// A program cannot be built at all on a host with no intrinsic
+				// element factories, and unlike a `<list>` there is nothing to fall
+				// back to: the staged path is commands, and a program exists so that
+				// its first screen is not commands. Refused here, in the pre-walk
+				// that already runs before anything is created, rather than from
+				// inside `bind` after earlier roots are painted.
+				if (node.kind === 'program' && papiIntrinsics === undefined) {
+					throw hostError(
+						'a compiled main-thread program needs a host with intrinsic element factories.',
+					);
+				}
 				// Ranges are transparent here exactly as they are in the walk below:
 				// they carry no props of their own and pass visibility through.
 				const visible =
@@ -3643,6 +3689,206 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			}
 		}
 	};
+	/**
+	 * Bound create functions for this apply, by plan.
+	 *
+	 * `bind` reads the host's intrinsic element factories and closes over one
+	 * append, so what it produces belongs to the host rather than to the
+	 * instance — while a screen holds one program node per rendered instance,
+	 * every one of them naming the same module-scope plan. Caching for the
+	 * length of the apply is what makes binding once per program instead of once
+	 * per row. The map dies with the call, so no closure over this container's
+	 * PAPI outlives the container it captured.
+	 */
+	const boundPrograms = new Map<UniversalProgramPlan, (...args: unknown[]) => readonly unknown[]>();
+	/**
+	 * Paint one compiled main-thread program (issue #163).
+	 *
+	 * The program is the paint: it creates its own nodes, writes its own scalar
+	 * props, installs its own event sites and appends its own subtree, and the
+	 * only thing that comes back is the run's nodes in program order. So there
+	 * is no walk here and no record written — a program exists precisely so its
+	 * subtree is never described — and what this owes the container is the part
+	 * that is not painting: physical ownership for teardown, and the native
+	 * event journal that lets terminal cleanup clear the tuples the program set.
+	 */
+	const mountProgram = (
+		node: LynxFirstScreenDirectNode,
+		parentId: number | null,
+		physicalParent: Node,
+		parentVisible: boolean,
+		insideList: boolean,
+	): void => {
+		const plan = node.plan;
+		const ids = node.ids;
+		const values = node.values;
+		if (plan === undefined || ids === undefined || values === undefined) {
+			throw hostError(
+				'first-screen program node carries no plan, values, or ids; a compiled main-thread program cannot be mounted from a description.',
+			);
+		}
+		// Each refusal below names a tree the renderer can produce and this mount
+		// cannot yet finish. Approximating one paints a page that is wrong with
+		// nothing red, which is the failure this train's C2a slice removed.
+		if (insideList) {
+			// A native list's row owns no element at paint time — the platform
+			// materializes it later, through `componentAtIndex` — and a program
+			// paints eagerly. Running one per cell is a different mechanism, not a
+			// missing branch here.
+			throw hostError(
+				'first-screen direct apply cannot yet mount a compiled main-thread program inside a native list row.',
+			);
+		}
+		if (!parentVisible || node.visibility === 'hidden') {
+			// A hidden host is marked with a `hidden` attribute unless it is raw
+			// text, and which of a program's nodes are raw text is exactly what the
+			// program stopped carrying. Guessing would either mark a text node the
+			// command path leaves alone or leave a view visible.
+			throw hostError(
+				'first-screen direct apply cannot yet mount a hidden compiled main-thread program.',
+			);
+		}
+		if (plan.nodes < 1) {
+			throw hostError('a compiled main-thread program makes no nodes; there is nothing to mount.');
+		}
+		if (ids.length !== plan.nodes) {
+			throw hostError(
+				`first-screen program declares ${plan.nodes} nodes but was assigned ${ids.length} ids.`,
+			);
+		}
+		const children = node.children;
+		const spans = node.spans;
+		if (spans === undefined || spans.length !== plan.ranges.length) {
+			throw hostError(
+				`first-screen program declares ${plan.ranges.length} keyed ranges but carries ${spans?.length ?? 0} member spans.`,
+			);
+		}
+		const args: unknown[] = [container.pageComponentUniqueId];
+		for (const slot of plan.values) args.push(values[slot]);
+		// Tokens first, before anything exists: one per event site the renderer
+		// announced a listener for, and `undefined` for a site this render did
+		// not pass a handler to. The emitted program installs a site only when
+		// its argument is defined, which is what makes an absent optional handler
+		// install nothing — the same answer the command path gives by simply not
+		// listing that host.
+		const tokens: (LynxNativeEventToken | undefined)[] = [];
+		for (const site of plan.events) {
+			const hostId = ids[site.node];
+			if (hostId === undefined) {
+				throw hostError(
+					`first-screen program binds an event on node ${site.node}, which it did not number.`,
+				);
+			}
+			const announced = eventsByHost.get(hostId)?.find(([type]) => type === site.type);
+			const token =
+				announced === undefined
+					? undefined
+					: encodeCheckedLynxNativeEventToken(
+							container.root,
+							hostId,
+							1,
+							announced[1].id,
+							announced[1].priority,
+						);
+			tokens.push(token);
+			args.push(token);
+		}
+		let bound = boundPrograms.get(plan);
+		if (bound === undefined) {
+			bound = plan.bind(papi);
+			if (typeof bound !== 'function') {
+				throw hostError(
+					'a compiled main-thread program bound to something other than a create function.',
+				);
+			}
+			boundPrograms.set(plan, bound);
+		}
+		// Everything the program makes is detached until this function attaches it,
+		// so a throw inside the create leaves an orphan subtree that never entered
+		// the page and never entered the ownership journal — nothing half-painted
+		// for terminal disposal to find, which is more than the host path can say.
+		const created = bound(...args);
+		// The returned nodes are the only map back into a subtree with no
+		// description, so a program that returns the wrong number of them has
+		// left this container holding physical nodes it cannot name. Checked
+		// before any of them is journalled, while the fault is still the
+		// program's rather than the ownership journal's.
+		if (created.length !== plan.nodes) {
+			throw hostError(
+				`a compiled main-thread program declaring ${plan.nodes} nodes returned ${created.length}.`,
+			);
+		}
+		state.hasMainThreadProgram = true;
+		for (const element of created) state.ownedNodes.add(element as Node);
+		for (let index = 0; index < plan.events.length; index++) {
+			const token = tokens[index];
+			if (token === undefined) continue;
+			const site = plan.events[index]!;
+			const binding = parseLynxNativeEventProp(site.type);
+			if (binding === null) {
+				throw hostError(`event ${JSON.stringify(site.type)} is not a Lynx event prop.`);
+			}
+			// Journalled rather than installed: the program already called
+			// `setEvent` with this exact token. What terminal cleanup needs is the
+			// tuple to clear, and it reads that from here.
+			nativeEventMap(state, created[site.node] as Node).set(
+				site.type,
+				Object.freeze({ source: 'background', binding, listener: token }),
+			);
+		}
+		// The attach is queued before the members so it pops after them, which is
+		// how the rest of this walk keeps a subtree out of the caller's tree until
+		// it is finished. It is the whole reason the emitted create returns its
+		// root instead of appending it: a range's members go into a node the
+		// program made, and a program that had already attached would make every
+		// one of them an insertion into the live page.
+		stack.push({
+			node: null,
+			papiNode: created[0] as Node,
+			listRecord: null,
+			parentRecord: null,
+			parentId,
+			physicalParent,
+			parentVisible,
+			insideList: false,
+		});
+		// Reversed twice, so the members pop in `plan.ranges` order and, within a
+		// range, in authored order. Two ranges can name the same node — `{a}{b}`
+		// in one text host is two holes in one parent — so the order between them
+		// is as load-bearing as the order inside one.
+		let end = children.length;
+		for (let range = plan.ranges.length - 1; range >= 0; range--) {
+			const site = plan.ranges[range]!;
+			const memberParent = created[site.node];
+			if (memberParent === undefined) {
+				throw hostError(
+					`first-screen program appends a keyed range into node ${site.node}, which it did not make.`,
+				);
+			}
+			const start = end - spans[range]!;
+			if (start < 0) {
+				throw hostError('first-screen program declares more keyed range members than it carries.');
+			}
+			for (let member = end - 1; member >= start; member--) {
+				stack.push({
+					node: children[member]!,
+					papiNode: null,
+					listRecord: null,
+					// A program's node owns no record — that is what a program is —
+					// so a member links into `parentId` and nothing else.
+					parentRecord: null,
+					parentId: ids[site.node]!,
+					physicalParent: memberParent as Node,
+					parentVisible,
+					insideList: false,
+				});
+			}
+			end = start;
+		}
+		if (end !== 0) {
+			throw hostError('first-screen program carries keyed range members no range claims.');
+		}
+	};
 	const visit = (frame: WalkFrame): void => {
 		const { node, parentRecord, parentId, physicalParent, parentVisible, insideList } = frame;
 		if (node === null) {
@@ -3660,15 +3906,11 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			return;
 		}
 		if (node.kind === 'program') {
-			// A compiled main-thread program (issue #163) paints itself: it carries
-			// no type, no props and no described children, so the range-transparent
-			// branch below would walk past it and paint the page it left out. This
-			// applier is the one that will run one — `bind` the host once, call the
-			// create — and until it does, saying so is what keeps a program from
-			// arriving as an empty range nobody notices.
-			throw new Error(
-				'Octane Lynx first-screen direct applier cannot yet mount a compiled main-thread program.',
-			);
+			// Handled before the range-transparent branch below, which would
+			// otherwise walk past a node carrying no type and no props and publish
+			// the page it left out.
+			mountProgram(node, parentId, physicalParent, parentVisible, insideList);
+			return;
 		}
 		if (node.kind !== 'host') {
 			pushChildren(node, parentRecord, parentId, physicalParent, parentVisible, insideList);
@@ -3718,9 +3960,14 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		if (parentRecord !== null) {
 			if (parentRecord.children === EMPTY_HOST_CHILDREN) parentRecord.children = [];
 			parentRecord.children.push(node.id);
-		} else {
+		} else if (parentId === null) {
 			state.rootChildren.push(node.id);
 		}
+		// The remaining case is a keyed range member whose parent is a compiled
+		// program's node (issue #163): a real parent, named by `record.parent`,
+		// with no record to link into — because a program's subtree is never
+		// described. Calling it a page root instead would be a lie the ownership
+		// journal then disagrees with.
 		if (insideList) {
 			// A row, or something under one. It owns no element until the platform
 			// asks for its cell, so there is nothing to create, apply, attach, or
@@ -3837,6 +4084,17 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 	if (state.firstTree !== null) throw hostError('the root already owns a first-tree journal.');
 	if (state.acceptedVersion === 0)
 		throw hostError('cannot capture a first tree before a batch is accepted.');
+	if (state.hasMainThreadProgram) {
+		// A capture is a description of the painted tree, assembled from records,
+		// and a compiled main-thread program has no record for any node it made
+		// (issue #163). Journalling what the records can see would hand adoption a
+		// tree missing everything the program painted — the silent half-answer this
+		// train keeps refusing. Adoption for a program is slot state off the keyed
+		// slot map, not a capture walk, and that is what replaces this refusal.
+		throw hostError(
+			'a first screen holding a compiled main-thread program cannot be captured as a described tree.',
+		);
+	}
 	if (
 		options.plan !== undefined &&
 		(typeof options.plan !== 'string' || options.plan.length === 0)

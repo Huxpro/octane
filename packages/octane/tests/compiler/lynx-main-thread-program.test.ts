@@ -182,7 +182,11 @@ function throughCompiledProgram(root: any, values: readonly unknown[]): unknown 
 		...root.values.map((slot: number) => values[slot]),
 		...root.events.map(() => () => undefined),
 	];
-	root.bind(papi)(page.id, page, ...args);
+	// The compiled create returns an unattached subtree and leaves the single
+	// append to its caller, so that a keyed range's members can go into a node it
+	// made before any of it is live.
+	const nodes = root.bind(papi)(page.id, ...args) as readonly never[];
+	papi.insertBefore(page as never, nodes[0]!, null);
 	return shape(papi.pages[0]!);
 }
 
@@ -308,7 +312,8 @@ export function Card(props: { label: string }) @{
 		const papi = createHost();
 		createLynxHostContainer(papi, { root: 1 });
 		const page = papi.pages[0]!;
-		root.bind(papi)(page.id, page);
+		const nodes = root.bind(papi)(page.id) as readonly never[];
+		papi.insertBefore(page as never, nodes[0]!, null);
 		// The literal is painted; nothing paints the dynamic one.
 		expect(JSON.stringify(shape(papi.pages[0]!))).toContain('tail');
 	});
