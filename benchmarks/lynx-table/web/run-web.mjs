@@ -102,6 +102,19 @@ const ALL_CELLS = [
 		core: 'block',
 		blockMode: 'derived',
 	},
+	// Issue-#163 C4b: the same application entry, the same core, and the same
+	// page driver, built with the main-thread program backend so the first screen
+	// is straight-line compiled code driving the Element PAPI instead of a
+	// description an interpreter walks. The background chunk is byte-identical to
+	// `octane`'s, which is what makes `octane-mts-program ÷ octane` an A/B of the
+	// first-screen encoding and nothing else — and what makes an update-band
+	// difference between them a finding rather than a build artefact, since after
+	// adoption both cells run the same background code over the same wire.
+	{
+		id: 'octane-mts-program',
+		bundle: path.join(root, 'app/dist-mtsprogram/main.web.bundle'),
+		mtsProgram: true,
+	},
 	{ id: 'vue-vdom', bundle: path.join(root, 'reference/vdom-ifr-et/main.web.bundle') },
 	{ id: 'vue-vapor', bundle: path.join(root, 'reference/vapor-ifr/main.web.bundle') },
 	{ id: 'react', bundle: path.join(root, 'reference/react/main.web.bundle') },
@@ -615,8 +628,11 @@ async function main() {
 	if (!args['skip-app-build']) {
 		if (wanted.has('octane')) buildTableApp();
 		for (const cell of ALL_CELLS) {
-			if (cell.core === 'block' && wanted.has(cell.id)) {
+			if (!wanted.has(cell.id)) continue;
+			if (cell.core === 'block') {
 				buildTableApp({ core: 'block', blockMode: cell.blockMode ?? 'scoped' });
+			} else if (cell.mtsProgram) {
+				buildTableApp({ mtsProgram: true });
 			}
 		}
 	}

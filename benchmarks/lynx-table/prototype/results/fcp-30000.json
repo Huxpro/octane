@@ -1,0 +1,149 @@
+{
+  "rows": 30000,
+  "reps": 7,
+  "samples": {
+    "octane": [
+      {
+        "fcp": 4136.19999999553,
+        "settled": 4136.19999999553,
+        "selectors": 120028
+      },
+      {
+        "fcp": 4246.19999999553,
+        "settled": 4246.19999999553,
+        "selectors": 120028
+      },
+      {
+        "fcp": 4326.79999999702,
+        "settled": 4326.79999999702,
+        "selectors": 120028
+      },
+      {
+        "fcp": 4269.70000000298,
+        "settled": 4269.70000000298,
+        "selectors": 120028
+      },
+      {
+        "fcp": 4191.80000000447,
+        "settled": 4191.80000000447,
+        "selectors": 120028
+      },
+      {
+        "fcp": 4359.20000000298,
+        "settled": 4359.20000000298,
+        "selectors": 120028
+      },
+      {
+        "fcp": 4332.60000000149,
+        "settled": 4332.60000000149,
+        "selectors": 120028
+      }
+    ],
+    "octane-direct": [
+      {
+        "fcp": 2374.1999999955297,
+        "settled": 2374.1999999955297,
+        "selectors": 0
+      },
+      {
+        "fcp": 2508.7000000029802,
+        "settled": 2508.7000000029802,
+        "selectors": 0
+      },
+      {
+        "fcp": 2309.2999999970198,
+        "settled": 2309.2999999970198,
+        "selectors": 0
+      },
+      {
+        "fcp": 2325.6999999955297,
+        "settled": 2325.6999999955297,
+        "selectors": 0
+      },
+      {
+        "fcp": 2406.10000000149,
+        "settled": 2406.10000000149,
+        "selectors": 0
+      },
+      {
+        "fcp": 2472,
+        "settled": 2472,
+        "selectors": 0
+      },
+      {
+        "fcp": 2424.89999999851,
+        "settled": 2424.89999999851,
+        "selectors": 0
+      }
+    ],
+    "octane-mts-program": [
+      {
+        "fcp": 3338.8000000044703,
+        "settled": 3338.8000000044703,
+        "selectors": 0
+      },
+      {
+        "fcp": 3281.6999999955297,
+        "settled": 3281.6999999955297,
+        "selectors": 0
+      },
+      {
+        "fcp": 3506.10000000149,
+        "settled": 3506.10000000149,
+        "selectors": 0
+      },
+      {
+        "fcp": 3144,
+        "settled": 3144,
+        "selectors": 0
+      },
+      {
+        "fcp": 3299.8000000044703,
+        "settled": 3299.8000000044703,
+        "selectors": 0
+      },
+      {
+        "fcp": 3406.9000000059605,
+        "settled": 3406.9000000059605,
+        "selectors": 0
+      },
+      {
+        "fcp": 3313.5,
+        "settled": 3313.5,
+        "selectors": 0
+      }
+    ]
+  },
+  "regimes": {
+    "octane": [
+      {
+        "rows": 30000,
+        "selectors": 120028
+      },
+      {
+        "rows": 30000,
+        "selectors": 120028
+      }
+    ],
+    "octane-direct": [
+      {
+        "rows": 30000,
+        "selectors": 0
+      },
+      {
+        "rows": 30000,
+        "selectors": 0
+      }
+    ],
+    "octane-mts-program": [
+      {
+        "rows": 30000,
+        "selectors": 0
+      },
+      {
+        "rows": 30000,
+        "selectors": 0
+      }
+    ]
+  }
+}
