@@ -262,24 +262,21 @@ interface LynxHostState<Node extends LynxElementRef> {
 	/** Monotonic: ordinary trees never need native-list ancestry bookkeeping. */
 	hasNativeListTopology: boolean;
 	/**
-	 * Monotonic: this container painted a compiled main-thread program (issue
-	 * #163), so part of its physical tree has no record describing it.
-	 *
-	 * That is the point of a program rather than a gap in one — it is compiled so
-	 * that its subtree is never described — but every path that reads the record
-	 * tree as the whole tree has to say so instead of quietly reporting the part
-	 * it can see. `captureLynxFirstTree` declines such a container outright, on
-	 * the route it already had for a page it painted correctly and cannot
-	 * describe.
-	 */
-	hasMainThreadProgram: boolean;
-	/**
 	 * Every node a compiled main-thread program painted, by the ID it took.
 	 *
 	 * A program writes no record, so this is the only thing that says which
 	 * physical node wears which ID — and, at adoption, the only thing main
 	 * contributes about that half of the tree. Empty on a container that never
 	 * mounted one, which is every container today.
+	 *
+	 * It is also the answer to "did this container paint a program", which C2d
+	 * kept as a separate monotonic flag so that `captureLynxFirstTree` could
+	 * decline such a container outright. C2e made capture describe one instead —
+	 * from this map — and the flag went on being written and never read. A
+	 * predicate nothing consults is not documentation, so it is gone rather than
+	 * kept against a future reader: this map answers the same question, and the
+	 * one way the two differ is that this one is cleared at hand-over, when there
+	 * is no longer a painted tree to answer about.
 	 */
 	readonly programNodes: Map<number, Node>;
 	acceptedVersion: number;
@@ -3021,7 +3018,6 @@ export function createLynxHostContainer<Node extends LynxElementRef>(
 		onCallbackFault: options.onCallbackFault,
 		hasMainThreadProps: false,
 		hasNativeListTopology: false,
-		hasMainThreadProgram: false,
 		programNodes: new Map(),
 		acceptedVersion: 0,
 		disposed: false,
@@ -3860,7 +3856,6 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 				`a compiled main-thread program declaring ${plan.nodes} nodes returned ${created.length}.`,
 			);
 		}
-		state.hasMainThreadProgram = true;
 		for (let index = 0; index < created.length; index++) {
 			const element = created[index] as Node;
 			state.ownedNodes.add(element);

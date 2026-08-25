@@ -13,7 +13,7 @@ import {
 	useLayoutEffect,
 	type UniversalComponent,
 } from 'octane/universal/native';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createLynxRoot, type LynxRoot } from '../src/index.js';
 import { root as firstScreenRoot } from '../src/first-screen.js';
 import { installLynxMainThread, type LynxMainThreadController } from '../src/main-thread.js';
@@ -868,7 +868,15 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 
 		globalThis.lynxTestingEnv.switchToBackgroundThread();
 		const context = backgroundContext();
-		const dispatch = context.dispatchEvent.bind(context);
+		const originalDispatch = context.dispatchEvent;
+		// Restored when this test ends, however it ends. The context object outlives
+		// the environment install around it, so a patch left on it is a patch every
+		// later test in this file inherits — which is a test failing in a file it
+		// does not appear in.
+		onTestFinished(() => {
+			context.dispatchEvent = originalDispatch;
+		});
+		const dispatch = originalDispatch.bind(context);
 		const clonedRuns: boolean[] = [];
 		context.dispatchEvent = (event) => {
 			const data = deserialize(serialize(event.data)) as unknown;
