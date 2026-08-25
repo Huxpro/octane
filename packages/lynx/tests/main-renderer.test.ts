@@ -580,19 +580,9 @@ describe('Lynx main-thread first-screen renderer', () => {
 		// kind this renderer did not recognize became a text node carrying neither
 		// a value nor a slot. The first screen painted an empty string where the
 		// content belonged: no throw, no warning, nothing missing from the batch
-		// to notice. #163's compiled main-thread program is a plan root kind the
-		// compiler now emits, so the silent case became a reachable blank screen.
-		const program = {
-			kind: 'program',
-			slots: [],
-			values: [],
-			events: [],
-			ranges: [],
-			bind: () => () => null,
-		};
-
-		expect(() => universalPlan('lynx', program as never)).toThrow(
-			/Unsupported universal plan node kind "program"/,
+		// to notice.
+		expect(() => universalPlan('lynx', { kind: 'hosts', type: 'view' } as never)).toThrow(
+			/Unsupported universal plan node kind "hosts"/,
 		);
 		// At depth too: freezing walks children, and a child it cannot render is
 		// the same authoring error as a root it cannot render.
@@ -600,11 +590,82 @@ describe('Lynx main-thread first-screen renderer', () => {
 			universalPlan('lynx', {
 				kind: 'host',
 				type: 'view',
-				children: [program],
+				children: [{ kind: 'hosts', type: 'view' }],
 			} as never),
-		).toThrow(/Unsupported universal plan node kind "program"/);
-		expect(() => universalPlan('lynx', { kind: 'hosts', type: 'view' } as never)).toThrow(
-			/Unsupported universal plan node kind "hosts"/,
+		).toThrow(/Unsupported universal plan node kind "hosts"/);
+	});
+
+	it('refuses a compiled program whose tables name nodes it does not make', () => {
+		// #163: this renderer numbers a program's first screen from its own
+		// tables, and reads nothing back out of the paint to check them. An event
+		// site naming a node the program does not make is therefore read against
+		// an ID table that has no entry for it, announced to the background as a
+		// listener bound to `undefined`, and the tap it was authored for reaches
+		// nothing — with no throw, no warning, and a page that looks right.
+		//
+		// Freezing runs once per plan at module scope, which is what makes this
+		// the place to answer it: a per-mount check would pay on every row.
+		const program = {
+			kind: 'program' as const,
+			slots: [null],
+			nodes: 2,
+			values: [],
+			events: [{ slot: 0, node: 2, type: 'tap', priority: 'discrete' }],
+			ranges: [],
+			bind: () => () => [],
+		};
+		expect(() => universalPlan('lynx', program as never)).toThrow(
+			/binds an event on node 2, which is not one of its 2 nodes/,
+		);
+		// A range's declared position is the same kind of claim: one outside the
+		// program's own pre-order matches nothing, so its members would be
+		// numbered after the program rather than where the hole was, and every ID
+		// from there on would disagree with the interpreted encoding this one has
+		// to be interchangeable with.
+		expect(() =>
+			universalPlan('lynx', {
+				...program,
+				events: [],
+				ranges: [{ slot: 0, node: 1, id: 7 }],
+			} as never),
+		).toThrow(/declares a keyed range at position 7, which is not one of its 3 positions/);
+		expect(() =>
+			universalPlan('lynx', { ...program, events: [], bind: undefined } as never),
+		).toThrow(/requires a bind function and a node count/);
+		// And a well-formed one is adopted rather than refused: C2c is where this
+		// renderer stopped declining the kind its own compiler emits.
+		const plan = universalPlan('lynx', {
+			...program,
+			events: [{ slot: 0, node: 1, type: 'tap', priority: 'discrete' }],
+			ranges: [{ slot: 0, node: 1, id: 2 }],
+		} as never);
+		expect((plan.root as { kind: string }).kind).toBe('program');
+		expect(Object.isFrozen(plan.root)).toBe(true);
+	});
+
+	it('refuses a compiled program whose range positions do not form an order', () => {
+		// Two holes claiming the same position are each inside the program's own
+		// pre-order, so the freeze-time bound check passes them, and only walking
+		// the order finds that the second one matches nothing. Left unchecked its
+		// members would keep ID zero — which reads as a node nobody painted rather
+		// than as a program whose tables disagree with each other.
+		const plan = universalPlan('lynx', {
+			kind: 'program',
+			slots: ['r', 'r'],
+			nodes: 1,
+			values: [],
+			events: [],
+			ranges: [
+				{ slot: 0, node: 0, id: 1 },
+				{ slot: 1, node: 0, id: 1 },
+			],
+			bind: () => () => [],
+		} as never);
+		const Broken = defineUniversalComponent('lynx', () =>
+			universalValue(plan, ['first', 'second']),
+		);
+		expect(() => renderLynxFirstScreen(Broken, {})).toThrow(
+			/declares 1 nodes and 2 ranges, but its range positions do not fit that order/,
 		);
 	});
 
