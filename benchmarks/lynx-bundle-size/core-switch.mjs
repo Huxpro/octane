@@ -1,18 +1,27 @@
-// Issue-#103 B0: what the compile-time core switch costs and removes, in bytes.
+// Issue-#103 B0 and issue-#163 C1d: what a bundle carries, in bytes, under each
+// of the two independent switches that decide it.
 //
-// The claim the switch makes is that a bundle carries exactly one background
-// core. That is a claim about tree-shaking, and tree-shaking claims are worth
-// nothing asserted — a branch on a constant the bundler declines to fold ships
-// both cores and still passes every test. So this builds the same application
-// twice through the real Rspeedy/Rspack production pipeline, changing only
-// `pluginOctane({ core })`, decodes both native bundles, and reports the
-// background program's size next to a presence probe for each core's own
-// identifying strings.
+// The first is the background core. Its claim is that a bundle carries exactly
+// one, and that is a claim about tree-shaking — worth nothing asserted, because
+// a branch on a constant the bundler declines to fold ships both cores and still
+// passes every test. So this builds the same application through the real
+// Rspeedy/Rspack production pipeline once per core, decodes both native bundles,
+// and reports the background program's size next to a presence probe for each
+// core's own identifying strings.
 //
-// What it is not: a performance measurement, and not a statement about the
-// main-thread program. The main thread renders from the compiled template
-// either way and does not read the switch; it is reported so a regression that
-// moved main-thread bytes would be visible rather than silent.
+// The second is #163's main-thread program backend, and it moves the other half
+// of the bundle. Handed one, the compiler lowers each eligible template into a
+// straight-line create function that drives the Element PAPI directly, instead
+// of the description an interpreter walks per node at run time. So there is a
+// third arm: the same block-core build, with a backend.
+//
+// The two switches are orthogonal, and the file's assertions say so rather than
+// assuming it. Across the *core* switch the main-thread program does not move at
+// all — that is what makes the core a background-only concern. Across the
+// *backend* the main-thread program must move, or the arm is measuring nothing,
+// while the background program must not — that is #163's byte-identity promise.
+//
+// What it is not: a performance measurement. Bytes are the whole subject here.
 process.env.NODE_ENV = 'production';
 
 import { createHash } from 'node:crypto';
@@ -24,6 +33,14 @@ import { constants as zc, gzipSync } from 'node:zlib';
 
 import { pluginOctane } from '../../packages/rspeedy-plugin-octane/src/index.js';
 import { LYNX_TARGET_SDK_VERSION } from '../../packages/rspeedy-plugin-octane/src/application.js';
+import { registerTypeScriptSourceResolution } from './ts-source-resolution.mjs';
+
+// Before the backend is imported, and it has to be a dynamic import for that
+// ordering to exist: a static one is resolved before any of this file's body
+// runs. The backend is TypeScript, and `ts-source-resolution.mjs` explains what
+// that costs a plain-`node` harness and what it does not.
+registerTypeScriptSourceResolution();
+const mainThreadProgramBackend = await import('../../packages/lynx/src/compiler/index.js');
 
 const ROOT = import.meta.dirname;
 const REPO = path.resolve(ROOT, '../..');
@@ -50,6 +67,23 @@ const CORE_PROBES = Object.freeze({
 	],
 	universalPlan: ['universalValue expected a universal plan.'],
 });
+
+/**
+ * A string only a compiled main-thread program puts in the bundle.
+ *
+ * The main-thread script is LepusNG, not JavaScript text, so the emitted create
+ * function's own identifiers are gone by the time this can read it — what
+ * survives is the constant pool, and `ranges` is the wire program's key for the
+ * keyed holes its caller opens rather than paints. The interpreted encoding has
+ * no such key: it is absent from a backend-less main-thread program and appears
+ * exactly once with a backend.
+ *
+ * This depends on the fixture having a keyed hole, which `src/App.lynx.tsrx`
+ * does through its `@for`. That is a property of a file this harness owns, and
+ * the probe fails by name if it stops holding — the same staleness contract the
+ * core probes have.
+ */
+const PROGRAM_PROBE = 'ranges';
 
 function packageEntry(packageName) {
 	const packageRoot = path.join(RSPEEDY_MODULES, ...packageName.split('/'));
@@ -166,7 +200,12 @@ function decodedScript(decoded, key) {
 	return { bytes, text: bytes.toString('latin1') };
 }
 
-async function buildWithCore(core, outputRoot) {
+/**
+ * One arm: a core, and whether the main-thread chunk is compiled to create
+ * functions. `label` names the arm rather than the core, because two arms now
+ * share a core and the reported rows have to be told apart.
+ */
+async function buildWithCore(label, core, outputRoot, backend) {
 	const rspeedy = await createRspeedy({
 		cwd: RSPEEDY_CWD,
 		loadEnv: false,
@@ -190,7 +229,14 @@ async function buildWithCore(core, outputRoot) {
 					resolve: { modules: [RSPEEDY_MODULES, 'node_modules'] },
 				},
 			},
-			plugins: [pluginOctane({ core, hmr: false, dev: false })],
+			plugins: [
+				pluginOctane({
+					core,
+					hmr: false,
+					dev: false,
+					...(backend === undefined ? null : { mainThreadProgramBackend: backend }),
+				}),
+			],
 		},
 	});
 	let build;
@@ -202,20 +248,28 @@ async function buildWithCore(core, outputRoot) {
 	const bundle = fs.readFileSync(path.join(outputRoot, BUNDLE_NAME));
 	const decoded = tasm.supportNapi() ? tasm.decode_napi(bundle) : await tasm.decode_wasm(bundle);
 	if (decoded['engine-version'] !== LYNX_TARGET_SDK_VERSION) {
-		throw new Error(`${core}: unexpected engine version ${decoded['engine-version']}`);
+		throw new Error(`${label}: unexpected engine version ${decoded['engine-version']}`);
 	}
 	const background = decodedScript(decoded, 'background-thread-script');
 	const main = decodedScript(decoded, 'main-thread-script');
-	if (background.bytes.length === 0) throw new Error(`${core}: background program is empty`);
-	if (main.bytes.length === 0) throw new Error(`${core}: main program is empty`);
-	assertMainDigestPinned(core, main.text);
+	if (background.bytes.length === 0) throw new Error(`${label}: background program is empty`);
+	if (main.bytes.length === 0) throw new Error(`${label}: main program is empty`);
+	assertMainDigestPinned(label, main.text);
 	return {
+		label,
 		core,
 		backgroundRaw: background.bytes.length,
 		backgroundGzip: gzipBytes(background.bytes),
 		mainRaw: main.bytes.length,
 		mainGzip: gzipBytes(main.bytes),
 		mainSha: createHash('sha256').update(main.text).digest('hex'),
+		// The background program is compared across the backend, not only sized,
+		// so it needs an identity of its own. Unpinned, deliberately: the digest
+		// plugin stamps each chunk from that chunk's own source, so if the
+		// background text really does not move neither does its digest — and a
+		// pin here would hide the case where that stops being true.
+		backgroundSha: createHash('sha256').update(background.text).digest('hex'),
+		program: main.text.includes(PROGRAM_PROBE),
 		probes: Object.fromEntries(
 			Object.entries(CORE_PROBES).map(([name, markers]) => [
 				name,
@@ -227,72 +281,122 @@ async function buildWithCore(core, outputRoot) {
 
 const outputs = fs.mkdtempSync(path.join(os.tmpdir(), 'octane-core-switch-'));
 try {
-	const universal = await buildWithCore('universal', path.join(outputs, 'universal'));
-	const block = await buildWithCore('block', path.join(outputs, 'block'));
+	const universal = await buildWithCore('universal', 'universal', path.join(outputs, 'universal'));
+	const block = await buildWithCore('block', 'block', path.join(outputs, 'block'));
+	// The same core as `block`, so any difference between the two is the
+	// backend's and nothing else's.
+	const blockProgram = await buildWithCore(
+		'block+program',
+		'block',
+		path.join(outputs, 'block-program'),
+		mainThreadProgramBackend,
+	);
 
-	const rows = [universal, block];
+	const rows = [universal, block, blockProgram];
+	const delta = (value) => (value >= 0 ? '+' : '') + value.toLocaleString();
+
 	console.log('\nbackground program, one core per bundle\n');
-	console.log('| core | raw | gzip | block core | universal root | plan constructors |');
+	console.log('| arm | raw | gzip | block core | universal root | plan constructors |');
 	console.log('| --- | ---: | ---: | ---: | ---: | ---: |');
 	for (const row of rows) {
 		console.log(
-			`| ${row.core} | ${row.backgroundRaw.toLocaleString()} | ${row.backgroundGzip.toLocaleString()} | ` +
+			`| ${row.label} | ${row.backgroundRaw.toLocaleString()} | ${row.backgroundGzip.toLocaleString()} | ` +
 				`${row.probes.block.length}/${CORE_PROBES.block.length} | ` +
 				`${row.probes.universalRoot.length}/${CORE_PROBES.universalRoot.length} | ` +
 				`${row.probes.universalPlan.length}/${CORE_PROBES.universalPlan.length} |`,
 		);
 	}
-	console.log('\nmain-thread program (does not read the switch)\n');
-	console.log('| core | raw | gzip | sha256 |');
-	console.log('| --- | ---: | ---: | --- |');
+
+	console.log('\nmain-thread program (moved by the backend, not by the core)\n');
+	console.log('| arm | raw | gzip | sha256 | compiled program |');
+	console.log('| --- | ---: | ---: | --- | ---: |');
 	for (const row of rows) {
 		console.log(
-			`| ${row.core} | ${row.mainRaw.toLocaleString()} | ${row.mainGzip.toLocaleString()} | ${row.mainSha.slice(0, 12)} |`,
+			`| ${row.label} | ${row.mainRaw.toLocaleString()} | ${row.mainGzip.toLocaleString()} | ` +
+				`${row.mainSha.slice(0, 12)} | ${row.program ? 'yes' : 'no'} |`,
 		);
 	}
+
 	console.log(
-		universal.mainSha === block.mainSha
-			? '\nThe main-thread program is byte-identical across the switch (build digest pinned in source).'
-			: '\nThe main-thread program DIFFERS across the switch; the switch is not background-only.',
+		`\nbackground delta (block − universal): ${delta(block.backgroundGzip - universal.backgroundGzip)} B gzip, ` +
+			`${delta(block.backgroundRaw - universal.backgroundRaw)} B raw`,
+	);
+	console.log(
+		`main-thread delta (block+program − block): ${delta(blockProgram.mainGzip - block.mainGzip)} B gzip, ` +
+			`${delta(blockProgram.mainRaw - block.mainRaw)} B raw`,
 	);
 
-	// The control. Either core surviving in the other's bundle means the branch
-	// did not fold, and every byte reported above is measuring something else.
+	// The controls. Each one names a way the numbers above could be measuring
+	// something other than what the row says they are.
 	const failures = [];
 	const missing = (row, name) =>
 		CORE_PROBES[name].filter((marker) => !row.probes[name].includes(marker));
+
+	// Either core surviving in the other's bundle means the branch did not fold.
 	if (universal.probes.block.length !== 0) {
 		failures.push(
 			`core: 'universal' kept block-core strings: ${universal.probes.block.join(', ')}`,
 		);
 	}
-	if (block.probes.universalRoot.length !== 0) {
-		failures.push(
-			`core: 'block' kept universal-root strings: ${block.probes.universalRoot.join(', ')}`,
-		);
+	for (const row of [block, blockProgram]) {
+		if (row.probes.universalRoot.length !== 0) {
+			failures.push(
+				`${row.label} kept universal-root strings: ${row.probes.universalRoot.join(', ')}`,
+			);
+		}
+		if (row.probes.block.length !== CORE_PROBES.block.length) {
+			failures.push(
+				`${row.label} is missing its own probes (stale probe strings): ${missing(row, 'block').join(' | ')}`,
+			);
+		}
 	}
 	if (universal.probes.universalRoot.length !== CORE_PROBES.universalRoot.length) {
 		failures.push(
 			`core: 'universal' is missing its own probes (stale probe strings): ${missing(universal, 'universalRoot').join(' | ')}`,
 		);
 	}
-	if (block.probes.block.length !== CORE_PROBES.block.length) {
+
+	// The core switch is background-only: it must not reach the main thread.
+	if (universal.mainSha !== block.mainSha) {
+		failures.push('the main-thread program is not byte-identical across the core switch');
+	}
+
+	// The backend is the mirror image, and both halves of it are load-bearing.
+	// It must move the main-thread program, because an arm that compiled nothing
+	// would report a flattering zero delta and pass every check above it. And it
+	// must not move the background program, which is #163's promise that the
+	// half of the bundle it does not own does not move underneath it.
+	if (blockProgram.mainSha === block.mainSha) {
 		failures.push(
-			`core: 'block' is missing its own probes (stale probe strings): ${missing(block, 'block').join(' | ')}`,
+			'the main-thread program backend changed nothing; the third arm is measuring the second',
 		);
 	}
-	if (universal.mainSha !== block.mainSha) {
-		failures.push('the main-thread program is not byte-identical across the switch');
+	if (!blockProgram.program) {
+		failures.push(
+			`block+program carries no compiled program (stale probe string '${PROGRAM_PROBE}')`,
+		);
 	}
-	console.log(
-		`\nbackground delta (block − universal): ${(block.backgroundGzip - universal.backgroundGzip).toLocaleString()} B gzip, ` +
-			`${(block.backgroundRaw - universal.backgroundRaw).toLocaleString()} B raw`,
-	);
+	for (const row of [universal, block]) {
+		if (row.program) {
+			failures.push(
+				`${row.label} carries a compiled program without a backend; the probe is not specific`,
+			);
+		}
+	}
+	if (blockProgram.backgroundSha !== block.backgroundSha) {
+		failures.push(
+			'the main-thread program backend moved the background program, which it must not',
+		);
+	}
+
 	if (failures.length !== 0) {
 		console.error(`\nFAILED\n- ${failures.join('\n- ')}`);
 		process.exitCode = 1;
 	} else {
-		console.log('\nOK — each bundle carries exactly one core.');
+		console.log(
+			'\nOK — each bundle carries exactly one core, the core switch leaves the main-thread\n' +
+				'program byte-identical, and the program backend moves that program and only that program.',
+		);
 	}
 } finally {
 	fs.rmSync(outputs, { recursive: true, force: true });

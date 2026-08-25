@@ -68,26 +68,56 @@ baseline's semantic checksums or the run fails, and the ablated artifacts are
 measurement devices rather than functional runtimes.
 
 The checked execution report is [`results/l5-ceiling.md`](results/l5-ceiling.md).
-## Background core switch
 
-`node benchmarks/lynx-bundle-size/core-switch.mjs` builds the same fixture twice
-through the real production pipeline, changing only `pluginOctane({ core })`, and
-reports the background program's size for each core beside a presence probe for
-each core's own diagnostic strings (issue #103 B0).
+## Core switch and main-thread program
 
-It is a control before it is a measurement: a branch on a constant the bundler
+`node benchmarks/lynx-bundle-size/core-switch.mjs` builds the same fixture three
+times through the real production pipeline and reports what each half of the
+bundle weighs under the two independent switches that decide it: the background
+core (`pluginOctane({ core })`, issue #103 B0) and the main-thread program
+backend (`pluginOctane({ mainThreadProgramBackend })`, issue #163 C1d). The arms
+are `universal`, `block`, and `block+program` — the last sharing a core with the
+second, so anything separating them is the backend's.
+
+It is a control before it is a measurement. A branch on a constant the bundler
 declines to fold ships both cores and still passes every unit test, so the run
-fails if either core's strings survive in the other's bundle, if a core is
-missing its own strings (stale probes), or if the main-thread program is not
-byte-identical across the switch. The plan constructors a compiled `.tsrx`
+fails if either core's strings survive in the other's bundle or if a core is
+missing its own strings (stale probes). The plan constructors a compiled `.tsrx`
 component calls are reported separately, because they belong to the application
 module rather than to a core and are reachable under either flag.
 
-That last check needs the build digest pinned to survive. Lynx's debug-metadata
-plugin prepends a per-chunk release digest to each chunk's source before the
-minifier runs, and the digest moves whenever the bundle moves — so across the
-switch the two main-thread programs reach the minifier as text differing in
-forty characters. The mangler orders its identifier alphabet by character
+The two switches are orthogonal, and the run asserts that rather than assuming
+it. Across the **core** switch the main-thread program must be byte-identical:
+that is what makes the core a background-only concern, and it is the claim the
+digest pinning below exists to make checkable. Across the **backend** the
+relationship inverts — the main-thread program must move, or the third arm is
+silently measuring the second and reporting a flattering zero, while the
+background program must not move at all, which is #163's promise that the half
+of the bundle the backend does not own does not shift underneath it.
+
+The backend arm carries its own presence probe. The main-thread script is
+LepusNG rather than JavaScript text, so the emitted create function's identifiers
+are gone by the time the harness reads it; what survives is the constant pool,
+and `ranges` — the wire program's key for the keyed holes its caller opens rather
+than paints — is absent from an interpreted main-thread program and present in a
+compiled one. That depends on the fixture having a keyed hole, which
+`src/App.lynx.tsrx` does through its `@for`; the probe fails by name if it stops
+holding, on the same staleness contract as the core probes.
+
+Loading the backend at all needs one thing this harness owns. Octane publishes
+every importable module as authored, so `@octanejs/lynx`'s backend is TypeScript.
+Node strips the types by itself, but it does not rewrite a relative `./x.js`
+specifier to the `./x.ts` beside it, so an unaided `import()` fails on the
+backend's first internal import. `ts-source-resolution.mjs` registers that one
+fallback and nothing else — it is a measurement device, not a build tool; a real
+Lynx build hands the backend over from a config whose own loader understands
+TypeScript.
+
+The byte-identity check across the core switch needs the build digest pinned to
+survive. Lynx's debug-metadata plugin prepends a per-chunk release digest to each
+chunk's source before the minifier runs, and the digest moves whenever the bundle
+moves — so across the switch the two main-thread programs reach the minifier as
+text differing in forty characters. The mangler orders its identifier alphabet by character
 frequency over that text, and the rarest characters sit close enough together
 that a digest carrying seven `4`s against one carrying two reverses `4` and `6`,
 renaming three identifiers. Normalizing the digest in the decoded output cannot
