@@ -611,7 +611,8 @@ const PAPI_INSTRUMENT_TEMPLATE = `(() => {
     }
     var base = phaseBase;
     var wallMs = {};
-    var phaseNames = ['render', 'publish', 'capture', 'announce'];
+    // The phase list has one authority in this file: phaseWalls' field map.
+    var phaseNames = Object.keys(walls);
     for (var j = 0; j < phaseNames.length; j++) {
       var key = phaseNames[j];
       wallMs[key] = walls[key] - (base === null ? 0 : base[key]);

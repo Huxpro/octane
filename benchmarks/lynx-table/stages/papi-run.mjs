@@ -40,6 +40,7 @@ import {
 	countsAgree,
 	overheadVerdict,
 	requireMinimumRepetitions,
+	requireOutputStem,
 	rotatedSchedule,
 	scalingVerdict,
 	summarizeCell,
@@ -83,10 +84,7 @@ for (const rows of scales) {
 // Every output basename is stemmed from `--label`, so a run that measures a
 // different cell set writes its own files instead of overwriting the evidence a
 // previous campaign checked in under the default stem.
-const outputStem = args.label.trim();
-if (!/^[a-z0-9][a-z0-9-]*$/.test(outputStem)) {
-	throw new TypeError('--label must be lowercase alphanumeric with dashes.');
-}
+const outputStem = requireOutputStem(args.label);
 const port = Number(args.port);
 const cpuCount = os.cpus().length;
 const loadPerCpu = os.loadavg()[0] / cpuCount;

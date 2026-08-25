@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { FIRST_SCREEN_PHASES } from './papi-analyze.mjs';
+import { FIRST_SCREEN_PHASES, requireOutputStem } from './papi-analyze.mjs';
 
 function round(value, digits = 2) {
 	return value === null || value === undefined ? null : Number(value.toFixed(digits));
@@ -450,10 +450,7 @@ if (isMain) {
 		options: { scales: { type: 'string' }, label: { type: 'string', default: 'papi' } },
 	});
 	const output = path.join(import.meta.dirname, 'results');
-	const stem = values.label.trim();
-	if (!/^[a-z0-9][a-z0-9-]*$/.test(stem)) {
-		throw new TypeError('--label must be lowercase alphanumeric with dashes.');
-	}
+	const stem = requireOutputStem(values.label);
 	const scalePattern = new RegExp(`^${stem}-(\\d+)\\.json$`);
 	const scales =
 		values.scales === undefined

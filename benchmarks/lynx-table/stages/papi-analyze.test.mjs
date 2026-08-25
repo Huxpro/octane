@@ -345,6 +345,13 @@ test('refuses a first-screen split that cannot be true of the window it describe
 		() => analyze(firstScreenSplit({ byPhase: { adopt: { calls: 1, selfMs: 0 } } })),
 		/unknown phase adopt/,
 	);
+	// A wall span alone must be refused on the same terms: a phase that crosses
+	// no host boundary creates no byPhase bucket, and letting its span through
+	// would land framework script in the residue as the browser's cost.
+	assert.throws(
+		() => analyze(firstScreenSplit({ wallMs: { adopt: 5 } })),
+		/wallMs carries an unknown phase adopt/,
+	);
 });
 
 test('reports no split for a window in which no first screen ran', () => {
