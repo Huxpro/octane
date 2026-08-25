@@ -1,0 +1,565 @@
+{
+	"source": "benchmarks/lynx-table/app/src/App.lynx.tsrx",
+	"derivedBy": "octane/universal/template-program (the lowering block-component.ts uses)",
+	"row": {
+		"wire": {
+			"nodes": [
+				{
+					"type": "view",
+					"parent": -1,
+					"props": {},
+					"bindings": [
+						{
+							"name": "class",
+							"valueIndex": 0
+						}
+					]
+				},
+				{
+					"type": "text",
+					"parent": 0,
+					"props": {
+						"class": "col-id"
+					}
+				},
+				{
+					"type": "#text",
+					"parent": 1,
+					"props": {},
+					"bindings": [
+						{
+							"name": "value",
+							"valueIndex": 1
+						}
+					]
+				},
+				{
+					"type": "text",
+					"parent": 0,
+					"props": {
+						"class": "col-label"
+					}
+				},
+				{
+					"type": "#text",
+					"parent": 3,
+					"props": {},
+					"bindings": [
+						{
+							"name": "value",
+							"valueIndex": 2
+						}
+					]
+				},
+				{
+					"type": "text",
+					"parent": 0,
+					"props": {
+						"class": "col-remove"
+					}
+				},
+				{
+					"type": "#text",
+					"parent": 5,
+					"props": {
+						"value": "x"
+					}
+				}
+			],
+			"events": [
+				{
+					"node": 3,
+					"type": "bindtap",
+					"priority": "discrete"
+				},
+				{
+					"node": 5,
+					"type": "bindtap",
+					"priority": "discrete"
+				}
+			]
+		},
+		"values": [
+			{
+				"node": 0,
+				"name": "class",
+				"slot": 0,
+				"text": false
+			},
+			{
+				"node": 2,
+				"name": "value",
+				"slot": 1,
+				"text": true
+			},
+			{
+				"node": 4,
+				"name": "value",
+				"slot": 3,
+				"text": true
+			}
+		],
+		"events": [
+			{
+				"node": 3,
+				"prop": "bindtap",
+				"slot": 2,
+				"type": "bindtap",
+				"priority": "discrete"
+			},
+			{
+				"node": 5,
+				"prop": "bindtap",
+				"slot": 4,
+				"type": "bindtap",
+				"priority": "discrete"
+			}
+		]
+	},
+	"page": {
+		"wire": {
+			"nodes": [
+				{
+					"type": "view",
+					"parent": -1,
+					"props": {
+						"class": "page"
+					}
+				},
+				{
+					"type": "text",
+					"parent": 0,
+					"props": {
+						"class": "title"
+					}
+				},
+				{
+					"type": "#text",
+					"parent": 1,
+					"props": {
+						"value": "Octane UI Benchmark on Lynx · ready"
+					}
+				},
+				{
+					"type": "view",
+					"parent": 0,
+					"props": {
+						"class": "toolbar"
+					}
+				},
+				{
+					"type": "view",
+					"parent": 3,
+					"props": {
+						"class": "btn"
+					}
+				},
+				{
+					"type": "text",
+					"parent": 4,
+					"props": {
+						"class": "btn-text"
+					}
+				},
+				{
+					"type": "#text",
+					"parent": 5,
+					"props": {
+						"value": "Create 1,000 rows"
+					}
+				},
+				{
+					"type": "view",
+					"parent": 3,
+					"props": {
+						"class": "btn"
+					}
+				},
+				{
+					"type": "text",
+					"parent": 7,
+					"props": {
+						"class": "btn-text"
+					}
+				},
+				{
+					"type": "#text",
+					"parent": 8,
+					"props": {
+						"value": "Create 3,000 rows"
+					}
+				},
+				{
+					"type": "view",
+					"parent": 3,
+					"props": {
+						"class": "btn"
+					}
+				},
+				{
+					"type": "text",
+					"parent": 10,
+					"props": {
+						"class": "btn-text"
+					}
+				},
+				{
+					"type": "#text",
+					"parent": 11,
+					"props": {
+						"value": "Create 5,000 rows"
+					}
+				},
+				{
+					"type": "view",
+					"parent": 3,
+					"props": {
+						"class": "btn"
+					}
+				},
+				{
+					"type": "text",
+					"parent": 13,
+					"props": {
+						"class": "btn-text"
+					}
+				},
+				{
+					"type": "#text",
+					"parent": 14,
+					"props": {
+						"value": "Create 10,000 rows"
+					}
+				},
+				{
+					"type": "view",
+					"parent": 3,
+					"props": {
+						"class": "btn"
+					}
+				},
+				{
+					"type": "text",
+					"parent": 16,
+					"props": {
+						"class": "btn-text"
+					}
+				},
+				{
+					"type": "#text",
+					"parent": 17,
+					"props": {
+						"value": "Create 20,000 rows"
+					}
+				},
+				{
+					"type": "view",
+					"parent": 3,
+					"props": {
+						"class": "btn"
+					}
+				},
+				{
+					"type": "text",
+					"parent": 19,
+					"props": {
+						"class": "btn-text"
+					}
+				},
+				{
+					"type": "#text",
+					"parent": 20,
+					"props": {
+						"value": "Create 30,000 rows"
+					}
+				},
+				{
+					"type": "view",
+					"parent": 3,
+					"props": {
+						"class": "btn"
+					}
+				},
+				{
+					"type": "text",
+					"parent": 22,
+					"props": {
+						"class": "btn-text"
+					}
+				},
+				{
+					"type": "#text",
+					"parent": 23,
+					"props": {
+						"value": "Append 1,000 rows"
+					}
+				},
+				{
+					"type": "view",
+					"parent": 3,
+					"props": {
+						"class": "btn"
+					}
+				},
+				{
+					"type": "text",
+					"parent": 25,
+					"props": {
+						"class": "btn-text"
+					}
+				},
+				{
+					"type": "#text",
+					"parent": 26,
+					"props": {
+						"value": "Update every 10th row"
+					}
+				},
+				{
+					"type": "view",
+					"parent": 3,
+					"props": {
+						"class": "btn"
+					}
+				},
+				{
+					"type": "text",
+					"parent": 28,
+					"props": {
+						"class": "btn-text"
+					}
+				},
+				{
+					"type": "#text",
+					"parent": 29,
+					"props": {
+						"value": "Swap Rows"
+					}
+				},
+				{
+					"type": "view",
+					"parent": 3,
+					"props": {
+						"class": "btn"
+					}
+				},
+				{
+					"type": "text",
+					"parent": 31,
+					"props": {
+						"class": "btn-text"
+					}
+				},
+				{
+					"type": "#text",
+					"parent": 32,
+					"props": {
+						"value": "Clear"
+					}
+				},
+				{
+					"type": "view",
+					"parent": 3,
+					"props": {
+						"class": "btn"
+					}
+				},
+				{
+					"type": "text",
+					"parent": 34,
+					"props": {
+						"class": "btn-text"
+					}
+				},
+				{
+					"type": "#text",
+					"parent": 35,
+					"props": {
+						"value": "Update storm"
+					}
+				},
+				{
+					"type": "view",
+					"parent": 3,
+					"props": {
+						"class": "btn"
+					}
+				},
+				{
+					"type": "text",
+					"parent": 37,
+					"props": {
+						"class": "btn-text"
+					}
+				},
+				{
+					"type": "#text",
+					"parent": 38,
+					"props": {
+						"value": "Select storm"
+					}
+				},
+				{
+					"type": "view",
+					"parent": 0,
+					"props": {
+						"class": "rows"
+					}
+				}
+			],
+			"events": [
+				{
+					"node": 4,
+					"type": "bindtap",
+					"priority": "discrete"
+				},
+				{
+					"node": 7,
+					"type": "bindtap",
+					"priority": "discrete"
+				},
+				{
+					"node": 10,
+					"type": "bindtap",
+					"priority": "discrete"
+				},
+				{
+					"node": 13,
+					"type": "bindtap",
+					"priority": "discrete"
+				},
+				{
+					"node": 16,
+					"type": "bindtap",
+					"priority": "discrete"
+				},
+				{
+					"node": 19,
+					"type": "bindtap",
+					"priority": "discrete"
+				},
+				{
+					"node": 22,
+					"type": "bindtap",
+					"priority": "discrete"
+				},
+				{
+					"node": 25,
+					"type": "bindtap",
+					"priority": "discrete"
+				},
+				{
+					"node": 28,
+					"type": "bindtap",
+					"priority": "discrete"
+				},
+				{
+					"node": 31,
+					"type": "bindtap",
+					"priority": "discrete"
+				},
+				{
+					"node": 34,
+					"type": "bindtap",
+					"priority": "discrete"
+				},
+				{
+					"node": 37,
+					"type": "bindtap",
+					"priority": "discrete"
+				}
+			]
+		},
+		"values": [],
+		"events": [
+			{
+				"node": 4,
+				"prop": "bindtap",
+				"slot": 0,
+				"type": "bindtap",
+				"priority": "discrete"
+			},
+			{
+				"node": 7,
+				"prop": "bindtap",
+				"slot": 1,
+				"type": "bindtap",
+				"priority": "discrete"
+			},
+			{
+				"node": 10,
+				"prop": "bindtap",
+				"slot": 2,
+				"type": "bindtap",
+				"priority": "discrete"
+			},
+			{
+				"node": 13,
+				"prop": "bindtap",
+				"slot": 3,
+				"type": "bindtap",
+				"priority": "discrete"
+			},
+			{
+				"node": 16,
+				"prop": "bindtap",
+				"slot": 4,
+				"type": "bindtap",
+				"priority": "discrete"
+			},
+			{
+				"node": 19,
+				"prop": "bindtap",
+				"slot": 5,
+				"type": "bindtap",
+				"priority": "discrete"
+			},
+			{
+				"node": 22,
+				"prop": "bindtap",
+				"slot": 6,
+				"type": "bindtap",
+				"priority": "discrete"
+			},
+			{
+				"node": 25,
+				"prop": "bindtap",
+				"slot": 7,
+				"type": "bindtap",
+				"priority": "discrete"
+			},
+			{
+				"node": 28,
+				"prop": "bindtap",
+				"slot": 8,
+				"type": "bindtap",
+				"priority": "discrete"
+			},
+			{
+				"node": 31,
+				"prop": "bindtap",
+				"slot": 9,
+				"type": "bindtap",
+				"priority": "discrete"
+			},
+			{
+				"node": 34,
+				"prop": "bindtap",
+				"slot": 10,
+				"type": "bindtap",
+				"priority": "discrete"
+			},
+			{
+				"node": 37,
+				"prop": "bindtap",
+				"slot": 11,
+				"type": "bindtap",
+				"priority": "discrete"
+			}
+		],
+		"range": {
+			"slot": 12,
+			"node": 40
+		}
+	}
+}
