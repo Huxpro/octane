@@ -501,6 +501,223 @@ compiler, and no component bodies. `prototype/results/u0-block-core-counts.*`
 is the committed record, beside `web-u0-update-ceiling.*`: they are the two
 halves of the same #103 U0 gate.
 
+## 6. Element PAPI boundary instrument (`stages/papi-run.mjs`, informational)
+
+```bash
+node stages/papi-run.mjs --smoke --scales 1000 --allow-busy-host
+node stages/papi-run.mjs --reps 5 --scales 1000,10000,30000
+```
+
+Section 3 decomposes Octane from inside Octane, so its segments stop at the
+Element PAPI call and everything past that — prop and insertion work,
+`__FlushElementTree`, Web Core DOM publication, style/layout, observer delay —
+lands in one `layout_flush_residual`. That residual cannot be compared against
+a framework whose internals are not instrumented, which is what an FCP question
+about ReactLynx needs.
+
+This harness measures the other side of the same call. `@lynx-js/web-core` runs
+the main-thread script in a hidden same-origin iframe realm and installs every
+Element PAPI entry point onto that realm's global object with a single
+`Object.assign` issued from the page. `papiInstrumentJs` in
+`web/driver-client.mjs` wraps that one assignment, so the probe observes the
+**host boundary** rather than a framework: the identical instrument applies to
+Octane, ReactLynx, and the Vue cells by construction. No framework is patched,
+no reference bundle is rebuilt, and the vendored bundles keep the hashes the
+featured runs recorded.
+
+Three page variants run interleaved in one host window, rotating position
+across repetitions so no variant sits at a fixed place in the sequence:
+
+- `control` — no probe; the wall clock the other two are measured against.
+- `counts` — host call counts, flush cadence, and start delay, with no per-call
+  clock read, so its wall clock stays representative.
+- `timed` — adds the per-call brackets that exclusive host time needs.
+
+Counts and cadence are read from the `counts` build and host self time from the
+`timed` build. Both builds count identically by construction, and the report
+prints that agreement per cell as the control on the timed build's cost: if a
+1.0× pass and a costlier pass disagree on what the framework called, the timed
+shares describe a different workload and the numbers do not stand.
+
+### Observation contract (host boundary)
+
+Each timed window obeys one identity:
+
+```
+wall = start_delay + Σ host-group self time + off_boundary
+```
+
+`start_delay` is the observed gap from the window's start boundary to the first
+host call. Host groups (`papi_create`, `papi_props`, `papi_events`,
+`papi_topology`, `papi_read`, `papi_flush`, and `papi_other` for an entry point
+this repo has not classified) are directly observed and exclusive: a host call
+re-entered through a framework callback is counted once, never twice.
+`off_boundary` is the named exclusive remainder — framework script, the
+browser's own style/layout/paint and observer-frame delay, and the timed
+probe's own bookkeeping — because the host exposes no boundary separating
+those. `__FlushElementTree` self time covers only the synchronous publication
+Web Core performs inside it.
+
+Two windows are measured per page load, both through the byte-identical page
+driver: **startup**, from the main-thread slice start to the first composed
+paint of the app shell, and **create@N**, from `pointerdown` to all N rows in
+the composed tree. Octane additionally carries the pre-populated auto-rows
+bundles, so its **FCP@N** is measured directly; a pre-populated first screen is
+a build-time define of the app source, so the vendored references have no such
+variant and are reported "not measured" rather than substituted from another
+window.
+
+A single host call is far below the browser's clock granularity, which the
+report records: only per-kind aggregates over many calls carry meaning, and no
+per-call latency is claimed.
+
+Measurement and reporting are separate. `papi-run.mjs` writes the evidence
+(`results/papi-<rows>.json`, raw samples included); `papi-report.mjs` renders
+`results/papi-boundary.md` from it and can be re-run over the checked-in JSON,
+so a wording or attribution change never costs another measurement window:
+
+```bash
+node stages/papi-report.mjs
+```
+
+Both accept `--label`, which stems every output basename. A run over a different
+cell set writes beside the checked-in baseline rather than over it, and the
+report re-renders from whichever stem it is pointed at:
+
+```bash
+node stages/papi-run.mjs --cells octane,octane-profile --label papi-firstscreen
+node stages/papi-report.mjs --label papi-firstscreen
+```
+
+### Splitting `off_boundary` — which first-screen phase owns it
+
+`off_boundary` is a remainder for every cell, and on the `octane-profile` cell
+it splits further. `@octanejs/lynx` publishes which first-screen phase is
+running — `render`, `publish`, `capture`, `announce` — and the boundary probe
+attributes each host call to the phase that issued it, so a phase's own
+off-boundary time is its wall span minus the host time observed inside it. What
+no phase claims is the **residue**: web-core's own script between host calls,
+plus the browser's style, layout, paint, and observer frame.
+
+The dependency runs one way: the framework publishes a marker and never reads
+the probe. `render` crosses the boundary not at all, so its whole span is
+framework script by construction rather than by subtraction. The marker is
+gated on `__OCTANE_LYNX_PROFILE__` and folds out of a shipping bundle, so the
+split needs the separately built `octane-profile` cell — which is a different
+configuration, so it is excluded from every cross-cell delta and no ratio is
+taken between it and `octane`. The report prints both builds' first-screen
+walls from the same window instead, so the transfer is judged on measured
+agreement.
+
+The analyzer refuses rather than clamps: a counts-only split, a phase observing
+more host time than it lasted, phases claiming more than `off_boundary` holds, a
+marker still open at the window's end, an unknown phase name, a window in which
+no first screen ran, and a run in which only some samples carried a split.
+
+### The publication floor — `dom-attach-floor.mjs`
+
+A speed-of-light control with no framework in the page at all. `__AppendElement`
+is `parent.appendChild(child)` and the first flush publishes with
+`rootDom.appendChild(page)` on a shadow root, so the question of what a detached
+first screen costs to attach is a question for the browser, not for Octane or
+web-core. Five arms build the identical tree with the tag names, per-row shape,
+attributes, class names, and scoped stylesheet `createElementAPI.js` produces,
+and differ only in where and when it is attached:
+
+| arm | what it does |
+|---|---|
+| `build` | every node created and linked within its row, nothing ever attached — the allocation floor every other arm also pays |
+| `live-incremental` | rows created and appended one at a time into a container already in the document — the post-mount shape |
+| `live-bulk` | rows created and appended one at a time into a detached container, then one `appendChild` publishes the tree — the first-screen shape |
+| `split-incremental` | every row built first, then all of them appended into an attached container |
+| `split-bulk` | every row built first, then all of them appended into a detached container, then one `appendChild` publishes it |
+
+Every arm runs against **two element kinds**, in one window, because the harness
+page has `x-view`, `x-text`, and `raw-text` registered — `@lynx-js/web-elements`
+defines all three — so web-core publishes a tree of upgraded custom elements and
+the insertion runs one reaction per node inside itself.
+
+| kind | what it measures |
+|---|---|
+| `inert` | the floor for inserting plain DOM nodes of this shape |
+| `upgraded` | the same, plus the platform running one custom-element reaction per node — what web-core actually triggers |
+
+The `upgraded` kind decides, since it is the one the harness page holds, and
+`upgraded` minus `inert` is the platform's price for dispatching a reaction:
+the callbacks are empty on purpose, so what the difference isolates is the
+dispatch and not what web-elements does inside one. Each sample asserts its own
+registration state in the page and the runner rejects a cell that ran the wrong
+kind, because the claim this control got wrong the first time was exactly a
+registration claim read from sources instead of from the running page.
+
+```bash
+node stages/dom-attach-floor.mjs --reps 5 --scales 1000,10000,30000
+```
+
+The two pairs answer the same question at different costs. `live-*` interleaves
+creation and attachment exactly as the command stream does, so it carries no
+deviation and its whole loop is comparable to `papi_topology` — plus
+`papi_flush` on the bulk side. It cannot separate insertion from creation
+without a clock read per append, so its rate is the loop. `split-*` buys a
+separable `attachMs` by building first and attaching second, which the command
+stream never does; it localizes whatever the live pair finds and never overturns
+it.
+
+The verdict reads **command cost** — the calls the stream makes — and holds the
+browser's frame beside it rather than folding it in, because the rate this
+control exists to explain is `papi_topology (+ papi_flush)` self time, which is
+time inside `appendChild` and contains no style, layout, or paint. The frame is
+measured with a forced layout read on the next animation frame, so it lays out
+the whole tree; first contentful paint does not require that, which makes it an
+upper bound rather than a transfer. The reading registered before the run —
+command plus frame — is printed at the end so the substitution can be checked.
+
+One registered prediction is decided: incremental flat within the 10% gate, bulk
+rising past it, with the bulk arm's rise tested by a signed trend rather than by
+drift alone, so a rate that *falls* across the range cannot be scored as rising.
+Beside it the report prints the same prediction as one number per scale — bulk
+cost over incremental cost — because a platform that charges the same for an
+attached and a detached container has not reproduced the split whatever either
+drift does. The verdict refuses to decide a run that measured fewer than two
+scales, because a drift needs two points and reporting its absence as a failed
+flatness test would publish a verdict for a run that tested nothing.
+`dom-attach-analyze.mjs` holds every one of those decisions as pure functions so
+the claim it generates is tested without spending a measurement window.
+
+The prediction was refuted on both pairs and both readings: the platform charges
+the same per node whichever shape it is handed, so it does not reproduce the
+first-screen-versus-post-mount split. What the run does settle is how much of
+publication the platform owns. Comparing one call against two — `live-bulk`'s
+attach span is exactly the `rootDom.appendChild(page)` that `__FlushElementTree`
+performs, and `papi_flush` is two calls in the whole first-screen window — the
+platform is **33.2% / 37.1% / 30.3%** of `papi_flush` at 1k/10k/30k against the
+same window's `upgraded` cells, where the `inert` cells alone would say 9.6% /
+8.7% / 8.1%. Read wider, as `papi_topology + papi_flush` against the control's
+insertion span, the platform is 24.5% / 26.7% / 24.1% of Octane's first-screen
+insertion rate; that reading is the same order but carries the per-call
+instrument overhead the flush comparison does not.
+
+`papi-predicate-cost.mjs` records what the two window predicates themselves cost
+on a settled tree at each scale. The FCP predicate is the expensive composed-tree
+walk, so that bound belongs beside the report rather than in a reader's head —
+`x.fcp` samples its timestamp before the walk and `x.arm` samples after its
+check, which the recorded numbers let anyone verify.
+
+Delta attribution runs Octane against each reference and splits the gap into
+five directly observed owners — publication op count, flush cadence,
+first-paint scheduling, per-element stream shape, and off-boundary work. The
+count and rate owners come from an exact split,
+
+```
+Δ(host op time) = (Δcalls × reference ms/op) + (subject calls × Δ ms/op)
+```
+
+so "the subject issues more host calls" and "the subject's calls cost more
+each" never collapse into one lump. The same 10%-of-delta gate applies: a
+candidate owner is authorized only by a positive directly observed
+contribution, and the report prints the certified control and counts-build
+deltas beside the timed one.
+
 ## Claims and non-claims
 
 Command counts and commit bytes are Octane-owned costs and are gated. The

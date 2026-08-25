@@ -20,6 +20,14 @@ export const LYNX_PROFILE: boolean =
 	typeof __OCTANE_LYNX_PROFILE__ !== 'undefined' && __OCTANE_LYNX_PROFILE__ === true;
 
 /**
+ * The phases of a synchronous first screen, in the order `renderFirstScreenNow`
+ * runs them. `render` is the only one that never crosses the host boundary:
+ * `renderLynxFirstScreen` takes no PAPI at all, so its whole cost is framework
+ * script by construction rather than by subtraction.
+ */
+export type LynxFirstScreenPhase = 'render' | 'publish' | 'capture' | 'announce';
+
+/**
  * Per-realm commit-pipeline counters. The background and main threads run in
  * separate realms, so each accumulates its own record under the same global
  * name: background fills the dispatch-side fields, main the receive-side ones.
@@ -65,6 +73,28 @@ export interface LynxWireProfile {
 	deltaOps: number;
 	/** Encoded typed-delta JSON bytes, excluding the unchanged transport envelope. */
 	deltaBytes: number;
+	/**
+	 * Main: the first-screen phase currently running, or null outside one.
+	 *
+	 * This is the only counter here that is published for something else to read
+	 * rather than accumulated for a report. A host-boundary instrument that wraps
+	 * the Element PAPI sees every call but not which part of the first screen
+	 * issued it, and the first screen is one uninterrupted synchronous run, so
+	 * there is no other moment at which the two can be joined. Reading this marker
+	 * at call time is what lets such an instrument attribute host time to a phase.
+	 * The direction matters: the framework publishes, and never reads back.
+	 */
+	firstScreenPhase: LynxFirstScreenPhase | null;
+	/**
+	 * Main: wall time inside each first-screen phase. The first screen runs once
+	 * per root and goes through none of the commit stages above — it is
+	 * `renderFirstScreenNow`, not a commit — so these are the only counters that
+	 * describe it at all.
+	 */
+	firstScreenRenderMs: number;
+	firstScreenPublishMs: number;
+	firstScreenCaptureMs: number;
+	firstScreenAnnounceMs: number;
 }
 
 interface LynxProfileGlobals {
@@ -91,6 +121,11 @@ export function lynxWireProfile(): LynxWireProfile {
 		deltaMisses: 0,
 		deltaOps: 0,
 		deltaBytes: 0,
+		firstScreenPhase: null,
+		firstScreenRenderMs: 0,
+		firstScreenPublishMs: 0,
+		firstScreenCaptureMs: 0,
+		firstScreenAnnounceMs: 0,
 	});
 }
 
@@ -114,3 +149,38 @@ export function profileOutboundMessage(
 	profile.commands += record.batch?.commands?.length ?? 0;
 	profile.bytes += encoded.length;
 }
+
+/**
+ * Close the first-screen phase that is open and start `phase`; `null` ends the
+ * sequence.
+ *
+ * One statement between existing statements, rather than a wrapper that takes
+ * the phase body as a callback. `renderFirstScreenNow` returns early when a
+ * rendered tree turns out to be unadoptable, and settles the source through a
+ * `catch` and a `finally` when it faults — control flow the first screen's own
+ * cleanup contract depends on, and which threading four closures through it
+ * would rewrite. Marking is not allowed to be the reason any of that changes.
+ *
+ * Closing on `null` from a `finally` is what keeps a faulted or declined first
+ * screen from leaving a phase open for whatever runs next in the realm.
+ */
+export function markFirstScreenPhase(phase: LynxFirstScreenPhase | null): void {
+	if (!LYNX_PROFILE) return;
+	const profile = lynxWireProfile();
+	const now = performance.now();
+	const open = profile.firstScreenPhase;
+	if (open !== null) {
+		const elapsed = now - firstScreenPhaseStart;
+		if (open === 'render') profile.firstScreenRenderMs += elapsed;
+		else if (open === 'publish') profile.firstScreenPublishMs += elapsed;
+		else if (open === 'capture') profile.firstScreenCaptureMs += elapsed;
+		else profile.firstScreenAnnounceMs += elapsed;
+	}
+	profile.firstScreenPhase = phase;
+	firstScreenPhaseStart = now;
+}
+
+// Realm-local, not a profile field: the open phase's start is scratch for the
+// next `markFirstScreenPhase` call, where every field on the record is either
+// accumulated across the run or published for an instrument to read.
+let firstScreenPhaseStart = 0;

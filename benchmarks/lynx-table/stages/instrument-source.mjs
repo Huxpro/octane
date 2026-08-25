@@ -44,7 +44,7 @@ export function instrumentLynxStageSources(repositoryRoot) {
 			return replaceOnce(
 				next,
 				`\tprofile.commands += record.batch?.commands?.length ?? 0;
-\tprofile.bytes += encoded.length;
+\ttry {
 `,
 				`\tconst commands = record.batch?.commands ?? [];
 \tprofile.commands += commands.length;
@@ -76,7 +76,7 @@ export function instrumentLynxStageSources(repositoryRoot) {
 \t\t\tmeasured.publicHandleCommands = (measured.publicHandleCommands ?? 0) + 1;
 \t\t}
 \t}
-\tprofile.bytes += encoded.length;
+\ttry {
 `,
 				file,
 			);
@@ -164,27 +164,26 @@ export function instrumentLynxStageSources(repositoryRoot) {
 		});
 
 		update('packages/lynx/src/core/papi.ts', (source, file) => {
+			// Through `lynxWireProfile()`, never a second initializer inlined here.
+			// The record is created once per realm by whichever probe runs first,
+			// and `??=` means every later caller inherits that shape: an inlined
+			// copy that has drifted from `profiling.ts` leaves the fields it omits
+			// undefined, so the first `+=` against one produces NaN. This probe runs
+			// at PAPI creation, before anything else on the main thread, so its copy
+			// is the one every other main-thread counter would have inherited.
 			let next = replaceOnce(
 				source,
+				"import { LYNX_NODES_REF_ATTRIBUTE } from './nodes-ref.js';\n",
+				`import { LYNX_NODES_REF_ATTRIBUTE } from './nodes-ref.js';
+import { lynxWireProfile } from './profiling.js';
+`,
+				file,
+			);
+			next = replaceOnce(
+				next,
 				'export function createLynxElementPAPI<Node extends LynxElementRef = LynxElementRef>(\n',
 				`function profilePapiCreate(started: number): void {
-\tconst globals = globalThis as any;
-\tconst profile = (globals.__OCTANE_LYNX_PROF ??= {
-\t\tcommits: 0,
-\t\tpacedCommits: 0,
-\t\tcommands: 0,
-\t\temptyCommits: 0,
-\t\tbytes: 0,
-\t\tselfcheckMs: 0,
-\t\tencodeMs: 0,
-\t\tdispatchMs: 0,
-\t\tdecodeMs: 0,
-\t\tvalidateMs: 0,
-\t\tprepareMs: 0,
-\t\tprepareCheckMs: 0,
-\t\tapplyMs: 0,
-\t\tackMs: 0,
-\t});
+\tconst profile = lynxWireProfile();
 \tprofile.papiCreateMs = (profile.papiCreateMs ?? 0) + performance.now() - started;
 }
 
@@ -303,8 +302,18 @@ export function createLynxElementPAPI<Node extends LynxElementRef = LynxElementR
 		});
 
 		update('packages/lynx/src/main-renderer.ts', (source, file) => {
+			// Same rule as the papi.ts patch above: the shared helper owns the
+			// record's shape, so this probe never creates one of its own.
 			let next = replaceOnce(
 				source,
+				"import { isLynxNativeResource } from './resource.js';\n",
+				`import { isLynxNativeResource } from './resource.js';
+import { lynxWireProfile } from './core/profiling.js';
+`,
+				file,
+			);
+			next = replaceOnce(
+				next,
 				'let CURRENT_ATTEMPT: FirstScreenAttempt | null = null;\n',
 				'let CURRENT_ATTEMPT: FirstScreenAttempt | null = null;\nlet FIRST_SCREEN_PLAN_PROFILE_DEPTH = 0;\n',
 				file,
@@ -324,23 +333,7 @@ export function createLynxElementPAPI<Node extends LynxElementRef = LynxElementR
 \t\t} finally {
 \t\t\tFIRST_SCREEN_PLAN_PROFILE_DEPTH--;
 \t\t\tif (outerProfile) {
-\t\t\t\tconst globals = globalThis as any;
-\t\t\t\tconst profile = (globals.__OCTANE_LYNX_PROF ??= {
-\t\t\t\t\tcommits: 0,
-\t\t\t\t\tpacedCommits: 0,
-\t\t\t\t\tcommands: 0,
-\t\t\t\t\temptyCommits: 0,
-\t\t\t\t\tbytes: 0,
-\t\t\t\t\tselfcheckMs: 0,
-\t\t\t\t\tencodeMs: 0,
-\t\t\t\t\tdispatchMs: 0,
-\t\t\t\t\tdecodeMs: 0,
-\t\t\t\t\tvalidateMs: 0,
-\t\t\t\t\tprepareMs: 0,
-\t\t\t\t\tprepareCheckMs: 0,
-\t\t\t\t\tapplyMs: 0,
-\t\t\t\t\tackMs: 0,
-\t\t\t\t});
+\t\t\t\tconst profile = lynxWireProfile();
 \t\t\t\tprofile.firstScreenPlanMs =
 \t\t\t\t\t(profile.firstScreenPlanMs ?? 0) + performance.now() - startedPlan;
 \t\t\t}
@@ -359,13 +352,13 @@ export function createLynxElementPAPI<Node extends LynxElementRef = LynxElementR
 			);
 			next = replaceOnce(
 				next,
-				`\t\tlet source: LynxHostContainer<Node> | null = null;
-\t\ttry {
-\t\t\tconst result = renderLynxFirstScreen(component, props);
+				// Anchored on the phase mark rather than on the `try {` above it: the
+				// first screen's own probe sits between them, and this measures how long
+				// the main-thread slice took to load, which belongs before the first
+				// phase opens rather than inside it.
+				`\t\t\tmarkFirstScreenPhase('render');
 `,
-				`\t\tlet source: LynxHostContainer<Node> | null = null;
-\t\ttry {
-\t\t\tconst sliceStart = (rawTarget as LynxMainThreadGlobals)
+				`\t\t\tconst sliceStart = (rawTarget as LynxMainThreadGlobals)
 \t\t\t\t.__OCTANE_LYNX_MT_SLICE_LOAD_START_EPOCH__;
 \t\t\tif (typeof sliceStart === 'number' && Number.isFinite(sliceStart)) {
 \t\t\t\tconst profile = lynxWireProfile();
@@ -373,7 +366,7 @@ export function createLynxElementPAPI<Node extends LynxElementRef = LynxElementR
 \t\t\t\tprofile.mtSliceEvalMs =
 \t\t\t\t\t(profile.mtSliceEvalMs ?? 0) + performance.timeOrigin + performance.now() - sliceStart;
 \t\t\t}
-\t\t\tconst result = renderLynxFirstScreen(component, props);
+\t\t\tmarkFirstScreenPhase('render');
 `,
 				file,
 			);
@@ -421,12 +414,12 @@ export function createLynxElementPAPI<Node extends LynxElementRef = LynxElementR
 			);
 			next = replaceOnce(
 				next,
-				`\t\t\tprofile.selfcheckMs += startedEncode - startedSelfCheck;
-\t\t\tprofileOutboundMessage(profile, message, encoded);
+				`\t\t\tprofile.selfcheckMs += startedDispatch - startedSelfCheck;
+\t\t\tprofileOutboundMessage(profile, message);
 \t\t\treturn;
 `,
-				`\t\t\tprofile.selfcheckMs += startedEncode - startedSelfCheck;
-\t\t\tprofileOutboundMessage(profile, message, encoded);
+				`\t\t\tprofile.selfcheckMs += startedDispatch - startedSelfCheck;
+\t\t\tprofileOutboundMessage(profile, message);
 \t\t\tif ((message as { readonly type?: unknown }).type === 'commit' && replayStartedAt !== null) {
 \t\t\t\tprofile.bgReplayMs = (profile.bgReplayMs ?? 0) + startedSelfCheck - replayStartedAt;
 \t\t\t\tbenchReplayWindow(null);

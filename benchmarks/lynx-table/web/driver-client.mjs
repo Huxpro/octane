@@ -7,6 +7,7 @@
 // claude/lynx-implementation-review-n2r0ie) so every framework cell — octane
 // and the vendored references — is measured by the byte-identical instrument.
 // Do not fork the predicates for one framework; that breaks the comparison.
+import fs from 'node:fs';
 
 export const DRIVER_CLIENT_JS = `(() => {
   const x = (globalThis.__x = {});
@@ -76,6 +77,12 @@ export const DRIVER_CLIENT_JS = `(() => {
     for (const cls of CONTENT_CLASSES) n += findByClass(cls).length;
     return n;
   };
+
+  // -- shell count: the pre-workload first screen every cell renders ---------
+  // The button row is the only content the apps paint before any rows exist,
+  // so it is the workload-agnostic signal for "the shell reached the composed
+  // tree" — the startup counterpart to contentCount.
+  x.shellCount = () => findByClass('btn-text').length;
 
   // -- table predicates ------------------------------------------------------
   let rowsEl = null;
@@ -159,6 +166,7 @@ export const DRIVER_CLIENT_JS = `(() => {
       case 'dangerAt': return x.dangerAt(spec.index);
       case 'checksumNot': return x.tableOracle().checksum !== spec.value;
       case 'contentAtLeast': return x.contentCount() >= spec.value;
+      case 'shellAtLeast': return x.shellCount() >= spec.value;
       default: throw new Error('unknown predicate ' + spec.type);
     }
   };
@@ -171,7 +179,16 @@ export const DRIVER_CLIENT_JS = `(() => {
       window.addEventListener('pointerdown', onDown, { capture: true, once: true });
       const deadline = performance.now() + (timeoutMs ?? 120000);
       const tick = () => {
-        if (t0 != null && checkPredicate(spec)) { resolve({ ms: performance.now() - t0 }); return; }
+        if (t0 != null && checkPredicate(spec)) {
+          const done = performance.now();
+          resolve({
+            ms: done - t0,
+            startEpoch: performance.timeOrigin + t0,
+            endEpoch: performance.timeOrigin + done,
+            papiAtDone: papiSnapshot(),
+          });
+          return;
+        }
         if (performance.now() > deadline) {
           window.removeEventListener('pointerdown', onDown, { capture: true });
           reject(new Error('predicate timeout: ' + JSON.stringify(spec) + ' rowCount=' + x.rowCount()));
@@ -197,12 +214,24 @@ export const DRIVER_CLIENT_JS = `(() => {
     new Promise((resolve) =>
       requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, extraMs))));
 
+  // -- host-boundary snapshot -------------------------------------------------
+  // Reads the host-boundary probe when the page carries one (papiInstrumentJs).
+  // The call is byte-identical for every framework cell and yields null on a
+  // control page, so control and probe pages run the same driver code.
+  const papiSnapshot = () =>
+    typeof globalThis.__OCTANE_STAGE_PAPI__ === 'function' ? globalThis.__OCTANE_STAGE_PAPI__() : null;
+  x.papiSnapshot = papiSnapshot;
+
   // -- FCP + settled ---------------------------------------------------------
   // From viewAttachTime, poll the composed tree per animation frame. FCP =
-  // first frame with contentCount >= minContent; settled = content count then
-  // stable for idleMs. Hard timeout aborts as DNF.
+  // first frame satisfying the paint predicate — contentCount >= minContent by
+  // default, or an explicit spec for a first screen that carries no rows;
+  // settled = content count then stable for idleMs. Hard timeout aborts as DNF.
   x.fcp = (opts = {}) => {
     const minContent = opts.minContent ?? 5;
+    // Default paint check reuses the content count this tick already walked;
+    // an explicit spec is for a first screen that carries no row content.
+    const spec = opts.spec ?? null;
     const idleMs = opts.idleMs ?? 400;
     const timeoutMs = opts.timeoutMs ?? 120000;
     return new Promise((resolve) => {
@@ -210,22 +239,26 @@ export const DRIVER_CLIENT_JS = `(() => {
       const deadline = performance.now() + timeoutMs;
       let fcp = null;
       let fcpEpoch = null;
+      let papiAtFcp = null;
       let lastCount = -1;
       let lastChange = performance.now();
       const tick = () => {
         const now = performance.now();
         const c = x.contentCount();
-        if (fcp == null && c >= minContent) {
+        if (fcp == null && (spec === null ? c >= minContent : checkPredicate(spec))) {
           fcp = now - t0;
           fcpEpoch = performance.timeOrigin + now;
+          // Same-realm read on the observing frame: the host-boundary counters
+          // are exact as of first paint, not as of a later cross-realm poll.
+          papiAtFcp = papiSnapshot();
         }
         if (c !== lastCount) { lastCount = c; lastChange = now; }
         if (fcp != null && now - lastChange >= idleMs) {
-          resolve({ fcp, fcpEpoch, settled: lastChange - t0, finalCount: c, dnf: false });
+          resolve({ fcp, fcpEpoch, papiAtFcp, settled: lastChange - t0, finalCount: c, dnf: false });
           return;
         }
         if (now > deadline) {
-          resolve({ fcp, fcpEpoch, settled: null, finalCount: c, dnf: true });
+          resolve({ fcp, fcpEpoch, papiAtFcp, settled: null, finalCount: c, dnf: true });
           return;
         }
         requestAnimationFrame(tick);
@@ -289,6 +322,340 @@ export const WIRE_INSTRUMENT_JS = `(() => {
       },
     });
   }
+})()`;
+
+// Host-side Element PAPI boundary probe.
+//
+// @lynx-js/web-core runs the main-thread script in a hidden same-origin iframe
+// realm and installs every Element PAPI entry point onto that realm's global
+// object with one `Object.assign` issued from this page's realm
+// (`LynxViewInstance.onPageConfigReady`). Wrapping that single assignment is
+// the whole interception: the probe observes the host boundary, so the
+// identical instrument applies to Octane, ReactLynx, and the Vue cells by
+// construction — no framework code, bundle, or vendored reference artifact is
+// modified, rebuilt, or re-hashed to measure any of them.
+//
+// The wrappers become own data properties of the main-thread realm's global
+// object, so PAPI lookups stay plain global reads; only the call itself is
+// wrapped. Timers are exclusive: a call reports its wall time minus time spent
+// inside nested wrapped calls, so a host call re-entered through a framework
+// callback (a list's `componentAtIndex`) is never counted twice.
+//
+// Wall time inside `__FlushElementTree` covers the synchronous publication
+// Web Core performs there; the browser's own style, layout, and paint run
+// afterwards and stay in the analyzer's residual rather than being guessed
+// apart.
+export function papiInstrumentJs({ timers = true } = {}) {
+	return PAPI_INSTRUMENT_TEMPLATE.replace('__PAPI_TIMERS__', timers ? 'true' : 'false');
+}
+
+const PAPI_INSTRUMENT_TEMPLATE = `(() => {
+  // Timing every host call costs a clock read per call, which on a host with a
+  // slow performance.now() is a large share of a cheap call. The counts build
+  // reads the clock only on the first call and on each flush, so op counts,
+  // flush cadence, and start delay come from a window whose wall clock is
+  // still representative; the timed build adds the per-call brackets that
+  // exclusive host time needs. Both builds count identically, so agreement
+  // between them is the control on the timed build's cost.
+  var TIMERS = __PAPI_TIMERS__;
+  var FLUSH_DETAIL_LIMIT = 64;
+  var CORE = ['__CreatePage', '__CreateElement', '__FlushElementTree'];
+  var origin = performance.timeOrigin;
+  var kinds = Object.create(null);
+  var flushes = [];
+  var childStack = [];
+  var childDepth = 0;
+  var state = {
+    attached: false,
+    attachEpoch: null,
+    wrapped: [],
+    calls: 0,
+    selfMs: 0,
+    firstCallEpoch: null,
+    lastCallEpoch: null,
+    flushCount: 0,
+    flushSelfMs: 0,
+  };
+
+  // The framework's profile record, when the page carries a profile build. The
+  // Element PAPI is installed into a separate iframe realm, so the framework's
+  // globalThis is not this one; what makes the record reachable is that
+  // web-core performs the install from page-realm code, which puts that realm's
+  // global in hand here as Object.assign's target. Reading a phase marker from
+  // it is the only way to know which part of a first screen issued a host call:
+  // the first screen is one uninterrupted synchronous run, and the boundary
+  // shows calls, not callers. The framework publishes the marker and never
+  // reads back, so nothing here changes what the framework does.
+  var mainRealm = null;
+  var phases = Object.create(null);
+  // The framework's phase spans accumulate for the life of the realm, but a
+  // window is not the realm: a create click runs long after the first screen
+  // ended. Recording the spans at each window start and reporting the delta is
+  // what keeps one window from being handed another window's first screen.
+  var phaseBase = null;
+
+  // Read at the moment the call is issued, never after it returns: the phase
+  // that issued a call is the one that owns its cost, and reading the marker on
+  // the way out would credit a phase that opened while the call was running. It
+  // is also what makes the two builds agree by construction — a counts build
+  // and a timed build sample the marker at the same instant.
+  var openPhase = function () {
+    if (mainRealm === null) return null;
+    var profile = mainRealm.__OCTANE_LYNX_PROF;
+    if (profile === undefined || profile === null) return null;
+    var phase = profile.firstScreenPhase;
+    return phase === undefined ? null : phase;
+  };
+
+  var phaseWalls = function () {
+    if (mainRealm === null) return null;
+    var profile = mainRealm.__OCTANE_LYNX_PROF;
+    if (profile === undefined || profile === null) return null;
+    if (typeof profile.firstScreenRenderMs !== 'number') return null;
+    return {
+      render: profile.firstScreenRenderMs,
+      publish: profile.firstScreenPublishMs,
+      capture: profile.firstScreenCaptureMs,
+      announce: profile.firstScreenAnnounceMs,
+    };
+  };
+
+  var creditPhase = function (phase, self) {
+    if (phase === null) return;
+    var bucket = phases[phase];
+    if (bucket === undefined) bucket = phases[phase] = { calls: 0, selfMs: 0 };
+    bucket.calls++;
+    bucket.selfMs += self;
+  };
+
+  var bucketOf = function (name) {
+    var bucket = kinds[name];
+    if (bucket === undefined) {
+      bucket = kinds[name] = { calls: 0, selfMs: 0, firstEpoch: null, lastEpoch: null };
+    }
+    return bucket;
+  };
+
+  // Flush records are the per-commit cadence trace. They are bounded: beyond
+  // FLUSH_DETAIL_LIMIT only the aggregate counters keep growing, and the
+  // snapshot reports both the limit and the true flush count, so a truncated
+  // trace can never read as a complete one.
+  var recordFlush = function (startEpoch, endEpoch, self, callsBefore, selfMsBefore) {
+    state.flushCount++;
+    state.flushSelfMs += self;
+    if (flushes.length < FLUSH_DETAIL_LIMIT) {
+      flushes.push({
+        index: state.flushCount - 1,
+        startEpoch: startEpoch,
+        endEpoch: endEpoch,
+        selfMs: self,
+        callsBefore: callsBefore,
+        selfMsBefore: selfMsBefore,
+      });
+    }
+  };
+
+  var wrapTimed = function (name, fn) {
+    var bucket = bucketOf(name);
+    var isFlush = name === '__FlushElementTree';
+    return function () {
+      var callsBefore = isFlush ? state.calls : 0;
+      var selfMsBefore = isFlush ? state.selfMs : 0;
+      var start = performance.now();
+      var phase = openPhase();
+      childStack[childDepth++] = 0;
+      try {
+        return fn.apply(this, arguments);
+      } finally {
+        var end = performance.now();
+        var child = childStack[--childDepth];
+        var gross = end - start;
+        var self = gross - child;
+        if (self < 0) self = 0;
+        if (childDepth > 0) childStack[childDepth - 1] += gross;
+        bucket.calls++;
+        bucket.selfMs += self;
+        if (bucket.firstEpoch === null) bucket.firstEpoch = origin + start;
+        bucket.lastEpoch = origin + end;
+        state.calls++;
+        state.selfMs += self;
+        if (state.firstCallEpoch === null) state.firstCallEpoch = origin + start;
+        state.lastCallEpoch = origin + end;
+        if (isFlush) recordFlush(origin + start, origin + end, self, callsBefore, selfMsBefore);
+        creditPhase(phase, self);
+      }
+    };
+  };
+
+  var wrapCounted = function (name, fn) {
+    var bucket = bucketOf(name);
+    if (name === '__FlushElementTree') return wrapTimed(name, fn);
+    return function () {
+      // One clock read for the whole window: the first host call is the start
+      // boundary the report needs, and every later call is counted only. This
+      // build leaves the per-kind first and last epochs null rather than
+      // stamping them with the window's first call, so an unobserved timestamp
+      // never reads as an observed one.
+      if (state.firstCallEpoch === null) state.firstCallEpoch = origin + performance.now();
+      bucket.calls++;
+      state.calls++;
+      // Counts only. This build reads no per-call clock, so the phase buckets it
+      // fills carry calls and a zero selfMs rather than a time it never measured.
+      creditPhase(openPhase(), 0);
+      return fn.apply(this, arguments);
+    };
+  };
+
+  var wrap = TIMERS ? wrapTimed : wrapCounted;
+
+  var wrapSource = function (source) {
+    if (source === null || source === undefined) return source;
+    if (typeof source !== 'object' && typeof source !== 'function') return source;
+    // Object.assign copies enumerable own string and symbol keys; the
+    // substitute copy reproduces exactly that set so the assignment the host
+    // performs is unchanged apart from the wrapped functions.
+    var copy = {};
+    var names = Object.keys(source);
+    for (var i = 0; i < names.length; i++) {
+      var name = names[i];
+      var value = source[name];
+      if (name.indexOf('__') === 0 && typeof value === 'function') {
+        copy[name] = wrap(name, value);
+        state.wrapped.push(name);
+      } else {
+        copy[name] = value;
+      }
+    }
+    var symbols = Object.getOwnPropertySymbols(source);
+    for (var s = 0; s < symbols.length; s++) {
+      if (Object.prototype.propertyIsEnumerable.call(source, symbols[s])) {
+        copy[symbols[s]] = source[symbols[s]];
+      }
+    }
+    return copy;
+  };
+
+  var hasCore = function (source) {
+    if (source === null || source === undefined) return false;
+    if (typeof source !== 'object' && typeof source !== 'function') return false;
+    for (var i = 0; i < CORE.length; i++) {
+      if (typeof source[CORE[i]] === 'function') return true;
+    }
+    return false;
+  };
+
+  var nativeAssign = Object.assign;
+  Object.assign = function (target) {
+    var sources = Array.prototype.slice.call(arguments, 1);
+    var found = false;
+    for (var i = 0; i < sources.length; i++) {
+      if (hasCore(sources[i])) { found = true; break; }
+    }
+    if (!found) return nativeAssign.apply(Object, arguments);
+    // One-shot: the Element PAPI install is a single assignment, so the hook
+    // retires itself and leaves no residual cost on any later Object.assign.
+    Object.assign = nativeAssign;
+    state.attached = true;
+    state.attachEpoch = origin + performance.now();
+    // The install target is the main-thread script realm's global — the realm
+    // the framework's own profile record lives on.
+    mainRealm = target;
+    return nativeAssign.apply(Object, [target].concat(sources.map(wrapSource)));
+  };
+
+  globalThis.__OCTANE_STAGE_PAPI__ = function () {
+    var byKind = {};
+    var names = Object.keys(kinds);
+    for (var i = 0; i < names.length; i++) {
+      var bucket = kinds[names[i]];
+      byKind[names[i]] = {
+        calls: bucket.calls,
+        selfMs: bucket.selfMs,
+        firstEpoch: bucket.firstEpoch,
+        lastEpoch: bucket.lastEpoch,
+      };
+    }
+    return {
+      timers: TIMERS,
+      attached: state.attached,
+      attachEpoch: state.attachEpoch,
+      wrapped: state.wrapped.slice(),
+      calls: state.calls,
+      selfMs: state.selfMs,
+      firstCallEpoch: state.firstCallEpoch,
+      lastCallEpoch: state.lastCallEpoch,
+      flushCount: state.flushCount,
+      flushSelfMs: state.flushSelfMs,
+      flushDetailLimit: FLUSH_DETAIL_LIMIT,
+      flushes: flushes.slice(),
+      kinds: byKind,
+      firstScreen: firstScreenSnapshot(),
+    };
+  };
+
+  // The first-screen split, or null when the page carries no profile build. Two
+  // halves that only mean something together: wallMs is what the framework
+  // measured for each phase, selfMs is the host time this boundary observed
+  // inside it, and the difference is that phase's off-boundary cost. What no
+  // phase claims is web-core's own script plus the browser's frame.
+  var firstScreenSnapshot = function () {
+    if (mainRealm === null) return null;
+    var profile = mainRealm.__OCTANE_LYNX_PROF;
+    if (profile === undefined || profile === null) return null;
+    var walls = phaseWalls();
+    if (walls === null) return null;
+    var byPhase = {};
+    var names = Object.keys(phases);
+    for (var i = 0; i < names.length; i++) {
+      byPhase[names[i]] = { calls: phases[names[i]].calls, selfMs: phases[names[i]].selfMs };
+    }
+    var base = phaseBase;
+    var wallMs = {};
+    // The phase list has one authority in this file: phaseWalls' field map.
+    var phaseNames = Object.keys(walls);
+    for (var j = 0; j < phaseNames.length; j++) {
+      var key = phaseNames[j];
+      wallMs[key] = walls[key] - (base === null ? 0 : base[key]);
+    }
+    return {
+      timers: TIMERS,
+      open: profile.firstScreenPhase === undefined ? null : profile.firstScreenPhase,
+      wallMs: wallMs,
+      byPhase: byPhase,
+    };
+  };
+
+  // Zeroes the counters so one driven operation can be attributed on its own.
+  // The wrappers stay installed, so a reset never changes what is measured —
+  // only the window it is measured over.
+  globalThis.__OCTANE_STAGE_PAPI_RESET__ = function () {
+    // Phase buckets are recreated rather than zeroed in place: nothing closed
+    // over them, so there are no detached wrappers to strand. The framework's
+    // spans belong to the framework, so they are baselined here instead: the
+    // window that follows reports what accumulated inside it and nothing older.
+    phases = Object.create(null);
+    phaseBase = phaseWalls();
+    // Zero the buckets in place: each wrapper closed over its bucket when the
+    // boundary was wrapped, so replacing or dropping them would leave the
+    // installed wrappers counting into detached objects and report an empty
+    // window as if the framework had issued no host calls at all.
+    var names = Object.keys(kinds);
+    for (var i = 0; i < names.length; i++) {
+      var bucket = kinds[names[i]];
+      bucket.calls = 0;
+      bucket.selfMs = 0;
+      bucket.firstEpoch = null;
+      bucket.lastEpoch = null;
+    }
+    flushes.length = 0;
+    state.calls = 0;
+    state.selfMs = 0;
+    state.firstCallEpoch = null;
+    state.lastCallEpoch = null;
+    state.flushCount = 0;
+    state.flushSelfMs = 0;
+    return true;
+  };
 })()`;
 
 /** Build the bench host HTML that loads web-core and installs the driver. */
@@ -372,6 +739,22 @@ export const OBSERVE_LYNX_MT_SLICE_LOAD = `(() => {
 
 export async function applyStageClock(page) {
 	await page.addInitScript(OBSERVE_LYNX_MT_SLICE_LOAD);
+}
+
+/**
+ * Chromium launch options shared by every harness in this benchmark, so each
+ * cell — octane and the vendored references — is driven by the same browser
+ * binary in the same configuration. Falls back to the image-provided Chromium
+ * when the Playwright-pinned build was never downloaded; the harnesses record
+ * `browser.version()` in their reports either way.
+ */
+export function chromiumLaunchOptions({ headless = true } = {}) {
+	const provided = '/opt/pw-browsers/chromium';
+	return {
+		headless,
+		...(fs.existsSync(provided) ? { executablePath: provided } : null),
+		args: ['--disable-background-timer-throttling', '--disable-renderer-backgrounding'],
+	};
 }
 
 /** min/max/mean/median/std/ci95 over a numeric array (nulls/NaN dropped). */
