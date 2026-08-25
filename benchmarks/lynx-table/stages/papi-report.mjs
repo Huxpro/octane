@@ -36,7 +36,8 @@ function controlWall(window) {
  */
 export function firstScreenControl(scale) {
 	const cell = scale.cells.octane;
-	if (!cell.fcp.measured) return null;
+	// A run measured without the octane cell has no internal control to render.
+	if (cell === undefined || !cell.fcp.measured) return null;
 	const composedControlMs = controlWall(cell.startup) + controlWall(cell.create);
 	const composedCountsMs = cell.startup.counts.total.median + cell.create.counts.total.median;
 	const composedCalls =
