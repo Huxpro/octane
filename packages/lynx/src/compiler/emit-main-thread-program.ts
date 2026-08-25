@@ -46,23 +46,36 @@
  *
  * ## What it refuses
  *
- * Exactly the programs the dense path itself declines. `denseEligible` in
- * `host-driver.ts` requires every *bound* node to have a non-zero dynamic
- * route, which means:
+ * A subset of what the dense path accepts, chosen so that everything it does
+ * emit is covered by the differential test rather than by an argument.
+ *
+ * The upper bound is `denseEligible` in `host-driver.ts`, which requires every
+ * *bound* node to have a non-zero dynamic route:
  *
  *   * route 1 — a `#text` whose only prop and only bindings are `value`; its
  *     content is passed to `rawText()` at creation and never written again.
  *   * route 2 — a `view` or `text` whose only props and bindings are `class`,
  *     `className` and `id`, applied by `applyDenseScalarHostProps`.
  *
- * Unbound nodes are not so limited in the interpreter: they run the general
- * `applyProps` patch, which covers inline styles, datasets, attributes, CSS
- * scope and more. This backend refuses those too rather than emitting a second
- * incomplete copy of that machinery, because a prop silently not written would
- * paint a different tree, and a first screen that differs from the one the
- * command path would have painted is worse than one that was never compiled.
+ * Two things the dense path allows are refused here anyway, and both are the
+ * first slice's surface rather than the design's:
+ *
+ *   * **Unbound nodes.** The interpreter runs the general `applyProps` patch
+ *     for them, which covers inline styles, datasets, attributes, CSS scope and
+ *     more. Emitting a second, incomplete copy of that machinery is the failure
+ *     to avoid: a prop silently not written paints a different tree, and a
+ *     first screen that differs from the one the command path would have
+ *     painted is worse than one that was never compiled. So an unbound node is
+ *     held to the same scalar set as a bound one.
+ *   * **Host types with no intrinsic factory** — `scroll-view`, `image` and
+ *     anything else. The interpreter creates those through `createElement`, and
+ *     so could this; what it could not yet do is *prove* it writes their props
+ *     the way `applyProps` would. Widening is mechanical and cheap, because the
+ *     differential harness extends to a new host type directly, one type at a
+ *     time, with the applier as the oracle.
+ *
  * Refused content is what #163's C3 routes back to the command path; until then
- * a refusal is a build error naming the prop.
+ * a refusal is a build error naming the prop, node or event site.
  *
  * The program invariants the applier enforces at mount time — pre-order nodes,
  * `parent === -1` at the root, raw text only under a text host, dense and
@@ -209,8 +222,8 @@ function refuse(what: string): never {
  * Deliberately re-derived from the node rather than read off a compiled
  * program: this backend runs at build time, on the wire shape, before any
  * runtime program object exists. Note that `raw-text` is not route 1 here for
- * the same reason it is not there — only `#text` is — so a `raw-text` carrying
- * anything at all is refused rather than half-written.
+ * the same reason it is not there — only `#text` is — so every `raw-text` is
+ * refused, carrying anything or nothing, rather than half-written.
  */
 function dynamicRoute(node: UniversalHostTemplateProgramNode): 0 | 1 | 2 {
 	const bindings = node.bindings ?? [];
@@ -417,9 +430,14 @@ export function emitLynxMainThreadProgram(
 			].find((name) =>
 				node.type === '#text' ? name !== 'value' : !SCALAR_HOST_PROPS.includes(name),
 			);
-			refuse(
-				`${where} carries ${JSON.stringify(offending ?? '(unknown)')}, which only the command path writes`,
-			);
+			// A node carrying nothing at all still reaches this: `raw-text` is the
+			// one type with an intrinsic factory that takes neither route, because
+			// only `#text` is route 1. Name the type rather than a prop that does
+			// not exist.
+			if (offending === undefined) {
+				refuse(`${where} is raw text this backend only emits when the program spells it \`#text\``);
+			}
+			refuse(`${where} carries ${JSON.stringify(offending)}, which only the command path writes`);
 		}
 		if (factory === 'rawText') {
 			body.push(`\t\tvar n${index} = rawText(${rawTextSource(node, where)});`);

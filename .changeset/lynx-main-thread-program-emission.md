@@ -22,9 +22,11 @@ compared. They agree about everything the user sees, including the parts of
 `applyDenseScalarHostProps` that look like details: `className` shadows `class`
 by presence rather than by value, a class coerces from a number only when
 truthy, an empty class writes nothing, and a binding overrides a static prop of
-the same name. They differ in exactly one place, by design: the emitted program
-writes no nodes-ref selector, because its caller already holds the nodes it
-created and nothing has to be findable by CSS selector afterwards.
+the same name. Two things they are designed to disagree about are asserted on
+their own rather than normalized away: the emitted program writes no nodes-ref
+selector, because its caller already holds the nodes it created and nothing has
+to be findable by CSS selector afterwards, and it takes its event listeners as
+parameters rather than deriving a token from a command's instance range.
 
 The backend refuses what it cannot emit faithfully, naming the prop, node or
 event site: anything only the general prop-patch path writes (inline styles,

@@ -123,6 +123,17 @@ const SCALARS: UniversalHostTemplateProgram = {
 			props: { class: 'static-loses' },
 			bindings: [{ name: 'class', valueIndex: 3 }],
 		},
+		// A bound `class` under a present `className`. The shadow rule outranks
+		// the binding rule, so this node paints nothing and the value at slot 4 is
+		// passed and discarded — the one case where an emission reaching for
+		// "whichever class-ish source exists" would paint a class the applier does
+		// not.
+		{
+			type: 'view',
+			parent: 0,
+			props: { className: undefined },
+			bindings: [{ name: 'class', valueIndex: 4 }],
+		},
 	],
 	events: [],
 };
@@ -130,13 +141,16 @@ const SCALARS: UniversalHostTemplateProgram = {
 /** The class/id values whose coercion the applier and the emission must share. */
 const SCALAR_VALUES: readonly (readonly [string, readonly UniversalHostTemplateProgramValue[]])[] =
 	[
-		['strings', ['bound', 'id-7', 'aliased-bound', 'binding-wins']],
-		['an empty string, which writes no class', ['', 'id-7', '', '']],
-		['truthy numbers, which stringify', [12, 34, 56, 78]],
-		['zero, which is a falsy number and writes no class', [0, 0, 0, 0]],
-		['null, which writes neither', [null, null, null, null]],
-		['false, which writes no class but does write an id', [false, false, false, false]],
-		['undefined, which is not the same skip as null', [undefined, undefined, undefined, undefined]],
+		['strings', ['bound', 'id-7', 'aliased-bound', 'binding-wins', 'discarded']],
+		['an empty string, which writes no class', ['', 'id-7', '', '', '']],
+		['truthy numbers, which stringify', [12, 34, 56, 78, 90]],
+		['zero, which is a falsy number and writes no class', [0, 0, 0, 0, 0]],
+		['null, which writes neither', [null, null, null, null, null]],
+		['false, which writes no class but does write an id', [false, false, false, false, false]],
+		[
+			'undefined, which is not the same skip as null',
+			[undefined, undefined, undefined, undefined, undefined],
+		],
 	];
 
 type Row = { readonly id: number; readonly label: string };
@@ -410,6 +424,17 @@ describe('Lynx main-thread program emission', () => {
 					events: [],
 				},
 				/"class"/,
+			],
+			[
+				'raw text the program spells `raw-text` rather than `#text`',
+				{
+					nodes: [
+						{ type: 'text', parent: -1, props: {} },
+						{ type: 'raw-text', parent: 0, props: {} },
+					],
+					events: [],
+				},
+				/only emits when the program spells it `#text`/,
 			],
 			[
 				'a host type with no intrinsic factory',
