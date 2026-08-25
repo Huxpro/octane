@@ -173,6 +173,11 @@ export function shape(node: FakeNode): unknown {
 	return {
 		type: node.type,
 		classes: node.classes,
+		// `id` is half of what the dense scalar path writes: `__SetID` and
+		// `__SetClasses` are the two calls `applyDenseScalarHostProps` makes, and a
+		// shape that recorded only one of them would let two appliers disagree
+		// about every id and still compare equal.
+		id: node.id,
 		attributes: node.attributes,
 		events: [...node.events.entries()].sort(),
 		selector: node.selector,
