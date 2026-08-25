@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
 
-import { profileTransfer, renderBoundaryReport } from './papi-report.mjs';
+import { firstScreenControl, profileTransfer, renderBoundaryReport } from './papi-report.mjs';
 
 // Only medians are read here; the analyzer's own suite covers how a stat is
 // folded out of its samples.
@@ -75,6 +75,21 @@ test('refuses a profile cell that measured a window but read no profile record',
 		() => profileTransfer(scale({ firstScreen: null })),
 		/carried no first-screen split/,
 	);
+});
+
+// The deltas and the first-screen control are octane-vs-reference by
+// construction. The run CLI now requires the octane cell up front, but the
+// report module re-renders any frozen JSON handed to it, so it still has to
+// degrade to "no control" rather than crash on evidence without that cell.
+test('firstScreenControl declines evidence measured without the octane cell', () => {
+	assert.equal(firstScreenControl({ cells: {} }), null);
+});
+
+test('profileTransfer declines evidence whose cells lack the shipping octane cell', () => {
+	const profiled = {
+		fcp: window({ controlMs: 1010, offBoundaryMs: 267, firstScreen: split() }),
+	};
+	assert.equal(profileTransfer({ rows: 10000, cells: { 'octane-profile': profiled } }), null);
 });
 
 // Rendered over the checked-in evidence rather than a fixture: the renderer

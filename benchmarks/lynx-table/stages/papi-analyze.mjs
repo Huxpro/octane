@@ -111,6 +111,19 @@ function nonNegative(value, label) {
 export const FIRST_SCREEN_PHASES = Object.freeze(['render', 'publish', 'capture', 'announce']);
 
 /**
+ * One validator for the `--label` output stem, shared by the run that writes
+ * evidence and the report that re-renders it — two copies could drift until a
+ * run writes files its own report tool refuses to read.
+ */
+export function requireOutputStem(value) {
+	const stem = value.trim();
+	if (!/^[a-z0-9][a-z0-9-]*$/.test(stem)) {
+		throw new TypeError('--label must be lowercase alphanumeric with dashes.');
+	}
+	return stem;
+}
+
+/**
  * Validate the framework-side first-screen split a profile build publishes, or
  * return null for a page that carries none.
  *
@@ -149,6 +162,16 @@ function summarizeFirstScreenSplit(split, label) {
 	for (const phase of Object.keys(split.byPhase)) {
 		if (!FIRST_SCREEN_PHASES.includes(phase)) {
 			throw new Error(`${label}.byPhase carries an unknown phase ${phase}.`);
+		}
+	}
+	// Refuse unknown wall spans on the same terms as unknown call buckets. A
+	// phase that crosses no host boundary creates no byPhase bucket, so this is
+	// the only guard that catches a probe publishing a phase this analyzer does
+	// not know — otherwise its span would silently land in the residue and read
+	// as the browser's cost.
+	for (const phase of Object.keys(split.wallMs)) {
+		if (!FIRST_SCREEN_PHASES.includes(phase)) {
+			throw new Error(`${label}.wallMs carries an unknown phase ${phase}.`);
 		}
 	}
 	return { timers: split.timers !== false, wallMs, byPhase };

@@ -40,6 +40,7 @@ import {
 	countsAgree,
 	overheadVerdict,
 	requireMinimumRepetitions,
+	requireOutputStem,
 	rotatedSchedule,
 	scalingVerdict,
 	summarizeCell,
@@ -83,10 +84,7 @@ for (const rows of scales) {
 // Every output basename is stemmed from `--label`, so a run that measures a
 // different cell set writes its own files instead of overwriting the evidence a
 // previous campaign checked in under the default stem.
-const outputStem = args.label.trim();
-if (!/^[a-z0-9][a-z0-9-]*$/.test(outputStem)) {
-	throw new TypeError('--label must be lowercase alphanumeric with dashes.');
-}
+const outputStem = requireOutputStem(args.label);
 const port = Number(args.port);
 const cpuCount = os.cpus().length;
 const loadPerCpu = os.loadavg()[0] / cpuCount;
@@ -273,14 +271,20 @@ async function sliceStartEpoch(page) {
 	return Math.min(...found);
 }
 
-/** Attach the view and observe the first composed paint in one page turn. */
-function attachAndObserve(page, bundleUrl, spec, timeoutMs) {
+/**
+ * Attach the view and observe the first composed paint in one page turn.
+ * `paint` is `{ spec }` for a first screen with no row content, or
+ * `{ minContent }` so the driver's fcp tick reuses the content count it
+ * already walked instead of walking the composed tree a second time per
+ * polling frame through `checkPredicate`.
+ */
+function attachAndObserve(page, bundleUrl, paint, timeoutMs) {
 	return page.evaluate(
 		(request) => {
 			globalThis.__x.createView(request.bundleUrl);
-			return globalThis.__x.fcp({ spec: request.spec, idleMs: 300, timeoutMs: request.timeoutMs });
+			return globalThis.__x.fcp({ ...request.paint, idleMs: 300, timeoutMs: request.timeoutMs });
 		},
-		{ bundleUrl, spec, timeoutMs },
+		{ bundleUrl, paint, timeoutMs },
 	);
 }
 
@@ -322,7 +326,7 @@ async function runSample(browser, cell, rows, variant) {
 		const startup = await attachAndObserve(
 			page,
 			`http://127.0.0.1:${port}/bundle/${cell}`,
-			SHELL_SPEC,
+			{ spec: SHELL_SPEC },
 			60_000,
 		);
 		if (startup.dnf || startup.fcpEpoch === null) throw new Error(`${cell} shell never painted.`);
@@ -363,7 +367,7 @@ async function runFcpSample(browser, cell, rows, variant) {
 		const observed = await attachAndObserve(
 			page,
 			`http://127.0.0.1:${port}/bundle/${cell}-rows${rows}`,
-			{ type: 'contentAtLeast', value: rows },
+			{ minContent: rows },
 			CREATE_TIMEOUT_MS,
 		);
 		if (observed.dnf || observed.fcpEpoch === null) throw new Error(`${cell} FCP@${rows} DNF.`);
@@ -491,10 +495,6 @@ if (args.smoke) {
 	process.exit(0);
 }
 
-function round(value, digits = 2) {
-	return value === null || value === undefined ? null : Number(value.toFixed(digits));
-}
-
 const report = { meta, scales: {} };
 for (const rows of scales) {
 	const cells = {};
@@ -567,6 +567,8 @@ for (const rows of scales) {
 						},
 		};
 	}
+	// Deltas are octane-vs-reference by construction; the CLI already requires
+	// the octane cell up front, so a subject is always present here.
 	const deltas = {};
 	for (const id of cellIds) {
 		if (id === 'octane') continue;

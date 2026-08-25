@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { FIRST_SCREEN_PHASES } from './papi-analyze.mjs';
+import { FIRST_SCREEN_PHASES, requireOutputStem } from './papi-analyze.mjs';
 
 function round(value, digits = 2) {
 	return value === null || value === undefined ? null : Number(value.toFixed(digits));
@@ -37,7 +37,8 @@ function controlWall(window) {
  */
 export function firstScreenControl(scale) {
 	const cell = scale.cells.octane;
-	if (!cell.fcp.measured) return null;
+	// A run measured without the octane cell has no internal control to render.
+	if (cell === undefined || !cell.fcp.measured) return null;
 	const composedControlMs = controlWall(cell.startup) + controlWall(cell.create);
 	const composedCountsMs = cell.startup.counts.total.median + cell.create.counts.total.median;
 	const composedCalls =
@@ -128,7 +129,11 @@ export function projectedFcp(scale) {
 export function profileTransfer(scale) {
 	const shipping = scale.cells.octane;
 	const profiled = scale.cells['octane-profile'];
-	if (profiled === undefined || !shipping.fcp.measured || !profiled.fcp.measured) return null;
+	// The report module re-renders any frozen JSON handed to it, so evidence
+	// without the shipping cell degrades to "no transfer" like the sibling
+	// firstScreenControl, rather than crashing on the dereference.
+	if (shipping === undefined || profiled === undefined) return null;
+	if (!shipping.fcp.measured || !profiled.fcp.measured) return null;
 	const split = profiled.fcp.timed.firstScreen ?? null;
 	if (split === null) {
 		// A measured profile cell with no split is a broken probe, not an absent
@@ -445,10 +450,7 @@ if (isMain) {
 		options: { scales: { type: 'string' }, label: { type: 'string', default: 'papi' } },
 	});
 	const output = path.join(import.meta.dirname, 'results');
-	const stem = values.label.trim();
-	if (!/^[a-z0-9][a-z0-9-]*$/.test(stem)) {
-		throw new TypeError('--label must be lowercase alphanumeric with dashes.');
-	}
+	const stem = requireOutputStem(values.label);
 	const scalePattern = new RegExp(`^${stem}-(\\d+)\\.json$`);
 	const scales =
 		values.scales === undefined
