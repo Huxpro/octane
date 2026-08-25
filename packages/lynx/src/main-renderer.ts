@@ -228,11 +228,25 @@ function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
 			...(node.default === undefined ? null : { default: freezePlanNode(node.default) }),
 		});
 	}
-	return Object.freeze({
-		kind: 'text',
-		...(node.value === undefined ? null : { value: node.value }),
-		...(node.slot === undefined ? null : { slot: node.slot }),
-	});
+	if (node.kind === 'text') {
+		return Object.freeze({
+			kind: 'text',
+			...(node.value === undefined ? null : { value: node.value }),
+			...(node.slot === undefined ? null : { slot: node.slot }),
+		});
+	}
+	// `text` used to own this return unguarded, so a kind this renderer could
+	// not render became a text node carrying neither a value nor a slot: the
+	// first screen painted an empty `#text` where the content belonged, and
+	// nothing in the batch said the plan had not been understood.
+	//
+	// Every branch above narrowed `node` away, so widening it back is what lets
+	// the refusal name what it refused. Reading the kind here rather than at the
+	// top keeps it off the freeze walk, which components with children re-enter
+	// per render.
+	throw new TypeError(
+		`Unsupported universal plan node kind ${JSON.stringify((node as UniversalPlanNode).kind)}.`,
+	);
 }
 
 export function universalPlan(renderer: string, root: UniversalPlanNode): UniversalPlan {

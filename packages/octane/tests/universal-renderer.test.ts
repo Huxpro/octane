@@ -3915,6 +3915,39 @@ describe('universal logical topology and transactions', () => {
 		expect(container.commits).toHaveLength(0);
 		expect(container.instanceCount).toBe(0);
 	});
+
+	it('refuses plan node kinds it cannot interpret instead of freezing them into empty text', () => {
+		// Freezing used to end in an unguarded `kind: 'text'` return, so a node
+		// kind this core did not recognize became a text node carrying neither a
+		// value nor a slot — an empty string in the tree, with nothing to say the
+		// plan had not been understood.
+		//
+		// #163's compiled main-thread program is the kind that made the silent
+		// case reachable. One arriving here does not mean "render nothing": it
+		// means a bundle carries the generic core where its renderer's
+		// main-thread module belongs, so it is named the way a template is.
+		const program = {
+			kind: 'program',
+			slots: [],
+			values: [],
+			events: [],
+			ranges: [],
+			bind: () => () => null,
+		};
+
+		expect(() => universalPlan('object', program as never)).toThrow(/compiled main-thread program/);
+		expect(() =>
+			universalPlan('object', { kind: 'template', slots: [], create: () => null } as never),
+		).toThrow(/generic universal core cannot interpret/);
+		expect(() => universalPlan('object', { kind: 'nodes', type: 'node' } as never)).toThrow(
+			/Unsupported universal plan node kind "nodes"/,
+		);
+		// At depth too: freezing walks children, and a child it cannot interpret
+		// is the same layering error as a root it cannot interpret.
+		expect(() =>
+			universalPlan('object', { kind: 'host', type: 'node', children: [program] } as never),
+		).toThrow(/compiled main-thread program/);
+	});
 });
 
 describe('mixed DOM and universal ownership', () => {
