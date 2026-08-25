@@ -158,6 +158,20 @@ export interface UniversalSwitchPlan {
 }
 
 /**
+ * What a plan slot is allowed to be written by.
+ *
+ * A slot kind selects the operation that may write it, so a scalar hole and a
+ * range site must not share one: `c` is content a writer sets in place, `r` is
+ * a range site whose members are instantiated and removed, and `p:`/`e:` name
+ * the prop or event a binding writes. Conflating `c` with `r` leaves the
+ * dispatch from operation to slot undecidable (the closure analysis on #61).
+ *
+ * A slot no plan node writes is `null` rather than absent, so a slot's index is
+ * its position in the table.
+ */
+export type UniversalSlotKind = 'c' | 'r' | `p:${string}` | `e:${string}`;
+
+/**
  * Straight-line create program the `target: 'lynx'` compiler backend emits for
  * host-only templates (docs/lynx-specialized-target-l0.md §3.2–§3.3). The env
  * is renderer-owned: the Lynx main-thread renderer materializes through it,
@@ -180,9 +194,57 @@ export interface UniversalTemplateEnv<Node = unknown> {
 
 export interface UniversalTemplatePlan {
 	readonly kind: 'template';
-	/** Per-value-slot kind table: `p:<name>`, `e:<name>`, `c`, or null. */
-	readonly slots: readonly (string | null)[];
+	/** Per-value-slot kind table; `null` for a slot no node writes. */
+	readonly slots: readonly (UniversalSlotKind | null)[];
 	readonly create: <Node>(env: UniversalTemplateEnv<Node>, values: readonly unknown[]) => Node;
+}
+
+/** One keyed range a program leaves open rather than painting (issue #163). */
+export interface UniversalProgramRange {
+	/** Plan slot the range occupies. */
+	readonly slot: number;
+	/** Emitted node its members are appended into. */
+	readonly node: number;
+}
+
+/**
+ * Straight-line create program the `target: 'lynx'` compiler backend emits into
+ * a main-thread chunk (issue #163).
+ *
+ * A template and a program are not two spellings of the same thing. A
+ * template's `create` runs against a renderer-owned env and builds a
+ * *description* the renderer then materializes; a program's `bind` takes the
+ * host once and returns a create that drives the host's element API directly.
+ * There is no description of a program's subtree anywhere, which is the point —
+ * it is exactly what the main-thread chunk stops carrying — so `bind` is named
+ * differently from `create` on purpose: a consumer that only knows the
+ * interpreted ABI fails loudly rather than calling this one with
+ * `(env, values)`.
+ *
+ * Every member is renderer-owned, and the generic universal core never
+ * interprets this node kind. It refuses one by name, because a program reaching
+ * it does not mean "render nothing" — it means a bundle carries the generic
+ * core where its renderer's main-thread module belongs.
+ */
+export interface UniversalProgramPlan {
+	readonly kind: 'program';
+	/** Per-value-slot kind table; `null` for a slot no node writes. */
+	readonly slots: readonly (UniversalSlotKind | null)[];
+	/** Plan slot feeding each positional value parameter, in parameter order. */
+	readonly values: readonly number[];
+	/** Plan slot feeding each positional listener parameter, in parameter order. */
+	readonly events: readonly number[];
+	/** Keyed ranges the program declares rather than paints. */
+	readonly ranges: readonly UniversalProgramRange[];
+	/**
+	 * Take the host once; return the per-instance create.
+	 *
+	 * The create takes the page, the parent to append into, then one argument
+	 * per `values` entry followed by one per `events` entry, and returns the
+	 * run's nodes in program order — the only map a caller gets back, since the
+	 * subtree has no description anywhere to walk.
+	 */
+	readonly bind: (host: unknown) => (...args: unknown[]) => readonly unknown[];
 }
 
 export type UniversalPlanNode =
@@ -193,7 +255,8 @@ export type UniversalPlanNode =
 	| UniversalComponentPlan
 	| UniversalIfPlan
 	| UniversalSwitchPlan
-	| UniversalTemplatePlan;
+	| UniversalTemplatePlan
+	| UniversalProgramPlan;
 
 export interface UniversalPlan {
 	readonly $$kind: typeof UNIVERSAL_PLAN;
@@ -1624,23 +1687,23 @@ function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
 	// rendered an empty string: a plan that had not been understood, published
 	// as content.
 	//
-	// Every branch above narrowed `node` away, so widening it back is what lets
-	// the refusal name what it refused. Reading the kind here rather than at the
-	// top keeps it off the freeze walk, which components with children re-enter
-	// per render.
-	const kind: string = (node as UniversalPlanNode).kind;
-	// `program` is the compiled main-thread create function the `target: 'lynx'`
-	// backend emits (#163). It is not in `UniversalPlanNode` — that type lands
-	// with the renderer that mounts one — and it is not "unsupported" either:
-	// the plan is well-formed and its renderer's main-thread module can paint
-	// it. What is wrong is which core received it, and a bundle carrying the
-	// wrong core is a different thing to go and look at than a malformed plan.
-	if (kind === 'program') {
+	// Both refusals sit here rather than at the top so they stay off the freeze
+	// walk, which components with children re-enter per render.
+	//
+	// A program is not "unsupported": it is well-formed and its renderer's
+	// main-thread module can paint it. What is wrong is which core received it,
+	// and a bundle carrying the wrong core is a different thing to go and look
+	// at than a malformed plan.
+	if (node.kind === 'program') {
 		throw new TypeError(
 			'A compiled main-thread program plan belongs to the main-thread module of its renderer; the generic universal core cannot interpret one.',
 		);
 	}
-	throw new TypeError(`Unsupported universal plan node kind ${JSON.stringify(kind)}.`);
+	// Every branch above narrowed `node` away, so widening it back is what lets
+	// the refusal name what it refused.
+	throw new TypeError(
+		`Unsupported universal plan node kind ${JSON.stringify((node as UniversalPlanNode).kind)}.`,
+	);
 }
 
 export function universalPlan(renderer: string, root: UniversalPlanNode): UniversalPlan {
@@ -3710,12 +3773,15 @@ function materializeNode(
 	renderer: string,
 	path: readonly unknown[],
 ): BlueprintNode[] {
-	if (node.kind === 'template') {
-		// freezePlanNode already rejects template roots; a nested template can
-		// only reach here through a hand-built plan, and the generic core has no
-		// interpreter for create programs.
+	if (node.kind === 'template' || node.kind === 'program') {
+		// freezePlanNode already rejects both at every depth; one can only reach
+		// here through a hand-built plan, and the generic core has no interpreter
+		// for either — a template's create builds a description this core cannot
+		// read, and a program's bind drives a host element API directly.
 		throw new TypeError(
-			'Universal template plans require a lynx-target renderer module; the generic universal core cannot interpret them.',
+			node.kind === 'template'
+				? 'Universal template plans require a lynx-target renderer module; the generic universal core cannot interpret them.'
+				: 'A compiled main-thread program plan belongs to the main-thread module of its renderer; the generic universal core cannot interpret one.',
 		);
 	}
 	if (node.kind === 'slot')

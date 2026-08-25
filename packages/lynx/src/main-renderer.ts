@@ -240,13 +240,13 @@ function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
 	// first screen painted an empty `#text` where the content belonged, and
 	// nothing in the batch said the plan had not been understood.
 	//
-	// Every branch above narrowed `node` away, so widening it back is what lets
-	// the refusal name what it refused. Reading the kind here rather than at the
-	// top keeps it off the freeze walk, which components with children re-enter
-	// per render.
-	throw new TypeError(
-		`Unsupported universal plan node kind ${JSON.stringify((node as UniversalPlanNode).kind)}.`,
-	);
+	// `program` reaches here too, and by type rather than by accident: this
+	// renderer is the one that will mount a compiled main-thread program, and
+	// until it does, refusing one here is what keeps `renderPlanNode` below from
+	// ever seeing a kind it cannot paint. The refusal reads the kind on the
+	// throw path so it stays off the freeze walk, which components with children
+	// re-enter per render.
+	throw new TypeError(`Unsupported universal plan node kind ${JSON.stringify(node.kind)}.`);
 }
 
 export function universalPlan(renderer: string, root: UniversalPlanNode): UniversalPlan {
@@ -850,6 +850,14 @@ function renderPlanNode(node: UniversalPlanNode, values: readonly unknown[]): Fi
 			}
 		}
 		return selected === undefined ? [] : [range(renderPlanNode(selected, values))];
+	}
+	// The one kind the union still leaves here is a compiled main-thread program,
+	// which `freezePlanNode` refuses, so this is a host. Checked rather than
+	// asserted: an unchecked narrowing on the path that paints the first screen
+	// buys one interned-string comparison per host node and pays for it by
+	// turning a wrong plan into a wrong tree instead of a named error.
+	if (node.kind !== 'host') {
+		throw new TypeError(`Unsupported universal plan node kind ${JSON.stringify(node.kind)}.`);
 	}
 	const props: Record<string, unknown> = { ...(node.props || {}) };
 	for (const binding of node.bindings || []) props[binding[0]] = values[binding[1]];
