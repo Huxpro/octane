@@ -36,7 +36,7 @@
  * range sites, and which capabilities a build-time driver should claim — and
  * both are narrow enough to test directly.
  *
- * ## Range sites are syntactic here, and that is the point
+ * ## Every renderable hole is a range site, and that is what makes this decidable
  *
  * At run time `universalTemplateProgramWithoutRanges` has to *ask* which holes
  * hold a keyed range, because a renderable hole is one plan node whatever it
@@ -44,13 +44,25 @@
  * only the value tells them apart. That is why the C0 spike had to evaluate the
  * module it was deriving from.
  *
- * In the plan itself they are already different nodes. A directive or component
- * hole lowers to `kind: 'slot'`; a text hole lowers to `kind: 'text'` with a
- * `slot`. `compile-universal.js`'s own `lynxTemplateSlotKinds` reads them
- * exactly that way — `'r'` for the former, `'c'` for the latter — for the same
- * reason #61's closure analysis gives: conflating them leaves the dispatch from
- * operation to slot undecidable. So the question the runtime has to ask its
- * caller is answered here by the plan's own node kinds, with nothing evaluated.
+ * A build has no values, and the compiler's answer is that it does not need
+ * them, because it never claims a hole is content. `compile-universal.js` builds
+ * `kind: 'text'` only for a literal, and lowers *every* dynamic child — a
+ * directive, a component, a bare `{expr}`, and a cast `{expr as string}` alike —
+ * to `kind: 'slot'`. That is deliberate and is asserted in
+ * `octane/tests/lynx-target-templates.test.ts`: a cast is erased before lowering,
+ * so a lying one would put a component in a slot the writer sets in place, and
+ * conflating the two leaves the dispatch from operation to slot undecidable (see
+ * #61's closure analysis). So the question the runtime has to ask its caller has
+ * one answer here, and nothing is evaluated to reach it.
+ *
+ * The consequence is the interesting part, and it is #163 C2's to answer rather
+ * than this slice's: dynamic *text* content is a range site at build time, so the
+ * compiled create function paints a template's static structure and its bound
+ * scalar props, and the text a row actually shows arrives through the range
+ * protocol. A hand-written program can say `#text` bound on `value` and get that
+ * text compiled — which is what C0 priced — but a plan the compiler produced
+ * cannot say it, because at the point the plan is built nobody knows the value is
+ * a string.
  */
 
 import type { UniversalHostPlan, UniversalHostTemplateProgram } from 'octane/universal/native';
@@ -142,23 +154,22 @@ function buildTimeEncoder(): UniversalHostEncoder {
  * Every hole this predicate is asked about is a keyed range.
  *
  * `universalTemplateProgramWithoutRanges` consults it for `kind: 'slot'` nodes
- * and for nothing else — a content hole is a `kind: 'text'` node with a `slot`
- * and is never a candidate — so the question reduces to whether a plan's
- * `kind: 'slot'` node can hold something other than a range. In a plan the
- * compiler produced it cannot: a directive or component hole lowers to
- * `kind: 'slot'` and a text hole lowers to `kind: 'text'`, which is exactly the
- * split `compile-universal.js`'s own `lynxTemplateSlotKinds` reads when it
- * calls the first `'r'` and the second `'c'`.
+ * and for nothing else — a content hole is a `kind: 'text'` node carrying a
+ * `slot`, and is never a candidate — so the question is only whether a
+ * `kind: 'slot'` node can hold something a range cannot. From a plan the
+ * compiler produced it cannot, because that is the only kind it builds for a
+ * dynamic child; see the header for why a cast does not change that.
  *
- * At run time the same predicate has to look at values, because by then a hole
- * is one plan node whatever it holds. That is the evaluation this slice exists
- * to avoid, and the reason it can be avoided is that the plan drew the
- * distinction before any value existed.
+ * At run time the same predicate has to look at values, because a value is the
+ * only thing that can tell a one-string hole from a keyed list. That is the
+ * evaluation this slice exists to avoid, and it can be avoided only by giving up
+ * the same thing the compiler gave up: knowing that a particular hole is text.
  *
- * The direction of the remaining error matters and is the safe one. Answering
- * `true` for a hole that turns out to hold content makes
+ * For the shapes this is *not* asked about — a hand-written program's `#text`
+ * bound on `value` — the direction of the remaining error is the safe one.
+ * Answering `true` for a hole that turns out to hold content makes
  * `universalTemplateProgramWithoutRanges` insist it be its parent's last child
- * and decline the plan otherwise — so this can only *decline* programs a
+ * and decline the plan otherwise, so this can only *decline* programs a
  * value-aware caller would have described, never describe one it would not.
  * A declined plan is a first screen on the command path, which is what #163's
  * C3 is for.

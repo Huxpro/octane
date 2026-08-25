@@ -4059,23 +4059,179 @@ function lynxTemplateCreateStatementsAst(node, parentName, statements, naming, o
 	if (parentName === null) naming.rootName = name;
 }
 
+/** A plan's slot-kind table as an array literal, unwritten slots included as `null`. */
+function lynxSlotKindsAst(root) {
+	const kinds = lynxTemplateSlotKinds(root, []);
+	return b.array(
+		Array.from(kinds, (kind) =>
+			kind === undefined ? b.literal(null, 'null') : b.literal(kind, JSON.stringify(kind)),
+		),
+	);
+}
+
 function lynxTemplateObjectAst(root, origin) {
 	const statements = [];
 	const naming = { declared: new Set(), rootName: null };
 	lynxTemplateCreateStatementsAst(root, null, statements, naming, origin, 0);
 	statements.push(inheritGeneratedOrigin(b.return(b.id(naming.rootName)), origin));
-	const kinds = lynxTemplateSlotKinds(root, []);
-	const slotsAst = b.array(
-		Array.from(kinds, (kind) =>
-			kind === undefined ? b.literal(null, 'null') : b.literal(kind, JSON.stringify(kind)),
-		),
-	);
 	const createAst = b.arrow([b.id('env'), b.id('values')], b.block(statements));
 	return inheritGeneratedOrigin(
 		b.object([
 			b.prop('init', b.literal('kind', '"kind"'), b.literal('template', '"template"')),
-			b.prop('init', b.literal('slots', '"slots"'), slotsAst),
+			b.prop('init', b.literal('slots', '"slots"'), lynxSlotKindsAst(root)),
 			b.prop('init', b.literal('create', '"create"'), createAst),
+		]),
+		origin,
+	);
+}
+
+/**
+ * Re-parse a backend's generated source as one expression, with the positions of
+ * the string it came from removed.
+ *
+ * A backend hands this compiler JavaScript source rather than an AST, because a
+ * string is the only interface between two packages that does not make one of
+ * them depend on the other's parser. The compiler owns the AST, so the compiler
+ * is what parses it.
+ *
+ * Clearing the positions is not cosmetic. `parseModule` records offsets into the
+ * synthetic string, while this module's source map is keyed to the authored
+ * file, so a surviving `loc` would aim a debugger at whatever happens to sit at
+ * that offset of the `.tsrx`. Cleared, the subtree is in the state everything the
+ * builders make is in, and `inheritGeneratedOrigin` then attributes the whole
+ * emission to the template it was derived from.
+ */
+function generatedExpressionFromSource(source, filename, origin) {
+	const statement = parseModule(`(${source});`, filename).body[0];
+	if (statement?.type !== 'ExpressionStatement') {
+		throw new TypeError(
+			'Octane main-thread program backend returned source that is not a single expression.',
+		);
+	}
+	const seen = new WeakSet();
+	const clearPositions = (value) => {
+		if (!value || typeof value !== 'object' || seen.has(value)) return;
+		seen.add(value);
+		if (Array.isArray(value)) {
+			for (const item of value) clearPositions(item);
+			return;
+		}
+		if (typeof value.type === 'string') {
+			value.loc = null;
+			delete value.start;
+			delete value.end;
+			delete value.range;
+		}
+		for (const [key, child] of Object.entries(value)) {
+			if (key !== 'loc') clearPositions(child);
+		}
+	};
+	clearPositions(statement.expression);
+	return inheritGeneratedOrigin(statement.expression, origin);
+}
+
+/**
+ * One plan lowered to the compiled create function a main-thread chunk carries,
+ * or `null` when this compile is not the one that carries it (issue #163).
+ *
+ * The first screen this aims at is straight-line compiled code in the main-thread
+ * script driving the host directly: no commands, no description, no interpreter
+ * walking a plan per node. The code that does the driving cannot be written here.
+ * It encodes the renderer's dense applier semantics down to which prop shadows
+ * which and when a class coerces from a number, and that applier lives in the
+ * renderer's own package. `packages/octane` must not import it, and a second copy
+ * of it here would be a copy that can disagree — which would not be a build
+ * error but a first screen painted by one implementation and updated by another.
+ * So the renderer hands this compiler a backend, and this function is the join.
+ *
+ * Two gates beyond the caller's eligibility check, and the second is the one that
+ * matters. `universalRuntime.thread` must be `main-thread`, even though only the
+ * main-thread layer is ever given a backend: #163 keeps the background chunk and
+ * the universal bundle byte-identical across the switch, and that claim should
+ * not rest on every caller passing the option to exactly one layer. And the
+ * derivation must return a program; `null` is the ordinary answer for a plan this
+ * renderer cannot describe as one, and those plans stay on the interpreted
+ * encoding rather than failing the build.
+ *
+ * A refusal is the other kind of answer and is deliberately not caught here. The
+ * backend refuses a plan it *can* describe but would paint differently from the
+ * command path, naming the prop or node it could not emit. That is a build error,
+ * because the alternative is shipping a first screen that differs from the one
+ * the rest of the pipeline agrees on.
+ */
+function lynxMainThreadProgramObjectAst(state, plan, origin) {
+	const backend = state.mainThreadProgramBackend;
+	if (backend === undefined) return null;
+	if (state.universalRuntime?.thread !== 'main-thread') return null;
+	const derived = backend.deriveLynxMainThreadProgram(plan.root);
+	if (derived === null || derived === undefined) return null;
+	// Not `plan.name`: the module already binds that, and the emission's name
+	// becomes a named function expression whose binding would shadow it.
+	const name = allocName(state, `${plan.name}Create`);
+	const emission = backend.emitLynxMainThreadProgram(derived.wire, { name });
+	// The create function takes its values and listeners positionally, so the
+	// maps below are the only thing that says which plan slot each position
+	// reads. A count that disagrees with them is a miscompile that would surface
+	// as a first screen painted from shifted arguments, so it fails the build
+	// here instead.
+	if (
+		emission.valueCount !== derived.values.length ||
+		emission.eventCount !== derived.events.length
+	) {
+		throw new Error(
+			`Octane main-thread program ${name} takes ${emission.valueCount} value and ` +
+				`${emission.eventCount} listener parameters, but its derivation declares ` +
+				`${derived.values.length} values and ${derived.events.length} events.`,
+		);
+	}
+	return inheritGeneratedOrigin(
+		b.object([
+			b.prop('init', b.literal('kind', '"kind"'), b.literal('program', '"program"')),
+			// The keyed slot map is the contract #163 keeps, so the compiled object
+			// carries the same one the interpreted object does. It is per program and
+			// fixed size — the update path's dispatch table, not a per-node
+			// description anything walks to paint.
+			b.prop('init', b.literal('slots', '"slots"'), lynxSlotKindsAst(plan.root)),
+			// Reduced to plan-slot indices. `values` and `events` also carry the node,
+			// prop name, event type and dispatch priority each site was derived from,
+			// and none of that has a reader until #163's C2 routes events and C4
+			// applies updates. Emitting it now would be shipping data with no consumer
+			// into the chunk whose size is the point.
+			b.prop(
+				'init',
+				b.literal('values', '"values"'),
+				jsonValueToAst(
+					derived.values.map((value) => value.slot),
+					origin,
+				),
+			),
+			b.prop(
+				'init',
+				b.literal('events', '"events"'),
+				jsonValueToAst(
+					derived.events.map((event) => event.slot),
+					origin,
+				),
+			),
+			// Both members are load-bearing: `slot` is the plan slot the keyed range
+			// occupies, `node` the emitted node its members are appended into.
+			b.prop(
+				'init',
+				b.literal('ranges', '"ranges"'),
+				jsonValueToAst(
+					derived.ranges.map((range) => ({ slot: range.slot, node: range.node })),
+					origin,
+				),
+			),
+			// `bind`, not `create`: the emission takes the host once per program and
+			// returns the per-instance create. A distinct `kind` above means a consumer
+			// that only knows the interpreted ABI fails loudly rather than calling this
+			// one with `(env, values)`.
+			b.prop(
+				'init',
+				b.literal('bind', '"bind"'),
+				generatedExpressionFromSource(emission.source, state.filename, origin),
+			),
 		]),
 		origin,
 	);
@@ -4086,7 +4242,8 @@ function universalPlanDeclarationsAst(state, origin = null) {
 		const planOrigin = plan.origin ?? origin;
 		const rootAst =
 			state.lynxTemplates && lynxTemplateEligible(plan.root) && plan.root.kind === 'host'
-				? lynxTemplateObjectAst(plan.root, planOrigin)
+				? (lynxMainThreadProgramObjectAst(state, plan, planOrigin) ??
+					lynxTemplateObjectAst(plan.root, planOrigin))
 				: jsonValueToAst(plan.root, planOrigin);
 		return generatedConst(
 			plan.name,
@@ -4708,6 +4865,11 @@ export function compileUniversal(
 		// (docs/lynx-specialized-target-l0.md §3.2); ineligible plans fall back
 		// to the interpreted plan encoding unchanged.
 		lynxTemplates: renderer.target === 'lynx',
+		// The renderer's own main-thread backend, supplied by whoever configured
+		// the build rather than imported here — see lynxMainThreadProgramObjectAst.
+		// Absent, every plan lowers exactly as it did before it existed, which is
+		// what makes #163's byte-identity claim checkable rather than asserted.
+		mainThreadProgramBackend: options.mainThreadProgramBackend,
 	};
 	state.explicitThreeHostIntrinsics = collectExplicitThreeHostIntrinsics(ast, renderer);
 	state.ownerFreeThreeHostComponents = collectOwnerFreeThreeHostComponents(
