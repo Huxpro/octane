@@ -102,9 +102,9 @@ Host calls 31,195 (31.2 per row), 2 `__FlushElementTree`, start delay 19.1 ms. W
 
 Host calls 31,195 (31.2 per row), 2 `__FlushElementTree`, start delay 19 ms. Wall 183.9 ms control / 196 ms counts / 209.6 ms timed; overhead 1.066× counts, 1.14× timed.
 
-### Octane first-screen phase split @1000 — what off-boundary time is Octane's
+### `octane` first-screen phase split @1000 — what off-boundary time is Octane's
 
-Measured on the profile-built cell. Its first-screen wall on the uninstrumented control pages is 183.9 ms against the shipping cell's 183.7 ms in the same window — +0.2 ms, +0.1%. That side-by-side is the whole licence for reading the split as the shipping build's; the two builds are never divided into a ratio. Any residual probe cost lands inside Octane's own phases, so it over-attributes to the framework and under-attributes to the residue.
+Measured on `octane-profile`, the profile build of `octane`. Its first-screen wall on the uninstrumented control pages is 183.9 ms against that shipping cell's 183.7 ms in the same window — +0.2 ms, +0.1%. That side-by-side is the whole licence for reading the split as the shipping build's; the two builds are never divided into a ratio. Any residual probe cost lands inside Octane's own phases, so it over-attributes to the framework and under-attributes to the residue.
 
 | first-screen phase | host calls | host self ms | off-boundary ms |
 |---|---:|---:|---:|
@@ -115,7 +115,7 @@ Measured on the profile-built cell. Its first-screen wall on the uninstrumented 
 | **Octane first-screen script** | — | — | 78.4 |
 | **residue — web-core script and the browser frame** | — | — | 12.4 |
 
-Off-boundary in the profiled cell's own timed FCP window is 91.4 ms, against 85.3 ms in the shipping cell's. Only the residue row is outside Octane's reach; the phase rows above it are what a first-screen slice can still attack.
+Off-boundary in the profiled cell's own timed FCP window is 91.4 ms, against 85.3 ms in `octane`'s. Only the residue row is outside Octane's reach; the phase rows above it are what a first-screen slice can still attack.
 
 ### Octane internal control — first-screen path vs create path @1000
 
@@ -221,9 +221,9 @@ Host calls 310,195 (31.02 per row), 2 `__FlushElementTree`, start delay 19.6 ms.
 
 Host calls 310,195 (31.02 per row), 2 `__FlushElementTree`, start delay 19.8 ms. Wall 1440.3 ms control / 1520.6 ms counts / 1672.4 ms timed; overhead 1.056× counts, 1.161× timed.
 
-### Octane first-screen phase split @10000 — what off-boundary time is Octane's
+### `octane` first-screen phase split @10000 — what off-boundary time is Octane's
 
-Measured on the profile-built cell. Its first-screen wall on the uninstrumented control pages is 1440.3 ms against the shipping cell's 1403.9 ms in the same window — +36.4 ms, +2.6%. That side-by-side is the whole licence for reading the split as the shipping build's; the two builds are never divided into a ratio. Any residual probe cost lands inside Octane's own phases, so it over-attributes to the framework and under-attributes to the residue.
+Measured on `octane-profile`, the profile build of `octane`. Its first-screen wall on the uninstrumented control pages is 1440.3 ms against that shipping cell's 1403.9 ms in the same window — +36.4 ms, +2.6%. That side-by-side is the whole licence for reading the split as the shipping build's; the two builds are never divided into a ratio. Any residual probe cost lands inside Octane's own phases, so it over-attributes to the framework and under-attributes to the residue.
 
 | first-screen phase | host calls | host self ms | off-boundary ms |
 |---|---:|---:|---:|
@@ -234,7 +234,7 @@ Measured on the profile-built cell. Its first-screen wall on the uninstrumented 
 | **Octane first-screen script** | — | — | 680.2 |
 | **residue — web-core script and the browser frame** | — | — | 80.4 |
 
-Off-boundary in the profiled cell's own timed FCP window is 762.7 ms, against 689.6 ms in the shipping cell's. Only the residue row is outside Octane's reach; the phase rows above it are what a first-screen slice can still attack.
+Off-boundary in the profiled cell's own timed FCP window is 762.7 ms, against 689.6 ms in `octane`'s. Only the residue row is outside Octane's reach; the phase rows above it are what a first-screen slice can still attack.
 
 ### Octane internal control — first-screen path vs create path @10000
 
@@ -340,9 +340,9 @@ Host calls 930,195 (31.01 per row), 2 `__FlushElementTree`, start delay 19.1 ms.
 
 Host calls 930,195 (31.01 per row), 2 `__FlushElementTree`, start delay 18.8 ms. Wall 4498.9 ms control / 4494.7 ms counts / 5006.6 ms timed; overhead 0.999× counts, 1.113× timed.
 
-### Octane first-screen phase split @30000 — what off-boundary time is Octane's
+### `octane` first-screen phase split @30000 — what off-boundary time is Octane's
 
-Measured on the profile-built cell. Its first-screen wall on the uninstrumented control pages is 4498.9 ms against the shipping cell's 4155.7 ms in the same window — +343.2 ms, +8.3%. That side-by-side is the whole licence for reading the split as the shipping build's; the two builds are never divided into a ratio. Any residual probe cost lands inside Octane's own phases, so it over-attributes to the framework and under-attributes to the residue.
+Measured on `octane-profile`, the profile build of `octane`. Its first-screen wall on the uninstrumented control pages is 4498.9 ms against that shipping cell's 4155.7 ms in the same window — +343.2 ms, +8.3%. That side-by-side is the whole licence for reading the split as the shipping build's; the two builds are never divided into a ratio. Any residual probe cost lands inside Octane's own phases, so it over-attributes to the framework and under-attributes to the residue.
 
 | first-screen phase | host calls | host self ms | off-boundary ms |
 |---|---:|---:|---:|
@@ -353,7 +353,7 @@ Measured on the profile-built cell. Its first-screen wall on the uninstrumented 
 | **Octane first-screen script** | — | — | 1861.1 |
 | **residue — web-core script and the browser frame** | — | — | 236.4 |
 
-Off-boundary in the profiled cell's own timed FCP window is 2085.1 ms, against 1894.1 ms in the shipping cell's. Only the residue row is outside Octane's reach; the phase rows above it are what a first-screen slice can still attack.
+Off-boundary in the profiled cell's own timed FCP window is 2085.1 ms, against 1894.1 ms in `octane`'s. Only the residue row is outside Octane's reach; the phase rows above it are what a first-screen slice can still attack.
 
 ### Octane internal control — first-screen path vs create path @30000
 

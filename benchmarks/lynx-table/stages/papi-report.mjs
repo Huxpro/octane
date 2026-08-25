@@ -126,9 +126,18 @@ export function projectedFcp(scale) {
  * framework and under-attributes to the browser — which can only make Octane
  * look worse than it is.
  */
-export function profileTransfer(scale) {
-	const shipping = scale.cells.octane;
-	const profiled = scale.cells['octane-profile'];
+const PROFILE_SUFFIX = '-profile';
+
+export function profileTransfer(scale, profiledId = 'octane-profile') {
+	// A profile cell's shipping counterpart is its own id without the suffix.
+	// Naming the pair by convention rather than by a table is what lets a run
+	// carry more than one: issue #163 needs `octane-mts-program-profile` read
+	// against `octane-mts-program`, not against `octane`, because a split is
+	// only licensed by the wall clock of the build it was measured beside.
+	if (!profiledId.endsWith(PROFILE_SUFFIX)) return null;
+	const shippingId = profiledId.slice(0, -PROFILE_SUFFIX.length);
+	const shipping = scale.cells[shippingId];
+	const profiled = scale.cells[profiledId];
 	// The report module re-renders any frozen JSON handed to it, so evidence
 	// without the shipping cell degrades to "no transfer" like the sibling
 	// firstScreenControl, rather than crashing on the dereference.
@@ -143,12 +152,14 @@ export function profileTransfer(scale) {
 		// nothing and reports every phase as absent. Rendering that as a missing
 		// section would publish the failure as silence.
 		throw new Error(
-			'the octane-profile cell measured an FCP window but carried no first-screen split: the probe read no profile record.',
+			`the ${profiledId} cell measured an FCP window but carried no first-screen split: the probe read no profile record.`,
 		);
 	}
 	const shippingMs = controlWall(shipping.fcp);
 	const profiledMs = controlWall(profiled.fcp);
 	return {
+		profiledId,
+		shippingId,
 		shippingMs,
 		profiledMs,
 		deltaMs: profiledMs - shippingMs,
@@ -157,6 +168,11 @@ export function profileTransfer(scale) {
 		profiledOffBoundaryMs: profiled.fcp.timed.stages.off_boundary?.median ?? 0,
 		split,
 	};
+}
+
+/** Every profile cell in a run, in the order the run declared them. */
+export function profiledCellIds(meta) {
+	return meta.cells.filter((id) => id.endsWith(PROFILE_SUFFIX));
 }
 
 function countTable(scale, cellIds) {
@@ -247,6 +263,7 @@ const CELL_HEADINGS = Object.freeze({
 	octane: 'Octane',
 	'octane-profile': 'Octane (profile build)',
 	'octane-mts-program': 'Octane (main-thread program)',
+	'octane-mts-program-profile': 'Octane (main-thread program, profile build)',
 	'octane-direct': 'L0 direct-emission prototype',
 	react: 'ReactLynx',
 	'vue-vdom': 'Vue vdom+IFR+ET',
@@ -264,8 +281,17 @@ export function renderBoundaryReport(scaleReports) {
 	// prose below and the tables further down then cannot disagree about whether
 	// this run carries a split, and a broken probe throws before a header claims
 	// otherwise.
-	const transfers = new Map(scaleReports.map((scale) => [scale.rows, profileTransfer(scale)]));
-	const anySplit = [...transfers.values()].some((transfer) => transfer !== null);
+	// One entry per scale, holding every profile cell's transfer rather than a
+	// single one, so a run that carries two profile builds reports two splits
+	// instead of silently publishing whichever came first.
+	const profiled = profiledCellIds(meta);
+	const transfers = new Map(
+		scaleReports.map((scale) => [
+			scale.rows,
+			profiled.map((id) => profileTransfer(scale, id)).filter((transfer) => transfer !== null),
+		]),
+	);
+	const anySplit = [...transfers.values()].some((list) => list.length !== 0);
 	const lines = [
 		`# Element PAPI boundary decomposition — ${headingFor(meta.cells)}`,
 		'',
@@ -355,16 +381,15 @@ export function renderBoundaryReport(scaleReports) {
 				'',
 			);
 		}
-		const transfer = transfers.get(rows);
-		if (transfer !== null) {
+		for (const transfer of transfers.get(rows)) {
 			lines.push(
-				`### Octane first-screen phase split @${rows} — what off-boundary time is Octane's`,
+				`### \`${transfer.shippingId}\` first-screen phase split @${rows} — what off-boundary time is Octane's`,
 				'',
-				`Measured on the profile-built cell. Its first-screen wall on the uninstrumented control pages is ${round(transfer.profiledMs, 1)} ms against the shipping cell's ${round(transfer.shippingMs, 1)} ms in the same window — ${transfer.deltaMs > 0 ? '+' : ''}${round(transfer.deltaMs, 1)} ms, ${transfer.spread === null ? 'n/a' : `${transfer.spread > 0 ? '+' : ''}${(transfer.spread * 100).toFixed(1)}%`}. That side-by-side is the whole licence for reading the split as the shipping build's; the two builds are never divided into a ratio. Any residual probe cost lands inside Octane's own phases, so it over-attributes to the framework and under-attributes to the residue.`,
+				`Measured on \`${transfer.profiledId}\`, the profile build of \`${transfer.shippingId}\`. Its first-screen wall on the uninstrumented control pages is ${round(transfer.profiledMs, 1)} ms against that shipping cell's ${round(transfer.shippingMs, 1)} ms in the same window — ${transfer.deltaMs > 0 ? '+' : ''}${round(transfer.deltaMs, 1)} ms, ${transfer.spread === null ? 'n/a' : `${transfer.spread > 0 ? '+' : ''}${(transfer.spread * 100).toFixed(1)}%`}. That side-by-side is the whole licence for reading the split as the shipping build's; the two builds are never divided into a ratio. Any residual probe cost lands inside Octane's own phases, so it over-attributes to the framework and under-attributes to the residue.`,
 				'',
 				...firstScreenTable(transfer.split),
 				'',
-				`Off-boundary in the profiled cell's own timed FCP window is ${round(transfer.profiledOffBoundaryMs, 1)} ms, against ${round(transfer.shippingOffBoundaryMs, 1)} ms in the shipping cell's. Only the residue row is outside Octane's reach; the phase rows above it are what a first-screen slice can still attack.`,
+				`Off-boundary in the profiled cell's own timed FCP window is ${round(transfer.profiledOffBoundaryMs, 1)} ms, against ${round(transfer.shippingOffBoundaryMs, 1)} ms in \`${transfer.shippingId}\`'s. Only the residue row is outside Octane's reach; the phase rows above it are what a first-screen slice can still attack.`,
 				'',
 			);
 		}

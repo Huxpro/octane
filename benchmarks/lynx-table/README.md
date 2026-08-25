@@ -676,8 +676,8 @@ node stages/papi-report.mjs --label papi-firstscreen
 
 ### Splitting `off_boundary` — which first-screen phase owns it
 
-`off_boundary` is a remainder for every cell, and on the `octane-profile` cell
-it splits further. `@octanejs/lynx` publishes which first-screen phase is
+`off_boundary` is a remainder for every cell, and on a profile-built cell it
+splits further. `@octanejs/lynx` publishes which first-screen phase is
 running — `render`, `publish`, `capture`, `announce` — and the boundary probe
 attributes each host call to the phase that issued it, so a phase's own
 off-boundary time is its wall span minus the host time observed inside it. What
@@ -688,11 +688,13 @@ The dependency runs one way: the framework publishes a marker and never reads
 the probe. `render` crosses the boundary not at all, so its whole span is
 framework script by construction rather than by subtraction. The marker is
 gated on `__OCTANE_LYNX_PROFILE__` and folds out of a shipping bundle, so the
-split needs the separately built `octane-profile` cell — which is a different
+split needs a separately built `<cell>-profile` cell — which is a different
 configuration, so it is excluded from every cross-cell delta and no ratio is
-taken between it and `octane`. The report prints both builds' first-screen
-walls from the same window instead, so the transfer is judged on measured
-agreement.
+taken between it and its shipping counterpart. The report prints both builds'
+first-screen walls from the same window instead, so the transfer is judged on
+measured agreement. A profile cell is paired with the shipping cell whose id it
+suffixes, so a run may carry several: `octane-mts-program-profile` licenses
+`octane-mts-program`'s split, never `octane`'s.
 
 The analyzer refuses rather than clamps: a counts-only split, a phase observing
 more host time than it lasted, phases claiming more than `off_boundary` holds, a
@@ -743,8 +745,64 @@ is a fixed ~18 ms of main-thread chunk evaluation that amortises. `papi_flush`
 is 137.5 ms against the prototype's 139.4 ms — the compiled first screen is
 already at the publication floor. So the residue is dominated by framework
 script *above* the boundary, and the 20,000 identity reads are worth about 8 ms
-of it. Splitting `off_boundary` by phase needs a profile build of this cell,
-which does not exist yet.
+of it. Which phase owns the rest is the next section.
+
+### Which first-screen phase owns the program's remaining time (issue #163)
+
+```bash
+node stages/papi-run.mjs --reps 5 --scales 1000,10000 \
+	--cells octane,octane-profile,octane-mts-program,octane-mts-program-profile,octane-direct \
+	--label c163-phase
+```
+
+`octane-mts-program-profile` is the profile build of the compiled-program cell,
+so §6's phase split reads on it as well. Its wall agrees with the shipping
+program's to +4.1% at 10,000 rows and +2.5% at 1,000, which is the licence for
+reading its split as the shipping build's.
+
+`results/c163-phase-boundary.md`, off-boundary ms at FCP@10,000, median over 5
+reps with the observed range beside it:
+
+| first-screen phase | `octane` | `+program` |
+|---|---:|---:|
+| `render` | 75.0 [71.6–77.9] | 51.5 [49.2–54.4] |
+| `publish` | 381.1 [345.6–408.3] | 259.5 [232.4–277.6] |
+| `capture` | 87.6 [77.5–89.6] | 19.2 [17.8–19.6] |
+| `announce` | 0.0 | 0.0 |
+| **framework script** | **543.7 [510.2–563.8]** | **333.5 [302.1–346.5]** |
+| residue | 78.6 [74.0–83.9] | 98.0 [96.6–104.4] |
+
+Every one of those ranges is disjoint from its neighbour, including the last:
+the program takes **39% off Octane's own first-screen script**, and its residue
+is **19 ms worse**, which is a real move in the wrong direction rather than
+noise and is open. At 1,000 rows only `publish`, `capture` and the framework
+total separate; `render` and the residue overlap and are not established there.
+
+The phase that matters is `publish`, which holds **78% of what the compiled
+program still spends above the boundary**. Inside it the program issues 200,124
+host calls — the same traffic the hand-written prototype makes for its entire
+run — for 820 ms of host time against the prototype's 829 ms. **The crossings
+are at parity; the script around them is not.** Decomposing the same window
+against the prototype, 274 ms of the program's 286 ms of timed excess is named:
++17 ms `start_delay`, +64 ms host time (entirely the 20,000 excess identity
+reads), and +193 ms `off_boundary`.
+
+Two consequences for issue #163's oracle, both of which cost less than they look
+worth:
+
+- `capture` is now priced whole. §6's crossing count valued its 20,000 identity
+  reads at ~8 ms, which was the host-boundary cost alone; the phase carries
+  19.2 ms of Octane's own loop on top, so emptying it is worth ~24 ms at 10,000
+  rows, not ~8 ms.
+- Reaching the oracle's 1.05× at 10,000 rows means shedding 207 ms of the 249 ms
+  by which the program's control wall exceeds the prototype's. Framework script,
+  at 333.5 ms, is the only bucket large enough to hold that: `start_delay` and
+  the excess host time together are 81 ms, under 40% of what must go, and the
+  residue is neither Octane's to remove nor moving the right way. So the target
+  is arithmetically reachable and only along one road. That is not a tuning
+  distance. It is a question about what Octane's main-thread script does during
+  `publish` while making exactly the calls a hand-written emitter makes, and
+  that is the next slice.
 
 ### The publication floor — `dom-attach-floor.mjs`
 
