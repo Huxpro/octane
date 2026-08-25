@@ -95,14 +95,31 @@ silently measuring the second and reporting a flattering zero, while the
 background program must not move at all, which is #163's promise that the half
 of the bundle the backend does not own does not shift underneath it.
 
-The backend arm carries its own presence probe. The main-thread script is
-LepusNG rather than JavaScript text, so the emitted create function's identifiers
-are gone by the time the harness reads it; what survives is the constant pool,
-and `ranges` — the wire program's key for the keyed holes its caller opens rather
-than paints — is absent from an interpreted main-thread program and present in a
-compiled one. That depends on the fixture having a keyed hole, which
-`src/App.lynx.tsrx` does through its `@for`; the probe fails by name if it stops
-holding, on the same staleness contract as the core probes.
+The backend arm carries its own probe, and the run counts it rather than testing
+for it. The main-thread script is LepusNG rather than JavaScript text, so the
+emitted create function's identifiers are gone by the time the harness reads it;
+what survives is the constant pool. The probe is the `TypeError` message
+`emitMainThreadProgram` writes into every program's preamble, guarding the host's
+intrinsic element factories — so the minifier keeps it, and it lands once per
+emitted program. The reported counts are `0`, `0`, `1`.
+
+It is counted because the probe this replaced was not counted and rotted
+silently. `ranges` — the wire program's key for the keyed holes its caller opens
+rather than paints — separated the backends until the Lynx main renderer began
+shipping its own runtime into every main-thread chunk, which carries the key
+whether or not anything compiled a program. Measured, `ranges` now appears three
+times in all three arms' main-thread chunk and ten times in both block arms'
+*background* chunk, so a presence test read `yes` everywhere and the run failed
+on its own specificity control. A count would have shown that as three where zero
+was expected, which is why the column reports one.
+
+The lesson is in which module the probe comes from, not in the string: a probe
+taken from a *consumer* of programs fails this way as soon as that consumer
+learns to mount one. This one is taken from the emitter, which is the only thing
+that writes a program into a bundle. It fails by name if the preamble is
+reworded, on the same staleness contract as the core probes, and the run also
+asserts the count is zero in every background chunk — #163's split puts compiled
+programs in the main-thread chunk and nowhere else.
 
 Loading the backend at all needs one thing this harness owns. Octane publishes
 every importable module as authored, so `@octanejs/lynx`'s backend is TypeScript.

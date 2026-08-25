@@ -73,17 +73,27 @@ const CORE_PROBES = Object.freeze({
  *
  * The main-thread script is LepusNG, not JavaScript text, so the emitted create
  * function's own identifiers are gone by the time this can read it — what
- * survives is the constant pool, and `ranges` is the wire program's key for the
- * keyed holes its caller opens rather than paints. The interpreted encoding has
- * no such key: it is absent from a backend-less main-thread program and appears
- * exactly once with a backend.
+ * survives is the constant pool. This is the `TypeError` message
+ * `emitMainThreadProgram` writes into every program's preamble, where it guards
+ * the host's intrinsic element factories, so the minifier has to keep it and it
+ * lands once per emitted program.
  *
- * This depends on the fixture having a keyed hole, which `src/App.lynx.tsrx`
- * does through its `@for`. That is a property of a file this harness owns, and
- * the probe fails by name if it stops holding — the same staleness contract the
+ * It replaces `ranges`, which was the wire program's key for keyed holes and
+ * stopped discriminating: the Lynx main renderer ships its own runtime into
+ * every main-thread chunk, and once that runtime could mount a program it
+ * carried the key too. Measured on this fixture, `ranges` is in all three arms'
+ * main-thread chunk three times over, so the probe read `yes` for arms that had
+ * compiled nothing. That is the failure mode a probe on a *consumer* of programs
+ * always has, and the reason this one is taken from the emitter instead: the
+ * renderer has no reason to contain a message only emitted code throws.
+ *
+ * The old probe also depended on the fixture having a keyed hole. This one
+ * depends only on the fixture having something to lower, which is already what
+ * the third arm means. It is still a string in a file this repository owns, so
+ * it fails by name if the preamble is reworded — the same staleness contract the
  * core probes have.
  */
-const PROGRAM_PROBE = 'ranges';
+const PROGRAM_PROBE = 'Octane main-thread programs need a host with intrinsic element factories.';
 
 function packageEntry(packageName) {
 	const packageRoot = path.join(RSPEEDY_MODULES, ...packageName.split('/'));
@@ -195,6 +205,18 @@ function assertMainDigestPinned(core, text) {
 	}
 }
 
+function countOf(haystack, needle) {
+	let count = 0;
+	for (
+		let at = haystack.indexOf(needle);
+		at !== -1;
+		at = haystack.indexOf(needle, at + needle.length)
+	) {
+		count += 1;
+	}
+	return count;
+}
+
 function decodedScript(decoded, key) {
 	const bytes = nativeScriptBytes(decoded[key]);
 	return { bytes, text: bytes.toString('latin1') };
@@ -269,7 +291,15 @@ async function buildWithCore(label, core, outputRoot, backend) {
 		// background text really does not move neither does its digest — and a
 		// pin here would hide the case where that stops being true.
 		backgroundSha: createHash('sha256').update(background.text).digest('hex'),
-		program: main.text.includes(PROGRAM_PROBE),
+		// Counted rather than tested for presence. A count says how many programs
+		// the arm compiled, and it is what makes a probe that stops being specific
+		// show up as a number on the arms that should read zero instead of as a
+		// silent `yes` everywhere.
+		program: countOf(main.text, PROGRAM_PROBE),
+		// #163 splits the bundle: the program half belongs to the main-thread
+		// chunk. A program in the background chunk is that split leaking, and
+		// nothing else here would notice it.
+		backgroundProgram: countOf(background.text, PROGRAM_PROBE),
 		probes: Object.fromEntries(
 			Object.entries(CORE_PROBES).map(([name, markers]) => [
 				name,
@@ -308,12 +338,12 @@ try {
 	}
 
 	console.log('\nmain-thread program (moved by the backend, not by the core)\n');
-	console.log('| arm | raw | gzip | sha256 | compiled program |');
+	console.log('| arm | raw | gzip | sha256 | compiled programs |');
 	console.log('| --- | ---: | ---: | --- | ---: |');
 	for (const row of rows) {
 		console.log(
 			`| ${row.label} | ${row.mainRaw.toLocaleString()} | ${row.mainGzip.toLocaleString()} | ` +
-				`${row.mainSha.slice(0, 12)} | ${row.program ? 'yes' : 'no'} |`,
+				`${row.mainSha.slice(0, 12)} | ${row.program} |`,
 		);
 	}
 
@@ -371,15 +401,29 @@ try {
 			'the main-thread program backend changed nothing; the third arm is measuring the second',
 		);
 	}
-	if (!blockProgram.program) {
+	if (blockProgram.program === 0) {
 		failures.push(
-			`block+program carries no compiled program (stale probe string '${PROGRAM_PROBE}')`,
+			`block+program carries no compiled program: nothing in its main-thread chunk contains ` +
+				`'${PROGRAM_PROBE}'. Either the backend compiled nothing, or the probe is stale — ` +
+				`it is the preamble emitMainThreadProgram writes, so reword one and this fails.`,
 		);
 	}
 	for (const row of [universal, block]) {
-		if (row.program) {
+		if (row.program !== 0) {
 			failures.push(
-				`${row.label} carries a compiled program without a backend; the probe is not specific`,
+				`${row.label} carries ${row.program} compiled program(s) without a backend, so the probe ` +
+					`is measuring something other than emitted code. Either the core switch is leaking the ` +
+					`backend, or something that is not an emitted program now contains ` +
+					`'${PROGRAM_PROBE}' and the probe needs replacing — the way 'ranges' did once the main ` +
+					`renderer could mount a program.`,
+			);
+		}
+	}
+	for (const row of rows) {
+		if (row.backgroundProgram !== 0) {
+			failures.push(
+				`${row.label} carries ${row.backgroundProgram} compiled program(s) in its background ` +
+					`chunk; #163's split puts them in the main-thread chunk only`,
 			);
 		}
 	}
