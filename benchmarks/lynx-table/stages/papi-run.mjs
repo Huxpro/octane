@@ -569,12 +569,10 @@ for (const rows of scales) {
 						},
 		};
 	}
-	// Deltas are octane-vs-reference by construction. A run measured without the
-	// octane cell (`--cells react,...`) has no subject, so it writes no deltas
-	// rather than crashing after the whole measurement window and losing every
-	// collected sample.
+	// Deltas are octane-vs-reference by construction; the CLI already requires
+	// the octane cell up front, so a subject is always present here.
 	const deltas = {};
-	for (const id of cells.octane === undefined ? [] : cellIds) {
+	for (const id of cellIds) {
 		if (id === 'octane') continue;
 		// The profile cell carries the wire profiler's branches, so it is a
 		// different build configuration from every other cell here. Its numbers

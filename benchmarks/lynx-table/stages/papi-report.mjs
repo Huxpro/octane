@@ -129,7 +129,11 @@ export function projectedFcp(scale) {
 export function profileTransfer(scale) {
 	const shipping = scale.cells.octane;
 	const profiled = scale.cells['octane-profile'];
-	if (profiled === undefined || !shipping.fcp.measured || !profiled.fcp.measured) return null;
+	// The report module re-renders any frozen JSON handed to it, so evidence
+	// without the shipping cell degrades to "no transfer" like the sibling
+	// firstScreenControl, rather than crashing on the dereference.
+	if (shipping === undefined || profiled === undefined) return null;
+	if (!shipping.fcp.measured || !profiled.fcp.measured) return null;
 	const split = profiled.fcp.timed.firstScreen ?? null;
 	if (split === null) {
 		// A measured profile cell with no split is a broken probe, not an absent

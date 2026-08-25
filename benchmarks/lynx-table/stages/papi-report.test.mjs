@@ -85,6 +85,13 @@ test('firstScreenControl declines evidence measured without the octane cell', ()
 	assert.equal(firstScreenControl({ cells: {} }), null);
 });
 
+test('profileTransfer declines evidence whose cells lack the shipping octane cell', () => {
+	const profiled = {
+		fcp: window({ controlMs: 1010, offBoundaryMs: 267, firstScreen: split() }),
+	};
+	assert.equal(profileTransfer({ rows: 10000, cells: { 'octane-profile': profiled } }), null);
+});
+
 // Rendered over the checked-in evidence rather than a fixture: the renderer
 // needs a whole scale report, and the two files below are exactly the two cases
 // — a cross-framework run with no profile cell, and the first-screen run with
