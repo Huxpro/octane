@@ -189,3 +189,13 @@ test('the checked-in evidence carries the verdict its report describes', () => {
 	assert.deepEqual(run.meta.kinds, ELEMENT_KINDS);
 	assert.deepEqual(run.meta.cells, cellNames());
 });
+
+// The measured units are cells, not arms, once the kind axis exists. A run
+// recorded before it names arms this renderer cannot map to cells, so it is
+// refused by name instead of being expanded into cells the run never measured.
+test('refuses a run recorded before the element-kind axis by name', () => {
+	assert.throws(
+		() => renderFloorReport({ ...META, kinds: undefined, cells: undefined }, runAt(REFUTING)),
+		/predates the element-kind axis/,
+	);
+});

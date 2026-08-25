@@ -121,7 +121,6 @@ import {
 	ARM_NAMES,
 	ELEMENT_KINDS,
 	NODES_PER_ROW,
-	cellName,
 	cellNames,
 	summarizeArm,
 	verdictFor,
@@ -391,8 +390,6 @@ await browser.close();
 server.close();
 
 // --- analysis -------------------------------------------------------------
-
-const round = (value, digits = 1) => Number(value.toFixed(digits));
 
 const perScale = scales.map((rows) => ({
 	rows,

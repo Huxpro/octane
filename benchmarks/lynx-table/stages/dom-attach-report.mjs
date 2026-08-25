@@ -12,11 +12,9 @@ import { parseArgs } from 'node:util';
 
 import {
 	ARM_NAMES,
-	ELEMENT_KINDS,
 	FLAT_DRIFT,
 	PUBLISH_ONLY_ARM,
 	cellName,
-	cellNames,
 	pairsFor,
 	publishOnlyRates,
 	reactionCost,
@@ -32,10 +30,17 @@ const round = (value, digits = 1) => Number(value.toFixed(digits));
  */
 export function renderFloorReport(meta, perScale) {
 	const arms = meta.arms ?? ARM_NAMES;
-	// The kind axis decides which cells exist. A run measured before it was added
-	// carries neither `kinds` nor `cells`, so it renders as the one kind it had.
-	const kinds = meta.kinds ?? ELEMENT_KINDS;
-	const CELLS = meta.cells ?? cellNames(kinds, arms);
+	// The kind axis decides which cells exist, and the measured units are cells,
+	// not arms. A run recorded without it names arms this renderer cannot map to
+	// cells, so it is refused by name rather than expanded into cells the run
+	// never measured — which could only crash deeper in or, worse, render.
+	if (meta.kinds === undefined || meta.cells === undefined) {
+		throw new Error(
+			'this run predates the element-kind axis and its arm-named samples cannot be rendered as cells; re-measure with dom-attach-floor.mjs.',
+		);
+	}
+	const kinds = meta.kinds;
+	const CELLS = meta.cells;
 	const decidingKind = kinds[kinds.length - 1];
 	const scales = perScale.map((scale) => scale.rows);
 	const verdict = verdictFor(perScale, CELLS, pairsFor(decidingKind));
@@ -281,12 +286,8 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
 	// two disagree. It is decided over the same cells and the same pair the
 	// report renders — the measured units are cells, not arms, once the kind axis
 	// exists, and deciding over bare arm names finds no such arm at all.
-	const runKinds = run.meta.kinds ?? ELEMENT_KINDS;
-	run.verdict = verdictFor(
-		run.scales,
-		run.meta.cells ?? cellNames(runKinds, run.meta.arms ?? ARM_NAMES),
-		pairsFor(runKinds[runKinds.length - 1]),
-	);
+	const runKinds = run.meta.kinds;
+	run.verdict = verdictFor(run.scales, run.meta.cells, pairsFor(runKinds[runKinds.length - 1]));
 	fs.writeFileSync(file, JSON.stringify(run, null, 2) + '\n');
 	console.log(text);
 }
