@@ -267,7 +267,9 @@ interface LynxHostState<Node extends LynxElementRef> {
 	 * That is the point of a program rather than a gap in one — it is compiled so
 	 * that its subtree is never described — but every path that reads the record
 	 * tree as the whole tree has to say so instead of quietly reporting the part
-	 * it can see.
+	 * it can see. `captureLynxFirstTree` declines such a container outright, on
+	 * the route it already had for a page it painted correctly and cannot
+	 * describe.
 	 */
 	hasMainThreadProgram: boolean;
 	acceptedVersion: number;
@@ -4084,17 +4086,6 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 	if (state.firstTree !== null) throw hostError('the root already owns a first-tree journal.');
 	if (state.acceptedVersion === 0)
 		throw hostError('cannot capture a first tree before a batch is accepted.');
-	if (state.hasMainThreadProgram) {
-		// A capture is a description of the painted tree, assembled from records,
-		// and a compiled main-thread program has no record for any node it made
-		// (issue #163). Journalling what the records can see would hand adoption a
-		// tree missing everything the program painted — the silent half-answer this
-		// train keeps refusing. Adoption for a program is slot state off the keyed
-		// slot map, not a capture walk, and that is what replaces this refusal.
-		throw hostError(
-			'a first screen holding a compiled main-thread program cannot be captured as a described tree.',
-		);
-	}
 	if (
 		options.plan !== undefined &&
 		(typeof options.plan !== 'string' || options.plan.length === 0)
@@ -4108,6 +4099,24 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 		// first screen actually has — the `<list>` painted, every row still logical —
 		// and decline the rest exactly as this did before.
 		if (list.cellsBySign.size !== 0) return null;
+	}
+	if (state.hasMainThreadProgram) {
+		// Declined for the same reason and by the same route (issue #163). A
+		// capture is a description assembled from records, and a compiled
+		// main-thread program has no record for any node it made — that is what a
+		// program *is*, not a gap in one. Journalling what the records can see
+		// would hand adoption a tree missing everything the program painted.
+		//
+		// A decline rather than a fault, because the page is correct: it is
+		// painted, it is owned, and `disposeLynxHostContainer` tears it down
+		// completely. What it is not is describable, which is exactly the
+		// condition this return already means, and the caller answers it by
+		// retiring the screen as `skipped`/`unadoptable` and letting the
+		// background paint its own. That trades the program's first screen away,
+		// so it is the safety net rather than the destination: adoption for a
+		// program is slot state off the keyed slot map, not a capture walk, and
+		// landing that is what makes this branch unreachable.
+		return null;
 	}
 	if (state.portalChildren.size !== 0) {
 		throw hostError('portals cannot be captured before background adoption.');

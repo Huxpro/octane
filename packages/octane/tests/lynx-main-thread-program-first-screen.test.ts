@@ -326,13 +326,24 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 		expect(removes).toEqual([[page, root]]);
 	});
 
-	it('refuses to describe the painted tree it did not describe', () => {
+	it('declines to describe the painted tree it did not describe, without faulting', () => {
 		// A capture is assembled from records, and a program has none. Journalling
 		// what the records can see would hand adoption a tree missing everything
-		// the program painted. Adoption for a program is slot state off the keyed
-		// slot map (C2e), which is what replaces this refusal.
+		// the program painted.
+		//
+		// `null` rather than a throw, because the page is correct — painted, owned,
+		// and disposable — and `null` is already what this call means by "painted
+		// correctly, not describable". Its caller retires the screen as
+		// `skipped`/`unadoptable` and lets the background paint its own, which is
+		// the same answer an already-materialized native list row gets. A throw
+		// would instead fault a first screen that is not faulty. Adoption for a
+		// program is slot state off the keyed slot map, and landing that is what
+		// makes this branch unreachable rather than merely graceful.
 		const { container } = paint(true);
-		expect(() => captureLynxFirstTree(container)).toThrow(/cannot be captured as a described tree/);
+		expect(captureLynxFirstTree(container)).toBeNull();
+		// Declined, not stranded: the safety net only holds if the paint it is
+		// throwing away can actually be taken back.
+		expect(disposeLynxHostContainer(container).complete).toBe(true);
 	});
 
 	it('refuses a host with no intrinsic element factories before painting any root', () => {
