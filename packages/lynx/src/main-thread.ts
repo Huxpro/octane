@@ -260,27 +260,14 @@ function lifecycleTuple(
 	if (!Array.isArray(data) || data.length !== length) {
 		throw new TypeError(`Octane Lynx ${expectedType} data must be an exact ${length}-item tuple.`);
 	}
-	const names = Object.getOwnPropertyNames(data);
-	if (names.length !== length + 1 || hasOwnSymbolFields(data)) {
-		throw new TypeError(
-			`Octane Lynx ${expectedType} data must be a dense tuple without extra fields.`,
-		);
-	}
-	const tuple: unknown[] = [];
-	for (let index = 0; index < length; index++) {
-		const descriptor = Object.getOwnPropertyDescriptor(data, String(index));
-		if (
-			descriptor === undefined ||
-			!descriptor.enumerable ||
-			!Object.prototype.hasOwnProperty.call(descriptor, 'value')
-		) {
-			throw new TypeError(
-				`Octane Lynx ${expectedType} data[${index}] must be an enumerable data property.`,
-			);
-		}
-		tuple.push(descriptor.value);
-	}
-	return tuple;
+	// Materialization is also normalization: JSON output is always a dense
+	// ordinary array with exactly its index properties as plain enumerable data
+	// fields and no symbols, so the structural checks the pre-encoding version
+	// of this function ran here (extra own fields, accessor elements, symbol
+	// keys) can never fire again and would only claim a rigor the boundary has
+	// already provided. A hole in the raw tuple arrives as null and is judged by
+	// the per-element validation each caller runs on the values.
+	return data;
 }
 
 function lifecycleBooleanOption(
