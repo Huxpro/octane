@@ -273,6 +273,60 @@ describe('direct first-screen applier', () => {
 		expect(captureLynxFirstTree(container)).not.toBeNull();
 	});
 
+	// The listener identity the renderer assigned becomes the token the host hands
+	// the platform, and a token nothing can decode is worse than a refusal: the
+	// platform already holds it by the time anything reads it back. The applier
+	// holds those five primitives separately and never has an identity object to
+	// check, so it owes each primitive the same check the object encoder runs.
+	it('refuses a first-screen listener identity the token encoder cannot express', () => {
+		const node: LynxFirstScreenDirectNode = {
+			kind: 'host',
+			id: 1,
+			type: 'view',
+			props: {},
+			children: [],
+		};
+		const attempt = (listener: unknown) => {
+			const papi = createFakePAPI();
+			let setEvents = 0;
+			const container = createLynxHostContainer(
+				{
+					...papi,
+					setEvent(target: FakeNode, kind: string, name: string, value: unknown) {
+						setEvents += 1;
+						papi.setEvent(target, kind, name, value as never);
+					},
+				},
+				{ root: 1 },
+			);
+			return {
+				reached: () => setEvents,
+				run: () =>
+					applyLynxFirstScreenDirect(container, [node], {
+						renderer: 'lynx',
+						version: 1,
+						events: [{ id: 1, type: 'bindtap', listener: listener as never }],
+					}),
+			};
+		};
+
+		const badListener = attempt({ id: 0, priority: 'discrete' });
+		expect(badListener.run).toThrowError(/identity\.listener must be a positive safe integer/);
+		const badPriority = attempt({ id: 4, priority: 'urgent' });
+		expect(badPriority.run).toThrowError(
+			/identity\.priority must be discrete, continuous, or default/,
+		);
+		// Refused before `__AddEvent`, not after: an identity the encoder rejects
+		// must never reach the platform as a listener.
+		expect(badListener.reached()).toBe(0);
+		expect(badPriority.reached()).toBe(0);
+		// And a well-formed identity still installs, so the checks above are
+		// refusing malformed identities rather than refusing everything.
+		const good = attempt({ id: 4, priority: 'discrete' });
+		expect(good.run()).toBe(true);
+		expect(good.reached()).toBe(1);
+	});
+
 	// The applier attaches a host to its parent only once the host's own subtree
 	// is complete, and walks roots and siblings in authored order. Both are
 	// properties of the walk rather than of the finished tree, so the snapshot
