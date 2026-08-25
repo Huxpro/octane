@@ -2,6 +2,10 @@
 //
 //   node stages/papi-run.mjs --smoke --scales 1000 --allow-busy-host
 //   node stages/papi-run.mjs --reps 5 --scales 1000,10000,30000
+//   node stages/papi-run.mjs --cells octane,octane-profile --label papi-firstscreen
+//
+// `--label` stems every output basename, so a run over a different cell set
+// writes beside the checked-in baseline instead of over it.
 //
 // The instrument is host-side (web/driver-client.mjs `papiInstrumentJs`): it
 // wraps the single `Object.assign` with which @lynx-js/web-core installs the
@@ -36,6 +40,7 @@ import {
 	countsAgree,
 	overheadVerdict,
 	requireMinimumRepetitions,
+	requireOutputStem,
 	rotatedSchedule,
 	scalingVerdict,
 	summarizeCell,
@@ -58,6 +63,7 @@ const { values: args } = parseArgs({
 		reps: { type: 'string', default: '5' },
 		scales: { type: 'string', default: '1000,10000,30000' },
 		cells: { type: 'string', default: 'octane,react,vue-vdom' },
+		label: { type: 'string', default: 'papi' },
 		port: { type: 'string', default: '8362' },
 		smoke: { type: 'boolean', default: false },
 		'skip-build': { type: 'boolean', default: false },
@@ -75,6 +81,10 @@ if (scales.length === 0) throw new TypeError('at least one scale is required.');
 for (const rows of scales) {
 	if (!Number.isSafeInteger(rows) || rows <= 0) throw new TypeError('scales must be positive.');
 }
+// Every output basename is stemmed from `--label`, so a run that measures a
+// different cell set writes its own files instead of overwriting the evidence a
+// previous campaign checked in under the default stem.
+const outputStem = requireOutputStem(args.label);
 const port = Number(args.port);
 const cpuCount = os.cpus().length;
 const loadPerCpu = os.loadavg()[0] / cpuCount;
@@ -92,6 +102,16 @@ const CELLS = {
 	octane: {
 		bundle: () => path.join(root, 'app/dist/main.web.bundle'),
 		fcpBundle: (rows) => path.join(root, `app/dist-rows${rows}/main.web.bundle`),
+	},
+	// The same app under `OCTANE_LYNX_PROFILE=1`, which is what publishes the
+	// first-screen phase marker the boundary probe reads. It is a different build
+	// configuration from the shipping `octane` cell, so it is a separate cell
+	// rather than a flag on that one: its wall clock is only comparable to
+	// itself, and the report has to be able to say so.
+	'octane-profile': {
+		bundle: () => path.join(root, 'app/dist-profile/main.web.bundle'),
+		fcpBundle: (rows) => path.join(root, `app/dist-rows${rows}-profile/main.web.bundle`),
+		profile: true,
 	},
 	react: {
 		bundle: () => path.join(root, 'reference/react/main.web.bundle'),
@@ -113,6 +133,9 @@ const cellIds = args.cells
 for (const id of cellIds) {
 	if (CELLS[id] === undefined) throw new TypeError(`unknown cell ${id}.`);
 }
+// Every cross-cell delta is expressed against octane, so a run without it would
+// have nothing to attribute against.
+if (!cellIds.includes('octane')) throw new TypeError('the octane cell is required.');
 
 const createLabels = new Map([
 	[1000, 'Create 1,000 rows'],
@@ -128,16 +151,21 @@ for (const rows of scales) {
 
 // --- bundles ----------------------------------------------------------------
 
-function buildOctaneVariants() {
-	const previous = process.env.BENCH_AUTOROWS;
+function buildOctaneVariants({ profile = false } = {}) {
+	const previousRows = process.env.BENCH_AUTOROWS;
+	const previousProfile = process.env.OCTANE_LYNX_PROFILE;
 	try {
+		if (profile) process.env.OCTANE_LYNX_PROFILE = '1';
+		else delete process.env.OCTANE_LYNX_PROFILE;
 		for (const autoRows of ['0', ...scales.map(String)]) {
 			process.env.BENCH_AUTOROWS = autoRows;
 			buildTableApp({ silent: true });
 		}
 	} finally {
-		if (previous === undefined) delete process.env.BENCH_AUTOROWS;
-		else process.env.BENCH_AUTOROWS = previous;
+		if (previousRows === undefined) delete process.env.BENCH_AUTOROWS;
+		else process.env.BENCH_AUTOROWS = previousRows;
+		if (previousProfile === undefined) delete process.env.OCTANE_LYNX_PROFILE;
+		else process.env.OCTANE_LYNX_PROFILE = previousProfile;
 	}
 }
 
@@ -380,7 +408,10 @@ async function clockGranularityMs(browser) {
 
 // --- run --------------------------------------------------------------------
 
-if (!args['skip-build'] && cellIds.includes('octane')) buildOctaneVariants();
+if (!args['skip-build']) {
+	if (cellIds.includes('octane')) buildOctaneVariants();
+	if (cellIds.includes('octane-profile')) buildOctaneVariants({ profile: true });
+}
 for (const [name, file] of bundlePaths) {
 	if (!fs.existsSync(file)) throw new Error(`${name} bundle is missing: ${file}`);
 }
@@ -457,7 +488,7 @@ fs.mkdirSync(output, { recursive: true });
 
 if (args.smoke) {
 	fs.writeFileSync(
-		path.join(output, 'papi-smoke.json'),
+		path.join(output, `${outputStem}-smoke.json`),
 		JSON.stringify({ meta: { ...meta, reportable: false }, samples }, null, 2) + '\n',
 	);
 	console.log('[papi] smoke passed (not reportable).');
@@ -536,13 +567,17 @@ for (const rows of scales) {
 						},
 		};
 	}
-	// Deltas are octane-vs-reference by construction. A run measured without the
-	// octane cell (`--cells react,...`) has no subject, so it writes no deltas
-	// rather than crashing after the whole measurement window and losing every
-	// collected sample.
+	// Deltas are octane-vs-reference by construction; the CLI already requires
+	// the octane cell up front, so a subject is always present here.
 	const deltas = {};
-	for (const id of cells.octane === undefined ? [] : cellIds) {
+	for (const id of cellIds) {
 		if (id === 'octane') continue;
+		// The profile cell carries the wire profiler's branches, so it is a
+		// different build configuration from every other cell here. Its numbers
+		// apportion its own window and nothing else; ratioing it against the
+		// shipping build or a vendored reference would compare two builds and
+		// report the difference as a framework gap.
+		if (CELLS[id].profile === true) continue;
 		deltas[id] = {
 			create: attributeDelta({
 				subject: cells.octane.create.timed,
@@ -585,12 +620,12 @@ if (scales.length >= 2) {
 // change never costs another measurement window.
 for (const rows of scales) {
 	fs.writeFileSync(
-		path.join(output, `papi-${rows}.json`),
+		path.join(output, `${outputStem}-${rows}.json`),
 		JSON.stringify({ meta, rows, ...report.scales[rows], samples: samples[rows] }, null, 2) + '\n',
 	);
 }
 fs.writeFileSync(
-	path.join(output, 'papi-scaling.json'),
+	path.join(output, `${outputStem}-scaling.json`),
 	JSON.stringify({ meta, scaling: report.scaling }, null, 2) + '\n',
 );
 const text = renderBoundaryReport(
@@ -601,6 +636,6 @@ const text = renderBoundaryReport(
 		...(index === 0 ? { scaling: report.scaling } : null),
 	})),
 );
-fs.writeFileSync(path.join(output, 'papi-boundary.md'), text + '\n');
+fs.writeFileSync(path.join(output, `${outputStem}-boundary.md`), text + '\n');
 console.log('\n' + text);
-console.log(`[papi] wrote ${path.relative(root, path.join(output, 'papi-boundary.md'))}`);
+console.log(`[papi] wrote ${path.relative(root, path.join(output, `${outputStem}-boundary.md`))}`);

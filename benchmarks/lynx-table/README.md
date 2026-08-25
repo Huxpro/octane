@@ -580,6 +580,40 @@ so a wording or attribution change never costs another measurement window:
 node stages/papi-report.mjs
 ```
 
+Both accept `--label`, which stems every output basename. A run over a different
+cell set writes beside the checked-in baseline rather than over it, and the
+report re-renders from whichever stem it is pointed at:
+
+```bash
+node stages/papi-run.mjs --cells octane,octane-profile --label papi-firstscreen
+node stages/papi-report.mjs --label papi-firstscreen
+```
+
+### Splitting `off_boundary` — which first-screen phase owns it
+
+`off_boundary` is a remainder for every cell, and on the `octane-profile` cell
+it splits further. `@octanejs/lynx` publishes which first-screen phase is
+running — `render`, `publish`, `capture`, `announce` — and the boundary probe
+attributes each host call to the phase that issued it, so a phase's own
+off-boundary time is its wall span minus the host time observed inside it. What
+no phase claims is the **residue**: web-core's own script between host calls,
+plus the browser's style, layout, paint, and observer frame.
+
+The dependency runs one way: the framework publishes a marker and never reads
+the probe. `render` crosses the boundary not at all, so its whole span is
+framework script by construction rather than by subtraction. The marker is
+gated on `__OCTANE_LYNX_PROFILE__` and folds out of a shipping bundle, so the
+split needs the separately built `octane-profile` cell — which is a different
+configuration, so it is excluded from every cross-cell delta and no ratio is
+taken between it and `octane`. The report prints both builds' first-screen
+walls from the same window instead, so the transfer is judged on measured
+agreement.
+
+The analyzer refuses rather than clamps: a counts-only split, a phase observing
+more host time than it lasted, phases claiming more than `off_boundary` holds, a
+marker still open at the window's end, an unknown phase name, a window in which
+no first screen ran, and a run in which only some samples carried a split.
+
 `papi-predicate-cost.mjs` records what the two window predicates themselves cost
 on a settled tree at each scale. The FCP predicate is the expensive composed-tree
 walk, so that bound belongs beside the report rather than in a reader's head —

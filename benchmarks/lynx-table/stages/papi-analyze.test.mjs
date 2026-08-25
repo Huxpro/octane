@@ -271,3 +271,134 @@ test('holds the timed build to the counts build it must reproduce', () => {
 	assert.ok(mismatched.mismatches.some((entry) => entry.kind === '__FlushElementTree'));
 	assert.equal(countsAgree(counted, counted).agree, true);
 });
+
+function firstScreenSplit(overrides = {}) {
+	return {
+		timers: true,
+		open: null,
+		wallMs: { render: 20, publish: 30, capture: 10, announce: 1, ...overrides.wallMs },
+		byPhase: {
+			render: { calls: 0, selfMs: 0 },
+			publish: { calls: 3, selfMs: 12 },
+			capture: { calls: 1, selfMs: 0 },
+			announce: { calls: 0, selfMs: 0 },
+			...overrides.byPhase,
+		},
+		...overrides.split,
+	};
+}
+
+test('splits off_boundary into the framework first screen and the residue nothing claims', () => {
+	// off_boundary here is 100 - (start 10 + host 12) = 78. The framework claims
+	// each phase's wall span less the host time observed inside it: render 20,
+	// publish 30-12=18, capture 10, announce 1 — 49 in all. What is left is
+	// web-core's own script plus the browser's frame, which is the half a
+	// speed-of-light control has to be built against rather than optimized.
+	const { stages, firstScreen } = analyzeBoundarySample({
+		wallMs: 100,
+		startEpoch: 990,
+		papi: snapshot({ firstScreen: firstScreenSplit() }),
+	});
+
+	assert.equal(stages.off_boundary, 78);
+	assert.equal(firstScreen.phases.publish.offBoundaryMs, 18);
+	assert.equal(firstScreen.phases.render.offBoundaryMs, 20);
+	assert.equal(firstScreen.frameworkMs, 49);
+	assert.equal(firstScreen.residueMs, 29);
+	// The split apportions off_boundary and never exceeds it.
+	assert.equal(firstScreen.frameworkMs + firstScreen.residueMs, stages.off_boundary);
+});
+
+test('reports no first-screen split for a page that carries no profile build', () => {
+	// Every reference cell and the shipping octane build take this path, so it has
+	// to be a clean null rather than a zeroed split that reads as measured.
+	const { firstScreen } = analyzeBoundarySample({
+		wallMs: 100,
+		startEpoch: 990,
+		papi: snapshot(),
+	});
+	assert.equal(firstScreen, null);
+});
+
+test('refuses a first-screen split that cannot be true of the window it describes', () => {
+	const analyze = (split) =>
+		analyzeBoundarySample({ wallMs: 100, startEpoch: 990, papi: snapshot({ firstScreen: split }) });
+
+	// A phase cannot have observed more host time than it lasted.
+	assert.throws(
+		() => analyze(firstScreenSplit({ wallMs: { publish: 1 } })),
+		/observed more host time than it lasted/,
+	);
+	// The phases cannot claim more than off_boundary holds. Clamping instead would
+	// hide a probe reporting a different window than the one being analyzed.
+	assert.throws(
+		() => analyze(firstScreenSplit({ wallMs: { render: 400 } })),
+		/claim more than off_boundary holds/,
+	);
+	// A counts build fills the buckets with calls and no time, so subtracting them
+	// would credit every phase with its entire wall span.
+	assert.throws(() => analyze(firstScreenSplit({ split: { timers: false } })), /counts-only probe/);
+	// A phase still open means the first screen never finished.
+	assert.throws(() => analyze(firstScreenSplit({ split: { open: 'capture' } })), /still open/);
+	// An unknown phase is a probe and analyzer that disagree about the sequence.
+	assert.throws(
+		() => analyze(firstScreenSplit({ byPhase: { adopt: { calls: 1, selfMs: 0 } } })),
+		/unknown phase adopt/,
+	);
+	// A wall span alone must be refused on the same terms: a phase that crosses
+	// no host boundary creates no byPhase bucket, and letting its span through
+	// would land framework script in the residue as the browser's cost.
+	assert.throws(
+		() => analyze(firstScreenSplit({ wallMs: { adopt: 5 } })),
+		/wallMs carries an unknown phase adopt/,
+	);
+});
+
+test('reports no split for a window in which no first screen ran', () => {
+	// The create window opens long after the first screen ended. Its off_boundary
+	// belongs to the update path, so crediting the whole of it to a residue named
+	// "web-core and the browser frame" would manufacture a platform floor out of
+	// framework work.
+	const idle = firstScreenSplit({
+		wallMs: { render: 0, publish: 0, capture: 0, announce: 0 },
+		byPhase: {
+			render: { calls: 0, selfMs: 0 },
+			publish: { calls: 0, selfMs: 0 },
+			capture: { calls: 0, selfMs: 0 },
+			announce: { calls: 0, selfMs: 0 },
+		},
+	});
+	const sample = analyzeBoundarySample({
+		wallMs: 100,
+		startEpoch: 990,
+		papi: snapshot({ firstScreen: idle }),
+	});
+	assert.equal(sample.firstScreen, null);
+});
+
+test('folds every sample’s first-screen split into medians, and refuses a partial one', () => {
+	const sample = (residueMs) => ({
+		...analyzeBoundarySample({
+			wallMs: 100,
+			startEpoch: 990,
+			papi: snapshot({ firstScreen: firstScreenSplit({ wallMs: { render: 20 + residueMs } }) }),
+		}),
+	});
+	const summary = summarizeCell([sample(0), sample(2), sample(4), sample(6), sample(8)]);
+
+	assert.equal(summary.firstScreen.phases.render.offBoundaryMs.median, 24);
+	assert.equal(summary.firstScreen.phases.publish.offBoundaryMs.median, 18);
+	assert.equal(summary.firstScreen.residueMs.median, 25);
+
+	// Cells alternate within one window by design, so a run where only some
+	// samples carried the probe means the pages disagreed about what they were
+	// measuring. A median over the half that reported would read as if the whole
+	// run had.
+	const bare = analyzeBoundarySample({ wallMs: 100, startEpoch: 990, papi: snapshot() });
+	assert.throws(
+		() => summarizeCell([sample(0), sample(2), bare, sample(6), sample(8)]),
+		/only 4 of 5 samples carried a first-screen split/,
+	);
+	// A cell whose pages carried none at all is the ordinary case, not an error.
+	assert.equal(summarizeCell([bare, bare, bare, bare, bare]).firstScreen, null);
+});

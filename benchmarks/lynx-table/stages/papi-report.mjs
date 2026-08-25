@@ -10,6 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
+import { FIRST_SCREEN_PHASES, requireOutputStem } from './papi-analyze.mjs';
 
 function round(value, digits = 2) {
 	return value === null || value === undefined ? null : Number(value.toFixed(digits));
@@ -111,6 +112,53 @@ export function projectedFcp(scale) {
 	});
 }
 
+/**
+ * A profile build carries the phase marker a shipping build folds away, so its
+ * milliseconds are a different configuration and no ratio may be taken across
+ * the two — `run-web.mjs` already withholds one between a profiled and a
+ * non-profiled cell for exactly this reason. What licenses reading the split as
+ * the shipping build's is not an assertion that the probe is free but a
+ * measurement of it: both cells run in the same window, and their first-screen
+ * walls are reported side by side on the uninstrumented control pages.
+ *
+ * The bias has a known direction. The probe's own cost lands inside Octane's
+ * phases, never in the residue, so any residual inflation over-attributes to the
+ * framework and under-attributes to the browser — which can only make Octane
+ * look worse than it is.
+ */
+export function profileTransfer(scale) {
+	const shipping = scale.cells.octane;
+	const profiled = scale.cells['octane-profile'];
+	// The report module re-renders any frozen JSON handed to it, so evidence
+	// without the shipping cell degrades to "no transfer" like the sibling
+	// firstScreenControl, rather than crashing on the dereference.
+	if (shipping === undefined || profiled === undefined) return null;
+	if (!shipping.fcp.measured || !profiled.fcp.measured) return null;
+	const split = profiled.fcp.timed.firstScreen ?? null;
+	if (split === null) {
+		// A measured profile cell with no split is a broken probe, not an absent
+		// feature. The likeliest cause is the cross-realm one: the marker is written
+		// on the main-thread script realm's global and has to be read through the
+		// install target, so a probe reading the page realm's own global finds
+		// nothing and reports every phase as absent. Rendering that as a missing
+		// section would publish the failure as silence.
+		throw new Error(
+			'the octane-profile cell measured an FCP window but carried no first-screen split: the probe read no profile record.',
+		);
+	}
+	const shippingMs = controlWall(shipping.fcp);
+	const profiledMs = controlWall(profiled.fcp);
+	return {
+		shippingMs,
+		profiledMs,
+		deltaMs: profiledMs - shippingMs,
+		spread: shippingMs === 0 ? null : profiledMs / shippingMs - 1,
+		shippingOffBoundaryMs: shipping.fcp.timed.stages.off_boundary?.median ?? 0,
+		profiledOffBoundaryMs: profiled.fcp.timed.stages.off_boundary?.median ?? 0,
+		split,
+	};
+}
+
 function countTable(scale, cellIds) {
 	const kinds = new Set();
 	for (const id of cellIds) {
@@ -144,6 +192,32 @@ function stageTable(summary) {
 	return lines;
 }
 
+/**
+ * The first-screen phase split of `off_boundary`. Only a profile-built cell
+ * carries one: the phase marker it reads folds away in a shipping bundle, which
+ * is the whole point of the build flag.
+ */
+function firstScreenTable(split) {
+	const lines = [
+		'| first-screen phase | host calls | host self ms | off-boundary ms |',
+		'|---|---:|---:|---:|',
+	];
+	for (const phase of FIRST_SCREEN_PHASES) {
+		const entry = split.phases[phase];
+		lines.push(
+			`| ${phase} | ${integer(entry.calls.median)} | ${round(entry.selfMs.median, 1)} | ${round(entry.offBoundaryMs.median, 1)} |`,
+		);
+	}
+	// Both totals are medians of their own samples, so they need not add to the
+	// per-phase medians above; each row is reported as measured rather than
+	// reconciled.
+	lines.push(
+		`| **Octane first-screen script** | — | — | ${round(split.frameworkMs.median, 1)} |`,
+		`| **residue — web-core script and the browser frame** | — | — | ${round(split.residueMs.median, 1)} |`,
+	);
+	return lines;
+}
+
 function deltaTable(attributed) {
 	const lines = [
 		'| candidate owner | delta ms | share of delta | verdict | directly observed |',
@@ -167,6 +241,12 @@ export function renderBoundaryReport(scaleReports) {
 	const first = scaleReports[0];
 	const meta = first.meta;
 	const cellIds = meta.cells;
+	// One evaluation per scale, before the first line is emitted: the contract
+	// prose below and the tables further down then cannot disagree about whether
+	// this run carries a split, and a broken probe throws before a header claims
+	// otherwise.
+	const transfers = new Map(scaleReports.map((scale) => [scale.rows, profileTransfer(scale)]));
+	const anySplit = [...transfers.values()].some((transfer) => transfer !== null);
 	const lines = [
 		'# Element PAPI boundary decomposition — Octane vs ReactLynx vs Vue vdom+IFR+ET',
 		'',
@@ -192,6 +272,14 @@ export function renderBoundaryReport(scaleReports) {
 		'',
 		"`start_delay` is the observed gap from the window's start boundary to the first host call. Each host group is directly observed and exclusive: a host call re-entered through a framework callback is counted once. `off_boundary` is the named exclusive remainder — framework script, the browser's own style, layout, paint, and observer-frame delay, and the timed probe's own bookkeeping — because the host exposes no boundary separating those. `__FlushElementTree` self time covers the synchronous publication Web Core performs inside it; the browser's layout and paint that follow it stay in `off_boundary`.",
 		'',
+		...(anySplit
+			? [
+					"`off_boundary` is a remainder for every cell, and on a profile-built Octane cell it splits further. The framework publishes which first-screen phase is running — render, publish, capture, announce — and the probe attributes each host call to the phase that issued it, so a phase's own off-boundary time is its wall span minus the host time observed inside it. What no phase claims is the residue: web-core's own script between host calls, plus the browser's style, layout, paint, and observer frame. The dependency runs one way — the framework publishes a marker and never reads the probe — and `render` crosses the boundary not at all, so its whole span is framework script by construction rather than by subtraction. The marker is compiled out of a shipping bundle, so the split is measured on a separate profile-built cell and no ratio is ever taken across the two builds.",
+					'',
+					"The residue is an upper bound on the platform's share rather than a measurement of it, though a tight one. Framework script before the first host call is `start_delay`, a separate term of the identity, so the bundle's own evaluation and most of the install are already excluded. What can still land in the residue is framework script inside the window but outside the four phases: whatever the entry does after the first screen returns, and any install work that follows the first host call. That is the flattering direction for Octane and the conservative one for a floor claim — a control built against this residue must beat a number that may still hold a little framework cost the split did not measure.",
+					'',
+				]
+			: []),
 		"Host call counts, flush cadence, and start delay are read from the counts build, whose wall clock carries no per-call clock reads. The timed build supplies host self time. Both builds count identically by construction, and the agreement is reported per cell as the control on the timed build's cost.",
 		'',
 		'Two window predicates differ and the difference is not corrected away: the create window resolves on a shallow scan of the row container, while the FCP window resolves on the composed-tree content count `stages/run.mjs` already uses. The FCP predicate is the more expensive walk, so an FCP window carries up to one polling frame of that walk that a create window does not. Host call counts are exact and carry no such term.',
@@ -245,6 +333,19 @@ export function renderBoundaryReport(scaleReports) {
 				...stageTable(fcp.timed),
 				'',
 				`Host calls ${integer(fcp.counts.counts.calls.median)} (${round(fcp.counts.opsPerRow, 2)} per row), ${fcp.counts.counts.flushCount.median} \`__FlushElementTree\`, start delay ${round(fcp.counts.startDelay.median, 1)} ms. Wall ${round(controlWall(fcp), 1)} ms control / ${round(fcp.counts.total.median, 1)} ms counts / ${round(fcp.timed.total.median, 1)} ms timed; overhead ${ratio(fcp.overhead.counts)} counts, ${ratio(fcp.overhead.timed)} timed.`,
+				'',
+			);
+		}
+		const transfer = transfers.get(rows);
+		if (transfer !== null) {
+			lines.push(
+				`### Octane first-screen phase split @${rows} — what off-boundary time is Octane's`,
+				'',
+				`Measured on the profile-built cell. Its first-screen wall on the uninstrumented control pages is ${round(transfer.profiledMs, 1)} ms against the shipping cell's ${round(transfer.shippingMs, 1)} ms in the same window — ${transfer.deltaMs > 0 ? '+' : ''}${round(transfer.deltaMs, 1)} ms, ${transfer.spread === null ? 'n/a' : `${transfer.spread > 0 ? '+' : ''}${(transfer.spread * 100).toFixed(1)}%`}. That side-by-side is the whole licence for reading the split as the shipping build's; the two builds are never divided into a ratio. Any residual probe cost lands inside Octane's own phases, so it over-attributes to the framework and under-attributes to the residue.`,
+				'',
+				...firstScreenTable(transfer.split),
+				'',
+				`Off-boundary in the profiled cell's own timed FCP window is ${round(transfer.profiledOffBoundaryMs, 1)} ms, against ${round(transfer.shippingOffBoundaryMs, 1)} ms in the shipping cell's. Only the residue row is outside Octane's reach; the phase rows above it are what a first-screen slice can still attack.`,
 				'',
 			);
 		}
@@ -343,25 +444,31 @@ export function renderBoundaryReport(scaleReports) {
 const isMain =
 	process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.meta.filename);
 if (isMain) {
-	const { values } = parseArgs({ options: { scales: { type: 'string' } } });
+	// `--label` mirrors the runner's: it stems every basename, so the evidence a
+	// labelled run wrote is re-renderable under the same name it was written to.
+	const { values } = parseArgs({
+		options: { scales: { type: 'string' }, label: { type: 'string', default: 'papi' } },
+	});
 	const output = path.join(import.meta.dirname, 'results');
+	const stem = requireOutputStem(values.label);
+	const scalePattern = new RegExp(`^${stem}-(\\d+)\\.json$`);
 	const scales =
 		values.scales === undefined
 			? fs
 					.readdirSync(output)
-					.map((file) => /^papi-(\d+)\.json$/.exec(file)?.[1])
+					.map((file) => scalePattern.exec(file)?.[1])
 					.filter(Boolean)
 					.map(Number)
 					.sort((left, right) => left - right)
 			: values.scales.split(',').map((value) => Number(value.trim()));
-	if (scales.length === 0) throw new Error('no frozen papi-<rows>.json evidence to render.');
+	if (scales.length === 0) throw new Error(`no frozen ${stem}-<rows>.json evidence to render.`);
 	const reports = scales.map((rows) =>
-		JSON.parse(fs.readFileSync(path.join(output, `papi-${rows}.json`), 'utf8')),
+		JSON.parse(fs.readFileSync(path.join(output, `${stem}-${rows}.json`), 'utf8')),
 	);
 	const scaling = JSON.parse(
-		fs.readFileSync(path.join(output, 'papi-scaling.json'), 'utf8'),
+		fs.readFileSync(path.join(output, `${stem}-scaling.json`), 'utf8'),
 	).scaling;
 	reports[0].scaling = scaling;
-	fs.writeFileSync(path.join(output, 'papi-boundary.md'), renderBoundaryReport(reports) + '\n');
-	console.log(`[papi] rendered results/papi-boundary.md from ${scales.length} frozen scale(s).`);
+	fs.writeFileSync(path.join(output, `${stem}-boundary.md`), renderBoundaryReport(reports) + '\n');
+	console.log(`[papi] rendered results/${stem}-boundary.md from ${scales.length} frozen scale(s).`);
 }
