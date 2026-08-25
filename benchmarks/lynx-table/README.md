@@ -501,6 +501,106 @@ compiler, and no component bodies. `prototype/results/u0-block-core-counts.*`
 is the committed record, beside `web-u0-update-ceiling.*`: they are the two
 halves of the same #103 U0 gate.
 
+## 6. Element PAPI boundary instrument (`stages/papi-run.mjs`, informational)
+
+```bash
+node stages/papi-run.mjs --smoke --scales 1000 --allow-busy-host
+node stages/papi-run.mjs --reps 5 --scales 1000,10000,30000
+```
+
+Section 3 decomposes Octane from inside Octane, so its segments stop at the
+Element PAPI call and everything past that — prop and insertion work,
+`__FlushElementTree`, Web Core DOM publication, style/layout, observer delay —
+lands in one `layout_flush_residual`. That residual cannot be compared against
+a framework whose internals are not instrumented, which is what an FCP question
+about ReactLynx needs.
+
+This harness measures the other side of the same call. `@lynx-js/web-core` runs
+the main-thread script in a hidden same-origin iframe realm and installs every
+Element PAPI entry point onto that realm's global object with a single
+`Object.assign` issued from the page. `papiInstrumentJs` in
+`web/driver-client.mjs` wraps that one assignment, so the probe observes the
+**host boundary** rather than a framework: the identical instrument applies to
+Octane, ReactLynx, and the Vue cells by construction. No framework is patched,
+no reference bundle is rebuilt, and the vendored bundles keep the hashes the
+featured runs recorded.
+
+Three page variants run interleaved in one host window, rotating position
+across repetitions so no variant sits at a fixed place in the sequence:
+
+- `control` — no probe; the wall clock the other two are measured against.
+- `counts` — host call counts, flush cadence, and start delay, with no per-call
+  clock read, so its wall clock stays representative.
+- `timed` — adds the per-call brackets that exclusive host time needs.
+
+Counts and cadence are read from the `counts` build and host self time from the
+`timed` build. Both builds count identically by construction, and the report
+prints that agreement per cell as the control on the timed build's cost: if a
+1.0× pass and a costlier pass disagree on what the framework called, the timed
+shares describe a different workload and the numbers do not stand.
+
+### Observation contract (host boundary)
+
+Each timed window obeys one identity:
+
+```
+wall = start_delay + Σ host-group self time + off_boundary
+```
+
+`start_delay` is the observed gap from the window's start boundary to the first
+host call. Host groups (`papi_create`, `papi_props`, `papi_events`,
+`papi_topology`, `papi_read`, `papi_flush`, and `papi_other` for an entry point
+this repo has not classified) are directly observed and exclusive: a host call
+re-entered through a framework callback is counted once, never twice.
+`off_boundary` is the named exclusive remainder — framework script, the
+browser's own style/layout/paint and observer-frame delay, and the timed
+probe's own bookkeeping — because the host exposes no boundary separating
+those. `__FlushElementTree` self time covers only the synchronous publication
+Web Core performs inside it.
+
+Two windows are measured per page load, both through the byte-identical page
+driver: **startup**, from the main-thread slice start to the first composed
+paint of the app shell, and **create@N**, from `pointerdown` to all N rows in
+the composed tree. Octane additionally carries the pre-populated auto-rows
+bundles, so its **FCP@N** is measured directly; a pre-populated first screen is
+a build-time define of the app source, so the vendored references have no such
+variant and are reported "not measured" rather than substituted from another
+window.
+
+A single host call is far below the browser's clock granularity, which the
+report records: only per-kind aggregates over many calls carry meaning, and no
+per-call latency is claimed.
+
+Measurement and reporting are separate. `papi-run.mjs` writes the evidence
+(`results/papi-<rows>.json`, raw samples included); `papi-report.mjs` renders
+`results/papi-boundary.md` from it and can be re-run over the checked-in JSON,
+so a wording or attribution change never costs another measurement window:
+
+```bash
+node stages/papi-report.mjs
+```
+
+`papi-predicate-cost.mjs` records what the two window predicates themselves cost
+on a settled tree at each scale. The FCP predicate is the expensive composed-tree
+walk, so that bound belongs beside the report rather than in a reader's head —
+`x.fcp` samples its timestamp before the walk and `x.arm` samples after its
+check, which the recorded numbers let anyone verify.
+
+Delta attribution runs Octane against each reference and splits the gap into
+five directly observed owners — publication op count, flush cadence,
+first-paint scheduling, per-element stream shape, and off-boundary work. The
+count and rate owners come from an exact split,
+
+```
+Δ(host op time) = (Δcalls × reference ms/op) + (subject calls × Δ ms/op)
+```
+
+so "the subject issues more host calls" and "the subject's calls cost more
+each" never collapse into one lump. The same 10%-of-delta gate applies: a
+candidate owner is authorized only by a positive directly observed
+contribution, and the report prints the certified control and counts-build
+deltas beside the timed one.
+
 ## Claims and non-claims
 
 Command counts and commit bytes are Octane-owned costs and are gated. The
