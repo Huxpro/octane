@@ -25,6 +25,7 @@ import { hasCrossRealmPlainPrototype } from './plain-object.js';
 import {
 	createLynxFirstTree,
 	LYNX_FIRST_TREE_STATE,
+	LynxFirstScreenRefusalError,
 	LynxFirstTreeMismatchError,
 	type CaptureLynxFirstTreeOptions,
 	type LynxFirstTree,
@@ -3553,20 +3554,54 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 	// pre-walk above, paid for the same reason.
 	{
 		const refOwners = new Map<string, number>();
-		const pending: [readonly LynxFirstScreenDirectNode[], boolean][] = [[roots, true]];
+		const pending: [readonly LynxFirstScreenDirectNode[], boolean, boolean][] = [
+			[roots, true, false],
+		];
 		while (pending.length !== 0) {
-			const [nodes, parentVisible] = pending.pop()!;
+			const [nodes, parentVisible, insideList] = pending.pop()!;
 			for (const node of nodes) {
-				// A program cannot be built at all on a host with no intrinsic
-				// element factories, and unlike a `<list>` there is nothing to fall
-				// back to: the staged path is commands, and a program exists so that
-				// its first screen is not commands. Refused here, in the pre-walk
-				// that already runs before anything is created, rather than from
-				// inside `bind` after earlier roots are painted.
-				if (node.kind === 'program' && papiIntrinsics === undefined) {
-					throw hostError(
-						'a compiled main-thread program needs a host with intrinsic element factories.',
-					);
+				// Every program this applier cannot paint is refused here, in the
+				// pre-walk that runs before anything is created, rather than from
+				// inside the mount after earlier roots are painted. That placement is
+				// the whole reason this block exists, and a program is the one node
+				// kind with more than one way to be unpaintable.
+				//
+				// All three are `LynxFirstScreenRefusalError` rather than `hostError`,
+				// so they cost the first screen rather than the launch (#163 C3):
+				// each names a page that is perfectly well formed, that the background
+				// renders correctly over the command path, and that this applier
+				// declines for a reason of its own. The receiver retires such an
+				// attempt as `skipped` and reports the reason, so the diagnostic these
+				// were owed is still paid — and the page arrives.
+				if (node.kind === 'program') {
+					// No intrinsic element factories, so there is nothing for the
+					// program's create to make its nodes with. Unlike a `<list>` there
+					// is no staged path to fall back *within*: the staged path is
+					// commands, and a program exists so that its first screen is not
+					// commands. The whole first screen is what falls back instead.
+					if (papiIntrinsics === undefined) {
+						throw new LynxFirstScreenRefusalError(
+							'a compiled main-thread program needs a host with intrinsic element factories.',
+						);
+					}
+					// A native list's row owns no element at paint time — the platform
+					// materializes it later, through `componentAtIndex` — and a program
+					// paints eagerly. Running one per cell is a different mechanism, not
+					// a missing branch here.
+					if (insideList) {
+						throw new LynxFirstScreenRefusalError(
+							'first-screen direct apply cannot yet mount a compiled main-thread program inside a native list row.',
+						);
+					}
+					// A hidden host is marked with a `hidden` attribute unless it is raw
+					// text, and which of a program's nodes are raw text is exactly what
+					// the program stopped carrying. Guessing would either mark a text
+					// node the command path leaves alone or leave a view visible.
+					if (!parentVisible || node.visibility === 'hidden') {
+						throw new LynxFirstScreenRefusalError(
+							'first-screen direct apply cannot yet mount a hidden compiled main-thread program.',
+						);
+					}
 				}
 				// Ranges are transparent here exactly as they are in the walk below:
 				// they carry no props of their own and pass visibility through.
@@ -3597,7 +3632,16 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 						refOwners.set(ref._wvid, node.id);
 					}
 				}
-				if (node.children.length !== 0) pending.push([node.children, visible]);
+				if (node.children.length !== 0) {
+					// A row and everything under it, exactly as the paint walk marks
+					// them: `insideList` turns on for a `<list>`'s children, not for the
+					// list itself.
+					pending.push([
+						node.children,
+						visible,
+						insideList || (node.kind === 'host' && node.type === 'list'),
+					]);
+				}
 			}
 		}
 	}
@@ -3729,7 +3773,6 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		parentId: number | null,
 		physicalParent: Node,
 		parentVisible: boolean,
-		insideList: boolean,
 	): void => {
 		const plan = node.plan;
 		const ids = node.ids;
@@ -3739,27 +3782,14 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 				'first-screen program node carries no plan, values, or ids; a compiled main-thread program cannot be mounted from a description.',
 			);
 		}
-		// Each refusal below names a tree the renderer can produce and this mount
-		// cannot yet finish. Approximating one paints a page that is wrong with
-		// nothing red, which is the failure this train's C2a slice removed.
-		if (insideList) {
-			// A native list's row owns no element at paint time — the platform
-			// materializes it later, through `componentAtIndex` — and a program
-			// paints eagerly. Running one per cell is a different mechanism, not a
-			// missing branch here.
-			throw hostError(
-				'first-screen direct apply cannot yet mount a compiled main-thread program inside a native list row.',
-			);
-		}
-		if (!parentVisible || node.visibility === 'hidden') {
-			// A hidden host is marked with a `hidden` attribute unless it is raw
-			// text, and which of a program's nodes are raw text is exactly what the
-			// program stopped carrying. Guessing would either mark a text node the
-			// command path leaves alone or leave a view visible.
-			throw hostError(
-				'first-screen direct apply cannot yet mount a hidden compiled main-thread program.',
-			);
-		}
+		// A hidden program and one inside a native list row are refused by the
+		// pre-walk above, before anything is created — that is where a refusal has
+		// to live, because refusing from here would leave the roots painted ahead
+		// of this one on the page. This mount is not handed `insideList` at all any
+		// more, which is the same statement in the signature.
+		//
+		// Everything this function still throws is the other kind: a program
+		// disagreeing with its own plan, which no fallback path makes right.
 		if (plan.nodes < 1) {
 			throw hostError('a compiled main-thread program makes no nodes; there is nothing to mount.');
 		}
@@ -3936,7 +3966,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			// Handled before the range-transparent branch below, which would
 			// otherwise walk past a node carrying no type and no props and publish
 			// the page it left out.
-			mountProgram(node, parentId, physicalParent, parentVisible, insideList);
+			mountProgram(node, parentId, physicalParent, parentVisible);
 			return;
 		}
 		if (node.kind !== 'host') {

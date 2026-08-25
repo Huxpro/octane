@@ -22,7 +22,13 @@ import type {
 	UniversalRenderable,
 	UniversalRenderContext,
 } from 'octane/universal/native';
+import { LynxFirstScreenRefusalError, LYNX_FIRST_SCREEN_REFUSED } from './core/first-screen.js';
 import { isLynxNativeResource } from './resource.js';
+
+// Re-exported rather than moved out of this module's surface: the renderer is
+// where a caller meets the refusal, and `core/first-screen.ts` is where the
+// applier meets the same one.
+export { LynxFirstScreenRefusalError, LYNX_FIRST_SCREEN_REFUSED };
 
 const UNIVERSAL_PLAN = Symbol.for('octane.universal.plan');
 const UNIVERSAL_VALUE = Symbol.for('octane.universal.value');
@@ -530,35 +536,6 @@ export function defineUniversalComponent<P>(
 
 /** Compiler sentinel replacing an ordinary background event expression. */
 export const firstScreenEvent = FIRST_SCREEN_EVENT;
-
-export const LYNX_FIRST_SCREEN_REFUSED = 'OCTANE_LYNX_FIRST_SCREEN_REFUSED' as const;
-
-/**
- * A tree this renderer cannot render, as opposed to one it rendered wrongly.
- *
- * The distinction is the whole of #163's C3 boundary, and it is a class rather
- * than a message so that only this module can assert it. A first screen is an
- * optimization over a page the background renders anyway, so meeting the edge
- * of what the main thread can paint costs the optimization and nothing else:
- * the receiver retires the attempt as `skipped` and the page arrives on the
- * command path, which is the fallback the design names. A *defect* — a `<list>`
- * nested in a `<list>`, a duplicated item-key, an error out of application
- * setup — is the opposite case and still faults, because nothing about the
- * command path makes a wrong page right and a quiet decline would hide it.
- *
- * Recognized by identity for a reason a comparison against the message could
- * not give: application code renders inside this pass, and an `Error` a
- * component happened to throw with the same text would otherwise buy itself a
- * decline. Nothing outside this module constructs one.
- */
-export class LynxFirstScreenRefusalError extends Error {
-	readonly code = LYNX_FIRST_SCREEN_REFUSED;
-
-	constructor(message: string) {
-		super(message);
-		this.name = 'LynxFirstScreenRefusalError';
-	}
-}
 
 function componentMetadata(component: UniversalComponent<any>): {
 	readonly id?: unknown;
