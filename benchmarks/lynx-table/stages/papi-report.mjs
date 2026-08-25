@@ -237,6 +237,25 @@ function deltaTable(attributed) {
 	return lines;
 }
 
+// The heading names the cells the run actually carried. `--label` exists so a
+// different cell set can be measured beside the checked-in baseline, and a
+// heading pinned to the baseline's three cells captions those runs with cells
+// they do not contain — which the checked-in `papi-firstscreen-boundary.md` did.
+// An unknown id renders as itself rather than being dropped, so a new cell shows
+// up in the heading before anyone remembers to name it here.
+const CELL_HEADINGS = Object.freeze({
+	octane: 'Octane',
+	'octane-profile': 'Octane (profile build)',
+	'octane-mts-program': 'Octane (main-thread program)',
+	'octane-direct': 'L0 direct-emission prototype',
+	react: 'ReactLynx',
+	'vue-vdom': 'Vue vdom+IFR+ET',
+});
+
+function headingFor(cells) {
+	return cells.map((id) => CELL_HEADINGS[id] ?? id).join(' vs ');
+}
+
 export function renderBoundaryReport(scaleReports) {
 	const first = scaleReports[0];
 	const meta = first.meta;
@@ -248,7 +267,7 @@ export function renderBoundaryReport(scaleReports) {
 	const transfers = new Map(scaleReports.map((scale) => [scale.rows, profileTransfer(scale)]));
 	const anySplit = [...transfers.values()].some((transfer) => transfer !== null);
 	const lines = [
-		'# Element PAPI boundary decomposition — Octane vs ReactLynx vs Vue vdom+IFR+ET',
+		`# Element PAPI boundary decomposition — ${headingFor(meta.cells)}`,
 		'',
 		`- measured: ${meta.date}`,
 		`- host: ${meta.cpus}× ${meta.cpuModel}; ${meta.platform} ${meta.release}; Node ${meta.node}; Chromium ${meta.chromium}; @lynx-js/web-core ${meta.webCore}`,

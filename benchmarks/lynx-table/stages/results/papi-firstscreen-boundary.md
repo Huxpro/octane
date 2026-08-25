@@ -1,4 +1,4 @@
-# Element PAPI boundary decomposition — Octane vs ReactLynx vs Vue vdom+IFR+ET
+# Element PAPI boundary decomposition — Octane vs Octane (profile build)
 
 - measured: 2026-08-24T02:30:36.707Z
 - host: 4× Intel(R) Xeon(R) Processor @ 2.10GHz; linux 6.18.44-fc-v21; Node v22.22.2; Chromium 141.0.7390.37; @lynx-js/web-core 0.22.2

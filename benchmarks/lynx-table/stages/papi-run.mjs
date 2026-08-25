@@ -26,6 +26,7 @@
 // carries a pre-populated auto-rows variant, so its FCP@N is measured
 // directly; the vendored references have no such variant and are reported
 // "not measured" rather than substituted from a different window.
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -113,6 +114,29 @@ const CELLS = {
 		fcpBundle: (rows) => path.join(root, `app/dist-rows${rows}-profile/main.web.bundle`),
 		profile: true,
 	},
+	// Issue #163's compiled main-thread program, and the hand-written prototype
+	// it is aiming at. `benchmarks/lynx-table/prototype/run-fcp.mjs` prices the
+	// two against each other and reports a first screen still 1.24-1.38x the
+	// prototype's; what that residue is made of is a question only a boundary
+	// decomposition can answer, which is why both cells live here too.
+	//
+	// Both carry a click-driven shell and a pre-populated ladder variant, so
+	// both windows are measured for both rather than one being borrowed from
+	// the other.
+	'octane-mts-program': {
+		bundle: () => path.join(root, 'app/dist-mtsprogram/main.web.bundle'),
+		fcpBundle: (rows) => path.join(root, `app/dist-mtsprogram-rows${rows}/main.web.bundle`),
+	},
+	// The L0 direct-emission prototype (issue #58): this one page emitted by
+	// code written for this one page, with no framework between the entry point
+	// and the PAPI. It is a floor to measure against, not a cell Octane ships,
+	// and `prototype/build.mjs` copies its pageConfig and styleInfo from the
+	// octane bundle so the main-thread/background program pair is the only
+	// variable between them.
+	'octane-direct': {
+		bundle: () => path.join(root, 'prototype/dist/main.web.bundle'),
+		fcpBundle: (rows) => path.join(root, `prototype/dist-rows${rows}/main.web.bundle`),
+	},
 	react: {
 		bundle: () => path.join(root, 'reference/react/main.web.bundle'),
 		fcpBundle: () => null,
@@ -151,7 +175,7 @@ for (const rows of scales) {
 
 // --- bundles ----------------------------------------------------------------
 
-function buildOctaneVariants({ profile = false } = {}) {
+function buildOctaneVariants({ profile = false, mtsProgram = false } = {}) {
 	const previousRows = process.env.BENCH_AUTOROWS;
 	const previousProfile = process.env.OCTANE_LYNX_PROFILE;
 	try {
@@ -159,13 +183,30 @@ function buildOctaneVariants({ profile = false } = {}) {
 		else delete process.env.OCTANE_LYNX_PROFILE;
 		for (const autoRows of ['0', ...scales.map(String)]) {
 			process.env.BENCH_AUTOROWS = autoRows;
-			buildTableApp({ silent: true });
+			buildTableApp({ silent: true, mtsProgram });
 		}
 	} finally {
 		if (previousRows === undefined) delete process.env.BENCH_AUTOROWS;
 		else process.env.BENCH_AUTOROWS = previousRows;
 		if (previousProfile === undefined) delete process.env.OCTANE_LYNX_PROFILE;
 		else process.env.OCTANE_LYNX_PROFILE = previousProfile;
+	}
+}
+
+// The prototype is assembled from the octane bundle rather than compiled: it
+// copies that bundle's pageConfig and styleInfo so the engine toggles and CSS
+// match, which is what makes it a floor for this application instead of a
+// different application that happens to be faster. So it is built after the
+// octane variants, from the artifacts they just wrote, and it is spawned
+// because `prototype/build.mjs` is a script rather than a module with an entry.
+function buildDirectPrototype() {
+	const result = spawnSync(
+		process.execPath,
+		[path.join(root, 'prototype/build.mjs'), '--rows', scales.join(',')],
+		{ cwd: root, stdio: 'inherit' },
+	);
+	if (result.status !== 0) {
+		throw new Error(`prototype/build.mjs exited ${result.status ?? result.signal}`);
 	}
 }
 
@@ -409,8 +450,12 @@ async function clockGranularityMs(browser) {
 // --- run --------------------------------------------------------------------
 
 if (!args['skip-build']) {
-	if (cellIds.includes('octane')) buildOctaneVariants();
+	// `octane` first and unconditionally: the prototype is assembled from its
+	// bundle, and the cell is required anyway.
+	buildOctaneVariants();
 	if (cellIds.includes('octane-profile')) buildOctaneVariants({ profile: true });
+	if (cellIds.includes('octane-mts-program')) buildOctaneVariants({ mtsProgram: true });
+	if (cellIds.includes('octane-direct')) buildDirectPrototype();
 }
 for (const [name, file] of bundlePaths) {
 	if (!fs.existsSync(file)) throw new Error(`${name} bundle is missing: ${file}`);
