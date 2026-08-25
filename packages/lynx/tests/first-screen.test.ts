@@ -1589,6 +1589,23 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		]);
 	});
 
+	it('declines when the root itself is a component it has nothing compiled for', () => {
+		// The root is the same question asked one level up, and it is worth asking
+		// separately: `root.render()` checks the component it was handed before
+		// any tree exists, on its own line, and a page that never starts is the
+		// most complete version of the loss this slice removes.
+		const { main } = installEnvironment();
+
+		expect(firstScreenRoot.render(ForeignRow, { id: 'root-row' })).toBeNull();
+		expect(main.firstScreenSnapshot()).toBeNull();
+		expect(main.diagnostics()).toEqual([
+			expect.objectContaining({
+				code: 'OCTANE_LYNX_FIRST_SCREEN_REFUSED',
+				message: 'Lynx first-screen root.render() requires a compiled Lynx component.',
+			}),
+		]);
+	});
+
 	it('still faults when the page itself throws, rather than declining it', () => {
 		// The control that keeps the branch above narrow. Application setup throws
 		// from inside the same render pass, and every reason to decline a refusal

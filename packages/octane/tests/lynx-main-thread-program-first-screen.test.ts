@@ -1,4 +1,5 @@
-// Issue-#163 C2c and C2d: a compiled main-thread program's whole first screen.
+// Issue-#163 C2c, C2d and C3: a compiled main-thread program's whole first
+// screen, and the one shape inside it this renderer refuses to paint.
 //
 // C1 made the `target: 'lynx'` main-thread compile emit a compiled create
 // function in place of the description an interpreter walks. Two questions the
