@@ -182,6 +182,43 @@ describe('a compiled main-thread program on the first-screen path', () => {
 		]);
 	});
 
+	it("refuses a row of a program's range that nothing compiled, rather than faulting", () => {
+		// Issue #163 C3's boundary, on the shape it is actually about.
+		//
+		// A program's declared holes are `kind: 'slot'` nodes, so what fills one
+		// is decided at render time and can be anything renderable — including a
+		// component, which is how rows reach a page. The compiler never sees that
+		// component: it declines any plan whose *static* structure holds one, so a
+		// plan that became a program has holes and nothing else. That makes the
+		// row the one place a program's first screen can meet something it cannot
+		// paint, and #163 says what it costs — the command path, not the launch.
+		//
+		// Classified here rather than handled: this renderer's callers include the
+		// background's own describe pass, which wants the throw. Turning a refusal
+		// into a declined first screen is the receiver's job, and is asserted
+		// against the real receiver in `packages/lynx/tests/first-screen.test.ts`.
+		const row = (() => null) as never;
+		let thrown: unknown;
+		try {
+			MainRenderer.renderLynxFirstScreen(cardFor(true), {
+				...PROPS,
+				label: MainRenderer.universalComponent('lynx', row, null, 'row-0'),
+			} as never);
+		} catch (error) {
+			thrown = error;
+		}
+		expect(thrown).toBeInstanceOf(MainRenderer.LynxFirstScreenRefusalError);
+		// The interpreted arm answers the same way about the same row, which is
+		// what keeps the boundary a property of the page rather than of the
+		// encoding it was compiled to.
+		expect(() =>
+			MainRenderer.renderLynxFirstScreen(cardFor(false), {
+				...PROPS,
+				label: MainRenderer.universalComponent('lynx', row, null, 'row-0'),
+			} as never),
+		).toThrow(MainRenderer.LynxFirstScreenRefusalError);
+	});
+
 	it('has no command batch, permanently', () => {
 		// A batch is commands, and a program exists so its first screen is not
 		// commands. This refusal is not a "not yet": the staged path is the

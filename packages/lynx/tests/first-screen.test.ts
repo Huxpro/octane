@@ -23,6 +23,7 @@ import {
 	firstScreenEvent,
 	renderLynxFirstScreen,
 	universalFor as firstScreenFor,
+	universalComponent as firstScreenComponent,
 	universalPlan as firstScreenPlan,
 	universalProps as firstScreenProps,
 	universalValue as firstScreenValue,
@@ -99,6 +100,89 @@ const MainScene = defineFirstScreenComponent('lynx', (props: SceneProps) => {
 const MainSingleHost = defineFirstScreenComponent('lynx', (props: { readonly id: string }) =>
 	firstScreenValue(mainPlan, [firstScreenProps([['set', 'id', props.id]])]),
 );
+
+/**
+ * A row component the main-thread chunk has nothing compiled for.
+ *
+ * Deliberately not passed through `defineFirstScreenComponent`, which is what
+ * the bundle split makes ordinary rather than exotic: the logic half of a page
+ * is compiled into the background chunk, so a component that only ever renders
+ * there carries no main-thread identity at all. Reaching one while painting is
+ * the edge of what this renderer can do, not a mistake in the page.
+ */
+const RefusedRow = ((props: { readonly id: string }) =>
+	firstScreenValue(mainPlan, [firstScreenProps([['set', 'id', props.id]])])) as UniversalComponent<{
+	readonly id: string;
+}>;
+
+/** A page whose keyed rows are that component. */
+const RefusedRowScene = defineFirstScreenComponent(
+	'lynx',
+	(props: { readonly rows: readonly string[] }) =>
+		firstScreenValue(mainScenePlan, [
+			firstScreenProps([['set', 'id', 'refused-feed']]),
+			firstScreenFor(
+				props.rows,
+				(row) => row,
+				(row) => firstScreenComponent('lynx', RefusedRow, { id: row }),
+				null,
+				true,
+				true,
+			),
+		]),
+);
+
+/** The same page as the background renders it, which is where those rows live. */
+const BackgroundRefusedRow = defineUniversalComponent('lynx', (props: { readonly id: string }) =>
+	universalValue(backgroundPlan, [universalProps([['set', 'id', props.id]])]),
+);
+
+const BackgroundRefusedRowScene = defineUniversalComponent(
+	'lynx',
+	(props: { readonly rows: readonly string[] }) =>
+		universalValue(backgroundScenePlan, [
+			universalProps([['set', 'id', 'refused-feed']]),
+			universalFor(
+				props.rows,
+				(row) => row,
+				(row) =>
+					universalComponent('lynx', BackgroundRefusedRow, universalProps([['set', 'id', row]])),
+			),
+		]),
+);
+
+/**
+ * A row compiled, but for somebody else's renderer.
+ *
+ * The other half of the same sentence: this renderer has nothing compiled for
+ * this component either. `defineUniversalComponent` here is the background's,
+ * because the main renderer's own refuses to mark a component for a renderer it
+ * cannot evaluate — which is the point.
+ */
+const ForeignRow = defineUniversalComponent('dom', (props: { readonly id: string }) =>
+	universalValue(backgroundPlan, [universalProps([['set', 'id', props.id]])]),
+) as unknown as UniversalComponent<{ readonly id: string }>;
+
+const ForeignRowScene = defineFirstScreenComponent(
+	'lynx',
+	(props: { readonly rows: readonly string[] }) =>
+		firstScreenValue(mainScenePlan, [
+			firstScreenProps([['set', 'id', 'foreign-feed']]),
+			firstScreenFor(
+				props.rows,
+				(row) => row,
+				(row) => firstScreenComponent('lynx', ForeignRow, { id: row }),
+				null,
+				true,
+				true,
+			),
+		]),
+);
+
+/** A page whose setup faults, which is the opposite case and must stay one. */
+const FaultingScene = defineFirstScreenComponent('lynx', (): never => {
+	throw new Error('scene setup blew up');
+});
 
 const feedPlan = firstScreenPlan('lynx', {
 	kind: 'host',
@@ -1452,6 +1536,72 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		);
 		expect(main.firstScreenSnapshot()).toBeNull();
 		expect(dom.window.document.querySelectorAll('view')).toHaveLength(0);
+	});
+
+	// The other side of that boundary (issue #163 C3). Everything above is a
+	// *defect*: a page that is wrong, which the first screen owes an error for
+	// however cheap a quiet skip would be. What follows is a page that is right
+	// and holds a shape this renderer cannot paint, which owes the opposite.
+	it('declines a page whose rows are a component it has nothing compiled for', async () => {
+		const { dom, main } = installEnvironment();
+
+		// Not a throw, and not a painted page either: the attempt settles as
+		// `skipped`, which is what leaves the background free to render the page
+		// the ordinary way.
+		const declined = firstScreenRoot.render(RefusedRowScene, { rows: ['row-a', 'row-b'] });
+		expect(declined).toBeNull();
+		expect(main.firstScreenSnapshot()).toBeNull();
+		expect(dom.window.document.querySelectorAll('view')).toHaveLength(0);
+		// Declined, not swallowed. A launch that quietly stopped painting its
+		// first screen is a cliff with nothing red at the top of it, so the
+		// reason is a diagnostic and it names what ended the attempt.
+		expect(main.diagnostics()).toEqual([
+			expect.objectContaining({
+				code: 'OCTANE_LYNX_FIRST_SCREEN_REFUSED',
+				message: 'Lynx first-screen rendering requires a compiled Lynx component.',
+			}),
+		]);
+
+		// And the fallback actually delivers. This root is installed with
+		// `firstScreenSync: 'manual'`, so a background render blocks until the
+		// main thread says the window is closed — nothing below marks it, because
+		// retiring the refused attempt is what releases it.
+		globalThis.lynxTestingEnv.switchToBackgroundThread();
+		backgroundRoot = createLynxRoot();
+		await backgroundRoot.render(BackgroundRefusedRowScene, { rows: ['row-a', 'row-b'] });
+
+		expect(dom.window.document.querySelector('#refused-feed')).not.toBeNull();
+		expect(dom.window.document.querySelector('#row-a')).not.toBeNull();
+		expect(dom.window.document.querySelector('#row-b')).not.toBeNull();
+	});
+
+	it("declines a page whose rows are compiled for somebody else's renderer", () => {
+		// The same sentence, its other half. A component carrying another
+		// renderer's identity is no more paintable here than one carrying none,
+		// and this renderer cannot see whether the background will do better —
+		// so it answers the only question it can, and says which page it was.
+		const { main } = installEnvironment();
+
+		expect(firstScreenRoot.render(ForeignRowScene, { rows: ['row-a'] })).toBeNull();
+		expect(main.firstScreenSnapshot()).toBeNull();
+		expect(main.diagnostics()).toEqual([
+			expect.objectContaining({ code: 'OCTANE_LYNX_FIRST_SCREEN_REFUSED' }),
+		]);
+	});
+
+	it('still faults when the page itself throws, rather than declining it', () => {
+		// The control that keeps the branch above narrow. Application setup throws
+		// from inside the same render pass, and every reason to decline a refusal
+		// argues the other way here: nothing about the command path makes a page
+		// whose setup failed render correctly, so the launch owes the error.
+		const { main } = installEnvironment();
+
+		expect(() => firstScreenRoot.render(FaultingScene, {})).toThrow(/scene setup blew up/);
+		expect(main.firstScreenSnapshot()).toBeNull();
+		expect(main.diagnostics()).toEqual([
+			expect.objectContaining({ message: 'scene setup blew up' }),
+		]);
+		expect(main.diagnostics()[0]).not.toHaveProperty('code', 'OCTANE_LYNX_FIRST_SCREEN_REFUSED');
 	});
 
 	it('reports a duplicated main-thread ref carried by two rows of one native list', () => {

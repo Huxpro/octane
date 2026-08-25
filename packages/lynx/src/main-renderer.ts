@@ -531,6 +531,35 @@ export function defineUniversalComponent<P>(
 /** Compiler sentinel replacing an ordinary background event expression. */
 export const firstScreenEvent = FIRST_SCREEN_EVENT;
 
+export const LYNX_FIRST_SCREEN_REFUSED = 'OCTANE_LYNX_FIRST_SCREEN_REFUSED' as const;
+
+/**
+ * A tree this renderer cannot render, as opposed to one it rendered wrongly.
+ *
+ * The distinction is the whole of #163's C3 boundary, and it is a class rather
+ * than a message so that only this module can assert it. A first screen is an
+ * optimization over a page the background renders anyway, so meeting the edge
+ * of what the main thread can paint costs the optimization and nothing else:
+ * the receiver retires the attempt as `skipped` and the page arrives on the
+ * command path, which is the fallback the design names. A *defect* — a `<list>`
+ * nested in a `<list>`, a duplicated item-key, an error out of application
+ * setup — is the opposite case and still faults, because nothing about the
+ * command path makes a wrong page right and a quiet decline would hide it.
+ *
+ * Recognized by identity for a reason a comparison against the message could
+ * not give: application code renders inside this pass, and an `Error` a
+ * component happened to throw with the same text would otherwise buy itself a
+ * decline. Nothing outside this module constructs one.
+ */
+export class LynxFirstScreenRefusalError extends Error {
+	readonly code = LYNX_FIRST_SCREEN_REFUSED;
+
+	constructor(message: string) {
+		super(message);
+		this.name = 'LynxFirstScreenRefusalError';
+	}
+}
+
 function componentMetadata(component: UniversalComponent<any>): {
 	readonly id?: unknown;
 	readonly module?: string;
@@ -539,7 +568,9 @@ function componentMetadata(component: UniversalComponent<any>): {
 		{ id?: unknown; module?: string } | undefined;
 	if (metadata !== undefined) return metadata;
 	if ((component as any)?.[LAZY_COMPONENT] === true) return FIRST_SCREEN_LAZY_METADATA;
-	throw new Error('Lynx first-screen rendering requires a compiled Lynx component.');
+	throw new LynxFirstScreenRefusalError(
+		'Lynx first-screen rendering requires a compiled Lynx component.',
+	);
 }
 
 export function hmrUniversalComponent<P>(
@@ -836,7 +867,9 @@ function renderComponent(
 ): FirstScreenNode[] {
 	const metadata = componentMetadata(component);
 	if (metadata !== FIRST_SCREEN_LAZY_METADATA && metadata.id !== 'lynx') {
-		throw new Error('Lynx first-screen rendering requires a compiled Lynx component.');
+		throw new LynxFirstScreenRefusalError(
+			'Lynx first-screen rendering requires a compiled Lynx component.',
+		);
 	}
 	const owner = childOwner(currentOwner());
 	const warmPlanCheckpoint = ACTIVE_FIRST_SCREEN_WARM_PLANS.length;
@@ -1476,7 +1509,9 @@ export function renderLynxFirstScreen<Props>(
 	try {
 		const metadata = componentMetadata(component);
 		if (metadata !== FIRST_SCREEN_LAZY_METADATA && metadata.id !== 'lynx') {
-			throw new Error('Lynx first-screen root.render() requires a compiled Lynx component.');
+			throw new LynxFirstScreenRefusalError(
+				'Lynx first-screen root.render() requires a compiled Lynx component.',
+			);
 		}
 		nodes = materialize(component(props, componentContext()), null);
 		assignIds(nodes, attempt);
