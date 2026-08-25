@@ -121,6 +121,21 @@ export interface LynxFirstTreeState<Node extends LynxElementRef> {
 	readonly logicalNodes: Map<number, LynxFirstTreeLogicalNodeSnapshot>;
 	/** One entry per native list the captured tree holds, keyed by host ID. */
 	readonly lists: Map<number, LynxFirstTreeListJournal>;
+	/**
+	 * Nodes a compiled main-thread program painted, by the ID it took (#163).
+	 *
+	 * The inverted handoff, as one map. A program writes no record, so these IDs
+	 * appear in no snapshot and adoption has nothing of main's to compare the
+	 * background's description against — main knows only which physical node
+	 * wears each ID, which is exactly what the transfer needs and all it needs.
+	 * That the IDs agree at all is C2c's guarantee, established by construction:
+	 * the renderer numbers a program's hosts in the same pre-order the background
+	 * numbers the same source in, and a differential test pins it.
+	 *
+	 * Main-local, like `lists`. Nothing here crosses a thread, because the
+	 * background already holds every ID from its own render.
+	 */
+	readonly programNodes: Map<number, Node>;
 	/** The description, once something has asked for one. */
 	snapshot: LynxFirstTreeSnapshot | null;
 	/** Builds it; dropped once it has run or the tree is released. */
@@ -149,6 +164,7 @@ export function createLynxFirstTree<Node extends LynxElementRef>(
 	eventsByToken: Map<string, LynxResolvedFirstTreeEvent>,
 	logicalNodes: Map<number, LynxFirstTreeLogicalNodeSnapshot>,
 	lists: Map<number, LynxFirstTreeListJournal>,
+	programNodes: Map<number, Node>,
 ): LynxFirstTree<Node> {
 	const state: LynxFirstTreeState<Node> = {
 		owner,
@@ -156,6 +172,7 @@ export function createLynxFirstTree<Node extends LynxElementRef>(
 		eventsByToken,
 		logicalNodes,
 		lists,
+		programNodes,
 		snapshot: null,
 		describe,
 	};
@@ -186,6 +203,7 @@ export function releaseLynxFirstTree(firstTree: LynxFirstTree): void {
 	state.eventsByToken.clear();
 	state.logicalNodes.clear();
 	state.lists.clear();
+	state.programNodes.clear();
 	// The builder closes over the source container's records, so dropping it is
 	// what lets a released tree stop retaining the page it described.
 	state.describe = null;

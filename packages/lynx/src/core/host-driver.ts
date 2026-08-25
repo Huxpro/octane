@@ -272,6 +272,15 @@ interface LynxHostState<Node extends LynxElementRef> {
 	 * describe.
 	 */
 	hasMainThreadProgram: boolean;
+	/**
+	 * Every node a compiled main-thread program painted, by the ID it took.
+	 *
+	 * A program writes no record, so this is the only thing that says which
+	 * physical node wears which ID — and, at adoption, the only thing main
+	 * contributes about that half of the tree. Empty on a container that never
+	 * mounted one, which is every container today.
+	 */
+	readonly programNodes: Map<number, Node>;
 	acceptedVersion: number;
 	disposed: boolean;
 	disposing: boolean;
@@ -3012,6 +3021,7 @@ export function createLynxHostContainer<Node extends LynxElementRef>(
 		hasMainThreadProps: false,
 		hasNativeListTopology: false,
 		hasMainThreadProgram: false,
+		programNodes: new Map(),
 		acceptedVersion: 0,
 		disposed: false,
 		disposing: false,
@@ -3821,7 +3831,15 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			);
 		}
 		state.hasMainThreadProgram = true;
-		for (const element of created) state.ownedNodes.add(element as Node);
+		for (let index = 0; index < created.length; index++) {
+			const element = created[index] as Node;
+			state.ownedNodes.add(element);
+			// The ID this node took, kept because nothing else will remember it.
+			// Adoption resolves the background's description against this map
+			// instead of against a record, which is the whole of what main
+			// contributes to a program's handoff (issue #163).
+			state.programNodes.set(ids[index]!, element);
+		}
 		for (let index = 0; index < plan.events.length; index++) {
 			const token = tokens[index];
 			if (token === undefined) continue;
@@ -3838,6 +3856,13 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 				Object.freeze({ source: 'background', binding, listener: token }),
 			);
 		}
+		// A program mounted at the top level is a page root, and `rootChildren` is
+		// the logical half of that — `ownedPageRoots` being the physical half.
+		// Nothing else will add it: the push that names a page root rides the
+		// record walk, and a program writes no record. Its keyed range members are
+		// deliberately *not* here; they sit inside a node the program made, and
+		// calling them page roots is the mistake the linkage guard below refuses.
+		if (parentId === null) state.rootChildren.push(ids[0]!);
 		// The attach is queued before the members so it pops after them, which is
 		// how the rest of this walk keeps a subtree out of the caller's tree until
 		// it is finished. It is the whole reason the emitted create returns its
@@ -4100,24 +4125,6 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 		// and decline the rest exactly as this did before.
 		if (list.cellsBySign.size !== 0) return null;
 	}
-	if (state.hasMainThreadProgram) {
-		// Declined for the same reason and by the same route (issue #163). A
-		// capture is a description assembled from records, and a compiled
-		// main-thread program has no record for any node it made — that is what a
-		// program *is*, not a gap in one. Journalling what the records can see
-		// would hand adoption a tree missing everything the program painted.
-		//
-		// A decline rather than a fault, because the page is correct: it is
-		// painted, it is owned, and `disposeLynxHostContainer` tears it down
-		// completely. What it is not is describable, which is exactly the
-		// condition this return already means, and the caller answers it by
-		// retiring the screen as `skipped`/`unadoptable` and letting the
-		// background paint its own. That trades the program's first screen away,
-		// so it is the safety net rather than the destination: adoption for a
-		// program is slot state off the keyed slot map, not a capture walk, and
-		// landing that is what makes this branch unreachable.
-		return null;
-	}
 	if (state.portalChildren.size !== 0) {
 		throw hostError('portals cannot be captured before background adoption.');
 	}
@@ -4284,17 +4291,24 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 		}
 		described.push({ id, nativeId, parent: record.parent, record, events });
 	}
-	// Still an equality, not a bound. Every record is accounted for exactly once:
-	// painted ones by the physical ownership journal, native list rows by the
-	// logical map. An untracked node cannot hide behind an unmaterialized row.
-	if (state.ownedNodes.size !== state.records.size - logicalNodes.size) {
+	// Still an equality, not a bound, and now across three populations rather than
+	// two. Every owned node is accounted for exactly once: described ones by their
+	// record, native list rows by the logical map, and a compiled main-thread
+	// program's by the ID map the mount kept. A program's nodes are the one way a
+	// node can be in the ownership journal and absent from `records` without being
+	// untracked (issue #163). Counting them keeps this an equality instead of
+	// softening it to a bound, so an actually-untracked node still cannot hide,
+	// and neither can an unmaterialized row.
+	if (state.ownedNodes.size !== state.records.size - logicalNodes.size + state.programNodes.size) {
 		throw hostError('first-tree physical ownership contains untracked nodes.');
 	}
 	if (state.ownedPageRoots.size !== state.rootChildren.length) {
 		throw hostError('first-tree page-root ownership does not match logical roots.');
 	}
 	for (const id of state.rootChildren) {
-		const node = state.records.get(id)?.node;
+		// A program's root has no record, so its node comes from the ID map the
+		// mount kept — the same substitution adoption makes, for the same reason.
+		const node = state.programNodes.get(id) ?? state.records.get(id)?.node;
 		if (node === null || node === undefined || !state.ownedPageRoots.has(node)) {
 			throw hostError(`first-tree root ${id} is missing from page-root ownership.`);
 		}
@@ -4345,6 +4359,10 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 		eventsByToken,
 		logicalNodes,
 		lists,
+		// Copied, not aliased. The live map is cleared when the container hands its
+		// nodes over or is disposed, and the capture has to keep describing the
+		// tree it took after either — the same reason `roots` is copied above.
+		new Map(state.programNodes),
 	);
 	state.firstTree = firstTree;
 	return firstTree;
@@ -4494,9 +4512,17 @@ function compareFirstTree<Node extends LynxElementRef>(
 			);
 		}
 	}
+	// Three populations again, for the reason the capture's ownership equality
+	// counts three (issue #163): a compiled main-thread program's hosts are in
+	// the background's `finalIds` and in neither the snapshot nor main's records,
+	// because a program is compiled so that its subtree is never described.
+	// Equalities, still — a program's IDs are counted, not exempted, so a
+	// background that described one host too many is a mismatch here rather than
+	// a host adopted against nothing.
 	if (
-		snapshot.nodes.length + journal.logicalNodes.size !== finalIds.size ||
-		sourceState.records.size !== finalIds.size
+		snapshot.nodes.length + journal.logicalNodes.size + journal.programNodes.size !==
+			finalIds.size ||
+		sourceState.records.size + journal.programNodes.size !== finalIds.size
 	) {
 		return mismatch(firstTree, 'snapshot.nodes', 'the host counts differ.');
 	}
@@ -4508,6 +4534,95 @@ function compareFirstTree<Node extends LynxElementRef>(
 	);
 	for (const [id, node] of journal.logicalNodes) snapshotsById.set(id, node);
 	for (const id of [...finalIds].sort((first, second) => first - second)) {
+		const programNode = journal.programNodes.get(id);
+		if (programNode !== undefined) {
+			// A host a compiled main-thread program painted. There is nothing of
+			// main's to compare the background's description against — no snapshot
+			// entry and no record, by construction — so this is the one place the
+			// inverted handoff is a *narrower* check rather than a differently
+			// shaped one, and saying so is better than letting it read as an
+			// oversight.
+			//
+			// What still holds it together: the ID agreement is established at
+			// build time, not here. The renderer numbers a program's hosts in the
+			// same pre-order the background numbers the same source in, and a
+			// differential test pins the two against each other on a real
+			// component. What this loop would otherwise re-derive — type, parent,
+			// children, props — main never had for these nodes, and inventing a
+			// description to compare would rebuild the walk the program exists to
+			// delete.
+			//
+			// So the check is the one main can actually make: the background must
+			// describe this ID as a host it expects to own, and the node must still
+			// be the one the program painted.
+			const next = getRecord(id);
+			if (next === undefined) {
+				return mismatch(firstTree, `snapshot.nodes[${id}]`, 'the logical host identity differs.');
+			}
+			if (sourceState.records.has(id)) {
+				return mismatch(
+					firstTree,
+					`snapshot.nodes[${id}]`,
+					'a compiled main-thread program host also holds a record.',
+				);
+			}
+			if (!sourceState.ownedNodes.has(programNode)) {
+				return mismatch(
+					firstTree,
+					`snapshot.nodes[${id}].nativeId`,
+					'a compiled main-thread program host lost its physical node.',
+				);
+			}
+			// Events are the exception to all of that, and worth taking. Main does
+			// know what it bound here: the mount installed a token per site the
+			// renderer announced, and journalled it. So the background's record
+			// must declare exactly those events, each naming the listener and
+			// priority that produced the token already sitting on the node.
+			//
+			// That is what stops this branch from being "a record exists". Two
+			// components agreeing on host count and IDs would otherwise adopt
+			// against each other and route taps to handlers the page never wired
+			// there — silently, because the tree is never compared. The count and
+			// the per-type lookup are what catch that, and they are two halves: a
+			// host declaring an event main never installed fails the lookup, and a
+			// host that lost one fails the count.
+			//
+			// The identity comparison below is a narrower claim, and a different
+			// one. Listener IDs are handed out in announcement order, so a
+			// description agreeing about every host's event types agrees about its
+			// IDs too — no *component* can reach it. What it refuses is the two
+			// threads disagreeing about what a token names, which is the same
+			// thing the physical-identity and generation checks refuse for an
+			// ordinary host and is equally unreachable from a well-formed pair.
+			const installed = sourceState.nativeEvents.get(programNode);
+			if ((installed?.size ?? 0) !== next.events.size) {
+				return mismatch(
+					firstTree,
+					`snapshot.nodes[${id}].events`,
+					'the event binding count differs.',
+				);
+			}
+			for (const [type, descriptor] of next.events) {
+				const registration = installed?.get(type);
+				if (registration === undefined || registration.source !== 'background') {
+					return mismatch(firstTree, `snapshot.nodes[${id}].events`, 'the event binding differs.');
+				}
+				// Decoded rather than re-encoded: the token is one main wrote with
+				// the checking encoder, so reading it back cannot fault, while
+				// building a token out of background-supplied numbers could — and a
+				// comparator that throws faults a page whose answer is `repair`.
+				const identity = decodeLynxNativeEventToken(registration.listener);
+				if (
+					identity.id !== id ||
+					identity.generation !== next.handle.generation ||
+					identity.listener !== descriptor.id ||
+					identity.priority !== descriptor.priority
+				) {
+					return mismatch(firstTree, `snapshot.nodes[${id}].events`, 'the event binding differs.');
+				}
+			}
+			continue;
+		}
 		const captured = snapshotsById.get(id);
 		const next = getRecord(id);
 		const sourceRecord = sourceState.records.get(id);
@@ -4569,8 +4684,17 @@ function compareFirstTree<Node extends LynxElementRef>(
 					'the physical node identity changed.',
 				);
 			}
+			// The parent may be a host a compiled main-thread program painted, and
+			// those hold no record — a keyed range's members are materialized by
+			// the renderer into a node the program made, so an ordinary described
+			// host sits under an undescribed one (issue #163). Resolving only
+			// through records would read that as "the physical parent changed" and
+			// repaint a page whose parentage is exactly what was captured.
 			const physicalParent =
-				captured.parent === null ? source.page : sourceState.records.get(captured.parent)?.node;
+				captured.parent === null
+					? source.page
+					: (journal.programNodes.get(captured.parent) ??
+						sourceState.records.get(captured.parent)?.node);
 			if (physicalParent == null || !sourceState.papi.isChild(physicalParent, sourceRecord.node)) {
 				return mismatch(firstTree, `snapshot.nodes[${id}].parent`, 'the physical parent changed.');
 			}
@@ -4635,10 +4759,15 @@ function transferFirstTree<Node extends LynxElementRef>(
 			}
 			continue;
 		}
-		if (sourceRecord?.node === null || sourceRecord?.node === undefined) {
+		// A host a compiled main-thread program painted has no record to take a
+		// node from — that is what a program is (issue #163) — so the ID map the
+		// mount kept is where its node comes from. Everything after this point is
+		// identical for both, which is the point: adoption moves a node, and where
+		// main remembered it does not change what moving it means.
+		const node = journal.programNodes.get(id) ?? sourceRecord?.node ?? null;
+		if (node === null) {
 			throw hostError(`captured first-tree host ${id} lost its physical node.`);
 		}
-		const node = sourceRecord.node;
 		targetRecord.node = node;
 		activeNodes.set(id, node);
 		targetState.ownedNodes.add(node);
@@ -4690,6 +4819,7 @@ function transferFirstTree<Node extends LynxElementRef>(
 	// nodes the replacement loop did not reach.
 	sourceState.ownedNodes.clear();
 	sourceState.ownedPageRoots.clear();
+	sourceState.programNodes.clear();
 	sourceState.nativeEvents.clear();
 	sourceState.mainThreadRefs.clear();
 	sourceState.mainThreadRefOwners.clear();
@@ -7518,6 +7648,7 @@ export function disposeLynxHostContainer<Node extends LynxElementRef>(
 	if (complete) {
 		const firstTree = state.firstTree;
 		state.ownedNodes.clear();
+		state.programNodes.clear();
 		state.nativeEvents.clear();
 		state.mainThreadRefs.clear();
 		state.mainThreadRefOwners.clear();

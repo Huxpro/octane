@@ -30,6 +30,8 @@ import {
 	captureLynxFirstTree,
 	createLynxHostContainer,
 	disposeLynxHostContainer,
+	prepareLynxHostBatch,
+	resolveLynxHostNativeEvent,
 } from '../../lynx/src/core/host-driver.js';
 import { createFakePAPI, shape } from '../../lynx/tests/_fixtures/fake-element-papi.js';
 
@@ -52,19 +54,44 @@ export function Card(props: { label: string; detail: string; tone: string; onPic
 }
 `;
 
+/**
+ * The same tree, the same hosts, the same IDs — and a different event on one of
+ * them. What a background describing some *other* component looks like at its
+ * most similar to this one, which is the case adoption has to catch without a
+ * tree to compare.
+ */
+const OTHER_CARD = CARD.replace('<text class="d" bindtap=', '<text class="d" bindlongpress=');
+
+/**
+ * The same again, and the other way a description can disagree: same tree, same
+ * IDs, same number of events on the page — moved onto a different host.
+ *
+ * `OTHER_CARD` is caught because a host declares an event main never installed
+ * there. This one is caught because a host main *did* install one on declares
+ * none, which is the half a per-type lookup alone would walk straight past.
+ */
+const SHIFTED_CARD = CARD.replace(
+	'<text class="card-label" bindtap={props.onPick}>',
+	'<text class="card-label">',
+).replace('<view class="card-body">', '<view class="card-body" bindtap={props.onPick}>');
+
 type CardComponent = Parameters<typeof MainRenderer.renderLynxFirstScreen>[0];
 
-function compiled(program: boolean): string {
-	return compile(CARD, '/src/Card.lynx.tsrx', {
+function compiled(
+	program: boolean,
+	source = CARD,
+	thread: 'main-thread' | 'background' = 'main-thread',
+): string {
+	return compile(source, '/src/Card.lynx.tsrx', {
 		hmr: false,
 		renderer: { ...lynxMainThreadRenderer, target: 'lynx', id: 'lynx' },
-		universalRuntime: { runtime: 'lynx', thread: 'main-thread' },
+		universalRuntime: { runtime: 'lynx', thread },
 		...(program ? { mainThreadProgramBackend: Backend } : null),
 	}).code;
 }
 
-function cardFor(program: boolean): CardComponent {
-	const rewritten = compiled(program)
+function cardFor(program: boolean, source = CARD): CardComponent {
+	const rewritten = compiled(program, source)
 		.replace(
 			/import\s*\{([\s\S]*?)\}\s*from\s*["']@octanejs\/lynx(?:\/[\w-]+)?["'];/g,
 			(_match, specifiers: string) =>
@@ -85,8 +112,8 @@ const PROPS = {
 	onHold: () => {},
 };
 
-function render(program: boolean): MainRenderer.LynxFirstScreenRenderResult {
-	return MainRenderer.renderLynxFirstScreen(cardFor(program), PROPS as never);
+function render(program: boolean, source = CARD): MainRenderer.LynxFirstScreenRenderResult {
+	return MainRenderer.renderLynxFirstScreen(cardFor(program, source), PROPS as never);
 }
 
 describe('a compiled main-thread program on the first-screen path', () => {
@@ -97,6 +124,13 @@ describe('a compiled main-thread program on the first-screen path', () => {
 		expect(compiled(true)).toContain('"kind": "program"');
 		expect(compiled(false)).not.toContain('"kind": "program"');
 		expect(compiled(false)).toContain('"kind": "template"');
+		// And the premise the whole handoff rests on: the *background* compile of
+		// the same source, with the same backend available, still emits an
+		// ordinary template. A program object is emitted only into the main-thread
+		// layer, which is why the background can describe a component main painted
+		// from a program — it never saw the program at all.
+		expect(compiled(true, CARD, 'background')).toContain('"kind": "template"');
+		expect(compiled(true, CARD, 'background')).not.toContain('"kind": "program"');
 	});
 
 	it('takes the same first-screen IDs as the interpreted encoding', () => {
@@ -213,6 +247,8 @@ function paint(program: boolean): {
 	readonly inserts: readonly [unknown, unknown][];
 	readonly removes: readonly [unknown, unknown][];
 	readonly events: readonly unknown[][];
+	readonly reads: readonly unknown[];
+	readonly made: readonly unknown[];
 	readonly container: ReturnType<typeof createLynxHostContainer>;
 	readonly papi: ReturnType<typeof createHost>;
 } {
@@ -220,8 +256,28 @@ function paint(program: boolean): {
 	const inserts: [unknown, unknown][] = [];
 	const removes: [unknown, unknown][] = [];
 	const events: unknown[][] = [];
+	const reads: unknown[] = [];
+	const made: unknown[] = [];
+	// The one seam that separates the two populations without begging the
+	// question. A compiled create makes its nodes through `papi.intrinsics`; the
+	// renderer makes everything else — a keyed range's members included — through
+	// `createElement`. So "the program made this" is recorded here rather than
+	// inferred from which nodes ended up with a record, which is the very thing
+	// the assertions below are about.
+	const tracked =
+		<Args extends readonly unknown[]>(factory: (...args: Args) => unknown) =>
+		(...args: Args) => {
+			const node = factory(...args);
+			made.push(node);
+			return node;
+		};
 	const papi = {
 		...host,
+		intrinsics: {
+			view: tracked(host.intrinsics!.view),
+			text: tracked(host.intrinsics!.text),
+			rawText: tracked(host.intrinsics!.rawText),
+		} as typeof host.intrinsics,
 		insertBefore(parent: never, child: never, before: never) {
 			inserts.push([parent, child]);
 			host.insertBefore(parent, child, before);
@@ -234,6 +290,10 @@ function paint(program: boolean): {
 			events.push([target, kind, name, listener]);
 			host.setEvent(target, kind, name, listener);
 		},
+		getUniqueId(node: never) {
+			reads.push(node);
+			return host.getUniqueId(node);
+		},
 	};
 	const container = createLynxHostContainer(papi, { root: 1 });
 	const rendered = render(program);
@@ -244,6 +304,8 @@ function paint(program: boolean): {
 		inserts,
 		removes,
 		events,
+		reads,
+		made,
 		container,
 		papi,
 	};
@@ -326,24 +388,203 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 		expect(removes).toEqual([[page, root]]);
 	});
 
-	it('declines to describe the painted tree it did not describe, without faulting', () => {
-		// A capture is assembled from records, and a program has none. Journalling
-		// what the records can see would hand adoption a tree missing everything
-		// the program painted.
+	it("adopts the program's own nodes rather than repainting them", () => {
+		// The inverted handoff, end to end and as node identity.
 		//
-		// `null` rather than a throw, because the page is correct — painted, owned,
-		// and disposable — and `null` is already what this call means by "painted
-		// correctly, not describable". Its caller retires the screen as
-		// `skipped`/`unadoptable` and lets the background paint its own, which is
-		// the same answer an already-materialized native list row gets. A throw
-		// would instead fault a first screen that is not faulty. Adoption for a
-		// program is slot state off the keyed slot map, and landing that is what
-		// makes this branch unreachable rather than merely graceful.
-		const { container } = paint(true);
-		expect(captureLynxFirstTree(container)).toBeNull();
-		// Declined, not stranded: the safety net only holds if the paint it is
-		// throwing away can actually be taken back.
-		expect(disposeLynxHostContainer(container).complete).toBe(true);
+		// Adoption is *background describes, main supplies the node per ID*. For an
+		// ordinary host main supplies it from a record; a program writes none, so
+		// it supplies it from the ID map the mount kept — and that map is the whole
+		// of main's contribution. There is no capture walk over the program's
+		// subtree and nothing of main's for the comparator to check the
+		// background's description against, which is exactly #163's "the handoff
+		// class disappears".
+		//
+		// What makes that sound is established elsewhere and by construction: C2c
+		// proved the two arms number the same source identically, which is why the
+		// background's description can be trusted to be *about* these nodes.
+		const painted = paint(true);
+		const captured = captureLynxFirstTree(painted.container);
+		expect(captured).not.toBeNull();
+		// The painted tree, and within it the nodes the compiled create itself
+		// made, both read before adoption moves anything.
+		const paintedNodes = nodesOf(painted.page).slice(1);
+		const madeByProgram = new Set(painted.made);
+		expect(madeByProgram.size).toBeGreaterThan(0);
+
+		// The background's own description of the same component: the interpreted
+		// arm's batch is exactly what the background thread produces, because the
+		// program object is emitted only into the main-thread layer.
+		const background = render(false);
+		const target = createLynxHostContainer(painted.papi, {
+			root: 1,
+			page: painted.page as never,
+		});
+		const prepared = prepareLynxHostBatch(target, background.batch, {
+			firstTree: captured!,
+		});
+		// Adopted, not repaired. A repair would repaint the page from the
+		// background's batch, which is the outcome this whole train exists to
+		// avoid, and it is a different word rather than a failure — so assert it.
+		expect(prepared.firstTreeAction).toBe('adopt');
+		prepared.apply();
+
+		// Identity, not equality: the adopted tree must be the *same* elements that
+		// were painted. A repaint would produce a tree that compares equal and
+		// shares no node with this set.
+		const adopted = new Set(nodesOf(painted.page).slice(1));
+		expect(adopted.size).toBe(paintedNodes.length);
+		for (const node of paintedNodes) expect(adopted.has(node)).toBe(true);
+		// And specifically the program's own nodes, which are the ones adoption
+		// had no record to resolve — the range members would survive a handoff
+		// that dropped every undescribed host on the floor.
+		for (const node of madeByProgram) expect(adopted.has(node)).toBe(true);
+	});
+
+	it('refuses a description whose taps go somewhere else than the ones it installed', () => {
+		// The hole the event check closes, and the reason it is worth its cost.
+		//
+		// Nothing about a program's subtree is compared — main never had a
+		// description of it — so two components agreeing on host count and IDs
+		// would otherwise adopt against each other, and every tap on the adopted
+		// page would reach a handler the user never wired to that node. Silently,
+		// because there is no tree for the difference to show up in.
+		//
+		// Events are the one thing main does know, because the mount installed a
+		// token per announced site. `OTHER_CARD` is that near-miss made concrete:
+		// same tree, same IDs, one host carrying a long-press where this one
+		// carries a tap.
+		const painted = paint(true);
+		const captured = captureLynxFirstTree(painted.container);
+		expect(captured).not.toBeNull();
+		const other = render(false, OTHER_CARD);
+		const target = createLynxHostContainer(painted.papi, {
+			root: 1,
+			page: painted.page as never,
+		});
+		let mismatch: string | null = null;
+		const prepared = prepareLynxHostBatch(target, other.batch, {
+			firstTree: captured!,
+			onMismatch: (error) => {
+				mismatch = error.message;
+			},
+		});
+		expect(prepared.firstTreeAction).toBe('repair');
+		// By the event binding, not by something incidental. A shape difference
+		// would also repair, and would prove nothing about this check.
+		expect(mismatch).toMatch(/event binding/);
+	});
+
+	it('refuses a description that moved a tap onto a host it never installed one on', () => {
+		// The other direction, and not a duplicate of the case above. There, a
+		// host declares an event main never installed on it, which any per-type
+		// lookup catches. Here every event the background declares *is* one main
+		// installed somewhere — it has simply moved up a level — so the host that
+		// lost it declares nothing, and only comparing how many each side has on
+		// that host says so. A tap on the label would otherwise reach nobody, and
+		// a tap on the body would reach a handler the page never wired there.
+		const painted = paint(true);
+		const captured = captureLynxFirstTree(painted.container);
+		expect(captured).not.toBeNull();
+		const shifted = render(false, SHIFTED_CARD);
+		// The premise: the two descriptions really are the same size, so the count
+		// that catches this is the per-host one and not a total.
+		expect(shifted.envelope.events).toHaveLength(render(false).envelope.events.length);
+		expect(shifted.hostCount).toBe(render(false).hostCount);
+		const target = createLynxHostContainer(painted.papi, {
+			root: 1,
+			page: painted.page as never,
+		});
+		let mismatch: string | null = null;
+		const prepared = prepareLynxHostBatch(target, shifted.batch, {
+			firstTree: captured!,
+			onMismatch: (error) => {
+				mismatch = error.message;
+			},
+		});
+		expect(prepared.firstTreeAction).toBe('repair');
+		expect(mismatch).toMatch(/event binding count/);
+	});
+
+	it('routes a tap on a node the program painted to the listener the background registered', () => {
+		// The handoff as the user meets it. Adoption moved nodes main made into a
+		// container that describes them, and the token the program wrote onto one
+		// of those nodes has to keep meaning what it meant — otherwise the first
+		// screen is live, looks right, and drops every tap.
+		const painted = paint(true);
+		const captured = captureLynxFirstTree(painted.container);
+		const background = render(false);
+		const target = createLynxHostContainer(painted.papi, {
+			root: 1,
+			page: painted.page as never,
+		});
+		const prepared = prepareLynxHostBatch(target, background.batch, { firstTree: captured! });
+		expect(prepared.firstTreeAction).toBe('adopt');
+		prepared.apply();
+
+		// The tokens as the host received them — the fourth argument of every
+		// `setEvent` the paint made — rather than anything read out of the
+		// container. A tap arrives carrying exactly this string.
+		const tokens = painted.events.map((call) => call[3]).filter((value) => value !== undefined);
+		expect(tokens).toHaveLength(background.envelope.events.length);
+		expect(tokens.length).toBeGreaterThan(0);
+		// Every announced binding must be reachable by its token, and reach the
+		// listener the background registered for that host.
+		const announced = new Map(
+			background.envelope.events.map((binding) => [binding.listener.id, binding.listener.priority]),
+		);
+		for (const token of tokens) {
+			const resolved = resolveLynxHostNativeEvent(target, token as string);
+			expect(resolved).not.toBeNull();
+			expect(announced.get(resolved!.listener)).toBe(resolved!.priority);
+		}
+		// Distinct listeners, so a container that resolved every token to the same
+		// handler could not pass the loop above.
+		expect(
+			new Set(tokens.map((token) => resolveLynxHostNativeEvent(target, token as string)!.listener))
+				.size,
+		).toBe(tokens.length);
+	});
+
+	it('reads back no node the program made, to describe the tree it hands on', () => {
+		// The cost the inverted handoff removes, stated as host crossings.
+		//
+		// A capture describes a record by reading its physical identity back off
+		// the host, once per record. A program writes no record for any node it
+		// makes — the ID map the mount kept is what adoption resolves against
+		// instead — so those hosts are described by nothing and read back for
+		// nothing. What remains is the keyed ranges' members, which the renderer
+		// materialized through the ordinary path and which therefore do have
+		// records.
+		//
+		// #163's "no capture walk, no read-backs" is exactly this, and it is a
+		// disjointness rather than a count: a capture that walked the program's
+		// subtree would be red here however many nodes it happened to touch.
+		const painted = paint(true);
+		const madeByProgram = new Set(painted.made);
+		const described = nodesOf(painted.page)
+			.slice(1)
+			.filter((node) => !madeByProgram.has(node));
+		const before = painted.reads.length;
+		expect(captureLynxFirstTree(painted.container)).not.toBeNull();
+		const readBack = new Set(painted.reads.slice(before));
+		// Both halves, so neither can hold alone. A capture that read nothing at
+		// all would satisfy the second on its own.
+		expect(described.length).toBeGreaterThan(0);
+		expect(madeByProgram.size).toBeGreaterThan(0);
+		for (const node of described) expect(readBack.has(node)).toBe(true);
+		for (const node of madeByProgram) expect(readBack.has(node)).toBe(false);
+
+		// The differential: the same capture, over the same component, reads every
+		// painted node back when every painted node is described. Nothing about
+		// the walk changed — what changed is how much of the tree it is asked
+		// about.
+		const interpreted = paint(false);
+		expect(interpreted.made).toHaveLength(0);
+		const interpretedNodes = nodesOf(interpreted.page).slice(1);
+		const interpretedBefore = interpreted.reads.length;
+		expect(captureLynxFirstTree(interpreted.container)).not.toBeNull();
+		const interpretedReadBack = new Set(interpreted.reads.slice(interpretedBefore));
+		for (const node of interpretedNodes) expect(interpretedReadBack.has(node)).toBe(true);
 	});
 
 	it('refuses a host with no intrinsic element factories before painting any root', () => {

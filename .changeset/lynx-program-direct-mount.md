@@ -21,8 +21,6 @@ to `lynx-main-thread-program/2`:
 
 A program's subtree is deliberately never described, so nothing writes a record
 for a node it made. `disposeLynxHostContainer` reads the physical ownership and
-native event journals and tears one down completely; `captureLynxFirstTree`
-refuses by name rather than journalling a tree missing everything the program
-painted. The applier also refuses, by name and before painting anything, a host
-with no intrinsic element factories, a hidden program, and a program inside a
-native list row.
+native event journals instead, and tears one down completely. The applier
+refuses, by name and before painting anything, a host with no intrinsic element
+factories, a hidden program, and a program inside a native list row.
