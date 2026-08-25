@@ -644,10 +644,19 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 			props: {},
 			children: [],
 		};
-		expect(() =>
-			applyLynxFirstScreenDirect(container, [chrome, ...rendered.nodes], rendered.envelope),
-		).toThrow(/intrinsic element factories/);
+		let thrown: unknown;
+		try {
+			applyLynxFirstScreenDirect(container, [chrome, ...rendered.nodes], rendered.envelope);
+		} catch (error) {
+			thrown = error;
+		}
+		expect((thrown as Error).message).toMatch(/intrinsic element factories/);
 		expect(papi.pages[0]!.children).toHaveLength(0);
+		// And *which kind* of refusal, which is the other half of the answer (#163
+		// C3). A host with no intrinsics is a capability of the host rather than a
+		// defect in the page: the same source renders correctly on the command
+		// path, so this costs the first screen and not the launch.
+		expect(thrown).toBeInstanceOf(MainRenderer.LynxFirstScreenRefusalError);
 	});
 
 	it('crosses to the host for no event site whose handler is not callable', () => {

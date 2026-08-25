@@ -892,5 +892,61 @@ describe('direct first-screen applier, compiled main-thread programs', () => {
 		expect((thrown as Error).message).toMatch(
 			/cannot yet mount a compiled main-thread program inside a native list row/,
 		);
+		// And decided before the paint, not on the way past it. The `<list>` is the
+		// program's own ancestor, so an applier that refused where the mount meets
+		// the program would have allocated it on the host first — this page is the
+		// shape where "refused early" and "refused late" differ.
+		//
+		// Asserted on the native list rather than on the page's children: the
+		// direct walk creates as it goes and attaches its roots once at the end, so
+		// an empty page is what a refusal anywhere leaves and would hold either
+		// way. A `<list>` the host allocated is the thing that would actually have
+		// been paid for.
+		expect(papi.lists).toHaveLength(0);
+	});
+
+	it('refuses a program under a hidden host, not only a hidden program', () => {
+		// The inherited half of the same refusal. The program itself carries no
+		// visibility here; its parent is what is hidden, and a program under a
+		// hidden host is just as hidden as one marked so. Both halves matter
+		// because a program's raw-text nodes are exactly what it stopped carrying,
+		// which is why neither can be marked by guessing.
+		const created: string[] = [];
+		const base = intrinsicHost();
+		const papi = {
+			...base,
+			createElement(type: string, parent: number, text: string) {
+				created.push(type);
+				return base.createElement(type, parent, text);
+			},
+		};
+		const container = createLynxHostContainer(papi, { root: 1 });
+		let thrown: unknown;
+		try {
+			applyLynxFirstScreenDirect(
+				container,
+				[
+					{
+						kind: 'host',
+						id: 1,
+						type: 'view',
+						props: {},
+						visibility: 'hidden',
+						children: [programNode({ id: 2, ids: [2, 3] })],
+					},
+				],
+				PROGRAM_ENVELOPE,
+			);
+		} catch (error) {
+			thrown = error;
+		}
+		expect(thrown).toBeInstanceOf(LynxFirstScreenRefusalError);
+		expect((thrown as Error).message).toMatch(
+			/cannot yet mount a hidden compiled main-thread program/,
+		);
+		// The hidden `<view>` is the program's ancestor, so the same early-versus-
+		// late claim as above, counted where this page can show it: nothing the
+		// host was asked to make.
+		expect(created).toEqual([]);
 	});
 });
