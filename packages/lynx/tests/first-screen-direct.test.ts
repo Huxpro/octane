@@ -1231,6 +1231,25 @@ describe('direct first-screen applier, the announcement run a program records', 
 		).toThrow(/2 announcements for its 1 event site, and claimed 1 of them/);
 	});
 
+	it('refuses a node carrying half a run rather than painting it without listeners', () => {
+		// A start with no count is an empty run, so every site comes back open and
+		// the page paints with no listeners at all. That is the silence this slice
+		// exists to remove, so it cannot be the thing a half-filled node gets.
+		const handed: unknown[][] = [];
+		const container = createLynxHostContainer(intrinsicHost(), { root: 1 });
+		expect(() =>
+			applyLynxFirstScreenDirect(
+				container,
+				[programNode({ plan: runProgram(['bindtap'], handed), ids: [1], eventsAt: 0 })],
+				{
+					renderer: 'lynx',
+					version: 1,
+					events: [{ id: 1, type: 'bindtap', listener: { id: 7, priority: 'discrete' } }],
+				},
+			),
+		).toThrow(/half an announcement run/);
+	});
+
 	it('installs what the search installs, for the same tree and envelope', () => {
 		// The two readers have to answer the same question the same way, so the only
 		// difference between these arms is whether the node carries the run. A page

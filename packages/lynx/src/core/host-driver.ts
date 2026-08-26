@@ -3881,7 +3881,18 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		// answer identically for every announcement the renderer can produce, which
 		// is what this applier's own tests hold them to.
 		const run = node.eventsAt;
-		const runEnd = run === undefined ? -1 : run + (node.eventsCount ?? 0);
+		const count = node.eventsCount;
+		// Both or neither, checked rather than assumed. Half a run is a caller
+		// error the two readers would otherwise answer silently and differently:
+		// a start with no count is an empty run, so every site would come back
+		// open and the page would paint with no listeners at all — the failure
+		// this whole slice exists to stop being possible.
+		if ((run === undefined) !== (count === undefined)) {
+			throw hostError(
+				'first-screen program carries half an announcement run; `eventsAt` and `eventsCount` are given together or not at all.',
+			);
+		}
+		const runEnd = run === undefined || count === undefined ? -1 : run + count;
 		let cursor = run ?? 0;
 		for (const site of plan.events) {
 			const hostId = ids[site.node];
