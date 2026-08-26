@@ -36,6 +36,7 @@ import type {
 import {
 	emitLynxMainThreadProgram,
 	LynxMainThreadEmitRefusal,
+	type LynxMainThreadProgramRange,
 } from '../src/compiler/emit-main-thread-program.js';
 import { compileLynxBlockTemplate, createLynxBlockCore } from '../src/core/block-core.js';
 import { createLynxHostContainer, prepareLynxHostBatch } from '../src/core/host-driver.js';
@@ -66,6 +67,83 @@ const PAGE: UniversalHostTemplateProgram = {
 	],
 	events: [],
 };
+
+/**
+ * `ROW` with both of its text holes reduced out, and where they were.
+ *
+ * The two are the same program answered twice.
+ * `universalTemplateProgramWithoutRanges` returns `RANGED_ROW` when its caller
+ * says both holes hold a keyed range — which is what a *build* says, because a
+ * plan lowers a `@for` and a `{row.label as string}` to the same node and only
+ * a value tells them apart — and it returns `ROW` when the caller says neither
+ * does, which is what a *run* says once it holds two strings. So `ROW` is not a
+ * similar program: it is the tree a compiled `RANGED_ROW` has to paint when its
+ * range values arrive as strings, and the applier painting `ROW` is therefore
+ * the reference arm for exactly that claim.
+ *
+ * Written out rather than derived because deriving it here would prove the two
+ * agree with `universalTemplateProgramWithoutRanges`, which is not what is in
+ * question; what is in question is whether the emission paints the same tree.
+ */
+const RANGED_ROW: UniversalHostTemplateProgram = {
+	nodes: [
+		{ type: 'view', parent: -1, props: {}, bindings: [{ name: 'class', valueIndex: 0 }] },
+		{ type: 'text', parent: 0, props: { class: 'col-id' } },
+		{ type: 'text', parent: 0, props: { class: 'col-label' } },
+		{ type: 'text', parent: 0, props: { class: 'col-remove' } },
+		{ type: '#text', parent: 3, props: { value: 'x' } },
+	],
+	events: [
+		{ node: 2, type: 'bindtap', priority: 'discrete' },
+		{ node: 3, type: 'bindtap', priority: 'discrete' },
+	],
+};
+
+/** `ROW`'s two text holes, on the hosts they were dropped from. */
+const RANGED_ROW_SITES: readonly LynxMainThreadProgramRange[] = [{ node: 1 }, { node: 2 }];
+
+/**
+ * A range site with a static sibling ahead of it, inside a host that has a
+ * later sibling of its own.
+ *
+ * The row cannot see *where* a compiled text is appended: every one of its
+ * hosts holds the hole and nothing else, so any placement paints the same tree.
+ * A hole is its host's last child by construction — the reduction declines a
+ * program where a dropped hole is not the last entry naming its parent — and
+ * the only way to break that is to append it before the node loop has placed
+ * the siblings, which needs a host with one.
+ */
+const LINE: UniversalHostTemplateProgram = {
+	nodes: [
+		{ type: 'view', parent: -1, props: { class: 'wrap' } },
+		{ type: 'text', parent: 0, props: { class: 'line' } },
+		{ type: '#text', parent: 1, props: { value: 'lead ' } },
+		{ type: '#text', parent: 1, props: {}, bindings: [{ name: 'value', valueIndex: 0 }] },
+		{ type: 'view', parent: 0, props: { class: 'after' } },
+	],
+	events: [],
+};
+
+/** `LINE` answered the other way: the trailing hole is a range. */
+const RANGED_LINE: UniversalHostTemplateProgram = {
+	nodes: [
+		{ type: 'view', parent: -1, props: { class: 'wrap' } },
+		{ type: 'text', parent: 0, props: { class: 'line' } },
+		{ type: '#text', parent: 1, props: { value: 'lead ' } },
+		{ type: 'view', parent: 0, props: { class: 'after' } },
+	],
+	events: [],
+};
+
+const RANGED_LINE_SITES: readonly LynxMainThreadProgramRange[] = [{ node: 1 }];
+
+/** A keyed list: the range site an application actually has most of. */
+const LIST: UniversalHostTemplateProgram = {
+	nodes: [{ type: 'view', parent: -1, props: { class: 'rows' } }],
+	events: [],
+};
+
+const LIST_SITES: readonly LynxMainThreadProgramRange[] = [{ node: 0 }];
 
 /**
  * Every shape `applyDenseScalarHostProps` distinguishes, in one program.
@@ -242,8 +320,9 @@ function throughApplier<Item>(
 function instantiate(
 	program: UniversalHostTemplateProgram,
 	name: string,
+	ranges?: readonly LynxMainThreadProgramRange[],
 ): (papi: unknown) => (...args: never[]) => unknown[] {
-	const { source } = emitLynxMainThreadProgram(program, { name });
+	const { source } = emitLynxMainThreadProgram(program, { name, ranges });
 	return new Function(`return (${source});`)() as never;
 }
 
@@ -259,6 +338,7 @@ function throughEmission<Item>(
 	name: string,
 	items: readonly Item[],
 	args: (item: Item, index: number) => readonly unknown[],
+	ranges?: readonly LynxMainThreadProgramRange[],
 ): unknown {
 	const papi = createHost();
 	const page = papi.createPage('0', 0);
@@ -268,7 +348,7 @@ function throughEmission<Item>(
 	// the contract `assembles the subtree detached` below pins.
 	const chrome = instantiate(PAGE, 'createPage')(papi)(...([pageId] as never[]));
 	papi.insertBefore(page, chrome[0] as never, null);
-	const create = instantiate(template, name)(papi);
+	const create = instantiate(template, name, ranges)(papi);
 	items.forEach((item, index) => {
 		const nodes = create(...([pageId, ...args(item, index)] as never[]));
 		papi.insertBefore(chrome[1] as never, nodes[0] as never, null);
@@ -290,6 +370,31 @@ const emitted = (list: readonly Row[], selected: number | null): unknown =>
 		// Two listeners per row, numbered as the caller pleases: the emission
 		// takes them as parameters rather than deriving them, which is the whole
 		// of #163's inverted handoff at this layer.
+		index * 2 + 1,
+		index * 2 + 2,
+	]);
+
+/**
+ * The same rows through the reduced program, with the two texts passed as range
+ * values rather than bound value slots.
+ */
+const rangedEmitted = (
+	list: readonly Row[],
+	selected: number | null,
+	text: (row: Row) => readonly [unknown, unknown] = (row) => [String(row.id), row.label],
+): unknown =>
+	throughEmission(
+		RANGED_ROW,
+		'createRangedRow',
+		list,
+		(row, index) => [rowValues(row, selected)[0], index * 2 + 1, index * 2 + 2, ...text(row)],
+		RANGED_ROW_SITES,
+	);
+
+/** The same rows through the reduced program with no range sites declared at all. */
+const rangesUndeclared = (list: readonly Row[], selected: number | null): unknown =>
+	throughEmission(RANGED_ROW, 'createRangedRow', list, (row, index) => [
+		rowValues(row, selected)[0],
 		index * 2 + 1,
 		index * 2 + 2,
 	]);
@@ -420,14 +525,121 @@ describe('Lynx main-thread program emission', () => {
 		expect(recording.getParent(nodes[0] as never)).toBe(null);
 	});
 
-	it('reports the slot and listener arity the caller has to supply', () => {
+	it('reports the slot, listener and range arity the caller has to supply', () => {
 		expect(emitLynxMainThreadProgram(ROW, { name: 'createRow' })).toMatchObject({
 			valueCount: 3,
 			eventCount: 2,
+			rangeCount: 0,
 		});
 		expect(emitLynxMainThreadProgram(PAGE, { name: 'createPage' })).toMatchObject({
 			valueCount: 0,
 			eventCount: 0,
+			rangeCount: 0,
+		});
+		// One parameter per site the caller declared, including the one this
+		// program compiles nothing for: the position is the caller's contract, so
+		// a site that paints nothing still has to be passed and skipped rather
+		// than shifting the site after it.
+		expect(
+			emitLynxMainThreadProgram(RANGED_ROW, {
+				name: 'createRangedRow',
+				ranges: [...RANGED_ROW_SITES, { node: 0 }],
+			}),
+		).toMatchObject({ valueCount: 1, eventCount: 2, rangeCount: 3 });
+	});
+
+	describe('compiles a range site whose value arrives as a string', () => {
+		it('paints the text the applier paints for the same hole', () => {
+			// The load-bearing one. `RANGED_ROW` is what a build derives, because a
+			// build has no values and answers "every renderable hole is a keyed
+			// range"; `ROW` is what a run derives from the same plan once it holds
+			// two strings. The emitted program is handed the strings and has to
+			// reach the tree the applier reaches from `ROW` — not a similar tree,
+			// the same one, because that is the first screen the command path
+			// would have painted.
+			const list = rows(5);
+			expect(paintedTree(rangedEmitted(list, 3))).toEqual(paintedTree(interpreted(list, 3)));
+		});
+
+		it('appends the text behind everything its host already holds', () => {
+			// A range hole is its host's last child by construction, so the compiled
+			// text has to land after the static sibling the node loop placed and
+			// after the whole subtree that loop built. `LINE` carries both, and it
+			// is the only fixture here that can tell a late append from an early
+			// one.
+			const interpretedLine = throughApplier(
+				LINE,
+				['tail'],
+				() => 1,
+				(item) => [item],
+			);
+			const emittedLine = throughEmission(
+				RANGED_LINE,
+				'createLine',
+				['tail'],
+				(item) => [item],
+				RANGED_LINE_SITES,
+			);
+			expect(paintedTree(emittedLine)).toEqual(paintedTree(interpretedLine));
+		});
+
+		describe('leaves the hole a range for a value that is not one', () => {
+			// The guard is the applier's own entry condition for the route it is
+			// compiling: route 1 throws on a value that is not a string rather than
+			// coercing it. So everything else stays exactly where it is today — a
+			// hole the renderer fills by key — and the tree the create function
+			// paints is the one it painted before any site was declared.
+			const cases: readonly (readonly [string, unknown])[] = [
+				['nothing, which is what a caller passing no range values gives', undefined],
+				['an object, which is the shape a keyed range arrives as', { $$kind: 'for', rows: [] }],
+				['a number, which the applier would have refused rather than stringified', 7],
+				['null', null],
+			];
+			for (const [label, value] of cases) {
+				it(label, () => {
+					const list = rows(3);
+					expect(paintedTree(rangedEmitted(list, null, () => [value, value]))).toEqual(
+						paintedTree(rangesUndeclared(list, null)),
+					);
+				});
+			}
+		});
+
+		it('numbers a site by where the caller listed it, not by whether it compiles', () => {
+			// The row's own `view` declared as a range site *ahead* of its two text
+			// holes: a keyed list beside compiled text, which is the shape a real
+			// template has. The list site compiles nothing, and the thing that has
+			// to survive that is the position of everything after it — an emission
+			// that only took parameters for the sites it compiled would read both
+			// texts one slot early and paint the class into `col-id`.
+			const list = rows(4);
+			const emittedRow = throughEmission(
+				RANGED_ROW,
+				'createRangedRow',
+				list,
+				(row, index) => [
+					rowValues(row, null)[0],
+					index * 2 + 1,
+					index * 2 + 2,
+					{ $$kind: 'for', rows: [] },
+					String(row.id),
+					row.label,
+				],
+				[{ node: 0 }, ...RANGED_ROW_SITES],
+			);
+			expect(paintedTree(emittedRow)).toEqual(paintedTree(interpreted(list, null)));
+		});
+
+		it('compiles nothing for a site whose host is not a text host', () => {
+			// A range under a `view` is the ordinary keyed list and never becomes
+			// raw text at any value, so the site keeps its parameter and paints
+			// nothing whatever it holds. That is the same stance the node loop
+			// takes: it refuses a program that puts raw text under a `view`, and an
+			// emission that compiled this site would have written exactly that.
+			const withValue = throughEmission(LIST, 'createList', [0], () => ['a string'], LIST_SITES);
+			expect(paintedTree(withValue)).toEqual(
+				paintedTree(throughEmission(LIST, 'createList', [0], () => [])),
+			);
 		});
 	});
 
@@ -621,6 +833,46 @@ describe('Lynx main-thread program emission', () => {
 			it(label, () => {
 				expect(() => emitLynxMainThreadProgram(program, { name: 'create' })).toThrow(message);
 				expect(() => emitLynxMainThreadProgram(program, { name: 'create' })).toThrow(
+					LynxMainThreadEmitRefusal,
+				);
+			});
+		}
+
+		// A range site is the caller's claim about a shape this function never
+		// sees, so the three things `universalTemplateProgramWithoutRanges`
+		// guarantees about one are re-checked rather than trusted — the same
+		// stance the node and event loops take toward the program itself.
+		const rangeCases: readonly (readonly [
+			string,
+			UniversalHostTemplateProgram,
+			readonly LynxMainThreadProgramRange[],
+			RegExp,
+		])[] = [
+			[
+				'a keyed range naming a node the program does not have',
+				RANGED_ROW,
+				[{ node: 9 }],
+				/does not have/,
+			],
+			[
+				'two keyed ranges on one host, which no reduction produces',
+				RANGED_ROW,
+				[{ node: 1 }, { node: 1 }],
+				/more than one keyed range/,
+			],
+			[
+				'a keyed range on raw text, which holds no children at all',
+				RANGED_ROW,
+				[{ node: 4 }],
+				/cannot hold a keyed range/,
+			],
+		];
+		for (const [label, program, ranges, message] of rangeCases) {
+			it(label, () => {
+				expect(() => emitLynxMainThreadProgram(program, { name: 'create', ranges })).toThrow(
+					message,
+				);
+				expect(() => emitLynxMainThreadProgram(program, { name: 'create', ranges })).toThrow(
 					LynxMainThreadEmitRefusal,
 				);
 			});
