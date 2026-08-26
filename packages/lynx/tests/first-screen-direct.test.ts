@@ -14,7 +14,7 @@ import {
 	type LynxFirstScreenDirectEnvelope,
 	type LynxFirstScreenDirectNode,
 } from '../src/core/host-driver.js';
-import { LYNX_FIRST_TREE_STATE } from '../src/core/first-screen.js';
+import { LYNX_FIRST_TREE_STATE, LynxFirstScreenRefusalError } from '../src/core/first-screen.js';
 import type { UniversalProgramPlan } from 'octane/universal/native';
 import { createFakePAPI, shape, type FakeNode } from './_fixtures/fake-element-papi.js';
 import {
@@ -823,6 +823,32 @@ describe('direct first-screen applier, compiled main-thread programs', () => {
 		expect(applyProgram(programNode({ visibility: 'hidden' }))).toThrow(
 			/cannot yet mount a hidden compiled main-thread program/,
 		);
+		// And as a *refusal* rather than a fault (#163 C3): the page is well formed
+		// and the background paints it correctly over the command path, so this
+		// costs the first screen rather than the launch. Every other refusal in
+		// this block names a program that disagrees with its own plan, and those
+		// stay faults — asserted directly below. A fresh container each time,
+		// because one that refused is faulted and answers the next apply
+		// differently.
+		expect(applyProgram(programNode({ visibility: 'hidden' }))).toThrow(
+			LynxFirstScreenRefusalError,
+		);
+	});
+
+	it('faults rather than refusing when the program disagrees with its own plan', () => {
+		// The control for the two refusals in this block, and the line between
+		// them. A tree the mount cannot yet finish is a capability boundary; a
+		// program whose create returns a different number of nodes than it declared
+		// is a defect, and no fallback path makes it right. Each of these throws,
+		// and none of them may start declining first screens.
+		for (const node of [
+			programNode({ plan: fakeProgram({ nodes: 2 }), ids: [1] }),
+			programNode({ plan: fakeProgram({ ranges: [{ slot: 0, node: 1, id: 2 }] }), spans: [] }),
+			programNode({ plan: fakeProgram({ nodes: 0 }), ids: [] }),
+		]) {
+			expect(applyProgram(node)).toThrow();
+			expect(applyProgram(node)).not.toThrow(LynxFirstScreenRefusalError);
+		}
 	});
 
 	it('refuses a program inside a native list row', () => {
@@ -853,8 +879,74 @@ describe('direct first-screen applier, compiled main-thread programs', () => {
 				],
 			},
 		];
-		expect(() => applyLynxFirstScreenDirect(container, tree, PROGRAM_ENVELOPE)).toThrow(
+		// Caught once rather than asserted twice: the container faults on the first
+		// refusal and answers a second apply with a different error, so a repeated
+		// `toThrow` would be checking the fault rather than the refusal.
+		let thrown: unknown;
+		try {
+			applyLynxFirstScreenDirect(container, tree, PROGRAM_ENVELOPE);
+		} catch (error) {
+			thrown = error;
+		}
+		expect(thrown).toBeInstanceOf(LynxFirstScreenRefusalError);
+		expect((thrown as Error).message).toMatch(
 			/cannot yet mount a compiled main-thread program inside a native list row/,
 		);
+		// And decided before the paint, not on the way past it. The `<list>` is the
+		// program's own ancestor, so an applier that refused where the mount meets
+		// the program would have allocated it on the host first — this page is the
+		// shape where "refused early" and "refused late" differ.
+		//
+		// Asserted on the native list rather than on the page's children: the
+		// direct walk creates as it goes and attaches its roots once at the end, so
+		// an empty page is what a refusal anywhere leaves and would hold either
+		// way. A `<list>` the host allocated is the thing that would actually have
+		// been paid for.
+		expect(papi.lists).toHaveLength(0);
+	});
+
+	it('refuses a program under a hidden host, not only a hidden program', () => {
+		// The inherited half of the same refusal. The program itself carries no
+		// visibility here; its parent is what is hidden, and a program under a
+		// hidden host is just as hidden as one marked so. Both halves matter
+		// because a program's raw-text nodes are exactly what it stopped carrying,
+		// which is why neither can be marked by guessing.
+		const created: string[] = [];
+		const base = intrinsicHost();
+		const papi = {
+			...base,
+			createElement(type: string, parent: number, text: string) {
+				created.push(type);
+				return base.createElement(type, parent, text);
+			},
+		};
+		const container = createLynxHostContainer(papi, { root: 1 });
+		let thrown: unknown;
+		try {
+			applyLynxFirstScreenDirect(
+				container,
+				[
+					{
+						kind: 'host',
+						id: 1,
+						type: 'view',
+						props: {},
+						visibility: 'hidden',
+						children: [programNode({ id: 2, ids: [2, 3] })],
+					},
+				],
+				PROGRAM_ENVELOPE,
+			);
+		} catch (error) {
+			thrown = error;
+		}
+		expect(thrown).toBeInstanceOf(LynxFirstScreenRefusalError);
+		expect((thrown as Error).message).toMatch(
+			/cannot yet mount a hidden compiled main-thread program/,
+		);
+		// The hidden `<view>` is the program's ancestor, so the same early-versus-
+		// late claim as above, counted where this page can show it: nothing the
+		// host was asked to make.
+		expect(created).toEqual([]);
 	});
 });

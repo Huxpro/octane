@@ -23,6 +23,7 @@ import {
 	firstScreenEvent,
 	renderLynxFirstScreen,
 	universalFor as firstScreenFor,
+	universalActivity as firstScreenActivity,
 	universalComponent as firstScreenComponent,
 	universalPlan as firstScreenPlan,
 	universalProps as firstScreenProps,
@@ -179,6 +180,40 @@ const ForeignRowScene = defineFirstScreenComponent(
 			),
 		]),
 );
+
+/**
+ * A page the *applier* cannot finish, rather than one the renderer cannot
+ * render.
+ *
+ * A compiled main-thread program marks its hidden hosts with an attribute
+ * unless they are raw text, and which of a program's nodes are raw text is
+ * exactly what the program stopped carrying — so the mount refuses a hidden one
+ * rather than guessing. `bind` is deliberately a trap: the refusal happens
+ * before the program is ever bound, and a test that passed by running it would
+ * be testing something else.
+ *
+ * The sibling in front of it is the point, and it is the reason the plan sits
+ * second rather than alone. It is the node the applier would have painted first
+ * if a refusal were raised where the mount meets it, so a page that ends with
+ * nothing created is evidence the refusal was decided before the walk began
+ * rather than evidence there was nothing to paint.
+ */
+const refusedProgramPlan = firstScreenPlan('lynx', {
+	kind: 'program',
+	slots: [],
+	nodes: 1,
+	values: [],
+	events: [],
+	ranges: [],
+	bind: () => () => {
+		throw new Error('a refused program is never bound');
+	},
+});
+
+const HiddenProgramScene = defineFirstScreenComponent('lynx', () => [
+	firstScreenValue(mainPlan, [firstScreenProps([['set', 'id', 'painted-before']])]),
+	firstScreenActivity('hidden', () => firstScreenValue(refusedProgramPlan, [])),
+]);
 
 /** A page whose setup faults, which is the opposite case and must stay one. */
 const FaultingScene = defineFirstScreenComponent('lynx', (): never => {
@@ -1608,6 +1643,52 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 				message: 'Lynx first-screen root.render() requires a compiled Lynx component.',
 			}),
 		]);
+	});
+
+	it('declines a page the applier cannot finish, before it has created anything', () => {
+		// The same boundary from the other side. Here the renderer produced a tree
+		// perfectly well and the *mount* is what cannot finish it, which is the
+		// shape #163's C2d slice left behind by name. The page is well formed and
+		// the background paints it over the command path, so it costs the first
+		// screen rather than the launch.
+		const removed: object[] = [];
+		const created: object[] = [];
+		const { dom, main } = installEnvironment((target) => {
+			const create = target.__CreateElement as (...args: unknown[]) => object;
+			target.__CreateElement = (...args: unknown[]) => {
+				const node = create.apply(target, args);
+				created.push(node);
+				return node;
+			};
+			const remove = target.__RemoveElement as (...args: unknown[]) => unknown;
+			target.__RemoveElement = (...args: unknown[]) => {
+				removed.push(args[1] as object);
+				return remove.apply(target, args);
+			};
+		});
+
+		expect(firstScreenRoot.render(HiddenProgramScene, {})).toBeNull();
+		expect(main.firstScreenSnapshot()).toBeNull();
+		expect(main.diagnostics()).toEqual([
+			expect.objectContaining({
+				code: 'OCTANE_LYNX_FIRST_SCREEN_REFUSED',
+				message: expect.stringMatching(/cannot yet mount a hidden compiled main-thread program/),
+			}),
+		]);
+		// And the part this asserts beyond the decline: the page costs zero PAPI
+		// calls, not merely zero surviving nodes. The direct applier has no
+		// prepare stage to refuse from, so it decides every refusal in a pre-walk
+		// ahead of the paint — which is what lets a declined page be indistinct
+		// from one that was never attempted, instead of one built and torn down.
+		//
+		// `#painted-before` is what makes that a claim rather than a tautology: it
+		// is the sibling *in front of* the refused program, so a refusal raised
+		// where the mount meets the program would have created it first. Nothing
+		// created at all is the pre-walk, and nothing else.
+		expect(created).toEqual([]);
+		expect(removed).toEqual([]);
+		expect(dom.window.document.querySelector('#painted-before')).toBeNull();
+		expect(dom.window.document.querySelectorAll('view')).toHaveLength(0);
 	});
 
 	it('still faults when the page itself throws, rather than declining it', () => {

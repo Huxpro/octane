@@ -95,6 +95,41 @@ export interface LynxResolvedFirstTreeEvent {
 	readonly priority: UniversalEventPriority;
 }
 
+export const LYNX_FIRST_SCREEN_REFUSED = 'OCTANE_LYNX_FIRST_SCREEN_REFUSED' as const;
+
+/**
+ * A first screen this build cannot paint, as opposed to one it painted wrongly.
+ *
+ * The distinction is #163's C3 boundary. A synchronous first screen is an
+ * optimization over a page the background renders anyway, so meeting the edge
+ * of what the main thread can paint costs the optimization and nothing else:
+ * the receiver retires the attempt as `skipped` and the page arrives on the
+ * command path, which is the fallback the design names. A *defect* — a `<list>`
+ * nested in a `<list>`, a program whose create disagrees with its own plan, an
+ * error out of application setup — is the opposite case and still faults,
+ * because nothing about the command path makes a wrong page right and a quiet
+ * decline would hide it.
+ *
+ * Recognized by identity for a reason a comparison against the message could
+ * not give: application code renders inside this pass, and an `Error` a
+ * component happened to throw with the same text would otherwise buy itself a
+ * decline.
+ *
+ * It lives here rather than beside either thrower because both the renderer and
+ * the direct applier raise one, and the boundary is the same boundary from
+ * either side: the renderer refuses a component nothing compiled for it, and
+ * the applier refuses a tree the renderer can produce but the mount cannot
+ * finish.
+ */
+export class LynxFirstScreenRefusalError extends Error {
+	readonly code = LYNX_FIRST_SCREEN_REFUSED;
+
+	constructor(message: string) {
+		super(message);
+		this.name = 'LynxFirstScreenRefusalError';
+	}
+}
+
 export const LYNX_FIRST_TREE_MISMATCH = 'OCTANE_LYNX_FIRST_SCREEN_MISMATCH' as const;
 
 /** Stable mismatch category; the host repairs from the background tree. */
