@@ -261,18 +261,6 @@ interface LynxHostState<Node extends LynxElementRef> {
 	/** Monotonic: ordinary trees never need native-list ancestry bookkeeping. */
 	hasNativeListTopology: boolean;
 	/**
-	 * Monotonic: this container painted a compiled main-thread program (issue
-	 * #163), so part of its physical tree has no record describing it.
-	 *
-	 * That is the point of a program rather than a gap in one — it is compiled so
-	 * that its subtree is never described — but every path that reads the record
-	 * tree as the whole tree has to say so instead of quietly reporting the part
-	 * it can see. `captureLynxFirstTree` declines such a container outright, on
-	 * the route it already had for a page it painted correctly and cannot
-	 * describe.
-	 */
-	hasMainThreadProgram: boolean;
-	/**
 	 * Every node a compiled main-thread program painted, by the ID it took.
 	 *
 	 * A program writes no record, so this is the only thing that says which
@@ -3020,7 +3008,6 @@ export function createLynxHostContainer<Node extends LynxElementRef>(
 		onCallbackFault: options.onCallbackFault,
 		hasMainThreadProps: false,
 		hasNativeListTopology: false,
-		hasMainThreadProgram: false,
 		programNodes: new Map(),
 		acceptedVersion: 0,
 		disposed: false,
@@ -3830,7 +3817,6 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 				`a compiled main-thread program declaring ${plan.nodes} nodes returned ${created.length}.`,
 			);
 		}
-		state.hasMainThreadProgram = true;
 		for (let index = 0; index < created.length; index++) {
 			const element = created[index] as Node;
 			state.ownedNodes.add(element);

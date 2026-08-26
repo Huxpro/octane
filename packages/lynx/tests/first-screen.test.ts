@@ -1472,6 +1472,37 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		expect(dom.window.document.querySelectorAll('list')).toHaveLength(0);
 	});
 
+	it('declines a program-bearing first screen the direct applier cannot finish', () => {
+		// The staged batch path cannot carry a compiled main-thread program —
+		// reading `batch` on such a result throws by design — so when the direct
+		// applier refuses to start the tree (here: a `<list>` on a host with no
+		// list PAPI), the whole first screen declines to the command path instead
+		// of crashing into the batch fallback with an error naming the wrong
+		// problem.
+		const { dom, main } = installEnvironment((target) => {
+			delete target.__CreateList;
+			delete target.__UpdateListCallbacks;
+		});
+		const programPlan = firstScreenPlan('lynx', {
+			kind: 'program',
+			slots: [],
+			nodes: 1,
+			values: [],
+			events: [],
+			ranges: [],
+			bind: () => () => [],
+		} as never);
+		const ProgramBesideList = defineFirstScreenComponent('lynx', () => [
+			firstScreenValue(programPlan, []),
+			firstScreenValue(emptyFeedPlan, ['feed-shell', 'feed']),
+		]);
+
+		expect(firstScreenRoot.render(ProgramBesideList, {})).toBeNull();
+		expect(main.firstScreenSnapshot()).toBeNull();
+		// Declined before anything was painted: no half-built tree stays behind.
+		expect(dom.window.document.querySelectorAll('view')).toHaveLength(0);
+	});
+
 	it('still reports a host that cannot build a list rather than declining it silently', () => {
 		// Without the list PAPI pair a `<list>` cannot be built at all. That is a
 		// fact about the host, not a page to skip quietly, so the tree keeps going
