@@ -1,13 +1,20 @@
 // The profile is folded by matching string literals in a minified bundle, so
-// what is worth pinning is not a bucket's name but the three ways that folding
+// what is worth pinning is not a bucket's name but the four ways that folding
 // can attribute a sample to the wrong function while still looking complete:
 // reading past a frame into its neighbour, losing the one function that carries
-// no literal of its own, and folding the harness's own code in with the
-// framework's.
+// no literal of its own, folding the harness's own code in with the
+// framework's, and splitting a bucket into sites that no longer add up to it.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { bucketOf, foldProfile, PROBE_WINDOW } from './mts-profile-buckets.mjs';
+import {
+	bucketOf,
+	BUCKETS,
+	COMPILED_CREATE_SITE,
+	foldProfile,
+	PROBE_WINDOW,
+	SITES_BY_BUCKET,
+} from './mts-profile-buckets.mjs';
 
 const MTS = 'blob:http://127.0.0.1:8364/mts';
 const PAGE = 'http://127.0.0.1:8364/control';
@@ -19,6 +26,14 @@ const VISIT =
 	'r=>{var{node:t,parentRecord:n,parentId:i,physicalParent:l,parentVisible:s,insideList:d}=r;if(null===t){var c=r.listRecord;if(null!==c)return void r9(a,c);';
 const MOUNT_PROGRAM =
 	'(r,t,n,i)=>{var l,s=function(r){var t;var n=c[r.node];if(void 0===n)throw eZ(`first-screen program binds an event on node ${r.node}, which it did not number.`);';
+// The same function entered from its other end: a different probe, the same
+// `where`, so a split keyed by source has to fold the two back together.
+const MOUNT_PROGRAM_OTHER_END =
+	'(r,t)=>{var n=r.plan;if(void 0===n)throw eZ(`first-screen program node carries no plan.`);';
+// A different function inside the same bucket, which is what a split has to
+// separate from the two above.
+const MOUNT_RANGES =
+	'(r,t,n)=>{var i=c[r.node];if(void 0===i)throw eZ(`first-screen program appends a keyed range into node ${r.node}, which it did not number.`);';
 // Emitted code: no diagnostic, no stable name, nothing but the app's own markup.
 const EMITTED = 'create:(e,r)=>{let t=e.h("view");e.p(t,"class","page");';
 const APP = '(e,t)=>(0,r.Zz)(z,[(0,r.DT)("lynx",R,(0,r.uc)([["set","row",e]]))]))';
@@ -35,11 +50,15 @@ function line(placements) {
 const VISIT_AT = 100;
 // The real spacing between these two functions in the measured bundle.
 const MOUNT_AT = VISIT_AT + 258;
+const MOUNT_OTHER_AT = 700;
+const MOUNT_RANGES_AT = 950;
 const EMITTED_AT = 1200;
 const APP_AT = 1600;
 const SOURCE = line([
 	[VISIT_AT, VISIT],
 	[MOUNT_AT, MOUNT_PROGRAM],
+	[MOUNT_OTHER_AT, MOUNT_PROGRAM_OTHER_END],
+	[MOUNT_RANGES_AT, MOUNT_RANGES],
 	[EMITTED_AT, EMITTED],
 	[APP_AT, APP],
 ]);
@@ -64,6 +83,24 @@ function profile() {
 		],
 		samples: [2, 3, 4, 5, 6],
 		timeDeltas: [400, 200, 300, 900, 100],
+	};
+}
+
+/**
+ * One bucket entered three ways: twice through the same function, once through
+ * another that shares its bucket. A split keyed by source has to fold the first
+ * two together and keep the third apart, and still sum to the bucket.
+ */
+function mountProfile() {
+	return {
+		nodes: [
+			{ id: 1, callFrame: frame('', 0), children: [2, 3, 4] },
+			{ id: 2, callFrame: frame(MTS, MOUNT_AT), hitCount: 2, children: [] },
+			{ id: 3, callFrame: frame(MTS, MOUNT_OTHER_AT), hitCount: 1, children: [] },
+			{ id: 4, callFrame: frame(MTS, MOUNT_RANGES_AT), hitCount: 1, children: [] },
+		],
+		samples: [2, 3, 4],
+		timeDeltas: [200, 50, 70],
 	};
 }
 
@@ -109,4 +146,57 @@ test('the harness’s own realm is excluded from the framework total', () => {
 test('bucketOf declines text it cannot name rather than guessing', () => {
 	assert.equal(bucketOf(EMITTED), null);
 	assert.equal(bucketOf(MOUNT_PROGRAM), 'program mount');
+});
+
+test('a bucket splits into the functions it folds, and they add back up to it', () => {
+	const { buckets, sites } = foldProfile(mountProfile(), MTS, sourceAt);
+	// Two entrances to `mountProgram` and one to the helper that appends a
+	// program's keyed ranges. The bucket is what the script is; the sites are
+	// what it is doing, which is the whole reason to key them separately.
+	assert.equal(sites.get('core/host-driver.ts mountProgram')?.us, 250);
+	assert.equal(sites.get('core/host-driver.ts mountProgram range members')?.us, 70);
+	// The split is an attribution, so it has to account for the bucket exactly.
+	// A site total that drifts from its bucket reads as an explanation while
+	// quietly holding time back.
+	const fromSites = SITES_BY_BUCKET['program mount'].reduce(
+		(sum, site) => sum + (sites.get(site)?.us ?? 0),
+		0,
+	);
+	assert.equal(fromSites, buckets.get('program mount').us);
+});
+
+test('a site says how many frames its probe actually matched', () => {
+	const { sites } = foldProfile(mountProfile(), MTS, sourceAt);
+	// Here the two are the minifier's two entrances to `mountProgram`; elsewhere
+	// two frames under one site are two functions a probe was wide enough to
+	// reach. The count does not tell those apart and is not meant to — what it
+	// does is stop a shared total from being read as one function's cost without
+	// anyone checking which case it is.
+	assert.equal(sites.get('core/host-driver.ts mountProgram').positions.size, 2);
+	assert.equal(sites.get('core/host-driver.ts mountProgram range members').positions.size, 1);
+});
+
+test('the emitted create is a site as well as a bucket, having no probe to be one', () => {
+	const { buckets, sites } = foldProfile(profile(), MTS, sourceAt);
+	// It is named by its caller rather than by a literal, so it is the one site
+	// the probe table cannot produce — and the one a split would lose first.
+	assert.equal(sites.get(COMPILED_CREATE_SITE)?.us, 300);
+	assert.equal(buckets.get('compiled program create').us, 300);
+});
+
+test('every bucket the fold can produce is listed with its sites', () => {
+	// A probe added to the table without a site list would fold into a bucket the
+	// split cannot render, and the missing time would look like a small bucket
+	// rather than a gap.
+	for (const { bucket } of BUCKETS) {
+		assert.ok(SITES_BY_BUCKET[bucket]?.length > 0, `${bucket} has no sites`);
+	}
+	assert.ok(SITES_BY_BUCKET['compiled program create']?.includes(COMPILED_CREATE_SITE));
+	for (const [bucket, listed] of Object.entries(SITES_BY_BUCKET)) {
+		const fromTable = BUCKETS.filter((entry) => entry.bucket === bucket).map(
+			(entry) => entry.where,
+		);
+		const expected = bucket === 'compiled program create' ? [COMPILED_CREATE_SITE] : fromTable;
+		assert.deepEqual([...listed].sort(), [...new Set(expected)].sort());
+	}
 });

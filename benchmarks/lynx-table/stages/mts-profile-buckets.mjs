@@ -175,17 +175,57 @@ export const BUCKETS = Object.freeze([
 export const PROBE_WINDOW = 160;
 
 /**
+ * The probe-table entry that names one frame, or `null` for a frame the table
+ * does not name. `text` is the source at the frame's position.
+ */
+export function probeOf(text) {
+	for (const entry of BUCKETS) {
+		if (text.includes(entry.probe)) return entry;
+	}
+	return null;
+}
+
+/**
  * Bucket one frame. `text` is the source at the frame's position. A frame the
  * table does not name is `null`, which the caller reports rather than hides —
  * except for a frame the compiled program itself owns, which carries no
  * literal of its own and is named by its caller instead.
  */
 export function bucketOf(text) {
-	for (const entry of BUCKETS) {
-		if (text.includes(entry.probe)) return entry.bucket;
-	}
-	return null;
+	return probeOf(text)?.bucket ?? null;
 }
+
+/**
+ * The site name given to the compiled program's create, which has no probe of
+ * its own because it is emitted code. Spelled once here so the report and the
+ * fold cannot disagree about it.
+ */
+export const COMPILED_CREATE_SITE = 'emitted main-thread program create';
+
+/**
+ * Every bucket's source sites, in probe order. Derived from the table rather
+ * than restated beside it, so a probe added above cannot leave a report
+ * describing a split that no longer holds.
+ *
+ * `compiled program create` is here too, carrying the one site the probe table
+ * cannot: its frames are named by their caller, not by a literal of their own,
+ * so without this entry the map would be missing a bucket the fold does
+ * produce. A caller rendering only the buckets that fold several functions
+ * filters on `length > 1`; a caller checking that the split accounts for
+ * everything needs all of them.
+ */
+export const SITES_BY_BUCKET = Object.freeze(
+	Object.fromEntries(
+		[
+			...BUCKETS.reduce((byBucket, entry) => {
+				const seen = byBucket.get(entry.bucket) ?? [];
+				if (!seen.includes(entry.where)) seen.push(entry.where);
+				return byBucket.set(entry.bucket, seen);
+			}, new Map()),
+			['compiled program create', [COMPILED_CREATE_SITE]],
+		].map(([bucket, sites]) => [bucket, Object.freeze(sites)]),
+	),
+);
 
 /**
  * True for the frame that mounts a program, whose unnamed callees are its create.
@@ -209,12 +249,31 @@ export function isProgramMountFrame(text) {
 }
 
 /**
- * Fold one CPU profile into `{buckets, unmatched, samples}`, in microseconds.
+ * Fold one CPU profile into `{buckets, sites, unmatched, samples}`, in
+ * microseconds.
  *
  * Only frames in `scriptUrl` are counted: the page realm runs the harness's own
  * predicate walker, which is measurement rather than framework and would swamp
  * everything if it were folded in. `sourceAt(line, column)` returns the window
  * to match, so the caller owns how the script text was obtained.
+ *
+ * `sites` is the same time keyed by each probe's `where` rather than its
+ * bucket. Several buckets fold more than one function — `renderer pre-passes`
+ * is six of them — and a bucket that large says where the script is without
+ * saying what it is doing, which is the question an attribution slice has to
+ * answer next. Two probes sharing one `where` are two entrances to one
+ * function, so keying by `where` folds them back together, which is what makes
+ * a site total readable as a function's cost. The bucket totals are unchanged
+ * by construction: every named frame lands in exactly one of each.
+ *
+ * A site cell also carries `positions`, the distinct frame positions folded
+ * into it, because a `where` is a claim about the source and not a measurement
+ * of it. A probe wide enough to match two neighbouring functions names both,
+ * and the site then reads as one function's cost while holding several — the
+ * same failure as an over-broad bucket, one level down. Counting the positions
+ * puts that in the record instead of leaving it to a debugger, in the same
+ * spirit as reporting `unmatched` rather than folding it away. A site over one
+ * position is a probe to narrow, not a number to read as one function's.
  */
 export function foldProfile(profile, scriptUrl, sourceAt) {
 	const byId = new Map(profile.nodes.map((node) => [node.id, node]));
@@ -229,6 +288,7 @@ export function foldProfile(profile, scriptUrl, sourceAt) {
 		selfUs.set(id, (selfUs.get(id) ?? 0) + (deltas[index] ?? 0));
 	}
 	const buckets = new Map();
+	const sites = new Map();
 	const unmatched = new Map();
 	let samples = 0;
 	const add = (map, key, us, hits) => {
@@ -237,15 +297,21 @@ export function foldProfile(profile, scriptUrl, sourceAt) {
 		cell.hits += hits;
 		map.set(key, cell);
 	};
+	const addSite = (key, us, hits, frame) => {
+		add(sites, key, us, hits);
+		const cell = sites.get(key);
+		(cell.positions ??= new Set()).add(`${frame.lineNumber}:${frame.columnNumber}`);
+	};
 	for (const [id, us] of selfUs) {
 		const node = byId.get(id);
 		if (node === undefined || node.callFrame.url !== scriptUrl) continue;
 		samples += node.hitCount ?? 0;
 		const frame = node.callFrame;
 		const text = sourceAt(frame.lineNumber, frame.columnNumber);
-		const named = bucketOf(text);
-		if (named !== null) {
-			add(buckets, named, us, node.hitCount ?? 0);
+		const entry = probeOf(text);
+		if (entry !== null) {
+			add(buckets, entry.bucket, us, node.hitCount ?? 0);
+			addSite(entry.where, us, node.hitCount ?? 0, frame);
 			continue;
 		}
 		// A compiled program's create function is emitted code: it carries no
@@ -260,9 +326,10 @@ export function foldProfile(profile, scriptUrl, sourceAt) {
 			isProgramMountFrame(sourceAt(parentFrame.lineNumber, parentFrame.columnNumber))
 		) {
 			add(buckets, 'compiled program create', us, node.hitCount ?? 0);
+			addSite(COMPILED_CREATE_SITE, us, node.hitCount ?? 0, frame);
 			continue;
 		}
 		add(unmatched, `${frame.lineNumber}:${frame.columnNumber}`, us, node.hitCount ?? 0);
 	}
-	return { buckets, unmatched, samples };
+	return { buckets, sites, unmatched, samples };
 }

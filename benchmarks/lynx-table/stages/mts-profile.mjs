@@ -36,7 +36,7 @@ import {
 	makeBenchHtml,
 	stats,
 } from '../web/driver-client.mjs';
-import { foldProfile, PROBE_WINDOW } from './mts-profile-buckets.mjs';
+import { foldProfile, PROBE_WINDOW, SITES_BY_BUCKET } from './mts-profile-buckets.mjs';
 import { tagFrom } from '../scripts/build-app.mjs';
 import { bundleIdentity, writeEvidenceJson } from '../scripts/evidence.mjs';
 
@@ -272,6 +272,46 @@ for (const id of cellIds) {
 		const ms = samples[id].map((sample) => (sample.buckets.get(name)?.us ?? 0) / 1000);
 		perBucket[name] = stats(ms);
 	}
+	// The same time keyed by source site rather than by bucket. A bucket folding
+	// six functions says where the script is without saying what it is doing,
+	// and the sites are what answer that.
+	const perSite = {};
+	for (const name of bucketNames) {
+		for (const site of SITES_BY_BUCKET[name] ?? []) {
+			const ms = samples[id].map((sample) => (sample.sites.get(site)?.us ?? 0) / 1000);
+			// Across every reading, not per reading: a function entered in one rep
+			// and not the next is still a function this site folds.
+			const positions = new Set(
+				samples[id].flatMap((sample) => [...(sample.sites.get(site)?.positions ?? [])]),
+			);
+			perSite[site] = { ...stats(ms), frames: positions.size };
+		}
+	}
+	// A site the fold produced that no bucket claims would go missing silently,
+	// and a bucket whose sites do not sum to it would be a split that reads as an
+	// attribution while hiding time. Both are refusals rather than roundings: the
+	// two maps are built from one pass over one set of frames, so any drift
+	// between them is a defect in this file, not a property of the run.
+	for (const sample of samples[id]) {
+		for (const site of sample.sites.keys()) {
+			if (perSite[site] === undefined) {
+				throw new Error(
+					`${id}: fold produced site ${JSON.stringify(site)}, which no bucket lists.`,
+				);
+			}
+		}
+		for (const [name, cell] of sample.buckets) {
+			const fromSites = (SITES_BY_BUCKET[name] ?? []).reduce(
+				(sum, site) => sum + (sample.sites.get(site)?.us ?? 0),
+				0,
+			);
+			if (Math.abs(fromSites - cell.us) > 1e-6) {
+				throw new Error(
+					`${id}: bucket ${JSON.stringify(name)} is ${cell.us} µs but its sites sum to ${fromSites}.`,
+				);
+			}
+		}
+	}
 	const namedMs = samples[id].map(
 		(sample) => [...sample.buckets.values()].reduce((sum, cell) => sum + cell.us, 0) / 1000,
 	);
@@ -285,6 +325,7 @@ for (const id of cellIds) {
 	const sourceAt = witnesses.get(id);
 	cells[id] = {
 		buckets: perBucket,
+		sites: perSite,
 		namedMs: stats(namedMs),
 		unmatchedMs: stats(unmatchedMs),
 		totalMs: stats(namedMs.map((value, index) => value + unmatchedMs[index])),
@@ -388,6 +429,68 @@ lines.push(
 	rowFor('unnamed by the probe table', (cell) => cell.unmatchedMs),
 	rowFor('**main-thread script, all frames**', (cell) => cell.totalMs),
 	'',
+);
+
+// How many buckets fold several functions, and which folds the most, are facts
+// about the probe table rather than about the run. Deriving them keeps the
+// paragraph below from describing a split the table stopped having: a probe
+// added upstairs would otherwise leave a record confidently naming the wrong
+// bucket as the widest, in the prose that exists to warn against exactly that.
+const multiSite = ordered.filter((name) => (SITES_BY_BUCKET[name] ?? []).length > 1);
+const widest = multiSite.reduce(
+	(a, b) => (SITES_BY_BUCKET[b].length > SITES_BY_BUCKET[a].length ? b : a),
+	multiSite[0],
+);
+const COUNT_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+const countWord = (n) => COUNT_WORDS[n] ?? String(n);
+
+if (multiSite.length > 0) {
+	lines.push(
+		'### Inside the buckets that fold several functions',
+		'',
+		`A bucket is a probe table entry, not a function, and ${countWord(multiSite.length)} of the rows above`,
+		`name more than one. \`${widest}\` names ${countWord(SITES_BY_BUCKET[widest].length)}, so its row says which`,
+		'file the script is in and nothing about what it is doing there. These are the',
+		'same samples keyed by the source each probe was taken from; every bucket below',
+		'sums to its own row above, which the report checks rather than assumes. A site',
+		'at 0.0 is a function the run never entered, reported rather than dropped so',
+		'that a probe which stopped matching looks different from a branch nothing took.',
+		'',
+		'A site is a claim about the source, so each cell also says how many distinct',
+		'frame positions its probe actually matched. One is a site whose total is a',
+		'single function’s. More is a total shared between frames, and which kind it is',
+		'has to be read from the source: two entrances the minifier made to one',
+		'function look exactly like two functions a probe was wide enough to reach.',
+		'The count does not settle that, and it is printed so the number is not read as',
+		'a single function’s cost before it has been.',
+		'',
+	);
+}
+for (const name of multiSite) {
+	const sites = SITES_BY_BUCKET[name];
+	// `frames` is how many distinct frame positions the site folded. One is a
+	// site that measured a single function; more is a site whose total is shared,
+	// which the reader has to see before reading it as one function's cost.
+	const siteRow = (site) =>
+		`| \`${site}\` | ${cellIds
+			.map((id) => {
+				const stat = cells[id].sites[site];
+				if (stat === undefined) return '—';
+				const value = `${round(stat.median, 1)} [${round(stat.min, 1)}–${round(stat.max, 1)}]`;
+				return stat.frames > 1 ? `${value} · ${stat.frames} frames` : value;
+			})
+			.join(' | ')} |`;
+	lines.push(
+		`**${name}**`,
+		'',
+		`| source site | ${cellIds.map((id) => `\`${id}\``).join(' | ')} |`,
+		`|---|${cellIds.map(() => '---:').join('|')}|`,
+		...sites.map((site) => siteRow(site)),
+		rowFor(`**${name}, all sites**`, (cell) => cell.buckets[name]),
+		'',
+	);
+}
+lines.push(
 	'### The largest frames the probe table did not name',
 	'',
 	'Reported rather than folded away: an unnamed frame is either a function worth a',

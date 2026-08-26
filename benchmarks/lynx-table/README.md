@@ -1816,6 +1816,156 @@ shape C11's second probe was added for — and the check is kept at
 `results/c163-c13-probecheck-30000.md`. `unnamed` is 23.1 and 23.0 ms in the two
 arms, so no bucket quietly stopped matching.
 
+### The buckets split into the functions they fold (issue #163 C14)
+
+C10 through C13 attributed the program mount by ablating it: build an arm that
+deletes a line, measure what leaves. That works on a frame you already suspect,
+and it costs a build, a window and a fold hazard each time. It says nothing
+about the rest of the script. This slice attributes the rest by reading it. No
+arm, no ablation, so no fold hazard to size — one window over the two shipping
+cells, `octane` and `octane-mts-program`, at 30,000 rows
+(`results/c163-c14-sites-30000.md`).
+
+The obstacle was the instrument. A bucket is a probe-table entry, not a
+function, and five of the rows in §7's table name more than one — `host record
+building` names seven, `renderer pre-passes` six. A row that wide says which
+file the script is in and nothing about what it is doing there, which is exactly
+the question left after the mount. `foldProfile` now keys the same samples by
+each probe's `where` as well as by its `bucket`, and the report renders a
+sub-table for every row that folds more than one site. Two probes sharing a
+`where` are two entrances to one function, so keying by `where` folds them back
+together; the bucket totals are unchanged by construction, because every named
+frame lands in exactly one of each.
+
+The report **refuses rather than rounds**. Both maps come from one pass over one
+set of frames, so a site no bucket lists, or a bucket whose sites do not sum to
+it, is a defect in the instrument and not a property of the run: either throws
+instead of printing. The paragraph naming the widest bucket is derived from the
+table rather than written beside it — while it was hardcoded it named the wrong
+one.
+
+#### A site is a claim about the source, not a measurement of it
+
+A `where` says which function the time belongs to, and a probe wide enough to
+reach two neighbouring functions names both. The site then reads as one
+function's cost while holding several — the same failure as an over-broad
+bucket, one level down, and the failure §7's window calibration already exists
+to prevent one level up. So each cell also reports how many distinct frame
+positions its probe actually matched, unioned across every reading.
+
+**One frame is a site whose total is a single function's. More is a total
+shared, and only the source settles which:** two entrances the minifier made to
+one function look exactly like two functions a wide probe reached. The count
+does not decide that. It is printed so the number cannot be read as one
+function's cost before someone has.
+
+That is not a hypothetical. Widening this instrument is what exposed it: the
+`.plan.` probe folds three distinct functions in the program cell, two of which
+sit **67 characters apart** — well inside the 160-character window, and far
+closer than the 258 characters §7's calibration note cites as the closest
+neighbouring pair. `node normalization` folds five frames in `octane` and two in
+the program cell. Reporting the count is the general fix; narrowing those probes
+is the next slice, and until it lands their totals stay shared.
+
+#### The same bytes, a second window
+
+The program cell here and C11–C13's `mountctl` control are the same bundle:
+digest `381fe0ab988a479c`, 520,098 bytes, built once and measured in two windows
+half an hour apart. So the two records are a repeatability check on the
+instrument, and it holds — every bucket agrees within noise:
+
+| main-thread script @30,000 | C13 `mountctl` | C14 `octane-mts-program` |
+|---|---:|---:|
+| program mount | 208.9 | 204.6 |
+| renderer pre-passes | 67.2 | 68.2 |
+| event bookkeeping | 39.4 | 39.8 |
+| applier entry and pre-walk | 34.1 | 33.4 |
+| compiled program create | 24.0 | 24.3 |
+| applier walk | 23.9 | 23.2 |
+| first tree capture | 22.5 | 23.9 |
+| **all frames** | **455.9** | **452.0** |
+
+That is what licenses reading a C14 site total beside a C12 or C13 ablation
+delta at all. They remain different kinds of number — a site total is self time
+in the shipping build, an ablation delta is what leaves when a line is deleted —
+and a comparison between them is an order-of-magnitude one, not an arithmetic
+one.
+
+#### What the split says at 30,000 rows
+
+`applier entry and pre-walk` and `event bookkeeping` are single-frame throughout,
+so every number in them is one function's:
+
+| source site | `octane` | `octane-mts-program` |
+|---|---:|---:|
+| `applyLynxFirstScreenDirect` | 93.4 [83.2–112.4] | 28.2 [20.7–31.5] |
+| `firstScreenTreeHasList` | 10.1 [8.9–12.3] | 4.7 [3.8–5.8] |
+| `nativeEventMap` | 29.8 [25.7–35.1] | 30.8 [25.6–35.5] |
+| `events.ts token encode` | 7.2 [5.4–10.7] | 9.0 [6.1–11.7] |
+| `parseLynxNativeEventProp` | 14.5 [10.8–17.7] | 0.0 [0–0] |
+
+**`nativeEventMap` does not move.** 29.8 ms in `octane`, 30.8 in the program
+cell. The program removes 396 ms of applier walk, 254 ms of record building,
+93 ms of first-tree capture and all 14.5 ms of prop parsing, and leaves this
+bucket's largest site exactly where it was — it is the first named frame on the
+program's first screen that the program's whole architecture does not touch. At
+30.8 ms it is the same order as the mount lines C12 and C13 priced, and no
+ablation was ever pointed at it, which is why no earlier slice surfaced it.
+
+`token encode` reads 9.0 ms here against the 21.9 ms C12 charged to minting.
+The two are consistent rather than contradictory: C12's arm removed the minting
+work from *the mount's own frame*, where the callee is inlined, and this site is
+what stays attributed to `events.ts` itself.
+
+`host record building` is the bucket the program nearly deletes — 256.3 → 2.5 ms
+— and the split says what of it dies: `cloneProps` 85.5, `textValue` 58.8,
+`createHandle` 49.3, `planLynxHostPropPatch` 38.2, `selector install` 8.7 and
+`handle-selector guards` 0.9, every one to 0.0, with only `emitHostNode`
+surviving, at 2.5 from 14.4. `cloneProps` alone is the largest single function
+the program removes at this scale.
+
+`program mount` is 204.6 ms over **2 frames** — the two minifier entrances C11
+documented and added its second probe for — so the mount's total is confirmed
+whole rather than split across a probe that stopped matching.
+
+`renderer pre-passes` is the row this slice most wanted and least got:
+
+| source site | `octane` | `octane-mts-program` |
+|---|---:|---:|
+| `program id count and assignment` | 38.4 · 2 frames | 29.4 · 3 frames |
+| `node normalization` | 32.4 · 5 frames | 14.3 · 2 frames |
+| `recursive prop freeze` | 33.3 · 2 frames | 14.2 |
+| `prop bag builder` | 6.7 | 6.4 |
+| `first-screen host and text factories` | 39.9 · 3 frames | 2.2 |
+| `template create and prop freeze` | 0.0 | 0.0 |
+| **all sites** | **154.9** | **68.2** |
+
+At 68.2 ms this is the second-largest named frame in the program cell now that
+the mount is attributed, and the split moves it from one number to six. But its
+two largest sites are shared totals — 3 frames and 2 frames — so neither is yet
+a function's cost, and saying otherwise is the error this instrument was just
+taught to report. **22.8 ms of the row is readable today**: `recursive prop
+freeze` 14.2, `prop bag builder` 6.4, `first-screen host and text factories` 2.2,
+all single-frame in this cell. **43.7 ms sits in the two shared sites** —
+located, not attributed.
+
+Frame counts are per cell, and the same row shows why: `first-screen host and
+text factories` folds three frames in `octane` and one in the program cell,
+because the program never enters the other two. A count of one is a statement
+about what this cell ran, not about how wide the probe is.
+
+#### What this licenses, and what it does not
+
+It licenses design work against `nativeEventMap` (30.8 ms, single-frame,
+untouched by the program), `applyLynxFirstScreenDirect` (28.2 ms, single-frame),
+and `recursive prop freeze` (14.2 ms, single-frame). It licenses none against
+`program id count and assignment` or `node normalization` until their probes are
+narrowed, however tempting their totals look: a shared total is a location, not
+a cost.
+
+Nothing here is an ablation, so nothing here is a ceiling on a removal. These
+are the shipping build's own numbers, and no patch has taken any of them.
+
 ## Claims and non-claims
 
 Command counts and commit bytes are Octane-owned costs and are gated. The
