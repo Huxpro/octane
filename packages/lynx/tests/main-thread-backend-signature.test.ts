@@ -41,9 +41,9 @@ function backendDigest(): string {
 
 describe('the main-thread backend signature', () => {
 	it('names the emitter that is actually here', () => {
-		expect(signature).toBe('lynx-main-thread-program/3');
+		expect(signature).toBe('lynx-main-thread-program/4');
 		expect(backendDigest()).toBe(
-			'2654dee04dfe32cfa6ebb73cff802dfe21d1b05613693640b3d04b460d3839e5',
+			'033d8025947fed9d28eb1291e8449746ccc5df24b1a2c6b7f7456eaebfca32a5',
 		);
 	});
 
