@@ -262,18 +262,6 @@ interface LynxHostState<Node extends LynxElementRef> {
 	/** Monotonic: ordinary trees never need native-list ancestry bookkeeping. */
 	hasNativeListTopology: boolean;
 	/**
-	 * Monotonic: this container painted a compiled main-thread program (issue
-	 * #163), so part of its physical tree has no record describing it.
-	 *
-	 * That is the point of a program rather than a gap in one — it is compiled so
-	 * that its subtree is never described — but every path that reads the record
-	 * tree as the whole tree has to say so instead of quietly reporting the part
-	 * it can see. `captureLynxFirstTree` declines such a container outright, on
-	 * the route it already had for a page it painted correctly and cannot
-	 * describe.
-	 */
-	hasMainThreadProgram: boolean;
-	/**
 	 * Every node a compiled main-thread program painted, by the ID it took.
 	 *
 	 * A program writes no record, so this is the only thing that says which
@@ -3021,7 +3009,6 @@ export function createLynxHostContainer<Node extends LynxElementRef>(
 		onCallbackFault: options.onCallbackFault,
 		hasMainThreadProps: false,
 		hasNativeListTopology: false,
-		hasMainThreadProgram: false,
 		programNodes: new Map(),
 		acceptedVersion: 0,
 		disposed: false,
@@ -3770,6 +3757,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 	 */
 	const mountProgram = (
 		node: LynxFirstScreenDirectNode,
+		parentRecord: LynxHostRecord<Node> | null,
 		parentId: number | null,
 		physicalParent: Node,
 		parentVisible: boolean,
@@ -3860,7 +3848,6 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 				`a compiled main-thread program declaring ${plan.nodes} nodes returned ${created.length}.`,
 			);
 		}
-		state.hasMainThreadProgram = true;
 		for (let index = 0; index < created.length; index++) {
 			const element = created[index] as Node;
 			state.ownedNodes.add(element);
@@ -3886,13 +3873,23 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 				Object.freeze({ source: 'background', binding, listener: token }),
 			);
 		}
-		// A program mounted at the top level is a page root, and `rootChildren` is
-		// the logical half of that — `ownedPageRoots` being the physical half.
-		// Nothing else will add it: the push that names a page root rides the
-		// record walk, and a program writes no record. Its keyed range members are
-		// deliberately *not* here; they sit inside a node the program made, and
-		// calling them page roots is the mistake the linkage guard below refuses.
-		if (parentId === null) state.rootChildren.push(ids[0]!);
+		// A program's root is linked where an ordinary host's record would be:
+		// into the enclosing record's children under a described host, or into
+		// `rootChildren` at the top level — `ownedPageRoots` being the physical
+		// half of the latter. Nothing else will add it: the push that names a
+		// child rides the record walk, and a program writes no record. The link
+		// matters beyond bookkeeping — the background's description of the parent
+		// counts this child, so a capture that omitted it would fail the
+		// child-order comparison and turn every nested program's adoption into a
+		// repair. Its keyed range members are deliberately *not* here; they sit
+		// inside a node the program made, and calling them page roots is the
+		// mistake the linkage guard below refuses.
+		if (parentRecord !== null) {
+			if (parentRecord.children === EMPTY_HOST_CHILDREN) parentRecord.children = [];
+			parentRecord.children.push(ids[0]!);
+		} else if (parentId === null) {
+			state.rootChildren.push(ids[0]!);
+		}
 		// The attach is queued before the members so it pops after them, which is
 		// how the rest of this walk keeps a subtree out of the caller's tree until
 		// it is finished. It is the whole reason the emitted create returns its
@@ -3966,7 +3963,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			// Handled before the range-transparent branch below, which would
 			// otherwise walk past a node carrying no type and no props and publish
 			// the page it left out.
-			mountProgram(node, parentId, physicalParent, parentVisible);
+			mountProgram(node, parentRecord, parentId, physicalParent, parentVisible);
 			return;
 		}
 		if (node.kind !== 'host') {
@@ -4601,6 +4598,21 @@ function compareFirstTree<Node extends LynxElementRef>(
 					firstTree,
 					`snapshot.nodes[${id}].nativeId`,
 					'a compiled main-thread program host lost its physical node.',
+				);
+			}
+			// Visibility is the other half main does know, by construction rather
+			// than by record: the direct applier refuses a hidden program before
+			// painting anything, so every node in `programNodes` was painted
+			// visible and carries no `hidden` attribute. A description that calls
+			// one of them hidden therefore disagrees with the painted page —
+			// adopting it would keep content on screen that the accepted tree says
+			// is hidden, while event routing drops its taps as hidden. Nothing red,
+			// which is exactly the class of near-miss this comparator refuses.
+			if (!next.visible) {
+				return mismatch(
+					firstTree,
+					`snapshot.nodes[${id}].visible`,
+					'the visibility state differs.',
 				);
 			}
 			// Events are the exception to all of that, and worth taking. Main does
