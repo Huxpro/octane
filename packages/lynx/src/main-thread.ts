@@ -103,7 +103,11 @@ import {
 } from './core/main-thread-worklet-feature.js';
 import type { LynxMainThreadWorkletRegistry, LynxWorkletValue } from './core/worklets.js';
 import { installLynxFirstScreenHost } from './core/first-screen-host.js';
-import { renderLynxFirstScreen, type LynxFirstScreenRenderResult } from './main-renderer.js';
+import {
+	LynxFirstScreenRefusalError,
+	renderLynxFirstScreen,
+	type LynxFirstScreenRenderResult,
+} from './main-renderer.js';
 
 interface LynxMainThreadGlobals {
 	readonly lynx?: {
@@ -1495,9 +1499,11 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 
 	/**
 	 * Take a rendered first screen back out and release the background, whether it
-	 * was declined as unadoptable or lost to a fault. Both outcomes retain the
-	 * source first so a throwing remove/flush stays retryable rather than leaking
-	 * an unreachable tree the background would then duplicate.
+	 * was declined — as unadoptable after painting, or refused before it (#163
+	 * C3) — or lost to a fault. Every outcome retains the source first so a
+	 * throwing remove/flush stays retryable rather than leaking an unreachable
+	 * tree the background would then duplicate. A refusal reaches here with no
+	 * source at all, because nothing was created before the render ended.
 	 */
 	const retireFirstScreen = (
 		source: LynxHostContainer<Node> | null,
@@ -1985,13 +1991,30 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			announceReady();
 			return result;
 		} catch (error) {
+			if (error instanceof LynxFirstScreenRefusalError) {
+				// The capability boundary rather than a fault (issue #163 C3). This
+				// page holds a shape the main thread cannot paint — today, a component
+				// nothing compiled for this renderer — and the background renders that
+				// page perfectly well over the command path. Losing the whole launch
+				// to an error would be the framework refusing to draw a page it is
+				// able to draw, so the attempt settles the way an unadoptable one
+				// already does: `skipped`, source retired, background released.
+				//
+				// Reported rather than swallowed, and the refusal itself rather than a
+				// wrapper, so `code` survives to the diagnostic. A first screen that
+				// silently stopped happening is a cliff with nothing red at the top of
+				// it, and the reason names the component that ended it.
+				report(error);
+				retireFirstScreen(source, 'skipped', 'refused');
+				return null;
+			}
 			retireFirstScreen(source, 'failed', 'failed');
 			throw report(error, 'Octane Lynx could not render its synchronous first screen.');
 		} finally {
 			// Closes whichever phase was open, including on the paths that never
 			// reach `announce`: a tree the background cannot adopt returns early,
-			// and a fault settles the source through the `catch`. Neither may leave
-			// a phase open for whatever runs next in this realm.
+			// and both a refusal and a fault settle through the `catch`. None of
+			// them may leave a phase open for whatever runs next in this realm.
 			markFirstScreenPhase(null);
 			firstScreenRenderInProgress = false;
 			if (closePending) finalizeDeferredClose?.();
