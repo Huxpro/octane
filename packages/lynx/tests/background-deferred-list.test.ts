@@ -29,6 +29,7 @@ import {
 import { NativeListLifecycleFixture } from './_fixtures/native-list-lifecycle.lynx.tsrx';
 import { NativeListMixedFixture } from './_fixtures/native-list-mixed.lynx.tsrx';
 import { NativeListWorkletFixture } from './_fixtures/native-list-worklet.lynx.tsrx';
+import { unwire } from './_fixtures/lynx-wire.js';
 
 interface Row {
 	readonly id: string;
@@ -100,7 +101,7 @@ function recordingContext(context: LynxContextProxy, commands: Commands[]): Lynx
 		},
 		addEventListener(type, listener) {
 			const wrapper = (event: LynxContextProxyEvent) => {
-				const message = event.data as { readonly type?: unknown; readonly batch?: unknown };
+				const message = unwire(event.data) as { readonly type?: unknown; readonly batch?: unknown };
 				if (type === LYNX_BACKGROUND_TO_MAIN_EVENT && message?.type === 'commit') {
 					commands.push((message.batch as LynxTransportCommitMessage['batch']).commands);
 				}

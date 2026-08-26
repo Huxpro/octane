@@ -392,4 +392,19 @@ export function Card(props: { tone: string; label: string }) @{
 			/takes 99 value and 1 listener parameters, but its derivation declares 2 values and 1 events/,
 		);
 	});
+
+	it('fails the build when a backend returns more than a single expression', () => {
+		// Source shaped like `fn); (trailer` parses to two statements inside the
+		// compiler's `(source);` wrapper. Embedding only the first would silently
+		// truncate the backend's output — a shorter create function instead of a
+		// build error naming the backend.
+		const trailing = {
+			deriveLynxMainThreadProgram: Backend.deriveLynxMainThreadProgram,
+			emitLynxMainThreadProgram: (program: never, options: { readonly name: string }) => {
+				const emission = Backend.emitLynxMainThreadProgram(program, options);
+				return { ...emission, source: `${emission.source}); (0` };
+			},
+		};
+		expect(() => compiled(CARD, { backend: trailing })).toThrowError(/not a single expression/);
+	});
 });

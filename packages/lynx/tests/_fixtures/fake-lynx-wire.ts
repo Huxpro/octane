@@ -29,6 +29,7 @@ import {
 	type LynxTransportCommitMessage,
 } from '../../src/core/protocol.js';
 import { createLynxNodesRefSelector } from '../../src/core/nodes-ref.js';
+import { unwire, wire } from './lynx-wire.js';
 
 export class FakeContextProxy implements LynxContextProxy {
 	readonly events: LynxContextProxyEvent[] = [];
@@ -53,7 +54,7 @@ export class FakeContextProxy implements LynxContextProxy {
 	}
 
 	sendToBackground(data: unknown): void {
-		this.dispatchEvent({ type: LYNX_MAIN_TO_BACKGROUND_EVENT, data });
+		this.dispatchEvent({ type: LYNX_MAIN_TO_BACKGROUND_EVENT, data: wire(data) });
 	}
 }
 
@@ -173,7 +174,7 @@ export function installMainSide(context: FakeContextProxy, compact = false): Mai
 	context.addEventListener(LYNX_BACKGROUND_TO_MAIN_EVENT, (event) => {
 		// Validating here is not decoration: it is main's own inbound check, so a
 		// frame this core sends has to survive the same parse a real page runs.
-		const message = validateLynxBackgroundOutboundMessage(event.data);
+		const message = validateLynxBackgroundOutboundMessage(unwire(event.data));
 		if (message.type === 'main-ready-request') {
 			context.sendToBackground({
 				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
