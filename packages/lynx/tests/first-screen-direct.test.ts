@@ -1053,6 +1053,92 @@ function runProgram(types: readonly string[], handed: unknown[][]): UniversalPro
 	});
 }
 
+/**
+ * A two-node program with a keyed hole, one event site on each node, and
+ * members that carry native events of their own.
+ *
+ * The members are the point. A program's own announcements are one contiguous
+ * run, and the members' announcements come straight after it, so a run that
+ * counted them as its own would read a member's listener at one of the
+ * program's sites. Nothing about a program alone can show that.
+ */
+const RUN_PROGRAM_PLAN = universalPlan('lynx', {
+	kind: 'program',
+	slots: [],
+	nodes: 2,
+	values: [0],
+	events: [
+		{ slot: 1, node: 0, type: 'bindtap', priority: 'discrete' },
+		{ slot: 2, node: 1, type: 'bindlongpress', priority: 'discrete' },
+	],
+	ranges: [{ slot: 3, node: 0, id: 2 }],
+	bind: (host: unknown) => {
+		const papi = host as {
+			readonly intrinsics: { view(pageId: number): FakeNode; text(pageId: number): FakeNode };
+			insertBefore(parent: FakeNode, child: FakeNode, before: FakeNode | null): void;
+			setClasses(node: FakeNode, value: string): void;
+		};
+		return (...args: unknown[]): readonly unknown[] => {
+			PROGRAM_TOKENS.push(args.slice(2, 4));
+			const view = papi.intrinsics.view(args[0] as number);
+			const text = papi.intrinsics.text(args[0] as number);
+			papi.setClasses(view, args[1] as string);
+			papi.insertBefore(view, text, null);
+			return [view, text, undefined];
+		};
+	},
+});
+
+const PROGRAM_TOKENS: unknown[][] = [];
+
+const RUN_MEMBER_PLAN = universalPlan('lynx', {
+	kind: 'host',
+	type: 'text',
+	bindings: [['bindtap', 0]],
+});
+
+const RunScene = defineUniversalComponent(
+	'lynx',
+	function RunScene() {
+		return universalValue(RUN_PROGRAM_PLAN, [
+			'row',
+			() => {},
+			// The long-press site is left without a handler on purpose: the run is
+			// then shorter than the site list, and the gap sits before the members'
+			// announcements rather than at the end of everything.
+			undefined,
+			universalFor(
+				['m0', 'm1'],
+				(row) => row,
+				() => universalValue(RUN_MEMBER_PLAN, [() => {}]),
+			),
+		]);
+	},
+	{ module: '@octanejs/lynx/main-renderer' },
+);
+
+describe('first-screen renderer and applier, a program among other announcements', () => {
+	it("reads the program's own listeners and leaves its hole's members alone", () => {
+		PROGRAM_TOKENS.length = 0;
+		const result = renderLynxFirstScreen(RunScene as never, {});
+		const container = createLynxHostContainer(intrinsicHost(), { root: 1 });
+		expect(applyLynxFirstScreenDirect(container, result.nodes, result.envelope)).toBe(true);
+
+		// The program's `<view>` is the first id it took, and the one site this
+		// render passed a handler to is bound there. Everything else the envelope
+		// announces belongs to the members inside its hole.
+		const program = result.nodes[0] as LynxFirstScreenDirectNode;
+		const viewId = program.ids![0]!;
+		const own = result.envelope.events.filter((event) => event.id === viewId);
+		expect(own).toHaveLength(1);
+		expect(result.envelope.events.length).toBeGreaterThan(own.length);
+
+		expect(PROGRAM_TOKENS).toEqual([
+			[`octane-lynx:event:1:${viewId}:1:${own[0]!.listener.id}:discrete`, undefined],
+		]);
+	});
+});
+
 describe('direct first-screen applier, the announcement run a program records', () => {
 	// The renderer announces a program's sites in one contiguous pass, in site
 	// order, so the mount can read each site's listener at a position instead of
