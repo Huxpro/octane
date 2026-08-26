@@ -200,6 +200,89 @@ Four things must travel with any number from these cells:
 `prototype/run-fcp.mjs` picks the cell up automatically once
 `app/dist-block-rows<N>/main.web.bundle` exists.
 
+### The `octane-mts-program` cell (issue #163 C4b)
+
+```bash
+BENCH_MTS_PROGRAM=1 node scripts/build-app.mjs                       # web A/B cell
+BENCH_MTS_PROGRAM=1 BENCH_AUTOROWS=10000 node scripts/build-app.mjs  # FCP ladder cell
+node web/run-web.mjs --cells octane,octane-mts-program --scales 1000,10000 --reps 7
+node prototype/run-fcp.mjs --rows 10000 --reps 7
+```
+
+The same application entry, the same core, the same page driver and the same
+bundle recipe, built with issue-#163's main-thread program backend so the
+main-thread chunk's eligible templates lower to straight-line create functions
+driving the Element PAPI, instead of the descriptions an interpreter walks node
+by node. `app/src/App.lynx.tsrx` lowers to two programs — `Row` and `App` — so
+the first screen this cell paints is compiled code the whole way down.
+
+The flag is orthogonal to `BENCH_CORE`: it moves the main-thread chunk and
+leaves the background one alone. Measured on this application across the backend
+switch, the background chunk is **byte-identical** (285,413 bytes, sha256
+`9b5e9e5df496…`) and the main-thread chunk moves by 700 bytes
+(216,547 → 217,247). That is what makes `octane-mts-program ÷ octane` an A/B
+of the first-screen encoding and nothing else, and it is why an update-band
+difference between the two cells would be a finding rather than a build
+artefact: after adoption both cells run the same background code over the same
+wire.
+
+Four things must travel with any number from this cell:
+
+- **It adopts; it does not repair.** Unlike the `octane-block` cells above, whose
+  painted first screen is discarded, this one is taken over.
+  `prototype/adoption-probe.mjs` is the instrument: it tags every row element at
+  the first painted frame and counts how many tags are still attached four
+  seconds later, because a repair builds different elements and would keep none
+  of them. Both cells keep all of them at both scales measured — 1,000/1,000
+  at 1,000 rows and 10,000/10,000 at 10,000. FCP for this cell is therefore an adoption number and
+  reads against `octane`'s directly, which is exactly what the block cell's does
+  not.
+- **The settled `selector attrs` column reads the wrong moment for this cell,
+  which is why the ladder reports a first-frame regime beside it.** A compiled
+  program installs no `nodes-ref` selector at all, and whatever the adopting
+  commit decides afterwards lands on top of that — so a settled count can report
+  the interpreted regime for a page the interpreter never touched. At 10,000 and
+  30,000 rows it is a stable 0; at 1,000 it reads 4,028 or 0 across otherwise
+  identical repetitions. Asked at the first painted frame instead, before any
+  peer exists to adopt anything, the cell is `1000/0` and `10000/0` in every
+  repetition at every scale — which is what says the program painted. Whatever
+  installs the 1,000-row selectors therefore lands after the first frame, does
+  not move FCP, and never exceeds what the `octane` cell has already paid before
+  its own first frame (4,028 at 1,000 rows, 40,028 at 10,000). Which commit
+  installs them, and why the same page decides differently at two scales, is
+  open; §4 has the two paths that install eagerly and why.
+- **`ranges` is not a probe for this build.** On the small fixture
+  `../lynx-bundle-size/core-switch.mjs` compiles, searching the decoded
+  main-thread script for a compiled program's `ranges` key separates the two
+  backends. On this application it does not:
+  `packages/lynx/src/core/main-renderer.ts` ships its own runtime into both arms'
+  main-thread chunk and carries the identifier along with it. The first-frame
+  selector regime above is the probe that works here, and the byte comparison is
+  what says the backend switched at all.
+- **The ceiling is not reached, and this cell is not it.** `octane-direct` is the
+  hand-written L0 prototype: the same page emitted by code written for this one
+  application, with no framework between the entry point and the PAPI. It is the
+  floor a compiled program is aiming at, not a cell Octane ships. Against it this
+  cell measures 1.37× at 1,000 rows, 1.23× at 10,000 and 1.38× at 30,000 — closing 42%, 54% and 51% of the `octane`-to-ceiling gap,
+  and no more than that. Issue #163's oracle asks for 5%.
+
+On the table operations the two cells are the same page: every op's band
+overlaps its `octane` band in the same window, at both scales, n=7 — which is
+what #148's corollary asks of a landed slice. Two of the twelve are marginal and
+in the same direction as an earlier session's, `create` and `update10th` at
+10,000 rows, with the program cell 1.6% and 4.8% slower at the median. Both
+overlap, and the mechanism that would have explained them is ruled out: after
+one create at 10,000 rows the two cells hold the same 28 `nodes-ref` selectors,
+so the difference is not per-node selector work carried over from how each cell
+was adopted. `prototype/results/web-c163-c4b-update-bands.*` is the committed
+record.
+
+`prototype/run-fcp.mjs` picks the cell up automatically once
+`app/dist-mtsprogram-rows<N>/main.web.bundle` exists, the same way it picks up
+the block cell. §1's wire-cost gates take no cell from this build and want none:
+the wire is the background's, and the background chunk is the half that does not
+move.
+
 ### Background work, and why no other column can see it
 
 A `--counter-build` session also reports, per operation, what the background

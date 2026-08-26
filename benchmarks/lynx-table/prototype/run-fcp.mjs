@@ -49,10 +49,22 @@ const PORT = Number(args.port);
 // cannot be driven reports nothing rather than a number from a degraded run.
 const BLOCK_BUNDLE = path.join(root, `app/dist-block-rows${ROWS}/main.web.bundle`);
 
+// Issue-#163 C4b: the same entry again, built with the main-thread program
+// backend, so its first screen is straight-line compiled code driving the
+// Element PAPI rather than a description an interpreter walks per node. It is
+// the cell this ladder exists to price: `octane` is what it replaces and
+// `octane-direct` is the hand-written ceiling it is trying to reach. Built with
+// `BENCH_MTS_PROGRAM=1 BENCH_AUTOROWS=<rows> node scripts/build-app.mjs`, and
+// like the Block cell it is simply absent until then.
+const MTS_PROGRAM_BUNDLE = path.join(root, `app/dist-mtsprogram-rows${ROWS}/main.web.bundle`);
+
 const CELLS = [
 	{ id: 'octane', bundle: path.join(root, `app/dist-rows${ROWS}/main.web.bundle`) },
 	{ id: 'octane-direct', bundle: path.join(here, `dist-rows${ROWS}/main.web.bundle`) },
 	...(fs.existsSync(BLOCK_BUNDLE) ? [{ id: 'octane-block', bundle: BLOCK_BUNDLE }] : []),
+	...(fs.existsSync(MTS_PROGRAM_BUNDLE)
+		? [{ id: 'octane-mts-program', bundle: MTS_PROGRAM_BUNDLE }]
+		: []),
 	...args.extra.map((entry) => {
 		const separator = entry.indexOf('=');
 		if (separator === -1) throw new Error(`--extra expects id=path, got ${entry}`);
@@ -150,6 +162,53 @@ async function sampleFcp(cell) {
 	}
 }
 
+/**
+ * Which first-screen regime this cell actually painted in.
+ *
+ * The `selector attrs` column below is read after the page settles, which is
+ * the right moment for the question it was added for — did this arm install a
+ * `nodes-ref` selector per node — but the wrong one for a compiled main-thread
+ * program (issue #163). A program installs none by construction, and whatever
+ * the adopting commit decides afterwards lands on top of that, so a settled
+ * count can report the interpreted regime for a page the interpreter never
+ * touched. Asked at the first painted frame, before any peer exists to adopt
+ * anything, the same count separates them: 0 is a program, per-node is the
+ * interpreted walk.
+ *
+ * Sampled on its own pages after the timed reps, so the timed path stays exactly
+ * the path every earlier run on this ladder measured. Twice, and both readings
+ * are reported: a regime is a structural property and should not move between
+ * two loads of the same bundle, so a pair that disagrees is the finding.
+ */
+async function sampleFirstFrame(cell) {
+	const readings = [];
+	for (let sample = 0; sample < 2; sample += 1) {
+		const page = await browser.newPage();
+		try {
+			await applyNeutralize(page);
+			await page.goto(`http://127.0.0.1:${PORT}/bench.html`, { waitUntil: 'load' });
+			readings.push(
+				await page.evaluate(async (url) => {
+					globalThis.__x.createView(url);
+					await globalThis.__x.fcp({ minContent: 1, idleMs: 0, timeoutMs: 120000 });
+					return {
+						rows: globalThis.__x.rowCount(),
+						selectors: globalThis.__x.countAttribute('octane-ref'),
+					};
+				}, `http://127.0.0.1:${PORT}/bundles/${cell.id}`),
+			);
+		} finally {
+			await page.close();
+		}
+	}
+	return readings;
+}
+
+/** `rows/selectors`, or every distinct reading when the two disagree. */
+function formatRegime(readings) {
+	return [...new Set(readings.map((r) => `${r.rows}/${r.selectors}`))].join(' , ');
+}
+
 const samples = {};
 for (let rep = 0; rep < REPS; rep += 1) {
 	const order = rep % 2 === 0 ? CELLS : [...CELLS].reverse();
@@ -160,6 +219,14 @@ for (let rep = 0; rep < REPS; rep += 1) {
 			`[fcp] rep=${rep} ${cell.id.padEnd(13)} fcp=${observation.fcp.toFixed(1)}ms settled=${observation.settled.toFixed(1)}ms selectors=${observation.selectors}`,
 		);
 	}
+}
+
+const regimes = {};
+for (const cell of CELLS) {
+	regimes[cell.id] = await sampleFirstFrame(cell);
+	console.log(
+		`[regime] ${cell.id.padEnd(18)} at first painted frame (rows/selectors, n=2): ${formatRegime(regimes[cell.id])}`,
+	);
 }
 
 await browser.close();
@@ -175,14 +242,17 @@ lines.push(
 lines.push(`- protocol: fresh page per sample; cells alternate AB/BA; n=${REPS} per cell`);
 lines.push('- boundary: view attach → first frame with the shared composed-tree predicate');
 lines.push('');
-lines.push('| cell | median fcp ms | min–max | median settled ms | selector attrs |');
-lines.push('|---|---:|---:|---:|---:|');
+lines.push(
+	'| cell | median fcp ms | min–max | median settled ms | selector attrs | first frame rows/selectors |',
+);
+lines.push('|---|---:|---:|---:|---:|---:|');
 for (const cell of CELLS) {
 	const fcpStats = stats(samples[cell.id].map((sample) => sample.fcp));
 	const settledStats = stats(samples[cell.id].map((sample) => sample.settled));
 	const selectors = [...new Set(samples[cell.id].map((sample) => sample.selectors))];
+	const regime = formatRegime(regimes[cell.id]);
 	lines.push(
-		`| ${cell.id} | ${fcpStats.median.toFixed(1)} | ${fcpStats.min.toFixed(1)}–${fcpStats.max.toFixed(1)} | ${settledStats.median.toFixed(1)} | ${selectors.join('/')} |`,
+		`| ${cell.id} | ${fcpStats.median.toFixed(1)} | ${fcpStats.min.toFixed(1)}–${fcpStats.max.toFixed(1)} | ${settledStats.median.toFixed(1)} | ${selectors.join('/')} | ${regime} |`,
 	);
 }
 const octaneMedian = stats(samples['octane'].map((sample) => sample.fcp)).median;
@@ -196,6 +266,6 @@ fs.mkdirSync(outDir, { recursive: true });
 fs.writeFileSync(path.join(outDir, `fcp-${ROWS}${args['out-suffix']}.md`), report);
 fs.writeFileSync(
 	path.join(outDir, `fcp-${ROWS}${args['out-suffix']}.json`),
-	JSON.stringify({ rows: ROWS, reps: REPS, samples }, null, 2) + '\n',
+	JSON.stringify({ rows: ROWS, reps: REPS, samples, regimes }, null, 2) + '\n',
 );
 console.log(`[fcp] wrote prototype/results/fcp-${ROWS}${args['out-suffix']}.md`);
