@@ -128,7 +128,12 @@ const RESERVED_EMISSION_NAMES: ReadonlySet<string> = new Set([
 	'pageId',
 	'parent',
 	'child',
-	// Reserved words, which an identifier regex happily accepts.
+	// Reserved words, which an identifier regex happily accepts. `eval` and
+	// `arguments` are not reserved words, but a named function expression may
+	// not bind either in strict (module) code, which is where the bundler
+	// parses the emission — the same three-steps-downstream SyntaxError.
+	'arguments',
+	'eval',
 	'await',
 	'break',
 	'case',
@@ -443,6 +448,27 @@ export function emitLynxMainThreadProgram(
 				refuse(`${where} is raw text this backend only emits when the program spells it \`#text\``);
 			}
 			refuse(`${where} carries ${JSON.stringify(offending)}, which only the command path writes`);
+		}
+		// The two mount-time refusals `prepareTemplateProgram` makes that the
+		// route check above cannot see: a static prop whose *value* is not a
+		// scalar (the names passed), and a `bindings` field that is present but
+		// empty. Emitting either would paint a first screen the command path
+		// refuses — the exact divergence this backend exists to rule out.
+		for (const name of Object.keys(node.props)) {
+			const entry: unknown = node.props[name];
+			if (
+				entry !== null &&
+				entry !== undefined &&
+				typeof entry !== 'string' &&
+				typeof entry !== 'number' &&
+				typeof entry !== 'boolean' &&
+				typeof entry !== 'bigint'
+			) {
+				refuse(`${where} carries a non-scalar value for ${JSON.stringify(name)}`);
+			}
+		}
+		if (node.bindings !== undefined && node.bindings.length === 0) {
+			refuse(`${where} declares an empty bindings array, which the applier refuses`);
 		}
 		if (factory === 'rawText') {
 			body.push(`\t\tvar n${index} = rawText(${rawTextSource(node, where)});`);
