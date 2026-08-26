@@ -1,0 +1,32 @@
+{
+  "schema": "octane.lepus-cost.invalid-window.v1",
+  "issue": "https://github.com/Huxpro/octane/issues/196",
+  "protocol": "https://github.com/Huxpro/octane/issues/194",
+  "phase": "M2-Q2-invalid-observer-perturbation",
+  "status": "invalid",
+  "window": null,
+  "device": {
+    "serial": "aic-i18n-bd-fullport.byteintl.net:36527",
+    "model": "aries_10",
+    "android": "10",
+    "abi": "arm64-v8a"
+  },
+  "engine": {
+    "name": "LepusNG",
+    "lepusVersion": "2.3.0",
+    "appBundleEngineVersion": "3.9",
+    "lynxSdkVersion": "4.0"
+  },
+  "scale": {
+    "rows": 10000,
+    "arm": "template"
+  },
+  "observer": "Date.now around every Element PAPI call",
+  "failure": {
+    "reason": "The observer changed the measured workload and the template arm did not complete after approximately ten minutes.",
+    "lastObservation": "The app process remained at approximately 100% CPU and 740 MiB RSS before it was force-stopped.",
+    "exactWindowUnavailable": "The controller writes timestamps and samples only after a complete window; the interrupted attempt produced no result file. Approximate durations are diagnostic only."
+  },
+  "fullSamples": [],
+  "spendable": false
+}
