@@ -656,6 +656,151 @@ describe('Lynx Element PAPI host driver', () => {
 		expect(JSON.parse(JSON.stringify(firstTree.snapshot))).toEqual(firstTree.snapshot);
 	});
 
+	it('resolves a tap through the tree it captured, not what teardown left of its owner', () => {
+		const papi = createFakePAPI();
+		const page = papi.createPage('entry', 0);
+		const source = createLynxHostContainer(papi, { root: 7, page });
+		prepareLynxHostBatch(
+			source,
+			batch(1, [
+				{ op: 'create', id: 1, type: 'view', props: {} },
+				{ op: 'event', id: 1, type: 'bindtap', listener: { id: 101, priority: 'discrete' } },
+				{ op: 'insert', parent: null, id: 1, before: null },
+			]),
+		).apply();
+		const painted = page.children[0]!;
+		const token = painted.events.get('bindEvent:tap')!;
+		const firstTree = captureLynxFirstTree(source, { plan: 'scene:tap' })!;
+
+		// The token index is built when a tap asks for one, and a tap arrives after
+		// the paint capture runs in front of. Terminal cleanup empties the
+		// container's native-event journal long before that, so the index has to
+		// answer out of what capture already validated rather than out of the live
+		// container — the same reason the description reads only retained fields.
+		expect(disposeLynxHostContainer(source).complete).toBe(true);
+		expect(source.disposed).toBe(true);
+
+		expect(resolveLynxFirstTreeEvent(firstTree, token)).toEqual({
+			host: 1,
+			generation: 1,
+			type: 'bindtap',
+			listener: 101,
+			priority: 'discrete',
+		});
+		expect(resolveLynxFirstTreeEvent(firstTree, 'not-a-token')).toBeNull();
+		releaseLynxFirstTree(firstTree);
+		expect(resolveLynxFirstTreeEvent(firstTree, token)).toBeNull();
+	});
+
+	it("orders a captured host's events by type whether it binds one or several", () => {
+		const papi = createFakePAPI();
+		const page = papi.createPage('entry', 0);
+		const source = createLynxHostContainer(papi, { root: 7, page });
+		prepareLynxHostBatch(
+			source,
+			batch(1, [
+				{ op: 'create', id: 1, type: 'view', props: {} },
+				{ op: 'create', id: 2, type: 'view', props: {} },
+				// Bound out of alphabetical order, so a walk that kept arrival order
+				// would describe them the way they were bound.
+				{ op: 'event', id: 1, type: 'bindtap', listener: { id: 101, priority: 'discrete' } },
+				{
+					op: 'event',
+					id: 1,
+					type: 'bindlongpress',
+					listener: { id: 102, priority: 'continuous' },
+				},
+				{ op: 'event', id: 2, type: 'bindtap', listener: { id: 103, priority: 'discrete' } },
+				{ op: 'insert', parent: null, id: 1, before: null },
+				{ op: 'insert', parent: 1, id: 2, before: null },
+			]),
+		).apply();
+		const firstTree = captureLynxFirstTree(source, { plan: 'scene:order' })!;
+
+		const events = (id: number) =>
+			firstTree.snapshot.nodes
+				.find((node) => node.id === id)!
+				.events.map((event) => [event.type, event.listener]);
+		expect(events(1)).toEqual([
+			['bindlongpress', 102],
+			['bindtap', 101],
+		]);
+		expect(events(2)).toEqual([['bindtap', 103]]);
+
+		// Every bound event resolves, whichever branch described it.
+		const root = page.children[0]!;
+		const child = root.children[0]!;
+		expect(
+			resolveLynxFirstTreeEvent(firstTree, root.events.get('bindEvent:longpress')!),
+		).toMatchObject({ host: 1, type: 'bindlongpress', listener: 102 });
+		expect(resolveLynxFirstTreeEvent(firstTree, root.events.get('bindEvent:tap')!)).toMatchObject({
+			host: 1,
+			type: 'bindtap',
+			listener: 101,
+		});
+		expect(resolveLynxFirstTreeEvent(firstTree, child.events.get('bindEvent:tap')!)).toMatchObject({
+			host: 2,
+			type: 'bindtap',
+			listener: 103,
+		});
+	});
+
+	it('pairs each captured token with its own host across a hidden one', () => {
+		const papi = createFakePAPI();
+		const page = papi.createPage('entry', 0);
+		const source = createLynxHostContainer(papi, { root: 7, page });
+		prepareLynxHostBatch(
+			source,
+			batch(1, [
+				{ op: 'create', id: 1, type: 'view', props: {} },
+				{ op: 'create', id: 2, type: 'view', props: {} },
+				{ op: 'create', id: 3, type: 'view', props: {} },
+				{ op: 'event', id: 1, type: 'bindtap', listener: { id: 101, priority: 'discrete' } },
+				{ op: 'event', id: 2, type: 'bindtap', listener: { id: 202, priority: 'discrete' } },
+				{ op: 'event', id: 3, type: 'bindtap', listener: { id: 303, priority: 'discrete' } },
+				{ op: 'insert', parent: null, id: 1, before: null },
+				{ op: 'insert', parent: 1, id: 2, before: null },
+				{ op: 'insert', parent: 1, id: 3, before: null },
+			]),
+		).apply();
+		const root = page.children[0]!;
+		const hiddenNode = root.children[0]!;
+		const tokens = {
+			first: root.events.get('bindEvent:tap')!,
+			hidden: hiddenNode.events.get('bindEvent:tap')!,
+			last: root.children[1]!.events.get('bindEvent:tap')!,
+		};
+		// Hiding a host removes its native registration, so the middle host of
+		// three contributes no token. Every token the tree does resolve still has
+		// to name the host it was taken from, not the one beside it.
+		prepareLynxHostBatch(source, batch(2, [{ op: 'visibility', id: 2, state: 'hidden' }])).apply();
+		const firstTree = captureLynxFirstTree(source, { plan: 'scene:hidden' })!;
+
+		expect(resolveLynxFirstTreeEvent(firstTree, tokens.first)).toEqual({
+			host: 1,
+			generation: 1,
+			type: 'bindtap',
+			listener: 101,
+			priority: 'discrete',
+		});
+		expect(resolveLynxFirstTreeEvent(firstTree, tokens.last)).toEqual({
+			host: 3,
+			generation: 1,
+			type: 'bindtap',
+			listener: 303,
+			priority: 'discrete',
+		});
+		expect(resolveLynxFirstTreeEvent(firstTree, tokens.hidden)).toBeNull();
+
+		// The hidden host is still described, binding and all: the background
+		// adopts the listener it will install when the host is shown again.
+		const hidden = firstTree.snapshot.nodes.find((node) => node.id === 2)!;
+		expect(hidden.visible).toBe(false);
+		expect(hidden.events).toEqual([
+			{ host: 2, generation: 1, type: 'bindtap', listener: 202, priority: 'discrete' },
+		]);
+	});
+
 	it('drops a released first tree builder without losing a description already read', () => {
 		const papi = createFakePAPI();
 		const page = papi.createPage('entry', 0);

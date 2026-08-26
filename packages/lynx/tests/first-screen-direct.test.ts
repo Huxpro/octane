@@ -14,7 +14,11 @@ import {
 	type LynxFirstScreenDirectEnvelope,
 	type LynxFirstScreenDirectNode,
 } from '../src/core/host-driver.js';
-import { LYNX_FIRST_TREE_STATE, LynxFirstScreenRefusalError } from '../src/core/first-screen.js';
+import {
+	LYNX_FIRST_TREE_STATE,
+	LynxFirstScreenRefusalError,
+	lynxFirstTreeEventTokens,
+} from '../src/core/first-screen.js';
 import type { UniversalProgramPlan } from 'octane/universal/native';
 import { createFakePAPI, shape, type FakeNode } from './_fixtures/fake-element-papi.js';
 import {
@@ -133,8 +137,8 @@ describe('direct first-screen applier', () => {
 		expect(directTree).not.toBeNull();
 		expect(stagedTree).not.toBeNull();
 		expect(directTree!.snapshot).toEqual(stagedTree!.snapshot);
-		expect([...directTree![LYNX_FIRST_TREE_STATE].eventsByToken.keys()].sort()).toEqual(
-			[...stagedTree![LYNX_FIRST_TREE_STATE].eventsByToken.keys()].sort(),
+		expect([...lynxFirstTreeEventTokens(directTree!)].sort()).toEqual(
+			[...lynxFirstTreeEventTokens(stagedTree!)].sort(),
 		);
 		expect(shape(directPapi.pages[0]!)).toEqual(shape(stagedPapi.pages[0]!));
 
@@ -183,8 +187,8 @@ describe('direct first-screen applier', () => {
 		expect(eagerTree).not.toBeNull();
 		expect(lazyTree).not.toBeNull();
 		expect(lazyTree!.snapshot).toEqual(eagerTree!.snapshot);
-		expect([...lazyTree![LYNX_FIRST_TREE_STATE].eventsByToken.keys()].sort()).toEqual(
-			[...eagerTree![LYNX_FIRST_TREE_STATE].eventsByToken.keys()].sort(),
+		expect([...lynxFirstTreeEventTokens(lazyTree!)].sort()).toEqual(
+			[...lynxFirstTreeEventTokens(eagerTree!)].sort(),
 		);
 		expect(shape(lazyPapi.pages[0]!)).toEqual(shape(eagerPapi.pages[0]!));
 		// Read only now, after this render already painted a page.
