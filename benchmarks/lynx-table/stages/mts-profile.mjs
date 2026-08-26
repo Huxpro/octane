@@ -60,6 +60,14 @@ const { values: args } = parseArgs({
 		// Nothing here says which revision it is, because the harness cannot know
 		// and a name implying it could would be the harness lying about
 		// provenance the record now carries honestly.
+		//
+		// Issue-#163 C11 widened it to a comma-separated list, because a ladder of
+		// ablations is only a ladder when every rung ran in the same window: two
+		// records of identical bundles disagree by up to 9% on the whole-script
+		// median, which is larger than the rungs being separated, so arms compared
+		// across windows are not compared at all. Each tag becomes its own cell,
+		// named after the tag — a single arm used to be spelled
+		// `octane-mts-program-control`, which is the cell name in C10's record.
 		'control-dist': { type: 'string', default: '' },
 	},
 });
@@ -69,25 +77,40 @@ const port = Number(args.port);
 const interval = Number(args.interval);
 const cellIds = args.cells.split(',').map((value) => value.trim());
 
+const controlTags = args['control-dist']
+	.split(',')
+	.map((value) => value.trim())
+	.filter((value) => value !== '');
+// A repeated tag would quietly halve the ladder: two cells resolving to one
+// directory read as two arms that agreed, which is the one answer an ablation
+// must never be able to fake.
+if (new Set(controlTags).size !== controlTags.length) {
+	throw new Error(`--control-dist repeats a tag: ${args['control-dist']}`);
+}
 /** Pre-populated bundles only: this instrument measures a first screen, never a click. */
-// Validated by the writer of that directory name rather than re-spelled here, so
-// a value `build-app.mjs` would have refused cannot name a path nothing built.
-const controlTag = tagFrom(args['control-dist']);
 const CELLS = {
 	octane: (n) => path.join(root, `app/dist-rows${n}/main.web.bundle`),
 	'octane-mts-program': (n) => path.join(root, `app/dist-mtsprogram-rows${n}/main.web.bundle`),
-	...(controlTag === ''
-		? {}
-		: {
-				'octane-mts-program-control': (n) =>
-					path.join(root, `app/dist-mtsprogram${controlTag}-rows${n}/main.web.bundle`),
-			}),
+	...Object.fromEntries(
+		controlTags.map((tag) => [
+			`octane-mts-program-${tag}`,
+			// Validated by the writer of that directory name rather than re-spelled
+			// here, so a value `build-app.mjs` would have refused cannot name a path
+			// nothing built.
+			(n) => path.join(root, `app/dist-mtsprogram${tagFrom(tag)}-rows${n}/main.web.bundle`),
+		]),
+	),
 	'octane-direct': (n) => path.join(root, `prototype/dist-rows${n}/main.web.bundle`),
 };
 const HEADINGS = {
 	octane: 'Octane',
 	'octane-mts-program': 'Octane (main-thread program)',
-	'octane-mts-program-control': 'Octane (main-thread program, control arm)',
+	...Object.fromEntries(
+		controlTags.map((tag) => [
+			`octane-mts-program-${tag}`,
+			`Octane (main-thread program, \`${tag}\` arm)`,
+		]),
+	),
 	'octane-direct': 'L0 direct-emission prototype',
 };
 for (const id of cellIds) {
