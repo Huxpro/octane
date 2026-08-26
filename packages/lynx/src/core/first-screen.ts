@@ -151,7 +151,10 @@ export const LYNX_FIRST_TREE_STATE: unique symbol = Symbol('octane.lynx.first-tr
 export interface LynxFirstTreeState<Node extends LynxElementRef> {
 	owner: unknown;
 	status: 'available' | 'transferred' | 'disposed' | 'released';
-	readonly eventsByToken: Map<string, LynxResolvedFirstTreeEvent>;
+	/** The token index, once a tap has asked for one. */
+	eventsByToken: Map<string, LynxResolvedFirstTreeEvent> | null;
+	/** Builds it; dropped once it has run or the tree is released. */
+	indexEvents: (() => Map<string, LynxResolvedFirstTreeEvent>) | null;
 	/** Records under a native list that the platform has not asked for yet. */
 	readonly logicalNodes: Map<number, LynxFirstTreeLogicalNodeSnapshot>;
 	/** One entry per native list the captured tree holds, keyed by host ID. */
@@ -196,7 +199,7 @@ export interface LynxFirstTree<Node extends LynxElementRef = LynxElementRef> {
 export function createLynxFirstTree<Node extends LynxElementRef>(
 	describe: () => LynxFirstTreeSnapshot,
 	owner: unknown,
-	eventsByToken: Map<string, LynxResolvedFirstTreeEvent>,
+	indexEvents: () => Map<string, LynxResolvedFirstTreeEvent>,
 	logicalNodes: Map<number, LynxFirstTreeLogicalNodeSnapshot>,
 	lists: Map<number, LynxFirstTreeListJournal>,
 	programNodes: Map<number, Node>,
@@ -204,7 +207,8 @@ export function createLynxFirstTree<Node extends LynxElementRef>(
 	const state: LynxFirstTreeState<Node> = {
 		owner,
 		status: 'available',
-		eventsByToken,
+		eventsByToken: null,
+		indexEvents,
 		logicalNodes,
 		lists,
 		programNodes,
@@ -235,7 +239,9 @@ export function releaseLynxFirstTree(firstTree: LynxFirstTree): void {
 		throw new Error('Octane Lynx first tree must be adopted or disposed before release.');
 	}
 	state.owner = null;
-	state.eventsByToken.clear();
+	state.eventsByToken?.clear();
+	state.eventsByToken = null;
+	state.indexEvents = null;
 	state.logicalNodes.clear();
 	state.lists.clear();
 	state.programNodes.clear();
@@ -245,11 +251,59 @@ export function releaseLynxFirstTree(firstTree: LynxFirstTree): void {
 	state.status = 'released';
 }
 
+const EMPTY_EVENT_INDEX: ReadonlyMap<string, LynxResolvedFirstTreeEvent> = new Map();
+
+/**
+ * The painted tree's token index, built on first read.
+ *
+ * Only a tap resolves through this map, and a tap on the painted tree happens
+ * after the paint by definition — while capture, which fills it, runs before
+ * one. Building a token-keyed map of every bound event is the largest single
+ * item the capture walk spends its time on, so it waits here with the
+ * description rather than sitting between the tree reaching the DOM and the
+ * browser painting it.
+ *
+ * The builder closes over what capture already validated and nothing live, so
+ * it answers identically whether the first tap comes before adoption, after it,
+ * or after terminal cleanup has emptied the container.
+ *
+ * Nothing else reads it. Adoption compares the description, not the tokens, so a
+ * page whose first tap arrives after the background has adopted never builds
+ * this at all — and one whose first tap arrives before it pays here instead of
+ * in front of the paint.
+ */
+function lynxFirstTreeEventIndex(
+	firstTree: LynxFirstTree,
+): ReadonlyMap<string, LynxResolvedFirstTreeEvent> {
+	const state = firstTree[LYNX_FIRST_TREE_STATE];
+	const index = state.eventsByToken;
+	if (index !== null) return index;
+	const build = state.indexEvents;
+	// A released tree kept no index and can build none; it resolves nothing,
+	// which is what an emptied map answered before.
+	if (build === null) return EMPTY_EVENT_INDEX;
+	const built = build();
+	state.eventsByToken = built;
+	state.indexEvents = null;
+	return built;
+}
+
 /** Resolve a painted placeholder token without consulting adopted listeners. */
 export function resolveLynxFirstTreeEvent(
 	firstTree: LynxFirstTree,
 	token: unknown,
 ): LynxResolvedFirstTreeEvent | null {
 	if (typeof token !== 'string') return null;
-	return firstTree[LYNX_FIRST_TREE_STATE].eventsByToken.get(token) ?? null;
+	return lynxFirstTreeEventIndex(firstTree).get(token) ?? null;
+}
+
+/**
+ * Every token the painted tree resolves.
+ *
+ * Its callers are the differential captures, which compare two trees' whole
+ * token sets rather than one token. It reads through the same door the resolver
+ * does, so no caller can observe an index a tap would not have built.
+ */
+export function lynxFirstTreeEventTokens(firstTree: LynxFirstTree): readonly string[] {
+	return [...lynxFirstTreeEventIndex(firstTree).keys()];
 }

@@ -4153,7 +4153,15 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 	if (state.portalChildren.size !== 0) {
 		throw hostError('portals cannot be captured before background adoption.');
 	}
-	const eventsByToken = new Map<string, LynxResolvedFirstTreeEvent>();
+	// The token index a tap resolves through is built from these two, on first
+	// read, rather than assembled here. Growing a token-keyed map of every bound
+	// event is the largest single item this walk spends its time on, and the only
+	// thing that reads it is a tap on the painted tree — which cannot happen
+	// before the paint this walk is standing in front of. Appending the token and
+	// the event capture already made costs one array slot each; the map they
+	// index into costs a hash and a rehash per entry, and waits.
+	const boundTokens: string[] = [];
+	const boundEvents: LynxFirstTreeEventSnapshot[] = [];
 	// Capture validates eagerly and describes lazily. Validation and the native
 	// ID read stay here because a host that cannot be captured has to fault the
 	// synchronous first screen, while its caller still holds the source to retry
@@ -4217,9 +4225,15 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 		let events: readonly LynxFirstTreeEventSnapshot[] = EMPTY_FIRST_TREE_EVENTS;
 		if (record.events.size !== 0) {
 			const bound: LynxFirstTreeEventSnapshot[] = [];
-			const eventEntries = [...record.events].sort(([first], [second]) =>
-				first < second ? -1 : first > second ? 1 : 0,
-			);
+			// A one-entry sequence is already in sorted order, and most records that
+			// bind anything bind exactly one thing, so the common case is two
+			// allocations and a comparison sort to reproduce the order it had.
+			const eventEntries =
+				record.events.size === 1
+					? record.events
+					: [...record.events].sort(([first], [second]) =>
+							first < second ? -1 : first > second ? 1 : 0,
+						);
 			for (const [type, descriptor] of eventEntries) {
 				const event = Object.freeze({
 					host: id,
@@ -4239,7 +4253,8 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 							`first-tree host ${id} is missing native event ${JSON.stringify(type)}.`,
 						);
 					}
-					eventsByToken.set(registration.listener, event);
+					boundTokens.push(registration.listener);
+					boundEvents.push(event);
 				} else if (registration !== undefined) {
 					throw hostError(
 						`hidden first-tree host ${id} retains native event ${JSON.stringify(type)}.`,
@@ -4378,10 +4393,17 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 			}),
 		);
 	}
+	const indexEvents = (): Map<string, LynxResolvedFirstTreeEvent> => {
+		const index = new Map<string, LynxResolvedFirstTreeEvent>();
+		for (let position = 0; position < boundTokens.length; position++) {
+			index.set(boundTokens[position]!, boundEvents[position]!);
+		}
+		return index;
+	};
 	const firstTree = createLynxFirstTree<Node>(
 		describe,
 		container,
-		eventsByToken,
+		indexEvents,
 		logicalNodes,
 		lists,
 		// Copied, not aliased. The live map is cleared when the container hands its
