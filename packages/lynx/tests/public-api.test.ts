@@ -28,6 +28,7 @@ describe('@octanejs/lynx Milestone 8 private surface', () => {
 			'./main-worklets',
 			'./first-screen',
 			'./block',
+			'./compiler',
 			'./intrinsics',
 			'./intrinsics/jsx-runtime',
 			'./main-thread',
