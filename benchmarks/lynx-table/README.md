@@ -981,8 +981,8 @@ timed wall, 21.2% outside the flush — against `octane`'s 6.8%. So the 5.67×
 growth in the excess is **not established**, and neither is the 220 ms itself at
 30,000 rows. What is established is the direction, and the 10,000-row gap.
 
-The next slice measures the same three cells at 30,000 rows with enough
-repetitions to settle it, before anything is designed against either number.
+The next section settles it: at n=15 the 30,000-row separation is real and
+larger than this run said, and the growth rates this run reported are not.
 
 #### Caveat on the 10,000-row split
 
@@ -994,6 +994,106 @@ At 10,000 rows it is **+11.0%** — 1304.9 ms against 1175.1 ms. The 10,000-row
 phase rows above are still the best split available for that scale, but they
 carry more of the probe than the rows either side of them, and any figure taken
 from them inherits that.
+
+### Settling the 30,000-row flush, and what it costs (issue #163 C7)
+
+The section above could not tell a 220 ms structural cost from a noisy run, so it
+was re-measured at n=15 on the same three cells and **the same bundles** —
+`--skip-build`, so the bytes are byte-for-byte C6's and only the sample count
+changes:
+
+```bash
+node stages/papi-run.mjs --reps 15 --scales 30000 \
+	--cells octane,octane-mts-program,octane-direct --label c163-c7-flush --skip-build
+```
+
+`results/c163-c7-flush-30000.json`. First-flush self time, every sample, sorted:
+
+| cell | n=15 `papi_flush` samples (ms) | median |
+|---|---|---:|
+| `octane-direct` | 532 · 549 · 551 · 560 · 561 · 565 · 577 · **585** · 586 · 587 · 597 · 610 · 613 · 621 · 627 | 585.0 |
+| `octane` | 561 · 582 · 590 · 599 · 613 · 616 · 630 · **631** · 631 · 640 · 642 · 642 · 653 · 680 · 725 | 631.4 |
+| `octane-mts-program` | 662 · 689 · 790 · 837 · 839 · 843 · 844 · **861** · 890 · 892 · 904 · 904 · 910 · 919 · 1051 | 861.0 |
+
+Against the ceiling cell the two distributions do not touch: **every one of the
+program's fifteen samples is above every one of the prototype's fifteen**, 662.3
+against 627.0 at the boundary. The median difference is **+276.0 ms, a factor of
+1.472×**, on a call multiset that differs by exactly one call.
+
+So the finding survives, and it is larger than the n=5 run said (+220 ms, 1.394×)
+rather than smaller. Against `octane` the program is +229.7 ms at the median but
+the ranges do overlap at the tails, so that comparison is strong and not
+disjoint.
+
+#### The excess at 30,000 rows, with the firm terms marked
+
+The same window re-prices every group, and n=15 is enough to say which
+differences are real. Program minus ceiling, medians, ranges beside them:
+
+| segment | `octane` | `+program` | `octane-direct` | excess | firm? |
+|---|---:|---:|---:|---:|---|
+| `start_delay` | 22.5 | 22.0 [20–28] | 3.9 [3–11] | +18.1 | **disjoint** |
+| `papi_create` | 2088.6 | 1776.3 [1585–2101] | 1743.2 [1590–1910] | +33.1 | overlaps |
+| `papi_props` | 389.2 | 208.8 [169–247] | 211.9 [179–274] | −3.1 | overlaps |
+| `papi_events` | 125.3 | 113.3 [93–136] | 91.2 [79–103] | +22.1 | overlaps |
+| `papi_topology` | 219.7 | 191.9 [171–226] | 157.8 [144–174] | +34.1 | overlaps |
+| `papi_read` | 76.3 | 0.1 | 0.0 | +0.1 | — |
+| `papi_flush` | 631.4 | 861.0 [662–1051] | 585.0 [532–627] | **+276.0** | **disjoint** |
+| `off_boundary` | 2107.8 | 1049.0 [1014–1227] | 449.6 [413–654] | **+599.4** | **disjoint** |
+| **total** | | | | **+979.8** | |
+
+Two groups hold **89% of the excess**, and both are established rather than
+inferred. Everything else overlaps at n=15 and should not be spent against —
+`papi_create`, which the n=5 run priced at +119.5 ms, is +33.1 here on ranges
+that overlap almost completely.
+
+That also means the total is not +1125.1 ms as C6 reported but +979.8 in this
+window, and no growth rate should be carried across the two runs: they are
+different windows and the absolute walls moved (the ceiling cell's control FCP is
+2733.1 ms here against 2632.9 there). What each run measures is the *within-window*
+difference between cells, which is the only comparison the harness certifies.
+
+#### What is left to explain: the order the identical calls arrive in
+
+`off_boundary` is mostly the program's own script, which §"What the compiled
+program's own text painting moved" already prices and which is falling. The
+`papi_flush` excess is not script at all, and it is now the largest single thing
+that no amount of script work can reach.
+
+The three cells append in two different orders, and this is readable in the
+sources rather than inferred from timings:
+
+- **`octane-direct`** (`prototype/lepus-root.js`) is strictly child-first. Every
+  node is fully populated before it is appended to its parent, and the row joins
+  the live parent last.
+- **`octane`** is child-first too. `host-driver.ts`'s first-screen walk queues a
+  node's attach before its children so that it pops after them — the comment
+  there says exactly that — and a leaf, having no children, attaches immediately.
+- **`+program`** is parent-first. `emit-main-thread-program.ts` emits a flat
+  index-ordered loop, `append(n<parent>, n<index>)` for every node in program
+  order, so a row's `col-remove` joins the row *before* its own raw text joins
+  `col-remove`. The compiled range texts are appended after all of that.
+
+The two child-first cells are the two cheap ones (585.0 and 631.4) and the
+parent-first cell is the expensive one (861.0). `octane`'s +46 ms over the
+prototype is the one gap this does not have to explain: it makes 330,000 more
+host calls across the window and writes 120,028 attributes the others do not.
+
+One version of this hypothesis is already dead. The row itself attaches to the
+live tree only after the create function returns, so no append in any cell lands
+on a node that is already in the page — whatever the order costs, it is not
+live-tree invalidation.
+
+The emitter's order is deliberate and its comment says why: it "performs the
+dense applier's work in the dense applier's order." So a reordering slice has to
+answer that comment rather than quietly change the loop, and
+`main-thread-emit.test.ts` pins the append *count* and that the compiled text
+lands behind everything its host already holds — both of which a child-first
+order preserves.
+
+The test is an A/B of the emitted order alone: same call multiset, same composed
+tree, same bundle everywhere else. That is the next slice, and it is a
+measurement before it is a mechanism.
 
 ### The publication floor — `dom-attach-floor.mjs`
 
