@@ -835,6 +835,116 @@ worth:
   `publish` while making exactly the calls a hand-written emitter makes, and
   that is the next slice.
 
+### What the compiled program's own text painting moved, and what it did not (issue #163 C6)
+
+The section above was measured before C5 taught the program to compile a range
+site's text. Re-running the same split on the C5 build re-prices every phase, and
+adds 30,000 rows so that a scaling question can be asked at all:
+
+```bash
+node stages/papi-run.mjs --reps 5 --scales 1000,10000,30000 \
+	--cells octane,octane-profile,octane-mts-program,octane-mts-program-profile,octane-direct \
+	--label c163-c6-phase
+```
+
+`octane-mts-program` is the backend cell — the universal core with the
+main-thread program — and clause 1 names the block core. The two are
+indistinguishable in the same window (1189.7 ms against 1191.3 ms at 10,000
+rows, §"The `octane-block-program` cell"), which is what licenses reading this
+ladder as the block core's.
+
+`results/c163-c6-phase-boundary.md`, off-boundary ms in the profile cells' own
+FCP windows, median over 5 reps:
+
+| first-screen phase | 1,000 | 10,000 | 30,000 | 10k → 30k |
+|---|---:|---:|---:|---:|
+| `render` | 9.2 | 43.9 | 90.0 | 2.05× |
+| `publish` | 25.1 | 240.4 | 660.4 | 2.75× |
+| `capture` | 0.8 | 6.8 | 25.0 | 3.68× |
+| `announce` | 0.0 | 0.0 | 0.0 | — |
+| **framework script** | **35.3** | **292.5** | **796.5** | **2.72×** |
+| residue | 17.5 | 119.1 | 339.1 | 2.85× |
+
+`publish` was 259.5 ms at 10,000 rows before C5 and is 240.4 now; the framework
+total was 333.5 and is 292.5. Against the `octane` cell measured in the same
+window (626.1 ms of framework script at 10,000, 1864.9 at 30,000) the compiled
+program is running at 47% and 43% of Octane's own first-screen script.
+
+Read the last column, though, and `publish` is the wrong place to keep looking.
+Every phase grows **slower than the row count** — 2.72× for 3× the rows on the
+framework total. Whatever is keeping this cell off the ceiling is not the script
+the split measures.
+
+#### The excess is superlinear and the script is not
+
+Subtracting the `octane-direct` ceiling cell from the compiled program's own
+shipping cell, in the same window and at the same three scales:
+
+| segment | @1,000 | @10,000 | @30,000 | 10k → 30k |
+|---|---:|---:|---:|---:|
+| `start_delay` | +16.8 | +18.8 | +19.1 | flat |
+| `papi_create` | +2.6 | +55.5 | +119.5 | 2.15× |
+| `papi_props` | −0.8 | −2.0 | +14.7 | — |
+| `papi_events` | +0.9 | +7.1 | +25.9 | 3.65× |
+| `papi_topology` | +1.9 | +12.5 | +41.1 | 3.29× |
+| `papi_read` | +0.1 | +0.1 | +0.1 | flat |
+| `papi_flush` | −2.9 | +38.8 | +220.2 | **5.67×** |
+| `off_boundary` | +25.1 | +150.5 | +684.5 | **4.55×** |
+| **total excess** | **+43.7** | **+281.3** | **+1125.1** | **4.00×** |
+
+The total excess grows 4.00× for 3× the rows while the framework script inside it
+grows 2.72×. Those cannot both be true of a cell whose distance from the ceiling
+is framework script, so the term that decides clause 1 at scale is one of the two
+in bold — and one of them is host time, not Octane's script at all.
+
+`start_delay` is the one term that is flat, and at 1,000 rows it is 38% of the
+whole excess: 20.3 ms against the prototype's 3.5 ms, which is the Octane bundle
+evaluating and installing before its first host call. It is a fixed cost that no
+row-count work can reach, and it is why this harness reads 1.41× at 1,000 rows
+where the shipping-page A/B reads far closer — the two windows begin in different
+places, and §"Measurement honesty rules" forbids trading one for the other.
+
+#### `papi_flush` costs more for an identical call sequence
+
+`papi_flush` is web-core's own synchronous publication, entered twice per window
+in every cell. It is not a place framework script can hide, and the counts build
+says the traffic reaching it is the same everywhere: `results/c163-c6-phase-scaling.json`
+records 20.0001 ops per row and `flushConstant: true` for all five cells at all
+three scales, drift 4.8e-05. Yet at 30,000 rows:
+
+| cell | `papi_flush` median | range | host calls in window |
+|---|---:|---|---:|
+| `octane` | 633.6 | 628.3–672.6 | 930,195 |
+| `octane-mts-program` | 779.6 | 660.9–870.9 | 600,126 |
+| `octane-direct` | 559.4 | 549.6–657.5 | 600,127 |
+
+The compiled program makes a third fewer host calls than `octane` across the
+window and pays 146 ms more inside the flush; against the prototype it makes the
+same calls and pays 220 ms more, on ranges that do not overlap. At 1,000 rows the
+same comparison runs the other way — 16.6 ms against the prototype's 19.5 — so
+this is not a constant the program carries, it is something that turns on with
+size.
+
+Three things are established: the call counts are identical, the composed tree is
+the same, and the gap is disjoint at both 10,000 and 30,000 rows. What is not
+established is why, and the honest reading of a 5-rep median with a
+660.9–870.9 ms range is that the direction holds and the 5.67× multiplier does
+not. The next slice is to measure what differs in the tree handed to that
+flush — creation order, attribute-storage shape, how much of it is still
+uncommitted when publication begins — rather than to design a mechanism against
+a number this soft.
+
+#### Caveat on the 10,000-row split
+
+Reading a profile cell's split as the shipping cell's requires the two walls to
+agree, which the report prints per cell. At 1,000 and 30,000 rows the compiled
+program's profile build is +6.6% and +6.1% over its shipping build, in line with
+the +4.1% §"Which first-screen phase owns the program's remaining time" records.
+At 10,000 rows it is **+11.0%** — 1304.9 ms against 1175.1 ms. The 10,000-row
+phase rows above are still the best split available for that scale, but they
+carry more of the probe than the rows either side of them, and any figure taken
+from them inherits that.
+
 ### The publication floor — `dom-attach-floor.mjs`
 
 A speed-of-light control with no framework in the page at all. `__AppendElement`
