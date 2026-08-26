@@ -18,6 +18,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { parseArgs } from 'node:util';
+import { writeEvidenceJson } from '../scripts/evidence.mjs';
 
 import {
 	applyNeutralize,
@@ -130,23 +131,16 @@ try {
 
 const output = path.join(import.meta.dirname, 'results');
 fs.mkdirSync(output, { recursive: true });
-fs.writeFileSync(
-	path.join(output, 'papi-predicate-cost.json'),
-	JSON.stringify(
-		{
-			meta: {
-				date: new Date().toISOString(),
-				node: process.version,
-				cpus: os.cpus().length,
-				cpuModel: os.cpus()[0]?.model ?? 'unknown',
-				chromium: browser.version(),
-				reps,
-				note: 'settled octane auto-rows tree; the walk is a driver property, not a framework one',
-			},
-			measured,
-		},
-		null,
-		2,
-	) + '\n',
-);
+await writeEvidenceJson(path.join(output, 'papi-predicate-cost.json'), {
+	meta: {
+		date: new Date().toISOString(),
+		node: process.version,
+		cpus: os.cpus().length,
+		cpuModel: os.cpus()[0]?.model ?? 'unknown',
+		chromium: browser.version(),
+		reps,
+		note: 'settled octane auto-rows tree; the walk is a driver property, not a framework one',
+	},
+	measured,
+});
 console.log('[predicate] wrote results/papi-predicate-cost.json');

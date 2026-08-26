@@ -22,6 +22,7 @@ import {
 	makeBenchHtml,
 } from '../web/driver-client.mjs';
 import { buildTableApp } from '../scripts/build-app.mjs';
+import { writeEvidenceJson } from '../scripts/evidence.mjs';
 import {
 	DEFAULT_TIMEOUT_MS,
 	buildOperations,
@@ -471,25 +472,18 @@ try {
 if (args.smoke) {
 	const output = path.join(import.meta.dirname, 'results');
 	fs.mkdirSync(output, { recursive: true });
-	fs.writeFileSync(
-		path.join(output, `smoke-${rows}.json`),
-		JSON.stringify(
-			{
-				meta: {
-					date: new Date().toISOString(),
-					node: process.version,
-					cpus: cpuCount,
-					cpuModel: os.cpus()[0]?.model ?? 'unknown',
-					chromium: browserVersion,
-					rows,
-					reportable: false,
-				},
-				samples,
-			},
-			null,
-			2,
-		) + '\n',
-	);
+	await writeEvidenceJson(path.join(output, `smoke-${rows}.json`), {
+		meta: {
+			date: new Date().toISOString(),
+			node: process.version,
+			cpus: cpuCount,
+			cpuModel: os.cpus()[0]?.model ?? 'unknown',
+			chromium: browserVersion,
+			rows,
+			reportable: false,
+		},
+		samples,
+	});
 	console.log(`[stage] smoke passed at ${rows} rows (not reportable).`);
 	process.exit(0);
 }
@@ -720,6 +714,6 @@ const report = {
 };
 const output = path.join(import.meta.dirname, 'results');
 fs.mkdirSync(output, { recursive: true });
-fs.writeFileSync(path.join(output, `live-${rows}.json`), JSON.stringify(report, null, 2) + '\n');
+await writeEvidenceJson(path.join(output, `live-${rows}.json`), report);
 fs.writeFileSync(path.join(output, `live-${rows}.md`), markdown(report) + '\n');
 console.log(markdown(report));

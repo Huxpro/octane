@@ -128,6 +128,7 @@ import {
 import { renderFloorReport } from './dom-attach-report.mjs';
 import { rotatedSchedule } from './papi-analyze.mjs';
 import { chromiumLaunchOptions } from '../web/driver-client.mjs';
+import { writeEvidenceJson } from '../scripts/evidence.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const { values: args } = parseArgs({
@@ -426,10 +427,12 @@ const verdict = verdictFor(perScale, CELLS);
 
 const output = path.join(import.meta.dirname, 'results');
 fs.mkdirSync(output, { recursive: true });
-fs.writeFileSync(
-	path.join(output, `${outputStem}.json`),
-	JSON.stringify({ meta, scales: perScale, verdict, samples }, null, 2) + '\n',
-);
+await writeEvidenceJson(path.join(output, `${outputStem}.json`), {
+	meta,
+	scales: perScale,
+	verdict,
+	samples,
+});
 fs.writeFileSync(path.join(output, `${outputStem}.md`), text + '\n');
 console.log('\n' + text);
 console.log(`[floor] wrote ${path.relative(root, path.join(output, `${outputStem}.md`))}`);

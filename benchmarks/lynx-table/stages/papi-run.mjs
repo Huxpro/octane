@@ -56,6 +56,7 @@ import {
 	papiInstrumentJs,
 } from '../web/driver-client.mjs';
 import { buildTableApp } from '../scripts/build-app.mjs';
+import { writeEvidenceJson } from '../scripts/evidence.mjs';
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(import.meta.dirname, '..');
@@ -551,10 +552,10 @@ const output = path.join(import.meta.dirname, 'results');
 fs.mkdirSync(output, { recursive: true });
 
 if (args.smoke) {
-	fs.writeFileSync(
-		path.join(output, `${outputStem}-smoke.json`),
-		JSON.stringify({ meta: { ...meta, reportable: false }, samples }, null, 2) + '\n',
-	);
+	await writeEvidenceJson(path.join(output, `${outputStem}-smoke.json`), {
+		meta: { ...meta, reportable: false },
+		samples,
+	});
 	console.log('[papi] smoke passed (not reportable).');
 	process.exit(0);
 }
@@ -683,15 +684,17 @@ if (scales.length >= 2) {
 // module anyone can re-run over the checked-in JSON. A wording or attribution
 // change never costs another measurement window.
 for (const rows of scales) {
-	fs.writeFileSync(
-		path.join(output, `${outputStem}-${rows}.json`),
-		JSON.stringify({ meta, rows, ...report.scales[rows], samples: samples[rows] }, null, 2) + '\n',
-	);
+	await writeEvidenceJson(path.join(output, `${outputStem}-${rows}.json`), {
+		meta,
+		rows,
+		...report.scales[rows],
+		samples: samples[rows],
+	});
 }
-fs.writeFileSync(
-	path.join(output, `${outputStem}-scaling.json`),
-	JSON.stringify({ meta, scaling: report.scaling }, null, 2) + '\n',
-);
+await writeEvidenceJson(path.join(output, `${outputStem}-scaling.json`), {
+	meta,
+	scaling: report.scaling,
+});
 const text = renderBoundaryReport(
 	scales.map((rows, index) => ({
 		meta,

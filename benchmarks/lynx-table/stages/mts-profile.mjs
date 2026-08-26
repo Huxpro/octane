@@ -37,6 +37,7 @@ import {
 	stats,
 } from '../web/driver-client.mjs';
 import { foldProfile, PROBE_WINDOW } from './mts-profile-buckets.mjs';
+import { writeEvidenceJson } from '../scripts/evidence.mjs';
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(import.meta.dirname, '..');
@@ -282,10 +283,7 @@ const meta = {
 const report = { meta, cells };
 const outDir = path.join(import.meta.dirname, 'results');
 fs.mkdirSync(outDir, { recursive: true });
-fs.writeFileSync(
-	path.join(outDir, `${args.label}-${rows}.json`),
-	`${JSON.stringify(report, null, '\t')}\n`,
-);
+await writeEvidenceJson(path.join(outDir, `${args.label}-${rows}.json`), report);
 
 const lines = [
 	`# Main-thread script attribution — ${cellIds.map((id) => HEADINGS[id] ?? id).join(' vs ')}`,
