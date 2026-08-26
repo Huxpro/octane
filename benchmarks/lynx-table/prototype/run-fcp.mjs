@@ -9,9 +9,11 @@
  *   node prototype/run-fcp.mjs --rows 10000 --reps 5
  *
  * The issue-#103 `octane-block` cell joins automatically once its bundle
- * exists:
+ * exists, and so do the two issue-#163 program cells:
  *
  *   BENCH_CORE=block BENCH_AUTOROWS=10000 node scripts/build-app.mjs
+ *   BENCH_MTS_PROGRAM=1 BENCH_AUTOROWS=10000 node scripts/build-app.mjs
+ *   BENCH_CORE=block BENCH_MTS_PROGRAM=1 BENCH_AUTOROWS=10000 node scripts/build-app.mjs
  */
 import fs from 'node:fs';
 import http from 'node:http';
@@ -58,12 +60,29 @@ const BLOCK_BUNDLE = path.join(root, `app/dist-block-rows${ROWS}/main.web.bundle
 // like the Block cell it is simply absent until then.
 const MTS_PROGRAM_BUNDLE = path.join(root, `app/dist-mtsprogram-rows${ROWS}/main.web.bundle`);
 
+// Issue-#163 C5: both switches on at once, which is the configuration oracle
+// clause 1 actually names — "block-core FCP within 5% of the `octane-direct`
+// ceiling cell". The two switches are orthogonal by construction (the backend
+// moves the main-thread chunk, the core moves the background one), so the cell
+// above prices the same first screen with the universal background beside it;
+// this is the one the clause is written against, and the two together say
+// whether the core the first screen is paired with costs anything at the
+// boundary. Built with
+// `BENCH_CORE=block BENCH_MTS_PROGRAM=1 BENCH_AUTOROWS=<rows> node scripts/build-app.mjs`.
+const BLOCK_PROGRAM_BUNDLE = path.join(
+	root,
+	`app/dist-block-mtsprogram-rows${ROWS}/main.web.bundle`,
+);
+
 const CELLS = [
 	{ id: 'octane', bundle: path.join(root, `app/dist-rows${ROWS}/main.web.bundle`) },
 	{ id: 'octane-direct', bundle: path.join(here, `dist-rows${ROWS}/main.web.bundle`) },
 	...(fs.existsSync(BLOCK_BUNDLE) ? [{ id: 'octane-block', bundle: BLOCK_BUNDLE }] : []),
 	...(fs.existsSync(MTS_PROGRAM_BUNDLE)
 		? [{ id: 'octane-mts-program', bundle: MTS_PROGRAM_BUNDLE }]
+		: []),
+	...(fs.existsSync(BLOCK_PROGRAM_BUNDLE)
+		? [{ id: 'octane-block-program', bundle: BLOCK_PROGRAM_BUNDLE }]
 		: []),
 	...args.extra.map((entry) => {
 		const separator = entry.indexOf('=');

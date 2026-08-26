@@ -285,6 +285,28 @@ the block cell. §1's wire-cost gates take no cell from this build and want none
 the wire is the background's, and the background chunk is the half that does not
 move.
 
+### The `octane-block-program` cell (issue #163 C5)
+
+Both build switches on at once, which is the configuration oracle clause 1
+names — "block-core FCP within 5% of the `octane-direct` ceiling cell":
+
+```bash
+BENCH_CORE=block BENCH_MTS_PROGRAM=1 BENCH_AUTOROWS=10000 node scripts/build-app.mjs
+```
+
+`prototype/run-fcp.mjs` picks it up from
+`app/dist-block-mtsprogram-rows<N>/main.web.bundle` on the same terms as the
+other two: built, it is a cell; absent, it is not one.
+
+It exists because the clause names the core and the attribution ladder measures
+the backend, and those had never been the same cell. At 10,000 rows over n=15
+in one window they are indistinguishable — 1189.7 ms against
+`octane-mts-program`'s 1191.3 ms, with the block cell ahead in 109 of 225
+pairwise comparisons, which is the 50% that means "no difference". That is the
+orthogonality claim measured rather than asserted: the backend owns the first
+screen and the core it is paired with does not move the boundary.
+`prototype/results/fcp-10000c5-clause1-10000-n15.*` is the committed record.
+
 ### Background work, and why no other column can see it
 
 A `--counter-build` session also reports, per operation, what the background
