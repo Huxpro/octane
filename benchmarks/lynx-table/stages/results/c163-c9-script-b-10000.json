@@ -1,0 +1,453 @@
+{
+  "meta": {
+    "date": "2026-08-26T12:27:53.284Z",
+    "node": "v22.22.2",
+    "cpus": 4,
+    "cpuModel": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "platform": "linux",
+    "release": "6.18.44-fc-v21",
+    "chromium": null,
+    "rows": 10000,
+    "reps": 5,
+    "samplingIntervalUs": 100,
+    "cells": ["octane", "octane-mts-program", "octane-direct"],
+    "bundles": {
+      "octane": {
+        "path": "app/dist-rows10000/main.web.bundle",
+        "bytes": 518125,
+        "digest": "72e6862fa34fa3bb",
+        "modified": "2026-08-26T12:01:46.151Z"
+      },
+      "octane-mts-program": {
+        "path": "app/dist-mtsprogram-rows10000/main.web.bundle",
+        "bytes": 520098,
+        "digest": "4d9094aade76c99a",
+        "modified": "2026-08-26T11:19:44.686Z"
+      },
+      "octane-direct": {
+        "path": "prototype/dist-rows10000/main.web.bundle",
+        "bytes": 20563,
+        "digest": "023763e486d236d7",
+        "modified": "2026-08-26T12:13:05.166Z"
+      }
+    },
+    "loadStart": [0.83, 1.05, 0.99],
+    "loadEnd": [1.39, 1.19, 1.04]
+  },
+  "cells": {
+    "octane": {
+      "buckets": {
+        "element factory dispatch": {
+          "n": 5,
+          "min": 2.423,
+          "max": 5.414,
+          "mean": 3.7751999999999994,
+          "median": 3.882,
+          "std": 1.0039931075460626,
+          "ci95": 0.8800387602663872
+        },
+        "renderer pre-passes": {
+          "n": 5,
+          "min": 58.966,
+          "max": 67.776,
+          "mean": 64.38919999999999,
+          "median": 65.142,
+          "std": 2.917876858265268,
+          "ci95": 2.557631833981426
+        },
+        "applier entry and pre-walk": {
+          "n": 5,
+          "min": 40.492,
+          "max": 46.932,
+          "mean": 44.786199999999994,
+          "median": 45.802,
+          "std": 2.2927072556259787,
+          "ci95": 2.0096465162259767
+        },
+        "first-screen entry": {
+          "n": 5,
+          "min": 8.493,
+          "max": 18.299,
+          "mean": 14.508199999999999,
+          "median": 16.37,
+          "std": 3.561713037289781,
+          "ci95": 3.12197912734906
+        },
+        "host record building": {
+          "n": 5,
+          "min": 88.448,
+          "max": 100.844,
+          "mean": 94.5432,
+          "median": 93.429,
+          "std": 4.150428286333834,
+          "ci95": 3.638010795320322
+        },
+        "applier walk": {
+          "n": 5,
+          "min": 126.395,
+          "max": 135.546,
+          "mean": 131.58559999999997,
+          "median": 132.179,
+          "std": 3.0622416364486957,
+          "ci95": 2.6841731413507564
+        },
+        "event bookkeeping": {
+          "n": 5,
+          "min": 19.096,
+          "max": 21.366,
+          "mean": 20.1636,
+          "median": 20.131,
+          "std": 0.8480289146013834,
+          "ci95": 0.7433301175741504
+        },
+        "first tree capture": {
+          "n": 5,
+          "min": 31.511,
+          "max": 36.563,
+          "mean": 34.342999999999996,
+          "median": 33.684,
+          "std": 1.9553662572520796,
+          "ci95": 1.7139540938729965
+        },
+        "program mount": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "compiled program create": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        }
+      },
+      "namedMs": {
+        "n": 5,
+        "min": 389.062,
+        "max": 419.49,
+        "mean": 408.09420000000006,
+        "median": 413.681,
+        "std": 12.042273762043438,
+        "ci95": 10.55551835235177
+      },
+      "unmatchedMs": {
+        "n": 5,
+        "min": 22.241,
+        "max": 29.164,
+        "mean": 26.073400000000003,
+        "median": 26.925,
+        "std": 2.9289053654906647,
+        "ci95": 2.567298746785189
+      },
+      "totalMs": {
+        "n": 5,
+        "min": 418.226,
+        "max": 442.693,
+        "mean": 434.16759999999994,
+        "median": 441.731,
+        "std": 10.132920972750146,
+        "ci95": 8.881896841435427
+      },
+      "largestUnnamed": [
+        {
+          "position": "1:226656",
+          "ms": 3,
+          "source": "(e){return(0,r.Zz)(S,[\"row\"+(e.isSelected?\" danger\":\"\"),String(e.row.id),r.N5,e.row.label,r.N5])},{module:\"@octanejs/lynx/main-renderer\"});l"
+        },
+        {
+          "position": "1:228144",
+          "ms": 2.7,
+          "source": "(e,t)=>(0,r.Zz)(z,[(0,r.DT)(\"lynx\",R,(0,r.uc)([[\"set\",\"row\",e],[\"set\",\"isSelected\",n===e.id],[\"set\",\"onSelect\",A],[\"set\",\"onRemove\",C]]))]))"
+        },
+        {
+          "position": "1:9713",
+          "ms": 2.3,
+          "source": "(e){var r=X.exec(e);if(null===r)return null;var t=r[1];return Z.has(t)?\"discrete\":H.has(t)?\"continuous\":\"default\"}var Q=new Map;var ee=[];fu"
+        }
+      ]
+    },
+    "octane-mts-program": {
+      "buckets": {
+        "element factory dispatch": {
+          "n": 5,
+          "min": 0,
+          "max": 0.175,
+          "mean": 0.0688,
+          "median": 0,
+          "std": 0.08428380627380327,
+          "ci95": 0.07387801353041377
+        },
+        "renderer pre-passes": {
+          "n": 5,
+          "min": 24.103,
+          "max": 32.012,
+          "mean": 27.517400000000002,
+          "median": 27.789,
+          "std": 2.7585255916884295,
+          "ci95": 2.4179542903497575
+        },
+        "applier entry and pre-walk": {
+          "n": 5,
+          "min": 18.32,
+          "max": 26.456,
+          "mean": 22.078,
+          "median": 23.086,
+          "std": 3.1733717714758853,
+          "ci95": 2.781582999568411
+        },
+        "first-screen entry": {
+          "n": 5,
+          "min": 1.511,
+          "max": 4.023,
+          "mean": 2.588,
+          "median": 2.103,
+          "std": 0.9331190706442559,
+          "ci95": 0.817914927840298
+        },
+        "host record building": {
+          "n": 5,
+          "min": 0.184,
+          "max": 0.526,
+          "mean": 0.3524,
+          "median": 0.356,
+          "std": 0.10843357413642696,
+          "ci95": 0.09504621838242698
+        },
+        "applier walk": {
+          "n": 5,
+          "min": 7.507,
+          "max": 10.8,
+          "mean": 9.3686,
+          "median": 9.775,
+          "std": 1.1050673463640126,
+          "ci95": 0.968634236824613
+        },
+        "event bookkeeping": {
+          "n": 5,
+          "min": 14.813,
+          "max": 18.785,
+          "mean": 17.395,
+          "median": 17.874,
+          "std": 1.467132850153659,
+          "ci95": 1.2859986437069046
+        },
+        "first tree capture": {
+          "n": 5,
+          "min": 7.507,
+          "max": 8.887,
+          "mean": 7.946,
+          "median": 7.846,
+          "std": 0.5054863005067499,
+          "ci95": 0.44307827801416777
+        },
+        "program mount": {
+          "n": 5,
+          "min": 61.376,
+          "max": 82.064,
+          "mean": 68.7628,
+          "median": 66.677,
+          "std": 6.989127253098198,
+          "ci95": 6.126240147398988
+        },
+        "compiled program create": {
+          "n": 5,
+          "min": 8.354,
+          "max": 12.211,
+          "mean": 10.7776,
+          "median": 11.336,
+          "std": 1.4875680286965036,
+          "ci95": 1.30391086746173
+        }
+      },
+      "namedMs": {
+        "n": 5,
+        "min": 146.735,
+        "max": 176.081,
+        "mean": 166.8546,
+        "median": 170.322,
+        "std": 10.35558864768198,
+        "ci95": 9.077073663990873
+      },
+      "unmatchedMs": {
+        "n": 5,
+        "min": 8.241,
+        "max": 10.426,
+        "mean": 9.2742,
+        "median": 9.422,
+        "std": 0.7339867573737284,
+        "ci95": 0.6433677593563423
+      },
+      "totalMs": {
+        "n": 5,
+        "min": 154.976,
+        "max": 184.874,
+        "mean": 176.1288,
+        "median": 179.744,
+        "std": 10.827523639318457,
+        "ci95": 9.490742923116777
+      },
+      "largestUnnamed": [
+        {
+          "position": "1:228287",
+          "ms": 0.9,
+          "source": "(e=1e3){var r=[];for(var t=0;t<e;t++)r.push({id:n++,label:i[t%i.length]+\" \"+o[7*t%o.length]+\" \"+l[13*t%l.length]});return r}(1e4);let L=new "
+        },
+        {
+          "position": "1:222723",
+          "ms": 0.9,
+          "source": "()=>{var e=t(867);var r=t(992);var n=1;function a(e){return Math.round(1e3*Math.random())%e}var i=[\"pretty\",\"large\",\"big\",\"small\",\"tall\",\"sh"
+        },
+        {
+          "position": "1:228629",
+          "ms": 0.9,
+          "source": "(e){return(0,r.Zz)(S,[\"row\"+(e.isSelected?\" danger\":\"\"),String(e.row.id),r.N5,e.row.label,r.N5])},{module:\"@octanejs/lynx/main-renderer\"});l"
+        }
+      ]
+    },
+    "octane-direct": {
+      "buckets": {
+        "element factory dispatch": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "renderer pre-passes": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "applier entry and pre-walk": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "first-screen entry": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "host record building": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "applier walk": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "event bookkeeping": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "first tree capture": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "program mount": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "compiled program create": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        }
+      },
+      "namedMs": {
+        "n": 5,
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "std": 0,
+        "ci95": 0
+      },
+      "unmatchedMs": {
+        "n": 5,
+        "min": 8.908,
+        "max": 20.113,
+        "mean": 12.9346,
+        "median": 11.835,
+        "std": 3.793176431435796,
+        "ci95": 3.3248657377254798
+      },
+      "totalMs": {
+        "n": 5,
+        "min": 8.908,
+        "max": 20.113,
+        "mean": 12.9346,
+        "median": 11.835,
+        "std": 3.793176431435796,
+        "ci95": 3.3248657377254798
+      },
+      "largestUnnamed": [
+        {
+          "position": "72:19",
+          "ms": 16,
+          "source": "(id, label, selected) {"
+        },
+        {
+          "position": "182:25",
+          "ms": 2.4,
+          "source": "(count) {"
+        },
+        {
+          "position": "276:34",
+          "ms": 1.5,
+          "source": "() {"
+        }
+      ]
+    }
+  }
+}
