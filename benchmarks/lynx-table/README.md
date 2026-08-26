@@ -908,6 +908,91 @@ candidate owner is authorized only by a positive directly observed
 contribution, and the report prints the certified control and counts-build
 deltas beside the timed one.
 
+## 7. Main-thread script attribution (`stages/mts-profile.mjs`, on demand)
+
+```bash
+node stages/mts-profile.mjs --rows 10000
+node stages/mts-profile.mjs --rows 1000 --reps 3 --cells octane,octane-mts-program
+```
+
+§6 prices the first screen either side of the host boundary and says which
+first-screen phase owns the part above it. It cannot say which *function* does,
+and issue #163 needs that: a compiled main-thread program issues the same host
+calls the hand-written prototype issues, for the same host time, and is still
+well short of it — so the cost is Octane's own script, and the question is
+which part of it.
+
+This samples that script directly. Chromium's CPU profiler runs while a
+pre-populated bundle paints, and only frames belonging to the hidden
+main-thread realm's Blob script are folded: the page realm runs the harness's
+own paint predicate, which is measurement rather than framework and would swamp
+everything. Frames are named by the string literals in the code — diagnostics,
+wire-format property names, public identifier prefixes — because a production
+bundle is minified and a mangled name says nothing. `mts-profile-buckets.mjs`
+holds the probe table and every probe cites the source it came from.
+
+**These milliseconds are not §6's.** A sampling profiler perturbs the page it
+measures, and this run carries no uninstrumented control beside it. What is
+reportable is the shape: which function owns the script, and how the cells
+compare on one axis. Wall clocks come from `papi-run.mjs`.
+
+### Reading past a frame names the wrong function
+
+The probe window is 160 characters from a frame's own position, and that number
+is calibrated rather than chosen. The closest pair of neighbouring functions in
+the measured bundle — the applier's `visit` and `mountProgram` — sit 258
+characters apart, so a wider window lets the first match the second's
+diagnostic. At 420 characters it did: the run credited every `visit` sample to
+a program mount, and the cell carrying no compiled program at all reported the
+largest program-mount cost in the run. A bucket table that reads past its frame
+produces a complete-looking report of the wrong thing, which is why
+`stages/mts-profile.test.mjs` pins the spacing rather than any bucket's name.
+
+### What the compiled program still pays for @10,000
+
+Self time inside the main-thread realm, median over 5 profiled first screens
+with the observed range (`results/mts-profile-10000.md`):
+
+| main-thread script | `octane` | `+program` | `octane-direct` |
+|---|---:|---:|---:|
+| program mount | — | 53.8 [49.3–55.8] | — |
+| renderer pre-passes | 58.4 [56.9–61.3] | 37.0 [34.3–45.7] | — |
+| applier walk | 113.7 [109.6–117.9] | 35.7 [33.3–41.6] | — |
+| host record building | 95.5 [93.0–98.8] | 25.8 [20.8–29.9] | — |
+| applier entry and pre-walk | 44.6 [38.7–49.0] | 19.8 [19.1–24.4] | — |
+| event bookkeeping | 17.0 [15.6–19.9] | 13.3 [12.3–15.9] | — |
+| first tree capture | 45.0 [42.3–49.2] | 12.4 [11.1–13.3] | — |
+| **the compiled program itself** | — | **6.9 [5.8–7.2]** | — |
+| first-screen entry | 18.2 [16.0–18.4] | 3.8 [3.1–4.1] | — |
+| element factory dispatch | 5.5 [2.8–6.2] | 0.7 [0.6–1.7] | — |
+| unnamed by the probe table | 24.0 [20.8–27.5] | 13.5 [10.5–15.2] | 10.3 [7.6–13.3] |
+| **all frames** | **420.1 [407.1–436.6]** | **226.3 [218.9–238.0]** | **10.3 [7.6–13.3]** |
+
+The prototype has no framework rows by construction: it runs no Octane code, so
+no probe can name it and its whole script — 10.3 ms for the same 10,000 rows —
+is unnamed. At 1,000 rows the three read 63.1, 35.6 and 4.0 ms.
+
+Three things follow, and none of them is a hot spot:
+
+- **The compiled program's own code is 6.9 ms, 3% of what the program cell
+  spends.** Emitted straight-line code is already within a few milliseconds of a
+  hand-written emitter. Everything else in that column is the framework
+  scaffolding around it.
+- **No single bucket dominates.** The largest is the program mount at 24%, and
+  six buckets sit between 12 and 54 ms. There is nothing here to delete for a
+  large win; what is expensive is per-node and per-row scaffolding spread across
+  the whole path.
+- **The program is good at exactly what it was built for and no more.** It takes
+  69–73% off the applier walk, host record building, and first-tree capture —
+  the per-host-node work — and 22–37% off the renderer's own pre-passes and the
+  event bookkeeping, which are per-row and per-event however the row is painted.
+  Against that it adds the mount, 53.8 ms that did not exist before, which is now
+  the single largest row in its column.
+
+The ordering agrees with §6's phase split taken independently: the buckets
+inside `publish` sum to roughly four times those inside `render`, and capture is
+small in both. Two instruments, one conclusion.
+
 ## Claims and non-claims
 
 Command counts and commit bytes are Octane-owned costs and are gated. The
