@@ -575,6 +575,39 @@ describe('Lynx main-thread first-screen renderer', () => {
 		);
 	});
 
+	it('refuses a plan node kind it cannot render instead of freezing it into empty text', () => {
+		// Freezing used to end in an unguarded `kind: 'text'` return, so a node
+		// kind this renderer did not recognize became a text node carrying neither
+		// a value nor a slot. The first screen painted an empty string where the
+		// content belonged: no throw, no warning, nothing missing from the batch
+		// to notice. #163's compiled main-thread program is a plan root kind the
+		// compiler now emits, so the silent case became a reachable blank screen.
+		const program = {
+			kind: 'program',
+			slots: [],
+			values: [],
+			events: [],
+			ranges: [],
+			bind: () => () => null,
+		};
+
+		expect(() => universalPlan('lynx', program as never)).toThrow(
+			/Unsupported universal plan node kind "program"/,
+		);
+		// At depth too: freezing walks children, and a child it cannot render is
+		// the same authoring error as a root it cannot render.
+		expect(() =>
+			universalPlan('lynx', {
+				kind: 'host',
+				type: 'view',
+				children: [program],
+			} as never),
+		).toThrow(/Unsupported universal plan node kind "program"/);
+		expect(() => universalPlan('lynx', { kind: 'hosts', type: 'view' } as never)).toThrow(
+			/Unsupported universal plan node kind "hosts"/,
+		);
+	});
+
 	it('renders context, keyed control flow, caught errors, and pending fallbacks deterministically', () => {
 		const Context = createContext('default');
 		const Read = defineUniversalComponent('lynx', () =>

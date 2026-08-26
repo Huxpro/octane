@@ -1612,11 +1612,35 @@ function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
 			...(node.default === undefined ? null : { default: freezePlanNode(node.default) }),
 		});
 	}
-	return Object.freeze({
-		kind: 'text',
-		...(node.value === undefined ? null : { value: node.value }),
-		...(node.slot === undefined ? null : { slot: node.slot }),
-	});
+	if (node.kind === 'text') {
+		return Object.freeze({
+			kind: 'text',
+			...(node.value === undefined ? null : { value: node.value }),
+			...(node.slot === undefined ? null : { slot: node.slot }),
+		});
+	}
+	// `text` used to own this return unguarded, so a kind this core could not
+	// interpret became a text node carrying neither a value nor a slot, and
+	// rendered an empty string: a plan that had not been understood, published
+	// as content.
+	//
+	// Every branch above narrowed `node` away, so widening it back is what lets
+	// the refusal name what it refused. Reading the kind here rather than at the
+	// top keeps it off the freeze walk, which components with children re-enter
+	// per render.
+	const kind: string = (node as UniversalPlanNode).kind;
+	// `program` is the compiled main-thread create function the `target: 'lynx'`
+	// backend emits (#163). It is not in `UniversalPlanNode` — that type lands
+	// with the renderer that mounts one — and it is not "unsupported" either:
+	// the plan is well-formed and its renderer's main-thread module can paint
+	// it. What is wrong is which core received it, and a bundle carrying the
+	// wrong core is a different thing to go and look at than a malformed plan.
+	if (kind === 'program') {
+		throw new TypeError(
+			'A compiled main-thread program plan belongs to the main-thread module of its renderer; the generic universal core cannot interpret one.',
+		);
+	}
+	throw new TypeError(`Unsupported universal plan node kind ${JSON.stringify(kind)}.`);
 }
 
 export function universalPlan(renderer: string, root: UniversalPlanNode): UniversalPlan {
