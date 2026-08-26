@@ -60,6 +60,8 @@ import {
 	selfCheckLynxBackgroundInboundMessage,
 	validateLynxBackgroundInboundMessage,
 	validateLynxBackgroundOutboundMessage,
+	type LynxValidationMode,
+	resolveLynxValidationMode,
 	type LynxBackgroundInboundMessage,
 	type LynxBackgroundFunctionWireDescriptor,
 	type LynxAdoptionReadyMessage,
@@ -111,6 +113,8 @@ interface LynxMainThreadGlobals {
 	};
 }
 
+export type { LynxValidationMode } from './core/protocol.js';
+
 export interface InstallLynxMainThreadOptions {
 	/** Main-thread global object containing the public Element PAPI. */
 	readonly target?: object;
@@ -135,6 +139,11 @@ export interface InstallLynxMainThreadOptions {
 	 */
 	readonly firstScreenRender?: 'immediate' | 'engine';
 	readonly onDiagnostic?: (error: Error) => void;
+	/**
+	 * How much of an inbound commit this receiver re-derives before applying it.
+	 * Defaults to `checked`. See {@link LynxValidationMode}.
+	 */
+	readonly validation?: LynxValidationMode;
 	readonly executeMainThreadWorklet?: (
 		worklet: import('./core/protocol.js').LynxMainThreadWorkletWireDescriptor,
 		args: readonly UniversalSerializableValue[],
@@ -469,10 +478,14 @@ function acknowledgementHandles<Node extends LynxElementRef>(
 function freezeValidatedIntrinsicRun(
 	run: Extract<UniversalHostBatch['commands'][number], { readonly op: 'mount-template-run' }>,
 ): void {
-	// MessagePort structured-clones worker payloads and drops every frozen
-	// descriptor. Restore immutability only after the complete receive-boundary
-	// validator has rejected hostile prototypes, accessors, symbols, and scalars.
-	// The program is a tiny shared shape; its flat values are frozen in place.
+	// The wire drops every frozen descriptor — `JSON.parse` output is entirely
+	// writable and configurable, as structured clone's was before it — so a
+	// program arrives mutable however the sender left it. The freeze exists to
+	// put that back, because this program is memoized and reused across the
+	// commands of a batch: validated once, then trusted by every later command
+	// that names it. It is no longer a defense against a hostile composite —
+	// issue #156 moved that question to the boundary, and the validator above no
+	// longer asks it — but the memo it protects is real, so the freeze stays.
 	const program = run.program;
 	for (const node of program.nodes) {
 		Object.freeze(node.props);
@@ -501,6 +514,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	if (options.firstScreen !== undefined && typeof options.firstScreen !== 'boolean') {
 		throw new TypeError('Octane Lynx firstScreen must be a boolean when provided.');
 	}
+	const validation = resolveLynxValidationMode(options.validation);
 	if (
 		options.firstScreenSync !== undefined &&
 		options.firstScreenSync !== 'automatic' &&
@@ -2564,7 +2578,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		let message: ReturnType<typeof validateLynxBackgroundOutboundMessage>;
 		const startedValidate = LYNX_PROFILE ? performance.now() : 0;
 		try {
-			message = validateLynxBackgroundOutboundMessage(data);
+			message = validateLynxBackgroundOutboundMessage(data, validation);
 			if (LYNX_PROFILE) lynxWireProfile().validateMs += performance.now() - startedValidate;
 		} catch (error) {
 			const normalized = report(error, 'Octane Lynx received a malformed outbound message.');
