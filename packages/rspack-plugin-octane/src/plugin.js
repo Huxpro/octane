@@ -91,6 +91,12 @@ function layerSpecializationCacheIdentity(layerSpecializations) {
 				...(specialization.universalRuntime === undefined
 					? null
 					: { universalRuntime: specialization.universalRuntime }),
+				// The backend's own identity, not the object: a cache salt has to be
+				// serializable, and a build must not reuse transforms emitted by a
+				// different backend than the one now configured.
+				...(specialization.mainThreadProgramBackend === undefined
+					? null
+					: { mainThreadProgramBackend: specialization.mainThreadProgramBackend.signature }),
 			},
 		]),
 	);
@@ -289,6 +295,10 @@ export class OctaneRspackPlugin {
 			renderers: this.options.renderers?.signature,
 			runtime: this.options.runtime,
 			universalRuntime: this.options.universalRuntime,
+			// The backend's identity, not the object — see
+			// `layerSpecializationCacheIdentity`. Discovery compilers deliberately
+			// take no backend: they read package manifests, never templates.
+			mainThreadProgramBackend: this.options.mainThreadProgramBackend?.signature,
 			layerSpecializations: layerSpecializationCacheIdentity(this.options.layerSpecializations),
 			// Ownership flips which modules compile vs pass through — cached
 			// transform results must not survive a requireDirective toggle.
@@ -326,6 +336,9 @@ export class OctaneRspackPlugin {
 			...(this.options.universalRuntime === undefined
 				? null
 				: { universalRuntime: this.options.universalRuntime }),
+			...(this.options.mainThreadProgramBackend === undefined
+				? null
+				: { mainThreadProgramBackend: this.options.mainThreadProgramBackend }),
 			...(this.options.layerSpecializations === undefined
 				? null
 				: { layerSpecializations: this.options.layerSpecializations }),

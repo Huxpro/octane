@@ -482,6 +482,14 @@ class OctaneBundlerCompiler {
 			profile: options.profile === true,
 			strong: options.strong === true,
 			universalRuntime: normalizeUniversalRuntime(options.universalRuntime),
+			// A renderer's own build-time main-thread backend, supplied by whoever
+			// configured the build rather than imported here. It is a live module
+			// rather than a request string because the code it holds encodes that
+			// renderer's applier semantics and cannot be re-derived from a name;
+			// `compile-universal.js` documents why it does not live in this package.
+			// Absent, every module compiles exactly as it did before it existed,
+			// which is what makes #163's byte-identity claim checkable.
+			mainThreadProgramBackend: options.mainThreadProgramBackend,
 		};
 		this.renderers = normalizeRendererConfig(options.renderers);
 		// Ownership gate for mixed-toolchain projects (e.g. a React app hosting
@@ -1000,6 +1008,8 @@ class OctaneBundlerCompiler {
 		const universalRuntime = normalizeUniversalRuntime(
 			options.universalRuntime ?? this.defaults.universalRuntime,
 		);
+		const mainThreadProgramBackend =
+			options.mainThreadProgramBackend ?? this.defaults.mainThreadProgramBackend;
 		const filename = this._canonicalModuleId(file);
 		const targetRuntimeRequests = (source, kind) => {
 			if (environment !== 'server' || options.explicitRuntimeRequests !== true) return null;
@@ -1100,6 +1110,10 @@ class OctaneBundlerCompiler {
 				...(hasRendererBoundaries ? { rendererBoundaries: this.renderers.boundaries } : null),
 				...(hasRendererBoundaries ? { rendererRegistry: this.renderers.registry } : null),
 				...(clientOnlyImports.length > 0 ? { clientOnlyImports } : null),
+				// Passed through unconditioned: the universal compiler decides for
+				// itself which plans a backend may describe, and a second copy of
+				// that decision here could only disagree with it.
+				...(mainThreadProgramBackend === undefined ? null : { mainThreadProgramBackend }),
 				...(environment === 'client' && typeof options.isVoidComponentImport === 'function'
 					? { isVoidComponentImport: options.isVoidComponentImport }
 					: null),

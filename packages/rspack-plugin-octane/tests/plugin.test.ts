@@ -382,6 +382,55 @@ describe('OctaneRspackPlugin', () => {
 			(layeredMain.options as any).cache.version,
 		);
 
+		// A backend emits the create functions a cached transform holds, so two
+		// backends that both exist are not the same build. Presence is too weak a
+		// key: it would let a build reuse code an older emitter wrote, with
+		// nothing red anywhere.
+		const backend = (signature: string) => ({
+			signature,
+			deriveLynxMainThreadProgram: () => null,
+			emitLynxMainThreadProgram: () => ({ source: '', valueCount: 0, eventCount: 0 }),
+		});
+		const noBackend = createCachedCompiler();
+		const backendOne = createCachedCompiler();
+		const backendTwo = createCachedCompiler();
+		const layeredBackendOne = createCachedCompiler();
+		const layeredBackendTwo = createCachedCompiler();
+		new OctaneRspackPlugin({ universalRuntime: { runtime: 'lynx', thread: 'main-thread' } }).apply(
+			noBackend as any,
+		);
+		for (const [compiler, signature] of [
+			[backendOne, 'backend/1'],
+			[backendTwo, 'backend/2'],
+		] as const) {
+			new OctaneRspackPlugin({
+				universalRuntime: { runtime: 'lynx', thread: 'main-thread' },
+				mainThreadProgramBackend: backend(signature),
+			}).apply(compiler as any);
+		}
+		for (const [compiler, signature] of [
+			[layeredBackendOne, 'backend/1'],
+			[layeredBackendTwo, 'backend/2'],
+		] as const) {
+			new OctaneRspackPlugin({
+				layerSpecializations: {
+					main: {
+						universalRuntime: { runtime: 'lynx', thread: 'main-thread' },
+						mainThreadProgramBackend: backend(signature),
+					},
+				},
+			}).apply(compiler as any);
+		}
+		expect((backendOne.options as any).cache.version).not.toBe(
+			(noBackend.options as any).cache.version,
+		);
+		expect((backendTwo.options as any).cache.version).not.toBe(
+			(backendOne.options as any).cache.version,
+		);
+		expect((layeredBackendTwo.options as any).cache.version).not.toBe(
+			(layeredBackendOne.options as any).cache.version,
+		);
+
 		// requireDirective flips which modules compile vs pass through, so a
 		// toggle must never reuse cached transform results.
 		const directive = createCachedCompiler();

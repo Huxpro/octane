@@ -45,10 +45,51 @@ const LOADER_OPTION_KEYS = new Set([
 	'renderers',
 	'requireDirective',
 	'universalRuntime',
+	'mainThreadProgramBackend',
 	'layerSpecializations',
 ]);
 const PLUGIN_OPTION_KEYS = new Set([...LOADER_OPTION_KEYS, 'runtime', 'transpile']);
-const LAYER_SPECIALIZATION_KEYS = new Set(['runtime', 'renderers', 'universalRuntime']);
+const LAYER_SPECIALIZATION_KEYS = new Set([
+	'runtime',
+	'renderers',
+	'universalRuntime',
+	'mainThreadProgramBackend',
+]);
+
+/**
+ * A renderer's build-time main-thread backend, as the build hands it over.
+ *
+ * It is the live module, not a request string. The code it holds encodes one
+ * renderer's own applier semantics, so nothing here can reconstruct it from a
+ * name, and resolving one would have to happen in the bundler's Node process
+ * against a module the renderer package may not publish in that format.
+ *
+ * `signature` is required because this object reaches the persistent cache salt
+ * and a build must not reuse transforms emitted by a different backend. An
+ * object identity cannot be salted, and the presence of *a* backend is too weak
+ * a key: two backends that both exist are not the same backend.
+ */
+function normalizeMainThreadProgramBackend(value, label) {
+	if (value === undefined) return undefined;
+	if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+		throw new TypeError(`@octanejs/rspack-plugin: \`${label}\` must be a backend module.`);
+	}
+	for (const name of ['deriveLynxMainThreadProgram', 'emitLynxMainThreadProgram']) {
+		if (typeof value[name] !== 'function') {
+			throw new TypeError(`@octanejs/rspack-plugin: \`${label}.${name}\` must be a function.`);
+		}
+	}
+	if (
+		typeof value.signature !== 'string' ||
+		value.signature.trim() !== value.signature ||
+		!value.signature
+	) {
+		throw new TypeError(
+			`@octanejs/rspack-plugin: \`${label}.signature\` must be a non-empty identity string.`,
+		);
+	}
+	return value;
+}
 
 function normalizeRuntimeRequest(value, label = 'runtime') {
 	if (value !== undefined && (typeof value !== 'string' || value.trim() !== value || !value)) {
@@ -125,12 +166,17 @@ function normalizeLayerSpecializations(value) {
 				? undefined
 				: normalizeRendererConfig(specialization.renderers);
 		const universalRuntime = normalizeUniversalRuntime(specialization.universalRuntime);
+		const mainThreadProgramBackend = normalizeMainThreadProgramBackend(
+			specialization.mainThreadProgramBackend,
+			`layerSpecializations.${layer}.mainThreadProgramBackend`,
+		);
 		normalized.push([
 			layer,
 			Object.freeze({
 				...(runtime === undefined ? null : { runtime }),
 				...(renderers === undefined ? null : { renderers }),
 				...(universalRuntime === undefined ? null : { universalRuntime }),
+				...(mainThreadProgramBackend === undefined ? null : { mainThreadProgramBackend }),
 			}),
 		]);
 	}
@@ -144,6 +190,14 @@ export function selectLayerCompilerOptions(options, module) {
 	return {
 		renderers: specialization?.renderers ?? options.renderers,
 		universalRuntime: specialization?.universalRuntime ?? options.universalRuntime,
+		// Inherited like the options beside it. A graph with one thread has no
+		// layer to specialize, and in a two-thread graph handing the background
+		// layer a backend is safe by construction rather than by configuration:
+		// the universal compiler declines every plan whose runtime thread is not
+		// the main one, which is the gate that makes the byte-identity claim hold
+		// without depending on who passed what.
+		mainThreadProgramBackend:
+			specialization?.mainThreadProgramBackend ?? options.mainThreadProgramBackend,
 	};
 }
 
@@ -190,6 +244,10 @@ function normalizeOptions(value, plugin) {
 	const renderers =
 		options.renderers === undefined ? undefined : normalizeRendererConfig(options.renderers);
 	const universalRuntime = normalizeUniversalRuntime(options.universalRuntime);
+	const mainThreadProgramBackend = normalizeMainThreadProgramBackend(
+		options.mainThreadProgramBackend,
+		'mainThreadProgramBackend',
+	);
 	const layerSpecializations = normalizeLayerSpecializations(options.layerSpecializations);
 
 	const normalized = {
@@ -202,6 +260,7 @@ function normalizeOptions(value, plugin) {
 		...(options.exclude === undefined ? null : { exclude: [...options.exclude] }),
 		...(renderers === undefined ? null : { renderers }),
 		...(universalRuntime === undefined ? null : { universalRuntime }),
+		...(mainThreadProgramBackend === undefined ? null : { mainThreadProgramBackend }),
 		...(layerSpecializations === undefined ? null : { layerSpecializations }),
 		...(options.requireDirective === undefined
 			? null

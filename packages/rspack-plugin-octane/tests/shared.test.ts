@@ -163,6 +163,26 @@ describe('declarative options', () => {
 			/thread/,
 		],
 		[{ runtime: '' }, /runtime/],
+		[{ mainThreadProgramBackend: 'octane/compiler' }, /must be a backend module/],
+		[{ mainThreadProgramBackend: { signature: 'x' } }, /deriveLynxMainThreadProgram/],
+		[
+			{
+				mainThreadProgramBackend: {
+					signature: ' spaced ',
+					deriveLynxMainThreadProgram: () => null,
+					emitLynxMainThreadProgram: () => ({}),
+				},
+			},
+			/signature/,
+		],
+		[
+			{
+				layerSpecializations: {
+					main: { mainThreadProgramBackend: { deriveLynxMainThreadProgram: () => null } },
+				},
+			},
+			/layerSpecializations\.main\.mainThreadProgramBackend\.emitLynxMainThreadProgram/,
+		],
 		[{ transform: () => {} }, /unknown option/],
 	] as const)('rejects invalid options %#', (value, message) => {
 		expect(() => normalizePluginOptions(value)).toThrow(message);

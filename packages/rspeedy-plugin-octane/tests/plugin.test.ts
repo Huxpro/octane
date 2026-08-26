@@ -201,12 +201,14 @@ function compilerOptions(state: ReturnType<typeof createChain>) {
 		requireDirective?: boolean;
 		runtime: string;
 		universalRuntime: unknown;
+		mainThreadProgramBackend?: unknown;
 		layerSpecializations?: Record<
 			string,
 			{
 				runtime: string;
 				universalRuntime: unknown;
 				renderers: CompilerRendererOptions;
+				mainThreadProgramBackend?: unknown;
 			}
 		>;
 		renderers: CompilerRendererOptions;
@@ -351,6 +353,64 @@ describe('@octanejs/rspeedy-plugin', () => {
 		expect(compiler.renderers.registry.lynx.validation.forbiddenImports).toContain(
 			'@octanejs/lynx/platform',
 		);
+	});
+
+	it('gives a main-thread program backend to the main-thread layer and nothing else', () => {
+		// #163: the compiled create function belongs to the thread whose chunk
+		// paints the first screen. An application build has two layers, and the
+		// backend has to land on exactly one of them — the background half's
+		// bytes are what #163 promises do not move.
+		const backend = {
+			signature: 'fixture-backend/1',
+			deriveLynxMainThreadProgram: () => null,
+			emitLynxMainThreadProgram: () => ({ source: '', valueCount: 0, eventCount: 0 }),
+		};
+		const configured = compilerOptions(
+			applyPlugin(
+				{ mainThreadProgramBackend: backend },
+				'lynx',
+				{},
+				{
+					app: ['./src/App.lynx.tsrx'],
+				},
+			),
+		);
+
+		expect(configured.mainThreadProgramBackend).toBeUndefined();
+		expect(configured.layerSpecializations?.[LYNX_MAIN_THREAD_LAYER].mainThreadProgramBackend).toBe(
+			backend,
+		);
+
+		// Nothing is opted in by default: the backend is TypeScript reaching into
+		// the renderer's run-time lowering, and this plugin is JavaScript loaded
+		// by the bundler's Node process. A build that can import it passes it.
+		const byDefault = compilerOptions(
+			applyPlugin(undefined, 'lynx', {}, { app: ['./src/App.lynx.tsrx'] }),
+		);
+		expect(byDefault.mainThreadProgramBackend).toBeUndefined();
+		expect(byDefault.layerSpecializations?.[LYNX_MAIN_THREAD_LAYER]).not.toHaveProperty(
+			'mainThreadProgramBackend',
+		);
+	});
+
+	it('makes a backend the compiler-wide option for an isolated main-thread graph', () => {
+		// An isolated thread graph has no layers to specialize, so the same
+		// backend arrives as a top-level compiler option instead. A background
+		// graph never takes one at all: there is no thread there to paint with it.
+		const backend = {
+			signature: 'fixture-backend/1',
+			deriveLynxMainThreadProgram: () => null,
+			emitLynxMainThreadProgram: () => ({ source: '', valueCount: 0, eventCount: 0 }),
+		};
+
+		expect(
+			compilerOptions(applyPlugin({ thread: 'main-thread', mainThreadProgramBackend: backend }))
+				.mainThreadProgramBackend,
+		).toBe(backend);
+		expect(
+			compilerOptions(applyPlugin({ thread: 'background', mainThreadProgramBackend: backend }))
+				.mainThreadProgramBackend,
+		).toBeUndefined();
 	});
 
 	it('wires development transport around the generated receiver without React refresh', () => {
