@@ -1,0 +1,309 @@
+{
+  "meta": {
+    "date": "2026-08-26T12:42:57.419Z",
+    "node": "v22.22.2",
+    "cpus": 4,
+    "cpuModel": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "platform": "linux",
+    "release": "6.18.44-fc-v21",
+    "chromium": null,
+    "rows": 30000,
+    "reps": 5,
+    "samplingIntervalUs": 100,
+    "cells": ["octane-mts-program", "octane-mts-program-control"],
+    "bundles": {
+      "octane-mts-program": {
+        "path": "app/dist-mtsprogram-rows30000/main.web.bundle",
+        "bytes": 519829,
+        "digest": "88ad6c341c7f1575",
+        "modified": "2026-08-26T12:40:31.759Z"
+      },
+      "octane-mts-program-control": {
+        "path": "app/dist-mtsprogram-mountctl-rows30000/main.web.bundle",
+        "bytes": 520098,
+        "digest": "381fe0ab988a479c",
+        "modified": "2026-08-26T12:39:53.779Z"
+      }
+    },
+    "loadStart": [0.46, 0.48, 0.74],
+    "loadEnd": [1.59, 0.93, 0.88]
+  },
+  "cells": {
+    "octane-mts-program": {
+      "buckets": {
+        "renderer pre-passes": {
+          "n": 5,
+          "min": 61.672,
+          "max": 72,
+          "mean": 66.4936,
+          "median": 66.97,
+          "std": 3.413229180702639,
+          "ci95": 2.991827288568109
+        },
+        "applier entry and pre-walk": {
+          "n": 5,
+          "min": 27.675,
+          "max": 35.238,
+          "mean": 32.126,
+          "median": 32.439,
+          "std": 2.503106469968866,
+          "ci95": 2.1940695589338084
+        },
+        "first-screen entry": {
+          "n": 5,
+          "min": 5.054,
+          "max": 8.223,
+          "mean": 6.2632,
+          "median": 5.212,
+          "std": 1.4220896455568475,
+          "ci95": 1.2465165340849673
+        },
+        "program mount": {
+          "n": 5,
+          "min": 169.965,
+          "max": 195.969,
+          "mean": 182.157,
+          "median": 184.474,
+          "std": 9.660385023382865,
+          "ci95": 8.467700819633153
+        },
+        "applier walk": {
+          "n": 5,
+          "min": 19.604,
+          "max": 26.985,
+          "mean": 22.7106,
+          "median": 21.463,
+          "std": 2.6491149163447023,
+          "ci95": 2.3220516049969255
+        },
+        "compiled program create": {
+          "n": 5,
+          "min": 16.591,
+          "max": 21.663,
+          "mean": 19.3756,
+          "median": 19.589,
+          "std": 1.6322082710242585,
+          "ci95": 1.4306936297994757
+        },
+        "event bookkeeping": {
+          "n": 5,
+          "min": 6.098,
+          "max": 9.848,
+          "mean": 7.7806,
+          "median": 7.15,
+          "std": 1.348388905323683,
+          "ci95": 1.181914986944831
+        },
+        "host record building": {
+          "n": 5,
+          "min": 1.544,
+          "max": 2.87,
+          "mean": 2.287,
+          "median": 2.28,
+          "std": 0.45666092453810847,
+          "ci95": 0.40028094901456396
+        },
+        "first tree capture": {
+          "n": 5,
+          "min": 20.677,
+          "max": 23.622,
+          "mean": 21.578799999999998,
+          "median": 21.291,
+          "std": 1.062789424109969,
+          "ci95": 0.9315760040464758
+        },
+        "element factory dispatch": {
+          "n": 5,
+          "min": 0,
+          "max": 0.183,
+          "mean": 0.0722,
+          "median": 0,
+          "std": 0.08844071460588726,
+          "ci95": 0.07752170433626959
+        }
+      },
+      "namedMs": {
+        "n": 5,
+        "min": 346.589,
+        "max": 370.838,
+        "mean": 360.8446,
+        "median": 369.057,
+        "std": 10.921406257437733,
+        "ci95": 9.573034666196756
+      },
+      "unmatchedMs": {
+        "n": 5,
+        "min": 19.52,
+        "max": 26.26,
+        "mean": 22.8994,
+        "median": 22.324,
+        "std": 2.377741079259893,
+        "ci95": 2.0841819489585838
+      },
+      "totalMs": {
+        "n": 5,
+        "min": 370.036,
+        "max": 395.57099999999997,
+        "mean": 383.744,
+        "median": 390.358,
+        "std": 10.79697048250109,
+        "ci95": 9.463961900373008
+      },
+      "largestUnnamed": [
+        {
+          "position": "1:229848",
+          "ms": 5.7,
+          "source": "(e,t)=>(0,r.Zz)(z,[(0,r.DT)(\"lynx\",R,(0,r.uc)([[\"set\",\"row\",e],[\"set\",\"isSelected\",n===e.id],[\"set\",\"onSelect\",A],[\"set\",\"onRemove\",C]]))]))"
+        },
+        {
+          "position": "1:228018",
+          "ms": 3.2,
+          "source": "(e=1e3){var r=[];for(var t=0;t<e;t++)r.push({id:n++,label:i[t%i.length]+\" \"+o[7*t%o.length]+\" \"+l[13*t%l.length]});return r}(3e4);let L=new "
+        },
+        {
+          "position": "1:228360",
+          "ms": 3,
+          "source": "(e){return(0,r.Zz)(S,[\"row\"+(e.isSelected?\" danger\":\"\"),String(e.row.id),r.N5,e.row.label,r.N5])},{module:\"@octanejs/lynx/main-renderer\"});l"
+        }
+      ]
+    },
+    "octane-mts-program-control": {
+      "buckets": {
+        "renderer pre-passes": {
+          "n": 5,
+          "min": 60.555,
+          "max": 71.49,
+          "mean": 65.8532,
+          "median": 64.855,
+          "std": 3.675867103147228,
+          "ci95": 3.2220395778058335
+        },
+        "applier entry and pre-walk": {
+          "n": 5,
+          "min": 24.861,
+          "max": 36.095,
+          "mean": 30.7716,
+          "median": 33.178,
+          "std": 4.765628042556405,
+          "ci95": 4.177257157385069
+        },
+        "first-screen entry": {
+          "n": 5,
+          "min": 4.37,
+          "max": 8.406,
+          "mean": 6.2022,
+          "median": 5.617,
+          "std": 1.5597951660394387,
+          "ci95": 1.3672207447179845
+        },
+        "program mount": {
+          "n": 5,
+          "min": 192.437,
+          "max": 207.139,
+          "mean": 198.9366,
+          "median": 199.228,
+          "std": 5.6704663159214705,
+          "ci95": 4.970382873437097
+        },
+        "applier walk": {
+          "n": 5,
+          "min": 23.467,
+          "max": 30.212,
+          "mean": 26.0594,
+          "median": 25.439,
+          "std": 2.2372190415781823,
+          "ci95": 1.9610089521500915
+        },
+        "compiled program create": {
+          "n": 5,
+          "min": 19.381,
+          "max": 29.894,
+          "mean": 24.3216,
+          "median": 23.674,
+          "std": 3.482862075936972,
+          "ci95": 3.0528632123560326
+        },
+        "event bookkeeping": {
+          "n": 5,
+          "min": 34.257,
+          "max": 42.248,
+          "mean": 38.864399999999996,
+          "median": 38.665,
+          "std": 2.6733273349891142,
+          "ci95": 2.3432747256804523
+        },
+        "host record building": {
+          "n": 5,
+          "min": 1.385,
+          "max": 3.638,
+          "mean": 2.377,
+          "median": 2.414,
+          "std": 0.7353883327875144,
+          "ci95": 0.6445962943734629
+        },
+        "first tree capture": {
+          "n": 5,
+          "min": 21.016,
+          "max": 30.56,
+          "mean": 24.589000000000002,
+          "median": 22.963,
+          "std": 3.51525862490941,
+          "ci95": 3.0812600395656315
+        },
+        "element factory dispatch": {
+          "n": 5,
+          "min": 0,
+          "max": 0.195,
+          "mean": 0.14740000000000003,
+          "median": 0.177,
+          "std": 0.07417978161197294,
+          "ci95": 0.06502144542226049
+        }
+      },
+      "namedMs": {
+        "n": 5,
+        "min": 408.807,
+        "max": 439.414,
+        "mean": 418.1224,
+        "median": 411.889,
+        "std": 11.174245936079974,
+        "ci95": 9.79465841606723
+      },
+      "unmatchedMs": {
+        "n": 5,
+        "min": 18.331,
+        "max": 26.224,
+        "mean": 21.596600000000002,
+        "median": 21.31,
+        "std": 2.5788074453126586,
+        "ci95": 2.260424389451857
+      },
+      "totalMs": {
+        "n": 5,
+        "min": 429.35900000000004,
+        "max": 460.97999999999996,
+        "mean": 439.71899999999994,
+        "median": 437.38100000000003,
+        "std": 11.0590254000974,
+        "ci95": 9.69366316332972
+      },
+      "largestUnnamed": [
+        {
+          "position": "1:228629",
+          "ms": 3.3,
+          "source": "(e){return(0,r.Zz)(S,[\"row\"+(e.isSelected?\" danger\":\"\"),String(e.row.id),r.N5,e.row.label,r.N5])},{module:\"@octanejs/lynx/main-renderer\"});l"
+        },
+        {
+          "position": "1:230117",
+          "ms": 3.3,
+          "source": "(e,t)=>(0,r.Zz)(z,[(0,r.DT)(\"lynx\",R,(0,r.uc)([[\"set\",\"row\",e],[\"set\",\"isSelected\",n===e.id],[\"set\",\"onSelect\",A],[\"set\",\"onRemove\",C]]))]))"
+        },
+        {
+          "position": "1:10002",
+          "ms": 2.7,
+          "source": "(e,r=null){return{kind:\"range\",key:r,id:0,children:e}}function en(e,r){var t=U(e);if(t!==S&&\"lynx\"!==t.id)throw new n.qO(\"Lynx first-screen "
+        }
+      ]
+    }
+  }
+}

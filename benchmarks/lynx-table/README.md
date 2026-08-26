@@ -1478,6 +1478,53 @@ buckets inside `publish` sum to 4.9× those inside `render` in series A
 and 5.0× in series B, and capture is small in both. Two instruments, one
 conclusion.
 
+### What the per-row event journal costs (issue #163 C10)
+
+The C9 split says three buckets fail to amortize. This ablation prices one of
+them. The treatment arm deletes the whole per-row event-journal loop in
+`mountProgram` — the parse, the `nativeEventMap` write and the frozen tuple —
+which makes it wrong on purpose: nothing would be left for terminal cleanup to
+clear. It is a ceiling on what that loop is worth, not a candidate, and it was
+never committed. Control and treatment are the same source but for that loop,
+built into two dists and measured in one window
+(`results/c163-c10-armE-30000.md`).
+
+| main-thread script @30,000 | control | loop ablated | delta |
+|---|---:|---:|---:|
+| program mount | 199.2 [192.4–207.1] | 184.5 [170.0–196.0] | -14.8 |
+| renderer pre-passes | 64.9 [60.6–71.5] | 67.0 [61.7–72.0] | +2.1 |
+| event bookkeeping | 38.7 [34.3–42.2] | 7.2 [6.1–9.8] | -31.5 |
+| applier entry and pre-walk | 33.2 [24.9–36.1] | 32.4 [27.7–35.2] | -0.7 |
+| applier walk | 25.4 [23.5–30.2] | 21.5 [19.6–27.0] | -4.0 |
+| compiled program create | 23.7 [19.4–29.9] | 19.6 [16.6–21.7] | -4.1 |
+| first tree capture | 23.0 [21.0–30.6] | 21.3 [20.7–23.6] | -1.7 |
+| first-screen entry | 5.6 [4.4–8.4] | 5.2 [5.1–8.2] | -0.4 |
+| host record building | 2.4 [1.4–3.6] | 2.3 [1.5–2.9] | -0.1 |
+| element factory dispatch | 0.2 [0.0–0.2] | 0.0 [0.0–0.2] | -0.2 |
+| unnamed by the probe table | 21.3 [18.3–26.2] | 22.3 [19.5–26.3] | +1.0 |
+| **all frames** | 437.4 [429.4–461.0] | 390.4 [370.0–395.6] | -47.0 |
+
+Three things follow, and the third is why no patch went with this record.
+
+- **The loop is worth 47.0 ms of the cell's 437.4 ms script, 11%.** The two
+  arms' whole-script ranges do not overlap, which at this instrument's window-
+  to-window spread is the weakest claim worth making and this one clears it.
+- **It is `event bookkeeping`, not the mount.** 31.5 of the 47.0 ms land in that
+  bucket, 82% of everything it holds in this cell — the loop *is* that bucket.
+  `program mount` moves 14.8 ms with overlapping ranges, so this ablation does
+  not explain the mount, and the mount's 199 ms stays unattributed. The buckets
+  are frames, and a callee's self time belongs to the callee.
+- **There is no constant to hoist.** The reading that motivated the ablation was
+  that `parseLynxNativeEventProp` re-derives a per-plan constant once per row.
+  It does, and it costs almost nothing: the parser memoizes on the prop name, so
+  a repeat call is a `typeof`, a `charCodeAt` and a map lookup. What the loop
+  actually spends is a fresh `Map` per event-bearing node per row plus a frozen
+  three-field tuple per site, and that is retained state — terminal cleanup
+  reads exactly those tuples to know what to clear. It is reachable only by
+  changing how the registration is retained, which is a design slice with
+  cleanup, adoption and the ownership equality to satisfy, not a constant to
+  lift out of a loop.
+
 ## Claims and non-claims
 
 Command counts and commit bytes are Octane-owned costs and are gated. The
