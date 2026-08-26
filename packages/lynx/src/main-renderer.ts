@@ -170,6 +170,22 @@ interface FirstScreenProgram {
 	 * about a subtree neither can describe.
 	 */
 	rangeIds: (number | undefined)[];
+	/**
+	 * Where this program's own announcements begin in the envelope's event list,
+	 * and how many of them there are. Filled by `collectFirstScreenEvents`.
+	 *
+	 * A program's sites are announced in one contiguous pass in site order, so
+	 * the applier can read a site's listener at a position in that run instead of
+	 * searching the whole announcement for the host and then that host's list for
+	 * the type — a search whose cost is the page's, paid once per site per row, to
+	 * recover an order this walk already had (issue #163 C18).
+	 *
+	 * The count is carried too, because the run is shorter than the site list
+	 * whenever a handler prop came through undefined, and only the count says
+	 * where it ends.
+	 */
+	eventsAt: number;
+	eventsCount: number;
 }
 
 type FirstScreenNode = FirstScreenHost | FirstScreenRange | FirstScreenProgram;
@@ -268,12 +284,32 @@ function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
 		// to the background as a listener bound to no host — a tap routed nowhere,
 		// with nothing red. Freezing happens once per plan at module scope, so this
 		// is the one place the check is free.
+		//
+		// `(node, type)` naming at most one site is the second half of the same
+		// statement, and the half a consumer's addressing rests on: this renderer
+		// announces a program's sites in one contiguous pass in site order, and the
+		// applier reads each site's listener at a position in that run rather than
+		// searching for it. Two sites sharing a node and a type would make one
+		// announcement answer to both, so the second listener would be announced to
+		// the background and bound to nothing here — the same tap routed nowhere,
+		// arrived at from the other direction. The compiler already refuses to emit
+		// one — `prepareUniversalTemplateProgram` rejects the whole program — so
+		// this is that guarantee restated where the runtime can see it, for the
+		// plans that do not come from it.
+		const bound = new Set<string>();
 		for (const site of node.events) {
 			if (!Number.isInteger(site.node) || site.node < 0 || site.node >= node.nodes) {
 				throw new TypeError(
 					`A compiled main-thread program binds an event on node ${site.node}, which is not one of its ${node.nodes} nodes.`,
 				);
 			}
+			const key = `${site.node}\u0000${site.type}`;
+			if (bound.has(key)) {
+				throw new TypeError(
+					`A compiled main-thread program binds two events of type ${JSON.stringify(site.type)} on node ${site.node}; a node carries at most one listener per type.`,
+				);
+			}
+			bound.add(key);
 		}
 		// The same for a range's declared position: one outside the program's own
 		// pre-order never matches, so its members would be numbered after the
@@ -1032,6 +1068,8 @@ function renderPlanNode(node: UniversalPlanNode, values: readonly unknown[]): Fi
 				spans,
 				texts,
 				rangeIds: EMPTY_PROGRAM_IDS,
+				eventsAt: 0,
+				eventsCount: 0,
 			},
 		];
 	}
@@ -1350,6 +1388,11 @@ function collectFirstScreenEvents(
 			// the one thing the count exists to match.
 			for (const text of node.texts) if (text !== undefined) hosts++;
 			const visible = parentVisible && node.visibility !== 'hidden';
+			// Recorded whether or not anything is announced, and before the walk
+			// descends: an invisible program announces nothing, and a run of zero at
+			// the position its children's announcements start is the true answer for
+			// it rather than a missing one.
+			node.eventsAt = events.length;
 			if (visible) {
 				for (const site of node.plan.events) {
 					const handler = node.values[site.slot];
@@ -1361,6 +1404,7 @@ function collectFirstScreenEvents(
 					});
 				}
 			}
+			node.eventsCount = events.length - node.eventsAt;
 			hosts += collectFirstScreenEvents(node.children, visible, attempt, events);
 			continue;
 		}

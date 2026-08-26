@@ -632,6 +632,35 @@ describe('Lynx main-thread first-screen renderer', () => {
 		expect(() =>
 			universalPlan('lynx', { ...program, events: [], bind: undefined } as never),
 		).toThrow(/requires a bind function and a node count/);
+		// Two sites on one node for one driver event type is the same class of
+		// claim, and the one a consumer's addressing depends on. The applier reads
+		// a site's announcement out of the run this renderer recorded for the
+		// program rather than searching for it, which is exact only while
+		// `(node, type)` names at most one site: two of them would make one
+		// announcement answer to both, and the second listener would be announced
+		// to the background and installed on nothing.
+		expect(() =>
+			universalPlan('lynx', {
+				...program,
+				events: [
+					{ slot: 0, node: 1, type: 'tap', priority: 'discrete' },
+					{ slot: 1, node: 1, type: 'tap', priority: 'discrete' },
+				],
+			} as never),
+		).toThrow(/binds two events of type "tap" on node 1/);
+		// The same type on another node, and another type on the same node, are
+		// both ordinary: a row with a tap on each of two children, and a text with
+		// a tap and a long press, are what the check has to keep accepting.
+		expect(() =>
+			universalPlan('lynx', {
+				...program,
+				events: [
+					{ slot: 0, node: 0, type: 'tap', priority: 'discrete' },
+					{ slot: 1, node: 1, type: 'tap', priority: 'discrete' },
+					{ slot: 2, node: 1, type: 'longpress', priority: 'discrete' },
+				],
+			} as never),
+		).not.toThrow();
 		// And a well-formed one is adopted rather than refused: C2c is where this
 		// renderer stopped declining the kind its own compiler emits.
 		const plan = universalPlan('lynx', {

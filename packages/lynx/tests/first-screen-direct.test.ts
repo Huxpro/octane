@@ -1031,6 +1031,157 @@ describe('direct first-screen applier, a program event site', () => {
 });
 
 /**
+ * A one-node program carrying one site per type given, in that order, handing
+ * back every token argument the mount passed it.
+ */
+function runProgram(types: readonly string[], handed: unknown[][]): UniversalProgramPlan {
+	return fakeProgram({
+		nodes: 1,
+		events: types.map((type, index) => ({
+			slot: index,
+			node: 0,
+			type,
+			priority: 'discrete' as const,
+		})),
+		bind: (host: unknown) => {
+			const papi = host as { createElement(type: string, pageId: number, text: string): FakeNode };
+			return (...args: unknown[]) => {
+				handed.push(args.slice(1, 1 + types.length));
+				return [papi.createElement('view', args[0] as number, '')];
+			};
+		},
+	});
+}
+
+describe('direct first-screen applier, the announcement run a program records', () => {
+	// The renderer announces a program's sites in one contiguous pass, in site
+	// order, so the mount can read each site's listener at a position instead of
+	// searching the whole announcement for a host and then that host's list for a
+	// type. These pin what the position has to mean; the two tests above pin the
+	// search that answers when a caller hands over a tree without one.
+	const THREE = ['bindtap', 'bindlongpress', 'bindtouchstart'];
+
+	it("reads each site's listener from the run the renderer recorded", () => {
+		const handed: unknown[][] = [];
+		const container = createLynxHostContainer(intrinsicHost(), { root: 1 });
+		expect(
+			applyLynxFirstScreenDirect(
+				container,
+				[programNode({ plan: runProgram(THREE, handed), ids: [1], eventsAt: 0, eventsCount: 3 })],
+				{
+					renderer: 'lynx',
+					version: 1,
+					events: THREE.map((type, index) => ({
+						id: 1,
+						type,
+						listener: { id: 7 + index, priority: 'discrete' as const },
+					})),
+				},
+			),
+		).toBe(true);
+		expect(handed).toEqual([
+			[
+				'octane-lynx:event:1:1:1:7:discrete',
+				'octane-lynx:event:1:1:1:8:discrete',
+				'octane-lynx:event:1:1:1:9:discrete',
+			],
+		]);
+	});
+
+	it('leaves a site nothing was announced for open without losing the sites after it', () => {
+		// A handler prop that came through undefined announces nothing, so the run
+		// is shorter than the site list and the gap is in the middle of it. A reader
+		// that advanced once per site rather than once per announcement would hand
+		// the third site's listener to the second — a long press routed to the tap
+		// handler, with nothing red.
+		const handed: unknown[][] = [];
+		const container = createLynxHostContainer(intrinsicHost(), { root: 1 });
+		expect(
+			applyLynxFirstScreenDirect(
+				container,
+				[programNode({ plan: runProgram(THREE, handed), ids: [1], eventsAt: 0, eventsCount: 2 })],
+				{
+					renderer: 'lynx',
+					version: 1,
+					events: [
+						{ id: 1, type: 'bindtap', listener: { id: 7, priority: 'discrete' } },
+						{ id: 1, type: 'bindtouchstart', listener: { id: 9, priority: 'discrete' } },
+					],
+				},
+			),
+		).toBe(true);
+		expect(handed).toEqual([
+			['octane-lynx:event:1:1:1:7:discrete', undefined, 'octane-lynx:event:1:1:1:9:discrete'],
+		]);
+	});
+
+	it('faults when the run carries an announcement no site claimed', () => {
+		// The one disagreement a position can have with the thing it addresses, and
+		// the one the search could never report: an announcement inside this
+		// program's run that no site of this program answers to. Left unchecked it is
+		// a listener the background installed and this side bound to nothing.
+		const handed: unknown[][] = [];
+		const container = createLynxHostContainer(intrinsicHost(), { root: 1 });
+		expect(() =>
+			applyLynxFirstScreenDirect(
+				container,
+				[
+					programNode({
+						plan: runProgram(['bindtap'], handed),
+						ids: [1],
+						eventsAt: 0,
+						eventsCount: 2,
+					}),
+				],
+				{
+					renderer: 'lynx',
+					version: 1,
+					events: [
+						{ id: 1, type: 'bindtap', listener: { id: 7, priority: 'discrete' } },
+						{ id: 1, type: 'bindlongpress', listener: { id: 8, priority: 'discrete' } },
+					],
+				},
+			),
+		).toThrow(/2 announcements for its 1 event site, and claimed 1 of them/);
+	});
+
+	it('installs what the search installs, for the same tree and envelope', () => {
+		// The two readers have to answer the same question the same way, so the only
+		// difference between these arms is whether the node carries the run. A page
+		// whose tokens depend on that is a page whose taps do.
+		//
+		// The listener ids descend while the positions ascend, so a reader that took
+		// a site's id from where its announcement sits rather than from the
+		// announcement itself fails here rather than passing by coincidence.
+		const envelope: LynxFirstScreenDirectEnvelope = {
+			renderer: 'lynx',
+			version: 1,
+			events: [
+				{ id: 1, type: 'bindtap', listener: { id: 5, priority: 'discrete' } },
+				{ id: 1, type: 'bindtouchstart', listener: { id: 4, priority: 'discrete' } },
+			],
+		};
+		const runs: Partial<LynxFirstScreenDirectNode>[] = [{ eventsAt: 0, eventsCount: 2 }, {}];
+		const answers = runs.map((run) => {
+			const handed: unknown[][] = [];
+			const container = createLynxHostContainer(intrinsicHost(), { root: 1 });
+			expect(
+				applyLynxFirstScreenDirect(
+					container,
+					[programNode({ plan: runProgram(THREE, handed), ids: [1], ...run })],
+					envelope,
+				),
+			).toBe(true);
+			return handed;
+		});
+		expect(answers[0]).toEqual([
+			['octane-lynx:event:1:1:1:5:discrete', undefined, 'octane-lynx:event:1:1:1:4:discrete'],
+		]);
+		expect(answers[0]).toEqual(answers[1]);
+	});
+});
+
+/**
  * A one-node `text` program with one declared range it paints when handed a
  * string, built to the emission's contract rather than approximating it: the
  * range values come last, and the answer is the program's nodes followed by one

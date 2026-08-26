@@ -3375,6 +3375,22 @@ export interface LynxFirstScreenDirectNode {
 	 * beside the hole instead.
 	 */
 	readonly rangeIds?: readonly (number | undefined)[];
+	/**
+	 * Where this program's own announcements begin in the envelope's event list,
+	 * and how many of them there are — the run the renderer recorded while it
+	 * announced them (issue #163 C18).
+	 *
+	 * A program's sites are announced in one contiguous pass in site order, so a
+	 * site's listener sits at a position in that run and this mount reads it
+	 * there. A tree built without one gets the search instead: the whole
+	 * announcement by host, then that host's list by type, per site per row.
+	 *
+	 * Both or neither. The count is not derivable from the start, because a
+	 * handler prop that came through undefined announces nothing and leaves the
+	 * run shorter than the site list.
+	 */
+	readonly eventsAt?: number;
+	readonly eventsCount?: number;
 }
 
 /** One background listener the first-screen renderer assigned, by host id. */
@@ -3851,6 +3867,22 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		// install nothing — the same answer the command path gives by simply not
 		// listing that host.
 		const tokens: (LynxNativeEventToken | undefined)[] = [];
+		// The renderer announced this program's sites in one contiguous pass in site
+		// order, and `eventsAt`/`eventsCount` are where it recorded that run. So a
+		// site's listener is found by walking the run alongside the sites rather
+		// than by searching for it: the cursor advances only when an announcement is
+		// claimed, which is what leaves a site whose handler came through undefined
+		// open without shifting the sites after it onto the wrong listeners.
+		// `(node, type)` names at most one site — the plan freeze checks it, and the
+		// compiler refuses to emit otherwise — so an announcement matching the site
+		// at the cursor is that site's and no other's.
+		//
+		// A tree built by hand carries no run and gets the search instead. The two
+		// answer identically for every announcement the renderer can produce, which
+		// is what this applier's own tests hold them to.
+		const run = node.eventsAt;
+		const runEnd = run === undefined ? -1 : run + (node.eventsCount ?? 0);
+		let cursor = run ?? 0;
 		for (const site of plan.events) {
 			const hostId = ids[site.node];
 			if (hostId === undefined) {
@@ -3858,7 +3890,16 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 					`first-screen program binds an event on node ${site.node}, which it did not number.`,
 				);
 			}
-			const announced = eventsByHost.get(hostId)?.find(([type]) => type === site.type);
+			let announced: UniversalEventListenerDescriptor | undefined;
+			if (run === undefined) {
+				announced = eventsByHost.get(hostId)?.find(([type]) => type === site.type)?.[1];
+			} else if (cursor < runEnd) {
+				const binding = envelope.events[cursor];
+				if (binding !== undefined && binding.id === hostId && binding.type === site.type) {
+					announced = binding.listener;
+					cursor++;
+				}
+			}
 			const token =
 				announced === undefined
 					? undefined
@@ -3866,11 +3907,22 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 							container.root,
 							hostId,
 							1,
-							announced[1].id,
-							announced[1].priority,
+							announced.id,
+							announced.priority,
 						);
 			tokens.push(token);
 			args.push(token);
+		}
+		// An announcement left in the run is the one disagreement a position can
+		// have with the thing it addresses, and the one the search could never
+		// report: a listener the background installed for this program that no site
+		// of this program answers to. Every other shape of mismatch shows up as a
+		// site left open above, which is the answer a missing handler gets too —
+		// this is the shape that is never a missing handler.
+		if (run !== undefined && cursor !== runEnd) {
+			throw hostError(
+				`first-screen program was handed ${runEnd - run} announcements for its ${plan.events.length} event site${plan.events.length === 1 ? '' : 's'}, and claimed ${cursor - run} of them.`,
+			);
 		}
 		// Last, after the listeners, exactly as the emission orders its
 		// parameters. A hole this renderer filled itself sends `undefined`, which
