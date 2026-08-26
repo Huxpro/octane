@@ -102,7 +102,14 @@ test('leaves profiling.ts the only creator of the profile record', () => {
 test('profiled first-screen rendering works without a stage-harness slice hook', async () => {
 	const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'octane-lynx-stage-profile-'));
 	try {
-		for (const relative of [...sourceFiles, 'packages/lynx/src/resource.ts']) {
+		// Linked but not instrumented, so they sit beside the instrumented set
+		// rather than in it: `main-renderer.ts` imports a value from each, and
+		// `instrumentLynxStageSources` rewrites neither.
+		for (const relative of [
+			...sourceFiles,
+			'packages/lynx/src/resource.ts',
+			'packages/lynx/src/core/first-screen.ts',
+		]) {
 			const target = path.join(temporary, relative);
 			fs.mkdirSync(path.dirname(target), { recursive: true });
 			fs.copyFileSync(path.join(repositoryRoot, relative), target);

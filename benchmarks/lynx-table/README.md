@@ -699,6 +699,53 @@ more host time than it lasted, phases claiming more than `off_boundary` holds, a
 marker still open at the window's end, an unknown phase name, a window in which
 no first screen ran, and a run in which only some samples carried a split.
 
+### The `octane-mts-program` and `octane-direct` cells (issue #163)
+
+```bash
+node stages/papi-run.mjs --reps 5 --scales 1000,10000 \
+	--cells octane,octane-mts-program,octane-direct --label c163-attr
+```
+
+§4's ladder prices issue-#163's compiled main-thread program against the
+hand-written L0 prototype and reports a first screen still 1.24–1.38× the
+prototype's. What that residue is made of is a question the ladder cannot
+answer and this instrument can, so both cells live here too. Both carry a
+click-driven shell and a pre-populated ladder variant, so both windows are
+measured for both rather than one being borrowed from the other, and
+`prototype/build.mjs` copies its pageConfig and styleInfo from the octane
+bundle, so the main-thread/background program pair is the only variable
+between them.
+
+The answer is in the host call counts, and it is specific
+(`results/c163-attr-boundary.md`, FCP@10,000, one counts sample per cell):
+
+| host call | `octane` | `+program` | `octane-direct` |
+|---|---:|---:|---:|
+| `__GetElementUniqueID` | 70,042 | 20,001 | 1 |
+| `__SetAttribute` | 40,028 | 0 | 0 |
+| every other kind | identical | identical | identical |
+| **total** | **310,195** | **220,126** | **200,127** |
+
+The interpreted first screen crosses the boundary 11.01 times per row more than
+the prototype. The compiled program removes **9.00 of those 11.01** — every
+`__SetAttribute`, which is the `octane-ref` selector regime §4 reports at the
+first painted frame, plus five of the seven per-row identity reads — and leaves
+exactly **2.00 per row**, all of them `__GetElementUniqueID`. Those are
+first-tree capture reading each event-bound node's native ID so the background
+can address it (`packages/lynx/src/core/host-driver.ts:4210`), and the row
+carries exactly two event bindings, which is why the number is two.
+
+**Crossings are not where the remaining gap is.** At 10,000 rows the residual
+283 ms between `+program` and the prototype divides as roughly 73%
+`off_boundary`, 6% `start_delay`, and 15% host time inside the boundary; at
+1,000 rows the same three are roughly 56%, 34% and 13%, because `start_delay`
+is a fixed ~18 ms of main-thread chunk evaluation that amortises. `papi_flush`
+is 137.5 ms against the prototype's 139.4 ms — the compiled first screen is
+already at the publication floor. So the residue is dominated by framework
+script *above* the boundary, and the 20,000 identity reads are worth about 8 ms
+of it. Splitting `off_boundary` by phase needs a profile build of this cell,
+which does not exist yet.
+
 ### The publication floor — `dom-attach-floor.mjs`
 
 A speed-of-light control with no framework in the page at all. `__AppendElement`
