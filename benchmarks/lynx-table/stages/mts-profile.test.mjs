@@ -249,21 +249,21 @@ test('a window is only ever matched by the probe table, never by its length', ()
 	}
 });
 
-// The template create and the recursive freeze it returns, 53 characters apart
+// The template render and the recursive freeze it returns, 53 characters apart
 // in the measured bundle, both taken verbatim at the positions the profiler
-// reported. `Object.isFrozen(` is inside both windows; `"template"===` is
-// inside only the outer one's.
+// reported. `Object.isFrozen(` is inside both windows; the render's own probe
+// is inside only its.
 const TEMPLATE_CREATE =
 	'(r,t){if("template"===r.kind){var n;return function e(r){for(var t of("host"!==r.kind||Object.isFrozen(r.props)||Object.freeze(r.props),r.ch';
 const RECURSIVE_FREEZE =
 	'(r){for(var t of("host"!==r.kind||Object.isFrozen(r.props)||Object.freeze(r.props),r.children))e(t)}(n=r.create(ea,t)),[n]}if("slot"===r.kin';
 
 test('a function that encloses another is named before the one it encloses', () => {
-	// The freeze is nested inside the create, so the create's own window contains
-	// the freeze's probe. Named in the wrong order the create's samples land on
-	// the freeze and `template create and prop freeze` reads 0.0 in every cell,
-	// which reads as a branch nothing took rather than as a probe that lost.
-	assert.equal(probeOf(TEMPLATE_CREATE)?.where, 'main-renderer.ts template create and prop freeze');
+	// The freeze is nested inside the render, so the render's own window contains
+	// the freeze's probe. Named in the wrong order the render's samples land on
+	// the freeze and the render reads 0.0 in every cell, which reads as a branch
+	// nothing took rather than as a probe that lost.
+	assert.equal(probeOf(TEMPLATE_CREATE)?.where, 'main-renderer.ts renderTemplate');
 	assert.equal(probeOf(RECURSIVE_FREEZE)?.where, 'main-renderer.ts recursive prop freeze');
 });
 
@@ -276,5 +276,187 @@ test('every probe’s where names a file the repository has', () => {
 	for (const { where } of BUCKETS) {
 		const file = where.slice(0, where.indexOf(' '));
 		assert.ok(fs.existsSync(new URL(file, root)), `${where} names a file that does not exist`);
+	}
+});
+
+// --- issue #163 C16 ---------------------------------------------------------
+//
+// C15 printed the source at every entered site and four labels turned out to
+// name functions that are not there. These are the windows at those frames,
+// taken verbatim at the positions the profiler reported, plus the neighbours
+// each probe has to be separated from.
+
+// `TEMPLATE_ENV`'s three child appenders, declared back to back: each window
+// contains the ones after it, and the last runs 39 characters into the key
+// reader that follows, which is how one probe used to fold all three.
+const APPEND_TEXT =
+	'(e,r){e.children.push(er(String(r)))},s(e,r){e.children.push(...eo(r,null))},a(e,r){e.children.push(r)}});function ei(e){return(null==e?void 0:e.$$kind)===d?e.k';
+const APPEND_SPREAD =
+	'(e,r){e.children.push(...eo(r,null))},a(e,r){e.children.push(r)}});function ei(e){return(null==e?void 0:e.$$kind)===d?e.key:(null==e?void 0:e.$$kind)===O||(null';
+const APPEND_CHILD =
+	'(e,r){e.children.push(r)}});function ei(e){return(null==e?void 0:e.$$kind)===d?e.key:(null==e?void 0:e.$$kind)===O||(null==e?void 0:e.$$kind)===p&&e.hasKey?K(e.';
+// The two functions `node normalization` folded. Not one pass over the tree:
+// one normalizes a props argument, the other turns a render result into nodes.
+const NORMALIZE_PROPS =
+	'(e){return(null==e?void 0:e.$$kind)===v?e:F(null==e?[]:[["spread",e]])}function J(e,r,t=null,n=I){A(e);var a=D(t);return{$$kind:p,renderer:e,component:r,props:a';
+const MATERIALIZE =
+	'(e,r){if(null==e||!1===e||!0===e)return[];if((null==e?void 0:e.$$kind)===O){var t,n,i,l=eo(e.value,K(e.key));return 1!==l.length?[et(l,K(e.key))]:(l[0].key=K(e.';
+// The PAPI facade's own wrappers. `setClasses` declares `setCssId` 161
+// characters into the same object literal, so it carried `emitHostNode`'s old
+// probe — and in the program cell it was the whole of `host record building`.
+const FACADE_SET_CLASSES =
+	'(e,r){S(e,r)},setInlineStyles(e,r){E(e,r)},setCssId(e,r,t){P(e,r,t)},setAttribute(e,r,t){L(e,r,t)},setRefSelector(e,r){L(e,z,r)},setDataset(e,r){N(e,r)},setEven';
+const FACADE_SET_EVENT =
+	'(e,r,t,n){T(e,r,t,n)},setId(e,r){_(e,r)},flush(e,r){R(e,r)}},Object.getOwnPropertyDescriptors?Object.defineProperties(r,Object.getOwnPropertyDescriptors(t)):(fu';
+const EMIT_HOST_NODE =
+	'(e,r,t,n,a,i,o,l,s){var d=e.papi;if(void 0!==i.cssScope&&d.setCssId(r,i.cssScope.value.cssId,i.cssScope.value.entryName),"#text"===t){o||Object.is(n.value,a.val';
+// Called from a program mount, carrying no literal of their own, so all three
+// used to reach the emitted-create fallback and be reported as emitted code.
+const PARSE_EVENT_PROP =
+	'(e){if("string"!=typeof e)return null;var r=e.charCodeAt(0);if(98!==r&&99!==r&&103!==r)return null;var t=d.get(e);if(void 0!==t)return t;var n=o.exec(e);if(null';
+const ENCODE_CHECKED =
+	'(e,r,t,n,a){if(m(e,"identity.root"),m(r,"identity.id"),m(t,"identity.generation"),m(n,"identity.listener"),"discrete"!==a&&"continuous"!==a&&"default"!==a)throw';
+const EVENT_SITE_LOOKUP =
+	'([e])=>e===r.type);var i=void 0===a?void 0:g(e.root,n,1,a[1].id,a[1].priority);x.push(i),w.push(i)};var u=r.plan;var v=r.ids;var f=r.values;if(void 0===u||void ';
+// The thunk `renderComponent` hands to `withOwner`, 67 characters before the
+// template env — so its window reaches the `h` factory and it was reported as
+// one of the factories in both cells.
+const COMPONENT_THUNK =
+	'()=>eo(e(r,G()),null))}finally{L.length=i}}var ea=Object.freeze({h:e=>({kind:"host",key:null,id:0,type:e,props:{},events:new Map,visibility:_().visibility,child';
+const TEMPLATE_ENV_H =
+	'e=>({kind:"host",key:null,id:0,type:e,props:{},events:new Map,visibility:_().visibility,children:[]}),p(e,r,t){if(a(t))throw TypeError(`Lynx first-screen render';
+const TEXT_NODE =
+	'(e){return{kind:"host",key:null,id:0,type:"#text",props:Object.freeze({value:e}),events:Q,visibility:_().visibility,children:[]}}function et(e,r=null){return{ki';
+// The only two frames in the measured run that really are emitted code.
+const EMITTED_ROW_CREATE =
+	'(r,o,l,s,d,c){var u,p,v=t(r);var f="string"==typeof o?o:"number"==typeof o&&o?String(o):"";""!==f&&e.setClasses(v,f);var h=n(r);e.setClasses(h,"col-id");var y=n';
+const EMITTED_PAGE_CREATE =
+	'(r,o,l,s,d,c,u,p,v,f,h,y,m,g){var b=t(r);e.setClasses(b,"page");var w=n(r);e.setClasses(w,"title");var O=a("Octane UI Benchmark on Lynx · ready");var $=t(r);e.s';
+
+test('a run of one-line methods declared back to back is named in source order', () => {
+	// Each appender's window contains the ones declared after it, so uniqueness
+	// cannot separate them and order has to. Listed in any other order an earlier
+	// entry claims a later method's samples, and the site that loses reads 0.0.
+	assert.equal(probeOf(APPEND_TEXT)?.where, 'main-renderer.ts TEMPLATE_ENV.t');
+	assert.equal(probeOf(APPEND_SPREAD)?.where, 'main-renderer.ts TEMPLATE_ENV.s');
+	assert.equal(probeOf(APPEND_CHILD)?.where, 'main-renderer.ts TEMPLATE_ENV.a');
+	const order = ['t', 's', 'a'].map((name) =>
+		BUCKETS.findIndex((entry) => entry.where === `main-renderer.ts TEMPLATE_ENV.${name}`),
+	);
+	assert.ok(
+		order.every((index, at) => index >= 0 && (at === 0 || index > order[at - 1])),
+		`TEMPLATE_ENV.t/s/a must be listed in source order, got indices ${order.join(',')}`,
+	);
+});
+
+test('the appenders are named apart from the key reader they run into', () => {
+	// `.$$kind)===` reached all three appenders from 39 characters away and
+	// reported them as `node normalization`, which also folded the two functions
+	// below. Five frames, one name, none of them that name's.
+	for (const text of [APPEND_TEXT, APPEND_SPREAD, APPEND_CHILD]) {
+		assert.notEqual(probeOf(text)?.where, 'main-renderer.ts materialize');
+		assert.notEqual(probeOf(text)?.where, 'main-renderer.ts normalizeProps');
+	}
+	assert.equal(probeOf(NORMALIZE_PROPS)?.where, 'main-renderer.ts normalizeProps');
+	assert.equal(probeOf(MATERIALIZE)?.where, 'main-renderer.ts materialize');
+});
+
+test('a facade wrapper is not the function it forwards to', () => {
+	// `setCssId(` named both: the facade declares it inside the same object
+	// literal that declares `setClasses`. In the cell whose program removes host
+	// record building entirely, this wrapper was the bucket's whole remaining
+	// 2.5 ms — a number belonging to another file.
+	assert.equal(probeOf(FACADE_SET_CLASSES)?.where, 'core/papi.ts papi facade methods');
+	assert.equal(probeOf(FACADE_SET_EVENT)?.where, 'core/papi.ts papi facade methods');
+	assert.equal(probeOf(EMIT_HOST_NODE)?.where, 'core/host-driver.ts emitHostNode');
+	assert.notEqual(probeOf(FACADE_SET_CLASSES)?.bucket, probeOf(EMIT_HOST_NODE)?.bucket);
+});
+
+test('the component thunk is named before the template env it abuts', () => {
+	// The thunk is not a factory, and a one-frame site is not the same as a
+	// correct one: this was one frame, in both cells, under a factory's name.
+	assert.equal(probeOf(COMPONENT_THUNK)?.where, 'main-renderer.ts renderComponent');
+	assert.equal(probeOf(TEMPLATE_ENV_H)?.where, 'main-renderer.ts TEMPLATE_ENV.h');
+	assert.equal(probeOf(TEXT_NODE)?.where, 'main-renderer.ts textNode');
+});
+
+test('the emitted-create fallback reaches only frames that are emitted code', () => {
+	// The fallback names a frame by its caller, so anything the table misses that
+	// a mount calls is reported as the compiled program's own create. Four
+	// framework functions were arriving that way; each now has a probe, and the
+	// two windows that really are emitted code are the two the table still misses.
+	for (const text of [PARSE_EVENT_PROP, ENCODE_CHECKED, FACADE_SET_EVENT, EVENT_SITE_LOOKUP]) {
+		assert.notEqual(probeOf(text), null, `${text.slice(0, 40)}… must not reach the fallback`);
+	}
+	assert.equal(probeOf(EMITTED_ROW_CREATE), null);
+	assert.equal(probeOf(EMITTED_PAGE_CREATE), null);
+});
+
+test('every window fixture is a real read, not one trimmed to fit its probe', () => {
+	// A fixture shorter than the window could make a probe look separated when
+	// the bundle would have let it reach further.
+	for (const text of [
+		APPEND_TEXT,
+		APPEND_SPREAD,
+		APPEND_CHILD,
+		NORMALIZE_PROPS,
+		MATERIALIZE,
+		FACADE_SET_CLASSES,
+		FACADE_SET_EVENT,
+		EMIT_HOST_NODE,
+		PARSE_EVENT_PROP,
+		ENCODE_CHECKED,
+		EVENT_SITE_LOOKUP,
+		COMPONENT_THUNK,
+		TEMPLATE_ENV_H,
+		TEXT_NODE,
+		EMITTED_ROW_CREATE,
+		EMITTED_PAGE_CREATE,
+	]) {
+		assert.equal(text.length, PROBE_WINDOW);
+	}
+});
+
+// The three functions `"template"===` folded, and the assert `"identity.root"`
+// reached backwards into. Both were found by C16's own measured window rather
+// than by C15's, which is the case for keeping the frame count in the record:
+// a site that was one frame in one window is two in the next.
+const UNIVERSAL_PLAN =
+	'(e,r){return A(e),Object.freeze({$$kind:s,renderer:e,root:function e(r){if("template"===r.kind){if("function"!=typeof r.create||!Array.isArray(r.slots))throw Ty';
+const FREEZE_PLAN_NODE =
+	'(r){if("template"===r.kind){if("function"!=typeof r.create||!Array.isArray(r.slots))throw TypeError("A universal template plan requires a create function and a ';
+const NATIVE_EVENT_ASSERT =
+	'(e,r){if(!Number.isSafeInteger(e)||e<=0)throw y(`${r} must be a positive safe integer.`)}function g(e,r,t,n,a){if(m(e,"identity.root"),m(r,"identity.id"),m(t,"i';
+
+test('the three functions the template test folded are named apart', () => {
+	// A plan constructor, the validator it calls, and the render that executes a
+	// compiled create share nothing but testing `kind === 'template'`, and one
+	// probe on that test named all three. The constructor encloses the validator,
+	// so these two are ordered as well as separated.
+	assert.equal(probeOf(UNIVERSAL_PLAN)?.where, 'main-renderer.ts universalPlan');
+	assert.equal(probeOf(FREEZE_PLAN_NODE)?.where, 'main-renderer.ts freezePlanNode');
+	assert.equal(probeOf(TEMPLATE_CREATE)?.where, 'main-renderer.ts renderTemplate');
+});
+
+test('an assert is not the function that calls it', () => {
+	// `native-events.ts` declares its own `assertPositiveSafeInteger` 99
+	// characters before the encode whose arguments it checks, so a probe on the
+	// encode's first argument name reached the assert too. This is C16's own
+	// defect: the probe that needed separating is one C16 added.
+	assert.equal(
+		probeOf(NATIVE_EVENT_ASSERT)?.where,
+		'core/native-events.ts assertPositiveSafeInteger',
+	);
+	assert.equal(
+		probeOf(ENCODE_CHECKED)?.where,
+		'core/native-events.ts encodeCheckedLynxNativeEventToken',
+	);
+	// Two asserts with the same shape live in two files; each names its own.
+	assert.notEqual(
+		probeOf(NATIVE_EVENT_ASSERT)?.where,
+		'core/nodes-ref.ts assertPositiveSafeInteger',
+	);
+	for (const text of [UNIVERSAL_PLAN, FREEZE_PLAN_NODE, NATIVE_EVENT_ASSERT]) {
+		assert.equal(text.length, PROBE_WINDOW);
 	}
 });

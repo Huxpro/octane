@@ -51,6 +51,16 @@ export const BUCKETS = Object.freeze([
 		where: 'core/host-driver.ts mountProgram range members',
 	},
 	{
+		// The `.find` predicate the per-site loop runs over the announced events.
+		// It is called from the mount and carries no literal, so it fell through
+		// to the `compiled program create` fallback and was reported as emitted
+		// code — exactly the overstatement `isProgramMountFrame` predicted below
+		// and could not bound. Named here, it is the mount's own.
+		bucket: 'program mount',
+		probe: '([e])=>e===',
+		where: 'core/host-driver.ts mountProgram event-site lookup',
+	},
+	{
 		bucket: 'applier entry and pre-walk',
 		probe: 'first-screen container is not accepting an initial tree.',
 		where: 'core/host-driver.ts applyLynxFirstScreenDirect',
@@ -101,14 +111,36 @@ export const BUCKETS = Object.freeze([
 		where: 'core/host-driver.ts textValue',
 	},
 	{
+		// `setCssId(` used to be this probe, and it named the PAPI facade's own
+		// `setClasses` wrapper as well: the facade declares `setCssId` 161
+		// characters into the same object literal, so a sample in `setClasses`
+		// carried `setCssId(` in its window. In the program cell that wrapper was
+		// the whole of `host record building` — a bucket the program empties,
+		// reading 2.5 ms of a function in another file. `cssScope.value` occurs
+		// twice in the bundle and both are this function's own arguments.
 		bucket: 'host record building',
-		probe: 'setCssId(',
+		probe: 'cssScope.value',
 		where: 'core/host-driver.ts emitHostNode',
 	},
 	{
 		bucket: 'host record building',
 		probe: 'Octane Lynx NodesRef ',
 		where: 'core/nodes-ref.ts assertPositiveSafeInteger',
+	},
+	// The facade `createLynxPapi` returns: one-line wrappers forwarding to the
+	// `__Set*` host functions. Two of them are sampled, and neither is adjacent
+	// to the other — `setClasses` and `setEvent` sit 161 characters apart in one
+	// object literal, which is past the window — so they take a probe each and
+	// share a `where`, the way two entrances to one function do.
+	{
+		bucket: 'papi facade',
+		probe: ',setInlineStyles(',
+		where: 'core/papi.ts papi facade methods',
+	},
+	{
+		bucket: 'papi facade',
+		probe: ',setId(e',
+		where: 'core/papi.ts papi facade methods',
 	},
 	{
 		bucket: 'event bookkeeping',
@@ -125,27 +157,77 @@ export const BUCKETS = Object.freeze([
 		probe: ' is not a Lynx event prop.',
 		where: 'core/host-driver.ts installNativeEvent',
 	},
+	// Both are called from a program mount and neither carried a probe, so both
+	// fell through to the `compiled program create` fallback below and were
+	// reported as emitted code. They are the two halves of the event token the
+	// mount builds per site: the prop name parsed, then the token encoded.
+	{
+		bucket: 'event bookkeeping',
+		probe: '98!==r&&99!==r',
+		where: 'core/native-events.ts parseLynxNativeEventProp',
+	},
+	{
+		// `native-events.ts` has an assert of its own, distinct from the
+		// `nodes-ref.ts` one above, and it is declared 99 characters before the
+		// encode that calls it — inside the window, so `"identity.root"` named it
+		// too. That probe is C16's, and this is C16's own defect: the run that
+		// added it is the run whose record showed the site at two frames.
+		bucket: 'event bookkeeping',
+		probe: 'e<=0)throw y(',
+		where: 'core/native-events.ts assertPositiveSafeInteger',
+	},
+	{
+		bucket: 'event bookkeeping',
+		probe: '"identity.root"',
+		where: 'core/native-events.ts encodeCheckedLynxNativeEventToken',
+	},
 	{
 		bucket: 'element factory dispatch',
 		probe: 'case"raw-text":',
 		where: 'core/papi.ts createElement type switch',
 	},
+	// `kind:"host",key:null,id:0,type:` used to be one probe here, folding two
+	// factories and, in both cells, a third frame that is neither: the thunk
+	// `renderComponent` hands to `withOwner`, which sits 67 characters before
+	// `TEMPLATE_ENV` and reached it. Order matters between the thunk and the `h`
+	// factory for that reason, and only between those two.
 	{
 		bucket: 'renderer pre-passes',
-		probe: 'kind:"host",key:null,id:0,type:',
-		where: 'main-renderer.ts first-screen host and text factories',
+		probe: ',null))}finally{',
+		where: 'main-renderer.ts renderComponent',
 	},
-	// Order matters between these two, and only between these two. The template
-	// create returns a nested recursive freeze that begins 53 characters later,
-	// so `Object.isFrozen(` is inside both functions' windows while
-	// `"template"===` is inside only the outer one's. Checked in this order each
-	// frame is named by its own function; checked the other way the create's
-	// samples land on the freeze, and `template create and prop freeze` reads
-	// 0.0 in every cell — which is exactly what it did until this was found.
 	{
 		bucket: 'renderer pre-passes',
-		probe: '"template"===',
-		where: 'main-renderer.ts template create and prop freeze',
+		probe: 'type:"#text",props:',
+		where: 'main-renderer.ts textNode',
+	},
+	{
+		bucket: 'renderer pre-passes',
+		probe: 'props:{},events:new Map',
+		where: 'main-renderer.ts TEMPLATE_ENV.h',
+	},
+	// `"template"===` used to be one probe here, named `template create and prop
+	// freeze`, and it folded three functions that share nothing but that test:
+	// the plan constructor, the plan validator it calls, and the render that
+	// executes a compiled create. C15 saw two of them; C16's own window entered
+	// the third, which is why the run that split this bucket is also the run that
+	// found this. Ordered constructor, validator, render: the constructor's
+	// window reaches the validator's probe 68 characters ahead of it, and the
+	// render's reaches the nested freeze below it 53 characters ahead.
+	{
+		bucket: 'renderer pre-passes',
+		probe: ',renderer:e,root:',
+		where: 'main-renderer.ts universalPlan',
+	},
+	{
+		bucket: 'renderer pre-passes',
+		probe: '!Array.isArray(r.slots)',
+		where: 'main-renderer.ts freezePlanNode',
+	},
+	{
+		bucket: 'renderer pre-passes',
+		probe: 'var n;return function e(',
+		where: 'main-renderer.ts renderTemplate',
 	},
 	{
 		bucket: 'renderer pre-passes',
@@ -174,10 +256,41 @@ export const BUCKETS = Object.freeze([
 		probe: '.plan.nodes,',
 		where: 'main-renderer.ts collectFirstScreenEvents',
 	},
+	// `TEMPLATE_ENV`'s three child appenders, declared back to back so that each
+	// one's window contains the ones after it. They must therefore be checked in
+	// source order — `t`, then `s`, then `a` — which is the same ordering rule as
+	// the template create and its nested freeze, three deep instead of two.
+	//
+	// Until this split they were not a site of their own at all: the last of them
+	// runs 39 characters into `renderableKey`, so `.$$kind)===` reached all three
+	// and reported them as `node normalization`.
 	{
 		bucket: 'renderer pre-passes',
-		probe: '.$$kind)===',
-		where: 'main-renderer.ts node normalization',
+		probe: 'push(er(String(',
+		where: 'main-renderer.ts TEMPLATE_ENV.t',
+	},
+	{
+		bucket: 'renderer pre-passes',
+		probe: 'push(...eo(',
+		where: 'main-renderer.ts TEMPLATE_ENV.s',
+	},
+	{
+		bucket: 'renderer pre-passes',
+		probe: 'push(r)}});',
+		where: 'main-renderer.ts TEMPLATE_ENV.a',
+	},
+	// The two functions `node normalization` folded. They are not one pass over
+	// the tree: one normalizes a props argument into a prop bag, the other turns
+	// a render result into first-screen nodes, and only the second recurses.
+	{
+		bucket: 'renderer pre-passes',
+		probe: '[["spread",e]]',
+		where: 'main-renderer.ts normalizeProps',
+	},
+	{
+		bucket: 'renderer pre-passes',
+		probe: '!1===e||!0===e',
+		where: 'main-renderer.ts materialize',
 	},
 	{
 		bucket: 'renderer pre-passes',
@@ -207,6 +320,18 @@ export const BUCKETS = Object.freeze([
  * sampled frame, and the record printing every site's frame count and the
  * source at each frame, so a probe that does reach past its function shows up
  * as a site holding more than one function rather than as a clean number.
+ *
+ * Where that is impossible the table falls back on order, because `probeOf`
+ * returns the first entry that matches: when one function's window necessarily
+ * contains a neighbour's text — a nested function, or a run of one-line methods
+ * declared back to back — the enclosing or earlier one is listed first, so each
+ * frame is claimed by its own entry before a later entry can reach it. Three
+ * runs in the table depend on this and say so where they sit: the template
+ * create before the freeze nested in it, the component thunk before the
+ * template env it abuts, and `TEMPLATE_ENV`'s `t`, `s`, `a` in source order.
+ * Order is the weaker tool — it is invisible at the call site and a reordering
+ * edit silently breaks it — so it is used only where uniqueness cannot be had,
+ * and every such run is a comment as well as a sequence.
  * Widening the window is still the worse failure — at 420 characters every
  * `visit` sample was credited to `mountProgram`, and the cell carrying no
  * compiled program at all reported the run's largest program-mount cost.
@@ -276,9 +401,10 @@ export const SITES_BY_BUCKET = Object.freeze(
  *
  * In the hoisted shape this is also true of the helper the minifier lifted out
  * of the per-site loop, whose one unnamed callee is the `.find` predicate rather
- * than a create. That predicate's self time is therefore inside
- * `compiled program create` in that shape, which overstates it — by at most the
- * predicate, which the shape without the closure bounds directly.
+ * than a create. That used to put the predicate's self time inside
+ * `compiled program create`, overstating it by however much the predicate cost;
+ * the predicate now carries a probe of its own, so the fallback reaches only
+ * frames that really are emitted code.
  */
 export function isProgramMountFrame(text) {
 	return (
@@ -297,10 +423,9 @@ export function isProgramMountFrame(text) {
  * to match, so the caller owns how the script text was obtained.
  *
  * `sites` is the same time keyed by each probe's `where` rather than its
- * bucket. Several buckets fold more than one function — `renderer pre-passes`
- * is six of them — and a bucket that large says where the script is without
- * saying what it is doing, which is the question an attribution slice has to
- * answer next. Two probes sharing one `where` are two entrances to one
+ * bucket. Several buckets fold more than one function, and a bucket that large
+ * says where the script is without saying what it is doing, which is the
+ * question an attribution slice has to answer next. Two probes sharing one `where` are two entrances to one
  * function, so keying by `where` folds them back together, which is what makes
  * a site total readable as a function's cost. The bucket totals are unchanged
  * by construction: every named frame lands in exactly one of each.

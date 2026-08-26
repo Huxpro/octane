@@ -2146,6 +2146,121 @@ bucket its row already reported, and `unnamed` did not move. What changes is
 which function inside the bucket the time belongs to, which is the entire point
 of a split.
 
+### The instrument stopped naming functions that are not there (issue #163 C16)
+
+C15 corrected four labels and named four more it could not fix with a rename.
+This slice fixes those, and the run that measured the fix found two further
+mislabels — one of them introduced by this slice's own probes. Both are fixed
+here too, which is why the record comes in two parts: a first window measured
+with the intermediate table, kept as
+`results/c163-c16-labels-30000.{json,md}`, and the final
+`results/c163-c16-sites-30000.{json,md}`.
+
+#### What the four remaining sites really were
+
+- **`compiled program create` was mostly not the compiled create.** It is a
+  fallback rule — a frame the table does not name whose caller is a program
+  mount — and it was catching four framework functions along with the two
+  emitted ones: `parseLynxNativeEventProp`, `encodeCheckedLynxNativeEventToken`,
+  a PAPI facade method, and the mount's own `.find` predicate. Each now carries
+  a probe, so the fallback reaches only frames that really are emitted code.
+- **`emitHostNode` was naming a function in another file.** Its probe was
+  `setCssId(`, and the PAPI facade declares a `setCssId` wrapper 161 characters
+  into the same object literal that declares `setClasses` — so a sample in
+  `setClasses` carried the probe. `cssScope.value` occurs twice in the bundle
+  and both are `emitHostNode`'s own arguments.
+- **`first-screen host and text factories` folded a function that is neither.**
+  The thunk `renderComponent` hands to `withOwner` sits 67 characters before
+  `TEMPLATE_ENV` and reached its `h` factory. It is now `renderComponent`, and
+  the two factories are `textNode` and `TEMPLATE_ENV.h` separately.
+- **`node normalization` was five frames and two of the names were wrong.** It
+  folded `normalizeProps` and `materialize`, which share nothing but a `$$kind`
+  test, plus `TEMPLATE_ENV`'s three child appenders reaching 39 characters
+  forward into the key reader after them. All five are now their own site.
+
+#### The run that fixed them found two more
+
+Neither was visible to C15, because C15's window never sampled the frames:
+
+- **`template create and prop freeze` folded three unrelated functions** — the
+  plan constructor `universalPlan`, the validator `freezePlanNode` it calls, and
+  `renderTemplate`, which executes a compiled create. They share nothing but
+  testing `kind === 'template'`, which is what the probe matched.
+- **`"identity.root"` reached backwards into an assert.** `native-events.ts`
+  declares its own `assertPositiveSafeInteger` 99 characters before the encode
+  whose arguments it checks. **This one is C16's own defect**: the probe that
+  needed separating is a probe C16 added, and the record that showed the site at
+  two frames is the record measuring C16's own first table.
+
+#### Order is the fallback when uniqueness cannot be had
+
+Every probe here occurs once in the bundle wherever that was possible. Where a
+function's window necessarily contains a neighbour's text — a nested function,
+or a run of one-line methods declared back to back — the table falls back on
+order, because `probeOf` returns the first entry that matches. Three runs now
+depend on it and each says so where it sits: the plan constructor before the
+validator it encloses, the component thunk before the template env it abuts, and
+`TEMPLATE_ENV`'s `t`, `s`, `a` in source order. Order is the weaker tool, so it
+is used only where uniqueness is impossible, and a test pins each run.
+
+#### What the corrected window says at 30,000 rows
+
+n=15, the same two bundles by digest as C14 and C15.
+
+| bucket | `octane` | `octane-mts-program` |
+|---|---:|---:|
+| applier walk | 433.0 | 22.9 |
+| host record building | 251.5 | **0.0** |
+| program mount | 0.0 | 205.0 |
+| renderer pre-passes | 152.5 | 64.2 |
+| first tree capture | 127.2 | 23.8 |
+| applier entry and pre-walk | 107.8 | 30.4 |
+| event bookkeeping | 58.6 | 43.6 |
+| first-screen entry | 32.0 | 5.7 |
+| compiled program create | 0.0 | 14.2 |
+| element factory dispatch | 10.7 | 0.0 |
+| papi facade | 8.5 | 3.6 |
+| **all frames** | **1224.9** | **434.9** |
+
+- **`host record building` in the program cell is 0.0, not 2.5.** All seven of
+  its sites are zero. The 2.5 ms C14 and C15 reported was the PAPI facade's
+  `setClasses` wrapper, in another file. The program does not shrink host record
+  building; it removes it.
+- **`compiled program create` is 14.2 over the two emitted frames**, against
+  24.9 over six in C15's window — the four framework functions are out of it.
+  That is a 43% drop where the two windows differ by 6.7% on the program cell's
+  whole-script median, so most of it is the re-attribution rather than the
+  window. The rest of the bucket's own frames are unchanged: both windows enter
+  the same two emitted creates.
+- **`papi facade` is a bucket now**, 8.5 and 3.6: real time that was being read
+  as `emitHostNode` in one cell and as emitted code in the other.
+- **The mount's `.find` predicate is 4.1 ms**, which is what it was adding to
+  `compiled program create`. `isProgramMountFrame` said this overstatement
+  existed and could not bound it; now it is a number.
+- **`renderer pre-passes` 64.2 splits sixteen ways and every site is one named
+  function.** In the program cell: `collectFirstScreenEvents` 18.3,
+  `renderTemplate` 13.8, `materialize` 13.0, `assignIds` 7.1, `prop bag builder`
+  5.7, `assignProgramIds` 3.4, `renderComponent` 1.9, the rest 0.0.
+- **`nativeEventMap` holds at 32.6 / 30.2**, single-frame in both cells, three
+  windows running. It is still the frame the program's architecture does not
+  touch.
+
+Every site in the record is one function, with two exceptions the source section
+makes visible: `mountProgram` at two frames, which are one function's two
+entrances, and three `where` values that name a plural on purpose — `visit and
+pushChildren`, `createElement type switch`, `papi facade methods`.
+
+#### What this licenses, and what it does not
+
+Nothing here is an ablation, so nothing here is a ceiling on a removal. No
+`packages/` file changed. Absolute milliseconds from this instrument stay
+non-reportable; wall clocks come from `stages/papi-run.mjs`.
+
+What it does license is that a design slice can now name its target: the
+program cell's remaining script is `mountProgram` 201.9, `renderer pre-passes`
+64.2, `event bookkeeping` 43.6 — of which `nativeEventMap` is 30.2 — and
+`applier entry and pre-walk` 30.4.
+
 ## Claims and non-claims
 
 Command counts and commit bytes are Octane-owned costs and are gated. The
