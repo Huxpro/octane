@@ -30,6 +30,22 @@ export const BUCKETS = Object.freeze([
 		where: 'core/host-driver.ts mountProgram',
 	},
 	{
+		// The same function, entered from its other end. Which of these two is
+		// within reach of `mountProgram`'s entry is decided by the minifier, not by
+		// the source: when the per-site loop body closes over its site the minifier
+		// hoists it into a helper at the function's start, and the event message
+		// lands 82 characters in; when it does not, the function starts with its
+		// own validation and the event message is 1051 characters in — past any
+		// window this table can afford. An ablation that removed the closure moved
+		// it, and the bucket read 0.0 ms with 154 ms of new `unmatched`, which is
+		// how this was found (issue #163 C11). So a bucket needs a probe near the
+		// entry in every shape the minifier produces, not only in the one that
+		// happened to be measured first.
+		bucket: 'program mount',
+		probe: 'first-screen program node carries no plan',
+		where: 'core/host-driver.ts mountProgram',
+	},
+	{
 		bucket: 'program mount',
 		probe: 'first-screen program appends a keyed range into node ',
 		where: 'core/host-driver.ts mountProgram range members',
@@ -171,9 +187,25 @@ export function bucketOf(text) {
 	return null;
 }
 
-/** True for the frame that mounts a program, whose unnamed callees are its create. */
+/**
+ * True for the frame that mounts a program, whose unnamed callees are its create.
+ *
+ * Both entry probes, for the reason above: identifying the mount by only one of
+ * them makes the compiled program's own time depend on which shape the minifier
+ * chose, and in the shape that misses it the create reads as 0.0 ms rather than
+ * as anything a reader would question.
+ *
+ * In the hoisted shape this is also true of the helper the minifier lifted out
+ * of the per-site loop, whose one unnamed callee is the `.find` predicate rather
+ * than a create. That predicate's self time is therefore inside
+ * `compiled program create` in that shape, which overstates it — by at most the
+ * predicate, which the shape without the closure bounds directly.
+ */
 export function isProgramMountFrame(text) {
-	return text.includes('first-screen program binds an event on node ');
+	return (
+		text.includes('first-screen program binds an event on node ') ||
+		text.includes('first-screen program node carries no plan')
+	);
 }
 
 /**
