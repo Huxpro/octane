@@ -14,10 +14,11 @@
 // lives here because this is the directory `pnpm test:stages` collects.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 
-import { formatEvidenceJson } from '../scripts/evidence.mjs';
+import { bundleIdentity, formatEvidenceJson } from '../scripts/evidence.mjs';
 
 /** The results directories whose contents are checked in. */
 const TRACKED = [
@@ -57,4 +58,37 @@ test('a record is written where prettier --check accepts it, arrays included', a
 	const file = path.join(import.meta.dirname, 'results', 'unwritten.json');
 	const written = await formatEvidenceJson(file, { scales: [1000, 10000], meta: { reps: 5 } });
 	assert.equal(written, '{\n  "scales": [1000, 10000],\n  "meta": {\n    "reps": 5\n  }\n}\n');
+});
+
+test('a record identifies the bundle it measured by its bytes, not by when it ran', () => {
+	// The failure this guards is a scaling series assembled from records taken at
+	// different times against different builds: it reads as a workload effect and
+	// is a version difference. What separates the two cases is content, so what
+	// the record carries has to move when the content moves and stay put when
+	// only the file's name or timestamp does.
+	const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'bundle-identity-'));
+	try {
+		const first = path.join(directory, 'main.web.bundle');
+		const copy = path.join(directory, 'copy.web.bundle');
+		const changed = path.join(directory, 'changed.web.bundle');
+		fs.writeFileSync(first, 'painted 10000 rows');
+		fs.writeFileSync(copy, 'painted 10000 rows');
+		fs.writeFileSync(changed, 'painted 10000 rowt');
+		// A rebuild that changed nothing still moves the timestamp, so a record
+		// keyed on time would call two identical builds different.
+		fs.utimesSync(copy, new Date('2020-01-01T00:00:00Z'), new Date('2020-01-01T00:00:00Z'));
+
+		assert.equal(bundleIdentity(copy).digest, bundleIdentity(first).digest);
+		assert.notEqual(bundleIdentity(changed).digest, bundleIdentity(first).digest);
+
+		const identity = bundleIdentity(first, { relativeTo: directory });
+		assert.equal(identity.path, 'main.web.bundle');
+		assert.equal(identity.bytes, 18);
+		assert.equal(identity.modified, new Date(fs.statSync(first).mtime).toISOString());
+		// Reported relative to a root when one is given, so a record does not carry
+		// the absolute path of the machine that wrote it.
+		assert.equal(bundleIdentity(first).path, first);
+	} finally {
+		fs.rmSync(directory, { recursive: true, force: true });
+	}
 });

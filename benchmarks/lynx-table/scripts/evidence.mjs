@@ -17,6 +17,7 @@
 // it will not print. A silent fallback writes exactly the file this module
 // exists to prevent, and hides why; failing at the write names the cause while
 // the measurement is still in hand.
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -46,6 +47,44 @@ async function jsonOptionsFor(file) {
 		);
 	}
 	return { ...config, parser: 'json' };
+}
+
+/**
+ * What a record has to say about the bundle it measured.
+ *
+ * A record already carries the date it was taken, and a date is not an
+ * identity: two runs a day apart may have measured the same bytes or two
+ * different builds, and nothing in a dated record separates those cases. That
+ * is not a hypothetical. The scaling series in issue #163 C9 was first
+ * assembled from three script profiles whose 1,000- and 10,000-row points
+ * predated three `packages/lynx` commits, and it read as a bucket that got
+ * *cheaper* as the workload tripled — a version diff wearing a scaling law's
+ * clothes, with nothing on disk to say so.
+ *
+ * So a record names the bytes it measured, and the two fields answer two
+ * different questions. `digest` settles whether two records measured the same
+ * code, which is what an A/B needs; it is a digest of the content and not of
+ * the file's `stat`, because a rebuild that changed nothing still moves the
+ * timestamp and a stat-keyed identity gets that case backwards. `modified`
+ * settles the question a scaling series asks, where the bundles differ by
+ * construction because the workload is compiled into them: every bundle built
+ * from one revision is what makes the points a series, and a bundle older than
+ * the last commit under `packages/` is a stale build. Both are then answerable
+ * from the record and `git log`, without rebuilding anything to find out.
+ *
+ * @param {string} file the bundle a cell was measured from
+ * @param {{relativeTo?: string}} [options] report the path relative to this root
+ */
+export function bundleIdentity(file, { relativeTo } = {}) {
+	const stat = fs.statSync(file);
+	return {
+		path: relativeTo === undefined ? file : path.relative(relativeTo, file),
+		bytes: stat.size,
+		// Truncated: this is an identity to compare, not a signature to trust, and
+		// 16 hex characters is past any collision a `results/` directory can reach.
+		digest: createHash('sha256').update(fs.readFileSync(file)).digest('hex').slice(0, 16),
+		modified: stat.mtime.toISOString(),
+	};
 }
 
 /**
