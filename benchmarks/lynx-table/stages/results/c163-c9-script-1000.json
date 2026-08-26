@@ -1,0 +1,453 @@
+{
+  "meta": {
+    "date": "2026-08-26T12:20:23.279Z",
+    "node": "v22.22.2",
+    "cpus": 4,
+    "cpuModel": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "platform": "linux",
+    "release": "6.18.44-fc-v21",
+    "chromium": null,
+    "rows": 1000,
+    "reps": 5,
+    "samplingIntervalUs": 100,
+    "cells": ["octane", "octane-mts-program", "octane-direct"],
+    "bundles": {
+      "octane": {
+        "path": "app/dist-rows1000/main.web.bundle",
+        "bytes": 518125,
+        "digest": "07f90c6e912dfbcf",
+        "modified": "2026-08-26T12:01:42.819Z"
+      },
+      "octane-mts-program": {
+        "path": "app/dist-mtsprogram-rows1000/main.web.bundle",
+        "bytes": 520098,
+        "digest": "8b873351c53e8ab3",
+        "modified": "2026-08-26T11:19:41.410Z"
+      },
+      "octane-direct": {
+        "path": "prototype/dist-rows1000/main.web.bundle",
+        "bytes": 20560,
+        "digest": "21444cfc4e712669",
+        "modified": "2026-08-26T12:13:05.166Z"
+      }
+    },
+    "loadStart": [0.45, 0.93, 0.88],
+    "loadEnd": [0.84, 1, 0.9]
+  },
+  "cells": {
+    "octane": {
+      "buckets": {
+        "renderer pre-passes": {
+          "n": 5,
+          "min": 10.874,
+          "max": 11.22,
+          "mean": 11.068000000000001,
+          "median": 11.079,
+          "std": 0.11476410588681467,
+          "ci95": 0.10059517411884134
+        },
+        "applier entry and pre-walk": {
+          "n": 5,
+          "min": 5.314,
+          "max": 7.594,
+          "mean": 6.0154000000000005,
+          "median": 5.578,
+          "std": 0.8630377975500263,
+          "ci95": 0.7564859835296355
+        },
+        "first-screen entry": {
+          "n": 5,
+          "min": 2.168,
+          "max": 5.151,
+          "mean": 3.2362,
+          "median": 2.686,
+          "std": 1.053754126919558,
+          "ci95": 0.9236562168703245
+        },
+        "applier walk": {
+          "n": 5,
+          "min": 11.557,
+          "max": 14.499,
+          "mean": 13.4208,
+          "median": 13.827,
+          "std": 0.9986039054600178,
+          "ci95": 0.8753149163605062
+        },
+        "host record building": {
+          "n": 5,
+          "min": 11.063,
+          "max": 18.778,
+          "mean": 15.0214,
+          "median": 15.869,
+          "std": 2.6133500798783156,
+          "ci95": 2.290702343624068
+        },
+        "event bookkeeping": {
+          "n": 5,
+          "min": 1.776,
+          "max": 5.067,
+          "mean": 2.7278,
+          "median": 2.282,
+          "std": 1.1916899596791106,
+          "ci95": 1.0445623051150181
+        },
+        "element factory dispatch": {
+          "n": 5,
+          "min": 0.533,
+          "max": 1.443,
+          "mean": 0.8246,
+          "median": 0.709,
+          "std": 0.33766646265212663,
+          "ci95": 0.2959777043711232
+        },
+        "first tree capture": {
+          "n": 5,
+          "min": 3.056,
+          "max": 5.79,
+          "mean": 4.1335999999999995,
+          "median": 3.844,
+          "std": 0.9619564647113714,
+          "ci95": 0.8431920182240815
+        },
+        "compiled program create": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "program mount": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        }
+      },
+      "namedMs": {
+        "n": 5,
+        "min": 47.586,
+        "max": 63.239,
+        "mean": 56.447799999999994,
+        "median": 56.403,
+        "std": 5.667189829183419,
+        "ci95": 4.967510906184222
+      },
+      "unmatchedMs": {
+        "n": 5,
+        "min": 6.249,
+        "max": 12.729,
+        "mean": 8.7208,
+        "median": 8.294,
+        "std": 2.4270651742382197,
+        "ci95": 2.12741642444426
+      },
+      "totalMs": {
+        "n": 5,
+        "min": 57.552,
+        "max": 75.96799999999999,
+        "mean": 65.1686,
+        "median": 62.652,
+        "std": 6.33908989051267,
+        "ci95": 5.556457276981868
+      },
+      "largestUnnamed": [
+        {
+          "position": "1:9713",
+          "ms": 0.7,
+          "source": "(e){var r=X.exec(e);if(null===r)return null;var t=r[1];return Z.has(t)?\"discrete\":H.has(t)?\"continuous\":\"default\"}var Q=new Map;var ee=[];fu"
+        },
+        {
+          "position": "1:158328",
+          "ms": 0.7,
+          "source": "(e,r){L(e,z,r)},setDataset(e,r){N(e,r)},setEvent(e,r,t,n){_(e,r,t,n)},setId(e,r){T(e,r)},flush(e,r){R(e,r)}},Object.getOwnPropertyDescriptor"
+        },
+        {
+          "position": "1:228144",
+          "ms": 0.7,
+          "source": "(e,t)=>(0,r.Zz)(z,[(0,r.DT)(\"lynx\",R,(0,r.uc)([[\"set\",\"row\",e],[\"set\",\"isSelected\",n===e.id],[\"set\",\"onSelect\",A],[\"set\",\"onRemove\",C]]))]))"
+        }
+      ]
+    },
+    "octane-mts-program": {
+      "buckets": {
+        "renderer pre-passes": {
+          "n": 5,
+          "min": 5.886,
+          "max": 6.58,
+          "mean": 6.379,
+          "median": 6.531,
+          "std": 0.2583222793333938,
+          "ci95": 0.22642946126332575
+        },
+        "applier entry and pre-walk": {
+          "n": 5,
+          "min": 1.816,
+          "max": 3.66,
+          "mean": 2.6014000000000004,
+          "median": 2.302,
+          "std": 0.6659302065532092,
+          "ci95": 0.583713562368393
+        },
+        "first-screen entry": {
+          "n": 5,
+          "min": 0.175,
+          "max": 1.074,
+          "mean": 0.703,
+          "median": 0.7,
+          "std": 0.3410530750484447,
+          "ci95": 0.2989462010195146
+        },
+        "applier walk": {
+          "n": 5,
+          "min": 0.897,
+          "max": 1.332,
+          "mean": 1.069,
+          "median": 1.073,
+          "std": 0.15185124299787608,
+          "ci95": 0.1331034831099472
+        },
+        "host record building": {
+          "n": 5,
+          "min": 0,
+          "max": 0.333,
+          "mean": 0.0666,
+          "median": 0,
+          "std": 0.1332,
+          "ci95": 0.11675494780436502
+        },
+        "event bookkeeping": {
+          "n": 5,
+          "min": 0.883,
+          "max": 1.251,
+          "mean": 1.0902,
+          "median": 1.061,
+          "std": 0.1360138228269465,
+          "ci95": 0.11922137225850066
+        },
+        "element factory dispatch": {
+          "n": 5,
+          "min": 0,
+          "max": 0.154,
+          "mean": 0.0308,
+          "median": 0,
+          "std": 0.0616,
+          "ci95": 0.05399478066628292
+        },
+        "first tree capture": {
+          "n": 5,
+          "min": 0.884,
+          "max": 0.982,
+          "mean": 0.9324,
+          "median": 0.94,
+          "std": 0.04146613075752305,
+          "ci95": 0.03634666615798482
+        },
+        "compiled program create": {
+          "n": 5,
+          "min": 1.206,
+          "max": 2.422,
+          "mean": 1.8568000000000002,
+          "median": 1.913,
+          "std": 0.39072414821712775,
+          "ci95": 0.3424848162987667
+        },
+        "program mount": {
+          "n": 5,
+          "min": 5.051,
+          "max": 7.109,
+          "mean": 6.004600000000001,
+          "median": 6.067,
+          "std": 0.6711889748796533,
+          "ci95": 0.588323076043087
+        }
+      },
+      "namedMs": {
+        "n": 5,
+        "min": 18.765,
+        "max": 21.927,
+        "mean": 20.733800000000002,
+        "median": 21.037,
+        "std": 1.101189611284087,
+        "ci95": 0.965235252163533
+      },
+      "unmatchedMs": {
+        "n": 5,
+        "min": 3.694,
+        "max": 4.712,
+        "mean": 4.165,
+        "median": 4.355,
+        "std": 0.403891074424776,
+        "ci95": 0.3540261359843365
+      },
+      "totalMs": {
+        "n": 5,
+        "min": 23.131,
+        "max": 26.639,
+        "mean": 24.898799999999998,
+        "median": 24.730999999999998,
+        "std": 1.2386502977031086,
+        "ci95": 1.085724856277685
+      },
+      "largestUnnamed": [
+        {
+          "position": "1:230117",
+          "ms": 0.6,
+          "source": "(e,t)=>(0,r.Zz)(z,[(0,r.DT)(\"lynx\",R,(0,r.uc)([[\"set\",\"row\",e],[\"set\",\"isSelected\",n===e.id],[\"set\",\"onSelect\",A],[\"set\",\"onRemove\",C]]))]))"
+        },
+        {
+          "position": "1:10067",
+          "ms": 0.3,
+          "source": "(e,r){var t=U(e);if(t!==S&&\"lynx\"!==t.id)throw new n.qO(\"Lynx first-screen rendering requires a compiled Lynx component.\");var a=R(T());var "
+        },
+        {
+          "position": "1:228287",
+          "ms": 0.3,
+          "source": "(e=1e3){var r=[];for(var t=0;t<e;t++)r.push({id:n++,label:i[t%i.length]+\" \"+o[7*t%o.length]+\" \"+l[13*t%l.length]});return r}(1e3);let L=new "
+        }
+      ]
+    },
+    "octane-direct": {
+      "buckets": {
+        "renderer pre-passes": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "applier entry and pre-walk": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "first-screen entry": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "applier walk": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "host record building": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "event bookkeeping": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "element factory dispatch": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "first tree capture": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "compiled program create": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "program mount": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        }
+      },
+      "namedMs": {
+        "n": 5,
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "std": 0,
+        "ci95": 0
+      },
+      "unmatchedMs": {
+        "n": 5,
+        "min": 2.669,
+        "max": 4.018,
+        "mean": 3.1702000000000004,
+        "median": 3.141,
+        "std": 0.4602179483679444,
+        "ci95": 0.4033988178703551
+      },
+      "totalMs": {
+        "n": 5,
+        "min": 2.669,
+        "max": 4.018,
+        "mean": 3.1702000000000004,
+        "median": 3.141,
+        "std": 0.4602179483679444,
+        "ci95": 0.4033988178703551
+      },
+      "largestUnnamed": [
+        {
+          "position": "72:19",
+          "ms": 1.4,
+          "source": "(id, label, selected) {"
+        },
+        {
+          "position": "182:25",
+          "ms": 0.9,
+          "source": "(count) {"
+        },
+        {
+          "position": "96:22",
+          "ms": 0.4,
+          "source": "() {"
+        }
+      ]
+    }
+  }
+}
