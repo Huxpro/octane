@@ -2146,15 +2146,17 @@ bucket its row already reported, and `unnamed` did not move. What changes is
 which function inside the bucket the time belongs to, which is the entire point
 of a split.
 
-### The instrument stopped naming functions that are not there (issue #163 C16)
+### The instrument stopped naming functions that are not there (issue #163 C16–C17)
 
 C15 corrected four labels and named four more it could not fix with a rename.
-This slice fixes those, and the run that measured the fix found two further
-mislabels — one of them introduced by this slice's own probes. Both are fixed
-here too, which is why the record comes in two parts: a first window measured
-with the intermediate table, kept as
-`results/c163-c16-labels-30000.{json,md}`, and the final
-`results/c163-c16-sites-30000.{json,md}`.
+C16 fixes those, the run that measured the fix found two further mislabels — one
+of them introduced by C16's own probes — and C16's own record then turned out to
+have been printing the evidence for one more. So the record comes in three
+parts: a first window measured with C16's intermediate table, kept as
+`results/c163-c16-labels-30000.{json,md}`; C16's final
+`results/c163-c16-sites-30000.{json,md}`; and C17's
+`results/c163-c17-sites-30000.{json,md}`, which is the window this section's
+table comes from.
 
 #### What the four remaining sites really were
 
@@ -2192,63 +2194,97 @@ Neither was visible to C15, because C15's window never sampled the frames:
   needed separating is a probe C16 added, and the record that showed the site at
   two frames is the record measuring C16's own first table.
 
+#### And a count the record had been printing since C14 named one more
+
+C14 taught the record to say, per site, how many distinct frame positions its
+probe matched. `element factory dispatch` has come back at **two frames in
+`octane` and one in the program cell** in every record since — and the mislabel
+survived C15's audit and C16's. C17 is that count finally being read.
+
+Reading the source at both positions settles it. `1:157802` is the PAPI facade's
+`createPage` wrapper and `1:157829` is the `createElement` type switch declared
+27 characters after it, which makes them the closest neighbouring pair of
+sampled frames in this bundle — closer than the 39 the appenders sit at. **In
+the program cell the only frame that bucket ever sampled is the wrapper**, so
+its 0.0 read as a free type switch when the switch had not been entered at all.
+
+`createPage` now carries `,createElement(`, which occurs once in the bundle.
+That separates the pair in one direction only: the text cannot be seen from the
+switch's own window, which starts after it, but the switch's `case"raw-text":`
+is 57 characters into the wrapper's window. So the entry is ordered ahead of
+`element factory dispatch`, and the test watches the names and the order
+together.
+
 #### Order is the fallback when uniqueness cannot be had
 
 Every probe here occurs once in the bundle wherever that was possible. Where a
 function's window necessarily contains a neighbour's text — a nested function,
 or a run of one-line methods declared back to back — the table falls back on
-order, because `probeOf` returns the first entry that matches. Three runs now
+order, because `probeOf` returns the first entry that matches. Six runs now
 depend on it and each says so where it sits: the plan constructor before the
-validator it encloses, the component thunk before the template env it abuts, and
-`TEMPLATE_ENV`'s `t`, `s`, `a` in source order. Order is the weaker tool, so it
-is used only where uniqueness is impossible, and a test pins each run.
+validator it encloses, the render before the freeze nested in it, the component
+thunk before the template env it abuts, `TEMPLATE_ENV`'s `t`, `s`, `a` in source
+order, the assert before the encode that calls it, and the page wrapper before
+the type switch declared after it. Order is the weaker tool — it is invisible at
+the call site, and a reordering edit moves time between two names without making
+any number look implausible — so it is used only where uniqueness is impossible,
+and a test pins each run.
 
 #### What the corrected window says at 30,000 rows
 
-n=15, the same two bundles by digest as C14 and C15.
+`results/c163-c17-sites-30000.{json,md}`, n=15, the same two bundles by digest as
+C14, C15 and C16.
 
 | bucket | `octane` | `octane-mts-program` |
 |---|---:|---:|
-| applier walk | 433.0 | 22.9 |
-| host record building | 251.5 | **0.0** |
-| program mount | 0.0 | 205.0 |
-| renderer pre-passes | 152.5 | 64.2 |
-| first tree capture | 127.2 | 23.8 |
-| applier entry and pre-walk | 107.8 | 30.4 |
-| event bookkeeping | 58.6 | 43.6 |
-| first-screen entry | 32.0 | 5.7 |
-| compiled program create | 0.0 | 14.2 |
-| element factory dispatch | 10.7 | 0.0 |
-| papi facade | 8.5 | 3.6 |
-| **all frames** | **1224.9** | **434.9** |
+| applier walk | 435.0 | 23.0 |
+| host record building | 242.5 | **0.0** |
+| program mount | 0.0 | 202.3 |
+| renderer pre-passes | 151.8 | 64.4 |
+| first tree capture | 118.5 | 28.8 |
+| applier entry and pre-walk | 102.6 | 32.1 |
+| event bookkeeping | 57.3 | 46.0 |
+| first-screen entry | 31.9 | 6.6 |
+| compiled program create | 0.0 | 13.9 |
+| element factory dispatch | 10.0 | **0.0, over zero frames** |
+| papi facade | 8.3 | 2.9 |
+| **all frames** | **1212.0** | **440.3** |
 
-- **`host record building` in the program cell is 0.0, not 2.5.** All seven of
-  its sites are zero. The 2.5 ms C14 and C15 reported was the PAPI facade's
-  `setClasses` wrapper, in another file. The program does not shrink host record
-  building; it removes it.
-- **`compiled program create` is 14.2 over the two emitted frames**, against
+- **`host record building` in the program cell is 0.0, not the 2.5 C14 and C15
+  reported.** All seven of its sites are zero. That 2.5 was the PAPI facade's
+  `setClasses` wrapper, in another file; C16's window is where it left. The
+  program does not shrink host record building, it removes it.
+- **`element factory dispatch` in the program cell is zero over zero frames.**
+  The one frame that bucket ever sampled there was `createPage`, now its own
+  site, so the type switch is not a function that ran and cost nothing — it is a
+  function the run never entered. Those are different facts, and printing a site
+  at 0.0 rather than dropping it is what keeps them apart.
+- **`compiled program create` is 13.9 over the two emitted frames**, against
   24.9 over six in C15's window — the four framework functions are out of it.
-  That is a 43% drop where the two windows differ by 6.7% on the program cell's
+  That is a 44% drop where the two windows differ by 5.5% on the program cell's
   whole-script median, so most of it is the re-attribution rather than the
-  window. The rest of the bucket's own frames are unchanged: both windows enter
-  the same two emitted creates.
-- **`papi facade` is a bucket now**, 8.5 and 3.6: real time that was being read
-  as `emitHostNode` in one cell and as emitted code in the other.
-- **The mount's `.find` predicate is 4.1 ms**, which is what it was adding to
+  window. The bucket's own frames are unchanged: both windows enter the same two
+  emitted creates.
+- **`papi facade` is a bucket now**, 8.3 and 2.9: real time that was being read
+  as `emitHostNode` in one cell, as emitted code in the other, and as the element
+  type switch in both.
+- **The mount's `.find` predicate is 4.9 ms**, which is what it was adding to
   `compiled program create`. `isProgramMountFrame` said this overstatement
   existed and could not bound it; now it is a number.
-- **`renderer pre-passes` 64.2 splits sixteen ways and every site is one named
-  function.** In the program cell: `collectFirstScreenEvents` 18.3,
-  `renderTemplate` 13.8, `materialize` 13.0, `assignIds` 7.1, `prop bag builder`
-  5.7, `assignProgramIds` 3.4, `renderComponent` 1.9, the rest 0.0.
-- **`nativeEventMap` holds at 32.6 / 30.2**, single-frame in both cells, three
+- **`renderer pre-passes` 64.4 splits sixteen ways and every site is one named
+  function.** In the program cell: `collectFirstScreenEvents` 14.9,
+  `renderTemplate` 14.0, `materialize` 13.8, `assignIds` 8.2, `prop bag builder`
+  5.8, `assignProgramIds` 3.7, `renderComponent` 2.2, the rest 0.0.
+- **`nativeEventMap` holds at 31.3 / 30.7**, single-frame in both cells, four
   windows running. It is still the frame the program's architecture does not
   touch.
 
-Every site in the record is one function, with two exceptions the source section
-makes visible: `mountProgram` at two frames, which are one function's two
-entrances, and three `where` values that name a plural on purpose — `visit and
-pushChildren`, `createElement type switch`, `papi facade methods`.
+Every site in the record is one named function, with two kinds of exception the
+source section makes visible: `mountProgram` at two frames, which are one
+function's two entrances, and three `where` values that name a plural on purpose
+— `visit and pushChildren`, `papi facade methods`, and `emitted main-thread
+program create`, which is the two creates the compiler emitted and the only site
+with no source name to give.
 
 #### What this licenses, and what it does not
 
@@ -2256,10 +2292,10 @@ Nothing here is an ablation, so nothing here is a ceiling on a removal. No
 `packages/` file changed. Absolute milliseconds from this instrument stay
 non-reportable; wall clocks come from `stages/papi-run.mjs`.
 
-What it does license is that a design slice can now name its target: the
-program cell's remaining script is `mountProgram` 201.9, `renderer pre-passes`
-64.2, `event bookkeeping` 43.6 — of which `nativeEventMap` is 30.2 — and
-`applier entry and pre-walk` 30.4.
+What it does license is that a design slice can now name its target without
+first having to prove the name. The program cell's remaining script is
+`mountProgram` 198.1, `renderer pre-passes` 64.4, `event bookkeeping` 46.0 — of
+which `nativeEventMap` is 30.7 — and `applier entry and pre-walk` 32.1.
 
 ## Claims and non-claims
 

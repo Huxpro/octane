@@ -128,10 +128,11 @@ export const BUCKETS = Object.freeze([
 		where: 'core/nodes-ref.ts assertPositiveSafeInteger',
 	},
 	// The facade `createLynxPapi` returns: one-line wrappers forwarding to the
-	// `__Set*` host functions. Two of them are sampled, and neither is adjacent
-	// to the other — `setClasses` and `setEvent` sit 161 characters apart in one
-	// object literal, which is past the window — so they take a probe each and
-	// share a `where`, the way two entrances to one function do.
+	// host functions. Three are sampled. Two of them, `setClasses` and `setEvent`,
+	// sit 161 characters apart in one object literal, which is past the window, so
+	// they take a probe each and share a `where`, the way two entrances to one
+	// function do. The third is `createPage`, which is adjacent to a function in
+	// another bucket and is handled below.
 	{
 		bucket: 'papi facade',
 		probe: ',setInlineStyles(',
@@ -141,6 +142,22 @@ export const BUCKETS = Object.freeze([
 		bucket: 'papi facade',
 		probe: ',setId(e',
 		where: 'core/papi.ts papi facade methods',
+	},
+	// `createPage` is a third wrapper, and it is adjacent: it forwards to
+	// `__CreatePage` from the property declared immediately before
+	// `createElement`, 27 characters ahead of it. So `case"raw-text":` — the
+	// `element factory dispatch` probe below — reached backwards into it, and
+	// that bucket was a total shared between the page factory and the type
+	// switch. In the program cell it was worse than shared: the only frame the
+	// bucket ever sampled there was this wrapper, so its 0.0 was read as "the
+	// switch is free" when the switch was never entered at all. `,createElement(`
+	// occurs once in the bundle and cannot be reached from the switch's own
+	// window, which starts after it; the reverse is not true, so this entry has
+	// to precede `element factory dispatch` and a test pins that it does.
+	{
+		bucket: 'papi facade',
+		probe: ',createElement(',
+		where: 'core/papi.ts createPage',
 	},
 	{
 		bucket: 'event bookkeeping',
@@ -309,11 +326,13 @@ export const BUCKETS = Object.freeze([
  * 258 characters apart, as the closest neighbouring pair in the bundle, and
  * concluded that 160 could not cross a function boundary. That was measured on
  * two functions rather than on the bundle, and the bundle is far denser. The
- * real spacing between sampled frames goes down to 39 characters — three
- * `children.push` methods run into the key reader that follows them — with a
- * 53-character pair between a template create and the recursive freeze nested
- * inside it, and a 67-character pair between `assignIds` and `assignProgramIds`
- * where the minifier inlines the second into the first's comma sequence.
+ * real spacing between sampled frames goes down to 27 characters — the PAPI
+ * facade's `createPage` wrapper and the `createElement` type switch declared
+ * next to it — and 39 characters between three `children.push` methods and the
+ * key reader that follows them, with a 53-character pair between a template
+ * render and the recursive freeze nested inside it, and a 67-character pair
+ * between `assignIds` and `assignProgramIds` where the minifier inlines the
+ * second into the first's comma sequence.
  *
  * So no window can carry the guarantee. What carries it is each probe being
  * text that appears in its own function and in no neighbour reachable from a
@@ -325,10 +344,13 @@ export const BUCKETS = Object.freeze([
  * returns the first entry that matches: when one function's window necessarily
  * contains a neighbour's text — a nested function, or a run of one-line methods
  * declared back to back — the enclosing or earlier one is listed first, so each
- * frame is claimed by its own entry before a later entry can reach it. Three
- * runs in the table depend on this and say so where they sit: the template
- * create before the freeze nested in it, the component thunk before the
- * template env it abuts, and `TEMPLATE_ENV`'s `t`, `s`, `a` in source order.
+ * frame is claimed by its own entry before a later entry can reach it. Several
+ * runs in the table depend on this and say so where they sit: the plan
+ * constructor before the validator it encloses, the render before the freeze
+ * nested in it, the component thunk before the template env it abuts,
+ * `TEMPLATE_ENV`'s `t`, `s`, `a` in source order, the assert before the encode
+ * that calls it, and the `createPage` wrapper before the type switch declared
+ * after it.
  * Order is the weaker tool — it is invisible at the call site and a reordering
  * edit silently breaks it — so it is used only where uniqueness cannot be had,
  * and every such run is a comment as well as a sequence.

@@ -460,3 +460,31 @@ test('an assert is not the function that calls it', () => {
 		assert.equal(text.length, PROBE_WINDOW);
 	}
 });
+
+// The PAPI facade's page wrapper and the element type switch declared 27
+// characters after it — the closest neighbouring pair of sampled frames in the
+// bundle, and the last one the table was folding under a single name.
+const FACADE_CREATE_PAGE =
+	'(e,r)=>n(e,r),createElement(e,r,t){switch(e){case"#text":case"raw-text":return s(t);case"view":return i(r);case"scroll-view":return o(r);case"text":return l(r);';
+const CREATE_ELEMENT_SWITCH =
+	'(e,r,t){switch(e){case"#text":case"raw-text":return s(t);case"view":return i(r);case"scroll-view":return o(r);case"text":return l(r);case"image":return d(r);def';
+
+test('the page factory is not the type switch declared after it', () => {
+	// `case"raw-text":` sits 30 characters into the switch's own window and 57
+	// into the wrapper's, so both frames carried it and `element factory dispatch`
+	// was a shared total. The program cell is the case that shows why a shared
+	// total is not merely imprecise: the only frame it ever sampled in that
+	// bucket was the wrapper, so the bucket's 0.0 read as a free type switch when
+	// the switch had not been entered at all.
+	//
+	// Uniqueness separates them in one direction only — `,createElement(` cannot
+	// be seen from the switch's window, which starts after it, but the switch's
+	// probe can be seen from the wrapper's — so order carries the other
+	// direction, and both orders are watched here rather than assumed.
+	assert.equal(probeOf(FACADE_CREATE_PAGE)?.where, 'core/papi.ts createPage');
+	assert.equal(probeOf(CREATE_ELEMENT_SWITCH)?.where, 'core/papi.ts createElement type switch');
+	assert.notEqual(probeOf(FACADE_CREATE_PAGE)?.bucket, probeOf(CREATE_ELEMENT_SWITCH)?.bucket);
+	for (const text of [FACADE_CREATE_PAGE, CREATE_ELEMENT_SWITCH]) {
+		assert.equal(text.length, PROBE_WINDOW);
+	}
+});
