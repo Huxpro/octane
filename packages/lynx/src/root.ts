@@ -17,7 +17,11 @@ import {
 import { prepareLynxBackgroundLifecycleReceiver } from './core/background-lifecycle.js';
 import { installLynxNativeEventReceiver } from './core/native-event-receiver.js';
 import { createLynxBackgroundTransport, type LynxBackgroundTransport } from './core/transport.js';
-import type { LynxContextProxy, LynxMainThreadWorkletWireDescriptor } from './core/protocol.js';
+import type {
+	LynxContextProxy,
+	LynxMainThreadWorkletWireDescriptor,
+	LynxValidationMode,
+} from './core/protocol.js';
 import type { LynxCreateSelectorQuery } from './core/nodes-ref.js';
 import {
 	LYNX_BLOCK_BACKGROUND_CORE,
@@ -52,6 +56,16 @@ export interface CreateLynxRootOptions {
 	/** Explicit scheduler when neither Lynx nor the JS runtime supplies one. */
 	readonly scheduleMicrotask?: (callback: () => void) => void;
 	readonly onDiagnostic?: (error: Error) => void;
+	/**
+	 * How much of an inbound message this root re-derives before acting on it.
+	 * Defaults to `checked`. See {@link LynxValidationMode}.
+	 *
+	 * This governs the acknowledgements, native events, and thread-call results
+	 * the main thread sends back. The page-scoped data lifecycle receiver —
+	 * `__RenderPage` and friends, which outlives any one root and carries data
+	 * the app did not author — stays `checked` whatever a root chooses.
+	 */
+	readonly validation?: LynxValidationMode;
 }
 
 export interface LynxRoot {
@@ -228,6 +242,7 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 		try {
 			return createLynxBackgroundTransport(context, container, {
 				onDiagnostic: options.onDiagnostic,
+				validation: options.validation,
 				isPageDestroyed: lifecycleInstallation.isPageDestroyed,
 				prepareWorkletBatch: (batch) => prepareLynxClientWorkletBatch(container, batch),
 				onWorkletBatchAccepted: acceptWorkletBatch,
