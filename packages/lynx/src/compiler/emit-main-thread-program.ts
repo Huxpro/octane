@@ -182,8 +182,22 @@ const RESERVED_EMISSION_NAMES: ReadonlySet<string> = new Set([
 	'yield',
 ]);
 
-/** `n0`, `v3`, `e1`, `c2` — the per-node, per-slot and per-listener locals. */
-const EMISSION_LOCAL = /^[nvec]\d+$/;
+/** `n0`, `v3`, `e1`, `r0`, `c2` — the per-node, per-slot, per-listener and per-range locals. */
+const EMISSION_LOCAL = /^[nvecr]\d+$/;
+
+/**
+ * A hole the reduced program does not describe, and the node standing in its
+ * place.
+ *
+ * Structurally what `universalTemplateProgramWithoutRanges` returns, so a
+ * derivation's own `ranges` array passes straight through. Only `node` is read
+ * here: the create function takes range values positionally, in the order the
+ * caller lists the sites, exactly as it takes `v0..vN` in the order the
+ * derivation lists its values.
+ */
+export interface LynxMainThreadProgramRange {
+	readonly node: number;
+}
 
 export interface LynxMainThreadProgramEmission {
 	/**
@@ -191,11 +205,12 @@ export interface LynxMainThreadProgramEmission {
 	 * function. Binding the host once per program rather than once per instance
 	 * is the whole reason the emission is two functions instead of one.
 	 *
-	 * The create function takes `(pageId, v0..vN, e0..eM)` — it returns an
-	 * unattached subtree and leaves the single append to its caller — and returns
+	 * The create function takes `(pageId, v0..vN, e0..eM, r0..rK)` — it returns
+	 * an unattached subtree and leaves the single append to its caller — and
 	 * the run's nodes in program order, because that is the map every consumer
 	 * indexes by: #163's C2 adopts slot state by key against exactly these
-	 * positions.
+	 * positions. The range values come last so that a caller with none passes
+	 * exactly the arguments it passed before they existed.
 	 *
 	 * That array is one allocation per instance, and it is the one thing here
 	 * that C0's priced spike did not do — it pushed into per-slot arrays the
@@ -208,6 +223,14 @@ export interface LynxMainThreadProgramEmission {
 	readonly valueCount: number;
 	/** How many `e<n>` listener parameters follow them, in event-site order. */
 	readonly eventCount: number;
+	/**
+	 * How many `r<n>` range parameters follow the listeners, in site order.
+	 *
+	 * One per site the caller declared, including the ones this emission
+	 * compiles nothing for: the position is the caller's contract rather than
+	 * this function's decision.
+	 */
+	readonly rangeCount: number;
 }
 
 /** A program this backend declines, naming what it could not emit. */
@@ -393,16 +416,30 @@ function bindingSlots(program: UniversalHostTemplateProgram): number {
  * detached, and the caller performs the single append that puts it in the
  * page — because the caller has more to add: a keyed range's members are the
  * renderer's to materialize, not the program's to paint, and they go into a
- * node this function made. Attaching here would put that node in the page
- * first and make every member its own insertion, which is precisely the cost
- * assembling detached exists to avoid. Comparing painted trees cannot see any
- * of this — two orders reach the same tree — so it is asserted directly in
- * `main-thread-emit.test.ts` rather than assumed to follow from the trees
- * agreeing.
+ * node this function made. The one exception is a declared range site whose
+ * value arrives as a string, which the create function paints itself; the
+ * comment over that emission says why that is the same node the command path
+ * would have painted rather than a second opinion about it.
+ *
+ * Attaching here would put that node in the page first and make every member
+ * its own insertion, which is precisely the cost assembling detached exists to
+ * avoid. Comparing painted trees cannot see any of this — two orders reach the
+ * same tree — so it is asserted directly in `main-thread-emit.test.ts` rather
+ * than assumed to follow from the trees agreeing.
  */
 export function emitLynxMainThreadProgram(
 	program: UniversalHostTemplateProgram,
-	options: { readonly name: string },
+	options: {
+		readonly name: string;
+		/**
+		 * The holes the program dropped, in the order their values are passed.
+		 *
+		 * Omitted or empty emits exactly what it emitted before this parameter
+		 * existed, which is what keeps every caller that does not supply range
+		 * values on byte-identical output.
+		 */
+		readonly ranges?: readonly LynxMainThreadProgramRange[];
+	},
 ): LynxMainThreadProgramEmission {
 	if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(options.name)) {
 		throw new TypeError(
@@ -523,9 +560,64 @@ export function emitLynxMainThreadProgram(
 		body.push(`\t\tappend(n${program.nodes[index]!.parent}, n${index});`);
 	}
 
+	// A range site's value is the one thing a build cannot know and a run cannot
+	// avoid knowing, so the decision is emitted rather than made.
+	//
+	// `deriveLynxMainThreadProgram` answers "every renderable hole is a keyed
+	// range", because a plan the compiler produced lowers a `@for`, a component
+	// and a `{row.label as string}` to the same `kind: 'slot'` node. The
+	// run-time lowering answers the same question by looking at the value, and
+	// when that value is a string the hole stays in the program as a `#text`
+	// bound on `value` — the applier's route 1, created with `rawText(value)`
+	// and never written again. That is the node these lines paint, admitted by
+	// the same test route 1 admits itself by: the applier *throws* on a route-1
+	// value that is not a string rather than coercing it, so `typeof === 'string'`
+	// is its own entry condition rather than a second opinion about one. Every
+	// other value is left exactly where it is today — a hole the renderer fills
+	// by key.
+	//
+	// Emitted after the appends, because a range hole is its host's last child
+	// by construction: `universalTemplateProgramWithoutRanges` declines a program
+	// where a dropped hole is not the last entry naming its parent, so appending
+	// behind everything the node loop just placed *is* the position the command
+	// path would have given it.
+	//
+	// The created node is deliberately not returned. `mountProgram` pairs the
+	// returned array with the ids `assignProgramIds` handed out and refuses any
+	// other length, so a position for a compiled text is an id assignment rather
+	// than an emission, and it belongs to the consumer that needs one (#163 C2)
+	// instead of being guessed here. Until that exists, a caller that passes
+	// range values gets painted nodes its container does not own — which is why
+	// no caller passes them yet.
+	const ranges = options.ranges ?? [];
+	const ranged = new Set<number>();
+	for (let index = 0; index < ranges.length; index++) {
+		const node = ranges[index]!.node;
+		if (!Number.isSafeInteger(node) || node < 0 || node >= program.nodes.length) {
+			refuse(`a keyed range names node ${node}, which the program does not have`);
+		}
+		// The reduction cannot produce two on one host — only one child can be
+		// the last one — so a program that says otherwise was not reduced from a
+		// shape, and appending both would put them in an order neither arm chose.
+		if (ranged.has(node)) refuse(`node ${node} holds more than one keyed range`);
+		ranged.add(node);
+		const host = program.nodes[node]!.type;
+		if (host === '#text' || host === 'raw-text') {
+			refuse(`raw-text node ${node} cannot hold a keyed range`);
+		}
+		// Only a text host compiles. A range under a `view` is the ordinary keyed
+		// list and never becomes raw text at any value, so there is nothing to
+		// decide: the site keeps its parameter and stays a range. Emitting the
+		// branch anyway would put a `rawText` under a `view`, which is the one
+		// thing the node loop above already refuses to do.
+		if (host !== 'text') continue;
+		body.push(`\t\tif (typeof r${index} === 'string') append(n${node}, rawText(r${index}));`);
+	}
+
 	const params = ['pageId'];
 	for (let index = 0; index < valueCount; index++) params.push(`v${index}`);
 	for (let index = 0; index < program.events.length; index++) params.push(`e${index}`);
+	for (let index = 0; index < ranges.length; index++) params.push(`r${index}`);
 	const nodes = program.nodes.map((_node, index) => `n${index}`).join(', ');
 
 	const source = [
@@ -545,5 +637,5 @@ export function emitLynxMainThreadProgram(
 		`}`,
 	].join('\n');
 
-	return { source, valueCount, eventCount: program.events.length };
+	return { source, valueCount, eventCount: program.events.length, rangeCount: ranges.length };
 }
