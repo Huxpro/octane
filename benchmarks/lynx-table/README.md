@@ -897,6 +897,11 @@ grows 2.72×. Those cannot both be true of a cell whose distance from the ceilin
 is framework script, so the term that decides clause 1 at scale is one of the two
 in bold — and one of them is host time, not Octane's script at all.
 
+The two bold multipliers are the softest numbers in this section: both are
+differences of 30,000-row medians, and §"How firm this is" below shows the
+30,000-row run is too noisy at n=5 to carry them. The sign of each is what this
+table establishes; the growth rates are what the next slice measures.
+
 `start_delay` is the one term that is flat, and at 1,000 rows it is 38% of the
 whole excess: 20.3 ms against the prototype's 3.5 ms, which is the Octane bundle
 evaluating and installing before its first host call. It is a fixed cost that no
@@ -920,19 +925,64 @@ three scales, drift 4.8e-05. Yet at 30,000 rows:
 
 The compiled program makes a third fewer host calls than `octane` across the
 window and pays 146 ms more inside the flush; against the prototype it makes the
-same calls and pays 220 ms more, on ranges that do not overlap. At 1,000 rows the
-same comparison runs the other way — 16.6 ms against the prototype's 19.5 — so
-this is not a constant the program carries, it is something that turns on with
-size.
+same calls and pays 220 ms more. At 1,000 rows the same comparison runs the other
+way — 16.6 ms against the prototype's 19.5 — so this is not a constant the
+program carries, it is something that turns on with size.
 
-Three things are established: the call counts are identical, the composed tree is
-the same, and the gap is disjoint at both 10,000 and 30,000 rows. What is not
-established is why, and the honest reading of a 5-rep median with a
-660.9–870.9 ms range is that the direction holds and the 5.67× multiplier does
-not. The next slice is to measure what differs in the tree handed to that
-flush — creation order, attribute-storage shape, how much of it is still
-uncommitted when publication begins — rather than to design a mechanism against
-a number this soft.
+"The same calls" is exact rather than approximate, and the record says so per
+kind rather than per row. Against the prototype the compiled program's call
+multiset at 30,000 rows differs by **exactly one call**:
+
+| host call | `octane` | `+program` | `octane-direct` |
+|---|---:|---:|---:|
+| `__CreatePage` | 1 | 1 | 1 |
+| `__CreateView` | 30,015 | 30,015 | 30,015 |
+| `__CreateText` | 90,013 | 90,013 | 90,013 |
+| `__CreateRawText` | 90,013 | 90,013 | 90,013 |
+| `__AppendElement` | 210,041 | 210,041 | 210,041 |
+| `__SetClasses` | 120,028 | 120,028 | 120,028 |
+| `__AddEvent` | 60,012 | 60,012 | 60,012 |
+| `__SetAttribute` | 120,028 | — | — |
+| `__GetElementUniqueID` | 210,042 | 1 | 1 |
+| `__SetCSSId` | — | — | 1 |
+| `__FlushElementTree` | 2 | 2 | 2 |
+
+Neither single-kind difference explains the ordering. The prototype is the only
+cell that declares a CSS scope, and it is the cheapest — but `octane` declares
+none either and is still cheaper than the program. `octane` is the only cell
+writing 120,028 attributes, which is work the others do not do, and it is still
+cheaper than the program. What is left is the order the identical calls arrive
+in, which is where the next slice looks.
+
+Both flushes are recorded separately, and the second one is 0.1 ms in every cell
+at every scale: all of the cost is the first flush, and it publishes the same
+composed tree in all three cells. So this is not a question of how the two
+flushes divide the tree between them.
+
+#### How firm this is
+
+Firmer at 10,000 rows than at 30,000, which is the opposite of convenient,
+because 30,000 is where the superlinear claim lives.
+
+| scale | `+program` flush 0, n=5 | `octane-direct` flush 0, n=5 |
+|---|---|---|
+| 10,000 | 223.0 · 225.9 · **230.3** · 244.7 · 259.2 | 184.2 · 188.5 · **191.5** · 191.6 · 203.7 |
+| 30,000 | 660.8 · 719.6 · **779.5** · 854.8 · 870.9 | 549.5 · 557.9 · **559.4** · 606.3 · 657.5 |
+
+At 10,000 rows the two distributions are cleanly separated: 19.3 ms between the
+program's lowest sample and the prototype's highest, on spreads of 16% and 10% of
+their medians. The program's flush also separates from `octane`'s there
+(183.0–213.9), by 9.1 ms.
+
+At 30,000 rows they separate by **3.3 ms**, on spreads of 27% and 19%. That is
+disjoint as measured and it is not a result. It is also not specific to the
+flush: at that scale the program cell's whole page is noisy — 15.5% spread on the
+timed wall, 21.2% outside the flush — against `octane`'s 6.8%. So the 5.67×
+growth in the excess is **not established**, and neither is the 220 ms itself at
+30,000 rows. What is established is the direction, and the 10,000-row gap.
+
+The next slice measures the same three cells at 30,000 rows with enough
+repetitions to settle it, before anything is designed against either number.
 
 #### Caveat on the 10,000-row split
 
