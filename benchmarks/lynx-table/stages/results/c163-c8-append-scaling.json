@@ -1,0 +1,47 @@
+{
+  "meta": {
+    "date": "2026-08-26T10:58:11.515Z",
+    "node": "v22.22.2",
+    "cpus": 4,
+    "cpuModel": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "platform": "linux",
+    "release": "6.18.44-fc-v21",
+    "chromium": "141.0.7390.37",
+    "clockGranularityMs": 0.09999999986030161,
+    "repetitions": 15,
+    "scales": [30000],
+    "cells": ["octane", "octane-mts-program", "octane-mts-program-control", "octane-direct"],
+    "variants": ["control", "counts", "timed"],
+    "reportable": true,
+    "loadStart": [0.91, 0.72, 0.37],
+    "loadEnd": [1.04, 1.34, 1.32],
+    "webCore": "0.22.2",
+    "referenceManifest": {
+      "source": "https://github.com/Huxpro/vue-lynx",
+      "branch": "claude/lynx-implementation-review-n2r0ie",
+      "commit": "02376ecd1cd62d3797ff1de1209d82dc2f9d91d9",
+      "builtAt": "2026-08-07",
+      "build": "pnpm install && pnpm --filter \"vue-lynx...\" build && cd packages/benchmark && node harness/build-unified.mjs --only=vdom-ifr-et,vapor-ifr,react",
+      "cells": {
+        "vdom-ifr-et": {
+          "description": "Vue Lynx vdom top config (vdom +b +ifr; legacy id vdom-ifr-et)",
+          "app": "packages/benchmark/apps/ui-vdom",
+          "framework": "vue 3.6.0-beta.17 (vue-lynx fork)"
+        },
+        "vapor-ifr": {
+          "description": "Vue Lynx vapor top config (vapor +b +ifr; legacy id vapor-ifr)",
+          "app": "packages/benchmark/apps/ui-vapor",
+          "framework": "vue 3.6.0-beta.17 (vue-lynx fork, vapor mode)"
+        },
+        "react": {
+          "description": "ReactLynx default config",
+          "app": "packages/benchmark/apps/ui-react",
+          "framework": "@lynx-js/react 0.122.1"
+        }
+      },
+      "note": "Black-box fixtures: only the .web.bundle files are vendored. They are served unmodified into <lynx-view> by web/run-web.mjs; the app workloads mirror app/src operation-for-operation. The harness host runs @lynx-js/web-core 0.22.2 for every cell (the fork built against 0.22.1 — the host runtime is shared, so the comparison stays same-host)."
+    },
+    "protocol": "fresh page per sample; control/counts/timed order rotates across repetitions in one host window; startup and create are measured in the same page load; the probe is host-side, so every variant runs the same framework bundle"
+  },
+  "scaling": {}
+}
