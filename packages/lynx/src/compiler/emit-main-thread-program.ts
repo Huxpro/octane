@@ -191,7 +191,8 @@ export interface LynxMainThreadProgramEmission {
 	 * function. Binding the host once per program rather than once per instance
 	 * is the whole reason the emission is two functions instead of one.
 	 *
-	 * The create function takes `(pageId, parent, v0..vN, e0..eM)` and returns
+	 * The create function takes `(pageId, v0..vN, e0..eM)` — it returns an
+	 * unattached subtree and leaves the single append to its caller — and returns
 	 * the run's nodes in program order, because that is the map every consumer
 	 * indexes by: #163's C2 adopts slot state by key against exactly these
 	 * positions.

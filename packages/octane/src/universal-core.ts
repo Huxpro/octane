@@ -265,10 +265,12 @@ export interface UniversalProgramPlan {
 	/**
 	 * Take the host once; return the per-instance create.
 	 *
-	 * The create takes the page, the parent to append into, then one argument
-	 * per `values` entry followed by one per `events` entry, and returns the
-	 * run's nodes in program order — the only map a caller gets back, since the
-	 * subtree has no description anywhere to walk.
+	 * The create takes the page, then one argument per `values` entry followed
+	 * by one per `events` entry, and returns the run's nodes in program order —
+	 * the only map a caller gets back, since the subtree has no description
+	 * anywhere to walk. It returns an unattached subtree; the single append into
+	 * a parent is the caller's, so a keyed range's members can go into a node
+	 * the create made before any of it is live.
 	 */
 	readonly bind: (host: unknown) => (...args: unknown[]) => readonly unknown[];
 }
