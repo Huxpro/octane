@@ -1575,7 +1575,7 @@ attribution; the whole-script delta is the value.
 |---|---:|---:|---|
 | the ID map, `programNodes.set` | 56.9 | 29% | 0.27 µs × 210,000 writes |
 | the ownership `Set`, `ownedNodes.add` | 52.3 | 27% | 0.25 µs × 210,000 writes |
-| the per-site token lookup | 66.0 | 34% | 1.10 µs × 60,000 sites — an upper bound, see C12 |
+| the per-site token lookup | 66.0 | 34% | 1.10 µs × 60,000 sites — an upper bound; C13 splits it |
 | everything else it does | 21.7 | 11% | the argument array, the validations, the attach frame |
 
 The benchmark's `Row` compiles to a plan of 5 nodes, 2 event sites and 2 keyed
@@ -1707,8 +1707,9 @@ Three things follow, and the third is the reason no patch went with this record.
 So of the 65.1 ms `mountk` takes out of the mount, 21.9 is minting the token,
 none of it is the predicate, and the remainder is the `eventsByHost` lookup
 together with whatever the constant let the compiler fold — which this ladder
-cannot separate. That is the next arm: a lookup ablation that answers with a
-value the compiler cannot see through.
+cannot separate. C13 below is the arm that does: it answers with a value the
+compiler cannot see through, and splits the remainder into 38.0 ms of lookup and
+5.2 ms of fold.
 
 `compiled program create` falls in all three arms — by 11.4, 8.0 and 6.4 ms,
 each disjoint from control — and only two of the three have an account.
@@ -1720,6 +1721,100 @@ time sits in this bucket until an arm removes the hoist — a naming error worth
 6.4 ms rather than a cost. `mountn`'s has neither account: it keeps the hoist
 and still installs an event per site, and it is recorded here unexplained
 rather than folded into one of the other two.
+
+### The lookup is 38 ms, and the fold hazard is now a number (issue #163 C13)
+
+C12 left one thing unseparated. Arm K takes 65.1 ms out of the mount by
+answering every site with a compile-time `undefined`, which removes the
+`eventsByHost` lookup, the token encode, **and** whatever the compiler could then
+delete downstream. C12 priced the encode alone at 21.9 ms with a constant token.
+What was left — the lookup, plus the fold — was one number.
+
+`mountp` is the arm that splits it. It keeps the encode fully live: `hostId`
+still varies per site, the listener id and priority still come off the envelope
+at runtime, so all four `assertPositiveSafeInteger` calls, the priority check
+and the concatenation run exactly as they ship. It replaces only
+`eventsByHost.get(hostId)?.find(([type]) => type === site.type)` with an indexed
+read of a two-element array collected from the envelope in O(1). The index is
+`hostId & 1`, so it still depends on the site's own host and the
+`announced === undefined` branch cannot hoist out of the loop; the array holds
+real descriptors the compiler cannot see, so nothing about the token folds.
+`eventsByHost` is still built and still read by the two consumers outside this
+loop, so the envelope-time cost is identical in both arms.
+
+Two arms, 15 readings each, one window
+(`results/c163-c13-lookup-30000.md`). `**` marks a delta whose 95% interval on
+the mean is disjoint from control's.
+
+| main-thread script @30,000 | control | `mountp` | mean delta |
+|---|---:|---:|---:|
+| program mount | 208.9 [183.7–238.7] | 167.0 [150.9–194.2] | **−38.0** |
+| renderer pre-passes | 67.2 [60.8–94.7] | 66.4 [55.6–77.8] | −4.7 |
+| event bookkeeping | 39.4 [33.4–50.0] | 40.4 [32.7–48.7] | +1.4 |
+| applier entry and pre-walk | 34.1 [27.8–43.8] | 31.4 [25.7–39.3] | −2.6 |
+| applier walk | 23.9 [17.7–26.8] | 25.8 [21.6–36.4] | +2.5 |
+| first tree capture | 22.5 [21.0–46.0] | 30.6 [20.7–44.1] | +5.4 |
+| compiled program create | 24.0 [20.9–28.1] | 18.2 [15.0–23.6] | **−5.4** |
+| first-screen entry | 5.4 [3.9–8.4] | 5.2 [2.8–8.3] | −0.2 |
+| host record building | 2.1 [1.0–3.7] | 2.5 [1.8–3.9] | +0.4 |
+| unnamed by the probe table | 22.9 [17.9–26.4] | 23.3 [19.7–27.6] | −0.1 |
+| **all frames** | **455.9 [401.6–536.9]** | **410.8 [376.9–450.0]** | **−41.4** |
+
+**`event bookkeeping` does not move** — +1.4 ms, well inside the window — and
+that is the arm's own control. Arm K drove that bucket to exactly 0.0 because
+its constant let the compiler delete the install path; this arm mints and
+installs 60,000 real tokens, so the bucket stays. Whatever `mountp` takes out of
+the mount is the lookup and nothing downstream of it.
+
+**The lookup is 38.0 ms of the mount**, disjoint, and 41.4 ms leaves the script.
+That is 0.63 µs a site across 60,000 sites, which for a number-keyed `Map`
+holding 60,000 entries is a cache miss and an entry-array dereference rather
+than a loop. C12 already established the `.find` predicate is not in it.
+
+#### The two halves that cannot fold, against the one that can
+
+| | mount | all frames |
+|---|---:|---:|
+| the encode alone (`mountn`, C12) | 21.9 | 48.9 |
+| the lookup alone (`mountp`, this window) | 38.0 | 41.4 |
+| **the two together** | **59.9** | **90.2** |
+| both at once, with the fold (`mountk`) | 65.1 | 123.2 |
+
+The two arms that cannot fold sum to 59.9 ms of the mount against arm K's 65.1,
+which closes 92% of it. They are measurements of the same two lines from
+different windows, so the agreement is itself the check, and the 5.2 ms that does
+not close is the fold. On the whole script the same arithmetic leaves 32.9 ms
+unaccounted while arm K's `event bookkeeping` drop is 39.9 — so what arm K
+removed beyond these two lines is approximately the install path its constant
+deleted. **C12 named the hazard; this is its size.** An ablation whose
+replacement folds to a constant over-stated this one by ~5 ms on the frame it
+targeted and by ~33 ms on the script.
+
+#### What this licenses, and what it does not
+
+`mountp` is **not** a candidate. It answers each site from a two-element table
+instead of from its own host's announcement, so a site's token can name a
+listener the renderer never passed it — which nothing in a first screen notices
+and everything after one would. What the arm establishes is a ceiling: a correct
+removal of this lookup is worth up to 38.0 ms of the mount at 30,000 rows, and
+no patch has yet delivered any of it.
+
+The lookup exists because the envelope announces listeners **per host** —
+`{id, type, listener}` — while the program declares its event sites **per
+site**, `{slot, node, type}`. The mount joins the two on `(hostId, type)`,
+60,000 times, and the join is an index rather than a check: it decides which
+listener a site installs, not whether the render is well-formed. Nothing about
+it cross-checks two journals the way the ownership equality does, so removing it
+deletes no invariant — which is precisely what makes it the first thing on this
+frame worth designing against. Whether the renderer can announce in site order,
+and what that costs on the wire and in the background, is the next slice's
+question rather than this one's.
+
+Before the window opened, the mount probe was confirmed to be within reach in
+both bundles — the minifier's per-site hoist is absent in `mountp`, exactly the
+shape C11's second probe was added for — and the check is kept at
+`results/c163-c13-probecheck-30000.md`. `unnamed` is 23.1 and 23.0 ms in the two
+arms, so no bucket quietly stopped matching.
 
 ## Claims and non-claims
 
