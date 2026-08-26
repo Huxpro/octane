@@ -1575,7 +1575,7 @@ attribution; the whole-script delta is the value.
 |---|---:|---:|---|
 | the ID map, `programNodes.set` | 56.9 | 29% | 0.27 µs × 210,000 writes |
 | the ownership `Set`, `ownedNodes.add` | 52.3 | 27% | 0.25 µs × 210,000 writes |
-| the per-site token lookup | 66.0 | 34% | 1.10 µs × 60,000 sites |
+| the per-site token lookup | 66.0 | 34% | 1.10 µs × 60,000 sites — an upper bound, see C12 |
 | everything else it does | 21.7 | 11% | the argument array, the validations, the attach frame |
 
 The benchmark's `Row` compiles to a plan of 5 nodes, 2 event sites and 2 keyed
@@ -1613,13 +1613,15 @@ Four things follow.
   bucket, which this arm is the only one to bound. C10 priced the journal half
   at 47.0 ms in its own window; this window prices the whole of it.
 
-The token lookup is the one part of the mount with no invariant behind it. What
-it spends is not the map lookup: the predicate `([type]) => type === site.type`
-allocates a closure per site per row and destructures each candidate entry,
-which is an iterator walk per comparison over an array that holds exactly one
-element in this app. The candidate is an explicit loop and an index — same
-answer, same journal, no allocation — and it is an A/B rather than a claim
-until it is measured beside a control in one window.
+The token lookup is the one part of the mount with no invariant behind it. This
+section first read its cost as the predicate `([type]) => type === site.type`,
+which allocates a closure per site per row and destructures each candidate entry
+through the iterator protocol, and proposed an explicit indexed loop as the
+candidate. **That reading was wrong.** C12 below built exactly that candidate and
+measured it against a control at n=15 in one window: it moves the mount by
++3.8 ms and the whole script by −9.0 ms, neither disjoint from control. What the
+66.0 ms in the table actually holds is measured there, along with the reason the
+row is an upper bound rather than a cost.
 
 #### The probe this ladder broke, and what that says about the instrument
 
@@ -1639,6 +1641,85 @@ entry probe, and both name the mount frame whose unnamed callee is the compiled
 create, so the bucket survives either shape. The defect was visible at all
 because `unmatched` is reported rather than folded away — the run that found it
 is kept at `results/c163-c11-probe-defect-30000.md`.
+
+### What the mount's event-site lookup is, and what it is not (issue #163 C12)
+
+C11 named the per-site token lookup as 66.0 ms of the mount at 30,000 rows and
+said what it thought that cost was: a predicate closing over its site and
+destructuring each candidate. **That reading was wrong**, and this is the
+window that says so. Four arms, 15 readings each, one window
+(`results/c163-c12-lookup-30000.md`). `**` marks a delta whose 95% interval on
+the mean is disjoint from control's; everything else is inside the window.
+
+| arm | what it changes |
+|---|---|
+| `mountctl` | nothing — the shipping `+mts-program` build, digest `381fe0ab988a479c` |
+| `mountk` | the whole lookup and encode: every site's token becomes a literal `undefined` (C11's arm K, rebuilt to the same digest) |
+| `mountn` | keeps the lookup, answers with a constant token — so this is the encode alone |
+| `mountfix` | the candidate C11 proposed: the `.find` predicate replaced by an indexed loop, everything else unchanged |
+
+| main-thread script @30,000 | control | `mountk` | `mountn` | `mountfix` |
+|---|---:|---:|---:|---:|
+| program mount | 204.5 [177.7–230.7] | 139.9 [113.7–155.2] | 182.2 [165.9–203.7] | 206.9 [184.5–247.5] |
+| renderer pre-passes | 70.0 [58.8–88.8] | 70.3 [56.8–86.3] | 67.4 [58.5–79.0] | 66.5 [56.7–82.0] |
+| event bookkeeping | 39.4 [33.0–50.2] | 0.0 [0.0–0.0] | 35.6 [28.4–43.2] | 42.0 [35.0–50.0] |
+| applier entry and pre-walk | 33.3 [25.3–41.9] | 33.1 [25.0–42.5] | 32.6 [25.1–34.1] | 32.0 [26.9–38.3] |
+| applier walk | 25.1 [20.8–27.6] | 22.9 [18.3–26.1] | 23.2 [19.7–28.4] | 26.6 [23.0–29.4] |
+| first tree capture | 24.5 [21.0–36.1] | 27.2 [21.0–38.0] | 24.6 [21.2–39.4] | 29.3 [23.4–44.4] |
+| compiled program create | 24.4 [21.9–30.2] | 13.6 [11.8–17.2] | 16.5 [15.1–21.5] | 19.0 [15.0–23.1] |
+| first-screen entry | 5.5 [3.7–27.1] | 5.7 [3.0–9.3] | 6.0 [3.2–9.5] | 5.8 [3.4–8.4] |
+| host record building | 2.8 [1.1–3.5] | 2.6 [1.6–3.4] | 2.1 [1.4–3.6] | 2.6 [1.6–4.0] |
+| element factory dispatch | 0.0 [0.0–0.2] | 0.0 [0.0–0.2] | 0.2 [0.0–0.2] | 0.0 [0.0–0.2] |
+| unnamed by the probe table | 25.5 [21.6–33.6] | 25.5 [20.0–29.2] | 22.4 [17.4–27.7] | 21.7 [19.1–28.2] |
+| **all frames** | **457.0 [420.2–509.2]** | **344.4 [292.0–391.4]** | **422.1 [378.8–448.5]** | **451.5 [416.4–530.4]** |
+
+| mean delta vs control | `mountk` | `mountn` | `mountfix` |
+|---|---:|---:|---:|
+| program mount | **-65.1** | **-21.9** | +3.8 |
+| event bookkeeping | **-39.9** | -4.4 | +1.6 |
+| compiled program create | **-11.4** | **-8.0** | **-6.4** |
+| all frames | **-123.2** | **-48.9** | -9.0 |
+
+Three things follow, and the third is the reason no patch went with this record.
+
+- **The predicate is not the cost.** `mountfix` moves the mount by +3.8 ms and
+  the whole script by -9.0 ms, neither disjoint from control. It does exactly
+  what it was designed to do — the minified output confirms the closure and the
+  hoisted per-site helper are both gone — and nothing leaves the script. The
+  change was reverted; only the tests it came with were kept, because the gap
+  they close is real whatever the milliseconds say.
+- **The token string is 21.9 ms of the mount**, and it is charged to the
+  mount's own frame. `mountn` keeps the lookup and answers with a constant, and
+  the mount drops that much with a disjoint interval — while `event
+  bookkeeping`, where the encoder's own frame lives, drops only 4.4 ms and
+  stays inside the window. Most of what minting a token costs is therefore
+  charged to the caller: the shape of an inlined callee, which this instrument
+  can show but cannot prove. 60,000 tokens per first screen, each a fresh
+  string of a prefix and five numbers.
+- **An ablation that folds to a constant removes more than the code it deleted,
+  and C11's 66.0 ms is an upper bound because of it.** `mountk` makes every
+  token a compile-time `undefined`, which lets the compiler thin out what reads
+  them downstream as well; `mountn` and `mountfix` change code without changing
+  what is known about it. Against `mountctl` the three arms take 65.1 and 21.9
+  ms out of the mount and put 3.8 back, and the first of those is the only one
+  that cannot be read as the cost of the lines it removed.
+
+So of the 65.1 ms `mountk` takes out of the mount, 21.9 is minting the token,
+none of it is the predicate, and the remainder is the `eventsByHost` lookup
+together with whatever the constant let the compiler fold — which this ladder
+cannot separate. That is the next arm: a lookup ablation that answers with a
+value the compiler cannot see through.
+
+`compiled program create` falls in all three arms — by 11.4, 8.0 and 6.4 ms,
+each disjoint from control — and only two of the three have an account.
+`mountk`'s is the program doing less: it installs no events at all.
+`mountfix`'s is the bookkeeping artifact C11's probe note predicted: in the
+shape where the minifier hoists the per-site loop body, that helper's unnamed
+callee is the `.find` predicate rather than a create, so the predicate's own
+time sits in this bucket until an arm removes the hoist — a naming error worth
+6.4 ms rather than a cost. `mountn`'s has neither account: it keeps the hoist
+and still installs an event per site, and it is recorded here unexplained
+rather than folded into one of the other two.
 
 ## Claims and non-claims
 
