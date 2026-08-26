@@ -151,12 +151,22 @@ async function profileSample(browser, cell) {
 		const { profile } = await cdp.send('Profiler.stop');
 		if (observed.dnf) throw new Error(`${cell} never painted ${rows} rows.`);
 
-		const scriptUrl = [...new Set(profile.nodes.map((node) => node.callFrame.url))].find((url) =>
-			url.startsWith('blob:'),
+		// Selected from the recorded mints rather than "any blob: frame", so a
+		// second blob-backed script in the page realm surfaces as an ambiguity
+		// instead of silently taking the whole fold.
+		const minted = await page.evaluate(() => globalThis.__OCTANE_BLOB_URLS__ ?? []);
+		const profiled = [...new Set(profile.nodes.map((node) => node.callFrame.url))].filter(
+			(url) => url.startsWith('blob:') && minted.includes(url),
 		);
-		if (scriptUrl === undefined) {
+		if (profiled.length === 0) {
 			throw new Error(`${cell} produced no main-thread script frames; the profile named none.`);
 		}
+		if (profiled.length > 1) {
+			throw new Error(
+				`${cell} profiled ${profiled.length} page-minted scripts; attribution is ambiguous.`,
+			);
+		}
+		const scriptUrl = profiled[0];
 		const source = await page.evaluate(
 			(url) =>
 				fetch(url)
@@ -261,7 +271,7 @@ const meta = {
 	cpuModel: os.cpus()[0]?.model ?? 'unknown',
 	platform: os.platform(),
 	release: os.release(),
-	chromium: null,
+	chromium: browser.version(),
 	rows,
 	reps,
 	samplingIntervalUs: interval,
