@@ -253,14 +253,26 @@ describe('emitting a compiled create function from the lynx main-thread compile'
 		// Plan slots, not node indices: `v0` and `v1` are both written onto node 0,
 		// and `e0` sits on node 1 while reading plan slot 2.
 		expect(root.values).toEqual([0, 1]);
-		expect(root.events).toEqual([2]);
+		// An event site carries what routing a tap needs and nothing a walk could
+		// recover: the driver's event type rather than the authored `bindtap`, and
+		// the priority the driver classified it at.
+		expect(root.events).toEqual([{ slot: 2, node: 1, type: 'bindtap', priority: 'discrete' }]);
 		// Both text holes are keyed ranges — a cast is erased before lowering, so
 		// no plan the compiler builds claims a hole holds a string — and each names
 		// the emitted node its members are appended into.
+		//
+		// `id` is where the range sat in the plan's pre-order, which is the one
+		// thing the node list cannot say because the program dropped it. Counting
+		// the program's four nodes and its two ranges: view(0), card-label(1),
+		// its range(2), card-body(3), the `d` text(4), its range(5).
 		expect(root.ranges).toEqual([
-			{ slot: 3, node: 1 },
-			{ slot: 4, node: 3 },
+			{ slot: 3, node: 1, id: 2 },
+			{ slot: 4, node: 3, id: 5 },
 		]);
+		// The count the create function makes, which is what a consumer claiming
+		// first-screen IDs needs and all it needs: the nodes come back from `bind`
+		// in this order, so nothing walks anything to pair them up.
+		expect(root.nodes).toBe(4);
 		const value = card({
 			tone: 'card active',
 			ident: 'card-1',
@@ -289,7 +301,10 @@ export function Card(props: { label: string }) @{
 		expect(root.kind).toBe('program');
 		// Node 3, not 2: the literal is its own `#text` node in the compiled
 		// program, which is exactly the contrast this test is drawing.
-		expect(root.ranges).toEqual([{ slot: 0, node: 3 }]);
+		// Position 4, after view(0), the `fixed` text(1), its literal `#text`(2)
+		// and the `live` text(3): the literal is a program node and the dynamic
+		// hole is not, which is the contrast this test is drawing.
+		expect(root.ranges).toEqual([{ slot: 0, node: 3, id: 4 }]);
 		const papi = createHost();
 		createLynxHostContainer(papi, { root: 1 });
 		const page = papi.pages[0]!;

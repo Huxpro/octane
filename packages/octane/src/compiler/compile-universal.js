@@ -4164,6 +4164,56 @@ function generatedExpressionFromSource(source, filename, origin) {
  * because the alternative is shipping a first screen that differs from the one
  * the rest of the pipeline agrees on.
  */
+/**
+ * Where each keyed range sits in a program's own pre-order.
+ *
+ * A consumer numbering a first screen walks hosts and ranges in the order the
+ * interpreted plan would have produced, and a range's members are numbered
+ * between the range and whatever follows it. The program's node list is already
+ * that pre-order minus the ranges, so the one thing a consumer cannot recover
+ * from it is where the ranges were — the program dropped them, which is what
+ * makes them ranges.
+ *
+ * Answering it here rather than at run time is the same trade the whole emission
+ * makes: the walk happens once per program at build time instead of once per
+ * mount, and the chunk carries `ranges.length` small integers instead of the
+ * parent table a consumer would need to redo the walk. `universalTemplate-
+ * ProgramWithoutRanges` guarantees a range hole is the last child of its host,
+ * so a range is emitted after that host's whole subtree.
+ */
+function lynxProgramRangeOrder(wire, ranges) {
+	const children = wire.nodes.map(() => []);
+	for (let index = 1; index < wire.nodes.length; index++) {
+		children[wire.nodes[index].parent].push(index);
+	}
+	const pending = new Map();
+	for (const range of ranges) {
+		const list = pending.get(range.node);
+		if (list === undefined) pending.set(range.node, [range]);
+		else list.push(range);
+	}
+	const order = new Map();
+	let next = 0;
+	const visit = (index) => {
+		next++;
+		for (const child of children[index]) visit(child);
+		for (const range of pending.get(index) ?? []) order.set(range, next++);
+	};
+	if (wire.nodes.length !== 0) visit(0);
+	// A range whose node the walk never reached would silently lose its position
+	// and be numbered as if it did not exist, which is a first screen the two
+	// arms disagree about rather than a build that failed.
+	for (const range of ranges) {
+		if (!order.has(range)) {
+			throw new Error(
+				`Octane main-thread program declares a keyed range at slot ${range.slot} on node ` +
+					`${range.node}, which is not in the program's node tree.`,
+			);
+		}
+	}
+	return order;
+}
+
 function lynxMainThreadProgramObjectAst(state, plan, origin) {
 	const backend = state.mainThreadProgramBackend;
 	if (backend === undefined) return null;
@@ -4189,6 +4239,7 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 				`${derived.values.length} values and ${derived.events.length} events.`,
 		);
 	}
+	const rangeOrder = lynxProgramRangeOrder(derived.wire, derived.ranges);
 	return inheritGeneratedOrigin(
 		b.object([
 			b.prop('init', b.literal('kind', '"kind"'), b.literal('program', '"program"')),
@@ -4197,11 +4248,15 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 			// fixed size — the update path's dispatch table, not a per-node
 			// description anything walks to paint.
 			b.prop('init', b.literal('slots', '"slots"'), lynxSlotKindsAst(plan.root)),
-			// Reduced to plan-slot indices. `values` and `events` also carry the node,
-			// prop name, event type and dispatch priority each site was derived from,
-			// and none of that has a reader until #163's C2 routes events and C4
-			// applies updates. Emitting it now would be shipping data with no consumer
-			// into the chunk whose size is the point.
+			// How many hosts the create function makes. A consumer that claims the
+			// program's first-screen IDs needs the count, and the count alone: the
+			// nodes come back from `bind` in this order, so nothing walks anything to
+			// pair them up.
+			b.prop('init', b.literal('nodes', '"nodes"'), b.literal(derived.wire.nodes.length)),
+			// Still reduced to plan-slot indices. A value site also carries the node
+			// and prop name it was derived from, and neither has a reader until #163's
+			// C4 applies updates through them — the chunk whose size is the point does
+			// not carry data nothing reads.
 			b.prop(
 				'init',
 				b.literal('values', '"values"'),
@@ -4210,21 +4265,37 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 					origin,
 				),
 			),
+			// An event site carries all four. `slot` says which plan slot holds the
+			// handler and orders the positional `e0..eM`; `node`, `type` and
+			// `priority` are what a first screen announces to the background so it can
+			// route a tap — the driver's event type rather than the authored prop
+			// name, at the priority the driver classified it.
 			b.prop(
 				'init',
 				b.literal('events', '"events"'),
 				jsonValueToAst(
-					derived.events.map((event) => event.slot),
+					derived.events.map((event) => ({
+						slot: event.slot,
+						node: event.node,
+						type: event.type,
+						priority: event.priority,
+					})),
 					origin,
 				),
 			),
-			// Both members are load-bearing: `slot` is the plan slot the keyed range
-			// occupies, `node` the emitted node its members are appended into.
+			// All three are load-bearing: `slot` is the plan slot the keyed range
+			// occupies, `node` the emitted node its members are appended into, and
+			// `id` where the range sits in the program's own pre-order, which is the
+			// one thing the node list cannot say because the program dropped it.
 			b.prop(
 				'init',
 				b.literal('ranges', '"ranges"'),
 				jsonValueToAst(
-					derived.ranges.map((range) => ({ slot: range.slot, node: range.node })),
+					derived.ranges.map((range) => ({
+						slot: range.slot,
+						node: range.node,
+						id: rangeOrder.get(range),
+					})),
 					origin,
 				),
 			),

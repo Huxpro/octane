@@ -3296,7 +3296,7 @@ function firstTreeOwner<Node extends LynxElementRef>(
  * will independently assign, so adoption identity is positional, not minted.
  */
 export interface LynxFirstScreenDirectNode {
-	readonly kind: 'host' | 'range';
+	readonly kind: 'host' | 'range' | 'program';
 	readonly id: number;
 	readonly type?: string;
 	readonly props?: Readonly<Record<string, unknown>>;
@@ -3658,6 +3658,17 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			if (parentId === null) state.ownedPageRoots.add(attached);
 			append(physicalParent, attached);
 			return;
+		}
+		if (node.kind === 'program') {
+			// A compiled main-thread program (issue #163) paints itself: it carries
+			// no type, no props and no described children, so the range-transparent
+			// branch below would walk past it and paint the page it left out. This
+			// applier is the one that will run one — `bind` the host once, call the
+			// create — and until it does, saying so is what keeps a program from
+			// arriving as an empty range nobody notices.
+			throw new Error(
+				'Octane Lynx first-screen direct applier cannot yet mount a compiled main-thread program.',
+			);
 		}
 		if (node.kind !== 'host') {
 			pushChildren(node, parentRecord, parentId, physicalParent, parentVisible, insideList);

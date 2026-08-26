@@ -17,6 +17,7 @@ import type {
 	UniversalKey,
 	UniversalPlan,
 	UniversalPlanNode,
+	UniversalProgramPlan,
 	UniversalPropEntry,
 	UniversalRenderable,
 	UniversalRenderContext,
@@ -100,13 +101,64 @@ interface FirstScreenRange {
 	readonly children: FirstScreenNode[];
 }
 
-type FirstScreenNode = FirstScreenHost | FirstScreenRange;
+/**
+ * A compiled main-thread program, claiming its first screen without describing
+ * it (issue #163).
+ *
+ * The other two kinds are descriptions: a walk builds them, a second walk turns
+ * them into paint. A program is the paint — straight-line compiled code that
+ * drives the element API — so there is nothing here to walk. What this node
+ * holds is the part of a first screen that is *not* painting and still has to
+ * agree with the background: the IDs the program's hosts take, the listener
+ * bindings its event sites announce, and the keyed ranges it leaves for members
+ * this renderer materializes normally.
+ *
+ * `values` is the component's own value array rather than a copy of the
+ * arguments the create function will take. Resolving those is the applier's
+ * business (C2d) and copying them here would allocate per instance for a
+ * consumer that does not exist yet.
+ */
+interface FirstScreenProgram {
+	kind: 'program';
+	key: UniversalKey | null;
+	id: number;
+	/** IDs the program's hosts took, in program order. Filled by `assignIds`. */
+	ids: number[];
+	readonly plan: UniversalProgramPlan;
+	readonly values: readonly unknown[];
+	readonly visibility: 'visible' | 'hidden';
+	/**
+	 * Every range's members, concatenated in `plan.ranges` order, with `spans`
+	 * saying how many belong to each.
+	 *
+	 * Flat rather than a list per range because a range hole is not a node: the
+	 * interpreted arm splices a hole's members straight into its parent and mints
+	 * nothing for the hole itself, so a wrapper here would take an ID the other
+	 * arm never takes and shift every node after it. Keeping the flat array named
+	 * `children` is also what lets the walks that do not care about programs go on
+	 * not caring.
+	 */
+	readonly children: FirstScreenNode[];
+	/** How many of `children` belong to each declared range, in order. */
+	readonly spans: number[];
+}
+
+type FirstScreenNode = FirstScreenHost | FirstScreenRange | FirstScreenProgram;
 
 interface FirstScreenAttempt {
 	owner: FirstScreenOwner;
 	nextId: number;
 	nextListener: number;
 	nextUniversalId: number;
+	/**
+	 * How many compiled programs this first screen contains.
+	 *
+	 * The command batch is built lazily and only for a caller that wants one, so
+	 * this is counted on the walk that has to visit every node anyway rather than
+	 * discovered by a second walk that would cost every program-free first screen
+	 * the same as a program-bearing one.
+	 */
+	programs: number;
 }
 
 interface TrackedThenable<T = unknown> extends PromiseLike<T> {
@@ -176,6 +228,46 @@ function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
 			create: node.create,
 		});
 	}
+	if (node.kind === 'program') {
+		if (typeof node.bind !== 'function' || !Number.isSafeInteger(node.nodes) || node.nodes < 0) {
+			throw new TypeError(
+				'A compiled main-thread program plan requires a bind function and a node count.',
+			);
+		}
+		// A site naming a node the program does not make would be read against the
+		// ID table this renderer fills in, come back `undefined`, and be announced
+		// to the background as a listener bound to no host — a tap routed nowhere,
+		// with nothing red. Freezing happens once per plan at module scope, so this
+		// is the one place the check is free.
+		for (const site of node.events) {
+			if (!Number.isInteger(site.node) || site.node < 0 || site.node >= node.nodes) {
+				throw new TypeError(
+					`A compiled main-thread program binds an event on node ${site.node}, which is not one of its ${node.nodes} nodes.`,
+				);
+			}
+		}
+		// The same for a range's declared position: one outside the program's own
+		// pre-order never matches, so its members would be numbered after the
+		// program instead of where the hole was, and every ID from there on would
+		// disagree with the encoding this one has to be interchangeable with.
+		const positions = node.nodes + node.ranges.length;
+		for (const declared of node.ranges) {
+			if (!Number.isInteger(declared.id) || declared.id < 0 || declared.id >= positions) {
+				throw new TypeError(
+					`A compiled main-thread program declares a keyed range at position ${declared.id}, which is not one of its ${positions} positions.`,
+				);
+			}
+		}
+		return Object.freeze({
+			kind: 'program',
+			slots: Object.freeze([...node.slots]),
+			nodes: node.nodes,
+			values: Object.freeze([...node.values]),
+			events: Object.freeze(node.events.map((event) => Object.freeze({ ...event }))),
+			ranges: Object.freeze(node.ranges.map((range) => Object.freeze({ ...range }))),
+			bind: node.bind,
+		});
+	}
 	if (node.kind === 'host') {
 		return Object.freeze({
 			kind: 'host',
@@ -240,13 +332,12 @@ function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
 	// first screen painted an empty `#text` where the content belonged, and
 	// nothing in the batch said the plan had not been understood.
 	//
-	// `program` reaches here too, and by type rather than by accident: this
-	// renderer is the one that will mount a compiled main-thread program, and
-	// until it does, refusing one here is what keeps `renderPlanNode` below from
-	// ever seeing a kind it cannot paint. The refusal reads the kind on the
-	// throw path so it stays off the freeze walk, which components with children
-	// re-enter per render.
-	throw new TypeError(`Unsupported universal plan node kind ${JSON.stringify(node.kind)}.`);
+	// Every branch above narrowed `node` away, so widening it back is what lets
+	// the refusal name what it refused. Reading the kind on the throw path keeps
+	// it off the freeze walk, which components with children re-enter per render.
+	throw new TypeError(
+		`Unsupported universal plan node kind ${JSON.stringify((node as UniversalPlanNode).kind)}.`,
+	);
 }
 
 export function universalPlan(renderer: string, root: UniversalPlanNode): UniversalPlan {
@@ -657,6 +748,15 @@ function eventPriority(name: string): UniversalEventPriority | null {
  */
 const NO_FIRST_SCREEN_EVENTS: ReadonlyMap<string, UniversalEventPriority> = new Map();
 
+/**
+ * The placeholder a program's ID table holds until `assignIds` fills it in.
+ *
+ * Shared and empty rather than a fresh `new Array(plan.nodes)`: rendering and
+ * numbering are two passes, and allocating the real table in the first one would
+ * hand the second an array it has to overwrite anyway.
+ */
+const EMPTY_PROGRAM_IDS: number[] = [];
+
 function hostNode(
 	type: string,
 	rawProps: Readonly<Record<string, unknown>>,
@@ -851,14 +951,37 @@ function renderPlanNode(node: UniversalPlanNode, values: readonly unknown[]): Fi
 		}
 		return selected === undefined ? [] : [range(renderPlanNode(selected, values))];
 	}
-	// The one kind the union still leaves here is a compiled main-thread program,
-	// which `freezePlanNode` refuses, so this is a host. Checked rather than
-	// asserted: an unchecked narrowing on the path that paints the first screen
-	// buys one interned-string comparison per host node and pays for it by
-	// turning a wrong plan into a wrong tree instead of a named error.
-	if (node.kind !== 'host') {
-		throw new TypeError(`Unsupported universal plan node kind ${JSON.stringify(node.kind)}.`);
+	if (node.kind === 'program') {
+		// A program paints itself, so there is no description to build. What is
+		// built here is only what the program left open: the members of each
+		// declared hole, whatever its plan slot turned out to hold. They are
+		// ordinary renderables and go through the ordinary walk — that is the point
+		// of a hole, and it is what will let a refused row (#163 C3) land in one.
+		const attempt = currentAttempt();
+		attempt.programs++;
+		const children: FirstScreenNode[] = [];
+		const spans: number[] = [];
+		for (const declared of node.ranges) {
+			const members = materialize(values[declared.slot], null);
+			spans.push(members.length);
+			for (const member of members) children.push(member);
+		}
+		return [
+			{
+				kind: 'program',
+				key: null,
+				id: 0,
+				ids: EMPTY_PROGRAM_IDS,
+				plan: node,
+				values,
+				visibility: currentOwner().visibility,
+				children,
+				spans,
+			},
+		];
 	}
+	// The union leaves only a host here, and the branch above is what makes that
+	// true rather than a comment claiming it.
 	const props: Record<string, unknown> = { ...(node.props || {}) };
 	for (const binding of node.bindings || []) props[binding[0]] = values[binding[1]];
 	if (node.propsSlot !== undefined)
@@ -1047,8 +1170,60 @@ function materialize(value: unknown, key: UniversalKey | null): FirstScreenNode[
 	);
 }
 
+/**
+ * Number a program's block the way the interpreted plan would have numbered it.
+ *
+ * The program's nodes are the interpreted pre-order minus its ranges, and each
+ * range's `id` says where it was dropped from. Walking the two together
+ * reproduces the original order, and a range's members are numbered where they
+ * belong — between the range and whatever followed it — rather than after the
+ * program, which is the only reason the two arms agree about every ID and not
+ * just about how many there are.
+ */
+function assignProgramIds(node: FirstScreenProgram, attempt: FirstScreenAttempt): void {
+	const ranges = node.plan.ranges;
+	const ids: number[] = new Array(node.plan.nodes);
+	let host = 0;
+	let hole = 0;
+	let member = 0;
+	const total = node.plan.nodes + ranges.length;
+	for (let position = 0; position < total; position++) {
+		if (hole < ranges.length && ranges[hole]!.id === position) {
+			// The members are numbered where the hole was, not after the program:
+			// that is what the interpreted arm does when it splices them into their
+			// parent, and it is the whole reason the two arms agree about the IDs of
+			// everything that comes *after* a hole rather than only about how many
+			// there are.
+			const end = member + node.spans[hole]!;
+			for (; member < end; member++) {
+				const child = node.children[member]!;
+				child.id = attempt.nextId++;
+				assignIds(child.children, attempt);
+			}
+			hole++;
+			continue;
+		}
+		ids[host++] = attempt.nextId++;
+	}
+	// A range whose position the walk never reached would leave its members
+	// unnumbered — every ID zero, which reads as an unpainted node rather than as
+	// a program whose range table disagrees with its node count.
+	if (hole !== ranges.length || host !== node.plan.nodes) {
+		throw new TypeError(
+			`A compiled main-thread program declares ${node.plan.nodes} nodes and ` +
+				`${ranges.length} ranges, but its range positions do not fit that order.`,
+		);
+	}
+	node.ids = ids;
+}
+
 function assignIds(nodes: readonly FirstScreenNode[], attempt: FirstScreenAttempt): void {
 	for (const node of nodes) {
+		if (node.kind === 'program') {
+			node.id = attempt.nextId;
+			assignProgramIds(node, attempt);
+			continue;
+		}
 		node.id = attempt.nextId++;
 		assignIds(node.children, attempt);
 	}
@@ -1088,6 +1263,34 @@ function collectFirstScreenEvents(
 ): number {
 	let hosts = 0;
 	for (const node of nodes) {
+		if (node.kind === 'program') {
+			// The program's own hosts are counted, not walked: it made exactly
+			// `plan.nodes` of them and `assignIds` already recorded which ID each
+			// took. Its event sites are a table rather than a scan, which is the
+			// same trade the emission makes everywhere — the walk happened once at
+			// build time.
+			//
+			// The value at an event site still decides, exactly as it does for an
+			// authored host: an event-named prop bound to something that is not
+			// callable installs no listener, so a program whose handler prop came
+			// through undefined announces nothing for it. Reading the slot is what
+			// keeps the two arms announcing the same bindings for the same values.
+			hosts += node.plan.nodes;
+			const visible = parentVisible && node.visibility !== 'hidden';
+			if (visible) {
+				for (const site of node.plan.events) {
+					const handler = node.values[site.slot];
+					if (handler !== FIRST_SCREEN_EVENT && typeof handler !== 'function') continue;
+					events.push({
+						id: node.ids[site.node]!,
+						type: site.type,
+						listener: { id: attempt.nextListener++, priority: site.priority },
+					});
+				}
+			}
+			hosts += collectFirstScreenEvents(node.children, visible, attempt, events);
+			continue;
+		}
 		if (node.kind !== 'host') {
 			hosts += collectFirstScreenEvents(node.children, parentVisible, attempt, events);
 			continue;
@@ -1184,9 +1387,17 @@ function buildFirstScreenBatch(
 	return freezeBatch(commands);
 }
 
-/** Structural node view consumed by the direct first-screen applier. */
+/**
+ * Structural node view consumed by the direct first-screen applier.
+ *
+ * `program` is a compiled main-thread program (issue #163), and it is the one
+ * kind carrying no structure: it paints itself, so there is nothing here for a
+ * walk to read beyond the IDs and ranges it claimed. The applier that runs one
+ * is the host driver's, and until it can (C2d) it refuses this kind by name
+ * rather than reading a node it cannot paint as an empty range.
+ */
 export interface LynxFirstScreenResultNode {
-	readonly kind: 'host' | 'range';
+	readonly kind: 'host' | 'range' | 'program';
 	readonly id: number;
 	readonly type?: string;
 	readonly props?: Readonly<Record<string, unknown>>;
@@ -1250,6 +1461,7 @@ export function renderLynxFirstScreen<Props>(
 		// both begin at the same deterministic listener seed.
 		nextListener: 1_000_000,
 		nextUniversalId: 1,
+		programs: 0,
 	};
 	CURRENT_ATTEMPT = attempt;
 	ACTIVE_FIRST_SCREEN_WARM_PLANS.length = 0;
@@ -1283,9 +1495,21 @@ export function renderLynxFirstScreen<Props>(
 		version: FIRST_SCREEN_VERSION,
 		events: Object.freeze(events),
 	});
+	const programs = attempt.programs;
 	let batch: UniversalHostBatch | null = null;
 	return Object.freeze({
 		get batch(): UniversalHostBatch {
+			if (programs !== 0) {
+				// Not "not yet": a batch is commands, and a compiled main-thread
+				// program exists precisely so its first screen is not commands (issue
+				// #163). The staged path is the fallback for a tree the direct applier
+				// declines, and there is no version of it that carries a program —
+				// building one would mean re-describing the subtree the program was
+				// compiled to stop describing.
+				throw new TypeError(
+					'A first screen holding a compiled main-thread program has no command batch; it is painted by the direct applier.',
+				);
+			}
 			return (batch ??= buildFirstScreenBatch(nodes, events));
 		},
 		nodes,

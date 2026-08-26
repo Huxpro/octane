@@ -205,6 +205,30 @@ export interface UniversalProgramRange {
 	readonly slot: number;
 	/** Emitted node its members are appended into. */
 	readonly node: number;
+	/**
+	 * Where the range sits in the program's own pre-order, counting the
+	 * program's nodes and its ranges and nothing else.
+	 *
+	 * A range's members are not in the program — that is what makes it a range —
+	 * so their count is a run-time answer, and a consumer numbering a first
+	 * screen has to interleave them itself. This says where to stop and do that.
+	 * The compiler walks the plan once to work it out; without it the consumer
+	 * would need the program's parent table to rediscover the same order on
+	 * every mount.
+	 */
+	readonly id: number;
+}
+
+/** One event site a program binds, and what the background needs to route it. */
+export interface UniversalProgramEvent {
+	/** Plan slot holding the handler. */
+	readonly slot: number;
+	/** Emitted node the listener is set on. */
+	readonly node: number;
+	/** Host event type, as the driver named it — not the authored prop. */
+	readonly type: string;
+	/** Dispatch priority the driver classified the prop at. */
+	readonly priority: UniversalEventPriority;
 }
 
 /**
@@ -230,10 +254,12 @@ export interface UniversalProgramPlan {
 	readonly kind: 'program';
 	/** Per-value-slot kind table; `null` for a slot no node writes. */
 	readonly slots: readonly (UniversalSlotKind | null)[];
+	/** How many hosts the program creates. */
+	readonly nodes: number;
 	/** Plan slot feeding each positional value parameter, in parameter order. */
 	readonly values: readonly number[];
-	/** Plan slot feeding each positional listener parameter, in parameter order. */
-	readonly events: readonly number[];
+	/** Listener parameters in parameter order, one entry per event site. */
+	readonly events: readonly UniversalProgramEvent[];
 	/** Keyed ranges the program declares rather than paints. */
 	readonly ranges: readonly UniversalProgramRange[];
 	/**

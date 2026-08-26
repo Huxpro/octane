@@ -2,6 +2,7 @@ import {
 	universalPlan,
 	type UniversalPlan,
 	type UniversalPlanNode,
+	type UniversalProgramEvent,
 	type UniversalProgramPlan,
 	type UniversalProgramRange,
 	type UniversalSlotKind,
@@ -21,11 +22,12 @@ import {
 const card: UniversalProgramPlan = {
 	kind: 'program',
 	slots: ['p:class', 'p:id', 'e:bindtap', 'r', 'r'],
+	nodes: 4,
 	values: [0, 1],
-	events: [2],
+	events: [{ slot: 2, node: 1, type: 'bindtap', priority: 'discrete' }],
 	ranges: [
-		{ slot: 3, node: 1 },
-		{ slot: 4, node: 3 },
+		{ slot: 3, node: 1, id: 2 },
+		{ slot: 4, node: 3, id: 5 },
 	],
 	bind: () => () => [],
 };
@@ -54,8 +56,14 @@ function mount(node: UniversalPlanNode, host: unknown, page: number, parent: unk
 	const slots: readonly (UniversalSlotKind | null)[] = node.slots;
 	const ranges: readonly UniversalProgramRange[] = node.ranges;
 	const values: readonly number[] = node.values;
-	const events: readonly number[] = node.events;
-	const nodes: readonly unknown[] = node.bind(host)(page, parent, ...values, ...events);
+	const events: readonly UniversalProgramEvent[] = node.events;
+	const hosts: number = node.nodes;
+	const nodes: readonly unknown[] = node.bind(host)(
+		page,
+		parent,
+		...values.map((slot) => slot),
+		...events.map((site) => site.slot),
+	);
 }
 
 /**
@@ -107,6 +115,7 @@ const unchecked: UniversalProgramPlan = {
 const interpreted: UniversalProgramPlan = {
 	kind: 'program',
 	slots: [],
+	nodes: 0,
 	values: [],
 	events: [],
 	ranges: [],
@@ -117,5 +126,17 @@ const interpreted: UniversalProgramPlan = {
 const halfRange: UniversalProgramPlan = {
 	...card,
 	// @ts-expect-error - a range that names no node has nowhere to append its members.
-	ranges: [{ slot: 3 }],
+	ranges: [{ slot: 3, id: 2 }],
+};
+
+const unplacedRange: UniversalProgramPlan = {
+	...card,
+	// @ts-expect-error - a range with no position cannot be numbered against the interpreted arm.
+	ranges: [{ slot: 3, node: 1 }],
+};
+
+const untypedEvent: UniversalProgramPlan = {
+	...card,
+	// @ts-expect-error - a bare plan slot no longer says what the background must route.
+	events: [2],
 };
