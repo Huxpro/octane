@@ -384,15 +384,20 @@ function bindingSlots(program: UniversalHostTemplateProgram): number {
  *
  * The emitted create function performs the dense applier's work in the dense
  * applier's order — every node created and given its props, then every event
- * site installed, then every child appended to its parent, then the root
- * appended to the caller's parent.
+ * site whose listener the caller supplied installed, then every child appended
+ * to its parent. It returns the run's nodes in program order and touches
+ * nothing outside them.
  *
- * The last step is the one that is a contract rather than a convention: the
- * subtree is assembled detached and enters the caller's tree exactly once, so a
- * host that lays out on insertion pays for one node instead of for the whole
- * run. Comparing the painted trees cannot see that — two orders reach the same
- * tree — so it is asserted directly in `main-thread-emit.test.ts` rather than
- * assumed to follow from the trees agreeing.
+ * What it deliberately does not do is attach. The subtree is assembled fully
+ * detached, and the caller performs the single append that puts it in the
+ * page — because the caller has more to add: a keyed range's members are the
+ * renderer's to materialize, not the program's to paint, and they go into a
+ * node this function made. Attaching here would put that node in the page
+ * first and make every member its own insertion, which is precisely the cost
+ * assembling detached exists to avoid. Comparing painted trees cannot see any
+ * of this — two orders reach the same tree — so it is asserted directly in
+ * `main-thread-emit.test.ts` rather than assumed to follow from the trees
+ * agreeing.
  */
 export function emitLynxMainThreadProgram(
 	program: UniversalHostTemplateProgram,
@@ -499,17 +504,25 @@ export function emitLynxMainThreadProgram(
 		else if (seen.has(event.type)) {
 			refuse(`node ${event.node} repeats the event ${JSON.stringify(event.type)}`);
 		} else seen.add(event.type);
+		// Guarded, not unconditional. A site's handler is a plan slot the caller
+		// resolves per render, and an authored `onTap?` that is not passed leaves
+		// it undefined. Installing regardless would not misroute a tap — a host
+		// reads an undefined listener as *remove this event*, which on a node one
+		// statement old is a no-op — it would spend a PAPI crossing saying so.
+		// This is the one path whose whole purpose is that the first screen costs
+		// the crossings it needs and no others, so an optional handler nobody
+		// passed costs none. One local comparison replaces one crossing, per
+		// event site per run.
 		body.push(
-			`\t\tpapi.setEvent(n${event.node}, ${JSON.stringify(binding.type)}, ${JSON.stringify(binding.name)}, e${index});`,
+			`\t\tif (e${index} !== undefined) papi.setEvent(n${event.node}, ${JSON.stringify(binding.type)}, ${JSON.stringify(binding.name)}, e${index});`,
 		);
 	}
 
 	for (let index = 1; index < program.nodes.length; index++) {
 		body.push(`\t\tappend(n${program.nodes[index]!.parent}, n${index});`);
 	}
-	body.push('\t\tappend(parent, n0);');
 
-	const params = ['pageId', 'parent'];
+	const params = ['pageId'];
 	for (let index = 0; index < valueCount; index++) params.push(`v${index}`);
 	for (let index = 0; index < program.events.length; index++) params.push(`e${index}`);
 	const nodes = program.nodes.map((_node, index) => `n${index}`).join(', ');
