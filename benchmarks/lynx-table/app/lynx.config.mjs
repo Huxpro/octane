@@ -57,6 +57,22 @@ async function loadMainThreadProgramBackend() {
 	return await import(from('packages/lynx/src/compiler/index.js'));
 }
 
+// BENCH_DIST_TAG changes where a build lands and nothing about what it
+// contains, so issue-#163 C8 can build one configuration twice — once from each
+// revision of the main-thread emitter — and hold both bundles in a single
+// measurement window. Spelled the same way here and in
+// `scripts/build-app.mjs`, which validates it; a build reaching this file with
+// a tag that file would have refused has bypassed the only caller that writes
+// it, so it is refused here too rather than silently naming a directory nothing
+// will copy from.
+const distTag = process.env.BENCH_DIST_TAG ?? '';
+if (distTag !== '' && !/^[a-z0-9][a-z0-9-]*$/.test(distTag)) {
+	throw new TypeError(
+		`BENCH_DIST_TAG must be lowercase alphanumeric with dashes, received ${JSON.stringify(distTag)}.`,
+	);
+}
+const tagSuffix = distTag === '' ? '' : `-${distTag}`;
+
 const core = process.env.BENCH_CORE === 'block' ? 'block' : 'universal';
 const blockMode = BLOCK_MODES.has(process.env.BENCH_BLOCK_MODE)
 	? process.env.BENCH_BLOCK_MODE
@@ -82,7 +98,13 @@ export default defineConfig(({ command }) => {
 			},
 			filenameHash: false,
 			distPath: {
-				root: 'dist' + coreSuffix + programSuffix + autoSuffix + (profile ? '-profile' : ''),
+				root:
+					'dist' +
+					coreSuffix +
+					programSuffix +
+					tagSuffix +
+					autoSuffix +
+					(profile ? '-profile' : ''),
 			},
 		},
 		source: {
