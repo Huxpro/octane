@@ -182,8 +182,19 @@ const RESERVED_EMISSION_NAMES: ReadonlySet<string> = new Set([
 	'yield',
 ]);
 
-/** `n0`, `v3`, `e1`, `r0`, `c2` — the per-node, per-slot, per-listener and per-range locals. */
-const EMISSION_LOCAL = /^[nvecr]\d+$/;
+/**
+ * The locals the emitted create function binds, by prefix and index: `n0` a
+ * node, `v3` a value parameter, `e1` a listener parameter, `r0` a range
+ * parameter, `c2` the scratch a node's class binding folds into, and `t0` the
+ * text a range site paints.
+ *
+ * `c` and `t` are both scratch and both indexed, but by different things — `c`
+ * by node, `t` by range site — so they cannot share a prefix: a program with
+ * five nodes and two sites would spell its first site the same way as its own
+ * first class, and `var` would quietly make them one variable whose value
+ * depends on which statement ran last.
+ */
+const EMISSION_LOCAL = /^[nvecrt]\d+$/;
 
 /**
  * A hole the reduced program does not describe, and the node standing in its
@@ -212,6 +223,13 @@ export interface LynxMainThreadProgramEmission {
 	 * positions. The range values come last so that a caller with none passes
 	 * exactly the arguments it passed before they existed.
 	 *
+	 * One entry per range site follows those nodes, holding the node this
+	 * emission painted for that hole or `undefined` for a hole it left open —
+	 * so the array is `nodes + rangeCount` long, and a caller with no sites gets
+	 * exactly the array it got before they existed. The trailing half is what
+	 * lets a caller check the create's answer against its own instead of
+	 * trusting that the two agreed.
+	 *
 	 * That array is one allocation per instance, and it is the one thing here
 	 * that C0's priced spike did not do — it pushed into per-slot arrays the
 	 * caller had already made. Which of the two a first screen should pay for
@@ -231,6 +249,16 @@ export interface LynxMainThreadProgramEmission {
 	 * this function's decision.
 	 */
 	readonly rangeCount: number;
+	/**
+	 * Which of those sites this emission paints a string for, in site order —
+	 * `rangeCount` long, and all `false` for an emission that compiles none.
+	 *
+	 * The decision is made here, from the host type, and it has to reach the
+	 * consumer that decides which holes to send a string for. Re-deriving it
+	 * there would be the same judgement made twice from two sources, which is
+	 * the thing that drifts; reporting it makes the emission the single answer.
+	 */
+	readonly paintsText: readonly boolean[];
 }
 
 /** A program this backend declines, naming what it could not emit. */
@@ -409,7 +437,8 @@ function bindingSlots(program: UniversalHostTemplateProgram): number {
  * The emitted create function performs the dense applier's work in the dense
  * applier's order — every node created and given its props, then every event
  * site whose listener the caller supplied installed, then every child appended
- * to its parent. It returns the run's nodes in program order and touches
+ * to its parent. It returns the run's nodes in program order, followed by one
+ * entry per declared range site saying what it painted there, and touches
  * nothing outside them.
  *
  * What it deliberately does not do is attach. The subtree is assembled fully
@@ -582,15 +611,18 @@ export function emitLynxMainThreadProgram(
 	// behind everything the node loop just placed *is* the position the command
 	// path would have given it.
 	//
-	// The created node is deliberately not returned. `mountProgram` pairs the
-	// returned array with the ids `assignProgramIds` handed out and refuses any
-	// other length, so a position for a compiled text is an id assignment rather
-	// than an emission, and it belongs to the consumer that needs one (#163 C2)
-	// instead of being guessed here. Until that exists, a caller that passes
-	// range values gets painted nodes its container does not own — which is why
-	// no caller passes them yet.
+	// The created node is returned, in a trailing slot of its own, and a hole
+	// this emission leaves open returns `undefined` there. That is not
+	// bookkeeping for the caller's convenience: the caller decides which holes
+	// to send a string for, this decides which ones it paints, and the two
+	// decisions are made in different processes at different times. Returning
+	// the answer makes them comparable — a hole the caller sent a string for and
+	// this left open is a text lost, the reverse is a node the caller's
+	// container does not own, and both are one identity check away from being
+	// caught at the mount instead of showing up as a blank cell.
 	const ranges = options.ranges ?? [];
 	const ranged = new Set<number>();
+	const painted = new Set<number>();
 	for (let index = 0; index < ranges.length; index++) {
 		const node = ranges[index]!.node;
 		if (!Number.isSafeInteger(node) || node < 0 || node >= program.nodes.length) {
@@ -611,14 +643,25 @@ export function emitLynxMainThreadProgram(
 		// branch anyway would put a `rawText` under a `view`, which is the one
 		// thing the node loop above already refuses to do.
 		if (host !== 'text') continue;
-		body.push(`\t\tif (typeof r${index} === 'string') append(n${node}, rawText(r${index}));`);
+		painted.add(index);
+		body.push(`\t\tvar t${index};`);
+		body.push(
+			`\t\tif (typeof r${index} === 'string') { t${index} = rawText(r${index}); append(n${node}, t${index}); }`,
+		);
 	}
 
 	const params = ['pageId'];
 	for (let index = 0; index < valueCount; index++) params.push(`v${index}`);
 	for (let index = 0; index < program.events.length; index++) params.push(`e${index}`);
 	for (let index = 0; index < ranges.length; index++) params.push(`r${index}`);
-	const nodes = program.nodes.map((_node, index) => `n${index}`).join(', ');
+	// A site this emission compiles nothing for still takes its slot, holding a
+	// literal `undefined`: the trailing half is indexed by the caller's site
+	// order, so a slot that moved with what the emitter decided would make the
+	// answer unreadable exactly when it disagrees with the caller.
+	const returned = program.nodes
+		.map((_node, index) => `n${index}`)
+		.concat(ranges.map((_range, index) => (painted.has(index) ? `t${index}` : 'undefined')))
+		.join(', ');
 
 	const source = [
 		`function (papi) {`,
@@ -632,10 +675,16 @@ export function emitLynxMainThreadProgram(
 		`\t\t: function (parent, child) { papi.insertBefore(parent, child, null); };`,
 		`\treturn function ${options.name}(${params.join(', ')}) {`,
 		...body,
-		`\t\treturn [${nodes}];`,
+		`\t\treturn [${returned}];`,
 		`\t};`,
 		`}`,
 	].join('\n');
 
-	return { source, valueCount, eventCount: program.events.length, rangeCount: ranges.length };
+	return {
+		source,
+		valueCount,
+		eventCount: program.events.length,
+		rangeCount: ranges.length,
+		paintsText: ranges.map((_range, index) => painted.has(index)),
+	};
 }

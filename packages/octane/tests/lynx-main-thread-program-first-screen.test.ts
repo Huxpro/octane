@@ -136,8 +136,9 @@ function render(
 	program: boolean,
 	source = CARD,
 	name = 'Card',
+	props: unknown = PROPS,
 ): MainRenderer.LynxFirstScreenRenderResult {
-	return MainRenderer.renderLynxFirstScreen(cardFor(program, source, name), PROPS as never);
+	return MainRenderer.renderLynxFirstScreen(cardFor(program, source, name), props as never);
 }
 
 describe('a compiled main-thread program on the first-screen path', () => {
@@ -306,6 +307,7 @@ function paint(
 	program: boolean,
 	source = CARD,
 	name = 'Card',
+	props: unknown = PROPS,
 ): {
 	readonly tree: unknown;
 	readonly page: unknown;
@@ -361,7 +363,7 @@ function paint(
 		},
 	};
 	const container = createLynxHostContainer(papi, { root: 1 });
-	const rendered = render(program, source, name);
+	const rendered = render(program, source, name, props);
 	expect(applyLynxFirstScreenDirect(container, rendered.nodes, rendered.envelope)).toBe(true);
 	return {
 		tree: shape(papi.pages[0]!),
@@ -680,6 +682,36 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 		).toBe(tokens.length);
 	});
 
+	it('paints a hole holding a string itself, leaving the page nothing to describe', () => {
+		// C5, stated as the population it moves rather than as a count of
+		// milliseconds. Both of this fixture's holes hold a string under `PROPS`,
+		// and a hole holding a string is a `#text` either way — the only question
+		// is which arm makes it. The compiled create makes it, so *every* node on
+		// this page came from the program, and a capture that describes a record
+		// by reading its physical identity back off the host has nothing to read.
+		//
+		// Both halves are set membership rather than arithmetic: the first says no
+		// node on the page came from the renderer's `createElement`, the second
+		// that the capture touched none of them. An arm that left the text holes
+		// on the command path satisfies neither, and it is red here rather than
+		// merely slower.
+		const painted = paint(true);
+		const madeByProgram = new Set(painted.made);
+		const onPage = nodesOf(painted.page).slice(1);
+		expect(onPage.length).toBeGreaterThan(0);
+		for (const node of onPage) expect(madeByProgram.has(node)).toBe(true);
+		const before = painted.reads.length;
+		expect(captureLynxFirstTree(painted.container)).not.toBeNull();
+		for (const node of painted.reads.slice(before)) expect(madeByProgram.has(node)).toBe(false);
+
+		// And the interpreted arm over the same source is the control: the same
+		// six nodes, none of them made by a program, every one of them read back.
+		const interpreted = paint(false);
+		const interpretedOnPage = nodesOf(interpreted.page).slice(1);
+		expect(interpretedOnPage).toHaveLength(onPage.length);
+		expect(interpreted.made).toHaveLength(0);
+	});
+
 	it('reads back no node the program made, to describe the tree it hands on', () => {
 		// The cost the inverted handoff removes, stated as host crossings.
 		//
@@ -687,14 +719,25 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 		// the host, once per record. A program writes no record for any node it
 		// makes — the ID map the mount kept is what adoption resolves against
 		// instead — so those hosts are described by nothing and read back for
-		// nothing. What remains is the keyed ranges' members, which the renderer
-		// materialized through the ordinary path and which therefore do have
-		// records.
+		// nothing. What remains is a keyed range's members where the program left
+		// the hole open, which the renderer materialized through the ordinary path
+		// and which therefore do have records.
+		//
+		// `detail` is a number here for exactly that reason. C5 compiles a hole
+		// whose value arrives as a *string*, and both of this fixture's holes hold
+		// one under `PROPS` — so with the default props the program paints the
+		// whole tree and the described population is empty, which would make the
+		// first half of the disjointness vacuously true rather than checked. A
+		// number is a value the compiled test declines and `materialize` still
+		// renders as text, so it is the smallest fixture that keeps one described
+		// node while changing nothing about what the program does with the other
+		// hole.
 		//
 		// #163's "no capture walk, no read-backs" is exactly this, and it is a
 		// disjointness rather than a count: a capture that walked the program's
 		// subtree would be red here however many nodes it happened to touch.
-		const painted = paint(true);
+		const NUMERIC_DETAIL = { ...PROPS, detail: 7 };
+		const painted = paint(true, CARD, 'Card', NUMERIC_DETAIL);
 		const madeByProgram = new Set(painted.made);
 		const described = nodesOf(painted.page)
 			.slice(1)
@@ -713,7 +756,7 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 		// painted node back when every painted node is described. Nothing about
 		// the walk changed — what changed is how much of the tree it is asked
 		// about.
-		const interpreted = paint(false);
+		const interpreted = paint(false, CARD, 'Card', NUMERIC_DETAIL);
 		expect(interpreted.made).toHaveLength(0);
 		const interpretedNodes = nodesOf(interpreted.page).slice(1);
 		const interpretedBefore = interpreted.reads.length;

@@ -102,7 +102,12 @@ const programScenePlan = firstScreenPlan('lynx', {
 			const text = intrinsics.text(pageId);
 			papi.setClasses(text, args[2] as string);
 			append(view, text);
-			return [view, text];
+			// The nodes, then one entry per declared range saying what this create
+			// painted there. This one paints nothing for its hole — it takes no
+			// range argument at all — so the entry is `undefined` and the renderer
+			// fills the hole itself, which is what makes the members below ordinary
+			// described hosts.
+			return [view, text, undefined];
 		};
 	},
 });

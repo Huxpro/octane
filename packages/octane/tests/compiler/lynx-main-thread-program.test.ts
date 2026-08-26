@@ -270,8 +270,8 @@ describe('emitting a compiled create function from the lynx main-thread compile'
 		// the program's four nodes and its two ranges: view(0), card-label(1),
 		// its range(2), card-body(3), the `d` text(4), its range(5).
 		expect(root.ranges).toEqual([
-			{ slot: 3, node: 1, id: 2 },
-			{ slot: 4, node: 3, id: 5 },
+			{ slot: 3, node: 1, id: 2, paintsText: true },
+			{ slot: 4, node: 3, id: 5, paintsText: true },
 		]);
 		// The count the create function makes, which is what a consumer claiming
 		// first-screen IDs needs and all it needs: the nodes come back from `bind`
@@ -308,14 +308,39 @@ export function Card(props: { label: string }) @{
 		// Position 4, after view(0), the `fixed` text(1), its literal `#text`(2)
 		// and the `live` text(3): the literal is a program node and the dynamic
 		// hole is not, which is the contrast this test is drawing.
-		expect(root.ranges).toEqual([{ slot: 0, node: 3, id: 4 }]);
+		// `paintsText` is the fourth member and the one C5 added: the hole stays a
+		// range at build time, and the create function carries the run-time test
+		// that paints it when the value turns out to be a string. It is true here
+		// because the hole's host is a `text`; a hole under a `view` is the
+		// ordinary keyed list at every value and would read `false`.
+		expect(root.ranges).toEqual([{ slot: 0, node: 3, id: 4, paintsText: true }]);
 		const papi = createHost();
 		createLynxHostContainer(papi, { root: 1 });
 		const page = papi.pages[0]!;
-		const nodes = root.bind(papi)(page.id) as readonly never[];
+		const create = root.bind(papi);
+		const nodes = create(page.id) as readonly never[];
 		papi.insertBefore(page as never, nodes[0]!, null);
-		// The literal is painted; nothing paints the dynamic one.
+		// The literal is painted; a hole sent no string is left open. One entry
+		// per range follows the program's nodes either way, so the position of an
+		// answer never depends on what the answer is.
+		expect(nodes).toHaveLength(5);
+		expect(nodes[4]).toBeUndefined();
 		expect(JSON.stringify(shape(papi.pages[0]!))).toContain('tail');
+		expect(JSON.stringify(shape(papi.pages[0]!))).not.toContain('Live');
+
+		// And the same create, handed the string the hole turned out to hold: the
+		// text is painted by the program, behind the literal's own `#text`, and
+		// comes back in the range's slot so a caller can own the node it now has.
+		const second = createHost();
+		createLynxHostContainer(second, { root: 1 });
+		const secondPage = second.pages[0]!;
+		const painted = root.bind(second)(secondPage.id, 'Live') as readonly never[];
+		second.insertBefore(secondPage as never, painted[0]!, null);
+		expect(painted).toHaveLength(5);
+		expect(painted[4]).toBeDefined();
+		const shaped = JSON.stringify(shape(second.pages[0]!));
+		expect(shaped).toContain('tail');
+		expect(shaped).toContain('Live');
 	});
 
 	it('paints what the dense applier paints from the same plan', () => {
@@ -376,6 +401,31 @@ export function Card(props: { tone: string; label: string }) @{
 		expect(() => compiled(STYLED, { backend: Backend })).toThrowError(/"style"/);
 	});
 
+	it("copies each site's paint answer from the emission rather than assuming it", () => {
+		// Both kinds of hole in one program, because the contrast is the point.
+		// `{props.label as string}` sits under a `text`, where a string is raw
+		// text and the create function paints it. `{props.rows}` sits under a
+		// `view`, where a hole is the ordinary keyed list at every value it can
+		// hold — a `rawText` there is the one thing the emitter's node loop
+		// already refuses — so it keeps its parameter and compiles nothing.
+		//
+		// The compiler cannot tell those apart without asking: it holds the
+		// derivation, not the emitted source. Assuming `true` is invisible until
+		// a `view` hole happens to hold a string, and then the renderer skips
+		// materializing a member the program never painted.
+		const BOTH = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+export function Card(props: { rows: unknown; label: string }) @{
+	<view class="a"><text class="l">{props.label as string}</text><view class="rows">{props.rows}</view></view>
+}
+`;
+		const [root] = evaluate(compiled(BOTH, { backend: Backend })).roots;
+		expect(root.kind).toBe('program');
+		expect(root.ranges).toEqual([
+			{ slot: 0, node: 1, id: 2, paintsText: true },
+			{ slot: 1, node: 2, id: 4, paintsText: false },
+		]);
+	});
+
 	it('fails the build when a backend contradicts itself about its own arity', () => {
 		// The two halves of a backend can be versioned apart, and a create function
 		// taking fewer parameters than its map declares would read its values from
@@ -389,7 +439,7 @@ export function Card(props: { tone: string; label: string }) @{
 			}),
 		};
 		expect(() => compiled(CARD, { backend: lying })).toThrowError(
-			/takes 99 value and 1 listener parameters, but its derivation declares 2 values and 1 events/,
+			/takes 99 value, 1 listener and 2 range parameters, but its derivation declares 2 values, 1 events and 2 ranges/,
 		);
 	});
 
