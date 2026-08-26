@@ -39,4 +39,4 @@ export {
  * rather than a comment. Over-invalidating a cache is the safe direction; a
  * comment-only edit bumping it costs one cold build and nothing else.
  */
-export const signature = 'lynx-main-thread-program/5';
+export const signature = 'lynx-main-thread-program/6';

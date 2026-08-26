@@ -1948,6 +1948,17 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			// diagnostic, and a list topology the direct applier will not start
 			// building because it could not finish without faulting halfway.
 			if (!applyLynxFirstScreenDirect(source, result.nodes, result.envelope)) {
+				if (result.programs !== 0) {
+					// The staged path cannot carry a compiled program — building a
+					// batch for one would re-describe the subtree the program was
+					// compiled to stop describing — and the direct applier already
+					// refused to start this tree (a `<list>` on a host with no list
+					// PAPI, or a topology it could not finish). Decline the paint the
+					// way an unadoptable composition declines: the background paints
+					// the page on the command path.
+					retireFirstScreen(source, 'skipped', 'undirectable');
+					return null;
+				}
 				const prepared = prepareLynxHostBatch(source, result.batch);
 				prepared.apply();
 				if (!prepared.mutationStarted) {
