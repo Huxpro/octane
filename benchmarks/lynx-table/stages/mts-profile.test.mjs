@@ -5,6 +5,7 @@
 // no literal of its own, folding the harness's own code in with the
 // framework's, and splitting a bucket into sites that no longer add up to it.
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { test } from 'node:test';
 
 import {
@@ -12,6 +13,7 @@ import {
 	BUCKETS,
 	COMPILED_CREATE_SITE,
 	foldProfile,
+	probeOf,
 	PROBE_WINDOW,
 	SITES_BY_BUCKET,
 } from './mts-profile-buckets.mjs';
@@ -198,5 +200,81 @@ test('every bucket the fold can produce is listed with its sites', () => {
 		);
 		const expected = bucket === 'compiled program create' ? [COMPILED_CREATE_SITE] : fromTable;
 		assert.deepEqual([...listed].sort(), [...new Set(expected)].sort());
+	}
+});
+
+// The three `main-renderer.ts` functions that one `.plan.` probe used to name
+// as a single site, copied verbatim from the measured bundle at the frame
+// positions the profiler reported for them. `assignIds` and `assignProgramIds`
+// begin 67 characters apart, because the minifier inlines the second into the
+// first's comma sequence, so both windows below overlap for most of their
+// length and only their opening characters can tell them apart.
+const ASSIGN_IDS =
+	'(r,t){for(var n of r){if("program"===n.kind){n.id=t.nextId,function(r,t){var n=r.plan.ranges;var a=Array(r.plan.nodes);var i=Array(n.length);var o=0;var l=0;var';
+const ASSIGN_PROGRAM_IDS =
+	'(r,t){var n=r.plan.ranges;var a=Array(r.plan.nodes);var i=Array(n.length);var o=0;var l=0;var s=0;var d=r.plan.nodes+n.length;for(var c=0;c<d;c++){if(l<n.length';
+const COLLECT_EVENTS =
+	'(r,t,n,a){var i=0;for(var o of r){if("program"===o.kind){for(var l of(i+=o.plan.nodes,o.texts))void 0!==l&&i++;var s=t&&"hidden"!==o.visibility;if(s)for(var d o';
+
+test('the three functions one probe used to fold are named apart', () => {
+	assert.equal(probeOf(ASSIGN_IDS)?.where, 'main-renderer.ts assignIds');
+	assert.equal(probeOf(ASSIGN_PROGRAM_IDS)?.where, 'main-renderer.ts assignProgramIds');
+	assert.equal(probeOf(COLLECT_EVENTS)?.where, 'main-renderer.ts collectFirstScreenEvents');
+});
+
+test('none of the three probes reaches into either of the others', () => {
+	// Stronger than naming them correctly, and independent of table order: a
+	// probe that also appears in a neighbour's window is one table reordering
+	// away from folding the site back together, which is how `.plan.` produced a
+	// three-function total that read as one function's cost.
+	const windows = [
+		['main-renderer.ts assignIds', ASSIGN_IDS],
+		['main-renderer.ts assignProgramIds', ASSIGN_PROGRAM_IDS],
+		['main-renderer.ts collectFirstScreenEvents', COLLECT_EVENTS],
+	];
+	for (const [where, ,] of windows) {
+		const probe = BUCKETS.find((entry) => entry.where === where)?.probe;
+		assert.ok(probe !== undefined, `${where} has no probe`);
+		const reached = windows.filter(([, text]) => text.includes(probe)).map(([name]) => name);
+		assert.deepEqual(reached, [where], `${probe} reaches ${reached.join(', ')}`);
+	}
+});
+
+test('a window is only ever matched by the probe table, never by its length', () => {
+	// Each window is a real 160-character read, so a probe that only matched
+	// because a fixture was trimmed to it would pass the tests above and fail on
+	// the bundle.
+	for (const text of [ASSIGN_IDS, ASSIGN_PROGRAM_IDS, COLLECT_EVENTS]) {
+		assert.equal(text.length, PROBE_WINDOW);
+	}
+});
+
+// The template create and the recursive freeze it returns, 53 characters apart
+// in the measured bundle, both taken verbatim at the positions the profiler
+// reported. `Object.isFrozen(` is inside both windows; `"template"===` is
+// inside only the outer one's.
+const TEMPLATE_CREATE =
+	'(r,t){if("template"===r.kind){var n;return function e(r){for(var t of("host"!==r.kind||Object.isFrozen(r.props)||Object.freeze(r.props),r.ch';
+const RECURSIVE_FREEZE =
+	'(r){for(var t of("host"!==r.kind||Object.isFrozen(r.props)||Object.freeze(r.props),r.children))e(t)}(n=r.create(ea,t)),[n]}if("slot"===r.kin';
+
+test('a function that encloses another is named before the one it encloses', () => {
+	// The freeze is nested inside the create, so the create's own window contains
+	// the freeze's probe. Named in the wrong order the create's samples land on
+	// the freeze and `template create and prop freeze` reads 0.0 in every cell,
+	// which reads as a branch nothing took rather than as a probe that lost.
+	assert.equal(probeOf(TEMPLATE_CREATE)?.where, 'main-renderer.ts template create and prop freeze');
+	assert.equal(probeOf(RECURSIVE_FREEZE)?.where, 'main-renderer.ts recursive prop freeze');
+});
+
+test('every probe’s where names a file the repository has', () => {
+	// A `where` is the record's only claim about which source a number came from,
+	// and it is never checked against the source at match time. Two of them named
+	// `core/events.ts` and `core/selectors.ts`, neither of which exists, and the
+	// records built on them read exactly like records that were right.
+	const root = new URL('../../../packages/lynx/src/', import.meta.url);
+	for (const { where } of BUCKETS) {
+		const file = where.slice(0, where.indexOf(' '));
+		assert.ok(fs.existsSync(new URL(file, root)), `${where} names a file that does not exist`);
 	}
 });

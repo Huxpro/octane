@@ -262,6 +262,14 @@ const loadEnd = os.loadavg();
 // --- report -----------------------------------------------------------------
 
 const round = (value, places) => Number(value.toFixed(places));
+// `line:column` sorted as numbers, so a record's frame list is stable across
+// runs and two records of one build can be diffed line for line.
+const comparePositions = (a, b) => {
+	const parse = (text) => text.split(':').map(Number);
+	const [aLine, aColumn] = parse(a);
+	const [bLine, bColumn] = parse(b);
+	return aLine - bLine || aColumn - bColumn;
+};
 const bucketNames = [
 	...new Set(cellIds.flatMap((id) => samples[id].flatMap((s) => [...s.buckets.keys()]))),
 ];
@@ -284,7 +292,16 @@ for (const id of cellIds) {
 			const positions = new Set(
 				samples[id].flatMap((sample) => [...(sample.sites.get(site)?.positions ?? [])]),
 			);
-			perSite[site] = { ...stats(ms), frames: positions.size };
+			// Kept, not just counted. A site over one frame is exactly the case the
+			// count cannot settle — two entrances to one function look like two
+			// functions — and settling it means reading the source at each frame.
+			// The record hands that over rather than telling the reader to go and
+			// dump the script, which is what narrowing the probe needs next.
+			perSite[site] = {
+				...stats(ms),
+				frames: positions.size,
+				positions: [...positions].sort(comparePositions),
+			};
 		}
 	}
 	// A site the fold produced that no bucket claims would go missing silently,
@@ -489,6 +506,41 @@ for (const name of multiSite) {
 		rowFor(`**${name}, all sites**`, (cell) => cell.buckets[name]),
 		'',
 	);
+}
+const entered = cellIds.flatMap((id) =>
+	Object.entries(cells[id].sites)
+		.filter(([, stat]) => stat.frames > 0)
+		.map(([site, stat]) => ({ id, site, stat })),
+);
+if (entered.length > 0) {
+	lines.push(
+		'### The source at every site the run entered',
+		'',
+		'A site’s name is a claim that its probe matches one named function in one',
+		'named file, and nothing in the run checks that claim — a probe is matched',
+		'against minified text, so a label naming the wrong function, or naming a file',
+		'that does not exist, reads exactly like a correct one. The source at each',
+		'frame is what makes the claim checkable, so the record carries it for every',
+		'site rather than only for the ones already known to be shared.',
+		'',
+		'For a site over one frame it answers what the frame count cannot: frames',
+		'whose text differs are different functions the probe was wide enough to',
+		'reach, and the total is shared between them; frames whose text is one',
+		'function entered twice are that function after all. For a site at one frame',
+		'it is the evidence that the label names what it says it names.',
+		'',
+	);
+	for (const { id, site, stat } of entered) {
+		lines.push(`- \`${id}\` — \`${site}\`, ${stat.frames} frame${stat.frames === 1 ? '' : 's'}`);
+		const sourceAt = witnesses.get(id);
+		for (const position of stat.positions) {
+			const [line, column] = position.split(':').map(Number);
+			lines.push(
+				`  - ${position} — \`${sourceAt(line, column).slice(0, 140).replace(/\s+/g, ' ')}\``,
+			);
+		}
+	}
+	lines.push('');
 }
 lines.push(
 	'### The largest frames the probe table did not name',

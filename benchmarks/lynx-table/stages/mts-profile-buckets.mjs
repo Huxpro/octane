@@ -108,7 +108,7 @@ export const BUCKETS = Object.freeze([
 	{
 		bucket: 'host record building',
 		probe: 'Octane Lynx NodesRef ',
-		where: 'core/selectors.ts handle-selector guards',
+		where: 'core/nodes-ref.ts assertPositiveSafeInteger',
 	},
 	{
 		bucket: 'event bookkeeping',
@@ -118,12 +118,12 @@ export const BUCKETS = Object.freeze([
 	{
 		bucket: 'event bookkeeping',
 		probe: 'octane-lynx:event:',
-		where: 'core/events.ts token encode',
+		where: 'core/native-events.ts encodePrevalidatedLynxNativeEventToken',
 	},
 	{
 		bucket: 'event bookkeeping',
 		probe: ' is not a Lynx event prop.',
-		where: 'core/host-driver.ts parseLynxNativeEventProp',
+		where: 'core/host-driver.ts installNativeEvent',
 	},
 	{
 		bucket: 'element factory dispatch',
@@ -135,20 +135,44 @@ export const BUCKETS = Object.freeze([
 		probe: 'kind:"host",key:null,id:0,type:',
 		where: 'main-renderer.ts first-screen host and text factories',
 	},
+	// Order matters between these two, and only between these two. The template
+	// create returns a nested recursive freeze that begins 53 characters later,
+	// so `Object.isFrozen(` is inside both functions' windows while
+	// `"template"===` is inside only the outer one's. Checked in this order each
+	// frame is named by its own function; checked the other way the create's
+	// samples land on the freeze, and `template create and prop freeze` reads
+	// 0.0 in every cell — which is exactly what it did until this was found.
+	{
+		bucket: 'renderer pre-passes',
+		probe: '"template"===',
+		where: 'main-renderer.ts template create and prop freeze',
+	},
 	{
 		bucket: 'renderer pre-passes',
 		probe: 'Object.isFrozen(',
 		where: 'main-renderer.ts recursive prop freeze',
 	},
+	// The three functions the single `.plan.` probe used to fold into one site.
+	// `assignIds` and `assignProgramIds` sit 67 characters apart in the measured
+	// bundle — the minifier inlines the second into the first's comma sequence —
+	// so a probe either separates them on text unique to each or reports a total
+	// belonging to both. `.plan.` did the latter: 26 occurrences in the bundle,
+	// three of them reachable from a sampled frame. Each probe below occurs
+	// exactly once in the whole bundle, and none reaches either of the others.
 	{
 		bucket: 'renderer pre-passes',
-		probe: '.plan.',
-		where: 'main-renderer.ts program id count and assignment',
+		probe: '.nextId,',
+		where: 'main-renderer.ts assignIds',
 	},
 	{
 		bucket: 'renderer pre-passes',
-		probe: '"template"===',
-		where: 'main-renderer.ts template create and prop freeze',
+		probe: '.plan.nodes+',
+		where: 'main-renderer.ts assignProgramIds',
+	},
+	{
+		bucket: 'renderer pre-passes',
+		probe: '.plan.nodes,',
+		where: 'main-renderer.ts collectFirstScreenEvents',
 	},
 	{
 		bucket: 'renderer pre-passes',
@@ -164,13 +188,28 @@ export const BUCKETS = Object.freeze([
 
 /**
  * The window a probe is matched against, in characters from a frame's own
- * position. Calibrated rather than guessed: every probe above sits inside its
- * function's first 160 characters, and 160 is short enough that the closest
- * pair of neighbouring functions in the measured bundle — the applier's `visit`
- * and `mountProgram`, 258 characters apart — cannot reach each other. A wider
- * window credited every `visit` sample to `mountProgram`, which made the cell
- * carrying no compiled program at all report the run's largest program-mount
- * cost.
+ * position. Every probe above sits inside its own function's first 160
+ * characters, which is what the window has to be wide enough for.
+ *
+ * It is *not* wide enough to be safe on its own, and an earlier version of this
+ * comment claimed otherwise: it cited the applier's `visit` and `mountProgram`,
+ * 258 characters apart, as the closest neighbouring pair in the bundle, and
+ * concluded that 160 could not cross a function boundary. That was measured on
+ * two functions rather than on the bundle, and the bundle is far denser. The
+ * real spacing between sampled frames goes down to 39 characters — three
+ * `children.push` methods run into the key reader that follows them — with a
+ * 53-character pair between a template create and the recursive freeze nested
+ * inside it, and a 67-character pair between `assignIds` and `assignProgramIds`
+ * where the minifier inlines the second into the first's comma sequence.
+ *
+ * So no window can carry the guarantee. What carries it is each probe being
+ * text that appears in its own function and in no neighbour reachable from a
+ * sampled frame, and the record printing every site's frame count and the
+ * source at each frame, so a probe that does reach past its function shows up
+ * as a site holding more than one function rather than as a clean number.
+ * Widening the window is still the worse failure — at 420 characters every
+ * `visit` sample was credited to `mountProgram`, and the cell carrying no
+ * compiled program at all reported the run's largest program-mount cost.
  */
 export const PROBE_WINDOW = 160;
 
