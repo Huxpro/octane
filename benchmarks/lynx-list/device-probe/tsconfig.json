@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["esnext", "dom", "dom.iterable"],
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "skipLibCheck": false,
+    "jsx": "react-jsx",
+    "jsxImportSource": "@octanejs/lynx/intrinsics",
+    "paths": {
+      "@octanejs/lynx": ["../../../packages/lynx/src/index.ts"],
+      "@octanejs/lynx/intrinsics": ["../../../packages/lynx/src/intrinsics.ts"],
+      "@octanejs/lynx/intrinsics/jsx-runtime": ["../../../packages/lynx/src/intrinsics.ts"]
+    },
+    "types": ["node"],
+    "plugins": [{ "name": "@tsrx/typescript-plugin" }]
+  },
+  "include": ["src/**/*"]
+}

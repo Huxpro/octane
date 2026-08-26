@@ -1,0 +1,51 @@
+.probe-list {
+	width: 100%;
+	height: 100%;
+	background-color: #f4f5f7;
+}
+
+.probe-item {
+	height: 92px;
+}
+
+.probe-row {
+	height: 88px;
+	margin: 2px 8px;
+	padding: 12px;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	background-color: #ffffff;
+	border-radius: 8px;
+}
+
+.probe-index {
+	width: 64px;
+	font-size: 16px;
+	font-weight: 600;
+	color: #1f2329;
+}
+
+.probe-copy {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+}
+
+.probe-title {
+	font-size: 16px;
+	font-weight: 500;
+	color: #1f2329;
+}
+
+.probe-detail {
+	margin-top: 6px;
+	font-size: 13px;
+	color: #646a73;
+}
+
+.probe-chevron {
+	width: 24px;
+	font-size: 24px;
+	color: #8f959e;
+}

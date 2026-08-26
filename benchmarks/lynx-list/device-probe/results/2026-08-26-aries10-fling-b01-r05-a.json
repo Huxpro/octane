@@ -1,0 +1,227 @@
+{
+  "schema": "octane.lynx-list.issue195-window.v1",
+  "issue": "https://github.com/Huxpro/octane/issues/195",
+  "protocol": "https://github.com/Huxpro/octane/issues/194#protocol-all-four",
+  "probeBranch": "perf/lynx-list-boundary-probe-195",
+  "baselineCommit": "7cfe364ec0159ba099f99e17f799cdfe90b547b4",
+  "bundle": {
+    "file": "main.lynx.bundle",
+    "sha256": "e36b1c8eddde3dd200e8234ddb221f1bf84a56c21ebbd80ca2cde5b6a394185a",
+    "sizeBytes": 504772
+  },
+  "device": {
+    "manufacturer": "ByteDance",
+    "model": "aries_10",
+    "android": "10",
+    "pixelWidth": 1280,
+    "pixelHeight": 2856,
+    "pixelRatio": 3.09375
+  },
+  "host": {
+    "package": "com.lynx.explorer",
+    "version": "1.0"
+  },
+  "engine": {
+    "name": "LepusNG",
+    "runtimeType": "quickjs",
+    "engineVersion": "4.0",
+    "lynxSdkVersion": "4.0"
+  },
+  "fixture": {
+    "rows": 10000,
+    "rowHeightPx": 92,
+    "rowShape": "one keyed list-item; one root view; two nested views; four text elements",
+    "itemKey": "probe-row-${index}",
+    "reuseIdentifier": "octane-issue-195-row"
+  },
+  "measurementBoundary": {
+    "timer": "Date.now",
+    "timerResolutionMs": 1,
+    "frameworkMs": "callback wall minus timed non-flush and __FlushElementTree PAPI wall, clamped at zero",
+    "elementCrossingMs": "non-flush public Element PAPI wall; JS-to-native crossing and native element operation are not separately observable",
+    "flushTriggerMs": "__FlushElementTree public PAPI wall; this is the synchronous flush-trigger boundary, not all later native layout work"
+  },
+  "protocolChecks": {
+    "devToolDisabledBeforeMeasuredWindows": true,
+    "devToolVerification": "same-connection getGlobalSwitch(enable_devtool) returned false",
+    "warmPage": true,
+    "abBaSchedule": ["A", "B", "B", "A", "A", "B", "B", "A", "A", "B"],
+    "idleBoundaryMs": 350,
+    "callsBeforeResetAtEveryIdleBoundary": true,
+    "noTotalsCarriedAcrossWindows": true
+  },
+  "block": 1,
+  "mode": "fling",
+  "loadControl": {
+    "gesture": "A",
+    "fromY": 2300,
+    "toY": 400,
+    "x": 640,
+    "gestureDurationMs": 100,
+    "settleMs": 6000
+  },
+  "replication": 5,
+  "orderWithinPair": 0,
+  "direction": "A",
+  "thermalBefore": {
+    "batteryTemperatureC": 35,
+    "thermalStatus": 0
+  },
+  "reportableForFlingMedian": true,
+  "exclusionReason": null,
+  "derived": {
+    "materializedCells": 56,
+    "recycledCells": 56,
+    "durationMs": 1884,
+    "cellsPerSecond": 29.723991507431,
+    "materializeMsPerCell": 1.875,
+    "materializeFrameworkMsPerCell": 1.3928571428571428,
+    "enqueueMsPerRecycle": 0.5357142857142857,
+    "callbackMs": 135,
+    "frameworkMs": 108,
+    "elementCrossingMs": 4,
+    "flushTriggerMs": 23,
+    "frameworkShareOfCallback": 0.8,
+    "frameworkShareOfBurst": 0.05732484076433121,
+    "calls": {
+      "__GetElementUniqueID": 112,
+      "__SetAttribute": 224,
+      "__FlushElementTree": 56
+    },
+    "callsBeforeHash": "408a83266d7b1465124da850610e7aa12ef4c537f93556f4c45e5f78f61a63db"
+  },
+  "rawWindow": {
+    "ordinal": 14,
+    "startedAtMs": 1787744916796,
+    "endedAtMs": 1787744918680,
+    "callsBefore": {
+      "__CreatePage": {
+        "count": 0,
+        "ms": 0
+      },
+      "__GetElementUniqueID": {
+        "count": 0,
+        "ms": 0
+      },
+      "__CreateList": {
+        "count": 0,
+        "ms": 0
+      },
+      "__SetAttribute": {
+        "count": 0,
+        "ms": 0
+      },
+      "__SetClasses": {
+        "count": 0,
+        "ms": 0
+      },
+      "__AppendElement": {
+        "count": 0,
+        "ms": 0
+      },
+      "__CreateElement": {
+        "count": 0,
+        "ms": 0
+      },
+      "__InsertElementBefore": {
+        "count": 0,
+        "ms": 0
+      },
+      "__FlushElementTree": {
+        "count": 0,
+        "ms": 0
+      },
+      "__UpdateListCallbacks": {
+        "count": 0,
+        "ms": 0
+      },
+      "__GetParent": {
+        "count": 0,
+        "ms": 0
+      },
+      "__RemoveElement": {
+        "count": 0,
+        "ms": 0
+      }
+    },
+    "callsAfter": {
+      "__CreatePage": {
+        "count": 0,
+        "ms": 0
+      },
+      "__GetElementUniqueID": {
+        "count": 112,
+        "ms": 0
+      },
+      "__CreateList": {
+        "count": 0,
+        "ms": 0
+      },
+      "__SetAttribute": {
+        "count": 224,
+        "ms": 4
+      },
+      "__SetClasses": {
+        "count": 0,
+        "ms": 0
+      },
+      "__AppendElement": {
+        "count": 0,
+        "ms": 0
+      },
+      "__CreateElement": {
+        "count": 0,
+        "ms": 0
+      },
+      "__InsertElementBefore": {
+        "count": 0,
+        "ms": 0
+      },
+      "__FlushElementTree": {
+        "count": 56,
+        "ms": 23
+      },
+      "__UpdateListCallbacks": {
+        "count": 0,
+        "ms": 0
+      },
+      "__GetParent": {
+        "count": 0,
+        "ms": 0
+      },
+      "__RemoveElement": {
+        "count": 0,
+        "ms": 0
+      }
+    },
+    "callbacks": {
+      "componentAtIndex": {
+        "count": 56,
+        "ms": 105,
+        "papiCalls": 392,
+        "elementMs": 4,
+        "layoutMs": 23,
+        "frameworkMs": 78,
+        "items": 56
+      },
+      "componentAtIndexes": {
+        "count": 0,
+        "ms": 0,
+        "papiCalls": 0,
+        "elementMs": 0,
+        "layoutMs": 0,
+        "frameworkMs": 0,
+        "items": 0
+      },
+      "enqueueComponent": {
+        "count": 56,
+        "ms": 30,
+        "papiCalls": 0,
+        "elementMs": 0,
+        "layoutMs": 0,
+        "frameworkMs": 30,
+        "items": 56
+      }
+    }
+  }
+}

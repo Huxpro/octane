@@ -1,0 +1,132 @@
+{
+  "schema": "octane.lynx-list.issue195-window.v1",
+  "issue": "https://github.com/Huxpro/octane/issues/195",
+  "protocol": "https://github.com/Huxpro/octane/issues/194#protocol-all-four",
+  "probeBranch": "perf/lynx-list-boundary-probe-195",
+  "baselineCommit": "7cfe364ec0159ba099f99e17f799cdfe90b547b4",
+  "bundle": {
+    "file": "main.lynx.bundle",
+    "sha256": "e36b1c8eddde3dd200e8234ddb221f1bf84a56c21ebbd80ca2cde5b6a394185a",
+    "sizeBytes": 504772
+  },
+  "device": {
+    "manufacturer": "ByteDance",
+    "model": "aries_10",
+    "android": "10",
+    "pixelWidth": 1280,
+    "pixelHeight": 2856,
+    "pixelRatio": 3.09375
+  },
+  "host": {
+    "package": "com.lynx.explorer",
+    "version": "1.0"
+  },
+  "engine": {
+    "name": "LepusNG",
+    "runtimeType": "quickjs",
+    "engineVersion": "4.0",
+    "lynxSdkVersion": "4.0"
+  },
+  "fixture": {
+    "rows": 10000,
+    "rowHeightPx": 92,
+    "rowShape": "one keyed list-item; one root view; two nested views; four text elements",
+    "itemKey": "probe-row-${index}",
+    "reuseIdentifier": "octane-issue-195-row"
+  },
+  "measurementBoundary": {
+    "timer": "Date.now",
+    "timerResolutionMs": 1,
+    "frameworkMs": "callback wall minus timed non-flush and __FlushElementTree PAPI wall, clamped at zero",
+    "elementCrossingMs": "non-flush public Element PAPI wall; JS-to-native crossing and native element operation are not separately observable",
+    "flushTriggerMs": "__FlushElementTree public PAPI wall; this is the synchronous flush-trigger boundary, not all later native layout work"
+  },
+  "protocolChecks": {
+    "devToolDisabledBeforeMeasuredWindows": true,
+    "devToolVerification": "same-connection getGlobalSwitch(enable_devtool) returned false",
+    "warmPage": true,
+    "abBaSchedule": ["A", "B", "B", "A", "A", "B", "B", "A", "A", "B"],
+    "idleBoundaryMs": 350,
+    "callsBeforeResetAtEveryIdleBoundary": true,
+    "noTotalsCarriedAcrossWindows": true
+  },
+  "decisionClass": {
+    "description": "exactly 56 materializations + 56 recycles and the identical 112/224/56 public PAPI call multiset",
+    "n": 6,
+    "windowFiles": [
+      "2026-08-26-aries10-fling-b01-r03-a.json",
+      "2026-08-26-aries10-fling-b01-r04-a.json",
+      "2026-08-26-aries10-fling-b01-r05-a.json",
+      "2026-08-26-aries10-fling-b02-r03-a.json",
+      "2026-08-26-aries10-fling-b02-r04-b.json",
+      "2026-08-26-aries10-fling-b02-r05-a.json"
+    ],
+    "callsBeforeHashes": ["408a83266d7b1465124da850610e7aa12ef4c537f93556f4c45e5f78f61a63db"],
+    "metrics": {
+      "cellsPerSecond": {
+        "median": 29.09621697896516,
+        "fullSamples": [
+          27.972027972027973, 29.978586723768736, 29.723991507431, 29.48920484465508,
+          28.688524590163933, 28.703229113275242
+        ]
+      },
+      "materializeMsPerCell": {
+        "median": 1.8214285714285714,
+        "fullSamples": [
+          1.7678571428571428, 1.8214285714285714, 1.875, 1.7321428571428572, 1.8214285714285714,
+          1.9464285714285714
+        ]
+      },
+      "materializeFrameworkMsPerCell": {
+        "median": 1.1964285714285716,
+        "fullSamples": [
+          1.1607142857142858, 1.1428571428571428, 1.3928571428571428, 1.2321428571428572,
+          1.1071428571428572, 1.25
+        ]
+      },
+      "enqueueMsPerRecycle": {
+        "median": 0.5267857142857143,
+        "fullSamples": [
+          0.5892857142857143, 0.5535714285714286, 0.5357142857142857, 0.3392857142857143,
+          0.5178571428571429, 0.5178571428571429
+        ]
+      },
+      "callbackMs": {
+        "median": 132.5,
+        "fullSamples": [132, 133, 135, 116, 131, 138]
+      },
+      "frameworkMs": {
+        "median": 96.5,
+        "fullSamples": [98, 95, 108, 88, 91, 99]
+      },
+      "elementCrossingMs": {
+        "median": 8,
+        "fullSamples": [8, 13, 4, 4, 10, 8]
+      },
+      "flushTriggerMs": {
+        "median": 25.5,
+        "fullSamples": [26, 25, 23, 24, 30, 31]
+      },
+      "frameworkShareOfCallback": {
+        "median": 0.7299077733860342,
+        "fullSamples": [
+          0.7424242424242424, 0.7142857142857143, 0.8, 0.7586206896551724, 0.6946564885496184,
+          0.717391304347826
+        ]
+      },
+      "frameworkShareOfBurst": {
+        "median": 0.049847128781008845,
+        "fullSamples": [
+          0.04895104895104895, 0.05085653104925054, 0.05732484076433121, 0.04634017904160084,
+          0.0466188524590164, 0.05074320861096873
+        ]
+      }
+    }
+  },
+  "sensitivity": {
+    "blocks": 2,
+    "allFlingWindowsN": 20,
+    "excludedFlingWindowsN": 14,
+    "directionComparison": "not spendable: A/B ranges overlap and n<15"
+  }
+}
