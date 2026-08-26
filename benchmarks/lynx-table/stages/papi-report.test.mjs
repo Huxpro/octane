@@ -7,7 +7,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
 
-import { firstScreenControl, profileTransfer, renderBoundaryReport } from './papi-report.mjs';
+import {
+	firstScreenControl,
+	profiledCellIds,
+	profileTransfer,
+	renderBoundaryReport,
+} from './papi-report.mjs';
 
 // Only medians are read here; the analyzer's own suite covers how a stat is
 // folded out of its samples.
@@ -51,6 +56,8 @@ function scale({ profileControlMs = 1010, firstScreen = split(), profiled = true
 
 test('reports both builds’ first-screen walls beside the split they license', () => {
 	const transfer = profileTransfer(scale());
+	assert.equal(transfer.shippingId, 'octane');
+	assert.equal(transfer.profiledId, 'octane-profile');
 	assert.equal(transfer.shippingMs, 1000);
 	assert.equal(transfer.profiledMs, 1010);
 	assert.equal(transfer.deltaMs, 10);
@@ -92,6 +99,45 @@ test('profileTransfer declines evidence whose cells lack the shipping octane cel
 	assert.equal(profileTransfer({ rows: 10000, cells: { 'octane-profile': profiled } }), null);
 });
 
+// A profile cell is paired with its shipping counterpart by name rather than by
+// a table, which is what lets one run carry more than one profile build. The
+// pairing is load-bearing, not cosmetic: a split is only licensed by the wall
+// clock of the build it was measured beside, so reading a program cell's phases
+// against plain `octane`'s wall would publish a transfer nobody measured.
+test('pairs a profile cell with its own shipping build, not with octane', () => {
+	const cells = {
+		octane: { fcp: window({ controlMs: 1000, offBoundaryMs: 270 }) },
+		'octane-mts-program': { fcp: window({ controlMs: 800, offBoundaryMs: 190 }) },
+		'octane-mts-program-profile': {
+			fcp: window({ controlMs: 820, offBoundaryMs: 195, firstScreen: split() }),
+		},
+	};
+	const transfer = profileTransfer({ rows: 10000, cells }, 'octane-mts-program-profile');
+	assert.equal(transfer.shippingId, 'octane-mts-program');
+	assert.equal(transfer.profiledId, 'octane-mts-program-profile');
+	assert.equal(transfer.shippingMs, 800);
+	assert.equal(transfer.profiledMs, 820);
+	assert.equal(transfer.shippingOffBoundaryMs, 190);
+	// A shipping id names no profile build, so asking it for a split is declined
+	// rather than answered against a truncated neighbour.
+	assert.equal(profileTransfer({ rows: 10000, cells }, 'octane-mts-program'), null);
+});
+
+test('names every profile build in a run, in the order the run declared them', () => {
+	assert.deepEqual(
+		profiledCellIds({
+			cells: [
+				'octane',
+				'octane-profile',
+				'octane-mts-program',
+				'octane-mts-program-profile',
+				'octane-direct',
+			],
+		}),
+		['octane-profile', 'octane-mts-program-profile'],
+	);
+});
+
 // Rendered over the checked-in evidence rather than a fixture: the renderer
 // needs a whole scale report, and the two files below are exactly the two cases
 // — a cross-framework run with no profile cell, and the first-screen run with
@@ -106,11 +152,21 @@ test('describes the split only in a report that carries one', () => {
 
 	const withSplit = renderBoundaryReport([frozen('papi-firstscreen', 10000)]);
 	assert.ok(withSplit.includes(marker));
-	assert.ok(withSplit.includes('### Octane first-screen phase split @10000'));
+	assert.ok(withSplit.includes('### `octane` first-screen phase split @10000'));
 
 	// The cross-framework run has no profile cell, so a contract paragraph
 	// explaining how to read a split would describe a section that is not there.
 	const withoutSplit = renderBoundaryReport([frozen('papi', 10000)]);
 	assert.ok(!withoutSplit.includes(marker));
 	assert.ok(!withoutSplit.includes('first-screen phase split'));
+});
+
+// The phase-split run carries two shipping/profile pairs, so it is the case that
+// would previously have published one split and dropped the other in silence —
+// a report that looks complete while missing the cell it was run for.
+test('renders one split per profile build, each named for its own shipping cell', () => {
+	const report = renderBoundaryReport([frozen('c163-phase', 10000)]);
+	assert.ok(report.includes('### `octane` first-screen phase split @10000'));
+	assert.ok(report.includes('### `octane-mts-program` first-screen phase split @10000'));
+	assert.ok(report.includes('the profile build of `octane-mts-program`'));
 });

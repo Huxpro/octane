@@ -127,6 +127,22 @@ const CELLS = {
 		bundle: () => path.join(root, 'app/dist-mtsprogram/main.web.bundle'),
 		fcpBundle: (rows) => path.join(root, `app/dist-mtsprogram-rows${rows}/main.web.bundle`),
 	},
+	// The program cell's profile build. Its whole reason for existing is that
+	// #183 attributed 73% of the compiled first screen's residue over the
+	// prototype to `off_boundary`, which is a remainder rather than an
+	// observation, and the phase marker is the only thing that splits it. The
+	// marker wraps the entire sequence in `main-thread.ts`, and the compiled
+	// program mounts inside `publish` through `applyLynxFirstScreenDirect`, so
+	// the four phases cover the program path as they cover the interpreted one.
+	//
+	// Same rule as `octane-profile`: a different build configuration, so it is
+	// excluded from every cross-cell delta and its wall clock is only comparable
+	// to itself.
+	'octane-mts-program-profile': {
+		bundle: () => path.join(root, 'app/dist-mtsprogram-profile/main.web.bundle'),
+		fcpBundle: (rows) => path.join(root, `app/dist-mtsprogram-rows${rows}-profile/main.web.bundle`),
+		profile: true,
+	},
 	// The L0 direct-emission prototype (issue #58): this one page emitted by
 	// code written for this one page, with no framework between the entry point
 	// and the PAPI. It is a floor to measure against, not a cell Octane ships,
@@ -455,6 +471,9 @@ if (!args['skip-build']) {
 	buildOctaneVariants();
 	if (cellIds.includes('octane-profile')) buildOctaneVariants({ profile: true });
 	if (cellIds.includes('octane-mts-program')) buildOctaneVariants({ mtsProgram: true });
+	if (cellIds.includes('octane-mts-program-profile')) {
+		buildOctaneVariants({ profile: true, mtsProgram: true });
+	}
 	if (cellIds.includes('octane-direct')) buildDirectPrototype();
 }
 for (const [name, file] of bundlePaths) {
