@@ -575,6 +575,17 @@ const EMPTY_HOST_EVENTS = new Map<string, UniversalEventListenerDescriptor>();
  */
 const EMPTY_FIRST_TREE_CHILDREN: readonly number[] = Object.freeze([]);
 const EMPTY_FIRST_TREE_EVENTS: readonly LynxFirstTreeEventSnapshot[] = Object.freeze([]);
+
+/**
+ * What a first-screen node carries when its program declares no keyed range at
+ * all, so that the common case states nothing rather than restating empty.
+ *
+ * A program that does declare ranges carries a full entry for every one of
+ * them, exactly as it already must for `spans` — these stand in for a missing
+ * table, not for missing entries.
+ */
+const EMPTY_PROGRAM_RANGE_TEXTS: readonly (string | undefined)[] = Object.freeze([]);
+const EMPTY_PROGRAM_RANGE_IDS: readonly (number | undefined)[] = Object.freeze([]);
 // Raw text is initialized by __CreateRawText itself. Its synthetic `value`
 // attribute is never forwarded, so an unscoped creation needs no prop diff.
 const EMPTY_RAW_TEXT_CREATE_PATCH: LynxHostPropPatch = Object.freeze({
@@ -3345,6 +3356,25 @@ export interface LynxFirstScreenDirectNode {
 	 * list and this says where each range's share of it begins and ends.
 	 */
 	readonly spans?: readonly number[];
+	/**
+	 * The string handed to each declared range for the program to paint, or
+	 * `undefined` for a hole this renderer filled itself — one per range, in
+	 * `plan.ranges` order.
+	 *
+	 * The applier passes these straight through as the create function's range
+	 * arguments and compares what comes back against them, which is what keeps
+	 * the two answers about one hole from drifting apart.
+	 */
+	readonly texts?: readonly (string | undefined)[];
+	/**
+	 * The ID each range the program paints took, and nothing at a hole this
+	 * renderer filled — one per range, in `plan.ranges` order.
+	 *
+	 * A painted hole has no node on this side to carry its ID, and the ID is
+	 * still minted where the interpreted arm puts that node, so it travels
+	 * beside the hole instead.
+	 */
+	readonly rangeIds?: readonly (number | undefined)[];
 }
 
 /** One background listener the first-screen renderer assigned, by host id. */
@@ -3801,6 +3831,17 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 				`first-screen program declares ${plan.ranges.length} keyed ranges but carries ${spans?.length ?? 0} member spans.`,
 			);
 		}
+		// One entry per range on both, for the reason `spans` has one: a hole is
+		// addressed by its position in `plan.ranges` and by nothing else, so a
+		// short table would silently re-address every hole after the gap rather
+		// than fail at the one it is missing.
+		const texts = node.texts ?? EMPTY_PROGRAM_RANGE_TEXTS;
+		const rangeIds = node.rangeIds ?? EMPTY_PROGRAM_RANGE_IDS;
+		if (texts.length !== plan.ranges.length || rangeIds.length !== plan.ranges.length) {
+			throw hostError(
+				`first-screen program declares ${plan.ranges.length} keyed ranges but carries ${texts.length} range texts and ${rangeIds.length} range ids.`,
+			);
+		}
 		const args: unknown[] = [container.pageComponentUniqueId];
 		for (const slot of plan.values) args.push(values[slot]);
 		// Tokens first, before anything exists: one per event site the renderer
@@ -3831,6 +3872,11 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			tokens.push(token);
 			args.push(token);
 		}
+		// Last, after the listeners, exactly as the emission orders its
+		// parameters. A hole this renderer filled itself sends `undefined`, which
+		// is the value the compiled test declines — so a program is handed the
+		// same decision the renderer made rather than re-deciding it.
+		for (const text of texts) args.push(text);
 		let bound = boundPrograms.get(plan);
 		if (bound === undefined) {
 			bound = plan.bind(papi);
@@ -3851,12 +3897,12 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		// left this container holding physical nodes it cannot name. Checked
 		// before any of them is journalled, while the fault is still the
 		// program's rather than the ownership journal's.
-		if (created.length !== plan.nodes) {
+		if (created.length !== plan.nodes + plan.ranges.length) {
 			throw hostError(
-				`a compiled main-thread program declaring ${plan.nodes} nodes returned ${created.length}.`,
+				`a compiled main-thread program declaring ${plan.nodes} nodes and ${plan.ranges.length} keyed ranges returned ${created.length} entries.`,
 			);
 		}
-		for (let index = 0; index < created.length; index++) {
+		for (let index = 0; index < plan.nodes; index++) {
 			const element = created[index] as Node;
 			state.ownedNodes.add(element);
 			// The ID this node took, kept because nothing else will remember it.
@@ -3864,6 +3910,42 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			// instead of against a record, which is the whole of what main
 			// contributes to a program's handoff (issue #163).
 			state.programNodes.set(ids[index]!, element);
+		}
+		// The trailing half: what the create function painted for each hole. Two
+		// processes decided this — the renderer, choosing which holes to hand a
+		// string, and the build, choosing which holes compile a test at all — so
+		// the answers are compared rather than assumed to match. Disagreeing
+		// either way is silent otherwise: a hole this renderer skipped and the
+		// program left open is a text that is simply missing, and one they both
+		// filled is a node in the page that no journal owns.
+		for (let index = 0; index < plan.ranges.length; index++) {
+			const painted = created[plan.nodes + index];
+			const text = texts[index];
+			if (text === undefined) {
+				if (painted !== undefined) {
+					throw hostError(
+						`a compiled main-thread program painted keyed range ${index}, which this first screen filled itself.`,
+					);
+				}
+				continue;
+			}
+			if (painted === undefined) {
+				throw hostError(
+					`a compiled main-thread program left keyed range ${index} open, which this first screen handed it to paint.`,
+				);
+			}
+			const id = rangeIds[index];
+			if (id === undefined) {
+				throw hostError(
+					`a compiled main-thread program painted keyed range ${index}, which this first screen did not number.`,
+				);
+			}
+			// Journalled exactly like a node the program made, because that is what
+			// it is: the ownership equality this container checks counts every
+			// program node once, and a painted text left out of the map would read
+			// as an untracked node rather than as one this mount forgot.
+			state.ownedNodes.add(painted as Node);
+			state.programNodes.set(id, painted as Node);
 		}
 		for (let index = 0; index < plan.events.length; index++) {
 			const token = tokens[index];

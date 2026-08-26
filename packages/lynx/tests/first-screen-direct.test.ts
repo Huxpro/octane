@@ -806,7 +806,9 @@ describe('direct first-screen applier, compiled main-thread programs', () => {
 				return (...args: unknown[]) => [papi.createElement('view', args[0] as number, '')];
 			},
 		} as UniversalProgramPlan;
-		expect(applyProgram(programNode({ plan: short }))).toThrow(/declaring 2 nodes returned 1/);
+		expect(applyProgram(programNode({ plan: short }))).toThrow(
+			/declaring 2 nodes and 0 keyed ranges returned 1 entries/,
+		);
 	});
 
 	it('refuses a program whose member spans do not match its declared ranges', () => {
@@ -952,5 +954,167 @@ describe('direct first-screen applier, compiled main-thread programs', () => {
 		// late claim as above, counted where this page can show it: nothing the
 		// host was asked to make.
 		expect(created).toEqual([]);
+	});
+});
+
+/**
+ * A one-node `text` program with one declared range it paints when handed a
+ * string, built to the emission's contract rather than approximating it: the
+ * range values come last, and the answer is the program's nodes followed by one
+ * entry per site — the painted node, or `undefined` for a site left open.
+ */
+function paintingProgram(answer: 'paint' | 'decline' | 'always' = 'paint'): UniversalProgramPlan {
+	return fakeProgram({
+		nodes: 1,
+		ranges: [{ slot: 0, node: 0, id: 1, paintsText: true }],
+		bind: (host: unknown) => {
+			const papi = host as {
+				createElement(type: string, pageId: number, text: string): FakeNode;
+				insertBefore(parent: FakeNode, child: FakeNode, before: FakeNode | null): void;
+			};
+			return (...args: unknown[]) => {
+				const root = papi.createElement('text', args[0] as number, '');
+				const value = args[1];
+				const paints = answer === 'always' || (answer === 'paint' && typeof value === 'string');
+				if (!paints) return [root, undefined];
+				const text = papi.createElement('#text', 0, typeof value === 'string' ? value : '');
+				papi.insertBefore(root, text, null);
+				return [root, text];
+			};
+		},
+	});
+}
+
+describe('direct first-screen applier, a range site the program paints', () => {
+	it('owns and numbers the text the program painted for a hole', () => {
+		// The mount's half of a painted hole: the text is under the host the plan
+		// named, and the page comes down cleanly afterwards.
+		//
+		// What this cannot see is the ID map. A painted text is a child of a node
+		// the program made, so disposal takes it away with its parent whether or
+		// not the mount ever journalled it — the claim that it is journalled
+		// *under its own ID* is only observable once a background describes the
+		// same tree, and it is asserted there, on a real component, by
+		// `adopts the program's own nodes rather than repainting them` in
+		// `packages/octane/tests/lynx-main-thread-program-first-screen.test.ts`.
+		// Saying so here rather than letting the teardown below read as proof of
+		// it.
+		const papi = intrinsicHost();
+		const container = createLynxHostContainer(papi, { root: 1 });
+		expect(
+			applyLynxFirstScreenDirect(
+				container,
+				[
+					programNode({
+						plan: paintingProgram(),
+						ids: [1],
+						spans: [0],
+						texts: ['Label'],
+						rangeIds: [2],
+					}),
+				],
+				PROGRAM_ENVELOPE,
+			),
+		).toBe(true);
+		const root = papi.pages[0]!.children[0] as FakeNode;
+		expect(root.children).toHaveLength(1);
+		expect((root.children[0] as FakeNode).text).toBe('Label');
+		expect(disposeLynxHostContainer(container).complete).toBe(true);
+		expect(papi.pages[0]!.children).toHaveLength(0);
+	});
+
+	it('leaves a hole it handed no string for the ordinary path to fill', () => {
+		// The other arm of the same decision, and why the trailing entry is
+		// `undefined` rather than absent: nothing about the mount changes except
+		// that this hole's member is an ordinary described host again.
+		const papi = intrinsicHost();
+		const container = createLynxHostContainer(papi, { root: 1 });
+		expect(
+			applyLynxFirstScreenDirect(
+				container,
+				[
+					programNode({
+						plan: paintingProgram(),
+						ids: [1],
+						spans: [1],
+						texts: [undefined],
+						rangeIds: [undefined],
+						children: [
+							{ kind: 'host', id: 2, type: '#text', props: { value: 'Row' }, children: [] },
+						],
+					}),
+				],
+				PROGRAM_ENVELOPE,
+			),
+		).toBe(true);
+		const root = papi.pages[0]!.children[0] as FakeNode;
+		expect(root.children).toHaveLength(1);
+		expect((root.children[0] as FakeNode).text).toBe('Row');
+		expect(disposeLynxHostContainer(container).complete).toBe(true);
+	});
+
+	it('faults when the create declined a hole this first screen handed a string', () => {
+		// Two processes decided this — the renderer, choosing which holes to hand
+		// a string, and the build, choosing which holes carry the test that uses
+		// one — so neither answer can stand as evidence for the other. Without the
+		// comparison this is silent: the text is simply missing from the page.
+		expect(
+			applyProgram(
+				programNode({
+					plan: paintingProgram('decline'),
+					ids: [1],
+					spans: [0],
+					texts: ['Label'],
+					rangeIds: [2],
+				}),
+			),
+		).toThrow(/left keyed range 0 open, which this first screen handed it to paint/);
+	});
+
+	it('faults when the create painted a hole this first screen filled itself', () => {
+		// The other direction, and the worse one: the renderer materialized the
+		// member and the program made one too, so the page holds a node no
+		// ownership journal knows about and disposal leaves behind.
+		expect(
+			applyProgram(
+				programNode({
+					plan: paintingProgram('always'),
+					ids: [1],
+					spans: [1],
+					texts: [undefined],
+					rangeIds: [undefined],
+					children: [{ kind: 'host', id: 2, type: '#text', props: { value: 'Row' }, children: [] }],
+				}),
+			),
+		).toThrow(/painted keyed range 0, which this first screen filled itself/);
+	});
+
+	it('faults when a painted hole was never numbered', () => {
+		// The ID is what adoption resolves the background's description against.
+		// Journalling the node under nothing would leave it owned and unnameable,
+		// which surfaces later as a background describing a host main never
+		// painted rather than as the mount that skipped a number.
+		expect(
+			applyProgram(
+				programNode({
+					plan: paintingProgram(),
+					ids: [1],
+					spans: [0],
+					texts: ['Label'],
+					rangeIds: [undefined],
+				}),
+			),
+		).toThrow(/painted keyed range 0, which this first screen did not number/);
+	});
+
+	it('refuses a range table shorter than the ranges the program declares', () => {
+		// A hole is addressed by its position in `plan.ranges` and by nothing
+		// else, so a short table silently re-addresses every hole after the gap
+		// rather than failing at the one it is missing.
+		expect(
+			applyProgram(
+				programNode({ plan: paintingProgram(), ids: [1], spans: [0], texts: [], rangeIds: [2] }),
+			),
+		).toThrow(/carries 0 range texts and 1 range ids/);
 	});
 });

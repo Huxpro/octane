@@ -548,6 +548,89 @@ describe('Lynx main-thread program emission', () => {
 		).toMatchObject({ valueCount: 1, eventCount: 2, rangeCount: 3 });
 	});
 
+	it('reports which of those sites it paints a string for', () => {
+		// The one thing only this function knows, because it is the one making the
+		// decision. A consumer chooses which holes to hand a string; this chooses
+		// which holes carry the test that uses it; and the two run in different
+		// processes at different times. Re-deriving the second from the host types
+		// on the consumer's side would be the same judgement made twice from two
+		// sources, so it is reported instead — and reported per site rather than
+		// as a count, because the sites are not interchangeable.
+		expect(emitLynxMainThreadProgram(ROW, { name: 'createRow' }).paintsText).toEqual([]);
+		expect(
+			emitLynxMainThreadProgram(RANGED_ROW, {
+				name: 'createRangedRow',
+				ranges: RANGED_ROW_SITES,
+			}).paintsText,
+		).toEqual([true, true]);
+		// `RANGED_ROW`'s node 0 is the row `view`. A hole there is the ordinary
+		// keyed list at every value, so it takes its parameter and paints nothing.
+		expect(
+			emitLynxMainThreadProgram(RANGED_ROW, {
+				name: 'createRangedRow',
+				ranges: [{ node: 0 }, ...RANGED_ROW_SITES],
+			}).paintsText,
+		).toEqual([false, true, true]);
+	});
+
+	it('returns one entry per range site after its nodes, saying what it painted', () => {
+		// The trailing half of the create function's answer, and the reason it
+		// exists: the caller decided which holes to send a string for, this
+		// decided which ones it paints, and a disagreement either way is silent
+		// without something to compare. A hole neither filled is a text simply
+		// missing from the page; one they both filled is a node in the page that
+		// no ownership journal knows about.
+		const papi = createHost();
+		const page = papi.createPage('0', 0);
+		const pageId = papi.getUniqueId(page);
+		const create = instantiate(RANGED_ROW, 'createRangedRow', RANGED_ROW_SITES)(papi);
+
+		const painted = create(...([pageId, 'row', 1, 2, '7', 'Label'] as never[]));
+		// Four nodes, then one entry per site — so a site's answer is at a fixed
+		// position rather than at one that depends on what the answer is.
+		expect(painted).toHaveLength(RANGED_ROW.nodes.length + RANGED_ROW_SITES.length);
+		// Five nodes, so the two sites are at 5 and 6. `RANGED_ROW` carries a
+		// literal `#text` of its own at index 4, which is exactly the node an
+		// off-by-one here would read instead — and it is defined at every value,
+		// so the mistake would look like a pass.
+		expect(painted[5]).toBeDefined();
+		expect(painted[6]).toBeDefined();
+		// The nodes it says it painted are the ones actually under those hosts,
+		// not merely two nodes it made: an emission that returned the wrong two
+		// would hand the caller ownership of the wrong physical nodes.
+		expect(shape(painted[1] as never)).toEqual(
+			expect.objectContaining({ children: [expect.objectContaining({ text: '7' })] }),
+		);
+		expect(shape(painted[2] as never)).toEqual(
+			expect.objectContaining({ children: [expect.objectContaining({ text: 'Label' })] }),
+		);
+
+		// A site handed something that is not a string is left open, and says so
+		// in its own slot rather than by being absent from the array.
+		//
+		// `undefined` here also means "no other local's value". The emitted body
+		// is one `var` scope, so a site whose local shared a prefix with another
+		// per-index scratch — `RANGED_ROW`'s class binding folds node 0's into
+		// one — would return that scratch's value instead of nothing, and the
+		// caller would journal a string as a node it owns.
+		const open = create(...([pageId, 'row', 3, 4, undefined, 7] as never[]));
+		expect(open).toHaveLength(RANGED_ROW.nodes.length + RANGED_ROW_SITES.length);
+		expect(open[5]).toBeUndefined();
+		expect(open[6]).toBeUndefined();
+
+		// And a site this emission compiles nothing for is `undefined` at every
+		// value, including a string — the position is the caller's, the answer is
+		// this function's.
+		const withView = instantiate(RANGED_ROW, 'createRangedRow', [{ node: 0 }, ...RANGED_ROW_SITES])(
+			papi,
+		);
+		const mixed = withView(...([pageId, 'row', 5, 6, 'ignored', '7', 'Label'] as never[]));
+		expect(mixed).toHaveLength(RANGED_ROW.nodes.length + 3);
+		expect(mixed[5]).toBeUndefined();
+		expect(mixed[6]).toBeDefined();
+		expect(mixed[7]).toBeDefined();
+	});
+
 	describe('compiles a range site whose value arrives as a string', () => {
 		it('paints the text the applier paints for the same hole', () => {
 			// The load-bearing one. `RANGED_ROW` is what a build derives, because a
@@ -890,7 +973,19 @@ describe('Lynx main-thread program emission', () => {
 		// time failures in generated code on the least debuggable thread, so both
 		// are the caller's mistake reported to the caller. A reserved word is the
 		// same mistake spelled as a syntax error the bundler finds later.
-		for (const name of ['append', 'papi', 'view', 'rawText', 'parent', 'n0', 'v2', 'e0']) {
+		for (const name of [
+			'append',
+			'papi',
+			'view',
+			'rawText',
+			'parent',
+			'n0',
+			'v2',
+			'e0',
+			'r1',
+			'c0',
+			't0',
+		]) {
 			expect(() => emitLynxMainThreadProgram(ROW, { name })).toThrow(/binds itself/);
 		}
 		for (const name of ['function', 'class', 'return', 'this']) {

@@ -199,7 +199,7 @@ export interface UniversalTemplatePlan {
 	readonly create: <Node>(env: UniversalTemplateEnv<Node>, values: readonly unknown[]) => Node;
 }
 
-/** One keyed range a program leaves open rather than painting (issue #163). */
+/** One hole a program declares rather than compiling its members (issue #163). */
 export interface UniversalProgramRange {
 	/** Plan slot the range occupies. */
 	readonly slot: number;
@@ -217,6 +217,26 @@ export interface UniversalProgramRange {
 	 * every mount.
 	 */
 	readonly id: number;
+	/**
+	 * Whether this program's own create function paints this hole when the
+	 * value arrives as a string (issue #163 C5).
+	 *
+	 * A build cannot tell a text hole from a keyed list — a `@for`, a component
+	 * and a `{row.label as string}` all lower to the same slot node — so every
+	 * renderable hole is declared a range and the answer only exists at run
+	 * time, holding the value. The create function therefore tests the value
+	 * itself, and this says whether it does: the emitter compiles the test only
+	 * where the host can hold raw text, because a hole under a `view` is the
+	 * ordinary keyed list at every value.
+	 *
+	 * It is the emission's report about itself rather than a fact about the
+	 * shape, which is why it is optional: absent means an emission that compiles
+	 * nothing here, and a consumer must then fill the hole exactly as it does
+	 * today. A consumer that reads it wrong does not paint the text twice or
+	 * lose it silently — the create function returns what it painted, and the
+	 * mount compares the two answers.
+	 */
+	readonly paintsText?: boolean;
 }
 
 /** One event site a program binds, and what the background needs to route it. */
@@ -260,15 +280,21 @@ export interface UniversalProgramPlan {
 	readonly values: readonly number[];
 	/** Listener parameters in parameter order, one entry per event site. */
 	readonly events: readonly UniversalProgramEvent[];
-	/** Keyed ranges the program declares rather than paints. */
+	/** The holes the program declares rather than compiling their members. */
 	readonly ranges: readonly UniversalProgramRange[];
 	/**
 	 * Take the host once; return the per-instance create.
 	 *
-	 * The create takes the page, the parent to append into, then one argument
-	 * per `values` entry followed by one per `events` entry, and returns the
-	 * run's nodes in program order — the only map a caller gets back, since the
-	 * subtree has no description anywhere to walk.
+	 * The create takes the page, then one argument per `values` entry, one per
+	 * `events` entry, and one per `ranges` entry — that last one being the
+	 * hole's value when the caller has it as a string and `undefined` otherwise.
+	 *
+	 * It returns the run's nodes in program order followed by one entry per
+	 * range: the node it painted for that hole, or `undefined` for a hole it
+	 * left open. That trailing half is the only map a caller gets back for a
+	 * subtree with no description anywhere to walk, and comparing it against
+	 * what the caller decided to send is what keeps the two answers from
+	 * drifting into a text painted twice or lost.
 	 */
 	readonly bind: (host: unknown) => (...args: unknown[]) => readonly unknown[];
 }

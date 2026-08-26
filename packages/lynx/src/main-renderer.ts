@@ -147,6 +147,29 @@ interface FirstScreenProgram {
 	readonly children: FirstScreenNode[];
 	/** How many of `children` belong to each declared range, in order. */
 	readonly spans: number[];
+	/**
+	 * The string this render is handing each declared range to paint, or
+	 * `undefined` for a hole it is filling normally — one entry per range, in
+	 * `plan.ranges` order.
+	 *
+	 * A hole holding a string is a `#text` either way; the only question is
+	 * which arm makes it. Answering it here rather than in the walk is what lets
+	 * the walk skip the node entirely: an entry that is a string has no members
+	 * in `children` and a `spans` of zero, and the create function is handed the
+	 * string instead. An empty `@for` also has a `spans` of zero, which is why
+	 * this array rather than that count is what says who paints.
+	 */
+	readonly texts: readonly (string | undefined)[];
+	/**
+	 * The ID each range the program paints took, in `plan.ranges` order, and
+	 * nothing at a hole this render fills itself. Filled by `assignIds`.
+	 *
+	 * A painted hole has no member to carry its ID, and the ID still has to be
+	 * minted: the interpreted arm numbers that node where the hole sits, so
+	 * skipping it would shift every ID after it and make the two arms disagree
+	 * about a subtree neither can describe.
+	 */
+	rangeIds: (number | undefined)[];
 }
 
 type FirstScreenNode = FirstScreenHost | FirstScreenRange | FirstScreenProgram;
@@ -757,11 +780,14 @@ function eventPriority(name: string): UniversalEventPriority | null {
 const NO_FIRST_SCREEN_EVENTS: ReadonlyMap<string, UniversalEventPriority> = new Map();
 
 /**
- * The placeholder a program's ID table holds until `assignIds` fills it in.
+ * The placeholder a program's two ID tables hold until `assignIds` fills them
+ * in — the one for its own nodes and the one for the ranges it paints.
  *
  * Shared and empty rather than a fresh `new Array(plan.nodes)`: rendering and
  * numbering are two passes, and allocating the real table in the first one would
- * hand the second an array it has to overwrite anyway.
+ * hand the second an array it has to overwrite anyway. A program that somehow
+ * reached a mount unnumbered is refused there for carrying the wrong number of
+ * IDs, which is a better failure than a table of zeros.
  */
 const EMPTY_PROGRAM_IDS: number[] = [];
 
@@ -971,8 +997,25 @@ function renderPlanNode(node: UniversalPlanNode, values: readonly unknown[]): Fi
 		attempt.programs++;
 		const children: FirstScreenNode[] = [];
 		const spans: number[] = [];
+		const texts: (string | undefined)[] = [];
 		for (const declared of node.ranges) {
-			const members = materialize(values[declared.slot], null);
+			const value = values[declared.slot];
+			// The same test the create function makes, on the same value, spelled
+			// the same way — it is the applier's own entry condition for a `#text`,
+			// which throws rather than coerces on anything else, so the two arms
+			// cannot disagree about a hole holding a string. `paintsText` is the
+			// build's half of the answer: it says this program's create function
+			// contains that test at all, which it does only where the host can hold
+			// raw text. Everything else materializes exactly as it does today,
+			// including a number or a bigint, which `materialize` renders as text
+			// and no emission compiles.
+			if (declared.paintsText === true && typeof value === 'string') {
+				texts.push(value);
+				spans.push(0);
+				continue;
+			}
+			texts.push(undefined);
+			const members = materialize(value, null);
 			spans.push(members.length);
 			for (const member of members) children.push(member);
 		}
@@ -987,6 +1030,8 @@ function renderPlanNode(node: UniversalPlanNode, values: readonly unknown[]): Fi
 				visibility: currentOwner().visibility,
 				children,
 				spans,
+				texts,
+				rangeIds: EMPTY_PROGRAM_IDS,
 			},
 		];
 	}
@@ -1193,12 +1238,23 @@ function materialize(value: unknown, key: UniversalKey | null): FirstScreenNode[
 function assignProgramIds(node: FirstScreenProgram, attempt: FirstScreenAttempt): void {
 	const ranges = node.plan.ranges;
 	const ids: number[] = new Array(node.plan.nodes);
+	const rangeIds: (number | undefined)[] = new Array(ranges.length);
 	let host = 0;
 	let hole = 0;
 	let member = 0;
 	const total = node.plan.nodes + ranges.length;
 	for (let position = 0; position < total; position++) {
 		if (hole < ranges.length && ranges[hole]!.id === position) {
+			// A hole the program paints is one `#text` with no children, and it is
+			// numbered here for exactly the reason a hole's members are: this is
+			// where the interpreted arm puts it. Nothing carries the ID — there is
+			// no node on this side to hang it on — so it is kept beside the hole,
+			// and the mount reads it back to journal what the program returns.
+			if (node.texts[hole] !== undefined) {
+				rangeIds[hole] = attempt.nextId++;
+				hole++;
+				continue;
+			}
 			// The members are numbered where the hole was, not after the program:
 			// that is what the interpreted arm does when it splices them into their
 			// parent, and it is the whole reason the two arms agree about the IDs of
@@ -1225,6 +1281,7 @@ function assignProgramIds(node: FirstScreenProgram, attempt: FirstScreenAttempt)
 		);
 	}
 	node.ids = ids;
+	node.rangeIds = rangeIds;
 }
 
 function assignIds(nodes: readonly FirstScreenNode[], attempt: FirstScreenAttempt): void {
@@ -1286,6 +1343,12 @@ function collectFirstScreenEvents(
 			// through undefined announces nothing for it. Reading the slot is what
 			// keeps the two arms announcing the same bindings for the same values.
 			hosts += node.plan.nodes;
+			// And one more for each hole the create function paints. That node is
+			// a host on the page like any other — the same `#text` this walk would
+			// have built for the same value — so leaving it out would make this
+			// count disagree with the ID space `assignIds` just laid out, which is
+			// the one thing the count exists to match.
+			for (const text of node.texts) if (text !== undefined) hosts++;
 			const visible = parentVisible && node.visibility !== 'hidden';
 			if (visible) {
 				for (const site of node.plan.events) {
@@ -1419,6 +1482,25 @@ export interface LynxFirstScreenResultNode {
 	readonly values?: readonly unknown[];
 	readonly ids?: readonly number[];
 	readonly spans?: readonly number[];
+	/**
+	 * The string handed to each declared range for the program to paint, or
+	 * `undefined` for a hole this renderer filled itself — one per range, in
+	 * `plan.ranges` order.
+	 *
+	 * The applier passes these straight through as the create function's range
+	 * arguments and compares what comes back against them, which is what keeps
+	 * the two answers about one hole from drifting apart.
+	 */
+	readonly texts?: readonly (string | undefined)[];
+	/**
+	 * The ID each range the program paints took, and nothing at a hole this
+	 * renderer filled — one per range, in `plan.ranges` order.
+	 *
+	 * A painted hole has no node on this side to carry its ID, and the ID is
+	 * still minted where the interpreted arm puts that node, so it travels
+	 * beside the hole instead.
+	 */
+	readonly rangeIds?: readonly (number | undefined)[];
 }
 
 /** One background listener this pass assigned, addressed to a rendered host. */

@@ -4218,20 +4218,32 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 	// Not `plan.name`: the module already binds that, and the emission's name
 	// becomes a named function expression whose binding would shadow it.
 	const name = allocName(state, `${plan.name}Create`);
-	const emission = backend.emitLynxMainThreadProgram(derived.wire, { name });
-	// The create function takes its values and listeners positionally, so the
-	// maps below are the only thing that says which plan slot each position
-	// reads. A count that disagrees with them is a miscompile that would surface
-	// as a first screen painted from shifted arguments, so it fails the build
-	// here instead.
+	// The derivation's own range sites, handed straight back: a hole holding a
+	// string is a `#text` either way, and the create function is where the value
+	// is known, so the emission compiles the test rather than sending the node
+	// over the command path (issue #163 C5). It reports which sites it took,
+	// because only it knows — a hole under a `view` is the ordinary keyed list at
+	// every value and keeps its parameter without compiling anything.
+	const emission = backend.emitLynxMainThreadProgram(derived.wire, {
+		name,
+		ranges: derived.ranges,
+	});
+	// The create function takes its values, listeners and range sites
+	// positionally, so the maps below are the only thing that says which plan
+	// slot each position reads. A count that disagrees with them is a miscompile
+	// that would surface as a first screen painted from shifted arguments, so it
+	// fails the build here instead.
 	if (
 		emission.valueCount !== derived.values.length ||
-		emission.eventCount !== derived.events.length
+		emission.eventCount !== derived.events.length ||
+		emission.rangeCount !== derived.ranges.length ||
+		emission.paintsText.length !== derived.ranges.length
 	) {
 		throw new Error(
-			`Octane main-thread program ${name} takes ${emission.valueCount} value and ` +
-				`${emission.eventCount} listener parameters, but its derivation declares ` +
-				`${derived.values.length} values and ${derived.events.length} events.`,
+			`Octane main-thread program ${name} takes ${emission.valueCount} value, ` +
+				`${emission.eventCount} listener and ${emission.rangeCount} range parameters, ` +
+				`but its derivation declares ${derived.values.length} values, ` +
+				`${derived.events.length} events and ${derived.ranges.length} ranges.`,
 		);
 	}
 	const rangeOrder = lynxProgramRangeOrder(derived.wire, derived.ranges);
@@ -4278,18 +4290,23 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 					origin,
 				),
 			),
-			// All three are load-bearing: `slot` is the plan slot the keyed range
-			// occupies, `node` the emitted node its members are appended into, and
-			// `id` where the range sits in the program's own pre-order, which is the
-			// one thing the node list cannot say because the program dropped it.
+			// All four are load-bearing: `slot` is the plan slot the keyed range
+			// occupies, `node` the emitted node its members are appended into, `id`
+			// where the range sits in the program's own pre-order — the one thing the
+			// node list cannot say, because the program dropped it — and `paintsText`
+			// whether the create function above compiles this hole when its value
+			// turns out to be a string. The last one is copied from the emission
+			// rather than re-derived here: it is a fact about that source, and a
+			// consumer reading it wrong would either lose the text or paint it twice.
 			b.prop(
 				'init',
 				b.literal('ranges', '"ranges"'),
 				jsonValueToAst(
-					derived.ranges.map((range) => ({
+					derived.ranges.map((range, index) => ({
 						slot: range.slot,
 						node: range.node,
 						id: rangeOrder.get(range),
+						paintsText: emission.paintsText[index] === true,
 					})),
 					origin,
 				),
