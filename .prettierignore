@@ -157,3 +157,10 @@ packages/swr/src/infinite/infinite.tsrx
 packages/swr/src/mutation/mutation.tsrx
 dist-redact
 .content-collections
+
+# Issue-#163 C0 spike outputs. These are written by `node mts-block/derive.mjs`
+# and `node mts-block/build.mjs` and committed so the lowering's program and the
+# main-thread program under test are reviewable; formatting them would make the
+# committed bytes differ from what the generators produce.
+benchmarks/lynx-table/mts-block/programs.json
+benchmarks/lynx-table/mts-block/lepus-root.generated.js
