@@ -268,6 +268,15 @@ interface LynxHostState<Node extends LynxElementRef> {
 	 * physical node wears which ID — and, at adoption, the only thing main
 	 * contributes about that half of the tree. Empty on a container that never
 	 * mounted one, which is every container today.
+	 *
+	 * It is also the answer to "did this container paint a program", which C2d
+	 * kept as a separate monotonic flag so that `captureLynxFirstTree` could
+	 * decline such a container outright. C2e made capture describe one instead —
+	 * from this map — and the flag went on being written and never read. A
+	 * predicate nothing consults is not documentation, so it is gone rather than
+	 * kept against a future reader: this map answers the same question, and the
+	 * one way the two differ is that this one is cleared at hand-over, when there
+	 * is no longer a painted tree to answer about.
 	 */
 	readonly programNodes: Map<number, Node>;
 	acceptedVersion: number;
