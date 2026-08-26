@@ -2297,6 +2297,86 @@ first having to prove the name. The program cell's remaining script is
 `mountProgram` 198.1, `renderer pre-passes` 64.4, `event bookkeeping` 46.0 — of
 which `nativeEventMap` is 30.7 — and `applier entry and pre-walk` 32.1.
 
+### The lookup C13 priced is gone, and it was worth 50 ms (issue #163 C18)
+
+C13 left the design question open: *"whether the renderer can announce in site
+order, and what that costs on the wire and in the background, is the next
+slice's question rather than this one's."* The first half needed no design at
+all. `collectFirstScreenEvents` already walks `node.plan.events` in site order
+and pushes one announcement per site this render supplied a handler for, in one
+contiguous pass per program. The applier is what threw that order away:
+`mountProgram` searched the whole announcement for the host and then that host's
+list for the type, with a fresh closure per site, once per site per row.
+
+So the renderer records where its own run begins and how long it is, and the
+mount walks it with a cursor that advances only when an announcement is claimed
+— which is what leaves a site whose handler came through undefined open without
+shifting the sites after it onto the wrong listeners.
+
+The second half of C13's question does not arise. `envelope.events` is
+unchanged: same entries, same order, same bytes. The run is two integers on a
+main-thread-local node, so nothing crosses a boundary it did not already cross.
+
+#### Two windows, one effect
+
+Two 30,000-row bundles, `--control-dist c18`, n=15, AB/BA, both arms in one
+window. The control arm's digest is `381fe0ab988a479c` — byte-identical to the
+`octane-mts-program` bundle every C14–C17 record measured, so the baseline is
+the shipping one rather than a re-derivation of it.
+
+`results/c163-c18-lookup-30000.json` is the shipping head. Self time, ms:
+
+| main-thread script | control, the search | treatment, the run | Δ |
+|---|---:|---:|---:|
+| program mount | 246.3 [219.9–300.2] | 196.6 [179.9–225.3] | **−49.7** |
+| renderer pre-passes | 76.4 [70.6–107.4] | 73.2 [66.2–82.5] | −3.2 |
+| event bookkeeping | 57.6 [48.9–67.6] | 58.7 [52.9–71.9] | +1.0 |
+| applier entry and pre-walk | 32.7 [27.6–50] | 34.8 [29.1–39.8] | +2.1 |
+| first tree capture | 32.5 [22.6–41.8] | 28.4 [23.1–37.1] | −4.1 |
+| applier walk | 26 [23.4–29.6] | 31.7 [26.8–37.6] | +5.7 |
+| compiled program create | 13 [10.1–15.5] | 13.1 [11.2–14.9] | +0.2 |
+| first-screen entry | 7 [4.2–10.5] | 4.7 [3.3–8.7] | −2.2 |
+| papi facade | 2.1 [1.5–4.1] | 2.5 [1.3–3.8] | +0.4 |
+| named total | 497 [445.1–553.4] | 447.4 [420.4–489.7] | −49.6 |
+| unnamed by the probe table | 23.2 [20.2–35.4] | 26.2 [22.5–38] | +2.9 |
+| **all frames** | **522.4 [465.3–588.8]** | **472.5 [446.6–516.1]** | **−49.9** |
+
+Each Δ is the difference of the record's own medians, so three of them are a
+tenth away from what subtracting the rounded columns gives.
+
+The whole movement is in `program mount`, which is where the search lived: it
+loses 49.7 and the script loses 49.9. Nothing else moves outside its own
+interval — `applier walk`'s +5.7 is the largest of the rest and its two
+intervals still overlap over 26.8–29.6, so it is noise, not a cost this paid.
+
+`results/c163-c18-run-30000.json` is the same A/B run earlier against the same
+control, on the treatment head before its third commit added the half-run guard.
+It is kept as an independent replication rather than a superseded result:
+
+| main-thread script | control | treatment | Δ |
+|---|---:|---:|---:|
+| program mount | 242.4 | 194.1 | −48.3 |
+| all frames | 509.5 | 467.2 | −42.3 |
+
+Two windows, two treatment bundles, one control: −48.3 and −49.7 on the bucket
+the change is in. C13's arm predicted 38, so the search cost slightly more than
+its ablation priced it at.
+
+#### What made the search safe to remove
+
+Not that it was checking nothing worth keeping — that it was checking nothing at
+all. A site the search failed to find installed no listener, silently, and the
+run does the same. What the run adds is that it reads the *same* announcement
+rather than a copy of it, so the background's listeners and this side's tokens
+cannot drift; and that two disagreements which used to be silent now throw: an
+announcement inside the run that no site claimed, and a node carrying half a run.
+
+The addressing rests on `(node, type)` naming at most one site.
+`prepareUniversalTemplateProgram` already rejects a program that would violate
+it, so `freezePlanNode` now restates that where the runtime can see it, for the
+plans that do not come from the compiler. Freezing runs once per plan, so it
+costs nothing per row.
+
 ## Claims and non-claims
 
 Command counts and commit bytes are Octane-owned costs and are gated. The
