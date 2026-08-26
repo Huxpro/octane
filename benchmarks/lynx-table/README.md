@@ -251,14 +251,16 @@ Four things must travel with any number from this cell:
   its own first frame (4,028 at 1,000 rows, 40,028 at 10,000). Which commit
   installs them, and why the same page decides differently at two scales, is
   open; §4 has the two paths that install eagerly and why.
-- **`ranges` is not a probe for this build.** On the small fixture
-  `../lynx-bundle-size/core-switch.mjs` compiles, searching the decoded
-  main-thread script for a compiled program's `ranges` key separates the two
-  backends. On this application it does not:
-  `packages/lynx/src/core/main-renderer.ts` ships its own runtime into both arms'
-  main-thread chunk and carries the identifier along with it. The first-frame
-  selector regime above is the probe that works here, and the byte comparison is
-  what says the backend switched at all.
+- **A compiled program's `ranges` key is not a probe for anything that ships the
+  Lynx main renderer, this build included.** `packages/lynx/src/core/main-renderer.ts`
+  carries the identifier into every main-thread chunk whether or not a program
+  was compiled, so searching for it here separates nothing. The same is true on
+  the small fixture `../lynx-bundle-size/core-switch.mjs` compiles, where the
+  probe used to work and where measuring it found `ranges` three times in all
+  three arms; that harness now probes the preamble `emitMainThreadProgram`
+  writes instead. What identifies this cell's first screen is the first-frame
+  selector regime above, and what says the backend switched at all is the byte
+  comparison.
 - **The ceiling is not reached, and this cell is not it.** `octane-direct` is the
   hand-written L0 prototype: the same page emitted by code written for this one
   application, with no framework between the entry point and the PAPI. It is the
