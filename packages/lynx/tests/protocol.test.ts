@@ -1562,6 +1562,16 @@ describe('@octanejs/lynx transported protocol', () => {
 		expect(() =>
 			acknowledge({ ...(handleSnapshot(1, 1, 'view', 1) as object), details: cyclic }),
 		).toThrow(/snapshot\.details.*nests deeper than 512 levels/);
+		// A symbol-keyed field is the one silent-loss shape left after the
+		// boundary took over: invisible to Object.keys, so the codec's own
+		// value refusals never see it and JSON drops it without a trace. The
+		// live self-check names it before the wire loses it.
+		expect(() =>
+			acknowledge({
+				...(handleSnapshot(1, 1, 'view', 1) as object),
+				details: { kept: 1, [Symbol('lost')]: 'important' },
+			}),
+		).toThrow(/snapshot\.details.*symbol-keyed fields/);
 		expect(() =>
 			acknowledge({ ...(handleSnapshot(1, 1, 'view', 1) as object), details: () => {} }),
 		).toThrow(/snapshot\.details.*non-serializable/);

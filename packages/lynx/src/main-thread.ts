@@ -61,6 +61,7 @@ import {
 	validateLynxBackgroundInboundMessage,
 	validateLynxBackgroundOutboundMessage,
 	type LynxValidationMode,
+	resolveLynxValidationMode,
 	type LynxBackgroundInboundMessage,
 	type LynxBackgroundFunctionWireDescriptor,
 	type LynxAdoptionReadyMessage,
@@ -513,10 +514,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	if (options.firstScreen !== undefined && typeof options.firstScreen !== 'boolean') {
 		throw new TypeError('Octane Lynx firstScreen must be a boolean when provided.');
 	}
-	const validation: LynxValidationMode = options.validation ?? 'checked';
-	if (validation !== 'checked' && validation !== 'trusted') {
-		throw new TypeError('Octane Lynx validation must be "checked" or "trusted".');
-	}
+	const validation = resolveLynxValidationMode(options.validation);
 	if (
 		options.firstScreenSync !== undefined &&
 		options.firstScreenSync !== 'automatic' &&

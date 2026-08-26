@@ -42,6 +42,7 @@ import {
 	validateLynxBackgroundInboundMessage,
 	validateLynxBackgroundOutboundMessage,
 	type LynxValidationMode,
+	resolveLynxValidationMode,
 	type LynxBackgroundInboundMessage,
 	type LynxBackgroundFunctionWireDescriptor,
 	type LynxCallBackgroundMessage,
@@ -266,10 +267,7 @@ export function createLynxBackgroundTransport(
 		throw new Error('Octane Lynx background transport received a foreign client container.');
 	}
 
-	const validation: LynxValidationMode = options.validation ?? 'checked';
-	if (validation !== 'checked' && validation !== 'trusted') {
-		throw new TypeError('Octane Lynx validation must be "checked" or "trusted".');
-	}
+	const validation = resolveLynxValidationMode(options.validation);
 
 	const reported: Error[] = [];
 	const pending = new Map<number, PendingCommit>();

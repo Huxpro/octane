@@ -46,6 +46,20 @@ export const LYNX_TRANSPORT_RENDERER: typeof LYNX_RENDERER_ID = LYNX_RENDERER_ID
  */
 export type LynxValidationMode = 'checked' | 'trusted';
 
+/**
+ * Resolve and refuse a validation option in one place, so the two ends of the
+ * wire cannot drift into different spellings or messages. A typo resolving to
+ * `checked` would look like it worked, and one resolving to `trusted` would
+ * drop validation nobody asked to drop.
+ */
+export function resolveLynxValidationMode(value: unknown): LynxValidationMode {
+	const mode = value ?? 'checked';
+	if (mode !== 'checked' && mode !== 'trusted') {
+		throw new TypeError('Octane Lynx validation must be "checked" or "trusted".');
+	}
+	return mode;
+}
+
 /** Whether a mode re-derives the deep structure of a message in this build. */
 export function lynxValidationTraverses(mode: LynxValidationMode): boolean {
 	return mode !== 'trusted' || LYNX_DEVELOPMENT;
@@ -551,10 +565,15 @@ function exactKeys(
 	label: string,
 	index?: number,
 ): void {
-	// Every caller runs `record` on the same object first, which already proved
-	// the value carries no symbol fields and only enumerable data properties.
-	// So a present-count match plus a per-expected-key lookup is exact, and it
-	// avoids a linear `expected` scan for each of the object's own keys.
+	// Exactness here derives from the transport boundary, not from `record`:
+	// everything reaching a receive-side validator is `JSON.parse` output, whose
+	// own keys are exactly its enumerable string-keyed data properties. So a
+	// present-count match plus a per-expected-key lookup is exact, and it avoids
+	// a linear `expected` scan for each of the object's own keys. On the
+	// development send-side self-check the input is a live object, where a
+	// non-enumerable expected key plus an extra enumerable one could cancel out
+	// in the counts — accepted: that walk is a diagnostic aid, and the encoder
+	// serializes only enumerable keys anyway.
 	let present = 0;
 	for (const key of expected) {
 		if (Object.prototype.hasOwnProperty.call(value, key)) present++;
@@ -655,8 +674,13 @@ function isWireLeaf(value: unknown): boolean {
  * into one exhausts the stack, and a `RangeError` naming nothing is a worse
  * report than the "contains a cycle" this used to give. So the walk carries the
  * transport codec's own depth limit: one integer compare instead of a `Set`
- * operation per composite, the same number the encoder enforces a moment later,
- * and a message that says where it gave up.
+ * operation per composite, and a message that says where it gave up. Sharing
+ * the constant aligns the two walks' budgets, not their exact cut-off: this
+ * walk counts from the payload field while the encoder counts from the whole
+ * message, so a value nesting within a couple of levels of the limit can pass
+ * here and be refused by the encoder, whose error then names the codec path
+ * rather than this label. Both refuse; only the message differs, and only in
+ * that pathological band.
  */
 function assertWireValue(value: unknown, label: string, depth = 0): void {
 	if (isWireLeaf(value)) return;
@@ -677,6 +701,15 @@ function assertWireValue(value: unknown, label: string, depth = 0): void {
 		return;
 	}
 	const object = value as Record<string, unknown>;
+	// Development only, and only here: a symbol-keyed field is invisible to
+	// `Object.keys`, so the codec's own value-domain refusals never see it and
+	// JSON drops it silently — the one silent-loss shape left after the
+	// boundary took over. `JSON.parse` output cannot carry one, so the checked
+	// receive walk skips the probe; the send-side self-check is where a live
+	// worklet capture or snapshot would still smuggle one in.
+	if (LYNX_DEVELOPMENT && Object.getOwnPropertySymbols(object).length > 0) {
+		fail(label, 'contains symbol-keyed fields, which the wire drops silently.');
+	}
 	for (const name of Object.keys(object)) {
 		const child = object[name];
 		if (!isWireLeaf(child)) assertWireValue(child, `${label}.${name}`, depth + 1);
