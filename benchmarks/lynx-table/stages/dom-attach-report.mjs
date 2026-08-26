@@ -9,6 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
+import { writeEvidenceJson } from '../scripts/evidence.mjs';
 
 import {
 	ARM_NAMES,
@@ -288,6 +289,6 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
 	// exists, and deciding over bare arm names finds no such arm at all.
 	const runKinds = run.meta.kinds;
 	run.verdict = verdictFor(run.scales, run.meta.cells, pairsFor(runKinds[runKinds.length - 1]));
-	fs.writeFileSync(file, JSON.stringify(run, null, 2) + '\n');
+	await writeEvidenceJson(file, run);
 	console.log(text);
 }

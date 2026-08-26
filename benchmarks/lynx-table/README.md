@@ -687,6 +687,15 @@ so a wording or attribution change never costs another measurement window:
 node stages/papi-report.mjs
 ```
 
+Every harness that writes into a checked-in `results/` directory writes its JSON
+through `scripts/evidence.mjs`, which formats the record under the repository's
+own Prettier configuration before it reaches disk. `pnpm format:check` is a CI
+gate and it covers these directories, but `JSON.stringify` and Prettier disagree
+about short arrays, so a record written the plain way lands already failing that
+gate for every branch above it. Formatting at the write is the fix #118 named and
+left with this harness; the checked-in shape is unchanged, because the writer
+hands Prettier the expanded form and Prettier reflows only the arrays.
+
 Both accept `--label`, which stems every output basename. A run over a different
 cell set writes beside the checked-in baseline rather than over it, and the
 report re-renders from whichever stem it is pointed at:

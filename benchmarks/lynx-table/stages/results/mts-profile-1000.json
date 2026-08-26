@@ -1,445 +1,433 @@
 {
-	"meta": {
-		"date": "2026-08-25T22:53:27.353Z",
-		"node": "v22.22.2",
-		"cpus": 4,
-		"cpuModel": "Intel(R) Xeon(R) Processor @ 2.10GHz",
-		"platform": "linux",
-		"release": "6.18.44-fc-v21",
-		"chromium": null,
-		"rows": 1000,
-		"reps": 5,
-		"samplingIntervalUs": 100,
-		"cells": [
-			"octane",
-			"octane-mts-program",
-			"octane-direct"
-		],
-		"loadStart": [
-			1.02,
-			0.35,
-			0.37
-		],
-		"loadEnd": [
-			1.09,
-			0.39,
-			0.38
-		]
-	},
-	"cells": {
-		"octane": {
-			"buckets": {
-				"element factory dispatch": {
-					"n": 5,
-					"min": 0.712,
-					"max": 1.295,
-					"mean": 1.0530000000000002,
-					"median": 1.03,
-					"std": 0.19897437020882866,
-					"ci95": 0.17440872528632276
-				},
-				"renderer pre-passes": {
-					"n": 5,
-					"min": 10.472,
-					"max": 12.469,
-					"mean": 11.3806,
-					"median": 11.28,
-					"std": 0.7584514750463602,
-					"ci95": 0.6648120298887495
-				},
-				"applier entry and pre-walk": {
-					"n": 5,
-					"min": 5.815,
-					"max": 6.938,
-					"mean": 6.2916,
-					"median": 6.135,
-					"std": 0.4548074757521032,
-					"ci95": 0.3986563295230616
-				},
-				"applier walk": {
-					"n": 5,
-					"min": 9.588,
-					"max": 12.777,
-					"mean": 10.935599999999999,
-					"median": 10.758,
-					"std": 1.0438319021758244,
-					"ci95": 0.9149590034164372
-				},
-				"host record building": {
-					"n": 5,
-					"min": 10.934,
-					"max": 14.551,
-					"mean": 12.723600000000001,
-					"median": 12.943,
-					"std": 1.481122763311671,
-					"ci95": 1.2982613432605932
-				},
-				"event bookkeeping": {
-					"n": 5,
-					"min": 1.789,
-					"max": 2.39,
-					"mean": 2.0104,
-					"median": 1.948,
-					"std": 0.20154860455979354,
-					"ci95": 0.17666514118184157
-				},
-				"first-screen entry": {
-					"n": 5,
-					"min": 1.553,
-					"max": 4.296,
-					"mean": 3.1042,
-					"median": 3.126,
-					"std": 0.9285428153833296,
-					"ci95": 0.8139036632447356
-				},
-				"first tree capture": {
-					"n": 5,
-					"min": 2.981,
-					"max": 4.247,
-					"mean": 3.596,
-					"median": 3.397,
-					"std": 0.5242312466841328,
-					"ci95": 0.45950894777795137
-				},
-				"compiled program create": {
-					"n": 5,
-					"min": 0,
-					"max": 0,
-					"mean": 0,
-					"median": 0,
-					"std": 0,
-					"ci95": 0
-				},
-				"program mount": {
-					"n": 5,
-					"min": 0,
-					"max": 0,
-					"mean": 0,
-					"median": 0,
-					"std": 0,
-					"ci95": 0
-				}
-			},
-			"namedMs": {
-				"n": 5,
-				"min": 48.351,
-				"max": 54.072,
-				"mean": 51.095,
-				"median": 50.893,
-				"std": 2.11930507478277,
-				"ci95": 1.857652803211623
-			},
-			"unmatchedMs": {
-				"n": 5,
-				"min": 7.635,
-				"max": 15.069,
-				"mean": 12.314,
-				"median": 12.564,
-				"std": 2.5159492045746874,
-				"ci95": 2.2053267121512863
-			},
-			"totalMs": {
-				"n": 5,
-				"min": 60.909,
-				"max": 67.884,
-				"mean": 63.409000000000006,
-				"median": 63.088,
-				"std": 2.4198253655997575,
-				"ci95": 2.1210704523744606
-			},
-			"largestUnnamed": [
-				{
-					"position": "1:74786",
-					"ms": 4.9,
-					"source": "(r,t){if(null===r||\"object\"!=typeof r)return r;if(t.active.has(r))throw eZ(\"first-tree props cannot contain cycles.\");var n=t.clones.get(r);"
-				},
-				{
-					"position": "1:74729",
-					"ms": 2.5,
-					"source": "(e,r){return r.active.clear(),r.clones.clear(),function e(r,t){if(null===r||\"object\"!=typeof r)return r;if(t.active.has(r))throw eZ(\"first-t"
-				},
-				{
-					"position": "1:193873",
-					"ms": 0.7,
-					"source": "()=>{var t;return Object.freeze({format:1,renderer:eF,root:e.root,version:F,plan:null!=(t=r.plan)?t:null,roots:D,nodes:Object.freeze(i.map(e"
-				}
-			]
-		},
-		"octane-mts-program": {
-			"buckets": {
-				"element factory dispatch": {
-					"n": 5,
-					"min": 0,
-					"max": 0.201,
-					"mean": 0.11299999999999999,
-					"median": 0.171,
-					"std": 0.09278577477178278,
-					"ci95": 0.08133031749599899
-				},
-				"renderer pre-passes": {
-					"n": 5,
-					"min": 7.06,
-					"max": 11.567,
-					"mean": 8.273599999999998,
-					"median": 7.635,
-					"std": 1.6644125209815024,
-					"ci95": 1.4589218994904423
-				},
-				"applier entry and pre-walk": {
-					"n": 5,
-					"min": 2.446,
-					"max": 4.456,
-					"mean": 3.383,
-					"median": 3.346,
-					"std": 0.6488654714191534,
-					"ci95": 0.5687556625195042
-				},
-				"applier walk": {
-					"n": 5,
-					"min": 2.423,
-					"max": 5.351,
-					"mean": 3.9554,
-					"median": 3.776,
-					"std": 1.17266680689785,
-					"ci95": 1.0278877765110352
-				},
-				"host record building": {
-					"n": 5,
-					"min": 1.432,
-					"max": 4.294,
-					"mean": 2.9206000000000003,
-					"median": 3.117,
-					"std": 1.0553387323508978,
-					"ci95": 0.925045184771425
-				},
-				"event bookkeeping": {
-					"n": 5,
-					"min": 0.343,
-					"max": 1.604,
-					"mean": 1.1074,
-					"median": 1.394,
-					"std": 0.4915581756008133,
-					"ci95": 0.4308697382513652
-				},
-				"first-screen entry": {
-					"n": 5,
-					"min": 1.045,
-					"max": 1.718,
-					"mean": 1.4649999999999999,
-					"median": 1.573,
-					"std": 0.23277714664459656,
-					"ci95": 0.20403816521425594
-				},
-				"first tree capture": {
-					"n": 5,
-					"min": 1.489,
-					"max": 2.129,
-					"mean": 1.7957999999999998,
-					"median": 1.81,
-					"std": 0.23547348046011465,
-					"ci95": 0.20640160600925564
-				},
-				"compiled program create": {
-					"n": 5,
-					"min": 1.08,
-					"max": 1.949,
-					"mean": 1.5496,
-					"median": 1.546,
-					"std": 0.3213798998070663,
-					"ci95": 0.2817019026077034
-				},
-				"program mount": {
-					"n": 5,
-					"min": 3.33,
-					"max": 6.178,
-					"mean": 4.605600000000001,
-					"median": 4.546,
-					"std": 0.9128701112425578,
-					"ci95": 0.8001659323595325
-				}
-			},
-			"namedMs": {
-				"n": 5,
-				"min": 26.353,
-				"max": 31.698,
-				"mean": 29.169,
-				"median": 28.75,
-				"std": 2.1654064745446746,
-				"ci95": 1.8980624617920236
-			},
-			"unmatchedMs": {
-				"n": 5,
-				"min": 6.018,
-				"max": 8.414,
-				"mean": 6.6781999999999995,
-				"median": 6.124,
-				"std": 0.9168634358507269,
-				"ci95": 0.8036662357093272
-			},
-			"totalMs": {
-				"n": 5,
-				"min": 33.46,
-				"max": 37.731,
-				"mean": 35.8472,
-				"median": 35.562,
-				"std": 1.6726034078645184,
-				"ci95": 1.4661015283980847
-			},
-			"largestUnnamed": [
-				{
-					"position": "1:74786",
-					"ms": 1.2,
-					"source": "(r,t){if(null===r||\"object\"!=typeof r)return r;if(t.active.has(r))throw eZ(\"first-tree props cannot contain cycles.\");var n=t.clones.get(r);"
-				},
-				{
-					"position": "1:74729",
-					"ms": 1.1,
-					"source": "(e,r){return r.active.clear(),r.clones.clear(),function e(r,t){if(null===r||\"object\"!=typeof r)return r;if(t.active.has(r))throw eZ(\"first-t"
-				},
-				{
-					"position": "1:228480",
-					"ms": 0.7,
-					"source": "(e,t)=>(0,r.Zz)(z,[(0,r.DT)(\"lynx\",R,(0,r.uc)([[\"set\",\"row\",e],[\"set\",\"isSelected\",n===e.id],[\"set\",\"onSelect\",A],[\"set\",\"onRemove\",C]]))]))"
-				}
-			]
-		},
-		"octane-direct": {
-			"buckets": {
-				"element factory dispatch": {
-					"n": 5,
-					"min": 0,
-					"max": 0,
-					"mean": 0,
-					"median": 0,
-					"std": 0,
-					"ci95": 0
-				},
-				"renderer pre-passes": {
-					"n": 5,
-					"min": 0,
-					"max": 0,
-					"mean": 0,
-					"median": 0,
-					"std": 0,
-					"ci95": 0
-				},
-				"applier entry and pre-walk": {
-					"n": 5,
-					"min": 0,
-					"max": 0,
-					"mean": 0,
-					"median": 0,
-					"std": 0,
-					"ci95": 0
-				},
-				"applier walk": {
-					"n": 5,
-					"min": 0,
-					"max": 0,
-					"mean": 0,
-					"median": 0,
-					"std": 0,
-					"ci95": 0
-				},
-				"host record building": {
-					"n": 5,
-					"min": 0,
-					"max": 0,
-					"mean": 0,
-					"median": 0,
-					"std": 0,
-					"ci95": 0
-				},
-				"event bookkeeping": {
-					"n": 5,
-					"min": 0,
-					"max": 0,
-					"mean": 0,
-					"median": 0,
-					"std": 0,
-					"ci95": 0
-				},
-				"first-screen entry": {
-					"n": 5,
-					"min": 0,
-					"max": 0,
-					"mean": 0,
-					"median": 0,
-					"std": 0,
-					"ci95": 0
-				},
-				"first tree capture": {
-					"n": 5,
-					"min": 0,
-					"max": 0,
-					"mean": 0,
-					"median": 0,
-					"std": 0,
-					"ci95": 0
-				},
-				"compiled program create": {
-					"n": 5,
-					"min": 0,
-					"max": 0,
-					"mean": 0,
-					"median": 0,
-					"std": 0,
-					"ci95": 0
-				},
-				"program mount": {
-					"n": 5,
-					"min": 0,
-					"max": 0,
-					"mean": 0,
-					"median": 0,
-					"std": 0,
-					"ci95": 0
-				}
-			},
-			"namedMs": {
-				"n": 5,
-				"min": 0,
-				"max": 0,
-				"mean": 0,
-				"median": 0,
-				"std": 0,
-				"ci95": 0
-			},
-			"unmatchedMs": {
-				"n": 5,
-				"min": 1.609,
-				"max": 4.899,
-				"mean": 3.4146,
-				"median": 3.962,
-				"std": 1.2279401614085272,
-				"ci95": 1.07633700789892
-			},
-			"totalMs": {
-				"n": 5,
-				"min": 1.609,
-				"max": 4.899,
-				"mean": 3.4146,
-				"median": 3.962,
-				"std": 1.2279401614085272,
-				"ci95": 1.07633700789892
-			},
-			"largestUnnamed": [
-				{
-					"position": "182:25",
-					"ms": 2.5,
-					"source": "(count) {"
-				},
-				{
-					"position": "72:19",
-					"ms": 0.9,
-					"source": "(id, label, selected) {"
-				},
-				{
-					"position": "276:34",
-					"ms": 0.6,
-					"source": "() {"
-				}
-			]
-		}
-	}
+  "meta": {
+    "date": "2026-08-25T22:53:27.353Z",
+    "node": "v22.22.2",
+    "cpus": 4,
+    "cpuModel": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "platform": "linux",
+    "release": "6.18.44-fc-v21",
+    "chromium": null,
+    "rows": 1000,
+    "reps": 5,
+    "samplingIntervalUs": 100,
+    "cells": ["octane", "octane-mts-program", "octane-direct"],
+    "loadStart": [1.02, 0.35, 0.37],
+    "loadEnd": [1.09, 0.39, 0.38]
+  },
+  "cells": {
+    "octane": {
+      "buckets": {
+        "element factory dispatch": {
+          "n": 5,
+          "min": 0.712,
+          "max": 1.295,
+          "mean": 1.0530000000000002,
+          "median": 1.03,
+          "std": 0.19897437020882866,
+          "ci95": 0.17440872528632276
+        },
+        "renderer pre-passes": {
+          "n": 5,
+          "min": 10.472,
+          "max": 12.469,
+          "mean": 11.3806,
+          "median": 11.28,
+          "std": 0.7584514750463602,
+          "ci95": 0.6648120298887495
+        },
+        "applier entry and pre-walk": {
+          "n": 5,
+          "min": 5.815,
+          "max": 6.938,
+          "mean": 6.2916,
+          "median": 6.135,
+          "std": 0.4548074757521032,
+          "ci95": 0.3986563295230616
+        },
+        "applier walk": {
+          "n": 5,
+          "min": 9.588,
+          "max": 12.777,
+          "mean": 10.935599999999999,
+          "median": 10.758,
+          "std": 1.0438319021758244,
+          "ci95": 0.9149590034164372
+        },
+        "host record building": {
+          "n": 5,
+          "min": 10.934,
+          "max": 14.551,
+          "mean": 12.723600000000001,
+          "median": 12.943,
+          "std": 1.481122763311671,
+          "ci95": 1.2982613432605932
+        },
+        "event bookkeeping": {
+          "n": 5,
+          "min": 1.789,
+          "max": 2.39,
+          "mean": 2.0104,
+          "median": 1.948,
+          "std": 0.20154860455979354,
+          "ci95": 0.17666514118184157
+        },
+        "first-screen entry": {
+          "n": 5,
+          "min": 1.553,
+          "max": 4.296,
+          "mean": 3.1042,
+          "median": 3.126,
+          "std": 0.9285428153833296,
+          "ci95": 0.8139036632447356
+        },
+        "first tree capture": {
+          "n": 5,
+          "min": 2.981,
+          "max": 4.247,
+          "mean": 3.596,
+          "median": 3.397,
+          "std": 0.5242312466841328,
+          "ci95": 0.45950894777795137
+        },
+        "compiled program create": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "program mount": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        }
+      },
+      "namedMs": {
+        "n": 5,
+        "min": 48.351,
+        "max": 54.072,
+        "mean": 51.095,
+        "median": 50.893,
+        "std": 2.11930507478277,
+        "ci95": 1.857652803211623
+      },
+      "unmatchedMs": {
+        "n": 5,
+        "min": 7.635,
+        "max": 15.069,
+        "mean": 12.314,
+        "median": 12.564,
+        "std": 2.5159492045746874,
+        "ci95": 2.2053267121512863
+      },
+      "totalMs": {
+        "n": 5,
+        "min": 60.909,
+        "max": 67.884,
+        "mean": 63.409000000000006,
+        "median": 63.088,
+        "std": 2.4198253655997575,
+        "ci95": 2.1210704523744606
+      },
+      "largestUnnamed": [
+        {
+          "position": "1:74786",
+          "ms": 4.9,
+          "source": "(r,t){if(null===r||\"object\"!=typeof r)return r;if(t.active.has(r))throw eZ(\"first-tree props cannot contain cycles.\");var n=t.clones.get(r);"
+        },
+        {
+          "position": "1:74729",
+          "ms": 2.5,
+          "source": "(e,r){return r.active.clear(),r.clones.clear(),function e(r,t){if(null===r||\"object\"!=typeof r)return r;if(t.active.has(r))throw eZ(\"first-t"
+        },
+        {
+          "position": "1:193873",
+          "ms": 0.7,
+          "source": "()=>{var t;return Object.freeze({format:1,renderer:eF,root:e.root,version:F,plan:null!=(t=r.plan)?t:null,roots:D,nodes:Object.freeze(i.map(e"
+        }
+      ]
+    },
+    "octane-mts-program": {
+      "buckets": {
+        "element factory dispatch": {
+          "n": 5,
+          "min": 0,
+          "max": 0.201,
+          "mean": 0.11299999999999999,
+          "median": 0.171,
+          "std": 0.09278577477178278,
+          "ci95": 0.08133031749599899
+        },
+        "renderer pre-passes": {
+          "n": 5,
+          "min": 7.06,
+          "max": 11.567,
+          "mean": 8.273599999999998,
+          "median": 7.635,
+          "std": 1.6644125209815024,
+          "ci95": 1.4589218994904423
+        },
+        "applier entry and pre-walk": {
+          "n": 5,
+          "min": 2.446,
+          "max": 4.456,
+          "mean": 3.383,
+          "median": 3.346,
+          "std": 0.6488654714191534,
+          "ci95": 0.5687556625195042
+        },
+        "applier walk": {
+          "n": 5,
+          "min": 2.423,
+          "max": 5.351,
+          "mean": 3.9554,
+          "median": 3.776,
+          "std": 1.17266680689785,
+          "ci95": 1.0278877765110352
+        },
+        "host record building": {
+          "n": 5,
+          "min": 1.432,
+          "max": 4.294,
+          "mean": 2.9206000000000003,
+          "median": 3.117,
+          "std": 1.0553387323508978,
+          "ci95": 0.925045184771425
+        },
+        "event bookkeeping": {
+          "n": 5,
+          "min": 0.343,
+          "max": 1.604,
+          "mean": 1.1074,
+          "median": 1.394,
+          "std": 0.4915581756008133,
+          "ci95": 0.4308697382513652
+        },
+        "first-screen entry": {
+          "n": 5,
+          "min": 1.045,
+          "max": 1.718,
+          "mean": 1.4649999999999999,
+          "median": 1.573,
+          "std": 0.23277714664459656,
+          "ci95": 0.20403816521425594
+        },
+        "first tree capture": {
+          "n": 5,
+          "min": 1.489,
+          "max": 2.129,
+          "mean": 1.7957999999999998,
+          "median": 1.81,
+          "std": 0.23547348046011465,
+          "ci95": 0.20640160600925564
+        },
+        "compiled program create": {
+          "n": 5,
+          "min": 1.08,
+          "max": 1.949,
+          "mean": 1.5496,
+          "median": 1.546,
+          "std": 0.3213798998070663,
+          "ci95": 0.2817019026077034
+        },
+        "program mount": {
+          "n": 5,
+          "min": 3.33,
+          "max": 6.178,
+          "mean": 4.605600000000001,
+          "median": 4.546,
+          "std": 0.9128701112425578,
+          "ci95": 0.8001659323595325
+        }
+      },
+      "namedMs": {
+        "n": 5,
+        "min": 26.353,
+        "max": 31.698,
+        "mean": 29.169,
+        "median": 28.75,
+        "std": 2.1654064745446746,
+        "ci95": 1.8980624617920236
+      },
+      "unmatchedMs": {
+        "n": 5,
+        "min": 6.018,
+        "max": 8.414,
+        "mean": 6.6781999999999995,
+        "median": 6.124,
+        "std": 0.9168634358507269,
+        "ci95": 0.8036662357093272
+      },
+      "totalMs": {
+        "n": 5,
+        "min": 33.46,
+        "max": 37.731,
+        "mean": 35.8472,
+        "median": 35.562,
+        "std": 1.6726034078645184,
+        "ci95": 1.4661015283980847
+      },
+      "largestUnnamed": [
+        {
+          "position": "1:74786",
+          "ms": 1.2,
+          "source": "(r,t){if(null===r||\"object\"!=typeof r)return r;if(t.active.has(r))throw eZ(\"first-tree props cannot contain cycles.\");var n=t.clones.get(r);"
+        },
+        {
+          "position": "1:74729",
+          "ms": 1.1,
+          "source": "(e,r){return r.active.clear(),r.clones.clear(),function e(r,t){if(null===r||\"object\"!=typeof r)return r;if(t.active.has(r))throw eZ(\"first-t"
+        },
+        {
+          "position": "1:228480",
+          "ms": 0.7,
+          "source": "(e,t)=>(0,r.Zz)(z,[(0,r.DT)(\"lynx\",R,(0,r.uc)([[\"set\",\"row\",e],[\"set\",\"isSelected\",n===e.id],[\"set\",\"onSelect\",A],[\"set\",\"onRemove\",C]]))]))"
+        }
+      ]
+    },
+    "octane-direct": {
+      "buckets": {
+        "element factory dispatch": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "renderer pre-passes": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "applier entry and pre-walk": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "applier walk": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "host record building": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "event bookkeeping": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "first-screen entry": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "first tree capture": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "compiled program create": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "program mount": {
+          "n": 5,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        }
+      },
+      "namedMs": {
+        "n": 5,
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "std": 0,
+        "ci95": 0
+      },
+      "unmatchedMs": {
+        "n": 5,
+        "min": 1.609,
+        "max": 4.899,
+        "mean": 3.4146,
+        "median": 3.962,
+        "std": 1.2279401614085272,
+        "ci95": 1.07633700789892
+      },
+      "totalMs": {
+        "n": 5,
+        "min": 1.609,
+        "max": 4.899,
+        "mean": 3.4146,
+        "median": 3.962,
+        "std": 1.2279401614085272,
+        "ci95": 1.07633700789892
+      },
+      "largestUnnamed": [
+        {
+          "position": "182:25",
+          "ms": 2.5,
+          "source": "(count) {"
+        },
+        {
+          "position": "72:19",
+          "ms": 0.9,
+          "source": "(id, label, selected) {"
+        },
+        {
+          "position": "276:34",
+          "ms": 0.6,
+          "source": "() {"
+        }
+      ]
+    }
+  }
 }

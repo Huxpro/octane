@@ -24,6 +24,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
 import { makeBenchHtml, applyNeutralize, stats } from '../web/driver-client.mjs';
+import { writeEvidenceJson } from '../scripts/evidence.mjs';
 
 const require = createRequire(import.meta.url);
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -283,8 +284,10 @@ console.log('\n' + report);
 const outDir = path.join(here, 'results');
 fs.mkdirSync(outDir, { recursive: true });
 fs.writeFileSync(path.join(outDir, `fcp-${ROWS}${args['out-suffix']}.md`), report);
-fs.writeFileSync(
-	path.join(outDir, `fcp-${ROWS}${args['out-suffix']}.json`),
-	JSON.stringify({ rows: ROWS, reps: REPS, samples, regimes }, null, 2) + '\n',
-);
+await writeEvidenceJson(path.join(outDir, `fcp-${ROWS}${args['out-suffix']}.json`), {
+	rows: ROWS,
+	reps: REPS,
+	samples,
+	regimes,
+});
 console.log(`[fcp] wrote prototype/results/fcp-${ROWS}${args['out-suffix']}.md`);

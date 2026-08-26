@@ -4,21 +4,10 @@
     "node": "v22.22.2",
     "cpus": 4,
     "cpuModel": "Intel(R) Xeon(R) Processor @ 2.10GHz",
-    "loadStart": [
-      0.38,
-      0.76,
-      0.88
-    ],
-    "loadEnd": [
-      1.75,
-      1.08,
-      0.98
-    ],
+    "loadStart": [0.38, 0.76, 0.88],
+    "loadEnd": [1.75, 1.08, 0.98],
     "reps": 7,
-    "scales": [
-      1000,
-      10000
-    ],
+    "scales": [1000, 10000],
     "reference": {
       "source": "https://github.com/Huxpro/vue-lynx",
       "branch": "claude/lynx-implementation-review-n2r0ie",
