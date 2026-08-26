@@ -65,7 +65,26 @@ describe('compiler AST emit architecture', () => {
 		// Parsing generated fragments would create a second emit pipeline and lose
 		// node identity/origins. slot-hooks.js also parses `source`, then performs
 		// its documented authored-text edit without producing a source map.
-		expect(invalidInputs).toEqual([]);
+		//
+		// One file is exempt, and it is a second *producer* rather than a second
+		// printer. Under #163 the `target: 'lynx'` main-thread compile carries a
+		// create function compiled from the host template program, and the code that
+		// compiles it lives in the renderer's own package because it encodes that
+		// renderer's applier semantics exactly — down to which prop shadows which —
+		// so a copy of it here would be a copy that can disagree. It hands over
+		// source, `lynxMainThreadProgramObjectAst` parses it once into the one AST
+		// `compile.js` prints, and nothing re-prints, so the printing boundaries
+		// above are untouched.
+		//
+		// Both harms named above are answered rather than accepted: the parsed
+		// positions are cleared and the subtree is re-attributed to the template it
+		// came from, which `lynx-main-thread-program.test.ts` asserts through the
+		// published source map. The count is pinned beside the allowlist so the
+		// exemption stays one site rather than becoming a licence for the file.
+		expect([...new Set(invalidInputs.map((entry) => entry.replace(/:\d+:/, ':')))]).toEqual([
+			'compile-universal.js: expression',
+		]);
+		expect(invalidInputs).toHaveLength(1);
 	});
 
 	it('does not edit or concatenate printed code', () => {
