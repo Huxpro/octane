@@ -27,8 +27,17 @@ const BENCH = path.resolve(ROOT, '..');
 const { values: args } = parseArgs({ options: { rows: { type: 'string', default: '' } } });
 const autoRowVariants = args.rows
 	.split(',')
-	.map((value) => Number(value.trim()))
-	.filter(Boolean);
+	.filter((value) => value.trim().length > 0)
+	.map((value) => {
+		const rows = Number(value.trim());
+		// Refuse a malformed token here, matching the file's other fail-fast
+		// guards; skipping it silently surfaces later as a missing-bundle throw
+		// in tree-check or run-fcp, far from the typo.
+		if (!Number.isSafeInteger(rows) || rows <= 0) {
+			throw new TypeError(`--rows contains a non-positive-integer token: ${JSON.stringify(value)}`);
+		}
+		return rows;
+	});
 
 const octaneBundlePath = path.join(BENCH, 'app/dist/main.web.bundle');
 if (!fs.existsSync(octaneBundlePath)) {
@@ -59,6 +68,16 @@ const programs = JSON.parse(fs.readFileSync(programsPath, 'utf8'));
 const buttonTokens = programs.page.wire.events.map((_event, index) => `b:${index}`);
 
 const rowRetained = retainedNodes(programs.row);
+// runtime.js hardcodes three slot meanings — rowSlot0 the row view, rowSlot1
+// the id text, rowSlot2 the label text — so a lowering that changes the row
+// program's slot count (the write-once-id C1 optimization would) must stop the
+// build here, not surface as a ReferenceError in the browser or, worse, a
+// reordered write tree-check cannot see at mount time.
+if (rowRetained.length !== 3) {
+	throw new Error(
+		`the row program retains ${rowRetained.length} value slots; runtime.js writes exactly 3 (view, id text, label text) — update both together`,
+	);
+}
 const rowSlots = rowRetained.map((_node, index) => `rowSlot${index}`);
 const chromeRetained = retainedNodes(programs.page);
 if (chromeRetained.length !== 0) {
