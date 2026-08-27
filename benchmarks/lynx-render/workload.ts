@@ -15,6 +15,7 @@ import type {
 	LynxContextProxyEvent,
 } from '../../packages/lynx/src/core/protocol.js';
 import type { LynxElementEventListener } from '../../packages/lynx/src/core/papi.js';
+import { decodeLynxTransportValue } from '../../packages/lynx/src/core/transport-codec.js';
 import { BenchApp, EmptyApp, type BenchRow } from './src/App.lynx.tsrx';
 
 interface FakeNode {
@@ -342,8 +343,11 @@ function transportMetrics(harness: Harness): LynxTransportMetrics {
 	let compactAcknowledgements = 0;
 	const sharedPrograms = new Set<object>();
 	for (const event of harness.transportMessages) {
-		if (event.data === null || typeof event.data !== 'object') continue;
-		const message = event.data as {
+		// Decoded, not read: the transport encodes, so `event.data` is the string
+		// the receiver parses. Reading it raw would count zero commands and no
+		// acknowledgements while still producing a number.
+		if (typeof event.data !== 'string') continue;
+		const message = decodeLynxTransportValue(event.data) as {
 			readonly type?: unknown;
 			readonly encoding?: unknown;
 			readonly batch?: {

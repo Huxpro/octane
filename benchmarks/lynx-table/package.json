@@ -17,6 +17,7 @@
   "dependencies": {
     "@lynx-js/web-core": "0.22.2",
     "playwright": "catalog:default",
+    "prettier": "catalog:default",
     "vite": "catalog:default"
   }
 }

@@ -28,7 +28,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
-import { makeBenchHtml, applyNeutralize } from '../web/driver-client.mjs';
+import { makeBenchHtml, applyNeutralize, chromiumLaunchOptions } from '../web/driver-client.mjs';
 
 const require = createRequire(import.meta.url);
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -91,14 +91,7 @@ const server = http.createServer((request, response) => {
 await new Promise((resolve) => server.listen(PORT, resolve));
 
 const { chromium } = require('playwright');
-const executablePath = fs.existsSync('/opt/pw-browsers/chromium')
-	? '/opt/pw-browsers/chromium'
-	: undefined;
-const browser = await chromium.launch({
-	headless: true,
-	...(executablePath ? { executablePath } : null),
-	args: ['--disable-background-timer-throttling', '--disable-renderer-backgrounding'],
-});
+const browser = await chromium.launch(chromiumLaunchOptions());
 
 let failed = false;
 for (const cell of CELLS) {

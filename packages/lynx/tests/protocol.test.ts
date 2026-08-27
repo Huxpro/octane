@@ -52,6 +52,7 @@ import {
 	type LynxTransportCommitMessage,
 } from '../src/core/protocol.js';
 import { createLynxBackgroundTransport } from '../src/core/transport.js';
+import { unwire, wire } from './_fixtures/lynx-wire.js';
 
 class FakeContextProxy implements LynxContextProxy {
 	readonly events: LynxContextProxyEvent[] = [];
@@ -76,7 +77,7 @@ class FakeContextProxy implements LynxContextProxy {
 	}
 
 	sendToBackground(data: unknown): void {
-		this.dispatchEvent({ type: LYNX_MAIN_TO_BACKGROUND_EVENT, data });
+		this.dispatchEvent({ type: LYNX_MAIN_TO_BACKGROUND_EVENT, data: wire(data) });
 	}
 }
 
@@ -243,7 +244,7 @@ function installMainHarness(
 	const generations = new Map<number, number>();
 	const types = new Map<number, string>();
 	context.addEventListener(LYNX_BACKGROUND_TO_MAIN_EVENT, (event) => {
-		const message = validateLynxBackgroundOutboundMessage(event.data);
+		const message = validateLynxBackgroundOutboundMessage(unwire(event.data));
 		if (message.type === 'main-ready-request') {
 			if (autoReady) {
 				context.sendToBackground({
@@ -783,8 +784,15 @@ describe('@octanejs/lynx transported protocol', () => {
 			validateLynxBackgroundInboundMessage({ ...readiness, capabilities: { compactAck: 2 } }),
 		).toThrow(/compactAck.*must be 1/);
 
+		// A capability bag that answers through an accessor used to be refused
+		// here, so that it could not tell the validator one thing and the
+		// negotiation another. It can no longer reach a validator at all: the
+		// transport encodes every message, so the getter runs once, on the
+		// sender's own thread, and what a receiver reads is the plain answer it
+		// gave. Refusing the shape a second time would assert that safety comes
+		// from this walk; it comes from the boundary.
 		let capabilityReads = 0;
-		const unsafeCapabilities = Object.defineProperty({}, 'compactAck', {
+		const accessorCapabilities = Object.defineProperty({ templateMount: 1 }, 'compactAck', {
 			configurable: true,
 			enumerable: true,
 			get() {
@@ -792,10 +800,18 @@ describe('@octanejs/lynx transported protocol', () => {
 				return 1;
 			},
 		});
-		expect(() =>
-			validateLynxBackgroundInboundMessage({ ...readiness, capabilities: unsafeCapabilities }),
-		).toThrow(/capabilities\.compactAck.*accessor/);
-		expect(capabilityReads).toBe(0);
+		const crossedReadiness = unwire(wire({ ...readiness, capabilities: accessorCapabilities }));
+		expect(capabilityReads).toBeGreaterThan(0);
+		const crossedCapabilities = (crossedReadiness as { capabilities: object }).capabilities;
+		expect(Object.getOwnPropertyDescriptor(crossedCapabilities, 'compactAck')).toEqual({
+			value: 1,
+			writable: true,
+			enumerable: true,
+			configurable: true,
+		});
+		const readsBeforeValidation = capabilityReads;
+		expect(validateLynxBackgroundInboundMessage(crossedReadiness)).toBe(crossedReadiness);
+		expect(capabilityReads).toBe(readsBeforeValidation);
 
 		const acknowledgement = {
 			...identity(5, 1),
@@ -876,7 +892,7 @@ describe('@octanejs/lynx transported protocol', () => {
 			const commits: LynxTransportCommitMessage[] = [];
 			const capabilitiesDuringAdoptionReady: boolean[] = [];
 			context.addEventListener(LYNX_BACKGROUND_TO_MAIN_EVENT, (event) => {
-				const message = validateLynxBackgroundOutboundMessage(event.data);
+				const message = validateLynxBackgroundOutboundMessage(unwire(event.data));
 				if (message.type === 'adoption-ready') {
 					capabilitiesDuringAdoptionReady.push(driver.capabilities?.templateProgramMount === true);
 					return;
@@ -1115,21 +1131,43 @@ describe('@octanejs/lynx transported protocol', () => {
 		};
 		rejectCommand({ ...first, values: ['only-one'] }, /dynamic-value arity/);
 		rejectCommand({ ...first, values: [{ dangerous: true }, 'label'] }, /only scalar values/);
-		rejectCommand({ ...first, values: [, 'label'] }, /dense.*symbol fields/);
+		// A hole, a non-enumerable slot, a symbol field and a foreign array
+		// prototype were four separate refusals here. None can reach a validator
+		// now: the transport encodes every message, and it walks an array by
+		// index, so what crosses is dense, ordinary and this realm's. Pin what
+		// the boundary makes of each, because that is the only answer a receiver
+		// ever gets.
 		const nonEnumerableValues = ['row', 'label'];
 		Object.defineProperty(nonEnumerableValues, '0', { enumerable: false });
-		rejectCommand({ ...first, values: nonEnumerableValues }, /only enumerable data values/);
 		const symbolValues = ['row', 'label'] as string[] & Record<symbol, string>;
 		symbolValues[Symbol('unexpected')] = 'unsafe';
-		rejectCommand({ ...first, values: symbolValues }, /dense.*symbol fields/);
 		const foreignPrototypeValues = Object.setPrototypeOf(
 			['row', 'label'],
 			Object.create(Array.prototype),
 		);
-		rejectCommand(
-			{ ...first, values: foreignPrototypeValues },
-			/plain cross-realm array prototype/,
-		);
+		for (const values of [nonEnumerableValues, symbolValues, foreignPrototypeValues]) {
+			const crossed = unwire(
+				wire({ ...commit, batch: { ...batch, commands: [{ ...first, values }] } }),
+			);
+			const crossedValues = (
+				crossed as { batch: { commands: readonly { values: readonly unknown[] }[] } }
+			).batch.commands[0]!.values;
+			expect(crossedValues).toEqual(['row', 'label']);
+			expect(Object.getPrototypeOf(crossedValues)).toBe(Array.prototype);
+			expect(Reflect.ownKeys(crossedValues)).toEqual(['0', '1', 'length']);
+			expect(validateLynxBackgroundOutboundMessage(crossed)).toBe(crossed);
+		}
+		// A hole is the one slot the wire cannot reproduce, because JSON has no
+		// spelling for "absent". It becomes the explicit `undefined` the codec's
+		// sentinel carries, which is dense and is already a scalar the host driver
+		// accepts, so the arity the schema checks is unchanged.
+		const sparseValues = ['row', 'label'];
+		delete sparseValues[0];
+		const crossedSparse = unwire(wire({ ...first, values: sparseValues })) as {
+			values: readonly unknown[];
+		};
+		expect(crossedSparse.values).toEqual([undefined, 'label']);
+		expect(Reflect.ownKeys(crossedSparse.values)).toEqual(['0', '1', 'length']);
 		const reordered = {
 			program: first.program,
 			values: first.values,
@@ -1146,9 +1184,13 @@ describe('@octanejs/lynx transported protocol', () => {
 			}),
 		).toMatchObject({ batch: { commands: [{ firstId: first.firstId }] } });
 		rejectCommand({ ...first, unknown: true }, /unknown field "unknown"/);
+		// A non-enumerable field is still refused, but as the schema question it
+		// actually is: the key walk no longer sees it, so the command is missing a
+		// field the ABI requires. Reachable only by hand — the wire has no way to
+		// express a non-enumerable property.
 		const nonEnumerableCommand = { ...first };
 		Object.defineProperty(nonEnumerableCommand, 'firstId', { enumerable: false });
-		rejectCommand(nonEnumerableCommand, /firstId.*enumerable/);
+		rejectCommand(nonEnumerableCommand, /is missing field "firstId"/);
 		rejectCommand({ ...first, firstId: Number.MAX_SAFE_INTEGER }, /overflows.*host-ID range/);
 		rejectCommand({ ...first, firstListenerId: null }, /firstListenerId.*positive safe integer/);
 		rejectCommand(
@@ -1236,6 +1278,14 @@ describe('@octanejs/lynx transported protocol', () => {
 			}),
 		).toThrow(/overlaps another intrinsic event-listener range/);
 
+		// A dynamic slot is now read as a slot — `values[i]` — rather than through
+		// its descriptor. That is what slice 1 bought: a `JSON.parse` array has
+		// nothing to hide in a descriptor, and on the send side the codec
+		// snapshots the same array a moment later anyway. So an accessor is
+		// evaluated here, once per slot, and the answer it gives is what is
+		// checked. It is no longer refused, because the shape that made refusing
+		// it necessary — one array answering two readers differently — cannot
+		// survive the boundary.
 		let reads = 0;
 		const values = ['row', 'label'];
 		Object.defineProperty(values, '0', {
@@ -1246,8 +1296,16 @@ describe('@octanejs/lynx transported protocol', () => {
 				return 'unsafe';
 			},
 		});
-		rejectCommand({ ...first, values }, /only enumerable data values/);
-		expect(reads).toBe(0);
+		expect(
+			validateLynxBackgroundOutboundMessage({
+				...commit,
+				batch: { ...batch, commands: [{ ...first, values }] },
+			}),
+		).toMatchObject({ batch: { commands: [{ values }] } });
+		expect(reads).toBe(1);
+
+		// Once per declared slot and no more: a proxy that refuses index reads is
+		// entered exactly at the slot the program declares.
 		const indexedReadTrap = new Proxy(['row', 'label'], {
 			get(target, property, receiver) {
 				if (property === '0' || property === '1') {
@@ -1263,8 +1321,12 @@ describe('@octanejs/lynx transported protocol', () => {
 				batch: { ...batch, commands: [{ ...first, values: indexedReadTrap }] },
 			}),
 		).toThrow(/scalar validation evaluated a proxy index/);
-		expect(reads).toBe(1);
+		expect(reads).toBe(2);
 
+		// A program shared by two commands is validated once and reused, so a
+		// value that mutates it partway through the batch must not slip the
+		// change past the second command. The trap rides the slot read now,
+		// because that is where this walk touches the array at all.
 		const mutableNode = { ...first.program.nodes[0] };
 		const mutableProgram = Object.freeze({
 			...first.program,
@@ -1272,13 +1334,12 @@ describe('@octanejs/lynx transported protocol', () => {
 		});
 		let changed = false;
 		const mutatingValues = new Proxy(['row', 'label'], {
-			getOwnPropertyDescriptor(target, name) {
-				const descriptor = Reflect.getOwnPropertyDescriptor(target, name);
+			get(target, name, receiver) {
 				if (name === '0' && !changed) {
 					changed = true;
 					mutableNode.parent = 0;
 				}
-				return descriptor;
+				return Reflect.get(target, name, receiver);
 			},
 		});
 		expect(() =>
@@ -1327,9 +1388,23 @@ describe('@octanejs/lynx transported protocol', () => {
 		rejectRun({ ...run, values: run.values.slice(0, -1) }, /dynamic-value arity/);
 		rejectRun({ ...run, values: [Symbol('unsafe'), ...run.values.slice(1)] }, /only scalar values/);
 		rejectRun({ ...run, extra: true }, /unknown field "extra"/);
+		// The hostile-array family this test is named for — a hole, an accessor
+		// slot, an `ownKeys` proxy that reorders or hides `length`, and a
+		// non-canonical `"00"` key — is what the descriptor walk, the canonical
+		// key table and the re-read check existed for. Every one of them needed
+		// the array to be able to answer the validator once and the host driver
+		// again. The transport reads it once, by index, and only that reading
+		// crosses, so the question those checks asked can no longer be posed.
+		const crossedRunValues = (command: unknown): readonly unknown[] =>
+			(unwire(wire(command)) as { values: readonly unknown[] }).values;
+
 		const sparse = [...run.values];
 		delete sparse[0];
-		rejectRun({ ...run, values: sparse }, /dense.*symbol fields/);
+		expect(crossedRunValues({ ...run, values: sparse })).toEqual([
+			undefined,
+			...run.values.slice(1),
+		]);
+
 		let reads = 0;
 		const accessorValues = [...run.values];
 		Object.defineProperty(accessorValues, '0', {
@@ -1337,11 +1412,24 @@ describe('@octanejs/lynx transported protocol', () => {
 			enumerable: true,
 			get() {
 				reads++;
-				return 'unsafe';
+				return `read-${reads}`;
 			},
 		});
-		rejectRun({ ...run, values: accessorValues }, /only enumerable data values/);
-		expect(reads).toBe(0);
+		// A getter that answers differently on every read is the sharpest version
+		// of the old hazard, so be exact about what replaced the check. The codec
+		// walks the value and, when nothing needed escaping, hands
+		// `JSON.stringify` the same graph to walk again — so an accessor is read
+		// twice, and its *second* answer is what crosses. That is weaker than the
+		// old refusal in one respect and stronger in another: an incoherent getter
+		// is no longer named at the sender, but it can no longer show two readers
+		// two different values either, which is the whole of what "changed during
+		// validation" existed to prevent. Everything downstream sees one snapshot.
+		expect(crossedRunValues({ ...run, values: accessorValues })).toEqual([
+			'read-2',
+			...run.values.slice(1),
+		]);
+		expect(reads).toBe(2);
+
 		const reorderedValues = new Proxy([...run.values], {
 			ownKeys(target) {
 				const keys = Reflect.ownKeys(target);
@@ -1349,7 +1437,6 @@ describe('@octanejs/lynx transported protocol', () => {
 				return keys;
 			},
 		});
-		rejectRun({ ...run, values: reorderedValues }, /ordered canonical dense scalar keys/);
 		const misplacedLengthValues = new Proxy([...run.values], {
 			ownKeys(target) {
 				const keys = Reflect.ownKeys(target);
@@ -1358,11 +1445,25 @@ describe('@octanejs/lynx transported protocol', () => {
 				return keys;
 			},
 		});
-		rejectRun({ ...run, values: misplacedLengthValues }, /dense.*symbol fields/);
+		// An index walk never asks for `ownKeys`, so a trap that reorders the
+		// slots or hides `length` is simply not consulted.
+		for (const values of [reorderedValues, misplacedLengthValues]) {
+			expect(crossedRunValues({ ...run, values })).toEqual([...run.values]);
+		}
+
 		const nonCanonicalValues = [...run.values] as unknown as Record<string, unknown>;
 		delete nonCanonicalValues['0'];
 		nonCanonicalValues['00'] = 'unsafe';
-		rejectRun({ ...run, values: nonCanonicalValues }, /dense.*symbol fields|canonical/);
+		// `"00"` is not an array index, so it is an ordinary property the wire
+		// drops entirely, and the emptied slot 0 crosses as `undefined`.
+		expect(crossedRunValues({ ...run, values: nonCanonicalValues })).toEqual([
+			undefined,
+			...run.values.slice(1),
+		]);
+
+		// The arity the schema owns still bites on the decoded array, so what
+		// survives here is a check about the ABI rather than about integrity.
+		rejectRun({ ...run, values: [...run.values, 'extra'] }, /dynamic-value arity/);
 
 		const overlap = { ...run, firstId: run.firstId + 1, firstListenerId: 100 };
 		expect(() =>
@@ -1411,17 +1512,19 @@ describe('@octanejs/lynx transported protocol', () => {
 		);
 		expect(acknowledge(foreignSnapshot)).toMatchObject({ type: 'ack' });
 
+		// An inherited field, a symbol field and an accessor were three separate
+		// refusals here. Two of them the boundary resolves, and one it refuses
+		// outright — at the sender, which is the last place that still knows what
+		// the value was.
 		const foreignPrototype = Object.assign(Object.create({ inherited: true }), {
 			...(handleSnapshot(1, 1, 'view', 1) as object),
 		});
-		expect(() => acknowledge(foreignPrototype)).toThrow(/snapshot.*plain object/);
+		expect(() => wire(foreignPrototype)).toThrow(/JSON would rewrite into something else/);
 
 		const symbolSnapshot = {
 			...(handleSnapshot(1, 1, 'view', 1) as object),
 			[Symbol('hidden')]: true,
 		};
-		expect(() => acknowledge(symbolSnapshot)).toThrow(/snapshot.*symbol fields/);
-
 		let accessorReads = 0;
 		const accessorSnapshot = Object.defineProperty(
 			{ ...(handleSnapshot(1, 1, 'view', 1) as object) },
@@ -1435,14 +1538,40 @@ describe('@octanejs/lynx transported protocol', () => {
 				},
 			},
 		);
-		expect(() => acknowledge(accessorSnapshot)).toThrow(/snapshot\.selector.*accessor/);
-		expect(accessorReads).toBe(0);
+		for (const snapshot of [symbolSnapshot, accessorSnapshot]) {
+			const crossed = unwire(wire(snapshot));
+			expect(crossed).toEqual(handleSnapshot(1, 1, 'view', 1));
+			expect(Reflect.ownKeys(crossed as object)).toEqual(
+				Object.keys(handleSnapshot(1, 1, 'view', 1) as object),
+			);
+			expect(acknowledge(crossed)).toMatchObject({ type: 'ack' });
+		}
+		// The getter resolved at the boundary and is not consulted again by the
+		// acknowledgement itself, which reads the decoded snapshot.
+		const readsAtBoundary = accessorReads;
+		expect(readsAtBoundary).toBeGreaterThan(0);
+		expect(acknowledge(unwire(wire(symbolSnapshot)))).toMatchObject({ type: 'ack' });
+		expect(accessorReads).toBe(readsAtBoundary);
 
+		// A cycle is still reachable, because the sender's development
+		// self-check validates the live object before the transport encodes it.
+		// It is named at the depth the encoder would have stopped at, rather than
+		// recursed into until the stack gives out.
 		const cyclic: Record<string, unknown> = {};
 		cyclic.self = cyclic;
 		expect(() =>
 			acknowledge({ ...(handleSnapshot(1, 1, 'view', 1) as object), details: cyclic }),
-		).toThrow(/snapshot\.details.*cycle/);
+		).toThrow(/snapshot\.details.*nests deeper than 512 levels/);
+		// A symbol-keyed field is the one silent-loss shape left after the
+		// boundary took over: invisible to Object.keys, so the codec's own
+		// value refusals never see it and JSON drops it without a trace. The
+		// live self-check names it before the wire loses it.
+		expect(() =>
+			acknowledge({
+				...(handleSnapshot(1, 1, 'view', 1) as object),
+				details: { kept: 1, [Symbol('lost')]: 'important' },
+			}),
+		).toThrow(/snapshot\.details.*symbol-keyed fields/);
 		expect(() =>
 			acknowledge({ ...(handleSnapshot(1, 1, 'view', 1) as object), details: () => {} }),
 		).toThrow(/snapshot\.details.*non-serializable/);
@@ -1495,18 +1624,28 @@ describe('@octanejs/lynx transported protocol', () => {
 			/global-props\.patch.*object/,
 		);
 
-		let accessorRead = false;
+		// `page-data` reaches a receiver through the engine lifecycle entry, which
+		// materializes it before anything reflects on it, so an accessor resolves
+		// exactly once — there and not again. The value that validates and the
+		// value the app is handed are therefore the same value, which is what the
+		// accessor refusal was protecting.
+		let accessorReads = 0;
 		const accessorData = Object.defineProperty({}, 'secret', {
 			enumerable: true,
 			get() {
-				accessorRead = true;
-				return 'not-read';
+				accessorReads++;
+				return `resolved-${accessorReads}`;
 			},
 		});
-		expect(() => validateLynxBackgroundInboundMessage({ ...pageData, data: accessorData })).toThrow(
-			/must not be an accessor/,
-		);
-		expect(accessorRead).toBe(false);
+		const crossedPageData = unwire(wire({ ...pageData, data: accessorData }));
+		const readsAtEntry = accessorReads;
+		expect(readsAtEntry).toBeGreaterThan(0);
+		expect(crossedPageData).toEqual({
+			...pageData,
+			data: { secret: `resolved-${readsAtEntry}` },
+		});
+		expect(validateLynxBackgroundInboundMessage(crossedPageData)).toBe(crossedPageData);
+		expect(accessorReads).toBe(readsAtEntry);
 
 		const cyclic: Record<string, unknown> = {};
 		cyclic.self = cyclic;
@@ -1770,14 +1909,20 @@ describe('@octanejs/lynx transported protocol', () => {
 		expect(() => validateLynxBackgroundInboundMessage({ ...callBackground, extra: true })).toThrow(
 			/unknown field "extra"/,
 		);
+		// The only walk that still meets a live object graph is the sender's own
+		// development self-check, which runs before the transport encodes. A
+		// cycle there is named at the depth the encoder would have stopped at,
+		// not recursed into until the stack gives out — the `RangeError` that
+		// would otherwise replace it carries no path at all.
 		const cyclic: unknown[] = [];
 		cyclic.push(cyclic);
 		expect(() => validateLynxBackgroundInboundMessage({ ...callBackground, args: cyclic })).toThrow(
-			/cycle/,
+			/call-background\.args.*nests deeper than 512 levels/,
 		);
+		expect(() => wire({ ...callBackground, args: cyclic })).toThrow(/nests deeper than 512 levels/);
 	});
 
-	it('rejects malformed call argument arrays without evaluating accessors', () => {
+	it('resolves hostile call argument arrays at the boundary and still checks their shape', () => {
 		const callMain = {
 			...identity(7, 3),
 			type: 'call-main' as const,
@@ -1800,27 +1945,52 @@ describe('@octanejs/lynx transported protocol', () => {
 			enumerable: true,
 			get() {
 				getterRuns++;
-				return 'unsafe';
+				return `run-${getterRuns}`;
 			},
 		});
 		const extraArguments: unknown[] & { extra?: boolean } = [];
 		extraArguments.extra = true;
 
-		for (const args of [sparseArguments, accessorArguments, extraArguments]) {
-			expect(() => validateLynxBackgroundOutboundMessage({ ...callMain, args })).toThrow(
-				/dense array|enumerable data property/,
-			);
-			expect(() => validateLynxBackgroundInboundMessage({ ...callBackground, args })).toThrow(
-				/dense array|enumerable data property/,
-			);
-		}
-		expect(getterRuns).toBe(0);
+		// A hole becomes the explicit `undefined` the codec's sentinel carries; a
+		// getter resolves to a value (twice — see the run-values test for why the
+		// second answer is the one that travels); a non-index property is not part
+		// of an array on the wire at all. Each was a refusal here, and each is now
+		// settled before a validator is reached.
+		expect(unwire(wire(sparseArguments))).toEqual([undefined]);
+		expect(unwire(wire(accessorArguments))).toEqual(['run-2']);
+		expect(getterRuns).toBe(2);
+		expect(unwire(wire(extraArguments))).toEqual([]);
+		expect(Reflect.ownKeys(unwire(wire(extraArguments)) as object)).toEqual(['length']);
 
+		for (const args of [[undefined], ['run-2'], []]) {
+			expect(validateLynxBackgroundOutboundMessage({ ...callMain, args })).toMatchObject({
+				type: 'call-main',
+			});
+			expect(validateLynxBackgroundInboundMessage({ ...callBackground, args })).toMatchObject({
+				type: 'call-background',
+			});
+		}
+
+		// Being an array at all is a schema question, not an integrity one, and
+		// it is still asked: an array-like object is not an argument list.
+		expect(() =>
+			validateLynxBackgroundOutboundMessage({ ...callMain, args: { 0: 'x', length: 1 } }),
+		).toThrow(/call-main\.args.*must be an array/);
+		expect(() =>
+			validateLynxBackgroundInboundMessage({ ...callBackground, args: { 0: 'x', length: 1 } }),
+		).toThrow(/call-background\.args.*must be an array/);
+
+		// Two arguments that are the same object stay acceptable. JSON has no
+		// back-references, so the receiver gets two equal-but-separate values;
+		// that is a documented property of this wire, not a validation failure.
 		const shared = { value: 'shared' };
 		const aliasedMain = { ...callMain, args: [shared, shared] };
 		const aliasedBackground = { ...callBackground, args: [shared, shared] };
 		expect(validateLynxBackgroundOutboundMessage(aliasedMain)).toBe(aliasedMain);
 		expect(validateLynxBackgroundInboundMessage(aliasedBackground)).toBe(aliasedBackground);
+		const crossedArgs = (unwire(wire(aliasedMain)) as { args: readonly unknown[] }).args;
+		expect(crossedArgs).toEqual([{ value: 'shared' }, { value: 'shared' }]);
+		expect(crossedArgs[0]).not.toBe(crossedArgs[1]);
 	});
 
 	it('queues main calls until adoption, settles by birth identity, and executes background calls', async () => {
@@ -1841,7 +2011,7 @@ describe('@octanejs/lynx transported protocol', () => {
 			context.events.some(
 				(event) =>
 					event.type === LYNX_BACKGROUND_TO_MAIN_EVENT &&
-					(event.data as { type?: unknown }).type === 'call-main',
+					(unwire(event.data) as { type?: unknown }).type === 'call-main',
 			),
 		).toBe(false);
 
@@ -1864,7 +2034,7 @@ describe('@octanejs/lynx transported protocol', () => {
 		main.acknowledge(mount, 'complete');
 		await mounted;
 		const callMessage = context.events
-			.map((event) => event.data)
+			.map((event) => unwire(event.data))
 			.find(
 				(message): message is ReturnType<typeof validateLynxBackgroundOutboundMessage> =>
 					(message as { type?: unknown }).type === 'call-main' &&
@@ -1896,7 +2066,7 @@ describe('@octanejs/lynx transported protocol', () => {
 		backgroundResult.saved = 'mutated';
 		expect(executed).toContainEqual(['app:save', 'record']);
 		const backgroundMessage = context.events
-			.map((event) => event.data)
+			.map((event) => unwire(event.data))
 			.find(
 				(message) =>
 					(message as { type?: unknown }).type === 'call-background-result' &&
@@ -1907,7 +2077,7 @@ describe('@octanejs/lynx transported protocol', () => {
 
 		const malformedResultCall = transport.callMain({ _wkltId: 'app:malformed-result' }, []);
 		const malformedResultMessage = context.events
-			.map((event) => event.data as { readonly type?: unknown; readonly call?: unknown })
+			.map((event) => unwire(event.data) as { readonly type?: unknown; readonly call?: unknown })
 			.find(
 				(message) =>
 					message.type === 'call-main' &&
@@ -1923,23 +2093,40 @@ describe('@octanejs/lynx transported protocol', () => {
 		await flushMicrotasks();
 		main.acknowledge(main.commits.at(-1)!, 'complete');
 		await updated;
+		// A function cannot reach the wire at all any more. The transport encodes
+		// before it dispatches, so a value JSON would drop is refused at the
+		// sender — the last place that still knows what it was — rather than
+		// arriving as a hostile payload for the receiver to walk.
+		expect(() =>
+			context.sendToBackground({
+				...identity(82, 1),
+				type: 'call-main-result',
+				call: malformedResultMessage.call,
+				value() {},
+			}),
+		).toThrow(/at \$\.value is a function/);
+
+		// What can still arrive is a payload that parses and then fails the
+		// schema, and that has to settle the pending call rather than hang it.
 		context.sendToBackground({
 			...identity(82, 1),
 			type: 'call-main-result',
 			call: malformedResultMessage.call,
-			value() {},
+			value: 'unreadable',
+			unexpected: true,
 		});
-		await expect(malformedResultCall.promise).rejects.toThrow(/non-serializable|clone-safe/);
+		await expect(malformedResultCall.promise).rejects.toThrow(/unknown field "unexpected"/);
 
 		context.sendToBackground({
 			...identity(82, 1),
 			type: 'call-background',
 			call: 20,
 			fn: { _jsFnId: 'app:malformed-call' },
-			args: [() => undefined],
+			args: [],
+			unexpected: true,
 		});
 		const malformedCallError = context.events
-			.map((event) => event.data as { readonly type?: unknown; readonly call?: unknown })
+			.map((event) => unwire(event.data) as { readonly type?: unknown; readonly call?: unknown })
 			.find((message) => message.type === 'call-background-error' && message.call === 20);
 		expect(malformedCallError).toMatchObject({ root: 82, version: 1 });
 
@@ -1997,7 +2184,7 @@ describe('@octanejs/lynx transported protocol', () => {
 
 		expect(executions).toEqual(['app:return', 'app:throw', 'app:pending']);
 		const settlements = context.events
-			.map((event) => event.data as { readonly type?: unknown; readonly call?: unknown })
+			.map((event) => unwire(event.data) as { readonly type?: unknown; readonly call?: unknown })
 			.filter(
 				(message) =>
 					message.type === 'call-background-result' || message.type === 'call-background-error',
@@ -2086,7 +2273,7 @@ describe('@octanejs/lynx transported protocol', () => {
 			context.events.some(
 				(event) =>
 					event.type === LYNX_BACKGROUND_TO_MAIN_EVENT &&
-					(event.data as { readonly type?: unknown }).type === 'terminal-dispose',
+					(unwire(event.data) as { readonly type?: unknown }).type === 'terminal-dispose',
 			),
 		).toBe(true);
 		const nextBatch: UniversalHostBatch = {
@@ -2121,7 +2308,7 @@ describe('@octanejs/lynx transported protocol', () => {
 
 		const terminalAttempts: UniversalTransportIdentity[] = [];
 		context.addEventListener(LYNX_BACKGROUND_TO_MAIN_EVENT, (event) => {
-			const message = validateLynxBackgroundOutboundMessage(event.data);
+			const message = validateLynxBackgroundOutboundMessage(unwire(event.data));
 			if (message.type !== 'terminal-dispose') return;
 			terminalAttempts.push(commitIdentity(mount));
 			void Promise.resolve().then(() => {
@@ -2202,7 +2389,7 @@ describe('@octanejs/lynx transported protocol', () => {
 				context.events.filter(
 					(event) =>
 						event.type === LYNX_BACKGROUND_TO_MAIN_EVENT &&
-						(event.data as { readonly type?: unknown }).type === 'terminal-dispose',
+						(unwire(event.data) as { readonly type?: unknown }).type === 'terminal-dispose',
 				),
 			).toHaveLength(0);
 
@@ -2213,7 +2400,7 @@ describe('@octanejs/lynx transported protocol', () => {
 				context.events.filter(
 					(event) =>
 						event.type === LYNX_BACKGROUND_TO_MAIN_EVENT &&
-						(event.data as { readonly type?: unknown }).type === 'terminal-dispose',
+						(unwire(event.data) as { readonly type?: unknown }).type === 'terminal-dispose',
 				),
 			).toHaveLength(1);
 			context.sendToBackground({ ...commitIdentity(mount), type: 'dispose-ack' });
@@ -2273,7 +2460,10 @@ describe('@octanejs/lynx transported protocol', () => {
 		expect(transport.closedReason()).toBe(failure);
 		expect(container.getPublicHandle(1)).toBeNull();
 		expect(
-			context.events.map((event) => [event.type, (event.data as { readonly type?: unknown }).type]),
+			context.events.map((event) => [
+				event.type,
+				(unwire(event.data) as { readonly type?: unknown }).type,
+			]),
 		).toContainEqual([LYNX_BACKGROUND_TO_MAIN_EVENT, 'terminal-dispose']);
 	});
 
@@ -2298,7 +2488,7 @@ describe('@octanejs/lynx transported protocol', () => {
 		await transport.ready;
 		const readiness = context.events
 			.filter((event) => event.type === LYNX_BACKGROUND_TO_MAIN_EVENT)
-			.map((event) => event.data)
+			.map((event) => unwire(event.data))
 			.find((message): message is LynxMainReadyRequest =>
 				Boolean(
 					message !== null &&
@@ -2620,7 +2810,7 @@ describe('@octanejs/lynx transported protocol', () => {
 		};
 		queueAcceptedCall = () => queue('app:batch-accepted');
 		context.addEventListener(LYNX_BACKGROUND_TO_MAIN_EVENT, (event) => {
-			const message = validateLynxBackgroundOutboundMessage(event.data);
+			const message = validateLynxBackgroundOutboundMessage(unwire(event.data));
 			if (message.type !== 'call-main') return;
 			delivered.push(message.call);
 			if (message.call === 1) queue('app:reentrant');
@@ -3572,7 +3762,7 @@ describe('@octanejs/lynx transported protocol', () => {
 		expect(directTransport.acceptedIdentity()).toMatchObject(directIdentity);
 		const outbound = directContext.events
 			.filter((entry) => entry.type === LYNX_BACKGROUND_TO_MAIN_EVENT)
-			.map((entry) => (entry.data as { type: string }).type);
+			.map((entry) => (unwire(entry.data) as { type: string }).type);
 		expect(outbound.filter((type) => type === 'commit')).toHaveLength(1);
 		expect(outbound.filter((type) => type === 'abort')).toHaveLength(1);
 
@@ -3587,7 +3777,7 @@ describe('@octanejs/lynx transported protocol', () => {
 		await expect(waitingApply).rejects.toThrow(/was aborted/);
 		const waitingOutbound = waitingContext.events
 			.filter((entry) => entry.type === LYNX_BACKGROUND_TO_MAIN_EVENT)
-			.map((entry) => (entry.data as { type: string }).type);
+			.map((entry) => (unwire(entry.data) as { type: string }).type);
 		expect(waitingOutbound).not.toContain('commit');
 		expect(waitingOutbound).not.toContain('abort');
 		waitingTransport.close();
