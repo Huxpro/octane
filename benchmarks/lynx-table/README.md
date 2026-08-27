@@ -2377,6 +2377,85 @@ it, so `freezePlanNode` now restates that where the runtime can see it, for the
 plans that do not come from the compiler. Freezing runs once per plan, so it
 costs nothing per row.
 
+### What is left of the program mount is bookkeeping, not mounting (issue #163 C19)
+
+C18 left `program mount` the largest bucket in the program cell and the only one
+still unattributed: C14–C17 split every other bucket into named sites, but a
+sampling profiler names frames, and `mountProgram` is one frame. Splitting a
+function into its loops needs ablation instead, which is what C13 did for the
+lookup.
+
+Two measurement-only arms, built from one tree into tagged dists and run beside
+the shipping head in one window. Neither ever lands — each removes bookkeeping
+the container needs — and each leaves every PAPI call exactly where the head
+makes it, so all three arms paint the same 30,000 rows.
+
+- `c19own` drops the mount's per-node ownership journal: `state.ownedNodes.add`
+  and `state.programNodes.set`, for each node and each painted keyed range.
+- `c19evt` drops the mount's per-site event journal: the loop that writes
+  `{source, binding, listener}` into `nativeEventMap(state, node)`.
+
+`c19own` also has the capture-side root resolution's throw removed, because with
+`programNodes` empty a program root no longer resolves there. That throw lives in
+`first tree capture`, not in the bucket this reads.
+
+```bash
+BENCH_DIST_TAG=c19own BENCH_MTS_PROGRAM=1 BENCH_AUTOROWS=30000 node scripts/build-app.mjs
+BENCH_DIST_TAG=c19evt BENCH_MTS_PROGRAM=1 BENCH_AUTOROWS=30000 node scripts/build-app.mjs
+
+node stages/mts-profile.mjs --rows 30000 --reps 15 --interval 100 \
+	--cells octane-mts-program,octane-mts-program-c19own,octane-mts-program-c19evt \
+	--control-dist c19own,c19evt --label c163-c19-mount
+```
+
+| main-thread script | head | `c19own` | Δ | `c19evt` | Δ |
+|---|---:|---:|---:|---:|---:|
+| program mount | 202.1 | 69.1 | **−132.9** | 178.4 | **−23.7** |
+| renderer pre-passes | 74.9 | 73.1 | −1.7 | 74.3 | −0.5 |
+| event bookkeeping | 60.1 | 55.1 | −5.0 | 15.9 | **−44.2** |
+| applier entry and pre-walk | 35.4 | 32.4 | −3.0 | 32.8 | −2.6 |
+| applier walk | 29.4 | 27.1 | −2.3 | 28.3 | −1.1 |
+| first tree capture | 26.5 | 0.0 | **−26.5** | 24.8 | −1.7 |
+| compiled program create | 12.8 | 14.1 | +1.3 | 13.4 | +0.7 |
+| first-screen entry | 5.3 | 5.5 | +0.2 | 5.5 | +0.2 |
+| papi facade | 2.6 | 2.7 | +0.1 | 3.0 | +0.3 |
+| named total | 458.1 | 280.3 | −177.8 | 374.6 | −83.5 |
+| **all frames** | **481.2** | **305.7** | **−175.4** | **418.6** | **−62.6** |
+
+Every number is the record's own median over 15 reps, and each Δ is the
+difference of two medians. Bucket medians do not add to the named-total median —
+each is taken independently across the reps — so the rows are read one at a time
+rather than summed.
+
+`results/c163-c19-mount-30000.json`.
+
+**The ownership journal is 133 ms in the mount, and it is 26 more in capture.**
+`c19own`'s `first tree capture` is not a failure: capture's eager half is
+`new Map(state.programNodes)`, a copy of every program node the mount journalled,
+and an empty map copies for free. A bench row is a `view` over three `text`
+hosts plus the holes the program paints, so at 30,000 rows the mount writes
+hundreds of thousands of entries across a `Set` and a `Map`, one at a time, and
+capture then copies every entry of the `Map` again.
+
+**The event journal is 68 ms**, of which `nativeEventMap` is 38.2 → 0: one `Map`
+allocated per host that carries an event, holding one entry, 60,000 times.
+`parseLynxNativeEventProp` (6.3 → 0) resolves a plan constant once per site per
+row. The token encoding is not part of it and does not move — 13.4, 13.0 and
+13.9 ms across the three arms — because the tokens are built before the journal,
+and the program needs them.
+
+What is left of `mountProgram` after both is about 45 ms: the argument array, the
+spread call into the compiled create, the returned-length and range checks, and
+the walk frames it pushes. That is the mounting; the other 200 is main
+remembering what it mounted.
+
+Neither arm licenses deleting anything. The container needs to find every
+physical node it owns, resolve a program id to a node for adoption, and clear
+every listener at teardown. What the numbers license is asking whether main has
+to remember it *per node*: the mount already holds a program's ids and its
+created nodes as two arrays, in the same order, and copies them into a `Set` and
+a `Map` one entry at a time.
+
 ## Claims and non-claims
 
 Command counts and commit bytes are Octane-owned costs and are gated. The
