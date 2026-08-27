@@ -1369,50 +1369,114 @@ largest program-mount cost in the run. A bucket table that reads past its frame
 produces a complete-looking report of the wrong thing, which is why
 `stages/mts-profile.test.mjs` pins the spacing rather than any bucket's name.
 
-### What the compiled program still pays for @10,000
+### What the compiled program still pays for, at three scales (issue #163 C9)
 
-Self time inside the main-thread realm, median over 5 profiled first screens
-with the observed range (`results/mts-profile-10000.md`):
+Self time inside the main-thread realm, five profiled first screens per cell
+per scale, taken twice — two independent windows over one build of every cell,
+whose digests each record carries
+(`results/c163-c9-script{,-b}-{1000,10000,30000}.md`).
 
-| main-thread script | `octane` | `+program` | `octane-direct` |
+**Read the shares, not the milliseconds.** Between the two series — same
+bundles, same host, minutes apart — a cell’s whole script moves by up to 9%,
+while no bucket’s share of it moves by more than 3.6 points. A share is
+therefore a claim this instrument can carry and an absolute delta of under about
+a tenth is not. Milliseconds below are series A’s, quoted to size the table
+rather than to be differenced against another run.
+
+| main-thread script @30,000 | `octane` | `+program` | `octane-direct` |
 |---|---:|---:|---:|
-| program mount | — | 53.8 [49.3–55.8] | — |
-| renderer pre-passes | 58.4 [56.9–61.3] | 37.0 [34.3–45.7] | — |
-| applier walk | 113.7 [109.6–117.9] | 35.7 [33.3–41.6] | — |
-| host record building | 95.5 [93.0–98.8] | 25.8 [20.8–29.9] | — |
-| applier entry and pre-walk | 44.6 [38.7–49.0] | 19.8 [19.1–24.4] | — |
-| event bookkeeping | 17.0 [15.6–19.9] | 13.3 [12.3–15.9] | — |
-| first tree capture | 45.0 [42.3–49.2] | 12.4 [11.1–13.3] | — |
-| **the compiled program itself** | — | **6.9 [5.8–7.2]** | — |
-| first-screen entry | 18.2 [16.0–18.4] | 3.8 [3.1–4.1] | — |
-| element factory dispatch | 5.5 [2.8–6.2] | 0.7 [0.6–1.7] | — |
-| unnamed by the probe table | 24.0 [20.8–27.5] | 13.5 [10.5–15.2] | 10.3 [7.6–13.3] |
-| **all frames** | **420.1 [407.1–436.6]** | **226.3 [218.9–238.0]** | **10.3 [7.6–13.3]** |
+| **program mount** | — | 185.5 [182.7–202.5] | — |
+| renderer pre-passes | 159.6 [149.0–173.5] | 64.0 [63.8–68.6] | — |
+| event bookkeeping | 56.3 [49.7–65.6] | 36.1 [33.6–48.2] | — |
+| applier entry and pre-walk | 115.0 [104.2–118.2] | 31.9 [25.9–34.8] | — |
+| applier walk | 460.0 [400.3–477.6] | 24.2 [20.2–25.6] | — |
+| first tree capture | 128.4 [125.3–137.9] | 23.4 [20.9–29.4] | — |
+| **the compiled program itself** | — | 22.8 [18.5–28.7] | — |
+| first-screen entry | 33.5 [26.8–35.7] | 4.9 [4.0–6.7] | — |
+| host record building | 265.5 [248.5–279.6] | 3.2 [1.4–3.7] | — |
+| element factory dispatch | 10.7 [9.0–14.4] | 0.0 [0.0–0.2] | — |
+| unnamed by the probe table | 71.0 [57.7–78.0] | 22.2 [20.1–25.5] | 28.4 [26.4–31.0] |
+| **all frames** | **1317.2** | **424.1** | **28.4** |
 
 The prototype has no framework rows by construction: it runs no Octane code, so
-no probe can name it and its whole script — 10.3 ms for the same 10,000 rows —
-is unnamed. At 1,000 rows the three read 63.1, 35.6 and 4.0 ms.
+no probe can name it and its whole script is unnamed. At 1,000 and 10,000 rows
+the three cells read 62.7 / 24.7 / 3.1 and 456.8 / 164.7 / 11.4 ms.
 
-Three things follow, and none of them is a hot spot:
+#### Which of it amortizes, and which of it is a per-row tax
 
-- **The compiled program's own code is 6.9 ms, 3% of what the program cell
-  spends.** Emitted straight-line code is already within a few milliseconds of a
-  hand-written emitter. Everything else in that column is the framework
-  scaffolding around it.
-- **No single bucket dominates.** The largest is the program mount at 24%, and
-  six buckets sit between 12 and 54 ms. There is nothing here to delete for a
-  large win; what is expensive is per-node and per-row scaffolding spread across
-  the whole path.
-- **The program is good at exactly what it was built for and no more.** It takes
-  69–73% off the applier walk, host record building, and first-tree capture —
-  the per-host-node work — and 22–37% off the renderer's own pre-passes and the
-  event bookkeeping, which are per-row and per-event however the row is painted.
-  Against that it adds the mount, 53.8 ms that did not exist before, which is now
-  the single largest row in its column.
+Each bucket as a share of what the program cell spends, and the exponent that
+fits the 30× range — `1.00` is exactly linear in rows, below it the cost
+amortizes. Both windows, `A / B`:
 
-The ordering agrees with §6's phase split taken independently: the buckets
-inside `publish` sum to roughly four times those inside `render`, and capture is
-small in both. Two instruments, one conclusion.
+| bucket | share @1k | @10k | @30k | exponent |
+|---|---:|---:|---:|---:|
+| **event bookkeeping** | 4.3 / 4.4% | 10.1 / 9.9% | 8.5 / 8.3% | **1.04 / 1.02** |
+| **program mount** | 24.5 / 22.3% | 40.6 / 37.1% | 43.7 / 45.2% | **1.01 / 1.05** |
+| **first tree capture** | 3.8 / 2.9% | 4.6 / 4.4% | 5.5 / 6.4% | **0.95 / 1.07** |
+| applier walk | 4.3 / 7.0% | 5.8 / 5.4% | 5.7 / 5.0% | 0.92 / 0.74 |
+| applier entry and pre-walk | 9.3 / 9.0% | 10.9 / 12.8% | 7.5 / 7.9% | 0.77 / 0.80 |
+| compiled program create | 7.7 / 8.4% | 5.8 / 6.3% | 5.4 / 4.7% | 0.73 / 0.67 |
+| renderer pre-passes | 26.4 / 24.1% | 15.3 / 15.5% | 15.1 / 14.7% | 0.67 / 0.69 |
+| first-screen entry | 2.8 / 2.6% | 1.2 / 1.2% | 1.2 / 1.3% | 0.57 / 0.64 |
+| **all frames** | 100% | 100% | 100% | 0.84 / 0.84 |
+
+`element factory dispatch` and `host record building` carry no exponent: their
+1,000-row cost rounds to zero in at least one series, which is itself the
+finding about them — both are under 1% of the program cell at 30,000 rows. The
+frames the probe table did not name are 5.2 / 5.1% at 30,000 rows and amortize.
+
+Three things follow.
+
+- **The compiled program’s own code is about 5% of what the program cell spends.**
+  Straight-line emitted code costs within a few milliseconds of a
+  hand-written emitter at every scale, and it amortizes. Nothing in issue
+  #163’s remaining gap is the compiled program.
+- **The program mount is now the largest single bucket, and its share grows**
+  with the workload: 23% at 1,000 rows, 39% at 10,000, 44% at 30,000.
+  The bucket is `mountProgram` self time, which issues no host call at all —
+  the painting is the row above it. It is the framework’s per-row bookkeeping
+  around a program, growing with the program’s reach rather than shrinking.
+- **Exactly three buckets fail to amortize** — the mount, event bookkeeping and
+  first-tree capture — and together they are 59% of the program cell’s script
+  at 30,000 rows. Everything the compiled program actually removed amortizes at
+  0.57–0.92. What is left is not a diffuse per-node cost to shave; it is three
+  named per-row taxes. One of them has already been attacked once: first-tree
+  capture was moved past the paint, and what survives that is still linear.
+
+#### Why the earlier reading moved
+
+An earlier version of this section read the same instrument at 10,000 rows and
+concluded that no single bucket dominated, the largest being the program mount
+at 24%. That record (`results/mts-profile-10000.md`) is a true reading of a
+build three `packages/lynx` commits older than this one, and it is what the
+conclusion was true of. Against the current head, at the same 10,000 rows:
+
+| bucket | then | now (A / B) |
+|---|---:|---:|
+| program mount | 23.8% | 40.6 / 37.1% |
+| applier walk | 15.8% | 5.8 / 5.4% |
+| host record building | 11.4% | 0.3 / 0.2% |
+| first tree capture | 5.5% | 4.6 / 4.4% |
+| event bookkeeping | 5.9% | 10.1 / 9.9% |
+
+Those three commits moved a program’s text painting into the program and took
+the first-tree token index off the paint path. They did what they were for —
+`applier walk` and `host record building` all but leave the program cell — and
+the mount is what is left holding the per-row cost. The shares are the
+comparable quantity across two builds measured on different days; the
+milliseconds are not, which is the whole reason this section is written in
+shares.
+
+The failure that produced the earlier draft of this section is worth naming,
+because nothing on disk caught it: the 1,000- and 10,000-row points were read
+from records taken before those three commits and the 30,000-row point after,
+and the series showed `host record building` getting *cheaper* as the workload
+tripled. That is why every record here now names the bundle it measured.
+
+The split still agrees with §6’s phase attribution taken independently: the
+buckets inside `publish` sum to 4.9× those inside `render` in series A
+and 5.0× in series B, and capture is small in both. Two instruments, one
+conclusion.
 
 ## Claims and non-claims
 

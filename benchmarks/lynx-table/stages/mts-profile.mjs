@@ -37,7 +37,7 @@ import {
 	stats,
 } from '../web/driver-client.mjs';
 import { foldProfile, PROBE_WINDOW } from './mts-profile-buckets.mjs';
-import { writeEvidenceJson } from '../scripts/evidence.mjs';
+import { bundleIdentity, writeEvidenceJson } from '../scripts/evidence.mjs';
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(import.meta.dirname, '..');
@@ -277,6 +277,12 @@ const meta = {
 	reps,
 	samplingIntervalUs: interval,
 	cells: cellIds,
+	// Which bytes this run measured, not merely when it ran. A profile compared
+	// against another profile is only a comparison if both measured the same
+	// build, and a date cannot say whether they did — see `bundleIdentity`.
+	bundles: Object.fromEntries(
+		cellIds.map((id) => [id, bundleIdentity(CELLS[id](rows), { relativeTo: root })]),
+	),
 	loadStart: loadStart.map((value) => round(value, 2)),
 	loadEnd: loadEnd.map((value) => round(value, 2)),
 };
@@ -292,6 +298,23 @@ const lines = [
 	`- host: ${meta.cpus}× ${meta.cpuModel}; ${meta.platform} ${meta.release}; Node ${meta.node}`,
 	`- ${rows} rows, ${reps} profiled first screens per cell, ${interval} µs sampling interval`,
 	`- one-minute load ${meta.loadStart[0]} → ${meta.loadEnd[0]}`,
+	'',
+	'## Which build this measured',
+	'',
+	'`digest` names the bytes: two records that agree on it for a cell measured the',
+	'same code, which is what an A/B at one scale needs in order to be an A/B.',
+	'Across scales the bundles differ by construction — the row count is compiled',
+	'in — so what makes several records one series is instead that every bundle was',
+	'built from one revision, and `built` is what answers that. A bundle older than',
+	'the last commit under `packages/` measured a stale build, and reading it beside',
+	'a fresh one turns a version difference into an apparent workload effect.',
+	'',
+	'| cell | bundle | bytes | digest | built |',
+	'|---|---|---:|---|---|',
+	...cellIds.map((id) => {
+		const it = meta.bundles[id];
+		return `| \`${id}\` | \`${it.path}\` | ${it.bytes} | \`${it.digest}\` | ${it.modified} |`;
+	}),
 	'',
 	'## What this is, and is not',
 	'',
