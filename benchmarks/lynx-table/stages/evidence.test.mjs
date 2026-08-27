@@ -13,6 +13,7 @@
 // all write records and all import their shared helpers from there. Its test
 // lives here because this is the directory `pnpm test:stages` collects.
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -27,9 +28,13 @@ const TRACKED = [
 ];
 
 function records() {
+	// Enumerated from git, not the directory: the claim is about *checked-in*
+	// records, and results/ legitimately holds ignored scratch output (a
+	// `papi-smoke.json` written by an older writer, for one) that would fail
+	// byte-identity over files the gate never sees.
 	return TRACKED.flatMap((directory) =>
-		fs
-			.readdirSync(directory)
+		execFileSync('git', ['ls-files', '--', '*.json'], { cwd: directory, encoding: 'utf8' })
+			.split('\n')
 			.filter((entry) => entry.endsWith('.json'))
 			.map((entry) => path.join(directory, entry)),
 	);
