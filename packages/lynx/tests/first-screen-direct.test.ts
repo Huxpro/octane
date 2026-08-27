@@ -1447,3 +1447,134 @@ describe('direct first-screen applier, a range site the program paints', () => {
 		).toThrow(/carries 0 range texts and 1 range ids/);
 	});
 });
+
+/**
+ * A two-node program shaped like the real emission: it makes a root and a
+ * child, puts the child *inside* the root, and hands both back. Only the root
+ * is ever appended to the page, so at teardown the child is reachable through
+ * the program's run and through nothing else — it has no record, and the page
+ * root the applier registered is its parent rather than itself.
+ */
+function nestingProgram(): UniversalProgramPlan {
+	return fakeProgram({
+		nodes: 2,
+		bind: (host: unknown) => {
+			const papi = host as {
+				createElement(type: string, pageId: number, text: string): FakeNode;
+				insertBefore(parent: FakeNode, child: FakeNode, before: FakeNode | null): void;
+			};
+			return (...args: unknown[]) => {
+				const pageId = args[0] as number;
+				const root = papi.createElement('view', pageId, '');
+				const child = papi.createElement('view', pageId, '');
+				papi.insertBefore(root, child, null);
+				return [root, child];
+			};
+		},
+	});
+}
+
+/**
+ * `intrinsicHost()` with one node's parentage made unresolvable on demand, the
+ * way `host-driver.test.ts` injects a `getParent` failure for an ordinary host.
+ * Set `papi.unresolvable` after the paint to name the node.
+ */
+function hostFailingParentOf(failure: Error): ReturnType<typeof intrinsicHost> & {
+	unresolvable: unknown;
+} {
+	const base = intrinsicHost();
+	const papi = {
+		...base,
+		unresolvable: null as unknown,
+		getParent(target: FakeNode): FakeNode | null {
+			if (target === papi.unresolvable) throw failure;
+			return base.getParent(target);
+		},
+	};
+	return papi;
+}
+
+describe('direct first-screen applier, the nodes a program leaves for teardown', () => {
+	// Disposal has to account for every physical node the first screen made, and
+	// a program writes no record for any of its own — so the run it journals is
+	// the only place they are named. A node missing from it is not leaked
+	// loudly: the host is never asked about it, so a container that left it in
+	// the page still reports `complete: true`. That false completion is what
+	// these two tests observe, by making the host unable to resolve exactly one
+	// program node's parent and asking whether the dispose noticed.
+	//
+	// The program's root cannot show this — the applier registers it as a page
+	// root, which teardown reads whether or not the run exists. It has to be a
+	// node the program made *below* its root, which is every node but one.
+
+	it('reports an incomplete dispose when a node the program made cannot be resolved', () => {
+		const failure = new Error('parent inspection failed');
+		const papi = hostFailingParentOf(failure);
+		const container = createLynxHostContainer(papi, { root: 1 });
+		expect(
+			applyLynxFirstScreenDirect(
+				container,
+				[programNode({ plan: nestingProgram(), ids: [1, 2] })],
+				PROGRAM_ENVELOPE,
+			),
+		).toBe(true);
+		const root = papi.pages[0]!.children[0] as FakeNode;
+		papi.unresolvable = root.children[0] as FakeNode;
+
+		expect(disposeLynxHostContainer(container)).toMatchObject({
+			complete: false,
+			remainingRoots: 1,
+			errors: [failure],
+		});
+		expect(container.disposed).toBe(false);
+
+		// And the retained half of the same contract: once the host can answer,
+		// the retry completes rather than leaving the container permanently
+		// undisposable.
+		papi.unresolvable = null;
+		expect(disposeLynxHostContainer(container).complete).toBe(true);
+		expect(container.disposed).toBe(true);
+		expect(papi.pages[0]!.children).toHaveLength(0);
+	});
+
+	it('reports an incomplete dispose when a hole the program painted cannot be resolved', () => {
+		// The same claim for the trailing half of a run. A painted text is a
+		// child of a node the program made and would come down with it either
+		// way, so nothing about the page can distinguish a container that owns it
+		// from one that forgot it — only whether teardown asked.
+		const failure = new Error('parent inspection failed');
+		const papi = hostFailingParentOf(failure);
+		const container = createLynxHostContainer(papi, { root: 1 });
+		expect(
+			applyLynxFirstScreenDirect(
+				container,
+				[
+					programNode({
+						plan: paintingProgram(),
+						ids: [1],
+						spans: [0],
+						texts: ['Label'],
+						rangeIds: [2],
+					}),
+				],
+				PROGRAM_ENVELOPE,
+			),
+		).toBe(true);
+		const root = papi.pages[0]!.children[0] as FakeNode;
+		const painted = root.children[0] as FakeNode;
+		expect(painted.text).toBe('Label');
+		papi.unresolvable = painted;
+
+		expect(disposeLynxHostContainer(container)).toMatchObject({
+			complete: false,
+			remainingRoots: 1,
+			errors: [failure],
+		});
+		expect(container.disposed).toBe(false);
+
+		papi.unresolvable = null;
+		expect(disposeLynxHostContainer(container).complete).toBe(true);
+		expect(container.disposed).toBe(true);
+		expect(papi.pages[0]!.children).toHaveLength(0);
+	});
+});

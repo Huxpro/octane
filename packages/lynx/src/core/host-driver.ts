@@ -25,6 +25,7 @@ import { hasCrossRealmPlainPrototype } from './plain-object.js';
 import {
 	createLynxFirstTree,
 	LYNX_FIRST_TREE_STATE,
+	lynxFirstTreeProgramNodes,
 	LynxFirstScreenRefusalError,
 	LynxFirstTreeMismatchError,
 	type CaptureLynxFirstTreeOptions,
@@ -33,6 +34,7 @@ import {
 	type LynxFirstTreeEventSnapshot,
 	type LynxFirstTreeListJournal,
 	type LynxFirstTreeLogicalNodeSnapshot,
+	type LynxProgramRun,
 	type LynxFirstTreeSnapshot,
 	type LynxResolvedFirstTreeEvent,
 } from './first-screen.js';
@@ -262,7 +264,7 @@ interface LynxHostState<Node extends LynxElementRef> {
 	/** Monotonic: ordinary trees never need native-list ancestry bookkeeping. */
 	hasNativeListTopology: boolean;
 	/**
-	 * Every node a compiled main-thread program painted, by the ID it took.
+	 * Every compiled main-thread program this container mounted, one entry each.
 	 *
 	 * A program writes no record, so this is the only thing that says which
 	 * physical node wears which ID — and, at adoption, the only thing main
@@ -272,13 +274,21 @@ interface LynxHostState<Node extends LynxElementRef> {
 	 * It is also the answer to "did this container paint a program", which C2d
 	 * kept as a separate monotonic flag so that `captureLynxFirstTree` could
 	 * decline such a container outright. C2e made capture describe one instead —
-	 * from this map — and the flag went on being written and never read. A
+	 * from this journal — and the flag went on being written and never read. A
 	 * predicate nothing consults is not documentation, so it is gone rather than
-	 * kept against a future reader: this map answers the same question, and the
-	 * one way the two differ is that this one is cleared at hand-over, when there
-	 * is no longer a painted tree to answer about.
+	 * kept against a future reader: this answers the same question, and the one
+	 * way the two differ is that this one is cleared at hand-over, when there is
+	 * no longer a painted tree to answer about.
+	 *
+	 * One entry per program rather than per node (issue #163 C20). A program's
+	 * hosts are numbered together and created together, and the mount already
+	 * holds both arrays in one order; writing them out node by node into a `Set`
+	 * and a `Map` cost 133 ms of main-thread script at 30,000 rows, and 26 more
+	 * re-copying the map at capture, for a per-ID view only adoption reads. So a
+	 * program's nodes are *not* in `ownedNodes` either: this is where they are,
+	 * and every reader that wants all of them reads both.
 	 */
-	readonly programNodes: Map<number, Node>;
+	readonly programRuns: LynxProgramRun<Node>[];
 	acceptedVersion: number;
 	disposed: boolean;
 	disposing: boolean;
@@ -3029,7 +3039,7 @@ export function createLynxHostContainer<Node extends LynxElementRef>(
 		onCallbackFault: options.onCallbackFault,
 		hasMainThreadProps: false,
 		hasNativeListTopology: false,
-		programNodes: new Map(),
+		programRuns: [],
 		acceptedVersion: 0,
 		disposed: false,
 		disposing: false,
@@ -3812,7 +3822,6 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 	 */
 	const mountProgram = (
 		node: LynxFirstScreenDirectNode,
-		parentRecord: LynxHostRecord<Node> | null,
 		parentId: number | null,
 		physicalParent: Node,
 		parentVisible: boolean,
@@ -3966,15 +3975,6 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 				`a compiled main-thread program declaring ${plan.nodes} nodes and ${plan.ranges.length} keyed ranges returned ${created.length} entries.`,
 			);
 		}
-		for (let index = 0; index < plan.nodes; index++) {
-			const element = created[index] as Node;
-			state.ownedNodes.add(element);
-			// The ID this node took, kept because nothing else will remember it.
-			// Adoption resolves the background's description against this map
-			// instead of against a record, which is the whole of what main
-			// contributes to a program's handoff (issue #163).
-			state.programNodes.set(ids[index]!, element);
-		}
 		// The trailing half: what the create function painted for each hole. Two
 		// processes decided this — the renderer, choosing which holes to hand a
 		// string, and the build, choosing which holes compile a test at all — so
@@ -3982,6 +3982,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		// either way is silent otherwise: a hole this renderer skipped and the
 		// program left open is a text that is simply missing, and one they both
 		// filled is a node in the page that no journal owns.
+		let owned = plan.nodes;
 		for (let index = 0; index < plan.ranges.length; index++) {
 			const painted = created[plan.nodes + index];
 			const text = texts[index];
@@ -4004,13 +4005,24 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 					`a compiled main-thread program painted keyed range ${index}, which this first screen did not number.`,
 				);
 			}
-			// Journalled exactly like a node the program made, because that is what
-			// it is: the ownership equality this container checks counts every
-			// program node once, and a painted text left out of the map would read
-			// as an untracked node rather than as one this mount forgot.
-			state.ownedNodes.add(painted as Node);
-			state.programNodes.set(id, painted as Node);
+			// Counted exactly like a node the program made, because that is what it
+			// is: the ownership equality this container checks counts every program
+			// node once, and a painted text left out would read as an untracked node
+			// rather than as one this mount forgot.
+			owned++;
 		}
+		// One entry, after every check above rather than during them: a mount that
+		// throws leaves nothing half-journalled for terminal cleanup to find, which
+		// is more than the per-node writes this replaced could say. `ids`,
+		// `rangeIds` and `created` are arrays this mount already holds, so the run
+		// is the only allocation, and the per-ID view adoption wants is built from
+		// it there — after the paint this stands in front of (issue #163 C20).
+		state.programRuns.push({
+			ids,
+			rangeIds,
+			nodes: created as readonly (Node | undefined)[],
+			owned,
+		});
 		for (let index = 0; index < plan.events.length; index++) {
 			const token = tokens[index];
 			if (token === undefined) continue;
@@ -4027,23 +4039,13 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 				Object.freeze({ source: 'background', binding, listener: token }),
 			);
 		}
-		// A program's root is linked where an ordinary host's record would be:
-		// into the enclosing record's children under a described host, or into
-		// `rootChildren` at the top level — `ownedPageRoots` being the physical
-		// half of the latter. Nothing else will add it: the push that names a
-		// child rides the record walk, and a program writes no record. The link
-		// matters beyond bookkeeping — the background's description of the parent
-		// counts this child, so a capture that omitted it would fail the
-		// child-order comparison and turn every nested program's adoption into a
-		// repair. Its keyed range members are deliberately *not* here; they sit
-		// inside a node the program made, and calling them page roots is the
-		// mistake the linkage guard below refuses.
-		if (parentRecord !== null) {
-			if (parentRecord.children === EMPTY_HOST_CHILDREN) parentRecord.children = [];
-			parentRecord.children.push(ids[0]!);
-		} else if (parentId === null) {
-			state.rootChildren.push(ids[0]!);
-		}
+		// A program mounted at the top level is a page root, and `rootChildren` is
+		// the logical half of that — `ownedPageRoots` being the physical half.
+		// Nothing else will add it: the push that names a page root rides the
+		// record walk, and a program writes no record. Its keyed range members are
+		// deliberately *not* here; they sit inside a node the program made, and
+		// calling them page roots is the mistake the linkage guard below refuses.
+		if (parentId === null) state.rootChildren.push(ids[0]!);
 		// The attach is queued before the members so it pops after them, which is
 		// how the rest of this walk keeps a subtree out of the caller's tree until
 		// it is finished. It is the whole reason the emitted create returns its
@@ -4117,7 +4119,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			// Handled before the range-transparent branch below, which would
 			// otherwise walk past a node carrying no type and no props and publish
 			// the page it left out.
-			mountProgram(node, parentRecord, parentId, physicalParent, parentVisible);
+			mountProgram(node, parentId, physicalParent, parentVisible);
 			return;
 		}
 		if (node.kind !== 'host') {
@@ -4487,24 +4489,41 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 		}
 		described.push({ id, nativeId, parent: record.parent, record, events });
 	}
-	// Still an equality, not a bound, and now across three populations rather than
-	// two. Every owned node is accounted for exactly once: described ones by their
-	// record, native list rows by the logical map, and a compiled main-thread
-	// program's by the ID map the mount kept. A program's nodes are the one way a
-	// node can be in the ownership journal and absent from `records` without being
-	// untracked (issue #163). Counting them keeps this an equality instead of
-	// softening it to a bound, so an actually-untracked node still cannot hide,
-	// and neither can an unmaterialized row.
-	if (state.ownedNodes.size !== state.records.size - logicalNodes.size + state.programNodes.size) {
+	// Still an equality, not a bound: every node in the physical ownership journal
+	// is accounted for exactly once, by its record or by the logical map, so an
+	// untracked node cannot hide here and neither can an unmaterialized row.
+	//
+	// Two populations now, where this counted three. A compiled main-thread
+	// program's nodes used to be in `ownedNodes` *and* in a per-ID map, and the
+	// third term counted the same population back out of the right-hand side —
+	// which is why it appeared on both sides and cancelled. Its one job was
+	// catching a mount that wrote one of those journals and not the other, and
+	// C20 removed that possibility rather than the check: a program is one entry
+	// in one journal, pushed after every check the mount makes, so there is no
+	// longer a second write to disagree with. What remains is the count, which
+	// the first-tree journal carries so adoption's own equality can use it.
+	let programNodes = 0;
+	for (const run of state.programRuns) programNodes += run.owned;
+	if (state.ownedNodes.size !== state.records.size - logicalNodes.size) {
 		throw hostError('first-tree physical ownership contains untracked nodes.');
 	}
 	if (state.ownedPageRoots.size !== state.rootChildren.length) {
 		throw hostError('first-tree page-root ownership does not match logical roots.');
 	}
 	for (const id of state.rootChildren) {
-		// A program's root has no record, so its node comes from the ID map the
-		// mount kept — the same substitution adoption makes, for the same reason.
-		const node = state.programNodes.get(id) ?? state.records.get(id)?.node;
+		// A program's root has no record, so its node comes from the run the mount
+		// kept — the same substitution adoption makes, for the same reason. Only a
+		// program's *first* node is ever a logical root: the mount pushes `ids[0]`
+		// and nothing else, and a keyed range's members sit inside a node the
+		// program made rather than beside it. So this looks at first ids only, and
+		// needs no per-ID view of a journal nothing else here reads by ID.
+		let programRoot: Node | undefined;
+		for (const run of state.programRuns) {
+			if (run.ids[0] !== id) continue;
+			programRoot = run.nodes[0] as Node;
+			break;
+		}
+		const node = programRoot ?? state.records.get(id)?.node;
 		if (node === null || node === undefined || !state.ownedPageRoots.has(node)) {
 			throw hostError(`first-tree root ${id} is missing from page-root ownership.`);
 		}
@@ -4562,10 +4581,12 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 		indexEvents,
 		logicalNodes,
 		lists,
-		// Copied, not aliased. The live map is cleared when the container hands its
-		// nodes over or is disposed, and the capture has to keep describing the
-		// tree it took after either — the same reason `roots` is copied above.
-		new Map(state.programNodes),
+		// Copied, not aliased. The live journal is emptied when the container hands
+		// its nodes over or is disposed, and the capture has to keep describing the
+		// tree it took after either — the same reason `roots` is copied above. One
+		// reference per program, where this used to copy one entry per node.
+		[...state.programRuns],
+		programNodes,
 	);
 	state.firstTree = firstTree;
 	return firstTree;
@@ -4715,17 +4736,21 @@ function compareFirstTree<Node extends LynxElementRef>(
 			);
 		}
 	}
-	// Three populations again, for the reason the capture's ownership equality
-	// counts three (issue #163): a compiled main-thread program's hosts are in
-	// the background's `finalIds` and in neither the snapshot nor main's records,
-	// because a program is compiled so that its subtree is never described.
-	// Equalities, still — a program's IDs are counted, not exempted, so a
-	// background that described one host too many is a mismatch here rather than
-	// a host adopted against nothing.
+	// Three populations (issue #163): a compiled main-thread program's hosts are
+	// in the background's `finalIds` and in neither the snapshot nor main's
+	// records, because a program is compiled so that its subtree is never
+	// described. Equalities, still — a program's IDs are counted, not exempted,
+	// so a background that described one host too many is a mismatch here rather
+	// than a host adopted against nothing.
+	//
+	// The per-ID view of those hosts is built below rather than at capture, and
+	// the count comes from the journal instead of from that map's size, so the
+	// two equalities do not force it into existence before the comparison that
+	// actually reads it (issue #163 C20).
 	if (
-		snapshot.nodes.length + journal.logicalNodes.size + journal.programNodes.size !==
+		snapshot.nodes.length + journal.logicalNodes.size + journal.programNodeCount !==
 			finalIds.size ||
-		sourceState.records.size + journal.programNodes.size !== finalIds.size
+		sourceState.records.size + journal.programNodeCount !== finalIds.size
 	) {
 		return mismatch(firstTree, 'snapshot.nodes', 'the host counts differ.');
 	}
@@ -4736,8 +4761,13 @@ function compareFirstTree<Node extends LynxElementRef>(
 		snapshot.nodes.map((node) => [node.id, node]),
 	);
 	for (const [id, node] of journal.logicalNodes) snapshotsById.set(id, node);
+	// Every program node by the ID it took, built here, once, for this comparison
+	// and the transfer that follows it. Adoption is the only reader, and it runs
+	// when the background's batch arrives — which is after the paint capture
+	// stands in front of (issue #163 C20).
+	const programNodes = lynxFirstTreeProgramNodes(firstTree);
 	for (const id of [...finalIds].sort((first, second) => first - second)) {
-		const programNode = journal.programNodes.get(id);
+		const programNode = programNodes.get(id);
 		if (programNode !== undefined) {
 			// A host a compiled main-thread program painted. There is nothing of
 			// main's to compare the background's description against — no snapshot
@@ -4769,28 +4799,12 @@ function compareFirstTree<Node extends LynxElementRef>(
 					'a compiled main-thread program host also holds a record.',
 				);
 			}
-			if (!sourceState.ownedNodes.has(programNode)) {
-				return mismatch(
-					firstTree,
-					`snapshot.nodes[${id}].nativeId`,
-					'a compiled main-thread program host lost its physical node.',
-				);
-			}
-			// Visibility is the other half main does know, by construction rather
-			// than by record: the direct applier refuses a hidden program before
-			// painting anything, so every node in `programNodes` was painted
-			// visible and carries no `hidden` attribute. A description that calls
-			// one of them hidden therefore disagrees with the painted page —
-			// adopting it would keep content on screen that the accepted tree says
-			// is hidden, while event routing drops its taps as hidden. Nothing red,
-			// which is exactly the class of near-miss this comparator refuses.
-			if (!next.visible) {
-				return mismatch(
-					firstTree,
-					`snapshot.nodes[${id}].visible`,
-					'the visibility state differs.',
-				);
-			}
+			// What used to sit here — "and this node is in the physical ownership
+			// journal" — compared two journals the same loop of the same mount
+			// wrote. C20 made a program one entry in one journal, so `programNode`
+			// *is* the ownership journal's answer and the comparison has nothing
+			// left to disagree with. The check is gone because its failure mode is,
+			// not because it stopped mattering.
 			// Events are the exception to all of that, and worth taking. Main does
 			// know what it bound here: the mount installed a token per site the
 			// renderer announced, and journalled it. So the background's record
@@ -4911,8 +4925,7 @@ function compareFirstTree<Node extends LynxElementRef>(
 			const physicalParent =
 				captured.parent === null
 					? source.page
-					: (journal.programNodes.get(captured.parent) ??
-						sourceState.records.get(captured.parent)?.node);
+					: (programNodes.get(captured.parent) ?? sourceState.records.get(captured.parent)?.node);
 			if (physicalParent == null || !sourceState.papi.isChild(physicalParent, sourceRecord.node)) {
 				return mismatch(firstTree, `snapshot.nodes[${id}].parent`, 'the physical parent changed.');
 			}
@@ -4966,6 +4979,9 @@ function transferFirstTree<Node extends LynxElementRef>(
 	const targetState = target[LYNX_HOST_STATE];
 	const sourceState = source[LYNX_HOST_STATE];
 	const journal = firstTree[LYNX_FIRST_TREE_STATE];
+	// The comparison that licensed this transfer already built it, so this reads
+	// the map it built rather than a second one (issue #163 C20).
+	const programNodes = lynxFirstTreeProgramNodes(firstTree);
 	for (const [id, targetRecord] of targetState.records) {
 		const sourceRecord = sourceState.records.get(id);
 		// A native list row was never painted, so there is nothing to move. It
@@ -4982,7 +4998,7 @@ function transferFirstTree<Node extends LynxElementRef>(
 		// mount kept is where its node comes from. Everything after this point is
 		// identical for both, which is the point: adoption moves a node, and where
 		// main remembered it does not change what moving it means.
-		const node = journal.programNodes.get(id) ?? sourceRecord?.node ?? null;
+		const node = programNodes.get(id) ?? sourceRecord?.node ?? null;
 		if (node === null) {
 			throw hostError(`captured first-tree host ${id} lost its physical node.`);
 		}
@@ -5037,7 +5053,7 @@ function transferFirstTree<Node extends LynxElementRef>(
 	// nodes the replacement loop did not reach.
 	sourceState.ownedNodes.clear();
 	sourceState.ownedPageRoots.clear();
-	sourceState.programNodes.clear();
+	sourceState.programRuns.length = 0;
 	sourceState.nativeEvents.clear();
 	sourceState.mainThreadRefs.clear();
 	sourceState.mainThreadRefOwners.clear();
@@ -7742,6 +7758,25 @@ export function disposeLynxHostContainer<Node extends LynxElementRef>(
 	// later dispose attempt can retry it.
 	const cleanupNodes = new Set(state.ownedNodes);
 	for (const node of state.ownedPageRoots) cleanupNodes.add(node);
+	// A compiled main-thread program's nodes are in its run rather than in
+	// `ownedNodes` (issue #163 C20), and this is the reader that wants all of
+	// them: everything physical the container has to take back out of the page.
+	// Walking the runs here is one pass at teardown in place of two writes per
+	// node at mount, and a retry that re-adds one puts it in `ownedNodes` — which
+	// is why that set is read first and this only ever adds.
+	for (const run of state.programRuns) {
+		const hosts = run.ids.length;
+		for (let position = 0; position < hosts; position++) {
+			cleanupNodes.add(run.nodes[position] as Node);
+		}
+		for (let range = 0; range < run.rangeIds.length; range++) {
+			// A hole this first screen filled itself is an ordinary host with an
+			// ordinary record, already in `ownedNodes`; the program painted nothing
+			// there and owns nothing to remove.
+			if (run.rangeIds[range] === undefined) continue;
+			cleanupNodes.add(run.nodes[hosts + range] as Node);
+		}
+	}
 	let cleanupNodeIndex: ReadonlyMap<number, Node> | null = null;
 	try {
 		cleanupNodeIndex = indexPhysicalNodes(state.papi, cleanupNodes);
@@ -7866,7 +7901,7 @@ export function disposeLynxHostContainer<Node extends LynxElementRef>(
 	if (complete) {
 		const firstTree = state.firstTree;
 		state.ownedNodes.clear();
-		state.programNodes.clear();
+		state.programRuns.length = 0;
 		state.nativeEvents.clear();
 		state.mainThreadRefs.clear();
 		state.mainThreadRefOwners.clear();

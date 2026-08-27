@@ -33,8 +33,13 @@ import {
 	disposeLynxHostContainer,
 	prepareLynxHostBatch,
 	resolveLynxHostNativeEvent,
+	type LynxHostContainer,
 } from '../../lynx/src/core/host-driver.js';
-import { createFakePAPI, shape } from '../../lynx/tests/_fixtures/fake-element-papi.js';
+import {
+	createFakePAPI,
+	shape,
+	type FakeNode,
+} from '../../lynx/tests/_fixtures/fake-element-papi.js';
 
 /**
  * Two events and two ranges, arranged so an interleaving mistake shows.
@@ -316,7 +321,7 @@ function paint(
 	readonly events: readonly unknown[][];
 	readonly reads: readonly unknown[];
 	readonly made: readonly unknown[];
-	readonly container: ReturnType<typeof createLynxHostContainer>;
+	readonly container: LynxHostContainer<FakeNode>;
 	readonly papi: ReturnType<typeof createHost>;
 } {
 	const host = createHost();
@@ -505,6 +510,51 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 		// had no record to resolve — the range members would survive a handoff
 		// that dropped every undescribed host on the floor.
 		for (const node of madeByProgram) expect(adopted.has(node)).toBe(true);
+	});
+
+	it('leaves the adopted page alone when the container that painted it is disposed', () => {
+		// After adoption the background journal is the only disposal authority, so
+		// the container that painted must be inert against the page it handed on —
+		// including the nodes it made for a program, which live in its run rather
+		// than in the ordinary ownership set. A source that still claimed them is
+		// not visibly wrong at handoff: the page is right, the taps work, and both
+		// containers are alive. It goes wrong at the next teardown of a container
+		// the app has finished with, which cuts the program's root out of a page
+		// another container now owns.
+		//
+		// Two independent things enforce that, and this asserts the property they
+		// jointly hold rather than either one: the handoff marks the source
+		// disposed, and it empties every journal including the run. Removing
+		// either alone leaves this green, because the other still makes the walk
+		// find nothing; removing both turns it red. That is the honest reach of
+		// this test, and the reason no single-line mutation of the clearing block
+		// is claimed to be caught here.
+		const painted = paint(true);
+		const captured = captureLynxFirstTree(painted.container);
+		expect(captured).not.toBeNull();
+		const background = render(false);
+		const target = createLynxHostContainer(painted.papi, {
+			root: 1,
+			page: painted.page as never,
+		});
+		const prepared = prepareLynxHostBatch(target, background.batch, { firstTree: captured! });
+		expect(prepared.firstTreeAction).toBe('adopt');
+		prepared.apply();
+		const adopted = nodesOf(painted.page);
+		const madeByProgram = new Set(painted.made);
+		expect(madeByProgram.size).toBeGreaterThan(0);
+		const removedBefore = painted.removes.length;
+
+		expect(disposeLynxHostContainer(painted.container).complete).toBe(true);
+
+		// Not merely "the page still has children": the same nodes, in the same
+		// tree, and no native removal attempted against any of them.
+		expect(nodesOf(painted.page)).toEqual(adopted);
+		expect(painted.removes.slice(removedBefore)).toEqual([]);
+		// And the target is still the container that owns them, so the app's own
+		// teardown still works afterwards.
+		expect(disposeLynxHostContainer(target).complete).toBe(true);
+		expect((painted.page as { children: readonly unknown[] }).children).toHaveLength(0);
 	});
 
 	it('refuses a description whose taps go somewhere else than the ones it installed', () => {

@@ -2456,6 +2456,71 @@ to remember it *per node*: the mount already holds a program's ids and its
 created nodes as two arrays, in the same order, and copies them into a `Set` and
 a `Map` one entry at a time.
 
+### Journalling a program once instead of once per node (issue #163 C20)
+
+C19 above ends by asking whether main has to remember a program's nodes *per
+node*. It does not. The mount now pushes one entry per program —
+`{ids, rangeIds, nodes, owned}`, over arrays it already holds — in place of an
+`ownedNodes.add` plus a `programNodes.set` for every node and every painted
+hole. The bench row is `view + 3×text` with three painted holes, so that is
+**14 collection writes per row** replaced by one push: 420,000 writes at 30,000
+rows, and a 210,000-entry `new Map(state.programNodes)` at capture replaced by a
+30,000-entry array copy.
+
+The control arm is built from `e05cf4755`, the C19 head, and its digest
+`9edb29cf145c659a` is byte-identical to the `octane-mts-program` bundle C19
+measured — so this A/B and C19's read the same baseline bytes rather than two
+derivations of it.
+
+```bash
+BENCH_DIST_TAG=c20base BENCH_MTS_PROGRAM=1 BENCH_AUTOROWS=30000 node scripts/build-app.mjs  # on the C19 source
+BENCH_MTS_PROGRAM=1 BENCH_AUTOROWS=30000 node scripts/build-app.mjs                          # on the C20 source
+
+node stages/mts-profile.mjs --rows 30000 --reps 15 --interval 100 \
+	--cells octane-mts-program,octane-mts-program-c20base \
+	--control-dist c20base --label c163-c20-journal
+```
+
+| main-thread script | C20 | `c20base` | Δ |
+|---|---:|---:|---:|
+| program mount | 72.5 [66.5–85.9] | 207.1 [187.7–239.4] | **−134.6** |
+| renderer pre-passes | 75.3 [69.8–83] | 73.3 [67.7–81.9] | +2.0 |
+| event bookkeeping | 52.5 [46.9–74.6] | 61.2 [50.8–71.9] | −8.7 |
+| applier entry and pre-walk | 32.8 [28.5–40.3] | 33.7 [30.8–38.6] | −0.9 |
+| applier walk | 27.2 [21.6–32.7] | 30.0 [25.4–35.3] | −2.8 |
+| first tree capture | 0.9 [0.6–2.9] | 26.8 [23.1–41.8] | **−25.9** |
+| compiled program create | 21.2 [18.5–24.9] | 11.9 [8.7–14.2] | **+9.3** |
+| first-screen entry | 8.9 [5.8–11.8] | 6.3 [3.6–11.9] | +2.6 |
+| papi facade | 2.1 [1.5–4.9] | 2.9 [1.3–7.2] | −0.8 |
+| named total | 297.7 [282.7–318.4] | 452.2 [422.8–514.6] | −154.5 |
+| **all frames** | **325.5 [305.7–344.3]** | **480.4 [448.8–542.4]** | **−154.9** |
+
+Every number is the record's own median over 15 reps, so a Δ can sit a tenth
+away from subtracting the rounded columns. `results/c163-c20-journal-30000.json`.
+
+C19's two ablation arms predicted this almost exactly: −132.9 for deleting the
+ownership journal and −26.5 for deleting the capture copy, against −134.6 and
+−25.9 measured for *replacing* them. That is the useful part — the arms priced
+the removal of the bookkeeping, and the replacement kept essentially all of it
+while every reader still has its journal.
+
+**Two things this table does not say.**
+
+`compiled program create` is **9.3 ms worse**, and its two intervals do not
+overlap, so it is not noise. The emitted create is byte-for-byte the same
+function in both arms; what changed is that the array it returns is now stored
+in the run instead of being consumed and dropped, so it escapes to a long-lived
+structure rather than dying young. Promotion and write-barrier cost landing near
+the allocation is the explanation that fits, but it is a hypothesis — no arm was
+built to separate it, and it is left standing here rather than folded into the
+total silently.
+
+**The capture's −25.9 is a deferral, not a deletion.** C20 builds the per-ID map
+on first read through `lynxFirstTreeProgramNodes`, and this profile measures the
+first screen only — nothing in it ever adopts, so the build is never paid in
+these numbers. A launch that goes on to adopt still pays a 210,000-entry map,
+just later than it used to. Deleting it rather than moving it is #215's D1.
+
 ## Claims and non-claims
 
 Command counts and commit bytes are Octane-owned costs and are gated. The
