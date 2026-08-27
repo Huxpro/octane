@@ -1,0 +1,291 @@
+{
+  "meta": {
+    "date": "2026-08-26T14:49:29.976Z",
+    "node": "v22.22.2",
+    "cpus": 4,
+    "cpuModel": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "platform": "linux",
+    "release": "6.18.44-fc-v21",
+    "chromium": null,
+    "rows": 30000,
+    "reps": 1,
+    "samplingIntervalUs": 100,
+    "cells": ["octane-mts-program-mountctl", "octane-mts-program-mountp"],
+    "bundles": {
+      "octane-mts-program-mountctl": {
+        "path": "app/dist-mtsprogram-mountctl-rows30000/main.web.bundle",
+        "bytes": 520098,
+        "digest": "381fe0ab988a479c",
+        "modified": "2026-08-26T14:48:14.695Z"
+      },
+      "octane-mts-program-mountp": {
+        "path": "app/dist-mtsprogram-mountp-rows30000/main.web.bundle",
+        "bytes": 520105,
+        "digest": "8ca814c451147936",
+        "modified": "2026-08-26T14:48:05.423Z"
+      }
+    },
+    "loadStart": [0.34, 1.05, 2.27],
+    "loadEnd": [1.06, 1.16, 2.27]
+  },
+  "cells": {
+    "octane-mts-program-mountctl": {
+      "buckets": {
+        "renderer pre-passes": {
+          "n": 1,
+          "min": 76.003,
+          "max": 76.003,
+          "mean": 76.003,
+          "median": 76.003,
+          "std": 0,
+          "ci95": 0
+        },
+        "applier entry and pre-walk": {
+          "n": 1,
+          "min": 39.165,
+          "max": 39.165,
+          "mean": 39.165,
+          "median": 39.165,
+          "std": 0,
+          "ci95": 0
+        },
+        "first-screen entry": {
+          "n": 1,
+          "min": 7.464,
+          "max": 7.464,
+          "mean": 7.464,
+          "median": 7.464,
+          "std": 0,
+          "ci95": 0
+        },
+        "compiled program create": {
+          "n": 1,
+          "min": 30.791,
+          "max": 30.791,
+          "mean": 30.791,
+          "median": 30.791,
+          "std": 0,
+          "ci95": 0
+        },
+        "host record building": {
+          "n": 1,
+          "min": 3.313,
+          "max": 3.313,
+          "mean": 3.313,
+          "median": 3.313,
+          "std": 0,
+          "ci95": 0
+        },
+        "program mount": {
+          "n": 1,
+          "min": 229.683,
+          "max": 229.683,
+          "mean": 229.683,
+          "median": 229.683,
+          "std": 0,
+          "ci95": 0
+        },
+        "applier walk": {
+          "n": 1,
+          "min": 26.528,
+          "max": 26.528,
+          "mean": 26.528,
+          "median": 26.528,
+          "std": 0,
+          "ci95": 0
+        },
+        "event bookkeeping": {
+          "n": 1,
+          "min": 49.407,
+          "max": 49.407,
+          "mean": 49.407,
+          "median": 49.407,
+          "std": 0,
+          "ci95": 0
+        },
+        "first tree capture": {
+          "n": 1,
+          "min": 22.055,
+          "max": 22.055,
+          "mean": 22.055,
+          "median": 22.055,
+          "std": 0,
+          "ci95": 0
+        }
+      },
+      "namedMs": {
+        "n": 1,
+        "min": 484.409,
+        "max": 484.409,
+        "mean": 484.409,
+        "median": 484.409,
+        "std": 0,
+        "ci95": 0
+      },
+      "unmatchedMs": {
+        "n": 1,
+        "min": 25.156,
+        "max": 25.156,
+        "mean": 25.156,
+        "median": 25.156,
+        "std": 0,
+        "ci95": 0
+      },
+      "totalMs": {
+        "n": 1,
+        "min": 509.565,
+        "max": 509.565,
+        "mean": 509.565,
+        "median": 509.565,
+        "std": 0,
+        "ci95": 0
+      },
+      "largestUnnamed": [
+        {
+          "position": "1:230117",
+          "ms": 5.5,
+          "source": "(e,t)=>(0,r.Zz)(z,[(0,r.DT)(\"lynx\",R,(0,r.uc)([[\"set\",\"row\",e],[\"set\",\"isSelected\",n===e.id],[\"set\",\"onSelect\",A],[\"set\",\"onRemove\",C]]))]))"
+        },
+        {
+          "position": "1:228629",
+          "ms": 5.2,
+          "source": "(e){return(0,r.Zz)(S,[\"row\"+(e.isSelected?\" danger\":\"\"),String(e.row.id),r.N5,e.row.label,r.N5])},{module:\"@octanejs/lynx/main-renderer\"});l"
+        },
+        {
+          "position": "1:228287",
+          "ms": 2.6,
+          "source": "(e=1e3){var r=[];for(var t=0;t<e;t++)r.push({id:n++,label:i[t%i.length]+\" \"+o[7*t%o.length]+\" \"+l[13*t%l.length]});return r}(3e4);let L=new "
+        }
+      ]
+    },
+    "octane-mts-program-mountp": {
+      "buckets": {
+        "renderer pre-passes": {
+          "n": 1,
+          "min": 80.075,
+          "max": 80.075,
+          "mean": 80.075,
+          "median": 80.075,
+          "std": 0,
+          "ci95": 0
+        },
+        "applier entry and pre-walk": {
+          "n": 1,
+          "min": 39.701,
+          "max": 39.701,
+          "mean": 39.701,
+          "median": 39.701,
+          "std": 0,
+          "ci95": 0
+        },
+        "first-screen entry": {
+          "n": 1,
+          "min": 5.755,
+          "max": 5.755,
+          "mean": 5.755,
+          "median": 5.755,
+          "std": 0,
+          "ci95": 0
+        },
+        "compiled program create": {
+          "n": 1,
+          "min": 23.029,
+          "max": 23.029,
+          "mean": 23.029,
+          "median": 23.029,
+          "std": 0,
+          "ci95": 0
+        },
+        "host record building": {
+          "n": 1,
+          "min": 2.802,
+          "max": 2.802,
+          "mean": 2.802,
+          "median": 2.802,
+          "std": 0,
+          "ci95": 0
+        },
+        "program mount": {
+          "n": 1,
+          "min": 185.828,
+          "max": 185.828,
+          "mean": 185.828,
+          "median": 185.828,
+          "std": 0,
+          "ci95": 0
+        },
+        "applier walk": {
+          "n": 1,
+          "min": 32.913,
+          "max": 32.913,
+          "mean": 32.913,
+          "median": 32.913,
+          "std": 0,
+          "ci95": 0
+        },
+        "event bookkeeping": {
+          "n": 1,
+          "min": 46.401,
+          "max": 46.401,
+          "mean": 46.401,
+          "median": 46.401,
+          "std": 0,
+          "ci95": 0
+        },
+        "first tree capture": {
+          "n": 1,
+          "min": 32.073,
+          "max": 32.073,
+          "mean": 32.073,
+          "median": 32.073,
+          "std": 0,
+          "ci95": 0
+        }
+      },
+      "namedMs": {
+        "n": 1,
+        "min": 448.577,
+        "max": 448.577,
+        "mean": 448.577,
+        "median": 448.577,
+        "std": 0,
+        "ci95": 0
+      },
+      "unmatchedMs": {
+        "n": 1,
+        "min": 24.356,
+        "max": 24.356,
+        "mean": 24.356,
+        "median": 24.356,
+        "std": 0,
+        "ci95": 0
+      },
+      "totalMs": {
+        "n": 1,
+        "min": 472.933,
+        "max": 472.933,
+        "mean": 472.933,
+        "median": 472.933,
+        "std": 0,
+        "ci95": 0
+      },
+      "largestUnnamed": [
+        {
+          "position": "1:230124",
+          "ms": 5.6,
+          "source": "(e,t)=>(0,r.Zz)(z,[(0,r.DT)(\"lynx\",R,(0,r.uc)([[\"set\",\"row\",e],[\"set\",\"isSelected\",n===e.id],[\"set\",\"onSelect\",A],[\"set\",\"onRemove\",C]]))]))"
+        },
+        {
+          "position": "1:228636",
+          "ms": 3.6,
+          "source": "(e){return(0,r.Zz)(S,[\"row\"+(e.isSelected?\" danger\":\"\"),String(e.row.id),r.N5,e.row.label,r.N5])},{module:\"@octanejs/lynx/main-renderer\"});l"
+        },
+        {
+          "position": "1:228294",
+          "ms": 2.8,
+          "source": "(e=1e3){var r=[];for(var t=0;t<e;t++)r.push({id:n++,label:i[t%i.length]+\" \"+o[7*t%o.length]+\" \"+l[13*t%l.length]});return r}(3e4);let L=new "
+        }
+      ]
+    }
+  }
+}
