@@ -26,7 +26,11 @@ import {
 	createLynxFirstTree,
 	LYNX_FIRST_TREE_STATE,
 	lynxFirstTreeProgramIndex,
+	programRunEventCount,
+	programRunEventToken,
 	programRunLastId,
+	programRunNode,
+	programRunPosition,
 	LynxFirstScreenRefusalError,
 	LynxFirstTreeMismatchError,
 	type CaptureLynxFirstTreeOptions,
@@ -290,6 +294,17 @@ interface LynxHostState<Node extends LynxElementRef> {
 	 * and every reader that wants all of them reads both.
 	 */
 	readonly programRuns: LynxProgramRun<Node>[];
+	/**
+	 * Whether the runs' event journals have been written into `nativeEvents`.
+	 *
+	 * A program installs its listeners itself and the run records which, so
+	 * nothing per node is written at mount (issue #215 D3). Terminal cleanup is
+	 * the one path that wants them in the ordinary journal — it clears every
+	 * installed tuple from there, and retries against what is left — so it fills
+	 * them in first. This says it already did, which is what keeps a *retry*
+	 * from re-adding the entries the first attempt successfully removed.
+	 */
+	programEventsMaterialized: boolean;
 	/**
 	 * Whether every run so far begins after the previous one ends.
 	 *
@@ -3052,6 +3067,7 @@ export function createLynxHostContainer<Node extends LynxElementRef>(
 		hasMainThreadProps: false,
 		hasNativeListTopology: false,
 		programRuns: [],
+		programEventsMaterialized: false,
 		programRunsDisjoint: true,
 		acceptedVersion: 0,
 		disposed: false,
@@ -3550,15 +3566,126 @@ function firstScreenTreeHasList(nodes: readonly LynxFirstScreenDirectNode[]): bo
 /**
  * Empty a container's program ledger.
  *
- * One function rather than two statements at each of the two sites, because
- * `programRunsDisjoint` describes *these* runs: a clear that dropped the runs
- * and kept the flag would carry one mount's shape into the next one, and no
- * behavioural test can see that — the fallback it would wrongly select is
- * correct, only slower. Making the pair inseparable is the proof instead.
+ * One function rather than three statements at each of the two sites, because
+ * both flags describe *these* runs and neither is observable once they are
+ * gone. Both call sites mark the container disposed immediately after, so no
+ * behavioural test can reach a container carrying a stale flag: the fallback a
+ * stale `programRunsDisjoint` would select is correct, only slower, and a stale
+ * `programEventsMaterialized` would only matter to a second mount no path
+ * allows. Making the three inseparable is the proof, because there is no test
+ * to be one.
  */
 function clearProgramRuns<Node extends LynxElementRef>(state: LynxHostState<Node>): void {
 	state.programRuns.length = 0;
 	state.programRunsDisjoint = true;
+	state.programEventsMaterialized = false;
+}
+
+/**
+ * The PAPI tuple behind each of a program's event sites, resolved once per plan.
+ *
+ * `plan.events` names a site by its authored-through host event type, and every
+ * consumer of the journal wants the `(type, name)` pair the Element PAPI takes.
+ * That mapping is a pure function of a string the *build* chose, and a screen
+ * holds one program instance per rendered row against one module-scope plan —
+ * so resolving it per instance re-answers, 30,000 times, a question with one
+ * answer per component (issue #215 D3).
+ *
+ * The refusal below is the third statement of one guarantee, and the first two
+ * are why it can run this rarely. `emit-main-thread-program.ts` refuses to emit
+ * a site whose type the native parser does not recognise, and `freezePlanNode`
+ * restates the plan's structural guarantees once per plan for the plans that do
+ * not come from the compiler. This is the same restatement for the one property
+ * those two leave to the driver — that a type names a real PAPI tuple — kept at
+ * runtime because a hand-built plan reaches this file without passing either,
+ * and kept *here* because once per plan is where the other two already live.
+ */
+const PROGRAM_EVENT_BINDINGS = new WeakMap<
+	UniversalProgramPlan,
+	readonly LynxNativeEventBinding[]
+>();
+
+function programEventBindings(plan: UniversalProgramPlan): readonly LynxNativeEventBinding[] {
+	const cached = PROGRAM_EVENT_BINDINGS.get(plan);
+	if (cached !== undefined) return cached;
+	const bindings = plan.events.map((site) => {
+		const binding = parseLynxNativeEventProp(site.type);
+		if (binding === null) {
+			throw hostError(`event ${JSON.stringify(site.type)} is not a Lynx event prop.`);
+		}
+		return binding;
+	});
+	PROGRAM_EVENT_BINDINGS.set(plan, bindings);
+	return bindings;
+}
+
+/**
+ * The per-node event journal for one host of one program run, built on demand.
+ *
+ * The run holds `plan.events` and the tokens the mount installed for them,
+ * index-aligned, which is the whole journal in the two arrays the mount already
+ * had. This turns the slice of it belonging to one host into the `Map` the
+ * ordinary paths expect — the shape C20 left being written once per node at
+ * mount, and D3 stopped writing until something asks.
+ *
+ * Two callers ask, and they are the two moments a program's nodes stop being
+ * the program's: terminal cleanup, which has to clear every installed tuple,
+ * and hand-over, which gives the nodes to a background that will go on
+ * installing and removing listeners on them through the ordinary journal.
+ * Neither is on the paint path.
+ */
+function programNodeEvents<Node extends LynxElementRef>(
+	run: LynxProgramRun<Node>,
+	position: number,
+): Map<string, LynxNativeEventRegistration> | undefined {
+	const sites = run.plan.events;
+	if (sites.length === 0) return undefined;
+	let events: Map<string, LynxNativeEventRegistration> | undefined;
+	let bindings: readonly LynxNativeEventBinding[] | undefined;
+	for (let index = 0; index < sites.length; index++) {
+		const site = sites[index]!;
+		if (site.node !== position) continue;
+		// A site this render passed no handler to installed nothing, so there is
+		// no tuple to journal — the same answer the per-node map gave by having no
+		// entry for it.
+		const token = run.tokens[index];
+		if (token === undefined) continue;
+		bindings ??= programEventBindings(run.plan);
+		(events ??= new Map()).set(
+			site.type,
+			Object.freeze({ source: 'background', binding: bindings[index]!, listener: token }),
+		);
+	}
+	return events;
+}
+
+/**
+ * Write every program's event journal into the ordinary per-node one.
+ *
+ * Terminal cleanup clears `nativeEvents` tuple by tuple and reports itself
+ * incomplete while any remain, so the retry semantics live in that map rather
+ * than in the runs. Filling it in here is what lets a program's listeners use
+ * them unchanged instead of growing a second, parallel unbind-and-retry path.
+ */
+function materializeProgramEvents<Node extends LynxElementRef>(state: LynxHostState<Node>): void {
+	if (state.programEventsMaterialized) return;
+	state.programEventsMaterialized = true;
+	for (const run of state.programRuns) {
+		if (run.plan.events.length === 0) continue;
+		for (let position = 0; position < run.ids.length; position++) {
+			const events = programNodeEvents(run, position);
+			if (events === undefined) continue;
+			// Merged rather than assigned. Nothing outside the mount writes into a
+			// program's nodes before this runs — every installer is reached through
+			// a record, and a program host has none — so the entry should always be
+			// absent. But this is the function whose job is to lose no tuple, and
+			// not assuming costs one lookup on a path that has already left the
+			// paint behind.
+			const existing = state.nativeEvents.get(run.nodes[position] as Node);
+			if (existing === undefined) state.nativeEvents.set(run.nodes[position] as Node, events);
+			else for (const [type, registration] of events) existing.set(type, registration);
+		}
+	}
 }
 
 /**
@@ -3985,6 +4112,15 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 					'a compiled main-thread program bound to something other than a create function.',
 				);
 			}
+			// Resolved here and not where the journal is read, so a plan naming an
+			// event type the native parser does not recognise is still refused by
+			// the mount rather than by a teardown one screen later (issue #215 D3).
+			// This is the miss branch, so it runs once per plan — which is what
+			// makes the refusal cost what the bind costs instead of what the rows
+			// cost. It checks every site rather than only the bound ones: a site
+			// with no handler this render is still a site the component declares,
+			// and the compiler refuses one either way.
+			programEventBindings(plan);
 			boundPrograms.set(plan, bound);
 		}
 		// Everything the program makes is detached until this function attaches it,
@@ -4041,14 +4177,25 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		// One entry, after every check above rather than during them: a mount that
 		// throws leaves nothing half-journalled for terminal cleanup to find, which
 		// is more than the per-node writes this replaced could say. `ids`,
-		// `rangeIds` and `created` are arrays this mount already holds, so the run
-		// is the only allocation, and the per-ID view adoption wants is built from
-		// it there — after the paint this stands in front of (issue #163 C20).
+		// `rangeIds`, `created` and `tokens` are arrays this mount already holds,
+		// so the run is the only allocation, and the per-ID and per-node views
+		// adoption and teardown want are built from it there — after the paint this
+		// stands in front of (issues #163 C20 and #215 D1, D3).
+		//
+		// `plan` and `tokens` are the event journal, and they are one entry rather
+		// than one per site for the same reason the rest of this is: the plan is
+		// the site table, index-aligned with the tokens this mount installed, and
+		// copying that pair into a `Map` per node re-states per row what the build
+		// stated per component. It also closes the window the per-site loop had —
+		// a throw partway through it left a run pushed and half its sites
+		// journalled, and there is now no partway.
 		const mounted: LynxProgramRun<Node> = {
 			ids,
 			rangeIds,
 			nodes: created as readonly (Node | undefined)[],
 			owned,
+			plan,
+			tokens,
 		};
 		// One comparison, here, so adoption can find a run by searching instead of
 		// by remembering every node (issue #215 D1). A sibling program starts after
@@ -4061,22 +4208,6 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			state.programRunsDisjoint = false;
 		}
 		state.programRuns.push(mounted);
-		for (let index = 0; index < plan.events.length; index++) {
-			const token = tokens[index];
-			if (token === undefined) continue;
-			const site = plan.events[index]!;
-			const binding = parseLynxNativeEventProp(site.type);
-			if (binding === null) {
-				throw hostError(`event ${JSON.stringify(site.type)} is not a Lynx event prop.`);
-			}
-			// Journalled rather than installed: the program already called
-			// `setEvent` with this exact token. What terminal cleanup needs is the
-			// tuple to clear, and it reads that from here.
-			nativeEventMap(state, created[site.node] as Node).set(
-				site.type,
-				Object.freeze({ source: 'background', binding, listener: token }),
-			);
-		}
 		// A program mounted at the top level is a page root, and `rootChildren` is
 		// the logical half of that — `ownedPageRoots` being the physical half.
 		// Nothing else will add it: the push that names a page root rides the
@@ -4805,8 +4936,12 @@ function compareFirstTree<Node extends LynxElementRef>(
 	// built per node here or at capture; what this allocates is one cursor.
 	const programNodes = lynxFirstTreeProgramIndex(firstTree);
 	for (const id of [...finalIds].sort((first, second) => first - second)) {
-		const programNode = programNodes.get(id);
-		if (programNode !== undefined) {
+		// Narrowed once and then asked twice: which run could own this ID, then
+		// what that run knows about it. The node proves the ID is a program's; the
+		// position is what the run's own event table is keyed by (issue #215 D3).
+		const programRun = programNodes.runFor(id);
+		const programNode = programRun === undefined ? undefined : programRunNode(programRun, id);
+		if (programRun !== undefined && programNode !== undefined) {
 			// A host a compiled main-thread program painted. There is nothing of
 			// main's to compare the background's description against — no snapshot
 			// entry and no record, by construction — so this is the one place the
@@ -4864,8 +4999,22 @@ function compareFirstTree<Node extends LynxElementRef>(
 			// threads disagreeing about what a token names, which is the same
 			// thing the physical-identity and generation checks refuse for an
 			// ordinary host and is equally unreachable from a well-formed pair.
-			const installed = sourceState.nativeEvents.get(programNode);
-			if ((installed?.size ?? 0) !== next.events.size) {
+			//
+			// Asked of the run rather than of a per-node map, because the run is
+			// where the mount's answer already was (issue #215 D3). Two properties
+			// the map carried are now structural rather than checked: an entry
+			// exists only where a token was installed, and its source is
+			// `background` because a run holds nothing else — nothing outside the
+			// mount writes into one, and every path that could install a
+			// main-thread listener on these nodes is reached through a record,
+			// which a program host has none of until hand-over builds one.
+			//
+			// `position` is `-1` for a hole the program painted as text. Such a
+			// node binds nothing — a site names an emitted node, never a range —
+			// so the count is zero and the background must describe it that way,
+			// which is the same answer the empty map gave.
+			const position = programRunPosition(programRun, id);
+			if (programRunEventCount(programRun, position) !== next.events.size) {
 				return mismatch(
 					firstTree,
 					`snapshot.nodes[${id}].events`,
@@ -4873,15 +5022,15 @@ function compareFirstTree<Node extends LynxElementRef>(
 				);
 			}
 			for (const [type, descriptor] of next.events) {
-				const registration = installed?.get(type);
-				if (registration === undefined || registration.source !== 'background') {
+				const listener = programRunEventToken(programRun, position, type);
+				if (listener === undefined) {
 					return mismatch(firstTree, `snapshot.nodes[${id}].events`, 'the event binding differs.');
 				}
 				// Decoded rather than re-encoded: the token is one main wrote with
 				// the checking encoder, so reading it back cannot fault, while
 				// building a token out of background-supplied numbers could — and a
 				// comparator that throws faults a page whose answer is `repair`.
-				const identity = decodeLynxNativeEventToken(registration.listener);
+				const identity = decodeLynxNativeEventToken(listener);
 				if (
 					identity.id !== id ||
 					identity.generation !== next.handle.generation ||
@@ -5033,11 +5182,13 @@ function transferFirstTree<Node extends LynxElementRef>(
 			continue;
 		}
 		// A host a compiled main-thread program painted has no record to take a
-		// node from — that is what a program is (issue #163) — so the ID map the
-		// mount kept is where its node comes from. Everything after this point is
+		// node from — that is what a program is (issue #163) — so the run the mount
+		// kept is where its node comes from. Everything after this point is
 		// identical for both, which is the point: adoption moves a node, and where
 		// main remembered it does not change what moving it means.
-		const node = programNodes.get(id) ?? sourceRecord?.node ?? null;
+		const programRun = programNodes.runFor(id);
+		const programNode = programRun === undefined ? undefined : programRunNode(programRun, id);
+		const node = programNode ?? sourceRecord?.node ?? null;
 		if (node === null) {
 			throw hostError(`captured first-tree host ${id} lost its physical node.`);
 		}
@@ -5045,8 +5196,19 @@ function transferFirstTree<Node extends LynxElementRef>(
 		activeNodes.set(id, node);
 		targetState.ownedNodes.add(node);
 		if (targetRecord.parent === null) targetState.ownedPageRoots.add(node);
-		const nativeEvents = sourceState.nativeEvents.get(node);
-		if (nativeEvents !== undefined) targetState.nativeEvents.set(node, nativeEvents);
+		if (programRun !== undefined && programNode !== undefined) {
+			// This is where a program's listeners become ordinary ones. The mount
+			// wrote no per-node journal for them (issue #215 D3), and from here the
+			// background installs and removes on these nodes through exactly that
+			// journal — so the entry is built now, once, straight into the target.
+			// Building it in the source first and copying it here is the same two
+			// writes into a 30,000-entry map that the mount stopped making.
+			const events = programNodeEvents(programRun, programRunPosition(programRun, id));
+			if (events !== undefined) targetState.nativeEvents.set(node, events);
+		} else {
+			const nativeEvents = sourceState.nativeEvents.get(node);
+			if (nativeEvents !== undefined) targetState.nativeEvents.set(node, nativeEvents);
+		}
 		const mainThreadRef = sourceState.mainThreadRefs.get(node);
 		if (mainThreadRef !== undefined) {
 			targetState.mainThreadRefs.set(node, mainThreadRef);
@@ -7837,6 +7999,12 @@ export function disposeLynxHostContainer<Node extends LynxElementRef>(
 			errors.push(normalizeCleanupError(error));
 		}
 	}
+	// A program installed its listeners itself and the run says which, so this is
+	// where those tuples enter the journal the loop below clears (issue #215 D3).
+	// Done as a fill rather than as a second unbind loop so retry stays in one
+	// place: `removeNativeEvent` deletes on success and leaves the entry on
+	// failure, and `nativeEvents.size` is what the completeness gate reads.
+	materializeProgramEvents(state);
 	for (const [node, events] of [...state.nativeEvents]) {
 		for (const type of [...events.keys()]) {
 			try {

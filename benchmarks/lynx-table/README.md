@@ -2636,6 +2636,160 @@ here and stays open. The web arithmetic above predicts the shape of the saving,
 not its size on LepusNG, where a Map hit and an array read are priced by an
 interpreter rather than by a JIT.
 
+### Deriving the event journal instead of writing it per site (issue #215 D3)
+
+D1 and D2 left one per-site write in `mountProgram`. For every event site the
+plan declares and this render bound, the mount parsed the prop name, looked up
+or created a `Map` on the node, and stored a frozen `{source, binding, listener}`
+in it — a journal entry per site, once per row, restating per row what the build
+already stated once per component. `plan.events` *is* that table: it names the
+node, the host event type and the priority for each site, and the mount already
+holds a token per site index-aligned with it. D3 keeps the pair on the run and
+derives the per-node view where it is actually read — at hand-over, and at
+terminal cleanup for a page that never adopted.
+
+The parse moves with it, from once per site to once per plan: a `WeakMap` keyed
+by the plan holds the parsed bindings, filled on the same miss branch that binds
+the create. That is also where a plan naming an event type the native parser
+does not recognise is now refused, so the refusal still happens at mount rather
+than one screen later, and it now checks *every* declared site instead of only
+the bound ones.
+
+```bash
+BENCH_DIST_TAG=d3base BENCH_MTS_PROGRAM=1 BENCH_AUTOROWS=30000 node scripts/build-app.mjs  # on the D2 source
+BENCH_MTS_PROGRAM=1 BENCH_AUTOROWS=30000 node scripts/build-app.mjs                        # on the D3 source
+
+node stages/mts-profile.mjs --rows 30000 --reps 15 --interval 100 \
+	--cells octane-mts-program,octane-mts-program-d3base \
+	--control-dist d3base --label c215-d3-journal
+```
+
+The control is built from `cb45c67cb`, the D2 head.
+
+| main-thread script | D3 | `d3base` | Δ |
+|---|---:|---:|---:|
+| renderer pre-passes | 72.8 [64.8–84.4] | 72 [68.1–95.7] | +0.8 |
+| program mount | **54.8 [49.4–64.2]** | **73.6 [67.1–85.4]** | **−18.8** |
+| applier entry and pre-walk | 34 [26.5–40.5] | 34 [26–37.6] | 0 |
+| applier walk | 22.7 [18.5–29.9] | 26.3 [21.1–30.6] | −3.6 |
+| compiled program create | 20.1 [14.9–22.8] | 21.6 [17.4–23] | −1.5 |
+| event bookkeeping | **13.4 [10.9–16.8]** | **51 [39.6–56.8]** | **−37.6** |
+| first-screen entry | 7.7 [5.3–9.6] | 9.3 [6–10.2] | −1.6 |
+| papi facade | 2.4 [1.5–3.5] | 2.1 [1.4–4.4] | +0.3 |
+| first tree capture | 1 [0.6–3] | 1 [0.7–3] | 0 |
+| named total | 229.1 [211.3–248.9] | 290.9 [260.9–314.3] | −61.8 |
+| **all frames** | **256 [234.9–273.7]** | **315.6 [286.3–343.5]** | **−59.6** |
+
+`event bookkeeping`, `program mount`, `named total` and `all frames` are the
+four rows whose intervals do not overlap. `applier walk`, `compiled program
+create` and `first-screen entry` all overlap and are read as drift, not as
+effect. `results/c215-d3-journal-30000.json`.
+
+Where the bookkeeping bucket went:
+
+| source site | D3 | `d3base` |
+|---|---:|---:|
+| `core/host-driver.ts nativeEventMap` | **0 [0–0]** | 32.7 [25.8–37.9] |
+| `core/native-events.ts parseLynxNativeEventProp` | **0.2 [0–0.2]** | 4.1 [2.4–7.5] |
+| `core/native-events.ts encodePrevalidatedLynxNativeEventToken` | 11.5 [9.1–15.8] | 12 [10.6–14] |
+| `core/native-events.ts encodeCheckedLynxNativeEventToken` | 0.8 [0.2–4.4] | 1 [0.2–1.8] |
+| `core/native-events.ts assertPositiveSafeInteger` | 0.2 [0–0.7] | 0.2 [0.2–0.8] |
+
+`nativeEventMap`'s `0 [0–0]` is a function this page never enters, not a probe
+that stopped matching: `.nativeEvents.get(` occurs 13 times in *both* bundles,
+so the string the probe looks for is still there and the difference is which
+frames the run sampled. The two rows that did not move are the two that are not
+D3's — the token encode is the payload the mount installs either way, and the
+announcement-side encode belongs to the renderer's pre-pass.
+
+And the mount's own row:
+
+| source site | D3 | `d3base` |
+|---|---:|---:|
+| `core/host-driver.ts mountProgram` | 54.6 [49.2–63.8] · 2 frames | 73.4 [67–85] · 2 frames |
+| `core/first-screen.ts programRunLastId` | 0.2 [0–0.6] | 0.4 [0–1] |
+
+The mount drops 18.8 ms on top of the bucket's 37.6, and the two are one effect
+counted in two places. `Object.freeze` and `Map.prototype.set` are native, so
+their self time lands in the JS frame that called them — `mountProgram` — while
+the `get`-or-create wrapper around the outer map is its own function and lands
+in the bucket. Deleting the loop deletes both.
+
+**Moved, not removed — stated because this window cannot see the difference.**
+The profile's window closes at first paint, and D3 pushes work past it. Per node
+carrying listeners, at 30,000 rows there are 60,000 of them (the bench row binds
+two sites on two different nodes):
+
+| per event-bearing node | before D3 | after D3 |
+|---|---|---|
+| outer `Map.get` (miss) at mount | yes | **gone** |
+| outer `Map.set` at mount | yes | **gone** |
+| outer `Map.get` (hit) at hand-over | yes | **gone** |
+| `new Map` + inner `set` | at mount | **at hand-over** |
+| `Object.freeze` of the registration | at mount | **at hand-over** |
+| outer `Map.set` into the target | at hand-over | at hand-over |
+
+So across the whole pipeline D3 removes one growing-map `set` and two growing-map
+`get`s per node, and one `parseLynxNativeEventProp` per site; it *moves* the
+per-node `Map`, its entry and the freeze out of the first screen and into the
+adoption window. A page that is declined and repaired pays for none of it until
+terminal cleanup asks, which is the only reader left that needs the per-node view.
+
+**What that is worth, computed before it was measured** (issue #196 M1.5,
+`results/m196-m15-ledger-primitives.json`), at the 60,000-entry table size this
+ledger actually reaches:
+
+| what changes | unit cost on V8 | at 30,000 rows |
+|---|---:|---:|
+| outer `Map.set`, deleted | 67.8–88.8 ns/op at this size | ~4–5 ms |
+| two outer `Map.get` hits, deleted | 44.8 ns/op net of the build | ~5.4 ms |
+| `parseLynxNativeEventProp`, per site → per plan | 17.5 ns/op | ~1.1 ms |
+| `new Map` + one entry, **moved** | 44.6 ns/op | ~2.7 ms |
+| `Object.freeze`, **moved** | 40.1 ns/op net of the literal | ~2.4 ms |
+
+That predicts **~10–12 ms deleted** and **~16–17 ms leaving this window**. The
+window measured **56.4 ms** leaving it — the bucket's 37.6 plus the mount's 18.8
+— which is about 3.4× the computed figure, and the record says so rather than
+quietly reporting the larger number.
+
+The gap is real and only partly explained. M1.5 prices a primitive in a tight
+loop over a monomorphic table with integer keys; `state.nativeEvents` is keyed by
+host element objects and is written interleaved with the allocation of a
+30,000-row tree, which is a different cache and a different inline-cache shape.
+The part of the gap most likely to be structural rather than measurement is
+allocation pressure: 120,000 objects — a `Map` and a frozen registration per
+node — are no longer allocated before first paint, and garbage-collection time
+is charged to whichever frame is running when it happens. M1.5 cannot price that
+because its loop allocates nothing else. **This is a hypothesis, not a
+measurement**, and pinning it needs an allocation-counting instrument this
+harness does not have.
+
+**Adoption still adopts, at scale**, which matters more for D3 than for D1: D3
+is what *builds* the journal adoption hands over, so a page that adopts is now
+the page doing that work.
+
+```bash
+node prototype/adoption-probe.mjs --rows 30000
+# octane               painted=30000 after=30000 survivors=30000 → ADOPTED
+# octane-mts-program   painted=30000 after=30000 survivors=30000 → ADOPTED
+```
+
+Both cells were rebuilt from the D3 source for this run. The plain `octane` cell
+runs no program at all and is the control for the other half of the change: the
+transfer's non-program branch is the one every ordinary host still takes.
+
+The D3 bundle is 523,936 bytes against the control's 522,648: **+1,288 bytes** —
+the plan-keyed binding cache and the four run accessors — to delete 60,000
+journal writes and 180,000 growing-hash-table operations at runtime.
+
+**What this does not say.** No device cell was run for this slice, so #215's
+oracle — the `mountProgram` bucket's median at 1,000 rows on the #194 harness,
+and 10,000 rows completing without an ART reference-table overflow — is untouched
+here and stays open. Nothing here measures the adoption window either, so the
+work D3 moved into it is unpriced in both directions: this record can say what
+left the first screen and cannot say what arrived after it (see *Background work,
+and why no other column can see it*).
+
 ## 8. Bookkeeping primitive costs (`stages/ledger-primitives.mjs`, on demand)
 
 Issue #196 asks for a cost model: what one `Map.set`, one array read, one frozen

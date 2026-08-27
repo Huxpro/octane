@@ -82,6 +82,22 @@ const SHIFTED_CARD = CARD.replace(
 ).replace('<view class="card-body">', '<view class="card-body" bindtap={props.onPick}>');
 
 /**
+ * `CARD` flattened, so its first painted hole is numbered immediately before a
+ * host that carries a listener.
+ *
+ * A hole the program paints takes an ID of its own, between the hosts either
+ * side of it. In `CARD` the host after the first hole is the `card-body`
+ * `<view>`, which has no listener — so a reader that answered the hole with the
+ * nearest host would count zero events for it and agree with the background by
+ * accident. Removing that wrapper is the smallest change that puts a listening
+ * `<text>` there instead.
+ */
+const FLAT_CARD = CARD.replace(
+	'<view class="card-body"><text class="d" bindtap={props.onHold}>{props.detail as string}</text></view>',
+	'<text class="d" bindtap={props.onHold}>{props.detail as string}</text>',
+);
+
+/**
  * A program with nothing but a text hole, so it can sit inside another
  * component's tree as a row does.
  */
@@ -680,6 +696,36 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 		for (const node of madeByProgram) expect(adopted.has(node)).toBe(true);
 	});
 
+	it('adopts a program whose painted hole is numbered just before a listening host', () => {
+		// A hole the program painted is a `#text` and not a host, so nothing was
+		// installed on it — and the ID it wears sits *between* two hosts rather
+		// than on either of them.
+		//
+		// The comparison asks the run what it bound on an ID by finding where that
+		// ID sits among the program's own hosts, and a hole sits at none of them:
+		// the answer is no host, therefore no events, which is what the background
+		// describes for a `#text` too. A reader that answered with the nearest
+		// host instead would hand the hole that host's listeners, count one event
+		// against a node the background declares none on, and refuse a page that
+		// is correct. That refusal is not a wrong page — it is a repaint on every
+		// launch, which is the whole cost this train exists to remove, and it
+		// happens only where a listening host follows a painted hole.
+		const painted = paint(true, PROPS, componentFor(true, FLAT_CARD, 'Card'));
+		// The premise, so the cell cannot pass by losing the shape it is about:
+		// both listeners installed, and every node on the page made by the program
+		// — which is what says both holes were painted rather than materialized.
+		expect(painted.events).toHaveLength(2);
+		const paintedByProgram = new Set(painted.made);
+		const onPage = nodesOf(painted.page).slice(1);
+		expect(onPage).toHaveLength(5);
+		for (const node of onPage) expect(paintedByProgram.has(node)).toBe(true);
+
+		const { before, after } = adoptInto(painted, render(false, FLAT_CARD));
+		const flatAdopted = new Set(after);
+		expect(flatAdopted.size).toBe(before.length);
+		for (const node of before) expect(flatAdopted.has(node)).toBe(true);
+	});
+
 	it('leaves the adopted page alone when the container that painted it is disposed', () => {
 		// After adoption the background journal is the only disposal authority, so
 		// the container that painted must be inert against the page it handed on —
@@ -723,6 +769,114 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 		// teardown still works afterwards.
 		expect(disposeLynxHostContainer(target).complete).toBe(true);
 		expect((painted.page as { children: readonly unknown[] }).children).toHaveLength(0);
+	});
+
+	it('adopts a program whose optional handler this render did not supply', () => {
+		// A program's event journal is now the plan and the tokens the mount
+		// installed for it, index-aligned, rather than a map written per node
+		// (issue #215 D3) — and the plan lists every site the *component* declares,
+		// including one this render passed no handler to and so never installed.
+		//
+		// That is a way of being wrong the map did not have. A map simply held no
+		// entry for an unbound site; a count taken off the plan has to ask which
+		// sites were bound, and one that forgot would report two where the
+		// background describes one and decline a page that is correct. The other
+		// half is the handoff: an unbound site must not acquire a listener on the
+		// way through, or the target would own a tuple nothing ever set.
+		const unbound = { ...PROPS, onHold: undefined };
+		const painted = paint(true, unbound);
+		const installed = painted.events.filter((call) => call[3] !== undefined);
+		// The premise: two sites declared, one supplied. Without it this cell would
+		// be an ordinary adoption test that proves nothing about either half.
+		expect(installed).toHaveLength(1);
+		const captured = captureLynxFirstTree(painted.container);
+		expect(captured).not.toBeNull();
+		const background = MainRenderer.renderLynxFirstScreen(cardFor(false), unbound as never);
+		expect(background.envelope.events).toHaveLength(1);
+		const target = createLynxHostContainer(painted.papi, {
+			root: 1,
+			page: painted.page as never,
+		});
+		const prepared = prepareLynxHostBatch(target, background.batch, { firstTree: captured! });
+		expect(prepared.firstTreeAction).toBe('adopt');
+		prepared.apply();
+		// The bound site crosses the handoff as an ordinary listener the target
+		// owns: a tap carrying the token the paint wrote resolves to the listener
+		// the background registered.
+		const resolved = resolveLynxHostNativeEvent(target, installed[0]![3] as string);
+		expect(resolved).not.toBeNull();
+		expect(resolved!.listener).toBe(background.envelope.events[0]!.listener.id);
+		// And the unbound site is not invented on the way through. Counted at the
+		// host boundary rather than read off the tree, because a journal carrying
+		// an entry for the unsupplied site clears to the same empty tree — it just
+		// spends a crossing telling the host to remove a listener it never had.
+		const before = painted.events.length;
+		expect(disposeLynxHostContainer(target).complete).toBe(true);
+		expect(painted.events.slice(before)).toHaveLength(1);
+		for (const node of nodesOf(painted.page)) {
+			expect((node as { events: Map<string, unknown> }).events.size).toBe(0);
+		}
+	});
+
+	it('clears each site with its own PAPI tuple when a program binds two kinds', () => {
+		// The journal resolves a site's `(type, name)` pair once per plan now
+		// (issue #215 D3) and indexes that table per site. Both sites of the main
+		// fixture are `bindtap`, so a table read at the wrong index would answer
+		// correctly there and only there. This one binds a tap and a long press,
+		// on different hosts, so the wrong index clears `bindEvent:tap` twice and
+		// leaves the long press installed on a node teardown has finished with.
+		const { container, page } = paint(true, PROPS, componentFor(true, OTHER_CARD, 'Card'));
+		const painted = nodesOf(page);
+		const kinds = new Set<string>();
+		for (const node of painted) {
+			for (const key of (node as { events: Map<string, unknown> }).events.keys()) kinds.add(key);
+		}
+		// The premise: two different PAPI tuples really are installed, so the
+		// assertion below is not the single-tuple case restated.
+		expect(kinds).toEqual(new Set(['bindEvent:tap', 'bindEvent:longpress']));
+		expect(disposeLynxHostContainer(container).complete).toBe(true);
+		for (const node of painted) {
+			expect((node as { events: Map<string, unknown> }).events.size).toBe(0);
+		}
+	});
+
+	it('retries only the tuples a failed teardown left behind', () => {
+		// Terminal cleanup is retry-safe because `removeNativeEvent` deletes an
+		// entry on success and leaves it on failure, and the runs are filled into
+		// that journal once (issue #215 D3). A fill that ran again on the retry
+		// would put back the entries the first attempt had already cleared, and
+		// the page would still end up right — the host would just be told a second
+		// time to remove listeners that are already gone. So this counts the
+		// crossings rather than the tree.
+		const host = createHost();
+		let failures = 1;
+		const clears: unknown[][] = [];
+		const papi = {
+			...host,
+			setEvent(target: never, kind: never, name: never, listener: never) {
+				if (listener === undefined) {
+					clears.push([target, kind, name]);
+					if (failures > 0) {
+						failures -= 1;
+						throw new Error('native unbind failed');
+					}
+				}
+				host.setEvent(target, kind, name, listener);
+			},
+		};
+		const container = createLynxHostContainer(papi, { root: 1 });
+		const rendered = MainRenderer.renderLynxFirstScreen(cardFor(true), PROPS as never);
+		expect(applyLynxFirstScreenDirect(container, rendered.nodes, rendered.envelope)).toBe(true);
+		// Two sites installed, one unbind refused: the attempt cannot finish and
+		// says so rather than reporting a teardown it did not complete.
+		expect(disposeLynxHostContainer(container).complete).toBe(false);
+		expect(clears).toHaveLength(2);
+		const afterFirst = clears.length;
+		expect(disposeLynxHostContainer(container).complete).toBe(true);
+		expect(clears.slice(afterFirst)).toHaveLength(1);
+		for (const node of nodesOf(papi.pages[0]!)) {
+			expect((node as { events: Map<string, unknown> }).events.size).toBe(0);
+		}
 	});
 
 	it('refuses a description whose taps go somewhere else than the ones it installed', () => {
