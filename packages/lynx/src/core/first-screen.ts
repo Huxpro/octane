@@ -201,7 +201,20 @@ export interface LynxFirstTreeState<Node extends LynxElementRef> {
 	programRuns: LynxProgramRun<Node>[];
 	/** How many physical nodes those runs account for, summed once at capture. */
 	readonly programNodeCount: number;
-	/** The per-ID view of those runs, once adoption has asked for one. */
+	/**
+	 * Whether every run's ids sit strictly after the previous run's, which is
+	 * what lets a lookup answer from the runs themselves (issue #215 D1).
+	 *
+	 * Sibling programs — a keyed `@for` of rows, the shape the whole train is
+	 * aimed at — take adjacent id spans, so a search can decide *not a program
+	 * node* from the gap between two runs. A program nested inside another
+	 * program's keyed-range member does not: its ids are minted in the middle of
+	 * the outer program's span, so the two spans overlap and a gap proves
+	 * nothing. The mount says which of the two it built rather than this
+	 * guessing, and the overlapping case falls back to the per-ID map below.
+	 */
+	readonly programRunsDisjoint: boolean;
+	/** The per-ID map, built only when the runs cannot answer directly. */
 	programNodes: Map<number, Node> | null;
 	/** The description, once something has asked for one. */
 	snapshot: LynxFirstTreeSnapshot | null;
@@ -233,6 +246,7 @@ export function createLynxFirstTree<Node extends LynxElementRef>(
 	lists: Map<number, LynxFirstTreeListJournal>,
 	programRuns: LynxProgramRun<Node>[],
 	programNodeCount: number,
+	programRunsDisjoint: boolean,
 ): LynxFirstTree<Node> {
 	const state: LynxFirstTreeState<Node> = {
 		owner,
@@ -243,6 +257,7 @@ export function createLynxFirstTree<Node extends LynxElementRef>(
 		lists,
 		programRuns,
 		programNodeCount,
+		programRunsDisjoint,
 		programNodes: null,
 		snapshot: null,
 		describe,
@@ -264,24 +279,163 @@ export function createLynxFirstTree<Node extends LynxElementRef>(
 }
 
 /**
- * Every node a compiled main-thread program painted, by the ID it took, built
- * on first read (issue #163 C20).
+ * The node a compiled main-thread program painted for one ID, or `undefined`
+ * when no program owns that ID (issue #215 D1).
  *
- * The one reader is adoption, and adoption happens when the background's batch
- * arrives — which is after the paint the capture that fills this stands in
- * front of. So it waits here for the same reason the token index does: growing
- * a map of every program node is the largest thing capture would otherwise do,
- * and nothing before adoption reads it.
+ * This is the whole of main's side of the inverted handoff: the background
+ * describes a tree and asks, per ID, for the node wearing it. Before #215 the
+ * answer came from a `Map` of every program node, and C20 had already stopped
+ * *writing* that map at mount by keeping the runs instead and building it on
+ * first read. Building it later is still building it — at 30,000 rows it is
+ * 210,000 insertions the first adopting launch pays — so the lookup now reads
+ * the runs directly, and the map is what is left for the shape that cannot.
  *
- * Built from the runs and nothing live, so it answers identically whether the
+ * A program's ids are minted in one increasing sweep, so within a run `ids` and
+ * the defined entries of `rangeIds` are each sorted; and when the runs are
+ * disjoint (§`programRunsDisjoint`) the run that could own an ID is found by
+ * one search over runs rather than by remembering every node. The cursor is
+ * what makes the common case free rather than logarithmic: adoption walks the
+ * background's description in id order, so the run that answered the last
+ * question usually answers this one too.
+ *
+ * Read from the runs and nothing live, so it answers identically whether the
  * background adopts before or after terminal cleanup emptied the container.
  */
-export function lynxFirstTreeProgramNodes<Node extends LynxElementRef>(
-	firstTree: LynxFirstTree<Node>,
-): ReadonlyMap<number, Node> {
-	const state = firstTree[LYNX_FIRST_TREE_STATE];
-	const index = state.programNodes;
-	if (index !== null) return index;
+export interface LynxProgramIndex<Node extends LynxElementRef> {
+	get(id: number): Node | undefined;
+}
+
+/**
+ * The largest ID a run owns: its last host, or a hole it painted after it.
+ *
+ * Exported because the mount asks the same question the readers do — it decides
+ * whether a program started inside the previous one — and two copies of this
+ * would be two places for "defined range ids increase with their position" to
+ * drift apart. It is also the only way the profiler can name it: minified, the
+ * two copies were textually identical, so a probe could not tell the mount's
+ * call from a reader's and the mount's landed in a bucket named for emitted
+ * program code (issue #163 C15-C17's class of defect).
+ */
+export function programRunLastId(run: LynxProgramRun<LynxElementRef>): number {
+	const last = run.ids[run.ids.length - 1]!;
+	for (let range = run.rangeIds.length - 1; range >= 0; range--) {
+		const id = run.rangeIds[range];
+		if (id === undefined) continue;
+		// Defined range ids increase with their position, so the last one present
+		// is the largest, and a hole after the final host is the only way an id
+		// can sit past `ids`.
+		return id > last ? id : last;
+	}
+	return last;
+}
+
+/**
+ * Which node in one run wears an ID, by scanning the two sorted tables the
+ * mount already holds.
+ *
+ * Linear rather than binary: `ids.length` is `plan.nodes`, a count the compiler
+ * fixed at build time and which is small for anything a template emits — the
+ * bench row is four. A binary search over four entries costs more than the walk
+ * and reads worse.
+ */
+function programRunNode<Node extends LynxElementRef>(
+	run: LynxProgramRun<Node>,
+	id: number,
+): Node | undefined {
+	const ids = run.ids;
+	const hosts = ids.length;
+	for (let position = 0; position < hosts; position++) {
+		const candidate = ids[position]!;
+		if (candidate === id) return run.nodes[position] as Node;
+		// Sorted, so nothing past here can match. An early exit and not a check:
+		// removing it changes no answer, only how long the miss takes, and no
+		// test distinguishes the two.
+		if (candidate > id) break;
+	}
+	for (let range = 0; range < run.rangeIds.length; range++) {
+		const candidate = run.rangeIds[range];
+		// An entry the program left empty is a hole holding members rather than
+		// text: nothing of the program's wears an id there, and the members were
+		// numbered where the hole sits, so a later hole can still carry a larger
+		// id than this one. Stepped over, not stopped at.
+		if (candidate === undefined) continue;
+		if (candidate === id) return run.nodes[hosts + range] as Node;
+		if (candidate > id) break;
+	}
+	return undefined;
+}
+
+class LynxDisjointProgramIndex<Node extends LynxElementRef> implements LynxProgramIndex<Node> {
+	private cursor = 0;
+	private cursorLastId = -1;
+
+	constructor(private readonly runs: readonly LynxProgramRun<Node>[]) {
+		if (runs.length !== 0) this.cursorLastId = programRunLastId(runs[0]!);
+	}
+
+	get(id: number): Node | undefined {
+		const runs = this.runs;
+		if (runs.length === 0) return undefined;
+		// Both readers walk ascending IDs across a page whose programs are one
+		// keyed row each, so the run that answered last is usually the run that
+		// answers now, and the one after it is usually the next. Two comparisons
+		// buy that; the search below is what happens when they do not.
+		const cursor = this.cursor;
+		if (id >= runs[cursor]!.ids[0]! && id <= this.cursorLastId) {
+			return programRunNode(runs[cursor]!, id);
+		}
+		if (cursor + 1 < runs.length) {
+			const next = runs[cursor + 1]!;
+			if (id >= next.ids[0]!) {
+				const lastId = programRunLastId(next);
+				if (id <= lastId) {
+					this.cursor = cursor + 1;
+					this.cursorLastId = lastId;
+					return programRunNode(next, id);
+				}
+			}
+		}
+		// The runs are disjoint and sorted, so the run that could own this id is
+		// the last one starting at or before it — and if that run does not own it,
+		// nothing does. That is what lets an id belonging to an ordinary described
+		// host be refused here without a map to miss in.
+		let low = 0;
+		let high = runs.length - 1;
+		let found = -1;
+		while (low <= high) {
+			const middle = (low + high) >> 1;
+			if (runs[middle]!.ids[0]! <= id) {
+				found = middle;
+				low = middle + 1;
+			} else {
+				high = middle - 1;
+			}
+		}
+		if (found === -1) return undefined;
+		const lastId = programRunLastId(runs[found]!);
+		this.cursor = found;
+		this.cursorLastId = lastId;
+		if (id > lastId) return undefined;
+		return programRunNode(runs[found]!, id);
+	}
+}
+
+/**
+ * The per-ID map, for runs whose id spans overlap.
+ *
+ * A program nested inside another program's keyed-range member takes its ids in
+ * the middle of the outer program's span, so "the last run starting at or
+ * before this id" stops being the only run that could own it and the search
+ * above stops being able to prove a miss. Rather than teach that search to walk
+ * a nesting chain — bounded by nothing the plan states — this is the pre-#215
+ * behaviour kept intact for the case that needs it: build the map once, answer
+ * from it after.
+ */
+function lynxProgramNodeMap<Node extends LynxElementRef>(
+	state: LynxFirstTreeState<Node>,
+): Map<number, Node> {
+	const existing = state.programNodes;
+	if (existing !== null) return existing;
 	const built = new Map<number, Node>();
 	for (const run of state.programRuns) {
 		const hosts = run.ids.length;
@@ -289,9 +443,6 @@ export function lynxFirstTreeProgramNodes<Node extends LynxElementRef>(
 			built.set(run.ids[position]!, run.nodes[position] as Node);
 		}
 		for (let range = 0; range < run.rangeIds.length; range++) {
-			// A hole this first screen filled itself is not the program's to hand
-			// over: the mount refused a program that painted one, and the node in
-			// the page there wears a record like any other.
 			const id = run.rangeIds[range];
 			if (id === undefined) continue;
 			built.set(id, run.nodes[hosts + range] as Node);
@@ -299,6 +450,14 @@ export function lynxFirstTreeProgramNodes<Node extends LynxElementRef>(
 	}
 	state.programNodes = built;
 	return built;
+}
+
+export function lynxFirstTreeProgramIndex<Node extends LynxElementRef>(
+	firstTree: LynxFirstTree<Node>,
+): LynxProgramIndex<Node> {
+	const state = firstTree[LYNX_FIRST_TREE_STATE];
+	if (!state.programRunsDisjoint) return lynxProgramNodeMap(state);
+	return new LynxDisjointProgramIndex(state.programRuns);
 }
 
 /** Release clone-unsafe journal state after adoption replay has drained. */

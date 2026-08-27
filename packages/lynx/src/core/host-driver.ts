@@ -25,7 +25,8 @@ import { hasCrossRealmPlainPrototype } from './plain-object.js';
 import {
 	createLynxFirstTree,
 	LYNX_FIRST_TREE_STATE,
-	lynxFirstTreeProgramNodes,
+	lynxFirstTreeProgramIndex,
+	programRunLastId,
 	LynxFirstScreenRefusalError,
 	LynxFirstTreeMismatchError,
 	type CaptureLynxFirstTreeOptions,
@@ -289,6 +290,17 @@ interface LynxHostState<Node extends LynxElementRef> {
 	 * and every reader that wants all of them reads both.
 	 */
 	readonly programRuns: LynxProgramRun<Node>[];
+	/**
+	 * Whether every run so far begins after the previous one ends.
+	 *
+	 * True for sibling programs, which is every program a keyed `@for`
+	 * emits. False once a program is mounted inside another program's
+	 * keyed-range member, because `assignProgramIds` mints the inner
+	 * program's ids in the middle of the outer one's span. Tracked here
+	 * rather than derived at capture so it costs one comparison per
+	 * program instead of a pass over the runs (issue #215 D1).
+	 */
+	programRunsDisjoint: boolean;
 	acceptedVersion: number;
 	disposed: boolean;
 	disposing: boolean;
@@ -3040,6 +3052,7 @@ export function createLynxHostContainer<Node extends LynxElementRef>(
 		hasMainThreadProps: false,
 		hasNativeListTopology: false,
 		programRuns: [],
+		programRunsDisjoint: true,
 		acceptedVersion: 0,
 		disposed: false,
 		disposing: false,
@@ -3535,6 +3548,20 @@ function firstScreenTreeHasList(nodes: readonly LynxFirstScreenDirectNode[]): bo
 }
 
 /**
+ * Empty a container's program ledger.
+ *
+ * One function rather than two statements at each of the two sites, because
+ * `programRunsDisjoint` describes *these* runs: a clear that dropped the runs
+ * and kept the flag would carry one mount's shape into the next one, and no
+ * behavioural test can see that — the fallback it would wrongly select is
+ * correct, only slower. Making the pair inseparable is the proof instead.
+ */
+function clearProgramRuns<Node extends LynxElementRef>(state: LynxHostState<Node>): void {
+	state.programRuns.length = 0;
+	state.programRunsDisjoint = true;
+}
+
+/**
  * Issue-58 L3: apply a first-screen tree with direct Element PAPI emission —
  * no command staging, no cloned record maps, no operation replay — while
  * leaving the container state indistinguishable from the batch path so
@@ -4017,12 +4044,23 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		// `rangeIds` and `created` are arrays this mount already holds, so the run
 		// is the only allocation, and the per-ID view adoption wants is built from
 		// it there — after the paint this stands in front of (issue #163 C20).
-		state.programRuns.push({
+		const mounted: LynxProgramRun<Node> = {
 			ids,
 			rangeIds,
 			nodes: created as readonly (Node | undefined)[],
 			owned,
-		});
+		};
+		// One comparison, here, so adoption can find a run by searching instead of
+		// by remembering every node (issue #215 D1). A sibling program starts after
+		// the last one ends; a program mounted inside another program's keyed-range
+		// member does not, because `assignProgramIds` mints its ids in the middle
+		// of the outer program's span. This says which was built rather than making
+		// the lookup guess, and it can only ever turn the flag off.
+		const previous = state.programRuns[state.programRuns.length - 1];
+		if (previous !== undefined && ids[0]! <= programRunLastId(previous)) {
+			state.programRunsDisjoint = false;
+		}
+		state.programRuns.push(mounted);
 		for (let index = 0; index < plan.events.length; index++) {
 			const token = tokens[index];
 			if (token === undefined) continue;
@@ -4587,6 +4625,7 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 		// reference per program, where this used to copy one entry per node.
 		[...state.programRuns],
 		programNodes,
+		state.programRunsDisjoint,
 	);
 	state.firstTree = firstTree;
 	return firstTree;
@@ -4761,11 +4800,10 @@ function compareFirstTree<Node extends LynxElementRef>(
 		snapshot.nodes.map((node) => [node.id, node]),
 	);
 	for (const [id, node] of journal.logicalNodes) snapshotsById.set(id, node);
-	// Every program node by the ID it took, built here, once, for this comparison
-	// and the transfer that follows it. Adoption is the only reader, and it runs
-	// when the background's batch arrives — which is after the paint capture
-	// stands in front of (issue #163 C20).
-	const programNodes = lynxFirstTreeProgramNodes(firstTree);
+	// Every program node by the ID it took — read out of the runs the mount
+	// already wrote, not copied into a table first (issue #215 D1). Nothing is
+	// built per node here or at capture; what this allocates is one cursor.
+	const programNodes = lynxFirstTreeProgramIndex(firstTree);
 	for (const id of [...finalIds].sort((first, second) => first - second)) {
 		const programNode = programNodes.get(id);
 		if (programNode !== undefined) {
@@ -4979,9 +5017,10 @@ function transferFirstTree<Node extends LynxElementRef>(
 	const targetState = target[LYNX_HOST_STATE];
 	const sourceState = source[LYNX_HOST_STATE];
 	const journal = firstTree[LYNX_FIRST_TREE_STATE];
-	// The comparison that licensed this transfer already built it, so this reads
-	// the map it built rather than a second one (issue #163 C20).
-	const programNodes = lynxFirstTreeProgramNodes(firstTree);
+	// A second cursor over the same runs, not a second table: the comparison that
+	// licensed this transfer built nothing for this one to reuse (issue #215 D1),
+	// and the two walks reach the IDs in different orders anyway.
+	const programNodes = lynxFirstTreeProgramIndex(firstTree);
 	for (const [id, targetRecord] of targetState.records) {
 		const sourceRecord = sourceState.records.get(id);
 		// A native list row was never painted, so there is nothing to move. It
@@ -5053,7 +5092,7 @@ function transferFirstTree<Node extends LynxElementRef>(
 	// nodes the replacement loop did not reach.
 	sourceState.ownedNodes.clear();
 	sourceState.ownedPageRoots.clear();
-	sourceState.programRuns.length = 0;
+	clearProgramRuns(sourceState);
 	sourceState.nativeEvents.clear();
 	sourceState.mainThreadRefs.clear();
 	sourceState.mainThreadRefOwners.clear();
@@ -7901,7 +7940,7 @@ export function disposeLynxHostContainer<Node extends LynxElementRef>(
 	if (complete) {
 		const firstTree = state.firstTree;
 		state.ownedNodes.clear();
-		state.programRuns.length = 0;
+		clearProgramRuns(state);
 		state.nativeEvents.clear();
 		state.mainThreadRefs.clear();
 		state.mainThreadRefOwners.clear();
