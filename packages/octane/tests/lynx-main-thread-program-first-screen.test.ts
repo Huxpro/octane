@@ -118,6 +118,27 @@ export function List(props: { rows: unknown }) @{
 }
 `;
 
+/**
+ * A shell that stays described however it is compiled, holding rows that do not.
+ *
+ * `scroll-view` is a host type the main-thread backend has no intrinsic factory
+ * for, so this component emits no create function even with the backend on —
+ * silently, as an ordinary compile rather than a refusal anyone sees. Any prop
+ * outside `class`/`className`/`id` does the same. So this is not a contrived
+ * arrangement: it is what a shell looks like the moment it scrolls or carries a
+ * style, while its rows go on compiling.
+ *
+ * A described sibling sits on *both* sides of the hole, because the rows take
+ * one position among the parent's children rather than the tail of them. A
+ * linkage that added them once the walk was done would put `foot` in front of
+ * every row while still holding exactly the right nodes.
+ */
+const SCROLL_SHELL = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+export function Shell(props: { rows: unknown }) @{
+	<scroll-view class="list"><text class="head">Head</text>{props.rows}<text class="foot">Foot</text></scroll-view>
+}
+`;
+
 /** `CARD`, with its first hole opened to hold a component instead of a string. */
 const HOSTING_CARD = CARD.replace('props: { label: string;', 'props: { label: unknown;').replace(
 	'{props.label as string}',
@@ -604,6 +625,46 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 		// And each row's own nodes specifically: these are the ones with no record
 		// to resolve them, so a lookup that answered from a neighbouring run would
 		// fault here rather than anywhere else.
+		for (const node of madeByProgram) expect(adopted.has(node)).toBe(true);
+	});
+
+	it('adopts rows that are programs under a parent the renderer described', () => {
+		// The production shape, and the one no cell above reaches: a shell the
+		// backend has no factory for, so it stays described while its rows compile
+		// to programs. The bench app escapes this only by being spartan enough to
+		// compile whole — `view` and `text` with nothing but `class` on them.
+		//
+		// Every node of the shell has a record here, the parent the rows go into
+		// included, so the background's description of *that parent's children* is
+		// something the captured tree has to agree with. A row's program root is a
+		// child of it in the background and a node with no record of its own in
+		// the captured tree, and only the mount walk knows those are the same
+		// child. Getting it wrong does not break the page: it paints correctly and
+		// is then refused, which is a full repaint on every launch.
+		const rows = (inner: CardComponent) =>
+			['a', 'b', 'c'].map((note) => MainRenderer.universalComponent('lynx', inner, { note }, note));
+		const painted = paint(
+			true,
+			{ rows: rows(componentFor(true, INNER, 'Inner')) },
+			// Compiled *with* the backend, and described anyway. That is the whole
+			// point: nothing about this app opted out of programs.
+			componentFor(true, SCROLL_SHELL, 'Shell'),
+		);
+		// The premise, so the cell cannot pass by losing the shape it is about:
+		// the rows painted through a compiled create and the shell did not, which
+		// is what puts described and undescribed children under one parent.
+		const madeByProgram = new Set(painted.made);
+		expect(madeByProgram.size).toBe(9);
+
+		const background = MainRenderer.renderLynxFirstScreen(
+			componentFor(false, SCROLL_SHELL, 'Shell'),
+			{ rows: rows(componentFor(false, INNER, 'Inner')) } as never,
+		);
+
+		const { before, after } = adoptInto(painted, background);
+		const adopted = new Set(after);
+		expect(adopted.size).toBe(before.length);
+		for (const node of before) expect(adopted.has(node)).toBe(true);
 		for (const node of madeByProgram) expect(adopted.has(node)).toBe(true);
 	});
 

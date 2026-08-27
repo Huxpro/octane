@@ -3976,6 +3976,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 	 */
 	const mountProgram = (
 		node: LynxFirstScreenDirectNode,
+		parentRecord: LynxHostRecord<Node> | null,
 		parentId: number | null,
 		physicalParent: Node,
 		parentVisible: boolean,
@@ -4208,13 +4209,38 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			state.programRunsDisjoint = false;
 		}
 		state.programRuns.push(mounted);
-		// A program mounted at the top level is a page root, and `rootChildren` is
-		// the logical half of that — `ownedPageRoots` being the physical half.
-		// Nothing else will add it: the push that names a page root rides the
-		// record walk, and a program writes no record. Its keyed range members are
-		// deliberately *not* here; they sit inside a node the program made, and
-		// calling them page roots is the mistake the linkage guard below refuses.
-		if (parentId === null) state.rootChildren.push(ids[0]!);
+		// Where this program's root sits in the description — the whole of what a
+		// program owes the logical tree, because it writes no record and so this
+		// push is the only thing that will ever name it as its parent's child.
+		//
+		// The same three cases, resolved in the same order, as a described host
+		// (issue #215 D5). Two of them were already here; the first was not, and
+		// its absence is why a shell the renderer described could paint a page of
+		// compiled rows correctly and then have it refused — the parent's record
+		// listed only the children that happened to be described, so the
+		// background's description of that parent disagreed and every launch
+		// repainted.
+		//
+		// It runs here rather than after the create so the push lands where the
+		// walk is, and the walk is at the row's own position among its parent's
+		// children: a range is transparent, so members pop between the siblings
+		// declared before the hole and the ones declared after it. Adding them
+		// once the walk was done would hold exactly the right nodes in the wrong
+		// order, and the background describes an order.
+		if (parentRecord !== null) {
+			if (parentRecord.children === EMPTY_HOST_CHILDREN) parentRecord.children = [];
+			parentRecord.children.push(ids[0]!);
+		} else if (parentId === null) {
+			// A page root, and `rootChildren` is the logical half of that —
+			// `ownedPageRoots` being the physical half.
+			state.rootChildren.push(ids[0]!);
+		}
+		// The remaining case is this program being a keyed range member of another
+		// program: a real parent, named by `parentId`, with no record to link into,
+		// because a program's subtree is never described. Calling it a page root
+		// instead is the mistake the guard above refuses, exactly as the described
+		// host branch refuses it for a member that is a host.
+
 		// The attach is queued before the members so it pops after them, which is
 		// how the rest of this walk keeps a subtree out of the caller's tree until
 		// it is finished. It is the whole reason the emitted create returns its
@@ -4288,7 +4314,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			// Handled before the range-transparent branch below, which would
 			// otherwise walk past a node carrying no type and no props and publish
 			// the page it left out.
-			mountProgram(node, parentId, physicalParent, parentVisible);
+			mountProgram(node, parentRecord, parentId, physicalParent, parentVisible);
 			return;
 		}
 		if (node.kind !== 'host') {
