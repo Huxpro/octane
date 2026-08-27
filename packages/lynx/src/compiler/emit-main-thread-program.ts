@@ -253,6 +253,25 @@ export interface LynxMainThreadProgramEmission {
 	 * the thing that drifts; reporting it makes the emission the single answer.
 	 */
 	readonly paintsText: readonly boolean[];
+	/**
+	 * Whether the emission also carries a run driver — `<name>.run`, a tight
+	 * loop over member-major tables that paints `count` instances in one call
+	 * (issue #215 D8).
+	 *
+	 * True exactly when every declared range site is one this emission paints,
+	 * which is the condition that makes an instance's ID stride constant. A hole
+	 * this emission leaves open is filled by members the renderer materializes,
+	 * and `assignProgramIds` mints their IDs *at the hole's position*, inside
+	 * this program's own span — so two instances of such a program do not take
+	 * the same number of IDs and nothing can address the second one by
+	 * arithmetic. A program with no range sites at all meets the condition
+	 * trivially.
+	 *
+	 * Reported rather than re-derived, for the same reason `paintsText` is: the
+	 * emission decides it, and a consumer computing it a second way from the
+	 * plan is the pair that drifts.
+	 */
+	readonly denseRun: boolean;
 }
 
 /** A program this backend declines, naming what it could not emit. */
@@ -649,7 +668,17 @@ export function emitLynxMainThreadProgram(
 		.concat(ranges.map((_range, index) => (painted.has(index) ? `t${index}` : 'undefined')))
 		.join(', ');
 
-	const source = [
+	// Constant stride, and that is the whole condition (issue #215 D8). A range
+	// site this emission leaves open is filled by members the renderer
+	// materializes, and `assignProgramIds` mints their IDs at the hole's own
+	// position — inside this program's span — so two instances of such a program
+	// do not take the same number of IDs and the second one cannot be addressed
+	// by arithmetic. Every site painted, or no sites at all, and an instance is
+	// exactly `nodes + ranges` consecutive IDs however many times it is repeated.
+	const denseRun = ranges.every((_range, index) => painted.has(index));
+	const stride = program.nodes.length + ranges.length;
+
+	const preamble = [
 		`function (papi) {`,
 		`\tvar intrinsics = papi.intrinsics;`,
 		`\tif (intrinsics === undefined) {`,
@@ -659,12 +688,65 @@ export function emitLynxMainThreadProgram(
 		`\tvar append = papi.append !== undefined`,
 		`\t\t? papi.append`,
 		`\t\t: function (parent, child) { papi.insertBefore(parent, child, null); };`,
-		`\treturn function ${options.name}(${params.join(', ')}) {`,
-		...body,
-		`\t\treturn [${returned}];`,
-		`\t};`,
-		`}`,
-	].join('\n');
+	];
+
+	// A program that gets no driver emits exactly the bytes it emitted before
+	// this parameter existed, which is what keeps every record taken against the
+	// old emission comparable to one taken against this.
+	const source = !denseRun
+		? [
+				...preamble,
+				`\treturn function ${options.name}(${params.join(', ')}) {`,
+				...body,
+				`\t\treturn [${returned}];`,
+				`\t};`,
+				`}`,
+			].join('\n')
+		: [
+				...preamble,
+				`\tfunction ${options.name}(${params.join(', ')}) {`,
+				...body,
+				`\t\treturn [${returned}];`,
+				`\t}`,
+				// The same body, run `count` times over member-major tables, with
+				// the create function's parameters bound from them at the top of
+				// each iteration. Bound rather than substituted: the body below is
+				// the body above with one tab in front of it and nothing else
+				// changed, which is what makes "the driver paints what `count`
+				// calls paint" a property of the emission rather than a claim two
+				// codegen paths have to keep agreeing on. `main-thread-emit.test.ts`
+				// asserts that relation directly on the emitted text.
+				//
+				// The cost of binding is one array read per parameter per instance,
+				// against the argument array — one allocation and one push per
+				// parameter — that the caller no longer builds. The nodes go
+				// straight into `out` at this instance's offset instead of into a
+				// returned array, which is the second allocation per instance this
+				// deletes; `out` is one array the caller sizes once.
+				`\t${options.name}.run = function (pageId, count, values, events, ranges, out) {`,
+				`\t\tvar vi = 0, ei = 0, ri = 0, oi = 0;`,
+				`\t\tfor (var i = 0; i < count; i++) {`,
+				...Array.from(
+					{ length: valueCount },
+					(_unused, index) =>
+						`\t\t\tvar v${index} = values[vi${index === 0 ? '' : ` + ${index}`}];`,
+				),
+				...program.events.map(
+					(_site, index) => `\t\t\tvar e${index} = events[ei${index === 0 ? '' : ` + ${index}`}];`,
+				),
+				...ranges.map(
+					(_range, index) => `\t\t\tvar r${index} = ranges[ri${index === 0 ? '' : ` + ${index}`}];`,
+				),
+				...body.map((line) => `\t${line}`),
+				...returned
+					.split(', ')
+					.map((local, index) => `\t\t\tout[oi${index === 0 ? '' : ` + ${index}`}] = ${local};`),
+				`\t\t\tvi += ${valueCount}; ei += ${program.events.length}; ri += ${ranges.length}; oi += ${stride};`,
+				`\t\t}`,
+				`\t};`,
+				`\treturn ${options.name};`,
+				`}`,
+			].join('\n');
 
 	return {
 		source,
@@ -672,5 +754,6 @@ export function emitLynxMainThreadProgram(
 		eventCount: program.events.length,
 		rangeCount: ranges.length,
 		paintsText: ranges.map((_range, index) => painted.has(index)),
+		denseRun,
 	};
 }
