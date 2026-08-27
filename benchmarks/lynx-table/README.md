@@ -307,6 +307,49 @@ orthogonality claim measured rather than asserted: the backend owns the first
 screen and the core it is paired with does not move the boundary.
 `prototype/results/fcp-10000c5-clause1-10000-n15.*` is the committed record.
 
+#### Clause 1, re-priced at all three scales (issue #163, after C8)
+
+C8 established that the emitted append order is not what the compiled first
+screen is paying for, and it changed nothing that ships. So this re-prices the
+oracle rather than re-testing it, on the harness whose protocol line is the
+clause's own words — one window per scale, cells alternating AB/BA, n=15:
+
+```bash
+for n in 1000 10000 30000; do
+	node prototype/run-fcp.mjs --rows $n --reps 15 --out-suffix=-c163-c8-clause1
+done
+```
+
+`prototype/results/fcp-{1000,10000,30000}-c163-c8-clause1.*`. Medians with the
+observed range, and the share of the distance from `octane` to the ceiling that
+the compiled first screen closes:
+
+| rows | `octane` | `octane-mts-program` | `octane-block-program` | `octane-direct` | clause 1 | gap closed |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1,000 | 238.7 [228–268] | 189.1 [181–215] | 186.0 [174–205] | 143.2 [134–218] | **1.299×** | 55.2% |
+| 10,000 | 1603.3 [1477–1742] | 1256.4 [1149–1350] | 1249.0 [1165–1464] | 1034.7 [970–1135] | **1.207×** | 62.3% |
+| 30,000 | 4955.0 [4745–5366] | 3537.9 [3345–3780] | 3545.2 [3338–3748] | 2703.5 [2561–2939] | **1.311×** | 62.6% |
+
+**Clause 1 asks for ≤1.05× and is not met at any scale.** The excess over the
+ceiling is +42.8 ms, +214.3 ms and +841.7 ms. At 10,000 and 30,000 rows the
+clause cell's fifteen samples are **disjoint** from the ceiling cell's, so the
+shortfall is established rather than inferred; at 1,000 they overlap, because
+the ceiling cell has a long upper tail there (134–218) and 42.8 ms is inside it.
+
+**The core behind the program still costs nothing at the boundary**, now at three
+scales rather than one. `octane-block-program` and `octane-mts-program` overlap
+at every scale, the block cell holds the lower sample in 10, 7 and 10 of 15
+paired repetitions — a coin flip each time — and the median paired differences
+are −1.9, +10.0 and −103.2 ms with no consistent sign. So clause 1's verdict does
+not depend on which background core the first screen is paired with, which is
+what makes the two cells interchangeable in every table above.
+
+The 30,000-row window opened at a 1m load of 1.69 against the harness's own 2.0
+refusal threshold, higher than the 0.51 and 0.92 of the other two. Every cell in
+that window paid it, and the harness certifies within-window differences only, so
+the ratios stand; the absolute walls from it should not be compared with another
+window's.
+
 ### Background work, and why no other column can see it
 
 A `--counter-build` session also reports, per operation, what the background
