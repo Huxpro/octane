@@ -2521,6 +2521,49 @@ first screen only — nothing in it ever adopts, so the build is never paid in
 these numbers. A launch that goes on to adopt still pays a 210,000-entry map,
 just later than it used to. Deleting it rather than moving it is #215's D1.
 
+## 8. Bookkeeping primitive costs (`stages/ledger-primitives.mjs`, on demand)
+
+Issue #196 asks for a cost model: what one `Map.set`, one array read, one frozen
+object literal actually costs, so that a slice can compute what removing 210,000
+of something is worth *before* building an arm to measure it. This is M1.5 — the
+subset of that table the ledger work needs — and it exists because the D-train
+keeps proposing to replace one bookkeeping primitive with another.
+
+```bash
+node stages/ledger-primitives.mjs --reps 7
+```
+
+The bodies live in `stages/ledger-primitives.source.mjs`, which imports nothing
+and uses no Node API. That is deliberate: a device runner on LepusNG executes
+the same source, so the two columns are comparable rather than merely adjacent.
+This file is only the V8 driver.
+
+Each row is timed at five counts (10k → 1M), `--reps` times, with both the row
+order and the count order rotated per rep so no row is permanently first. A row
+reports the least-squares slope of milliseconds against count as `nsPerOp`, the
+intercept as `fixedMs`, and `residual` — the worst relative distance of any
+point from that fit.
+
+**A large residual is the row telling you its slope is meaningless.** A hash
+table that grows to a million entries rehashes and leaves cache, so its cost per
+op is not one number; four of the twelve rows are flagged `NOT LINEAR` and carry
+`nsPerOpByCount` instead, to be read at the size the ledger actually reaches.
+`mapGetHit` at 30,000 entries is 89 ns/op and at 1,000,000 is 184 — reporting
+either as *the* cost of a map hit would misprice any decision that used it.
+
+One anomaly is reported rather than smoothed: every growing-collection row is
+several times more expensive per op at the smallest count than at the next one
+up (`mapSetGrowing` 541 ns/op at 10,000 against 68 at 30,000). A fixed cost of a
+few milliseconds landing on the smallest run fits the shape, but no arm here
+separates it, so it stands as observed and unexplained. It does not touch the
+100k–300k range the ledger work reads.
+
+**V8 absolutes are never spendable on a device decision.** The record says so in
+its own `claims` block. What they are good for is the ratio between rows and the
+"a JIT would have hidden this" column that #196 M1 reads the device against —
+the web instrument has already mispredicted the device by 19×, which is why M2
+exists at all.
+
 ## Claims and non-claims
 
 Command counts and commit bytes are Octane-owned costs and are gated. The

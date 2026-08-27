@@ -1,0 +1,295 @@
+{
+  "meta": {
+    "date": "2026-08-27T03:20:08.560Z",
+    "issue": 196,
+    "slice": "M1.5",
+    "label": "m196-m15-ledger-primitives",
+    "reps": 7,
+    "series": [10000, 30000, 100000, 300000, 1000000],
+    "engine": {
+      "runtime": "node",
+      "node": "v22.22.2",
+      "v8": "12.4.254.21-node.39",
+      "platform": "linux",
+      "release": "6.18.44-fc-v21",
+      "cpus": 4,
+      "cpuModel": "Intel(R) Xeon(R) Processor @ 2.80GHz"
+    },
+    "loadavg1": 0.31,
+    "source": "stages/ledger-primitives.source.mjs"
+  },
+  "rows": [
+    {
+      "name": "arrayIndexWrite",
+      "note": "preallocated array index write — the floor every other row is read against",
+      "subtract": null,
+      "nsPerOp": 5.33,
+      "fixedMs": -0.0001,
+      "residual": 0.5207,
+      "medianMs": {
+        "10000": 0.0255,
+        "30000": 0.2016,
+        "100000": 0.5089,
+        "300000": 1.6092,
+        "1000000": 5.3238
+      },
+      "nsPerOpByCount": {
+        "10000": 2.55,
+        "30000": 6.72,
+        "100000": 5.09,
+        "300000": 5.36,
+        "1000000": 5.32
+      }
+    },
+    {
+      "name": "arrayIndexRead",
+      "note": "read a preallocated array entry and compare it to a number — the run-search unit",
+      "subtract": "arrayIndexWrite",
+      "nsPerOp": 6.9,
+      "fixedMs": -0.0238,
+      "residual": 0.1818,
+      "medianMs": {
+        "10000": 0.0405,
+        "30000": 0.2166,
+        "100000": 0.6721,
+        "300000": 2.0011,
+        "1000000": 6.8934
+      },
+      "nsPerOpByCount": {
+        "10000": 4.05,
+        "30000": 7.22,
+        "100000": 6.72,
+        "300000": 6.67,
+        "1000000": 6.89
+      },
+      "netNsPerOp": 1.57
+    },
+    {
+      "name": "arrayPushGrowing",
+      "note": "push into a growing array — the run journal shape",
+      "subtract": null,
+      "nsPerOp": 21.8,
+      "fixedMs": 0.0533,
+      "residual": 0.7545,
+      "medianMs": {
+        "10000": 0.0666,
+        "30000": 0.4064,
+        "100000": 1.7277,
+        "300000": 7.9504,
+        "1000000": 21.5097
+      },
+      "nsPerOpByCount": {
+        "10000": 6.66,
+        "30000": 13.55,
+        "100000": 17.28,
+        "300000": 26.5,
+        "1000000": 21.51
+      }
+    },
+    {
+      "name": "mapSetGrowing",
+      "note": "programNodes.set(id, node) — one map growing to count",
+      "subtract": null,
+      "nsPerOp": 138.79,
+      "fixedMs": -1.2348,
+      "residual": 34.3232,
+      "medianMs": {
+        "10000": 5.4081,
+        "30000": 2.0348,
+        "100000": 8.8783,
+        "300000": 39.053,
+        "1000000": 138.3158
+      },
+      "nsPerOpByCount": {
+        "10000": 540.81,
+        "30000": 67.83,
+        "100000": 88.78,
+        "300000": 130.18,
+        "1000000": 138.32
+      }
+    },
+    {
+      "name": "mapGetHit",
+      "note": "adoption resolving a node per described id — every lookup hits",
+      "subtract": "mapSetGrowing",
+      "nsPerOp": 183.57,
+      "fixedMs": -1.6092,
+      "residual": 24.0303,
+      "medianMs": {
+        "10000": 5.6706,
+        "30000": 2.6845,
+        "100000": 17.1593,
+        "300000": 46.9161,
+        "1000000": 183.8683
+      },
+      "nsPerOpByCount": {
+        "10000": 567.06,
+        "30000": 89.48,
+        "100000": 171.59,
+        "300000": 156.39,
+        "1000000": 183.87
+      },
+      "netNsPerOp": 44.78
+    },
+    {
+      "name": "setAddGrowing",
+      "note": "ownedNodes.add(node) — one set growing to count",
+      "subtract": null,
+      "nsPerOp": 110.42,
+      "fixedMs": -2.0883,
+      "residual": 1.7246,
+      "medianMs": {
+        "10000": 0.7131,
+        "30000": 1.7112,
+        "100000": 7.0174,
+        "300000": 30.4498,
+        "1000000": 108.6647
+      },
+      "nsPerOpByCount": {
+        "10000": 71.31,
+        "30000": 57.04,
+        "100000": 70.17,
+        "300000": 101.5,
+        "1000000": 108.66
+      }
+    },
+    {
+      "name": "setHasHit",
+      "note": "the adoption compare's ownedNodes.has(programNode) — every probe hits",
+      "subtract": "setAddGrowing",
+      "nsPerOp": 150.82,
+      "fixedMs": -1.3075,
+      "residual": 3.2209,
+      "medianMs": {
+        "10000": 0.8471,
+        "30000": 2.2053,
+        "100000": 8.951,
+        "300000": 50.6262,
+        "1000000": 148.008
+      },
+      "nsPerOpByCount": {
+        "10000": 84.71,
+        "30000": 73.51,
+        "100000": 89.51,
+        "300000": 168.75,
+        "1000000": 148.01
+      },
+      "netNsPerOp": 40.4
+    },
+    {
+      "name": "mapPerHostOneEntry",
+      "note": "nativeEventMap: one map allocated per host, holding one entry",
+      "subtract": null,
+      "nsPerOp": 44.58,
+      "fixedMs": 1.0901,
+      "residual": 0.6989,
+      "medianMs": {
+        "10000": 0.4624,
+        "30000": 1.402,
+        "100000": 7.8957,
+        "300000": 14.3847,
+        "1000000": 45.5002
+      },
+      "nsPerOpByCount": {
+        "10000": 46.24,
+        "30000": 46.73,
+        "100000": 78.96,
+        "300000": 47.95,
+        "1000000": 45.5
+      }
+    },
+    {
+      "name": "objectLiteral",
+      "note": "the journal tuple {source, binding, listener}, unfrozen",
+      "subtract": null,
+      "nsPerOp": 1.21,
+      "fixedMs": 0.0043,
+      "residual": 0.2598,
+      "medianMs": {
+        "10000": 0.0121,
+        "30000": 0.0361,
+        "100000": 0.1253,
+        "300000": 0.3781,
+        "1000000": 1.2079
+      },
+      "nsPerOpByCount": {
+        "10000": 1.21,
+        "30000": 1.2,
+        "100000": 1.25,
+        "300000": 1.26,
+        "1000000": 1.21
+      }
+    },
+    {
+      "name": "objectFrozen",
+      "note": "the same tuple, frozen — freezing is its own charge on an interpreter",
+      "subtract": "objectLiteral",
+      "nsPerOp": 41.3,
+      "fixedMs": -0.0258,
+      "residual": 0.0643,
+      "medianMs": {
+        "10000": 0.4122,
+        "30000": 1.2258,
+        "100000": 4.0121,
+        "300000": 12.4318,
+        "1000000": 41.2669
+      },
+      "nsPerOpByCount": {
+        "10000": 41.22,
+        "30000": 40.86,
+        "100000": 40.12,
+        "300000": 41.44,
+        "1000000": 41.27
+      },
+      "netNsPerOp": 40.09
+    },
+    {
+      "name": "assertChain",
+      "note": "the per-site validation the mount runs before it writes anything",
+      "subtract": null,
+      "nsPerOp": 2.13,
+      "fixedMs": -0.0006,
+      "residual": 0.0751,
+      "medianMs": {
+        "10000": 0.0208,
+        "30000": 0.0619,
+        "100000": 0.228,
+        "300000": 0.6186,
+        "1000000": 2.1302
+      },
+      "nsPerOpByCount": {
+        "10000": 2.08,
+        "30000": 2.06,
+        "100000": 2.28,
+        "300000": 2.06,
+        "1000000": 2.13
+      }
+    },
+    {
+      "name": "eventPropParse",
+      "note": "parseLynxNativeEventProp resolving a plan constant, once per site per row",
+      "subtract": null,
+      "nsPerOp": 17.5,
+      "fixedMs": 0.0309,
+      "residual": 0.1276,
+      "medianMs": {
+        "10000": 0.1796,
+        "30000": 0.5461,
+        "100000": 1.7573,
+        "300000": 5.3599,
+        "1000000": 17.5055
+      },
+      "nsPerOpByCount": {
+        "10000": 17.96,
+        "30000": 18.2,
+        "100000": 17.57,
+        "300000": 17.87,
+        "1000000": 17.51
+      }
+    }
+  ],
+  "claims": {
+    "spendable": "Ratios between rows, and the presence or absence of a cost a JIT hides. Absolute ns/op on V8 is context only.",
+    "notSpendable": "Any device decision. LepusNG has no JIT; #196 M2 exists because the web instrument mispredicted the device by 19x."
+  }
+}
