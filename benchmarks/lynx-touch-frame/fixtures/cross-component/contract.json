@@ -1,0 +1,8 @@
+{
+  "shape": "cross-component",
+  "target": "target-8",
+  "response": "increment the remote counter and toggle its parity background between #e3f2fd and #bbdefb",
+  "observer": "remote counter computed background-color differs from the value captured at touchstart",
+  "interactionRows": 16,
+  "loadRows": 200
+}

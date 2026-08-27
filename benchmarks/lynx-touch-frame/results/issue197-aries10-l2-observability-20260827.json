@@ -1,0 +1,63 @@
+{
+  "protocolIssue": "Huxpro/octane#197",
+  "protocolBaseline": "Huxpro/octane#194",
+  "deviceModel": "aries_10",
+  "osVersion": "Android 10 (API 29)",
+  "lynxExplorerVersion": "1.0",
+  "devTool": "off",
+  "cdpConnections": 0,
+  "octaneBaseCommit": "07115d67d",
+  "profileBundlePilot": {
+    "topology": "T2",
+    "shape": "local-toggle",
+    "load": "idle",
+    "inputPlatformTimestamp": 1787791346655,
+    "changedVsyncPlatformTimestamp": 678907581,
+    "changedFrameOrdinal": 2,
+    "sampleObserved": true
+  },
+  "androidAtracePilot": {
+    "clock": "android-ftrace-monotonic",
+    "categories": ["gfx", "input", "view", "sched"],
+    "byteLength": 35812536,
+    "sha256": "90a3f35246c9356e34d55e1bb5cc6568b7e48ff5d2e92d7793f5753dee41022f",
+    "clockSyncMarkers": 2,
+    "issue197Markers": 0,
+    "octaneLynxMarkers": 0,
+    "reactLynxMarkers": 0
+  },
+  "androidPerfettoPilot": {
+    "foregroundControlResult": "Disconnected from the Perfetto traced service",
+    "trackEventOutputBytes": 0,
+    "trackEventOutputSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "trackEventConfigSupport": "Android 10 DataSourceConfig has no track_event_config field"
+  },
+  "sourceOrdering": {
+    "T1": [
+      "platform touch dispatch",
+      "engine publishEvent delivery to BTS",
+      "BTS handler/state/render/commit",
+      "BTS-to-MTS patch",
+      "MTS apply",
+      "layout/paint/changed VSYNC"
+    ],
+    "T2": [
+      "platform touch dispatch",
+      "engine lynxCoreInject.tt.publishEvent delivery directly to BTS",
+      "Octane background native-event receiver and handler/state/render",
+      "BTS-to-MTS encoded commit",
+      "MTS decode/validate/prepare/apply",
+      "layout/paint/changed VSYNC"
+    ]
+  },
+  "disposition": {
+    "timedAttribution": "blocked by protocol observability",
+    "reason": "Lynx profile marks are emitted only while engine profile recording is active. The available recording path requires DevTool/debug profiling, while #194 requires DevTool disabled and zero CDP connections. Android system tracing captured the platform workload but not Lynx profile marks, and the device Perfetto service was unavailable.",
+    "forbiddenFallbacksNotUsed": [
+      "Date.now",
+      "performance.now",
+      "console timestamp subtraction",
+      "DevTool-on profile window"
+    ]
+  }
+}
