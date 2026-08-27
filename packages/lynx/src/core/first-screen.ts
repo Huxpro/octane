@@ -163,13 +163,65 @@ export class LynxFirstTreeMismatchError extends Error {
  * where it is actually read.
  */
 export interface LynxProgramRun<Node extends LynxElementRef> {
-	/** The ids `assignProgramIds` gave this program's hosts, in plan order. */
+	/**
+	 * How many instances of `plan` this one run holds (issue #215 D8).
+	 *
+	 * `1` for every run a single `mountProgram` call pushes, which is what a
+	 * program that is not a homogeneous keyed-range member produces. Above one
+	 * the run is *dense*: `ids` and `rangeIds` are empty, and every ID in it is
+	 * `firstId + instance * stride + offset`, with `offset` running over the
+	 * program's own span of `plan.nodes + plan.ranges.length`.
+	 *
+	 * That arithmetic exists only because a dense run's instances paint every
+	 * hole they declare. An open hole holds members, and `assignProgramIds`
+	 * mints their IDs at the hole's own position — inside the instance's span —
+	 * so two instances of such a program do not take the same number of IDs and
+	 * the second one cannot be addressed from the first. It is the emitter's
+	 * `denseRun` condition restated where the IDs are actually minted, and the
+	 * mount holds to both.
+	 */
+	readonly count: number;
+	/**
+	 * The ID of the first instance's first node: `ids[0]` at a count of one, and
+	 * the base every dense address is measured from.
+	 *
+	 * Its own field rather than a read off `ids` so a reader narrowing by ID asks
+	 * one question of both shapes, and so an empty `ids` is not a special case
+	 * every caller has to know about.
+	 */
+	readonly firstId: number;
+	/**
+	 * How many IDs separate one instance's first node from the next one's.
+	 *
+	 * Not always the program's own span. A `@for` of components lowers each row
+	 * to a keyed range holding that component, and a range takes an ID without
+	 * making a node — so a row of a five-node, two-hole program occupies eight
+	 * IDs and the program's own seven start at the second of them. Carried rather
+	 * than derived for exactly that reason: the spacing is a property of the
+	 * description the mount walked, and the plan cannot see it.
+	 *
+	 * IDs in the gap belong to no node of this run's, and the readers answer
+	 * `undefined` for them the same way they answer for an ID past the run.
+	 */
+	readonly stride: number;
+	/**
+	 * The ids `assignProgramIds` gave this program's hosts, in plan order —
+	 * empty for a dense run, whose ids are the arithmetic above.
+	 */
 	readonly ids: readonly number[];
-	/** Per keyed range: the id of a hole the program painted, or `undefined`. */
+	/**
+	 * Per keyed range: the id of a hole the program painted, or `undefined` —
+	 * empty for a dense run, every one of whose holes is painted at the hole's
+	 * own offset.
+	 */
 	readonly rangeIds: readonly (number | undefined)[];
 	/**
-	 * What the create returned: `ids.length` hosts, then one entry per range —
+	 * What the create returned: `plan.nodes` hosts, then one entry per range —
 	 * the painted node, or `undefined` for a hole this first screen filled itself.
+	 *
+	 * A dense run holds `count` of those end to end, member-major. It is the
+	 * `out` table its driver filled rather than a copy of one, which is the
+	 * allocation per instance the dense path exists to delete.
 	 */
 	readonly nodes: readonly (Node | undefined)[];
 	/** How many of `nodes` this container owns: hosts plus painted holes. */
@@ -190,7 +242,9 @@ export interface LynxProgramRun<Node extends LynxElementRef> {
 	 * the emitted create was handed, and the same reason: an absent optional
 	 * handler installs nothing. The alignment is what makes the pair a journal:
 	 * site `i` describes the tuple, token `i` says whether it is bound and with
-	 * what, and neither is meaningful without the other.
+	 * what, and neither is meaningful without the other. A dense run holds
+	 * `count` such alignments end to end, in the same member-major order as
+	 * `nodes`.
 	 */
 	readonly tokens: readonly (LynxNativeEventToken | undefined)[];
 }
@@ -355,6 +409,103 @@ export interface LynxProgramIndex<Node extends LynxElementRef> {
 }
 
 /**
+ * Whether a homogeneous keyed range mounts as one dense run (issue #215 D8).
+ *
+ * A constant rather than an option, because it is an ablation switch and not a
+ * product choice: turning it off puts the mount back on the per-member path
+ * exactly as it stood before this slice, which is what the A/B control arm is
+ * built from. One constant, read by the one site that decides — the keyed range
+ * a program's own mount is about to walk — so a control build cannot end up
+ * half-ablated.
+ */
+export const LYNX_DENSE_PROGRAM_RANGES = true;
+
+/**
+ * Where each offset of one instance's ID span lands: a position in `plan.nodes`
+ * when it is not negative, and the keyed range `-slot - 1` when it is.
+ *
+ * This is `assignProgramIds`'s interleave walk, lifted out of its per-member
+ * loop and kept per plan. Both sides read this one table — the renderer numbers
+ * from it, the readers address from it — so where a program's holes sit is
+ * worked out once per component rather than once per row, and there is no
+ * second walk for the first to drift from.
+ */
+const programSlotTables = new WeakMap<UniversalProgramPlan, Int32Array>();
+
+export function programSlotTable(plan: UniversalProgramPlan): Int32Array {
+	const cached = programSlotTables.get(plan);
+	if (cached !== undefined) return cached;
+	const ranges = plan.ranges;
+	const table = new Int32Array(plan.nodes + ranges.length);
+	let host = 0;
+	let hole = 0;
+	for (let offset = 0; offset < table.length; offset++) {
+		if (hole < ranges.length && ranges[hole]!.id === offset) {
+			table[offset] = -(hole + 1);
+			hole++;
+			continue;
+		}
+		table[offset] = host++;
+	}
+	// A range whose position this walk never reaches leaves the table naming a
+	// host where a hole sits, which mis-addresses every node after it instead of
+	// failing. Checked once per plan, here, because this is now the only place
+	// the order is worked out.
+	if (hole !== ranges.length || host !== plan.nodes) {
+		throw new TypeError(
+			`A compiled main-thread program declares ${plan.nodes} nodes and ` +
+				`${ranges.length} ranges, but its range positions do not fit that order.`,
+		);
+	}
+	programSlotTables.set(plan, table);
+	return table;
+}
+
+/** An instance's ID span, which is also how many entries it takes in `nodes`. */
+function programStride(plan: UniversalProgramPlan): number {
+	return plan.nodes + plan.ranges.length;
+}
+
+/**
+ * Which entry of a dense run's `nodes` wears an ID, or `-1`.
+ *
+ * Two divisions and a table read where the scan below walks: a dense run's ids
+ * are `count` consecutive strides from `firstId`, so the instance and the
+ * offset inside it are arithmetic, and the slot table turns that offset into a
+ * position. It is what makes one run of 30,000 instances cost a reader what one
+ * instance cost, rather than 30,000 cursor advances (issue #215 D8).
+ */
+function denseRunSlot(run: LynxProgramRun<LynxElementRef>, id: number): number {
+	const plan = run.plan;
+	const span = programStride(plan);
+	const within = id - run.firstId;
+	if (within < 0) return -1;
+	const instance = Math.floor(within / run.stride);
+	if (instance >= run.count) return -1;
+	const offset = within - instance * run.stride;
+	// Past the instance's own span: an ID the description minted between two
+	// instances — the transparent keyed range each row is wrapped in — which
+	// names no node this run made.
+	//
+	// What it holds up is the assertion on the next line, not a behaviour, and
+	// **no test goes red for deleting it**. Said plainly because that is worth
+	// knowing before deleting it, and because it is worth knowing *why*: nothing
+	// asks. A wrapper's ID is a range on both sides of the handoff, and a range
+	// is transparent — the background describes hosts, the comparator walks
+	// hosts, so the one ID class this rejects is the one nobody names. Without
+	// the line the table read is out of bounds, `undefined` reaches the
+	// arithmetic, and the result is `NaN`; `nodes[NaN]` is `undefined` and the
+	// caller sees the same miss, so even a reader that did ask would be right by
+	// accident. `programRunPosition` repeats the guard for the same reason and
+	// with the same standing, except that its `NaN` would be a returned
+	// *position* — and `NaN < 0` is false, so it would read as a hit rather than
+	// degrade to a miss.
+	if (offset >= span) return -1;
+	const slot = programSlotTable(plan)[offset]!;
+	return instance * span + (slot < 0 ? plan.nodes + (-slot - 1) : slot);
+}
+
+/**
  * The largest ID a run owns: its last host, or a hole it painted after it.
  *
  * Exported because the mount asks the same question the readers do — it decides
@@ -366,6 +517,14 @@ export interface LynxProgramIndex<Node extends LynxElementRef> {
  * program code (issue #163 C15-C17's class of defect).
  */
 export function programRunLastId(run: LynxProgramRun<LynxElementRef>): number {
+	// Every instance takes the same stride and paints every hole it declares, so
+	// a dense run ends at the last node of its last instance with nothing to
+	// scan for a trailing hole. The last instance's *span*, not a whole stride:
+	// anything the description put between two instances sits before the next
+	// one, never after the last.
+	if (run.count !== 1) {
+		return run.firstId + (run.count - 1) * run.stride + programStride(run.plan) - 1;
+	}
 	const last = run.ids[run.ids.length - 1]!;
 	for (let range = run.rangeIds.length - 1; range >= 0; range--) {
 		const id = run.rangeIds[range];
@@ -396,6 +555,10 @@ export function programRunNode<Node extends LynxElementRef>(
 	run: LynxProgramRun<Node>,
 	id: number,
 ): Node | undefined {
+	if (run.count !== 1) {
+		const slot = denseRunSlot(run, id);
+		return slot < 0 ? undefined : (run.nodes[slot] as Node);
+	}
 	const ids = run.ids;
 	const hosts = ids.length;
 	for (let position = 0; position < hosts; position++) {
@@ -428,6 +591,23 @@ export function programRunNode<Node extends LynxElementRef>(
  * reader holding an ID converts once and then asks as many questions as it has.
  */
 export function programRunPosition(run: LynxProgramRun<LynxElementRef>, id: number): number {
+	if (run.count !== 1) {
+		const plan = run.plan;
+		const within = id - run.firstId;
+		if (within < 0) return -1;
+		const instance = Math.floor(within / run.stride);
+		if (instance >= run.count) return -1;
+		const offset = within - instance * run.stride;
+		// The same guard `denseRunSlot` states at length, with the same standing:
+		// unreachable from any description this renderer produces, and the reason
+		// the assertion below holds.
+		if (offset >= programStride(plan)) return -1;
+		const slot = programSlotTable(plan)[offset]!;
+		// A painted hole is a node this run owns but not a host it declares, so
+		// it has no position: `plan.events` names hosts and only hosts, which is
+		// what a position addresses.
+		return slot < 0 ? -1 : instance * plan.nodes + slot;
+	}
 	const ids = run.ids;
 	for (let position = 0; position < ids.length; position++) {
 		const candidate = ids[position]!;
@@ -450,10 +630,17 @@ export function programRunEventCount(
 	run: LynxProgramRun<LynxElementRef>,
 	position: number,
 ): number {
-	const events = run.plan.events;
+	const plan = run.plan;
+	const events = plan.events;
+	// A position is flat across the run's instances and `plan.events` is one
+	// instance's site table, so the two are related by which instance the
+	// position is in — zero, and therefore free, for a run holding one.
+	const instance = run.count === 1 ? 0 : Math.floor(position / plan.nodes);
+	const node = position - instance * plan.nodes;
+	const base = instance * events.length;
 	let count = 0;
 	for (let index = 0; index < events.length; index++) {
-		if (events[index]!.node === position && run.tokens[index] !== undefined) count++;
+		if (events[index]!.node === node && run.tokens[base + index] !== undefined) count++;
 	}
 	return count;
 }
@@ -464,14 +651,42 @@ export function programRunEventToken(
 	position: number,
 	type: string,
 ): LynxNativeEventToken | undefined {
-	const events = run.plan.events;
+	const plan = run.plan;
+	const events = plan.events;
+	const instance = run.count === 1 ? 0 : Math.floor(position / plan.nodes);
+	const node = position - instance * plan.nodes;
+	const base = instance * events.length;
 	for (let index = 0; index < events.length; index++) {
 		const site = events[index]!;
 		// `(node, type)` names at most one site — the plan freeze checks it — so
 		// the first match is the only one and there is nothing to disambiguate.
-		if (site.node === position && site.type === type) return run.tokens[index];
+		if (site.node === node && site.type === type) return run.tokens[base + index];
 	}
 	return undefined;
+}
+
+/** How many host positions a run has: `plan.nodes` once per instance. */
+export function programRunHostCount(run: LynxProgramRun<LynxElementRef>): number {
+	return run.count * run.plan.nodes;
+}
+
+/**
+ * The node at a flat host position — the number `programRunPosition` returns.
+ *
+ * A run's hosts are not contiguous in `nodes` once it holds more than one
+ * instance: each instance contributes its hosts and then its painted holes. Two
+ * readers walk every host of every run, and this is the one place that layout is
+ * spelled out for them.
+ */
+export function programRunHostNode<Node extends LynxElementRef>(
+	run: LynxProgramRun<Node>,
+	position: number,
+): Node {
+	if (run.count === 1) return run.nodes[position] as Node;
+	const plan = run.plan;
+	const instance = Math.floor(position / plan.nodes);
+	const slot = instance * programStride(plan) + (position - instance * plan.nodes);
+	return run.nodes[slot] as Node;
 }
 
 class LynxDisjointProgramIndex<Node extends LynxElementRef> implements LynxProgramIndex<Node> {
@@ -495,12 +710,12 @@ class LynxDisjointProgramIndex<Node extends LynxElementRef> implements LynxProgr
 		// answers now, and the one after it is usually the next. Two comparisons
 		// buy that; the search below is what happens when they do not.
 		const cursor = this.cursor;
-		if (id >= runs[cursor]!.ids[0]! && id <= this.cursorLastId) {
+		if (id >= runs[cursor]!.firstId && id <= this.cursorLastId) {
 			return runs[cursor]!;
 		}
 		if (cursor + 1 < runs.length) {
 			const next = runs[cursor + 1]!;
-			if (id >= next.ids[0]!) {
+			if (id >= next.firstId) {
 				const lastId = programRunLastId(next);
 				if (id <= lastId) {
 					this.cursor = cursor + 1;
@@ -518,7 +733,7 @@ class LynxDisjointProgramIndex<Node extends LynxElementRef> implements LynxProgr
 		let found = -1;
 		while (low <= high) {
 			const middle = (low + high) >> 1;
-			if (runs[middle]!.ids[0]! <= id) {
+			if (runs[middle]!.firstId <= id) {
 				found = middle;
 				low = middle + 1;
 			} else {
@@ -557,6 +772,18 @@ function lynxProgramRunMap<Node extends LynxElementRef>(
 	if (existing !== null) return existing;
 	const built = new Map<number, LynxProgramRun<Node>>();
 	for (const run of state.programRuns) {
+		if (run.count !== 1) {
+			// One entry per node, which is the instance's own span rather than its
+			// stride: an ID the description minted between two instances names no
+			// node of this run's, and mapping it would answer *this run* for
+			// something the run does not own.
+			const span = programStride(run.plan);
+			for (let instance = 0; instance < run.count; instance++) {
+				const base = run.firstId + instance * run.stride;
+				for (let offset = 0; offset < span; offset++) built.set(base + offset, run);
+			}
+			continue;
+		}
 		const hosts = run.ids.length;
 		for (let position = 0; position < hosts; position++) built.set(run.ids[position]!, run);
 		for (let range = 0; range < run.rangeIds.length; range++) {

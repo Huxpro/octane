@@ -704,6 +704,99 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 		for (const node of madeByProgram) expect(adopted.has(node)).toBe(true);
 	});
 
+	it("adopts a dense keyed range of rows in a shell's own hole", () => {
+		// The `@for` shape D8 drives with one call: a shell whose keyed range holds
+		// one instance of one compiled row per member, painted through a single
+		// driver call over four tables rather than one create call each.
+		//
+		// Whether the mount took that path is the mount's business, and it is
+		// pinned where it is decided, in `first-screen-direct.test.ts`. What is
+		// only observable here is the consequence: a dense run keeps no per-member
+		// ID table at all, so *every* answer adoption asks it — which node wears
+		// this ID, where it sits, which listener is on it — is arithmetic from the
+		// first ID and a per-plan slot table. This is the cell that asks those
+		// questions against real compiled rows, over a background description that
+		// never saw a program.
+		//
+		// `CARD` rather than the `INNER` the cell above uses, because a row has to
+		// carry events for the second half of this to mean anything: the token
+		// table is one array for the whole range, and a base computed per instance
+		// is the difference between three rows that each answer to their own tap
+		// and three rows that all answer to the first one's.
+		const rows = (card: CardComponent) =>
+			['a', 'b', 'c'].map((key) =>
+				MainRenderer.universalComponent('lynx', card, { ...PROPS, label: `Label ${key}` }, key),
+			);
+		const painted = paint(
+			true,
+			{ rows: rows(componentFor(true, CARD, 'Card')) },
+			componentFor(true, LIST, 'List'),
+		);
+		// The premise, so the cell cannot pass by losing the shape it is about:
+		// four hosts and two painted holes per row, three rows, plus the shell's
+		// own two hosts and the `Head` text it paints — every node on the page from
+		// a compiled create.
+		const madeByProgram = new Set(painted.made);
+		expect(madeByProgram.size).toBe(21);
+
+		const background = MainRenderer.renderLynxFirstScreen(componentFor(false, LIST, 'List'), {
+			rows: rows(componentFor(false, CARD, 'Card')),
+		} as never);
+
+		const { before, after } = adoptInto(painted, background);
+		const adopted = new Set(after);
+		expect(adopted.size).toBe(before.length);
+		for (const node of before) expect(adopted.has(node)).toBe(true);
+		for (const node of madeByProgram) expect(adopted.has(node)).toBe(true);
+	});
+
+	it("routes each dense row's tap to that row's own listener, after adoption", () => {
+		// The other half, and the one no identity check can reach. Adoption can
+		// hand back every node and still have moved the listeners: the tokens the
+		// paint wrote are per instance, and a run that read them from a shared base
+		// would leave a page that looks right and sends every row's tap to row
+		// zero.
+		const rows = (card: CardComponent) =>
+			['a', 'b', 'c'].map((key) =>
+				MainRenderer.universalComponent('lynx', card, { ...PROPS, label: `Label ${key}` }, key),
+			);
+		const painted = paint(
+			true,
+			{ rows: rows(componentFor(true, CARD, 'Card')) },
+			componentFor(true, LIST, 'List'),
+		);
+		const captured = captureLynxFirstTree(painted.container);
+		expect(captured).not.toBeNull();
+		const background = MainRenderer.renderLynxFirstScreen(componentFor(false, LIST, 'List'), {
+			rows: rows(componentFor(false, CARD, 'Card')),
+		} as never);
+		const target = createLynxHostContainer(painted.papi, {
+			root: 1,
+			page: painted.page as never,
+		});
+		const prepared = prepareLynxHostBatch(target, background.batch, { firstTree: captured! });
+		expect(prepared.firstTreeAction).toBe('adopt');
+		prepared.apply();
+
+		// Two taps per row, three rows, as the host received them.
+		const tokens = painted.events.map((call) => call[3]).filter((value) => value !== undefined);
+		expect(tokens).toHaveLength(6);
+		expect(tokens).toHaveLength(background.envelope.events.length);
+		const announced = new Map(
+			background.envelope.events.map((binding) => [binding.listener.id, binding.listener.priority]),
+		);
+		for (const token of tokens) {
+			const resolved = resolveLynxHostNativeEvent(target, token as string);
+			expect(resolved).not.toBeNull();
+			expect(announced.get(resolved!.listener)).toBe(resolved!.priority);
+		}
+		// Six distinct listeners: one shared base would collapse this to two.
+		expect(
+			new Set(tokens.map((token) => resolveLynxHostNativeEvent(target, token as string)!.listener))
+				.size,
+		).toBe(6);
+	});
+
 	it('adopts a page mixing programs with hosts the renderer described', () => {
 		// The reader #215 D1 names last and the one the two cells above never
 		// reach: an ordinary host inside a program, whose physical parent is a node

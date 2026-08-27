@@ -1601,3 +1601,419 @@ describe('direct first-screen applier, the nodes a program leaves for teardown',
 		expect(papi.pages[0]!.children).toHaveLength(0);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Issue #215 D8: a shell's keyed range holding one repeated program.
+//
+// The shape a `@for` of one component lowers to, reduced to two hosts, one
+// value, one event site and one painted hole per row, inside the hole of the
+// shell that declares the loop. The mount used to walk that as N separate
+// programs — N walk frames, N argument arrays, N spread calls, N runs in the
+// journal — and now recognises the span, drives it once over four tables, and
+// answers every later question about an ID by arithmetic from the first one
+// instead of from a per-member ID table.
+//
+// The shell is a program rather than a described host on purpose, and it is the
+// only arrangement this compiler produces: the backend leaves a parent
+// described only when its range hole is *not* the parent's last child, and a
+// hole that is not last has a described sibling after it — which an
+// all-or-nothing span over a parent's children declines anyway. Every other
+// shape either compiles the shell into a program, as here, or fails the build.
+//
+// So what these pin is that the two paths are the same page. The control is not
+// a hand-written expectation: it is the same description, painted by the same
+// plan, with the driver taken away — which is the path this span had before the
+// slice and the path a hand-built plan still gets.
+
+interface DenseCalls {
+	create: number;
+	run: number;
+}
+
+/**
+ * The row plan, with or without the driver the emission puts beside its create
+ * function.
+ *
+ * Both arms paint through one `paint` — the same statements, the same order,
+ * the same host calls — because the emission's two forms are one body under two
+ * headers. What differs is only how an instance's arguments arrive: an argument
+ * list per call, or a cursor into a table shared by every instance. The driver
+ * transcribes the emitted loop's index arithmetic exactly: one cursor per table
+ * stepping by that table's per-instance width, and `out` stepping by the
+ * instance's whole span.
+ */
+function denseRowPlan(
+	driver: boolean,
+	handed: unknown[][],
+	calls: DenseCalls,
+): UniversalProgramPlan {
+	return fakeProgram({
+		nodes: 2,
+		values: [0],
+		events: [{ slot: 1, node: 1, type: 'bindtap', priority: 'discrete' as const }],
+		ranges: [{ slot: 2, node: 1, id: 2, paintsText: true }],
+		bind: (host: unknown) => {
+			const papi = host as {
+				readonly intrinsics: { view(pageId: number): FakeNode; text(pageId: number): FakeNode };
+				createElement(type: string, pageId: number, text: string): FakeNode;
+				insertBefore(parent: FakeNode, child: FakeNode, before: FakeNode | null): void;
+				setClasses(node: FakeNode, value: string): void;
+				setEvent(target: FakeNode, kind: string, name: string, listener: unknown): void;
+			};
+			const paint = (
+				pageId: number,
+				value: unknown,
+				token: unknown,
+				text: unknown,
+				out: unknown[],
+				at: number,
+			): void => {
+				handed.push([value, token, text]);
+				const view = papi.intrinsics.view(pageId);
+				const label = papi.intrinsics.text(pageId);
+				papi.setClasses(view, value as string);
+				papi.insertBefore(view, label, null);
+				// Installed where the plan says the site is — node 1, the label — the
+				// way the emission's own body does it, so the paint's crossings and
+				// teardown's are about the same nodes.
+				// `('bindEvent', 'tap')` rather than `'bindtap'`: the native tuple is
+				// what the prop name parses to, and it is what teardown clears with.
+				if (token !== undefined) papi.setEvent(label, 'bindEvent', 'tap', token);
+				out[at] = view;
+				out[at + 1] = label;
+				// The compiled test for a painted hole, which is what makes the
+				// renderer's decision and the program's the same decision.
+				if (typeof text !== 'string') {
+					out[at + 2] = undefined;
+					return;
+				}
+				const painted = papi.createElement('#text', 0, text);
+				papi.insertBefore(label, painted, null);
+				out[at + 2] = painted;
+			};
+			const create = (...args: unknown[]): readonly unknown[] => {
+				calls.create++;
+				const made: unknown[] = new Array(3);
+				paint(args[0] as number, args[1], args[2], args[3], made, 0);
+				return made;
+			};
+			if (!driver) return create;
+			return Object.assign(create, {
+				run(
+					pageId: unknown,
+					count: number,
+					values: readonly unknown[],
+					events: readonly unknown[],
+					ranges: readonly unknown[],
+					out: unknown[],
+				): void {
+					calls.run++;
+					let vi = 0;
+					let ei = 0;
+					let ri = 0;
+					let oi = 0;
+					for (let index = 0; index < count; index++) {
+						paint(pageId as number, values[vi], events[ei], ranges[ri], out, oi);
+						vi += 1;
+						ei += 1;
+						ri += 1;
+						oi += 3;
+					}
+				},
+			});
+		},
+	});
+}
+
+const DENSE_LABELS = ['alpha', 'beta', 'gamma'];
+
+/**
+ * The wrapper IDs `assignProgramIds` mints for three such rows.
+ *
+ * The wrapper is why the stride is four and not three. A `@for` of components
+ * lowers each row to a transparent keyed range holding the component, and that
+ * range takes an ID without making a node — so an instance's own span is three
+ * IDs (two hosts and the hole it paints) and the next instance begins a fourth
+ * one later. The mount reads that spacing off the description rather than
+ * deriving it from the plan for exactly this reason: what sits between two
+ * instances is the description's business, and the plan cannot see it.
+ */
+const DENSE_WRAPPERS = [2, 6, 10];
+
+function denseRow(
+	plan: UniversalProgramPlan,
+	index: number,
+	wrapperId: number,
+	open: boolean,
+): LynxFirstScreenDirectNode {
+	const label = DENSE_LABELS[index]!;
+	const program: LynxFirstScreenDirectNode = open
+		? {
+				kind: 'program',
+				id: wrapperId + 1,
+				children: [
+					{ kind: 'host', id: wrapperId + 3, type: '#text', props: { value: label }, children: [] },
+				],
+				plan,
+				values: [label],
+				ids: [wrapperId + 1, wrapperId + 2],
+				spans: [1],
+				texts: [undefined],
+				rangeIds: [undefined],
+				eventsAt: index,
+				eventsCount: 1,
+			}
+		: {
+				kind: 'program',
+				id: wrapperId + 1,
+				children: [],
+				plan,
+				values: [label],
+				ids: [wrapperId + 1, wrapperId + 2],
+				spans: [0],
+				texts: [label],
+				rangeIds: [wrapperId + 3],
+				eventsAt: index,
+				eventsCount: 1,
+			};
+	return { kind: 'range', id: wrapperId, children: [program] };
+}
+
+/**
+ * The shell the rows are a keyed range of: one node, one hole it leaves for the
+ * renderer to fill, and nothing else.
+ *
+ * It is a program because that is what this compiler produces for a component
+ * whose loop is its last child, and it is the reason the rows' IDs start at 2
+ * rather than at the top of the page: `assignProgramIds` mints a hole's members
+ * *inside* the shell's own span.
+ */
+function denseShellPlan(): UniversalProgramPlan {
+	return fakeProgram({
+		nodes: 1,
+		ranges: [{ slot: 0, node: 0, id: 1 }],
+		bind: (host: unknown) => {
+			const papi = host as { readonly intrinsics: { view(pageId: number): FakeNode } };
+			return (...args: unknown[]): readonly unknown[] => [
+				papi.intrinsics.view(args[0] as number),
+				undefined,
+			];
+		},
+	});
+}
+
+function denseArm(
+	driver: boolean,
+	options: {
+		papi?: ReturnType<typeof intrinsicHost>;
+		wrappers?: readonly number[];
+		open?: boolean;
+		/** Which member gets a second plan of the same shape, if any. */
+		oddMember?: number;
+	} = {},
+): {
+	papi: ReturnType<typeof intrinsicHost>;
+	container: ReturnType<typeof createLynxHostContainer>;
+	handed: unknown[][];
+	calls: DenseCalls;
+	crossings: [unknown, string, unknown][];
+} {
+	const handed: unknown[][] = [];
+	const calls: DenseCalls = { create: 0, run: 0 };
+	const plan = denseRowPlan(driver, handed, calls);
+	const other = options.oddMember === undefined ? plan : denseRowPlan(driver, handed, calls);
+	const wrappers = options.wrappers ?? DENSE_WRAPPERS;
+	const base = options.papi ?? intrinsicHost();
+	// Every `setEvent` crossing, as the host received it. Which *node* a listener
+	// is cleared from is the one thing teardown gets wrong when a flat host
+	// position is read as an index into a run's `nodes`, and no tree can show it.
+	const crossings: [unknown, string, unknown][] = [];
+	const papi = {
+		...base,
+		setEvent(target: never, kind: never, name: never, listener: never) {
+			crossings.push([target, name as unknown as string, listener]);
+			base.setEvent(target, kind, name, listener);
+		},
+	} as typeof base;
+	const container = createLynxHostContainer(papi, { root: 1 });
+	const nodes: LynxFirstScreenDirectNode[] = [
+		{
+			kind: 'program',
+			id: 1,
+			plan: denseShellPlan(),
+			values: [],
+			ids: [1],
+			spans: [wrappers.length],
+			texts: [undefined],
+			rangeIds: [undefined],
+			children: wrappers.map((wrapperId, index) =>
+				denseRow(
+					index === options.oddMember ? other : plan,
+					index,
+					wrapperId,
+					options.open ?? false,
+				),
+			),
+		},
+	];
+	const envelope: LynxFirstScreenDirectEnvelope = {
+		renderer: 'lynx',
+		version: 1,
+		events: wrappers.map((wrapperId, index) => ({
+			id: wrapperId + 2,
+			type: 'bindtap',
+			listener: { id: 900 + index, priority: 'discrete' as const },
+		})),
+	};
+	expect(applyLynxFirstScreenDirect(container, nodes, envelope)).toBe(true);
+	return { papi, container, handed, calls, crossings };
+}
+
+describe('direct first-screen applier, a keyed range of one repeated program', () => {
+	it('drives the whole range once and leaves the page one call each would leave', () => {
+		const driven = denseArm(true);
+		const perMember = denseArm(false);
+
+		// One call for three instances against three calls for three instances,
+		// which is the whole of what this slice changes. Everything below is the
+		// claim that the two produce the same screen.
+		expect(driven.calls).toEqual({ create: 0, run: 1 });
+		expect(perMember.calls).toEqual({ create: 3, run: 0 });
+
+		// Instance for instance, the same arguments in the same order: the tables
+		// are a transposition of the argument lists and nothing more.
+		expect(driven.handed).toHaveLength(3);
+		expect(driven.handed).toEqual(perMember.handed);
+
+		expect(shape(driven.papi.pages[0]!)).toEqual(shape(perMember.papi.pages[0]!));
+
+		// The half the page cannot show. A dense run carries no ID table, so every
+		// answer adoption asks it — which node wears an ID, where it sits among
+		// its parent's children, what listener is installed on it — is arithmetic
+		// from `firstId`. The snapshot is all of those answers at once, and the
+		// per-member arm computed them from tables the renderer wrote.
+		const drivenTree = captureLynxFirstTree(driven.container);
+		const perMemberTree = captureLynxFirstTree(perMember.container);
+		expect(drivenTree).not.toBeNull();
+		expect(perMemberTree).not.toBeNull();
+		expect(drivenTree!.snapshot).toEqual(perMemberTree!.snapshot);
+		expect([...lynxFirstTreeEventTokens(drivenTree!)].sort()).toEqual(
+			[...lynxFirstTreeEventTokens(perMemberTree!)].sort(),
+		);
+	});
+
+	it("installs each instance's listener on that instance's own node", () => {
+		// The token table is one array for the whole range, so a site is addressed
+		// by `instance * sites + site` on the way in and read back the same way.
+		// Getting either base wrong hands every instance the first one's listener,
+		// which no shape and no node count can see — the page is identical and
+		// every tap goes to row zero.
+		const driven = denseArm(true);
+		expect(driven.handed.map((args) => args[1])).toEqual([
+			'octane-lynx:event:1:4:1:900:discrete',
+			'octane-lynx:event:1:8:1:901:discrete',
+			'octane-lynx:event:1:12:1:902:discrete',
+		]);
+		expect(driven.handed.map((args) => args[1])).toEqual(
+			denseArm(false).handed.map((args) => args[1]),
+		);
+	});
+
+	it("takes back every node a dense range painted, including the last instance's", () => {
+		// One run now names `count * stride` nodes rather than `stride`, and the
+		// cleanup walk reads it whole. A walk that still read only the first
+		// instance would leave every later instance's interior nodes unowned, and
+		// unowned is silent: the host is never asked about them, so the container
+		// reports a complete dispose and the page keeps them.
+		//
+		// The target is the *last* instance's painted text, which is the entry
+		// furthest from anything the single-instance shape would have reached.
+		const failure = new Error('parent inspection failed');
+		const papi = hostFailingParentOf(failure);
+		const driven = denseArm(true, { papi });
+		const page = papi.pages[0]!;
+		const parent = page.children[0] as FakeNode;
+		expect(parent.children).toHaveLength(3);
+		const label = (parent.children[2] as FakeNode).children[0] as FakeNode;
+		const painted = label.children[0] as FakeNode;
+		expect(painted.text).toBe('gamma');
+		papi.unresolvable = painted;
+
+		expect(disposeLynxHostContainer(driven.container)).toMatchObject({
+			complete: false,
+			errors: [failure],
+		});
+		expect(driven.container.disposed).toBe(false);
+
+		papi.unresolvable = null;
+		expect(disposeLynxHostContainer(driven.container).complete).toBe(true);
+		expect(driven.container.disposed).toBe(true);
+		expect(page.children).toHaveLength(0);
+	});
+
+	it("clears each instance's listener from the node it was installed on", () => {
+		// Teardown enumerates a run's hosts as one flat sequence — `plan.nodes` per
+		// instance, `count` instances — and then has to turn each position back
+		// into a node. That is not an index into `nodes`: an instance contributes
+		// its hosts *and then* the holes it painted, so position `p` of instance
+		// `i` sits at `i * (nodes + ranges) + p`. Reading it as `p` alone unbinds
+		// row 1's listener from row 0's label and leaves row 1 live.
+		//
+		// Nothing about the page shows that. The nodes come out either way, and a
+		// listener left installed on a detached node is only ever a crossing that
+		// did not happen.
+		const driven = denseArm(true);
+		const page = driven.papi.pages[0]!;
+		const shell = page.children[0] as FakeNode;
+		const labels = [0, 1, 2].map((index) => (shell.children[index] as FakeNode).children[0]);
+		// Installed on each row's own label, by the create itself.
+		expect(driven.crossings.filter((call) => call[2] !== undefined).map((call) => call[0])).toEqual(
+			labels,
+		);
+
+		const cleared = driven.crossings.length;
+		expect(disposeLynxHostContainer(driven.container).complete).toBe(true);
+		// And cleared from the same three, once each.
+		expect(driven.crossings.slice(cleared)).toEqual(labels.map((node) => [node, 'tap', undefined]));
+	});
+
+	it('declines a range whose members are not all one plan', () => {
+		// A driver belongs to a plan: two plans interleave neither their arguments
+		// nor their IDs, and there is no table shape that would hold both.
+		// The *last* member, so the per-member check is what has to catch it: the
+		// span reads its stride off the first two, and a second plan appearing
+		// there is caught by the one comparison that walk already makes.
+		const mixed = denseArm(true, { oddMember: 2 });
+		expect(mixed.calls).toEqual({ create: 3, run: 0 });
+		expect(shape(mixed.papi.pages[0]!)).toEqual(shape(denseArm(false).papi.pages[0]!));
+	});
+
+	it('declines a range whose members are not evenly spaced', () => {
+		// The run addresses its nodes by arithmetic from `firstId`, so a member
+		// starting anywhere but where the arithmetic puts it would put every later
+		// reader on the wrong node. One member a single ID further along is enough,
+		// and it is what an open hole in an earlier member does to a real
+		// numbering.
+		const uneven = denseArm(true, { wrappers: [2, 7, 11] });
+		expect(uneven.calls).toEqual({ create: 3, run: 0 });
+		// The control carries the same numbering, because the event tokens on the
+		// page encode the host IDs: a control numbered differently would differ by
+		// those rather than by anything this cell is about.
+		expect(shape(uneven.papi.pages[0]!)).toEqual(
+			shape(denseArm(false, { wrappers: [2, 7, 11] }).papi.pages[0]!),
+		);
+	});
+
+	it('declines a range whose holes this renderer filled itself', () => {
+		// An open hole holds members whose IDs are minted *inside* the member's own
+		// span, so two instances of such a program do not take the same number of
+		// IDs at all — and it is the same condition the emitter reports by carrying
+		// a driver, restated where the description can be checked against it.
+		const open = denseArm(true, { open: true });
+		expect(open.calls).toEqual({ create: 3, run: 0 });
+		const parent = open.papi.pages[0]!.children[0] as FakeNode;
+		const label = (parent.children[0] as FakeNode).children[0] as FakeNode;
+		expect((label.children[0] as FakeNode).text).toBe('alpha');
+		expect(disposeLynxHostContainer(open.container).complete).toBe(true);
+	});
+});
