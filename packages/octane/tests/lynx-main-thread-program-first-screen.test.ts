@@ -153,6 +153,37 @@ export function Shell(props: { rows: unknown }) @{
 }
 `;
 
+/**
+ * A list written the way a list is actually written: a shell whose keyed range
+ * is a `@for` over a *component*.
+ *
+ * Every other cell in this file builds its rows by calling `universalComponent`
+ * directly, and that difference is invisible in a tree and decisive at a mount.
+ * A hand-built row arrives under one transparent wrapper. `@for (…) { <Row /> }`
+ * lowers to two — the loop wraps the keyed member, and the component boundary
+ * wraps the program inside it — and neither wrapper makes a node, so no
+ * description, snapshot, or identity check can tell the two apart. A mount that
+ * unwraps a fixed one level therefore finds no program under the member on the
+ * only shape that matters, and silently takes the path it was written to
+ * replace (issue #215 D8).
+ */
+const LOOP_LIST = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+function Row(props: { label: string; detail: string; tone: string; onPick: () => void; onHold: () => void }) @{
+	<view class={props.tone}>
+		<text class="card-label" bindtap={props.onPick}>{props.label as string}</text>
+		<view class="card-body"><text class="d" bindtap={props.onHold}>{props.detail as string}</text></view>
+	</view>
+}
+export function List(props: { rows: readonly { id: string; label: string }[] }) @{
+	<view class="list">
+		<text class="head">Head</text>
+		@for (const row of props.rows; key row.id) {
+			<Row label={row.label} detail="Detail" tone="card active" onPick={() => {}} onHold={() => {}} />
+		}
+	</view>
+}
+`;
+
 /** `CARD`, with its first hole opened to hold a component instead of a string. */
 const HOSTING_CARD = CARD.replace('props: { label: string;', 'props: { label: unknown;').replace(
 	'{props.label as string}',
@@ -791,6 +822,126 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 			expect(announced.get(resolved!.listener)).toBe(resolved!.priority);
 		}
 		// Six distinct listeners: one shared base would collapse this to two.
+		expect(
+			new Set(tokens.map((token) => resolveLynxHostNativeEvent(target, token as string)!.listener))
+				.size,
+		).toBe(6);
+	});
+
+	it('wraps every member of a `@for` of a component more than once', () => {
+		// The premise the two cells below rest on, and the one thing about this
+		// fixture that is not visible in any tree it produces. A member built by
+		// calling `universalComponent` — how every other cell here makes its rows —
+		// arrives under a single transparent wrapper. Lowered from `@for`, a member
+		// that is a component arrives under more: the loop wraps the keyed member,
+		// and the component boundary wraps the program.
+		//
+		// Asserted as "more than one" rather than "exactly two" on purpose. How many
+		// wrappers a member wears is a lowering detail and the mount is written not
+		// to care; what the mount does depend on is that the number is not fixed at
+		// one, which is the assumption that made it decline this shape. If a future
+		// lowering flattens the chain, this cell going red is the correct outcome:
+		// the fixture would have quietly become a copy of the hand-built ones.
+		const data = [{ id: 'a', label: 'Label a' }];
+		const rendered = MainRenderer.renderLynxFirstScreen(componentFor(true, LOOP_LIST, 'List'), {
+			rows: data,
+		} as never);
+		const wrappersAround = (member: (typeof rendered.nodes)[number]): number => {
+			let wrappers = 0;
+			let node = member;
+			while (node.kind === 'range') {
+				expect(node.children).toHaveLength(1);
+				wrappers += 1;
+				node = node.children[0]!;
+			}
+			expect(node.kind).toBe('program');
+			return wrappers;
+		};
+
+		const shell = rendered.nodes[0]!;
+		expect(shell.kind).toBe('program');
+		const looped = wrappersAround(shell.children[0]!);
+
+		// The contrast, so the count above cannot pass by measuring nothing: the
+		// same shell, the same row component, with the member built by hand the
+		// way every other cell here builds one.
+		const byHand = MainRenderer.renderLynxFirstScreen(componentFor(true, LIST, 'List'), {
+			rows: [
+				MainRenderer.universalComponent(
+					'lynx',
+					componentFor(true, CARD, 'Card'),
+					{ ...PROPS, label: 'Label a' },
+					'a',
+				),
+			],
+		} as never);
+		expect(wrappersAround(byHand.nodes[0]!.children[0]!)).toBe(1);
+		expect(looped).toBeGreaterThan(1);
+	});
+
+	it('adopts a `@for` of a component, whose members wear two wrappers, not one', () => {
+		// The same claim as the two cells above, over the shape the compiler
+		// actually emits rather than one assembled by hand. Nothing here is new
+		// about adoption; what is new is the depth of the wrapping between the
+		// keyed member and the program, which is the one thing those cells could
+		// not vary because they never went through `@for`.
+		const data = [
+			{ id: 'a', label: 'Label a' },
+			{ id: 'b', label: 'Label b' },
+			{ id: 'c', label: 'Label c' },
+		];
+		const painted = paint(true, { rows: data }, componentFor(true, LOOP_LIST, 'List'));
+		// The premise, so the cell cannot pass by losing the shape it is about:
+		// four hosts and two painted holes per row, three rows, plus the shell's
+		// two hosts and the `Head` text — every node on the page from a compiled
+		// create, exactly as for the hand-built arm.
+		expect(new Set(painted.made).size).toBe(21);
+
+		const background = MainRenderer.renderLynxFirstScreen(componentFor(false, LOOP_LIST, 'List'), {
+			rows: data,
+		} as never);
+		const { before, after } = adoptInto(painted, background);
+		const adopted = new Set(after);
+		expect(adopted.size).toBe(before.length);
+		for (const node of before) expect(adopted.has(node)).toBe(true);
+		for (const node of painted.made) expect(adopted.has(node)).toBe(true);
+	});
+
+	it("routes each row's tap to its own listener through a `@for` of a component", () => {
+		// The listener half at the real wrapping depth. A run that resolved every
+		// instance against a shared base leaves a page that adopts perfectly and
+		// sends all six taps to row zero, so identity above cannot stand in for
+		// this.
+		const data = [
+			{ id: 'a', label: 'Label a' },
+			{ id: 'b', label: 'Label b' },
+			{ id: 'c', label: 'Label c' },
+		];
+		const painted = paint(true, { rows: data }, componentFor(true, LOOP_LIST, 'List'));
+		const captured = captureLynxFirstTree(painted.container);
+		expect(captured).not.toBeNull();
+		const background = MainRenderer.renderLynxFirstScreen(componentFor(false, LOOP_LIST, 'List'), {
+			rows: data,
+		} as never);
+		const target = createLynxHostContainer(painted.papi, {
+			root: 1,
+			page: painted.page as never,
+		});
+		const prepared = prepareLynxHostBatch(target, background.batch, { firstTree: captured! });
+		expect(prepared.firstTreeAction).toBe('adopt');
+		prepared.apply();
+
+		const tokens = painted.events.map((call) => call[3]).filter((value) => value !== undefined);
+		expect(tokens).toHaveLength(6);
+		expect(tokens).toHaveLength(background.envelope.events.length);
+		const announced = new Map(
+			background.envelope.events.map((binding) => [binding.listener.id, binding.listener.priority]),
+		);
+		for (const token of tokens) {
+			const resolved = resolveLynxHostNativeEvent(target, token as string);
+			expect(resolved).not.toBeNull();
+			expect(announced.get(resolved!.listener)).toBe(resolved!.priority);
+		}
 		expect(
 			new Set(tokens.map((token) => resolveLynxHostNativeEvent(target, token as string)!.listener))
 				.size,

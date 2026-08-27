@@ -3738,10 +3738,21 @@ interface DenseMemberSpan {
  * *is* a program is the other lowering, and both are one plan repeated.
  */
 function memberProgram(member: LynxFirstScreenDirectNode): LynxFirstScreenDirectNode | undefined {
-	if (member.kind === 'program') return member;
-	if (member.kind !== 'range' || member.children.length !== 1) return undefined;
-	const only = member.children[0];
-	return only !== undefined && only.kind === 'program' ? only : undefined;
+	// A keyed member arrives wrapped, and how many times is a lowering detail:
+	// `@for` wraps the member once, and a member that is a component is wrapped
+	// again by the component boundary. A range makes no node, so the program
+	// under the wrappers is the member for everything the span does with it.
+	// Descend the whole chain rather than a fixed depth: pinning the depth at
+	// one is what made this decline on `@for (const row of rows) { <Row /> }`,
+	// the shape the span was written for.
+	let node = member;
+	for (;;) {
+		if (node.kind === 'program') return node;
+		if (node.kind !== 'range' || node.children.length !== 1) return undefined;
+		const only = node.children[0];
+		if (only === undefined) return undefined;
+		node = only;
+	}
 }
 
 /**

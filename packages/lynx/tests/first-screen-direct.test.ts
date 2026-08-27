@@ -1739,24 +1739,35 @@ const DENSE_LABELS = ['alpha', 'beta', 'gamma'];
  * instances is the description's business, and the plan cannot see it.
  */
 const DENSE_WRAPPERS = [2, 6, 10];
+/**
+ * Spacing for a member wrapped twice, which needs one more ID per member than
+ * `DENSE_WRAPPERS` leaves room for.
+ */
+const DENSE_WRAPPERS_DEEP = [2, 7, 12];
 
 function denseRow(
 	plan: UniversalProgramPlan,
 	index: number,
 	wrapperId: number,
 	open: boolean,
+	depth: number,
+	sibling: boolean,
 ): LynxFirstScreenDirectNode {
 	const label = DENSE_LABELS[index]!;
+	// The program sits under `depth` transparent wrappers, because that is how
+	// many a real member wears and the number is not fixed: `@for` contributes
+	// one, and a member that is a component contributes another.
+	const first = wrapperId + depth;
 	const program: LynxFirstScreenDirectNode = open
 		? {
 				kind: 'program',
-				id: wrapperId + 1,
+				id: first,
 				children: [
-					{ kind: 'host', id: wrapperId + 3, type: '#text', props: { value: label }, children: [] },
+					{ kind: 'host', id: first + 2, type: '#text', props: { value: label }, children: [] },
 				],
 				plan,
 				values: [label],
-				ids: [wrapperId + 1, wrapperId + 2],
+				ids: [first, first + 1],
 				spans: [1],
 				texts: [undefined],
 				rangeIds: [undefined],
@@ -1765,18 +1776,35 @@ function denseRow(
 			}
 		: {
 				kind: 'program',
-				id: wrapperId + 1,
+				id: first,
 				children: [],
 				plan,
 				values: [label],
-				ids: [wrapperId + 1, wrapperId + 2],
+				ids: [first, first + 1],
 				spans: [0],
 				texts: [label],
-				rangeIds: [wrapperId + 3],
+				rangeIds: [first + 2],
 				eventsAt: index,
 				eventsCount: 1,
 			};
-	return { kind: 'range', id: wrapperId, children: [program] };
+	let wrapped = program;
+	for (let level = depth - 1; level >= 0; level--) {
+		const children =
+			level === 0 && sibling
+				? [
+						wrapped,
+						{
+							kind: 'host' as const,
+							id: wrapperId + depth + 3,
+							type: 'view',
+							props: {},
+							children: [],
+						},
+					]
+				: [wrapped];
+		wrapped = { kind: 'range', id: wrapperId + level, children };
+	}
+	return wrapped;
 }
 
 /**
@@ -1810,6 +1838,10 @@ function denseArm(
 		open?: boolean;
 		/** Which member gets a second plan of the same shape, if any. */
 		oddMember?: number;
+		/** How many transparent wrappers sit between the member and the program. */
+		depth?: number;
+		/** Give the outermost wrapper a described sibling beside the program. */
+		wrapperSibling?: boolean;
 	} = {},
 ): {
 	papi: ReturnType<typeof intrinsicHost>;
@@ -1822,7 +1854,8 @@ function denseArm(
 	const calls: DenseCalls = { create: 0, run: 0 };
 	const plan = denseRowPlan(driver, handed, calls);
 	const other = options.oddMember === undefined ? plan : denseRowPlan(driver, handed, calls);
-	const wrappers = options.wrappers ?? DENSE_WRAPPERS;
+	const depth = options.depth ?? 1;
+	const wrappers = options.wrappers ?? (depth === 1 ? DENSE_WRAPPERS : DENSE_WRAPPERS_DEEP);
 	const base = options.papi ?? intrinsicHost();
 	// Every `setEvent` crossing, as the host received it. Which *node* a listener
 	// is cleared from is the one thing teardown gets wrong when a flat host
@@ -1852,6 +1885,8 @@ function denseArm(
 					index,
 					wrapperId,
 					options.open ?? false,
+					depth,
+					options.wrapperSibling ?? false,
 				),
 			),
 		},
@@ -1860,7 +1895,7 @@ function denseArm(
 		renderer: 'lynx',
 		version: 1,
 		events: wrappers.map((wrapperId, index) => ({
-			id: wrapperId + 2,
+			id: wrapperId + depth + 1,
 			type: 'bindtap',
 			listener: { id: 900 + index, priority: 'discrete' as const },
 		})),
@@ -1975,6 +2010,43 @@ describe('direct first-screen applier, a keyed range of one repeated program', (
 		expect(disposeLynxHostContainer(driven.container).complete).toBe(true);
 		// And cleared from the same three, once each.
 		expect(driven.crossings.slice(cleared)).toEqual(labels.map((node) => [node, 'tap', undefined]));
+	});
+
+	it('drives a range whose members are wrapped by the loop and by a component alike', () => {
+		// The shape the compiler actually emits, and the one every other cell here
+		// misses. `@for` wraps each keyed member in a range, and a member that is a
+		// component is wrapped in one more. Neither wrapper makes a node, so the
+		// page, the snapshot and the tokens are identical at either depth — which is
+		// exactly why a mount that unwrapped a fixed one level went on producing a
+		// correct screen while never once taking this path.
+		const driven = denseArm(true, { depth: 2 });
+		const perMember = denseArm(false, { depth: 2 });
+
+		expect(driven.calls).toEqual({ create: 0, run: 1 });
+		expect(perMember.calls).toEqual({ create: 3, run: 0 });
+		expect(driven.handed).toEqual(perMember.handed);
+		expect(shape(driven.papi.pages[0]!)).toEqual(shape(perMember.papi.pages[0]!));
+
+		const drivenTree = captureLynxFirstTree(driven.container);
+		const perMemberTree = captureLynxFirstTree(perMember.container);
+		expect(drivenTree).not.toBeNull();
+		expect(perMemberTree).not.toBeNull();
+		expect(drivenTree!.snapshot).toEqual(perMemberTree!.snapshot);
+		expect([...lynxFirstTreeEventTokens(drivenTree!)].sort()).toEqual(
+			[...lynxFirstTreeEventTokens(perMemberTree!)].sort(),
+		);
+	});
+
+	it('declines a range whose wrapper carries a sibling beside the program', () => {
+		// The limit of the descent, and the reason it is not simply "skip ranges".
+		// A wrapper is transparent only while the program is all it holds; a wrapper
+		// with a described sibling owns a node the tables know nothing about, and
+		// driving the span would drop it. All-or-nothing, as everywhere else here.
+		const driven = denseArm(true, { depth: 2, wrapperSibling: true });
+		const perMember = denseArm(false, { depth: 2, wrapperSibling: true });
+
+		expect(driven.calls).toEqual({ create: 3, run: 0 });
+		expect(shape(driven.papi.pages[0]!)).toEqual(shape(perMember.papi.pages[0]!));
 	});
 
 	it('declines a range whose members are not all one plan', () => {

@@ -3072,6 +3072,165 @@ No device cell was run for this slice. #215's oracle — the `mountProgram` buck
 median at 1,000 rows on the #194 harness, and 10,000 rows completing without an
 ART reference-table overflow — is untouched here and stays open.
 
+### Driving a keyed range with one call instead of one per member (issue #215 D8)
+
+#196's M2 miss and M3 refuted whole-tree unrolling, and M1.5 priced closures
+(avoid) and table dispatch (prefer) for a loop body. D8 is what is left of the
+create side: detect the homogeneous keyed-range-member shape — one row plan
+repeated N times, which is what `@for` produces — and drive the whole range with
+one call over member-major tables instead of one create call per member.
+
+Two halves. `emit-main-thread-program.ts` emits, beside the per-shape create
+function it already emitted, a `run(pageId, count, values, events, ranges, out)`
+that loops the same body N times; it emits it only when every range hole in the
+plan is painted, which is why the bench app's row gets one and its shell — whose
+hole is the keyed range itself — correctly does not. The applier recognises the
+span and calls `run` once. The ABI and the ID interleaving are unchanged by
+construction, which is what lets the adoption and differential cells decide
+equivalence rather than a size or a shape comparison.
+
+#### The prediction, registered before the arms were built
+
+An M1.5 ledger over the reduced bench row (5 nodes, 1 value slot, 2 event sites,
+2 painted holes, stride 8): **~295 ns deleted and ~76 ns added per member, net
+~219 ns, so −6.6 ms at 30,000 members**, band −5 to −8 ms of the ~372 ms paint
+window. `program index` was predicted at −8 to −11 ms, and `first-tree
+comparator` and `deferred event journal` flat.
+
+#### The first window measured nothing, and here is how that was established
+
+The first A/B came back flat: named total 278.9 [261.8–299.8] against 279.9
+[262.6–329.8], all frames 359.3 against 359.8. Read as a result that is a −1.0 ms
+delta against a −5 to −8 ms prediction. It was not a result.
+
+Three rows of the record pointed the wrong way for the new path having run at
+all. `compiled program create` was 16.0 against 14.4 — if the head had replaced
+30,000 create calls with one loop, that bucket could not have been within 11% of
+the control's. `program mount` was 54.5 against 51.8, the head *higher*. And
+`programRunLastId`, which is called once per journaled run, was 0.7 ms in the
+head against 0.3 ms in the control, when the head was supposed to journal 2 runs
+against the control's 30,001.
+
+Inference is not measurement, so the decision site was instrumented directly: a
+counter on the main-thread realm, a throwaway dist, one rep. It returned
+`tries: 60001, spans: 0, members: 0` — **the span was tested 60,001 times and
+accepted none of them** — and the recorded first decline said why:
+
+```
+firstKind: "range", firstChildKinds: ["range"]
+```
+
+The member is a range whose only child is another range. `memberProgram`
+unwrapped exactly one transparent wrapper and then required a program; the real
+`@for (const row of rows; key row.id) { <Row … /> }` produces **two**, because
+the loop wraps the keyed member and the component boundary wraps the program
+inside it. Every test the slice shipped with built its members by hand, one
+wrapper deep, so both suites were green on a consumer that could never engage
+the shape it was written for. Fixed by descending the whole chain of
+single-child transparent wrappers rather than a fixed depth — a wrapper makes no
+node, so the depth is a lowering detail and nothing downstream should encode it.
+The counter then returned `tries: 1, spans: 1, members: 30000`.
+
+The void window is not wasted, because it priced the instrument. Two bundles
+**differing by one byte** — the ablation constant minifies to `!0` against `!1`,
+so the arms are the same 542,071 bytes with no code motion at all — reproduced
+the paint window to within **0.36% on the named total and 0.14% on all frames**,
+and the adoption window to within **5.4%**. That is this instrument's floor at
+30,000 rows, measured rather than assumed, and it says the paint window resolves
+a few milliseconds while the adoption window does not resolve sixty.
+
+#### The real window
+
+Same one-byte ablation, same five reps, arms rebuilt with the consumer fixed.
+
+| main-thread script @30000 | head | `d8control` | delta |
+|---|---:|---:|---:|
+| program mount | 3.8 [2–6.7] | 53.6 [46.7–55.1] | **−49.8** |
+| compiled program create | 2.2 [1.4–2.9] | 14.4 [12.9–17] | **−12.2** |
+| applier entry and pre-walk | 26.4 [21.2–36.3] | 33.9 [28–36.2] | −7.5 |
+| first-screen entry | 3.5 [2.5–8.1] | 10.2 [8.9–12.1] | −6.7 |
+| papi facade | 20.6 [16.4–27.9] | 23.1 [19.6–26.6] | −2.5 |
+| first tree capture | — | 0.9 [0.5–1] | −0.9 |
+| event bookkeeping | 9.7 [8.4–11.1] | 9.7 [7.2–17.3] | 0.0 |
+| renderer pre-passes | 69.2 [62.3–78.7] | 74.7 [65.5–83.1] | −5.5 |
+| stage instrument | 72.4 [62.9–73.8] | 67.6 [62.8–75.3] | +4.8 |
+| named total | 210 [198.2–219.7] | 292.1 [266.8–298.6] | **−82.1** |
+| unnamed by the probe table | 84.4 [74.4–87.5] | 80.4 [73.1–83.9] | +4.0 |
+| **all frames** | 294.3 [283.4–294.9] | 371 [350.8–379] | **−76.7** |
+
+The per-rep ranges do not overlap: every head rep (198.2–219.7) is below every
+control rep (266.8–298.6). `renderer pre-passes` and `stage instrument` should be
+flat — D8 touches neither — and their ±5 ms is the floor the void window
+measured, in both directions.
+
+#### The prediction was wrong by 11×, in the favourable direction
+
+−82.1 ms measured against −6.6 ms predicted; 2,737 ns deleted per member against
+219 ns priced. The ledger's error was not in its rows but in its model of the
+loop. It priced the per-member path as a tight inner loop paying for a few
+allocations and pushes on top of the create call. The counter showed
+`tries: 60001` for 30,000 members: the member walk was **re-entered per member**,
+so each one paid the whole `mountProgram` prologue and a walk frame pushed and
+popped per wrapper — and there are two wrappers per member, not the one the
+ledger assumed. `program mount` alone is 1,660 ns per member of the 2,737.
+
+Two lessons for the next ledger, both cheap to apply: price a per-member path by
+counting the frames a member actually costs rather than the statements its body
+contains, and take the wrapper depth from the compiler rather than from a
+fixture.
+
+`program index` moved −1.1 ms (3.0 against 4.1) against a predicted −8 to −11.
+That prediction was aimed at D7's measured 11.8 ms for the bucket, which does not
+reproduce here at either arm — the bucket is 4 ms in the control, so the
+predicted movement was never available. The adoption window's named total is
+1234.3 against 1213.4, inside the 5.4% floor above, and `paint → settled` is
+4958.5 against 5332.7 after being 5415.2 against 4962.0 in the void window: it
+changes sign between runs of the same comparison and is not a comparator at this
+scale.
+
+#### What is now covered, and what still is not
+
+The mount-side path selection is pinned in `first-screen-direct.test.ts`, which
+now parameterises its fixture by wrapper depth and drives the span at depth 2;
+reverting `memberProgram` to the one-level form turns that cell red. A wrapper
+carrying a described sibling beside the program declines, so the descent stays
+all-or-nothing. On the octane side, `lynx-main-thread-program-first-screen.test.ts`
+now renders a real compiled `@for` of a component, adopts it against a background
+that never saw a program, and resolves all six taps to six distinct listeners —
+and a premise cell asserts that such a member wears **more than one** wrapper
+while a hand-built member wears exactly one, so the fixture cannot quietly
+degrade into a copy of the others.
+
+What is not covered: the two `offset >= span` guards in `first-screen.ts` remain
+not separately red-verifiable, and say so in place.
+
+Follow-ups this slice opened, both recorded rather than fixed here:
+
+- `deriveLynxMainThreadProgram` accepts shells that `emitLynxMainThreadProgram`
+  then refuses with a hard build error nobody catches — `<scroll-view class="rows">`,
+  or a `style` or `flatten` prop on the shell, is enough. Pre-existing since C1a.
+- The renderer's `assignProgramIds` still numbers members one at a time and
+  allocates an `ids` and a `rangeIds` array each; the mount reads its stride off
+  the description instead, so this is now the only per-member allocation left on
+  the path.
+
+## Expectation management (restated per #157, as every C-report must)
+
+Of the 11.5 s native create-1k, **10.52 s (91%) is host-driver interpreter
+dispatch and bookkeeping** on LepusNG, which has no JIT. All 20,001 PAPI
+crossings cost ~574 ms, of which the single `__FlushElementTree` is 431 ms —
+larger than ReactLynx's entire 194 ms pipeline. DevTool adds 885 ms and stays
+disabled in any device cell (#161). **No C-slice claims ReactLynx parity.** What
+the C-train claims is the removal of the interpreter bucket; what remains after
+it is what gets measured, and the native frontier then moves to #162.
+
+Oracle clause 1 is **unmet** and clause 4 is **unmeasured**.
+
+No device cell was run for this slice. −82 ms is the web's, on a JIT, and #196's
+M1 has already mispredicted the device by 19×; what D8 deletes there is
+interpreter dispatch rather than V8 bytecode, and only the device can say how
+much.
+
 ## 8. Bookkeeping primitive costs (`stages/ledger-primitives.mjs`, on demand)
 
 Issue #196 asks for a cost model: what one `Map.set`, one array read, one frozen
