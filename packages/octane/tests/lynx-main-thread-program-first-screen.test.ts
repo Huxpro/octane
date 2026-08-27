@@ -81,6 +81,24 @@ const SHIFTED_CARD = CARD.replace(
 	'<text class="card-label">',
 ).replace('<view class="card-body">', '<view class="card-body" bindtap={props.onPick}>');
 
+/**
+ * The same card, rendered *inside* another component's host tree.
+ *
+ * A program need not be a page root: `Shell` stays interpreted — its plan holds
+ * a component hole, which no program can carry — while `Card` still compiles to
+ * one. The parent is then an ordinary described host whose children, on the
+ * background's description, include the program's root. Adoption is sound only
+ * if main's capture names that child too, which is the linkage a program's
+ * mount has to write even though it writes no record.
+ */
+const SHELL = `${CARD.replace('export function Card', 'function Card')}
+export function Shell(props: { label: string; detail: string; tone: string; onPick: () => void; onHold: () => void; onRef: (node: unknown) => void }) @{
+	<view class="shell" ref={props.onRef}>
+		<Card label={props.label} detail={props.detail} tone={props.tone} onPick={props.onPick} onHold={props.onHold} />
+	</view>
+}
+`;
+
 type CardComponent = Parameters<typeof MainRenderer.renderLynxFirstScreen>[0];
 
 function compiled(
@@ -96,15 +114,15 @@ function compiled(
 	}).code;
 }
 
-function cardFor(program: boolean, source = CARD): CardComponent {
+function cardFor(program: boolean, source = CARD, name = 'Card'): CardComponent {
 	const rewritten = compiled(program, source)
 		.replace(
 			/import\s*\{([\s\S]*?)\}\s*from\s*["']@octanejs\/lynx(?:\/[\w-]+)?["'];/g,
 			(_match, specifiers: string) =>
 				`const {${specifiers.replace(/\s+as\s+/g, ': ')}} = __universal;`,
 		)
-		.replace('export const Card =', 'const Card =');
-	return new Function('__universal', `${rewritten}\nreturn Card;`)({
+		.replace(/export const /g, 'const ');
+	return new Function('__universal', `${rewritten}\nreturn ${name};`)({
 		...MainRenderer,
 		...MainWorklets,
 	}) as CardComponent;
@@ -116,14 +134,16 @@ const PROPS = {
 	tone: 'card active',
 	onPick: () => {},
 	onHold: () => {},
+	onRef: () => {},
 };
 
 function render(
 	program: boolean,
 	source = CARD,
+	name = 'Card',
 	props: unknown = PROPS,
 ): MainRenderer.LynxFirstScreenRenderResult {
-	return MainRenderer.renderLynxFirstScreen(cardFor(program, source), props as never);
+	return MainRenderer.renderLynxFirstScreen(cardFor(program, source, name), props as never);
 }
 
 describe('a compiled main-thread program on the first-screen path', () => {
@@ -290,6 +310,8 @@ function selectorCount(node: unknown): number {
  */
 function paint(
 	program: boolean,
+	source = CARD,
+	name = 'Card',
 	props: unknown = PROPS,
 ): {
 	readonly tree: unknown;
@@ -346,7 +368,7 @@ function paint(
 		},
 	};
 	const container = createLynxHostContainer(papi, { root: 1 });
-	const rendered = render(program, CARD, props);
+	const rendered = render(program, source, name, props);
 	expect(applyLynxFirstScreenDirect(container, rendered.nodes, rendered.envelope)).toBe(true);
 	return {
 		tree: shape(papi.pages[0]!),
@@ -569,6 +591,76 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 		expect(mismatch).toMatch(/event binding/);
 	});
 
+	it('adopts a compiled program painted under a described host', () => {
+		// The nested shape: `Shell` is interpreted, `Card` inside it is a program.
+		// The background's record for the shell view counts the program's root
+		// among its children, so the capture has to say the same — a mount that
+		// left the link out would fail the child-order comparison and turn every
+		// nested program's first screen into a repair: correct, silent, and
+		// exactly the repaint this train exists to avoid.
+		const painted = paint(true, SHELL, 'Shell');
+		const captured = captureLynxFirstTree(painted.container);
+		expect(captured).not.toBeNull();
+		const paintedNodes = nodesOf(painted.page).slice(1);
+		const madeByProgram = new Set(painted.made);
+		expect(madeByProgram.size).toBeGreaterThan(0);
+		const background = render(false, SHELL, 'Shell');
+		const target = createLynxHostContainer(painted.papi, {
+			root: 1,
+			page: painted.page as never,
+		});
+		let mismatch: string | null = null;
+		const prepared = prepareLynxHostBatch(target, background.batch, {
+			firstTree: captured!,
+			onMismatch: (error) => {
+				mismatch = error.message;
+			},
+		});
+		expect(mismatch).toBeNull();
+		expect(prepared.firstTreeAction).toBe('adopt');
+		prepared.apply();
+		// Same identity claim as the root-level case: the adopted tree is the
+		// painted elements, the program's own nodes included.
+		const adopted = new Set(nodesOf(painted.page).slice(1));
+		expect(adopted.size).toBe(paintedNodes.length);
+		for (const node of paintedNodes) expect(adopted.has(node)).toBe(true);
+		for (const node of madeByProgram) expect(adopted.has(node)).toBe(true);
+	});
+
+	it('refuses a description that calls a node the program painted hidden', () => {
+		// The applier refuses a hidden program before painting anything, so every
+		// node the program made is visibly on screen. A description that calls
+		// one of them hidden agrees about the tree, the IDs, and every event —
+		// and disagrees about what the user sees. Adopting it would keep painted
+		// content the accepted tree says is hidden while its taps are dropped as
+		// hidden: nothing red, which is why the comparator has to refuse it
+		// rather than trust the description.
+		const painted = paint(true);
+		const captured = captureLynxFirstTree(painted.container);
+		expect(captured).not.toBeNull();
+		const background = render(false);
+		const rootId = captured!.snapshot.roots[0]!;
+		const batch = {
+			...background.batch,
+			commands: [...background.batch.commands, { op: 'visibility', id: rootId, state: 'hidden' }],
+		} as typeof background.batch;
+		const target = createLynxHostContainer(painted.papi, {
+			root: 1,
+			page: painted.page as never,
+		});
+		let mismatch: string | null = null;
+		const prepared = prepareLynxHostBatch(target, batch, {
+			firstTree: captured!,
+			onMismatch: (error) => {
+				mismatch = error.message;
+			},
+		});
+		expect(prepared.firstTreeAction).toBe('repair');
+		// By visibility, not by something incidental — a shape difference would
+		// also repair and prove nothing about this check.
+		expect(mismatch).toMatch(/visibility state differs/);
+	});
+
 	it('refuses a description that moved a tap onto a host it never installed one on', () => {
 		// The other direction, and not a duplicate of the case above. There, a
 		// host declares an event main never installed on it, which any per-type
@@ -695,7 +787,7 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 		// disjointness rather than a count: a capture that walked the program's
 		// subtree would be red here however many nodes it happened to touch.
 		const NUMERIC_DETAIL = { ...PROPS, detail: 7 };
-		const painted = paint(true, NUMERIC_DETAIL);
+		const painted = paint(true, CARD, 'Card', NUMERIC_DETAIL);
 		const madeByProgram = new Set(painted.made);
 		const described = nodesOf(painted.page)
 			.slice(1)
@@ -714,7 +806,7 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 		// painted node back when every painted node is described. Nothing about
 		// the walk changed — what changed is how much of the tree it is asked
 		// about.
-		const interpreted = paint(false, NUMERIC_DETAIL);
+		const interpreted = paint(false, CARD, 'Card', NUMERIC_DETAIL);
 		expect(interpreted.made).toHaveLength(0);
 		const interpretedNodes = nodesOf(interpreted.page).slice(1);
 		const interpretedBefore = interpreted.reads.length;

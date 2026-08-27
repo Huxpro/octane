@@ -41,6 +41,10 @@ benchmarks/lynx-table/results/
 # records ARE committed as the L0 evidence (see prototype/README.md).
 benchmarks/lynx-table/prototype/dist*/
 benchmarks/lynx-table/prototype/baseline-*/
+# The issue-#163 C0 spike's assembled bundles. Its two derived sources —
+# programs.json and lepus-root.generated.js — ARE committed, because they are
+# what the spike asks to be read (see mts-block/README.md).
+benchmarks/lynx-table/mts-block/dist*/
 # `papi-run.mjs --smoke` writes here so a smoke shares the reporting path it is
 # checking, but an n=1 non-interleaved run is not evidence and must never sit
 # beside the reportable records in this directory. The reportable artifacts
