@@ -22,6 +22,13 @@
  */
 
 export { executeServerFunction } from './rpc.js';
+export {
+	createSubSlot,
+	subSlot,
+	type SubSlot,
+	type SlotlessSubSlot,
+	type SubSlotOptions,
+} from '../sub-slot.js';
 
 // Semi-public compiler target for inferred method-call dependencies — the
 // same helper the client entry ships, because inferred dependency arrays are
@@ -123,6 +130,7 @@ export {
 	escapeAttr,
 	ssrText,
 	ssrTextPre,
+	ssrNestingText,
 	ssrChild,
 	ssrChildText,
 	ssrAttr,
@@ -142,6 +150,7 @@ export {
 	ssrValueAttr,
 	ssrCheckedAttr,
 	ssrInputAttrs,
+	ssrFormAuthoringDiagnostics,
 	ssrTextareaValue,
 	ssrTextareaValueSources,
 	ssrSelectAttrs,

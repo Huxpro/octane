@@ -29,7 +29,8 @@ type FormProps = {
 	defaultShouldRevalidate?: boolean;
 	discover?: 'render' | 'none';
 	onSubmit?: (event: SubmitEvent) => void;
-	ref?: { current: HTMLFormElement | null } | ((node: HTMLFormElement | null) => void);
+	// A missing forwarded ref stays inert when composed with host-spread refs.
+	ref?: { current: HTMLFormElement | null } | ((node: HTMLFormElement | null) => void) | null;
 	[key: string]: unknown;
 };
 
@@ -48,7 +49,7 @@ export function Form(props: FormProps) @{
 		preventScrollReset,
 		viewTransition,
 		defaultShouldRevalidate,
-		ref,
+		ref = null,
 		children,
 		...rest
 	} = props;

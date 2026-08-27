@@ -35,6 +35,16 @@ export function instrumentLynxStageSources(repositoryRoot) {
 \tbgReplayMs?: number;
 \tmtExpandMs?: number;
 \tfirstScreenPlanMs?: number;
+\tfirstScreenRenderMs?: number;
+\tfirstScreenCommandStageMs?: number;
+\tfirstScreenContainerMs?: number;
+\tfirstScreenPrepareMs?: number;
+\tfirstScreenApplyMs?: number;
+\tfirstScreenPapiCreateMs?: number;
+\tfirstScreenCaptureMs?: number;
+\tfirstScreenCommands?: number;
+\tfirstScreenHosts?: number;
+\tfirstScreenLogicalIds?: number;
 \tmtSliceEvalMs?: number;
 \tmtSliceStartEpochMs?: number;
 \tpapiCreateMs?: number;
@@ -318,7 +328,7 @@ import { lynxWireProfile } from './core/profiling.js';
 				'let CURRENT_ATTEMPT: FirstScreenAttempt | null = null;\nlet FIRST_SCREEN_PLAN_PROFILE_DEPTH = 0;\n',
 				file,
 			);
-			return replaceOnce(
+			next = replaceOnce(
 				next,
 				`\t\tassertRenderer(planValue.plan.renderer);
 \t\tconst rendered = renderPlanNode(planValue.plan.root, planValue.values);
@@ -338,6 +348,35 @@ import { lynxWireProfile } from './core/profiling.js';
 \t\t\t\t\t(profile.firstScreenPlanMs ?? 0) + performance.now() - startedPlan;
 \t\t\t}
 \t\t}
+`,
+				file,
+			);
+			next = replaceOnce(
+				next,
+				'\tconst templates = selectFirstScreenTemplates(nodes);\n\tconst commands: UniversalHostCommand[] = [];\n',
+				`\tconst startedCommandStage = performance.now();
+\tconst templates = selectFirstScreenTemplates(nodes);
+\tconst commands: UniversalHostCommand[] = [];
+`,
+				file,
+			);
+			// Upstream closes the command stage where the result is frozen, because
+			// there the batch is the result. Here it is built on demand, so the stage
+			// begins and ends inside `buildFirstScreenBatch` — and a first screen the
+			// direct applier accepted never enters it at all, which is the answer this
+			// counter should give for such a run rather than a figure for work nobody
+			// asked for.
+			return replaceOnce(
+				next,
+				`\tfor (const host of hidden) commands.push({ op: 'visibility', id: host.id, state: 'hidden' });
+\treturn freezeBatch(commands);
+`,
+				`\tfor (const host of hidden) commands.push({ op: 'visibility', id: host.id, state: 'hidden' });
+\tconst batch = freezeBatch(commands);
+\tconst profile = lynxWireProfile();
+\tprofile.firstScreenCommandStageMs =
+\t\t(profile.firstScreenCommandStageMs ?? 0) + performance.now() - startedCommandStage;
+\treturn batch;
 `,
 				file,
 			);

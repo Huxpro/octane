@@ -6,6 +6,13 @@ export { initializeHydrationEventCapture } from './hydration/event-capture.js';
 // behavior-only consumers never retain component or hydration machinery.
 export { attachBehaviorRoot } from './behavior-root.js';
 export type * from './behavior-root.js';
+export {
+	createSubSlot,
+	subSlot,
+	type SubSlot,
+	type SlotlessSubSlot,
+	type SubSlotOptions,
+} from './sub-slot.js';
 
 // Profiling's application API and compiler ABI live at `octane/profiling`;
 // neither belongs on the React-shaped main namespace.
@@ -144,7 +151,9 @@ export {
 	evt2u,
 	evtN,
 	evtNu,
+	setEventHandler,
 	devEventListener,
+	devHtmlNesting,
 	htext,
 	htextSwap,
 	child,
@@ -168,6 +177,7 @@ export {
 	snapshotSpread,
 	setHostPropSources,
 	queueNativeChangeDiagnostic,
+	queueFormAuthoringDiagnostic,
 	markNativeChangeDiagnosticStatic,
 	setFormAction,
 	// Controlled form components (value/checked/defaultValue/defaultChecked

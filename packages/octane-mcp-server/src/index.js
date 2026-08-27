@@ -32,7 +32,9 @@ export const REPO_SKILLS = {
 	'handle-issue': '.rulesync/skills/handle-issue/SKILL.md',
 	'octane-core-extend': '.rulesync/skills/octane-core-extend/SKILL.md',
 	'performance-audit': '.rulesync/skills/performance-audit/SKILL.md',
+	// Temporary compatibility alias for callers using the pre-rename skill name.
 	'react-library-port': '.rulesync/skills/react-library-port/SKILL.md',
+	'octane-react-library-port': '.rulesync/skills/octane-react-library-port/SKILL.md',
 	triage: '.rulesync/skills/triage/SKILL.md',
 };
 
@@ -64,7 +66,12 @@ export const BENCHMARK_SUITES = [
 	'event-delegation',
 	'application-composition',
 	'scaling-curves',
+	'dev-form-diagnostics',
+	'behavior-root-events',
+	'router-dispatch',
 	'store-selector-fanout',
+	'hook-store-composition',
+	'activity',
 	'effectful-list',
 	'list-clear',
 	'memo-wall',
@@ -82,12 +89,17 @@ export const BENCHMARK_SUITES = [
 	'async-composition',
 	'lynx-list',
 	'universal-leaf-update',
+	'universal-external-store',
 	'lynx-render',
 	'lynx-table',
 	'lynx-table-web',
 	'lynx-bundle-size',
 	'codegen-size',
+	'hook-memo',
+	'template-call-memo',
 	'compiler-throughput',
+	'tsrx-component-graph',
+	'tsrx-nesting-diagnostics',
 	'bundle-size',
 	'bundle-reachability',
 	'three-renderer',
@@ -292,7 +304,7 @@ export function engineeringPlanFor(input, repoMode = false) {
 			'Record what parity cannot reach as a divergence in UPSTREAM.md and status.json, with the reason, what the consumer should do instead, and a behavioral test pinning the Octane behavior.',
 			"Run the pinned release's own suite as the parity oracle: its framework-neutral tests unmodified against the reused core, its React-binding tests ported case by case with the upstream case names and citations. Record every upstream test file as run as-is, ported, or out of scope with the reason, and never weaken an upstream assertion to make it pass.",
 		];
-		if (repoMode) plan.requiredSkills.push('react-library-port');
+		if (repoMode) plan.requiredSkills.push('octane-react-library-port');
 	}
 	if (scope === 'framework-core' && !repoMode) {
 		plan.blockingConditions = [

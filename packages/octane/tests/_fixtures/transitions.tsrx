@@ -1,7 +1,9 @@
 import {
 	use,
+	useCallback,
 	useEffect,
 	useLayoutEffect,
+	useMemo,
 	useReducer,
 	useState,
 	useTransition,
@@ -641,28 +643,37 @@ export function TransitionKeyedEmptyFill(props) @{
 }
 
 // ---------------------------------------------------------------------------
-// A value-position keyed list whose slot LEAVES array mode during the
-// transition (the value flips to plain text), and then a later sibling
-// suspends. The slot itself is discarded on the flip, so there is nothing for
-// a rollback to restore the rows into — the teardown must run inline with the
-// attempt, exactly as it did before rows learned to wait for a hold. The
-// layout cleanups' position relative to the tail's render pins that.
+// A keyed list changes to plain text before a later sibling suspends. The
+// committed rows, refs, uncontrolled drafts, and effects remain live until
+// the whole replacement can commit.
 // ---------------------------------------------------------------------------
-function FlipRow(props) @{
+type ArrayModeExitProps = {
+	load: (step: number) => PromiseLike<string>;
+	log: (event: string) => void;
+	rowRefs?: Record<string, { current: HTMLLIElement | null }>;
+};
+
+function FlipRow(props: {
+	id: string;
+	log: (event: string) => void;
+	rowRef?: { current: HTMLLIElement | null };
+}) @{
 	useLayoutEffect(() => {
 		props.log('mount:' + props.id);
 		return () => props.log('cleanup:' + props.id);
 	}, []);
-	<li id={'row-' + props.id}>{props.id as string}</li>
+	<li id={'row-' + props.id} ref={props.rowRef}>
+		{props.id as string}
+		<input aria-label={'draft ' + props.id} defaultValue={props.id} />
+	</li>
 }
 
-function FlipTail(props) @{
-	props.log('render:tail:' + props.step);
+function FlipTail(props: { load: ArrayModeExitProps['load']; step: number }) @{
 	const value = use(props.load(props.step));
 	<span id="value">{value as string}</span>
 }
 
-export function TransitionArrayModeExit(props) @{
+export function TransitionArrayModeExit(props: ArrayModeExitProps) @{
 	const [step, setStep] = useState(0);
 	const rows =
 		step === 0 ? ['a', 'b'] : null;
@@ -671,9 +682,13 @@ export function TransitionArrayModeExit(props) @{
 		@try {
 			<>
 				<div id="host">
-					{rows === null ? 'plain' : rows.map((id) => <FlipRow key={id} id={id} log={props.log} />)}
+					{rows === null
+						? 'plain'
+						: rows.map(
+								(id) => <FlipRow key={id} id={id} log={props.log} rowRef={props.rowRefs?.[id]} />,
+							)}
 				</div>
-				<FlipTail load={props.load} step={step} log={props.log} />
+				<FlipTail load={props.load} step={step} />
 			</>
 		} @pending {
 			<span id="fallback">{'fallback'}</span>
@@ -700,6 +715,146 @@ export function TransitionOutsideBoundary(props) @{
 			<ControlledValue load={props.load} step={step} />
 		} @pending {
 			<span id="fallback">{'fallback'}</span>
+		}
+	</div>
+}
+
+type MemoTransitionProps = {
+	load: (step: number) => PromiseLike<string>;
+	observe: (step: number, request: PromiseLike<string>, callback: () => number) => void;
+};
+
+function MemoTransitionValue({ load, observe, step }: MemoTransitionProps & { step: number }) @{
+	const request = useMemo(() => load(step), [load, step]);
+	const callback = useCallback(() => step, [step]);
+	observe(step, request, callback);
+	const value = use(request);
+	<span id="memo-value">{value as string}</span>
+}
+
+export function TransitionAuthoredMemo(props: MemoTransitionProps) @{
+	const [step, setStep] = useState(0);
+	const [tick, setTick] = useState(0);
+	<div>
+		<button id="memo-next" onClick={() => startTransition(() => setStep(1))}>{'next'}</button>
+		<button id="memo-urgent" onClick={() => setStep(2)}>{'urgent'}</button>
+		<button id="memo-refresh" onClick={() => setTick(tick + 1)}>{'refresh'}</button>
+		<h1 id="memo-shell">{'shell-' + step + ':' + tick}</h1>
+		@try {
+			<MemoTransitionValue load={props.load} observe={props.observe} step={step} />
+		} @pending {
+			<span id="memo-fallback">{'loading'}</span>
+		}
+	</div>
+}
+
+type MemoTransitionStagesProps = {
+	load: (step: number, stage: string) => PromiseLike<string>;
+};
+
+function MemoTransitionStagesValue({ load, step }: MemoTransitionStagesProps & { step: number }) @{
+	const firstRequest = useMemo(() => load(step, 'first'), [load, step]);
+	const first = use(firstRequest);
+	const secondRequest = useMemo(() => load(step, 'second'), [load, step]);
+	const second = use(secondRequest);
+	<span id="memo-stages-value">{first + '/' + second}</span>
+}
+
+export function TransitionAuthoredMemoStages(props: MemoTransitionStagesProps) @{
+	const [step, setStep] = useState(0);
+	<div>
+		<button
+			id="memo-stages-next"
+			onClick={() => startTransition(() => setStep(1))}
+		>{'next'}</button>
+		<h1 id="memo-stages-shell">{'shell-' + step}</h1>
+		@try {
+			<MemoTransitionStagesValue load={props.load} step={step} />
+		} @pending {
+			<span id="memo-stages-fallback">{'loading'}</span>
+		}
+	</div>
+}
+
+type InvariantMemoTransitionProps = {
+	promise: Promise<string>;
+	observe: (step: number, callback: () => void) => void;
+};
+
+function InvariantMemoTransitionValue({ step, promise, observe }: InvariantMemoTransitionProps & {
+	step: number;
+}) @{
+	const [count, setCount] = useState(0);
+	if (step === 0) return <span id="memo-invariant-value">{'zero'}</span>;
+	const increment = () => setCount((current) => current + 1);
+	observe(step, increment);
+	const value =
+		step === 1 ? use(promise) : 'urgent';
+	<button id="memo-invariant-value" onClick={increment}>{value + ':' + count}</button>
+}
+
+export function TransitionInvariantMemo(props: InvariantMemoTransitionProps) @{
+	const [step, setStep] = useState(0);
+	<div>
+		<button
+			id="memo-invariant-next"
+			onClick={() => startTransition(() => setStep(1))}
+		>{'next'}</button>
+		<button id="memo-invariant-urgent" onClick={() => setStep(2)}>{'urgent'}</button>
+		<h1 id="memo-invariant-shell">{'shell-' + step}</h1>
+		@try {
+			<InvariantMemoTransitionValue step={step} promise={props.promise} observe={props.observe} />
+		} @pending {
+			<span id="memo-invariant-fallback">{'loading'}</span>
+		}
+	</div>
+}
+
+type MemoArityValue = { step: number };
+type MemoArityTransitionProps = {
+	promise: Promise<string>;
+	observe: (step: number, values: MemoArityValue[], late: MemoArityValue | null) => void;
+};
+
+function MemoArityTransitionValue({ step, promise, observe }: MemoArityTransitionProps & {
+	step: number;
+}) @{
+	const zero = useMemo(() => ({ step }), []);
+	const one = useMemo(() => ({ step }), [step]);
+	const two = useMemo(() => ({ step }), [step, 'a']);
+	const three = useMemo(() => ({ step }), [step, 'a', 'b']);
+	const four = useMemo(() => ({ step }), [step, 'a', 'b', 'c']);
+	const five = useMemo(() => ({ step }), [step, 'a', 'b', 'c', 'd']);
+	let late: MemoArityValue | null = null;
+	if (step !== 0) {
+		const reached = useMemo(() => ({ step }), []);
+		late = reached;
+	}
+	observe(step, [zero, one, two, three, four, five], late);
+	const value =
+		step === 1
+			? use(promise)
+			: step === 0
+				? 'zero'
+				: 'urgent';
+	<span id="memo-arities-value">
+		{value + ':' + [zero.step, one.step, two.step, three.step, four.step, five.step].join(',')}
+	</span>
+}
+
+export function TransitionMemoArities(props: MemoArityTransitionProps) @{
+	const [step, setStep] = useState(0);
+	<div>
+		<button
+			id="memo-arities-next"
+			onClick={() => startTransition(() => setStep(1))}
+		>{'next'}</button>
+		<button id="memo-arities-urgent" onClick={() => setStep(2)}>{'urgent'}</button>
+		<h1 id="memo-arities-shell">{'shell-' + step}</h1>
+		@try {
+			<MemoArityTransitionValue step={step} promise={props.promise} observe={props.observe} />
+		} @pending {
+			<span id="memo-arities-fallback">{'loading'}</span>
 		}
 	</div>
 }

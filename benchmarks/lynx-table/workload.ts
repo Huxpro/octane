@@ -389,6 +389,15 @@ export function profileSnapshot(): {
 	deltaMisses: number;
 	deltaOps: number;
 	deltaBytes: number;
+	destroyRunExpandMs: number;
+	denseValidateMs: number;
+	eventDetachMs: number;
+	papiRemoveMs: number;
+	denseReleaseMs: number;
+	synthesizedCommands: number;
+	eventDetachCount: number;
+	papiRemoveCount: number;
+	denseReleaseHostCount: number;
 } {
 	const profile = (globalThis as ProfileGlobals).__OCTANE_LYNX_PROF;
 	// Both fake threads share this realm, so the main-thread receiver also
@@ -409,6 +418,15 @@ export function profileSnapshot(): {
 		deltaMisses: profile?.deltaMisses ?? 0,
 		deltaOps: profile?.deltaOps ?? 0,
 		deltaBytes: profile?.deltaBytes ?? 0,
+		destroyRunExpandMs: profile?.destroyRunExpandMs ?? 0,
+		denseValidateMs: profile?.denseValidateMs ?? 0,
+		eventDetachMs: profile?.eventDetachMs ?? 0,
+		papiRemoveMs: profile?.papiRemoveMs ?? 0,
+		denseReleaseMs: profile?.denseReleaseMs ?? 0,
+		synthesizedCommands: profile?.synthesizedCommands ?? 0,
+		eventDetachCount: profile?.eventDetachCount ?? 0,
+		papiRemoveCount: profile?.papiRemoveCount ?? 0,
+		denseReleaseHostCount: profile?.denseReleaseHostCount ?? 0,
 	};
 }
 
@@ -612,6 +630,15 @@ export interface OpCounters {
 	readonly refSelectorClears: number;
 	readonly createdElements: number;
 	readonly createdSelectable: number;
+	readonly destroyRunExpandMs: number;
+	readonly denseValidateMs: number;
+	readonly eventDetachMs: number;
+	readonly papiRemoveMs: number;
+	readonly denseReleaseMs: number;
+	readonly synthesizedCommands: number;
+	readonly eventDetachCount: number;
+	readonly papiRemoveCount: number;
+	readonly denseReleaseHostCount: number;
 }
 
 export interface TableRunResult {
@@ -702,6 +729,15 @@ export async function runTable(rows: number): Promise<TableRunResult> {
 				deltaMisses: after.deltaMisses - before.deltaMisses,
 				deltaOps: after.deltaOps - before.deltaOps,
 				deltaBytes: after.deltaBytes - before.deltaBytes,
+				destroyRunExpandMs: after.destroyRunExpandMs - before.destroyRunExpandMs,
+				denseValidateMs: after.denseValidateMs - before.denseValidateMs,
+				eventDetachMs: after.eventDetachMs - before.eventDetachMs,
+				papiRemoveMs: after.papiRemoveMs - before.papiRemoveMs,
+				denseReleaseMs: after.denseReleaseMs - before.denseReleaseMs,
+				synthesizedCommands: after.synthesizedCommands - before.synthesizedCommands,
+				eventDetachCount: after.eventDetachCount - before.eventDetachCount,
+				papiRemoveCount: after.papiRemoveCount - before.papiRemoveCount,
+				denseReleaseHostCount: after.denseReleaseHostCount - before.denseReleaseHostCount,
 			};
 		};
 

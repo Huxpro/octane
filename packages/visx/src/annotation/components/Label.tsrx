@@ -1,5 +1,6 @@
 import { useContext, useMemo } from 'octane';
-import type { SVGProps, CSSProperties } from 'react';
+import type { CSSProperties } from 'react';
+import type { Octane } from 'octane/jsx-runtime';
 import cx from 'classnames';
 import { Group } from '@octanejs/visx/group';
 import type { TextProps } from '@octanejs/visx/text';
@@ -16,7 +17,7 @@ export type LabelProps = {
 	/** Padding of text from background. */
 	backgroundPadding?: number | { top?: number; right?: number; bottom?: number; left?: number };
 	/** Additional props to be passed to background SVGRectElement. */
-	backgroundProps?: SVGProps<SVGRectElement>;
+	backgroundProps?: Octane.SVGProps<SVGRectElement>;
 	/** Optional className to apply to container in addition to 'visx-annotation-label'. */
 	className?: string;
 	/** Color of title and subtitle text. */
@@ -60,6 +61,15 @@ export type LabelProps = {
 };
 
 const DEFAULT_PADDING = { top: 12, right: 12, bottom: 12, left: 12 };
+
+function toFontSizeNumber(value: string | number | undefined): number {
+	if (typeof value === 'number' && Number.isFinite(value)) return value;
+	if (typeof value === 'string') {
+		const parsed = Number.parseFloat(value);
+		if (Number.isFinite(parsed)) return parsed;
+	}
+	return 0;
+}
 
 function getCompletePadding(padding: LabelProps['backgroundPadding']) {
 	if (typeof padding === 'undefined') return DEFAULT_PADDING;
@@ -121,10 +131,10 @@ export default function Label({
 	});
 
 	const fallbackTitleHeight = title
-		? Math.max(1, titleWordsByLine.length) * titleFontSize * 1.1
+		? Math.max(1, titleWordsByLine.length) * toFontSizeNumber(titleFontSize) * 1.1
 		: 0;
 	const fallbackSubtitleHeight = subtitle
-		? Math.max(1, subtitleWordsByLine.length) * subtitleFontSize * 1.1
+		? Math.max(1, subtitleWordsByLine.length) * toFontSizeNumber(subtitleFontSize) * 1.1
 		: 0;
 	// Keep annotation geometry byte-stable across SSR and hydration. Browser font
 	// measurement would move the label after adoption; useText's deterministic

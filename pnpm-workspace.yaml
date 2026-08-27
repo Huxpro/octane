@@ -22,6 +22,7 @@ packages:
   - benchmarks/portal-swarm
   - benchmarks/portal-swarm/*
   - benchmarks/react-hosted-islands
+  - benchmarks/dev-form-diagnostics
   - benchmarks/ssr-throughput
   - benchmarks/ssr-throughput/*
   - benchmarks/streaming-ssr
@@ -94,14 +95,16 @@ allowBuilds:
   bun: true
 
 # Variables
-esrap_common: &esrap_common ^2.3.0
+esrap_common: &esrap_common ^2.3.2
 
 overrides:
   # Browser parity tooling and its transitive consumers must share one runner
   # and Chromium revision. Direct dependencies reference the same catalog.
   '@playwright/test': ^1.61.1
   playwright: ^1.61.1
-  esrap: ^2.3.0
+  # esrap <2.3.2 printed `declare` on every bodyless function, corrupting the
+  # virtual TSX for plain overload signatures (TS2384). See issue #736.
+  esrap: ^2.3.2
   # Solid 2.0 SSR alignment: vite-plugin-solid@3.0.0-next.5 pulls an older
   # beta preset transitively. Keep the transform on the beta.20 line required
   # by @tsrx/solid so generated SSR helpers match the installed runtime.
@@ -129,6 +132,12 @@ packageExtensions:
       '@rspack/core': 2.1.3
 
 catalogs:
+  # Immer 11's published Iterator global conflicts with TypeScript's ESNext
+  # libraries (immerjs/immer#1273), including 11.1.17. Keep Recharts' private
+  # store on compatible RTK/Immer majors so packed consumers need no patches.
+  recharts-store:
+    '@reduxjs/toolkit': ~2.10.1
+    immer: ^10.2.0
   livestore-react-oracle:
     '@livestore/utils-dev': 0.4.0
     '@opentelemetry/sdk-trace-base': 2.2.0
@@ -167,6 +176,7 @@ catalogs:
     '@livestore/utils': 0.4.0
     '@opentelemetry/api': 1.9.0
     '@apollo/client': 4.2.6
+    '@opentui/core': 0.5.8
     animejs: 4.5.0
     dexie: 4.4.4
     fake-indexeddb: 6.2.5
@@ -186,6 +196,7 @@ catalogs:
     '@floating-ui/dom': ^1.8.0
     '@floating-ui/react': 0.27.19
     '@floating-ui/utils': ^0.2.12
+    '@formisch/react': 1.0.0-rc.0
     '@tanstack/form-core': 1.33.2
     '@tanstack/react-form': 1.33.2
     'aria-hidden': ^1.2.6
@@ -233,8 +244,8 @@ catalogs:
     '@tiptap/react': 3.28.0
     '@tiptap/starter-kit': 3.28.0
     '@playwright/test': ^1.61.1
-    '@ripple-ts/adapter': ^0.3.118
-    '@ripple-ts/vite-plugin': ^0.3.118
+    '@ripple-ts/adapter': ^0.3.125
+    '@ripple-ts/vite-plugin': ^0.3.125
     '@solidjs/web': '2.0.0-beta.20'
     '@stylexjs/babel-plugin': '0.19.0'
     '@stylexjs/stylex': '0.19.0'
@@ -262,16 +273,19 @@ catalogs:
     electron: 43.2.0
     '@testing-library/dom': ^10.4.1
     '@testing-library/jest-dom': ^6.9.1
+    '@testing-library/react': ^16.3.2
     '@vitest/coverage-istanbul': 4.1.10
     '@vitest/coverage-v8': 4.1.10
-    '@tsrx/core': ^0.1.56
-    '@tsrx/prettier-plugin': ^0.3.118
-    '@tsrx/typescript-plugin': ^0.3.118
-    '@tsrx/ripple': ^0.1.57
-    '@tsrx/react': ^0.2.56
-    '@tsrx/solid': ^0.1.56
-    '@tsrx/vite-plugin-react': ^0.0.88
-    '@tsrx/vite-plugin-solid': ^0.0.86
+    '@volar/language-core': 2.4.28
+    '@volar/typescript': 2.4.28
+    '@tsrx/core': ^0.1.61
+    '@tsrx/prettier-plugin': ^0.3.126
+    '@tsrx/typescript-plugin': ^0.3.126
+    '@tsrx/ripple': ^0.1.62
+    '@tsrx/react': ^0.2.61
+    '@tsrx/solid': ^0.1.61
+    '@tsrx/vite-plugin-react': ^0.0.94
+    '@tsrx/vite-plugin-solid': ^0.0.91
     '@types/babel__core': 7.20.5
     '@types/d3-array': 3.0.3
     '@types/d3-chord': ^1.0.14
@@ -290,6 +304,7 @@ catalogs:
     '@types/d3-time-format': 2.1.0
     '@types/d3-voronoi': ^1.1.12
     '@types/geojson': ^7946.0.16
+    '@types/jsdom': 30.0.0
     '@types/node': ^24.13.3
     '@types/react': ^19.2.17
     '@types/react-dom': ^19.2.3
@@ -318,7 +333,8 @@ catalogs:
     devalue: ^5.8.2
     es-module-lexer: ^1.7.0
     esbuild: ^0.28.1
-    esrap: ^2.3.0
+    esrap: ^2.3.2
+    oxc-tsrx: 0.5.0
     sucrase: ^3.35.1
     graphql: ^16.14.2
     gsap: 3.15.0
@@ -419,7 +435,8 @@ catalogs:
     react-dom: ^19.2.7
     react-i18next: 17.0.9
     react-error-boundary: 6.1.2
-    ripple: ^0.3.118
+    react-resizable-panels: 4.12.2
+    ripple: ^0.3.125
     rxjs: ^7.8.2
     rulesync: ^8.32.0
     solid-js: '2.0.0-beta.20'
@@ -439,6 +456,7 @@ catalogs:
     three: 0.172.0
     type-fest: ^5.8.0
     typescript: ^5.9.3
+    valibot: ^1.4.1
     valtio: ^2.3.2
     vite: ^8.1.5
     astro: ^5.16.0
@@ -523,15 +541,59 @@ catalogs:
     "@types/react-dom": 19.2.3
     react: 19.2.3
     react-dom: 19.2.3
+  xstate-react-oracle:
+    "@testing-library/react": 16.3.1
+    "@types/react": 19.2.17
+    "@types/react-dom": 19.2.3
+    "@xstate/react": 6.1.0
+    react: 19.2.3
+    react-dom: 19.2.3
+    use-isomorphic-layout-effect: 1.2.1
+    use-sync-external-store: 1.6.0
+    xstate: 5.32.5
+  xstate-store-react-oracle:
+    "@testing-library/react": 16.3.1
+    "@types/react": 19.2.17
+    "@types/react-dom": 19.2.3
+    "@xstate/store": 4.2.3
+    "@xstate/store-react": 2.0.0
+    react: 19.2.3
+    react-dom: 19.2.3
 
 # patchedDependencies: the @tsrx/core@0.1.37/0.1.40 JSX parse patches are
 # superseded — @tsrx/core >= 0.1.42 ships the fix.
 
 minimumReleaseAgeExclude:
-  - octane@0.1.29 || 0.1.31 || 0.1.32 || 0.1.33 || 0.1.34 || 0.1.36
+  - octane@0.1.29 || 0.1.31 || 0.1.32 || 0.1.33 || 0.1.34 || 0.1.36 || 0.1.37 || 0.1.39 || 0.1.42 || 0.1.43 || 0.1.45 || 0.1.46 || 0.1.47
   - react-dropzone@20.0.0
+  - '@tanstack/db@0.7.0'
+  - '@oxc-tsrx/native-darwin-arm64@0.5.0'
+  - '@oxc-tsrx/native-darwin-x64@0.5.0'
+  - '@oxc-tsrx/native-linux-arm64-gnu@0.5.0'
+  - '@oxc-tsrx/native-linux-arm64-musl@0.5.0'
+  - '@oxc-tsrx/native-linux-x64-gnu@0.5.0'
+  - '@oxc-tsrx/native-linux-x64-musl@0.5.0'
+  - '@oxc-tsrx/native-win32-arm64-msvc@0.5.0'
+  - '@oxc-tsrx/native-win32-x64-msvc@0.5.0'
+  - oxc-tsrx@0.5.0
+  - '@ripple-ts/adapter@0.3.125'
+  - '@ripple-ts/vite-plugin@0.3.125'
+  - '@tsrx/core@0.1.61'
+  - '@tsrx/prettier-plugin@0.3.126'
+  - '@tsrx/react@0.2.61'
+  - '@tsrx/ripple@0.1.62'
+  - '@tsrx/solid@0.1.61'
+  - '@tsrx/typescript-plugin@0.3.126'
+  - '@tsrx/vite-plugin-react@0.0.94'
+  - '@tsrx/vite-plugin-solid@0.0.91'
+  - ripple@0.3.125
 
 # Changesets 2.31.1 assumes npm's error shape and crashes on pnpm 11 duplicate
 # publish errors. Remove this backport once the fix ships on Changesets' stable line.
+#
+# The JSX type-only fixes formerly patched into @tsrx/core 0.1.56/0.1.58
+# are published in the required @tsrx/core >= 0.1.60.
 patchedDependencies:
   '@changesets/cli@2.31.1': patches/@changesets__cli@2.31.1.patch
+  # Temporary until tsrx-org/tsrx#4 is released; remove this patch when that release is adopted.
+  '@tsrx/core@0.1.61': patches/@tsrx__core@0.1.61.patch
