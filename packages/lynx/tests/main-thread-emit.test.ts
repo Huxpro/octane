@@ -748,6 +748,31 @@ describe('Lynx main-thread program emission', () => {
 				/"text"/,
 			],
 			[
+				// The route check reads names; the applier also refuses by *value*.
+				// A non-scalar under a scalar name would paint (coerced to '') a
+				// first screen `prepareTemplateProgram` throws on.
+				'a static prop whose value is not a scalar',
+				{
+					nodes: [
+						{
+							type: 'view',
+							parent: -1,
+							props: { class: { active: true } as unknown as string },
+						},
+					],
+					events: [],
+				},
+				/non-scalar value for "class"/,
+			],
+			[
+				'a bindings array that is present but empty',
+				{
+					nodes: [{ type: 'view', parent: -1, props: {}, bindings: [] }],
+					events: [],
+				},
+				/empty bindings array/,
+			],
+			[
 				'a prop on a raw text node other than its value',
 				{
 					nodes: [
@@ -1000,6 +1025,12 @@ describe('Lynx main-thread program emission', () => {
 			expect(() => emitLynxMainThreadProgram(ROW, { name })).toThrow(/binds itself/);
 		}
 		for (const name of ['function', 'class', 'return', 'this']) {
+			expect(() => emitLynxMainThreadProgram(ROW, { name })).toThrow(TypeError);
+		}
+		// Not reserved words, but a named function expression may not bind either
+		// in strict (module) code, which is where the bundler parses the
+		// emission — the same SyntaxError three steps downstream.
+		for (const name of ['eval', 'arguments']) {
 			expect(() => emitLynxMainThreadProgram(ROW, { name })).toThrow(TypeError);
 		}
 	});

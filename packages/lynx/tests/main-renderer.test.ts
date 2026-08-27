@@ -727,6 +727,35 @@ describe('Lynx main-thread first-screen renderer', () => {
 		);
 	});
 
+	it('numbers a member handler before a program event site pre-order places after it', () => {
+		// The interpreted arm — which the background independently reproduces —
+		// mints listener ids in strict pre-order with a range's members spliced
+		// at the hole's position. A program that announced its whole event table
+		// before its members would renumber every member handler that pre-order
+		// places before a later site, and a tap on one host would resolve to the
+		// other's handler.
+		const plan = universalPlan('lynx', {
+			kind: 'program',
+			slots: ['r', 'e:bindtap'],
+			nodes: 2,
+			values: [],
+			events: [{ slot: 1, node: 1, type: 'bindtap', priority: 'discrete' }],
+			ranges: [{ slot: 0, node: 0, id: 1 }],
+			bind: () => () => [],
+		} as never);
+		const Program = defineUniversalComponent('lynx', () =>
+			universalValue(plan, [
+				[universalValue(rowPlan, [universalProps([['set', 'bindtap', () => undefined]])])],
+				() => undefined,
+			]),
+		);
+		const result = renderLynxFirstScreen(Program, {});
+		expect(result.envelope.events).toEqual([
+			{ id: 2, type: 'bindtap', listener: { id: 1_000_000, priority: 'discrete' } },
+			{ id: 3, type: 'bindtap', listener: { id: 1_000_001, priority: 'discrete' } },
+		]);
+	});
+
 	it('renders context, keyed control flow, caught errors, and pending fallbacks deterministically', () => {
 		const Context = createContext('default');
 		const Read = defineUniversalComponent('lynx', () =>
