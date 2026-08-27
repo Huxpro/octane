@@ -5232,7 +5232,6 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			state.records.size !== 0 ||
 			state.generations.size !== 0 ||
 			state.ownedNodes.size !== 0 ||
-			state.programRuns.length !== 0 ||
 			state.ownedPageRoots.size !== 0 ||
 			state.nativeEvents.size !== 0 ||
 			state.mainThreadRefs.size !== 0 ||
