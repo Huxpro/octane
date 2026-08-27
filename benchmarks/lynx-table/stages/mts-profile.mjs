@@ -30,6 +30,7 @@ import { createRequire } from 'node:module';
 import { parseArgs } from 'node:util';
 
 import {
+	applyMainRealmProbe,
 	applyNeutralize,
 	applyStageClock,
 	chromiumLaunchOptions,
@@ -51,6 +52,11 @@ const { values: args } = parseArgs({
 		port: { type: 'string', default: '8364' },
 		interval: { type: 'string', default: '100' },
 		'allow-busy-host': { type: 'boolean', default: false },
+		// How long the window stays open past first paint waiting for the
+		// first-tree lifecycle to end (issue #215 D7). It is a refusal deadline
+		// rather than a duration to sample for: a run that reaches it reports the
+		// window as truncated instead of reporting its buckets as complete.
+		'adoption-timeout': { type: 'string', default: '60000' },
 		// Issue-#163 C10: the same app and the same program backend, built from a
 		// different revision of the renderer into a tagged dist, so an A/B of
 		// main-thread script is one window rather than two runs compared across
@@ -75,6 +81,7 @@ const rows = Number(args.rows);
 const reps = Number(args.reps);
 const port = Number(args.port);
 const interval = Number(args.interval);
+const adoptionTimeout = Number(args['adoption-timeout']);
 const cellIds = args.cells.split(',').map((value) => value.trim());
 
 const controlTags = args['control-dist']
@@ -87,35 +94,81 @@ const controlTags = args['control-dist']
 if (new Set(controlTags).size !== controlTags.length) {
 	throw new Error(`--control-dist repeats a tag: ${args['control-dist']}`);
 }
-/** Pre-populated bundles only: this instrument measures a first screen, never a click. */
+/**
+ * Pre-populated bundles only: this instrument measures a first screen, never a
+ * click.
+ *
+ * Each cell also says whether it was built with `OCTANE_LYNX_PROFILE=1`, which
+ * decides one thing here: whether the adoption window can close on the
+ * framework's own first-tree marker (issue #215 D7). A shipping-shaped build
+ * folds `LYNX_PROFILE` to false and publishes no record at all, so on those
+ * cells this instrument goes on measuring exactly the window it always did, and
+ * the record says the adoption window was not reachable rather than showing an
+ * empty bucket group as though adoption were free.
+ *
+ * A profile cell is a different build configuration — the same rule
+ * `papi-run.mjs` states for its own profile cells — so its numbers apportion its
+ * own window and are comparable only to another profile cell's. That is enough
+ * for the A/B this exists to serve, which compares two revisions built the same
+ * way, and it is not enough to compare a profile arm against a shipping one.
+ */
 const CELLS = {
-	octane: (n) => path.join(root, `app/dist-rows${n}/main.web.bundle`),
-	'octane-mts-program': (n) => path.join(root, `app/dist-mtsprogram-rows${n}/main.web.bundle`),
+	octane: { bundle: (n) => path.join(root, `app/dist-rows${n}/main.web.bundle`) },
+	'octane-profile': {
+		bundle: (n) => path.join(root, `app/dist-rows${n}-profile/main.web.bundle`),
+		profile: true,
+	},
+	'octane-mts-program': {
+		bundle: (n) => path.join(root, `app/dist-mtsprogram-rows${n}/main.web.bundle`),
+	},
+	'octane-mts-program-profile': {
+		bundle: (n) => path.join(root, `app/dist-mtsprogram-rows${n}-profile/main.web.bundle`),
+		profile: true,
+	},
 	...Object.fromEntries(
-		controlTags.map((tag) => [
-			`octane-mts-program-${tag}`,
-			// Validated by the writer of that directory name rather than re-spelled
-			// here, so a value `build-app.mjs` would have refused cannot name a path
-			// nothing built.
-			(n) => path.join(root, `app/dist-mtsprogram${tagFrom(tag)}-rows${n}/main.web.bundle`),
+		controlTags.flatMap((tag) => [
+			[
+				`octane-mts-program-${tag}`,
+				{
+					// Validated by the writer of that directory name rather than
+					// re-spelled here, so a value `build-app.mjs` would have refused
+					// cannot name a path nothing built.
+					bundle: (n) =>
+						path.join(root, `app/dist-mtsprogram${tagFrom(tag)}-rows${n}/main.web.bundle`),
+				},
+			],
+			[
+				`octane-mts-program-${tag}-profile`,
+				{
+					bundle: (n) =>
+						path.join(root, `app/dist-mtsprogram${tagFrom(tag)}-rows${n}-profile/main.web.bundle`),
+					profile: true,
+				},
+			],
 		]),
 	),
-	'octane-direct': (n) => path.join(root, `prototype/dist-rows${n}/main.web.bundle`),
+	'octane-direct': { bundle: (n) => path.join(root, `prototype/dist-rows${n}/main.web.bundle`) },
 };
 const HEADINGS = {
 	octane: 'Octane',
+	'octane-profile': 'Octane (profile build)',
 	'octane-mts-program': 'Octane (main-thread program)',
+	'octane-mts-program-profile': 'Octane (main-thread program, profile build)',
 	...Object.fromEntries(
-		controlTags.map((tag) => [
-			`octane-mts-program-${tag}`,
-			`Octane (main-thread program, \`${tag}\` arm)`,
+		controlTags.flatMap((tag) => [
+			[`octane-mts-program-${tag}`, `Octane (main-thread program, \`${tag}\` arm)`],
+			[
+				`octane-mts-program-${tag}-profile`,
+				`Octane (main-thread program, \`${tag}\` arm, profile build)`,
+			],
 		]),
 	),
 	'octane-direct': 'L0 direct-emission prototype',
 };
+const bundleOf = (id, n) => CELLS[id].bundle(n);
 for (const id of cellIds) {
 	if (CELLS[id] === undefined) throw new Error(`unknown cell ${JSON.stringify(id)}.`);
-	const file = CELLS[id](rows);
+	const file = bundleOf(id, rows);
 	if (!fs.existsSync(file)) {
 		throw new Error(`${id} has no pre-populated bundle at ${rows} rows: ${file}`);
 	}
@@ -144,7 +197,7 @@ function startServer() {
 		}
 		let file = null;
 		if (url.pathname.startsWith('/webcore/')) file = path.join(webCoreRoot, url.pathname.slice(9));
-		else if (url.pathname.startsWith('/bundle/')) file = CELLS[url.pathname.slice(8)]?.(rows);
+		else if (url.pathname.startsWith('/bundle/')) file = CELLS[url.pathname.slice(8)]?.bundle(rows);
 		if (file === undefined || file === null || !fs.existsSync(file)) {
 			response.writeHead(404);
 			response.end('not found');
@@ -162,10 +215,33 @@ function startServer() {
 // --- sampling ---------------------------------------------------------------
 
 /**
- * One profiled first screen. The main-thread script is a Blob minted in the
- * page realm, so the URL is recorded there on the way past and its source is
- * fetched back afterwards — the profile names frames by that URL and nothing
- * else can say what the code at a position is.
+ * One profiled first screen, sampled as two windows rather than one.
+ *
+ * The main-thread script is a Blob minted in the page realm, so the URL is
+ * recorded there on the way past and its source is fetched back afterwards —
+ * the profile names frames by that URL and nothing else can say what the code
+ * at a position is.
+ *
+ * **Two windows, two profiles.** The first is the window this instrument has
+ * always had: attach to settled paint. The second runs from there until the
+ * framework says the first-tree lifecycle has ended — the background's
+ * description arriving, `prepareLynxHostBatch` answering adopt or repair, the
+ * apply, and on an adoption the hand-over a message later (issue #215 D7).
+ *
+ * They are two profiles because a bucket is a function and several functions
+ * run in both: the command path builds host records exactly as the first screen
+ * did. Folding one profile would put the two windows' `host record building` in
+ * one number and call the sum an attribution. Splitting the profile by
+ * timestamp would need the profiler's clock and the page's to be the same
+ * clock, which is a claim about Chromium rather than about the framework. A
+ * second `Profiler.start` needs neither: each window is folded from the samples
+ * taken during it, and the boundary is exactly where the first window ended.
+ *
+ * The gap between the two is one CDP round trip, and it lands in the quiet
+ * after paint has settled — `fcp` resolves only once the content count has been
+ * stable for its idle window, and the commit arrives later than that. When it
+ * does not, the marker read at the boundary says so and the record reports the
+ * adoption window as overlapped rather than as clean.
  */
 async function profileSample(browser, cell) {
 	const page = await browser.newPage();
@@ -181,23 +257,94 @@ async function profileSample(browser, cell) {
 		});
 		await applyNeutralize(page);
 		await applyStageClock(page);
+		await applyMainRealmProbe(page);
 		await page.goto(`http://127.0.0.1:${port}/control`, { waitUntil: 'load' });
 		const cdp = await page.context().newCDPSession(page);
 		await cdp.send('Profiler.enable');
 		await cdp.send('Profiler.setSamplingInterval', { interval });
 		await cdp.send('Profiler.start');
 		const observed = await page.evaluate(
-			(request) => {
+			async (request) => {
 				globalThis.__x.createView(request.bundleUrl);
-				return globalThis.__x.fcp({ minContent: request.rows, idleMs: 300, timeoutMs: 240000 });
+				const paint = await globalThis.__x.fcp({
+					minContent: request.rows,
+					idleMs: 300,
+					timeoutMs: 240000,
+				});
+				// Read at the boundary, not after it: whether any of the first-tree
+				// lifecycle already ran inside the paint window is a fact about this
+				// instant and about no later one.
+				const realm = globalThis.__OCTANE_LYNX_MT_REALM__;
+				const profile =
+					realm === undefined || realm === null ? undefined : realm.__OCTANE_LYNX_PROF;
+				if (realm === undefined || realm === null) {
+					return {
+						...paint,
+						adoption: { reachable: false, reason: 'no main-thread realm was published' },
+					};
+				}
+				if (profile === undefined) {
+					// A shipping-shaped build: `LYNX_PROFILE` folded to false and there
+					// is no record to close a window on. Reported rather than waited
+					// out, so such a cell keeps exactly the paint window it always had.
+					return {
+						...paint,
+						adoption: { reachable: false, reason: 'the cell carries no profile record' },
+					};
+				}
+				return {
+					...paint,
+					adoption: {
+						reachable: true,
+						overlapped: profile.firstTreeAction !== null,
+						actionAtPaint: profile.firstTreeAction,
+					},
+				};
 			},
 			{ bundleUrl: `http://127.0.0.1:${port}/bundle/${cell}`, rows },
 		);
-		const { profile } = await cdp.send('Profiler.stop');
+		const { profile: paintProfile } = await cdp.send('Profiler.stop');
 		if (observed.dnf) throw new Error(`${cell} never painted ${rows} rows.`);
 
-		const scriptUrl = [...new Set(profile.nodes.map((node) => node.callFrame.url))].find((url) =>
-			url.startsWith('blob:'),
+		let adoptionProfile = null;
+		let adoption = observed.adoption;
+		if (adoption.reachable === true) {
+			await cdp.send('Profiler.start');
+			adoption = await page.evaluate(
+				async (request) => {
+					const profile = globalThis.__OCTANE_LYNX_MT_REALM__.__OCTANE_LYNX_PROF;
+					const started = performance.now();
+					for (;;) {
+						const waitedMs = performance.now() - started;
+						const settled = profile.firstTreeSettled >= 1;
+						if (settled || waitedMs >= request.adoptionTimeoutMs) {
+							return {
+								...request.opened,
+								action: profile.firstTreeAction,
+								settled: profile.firstTreeSettled,
+								prepareMs: profile.prepareMs,
+								applyMs: profile.applyMs,
+								handOverMs: profile.handOverMs,
+								waitedMs,
+								timedOut: !settled,
+							};
+						}
+						await new Promise((resolve) => setTimeout(resolve, 8));
+					}
+				},
+				{ adoptionTimeoutMs: adoptionTimeout, opened: adoption },
+			);
+			({ profile: adoptionProfile } = await cdp.send('Profiler.stop'));
+			if (adoption.timedOut === true) {
+				throw new Error(
+					`${cell}: the first-tree lifecycle had not settled ${Math.round(adoption.waitedMs)} ms after paint ` +
+						`(action ${JSON.stringify(adoption.action)}); an adoption window that never closed is not one to report.`,
+				);
+			}
+		}
+
+		const scriptUrl = [...new Set(paintProfile.nodes.map((node) => node.callFrame.url))].find(
+			(url) => url.startsWith('blob:'),
 		);
 		if (scriptUrl === undefined) {
 			throw new Error(`${cell} produced no main-thread script frames; the profile named none.`);
@@ -213,7 +360,12 @@ async function profileSample(browser, cell) {
 		const lines = source.split('\n');
 		const sourceAt = (line, column) =>
 			(lines[line] ?? '').slice(Math.max(0, column), Math.max(0, column) + PROBE_WINDOW);
-		return { ...foldProfile(profile, scriptUrl, sourceAt), sourceAt };
+		return {
+			paint: foldProfile(paintProfile, scriptUrl, sourceAt),
+			adoption: adoptionProfile === null ? null : foldProfile(adoptionProfile, scriptUrl, sourceAt),
+			facts: adoption,
+			sourceAt,
+		};
 	} finally {
 		await page.close();
 	}
@@ -247,9 +399,16 @@ try {
 			// One reading's source is kept per cell so the report can show the code
 			// behind an unnamed frame instead of only its position.
 			if (!witnesses.has(id)) witnesses.set(id, folded.sourceAt);
-			const total = [...folded.buckets.values()].reduce((sum, cell) => sum + cell.us, 0);
+			const named = (window) =>
+				[...window.buckets.values()].reduce((sum, cell) => sum + cell.us, 0) / 1000;
+			const window =
+				folded.facts.reachable === true
+					? `+ ${named(folded.adoption).toFixed(1)} ms adoption, first tree ` +
+						`${folded.facts.action} after ${Math.round(folded.facts.waitedMs)} ms`
+					: `paint window only (${folded.facts.reason})`;
 			console.log(
-				`[mts] ${id} @${rows}: ${(total / 1000).toFixed(1)} ms named, ${folded.samples} samples`,
+				`[mts] ${id} @${rows}: ${named(folded.paint).toFixed(1)} ms named over ` +
+					`${folded.paint.samples} samples, ${window}`,
 			);
 		}
 	}
@@ -270,15 +429,18 @@ const comparePositions = (a, b) => {
 	const [bLine, bColumn] = parse(b);
 	return aLine - bLine || aColumn - bColumn;
 };
-const bucketNames = [
-	...new Set(cellIds.flatMap((id) => samples[id].flatMap((s) => [...s.buckets.keys()]))),
-];
-const cells = {};
-for (const id of cellIds) {
+/**
+ * One window's attribution, over every reading of one cell.
+ *
+ * Called once per window, and the two are folded the same way on purpose: the
+ * adoption window is not a summary beside the real one, it is the same
+ * attribution over a different span of the same run.
+ */
+function attributeWindow(id, windows, sourceAt) {
+	const bucketNames = [...new Set(windows.flatMap((window) => [...window.buckets.keys()]))];
 	const perBucket = {};
 	for (const name of bucketNames) {
-		const ms = samples[id].map((sample) => (sample.buckets.get(name)?.us ?? 0) / 1000);
-		perBucket[name] = stats(ms);
+		perBucket[name] = stats(windows.map((window) => (window.buckets.get(name)?.us ?? 0) / 1000));
 	}
 	// The same time keyed by source site rather than by bucket. A bucket folding
 	// six functions says where the script is without saying what it is doing,
@@ -286,11 +448,11 @@ for (const id of cellIds) {
 	const perSite = {};
 	for (const name of bucketNames) {
 		for (const site of SITES_BY_BUCKET[name] ?? []) {
-			const ms = samples[id].map((sample) => (sample.sites.get(site)?.us ?? 0) / 1000);
+			const ms = windows.map((window) => (window.sites.get(site)?.us ?? 0) / 1000);
 			// Across every reading, not per reading: a function entered in one rep
 			// and not the next is still a function this site folds.
 			const positions = new Set(
-				samples[id].flatMap((sample) => [...(sample.sites.get(site)?.positions ?? [])]),
+				windows.flatMap((window) => [...(window.sites.get(site)?.positions ?? [])]),
 			);
 			// Kept, not just counted. A site over one frame is exactly the case the
 			// count cannot settle — two entrances to one function look like two
@@ -309,17 +471,17 @@ for (const id of cellIds) {
 	// attribution while hiding time. Both are refusals rather than roundings: the
 	// two maps are built from one pass over one set of frames, so any drift
 	// between them is a defect in this file, not a property of the run.
-	for (const sample of samples[id]) {
-		for (const site of sample.sites.keys()) {
+	for (const window of windows) {
+		for (const site of window.sites.keys()) {
 			if (perSite[site] === undefined) {
 				throw new Error(
 					`${id}: fold produced site ${JSON.stringify(site)}, which no bucket lists.`,
 				);
 			}
 		}
-		for (const [name, cell] of sample.buckets) {
+		for (const [name, cell] of window.buckets) {
 			const fromSites = (SITES_BY_BUCKET[name] ?? []).reduce(
-				(sum, site) => sum + (sample.sites.get(site)?.us ?? 0),
+				(sum, site) => sum + (window.sites.get(site)?.us ?? 0),
 				0,
 			);
 			if (Math.abs(fromSites - cell.us) > 1e-6) {
@@ -329,18 +491,16 @@ for (const id of cellIds) {
 			}
 		}
 	}
-	const namedMs = samples[id].map(
-		(sample) => [...sample.buckets.values()].reduce((sum, cell) => sum + cell.us, 0) / 1000,
+	const namedMs = windows.map(
+		(window) => [...window.buckets.values()].reduce((sum, cell) => sum + cell.us, 0) / 1000,
 	);
-	const unmatchedMs = samples[id].map(
-		(sample) => [...sample.unmatched.values()].reduce((sum, cell) => sum + cell.us, 0) / 1000,
+	const unmatchedMs = windows.map(
+		(window) => [...window.unmatched.values()].reduce((sum, cell) => sum + cell.us, 0) / 1000,
 	);
-	// The largest frame the probe table did not name, from the first reading, so
+	// The largest frames the probe table did not name, from the first reading, so
 	// an unnamed cost is inspectable rather than a number with nothing behind it.
-	const first = samples[id][0];
-	const worst = [...first.unmatched].sort((a, b) => b[1].us - a[1].us).slice(0, 3);
-	const sourceAt = witnesses.get(id);
-	cells[id] = {
+	const worst = [...windows[0].unmatched].sort((a, b) => b[1].us - a[1].us).slice(0, 3);
+	return {
 		buckets: perBucket,
 		sites: perSite,
 		namedMs: stats(namedMs),
@@ -354,6 +514,57 @@ for (const id of cellIds) {
 				source: sourceAt(line, column).slice(0, 140).replace(/\s+/g, ' '),
 			};
 		}),
+	};
+}
+
+const cells = {};
+for (const id of cellIds) {
+	const sourceAt = witnesses.get(id);
+	// What the second window this cell's buckets came from actually covered. A
+	// bucket group named `adoption` is only a measurement of adoption on a cell
+	// that reached it, and a reader cannot tell those apart from the buckets:
+	// both show numbers, and one of them is a first screen that ended at paint
+	// (issue #215 D7). `action` is the second half of the same honesty — an
+	// adoption and a repair are both correct pages and wildly different costs,
+	// and a record that did not say which would price a repaint as an adoption.
+	const facts = samples[id].map((sample) => sample.facts);
+	const reachable = facts.every((one) => one.reachable === true);
+	const adoption = reachable
+		? {
+				window: 'settled paint through hand-over',
+				actions: [...new Set(facts.map((one) => one.action))],
+				// True on any reading where the lifecycle had already begun before
+				// the paint window closed, which makes that reading's split a
+				// boundary rather than a wall. Reported per cell rather than thrown
+				// on, because one overlapping reading in five is a fact about the
+				// record and not a reason to have no record.
+				overlapped: facts.some((one) => one.overlapped === true),
+				waitedMs: stats(facts.map((one) => one.waitedMs)),
+				// The framework's own walls for the three stages this window samples,
+				// as a cross-check on its buckets in the same way the first-screen
+				// phase walls cross-check the paint ones. They accumulate for the life
+				// of a realm and each realm paints once, so a reading is this run's
+				// and no other's.
+				prepareMs: stats(facts.map((one) => one.prepareMs)),
+				applyMs: stats(facts.map((one) => one.applyMs)),
+				handOverMs: stats(facts.map((one) => one.handOverMs)),
+				...attributeWindow(
+					`${id} (adoption)`,
+					samples[id].map((sample) => sample.adoption),
+					sourceAt,
+				),
+			}
+		: {
+				window: 'none — this cell ended at settled paint',
+				reasons: [...new Set(facts.map((one) => one.reason ?? 'settled on some readings only'))],
+			};
+	cells[id] = {
+		...attributeWindow(
+			id,
+			samples[id].map((sample) => sample.paint),
+			sourceAt,
+		),
+		adoption,
 	};
 }
 
@@ -373,7 +584,7 @@ const meta = {
 	// against another profile is only a comparison if both measured the same
 	// build, and a date cannot say whether they did — see `bundleIdentity`.
 	bundles: Object.fromEntries(
-		cellIds.map((id) => [id, bundleIdentity(CELLS[id](rows), { relativeTo: root })]),
+		cellIds.map((id) => [id, bundleIdentity(bundleOf(id, rows), { relativeTo: root })]),
 	),
 	loadStart: loadStart.map((value) => round(value, 2)),
 	loadEnd: loadEnd.map((value) => round(value, 2)),
@@ -427,19 +638,24 @@ const lines = [
 	`| main-thread script | ${cellIds.map((id) => `\`${id}\``).join(' | ')} |`,
 	`|---|${cellIds.map(() => '---:').join('|')}|`,
 ];
-const rowFor = (name, pick) =>
+const rowFor = (name, pick, view = (id) => cells[id]) =>
 	`| ${name} | ${cellIds
 		.map((id) => {
-			const stat = pick(cells[id]);
-			return stat === null
+			const stat = pick(view(id));
+			return stat === undefined || stat === null
 				? '—'
 				: `${round(stat.median, 1)} [${round(stat.min, 1)}–${round(stat.max, 1)}]`;
 		})
 		.join(' | ')} |`;
-const ordered = [...bucketNames].sort((a, b) => {
-	const weight = (name) => Math.max(...cellIds.map((id) => cells[id].buckets[name]?.median ?? 0));
-	return weight(b) - weight(a);
-});
+/** Buckets one window produced, heaviest first, so two windows order their own. */
+const orderedFor = (view) =>
+	[...new Set(cellIds.flatMap((id) => Object.keys(view(id)?.buckets ?? {})))].sort((a, b) => {
+		const weight = (name) =>
+			Math.max(...cellIds.map((id) => view(id)?.buckets?.[name]?.median ?? 0));
+		return weight(b) - weight(a);
+	});
+const ordered = orderedFor((id) => cells[id]);
+const bucketNames = ordered;
 for (const name of ordered) lines.push(rowFor(name, (cell) => cell.buckets[name]));
 lines.push(
 	rowFor('named total', (cell) => cell.namedMs),
@@ -447,6 +663,72 @@ lines.push(
 	rowFor('**main-thread script, all frames**', (cell) => cell.totalMs),
 	'',
 );
+
+// The second window, when the run had one. Same fold, same probe table, a
+// different span of the same first screen: from the moment paint settled to the
+// moment the framework says the first-tree lifecycle ended (issue #215 D7).
+// D3 moved ~56 ms of event bookkeeping past first paint and the record of that
+// slice said honestly that nothing measured where it landed. This is where it
+// lands.
+const adoptionCells = cellIds.filter((id) => cells[id].adoption.buckets !== undefined);
+if (adoptionCells.length > 0) {
+	const adoptionOf = (id) => cells[id].adoption;
+	lines.push(
+		`## The adoption window @${rows}`,
+		'',
+		'What the main-thread script spends after the screen is already painted and',
+		'before the tree is the background’s: the background’s description arriving and',
+		'being validated, `prepareLynxHostBatch` answering adopt or repair, the apply,',
+		'and — on an adoption — the hand-over a message after that. None of it moves a',
+		'pixel, so no paint predicate can wait for it and the window above ends before',
+		'it starts.',
+		'',
+		'A cell reaches this window only when it carries the framework’s profile record,',
+		'which a shipping-shaped build folds away entirely. `—` below is that, not zero:',
+		'the cell ended at settled paint and this window does not exist for it. A profile',
+		'build is a different build configuration, so these numbers apportion their own',
+		'window and compare to another profile cell’s, never to a shipping one’s.',
+		'',
+		`| adoption window | ${cellIds.map((id) => `\`${id}\``).join(' | ')} |`,
+		`|---|${cellIds.map(() => '---:').join('|')}|`,
+	);
+	for (const name of orderedFor(adoptionOf)) {
+		lines.push(rowFor(name, (cell) => cell?.buckets?.[name], adoptionOf));
+	}
+	lines.push(
+		rowFor('named total', (cell) => cell?.namedMs, adoptionOf),
+		rowFor('unnamed by the probe table', (cell) => cell?.unmatchedMs, adoptionOf),
+		rowFor('**main-thread script, all frames**', (cell) => cell?.totalMs, adoptionOf),
+		'',
+		'The framework’s own walls for the same three stages, which it measures itself',
+		'and this instrument only samples. They are the cross-check: a bucket total far',
+		'from its wall is a probe that stopped matching, not a stage that got cheaper.',
+		'',
+		`| framework wall | ${cellIds.map((id) => `\`${id}\``).join(' | ')} |`,
+		`|---|${cellIds.map(() => '---:').join('|')}|`,
+		rowFor('`prepareLynxHostBatch`', (cell) => cell?.prepareMs, adoptionOf),
+		rowFor('`prepared.apply()`', (cell) => cell?.applyMs, adoptionOf),
+		rowFor('hand-over', (cell) => cell?.handOverMs, adoptionOf),
+		rowFor('paint → settled', (cell) => cell?.waitedMs, adoptionOf),
+		'',
+	);
+	for (const id of adoptionCells) {
+		const cell = cells[id];
+		lines.push(
+			`- \`${id}\`: first tree ${cell.adoption.actions.map((one) => `\`${one}\``).join(', ')}` +
+				`${cell.adoption.overlapped ? ', **and some reading began before the paint window closed**' : ''}.`,
+		);
+	}
+	lines.push('');
+	for (const id of adoptionCells) {
+		if (cells[id].adoption.largestUnnamed.length === 0) continue;
+		lines.push(`Largest frames the probe table did not name, \`${id}\`:`, '');
+		for (const frame of cells[id].adoption.largestUnnamed) {
+			lines.push(`- ${frame.ms} ms at \`${frame.position}\` — \`${frame.source}\``);
+		}
+		lines.push('');
+	}
+}
 
 // How many buckets fold several functions, and which folds the most, are facts
 // about the probe table rather than about the run. Deriving them keeps the

@@ -272,10 +272,20 @@ test('every probe’s where names a file the repository has', () => {
 	// and it is never checked against the source at match time. Two of them named
 	// `core/events.ts` and `core/selectors.ts`, neither of which exists, and the
 	// records built on them read exactly like records that were right.
-	const root = new URL('../../../packages/lynx/src/', import.meta.url);
+	//
+	// One probe names code this directory injects rather than code the package
+	// ships, so `stages/` resolves against the harness. Every other prefix is the
+	// package's own source and resolving it there is the point: a `where` under
+	// neither root is the failure this test exists for, not a third root.
+	const roots = {
+		package: new URL('../../../packages/lynx/src/', import.meta.url),
+		stages: new URL('./', import.meta.url),
+	};
 	for (const { where } of BUCKETS) {
 		const file = where.slice(0, where.indexOf(' '));
-		assert.ok(fs.existsSync(new URL(file, root)), `${where} names a file that does not exist`);
+		const root = file.startsWith('stages/') ? roots.stages : roots.package;
+		const name = file.startsWith('stages/') ? file.slice('stages/'.length) : file;
+		assert.ok(fs.existsSync(new URL(name, root)), `${where} names a file that does not exist`);
 	}
 });
 
@@ -486,5 +496,157 @@ test('the page factory is not the type switch declared after it', () => {
 	assert.notEqual(probeOf(FACADE_CREATE_PAGE)?.bucket, probeOf(CREATE_ELEMENT_SWITCH)?.bucket);
 	for (const text of [FACADE_CREATE_PAGE, CREATE_ELEMENT_SWITCH]) {
 		assert.equal(text.length, PROBE_WINDOW);
+	}
+});
+
+// --- issue #215 D7 ----------------------------------------------------------
+//
+// A profiled run now opens a second window, from settled paint through the
+// first-tree lifecycle, and the functions in it had never been sampled — so
+// none of them carried a probe. These are the windows at the frames that run
+// reported, taken verbatim, plus the neighbours each new probe has to be
+// separated from. Three separations matter and none of them is uniqueness:
+// the transport spells the same assert messages the host driver does, the
+// comparator names the same command op the preparation that replays into it
+// does, and D3's three event accessors read `.plan.events` where two other
+// functions read it too.
+
+// D3's on-demand event journal: the host driver's per-node reader, and the two
+// `first-screen.ts` accessors that answer the same question from the plan.
+const PROGRAM_NODE_EVENTS =
+	'(e,r){var t,n,a=e.plan.events;if(0!==a.length){for(var i=0;i<a.length;i++){var o=a[i];if(o.node===r){var l=e.tokens[i];void 0!==l&&(null!=n||(n=ti(e.plan)),(nul';
+const RUN_EVENT_COUNT =
+	'(e,r){var t=e.plan.events;var n=0;for(var a=0;a<t.length;a++)t[a].node===r&&void 0!==e.tokens[a]&&n++;return n}function p(e,r,t){var n=e.plan.events;for(var a=0';
+const RUN_EVENT_TOKEN =
+	'(e,r,t){var n=e.plan.events;for(var a=0;a<n.length;a++){var i=n[a];if(i.node===r&&i.type===t)return e.tokens[a]}}class v{get(e){var r=this.runFor(e);return void';
+// The renderer's announce pass reads `plan.events` too, in the paint window,
+// and is named there already. Its own `plan.events` sits 24 characters past the
+// end of this window — the whole margin between the two readers is those 24
+// characters, which is why the probe does not rely on them.
+// (`materializeProgramEvents`, the fifth reader, is inlined into its caller by
+// the minifier and has no frame of its own to name.)
+const RENDERER_ANNOUNCE =
+	'(r,t,n,a){var i=0;for(var o of r){if("program"===o.kind){for(var l of(i+=o.plan.nodes,o.texts))void 0!==l&&i++;var s=t&&"hidden"!==o.visibility;if(o.eventsAt=a.';
+
+test('D3’s three event accessors are one bucket, and the announce pass is not in it', () => {
+	// The bucket exists to re-price what D3 moved rather than to account for a
+	// window, so it has to hold exactly the functions that pay for the move: the
+	// three that answer from the plan when something finally asks. One probe
+	// names all three because they are one accounting line.
+	for (const text of [PROGRAM_NODE_EVENTS, RUN_EVENT_COUNT, RUN_EVENT_TOKEN]) {
+		assert.equal(bucketOf(text), 'deferred event journal');
+	}
+	assert.equal(bucketOf(RENDERER_ANNOUNCE), 'renderer pre-passes');
+	// That last assertion is true today for a reason the probe does not control:
+	// the announce pass's own read is out of window reach by 24 characters. The
+	// separation the probe *does* control is the semicolon — the three accessors
+	// open a statement with `.plan.events`, the announce pass and
+	// `materializeProgramEvents` continue `)` and `.length` — so it is pinned
+	// here rather than left to a margin that a minifier release could close.
+	assert.ok(probeOf(PROGRAM_NODE_EVENTS)?.probe.endsWith(';'));
+	for (const text of [PROGRAM_NODE_EVENTS, RUN_EVENT_COUNT, RUN_EVENT_TOKEN, RENDERER_ANNOUNCE]) {
+		assert.equal(text.length, PROBE_WINDOW);
+	}
+});
+
+// The transport's own record validator, and the host driver's command loop,
+// which throws the same words from a template literal.
+const TRANSPORT_RECORD =
+	'(e,t){if(null===e||"object"!=typeof e||Array.isArray(e))return tx(tC,"must be an object.",t);if(!r(e))return tx(tC,"must be a plain object.",t);var n,a=Reflect.';
+const PREPARE_COMMAND_LOOP =
+	'(n){var a=r.commands[n];if(null===a||"object"!=typeof a)throw eK(`command ${n} must be an object.`);if(J&&"mount-template-range"!==a.op&&"mount-template-run"!==';
+const TRANSPORT_POSITIVE_INTEGER =
+	'(e,r,t,n){(!Number.isSafeInteger(e)||e<=0)&&tx(r,"must be a positive safe integer.",t,n)}function tE(e,r){(!Number.isSafeInteger(e)||e<0)&&tx(r,"must be a non-n';
+
+test('the transport’s asserts are not the host driver’s, which spell the same words', () => {
+	// Both files say "must be an object." and "must be a positive safe integer.",
+	// and the two live in different windows of the same profile. What separates
+	// them is punctuation the minifier does not choose: the transport passes the
+	// message as an argument, so it is a double-quoted string followed by a
+	// comma; the host driver and `native-events.ts` interpolate it into a
+	// template, so it ends at a backtick. A probe without the comma would have
+	// folded the preparation into the validation and left the validation looking
+	// like the larger of the two.
+	assert.equal(bucketOf(TRANSPORT_RECORD), 'inbound validation');
+	assert.equal(bucketOf(TRANSPORT_POSITIVE_INTEGER), 'inbound validation');
+	assert.equal(bucketOf(PREPARE_COMMAND_LOOP), 'batch preparation');
+	assert.equal(bucketOf(NATIVE_EVENT_ASSERT), 'event bookkeeping');
+	for (const text of [TRANSPORT_RECORD, PREPARE_COMMAND_LOOP, TRANSPORT_POSITIVE_INTEGER]) {
+		assert.equal(text.length, PROBE_WINDOW);
+	}
+});
+
+// The comparator, entered at its format check and again inside its node walk,
+// and the preparation loop that replays into an adopted tree.
+const COMPARE_FIRST_TREE =
+	'(e,r,t,n,a,i,o,l,s){var d=t.snapshot;var c=e[eU];var u=n[eU];if(1!==d.format||d.renderer!==eq)return tr(t,"snapshot.format","the snapshot format or renderer is ';
+const COMPARE_NODE_WALK =
+	'(e,r)=>e-r)){var E=I.runFor(z);var P=void 0===E?void 0:(0,S.w7)(E,z);if(void 0!==E&&void 0!==P){var L=o(z);if(void 0===L)return tr(t,`snapshot.nodes[${z}]`,"the';
+const ADOPTION_REPLAY =
+	'e=>"ensure-public-instance"===e.op):eh)(function(r){if(X&&p.has(r.id))return"continue";if("mount-template"===r.op){if(void 0!==r.dense&&void 0!==e$){var t,n=r.d';
+
+test('the comparator is not the preparation that replays into what it adopted', () => {
+	// Both name `ensure-public-instance`: the comparator refuses a batch carrying
+	// any other operation, and the preparation replays exactly those and nothing
+	// else once the verdict is `adopt`. They are the two largest things in this
+	// window after the transport, so folding either into the other would move
+	// several milliseconds between the two buckets a reader compares first.
+	// The comparison operator is what separates them — the comparator writes
+	// `!==`, the replay `===` — and no frame in the measured bundle sits close
+	// enough to the comparator's spelling to be a fixture for it. So the operator
+	// is pinned on the probe itself: dropping it is the edit that would fold the
+	// two, and this is what makes that edit red rather than a quiet reattribution.
+	assert.equal(bucketOf(COMPARE_FIRST_TREE), 'first-tree comparator');
+	assert.equal(bucketOf(COMPARE_NODE_WALK), 'first-tree comparator');
+	assert.equal(bucketOf(ADOPTION_REPLAY), 'batch preparation');
+	assert.ok(probeOf(ADOPTION_REPLAY)?.probe.endsWith('==='));
+	for (const text of [COMPARE_FIRST_TREE, COMPARE_NODE_WALK, ADOPTION_REPLAY]) {
+		assert.equal(text.length, PROBE_WINDOW);
+	}
+});
+
+// The counter `stages/instrument-source.mjs` injects, which exists in no
+// shipping build and is not the framework.
+const PROFILE_PAPI_CREATE =
+	'(e){var r;var t=(0,nu.Ym)();t.papiCreateMs=(null!=(r=t.papiCreateMs)?r:0)+performance.now()-e}var nf=new Set;function nh(){throw Error("Octane Lynx received mai';
+
+test('the instrument’s own counter is a bucket, not a share of the framework', () => {
+	// A profile cell pays for being profiled, and the payment is inside the same
+	// script as everything else it measures. Left unnamed it would be part of
+	// `unnamed`, which reads as framework the table failed to name rather than as
+	// cost the harness added.
+	assert.equal(bucketOf(PROFILE_PAPI_CREATE), 'stage instrument');
+	assert.equal(PROFILE_PAPI_CREATE.length, PROBE_WINDOW);
+});
+
+/** The buckets that exist because a profiled run keeps sampling past paint. */
+const ADOPTION_BUCKETS = new Set([
+	'inbound validation',
+	'main-thread receive',
+	'handle delta',
+	'batch preparation',
+	'first-tree comparator',
+	'adoption apply',
+	'deferred event journal',
+	'program index',
+	'hand-over',
+	'stage instrument',
+]);
+
+test('the adoption entries are appended, so no paint-window frame can change hands', () => {
+	// This is the property the whole group rests on. `probeOf` returns the first
+	// entry that matches, so an entry that follows every existing one cannot take
+	// a frame an existing one already names — which is what keeps every record
+	// built before this slice comparable with every record built after it. It
+	// holds only while the group stays contiguous and last, and both are cheap to
+	// state and invisible to lose.
+	const first = BUCKETS.findIndex((entry) => ADOPTION_BUCKETS.has(entry.bucket));
+	assert.notEqual(first, -1);
+	for (const [index, entry] of BUCKETS.entries()) {
+		assert.equal(
+			ADOPTION_BUCKETS.has(entry.bucket),
+			index >= first,
+			`${entry.bucket} at ${index} is on the wrong side of the adoption group`,
+		);
 	}
 });

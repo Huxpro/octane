@@ -2319,6 +2319,20 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				activateFirstTreeCapabilities(record);
 			}
 		}
+		if (LYNX_PROFILE) {
+			// Published once, for the first commit that reached a verdict — and
+			// only the first commit can carry a first tree, so a later one asked
+			// no such question and must not answer it (issue #215 D7). Read here
+			// rather than beside `prepareMs` above because the branch just taken
+			// is what decides whether anything of this lifecycle is still coming:
+			// an adoption is now waiting on a message, and every other outcome is
+			// already over.
+			const profile = lynxWireProfile();
+			if (profile.firstTreeAction === null) {
+				profile.firstTreeAction = prepared.firstTreeAction;
+				if (awaitingAdoption === null) profile.firstTreeSettled += 1;
+			}
+		}
 		const startedAck = LYNX_PROFILE ? performance.now() : 0;
 		let compactCount: number | null =
 			message.ack === LYNX_COMPACT_ACKNOWLEDGEMENT &&
@@ -2462,6 +2476,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			report(new Error('Octane Lynx received a stale or foreign adoption-ready message.'));
 			return;
 		}
+		const startedHandOver = LYNX_PROFILE ? performance.now() : 0;
 		try {
 			drainNativeEvents();
 		} finally {
@@ -2470,6 +2485,17 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		}
 		activateFirstTreeCapabilities(active);
 		openBackgroundCalls();
+		if (LYNX_PROFILE) {
+			// The other half of adoption, a message later than the half `prepareMs`
+			// and `applyMs` measure, and until now the half nothing timed (issue
+			// #215 D7). Counted after the work rather than in a `finally`, so a
+			// drain that threw leaves the lifecycle unsettled — which is the truth:
+			// the hand-over did not finish, and a window closing on this marker
+			// should go on waiting rather than report a partial one as whole.
+			const profile = lynxWireProfile();
+			profile.handOverMs += performance.now() - startedHandOver;
+			profile.firstTreeSettled += 1;
+		}
 	};
 
 	const handleDispose = (message: LynxDisposeMessage | LynxTerminalDisposeMessage): void => {

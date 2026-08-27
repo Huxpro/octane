@@ -28,6 +28,16 @@ export const LYNX_PROFILE: boolean =
 export type LynxFirstScreenPhase = 'render' | 'publish' | 'capture' | 'announce';
 
 /**
+ * What adoption did with a painted first screen, mirroring
+ * `LynxPreparedHostBatch['firstTreeAction']`. Restated here rather than
+ * imported because this module is the one thing every realm loads and it owes
+ * nothing to the host driver, and because the assignment in `main-thread.ts` is
+ * what type-checks the two spellings against each other: a member added there
+ * and not here fails at the publish site.
+ */
+export type LynxFirstTreeAction = 'none' | 'adopt' | 'repair';
+
+/**
  * Per-realm commit-pipeline counters. The background and main threads run in
  * separate realms, so each accumulates its own record under the same global
  * name: background fills the dispatch-side fields, main the receive-side ones.
@@ -91,6 +101,36 @@ export interface LynxWireProfile {
 	firstScreenPublishMs: number;
 	firstScreenCaptureMs: number;
 	firstScreenAnnounceMs: number;
+	/**
+	 * Main: what the comparator decided for the first-tree commit, or null until
+	 * one has been prepared.
+	 *
+	 * Published for something else to read, like `firstScreenPhase` and for the
+	 * same reason one step later (issue #215 D7). A first screen the main thread
+	 * painted is either adopted by the background that describes it or repaired
+	 * over the command path, and the two cost wildly different things while
+	 * looking identical from outside: both end with a correct page. An
+	 * instrument measuring the window after paint without reading this would
+	 * report a repaint as an adoption and never know.
+	 */
+	firstTreeAction: LynxFirstTreeAction | null;
+	/**
+	 * Main: 1 once the first-tree lifecycle has ended, and 0 before that.
+	 *
+	 * The end is not one moment for every outcome: an adoption ends at
+	 * hand-over, a repair or a run that carried no first tree at all ends with
+	 * the commit that decided so. This is the single answer to "is any of it
+	 * still coming", which is what a window that has to close on it needs, and
+	 * it is deliberately not a wall clock — a profiler owns the milliseconds.
+	 */
+	firstTreeSettled: number;
+	/**
+	 * Main: hand-over time — draining the events the adoption gated, releasing
+	 * the first-screen journal, and reopening background calls. The counterpart
+	 * to `prepareMs` and `applyMs` for the half of adoption that runs a message
+	 * later, and 0 for a run that never adopted.
+	 */
+	handOverMs: number;
 }
 
 interface LynxProfileGlobals {
@@ -120,6 +160,9 @@ export function lynxWireProfile(): LynxWireProfile {
 		firstScreenPublishMs: 0,
 		firstScreenCaptureMs: 0,
 		firstScreenAnnounceMs: 0,
+		firstTreeAction: null,
+		firstTreeSettled: 0,
+		handOverMs: 0,
 	});
 }
 

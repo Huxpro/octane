@@ -741,6 +741,37 @@ export async function applyStageClock(page) {
 	await page.addInitScript(OBSERVE_LYNX_MT_SLICE_LOAD);
 }
 
+// Hand the page a reference to the main-thread script's realm, so an instrument
+// running here can read the framework's own profile record (`core/profiling.ts`)
+// out of it.
+//
+// The PAPI instrument already reaches that realm, but only because web-core
+// installs the Element PAPI from page-realm code and hands the realm's global
+// over as `Object.assign`'s target — a hook that costs a wrapper on every host
+// call, which is exactly what a CPU profile of the script must not pay. This
+// gets there the other way: web-core runs the main-thread script in a
+// same-origin `about:srcdoc` frame, an init script runs in that frame too, and
+// from inside it `top` is the bench page.
+//
+// It publishes the realm and reads nothing, so a page that never asks is a page
+// this changed nothing about. The realm is captured at document start, before
+// the framework has created its record; every reader therefore looks the record
+// up through the realm at the moment it asks rather than caching it here.
+export const OBSERVE_LYNX_MAIN_REALM = `(() => {
+  if (globalThis.location?.href !== 'about:srcdoc') return;
+  try {
+    globalThis.top.__OCTANE_LYNX_MT_REALM__ = globalThis;
+  } catch {
+    // A frame that is not same-origin with the page, or has no parent. The
+    // reader reports the realm as unreachable, which is the one answer that
+    // keeps a window it could not close on from being reported as one it did.
+  }
+})()`;
+
+export async function applyMainRealmProbe(page) {
+	await page.addInitScript(OBSERVE_LYNX_MAIN_REALM);
+}
+
 /**
  * Chromium launch options shared by every harness in this benchmark, so each
  * cell — octane and the vendored references — is driven by the same browser
