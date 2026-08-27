@@ -186,6 +186,26 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 				if (owners !== undefined) for (const [id, ids] of owners) assign(id, ids);
 			} else if (command.op === 'destroy') {
 				assign(command.id, undefined);
+			} else if (command.op === 'destroy-run') {
+				// A run retires as one command and ships no per-host `destroy` for the
+				// hosts inside it: the driver derives their teardown from the program
+				// it already holds. Ownership here is still per host, so the release
+				// those absent commands would have driven has to be found another way,
+				// or every callback the row installed outlives the row.
+				//
+				// Walking the id range would put back the per-host loop this command
+				// exists to remove, and at a thousand rows that is the loop that
+				// matters. Worklet owners are usually the thinner side, so the walk
+				// goes whichever way is shorter; deleting the current key mid-iteration
+				// is the one Map mutation the iterator is defined to tolerate.
+				const end = command.firstId + command.count * command.width;
+				if (end - command.firstId <= acceptedWorklets.size) {
+					for (let id = command.firstId; id < end; id++) assign(id, undefined);
+				} else {
+					for (const id of acceptedWorklets.keys()) {
+						if (id >= command.firstId && id < end) assign(id, undefined);
+					}
+				}
 			}
 		}
 		if (releaseCandidates !== undefined) {

@@ -62,7 +62,7 @@ describe('renderer configuration', () => {
 			normalizeRendererConfig({
 				registry: { odd: { module: '@octanejs/odd', target: 'native' } },
 			}),
-		).toThrowError(/target must be "dom", "universal", or "lynx"/);
+		).toThrowError(/target must be "dom", "universal", "lynx", or "valdi"/);
 	});
 
 	it('normalizes compiler and runtime metadata for a client-only renderer', () => {

@@ -124,10 +124,13 @@ describe('lynx-target first screen, end to end', () => {
 		expect(lynx).toContain('"slots"');
 		expect(lynx).toMatch(/\bn0\b/);
 		expect(universal).not.toContain('"kind": "template"');
-		// The keyed `@for` body root is a component, so that hole stays a plan:
-		// the fixture exercises a module that mixes both encodings, which is what
-		// production modules look like.
-		expect(lynx).toContain('"kind": "slot"');
+		// The keyed `@for` and its component body stay on the interpreted path —
+		// a create function can express neither — so the fixture still mixes both
+		// encodings, which is what production modules look like. Upstream's row
+		// compaction (#765, arriving with issue #227) dropped the one-slot plan
+		// that used to wrap the body, so what says the module is mixed is the
+		// directive call itself rather than a `{ "kind": "slot" }` node.
+		expect(lynx).toContain('universalFor');
 	});
 
 	it('paints the same tree and adoption snapshot on all four cells', () => {

@@ -1270,6 +1270,14 @@ interface CommittedCollapsedTemplate {
 	readonly firstId?: number;
 	readonly prepared?: PreparedCollapsedTemplateProgram;
 	readonly values?: readonly UniversalHostTemplateProgramValue[];
+	/**
+	 * The run this instance belongs to declared its instances rather than
+	 * creating them, so the renderer holds a program and materializes a row only
+	 * when the platform asks for one. Decided on the blueprint during
+	 * reconciliation and carried here because teardown, which happens commits
+	 * later, is the other place that has to know.
+	 */
+	readonly deferred?: true;
 }
 
 interface CommittedEvent extends BlueprintEvent {
@@ -10096,6 +10104,13 @@ class UniversalRootImpl<Container, PublicInstance>
 						record.kind === 'host' &&
 						collapsed.prepared !== undefined &&
 						collapsed.firstId !== undefined &&
+						// A deferred run's instances were declared, never created: the
+						// renderer holds the program and materializes a row only when the
+						// platform asks for it (issue #163). `destroy-run` names hosts by
+						// contiguous id and asks the driver to derive their teardown from
+						// what it holds, and for a declared instance it holds nothing —
+						// so a deferred run retires through its own declaration path.
+						collapsed.deferred !== true &&
 						(collapsed.nodes === null || collapsed.nodes.every((node) => node.id === undefined)) &&
 						record.visibility === 'visible' &&
 						record.ref == null &&
@@ -10780,6 +10795,7 @@ class UniversalRootImpl<Container, PublicInstance>
 						...(previous.firstId === undefined ? null : { firstId: previous.firstId }),
 						prepared: program,
 						values: previousChangedNode === -1 ? previous.values : next.values,
+						...(previous.deferred === true ? { deferred: true as const } : null),
 					});
 				}
 				continue;
@@ -10887,6 +10903,7 @@ class UniversalRootImpl<Container, PublicInstance>
 					...(next.prepared === undefined
 						? null
 						: { prepared: next.prepared, values: next.values }),
+					...(previous.deferred === true ? { deferred: true as const } : null),
 				});
 			}
 		}
@@ -10932,6 +10949,7 @@ class UniversalRootImpl<Container, PublicInstance>
 					firstId: collapsed.firstId!,
 					prepared: collapsed.prepared,
 					values: collapsed.values,
+					...(collapsed.deferred === true ? { deferred: true as const } : null),
 				});
 				continue;
 			}

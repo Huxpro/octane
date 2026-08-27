@@ -434,12 +434,26 @@ export class OctaneRspackPlugin {
 				? null
 				: { requireDirective: this.options.requireDirective }),
 		};
+		// Rspack's worker pool structured-clones a loader's options, so an option
+		// carrying a live function cannot cross into a worker. Octane has exactly
+		// one such option — `mainThreadProgramBackend`, whose derive/emit pair is
+		// an in-process module object rather than a request string (issue #163) —
+		// and a build that configures one gets the serial loader instead of a
+		// build that fails at the clone. `structuredClone` is asked rather than
+		// told: it answers the same question Rspack will ask, so a future option
+		// that is not cloneable is covered without a list here to keep in sync.
+		let cloneableOptions = true;
+		try {
+			structuredClone(loaderOptions);
+		} catch {
+			cloneableOptions = false;
+		}
 		compiler.options.module.rules.push({
 			test: OCTANE_RULE,
 			type: 'javascript/auto',
 			enforce: 'pre',
 			use:
-				this.options.parallel === false
+				this.options.parallel === false || !cloneableOptions
 					? [{ loader: loaderPath, options: loaderOptions }]
 					: [
 							{ loader: finalizeLoaderPath, options: loaderOptions },
