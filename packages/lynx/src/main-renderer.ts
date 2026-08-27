@@ -170,6 +170,22 @@ interface FirstScreenProgram {
 	 * about a subtree neither can describe.
 	 */
 	rangeIds: (number | undefined)[];
+	/**
+	 * Where this program's own announcements begin in the envelope's event list,
+	 * and how many of them there are. Filled by `collectFirstScreenEvents`.
+	 *
+	 * A program's sites are announced in one contiguous pass in site order, so
+	 * the applier can read a site's listener at a position in that run instead of
+	 * searching the whole announcement for the host and then that host's list for
+	 * the type — a search whose cost is the page's, paid once per site per row, to
+	 * recover an order this walk already had (issue #163 C18).
+	 *
+	 * The count is carried too, because the run is shorter than the site list
+	 * whenever a handler prop came through undefined, and only the count says
+	 * where it ends.
+	 */
+	eventsAt: number;
+	eventsCount: number;
 }
 
 type FirstScreenNode = FirstScreenHost | FirstScreenRange | FirstScreenProgram;
@@ -268,12 +284,32 @@ function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
 		// to the background as a listener bound to no host — a tap routed nowhere,
 		// with nothing red. Freezing happens once per plan at module scope, so this
 		// is the one place the check is free.
+		//
+		// `(node, type)` naming at most one site is the second half of the same
+		// statement, and the half a consumer's addressing rests on: this renderer
+		// announces a program's sites in one contiguous pass in site order, and the
+		// applier reads each site's listener at a position in that run rather than
+		// searching for it. Two sites sharing a node and a type would make one
+		// announcement answer to both, so the second listener would be announced to
+		// the background and bound to nothing here — the same tap routed nowhere,
+		// arrived at from the other direction. The compiler already refuses to emit
+		// one — `prepareUniversalTemplateProgram` rejects the whole program — so
+		// this is that guarantee restated where the runtime can see it, for the
+		// plans that do not come from it.
+		const bound = new Set<string>();
 		for (const site of node.events) {
 			if (!Number.isInteger(site.node) || site.node < 0 || site.node >= node.nodes) {
 				throw new TypeError(
 					`A compiled main-thread program binds an event on node ${site.node}, which is not one of its ${node.nodes} nodes.`,
 				);
 			}
+			const key = `${site.node}\u0000${site.type}`;
+			if (bound.has(key)) {
+				throw new TypeError(
+					`A compiled main-thread program binds two events of type ${JSON.stringify(site.type)} on node ${site.node}; a node carries at most one listener per type.`,
+				);
+			}
+			bound.add(key);
 		}
 		// The same for a range's declared position: one outside the program's own
 		// pre-order never matches, so its members would be numbered after the
@@ -1032,6 +1068,8 @@ function renderPlanNode(node: UniversalPlanNode, values: readonly unknown[]): Fi
 				spans,
 				texts,
 				rangeIds: EMPTY_PROGRAM_IDS,
+				eventsAt: 0,
+				eventsCount: 0,
 			},
 		];
 	}
@@ -1330,66 +1368,33 @@ function collectFirstScreenEvents(
 ): number {
 	let hosts = 0;
 	for (const node of nodes) {
-		hosts += collectNodeFirstScreenEvents(node, parentVisible, attempt, events);
-	}
-	return hosts;
-}
-
-function collectNodeFirstScreenEvents(
-	node: FirstScreenNode,
-	parentVisible: boolean,
-	attempt: FirstScreenAttempt,
-	events: LynxFirstScreenResultEvent[],
-): number {
-	if (node.kind === 'program') {
-		// The program's own hosts are counted, not walked: it made exactly
-		// `plan.nodes` of them and `assignIds` already recorded which ID each
-		// took. Its event sites are a table rather than a scan, which is the
-		// same trade the emission makes everywhere — the walk happened once at
-		// build time.
-		//
-		// The value at an event site still decides, exactly as it does for an
-		// authored host: an event-named prop bound to something that is not
-		// callable installs no listener, so a program whose handler prop came
-		// through undefined announces nothing for it. Reading the slot is what
-		// keeps the two arms announcing the same bindings for the same values.
-		//
-		// Announced in the same merged order `assignProgramIds` numbers hosts:
-		// strict pre-order with each range's members spliced at the hole's
-		// position. The interpreted arm — which the background independently
-		// reproduces — mints listener ids in that order, so a program that
-		// announced its whole event table before its members would renumber
-		// every member handler that pre-order places before a later site, and a
-		// tap on one host would resolve to another's handler.
-		let hosts = node.plan.nodes;
-		const visible = parentVisible && node.visibility !== 'hidden';
-		const ranges = node.plan.ranges;
-		let hole = 0;
-		let member = 0;
-		let host = 0;
-		const total = node.plan.nodes + ranges.length;
-		for (let position = 0; position < total; position++) {
-			if (hole < ranges.length && ranges[hole]!.id === position) {
-				// A hole the create function paints is one more host on the page —
-				// the same `#text` this walk would have built for the same value —
-				// counted at the hole's position so the count agrees with the ID
-				// space `assignProgramIds` laid out. It carries no events, so the
-				// count is all it contributes.
-				if (node.texts[hole] !== undefined) {
-					hosts++;
-					hole++;
-					continue;
-				}
-				const end = member + node.spans[hole]!;
-				for (; member < end; member++) {
-					hosts += collectNodeFirstScreenEvents(node.children[member]!, visible, attempt, events);
-				}
-				hole++;
-				continue;
-			}
+		if (node.kind === 'program') {
+			// The program's own hosts are counted, not walked: it made exactly
+			// `plan.nodes` of them and `assignIds` already recorded which ID each
+			// took. Its event sites are a table rather than a scan, which is the
+			// same trade the emission makes everywhere — the walk happened once at
+			// build time.
+			//
+			// The value at an event site still decides, exactly as it does for an
+			// authored host: an event-named prop bound to something that is not
+			// callable installs no listener, so a program whose handler prop came
+			// through undefined announces nothing for it. Reading the slot is what
+			// keeps the two arms announcing the same bindings for the same values.
+			hosts += node.plan.nodes;
+			// And one more for each hole the create function paints. That node is
+			// a host on the page like any other — the same `#text` this walk would
+			// have built for the same value — so leaving it out would make this
+			// count disagree with the ID space `assignIds` just laid out, which is
+			// the one thing the count exists to match.
+			for (const text of node.texts) if (text !== undefined) hosts++;
+			const visible = parentVisible && node.visibility !== 'hidden';
+			// Recorded whether or not anything is announced, and before the walk
+			// descends: an invisible program announces nothing, and a run of zero at
+			// the position its children's announcements start is the true answer for
+			// it rather than a missing one.
+			node.eventsAt = events.length;
 			if (visible) {
 				for (const site of node.plan.events) {
-					if (site.node !== host) continue;
 					const handler = node.values[site.slot];
 					if (handler !== FIRST_SCREEN_EVENT && typeof handler !== 'function') continue;
 					events.push({
@@ -1399,25 +1404,27 @@ function collectNodeFirstScreenEvents(
 					});
 				}
 			}
-			host++;
+			node.eventsCount = events.length - node.eventsAt;
+			hosts += collectFirstScreenEvents(node.children, visible, attempt, events);
+			continue;
 		}
-		return hosts;
-	}
-	if (node.kind !== 'host') {
-		return collectFirstScreenEvents(node.children, parentVisible, attempt, events);
-	}
-	let hosts = 1;
-	const visible = parentVisible && node.visibility !== 'hidden';
-	if (visible) {
-		for (const [type, priority] of node.events) {
-			// The array is frozen once at the end; the bindings themselves are
-			// not, because unlike the batch they are never handed across a
-			// boundary — and a page with a listener on every row would pay one
-			// freeze per binding for a value only the applier next door reads.
-			events.push({ id: node.id, type, listener: { id: attempt.nextListener++, priority } });
+		if (node.kind !== 'host') {
+			hosts += collectFirstScreenEvents(node.children, parentVisible, attempt, events);
+			continue;
 		}
+		hosts++;
+		const visible = parentVisible && node.visibility !== 'hidden';
+		if (visible) {
+			for (const [type, priority] of node.events) {
+				// The array is frozen once at the end; the bindings themselves are
+				// not, because unlike the batch they are never handed across a
+				// boundary — and a page with a listener on every row would pay one
+				// freeze per binding for a value only the applier next door reads.
+				events.push({ id: node.id, type, listener: { id: attempt.nextListener++, priority } });
+			}
+		}
+		hosts += collectFirstScreenEvents(node.children, visible, attempt, events);
 	}
-	hosts += collectFirstScreenEvents(node.children, visible, attempt, events);
 	return hosts;
 }
 
@@ -1578,13 +1585,6 @@ export interface LynxFirstScreenRenderResult {
 	readonly envelope: LynxFirstScreenResultEnvelope;
 	readonly hostCount: number;
 	readonly logicalCount: number;
-	/**
-	 * How many compiled main-thread programs the tree holds. Non-zero means the
-	 * staged batch path is unavailable — reading `batch` throws — so a caller
-	 * whose direct apply is declined must decline the whole first screen rather
-	 * than fall back to a batch that cannot carry a program.
-	 */
-	readonly programs: number;
 }
 
 /** Evaluate one compiled root and produce the background-compatible initial host batch. */
@@ -1660,7 +1660,6 @@ export function renderLynxFirstScreen<Props>(
 		envelope,
 		hostCount,
 		logicalCount: attempt.nextId - 1,
-		programs,
 	});
 }
 
