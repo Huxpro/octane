@@ -459,13 +459,14 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 
 	it('detaches the painted program with one removal, not one per range member', () => {
 		// The other half of what a program owes the container, and the reason
-		// every node it returns goes into the physical ownership journal even
-		// though none of them has a record. Teardown removes the one external
-		// edge above an owned subtree and lets the host release the rest; a node
-		// missing from that journal is not recognised as owned, so its children
-		// each become their own boundary and each pay a removal. `complete` is
-		// true either way, which is exactly why this is counted rather than
-		// inferred from the page emptying.
+		// terminal cleanup walks the runs rather than only the ownership set: a
+		// program's nodes have no record and are not added to `ownedNodes`, so the
+		// run is where teardown finds them. Teardown removes the one external edge
+		// above an owned subtree and lets the host release the rest; a node the
+		// walk misses is not recognised as owned, so its children each become
+		// their own boundary and each pay a removal. `complete` is true either
+		// way, which is exactly why this is counted rather than inferred from the
+		// page emptying.
 		const { container, page, removes } = paint(true);
 		// Read before teardown empties it: the one edge that should be cut.
 		const root = (page as { children: readonly unknown[] }).children[0];
@@ -478,9 +479,9 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 		//
 		// Adoption is *background describes, main supplies the node per ID*. For an
 		// ordinary host main supplies it from a record; a program writes none, so
-		// it supplies it from the ID map the mount kept — and that map is the whole
-		// of main's contribution. There is no capture walk over the program's
-		// subtree and nothing of main's for the comparator to check the
+		// it supplies it from the run the mount kept, searched by ID — and that run
+		// is the whole of main's contribution. There is no capture walk over the
+		// program's subtree and nothing of main's for the comparator to check the
 		// background's description against, which is exactly #163's "the handoff
 		// class disappears".
 		//
@@ -864,7 +865,7 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 		//
 		// A capture describes a record by reading its physical identity back off
 		// the host, once per record. A program writes no record for any node it
-		// makes — the ID map the mount kept is what adoption resolves against
+		// makes — the run the mount kept is what adoption resolves against
 		// instead — so those hosts are described by nothing and read back for
 		// nothing. What remains is a keyed range's members where the program left
 		// the hole open, which the renderer materialized through the ordinary path
