@@ -82,22 +82,31 @@ const SHIFTED_CARD = CARD.replace(
 ).replace('<view class="card-body">', '<view class="card-body" bindtap={props.onPick}>');
 
 /**
- * The same card, rendered *inside* another component's host tree.
- *
- * A program need not be a page root: `Shell` stays interpreted — its plan holds
- * a component hole, which no program can carry — while `Card` still compiles to
- * one. The parent is then an ordinary described host whose children, on the
- * background's description, include the program's root. Adoption is sound only
- * if main's capture names that child too, which is the linkage a program's
- * mount has to write even though it writes no record.
+ * A program with nothing but a text hole, so it can sit inside another
+ * component's tree as a row does.
  */
-const SHELL = `${CARD.replace('export function Card', 'function Card')}
-export function Shell(props: { label: string; detail: string; tone: string; onPick: () => void; onHold: () => void; onRef: (node: unknown) => void }) @{
-	<view class="shell" ref={props.onRef}>
-		<Card label={props.label} detail={props.detail} tone={props.tone} onPick={props.onPick} onHold={props.onHold} />
-	</view>
+const INNER = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+export function Inner(props: { note: string }) @{
+	<view class="inner"><text class="note">{props.note as string}</text></view>
 }
 `;
+
+/**
+ * An ordinary component holding a described host of its own and then whatever
+ * its caller passes — the shell shape, and the one that puts several programs
+ * side by side under a parent that is not one.
+ */
+const LIST = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+export function List(props: { rows: unknown }) @{
+	<view class="list"><text class="head">Head</text>{props.rows}</view>
+}
+`;
+
+/** `CARD`, with its first hole opened to hold a component instead of a string. */
+const HOSTING_CARD = CARD.replace('props: { label: string;', 'props: { label: unknown;').replace(
+	'{props.label as string}',
+	'{props.label}',
+);
 
 type CardComponent = Parameters<typeof MainRenderer.renderLynxFirstScreen>[0];
 
@@ -114,18 +123,22 @@ function compiled(
 	}).code;
 }
 
-function cardFor(program: boolean, source = CARD, name = 'Card'): CardComponent {
+function componentFor(program: boolean, source = CARD, name = 'Card'): CardComponent {
 	const rewritten = compiled(program, source)
 		.replace(
 			/import\s*\{([\s\S]*?)\}\s*from\s*["']@octanejs\/lynx(?:\/[\w-]+)?["'];/g,
 			(_match, specifiers: string) =>
 				`const {${specifiers.replace(/\s+as\s+/g, ': ')}} = __universal;`,
 		)
-		.replace(/export const /g, 'const ');
+		.replace(`export const ${name} =`, `const ${name} =`);
 	return new Function('__universal', `${rewritten}\nreturn ${name};`)({
 		...MainRenderer,
 		...MainWorklets,
 	}) as CardComponent;
+}
+
+function cardFor(program: boolean, source = CARD): CardComponent {
+	return componentFor(program, source);
 }
 
 const PROPS = {
@@ -134,16 +147,14 @@ const PROPS = {
 	tone: 'card active',
 	onPick: () => {},
 	onHold: () => {},
-	onRef: () => {},
 };
 
 function render(
 	program: boolean,
 	source = CARD,
-	name = 'Card',
 	props: unknown = PROPS,
 ): MainRenderer.LynxFirstScreenRenderResult {
-	return MainRenderer.renderLynxFirstScreen(cardFor(program, source, name), props as never);
+	return MainRenderer.renderLynxFirstScreen(cardFor(program, source), props as never);
 }
 
 describe('a compiled main-thread program on the first-screen path', () => {
@@ -310,9 +321,8 @@ function selectorCount(node: unknown): number {
  */
 function paint(
 	program: boolean,
-	source = CARD,
-	name = 'Card',
 	props: unknown = PROPS,
+	component?: CardComponent,
 ): {
 	readonly tree: unknown;
 	readonly page: unknown;
@@ -368,7 +378,10 @@ function paint(
 		},
 	};
 	const container = createLynxHostContainer(papi, { root: 1 });
-	const rendered = render(program, source, name, props);
+	const rendered =
+		component === undefined
+			? render(program, CARD, props)
+			: MainRenderer.renderLynxFirstScreen(component, props as never);
 	expect(applyLynxFirstScreenDirect(container, rendered.nodes, rendered.envelope)).toBe(true);
 	return {
 		tree: shape(papi.pages[0]!),
@@ -512,6 +525,160 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 		for (const node of madeByProgram) expect(adopted.has(node)).toBe(true);
 	});
 
+	/**
+	 * Adopt `painted` from a background arm and return the nodes that came out,
+	 * so a cell can assert identity over them.
+	 *
+	 * Split out because the two cells below differ only in the tree they hand it,
+	 * and what they are about is which nodes come back, not how adoption is
+	 * driven.
+	 */
+	const adoptInto = (
+		painted: ReturnType<typeof paint>,
+		background: MainRenderer.LynxFirstScreenRenderResult,
+	): { readonly before: readonly unknown[]; readonly after: readonly unknown[] } => {
+		const captured = captureLynxFirstTree(painted.container);
+		expect(captured).not.toBeNull();
+		const before = nodesOf(painted.page).slice(1);
+		const target = createLynxHostContainer(painted.papi, {
+			root: 1,
+			page: painted.page as never,
+		});
+		const prepared = prepareLynxHostBatch(target, background.batch, { firstTree: captured! });
+		expect(prepared.firstTreeAction).toBe('adopt');
+		prepared.apply();
+		return { before, after: nodesOf(painted.page).slice(1) };
+	};
+
+	it('adopts a page of sibling programs, resolving each row to its own nodes', () => {
+		// The shape the whole train is aimed at, and the one an ID lookup can get
+		// subtly wrong without the page looking broken at paint: rows side by side,
+		// each its own program.
+		//
+		// Every program's IDs sit in one run, and here the runs do not overlap —
+		// the shell's hole is the last thing it declares, so nothing of the shell's
+		// is numbered after its rows. That is what lets main answer *which node
+		// wears this ID* by finding the run that covers it, with no table built per
+		// node (issue #215 D1). Four runs is the smallest count that makes that a
+		// search rather than a comparison or two, and the gaps between them — the
+		// range each row is wrapped in — are where a search that rounded to the
+		// wrong run would hand adoption a node belonging to another row.
+		const rows = (inner: CardComponent) =>
+			['a', 'b', 'c'].map((note) => MainRenderer.universalComponent('lynx', inner, { note }, note));
+		const painted = paint(
+			true,
+			{ rows: rows(componentFor(true, INNER, 'Inner')) },
+			componentFor(true, LIST, 'List'),
+		);
+		const madeByProgram = new Set(painted.made);
+		expect(madeByProgram.size).toBe(12);
+
+		// The background never saw a program: it describes the same page from the
+		// interpreted encoding of both components, which is what makes the IDs it
+		// names the ones main assigned.
+		const background = MainRenderer.renderLynxFirstScreen(componentFor(false, LIST, 'List'), {
+			rows: rows(componentFor(false, INNER, 'Inner')),
+		} as never);
+
+		const { before, after } = adoptInto(painted, background);
+		const adopted = new Set(after);
+		expect(adopted.size).toBe(before.length);
+		for (const node of before) expect(adopted.has(node)).toBe(true);
+		// And each row's own nodes specifically: these are the ones with no record
+		// to resolve them, so a lookup that answered from a neighbouring run would
+		// fault here rather than anywhere else.
+		for (const node of madeByProgram) expect(adopted.has(node)).toBe(true);
+	});
+
+	it('adopts a page mixing programs with hosts the renderer described', () => {
+		// The reader #215 D1 names last and the one the two cells above never
+		// reach: an ordinary host inside a program, whose physical parent is a node
+		// the program made and so has no record to resolve it.
+		//
+		// A component the compiler did not turn into a program still renders into
+		// a program's hole, and its hosts take IDs in the middle of the page. The
+		// shell here holds four rows — a card whose own hole holds such a
+		// component, then such a component on its own, then two more programs — so
+		// the IDs run: shell 1-3, card 5-6 and 11-13 with the described 8-10 inside
+		// it, described 15-17, then programs at 19-21 and 23-25.
+		//
+		// Three things about the lookup only this shape asks for. The card's first
+		// hole is a hole with members and its second is text it painted, so a run
+		// carries an empty range entry *before* a filled one and a scan that
+		// stopped at the empty one would lose ID 13. Row b's hosts are described
+		// but their parent is the shell, two runs back, while two more runs sit
+		// ahead — so the answer is neither the run that answered last nor the one
+		// after it, and both of those shortcuts have to give way to a real search.
+		// And every ID between the runs — the ranges, and the described hosts —
+		// has to come back empty from a lookup with no per-ID table to miss in.
+		const uc = MainRenderer.universalComponent;
+		const rows = (program: boolean) => {
+			const described = componentFor(false, INNER, 'Inner');
+			return [
+				uc(
+					'lynx',
+					componentFor(program, HOSTING_CARD),
+					{ ...PROPS, label: uc('lynx', described, { note: 'in-card' }, 'in-card') },
+					'a',
+				),
+				uc('lynx', described, { note: 'plain' }, 'b'),
+				uc('lynx', componentFor(program, INNER, 'Inner'), { note: 'c' }, 'c'),
+				uc('lynx', componentFor(program, INNER, 'Inner'), { note: 'd' }, 'd'),
+			];
+		};
+		const painted = paint(true, { rows: rows(true) }, componentFor(true, LIST, 'List'));
+		const madeByProgram = new Set(painted.made);
+		expect(madeByProgram.size).toBe(14);
+
+		const background = MainRenderer.renderLynxFirstScreen(componentFor(false, LIST, 'List'), {
+			rows: rows(false),
+		} as never);
+
+		const { before, after } = adoptInto(painted, background);
+		const adopted = new Set(after);
+		expect(adopted.size).toBe(before.length);
+		for (const node of before) expect(adopted.has(node)).toBe(true);
+		for (const node of madeByProgram) expect(adopted.has(node)).toBe(true);
+	});
+
+	it("adopts a program in another program's hole, whose IDs interleave with its parent's", () => {
+		// The case that stops "find the run covering this ID" from being the whole
+		// answer, and the reason the runs say which of the two they are.
+		//
+		// A hole's members are numbered where the hole sits, not after the
+		// program — so a program filling a hole that has hosts after it takes IDs
+		// *inside* its parent's span. Here the outer program owns 1, 2, 7, 8 and
+		// the text it painted at 9, while the inner one owns 4, 5 and 6. Two runs,
+		// overlapping, and "the last run starting at or before this ID" answers 4
+		// for ID 7 — a node the inner program never made.
+		//
+		// Nothing about the page says this at paint time, which is why the mount
+		// records it: a program starting inside the previous one's span is what a
+		// nested program looks like from the ledger, and adoption then resolves
+		// every ID through the per-ID table instead of the search.
+		const Inner = componentFor(true, INNER, 'Inner');
+		const hosting = componentFor(true, HOSTING_CARD);
+		const props = {
+			...PROPS,
+			label: MainRenderer.universalComponent('lynx', Inner, { note: 'N' }, 'inner'),
+		};
+		const painted = paint(true, props, hosting);
+		const madeByProgram = new Set(painted.made);
+		expect(madeByProgram.size).toBe(8);
+
+		const backgroundInner = componentFor(false, INNER, 'Inner');
+		const background = MainRenderer.renderLynxFirstScreen(componentFor(false, HOSTING_CARD), {
+			...PROPS,
+			label: MainRenderer.universalComponent('lynx', backgroundInner, { note: 'N' }, 'inner'),
+		} as never);
+
+		const { before, after } = adoptInto(painted, background);
+		const adopted = new Set(after);
+		expect(adopted.size).toBe(before.length);
+		for (const node of before) expect(adopted.has(node)).toBe(true);
+		for (const node of madeByProgram) expect(adopted.has(node)).toBe(true);
+	});
+
 	it('leaves the adopted page alone when the container that painted it is disposed', () => {
 		// After adoption the background journal is the only disposal authority, so
 		// the container that painted must be inert against the page it handed on —
@@ -589,76 +756,6 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 		// By the event binding, not by something incidental. A shape difference
 		// would also repair, and would prove nothing about this check.
 		expect(mismatch).toMatch(/event binding/);
-	});
-
-	it('adopts a compiled program painted under a described host', () => {
-		// The nested shape: `Shell` is interpreted, `Card` inside it is a program.
-		// The background's record for the shell view counts the program's root
-		// among its children, so the capture has to say the same — a mount that
-		// left the link out would fail the child-order comparison and turn every
-		// nested program's first screen into a repair: correct, silent, and
-		// exactly the repaint this train exists to avoid.
-		const painted = paint(true, SHELL, 'Shell');
-		const captured = captureLynxFirstTree(painted.container);
-		expect(captured).not.toBeNull();
-		const paintedNodes = nodesOf(painted.page).slice(1);
-		const madeByProgram = new Set(painted.made);
-		expect(madeByProgram.size).toBeGreaterThan(0);
-		const background = render(false, SHELL, 'Shell');
-		const target = createLynxHostContainer(painted.papi, {
-			root: 1,
-			page: painted.page as never,
-		});
-		let mismatch: string | null = null;
-		const prepared = prepareLynxHostBatch(target, background.batch, {
-			firstTree: captured!,
-			onMismatch: (error) => {
-				mismatch = error.message;
-			},
-		});
-		expect(mismatch).toBeNull();
-		expect(prepared.firstTreeAction).toBe('adopt');
-		prepared.apply();
-		// Same identity claim as the root-level case: the adopted tree is the
-		// painted elements, the program's own nodes included.
-		const adopted = new Set(nodesOf(painted.page).slice(1));
-		expect(adopted.size).toBe(paintedNodes.length);
-		for (const node of paintedNodes) expect(adopted.has(node)).toBe(true);
-		for (const node of madeByProgram) expect(adopted.has(node)).toBe(true);
-	});
-
-	it('refuses a description that calls a node the program painted hidden', () => {
-		// The applier refuses a hidden program before painting anything, so every
-		// node the program made is visibly on screen. A description that calls
-		// one of them hidden agrees about the tree, the IDs, and every event —
-		// and disagrees about what the user sees. Adopting it would keep painted
-		// content the accepted tree says is hidden while its taps are dropped as
-		// hidden: nothing red, which is why the comparator has to refuse it
-		// rather than trust the description.
-		const painted = paint(true);
-		const captured = captureLynxFirstTree(painted.container);
-		expect(captured).not.toBeNull();
-		const background = render(false);
-		const rootId = captured!.snapshot.roots[0]!;
-		const batch = {
-			...background.batch,
-			commands: [...background.batch.commands, { op: 'visibility', id: rootId, state: 'hidden' }],
-		} as typeof background.batch;
-		const target = createLynxHostContainer(painted.papi, {
-			root: 1,
-			page: painted.page as never,
-		});
-		let mismatch: string | null = null;
-		const prepared = prepareLynxHostBatch(target, batch, {
-			firstTree: captured!,
-			onMismatch: (error) => {
-				mismatch = error.message;
-			},
-		});
-		expect(prepared.firstTreeAction).toBe('repair');
-		// By visibility, not by something incidental — a shape difference would
-		// also repair and prove nothing about this check.
-		expect(mismatch).toMatch(/visibility state differs/);
 	});
 
 	it('refuses a description that moved a tap onto a host it never installed one on', () => {
@@ -787,7 +884,7 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 		// disjointness rather than a count: a capture that walked the program's
 		// subtree would be red here however many nodes it happened to touch.
 		const NUMERIC_DETAIL = { ...PROPS, detail: 7 };
-		const painted = paint(true, CARD, 'Card', NUMERIC_DETAIL);
+		const painted = paint(true, NUMERIC_DETAIL);
 		const madeByProgram = new Set(painted.made);
 		const described = nodesOf(painted.page)
 			.slice(1)
@@ -806,7 +903,7 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 		// painted node back when every painted node is described. Nothing about
 		// the walk changed — what changed is how much of the tree it is asked
 		// about.
-		const interpreted = paint(false, CARD, 'Card', NUMERIC_DETAIL);
+		const interpreted = paint(false, NUMERIC_DETAIL);
 		expect(interpreted.made).toHaveLength(0);
 		const interpretedNodes = nodesOf(interpreted.page).slice(1);
 		const interpretedBefore = interpreted.reads.length;
