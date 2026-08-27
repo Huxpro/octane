@@ -2521,6 +2521,121 @@ first screen only — nothing in it ever adopts, so the build is never paid in
 these numbers. A launch that goes on to adopt still pays a 210,000-entry map,
 just later than it used to. Deleting it rather than moving it is #215's D1.
 
+### Deleting the per-ID map instead of deferring it (issue #215 D1)
+
+C20 above ends by saying its `−25.9` at the capture is a deferral: the per-ID
+map still gets built, just on first read rather than at capture, and this
+profile never adopts so it never appears here at all. D1 deletes it. A mounted
+program already journals `{ids, rangeIds, nodes, owned}`, and `ids` and the
+defined entries of `rangeIds` each increase with position, so the run *is* the
+ID table — a reader can find the node for an ID by searching the runs instead of
+by remembering every node in a map.
+
+That works only when the runs do not overlap. Sibling programs — one keyed row
+each, the shape this whole train aims at — take adjacent ID spans. A program
+mounted inside another program's keyed-range member does not: `assignProgramIds`
+mints its IDs in the middle of the outer program's span, so the two spans
+interleave and a gap between runs proves nothing. The mount says which of the
+two it built, with one comparison per program, and an overlapping page falls
+back to the map it always had. Nothing is guessed and nothing is assumed flat.
+
+```bash
+BENCH_DIST_TAG=d1base BENCH_MTS_PROGRAM=1 BENCH_AUTOROWS=30000 node scripts/build-app.mjs  # on the C20 source
+BENCH_MTS_PROGRAM=1 BENCH_AUTOROWS=30000 node scripts/build-app.mjs                        # on the D1 source
+
+node stages/mts-profile.mjs --rows 30000 --reps 15 --interval 100 \
+	--cells octane-mts-program,octane-mts-program-d1base \
+	--control-dist d1base --label c215-d1-index
+```
+
+The control is built from `2257993a9`, the C20 head, and its digest
+`0cc9fa75a42227e7` is byte-identical to the `octane-mts-program` bundle C20
+measured — so this A/B and C20's read the same baseline bytes.
+
+| main-thread script | D1 | `d1base` | Δ |
+|---|---:|---:|---:|
+| renderer pre-passes | 73.5 [66.4–101.2] | 75.2 [67.2–89.8] | −1.7 |
+| program mount | 73.6 [64–81.3] | 71.1 [61.1–81.9] | +2.5 |
+| event bookkeeping | 52 [39.6–60.8] | 50 [41.4–62] | +2.0 |
+| applier entry and pre-walk | 34.9 [30.7–43] | 33.7 [29.2–38.9] | +1.2 |
+| applier walk | 25.8 [22.2–30.2] | 25.3 [20.9–30.9] | +0.5 |
+| compiled program create | 21.4 [17.4–27.7] | 20.8 [17.2–24.5] | +0.6 |
+| first-screen entry | 7.9 [6.5–12.9] | 8.6 [5.6–11.9] | −0.7 |
+| papi facade | 2.1 [1.6–4.3] | 2.7 [1.3–4.1] | −0.6 |
+| first tree capture | 1.1 [0.4–1.6] | 1 [0.7–2.3] | +0.1 |
+| named total | 295 [263.8–331.9] | 292.8 [261.8–320.8] | +2.2 |
+| **all frames** | **319 [290.3–359.2]** | **320.3 [282.4–348.5]** | −1.3 |
+
+**This table is a guard, not the result.** Every interval overlaps its
+counterpart, which is what it was run to show: D1's saving is on the adoption
+side, and a first-screen profile ends before the background's batch arrives, so
+there is no window here in which a map is built or read. What this rules out is
+the other direction — that paying for the disjointness decision at mount cost
+something. `results/c215-d1-index-30000.json`.
+
+The one row that is D1's own is inside `program mount`:
+
+| source site | D1 | `d1base` |
+|---|---:|---:|
+| `core/host-driver.ts mountProgram` | 73 [63.8–81.1] · 2 frames | 71.1 [61.1–81.9] · 2 frames |
+| `core/first-screen.ts programRunLastId` | **0.2 [0–0.8]** | 0 [0–0] |
+
+That is the whole mount-side price of the decision at 30,000 programs, and the
+control's `0 [0–0]` is a function that is not in that build rather than a branch
+it did not take. The probe is new in this slice, and it had to be: the helper
+had no string literal of its own, so before it existed those samples fell into
+the `compiled program create` fallback — the same C15–C17 defect of a bucket
+reporting a function that is not the one it names. The mount-side and
+capture-side copies of the helper were also textually identical once minified,
+which no probe could have separated; they are now one exported function, which
+is why the site can name a single file.
+
+**Adoption still adopts, at scale.** The guard above cannot show that, because
+nothing in it adopts. `prototype/adoption-probe.mjs` can: it tags every row
+element at first paint and counts survivors after a hold, so a repaired tree
+keeps none of them and an adopted one keeps all.
+
+```bash
+node prototype/adoption-probe.mjs --rows 30000
+# octane               painted=30000 after=30000 survivors=30000 → ADOPTED
+# octane-mts-program   painted=30000 after=30000 survivors=30000 → ADOPTED
+```
+
+30,000 of 30,000 program rows resolved to their own nodes through the run search
+with no map in the process. A single wrong answer would have declined the
+adoption and repainted the page, and the count would have gone to zero rather
+than drifting.
+
+**What this is worth, computed rather than measured.** No instrument here can
+see the adoption window (see *Background work, and why no other column can see
+it*), so the saving is priced from the primitive costs in
+`results/m196-m15-ledger-primitives.json` (issue #196 M1.5) rather than claimed
+from a profile. At 30,000 rows the bench row is `view + 3×text`, so the map C20
+defers holds 210,000 entries:
+
+| what changes | unit cost on V8 | at 30,000 rows |
+|---|---:|---:|
+| `Map.set` building the table | ~110 ns/op at this table size | ~23 ms, deleted |
+| a lookup: `Map.get` hit | ~55 ns net of the build | replaced |
+| a lookup: array reads in the run | 6.9 ns/op each, ≤7 per run | ~4–10× cheaper |
+| `programRunLastId` at mount | — | +0.2 ms, measured above |
+
+Those are V8 numbers and they are context only: they are never spendable on a
+device decision, which is #196's own rule and the reason M1.5 exists. The
+growing-hash-table rows are additionally flagged `NOT LINEAR` in that record —
+cost per op climbs with the table's size, so they are read at the size the
+ledger actually reaches rather than as one slope across sizes it never is.
+
+The D1 bundle is 522,648 bytes against the control's 521,394: **+1,254 bytes**
+of search code to delete a 210,000-entry table at runtime.
+
+**What this does not say.** No device cell was run for this slice, so #215's
+oracle — the `mountProgram` bucket's median at 1k on the #194 harness, and
+10,000 rows completing without an ART reference-table overflow — is untouched
+here and stays open. The web arithmetic above predicts the shape of the saving,
+not its size on LepusNG, where a Map hit and an array read are priced by an
+interpreter rather than by a JIT.
+
 ## 8. Bookkeeping primitive costs (`stages/ledger-primitives.mjs`, on demand)
 
 Issue #196 asks for a cost model: what one `Map.set`, one array read, one frozen

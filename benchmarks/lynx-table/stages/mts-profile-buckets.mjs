@@ -198,6 +198,19 @@ export const BUCKETS = Object.freeze([
 		probe: '"identity.root"',
 		where: 'core/native-events.ts encodeCheckedLynxNativeEventToken',
 	},
+	// Issue-#215 D1 gave the mount a second question to ask per program — does
+	// this run start after the previous one ended — and its answer comes from a
+	// helper `mountProgram` calls. Without a probe that lands in the
+	// `compiled program create` fallback below, which would report D1's own cost
+	// as emitted program code. The helper is shared with the adoption-side
+	// readers precisely so this probe names one function; a first screen never
+	// adopts, so in this instrument only the mount's call can appear, and a
+	// second frame here would say otherwise.
+	{
+		bucket: 'program mount',
+		probe: '.rangeIds.length-1',
+		where: 'core/first-screen.ts programRunLastId',
+	},
 	{
 		bucket: 'element factory dispatch',
 		probe: 'case"raw-text":',
