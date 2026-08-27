@@ -1525,6 +1525,121 @@ Three things follow, and the third is why no patch went with this record.
   cleanup, adoption and the ownership equality to satisfy, not a constant to
   lift out of a loop.
 
+### What the program mount is actually spending, at 30,000 rows (issue #163 C11)
+
+C9 named `program mount` the largest single bucket in the program cell, and the
+one whose share grows with the row count; C10 ablated the per-row event journal
+and moved it 14.8 ms with overlapping ranges, which left it unexplained. This
+ladder explains it. Four builds of the same app ran in one window — control,
+and three arms each deleting one thing from `mountProgram` — because two
+records of identical bundles disagree by up to 9% on the whole-script median,
+which is larger than the rungs being separated
+(`results/c163-c11-mount-30000.md`).
+
+Every arm is wrong on purpose and none was committed. Two of them delete a
+journal the container cross-checks and stub the check that would have caught
+it, which is exactly what makes them ceilings rather than candidates: the
+ownership equality counts both journals against each other, so removing either
+one deletes a check rather than a cost.
+
+| arm | what it deletes from the shipping source |
+|---|---|
+| `mountctl` | nothing — byte-identical to the shipping `+mts-program` build |
+| `mountj` | both ownership journals: `ownedNodes.add` **and** `programNodes.set`, for every program node and every painted range text |
+| `mountl` | only `programNodes.set`, keeping `ownedNodes.add` — so `mountj` minus `mountl` is the ownership `Set` alone |
+| `mountk` | the per-site token preparation: the `eventsByHost` lookup and the linear `.find` over that host's announced listeners |
+
+| main-thread script @30,000 | control | `mountj` | `mountl` | `mountk` |
+|---|---:|---:|---:|---:|
+| program mount | 196.9 [178.9–211.0] | 87.7 [82.3–90.6] | 140.0 [138.3–145.8] | 130.9 [126.7–151.1] |
+| renderer pre-passes | 63.0 [58.7–73.8] | 66.3 [64.9–74.9] | 66.1 [62.4–69.1] | 68.8 [66.5–75.6] |
+| event bookkeeping | 37.9 [34.7–41.9] | 36.5 [32.5–38.5] | 35.5 [34.9–39.5] | 0.0 [0.0–0.0] |
+| applier entry and pre-walk | 30.9 [29.3–33.2] | 30.8 [24.7–37.2] | 33.4 [32.1–35.3] | 31.3 [29.3–39.7] |
+| first tree capture | 26.1 [21.1–29.1] | 0.0 [0.0–0.0] | 0.0 [0.0–0.0] | 21.7 [21.1–41.4] |
+| applier walk | 22.3 [21.3–25.9] | 21.9 [19.4–25.6] | 22.6 [19.8–27.8] | 20.8 [19.7–27.3] |
+| compiled program create | 20.5 [17.5–26.4] | 23.1 [18.4–25.0] | 24.9 [20.7–26.2] | 13.0 [10.1–14.2] |
+| first-screen entry | 4.6 [3.5–6.1] | 5.0 [3.9–6.1] | 5.9 [3.6–6.8] | 5.3 [4.9–7.1] |
+| host record building | 2.6 [2.3–3.8] | 2.1 [1.6–3.0] | 2.8 [1.6–3.4] | 2.0 [1.7–3.6] |
+| element factory dispatch | 0.0 [0.0–0.2] | 0.0 [0.0–0.2] | 0.0 [0.0–0.2] | 0.0 [0.0–0.2] |
+| unnamed by the probe table | 21.8 [21.4–23.7] | 22.7 [20.4–24.7] | 23.2 [22.2–24.1] | 23.7 [19.7–24.5] |
+| **all frames** | **421.5 [406.5–452.5]** | **299.3 [282.8–310.9]** | **356.3 [347.2–361.9]** | **313.9 [307.4–362.8]** |
+
+The arms all read a few milliseconds high in buckets they do not touch —
+`renderer pre-passes` moves +3.3 to +5.8 — so the whole-script delta is smaller
+than the sum of the buckets each arm aimed at. The aimed-at buckets are the
+attribution; the whole-script delta is the value.
+
+#### What the mount's 196.9 ms is
+
+| part of `mountProgram` | ms @30,000 | share of the bucket | per operation |
+|---|---:|---:|---|
+| the ID map, `programNodes.set` | 56.9 | 29% | 0.27 µs × 210,000 writes |
+| the ownership `Set`, `ownedNodes.add` | 52.3 | 27% | 0.25 µs × 210,000 writes |
+| the per-site token lookup | 66.0 | 34% | 1.10 µs × 60,000 sites |
+| everything else it does | 21.7 | 11% | the argument array, the validations, the attach frame |
+
+The benchmark's `Row` compiles to a plan of 5 nodes, 2 event sites and 2 keyed
+ranges, so a mount writes 5+2 entries into each journal per row — 210,000 into
+each at this scale, into structures that end the first screen holding that
+many. Read that way the two halves cost the same per write, 0.27 µs against
+0.25 µs, which is what a hash insert costs and not what a loop costs.
+
+Four things follow.
+
+- **The mount is attributed.** The journals account for 109.2 ms and the token
+  lookup for 66.0 ms of the bucket's 196.9 ms — 89% of it. Every one of those
+  three arms has a `program mount` range disjoint from control's.
+- **The largest single cost on this first screen is a journal, and it is an
+  invariant.** Deleting both halves takes 122.2 ms off the cell's 421.5 ms
+  script, 29%, with disjoint whole-script ranges — and none of it is for sale.
+  `host-driver.ts` checks `ownedNodes.size` against `records.size -
+  logicalNodes.size + programNodes.size` precisely because the two journals are
+  written from one loop and can only be trusted against each other. Collapsing
+  either deletes the check. What the number is for is bounding a
+  *representation* change, which is a different question and one this ladder
+  does not answer.
+- **The first tree capture is a second copy of the same map.** `first tree
+  capture` falls from 26.1 ms to 0.0 in both arms that empty `programNodes`,
+  and the only thing in that function proportional to the program is `new
+  Map(state.programNodes)` — 210,000 entries copied so the capture survives the
+  container clearing its own map. The two arms also stub that function's
+  ownership equality and its page-root resolution, which are a size comparison
+  and a loop over the page's single root. The copy is 26.1 ms, 0.12 µs an
+  entry.
+- **Events cost 107.6 ms end to end, 26% of the script** — 66.0 in the mount
+  preparing tokens, 37.9 in `event bookkeeping` encoding and journalling them,
+  and 7.5 in `compiled program create` — the `setEvent` calls the program stops
+  making, plus the `.find` predicate that the hoisted shape credits to that
+  bucket, which this arm is the only one to bound. C10 priced the journal half
+  at 47.0 ms in its own window; this window prices the whole of it.
+
+The token lookup is the one part of the mount with no invariant behind it. What
+it spends is not the map lookup: the predicate `([type]) => type === site.type`
+allocates a closure per site per row and destructures each candidate entry,
+which is an iterator walk per comparison over an array that holds exactly one
+element in this app. The candidate is an explicit loop and an index — same
+answer, same journal, no allocation — and it is an A/B rather than a claim
+until it is measured beside a control in one window.
+
+#### The probe this ladder broke, and what that says about the instrument
+
+`mountk`'s first run reported `program mount` at 0.0 ms with 154 ms of new
+`unmatched`. The bucket had not moved; its probe had. Frames are named by the
+string literals near their entry, and the minifier decides how near: when the
+per-site loop body closes over its site it is hoisted into a helper at the
+function's start, which puts the event message 82 characters in, and when the
+ablation removed that closure the hoist went with it and the message landed
+1051 characters in — past the 160-character window the table can afford without
+neighbouring functions reaching each other.
+
+So the probe table's own claim, that a probe stops matching only when its
+message changes, was too strong: a probe also stops matching when minification
+moves the function's entry away from it. `program mount` now carries a second
+entry probe, and both name the mount frame whose unnamed callee is the compiled
+create, so the bucket survives either shape. The defect was visible at all
+because `unmatched` is reported rather than folded away — the run that found it
+is kept at `results/c163-c11-probe-defect-30000.md`.
+
 ## Claims and non-claims
 
 Command counts and commit bytes are Octane-owned costs and are gated. The
