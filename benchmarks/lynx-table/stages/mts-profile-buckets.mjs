@@ -160,14 +160,19 @@ export const BUCKETS = Object.freeze([
 		where: 'core/papi.ts createPage',
 	},
 	// Issue-#215 D3 stopped the mount writing a journal entry per event site, so
-	// on a program cell this probe should now find nothing: the two functions
-	// that derive those entries — `programNodeEvents` and
-	// `materializeProgramEvents` — run at hand-over and at terminal cleanup, and
-	// this instrument's window closes at first paint, before either. That is the
-	// A/B this bucket reads, and it is also why neither carries a probe of its
-	// own: a frame from them here would be a claim about the window, not about
-	// them. `materializeProgramEvents` would still land in this entry if one ever
-	// did, because it asks the same question this names.
+	// in the paint window this probe should find nothing on a program cell: the
+	// functions that derive those entries run at hand-over and at terminal
+	// cleanup, and the paint window closes before either. That is the A/B this
+	// bucket reads.
+	//
+	// It used to close before *every* window, and this comment used to conclude
+	// from that that those functions could not carry probes of their own — a
+	// frame from them would be a claim about the window rather than about them.
+	// D7 opened the second window and removed the premise: they are sampled now,
+	// so they are named now, under `deferred event journal` at the end of this
+	// table. `materializeProgramEvents` still has no probe and would still land
+	// here if a frame from it ever appeared, because it asks the same question
+	// this entry names.
 	{
 		bucket: 'event bookkeeping',
 		probe: '.nativeEvents.get(',
@@ -335,6 +340,206 @@ export const BUCKETS = Object.freeze([
 		bucket: 'renderer pre-passes',
 		probe: '"spread"===',
 		where: 'main-renderer.ts prop bag builder',
+	},
+	// --- the adoption window (issue #215 D7) --------------------------------
+	//
+	// Everything above is reachable while the main thread paints. Everything
+	// below runs after it, in the second window a profile cell now opens: the
+	// background's commit arrives, is validated, prepared, compared against what
+	// was painted, adopted, and handed over. None of it could be sampled before
+	// this slice, so none of it carried a probe; all of it is the same code the
+	// paint window already had no reason to enter.
+	//
+	// They sit here, at the end, for a reason that is checked rather than
+	// assumed: `probeOf` returns the first match, so an entry appended after
+	// every existing one cannot take a frame an existing one already named. A
+	// discovery run bucketed all 96 frames it sampled twice, once against the
+	// table as it stood and once against the table with these appended, and no
+	// frame changed hands — 31 were named that had been unnamed, and nothing
+	// else moved.
+	{
+		bucket: 'inbound validation',
+		probe: '"commit.batch"',
+		where: 'core/protocol.ts assertBatch',
+	},
+	{
+		// `fail(label, 'must be an object.', …)` — the double quote and the comma
+		// are what separate the transport's own asserts from the host driver's,
+		// which spell the same words inside a template literal and end with a
+		// backtick. Three sampled frames share it: the general `record`, the
+		// per-command one `assertBatch` inlines with a constant label, and the
+		// loop body that wraps it. All three are this bucket, so the reach is
+		// between entries that agree rather than between buckets that do not.
+		bucket: 'inbound validation',
+		probe: 'must be an object.",',
+		where: 'core/protocol.ts record and the assertBatch command loop',
+	},
+	{
+		bucket: 'inbound validation',
+		probe: 'is missing field ${JSON.stringify(',
+		where: 'core/protocol.ts exactKeys',
+	},
+	{
+		bucket: 'inbound validation',
+		probe: 'validatedStaticProps',
+		where: 'core/protocol.ts assertProps',
+	},
+	{
+		// The trailing comma again, and for the same reason: the host driver
+		// throws these words too, from a template, and `native-events.ts` has its
+		// own already named above under `event bookkeeping`.
+		bucket: 'inbound validation',
+		probe: 'must be a positive safe integer.",',
+		where: 'core/protocol.ts assertPositiveSafeInteger',
+	},
+	{
+		bucket: 'inbound validation',
+		probe: 'Octane Lynx transport ',
+		where: 'core/protocol.ts fail',
+	},
+	{
+		bucket: 'main-thread receive',
+		probe: 'was already disposed.',
+		where: 'main-thread.ts handleCommitExclusive',
+	},
+	// What the main thread computes so the background can learn what its handles
+	// became: the public state of each one, the create/upsert deltas built from
+	// it, and the list the ack carries. It is the largest thing in this window
+	// that is neither validation nor preparation, and it is work the paint window
+	// never does, because nothing has asked yet.
+	{
+		bucket: 'handle delta',
+		probe: 'listDescendant:!1}',
+		where: 'core/host-driver.ts getLynxHostPublicState',
+	},
+	{
+		bucket: 'handle delta',
+		probe: '{op:"create",handle:',
+		where: 'core/host-driver.ts materializeHandleDelta',
+	},
+	{
+		bucket: 'handle delta',
+		probe: '{op:"upsert",id:',
+		where: 'main-thread.ts publicHandleUpsert',
+	},
+	{
+		bucket: 'handle delta',
+		probe: '.handleDelta)',
+		where: 'main-thread.ts the ack handle list',
+	},
+	{
+		bucket: 'batch preparation',
+		probe: 'cannot prepare a batch for a disposed root.',
+		where: 'core/host-driver.ts prepareLynxHostBatch',
+	},
+	{
+		bucket: 'batch preparation',
+		probe: '"mount-template-range"!==',
+		where: 'core/host-driver.ts prepareLynxHostBatch command loop',
+	},
+	{
+		// The adoption filter itself: on `adopt` the loop runs only the
+		// `ensure-public-instance` operations, because the rest of the tree is
+		// already on screen. `compareFirstTree` names the same string, but with
+		// `!==`, so the comparator cannot be reached from this probe.
+		bucket: 'batch preparation',
+		probe: '"ensure-public-instance"===',
+		where: 'core/host-driver.ts prepareLynxHostBatch adoption replay',
+	},
+	{
+		bucket: 'batch preparation',
+		probe: '.portalChildren.keys()',
+		where: 'core/host-driver.ts prepareLynxHostBatch portal pass',
+	},
+	{
+		bucket: 'batch preparation',
+		probe: 'for #text must contain a string value',
+		where: 'core/host-driver.ts assertTextProps',
+	},
+	{
+		bucket: 'batch preparation',
+		probe: 'references unavailable host ',
+		where: 'core/host-driver.ts nodeFor',
+	},
+	{
+		bucket: 'batch preparation',
+		probe: 'would create a cycle.',
+		where: 'core/host-driver.ts assertNoCycle',
+	},
+	// The question D5 made answerable and D7 makes measurable: does the tree the
+	// background described match the one the main thread painted. Both probes are
+	// `compareFirstTree`'s own — the format check it opens with, and the node
+	// path it composes seventeen times while walking. Nothing else in the bundle
+	// spells either.
+	{
+		bucket: 'first-tree comparator',
+		probe: '"snapshot.format"',
+		where: 'core/host-driver.ts compareFirstTree',
+	},
+	{
+		bucket: 'first-tree comparator',
+		probe: 'snapshot.nodes[${',
+		where: 'core/host-driver.ts compareFirstTree node walk',
+	},
+	{
+		bucket: 'adoption apply',
+		probe: 'cannot apply a batch while root cleanup',
+		where: 'core/host-driver.ts prepared.apply(), both prepare paths',
+	},
+	{
+		bucket: 'adoption apply',
+		probe: '.logicalNodes.has(',
+		where: 'core/host-driver.ts transferFirstTree',
+	},
+	{
+		// D3's moved work, and the only bucket here that exists to be re-priced
+		// rather than to account for a window. D3 stopped the mount writing a
+		// journal entry per event site and left three accessors to answer from
+		// the plan when something finally asks; this is what they cost when it
+		// does. One probe names all three because they are one accounting line,
+		// not three: `programNodeEvents` in the host driver, and
+		// `programRunEventCount` and `programRunEventToken` in `first-screen.ts`.
+		//
+		// The semicolon is load-bearing. `.plan.events` also appears in the
+		// renderer's announce pass and in `materializeProgramEvents`, which
+		// continue `)` and `.length`; only the three accessors open a statement
+		// with it. `programEventBindings`, which `programNodeEvents` calls, is
+		// named by `event bookkeeping` above and is reached before this entry.
+		bucket: 'deferred event journal',
+		probe: '.plan.events;',
+		where:
+			'core/host-driver.ts programNodeEvents, core/first-screen.ts programRunEventCount and programRunEventToken',
+	},
+	// The by-ID lookups the comparator and the journal both address a run
+	// through. Their own bucket rather than either caller's, because a total
+	// folded into one of them would be a claim about who asked, and this
+	// instrument cannot see that.
+	{
+		bucket: 'program index',
+		probe: '.rangeIds.length;',
+		where: 'core/first-screen.ts programRunNode',
+	},
+	{
+		bucket: 'program index',
+		probe: 'this.cursorLastId',
+		where: 'core/first-screen.ts LynxDisjointProgramIndex.runFor',
+	},
+	{
+		bucket: 'hand-over',
+		probe: 'is malformed.',
+		where: 'core/native-events.ts decodeLynxNativeEventToken',
+	},
+	// Not the framework: the profile build's own counter, injected by
+	// `stages/instrument-source.mjs` and present in no shipping build. It is
+	// named so that the part of a profile cell's window belonging to the
+	// instrument is a row rather than a share of `unnamed`. The PAPI method
+	// wrappers the same patch installs are not named — they are one-expression
+	// closures with no literal of their own — so this row is a floor on the
+	// instrument's cost, not its total, and the unnamed list shows the rest.
+	{
+		bucket: 'stage instrument',
+		probe: '.papiCreateMs=',
+		where: 'stages/instrument-source.mjs profilePapiCreate',
 	},
 ]);
 

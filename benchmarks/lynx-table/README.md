@@ -1357,6 +1357,11 @@ measures, and this run carries no uninstrumented control beside it. What is
 reportable is the shape: which function owns the script, and how the cells
 compare on one axis. Wall clocks come from `papi-run.mjs`.
 
+A cell built with `OCTANE_LYNX_PROFILE=1` is profiled through a **second** window
+as well, from settled paint until the first tree is adopted or repaired and
+handed over, reported as its own bucket group. That window and what it cost to
+open are *The window past first paint* below.
+
 ### Reading past a frame names the wrong function
 
 The probe window is 160 characters from a frame's own position, and that number
@@ -2789,6 +2794,283 @@ here and stays open. Nothing here measures the adoption window either, so the
 work D3 moved into it is unpriced in both directions: this record can say what
 left the first screen and cannot say what arrived after it (see *Background work,
 and why no other column can see it*).
+
+### The window past first paint, and what D3 actually moved into it (issue #215 D7)
+
+D3 moved work out of the first screen, and then said the thing that made this
+slice necessary: **nothing measures where it landed**. §7's window closes at
+settled paint, so a slice that defers work reads as a pure saving no matter what
+the deferral costs on the other side. C20, D1 and D3 all defer something. This
+opens the second window and re-prices D3 through both.
+
+#### Two windows, one run, two profiles
+
+The driver takes two consecutive `Profiler.start`/`stop` pairs against the same
+page. The first runs from attach to settled paint and is byte-identical to the
+window every record above was taken in — no C-record changes meaning. The second
+runs from settled paint until the first tree's lifecycle finishes.
+
+Two profiles rather than one profile split by timestamp, because several
+functions run in *both* windows — `host record building` most obviously — and
+splitting one profile by time would mean asserting that Chromium's profiler
+clock and `performance.timeOrigin + performance.now()` share a base. They need
+not, and an off-by-a-base split would silently move frames between windows
+instead of failing.
+
+The second window ends when the framework says the tree is settled, which the
+framework now records rather than the harness guessing: `firstTreeAction`
+(`adopt`, `repair`, `none`), a `firstTreeSettled` counter, and `handOverMs`. The
+distinction the counter exists for is that **an adoption is not settled by the
+commit that decided it**. `prepareLynxHostBatch` answers `adopt`, `prepared.apply()`
+transfers, and the hand-over — `drainNativeEvents`, `releaseFirstTree`,
+`activateFirstTreeCapabilities`, `openBackgroundCalls` — runs a message later,
+when `adoption-ready` arrives. A repair settles on the commit; an adoption does
+not. Both markers sit behind `LYNX_PROFILE`, so a shipping build has neither the
+counters nor the window, and a profile cell apportions its own window and
+compares only to another profile cell's.
+
+Every new callee owes a probe (C15–C17), so the probe table grew from 43 entries
+to 70, in ten buckets that did not exist: `inbound validation`, `main-thread
+receive`, `handle delta`, `batch preparation`, `first-tree comparator`, `adoption
+apply`, `deferred event journal`, `program index`, `hand-over`, and `stage
+instrument`. The new entries are **appended**, and the report checks that: every
+frame the paint window named before still lands in the bucket it landed in
+before, because `probeOf` returns the first match and a later entry cannot take a
+frame an earlier one already claims. Bucketing all 96 sampled frame positions
+against the old and new tables gives `entries 43 → 70; existing prefix unchanged;
+duplicate probes 0; stolen 0`. The adoption window's unnamed share is about 10 ms
+at 1,000 rows, against the 96.2 ms it would have been with the paint window's
+table alone.
+
+#### Re-pricing D3 with both windows open
+
+Two bundles, one window, differing only in D3. The control arm is an **ablation**
+built from the current tree rather than a checkout of D3's parent, so both arms
+carry D5, D6 and D7's markers and the only difference between them is D3:
+
+```bash
+# control arm: D3 reverted in the working tree, into app/dist-mtsprogram-d3control-*
+OCTANE_LYNX_PROFILE=1 BENCH_DIST_TAG=d3control BENCH_MTS_PROGRAM=1 \
+	BENCH_AUTOROWS=30000 node scripts/build-app.mjs
+# …then the revert dropped, and the treatment arm built untagged from the same tree.
+OCTANE_LYNX_PROFILE=1 BENCH_MTS_PROGRAM=1 BENCH_AUTOROWS=30000 node scripts/build-app.mjs
+
+node stages/mts-profile.mjs --rows 30000 --reps 5 \
+	--cells octane-mts-program-profile,octane-mts-program-d3control-profile \
+	--control-dist d3control --label d215-d7-adoption-window
+```
+
+The bundles are 536,099 and 534,811 bytes: **+1,288 bytes**, the same figure D3's
+own record reports for its arm, which is the cheapest available check that the
+ablation removed D3 and nothing else. 30,000 rows is the scale D3's own record
+used. Five reps per cell, interleaved `h c c h h c c h h c`, so the arms sit at
+mean positions 5.4 and 5.6 in the run and a monotone load ramp cannot produce a
+one-sided offset. `results/d215-d7-adoption-window-30000.{json,md}`.
+
+**The paint window**, median [min–max] ms:
+
+| paint window | D3 | ablation | delta | intervals |
+|---|---:|---:|---:|---|
+| `event bookkeeping` | 11.7 [10.0–13.8] | 47.3 [46.2–54.5] | **−35.6** | **disjoint** |
+| `program mount` | 55.7 [49.1–56.9] | 63.1 [54.4–66.6] | −7.4 | overlap |
+| named total | 320.3 [300.8–340.1] | 369.7 [336.2–394.2] | −49.4 | overlap |
+| all frames | 371.7 [355.3–397.1] | 425.1 [386.4–452.5] | −53.4 | overlap |
+
+**The adoption window**:
+
+| adoption window | D3 | ablation | delta | intervals |
+|---|---:|---:|---:|---|
+| `batch preparation` | 405.1 [393.2–439.4] | 374.2 [349.6–402.2] | +30.9 | overlap |
+| `inbound validation` | 315.1 [299.0–324.2] | 297.7 [288.1–317.5] | +17.4 | overlap |
+| `handle delta` | 138.0 [124.1–144.0] | 132.2 [124.4–135.4] | +5.8 | overlap |
+| `host record building` | 137.9 [109.3–145.1] | 122.5 [111.9–129.3] | +15.3 | overlap |
+| `adoption apply` | 107.6 [98.7–137.8] | 97.6 [96.4–103.1] | +10.0 | overlap |
+| `event bookkeeping` | 47.6 [38.4–53.3] | 38.6 [37.6–47.2] | +9.0 | overlap |
+| `main-thread receive` | 39.5 [37.0–51.1] | 40.5 [35.6–41.1] | −1.0 | overlap |
+| `first-tree comparator` | 34.9 [29.4–44.5] | 66.2 [65.4–69.2] | **−31.3** | **disjoint** |
+| `deferred event journal` | 19.1 [18.8–27.8] | — | **+19.1** | **structural** |
+| `hand-over` | 17.9 [15.9–18.8] | 17.6 [15.0–21.3] | +0.3 | overlap |
+| `program index` | 11.8 [11.2–15.2] | 10.6 [9.0–13.0] | +1.3 | overlap |
+| named total | 1276.9 [1249.7–1352.7] | 1215.7 [1158.9–1230.7] | +61.2 | disjoint |
+| all frames | 1543.7 [1470.0–1627.3] | 1461.4 [1389.1–1462.5] | +82.3 | disjoint |
+
+And the framework's own walls, which it measures itself and this instrument only
+samples:
+
+| framework wall | D3 | ablation |
+|---|---:|---:|
+| `prepareLynxHostBatch` | 987.7 [869.6–1035.6] | 912.7 [902.1–1574.0] |
+| `prepared.apply()` | 378.9 [369.4–1026.2] | 347.4 [319.4–355.0] |
+| hand-over | 0.1 [0.0–0.2] | 0.0 [0.0–0.1] |
+| paint → settled | 5208.2 [5025.3–5351.0] | 5277.0 [4962.6–5970.3] |
+
+Both arms adopt, at 30,000 rows, on every rep.
+
+#### The offset floor, stated before anything is claimed against it
+
+The paint window has none: across the eight buckets D3 does not touch, four move
+up, three move down and one does not move, summing to **−3.8 ms on a 257 ms base
+(−1.5%)**. A delta in that window is the change or it is nothing.
+
+The adoption window has one. Across the eleven buckets D3 does not touch, **nine
+are higher on the D3 arm**, summing to **+89.2 ms on a 1,135 ms base (+7.9%)** —
+`batch preparation` +30.9 alone, where nothing whatsoever changed. Every one of
+those intervals overlaps, so no single bucket is a result; nine of eleven sharing
+a sign is not noise either. **This is the floor. Nothing in the adoption window
+is claimable unless it survives an 8% one-sided offset**, which is why the two
+rows this record does claim are the two whose intervals are disjoint.
+
+It also cuts the right way for the one negative finding: correcting the D3 arm
+down by 7.9% makes `first-tree comparator` −33.9 rather than −31.3. The offset
+cannot be what produced it.
+
+#### Deleted versus moved, and the death of 3.4×
+
+D3 predicted, from M1.5 and before measuring, **~10–12 ms deleted** and **~16–17 ms
+moved** out of the paint window. It then measured 56.4 ms leaving the paint
+window, called that **3.4×** the computed figure, and named allocation pressure
+as the leading hypothesis for the gap while saying plainly it was a hypothesis.
+
+Both halves of that comparison were wrong, in opposite directions.
+
+**The denominator was the moved half only.** Deleted work leaves the paint window
+too — that is what deleting it does. The figure 56.4 ms should have been divided
+by 10–12 *plus* 16–17, that is 27–29 ms, for **2.0×**. Nothing measured had to
+change for 3.4× to be wrong; it was arithmetic.
+
+**The numerator does not reproduce.** This run measures 35.6 ms leaving from
+`event bookkeeping` — which agrees with D3's own 37.6 for the same bucket — and
+7.4 ms from `program mount`, against D3's 18.8. The bucket that agrees is the one
+whose intervals are disjoint; the mount row's overlap, so on this run the mount
+is not a result at all. **43.0 ms if the mount row is taken, 35.6 ms if only what
+is established is, against 27–29 ms predicted: 1.2× to 1.5×.**
+
+The two arm constructions disagree by 11.4 ms on the mount row for the same
+ablation, and this record cannot say which is right. What it can say is that a
+paint-window figure with an 11 ms construction-dependence and a 1.2–1.5× residual
+does not need a hypothesis with a 3× multiplier in it.
+
+**Allocation pressure is dead as the explanation for the paint window**, on two
+counts. There is no longer a 3.4× to explain. And the effect D3 proposed —
+120,000 objects no longer allocated before paint, their collection charged to
+whichever frame is running — is a *broad* effect, so it would show up as the
+paint window's untouched buckets getting cheaper on the D3 arm. They do not: four
+up, three down, −1.5% overall.
+
+What D3's own numbers do support is the moved half. The bucket that holds
+everything D3 added to the adoption window is **19.1 ms against a 16–17 ms
+prediction**, and its control is a structural absence rather than a zero — none
+of those functions exist in the ablated bundle. **The moved prediction holds at
+1.2× or better.** "Or better" because the bucket is an upper bound, for the
+reason in the next section.
+
+#### The comparator got 12 to 31 ms cheaper, in a window D3 could not see
+
+`compareFirstTree`'s own self time is **66.1 ms on the ablation and 34.7 ms on
+D3**, one frame each, and D3's record does not mention the comparator at all. The
+mechanism is in D3's diff: the walk used to ask `sourceState.nativeEvents.get(programNode)`
+once per program node — an object-keyed `Map` get against the 60,000-entry table
+the mount used to build, about 120,000 times at 30,000 rows — and now asks the
+program's run instead.
+
+The clean statement is a band, not a number, because the four functions D3 put in
+the comparator's place share one probe with the one function it put at the
+transfer. `deferred event journal` is `programNodeEvents` — the moved allocation,
+which runs inside `prepared.apply()` — together with `programRunEventCount` and
+`programRunEventToken`, which run inside the comparator's loop. One probe,
+`.plan.events;`, four frames, 19.1 ms. The split is not measured, so:
+
+- charge **all** 19.1 ms to the comparator: it is **−12.3 ms** inclusive, and the
+  moved allocation is ~0;
+- charge **none** of it to the comparator: it is **−31.4 ms**, and the moved
+  allocation is 19.1 ms against 16–17 predicted.
+
+Both bounds hold for every split, and they trade against each other: whichever
+way the 19.1 divides, the comparator's saving and the moved allocation's cost sum
+to the same thing. Splitting that probe into three is the follow-up, and it is
+cheap — three entries where there is one.
+
+The band matters because of what it is not. M1.5 prices the comparator's swap at
+**at most ~4.5 ms**: about 120,000 object-keyed `Map` gets at 44.8 ns — the bench
+row is a `view` and three `text` children, so 30,000 rows are 120,000 program
+nodes — less the array index read that replaced them at 6.9 ns. At most, because
+the replacement also computes a position per node, and every nanosecond of that
+makes the predicted saving smaller and the ratio below larger. Measured, it is 12.3 to 31.4 ms — **2.7× to 7.0×**.
+And **nothing about allocation changed there**: no object is allocated, freed or
+frozen differently in `compareFirstTree` on either arm. So the same under-pricing
+D3 saw on its deleted line appears again on a line where the hypothesis D3
+reached for cannot apply.
+
+That points the residual mispricing at the other mechanism D3 named and never
+separated from allocation: **an object-keyed `Map` on a table of tens of thousands
+of entries, read while a tree of the same size is being walked, costs a multiple
+of what a tight monomorphic loop over the same table measures.** M1.5's loop
+allocates nothing else and walks nothing else; that is its value and its limit.
+This is now the standing hypothesis in allocation's place, it has two independent
+instances rather than one, and it is falsifiable by an M1.5 cell that interleaves
+the table with a walk — which #196 can add without a browser.
+
+#### Where D3 lands, across both windows
+
+| | named delta |
+|---|---:|
+| paint window, `event bookkeeping` (disjoint) | −35.6 |
+| paint window, `program mount` (overlapping, not established) | −7.4 |
+| adoption window, comparator and its replacements (disjoint pair) | −12.3 |
+| adoption window, everything D3 does not touch (+7.9% offset, unattributed) | +89.2 |
+
+D3's own work is cheaper in both windows. The adoption window as a whole is not,
+and this record cannot say whether that is deferred allocation finally being
+charged where it belongs, 1,288 bytes of code changing layout, or something else.
+The offset is 4.7 ms per hundred and it is one-sided; that is all it is. Pinning
+it still needs the allocation-counting instrument D3 said this harness does not
+have, and D7 does not add one — it adds the window such an instrument would have
+to report into.
+
+#### Two things this instrument got wrong in its own first record
+
+Named rather than fixed, because fixing either is a second measurement window and
+the slice gets one.
+
+**The `hand-over` bucket is not the hand-over.** Its only entry is
+`decodeLynxNativeEventToken`, at 17.9 ms — while the framework's own hand-over
+wall, in the same run, is **0.1 ms**. The cross-check the report prints for
+exactly this reason fires on the first record the instrument produced. The
+function has two callers: `resolveLynxHostNativeEvent`, which is the dispatch
+path and never runs here because nothing taps anything, and `compareFirstTree`
+line 5083, which runs 60,000 times. All 17.9 ms is the comparator's. A probe
+names a function, not a call site, so the fix is to rename the bucket rather than
+to claim a caller — and to name the hand-over by the four functions that actually
+are it, which the wall already prices at 0.1 ms, so there is next to nothing
+there to sample. The band above is unaffected: the decode is 17.9 against 17.6,
+present on both arms, and it cancels.
+
+**A bucket that matches nothing vanishes instead of reporting zero.** The site
+tables print `0` for a probe that matched no frame, precisely so that a probe
+which stopped matching looks different from a branch nothing took. The bucket
+table does not: it renders `—`, the same glyph it uses for a cell that has no
+adoption window at all. In this record `deferred event journal | — |` happens to
+mean the honest thing — those functions are not in the ablated bundle — but the
+report does not distinguish that from a probe that broke.
+
+#### What this does not say
+
+The instrument's own cost is now a row rather than a share of `unnamed`:
+**`stage instrument` is 69.9 ms of the paint window's 371.7 at 30,000 rows**, 19%
+of it. That row names `profilePapiCreate` and not the PAPI method wrappers, so it
+is a floor on the instrument's cost, not a total. The two windows are still
+sampled milliseconds under a profiler with no uninstrumented control beside them;
+what is reportable is shape and the comparison of two cells on one axis.
+
+Paint → settled is **5.2 s** at 30,000 rows, of which about 1.5 s is main-thread
+script. The other 3.7 s is the background describing the tree and the transport
+carrying it, neither of which this instrument samples. `prepared.apply()` shows a
+369–1026 ms spread on the D3 arm across five reps of identical work, which is its
+own unexplained thing and not D3's.
+
+No device cell was run for this slice. #215's oracle — the `mountProgram` bucket's
+median at 1,000 rows on the #194 harness, and 10,000 rows completing without an
+ART reference-table overflow — is untouched here and stays open.
 
 ## 8. Bookkeeping primitive costs (`stages/ledger-primitives.mjs`, on demand)
 
