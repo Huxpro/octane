@@ -1,0 +1,35 @@
+{
+  "schema": "octane.lepus-cost.invalid-window.v1",
+  "issue": "https://github.com/Huxpro/octane/issues/196",
+  "protocol": "https://github.com/Huxpro/octane/issues/194",
+  "phase": "M2-Q2-invalid-crossing-timeout",
+  "status": "invalid",
+  "window": null,
+  "device": {
+    "serial": "aic-i18n-bd-fullport.byteintl.net:36527",
+    "model": "aries_10",
+    "android": "10",
+    "abi": "arm64-v8a"
+  },
+  "engine": {
+    "name": "LepusNG",
+    "lepusVersion": "2.3.0",
+    "appBundleEngineVersion": "3.9",
+    "lynxSdkVersion": "4.0"
+  },
+  "scale": {
+    "rows": 30000,
+    "arm": "program"
+  },
+  "bundles": {
+    "q2-template-30000.lynx.bundle": "64257d5963c22e9ab05b8fb179502108bc6286dbb64af552e9f78919c92b474a",
+    "q2-program-30000.lynx.bundle": "deb09b8f0354d3f27c20fffaf18db8a1ba863d161633165cf4e7ccb59eaaec0c"
+  },
+  "observer": "M1-matched crossing surrogate with no per-call clock",
+  "failure": {
+    "reason": "The pilot arm did not reach its terminal marker after more than five minutes and was force-stopped.",
+    "exactWindowUnavailable": "The controller writes timestamps and samples only after a complete window; the interrupted pilot produced no result file. Approximate durations are diagnostic only."
+  },
+  "fullSamples": [],
+  "spendable": false
+}

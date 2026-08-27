@@ -164,3 +164,7 @@ dist-redact
 # committed bytes differ from what the generators produce.
 benchmarks/lynx-table/mts-block/programs.json
 benchmarks/lynx-table/mts-block/lepus-root.generated.js
+
+# Issue-#196 device records and derived model. M2 pins byte-exact SHA-256 inputs,
+# so formatting a checked-in result would invalidate the frozen prediction.
+benchmarks/lynx-table/stages/results/lepus-cost-*.json
