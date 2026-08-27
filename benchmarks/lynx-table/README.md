@@ -1816,6 +1816,487 @@ shape C11's second probe was added for — and the check is kept at
 `results/c163-c13-probecheck-30000.md`. `unnamed` is 23.1 and 23.0 ms in the two
 arms, so no bucket quietly stopped matching.
 
+### The buckets split into the functions they fold (issue #163 C14)
+
+C10 through C13 attributed the program mount by ablating it: build an arm that
+deletes a line, measure what leaves. That works on a frame you already suspect,
+and it costs a build, a window and a fold hazard each time. It says nothing
+about the rest of the script. This slice attributes the rest by reading it. No
+arm, no ablation, so no fold hazard to size — one window over the two shipping
+cells, `octane` and `octane-mts-program`, at 30,000 rows
+(`results/c163-c14-sites-30000.md`).
+
+The obstacle was the instrument. A bucket is a probe-table entry, not a
+function, and five of the rows in §7's table name more than one — `host record
+building` names seven, `renderer pre-passes` six. A row that wide says which
+file the script is in and nothing about what it is doing there, which is exactly
+the question left after the mount. `foldProfile` now keys the same samples by
+each probe's `where` as well as by its `bucket`, and the report renders a
+sub-table for every row that folds more than one site. Two probes sharing a
+`where` are two entrances to one function, so keying by `where` folds them back
+together; the bucket totals are unchanged by construction, because every named
+frame lands in exactly one of each.
+
+The report **refuses rather than rounds**. Both maps come from one pass over one
+set of frames, so a site no bucket lists, or a bucket whose sites do not sum to
+it, is a defect in the instrument and not a property of the run: either throws
+instead of printing. The paragraph naming the widest bucket is derived from the
+table rather than written beside it — while it was hardcoded it named the wrong
+one.
+
+#### A site is a claim about the source, not a measurement of it
+
+A `where` says which function the time belongs to, and a probe wide enough to
+reach two neighbouring functions names both. The site then reads as one
+function's cost while holding several — the same failure as an over-broad
+bucket, one level down, and the failure §7's window calibration already exists
+to prevent one level up. So each cell also reports how many distinct frame
+positions its probe actually matched, unioned across every reading.
+
+**One frame is a site whose total is a single function's. More is a total
+shared, and only the source settles which:** two entrances the minifier made to
+one function look exactly like two functions a wide probe reached. The count
+does not decide that. It is printed so the number cannot be read as one
+function's cost before someone has.
+
+That is not a hypothetical. Widening this instrument is what exposed it: the
+`.plan.` probe folds three distinct functions in the program cell, two of which
+sit **67 characters apart** — well inside the 160-character window, and far
+closer than the 258 characters §7's calibration note cites as the closest
+neighbouring pair. `node normalization` folds five frames in `octane` and two in
+the program cell. Reporting the count is the general fix; narrowing those probes
+is the next slice, and until it lands their totals stay shared.
+
+#### The same bytes, a second window
+
+The program cell here and C11–C13's `mountctl` control are the same bundle:
+digest `381fe0ab988a479c`, 520,098 bytes, built once and measured in two windows
+half an hour apart. So the two records are a repeatability check on the
+instrument, and it holds — every bucket agrees within noise:
+
+| main-thread script @30,000 | C13 `mountctl` | C14 `octane-mts-program` |
+|---|---:|---:|
+| program mount | 208.9 | 204.6 |
+| renderer pre-passes | 67.2 | 68.2 |
+| event bookkeeping | 39.4 | 39.8 |
+| applier entry and pre-walk | 34.1 | 33.4 |
+| compiled program create | 24.0 | 24.3 |
+| applier walk | 23.9 | 23.2 |
+| first tree capture | 22.5 | 23.9 |
+| **all frames** | **455.9** | **452.0** |
+
+That is what licenses reading a C14 site total beside a C12 or C13 ablation
+delta at all. They remain different kinds of number — a site total is self time
+in the shipping build, an ablation delta is what leaves when a line is deleted —
+and a comparison between them is an order-of-magnitude one, not an arithmetic
+one.
+
+#### What the split says at 30,000 rows
+
+`applier entry and pre-walk` and `event bookkeeping` are single-frame throughout,
+so every number in them is one function's:
+
+| source site | `octane` | `octane-mts-program` |
+|---|---:|---:|
+| `applyLynxFirstScreenDirect` | 93.4 [83.2–112.4] | 28.2 [20.7–31.5] |
+| `firstScreenTreeHasList` | 10.1 [8.9–12.3] | 4.7 [3.8–5.8] |
+| `nativeEventMap` | 29.8 [25.7–35.1] | 30.8 [25.6–35.5] |
+| `events.ts token encode` | 7.2 [5.4–10.7] | 9.0 [6.1–11.7] |
+| `parseLynxNativeEventProp` | 14.5 [10.8–17.7] | 0.0 [0–0] |
+
+**`nativeEventMap` does not move.** 29.8 ms in `octane`, 30.8 in the program
+cell. The program removes 396 ms of applier walk, 254 ms of record building,
+93 ms of first-tree capture and all 14.5 ms of prop parsing, and leaves this
+bucket's largest site exactly where it was — it is the first named frame on the
+program's first screen that the program's whole architecture does not touch. At
+30.8 ms it is the same order as the mount lines C12 and C13 priced, and no
+ablation was ever pointed at it, which is why no earlier slice surfaced it.
+
+`token encode` reads 9.0 ms here against the 21.9 ms C12 charged to minting.
+The two are consistent rather than contradictory: C12's arm removed the minting
+work from *the mount's own frame*, where the callee is inlined, and this site is
+what stays attributed to `events.ts` itself.
+
+`host record building` is the bucket the program nearly deletes — 256.3 → 2.5 ms
+— and the split says what of it dies: `cloneProps` 85.5, `textValue` 58.8,
+`createHandle` 49.3, `planLynxHostPropPatch` 38.2, `selector install` 8.7 and
+`handle-selector guards` 0.9, every one to 0.0, with only `emitHostNode`
+surviving, at 2.5 from 14.4. `cloneProps` alone is the largest single function
+the program removes at this scale.
+
+`program mount` is 204.6 ms over **2 frames** — the two minifier entrances C11
+documented and added its second probe for — so the mount's total is confirmed
+whole rather than split across a probe that stopped matching.
+
+`renderer pre-passes` is the row this slice most wanted and least got:
+
+| source site | `octane` | `octane-mts-program` |
+|---|---:|---:|
+| `program id count and assignment` | 38.4 · 2 frames | 29.4 · 3 frames |
+| `node normalization` | 32.4 · 5 frames | 14.3 · 2 frames |
+| `recursive prop freeze` | 33.3 · 2 frames | 14.2 |
+| `prop bag builder` | 6.7 | 6.4 |
+| `first-screen host and text factories` | 39.9 · 3 frames | 2.2 |
+| `template create and prop freeze` | 0.0 | 0.0 |
+| **all sites** | **154.9** | **68.2** |
+
+At 68.2 ms this is the second-largest named frame in the program cell now that
+the mount is attributed, and the split moves it from one number to six. But its
+two largest sites are shared totals — 3 frames and 2 frames — so neither is yet
+a function's cost, and saying otherwise is the error this instrument was just
+taught to report. **22.8 ms of the row is readable today**: `recursive prop
+freeze` 14.2, `prop bag builder` 6.4, `first-screen host and text factories` 2.2,
+all single-frame in this cell. **43.7 ms sits in the two shared sites** —
+located, not attributed.
+
+Frame counts are per cell, and the same row shows why: `first-screen host and
+text factories` folds three frames in `octane` and one in the program cell,
+because the program never enters the other two. A count of one is a statement
+about what this cell ran, not about how wide the probe is.
+
+#### Four of these names were wrong — corrected in C15
+
+The frame count above catches a probe that folds several functions. It cannot
+catch a probe that names *one* function and names the wrong one, and C15 found
+four of those by printing the source at each frame. Read the numbers in this
+section with the corrections below, which C15 measured in its own window:
+
+- `parseLynxNativeEventProp` is `installNativeEvent`, which *calls* the parse
+  and the encode. So "the program removes all 14.5 ms of prop parsing" above is
+  wrong: it removes the install path, and the parse and encode it called still
+  run, from the mount.
+- `recursive prop freeze` at 14.2 in the program cell was the **template
+  create**, whose probe the freeze's was shadowing. The freeze itself is 0.0
+  there.
+- `compiled program create` 24.3 is mostly not the emitted create: four of its
+  six frames are the checked encoder, the real parse, a PAPI facade and the
+  mount's own `find` predicate.
+- `first-screen host and text factories` 2.2 in the program cell is one frame
+  and it is neither factory — it is a neighbouring arrow the probe reached.
+
+`nativeEventMap`, `applyLynxFirstScreenDirect`, `assignIds`,
+`assignProgramIds`, `collectFirstScreenEvents` and `prop bag builder` survive
+the audit unchanged, and the section's headline — that `nativeEventMap` does not
+move — is one of them.
+
+#### What this licenses, and what it does not
+
+It licenses design work against `nativeEventMap` (30.8 ms, single-frame,
+untouched by the program) and `applyLynxFirstScreenDirect` (28.2 ms,
+single-frame). It licenses none against `program id count and assignment` or
+`node normalization` until their probes are narrowed, however tempting their
+totals look: a shared total is a location, not a cost.
+
+Nothing here is an ablation, so nothing here is a ceiling on a removal. These
+are the shipping build's own numbers, and no patch has taken any of them.
+
+### The probe table was naming functions that are not there (issue #163 C15)
+
+C14 made every site say how many frames its probe matched, and closed by naming
+the next job: narrow the two probes whose totals were shared. Narrowing them was
+the easy half. The hard half is what turned up on the way.
+
+`.plan.` folded three `main-renderer.ts` functions into one site. It is now
+three probes — `assignIds`, `assignProgramIds`, `collectFirstScreenEvents` —
+each occurring **exactly once in the whole bundle** against `.plan.`'s 26, and
+none of them appearing in either of the others' windows. Each reads one frame in
+both cells, and `assignProgramIds` reads exactly **0.0 in the cell that runs no
+program**, which is the semantic check on the split rather than a coincidence.
+
+#### The count catches sharing; only the source catches a wrong name
+
+A frame count says a site holds more than one function. It cannot say that a
+site holding exactly one function is holding the *wrong* one — a probe is
+matched against minified text, and a `where` naming a function that is not there
+reads exactly like a `where` that is right. Nothing checks it at match time.
+
+So the record now prints the source at every site the run entered, not only the
+shared ones. That is a smaller change than C14's and it found considerably more:
+
+| the label said | the source at the frame says |
+|---|---|
+| `core/events.ts token encode` | `core/native-events.ts encodePrevalidatedLynxNativeEventToken` |
+| `core/selectors.ts handle-selector guards` | `core/nodes-ref.ts assertPositiveSafeInteger` |
+| `core/host-driver.ts parseLynxNativeEventProp` | `core/host-driver.ts installNativeEvent` |
+
+**Neither `core/events.ts` nor `core/selectors.ts` exists in this repository.**
+Both labels had been carried since the site was added, through six records, and
+`stages/mts-profile.test.mjs` now fails if any `where` names a file the
+repository does not have — a test whose failing case is the state this table
+shipped in.
+
+The third is not a spelling difference. `installNativeEvent` *calls*
+`parseLynxNativeEventProp` and `encodeCheckedLynxNativeEventToken`, so C14's
+"the program removes all 14.5 ms of prop parsing" was reporting the removal of
+the install path. The parse and the encode it called still run in the program
+cell — they were landing in `compiled program create`, below.
+
+#### A probe that shadows the function enclosing it
+
+`main-renderer.ts template create and prop freeze` read **0.0 in every record
+from C9 through C14**, in every cell, which reads as a branch nothing took.
+
+It is not. The template create returns a recursive freeze nested inside it,
+beginning 53 characters later, so `Object.isFrozen(` sits inside both functions'
+windows while `"template"===` sits inside only the outer one's. Listed first,
+the freeze took the create's samples and left the create at zero. Checked in the
+other order each frame is named by its own function, and the site is 15.2 ms in
+the program cell — where the freeze itself is then 0.0, because the program does
+not recurse-freeze anything.
+
+A test pins the pair against both real windows. Reversing the order fails it.
+
+#### The calibration note was measured on two functions, not on the bundle
+
+`PROBE_WINDOW`'s comment claimed the closest neighbouring pair in the measured
+bundle — the applier's `visit` and `mountProgram` — is 258 characters apart, and
+concluded that a 160-character window cannot cross a function boundary. The
+bundle is far denser than that pair. Real spacings between *sampled* frames:
+
+| gap | between |
+|---:|---|
+| 39 | three `children.push` methods and the key reader after them |
+| 53 | the template create and the freeze nested inside it |
+| 67 | `assignIds` and `assignProgramIds`, inlined into one comma sequence |
+
+So no window carries the guarantee, and the comment now says so. What carries it
+is each probe being text unique to its own function, plus the record printing
+every site's frame count and source so a probe that does reach past its function
+shows as a shared site rather than as a clean number. Widening the window is
+still the worse failure: at 420 characters every `visit` sample was credited to
+`mountProgram`, and the cell carrying no compiled program at all reported the
+run's largest program-mount cost.
+
+#### What the corrected window says at 30,000 rows
+
+n=15, both shipping cells, same bundles as C14 (`results/c163-c15-sites-30000.md`).
+
+| main-thread script | `octane` | `octane-mts-program` |
+|---|---:|---:|
+| applier walk | 460.2 | 24.8 |
+| host record building | 247.7 | 2.5 |
+| program mount | 0 | 214.1 |
+| renderer pre-passes | 157.4 | 69.2 |
+| first tree capture | 122.5 | 27.4 |
+| applier entry and pre-walk | 108.7 | 32.8 |
+| event bookkeeping | 57.0 | 42.3 |
+| first-screen entry | 33.1 | 5.2 |
+| compiled program create | 0 | 24.9 |
+| element factory dispatch | 10.1 | 0 |
+| unnamed by the probe table | 66.1 | 23.6 |
+| **all frames** | **1265.9** | **466.1** |
+
+This window runs 3% hotter than C14's on the program cell and 5% on `octane`,
+on the same bytes — it is a different window, not a different build — and every
+bucket keeps its shape.
+
+**`nativeEventMap` still does not move**: 32.2 in `octane`, 32.8 in the program
+cell, now with a label the audit confirms. C14's headline survives.
+
+`event bookkeeping` reads correctly for the first time:
+`encodePrevalidatedLynxNativeEventToken` 7.1 / 8.7, and `installNativeEvent`
+17.3 / **0.0** — the program removes the whole install path, which is a
+different and smaller claim than removing the parsing.
+
+`renderer pre-passes` at 69.2 ms in the program cell now splits eight ways:
+
+| source site | `octane` | `octane-mts-program` |
+|---|---:|---:|
+| `collectFirstScreenEvents` | 23.3 | 16.9 |
+| `template create and prop freeze` | 7.9 · 2 frames | 15.2 · 2 frames |
+| `node normalization` | 33.5 · 5 frames | 14.5 · 2 frames |
+| `assignIds` | 19.3 | 7.8 |
+| `prop bag builder` | 5.9 | 6.4 |
+| `assignProgramIds` | 0 | 4.0 |
+| `first-screen host and text factories` | 40.2 · 3 frames | 2.4 |
+| `recursive prop freeze` | 26.5 | 0 |
+| **all sites** | **157.4** | **69.2** |
+
+**35.1 ms of the row is one function each and correctly named**:
+`collectFirstScreenEvents` 16.9, `assignIds` 7.8, `prop bag builder` 6.4 and
+`assignProgramIds` 4.0, with `recursive prop freeze` reading 0.0 because the
+program never enters it. `collectFirstScreenEvents` is the largest single
+readable function in the program's pre-passes, and it is the first thing on this
+row worth designing against.
+
+#### What is still wrong, named rather than fixed
+
+Four sites carry frames that are not what their label says. They are reported
+with their source in the record and left for the next slice, because each needs
+a probe designed against the bundle rather than a rename:
+
+- **`compiled program create` 24.9 ms is mostly not the emitted create.** It is
+  a fallback rule — an unnamed frame whose caller is a program mount — and it
+  caught six frames, of which only 1:224270 and 1:225919 are emitted code. The
+  other four are `parseLynxNativeEventProp`, `encodeCheckedLynxNativeEventToken`,
+  a PAPI facade tail, and the mount's own `find` predicate. Each has a probe
+  that does not reach from its own frame's start.
+- **`first-screen host and text factories` in the program cell is one frame and
+  it is neither factory** — 1:10233 is a neighbouring arrow the probe reached
+  forward into. A one-frame site is not the same as a correct one.
+- **`node normalization`** folds five frames in `octane`: the two real
+  normalizers plus three `children.push` methods whose windows run 39 characters
+  into the key reader after them. In the program cell it is the two real ones.
+- **`emitHostNode` in the program cell is one frame, and it is a `papi.ts`
+  facade object** — so that cell's whole `host record building` number, 2.5 ms,
+  is the wrong function.
+
+None of this changes a bucket total: every one of these frames is inside the
+bucket its row already reported, and `unnamed` did not move. What changes is
+which function inside the bucket the time belongs to, which is the entire point
+of a split.
+
+### The instrument stopped naming functions that are not there (issue #163 C16–C17)
+
+C15 corrected four labels and named four more it could not fix with a rename.
+C16 fixes those, the run that measured the fix found two further mislabels — one
+of them introduced by C16's own probes — and C16's own record then turned out to
+have been printing the evidence for one more. So the record comes in three
+parts: a first window measured with C16's intermediate table, kept as
+`results/c163-c16-labels-30000.{json,md}`; C16's final
+`results/c163-c16-sites-30000.{json,md}`; and C17's
+`results/c163-c17-sites-30000.{json,md}`, which is the window this section's
+table comes from.
+
+#### What the four remaining sites really were
+
+- **`compiled program create` was mostly not the compiled create.** It is a
+  fallback rule — a frame the table does not name whose caller is a program
+  mount — and it was catching four framework functions along with the two
+  emitted ones: `parseLynxNativeEventProp`, `encodeCheckedLynxNativeEventToken`,
+  a PAPI facade method, and the mount's own `.find` predicate. Each now carries
+  a probe, so the fallback reaches only frames that really are emitted code.
+- **`emitHostNode` was naming a function in another file.** Its probe was
+  `setCssId(`, and the PAPI facade declares a `setCssId` wrapper 161 characters
+  into the same object literal that declares `setClasses` — so a sample in
+  `setClasses` carried the probe. `cssScope.value` occurs twice in the bundle
+  and both are `emitHostNode`'s own arguments.
+- **`first-screen host and text factories` folded a function that is neither.**
+  The thunk `renderComponent` hands to `withOwner` sits 67 characters before
+  `TEMPLATE_ENV` and reached its `h` factory. It is now `renderComponent`, and
+  the two factories are `textNode` and `TEMPLATE_ENV.h` separately.
+- **`node normalization` was five frames and two of the names were wrong.** It
+  folded `normalizeProps` and `materialize`, which share nothing but a `$$kind`
+  test, plus `TEMPLATE_ENV`'s three child appenders reaching 39 characters
+  forward into the key reader after them. All five are now their own site.
+
+#### The run that fixed them found two more
+
+Neither was visible to C15, because C15's window never sampled the frames:
+
+- **`template create and prop freeze` folded three unrelated functions** — the
+  plan constructor `universalPlan`, the validator `freezePlanNode` it calls, and
+  `renderTemplate`, which executes a compiled create. They share nothing but
+  testing `kind === 'template'`, which is what the probe matched.
+- **`"identity.root"` reached backwards into an assert.** `native-events.ts`
+  declares its own `assertPositiveSafeInteger` 99 characters before the encode
+  whose arguments it checks. **This one is C16's own defect**: the probe that
+  needed separating is a probe C16 added, and the record that showed the site at
+  two frames is the record measuring C16's own first table.
+
+#### And a count the record had been printing since C14 named one more
+
+C14 taught the record to say, per site, how many distinct frame positions its
+probe matched. `element factory dispatch` has come back at **two frames in
+`octane` and one in the program cell** in every record since — and the mislabel
+survived C15's audit and C16's. C17 is that count finally being read.
+
+Reading the source at both positions settles it. `1:157802` is the PAPI facade's
+`createPage` wrapper and `1:157829` is the `createElement` type switch declared
+27 characters after it, which makes them the closest neighbouring pair of
+sampled frames in this bundle — closer than the 39 the appenders sit at. **In
+the program cell the only frame that bucket ever sampled is the wrapper**, so
+its 0.0 read as a free type switch when the switch had not been entered at all.
+
+`createPage` now carries `,createElement(`, which occurs once in the bundle.
+That separates the pair in one direction only: the text cannot be seen from the
+switch's own window, which starts after it, but the switch's `case"raw-text":`
+is 57 characters into the wrapper's window. So the entry is ordered ahead of
+`element factory dispatch`, and the test watches the names and the order
+together.
+
+#### Order is the fallback when uniqueness cannot be had
+
+Every probe here occurs once in the bundle wherever that was possible. Where a
+function's window necessarily contains a neighbour's text — a nested function,
+or a run of one-line methods declared back to back — the table falls back on
+order, because `probeOf` returns the first entry that matches. Six runs now
+depend on it and each says so where it sits: the plan constructor before the
+validator it encloses, the render before the freeze nested in it, the component
+thunk before the template env it abuts, `TEMPLATE_ENV`'s `t`, `s`, `a` in source
+order, the assert before the encode that calls it, and the page wrapper before
+the type switch declared after it. Order is the weaker tool — it is invisible at
+the call site, and a reordering edit moves time between two names without making
+any number look implausible — so it is used only where uniqueness is impossible,
+and a test pins each run.
+
+#### What the corrected window says at 30,000 rows
+
+`results/c163-c17-sites-30000.{json,md}`, n=15, the same two bundles by digest as
+C14, C15 and C16.
+
+| bucket | `octane` | `octane-mts-program` |
+|---|---:|---:|
+| applier walk | 435.0 | 23.0 |
+| host record building | 242.5 | **0.0** |
+| program mount | 0.0 | 202.3 |
+| renderer pre-passes | 151.8 | 64.4 |
+| first tree capture | 118.5 | 28.8 |
+| applier entry and pre-walk | 102.6 | 32.1 |
+| event bookkeeping | 57.3 | 46.0 |
+| first-screen entry | 31.9 | 6.6 |
+| compiled program create | 0.0 | 13.9 |
+| element factory dispatch | 10.0 | **0.0, over zero frames** |
+| papi facade | 8.3 | 2.9 |
+| **all frames** | **1212.0** | **440.3** |
+
+- **`host record building` in the program cell is 0.0, not the 2.5 C14 and C15
+  reported.** All seven of its sites are zero. That 2.5 was the PAPI facade's
+  `setClasses` wrapper, in another file; C16's window is where it left. The
+  program does not shrink host record building, it removes it.
+- **`element factory dispatch` in the program cell is zero over zero frames.**
+  The one frame that bucket ever sampled there was `createPage`, now its own
+  site, so the type switch is not a function that ran and cost nothing — it is a
+  function the run never entered. Those are different facts, and printing a site
+  at 0.0 rather than dropping it is what keeps them apart.
+- **`compiled program create` is 13.9 over the two emitted frames**, against
+  24.9 over six in C15's window — the four framework functions are out of it.
+  That is a 44% drop where the two windows differ by 5.5% on the program cell's
+  whole-script median, so most of it is the re-attribution rather than the
+  window. The bucket's own frames are unchanged: both windows enter the same two
+  emitted creates.
+- **`papi facade` is a bucket now**, 8.3 and 2.9: real time that was being read
+  as `emitHostNode` in one cell, as emitted code in the other, and as the element
+  type switch in both.
+- **The mount's `.find` predicate is 4.9 ms**, which is what it was adding to
+  `compiled program create`. `isProgramMountFrame` said this overstatement
+  existed and could not bound it; now it is a number.
+- **`renderer pre-passes` 64.4 splits sixteen ways and every site is one named
+  function.** In the program cell: `collectFirstScreenEvents` 14.9,
+  `renderTemplate` 14.0, `materialize` 13.8, `assignIds` 8.2, `prop bag builder`
+  5.8, `assignProgramIds` 3.7, `renderComponent` 2.2, the rest 0.0.
+- **`nativeEventMap` holds at 31.3 / 30.7**, single-frame in both cells, four
+  windows running. It is still the frame the program's architecture does not
+  touch.
+
+Every site in the record is one named function, with two kinds of exception the
+source section makes visible: `mountProgram` at two frames, which are one
+function's two entrances, and three `where` values that name a plural on purpose
+— `visit and pushChildren`, `papi facade methods`, and `emitted main-thread
+program create`, which is the two creates the compiler emitted and the only site
+with no source name to give.
+
+#### What this licenses, and what it does not
+
+Nothing here is an ablation, so nothing here is a ceiling on a removal. No
+`packages/` file changed. Absolute milliseconds from this instrument stay
+non-reportable; wall clocks come from `stages/papi-run.mjs`.
+
+What it does license is that a design slice can now name its target without
+first having to prove the name. The program cell's remaining script is
+`mountProgram` 198.1, `renderer pre-passes` 64.4, `event bookkeeping` 46.0 — of
+which `nativeEventMap` is 30.7 — and `applier entry and pre-walk` 32.1.
+
 ## Claims and non-claims
 
 Command counts and commit bytes are Octane-owned costs and are gated. The

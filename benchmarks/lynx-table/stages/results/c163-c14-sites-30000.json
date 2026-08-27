@@ -1,0 +1,813 @@
+{
+  "meta": {
+    "date": "2026-08-26T15:30:43.956Z",
+    "node": "v22.22.2",
+    "cpus": 4,
+    "cpuModel": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "platform": "linux",
+    "release": "6.18.44-fc-v21",
+    "chromium": null,
+    "rows": 30000,
+    "reps": 15,
+    "samplingIntervalUs": 100,
+    "cells": ["octane", "octane-mts-program"],
+    "bundles": {
+      "octane": {
+        "path": "app/dist-rows30000/main.web.bundle",
+        "bytes": 518125,
+        "digest": "e7ea8b39b7b1f8c4",
+        "modified": "2026-08-26T12:01:49.422Z"
+      },
+      "octane-mts-program": {
+        "path": "app/dist-mtsprogram-rows30000/main.web.bundle",
+        "bytes": 520098,
+        "digest": "381fe0ab988a479c",
+        "modified": "2026-08-26T12:44:19.671Z"
+      }
+    },
+    "loadStart": [0.2, 0.55, 0.87],
+    "loadEnd": [1.53, 1.28, 1.1]
+  },
+  "cells": {
+    "octane": {
+      "buckets": {
+        "renderer pre-passes": {
+          "n": 15,
+          "min": 138.787,
+          "max": 174.48,
+          "mean": 153.89426666666665,
+          "median": 154.868,
+          "std": 9.498789308585009,
+          "ci95": 4.807050632700952
+        },
+        "applier entry and pre-walk": {
+          "n": 15,
+          "min": 92.344,
+          "max": 123.251,
+          "mean": 104.31259999999999,
+          "median": 103.506,
+          "std": 7.089828750165034,
+          "ci95": 3.5879483871086246
+        },
+        "first-screen entry": {
+          "n": 15,
+          "min": 25.886,
+          "max": 36.833,
+          "mean": 30.679333333333336,
+          "median": 29.976,
+          "std": 3.2407437966546437,
+          "ci95": 1.6400426424924082
+        },
+        "applier walk": {
+          "n": 15,
+          "min": 402.07,
+          "max": 513.717,
+          "mean": 432.8217333333333,
+          "median": 419.35,
+          "std": 30.169614520720817,
+          "ci95": 15.267931507765892
+        },
+        "host record building": {
+          "n": 15,
+          "min": 227.98,
+          "max": 287.81,
+          "mean": 257.1756,
+          "median": 256.292,
+          "std": 17.50447353411883,
+          "ci95": 8.858485838951374
+        },
+        "event bookkeeping": {
+          "n": 15,
+          "min": 45.97,
+          "max": 59.647,
+          "mean": 52.56413333333333,
+          "median": 52.844,
+          "std": 3.8999650402991506,
+          "ci95": 1.973654621177647
+        },
+        "element factory dispatch": {
+          "n": 15,
+          "min": 7.504,
+          "max": 14.86,
+          "mean": 10.91853333333333,
+          "median": 10.952,
+          "std": 1.704401707996745,
+          "ci95": 0.8625462722283324
+        },
+        "first tree capture": {
+          "n": 15,
+          "min": 104.609,
+          "max": 139.134,
+          "mean": 119.48193333333333,
+          "median": 116.986,
+          "std": 8.81748547275368,
+          "ci95": 4.462263320476374
+        },
+        "compiled program create": {
+          "n": 15,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        },
+        "program mount": {
+          "n": 15,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0
+        }
+      },
+      "sites": {
+        "main-renderer.ts first-screen host and text factories": {
+          "n": 15,
+          "min": 35.153,
+          "max": 48.57,
+          "mean": 40.5528,
+          "median": 39.902,
+          "std": 4.000907000502095,
+          "ci95": 2.02473830120212,
+          "frames": 3
+        },
+        "main-renderer.ts recursive prop freeze": {
+          "n": 15,
+          "min": 28.332,
+          "max": 38.422,
+          "mean": 33.962,
+          "median": 33.316,
+          "std": 3.201698715786147,
+          "ci95": 1.6202831052929538,
+          "frames": 2
+        },
+        "main-renderer.ts program id count and assignment": {
+          "n": 15,
+          "min": 31.567,
+          "max": 50.668,
+          "mean": 39.48106666666667,
+          "median": 38.377,
+          "std": 5.3681520652414045,
+          "ci95": 2.716659770348951,
+          "frames": 2
+        },
+        "main-renderer.ts template create and prop freeze": {
+          "n": 15,
+          "min": 0,
+          "max": 0.173,
+          "mean": 0.023,
+          "median": 0,
+          "std": 0.058639008631911,
+          "ci95": 0.02967543277228189,
+          "frames": 1
+        },
+        "main-renderer.ts node normalization": {
+          "n": 15,
+          "min": 29.23,
+          "max": 39.552,
+          "mean": 33.367733333333334,
+          "median": 32.433,
+          "std": 2.952869868826295,
+          "ci95": 1.4943583345296376,
+          "frames": 5
+        },
+        "main-renderer.ts prop bag builder": {
+          "n": 15,
+          "min": 4.358,
+          "max": 8.302,
+          "mean": 6.507666666666665,
+          "median": 6.652,
+          "std": 1.1183560355370834,
+          "ci95": 0.5659662419667147,
+          "frames": 1
+        },
+        "core/host-driver.ts applyLynxFirstScreenDirect": {
+          "n": 15,
+          "min": 83.197,
+          "max": 112.403,
+          "mean": 94.16593333333334,
+          "median": 93.392,
+          "std": 6.56032548447272,
+          "ci95": 3.319982762682892,
+          "frames": 1
+        },
+        "core/host-driver.ts firstScreenTreeHasList": {
+          "n": 15,
+          "min": 8.944,
+          "max": 12.293,
+          "mean": 10.146666666666668,
+          "median": 10.114,
+          "std": 0.9636387751065691,
+          "ci95": 0.4876685052256676,
+          "frames": 1
+        },
+        "main-thread.ts renderFirstScreenNow": {
+          "n": 15,
+          "min": 25.886,
+          "max": 36.833,
+          "mean": 30.679333333333336,
+          "median": 29.976,
+          "std": 3.2407437966546437,
+          "ci95": 1.6400426424924082,
+          "frames": 1
+        },
+        "core/host-driver.ts visit and pushChildren": {
+          "n": 15,
+          "min": 402.07,
+          "max": 513.717,
+          "mean": 432.8217333333333,
+          "median": 419.35,
+          "std": 30.169614520720817,
+          "ci95": 15.267931507765892,
+          "frames": 2
+        },
+        "core/host-driver.ts createHandle": {
+          "n": 15,
+          "min": 40.927,
+          "max": 57.064,
+          "mean": 48.5452,
+          "median": 49.325,
+          "std": 4.850623179207664,
+          "ci95": 2.4547540181283973,
+          "frames": 1
+        },
+        "core/host-driver.ts cloneProps": {
+          "n": 15,
+          "min": 79.704,
+          "max": 106.956,
+          "mean": 88.05046666666665,
+          "median": 85.473,
+          "std": 7.770134257670342,
+          "ci95": 3.932230475493053,
+          "frames": 1
+        },
+        "core/host-driver.ts selector install": {
+          "n": 15,
+          "min": 7.237,
+          "max": 13.932,
+          "mean": 9.053,
+          "median": 8.686,
+          "std": 1.8765294562036592,
+          "ci95": 0.9496549314524724,
+          "frames": 1
+        },
+        "core/host-driver.ts planLynxHostPropPatch": {
+          "n": 15,
+          "min": 29.732,
+          "max": 42.926,
+          "mean": 37.16653333333333,
+          "median": 38.156,
+          "std": 3.687797388987392,
+          "ci95": 1.8662829752400876,
+          "frames": 1
+        },
+        "core/host-driver.ts textValue": {
+          "n": 15,
+          "min": 52.517,
+          "max": 69.656,
+          "mean": 59.3346,
+          "median": 58.817,
+          "std": 4.568353865453069,
+          "ci95": 2.3119060362229833,
+          "frames": 1
+        },
+        "core/host-driver.ts emitHostNode": {
+          "n": 15,
+          "min": 9.814,
+          "max": 18.005,
+          "mean": 14.014266666666666,
+          "median": 14.355,
+          "std": 1.7998214528730958,
+          "ci95": 0.9108353257149133,
+          "frames": 2
+        },
+        "core/selectors.ts handle-selector guards": {
+          "n": 15,
+          "min": 0.334,
+          "max": 2.135,
+          "mean": 1.0115333333333334,
+          "median": 0.909,
+          "std": 0.6302621535696254,
+          "ci95": 0.31895665707061077,
+          "frames": 1
+        },
+        "core/host-driver.ts nativeEventMap": {
+          "n": 15,
+          "min": 25.704,
+          "max": 35.083,
+          "mean": 30.33853333333333,
+          "median": 29.754,
+          "std": 2.7652542708080605,
+          "ci95": 1.3994117418788241,
+          "frames": 1
+        },
+        "core/events.ts token encode": {
+          "n": 15,
+          "min": 5.432,
+          "max": 10.742,
+          "mean": 7.3777333333333335,
+          "median": 7.17,
+          "std": 1.4542220585438648,
+          "ci95": 0.7359379010852397,
+          "frames": 1
+        },
+        "core/host-driver.ts parseLynxNativeEventProp": {
+          "n": 15,
+          "min": 10.848,
+          "max": 17.728,
+          "mean": 14.84786666666667,
+          "median": 14.483,
+          "std": 1.63173449092948,
+          "ci95": 0.8257715864834761,
+          "frames": 1
+        },
+        "core/papi.ts createElement type switch": {
+          "n": 15,
+          "min": 7.504,
+          "max": 14.86,
+          "mean": 10.91853333333333,
+          "median": 10.952,
+          "std": 1.704401707996745,
+          "ci95": 0.8625462722283324,
+          "frames": 2
+        },
+        "core/host-driver.ts captureLynxFirstTree": {
+          "n": 15,
+          "min": 104.609,
+          "max": 139.134,
+          "mean": 119.48193333333333,
+          "median": 116.986,
+          "std": 8.81748547275368,
+          "ci95": 4.462263320476374,
+          "frames": 1
+        },
+        "emitted main-thread program create": {
+          "n": 15,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0,
+          "frames": 0
+        },
+        "core/host-driver.ts mountProgram": {
+          "n": 15,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0,
+          "frames": 0
+        },
+        "core/host-driver.ts mountProgram range members": {
+          "n": 15,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0,
+          "frames": 0
+        }
+      },
+      "namedMs": {
+        "n": 15,
+        "min": 1091.458,
+        "max": 1305.643,
+        "mean": 1161.8481333333334,
+        "median": 1137.848,
+        "std": 60.55573154251287,
+        "ci95": 30.645428398123777
+      },
+      "unmatchedMs": {
+        "n": 15,
+        "min": 62.126,
+        "max": 77.532,
+        "mean": 66.82133333333334,
+        "median": 65.937,
+        "std": 4.330039040111402,
+        "ci95": 2.1913020945285093
+      },
+      "totalMs": {
+        "n": 15,
+        "min": 1154.2920000000001,
+        "max": 1374.385,
+        "mean": 1228.6694666666665,
+        "median": 1207.251,
+        "std": 62.1303474102274,
+        "ci95": 31.4422939730152
+      },
+      "largestUnnamed": [
+        {
+          "position": "1:9713",
+          "ms": 8.8,
+          "source": "(e){var r=X.exec(e);if(null===r)return null;var t=r[1];return Z.has(t)?\"discrete\":H.has(t)?\"continuous\":\"default\"}var Q=new Map;var ee=[];fu"
+        },
+        {
+          "position": "1:39142",
+          "ms": 7.6,
+          "source": "(e){if(0===e.length)return ey;var r=em.get(e);if(void 0!==r)return r;var t=Object.freeze({attributes:eh,mainThreadEvents:ef,requiresRecreate"
+        },
+        {
+          "position": "1:228144",
+          "ms": 6.8,
+          "source": "(e,t)=>(0,r.Zz)(z,[(0,r.DT)(\"lynx\",R,(0,r.uc)([[\"set\",\"row\",e],[\"set\",\"isSelected\",n===e.id],[\"set\",\"onSelect\",A],[\"set\",\"onRemove\",C]]))]))"
+        }
+      ]
+    },
+    "octane-mts-program": {
+      "buckets": {
+        "renderer pre-passes": {
+          "n": 15,
+          "min": 58.979,
+          "max": 78.985,
+          "mean": 67.78953333333332,
+          "median": 68.194,
+          "std": 5.53704556439824,
+          "ci95": 2.8021316737258544
+        },
+        "applier entry and pre-walk": {
+          "n": 15,
+          "min": 24.444,
+          "max": 36.463,
+          "mean": 32.3998,
+          "median": 33.448,
+          "std": 2.9178139122751934,
+          "ci95": 1.47661757277102
+        },
+        "first-screen entry": {
+          "n": 15,
+          "min": 3.498,
+          "max": 8.156,
+          "mean": 5.4581333333333335,
+          "median": 4.806,
+          "std": 1.4579563261253365,
+          "ci95": 0.7378277012226072
+        },
+        "applier walk": {
+          "n": 15,
+          "min": 20.219,
+          "max": 29.487,
+          "mean": 24.4076,
+          "median": 23.16,
+          "std": 2.759348227389939,
+          "ci95": 1.3964228715262434
+        },
+        "host record building": {
+          "n": 15,
+          "min": 1.883,
+          "max": 5.527,
+          "mean": 2.7390666666666665,
+          "median": 2.462,
+          "std": 0.8955077119836671,
+          "ci95": 0.4531894301086386
+        },
+        "event bookkeeping": {
+          "n": 15,
+          "min": 32.6,
+          "max": 46.7,
+          "mean": 39.86446666666667,
+          "median": 39.779,
+          "std": 4.168448438234809,
+          "ci95": 2.1095259670922104
+        },
+        "element factory dispatch": {
+          "n": 15,
+          "min": 0,
+          "max": 0.193,
+          "mean": 0.0726,
+          "median": 0,
+          "std": 0.08902793569062092,
+          "ci95": 0.04505435173752797
+        },
+        "first tree capture": {
+          "n": 15,
+          "min": 21.464,
+          "max": 35.475,
+          "mean": 26.701199999999996,
+          "median": 23.914,
+          "std": 4.552795730098156,
+          "ci95": 2.3040325334036407
+        },
+        "compiled program create": {
+          "n": 15,
+          "min": 19.487,
+          "max": 32.745,
+          "mean": 24.979000000000003,
+          "median": 24.322,
+          "std": 3.2985230432220214,
+          "ci95": 1.669282975628092
+        },
+        "program mount": {
+          "n": 15,
+          "min": 190.531,
+          "max": 234.837,
+          "mean": 206.9345333333333,
+          "median": 204.628,
+          "std": 13.924163643904151,
+          "ci95": 7.046599043287121
+        }
+      },
+      "sites": {
+        "main-renderer.ts first-screen host and text factories": {
+          "n": 15,
+          "min": 1.443,
+          "max": 4,
+          "mean": 2.3694,
+          "median": 2.155,
+          "std": 0.7453466128811034,
+          "ci95": 0.3771974291285076,
+          "frames": 1
+        },
+        "main-renderer.ts recursive prop freeze": {
+          "n": 15,
+          "min": 11.986,
+          "max": 18.216,
+          "mean": 14.692466666666666,
+          "median": 14.157,
+          "std": 2.2541197207680774,
+          "ci95": 1.140741970148617,
+          "frames": 1
+        },
+        "main-renderer.ts program id count and assignment": {
+          "n": 15,
+          "min": 26.5,
+          "max": 34.363,
+          "mean": 29.49266666666667,
+          "median": 29.424,
+          "std": 2.415309494776095,
+          "ci95": 1.2223152506960502,
+          "frames": 3
+        },
+        "main-renderer.ts template create and prop freeze": {
+          "n": 15,
+          "min": 0,
+          "max": 0.185,
+          "mean": 0.012333333333333333,
+          "median": 0,
+          "std": 0.04614710777021194,
+          "ci95": 0.023353658702970178,
+          "frames": 1
+        },
+        "main-renderer.ts node normalization": {
+          "n": 15,
+          "min": 12.313,
+          "max": 21.913,
+          "mean": 14.717466666666665,
+          "median": 14.294,
+          "std": 2.2433248796274596,
+          "ci95": 1.135279026793508,
+          "frames": 2
+        },
+        "main-renderer.ts prop bag builder": {
+          "n": 15,
+          "min": 4.878,
+          "max": 8.697,
+          "mean": 6.5052,
+          "median": 6.44,
+          "std": 0.9993916282752555,
+          "ci95": 0.5057619453328259,
+          "frames": 1
+        },
+        "core/host-driver.ts applyLynxFirstScreenDirect": {
+          "n": 15,
+          "min": 20.692,
+          "max": 31.532,
+          "mean": 27.640666666666664,
+          "median": 28.207,
+          "std": 2.559222816056121,
+          "ci95": 1.2951454398537354,
+          "frames": 1
+        },
+        "core/host-driver.ts firstScreenTreeHasList": {
+          "n": 15,
+          "min": 3.752,
+          "max": 5.766,
+          "mean": 4.7591333333333345,
+          "median": 4.671,
+          "std": 0.6521328971578995,
+          "ci95": 0.3300247804269877,
+          "frames": 1
+        },
+        "main-thread.ts renderFirstScreenNow": {
+          "n": 15,
+          "min": 3.498,
+          "max": 8.156,
+          "mean": 5.4581333333333335,
+          "median": 4.806,
+          "std": 1.4579563261253365,
+          "ci95": 0.7378277012226072,
+          "frames": 1
+        },
+        "core/host-driver.ts visit and pushChildren": {
+          "n": 15,
+          "min": 20.219,
+          "max": 29.487,
+          "mean": 24.4076,
+          "median": 23.16,
+          "std": 2.759348227389939,
+          "ci95": 1.3964228715262434,
+          "frames": 2
+        },
+        "core/host-driver.ts createHandle": {
+          "n": 15,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0,
+          "frames": 0
+        },
+        "core/host-driver.ts cloneProps": {
+          "n": 15,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0,
+          "frames": 0
+        },
+        "core/host-driver.ts selector install": {
+          "n": 15,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0,
+          "frames": 0
+        },
+        "core/host-driver.ts planLynxHostPropPatch": {
+          "n": 15,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0,
+          "frames": 0
+        },
+        "core/host-driver.ts textValue": {
+          "n": 15,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0,
+          "frames": 0
+        },
+        "core/host-driver.ts emitHostNode": {
+          "n": 15,
+          "min": 1.883,
+          "max": 5.527,
+          "mean": 2.7390666666666665,
+          "median": 2.462,
+          "std": 0.8955077119836671,
+          "ci95": 0.4531894301086386,
+          "frames": 1
+        },
+        "core/selectors.ts handle-selector guards": {
+          "n": 15,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0,
+          "frames": 0
+        },
+        "core/host-driver.ts nativeEventMap": {
+          "n": 15,
+          "min": 25.584,
+          "max": 35.461,
+          "mean": 30.97173333333333,
+          "median": 30.811,
+          "std": 2.9225835252772883,
+          "ci95": 1.4790313299830824,
+          "frames": 1
+        },
+        "core/events.ts token encode": {
+          "n": 15,
+          "min": 6.107,
+          "max": 11.749,
+          "mean": 8.892733333333332,
+          "median": 8.968,
+          "std": 1.7273880269226007,
+          "ci95": 0.8741789545993514,
+          "frames": 1
+        },
+        "core/host-driver.ts parseLynxNativeEventProp": {
+          "n": 15,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0,
+          "frames": 0
+        },
+        "core/papi.ts createElement type switch": {
+          "n": 15,
+          "min": 0,
+          "max": 0.193,
+          "mean": 0.0726,
+          "median": 0,
+          "std": 0.08902793569062092,
+          "ci95": 0.04505435173752797,
+          "frames": 1
+        },
+        "core/host-driver.ts captureLynxFirstTree": {
+          "n": 15,
+          "min": 21.464,
+          "max": 35.475,
+          "mean": 26.701199999999996,
+          "median": 23.914,
+          "std": 4.552795730098156,
+          "ci95": 2.3040325334036407,
+          "frames": 1
+        },
+        "emitted main-thread program create": {
+          "n": 15,
+          "min": 19.487,
+          "max": 32.745,
+          "mean": 24.979000000000003,
+          "median": 24.322,
+          "std": 3.2985230432220214,
+          "ci95": 1.669282975628092,
+          "frames": 6
+        },
+        "core/host-driver.ts mountProgram": {
+          "n": 15,
+          "min": 190.531,
+          "max": 234.837,
+          "mean": 206.9345333333333,
+          "median": 204.628,
+          "std": 13.924163643904151,
+          "ci95": 7.046599043287121,
+          "frames": 2
+        },
+        "core/host-driver.ts mountProgram range members": {
+          "n": 15,
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "median": 0,
+          "std": 0,
+          "ci95": 0,
+          "frames": 0
+        }
+      },
+      "namedMs": {
+        "n": 15,
+        "min": 400.298,
+        "max": 475.008,
+        "mean": 431.3459333333333,
+        "median": 426.881,
+        "std": 22.25202915531276,
+        "ci95": 11.2610804761455
+      },
+      "unmatchedMs": {
+        "n": 15,
+        "min": 19.054,
+        "max": 31.053,
+        "mean": 25.316266666666667,
+        "median": 25.168,
+        "std": 3.0468764216634856,
+        "ci95": 1.5419322141698175
+      },
+      "totalMs": {
+        "n": 15,
+        "min": 423.484,
+        "max": 498.299,
+        "mean": 456.66220000000004,
+        "median": 452.017,
+        "std": 22.68808078911334,
+        "ci95": 11.4817530496762
+      },
+      "largestUnnamed": [
+        {
+          "position": "1:230117",
+          "ms": 5.3,
+          "source": "(e,t)=>(0,r.Zz)(z,[(0,r.DT)(\"lynx\",R,(0,r.uc)([[\"set\",\"row\",e],[\"set\",\"isSelected\",n===e.id],[\"set\",\"onSelect\",A],[\"set\",\"onRemove\",C]]))]))"
+        },
+        {
+          "position": "1:228629",
+          "ms": 3.6,
+          "source": "(e){return(0,r.Zz)(S,[\"row\"+(e.isSelected?\" danger\":\"\"),String(e.row.id),r.N5,e.row.label,r.N5])},{module:\"@octanejs/lynx/main-renderer\"});l"
+        },
+        {
+          "position": "1:7768",
+          "ms": 2.3,
+          "source": "(e,r=[],t=null){if(e.$$kind!==s)throw TypeError(\"universalValue expected a universal plan.\");return{$$kind:d,plan:e,values:r,key:t}}function"
+        }
+      ]
+    }
+  }
+}
