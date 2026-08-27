@@ -2833,6 +2833,112 @@ its own `claims` block. What they are good for is the ratio between rows and the
 the web instrument has already mispredicted the device by 19×, which is why M2
 exists at all.
 
+## 9. Native reference-table capacity probe (`prototype/build.mjs --retain`, device-only)
+
+Device round 1 (#194) killed the program cell at 10,000 rows with ART
+`global reference table overflow (max=51200)`, 5/5, at 113,992–115,100 ms — and
+the template cell in the same window did not crash, it ran out the 180 s cutoff
+still alive. Issue #215 D4 asks which retention drives that table before anyone
+designs a release point: our maps, the created arrays, or the wrappers the PAPI
+layer hands back.
+
+**Nothing in this directory can answer that.** Every cell here runs through
+`@lynx-js/web-core` in Chromium, which has no JNI and no reference table. What
+this section holds is the arithmetic that makes the device experiment cheap, the
+two candidates it has already eliminated on paper, and the arm that separates
+the two that are left.
+
+### The tree is 7 elements and 20 PAPI calls per row
+
+`createRow` in `prototype/lepus-root.js` and the compiled `Row` program build the
+same shape: `view.row` with three `text` children, each holding one raw text.
+Seven created elements, seven appends, four `__SetClasses`, two `__AddEvent` —
+20 calls, of which 7 create an element. The chrome is a further 42 elements.
+
+That count is not this harness's claim about the device. #194 recorded the
+program cell's own `__FlushElementTree.callsBefore` as `[20124]` in all five 1k
+samples; counting `createChrome` by hand gives 125 calls, so this shape predicts
+20,125 against a recorded 20,124 — one call apart, which is less than the
+difference between the prototype's chrome and the compiled program's. Two
+independent derivations, so the element budget is
+
+| rows | elements created | against `max=51200` |
+|---:|---:|---|
+| 1,000 | 7,042 | 14% — round 1 completed |
+| 7,308 | 51,198 | **the table, exactly full** |
+| 10,000 | 70,042 | 137% — round 1 crashed |
+| 30,000 | 210,042 | 410% |
+
+Round 1's crash time is the second reading of the same number. At the 1k cell's
+12,717 ms for 1,000 rows, 7,308 rows is ~93 s of mount; the crash landed at
+~114 s, i.e. 1.22× that, which is the scaling this ladder shows everywhere else.
+Read the other way, ~114 s of mount at the 1k rate is ~8,965 rows = 62,755
+elements against a 51,200 table: **1.23 table entries per created element.**
+Both readings say the table is consumed at very close to one entry per element
+created, not per entry in anything we keep.
+
+### What that eliminates, and what it does not
+
+- **Our maps are already out**, and not because of this arithmetic. After #163
+  C20 and #215 D1–D3 a program's mount writes *no* per-node map entry at all:
+  `ownedNodes` takes none, `nativeEvents` takes none, and the per-ID map is
+  `null` unless the runs overlap. There is exactly one JavaScript reference per
+  created element left, `run.nodes[i]`, and it is the array the create returned.
+- **The created array and the PAPI-layer wrapper are indistinguishable from
+  here.** Both produce ~1 entry per element, one because JavaScript holds the
+  wrapper alive and one because the engine registers the element whatever
+  JavaScript does. Every number above is equally consistent with either.
+- The template cell surviving 10k is **not** evidence against retention. It
+  retains *more* per element than the program cell does — a record, an
+  `ownedNodes` membership, and an event-journal entry — and it also never
+  finished, so it may simply never have reached 51,200 elements inside 180 s.
+  Reading its survival as a result is the trap this section exists to mark.
+
+### The arm that separates them
+
+`node prototype/build.mjs --rows N --retain none` writes
+`prototype/dist-rowsN-retain-none/`, whose only difference from
+`dist-rowsN/` is that `createRow` no longer pushes the row view and the label raw
+text into the slot table. **The PAPI call multiset is identical** — same creates,
+same appends, same attribute writes, same order — so the arm varies retention and
+nothing else. It drops the cell from 2 retained wrappers per row to 0.
+
+It is create-only by construction: with an empty slot table every delta op
+addresses `undefined`, so the arm has no click-driven build, `--rows` is
+required, and `smoke.mjs` must not be pointed at anything but its `--fcp` check.
+
+Three points, all buildable at any row count, all on the same fixture:
+
+| cell | wrappers retained per row | rows if retention drives the table | rows if creation drives it |
+|---|---:|---:|---:|
+| `octane-mts-program` | 7 (the whole created array) | ~7,300 | ~7,300 |
+| `octane-direct` (`--retain dynamic`) | 2 (row view + label raw) | ~25,600 | ~7,300 |
+| `octane-direct --retain none` | 0 | no overflow at any N | ~7,300 |
+
+The `none` arm is the one that decides it. If it still aborts at ~7,300 rows,
+**no release point anywhere in Octane can fix this** — the table tracks elements,
+D4's premise is wrong, and the lever is creating fewer retained handles or #162.
+If it survives well past 7,300, retention is the driver, the `dynamic`/`none`
+pair prices the exchange rate, and the release point is worth designing.
+
+### Protocol for whoever holds the device
+
+Under #194's protocol (DevTool disabled, cold launch per sample, AB/BA, n≥5,
+thermal and load recorded), in this order, because each step can end the probe:
+
+1. **Capture the ART table dump, not just the abort line.** ART prints the
+   reference-table contents and a `Summary:` naming the classes before it
+   aborts; round 1 recorded only `global reference table overflow (max=51200)`.
+   That summary names the holder directly and costs one wider logcat filter.
+2. **Bisect the threshold on the program cell** at 6,000 / 7,000 / 7,500 /
+   8,000 rows. The crash row count *is* the measurement: entries-per-element is
+   `51200 / (7 × rows)`. A threshold near 7,300 says one entry per element; a
+   much lower one says the table is charged per attribute or per listener too.
+3. **Run the three arms above at the threshold row count**, `none` first.
+
+Check each window in as its own record under `stages/results/`, the way every
+other window here does, and report it on #215.
+
 ## Claims and non-claims
 
 Command counts and commit bytes are Octane-owned costs and are gated. The

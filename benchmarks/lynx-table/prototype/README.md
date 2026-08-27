@@ -17,7 +17,7 @@ universal representation? Design and protocol:
 - `build.mjs` — assembles JSON web bundles. `pageConfig` comes from the
   Octane-built bundle's Configurations section and `styleInfo` embeds the same
   `app/src/app.css`, so engine toggles and styles match the octane cell
-  exactly.
+  exactly. `--retain none` writes the issue #215 D4 retention arm (below).
 - `bundle-tools.mjs` — reader for the binary web-bundle container.
 - `smoke.mjs` — functional parity check for every benchmark operation; run it
   before any measurement session.
@@ -32,6 +32,7 @@ node build.mjs --rows 10000              # dist/ + dist-rows10000/
 node smoke.mjs --rows 1000               # functional parity
 node smoke.mjs --fcp --rows 10000 --bundle dist-rows10000/main.web.bundle
 node run-fcp.mjs --rows 10000 --reps 5   # FCP A/B (quiet host)
+node build.mjs --rows 8000 --retain none # #215 D4 retention arm (device probe)
 node ../web/run-web.mjs --reps 5 --cells octane,octane-direct,vue-vdom,vue-vapor,react --skip-app-build
 ```
 
@@ -46,6 +47,15 @@ apply-side cost around PAPI calls. All measurement-honesty rules of
 `../README.md` apply: same workload operation-for-operation, byte-identical
 driver, same-session same-host numbers only, and a cell that cannot be driven
 end-to-end is "not measured", never a number from a degraded run.
+
+The `--retain none` arm is a **capacity probe, not a cell.** It differs from the
+`dynamic` bundle by one deletion — the two slot-table pushes at the end of
+`createRow` — so its PAPI call multiset is identical and the only variable is how
+many created element wrappers JavaScript still holds. That makes it usable for
+the issue #215 D4 question of what fills ART's global reference table on device,
+and unusable for anything else: with an empty slot table every delta op addresses
+`undefined`, so it is create-only and no wall clock from it is comparable with a
+`dynamic` number. `../README.md` §9 holds the arithmetic and the device protocol.
 
 `dist*/` outputs are generated and gitignored. `results/` holds the committed
 session records backing the L0 verdict (each carries its session's host/load
