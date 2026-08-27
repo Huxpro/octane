@@ -98,6 +98,20 @@ const FLAT_CARD = CARD.replace(
 );
 
 /**
+ * `CARD` with one of its two taps made continuous, so one program's two sites
+ * declare two different dispatch priorities.
+ *
+ * Every other fixture here binds `tap` and `longpress`, which are both
+ * `discrete` — so a mount that read a site's priority off its neighbour, off
+ * the announcement, or off nothing at all would agree with the interpreted arm
+ * on all of them by accident.
+ */
+const MIXED_PRIORITY_CARD = CARD.replace(
+	'<text class="d" bindtap={props.onHold}>',
+	'<text class="d" bindtouchmove={props.onHold}>',
+);
+
+/**
  * A program with nothing but a text hole, so it can sit inside another
  * component's tree as a row does.
  */
@@ -447,6 +461,28 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 		// listener id and the priority — every one of which C2c made agree — so an
 		// arm that mounted the right tree and bound a tap to the wrong host is red
 		// here rather than equal.
+		expect(withoutSelectors(program.tree)).toEqual(withoutSelectors(interpreted.tree));
+	});
+
+	it('installs the priority each of its sites declares, not one they share', () => {
+		// The mount encodes a site's priority from the *plan* now that the plan
+		// freeze proves it, rather than re-checking the announcement per site
+		// (issue #215 D6). On a page whose sites are all `discrete` that read is
+		// indistinguishable from a constant, which is why this fixture's two
+		// sites are not: `touchmove` is continuous and `tap` is discrete, on two
+		// hosts of one program.
+		const described = render(false, MIXED_PRIORITY_CARD);
+		// The premise, so the cell cannot pass by losing the shape it is about.
+		expect(new Set(described.envelope.events.map((b) => b.listener.priority))).toEqual(
+			new Set(['discrete', 'continuous']),
+		);
+
+		// Tokens encode the priority, so comparing the two arms' painted trees is
+		// what says the program installed each site's own — a constant would make
+		// one of the two tokens differ from the interpreted arm's for the same
+		// host.
+		const program = paint(true, PROPS, componentFor(true, MIXED_PRIORITY_CARD));
+		const interpreted = paint(false, PROPS, componentFor(false, MIXED_PRIORITY_CARD));
 		expect(withoutSelectors(program.tree)).toEqual(withoutSelectors(interpreted.tree));
 	});
 

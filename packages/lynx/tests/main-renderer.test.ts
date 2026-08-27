@@ -648,6 +648,35 @@ describe('Lynx main-thread first-screen renderer', () => {
 				],
 			} as never),
 		).toThrow(/binds two events of type "tap" on node 1/);
+		// And the third thing a site declares (issue #215 D6). The mount encodes
+		// this into every token the program installs, so a value outside the three
+		// the dispatcher knows produces a token the host accepts and the background
+		// then cannot decode — the same tap reaching nothing, from a third
+		// direction. Answered here so the mount does not have to ask per instance;
+		// `emitLynxMainThreadProgram` refuses one at build for the plans that do
+		// come from the compiler.
+		expect(() =>
+			universalPlan('lynx', {
+				...program,
+				events: [{ slot: 0, node: 1, type: 'tap', priority: 'urgent' }],
+			} as never),
+		).toThrow(/binds an event on node 1 at priority "urgent"/);
+		expect(() =>
+			universalPlan('lynx', {
+				...program,
+				events: [{ slot: 0, node: 1, type: 'tap', priority: undefined }],
+			} as never),
+		).toThrow(/at priority undefined/);
+		// All three legal priorities stay legal, so the check cannot pass by
+		// refusing everything but the one the fixtures happen to use.
+		for (const priority of ['discrete', 'continuous', 'default']) {
+			expect(() =>
+				universalPlan('lynx', {
+					...program,
+					events: [{ slot: 0, node: 1, type: 'tap', priority }],
+				} as never),
+			).not.toThrow();
+		}
 		// The same type on another node, and another type on the same node, are
 		// both ordinary: a row with a tap on each of two children, and a text with
 		// a tap and a long press, are what the check has to keep accepting.

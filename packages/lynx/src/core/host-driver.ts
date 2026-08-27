@@ -4076,16 +4076,40 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 					cursor++;
 				}
 			}
-			const token =
-				announced === undefined
-					? undefined
-					: encodeCheckedLynxNativeEventToken(
-							container.root,
-							hostId,
-							1,
-							announced.id,
-							announced.priority,
-						);
+			// Four of this token's five primitives are proven before the mount
+			// reaches them, so it is built rather than re-checked per site
+			// (issue #215 D6). Where each is proven, in order:
+			//
+			//   `container.root`  `assertSafeId(options.root, 'root')`, once when
+			//                     the container was created.
+			//   `hostId`          `node.ids` is this applier's input contract, and
+			//                     every other reader of it in this file takes it as
+			//                     one: the page-root push, a range member's
+			//                     `parentId`, the ownership journal, and the child
+			//                     linkage all index it unchecked. A per-site assert
+			//                     over the subset of ids that happen to carry an
+			//                     event was never that contract's guard, and
+			//                     keeping it here would go on implying it was.
+			//   `1`               the literal on the line below.
+			//   `priority`        `freezePlanNode`, once per plan, and the emitter
+			//                     refuses one at build. It is read off the *plan*
+			//                     rather than off the announcement for that reason:
+			//                     the plan is the half that carries a proof.
+			//
+			// The fifth, `announced.id`, is the one primitive whose proof lives at
+			// neither build nor container time — it arrives on the envelope — so it
+			// is still checked here, once per site that claimed an announcement.
+			let token: LynxNativeEventToken | undefined;
+			if (announced !== undefined) {
+				assertSafeId(announced.id, 'first-screen announcement listener id');
+				token = encodePrevalidatedLynxNativeEventToken(
+					container.root,
+					hostId,
+					1,
+					announced.id,
+					site.priority,
+				);
+			}
 			tokens.push(token);
 			args.push(token);
 		}
