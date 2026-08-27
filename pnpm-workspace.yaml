@@ -32,6 +32,7 @@ packages:
   - benchmarks/codegen-size
   - benchmarks/lynx-render
   - benchmarks/lynx-table
+  - benchmarks/lynx-touch-frame
   - benchmarks/bundle-size
   - benchmarks/three
   - benchmarks/async-waterfall

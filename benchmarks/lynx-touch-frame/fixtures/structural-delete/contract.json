@@ -1,0 +1,9 @@
+{
+  "shape": "structural-delete",
+  "target": "target-8",
+  "response": "remove target-8 from the interaction panel",
+  "observer": "querySelector('#target-8') returns null at a VSYNC callback",
+  "reset": "reload the same bundle after each reported sample, outside the timed boundary",
+  "interactionRows": 16,
+  "loadRows": 200
+}
