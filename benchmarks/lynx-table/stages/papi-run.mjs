@@ -55,7 +55,7 @@ import {
 	makeBenchHtml,
 	papiInstrumentJs,
 } from '../web/driver-client.mjs';
-import { buildTableApp } from '../scripts/build-app.mjs';
+import { buildTableApp, tagFrom } from '../scripts/build-app.mjs';
 import { writeEvidenceJson } from '../scripts/evidence.mjs';
 
 const require = createRequire(import.meta.url);
@@ -70,6 +70,13 @@ const { values: args } = parseArgs({
 		smoke: { type: 'boolean', default: false },
 		'skip-build': { type: 'boolean', default: false },
 		'allow-busy-host': { type: 'boolean', default: false },
+		// Issue-#163 C8: the dist tag a second build of the same configuration
+		// landed under, which becomes the `octane-mts-program-control` cell. It is
+		// a runner flag rather than a permanent cell because what it names is one
+		// revision of the compiler, not a configuration this repository ships —
+		// the record says which commit built it, and the cell exists only for the
+		// window that compares the two.
+		'control-dist': { type: 'string', default: '' },
 	},
 });
 
@@ -100,6 +107,11 @@ if (!args['allow-busy-host'] && loadPerCpu > 0.5) {
 // is the pre-populated variant used for the direct FCP@N window; only the
 // Octane app can be rebuilt here, so the vendored cells declare why they have
 // none instead of borrowing a number from another window.
+// Validated the same way `scripts/build-app.mjs` validates it when it writes
+// one, because this is the reader of that directory name and a value that file
+// would have refused can only name a path nothing built.
+const controlTag = tagFrom(args['control-dist']);
+
 const CELLS = {
 	octane: {
 		bundle: () => path.join(root, 'app/dist/main.web.bundle'),
@@ -144,6 +156,25 @@ const CELLS = {
 		fcpBundle: (rows) => path.join(root, `app/dist-mtsprogram-rows${rows}-profile/main.web.bundle`),
 		profile: true,
 	},
+	// Issue-#163 C8's control arm: the same app, the same core, the same program
+	// backend, built from a different revision of the main-thread emitter into a
+	// tagged dist. It is registered only when `--control-dist` names that tag, so
+	// a run that did not build one has no such cell rather than a cell pointing
+	// at a directory nothing wrote.
+	//
+	// Nothing here says which revision it is. That is deliberate: the harness
+	// cannot know, and a name that implied it could would be the harness
+	// asserting something only the run's own notes can. The report prints the
+	// tag; the record's provenance is the two commits the slice names.
+	...(controlTag === ''
+		? null
+		: {
+				'octane-mts-program-control': {
+					bundle: () => path.join(root, `app/dist-mtsprogram${controlTag}/main.web.bundle`),
+					fcpBundle: (rows) =>
+						path.join(root, `app/dist-mtsprogram${controlTag}-rows${rows}/main.web.bundle`),
+				},
+			}),
 	// The L0 direct-emission prototype (issue #58): this one page emitted by
 	// code written for this one page, with no framework between the entry point
 	// and the PAPI. It is a floor to measure against, not a cell Octane ships,

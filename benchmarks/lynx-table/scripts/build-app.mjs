@@ -31,6 +31,24 @@ const BLOCK_MODES = new Set(['scoped', 'reconcile', 'derived']);
  * @param {{silent?: boolean, core?: 'universal'|'block', blockMode?: 'scoped'|'reconcile'|'derived', mtsProgram?: boolean}} [options]
  * @returns {string} the staged dist directory
  */
+/**
+ * The dist tag, validated rather than interpolated.
+ *
+ * It becomes a directory name and it is spelled identically here and in
+ * `app/lynx.config.mjs`, so an unconstrained value would either escape the
+ * bench directory or make the two spellings disagree and leave the build
+ * copying from a path nothing wrote.
+ */
+export function tagFrom(value) {
+	if (value === undefined || value === '') return '';
+	if (!/^[a-z0-9][a-z0-9-]*$/.test(value)) {
+		throw new TypeError(
+			`BENCH_DIST_TAG must be lowercase alphanumeric with dashes, received ${JSON.stringify(value)}.`,
+		);
+	}
+	return `-${value}`;
+}
+
 export function buildTableApp({
 	silent = false,
 	core = 'universal',
@@ -63,6 +81,15 @@ export function buildTableApp({
 	// and leaves the background one byte-identical. A second suffix rather than a
 	// second core, for the same reason: one bundle, one setting of each switch.
 	const programSuffix = mtsProgram ? '-mtsprogram' : '';
+	// Issue-#163 C8: a tag that changes nothing about what is built and only
+	// where it lands, so one configuration can be built twice from two revisions
+	// of the compiler and both bundles exist in one measurement window. That is
+	// the only way an A/B of emitted output is a within-window comparison rather
+	// than two runs compared across hosts and hours, which this harness does not
+	// certify. It is deliberately not a build switch: nothing reads it but the
+	// path, so a tagged bundle is byte-identical to the untagged one built from
+	// the same source.
+	const distTag = tagFrom(process.env.BENCH_DIST_TAG);
 	const label =
 		(core === 'block' ? `octane table app (${core}/${blockMode})` : 'octane table app') +
 		(mtsProgram ? ' +mts-program' : '');
@@ -89,6 +116,7 @@ export function buildTableApp({
 	const suffix =
 		coreSuffix +
 		programSuffix +
+		distTag +
 		(autoRows > 0 ? `-rows${autoRows}` : '') +
 		(profile ? '-profile' : '');
 	const from = path.join(stage, `dist${suffix}`);

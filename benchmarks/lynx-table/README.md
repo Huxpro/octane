@@ -1093,7 +1093,94 @@ order preserves.
 
 The test is an A/B of the emitted order alone: same call multiset, same composed
 tree, same bundle everywhere else. That is the next slice, and it is a
-measurement before it is a mechanism.
+measurement before it is a mechanism. It ran, and the section below is its
+answer.
+
+### The append order is not the cause (issue #163 C8)
+
+The hypothesis above is **dead**. Emitting the appends child-first does not move
+the flush, and what small movement there is runs the wrong way.
+
+Testing it needs two bundles that differ in the emitted order and in nothing
+else, in one window. `BENCH_DIST_TAG` changes where a build lands and nothing
+about what it contains, so one configuration can be built twice from two working
+trees and both bundles exist side by side; `--control-dist <tag>` registers
+`octane-mts-program-control` against the tagged dist for one run and does not
+exist without the flag.
+
+```bash
+# control arm: the shipping parent-first emitter, into app/dist-mtsprogram-c7-*
+for n in 0 1000 10000 30000; do
+	BENCH_DIST_TAG=c7 BENCH_MTS_PROGRAM=1 BENCH_AUTOROWS=$n node scripts/build-app.mjs
+done
+# …then the emitter changed to child-first, and the treatment arm was built
+# untagged into app/dist-mtsprogram-* from the same tree.
+
+node stages/papi-run.mjs --reps 15 --scales 30000 \
+	--cells octane,octane-mts-program,octane-mts-program-control,octane-direct \
+	--control-dist c7 --label c163-c8-append --skip-build
+```
+
+The two bundles are the same size and differ only where they should. Every one
+of the row's six appends is present in both, in the same multiset, with sibling
+order preserved; only the sequence moves:
+
+| arm | emitted appends for one row |
+|---|---|
+| control, parent-first | `i(v,h)`, `i(v,y)`, `i(v,m)`, `i(m,g)`, `…i(h,u=a(d))`, `…i(y,p=a(c))` |
+| treatment, child-first | `…i(h,u=a(d))`, `i(v,h)`, `…i(y,p=a(c))`, `i(v,y)`, `i(m,g)`, `i(v,m)` |
+
+`results/c163-c8-append-30000.json`. First-flush self time, every sample,
+sorted:
+
+| cell | n=15 `papi_flush` samples (ms) | median |
+|---|---|---:|
+| `octane-direct` | 457 · 462 · 466 · 474 · 475 · 475 · 475 · **481** · 482 · 494 · 503 · 507 · 509 · 521 · 525 | 480.8 |
+| `octane` | 484 · 486 · 502 · 513 · 513 · 514 · 521 · **531** · 534 · 534 · 541 · 548 · 551 · 567 · 652 | 531.0 |
+| `+program`, parent-first | 548 · 567 · 574 · 579 · 583 · 633 · 667 · **677** · 682 · 692 · 693 · 701 · 704 · 728 · 769 | 677.4 |
+| `+program`, child-first | 587 · 589 · 637 · 667 · 673 · 675 · 682 · **691** · 697 · 702 · 718 · 721 · 729 · 784 · 834 | 690.8 |
+
+The two program arms are indistinguishable and the reordered one is nominally
+worse. Their ranges overlap over almost their whole length, the child-first arm
+has the **lower** flush in **6 of 15** paired repetitions, and the median of the
+paired differences is **+14.9 ms against** the reordering. On the uninstrumented
+control pages the wall goes the other way by a similarly unspendable margin —
+3377.9 ms child-first against 3404.5 ms parent-first, lower in 8 of 15, median
+paired difference −20.2 ms, ranges [3213–4374] against [3160–4127].
+
+What the same window does establish, firmly, is that the flush excess is real
+and is not the order. Both program arms are **disjoint** from the ceiling cell:
+the lower of their fifteen samples is 587.3 and 547.7 against the prototype's
+highest at 525.3. Parent-first is +196.6 ms (1.409×) and child-first +210.0 ms
+(1.437×) over `octane-direct`'s 480.8. As with C7, no growth rate carries across
+windows — the absolute walls moved again (the ceiling cell's control FCP is
+2616.0 ms here against 2733.1 there) — and only the within-window difference
+between cells is certified.
+
+So the emitter keeps the flat parent-first loop, its doc comment keeps saying
+that the backend "performs the dense applier's work in the dense applier's
+order", and nothing about the reordering is carried.
+
+**What this does not refute.** The program and the prototype differ on *two*
+assembly axes, not one, and this window varies only the second:
+
+- **creation order** — the prototype creates each row's nodes in document order,
+  interleaved with its links; the program's emitted node loop creates every node
+  of the row first, grouped by program index, and links afterwards.
+- **append order** — parent-first against child-first, which is what C8 varied
+  and what it just found innocent.
+
+The remaining axis is creation order, and `dom-attach-floor.mjs` is the cheap
+instrument for it: it builds this exact tree with no framework in the page, so a
+2×2 of the two axes there prices whatever the platform charges for assembly
+shape without a compiler change. That control also bounds how much of the flush
+this family of hypotheses can reach at all — the floor prices only the
+platform's own publishing `appendChild`, already 30.3% of `papi_flush` at 30,000
+rows, and leaves web-core's own walk inside `__FlushElementTree` untested.
+
+Clause 1 in this window, for the record: **1.301×** at 30,000 rows for the
+shipping parent-first program against the ceiling cell (1.291× for the reordered
+arm, 1.844× for `octane`). The oracle asks for ≤1.05×.
 
 ### The publication floor — `dom-attach-floor.mjs`
 
