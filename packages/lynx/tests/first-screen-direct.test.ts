@@ -777,6 +777,29 @@ describe('direct first-screen applier, compiled main-thread programs', () => {
 		expect(papi.pages[0]!.children).toHaveLength(0);
 	});
 
+	it('refuses a program whose event site names no Lynx event prop', () => {
+		// The plan is the event table the mount journals from (issue #215 D3), so
+		// what a site's type has to name is a real Element PAPI tuple. The
+		// compiler refuses to emit one that does not, and the plan freeze restates
+		// the rest of the plan's structure once per plan; this is the third
+		// statement of the same guarantee, for the plans that reach the driver
+		// without passing either.
+		//
+		// Refused for the site the component *declares*, not only for the ones
+		// this render bound: nothing was announced here, so no token is installed
+		// and the older per-site journal would have skipped the site entirely and
+		// painted a page whose next render faults instead.
+		expect(
+			applyProgram(
+				programNode({
+					plan: fakeProgram({
+						events: [{ slot: 0, node: 0, type: 'onTap', priority: 'discrete' }],
+					}),
+				}),
+			),
+		).toThrow(/"onTap" is not a Lynx event prop/);
+	});
+
 	it('refuses a program node that carries no plan to mount', () => {
 		expect(applyProgram({ kind: 'program', id: 1, children: [] })).toThrow(
 			/carries no plan, values, or ids/,

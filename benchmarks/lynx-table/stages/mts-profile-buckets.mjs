@@ -159,6 +159,15 @@ export const BUCKETS = Object.freeze([
 		probe: ',createElement(',
 		where: 'core/papi.ts createPage',
 	},
+	// Issue-#215 D3 stopped the mount writing a journal entry per event site, so
+	// on a program cell this probe should now find nothing: the two functions
+	// that derive those entries — `programNodeEvents` and
+	// `materializeProgramEvents` — run at hand-over and at terminal cleanup, and
+	// this instrument's window closes at first paint, before either. That is the
+	// A/B this bucket reads, and it is also why neither carries a probe of its
+	// own: a frame from them here would be a claim about the window, not about
+	// them. `materializeProgramEvents` would still land in this entry if one ever
+	// did, because it asks the same question this names.
 	{
 		bucket: 'event bookkeeping',
 		probe: '.nativeEvents.get(',
