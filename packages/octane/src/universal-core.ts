@@ -330,6 +330,10 @@ export interface UniversalProgramPlan {
 	 * subtree with no description anywhere to walk, and comparing it against
 	 * what the caller decided to send is what keeps the two answers from
 	 * drifting into a text painted twice or lost.
+	 *
+	 * The create returns an unattached subtree; the single append into a parent
+	 * is the caller's, so a keyed range's members can go into a node the create
+	 * made before any of it is live.
 	 */
 	readonly bind: (host: unknown) => UniversalProgramCreate;
 }
