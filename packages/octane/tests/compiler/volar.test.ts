@@ -809,7 +809,12 @@ export function Chart<T extends Octane.SVGProps<SVGTextElement>>(props: T) {
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}
-	});
+		// This one builds a real TypeScript program over eight fixture modules and
+		// runs ~5.6 s where the file's other program-building tests run under two,
+		// so it sits on top of Vitest's 5 s default and fails by arriving rather
+		// than by being wrong. The budget is the test's own cost, stated here
+		// instead of being inferred from how fast the machine is.
+	}, 30_000);
 
 	it('handles @if / @for / @try / @switch directives', () => {
 		const src =
