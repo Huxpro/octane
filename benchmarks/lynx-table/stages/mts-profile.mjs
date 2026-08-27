@@ -346,9 +346,15 @@ async function profileSample(browser, cell) {
 		const scriptUrl = [...new Set(paintProfile.nodes.map((node) => node.callFrame.url))].find(
 			(url) => url.startsWith('blob:'),
 		);
-		if (scriptUrl === undefined) {
+		if (profiled.length === 0) {
 			throw new Error(`${cell} produced no main-thread script frames; the profile named none.`);
 		}
+		if (profiled.length > 1) {
+			throw new Error(
+				`${cell} profiled ${profiled.length} page-minted scripts; attribution is ambiguous.`,
+			);
+		}
+		const scriptUrl = profiled[0];
 		const source = await page.evaluate(
 			(url) =>
 				fetch(url)
@@ -575,7 +581,7 @@ const meta = {
 	cpuModel: os.cpus()[0]?.model ?? 'unknown',
 	platform: os.platform(),
 	release: os.release(),
-	chromium: null,
+	chromium: browser.version(),
 	rows,
 	reps,
 	samplingIntervalUs: interval,

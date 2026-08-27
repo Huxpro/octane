@@ -1412,6 +1412,7 @@ function collectFirstScreenEvents(
 			node.eventsAt = events.length;
 			if (visible) {
 				for (const site of node.plan.events) {
+					if (site.node !== host) continue;
 					const handler = node.values[site.slot];
 					if (handler !== FIRST_SCREEN_EVENT && typeof handler !== 'function') continue;
 					events.push({
@@ -1429,19 +1430,23 @@ function collectFirstScreenEvents(
 			hosts += collectFirstScreenEvents(node.children, parentVisible, attempt, events);
 			continue;
 		}
-		hosts++;
-		const visible = parentVisible && node.visibility !== 'hidden';
-		if (visible) {
-			for (const [type, priority] of node.events) {
-				// The array is frozen once at the end; the bindings themselves are
-				// not, because unlike the batch they are never handed across a
-				// boundary — and a page with a listener on every row would pay one
-				// freeze per binding for a value only the applier next door reads.
-				events.push({ id: node.id, type, listener: { id: attempt.nextListener++, priority } });
-			}
-		}
-		hosts += collectFirstScreenEvents(node.children, visible, attempt, events);
+		return hosts;
 	}
+	if (node.kind !== 'host') {
+		return collectFirstScreenEvents(node.children, parentVisible, attempt, events);
+	}
+	let hosts = 1;
+	const visible = parentVisible && node.visibility !== 'hidden';
+	if (visible) {
+		for (const [type, priority] of node.events) {
+			// The array is frozen once at the end; the bindings themselves are
+			// not, because unlike the batch they are never handed across a
+			// boundary — and a page with a listener on every row would pay one
+			// freeze per binding for a value only the applier next door reads.
+			events.push({ id: node.id, type, listener: { id: attempt.nextListener++, priority } });
+		}
+	}
+	hosts += collectFirstScreenEvents(node.children, visible, attempt, events);
 	return hosts;
 }
 
@@ -1602,6 +1607,13 @@ export interface LynxFirstScreenRenderResult {
 	readonly envelope: LynxFirstScreenResultEnvelope;
 	readonly hostCount: number;
 	readonly logicalCount: number;
+	/**
+	 * How many compiled main-thread programs the tree holds. Non-zero means the
+	 * staged batch path is unavailable — reading `batch` throws — so a caller
+	 * whose direct apply is declined must decline the whole first screen rather
+	 * than fall back to a batch that cannot carry a program.
+	 */
+	readonly programs: number;
 }
 
 /** Evaluate one compiled root and produce the background-compatible initial host batch. */
@@ -1677,6 +1689,7 @@ export function renderLynxFirstScreen<Props>(
 		envelope,
 		hostCount,
 		logicalCount: attempt.nextId - 1,
+		programs,
 	});
 }
 
