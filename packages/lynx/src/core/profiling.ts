@@ -61,8 +61,12 @@ export interface LynxWireProfile {
 	bytes: number;
 	/** Background: dev-mode outbound self-check time. */
 	selfcheckMs: number;
+	/** Background: transport encode time, the walk plus `JSON.stringify`. */
+	encodeMs: number;
 	/** Background: ContextProxy dispatch (structured clone + delivery) time. */
 	dispatchMs: number;
+	/** Main: transport decode time, `JSON.parse` plus any unescaping walk. */
+	decodeMs: number;
 	/** Main: inbound protocol validation time. */
 	validateMs: number;
 	/** Main: prepareLynxHostBatch staging time. */
@@ -146,7 +150,9 @@ export function lynxWireProfile(): LynxWireProfile {
 		emptyCommits: 0,
 		bytes: 0,
 		selfcheckMs: 0,
+		encodeMs: 0,
 		dispatchMs: 0,
+		decodeMs: 0,
 		validateMs: 0,
 		prepareMs: 0,
 		applyMs: 0,
@@ -166,19 +172,25 @@ export function lynxWireProfile(): LynxWireProfile {
 	});
 }
 
-/** Count one outbound message; commits also add commands and JSON bytes. */
-export function profileOutboundMessage(profile: LynxWireProfile, message: unknown): void {
+/**
+ * Count one outbound message; commits also add commands and wire bytes.
+ *
+ * `encoded` is the string the transport is about to dispatch, so `bytes` is the
+ * exact wire length rather than a re-serialization of the same message — which
+ * is both cheaper and, unlike a second `JSON.stringify`, unable to disagree
+ * with what was actually sent.
+ */
+export function profileOutboundMessage(
+	profile: LynxWireProfile,
+	message: unknown,
+	encoded: string,
+): void {
 	const record = message as { type?: unknown; batch?: { commands?: readonly unknown[] } };
 	if (record.type !== 'commit') return;
 	profile.commits += 1;
 	if ((record.batch?.commands?.length ?? 0) === 0) profile.emptyCommits += 1;
 	profile.commands += record.batch?.commands?.length ?? 0;
-	try {
-		profile.bytes += JSON.stringify(message).length;
-	} catch {
-		// Wire messages are serializable by contract; a failure here must not
-		// turn a measurement run into a commit failure.
-	}
+	profile.bytes += encoded.length;
 }
 
 /**

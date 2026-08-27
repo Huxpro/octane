@@ -50,6 +50,7 @@ import {
 	type LynxContextProxy,
 } from '../src/core/protocol.js';
 import { bindThreadFunction, registerThreadFunction } from '../src/core/worklets.js';
+import { unwire } from './_fixtures/lynx-wire.js';
 
 const TAP = 'worklet-template-runs:tap';
 const RECORD = 'worklet-template-runs:record';
@@ -158,7 +159,7 @@ function installEnvironment(): InstalledEnvironment {
 		globalThis as typeof globalThis & { lynx: { getCoreContext(): LynxContextProxy } }
 	).lynx.getCoreContext();
 	context.addEventListener(LYNX_BACKGROUND_TO_MAIN_EVENT, (event) => {
-		const message = event.data as LynxBackgroundOutboundMessage;
+		const message = unwire(event.data) as LynxBackgroundOutboundMessage;
 		if (message.type === 'commit') commits.push([...message.batch.commands]);
 	});
 	return (installed = { dom, env, main, commits });
