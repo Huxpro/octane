@@ -146,6 +146,31 @@ export class LynxFirstTreeMismatchError extends Error {
 	}
 }
 
+/**
+ * One compiled main-thread program, as the mount left it (issue #163 C20).
+ *
+ * A program's hosts are numbered together and created together, so main already
+ * holds them as two arrays in one order: the ids the renderer assigned and the
+ * nodes the create returned. Journalling them per node copies that pair into a
+ * `Set` and a `Map` one entry at a time — C19 priced it at 133 ms of main-thread
+ * script at 30,000 rows, plus 26 more re-copying the map at capture. Keeping the
+ * pair is the same information without the copy, and the per-node view is built
+ * where it is actually read.
+ */
+export interface LynxProgramRun<Node extends LynxElementRef> {
+	/** The ids `assignProgramIds` gave this program's hosts, in plan order. */
+	readonly ids: readonly number[];
+	/** Per keyed range: the id of a hole the program painted, or `undefined`. */
+	readonly rangeIds: readonly (number | undefined)[];
+	/**
+	 * What the create returned: `ids.length` hosts, then one entry per range —
+	 * the painted node, or `undefined` for a hole this first screen filled itself.
+	 */
+	readonly nodes: readonly (Node | undefined)[];
+	/** How many of `nodes` this container owns: hosts plus painted holes. */
+	readonly owned: number;
+}
+
 export const LYNX_FIRST_TREE_STATE: unique symbol = Symbol('octane.lynx.first-tree-state');
 
 export interface LynxFirstTreeState<Node extends LynxElementRef> {
@@ -160,20 +185,24 @@ export interface LynxFirstTreeState<Node extends LynxElementRef> {
 	/** One entry per native list the captured tree holds, keyed by host ID. */
 	readonly lists: Map<number, LynxFirstTreeListJournal>;
 	/**
-	 * Nodes a compiled main-thread program painted, by the ID it took (#163).
+	 * Every compiled main-thread program the captured tree holds, one entry each.
 	 *
-	 * The inverted handoff, as one map. A program writes no record, so these IDs
-	 * appear in no snapshot and adoption has nothing of main's to compare the
-	 * background's description against — main knows only which physical node
-	 * wears each ID, which is exactly what the transfer needs and all it needs.
-	 * That the IDs agree at all is C2c's guarantee, established by construction:
-	 * the renderer numbers a program's hosts in the same pre-order the background
-	 * numbers the same source in, and a differential test pins it.
+	 * The inverted handoff. A program writes no record, so its IDs appear in no
+	 * snapshot and adoption has nothing of main's to compare the background's
+	 * description against — main knows only which physical node wears each ID,
+	 * which is exactly what the transfer needs and all it needs. That the IDs
+	 * agree at all is C2c's guarantee, established by construction: the renderer
+	 * numbers a program's hosts in the same pre-order the background numbers the
+	 * same source in, and a differential test pins it.
 	 *
 	 * Main-local, like `lists`. Nothing here crosses a thread, because the
 	 * background already holds every ID from its own render.
 	 */
-	readonly programNodes: Map<number, Node>;
+	programRuns: LynxProgramRun<Node>[];
+	/** How many physical nodes those runs account for, summed once at capture. */
+	readonly programNodeCount: number;
+	/** The per-ID view of those runs, once adoption has asked for one. */
+	programNodes: Map<number, Node> | null;
 	/** The description, once something has asked for one. */
 	snapshot: LynxFirstTreeSnapshot | null;
 	/** Builds it; dropped once it has run or the tree is released. */
@@ -202,7 +231,8 @@ export function createLynxFirstTree<Node extends LynxElementRef>(
 	indexEvents: () => Map<string, LynxResolvedFirstTreeEvent>,
 	logicalNodes: Map<number, LynxFirstTreeLogicalNodeSnapshot>,
 	lists: Map<number, LynxFirstTreeListJournal>,
-	programNodes: Map<number, Node>,
+	programRuns: LynxProgramRun<Node>[],
+	programNodeCount: number,
 ): LynxFirstTree<Node> {
 	const state: LynxFirstTreeState<Node> = {
 		owner,
@@ -211,7 +241,9 @@ export function createLynxFirstTree<Node extends LynxElementRef>(
 		indexEvents,
 		logicalNodes,
 		lists,
-		programNodes,
+		programRuns,
+		programNodeCount,
+		programNodes: null,
 		snapshot: null,
 		describe,
 	};
@@ -231,6 +263,44 @@ export function createLynxFirstTree<Node extends LynxElementRef>(
 	});
 }
 
+/**
+ * Every node a compiled main-thread program painted, by the ID it took, built
+ * on first read (issue #163 C20).
+ *
+ * The one reader is adoption, and adoption happens when the background's batch
+ * arrives — which is after the paint the capture that fills this stands in
+ * front of. So it waits here for the same reason the token index does: growing
+ * a map of every program node is the largest thing capture would otherwise do,
+ * and nothing before adoption reads it.
+ *
+ * Built from the runs and nothing live, so it answers identically whether the
+ * background adopts before or after terminal cleanup emptied the container.
+ */
+export function lynxFirstTreeProgramNodes<Node extends LynxElementRef>(
+	firstTree: LynxFirstTree<Node>,
+): ReadonlyMap<number, Node> {
+	const state = firstTree[LYNX_FIRST_TREE_STATE];
+	const index = state.programNodes;
+	if (index !== null) return index;
+	const built = new Map<number, Node>();
+	for (const run of state.programRuns) {
+		const hosts = run.ids.length;
+		for (let position = 0; position < hosts; position++) {
+			built.set(run.ids[position]!, run.nodes[position] as Node);
+		}
+		for (let range = 0; range < run.rangeIds.length; range++) {
+			// A hole this first screen filled itself is not the program's to hand
+			// over: the mount refused a program that painted one, and the node in
+			// the page there wears a record like any other.
+			const id = run.rangeIds[range];
+			if (id === undefined) continue;
+			built.set(id, run.nodes[hosts + range] as Node);
+		}
+	}
+	state.programNodes = built;
+	return built;
+}
+
 /** Release clone-unsafe journal state after adoption replay has drained. */
 export function releaseLynxFirstTree(firstTree: LynxFirstTree): void {
 	const state = firstTree[LYNX_FIRST_TREE_STATE];
@@ -244,7 +314,9 @@ export function releaseLynxFirstTree(firstTree: LynxFirstTree): void {
 	state.indexEvents = null;
 	state.logicalNodes.clear();
 	state.lists.clear();
-	state.programNodes.clear();
+	state.programRuns.length = 0;
+	state.programNodes?.clear();
+	state.programNodes = null;
 	// The builder closes over the source container's records, so dropping it is
 	// what lets a released tree stop retaining the page it described.
 	state.describe = null;
