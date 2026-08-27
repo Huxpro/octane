@@ -37,6 +37,7 @@ import {
 	stats,
 } from '../web/driver-client.mjs';
 import { foldProfile, PROBE_WINDOW } from './mts-profile-buckets.mjs';
+import { tagFrom } from '../scripts/build-app.mjs';
 import { bundleIdentity, writeEvidenceJson } from '../scripts/evidence.mjs';
 
 const require = createRequire(import.meta.url);
@@ -50,6 +51,16 @@ const { values: args } = parseArgs({
 		port: { type: 'string', default: '8364' },
 		interval: { type: 'string', default: '100' },
 		'allow-busy-host': { type: 'boolean', default: false },
+		// Issue-#163 C10: the same app and the same program backend, built from a
+		// different revision of the renderer into a tagged dist, so an A/B of
+		// main-thread script is one window rather than two runs compared across
+		// hours. Mirrors `papi-run.mjs --control-dist`, including registering the
+		// cell only when the flag names a tag: a run that built no control arm
+		// gets no such cell instead of one pointing at a directory nothing wrote.
+		// Nothing here says which revision it is, because the harness cannot know
+		// and a name implying it could would be the harness lying about
+		// provenance the record now carries honestly.
+		'control-dist': { type: 'string', default: '' },
 	},
 });
 const rows = Number(args.rows);
@@ -59,14 +70,24 @@ const interval = Number(args.interval);
 const cellIds = args.cells.split(',').map((value) => value.trim());
 
 /** Pre-populated bundles only: this instrument measures a first screen, never a click. */
+// Validated by the writer of that directory name rather than re-spelled here, so
+// a value `build-app.mjs` would have refused cannot name a path nothing built.
+const controlTag = tagFrom(args['control-dist']);
 const CELLS = {
 	octane: (n) => path.join(root, `app/dist-rows${n}/main.web.bundle`),
 	'octane-mts-program': (n) => path.join(root, `app/dist-mtsprogram-rows${n}/main.web.bundle`),
+	...(controlTag === ''
+		? {}
+		: {
+				'octane-mts-program-control': (n) =>
+					path.join(root, `app/dist-mtsprogram${controlTag}-rows${n}/main.web.bundle`),
+			}),
 	'octane-direct': (n) => path.join(root, `prototype/dist-rows${n}/main.web.bundle`),
 };
 const HEADINGS = {
 	octane: 'Octane',
 	'octane-mts-program': 'Octane (main-thread program)',
+	'octane-mts-program-control': 'Octane (main-thread program, control arm)',
 	'octane-direct': 'L0 direct-emission prototype',
 };
 for (const id of cellIds) {
