@@ -5162,6 +5162,12 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 	if (state.ownedPageRoots.size !== state.rootChildren.length) {
 		throw hostError('first-tree page-root ownership does not match logical roots.');
 	}
+	// Both sequences ascend — roots are pushed by the walk in numbering order,
+	// and runs are pushed by mounts in the same pre-order — so a single cursor
+	// into the runs resolves every root in one combined pass instead of one
+	// scan per root, which on a page of thirty thousand top-level program rows
+	// is the difference between a capture and a hang.
+	let runAt = 0;
 	for (const id of state.rootChildren) {
 		// A program's root has no record, so its node comes from the run the mount
 		// kept — the same substitution adoption makes, for the same reason. Only a
@@ -5169,17 +5175,16 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 		// and nothing else, and a keyed range's members sit inside a node the
 		// program made rather than beside it. So this looks at first ids only, and
 		// needs no per-ID view of a journal nothing else here reads by ID.
-		let programRoot: Node | undefined;
-		for (const run of state.programRuns) {
-			// `firstId` rather than `ids[0]`: the same number for a run holding one
-			// instance, and the only one a dense run has. A dense run never holds a
-			// page root — its instances are keyed range members, and a member has a
-			// parent by construction — so this is a shape the loop declines rather
-			// than one it has to resolve.
-			if (run.firstId !== id) continue;
-			programRoot = run.nodes[0] as Node;
-			break;
-		}
+		//
+		// `firstId` rather than `ids[0]`: the same number for a run holding one
+		// instance, and the only one a dense run has. A dense run never holds a
+		// page root — its instances are keyed range members, and a member has a
+		// parent by construction — so this is a shape the cursor walks past
+		// rather than one it has to resolve.
+		while (runAt < state.programRuns.length && state.programRuns[runAt]!.firstId < id) runAt++;
+		const run = runAt < state.programRuns.length ? state.programRuns[runAt] : undefined;
+		const programRoot =
+			run !== undefined && run.firstId === id ? (run.nodes[0] as Node) : undefined;
 		const node = programRoot ?? state.records.get(id)?.node;
 		if (node === null || node === undefined || !state.ownedPageRoots.has(node)) {
 			throw hostError(`first-tree root ${id} is missing from page-root ownership.`);
