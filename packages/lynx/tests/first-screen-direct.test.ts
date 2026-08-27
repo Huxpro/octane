@@ -958,6 +958,79 @@ describe('direct first-screen applier, compiled main-thread programs', () => {
 });
 
 /**
+ * A one-node program with one event site, whose create records the token it was
+ * handed rather than installing it.
+ *
+ * The token is the whole of what a site installs — the emitted create passes it
+ * straight to `setEvent` and installs nothing when it is `undefined` — so the
+ * argument the mount computed is what a host would have seen.
+ */
+function eventProgram(type: string, handed: unknown[]): UniversalProgramPlan {
+	return fakeProgram({
+		nodes: 1,
+		events: [{ slot: 0, node: 0, type, priority: 'discrete' }],
+		bind: (host: unknown) => {
+			const papi = host as { createElement(type: string, pageId: number, text: string): FakeNode };
+			return (...args: unknown[]) => {
+				handed.push(args[1]);
+				return [papi.createElement('view', args[0] as number, '')];
+			};
+		},
+	});
+}
+
+describe('direct first-screen applier, a program event site', () => {
+	it("installs the listener announced for the site's own type", () => {
+		// One host can carry several native events — `bindtap` and `bindlongpress`
+		// on one text is ordinary authoring — so a host's announcement is a list
+		// and a site has to pick its own type out of it rather than take the head.
+		// Taking the head routes a long press to the tap handler with nothing red
+		// anywhere, which is why the listener ids here differ and the answer names
+		// one of them.
+		const handed: unknown[] = [];
+		const papi = intrinsicHost();
+		const container = createLynxHostContainer(papi, { root: 1 });
+		expect(
+			applyLynxFirstScreenDirect(
+				container,
+				[programNode({ plan: eventProgram('bindlongpress', handed), ids: [1] })],
+				{
+					renderer: 'lynx',
+					version: 1,
+					events: [
+						{ id: 1, type: 'bindtap', listener: { id: 7, priority: 'discrete' } },
+						{ id: 1, type: 'bindlongpress', listener: { id: 9, priority: 'discrete' } },
+					],
+				},
+			),
+		).toBe(true);
+		expect(handed).toEqual(['octane-lynx:event:1:1:1:9:discrete']);
+	});
+
+	it('installs nothing for a site whose type its host never announced', () => {
+		// The other half of the same question, and the one a list makes reachable:
+		// this host *did* announce a listener, just not for this site's type. A
+		// lookup that answered with whatever the host announced would install a tap
+		// handler on a site the renderer passed no handler to.
+		const handed: unknown[] = [];
+		const papi = intrinsicHost();
+		const container = createLynxHostContainer(papi, { root: 1 });
+		expect(
+			applyLynxFirstScreenDirect(
+				container,
+				[programNode({ plan: eventProgram('bindlongpress', handed), ids: [1] })],
+				{
+					renderer: 'lynx',
+					version: 1,
+					events: [{ id: 1, type: 'bindtap', listener: { id: 7, priority: 'discrete' } }],
+				},
+			),
+		).toBe(true);
+		expect(handed).toEqual([undefined]);
+	});
+});
+
+/**
  * A one-node `text` program with one declared range it paints when handed a
  * string, built to the emission's contract rather than approximating it: the
  * range values come last, and the answer is the program's nodes followed by one
