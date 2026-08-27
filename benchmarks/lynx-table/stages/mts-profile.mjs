@@ -343,8 +343,12 @@ async function profileSample(browser, cell) {
 			}
 		}
 
-		const scriptUrl = [...new Set(paintProfile.nodes.map((node) => node.callFrame.url))].find(
-			(url) => url.startsWith('blob:'),
+		// Selected from the recorded mints rather than "any blob: frame", so a
+		// second blob-backed script in the page realm surfaces as an ambiguity
+		// instead of silently taking the whole fold.
+		const minted = await page.evaluate(() => globalThis.__OCTANE_BLOB_URLS__ ?? []);
+		const profiled = [...new Set(paintProfile.nodes.map((node) => node.callFrame.url))].filter(
+			(url) => url.startsWith('blob:') && minted.includes(url),
 		);
 		if (profiled.length === 0) {
 			throw new Error(`${cell} produced no main-thread script frames; the profile named none.`);

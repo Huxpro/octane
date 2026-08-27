@@ -1398,55 +1398,79 @@ function collectFirstScreenEvents(
 			// through undefined announces nothing for it. Reading the slot is what
 			// keeps the two arms announcing the same bindings for the same values.
 			hosts += node.plan.nodes;
-			// And one more for each hole the create function paints. That node is
-			// a host on the page like any other — the same `#text` this walk would
-			// have built for the same value — so leaving it out would make this
-			// count disagree with the ID space `assignIds` just laid out, which is
-			// the one thing the count exists to match.
-			for (const text of node.texts) if (text !== undefined) hosts++;
 			const visible = parentVisible && node.visibility !== 'hidden';
-			// Recorded whether or not anything is announced, and before the walk
-			// descends: an invisible program announces nothing, and a run of zero at
-			// the position its children's announcements start is the true answer for
-			// it rather than a missing one.
+			// Announced in the same merged order `assignProgramIds` numbers hosts:
+			// strict pre-order with each range's members spliced at the hole's
+			// position. The interpreted arm — which the background independently
+			// reproduces — mints listener ids in that order, so a program that
+			// announced its whole event table before its members would renumber
+			// every member handler that pre-order places before a later site, and
+			// a tap on one host would resolve to another's handler.
+			//
+			// The announcement run is recorded over the whole merged block,
+			// members included. Every binding in the block carries a host id
+			// minted in this same ascending walk, which is what lets the mount's
+			// run cursor skip a member's binding by comparing ids instead of
+			// searching — the invariant the applier's reader states and leans on.
 			node.eventsAt = events.length;
-			if (visible) {
-				for (const site of node.plan.events) {
-					if (site.node !== host) continue;
-					const handler = node.values[site.slot];
-					if (handler !== FIRST_SCREEN_EVENT && typeof handler !== 'function') continue;
-					events.push({
-						id: node.ids[site.node]!,
-						type: site.type,
-						listener: { id: attempt.nextListener++, priority: site.priority },
-					});
+			const ranges = node.plan.ranges;
+			let hole = 0;
+			let member = 0;
+			let host = 0;
+			const total = node.plan.nodes + ranges.length;
+			for (let position = 0; position < total; position++) {
+				if (hole < ranges.length && ranges[hole]!.id === position) {
+					// A hole the create function paints is one more host on the
+					// page — the same `#text` this walk would have built for the
+					// same value — counted at the hole's position so the count
+					// agrees with the ID space `assignIds` laid out. It carries no
+					// events, so the count is all it contributes.
+					if (node.texts[hole] !== undefined) {
+						hosts++;
+						hole++;
+						continue;
+					}
+					const end = member + node.spans[hole]!;
+					for (; member < end; member++) {
+						hosts += collectFirstScreenEvents([node.children[member]!], visible, attempt, events);
+					}
+					hole++;
+					continue;
 				}
+				if (visible) {
+					for (const site of node.plan.events) {
+						if (site.node !== host) continue;
+						const handler = node.values[site.slot];
+						if (handler !== FIRST_SCREEN_EVENT && typeof handler !== 'function') continue;
+						events.push({
+							id: node.ids[site.node]!,
+							type: site.type,
+							listener: { id: attempt.nextListener++, priority: site.priority },
+						});
+					}
+				}
+				host++;
 			}
 			node.eventsCount = events.length - node.eventsAt;
-			hosts += collectFirstScreenEvents(node.children, visible, attempt, events);
 			continue;
 		}
 		if (node.kind !== 'host') {
 			hosts += collectFirstScreenEvents(node.children, parentVisible, attempt, events);
 			continue;
 		}
-		return hosts;
-	}
-	if (node.kind !== 'host') {
-		return collectFirstScreenEvents(node.children, parentVisible, attempt, events);
-	}
-	let hosts = 1;
-	const visible = parentVisible && node.visibility !== 'hidden';
-	if (visible) {
-		for (const [type, priority] of node.events) {
-			// The array is frozen once at the end; the bindings themselves are
-			// not, because unlike the batch they are never handed across a
-			// boundary — and a page with a listener on every row would pay one
-			// freeze per binding for a value only the applier next door reads.
-			events.push({ id: node.id, type, listener: { id: attempt.nextListener++, priority } });
+		hosts++;
+		const visible = parentVisible && node.visibility !== 'hidden';
+		if (visible) {
+			for (const [type, priority] of node.events) {
+				// The array is frozen once at the end; the bindings themselves are
+				// not, because unlike the batch they are never handed across a
+				// boundary — and a page with a listener on every row would pay one
+				// freeze per binding for a value only the applier next door reads.
+				events.push({ id: node.id, type, listener: { id: attempt.nextListener++, priority } });
+			}
 		}
+		hosts += collectFirstScreenEvents(node.children, visible, attempt, events);
 	}
-	hosts += collectFirstScreenEvents(node.children, visible, attempt, events);
 	return hosts;
 }
 
@@ -1607,13 +1631,6 @@ export interface LynxFirstScreenRenderResult {
 	readonly envelope: LynxFirstScreenResultEnvelope;
 	readonly hostCount: number;
 	readonly logicalCount: number;
-	/**
-	 * How many compiled main-thread programs the tree holds. Non-zero means the
-	 * staged batch path is unavailable — reading `batch` throws — so a caller
-	 * whose direct apply is declined must decline the whole first screen rather
-	 * than fall back to a batch that cannot carry a program.
-	 */
-	readonly programs: number;
 }
 
 /** Evaluate one compiled root and produce the background-compatible initial host batch. */
@@ -1688,8 +1705,12 @@ export function renderLynxFirstScreen<Props>(
 		nodes,
 		envelope,
 		hostCount,
-		logicalCount: attempt.nextId - 1,
+		// Non-zero means the batch getter above throws; the caller that cannot
+		// direct-apply such a tree must decline it to the command path rather
+		// than fall back into the getter and crash with an error naming the
+		// wrong problem.
 		programs,
+		logicalCount: attempt.nextId - 1,
 	});
 }
 

@@ -20,6 +20,7 @@ import {
 	universalValue as firstScreenValue,
 } from '../src/main-renderer.js';
 import { installLynxMainThread, type LynxMainThreadController } from '../src/main-thread.js';
+import { wire } from './_fixtures/lynx-wire.js';
 import {
 	LYNX_BACKGROUND_TO_MAIN_EVENT,
 	LYNX_TRANSPORT_PROTOCOL_VERSION,
@@ -81,14 +82,14 @@ const Host = defineFirstScreenComponent('lynx', (props: { readonly id: string })
 function commit(batch: unknown): void {
 	backgroundContext().dispatchEvent({
 		type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-		data: {
+		data: wire({
 			protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 			renderer: LYNX_TRANSPORT_RENDERER,
 			root: 1,
 			version: 1,
 			type: 'commit',
 			batch,
-		},
+		}),
 	});
 }
 
@@ -216,13 +217,13 @@ describe.sequential('Lynx first-tree lifecycle marker', () => {
 
 		backgroundContext().dispatchEvent({
 			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-			data: {
+			data: wire({
 				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 				renderer: LYNX_TRANSPORT_RENDERER,
 				root: 1,
 				version: 1,
 				type: 'adoption-ready',
-			},
+			}),
 		});
 
 		expect(profile.firstTreeSettled).toBe(1);

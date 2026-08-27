@@ -4225,6 +4225,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		}
 		const runEnd = run === undefined || count === undefined ? -1 : run + count;
 		let cursor = run ?? 0;
+		let claimed = 0;
 		for (const site of plan.events) {
 			const hostId = ids[site.node];
 			if (hostId === undefined) {
@@ -4235,11 +4236,25 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			let announced: UniversalEventListenerDescriptor | undefined;
 			if (run === undefined) {
 				announced = eventsByHost.get(hostId)?.find(([type]) => type === site.type)?.[1];
-			} else if (cursor < runEnd) {
-				const binding = envelope.events[cursor];
-				if (binding !== undefined && binding.id === hostId && binding.type === site.type) {
-					announced = binding.listener;
-					cursor++;
+			} else {
+				// The run covers the program's whole merged block, a keyed range's
+				// members spliced at their hole's position between the program's
+				// own sites — because the renderer announces in the same merged
+				// order `assignProgramIds` numbers hosts, every binding in the
+				// block carries an id minted in one ascending walk. A member's
+				// binding therefore sits below the next own site's host id and is
+				// skipped by comparison rather than searched past; a site whose
+				// handler came through undefined announces nothing, so the cursor
+				// stops at an id beyond it and the site stays open without
+				// shifting the sites after it onto the wrong listeners.
+				while (cursor < runEnd && envelope.events[cursor]!.id < hostId) cursor++;
+				if (cursor < runEnd) {
+					const binding = envelope.events[cursor];
+					if (binding !== undefined && binding.id === hostId && binding.type === site.type) {
+						announced = binding.listener;
+						cursor++;
+						claimed++;
+					}
 				}
 			}
 			// Four of this token's five primitives are proven before the mount
@@ -4279,16 +4294,31 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			tokens.push(token);
 			args.push(token);
 		}
-		// An announcement left in the run is the one disagreement a position can
-		// have with the thing it addresses, and the one the search could never
-		// report: a listener the background installed for this program that no site
-		// of this program answers to. Every other shape of mismatch shows up as a
-		// site left open above, which is the answer a missing handler gets too —
-		// this is the shape that is never a missing handler.
-		if (run !== undefined && cursor !== runEnd) {
-			throw hostError(
-				`first-screen program was handed ${runEnd - run} announcements for its ${plan.events.length} event site${plan.events.length === 1 ? '' : 's'}, and claimed ${cursor - run} of them.`,
-			);
+		// An announcement of this program's that no site claimed is the one
+		// disagreement a position can have with the thing it addresses, and the
+		// one the search could never report: a listener announced for one of this
+		// program's own hosts that no site of this program answers to. The block
+		// also carries the members' announcements — spliced at their hole's
+		// position by the same merged walk that numbered them — so the check is
+		// membership, not exhaustion: every binding in the block whose id is one
+		// of this program's own is counted in one ascending pass against the
+		// sorted ids, and that count must equal what the sites claimed. Every
+		// other shape of mismatch shows up as a site left open above, which is
+		// the answer a missing handler gets too — this is the shape that is
+		// never a missing handler.
+		if (run !== undefined) {
+			let own = 0;
+			let at = 0;
+			for (let index = run; index < runEnd; index++) {
+				const id = envelope.events[index]!.id;
+				while (at < ids.length && (ids[at] as number) < id) at++;
+				if (at < ids.length && ids[at] === id) own++;
+			}
+			if (own !== claimed) {
+				throw hostError(
+					`first-screen program was handed ${own} announcement${own === 1 ? '' : 's'} for its ${plan.events.length} event site${plan.events.length === 1 ? '' : 's'}, and claimed ${claimed} of them.`,
+				);
+			}
 		}
 		// Last, after the listeners, exactly as the emission orders its
 		// parameters. A hole this renderer filled itself sends `undefined`, which
@@ -5436,6 +5466,22 @@ function compareFirstTree<Node extends LynxElementRef>(
 			// *is* the ownership journal's answer and the comparison has nothing
 			// left to disagree with. The check is gone because its failure mode is,
 			// not because it stopped mattering.
+			//
+			// Visibility is the other half main does know, by construction rather
+			// than by record: the direct applier refuses a hidden program before
+			// painting anything, so every node a program painted is visible and
+			// carries no `hidden` attribute. A description that calls one of them
+			// hidden therefore disagrees with the painted page — adopting it would
+			// keep content on screen that the accepted tree says is hidden, while
+			// event routing drops its taps as hidden. Nothing red, which is
+			// exactly the class of near-miss this comparator refuses.
+			if (!next.visible) {
+				return mismatch(
+					firstTree,
+					`snapshot.nodes[${id}].visible`,
+					'the visibility state differs.',
+				);
+			}
 			// Events are the exception to all of that, and worth taking. Main does
 			// know what it bound here: the mount installed a token per site the
 			// renderer announced, and journalled it. So the background's record
