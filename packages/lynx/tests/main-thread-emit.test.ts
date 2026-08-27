@@ -1053,3 +1053,207 @@ describe('Lynx main-thread program emission', () => {
 		expect(() => create({ intrinsics: undefined })).toThrow(/intrinsic element factories/);
 	});
 });
+
+// Issue-#215 D8 — the same program painted `count` times by one call.
+//
+// A keyed range whose members are all the same compiled program pays, per
+// member, for a walk frame, an argument array, a bound-function lookup, a
+// spread call and a returned array — all of it prologue around a body that is
+// already straight-line. The emission grows a driver that runs that body in a
+// loop over member-major tables, and the load-bearing claim is that the driver
+// paints what the create function paints, `count` times over.
+//
+// That claim is made two ways here, because either alone is weak. The text
+// relation says the driver *is* the create function's body — so there is no
+// second codegen path that could drift — and the differential says the trees
+// agree, which is what a reader of the page can see.
+describe('Lynx main-thread program dense run driver', () => {
+	/** The lines between a function's opening brace and its closing one. */
+	function bodyOf(source: string, open: string, close: string): readonly string[] {
+		const lines = source.split('\n');
+		const start = lines.findIndex((line) => line === open);
+		expect(start).toBeGreaterThanOrEqual(0);
+		const end = lines.indexOf(close, start + 1);
+		expect(end).toBeGreaterThan(start);
+		return lines.slice(start + 1, end);
+	}
+
+	it('carries a driver exactly when every range site it declares is one it paints', () => {
+		// No sites at all meets the condition trivially, and is the common case:
+		// a row whose holes were all reduced to parameters.
+		expect(emitLynxMainThreadProgram(ROW, { name: 'createRow' }).denseRun).toBe(true);
+		expect(
+			emitLynxMainThreadProgram(RANGED_ROW, {
+				name: 'createRangedRow',
+				ranges: RANGED_ROW_SITES,
+			}).denseRun,
+		).toBe(true);
+		// Node 0 is the row `view`, so a hole there is the ordinary keyed list at
+		// every value: the emission paints nothing and the members are the
+		// renderer's. Their IDs are minted at the hole's position — inside this
+		// program's own span — so two instances do not take the same number of
+		// IDs and no arithmetic addresses the second one.
+		expect(
+			emitLynxMainThreadProgram(RANGED_ROW, {
+				name: 'createRangedRow',
+				ranges: [{ node: 0 }, ...RANGED_ROW_SITES],
+			}).denseRun,
+		).toBe(false);
+	});
+
+	it('emits the pre-driver bytes unchanged for a program that gets no driver', () => {
+		// Not a formatting preference: every record the C-train took was measured
+		// against this text, and a program that gains nothing from the driver
+		// must not silently gain different code either.
+		const { source } = emitLynxMainThreadProgram(RANGED_ROW, {
+			name: 'createRangedRow',
+			ranges: [{ node: 0 }, ...RANGED_ROW_SITES],
+		});
+		expect(source).toContain('\treturn function createRangedRow(');
+		expect(source).not.toContain('.run = function');
+		expect(source.trimEnd().endsWith('\t};\n}')).toBe(true);
+	});
+
+	it("runs the create function's own body, one tab in, rather than a second emission of it", () => {
+		// The whole reason the driver can be trusted to paint what `count` calls
+		// paint. Two codegen paths would have to keep agreeing forever; one body
+		// used twice cannot disagree with itself, and this is the assertion that
+		// says which of the two this is.
+		const { source } = emitLynxMainThreadProgram(RANGED_ROW, {
+			name: 'createRangedRow',
+			ranges: RANGED_ROW_SITES,
+		});
+		const create = bodyOf(
+			source,
+			'\tfunction createRangedRow(pageId, v0, e0, e1, r0, r1) {',
+			'\t}',
+		);
+		const driver = bodyOf(
+			source,
+			'\tcreateRangedRow.run = function (pageId, count, values, events, ranges, out) {',
+			'\t};',
+		);
+		// The create function's body ends with its return; the driver's is
+		// wrapped in the parameter binding, the loop, and the writes into `out`.
+		const returned = create[create.length - 1]!;
+		expect(returned).toBe('\t\treturn [n0, n1, n2, n3, n4, t0, t1];');
+		const painted = create.slice(0, -1);
+		const inner = driver.filter((line) => line.startsWith('\t\t\t'));
+		// The binding prologue, then the body, then the writes and the strides.
+		const bound = [
+			'\t\t\tvar v0 = values[vi];',
+			'\t\t\tvar e0 = events[ei];',
+			'\t\t\tvar e1 = events[ei + 1];',
+			'\t\t\tvar r0 = ranges[ri];',
+			'\t\t\tvar r1 = ranges[ri + 1];',
+		];
+		expect(inner.slice(0, bound.length)).toEqual(bound);
+		expect(inner.slice(bound.length, bound.length + painted.length)).toEqual(
+			painted.map((line) => `\t${line}`),
+		);
+		// Seven positions per instance — five nodes then two painted holes, the
+		// same order and the same length as the array the create function
+		// returns, which is what makes a member addressable by stride.
+		expect(inner.slice(bound.length + painted.length)).toEqual([
+			'\t\t\tout[oi] = n0;',
+			'\t\t\tout[oi + 1] = n1;',
+			'\t\t\tout[oi + 2] = n2;',
+			'\t\t\tout[oi + 3] = n3;',
+			'\t\t\tout[oi + 4] = n4;',
+			'\t\t\tout[oi + 5] = t0;',
+			'\t\t\tout[oi + 6] = t1;',
+			'\t\t\tvi += 1; ei += 2; ri += 2; oi += 7;',
+		]);
+	});
+
+	it('paints through one driver call what the create function paints in `count` calls', () => {
+		const rows = [
+			{ classes: 'row', id: '1', label: 'alpha' },
+			{ classes: 'row danger', id: '2', label: 'beta' },
+			{ classes: 'row', id: '3', label: 'gamma' },
+		];
+
+		const perCall = createHost();
+		const perCallPage = perCall.createPage('0', 0);
+		const perCallId = perCall.getUniqueId(perCallPage);
+		const create = instantiate(RANGED_ROW, 'createRangedRow', RANGED_ROW_SITES)(perCall);
+		const separately: unknown[] = [];
+		for (let index = 0; index < rows.length; index++) {
+			const row = rows[index]!;
+			const painted = create(
+				...([perCallId, row.classes, index * 2 + 1, index * 2 + 2, row.id, row.label] as never[]),
+			);
+			for (const node of painted) separately.push(node);
+		}
+
+		const looped = createHost();
+		const loopedPage = looped.createPage('0', 0);
+		const loopedId = looped.getUniqueId(loopedPage);
+		const driver = instantiate(
+			RANGED_ROW,
+			'createRangedRow',
+			RANGED_ROW_SITES,
+		)(looped) as unknown as {
+			run: (
+				pageId: number,
+				count: number,
+				values: readonly unknown[],
+				events: readonly unknown[],
+				ranges: readonly unknown[],
+				out: unknown[],
+			) => void;
+		};
+		const together: unknown[] = new Array(rows.length * 7);
+		driver.run(
+			loopedId,
+			rows.length,
+			rows.map((row) => row.classes),
+			rows.flatMap((_row, index) => [index * 2 + 1, index * 2 + 2]),
+			rows.flatMap((row) => [row.id, row.label]),
+			together,
+		);
+
+		// Every instance at its own stride, in the create function's own order —
+		// which is what lets a caller address instance `k`'s node `j` as
+		// `k * 7 + j` instead of holding an array per instance.
+		expect(together).toHaveLength(separately.length);
+		expect(together.map((node) => paintedTree(shape(node as never)))).toEqual(
+			separately.map((node) => paintedTree(shape(node as never))),
+		);
+		// And the assembled subtrees agree, which is what the page will show once
+		// the caller attaches them. Compared at the roots rather than through the
+		// page, because an emitted program attaches nothing: the page both hosts
+		// hold is still empty here, so comparing *it* would compare two empty
+		// trees and pass whatever the driver did.
+		for (let index = 0; index < rows.length; index++) {
+			expect(paintedTree(shape(together[index * 7] as never))).toEqual(
+				paintedTree(shape(separately[index * 7] as never)),
+			);
+		}
+
+		// Listener identity, compared directly rather than through `paintedTree`.
+		// The tree comparison drops it on purpose — see the file header — so a
+		// driver that handed every site the same listener would paint identical
+		// trees and route every tap to one handler. Both arms take their
+		// listeners as parameters, so unlike the interpreted comparison these are
+		// the same numbers and can be compared as they are.
+		const listeners = (node: unknown): readonly unknown[] => {
+			const value = node as {
+				readonly events: readonly (readonly [string, unknown])[];
+				readonly children: readonly unknown[];
+			};
+			return [...value.events, ...value.children.flatMap(listeners)];
+		};
+		const from = (roots: readonly unknown[]): readonly unknown[] =>
+			rows.flatMap((_row, index) => listeners(shape(roots[index * 7] as never)));
+		expect(from(together)).toEqual(from(separately));
+		expect(from(together)).toEqual([
+			['bindEvent:tap', 1],
+			['bindEvent:tap', 2],
+			['bindEvent:tap', 3],
+			['bindEvent:tap', 4],
+			['bindEvent:tap', 5],
+			['bindEvent:tap', 6],
+		]);
+	});
+});

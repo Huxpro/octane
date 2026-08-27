@@ -153,11 +153,60 @@ export function Shell(props: { rows: unknown }) @{
 }
 `;
 
+/**
+ * A list written the way a list is actually written: a shell whose keyed range
+ * is a `@for` over a *component*.
+ *
+ * Every other cell in this file builds its rows by calling `universalComponent`
+ * directly, and that difference is invisible in a tree and decisive at a mount.
+ * A hand-built row arrives under one transparent wrapper. `@for (…) { <Row /> }`
+ * lowers to two — the loop wraps the keyed member, and the component boundary
+ * wraps the program inside it — and neither wrapper makes a node, so no
+ * description, snapshot, or identity check can tell the two apart. A mount that
+ * unwraps a fixed one level therefore finds no program under the member on the
+ * only shape that matters, and silently takes the path it was written to
+ * replace (issue #215 D8).
+ */
+const LOOP_LIST = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+function Row(props: { label: string; detail: string; tone: string; onPick: () => void; onHold: () => void }) @{
+	<view class={props.tone}>
+		<text class="card-label" bindtap={props.onPick}>{props.label as string}</text>
+		<view class="card-body"><text class="d" bindtap={props.onHold}>{props.detail as string}</text></view>
+	</view>
+}
+export function List(props: { rows: readonly { id: string; label: string }[] }) @{
+	<view class="list">
+		<text class="head">Head</text>
+		@for (const row of props.rows; key row.id) {
+			<Row label={row.label} detail="Detail" tone="card active" onPick={() => {}} onHold={() => {}} />
+		}
+	</view>
+}
+`;
+
 /** `CARD`, with its first hole opened to hold a component instead of a string. */
 const HOSTING_CARD = CARD.replace('props: { label: string;', 'props: { label: unknown;').replace(
 	'{props.label as string}',
 	'{props.label}',
 );
+
+/**
+ * The same card, rendered *inside* another component's host tree.
+ *
+ * A program need not be a page root: `Shell` stays interpreted — a `ref`
+ * binding keeps it template-ineligible — while `Card` still compiles to one.
+ * The parent is then an ordinary described host whose children, on the
+ * background's description, include the program's root. Adoption is sound only
+ * if main's capture names that child too, which is the linkage a program's
+ * mount has to write even though it writes no record.
+ */
+const SHELL = `${CARD.replace('export function Card', 'function Card')}
+export function Shell(props: { label: string; detail: string; tone: string; onPick: () => void; onHold: () => void; onRef: (node: unknown) => void }) @{
+	<view class="shell" ref={props.onRef}>
+		<Card label={props.label} detail={props.detail} tone={props.tone} onPick={props.onPick} onHold={props.onHold} />
+	</view>
+}
+`;
 
 type CardComponent = Parameters<typeof MainRenderer.renderLynxFirstScreen>[0];
 
@@ -198,6 +247,7 @@ const PROPS = {
 	tone: 'card active',
 	onPick: () => {},
 	onHold: () => {},
+	onRef: () => {},
 };
 
 function render(
@@ -454,6 +504,79 @@ function nodesOf(node: unknown): unknown[] {
 }
 
 describe('the direct applier mounting a compiled main-thread program', () => {
+	it('adopts a compiled program painted under a described host', () => {
+		// The nested shape: `Shell` is interpreted, `Card` inside it is a program.
+		// The background's record for the shell view counts the program's root
+		// among its children, so the capture has to say the same — a mount that
+		// left the link out would fail the child-order comparison and turn every
+		// nested program's first screen into a repair: correct, silent, and
+		// exactly the repaint this train exists to avoid.
+		const painted = paint(true, PROPS, componentFor(true, SHELL, 'Shell'));
+		const captured = captureLynxFirstTree(painted.container);
+		expect(captured).not.toBeNull();
+		const paintedNodes = nodesOf(painted.page).slice(1);
+		const madeByProgram = new Set(painted.made);
+		expect(madeByProgram.size).toBeGreaterThan(0);
+		const background = MainRenderer.renderLynxFirstScreen(
+			componentFor(false, SHELL, 'Shell'),
+			PROPS as never,
+		);
+		const target = createLynxHostContainer(painted.papi, {
+			root: 1,
+			page: painted.page as never,
+		});
+		let mismatch: string | null = null;
+		const prepared = prepareLynxHostBatch(target, background.batch, {
+			firstTree: captured!,
+			onMismatch: (error) => {
+				mismatch = error.message;
+			},
+		});
+		expect(mismatch).toBeNull();
+		expect(prepared.firstTreeAction).toBe('adopt');
+		prepared.apply();
+		// Same identity claim as the root-level case: the adopted tree is the
+		// painted elements, the program's own nodes included.
+		const adopted = new Set(nodesOf(painted.page).slice(1));
+		expect(adopted.size).toBe(paintedNodes.length);
+		for (const node of paintedNodes) expect(adopted.has(node)).toBe(true);
+		for (const node of madeByProgram) expect(adopted.has(node)).toBe(true);
+	});
+
+	it('refuses a description that calls a node the program painted hidden', () => {
+		// The applier refuses a hidden program before painting anything, so every
+		// node the program made is visibly on screen. A description that calls
+		// one of them hidden agrees about the tree, the IDs, and every event —
+		// and disagrees about what the user sees. Adopting it would keep painted
+		// content the accepted tree says is hidden while its taps are dropped as
+		// hidden: nothing red, which is why the comparator has to refuse it
+		// rather than trust the description.
+		const painted = paint(true);
+		const captured = captureLynxFirstTree(painted.container);
+		expect(captured).not.toBeNull();
+		const background = render(false);
+		const rootId = captured!.snapshot.roots[0]!;
+		const batch = {
+			...background.batch,
+			commands: [...background.batch.commands, { op: 'visibility', id: rootId, state: 'hidden' }],
+		} as typeof background.batch;
+		const target = createLynxHostContainer(painted.papi, {
+			root: 1,
+			page: painted.page as never,
+		});
+		let mismatch: string | null = null;
+		const prepared = prepareLynxHostBatch(target, batch, {
+			firstTree: captured!,
+			onMismatch: (error) => {
+				mismatch = error.message;
+			},
+		});
+		expect(prepared.firstTreeAction).toBe('repair');
+		// By visibility, not by something incidental — a shape difference would
+		// also repair and prove nothing about this check.
+		expect(mismatch).toMatch(/visibility state differs/);
+	});
+
 	it('paints the tree the interpreted encoding paints, with the same event tokens', () => {
 		const program = paint(true);
 		const interpreted = paint(false);
@@ -702,6 +825,219 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 		expect(adopted.size).toBe(before.length);
 		for (const node of before) expect(adopted.has(node)).toBe(true);
 		for (const node of madeByProgram) expect(adopted.has(node)).toBe(true);
+	});
+
+	it("adopts a dense keyed range of rows in a shell's own hole", () => {
+		// The `@for` shape D8 drives with one call: a shell whose keyed range holds
+		// one instance of one compiled row per member, painted through a single
+		// driver call over four tables rather than one create call each.
+		//
+		// Whether the mount took that path is the mount's business, and it is
+		// pinned where it is decided, in `first-screen-direct.test.ts`. What is
+		// only observable here is the consequence: a dense run keeps no per-member
+		// ID table at all, so *every* answer adoption asks it — which node wears
+		// this ID, where it sits, which listener is on it — is arithmetic from the
+		// first ID and a per-plan slot table. This is the cell that asks those
+		// questions against real compiled rows, over a background description that
+		// never saw a program.
+		//
+		// `CARD` rather than the `INNER` the cell above uses, because a row has to
+		// carry events for the second half of this to mean anything: the token
+		// table is one array for the whole range, and a base computed per instance
+		// is the difference between three rows that each answer to their own tap
+		// and three rows that all answer to the first one's.
+		const rows = (card: CardComponent) =>
+			['a', 'b', 'c'].map((key) =>
+				MainRenderer.universalComponent('lynx', card, { ...PROPS, label: `Label ${key}` }, key),
+			);
+		const painted = paint(
+			true,
+			{ rows: rows(componentFor(true, CARD, 'Card')) },
+			componentFor(true, LIST, 'List'),
+		);
+		// The premise, so the cell cannot pass by losing the shape it is about:
+		// four hosts and two painted holes per row, three rows, plus the shell's
+		// own two hosts and the `Head` text it paints — every node on the page from
+		// a compiled create.
+		const madeByProgram = new Set(painted.made);
+		expect(madeByProgram.size).toBe(21);
+
+		const background = MainRenderer.renderLynxFirstScreen(componentFor(false, LIST, 'List'), {
+			rows: rows(componentFor(false, CARD, 'Card')),
+		} as never);
+
+		const { before, after } = adoptInto(painted, background);
+		const adopted = new Set(after);
+		expect(adopted.size).toBe(before.length);
+		for (const node of before) expect(adopted.has(node)).toBe(true);
+		for (const node of madeByProgram) expect(adopted.has(node)).toBe(true);
+	});
+
+	it("routes each dense row's tap to that row's own listener, after adoption", () => {
+		// The other half, and the one no identity check can reach. Adoption can
+		// hand back every node and still have moved the listeners: the tokens the
+		// paint wrote are per instance, and a run that read them from a shared base
+		// would leave a page that looks right and sends every row's tap to row
+		// zero.
+		const rows = (card: CardComponent) =>
+			['a', 'b', 'c'].map((key) =>
+				MainRenderer.universalComponent('lynx', card, { ...PROPS, label: `Label ${key}` }, key),
+			);
+		const painted = paint(
+			true,
+			{ rows: rows(componentFor(true, CARD, 'Card')) },
+			componentFor(true, LIST, 'List'),
+		);
+		const captured = captureLynxFirstTree(painted.container);
+		expect(captured).not.toBeNull();
+		const background = MainRenderer.renderLynxFirstScreen(componentFor(false, LIST, 'List'), {
+			rows: rows(componentFor(false, CARD, 'Card')),
+		} as never);
+		const target = createLynxHostContainer(painted.papi, {
+			root: 1,
+			page: painted.page as never,
+		});
+		const prepared = prepareLynxHostBatch(target, background.batch, { firstTree: captured! });
+		expect(prepared.firstTreeAction).toBe('adopt');
+		prepared.apply();
+
+		// Two taps per row, three rows, as the host received them.
+		const tokens = painted.events.map((call) => call[3]).filter((value) => value !== undefined);
+		expect(tokens).toHaveLength(6);
+		expect(tokens).toHaveLength(background.envelope.events.length);
+		const announced = new Map(
+			background.envelope.events.map((binding) => [binding.listener.id, binding.listener.priority]),
+		);
+		for (const token of tokens) {
+			const resolved = resolveLynxHostNativeEvent(target, token as string);
+			expect(resolved).not.toBeNull();
+			expect(announced.get(resolved!.listener)).toBe(resolved!.priority);
+		}
+		// Six distinct listeners: one shared base would collapse this to two.
+		expect(
+			new Set(tokens.map((token) => resolveLynxHostNativeEvent(target, token as string)!.listener))
+				.size,
+		).toBe(6);
+	});
+
+	it('wraps every member of a `@for` of a component more than once', () => {
+		// The premise the two cells below rest on, and the one thing about this
+		// fixture that is not visible in any tree it produces. A member built by
+		// calling `universalComponent` — how every other cell here makes its rows —
+		// arrives under a single transparent wrapper. Lowered from `@for`, a member
+		// that is a component arrives under more: the loop wraps the keyed member,
+		// and the component boundary wraps the program.
+		//
+		// Asserted as "more than one" rather than "exactly two" on purpose. How many
+		// wrappers a member wears is a lowering detail and the mount is written not
+		// to care; what the mount does depend on is that the number is not fixed at
+		// one, which is the assumption that made it decline this shape. If a future
+		// lowering flattens the chain, this cell going red is the correct outcome:
+		// the fixture would have quietly become a copy of the hand-built ones.
+		const data = [{ id: 'a', label: 'Label a' }];
+		const rendered = MainRenderer.renderLynxFirstScreen(componentFor(true, LOOP_LIST, 'List'), {
+			rows: data,
+		} as never);
+		const wrappersAround = (member: (typeof rendered.nodes)[number]): number => {
+			let wrappers = 0;
+			let node = member;
+			while (node.kind === 'range') {
+				expect(node.children).toHaveLength(1);
+				wrappers += 1;
+				node = node.children[0]!;
+			}
+			expect(node.kind).toBe('program');
+			return wrappers;
+		};
+
+		const shell = rendered.nodes[0]!;
+		expect(shell.kind).toBe('program');
+		const looped = wrappersAround(shell.children[0]!);
+
+		// The contrast, so the count above cannot pass by measuring nothing: the
+		// same shell, the same row component, with the member built by hand the
+		// way every other cell here builds one.
+		const byHand = MainRenderer.renderLynxFirstScreen(componentFor(true, LIST, 'List'), {
+			rows: [
+				MainRenderer.universalComponent(
+					'lynx',
+					componentFor(true, CARD, 'Card'),
+					{ ...PROPS, label: 'Label a' },
+					'a',
+				),
+			],
+		} as never);
+		expect(wrappersAround(byHand.nodes[0]!.children[0]!)).toBe(1);
+		expect(looped).toBeGreaterThan(1);
+	});
+
+	it('adopts a `@for` of a component, whose members wear two wrappers, not one', () => {
+		// The same claim as the two cells above, over the shape the compiler
+		// actually emits rather than one assembled by hand. Nothing here is new
+		// about adoption; what is new is the depth of the wrapping between the
+		// keyed member and the program, which is the one thing those cells could
+		// not vary because they never went through `@for`.
+		const data = [
+			{ id: 'a', label: 'Label a' },
+			{ id: 'b', label: 'Label b' },
+			{ id: 'c', label: 'Label c' },
+		];
+		const painted = paint(true, { rows: data }, componentFor(true, LOOP_LIST, 'List'));
+		// The premise, so the cell cannot pass by losing the shape it is about:
+		// four hosts and two painted holes per row, three rows, plus the shell's
+		// two hosts and the `Head` text — every node on the page from a compiled
+		// create, exactly as for the hand-built arm.
+		expect(new Set(painted.made).size).toBe(21);
+
+		const background = MainRenderer.renderLynxFirstScreen(componentFor(false, LOOP_LIST, 'List'), {
+			rows: data,
+		} as never);
+		const { before, after } = adoptInto(painted, background);
+		const adopted = new Set(after);
+		expect(adopted.size).toBe(before.length);
+		for (const node of before) expect(adopted.has(node)).toBe(true);
+		for (const node of painted.made) expect(adopted.has(node)).toBe(true);
+	});
+
+	it("routes each row's tap to its own listener through a `@for` of a component", () => {
+		// The listener half at the real wrapping depth. A run that resolved every
+		// instance against a shared base leaves a page that adopts perfectly and
+		// sends all six taps to row zero, so identity above cannot stand in for
+		// this.
+		const data = [
+			{ id: 'a', label: 'Label a' },
+			{ id: 'b', label: 'Label b' },
+			{ id: 'c', label: 'Label c' },
+		];
+		const painted = paint(true, { rows: data }, componentFor(true, LOOP_LIST, 'List'));
+		const captured = captureLynxFirstTree(painted.container);
+		expect(captured).not.toBeNull();
+		const background = MainRenderer.renderLynxFirstScreen(componentFor(false, LOOP_LIST, 'List'), {
+			rows: data,
+		} as never);
+		const target = createLynxHostContainer(painted.papi, {
+			root: 1,
+			page: painted.page as never,
+		});
+		const prepared = prepareLynxHostBatch(target, background.batch, { firstTree: captured! });
+		expect(prepared.firstTreeAction).toBe('adopt');
+		prepared.apply();
+
+		const tokens = painted.events.map((call) => call[3]).filter((value) => value !== undefined);
+		expect(tokens).toHaveLength(6);
+		expect(tokens).toHaveLength(background.envelope.events.length);
+		const announced = new Map(
+			background.envelope.events.map((binding) => [binding.listener.id, binding.listener.priority]),
+		);
+		for (const token of tokens) {
+			const resolved = resolveLynxHostNativeEvent(target, token as string);
+			expect(resolved).not.toBeNull();
+			expect(announced.get(resolved!.listener)).toBe(resolved!.priority);
+		}
+		expect(
+			new Set(tokens.map((token) => resolveLynxHostNativeEvent(target, token as string)!.listener))
+				.size,
+		).toBe(6);
 	});
 
 	it('adopts a page mixing programs with hosts the renderer described', () => {

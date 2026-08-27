@@ -297,12 +297,27 @@ function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
 		// this is that guarantee restated where the runtime can see it, for the
 		// plans that do not come from it.
 		const bound = new Set<string>();
+		let previousSiteNode = -1;
 		for (const site of node.events) {
 			if (!Number.isInteger(site.node) || site.node < 0 || site.node >= node.nodes) {
 				throw new TypeError(
 					`A compiled main-thread program binds an event on node ${site.node}, which is not one of its ${node.nodes} nodes.`,
 				);
 			}
+			// Sites in node order is the third guarantee the compiler already
+			// gives — `prepareUniversalTemplateProgram` pushes them in pre-order —
+			// restated here for plans that do not come from it. The announcement
+			// walk announces sites at their host's merged position and the mount's
+			// run cursor claims them in that same ascending order, so a plan whose
+			// sites go backwards would leave the earlier site unclaimed and fault
+			// the launch after the paint; refused here, it fails the build of the
+			// plan instead.
+			if (site.node < previousSiteNode) {
+				throw new TypeError(
+					`A compiled main-thread program declares its event sites out of node order: node ${site.node} after node ${previousSiteNode}.`,
+				);
+			}
+			previousSiteNode = site.node;
 			const key = `${site.node}\u0000${site.type}`;
 			if (bound.has(key)) {
 				throw new TypeError(
@@ -1385,33 +1400,73 @@ function collectFirstScreenEvents(
 ): number {
 	let hosts = 0;
 	for (const node of nodes) {
-		if (node.kind === 'program') {
-			// The program's own hosts are counted, not walked: it made exactly
-			// `plan.nodes` of them and `assignIds` already recorded which ID each
-			// took. Its event sites are a table rather than a scan, which is the
-			// same trade the emission makes everywhere — the walk happened once at
-			// build time.
-			//
-			// The value at an event site still decides, exactly as it does for an
-			// authored host: an event-named prop bound to something that is not
-			// callable installs no listener, so a program whose handler prop came
-			// through undefined announces nothing for it. Reading the slot is what
-			// keeps the two arms announcing the same bindings for the same values.
-			hosts += node.plan.nodes;
-			// And one more for each hole the create function paints. That node is
-			// a host on the page like any other — the same `#text` this walk would
-			// have built for the same value — so leaving it out would make this
-			// count disagree with the ID space `assignIds` just laid out, which is
-			// the one thing the count exists to match.
-			for (const text of node.texts) if (text !== undefined) hosts++;
-			const visible = parentVisible && node.visibility !== 'hidden';
-			// Recorded whether or not anything is announced, and before the walk
-			// descends: an invisible program announces nothing, and a run of zero at
-			// the position its children's announcements start is the true answer for
-			// it rather than a missing one.
-			node.eventsAt = events.length;
+		hosts += collectNodeFirstScreenEvents(node, parentVisible, attempt, events);
+	}
+	return hosts;
+}
+
+function collectNodeFirstScreenEvents(
+	node: FirstScreenNode,
+	parentVisible: boolean,
+	attempt: FirstScreenAttempt,
+	events: LynxFirstScreenResultEvent[],
+): number {
+	let hosts = 0;
+	if (node.kind === 'program') {
+		// The program's own hosts are counted, not walked: it made exactly
+		// `plan.nodes` of them and `assignIds` already recorded which ID each
+		// took. Its event sites are a table rather than a scan, which is the
+		// same trade the emission makes everywhere — the walk happened once at
+		// build time.
+		//
+		// The value at an event site still decides, exactly as it does for an
+		// authored host: an event-named prop bound to something that is not
+		// callable installs no listener, so a program whose handler prop came
+		// through undefined announces nothing for it. Reading the slot is what
+		// keeps the two arms announcing the same bindings for the same values.
+		hosts += node.plan.nodes;
+		const visible = parentVisible && node.visibility !== 'hidden';
+		// Announced in the same merged order `assignProgramIds` numbers hosts:
+		// strict pre-order with each range's members spliced at the hole's
+		// position. The interpreted arm — which the background independently
+		// reproduces — mints listener ids in that order, so a program that
+		// announced its whole event table before its members would renumber
+		// every member handler that pre-order places before a later site, and
+		// a tap on one host would resolve to another's handler.
+		//
+		// The announcement run is recorded over the whole merged block,
+		// members included. Every binding in the block carries a host id
+		// minted in this same ascending walk, which is what lets the mount's
+		// run cursor skip a member's binding by comparing ids instead of
+		// searching — the invariant the applier's reader states and leans on.
+		node.eventsAt = events.length;
+		const ranges = node.plan.ranges;
+		let hole = 0;
+		let member = 0;
+		let host = 0;
+		const total = node.plan.nodes + ranges.length;
+		for (let position = 0; position < total; position++) {
+			if (hole < ranges.length && ranges[hole]!.id === position) {
+				// A hole the create function paints is one more host on the
+				// page — the same `#text` this walk would have built for the
+				// same value — counted at the hole's position so the count
+				// agrees with the ID space `assignIds` laid out. It carries no
+				// events, so the count is all it contributes.
+				if (node.texts[hole] !== undefined) {
+					hosts++;
+					hole++;
+					continue;
+				}
+				const end = member + node.spans[hole]!;
+				for (; member < end; member++) {
+					hosts += collectNodeFirstScreenEvents(node.children[member]!, visible, attempt, events);
+				}
+				hole++;
+				continue;
+			}
 			if (visible) {
 				for (const site of node.plan.events) {
+					if (site.node !== host) continue;
 					const handler = node.values[site.slot];
 					if (handler !== FIRST_SCREEN_EVENT && typeof handler !== 'function') continue;
 					events.push({
@@ -1421,27 +1476,26 @@ function collectFirstScreenEvents(
 					});
 				}
 			}
-			node.eventsCount = events.length - node.eventsAt;
-			hosts += collectFirstScreenEvents(node.children, visible, attempt, events);
-			continue;
+			host++;
 		}
-		if (node.kind !== 'host') {
-			hosts += collectFirstScreenEvents(node.children, parentVisible, attempt, events);
-			continue;
-		}
-		hosts++;
-		const visible = parentVisible && node.visibility !== 'hidden';
-		if (visible) {
-			for (const [type, priority] of node.events) {
-				// The array is frozen once at the end; the bindings themselves are
-				// not, because unlike the batch they are never handed across a
-				// boundary — and a page with a listener on every row would pay one
-				// freeze per binding for a value only the applier next door reads.
-				events.push({ id: node.id, type, listener: { id: attempt.nextListener++, priority } });
-			}
-		}
-		hosts += collectFirstScreenEvents(node.children, visible, attempt, events);
+		node.eventsCount = events.length - node.eventsAt;
+		return hosts;
 	}
+	if (node.kind !== 'host') {
+		return hosts + collectFirstScreenEvents(node.children, parentVisible, attempt, events);
+	}
+	hosts++;
+	const visible = parentVisible && node.visibility !== 'hidden';
+	if (visible) {
+		for (const [type, priority] of node.events) {
+			// The array is frozen once at the end; the bindings themselves are
+			// not, because unlike the batch they are never handed across a
+			// boundary — and a page with a listener on every row would pay one
+			// freeze per binding for a value only the applier next door reads.
+			events.push({ id: node.id, type, listener: { id: attempt.nextListener++, priority } });
+		}
+	}
+	hosts += collectFirstScreenEvents(node.children, visible, attempt, events);
 	return hosts;
 }
 
@@ -1601,6 +1655,13 @@ export interface LynxFirstScreenRenderResult {
 	/** Envelope for `applyLynxFirstScreenDirect`; costs one walk, not a batch. */
 	readonly envelope: LynxFirstScreenResultEnvelope;
 	readonly hostCount: number;
+	/**
+	 * How many compiled main-thread programs this first screen contains.
+	 * Non-zero means reading `batch` throws: a caller whose direct apply
+	 * declined such a tree must decline the whole first screen to the command
+	 * path rather than fall back into the batch getter.
+	 */
+	readonly programs: number;
 	readonly logicalCount: number;
 }
 
@@ -1676,6 +1737,11 @@ export function renderLynxFirstScreen<Props>(
 		nodes,
 		envelope,
 		hostCount,
+		// Non-zero means the batch getter above throws; the caller that cannot
+		// direct-apply such a tree must decline it to the command path rather
+		// than fall back into the getter and crash with an error naming the
+		// wrong problem.
+		programs,
 		logicalCount: attempt.nextId - 1,
 	});
 }

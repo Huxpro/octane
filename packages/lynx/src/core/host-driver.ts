@@ -8,6 +8,7 @@ import type {
 	UniversalHostTemplateProgramValue,
 	UniversalPreparedHostBatch,
 	UniversalPortalTargetHandle,
+	UniversalProgramCreate,
 	UniversalProgramPlan,
 	UniversalSerializableValue,
 } from 'octane/universal/native';
@@ -26,8 +27,11 @@ import {
 	createLynxFirstTree,
 	LYNX_FIRST_TREE_STATE,
 	lynxFirstTreeProgramIndex,
+	LYNX_DENSE_PROGRAM_RANGES,
 	programRunEventCount,
 	programRunEventToken,
+	programRunHostCount,
+	programRunHostNode,
 	programRunLastId,
 	programRunNode,
 	programRunPosition,
@@ -621,6 +625,7 @@ const EMPTY_FIRST_TREE_EVENTS: readonly LynxFirstTreeEventSnapshot[] = Object.fr
  * them, exactly as it already must for `spans` — these stand in for a missing
  * table, not for missing entries.
  */
+const EMPTY_PROGRAM_IDS: readonly number[] = Object.freeze([]);
 const EMPTY_PROGRAM_RANGE_TEXTS: readonly (string | undefined)[] = Object.freeze([]);
 const EMPTY_PROGRAM_RANGE_IDS: readonly (number | undefined)[] = Object.freeze([]);
 // Raw text is initialized by __CreateRawText itself. Its synthetic `value`
@@ -3638,19 +3643,26 @@ function programNodeEvents<Node extends LynxElementRef>(
 	run: LynxProgramRun<Node>,
 	position: number,
 ): Map<string, LynxNativeEventRegistration> | undefined {
-	const sites = run.plan.events;
+	const plan = run.plan;
+	const sites = plan.events;
 	if (sites.length === 0) return undefined;
+	// The position is flat across the run's instances and `plan.events` is one
+	// instance's site table, so which instance it names decides where in `tokens`
+	// that instance's alignment starts. Zero, and free, for a run holding one.
+	const instance = run.count === 1 ? 0 : Math.floor(position / plan.nodes);
+	const node = position - instance * plan.nodes;
+	const base = instance * sites.length;
 	let events: Map<string, LynxNativeEventRegistration> | undefined;
 	let bindings: readonly LynxNativeEventBinding[] | undefined;
 	for (let index = 0; index < sites.length; index++) {
 		const site = sites[index]!;
-		if (site.node !== position) continue;
+		if (site.node !== node) continue;
 		// A site this render passed no handler to installed nothing, so there is
 		// no tuple to journal — the same answer the per-node map gave by having no
 		// entry for it.
-		const token = run.tokens[index];
+		const token = run.tokens[base + index];
 		if (token === undefined) continue;
-		bindings ??= programEventBindings(run.plan);
+		bindings ??= programEventBindings(plan);
 		(events ??= new Map()).set(
 			site.type,
 			Object.freeze({ source: 'background', binding: bindings[index]!, listener: token }),
@@ -3672,7 +3684,10 @@ function materializeProgramEvents<Node extends LynxElementRef>(state: LynxHostSt
 	state.programEventsMaterialized = true;
 	for (const run of state.programRuns) {
 		if (run.plan.events.length === 0) continue;
-		for (let position = 0; position < run.ids.length; position++) {
+		// Every host of every instance, which is what a run holding many of them
+		// makes flat rather than one deep (issue #215 D8).
+		const hosts = programRunHostCount(run);
+		for (let position = 0; position < hosts; position++) {
 			const events = programNodeEvents(run, position);
 			if (events === undefined) continue;
 			// Merged rather than assigned. Nothing outside the mount writes into a
@@ -3681,11 +3696,136 @@ function materializeProgramEvents<Node extends LynxElementRef>(state: LynxHostSt
 			// absent. But this is the function whose job is to lose no tuple, and
 			// not assuming costs one lookup on a path that has already left the
 			// paint behind.
-			const existing = state.nativeEvents.get(run.nodes[position] as Node);
-			if (existing === undefined) state.nativeEvents.set(run.nodes[position] as Node, events);
+			const node = programRunHostNode(run, position);
+			const existing = state.nativeEvents.get(node);
+			if (existing === undefined) state.nativeEvents.set(node, events);
 			else for (const [type, registration] of events) existing.set(type, registration);
 		}
 	}
+}
+
+/**
+ * A run of siblings that are all one compiled program, painted together
+ * (issue #215 D8).
+ *
+ * The `@for` shape: one row plan repeated `count` times, which on the bench is
+ * 30,000 instances of a five-node row. Painted per member it costs an argument
+ * array, a token array, a spread call, a returned array, a walk frame, a journal
+ * entry and a pair of id tables *each*; painted as a span it costs four tables
+ * and one journal entry for the whole range.
+ */
+interface DenseMemberSpan {
+	readonly plan: UniversalProgramPlan;
+	/** The array the members live in, kept rather than sliced out of. */
+	readonly children: readonly LynxFirstScreenDirectNode[];
+	readonly start: number;
+	readonly count: number;
+	/** The program node inside each member, which is the member itself or its one child. */
+	readonly programs: readonly LynxFirstScreenDirectNode[];
+	/** The id of the first member's program, and the base of every other. */
+	readonly firstId: number;
+	/** How many ids separate one member's program from the next one's. */
+	readonly stride: number;
+}
+
+/**
+ * The compiled program a member paints itself with, seen through the wrapper a
+ * component row lowers to.
+ *
+ * A `@for` of components produces one keyed range per row holding exactly that
+ * component, and a range takes an id without making a node — so the members of
+ * the shape this whole slice is aimed at are ranges, not programs. A member that
+ * *is* a program is the other lowering, and both are one plan repeated.
+ */
+function memberProgram(member: LynxFirstScreenDirectNode): LynxFirstScreenDirectNode | undefined {
+	// A keyed member arrives wrapped, and how many times is a lowering detail:
+	// `@for` wraps the member once, and a member that is a component is wrapped
+	// again by the component boundary. A range makes no node, so the program
+	// under the wrappers is the member for everything the span does with it.
+	// Descend the whole chain rather than a fixed depth: pinning the depth at
+	// one is what made this decline on `@for (const row of rows) { <Row /> }`,
+	// the shape the span was written for.
+	let node = member;
+	for (;;) {
+		if (node.kind === 'program') return node;
+		if (node.kind !== 'range' || node.children.length !== 1) return undefined;
+		const only = node.children[0];
+		if (only === undefined) return undefined;
+		node = only;
+	}
+}
+
+/**
+ * Whether `children[start..end)` is such a span, and the span if it is.
+ *
+ * Everything below is a constant number of comparisons per member against
+ * something the renderer already wrote, which is what keeps the test cheaper
+ * than the per-member mount it replaces. Three conditions, each here for a
+ * different reason:
+ *
+ *   * **One plan.** A driver belongs to a plan, and instances of two plans
+ *     interleave neither their arguments nor their ids.
+ *   * **A constant stride.** The run addresses its nodes by arithmetic from
+ *     `firstId`, so a member starting anywhere but where the arithmetic says
+ *     would put every later reader on the wrong node. The ids the renderer
+ *     minted are the only proof of that: the spacing is read off the first two
+ *     members and then every member is held to it. Read rather than derived
+ *     from the plan, because what sits between two instances is the
+ *     description's business — a wrapper here, nothing there — and the plan
+ *     cannot see it.
+ *   * **Every hole painted.** An open hole holds members whose ids
+ *     `assignProgramIds` mints *inside* the member's own span, so two instances
+ *     of such a program do not take the same number of ids and the stride is not
+ *     constant at all. It is also what makes the run's whole `nodes` table
+ *     owned, and the same condition the emitter reports by carrying a driver.
+ *
+ * A span of one is refused: it would trade an argument array for four tables,
+ * and `count === 1` is what every reader takes to mean the per-member shape.
+ */
+function denseMemberSpan(
+	children: readonly LynxFirstScreenDirectNode[],
+	start: number,
+	end: number,
+): DenseMemberSpan | null {
+	const count = end - start;
+	if (count < 2) return null;
+	const first = children[start];
+	if (first === undefined) return null;
+	const leader = memberProgram(first);
+	if (leader === undefined) return null;
+	const plan = leader.plan;
+	if (plan === undefined) return null;
+	const rangeCount = plan.ranges.length;
+	const leaderIds = leader.ids;
+	if (leaderIds === undefined || leaderIds.length !== plan.nodes) return null;
+	const firstId = leaderIds[0];
+	if (firstId === undefined) return null;
+	const second = memberProgram(children[start + 1]!);
+	if (second === undefined || second.plan !== plan) return null;
+	const secondId = second.ids?.[0];
+	if (secondId === undefined) return null;
+	const stride = secondId - firstId;
+	// A stride shorter than the program's own span would overlap two instances,
+	// which no numbering produces and no arithmetic could unpick.
+	if (stride < plan.nodes + rangeCount) return null;
+	const programs: LynxFirstScreenDirectNode[] = new Array(count);
+	for (let index = 0; index < count; index++) {
+		const program = memberProgram(children[start + index]!);
+		if (program === undefined || program.plan !== plan) return null;
+		if (program.values === undefined) return null;
+		const ids = program.ids;
+		if (ids === undefined || ids.length !== plan.nodes) return null;
+		if (ids[0] !== firstId + index * stride) return null;
+		if (rangeCount !== 0) {
+			const texts = program.texts;
+			if (texts === undefined || texts.length !== rangeCount) return null;
+			for (let hole = 0; hole < rangeCount; hole++) {
+				if (texts[hole] === undefined) return null;
+			}
+		}
+		programs[index] = program;
+	}
+	return { plan, children, start, count, programs, firstId, stride };
 }
 
 /**
@@ -3881,6 +4021,18 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		 * the same `create` operations.
 		 */
 		readonly insideList: boolean;
+		/**
+		 * Set on a frame standing for a whole keyed range of one compiled program
+		 * (issue #215 D8). It carries the members instead of a `node`, because
+		 * what it mounts is not a node — it is `count` of them, painted by one
+		 * driver call and journalled as one run.
+		 *
+		 * A frame rather than work done where the span is found, because the walk
+		 * is what owns sibling order: two ranges can name the same parent node, so
+		 * a span mounted early would append its members ahead of a range declared
+		 * before it.
+		 */
+		readonly denseSpan: DenseMemberSpan | null;
 	}
 	// An explicit stack, not recursion. The staged path this replaced walks a
 	// flat command array and so has no depth ceiling; one frame per tree level
@@ -3895,12 +4047,26 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		parentVisible: boolean,
 		insideList: boolean,
 	): void => {
+		// A described parent's children are deliberately *not* tested for the dense
+		// span here (issue #215 D8). The shape would be the same one
+		// `mountProgram` looks for, and a described parent holding nothing but
+		// compiled rows cannot arise from this compiler: the backend leaves a
+		// parent described only when its range hole is not the parent's last
+		// child — that is the one condition `universalTemplateProgramWithoutRanges`
+		// declines on — and a hole that is not last has a described sibling after
+		// it, which is exactly what an all-or-nothing span over a parent's children
+		// refuses. Every other arrangement either compiles the parent into a
+		// program, which is the site below, or fails the build outright. So the
+		// test here would run once per described host on every first screen and
+		// answer `null` every time.
+		//
 		// Reversed, so the stack pops siblings in authored order.
 		for (let index = node.children.length - 1; index >= 0; index--) {
 			stack.push({
 				node: node.children[index]!,
 				papiNode: null,
 				listRecord: null,
+				denseSpan: null,
 				parentRecord,
 				parentId,
 				physicalParent,
@@ -3962,7 +4128,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 	 * per row. The map dies with the call, so no closure over this container's
 	 * PAPI outlives the container it captured.
 	 */
-	const boundPrograms = new Map<UniversalProgramPlan, (...args: unknown[]) => readonly unknown[]>();
+	const boundPrograms = new Map<UniversalProgramPlan, UniversalProgramCreate>();
 	/**
 	 * Paint one compiled main-thread program (issue #163).
 	 *
@@ -4059,6 +4225,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		}
 		const runEnd = run === undefined || count === undefined ? -1 : run + count;
 		let cursor = run ?? 0;
+		let claimed = 0;
 		for (const site of plan.events) {
 			const hostId = ids[site.node];
 			if (hostId === undefined) {
@@ -4069,11 +4236,25 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			let announced: UniversalEventListenerDescriptor | undefined;
 			if (run === undefined) {
 				announced = eventsByHost.get(hostId)?.find(([type]) => type === site.type)?.[1];
-			} else if (cursor < runEnd) {
-				const binding = envelope.events[cursor];
-				if (binding !== undefined && binding.id === hostId && binding.type === site.type) {
-					announced = binding.listener;
-					cursor++;
+			} else {
+				// The run covers the program's whole merged block, a keyed range's
+				// members spliced at their hole's position between the program's
+				// own sites — because the renderer announces in the same merged
+				// order `assignProgramIds` numbers hosts, every binding in the
+				// block carries an id minted in one ascending walk. A member's
+				// binding therefore sits below the next own site's host id and is
+				// skipped by comparison rather than searched past; a site whose
+				// handler came through undefined announces nothing, so the cursor
+				// stops at an id beyond it and the site stays open without
+				// shifting the sites after it onto the wrong listeners.
+				while (cursor < runEnd && envelope.events[cursor]!.id < hostId) cursor++;
+				if (cursor < runEnd) {
+					const binding = envelope.events[cursor];
+					if (binding !== undefined && binding.id === hostId && binding.type === site.type) {
+						announced = binding.listener;
+						cursor++;
+						claimed++;
+					}
 				}
 			}
 			// Four of this token's five primitives are proven before the mount
@@ -4113,16 +4294,31 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			tokens.push(token);
 			args.push(token);
 		}
-		// An announcement left in the run is the one disagreement a position can
-		// have with the thing it addresses, and the one the search could never
-		// report: a listener the background installed for this program that no site
-		// of this program answers to. Every other shape of mismatch shows up as a
-		// site left open above, which is the answer a missing handler gets too —
-		// this is the shape that is never a missing handler.
-		if (run !== undefined && cursor !== runEnd) {
-			throw hostError(
-				`first-screen program was handed ${runEnd - run} announcements for its ${plan.events.length} event site${plan.events.length === 1 ? '' : 's'}, and claimed ${cursor - run} of them.`,
-			);
+		// An announcement of this program's that no site claimed is the one
+		// disagreement a position can have with the thing it addresses, and the
+		// one the search could never report: a listener announced for one of this
+		// program's own hosts that no site of this program answers to. The block
+		// also carries the members' announcements — spliced at their hole's
+		// position by the same merged walk that numbered them — so the check is
+		// membership, not exhaustion: every binding in the block whose id is one
+		// of this program's own is counted in one ascending pass against the
+		// sorted ids, and that count must equal what the sites claimed. Every
+		// other shape of mismatch shows up as a site left open above, which is
+		// the answer a missing handler gets too — this is the shape that is
+		// never a missing handler.
+		if (run !== undefined) {
+			let own = 0;
+			let at = 0;
+			for (let index = run; index < runEnd; index++) {
+				const id = envelope.events[index]!.id;
+				while (at < ids.length && (ids[at] as number) < id) at++;
+				if (at < ids.length && ids[at] === id) own++;
+			}
+			if (own !== claimed) {
+				throw hostError(
+					`first-screen program was handed ${own} announcement${own === 1 ? '' : 's'} for its ${plan.events.length} event site${plan.events.length === 1 ? '' : 's'}, and claimed ${claimed} of them.`,
+				);
+			}
 		}
 		// Last, after the listeners, exactly as the emission orders its
 		// parameters. A hole this renderer filled itself sends `undefined`, which
@@ -4215,6 +4411,12 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		// a throw partway through it left a run pushed and half its sites
 		// journalled, and there is now no partway.
 		const mounted: LynxProgramRun<Node> = {
+			count: 1,
+			firstId: ids[0]!,
+			// Unread at a count of one — the scanning readers answer from `ids` —
+			// and the program's own span, which is what a second instance would
+			// have sat one of past this one.
+			stride: plan.nodes + plan.ranges.length,
 			ids,
 			rangeIds,
 			nodes: created as readonly (Node | undefined)[],
@@ -4275,6 +4477,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			node: null,
 			papiNode: created[0] as Node,
 			listRecord: null,
+			denseSpan: null,
 			parentRecord: null,
 			parentId,
 			physicalParent,
@@ -4298,11 +4501,30 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			if (start < 0) {
 				throw hostError('first-screen program declares more keyed range members than it carries.');
 			}
+			// The same span this applier looks for under a described parent, in the
+			// other place a keyed range's members are pushed (issue #215 D8).
+			const span = LYNX_DENSE_PROGRAM_RANGES ? denseMemberSpan(children, start, end) : null;
+			if (span !== null) {
+				stack.push({
+					node: null,
+					papiNode: null,
+					listRecord: null,
+					denseSpan: span,
+					parentRecord: null,
+					parentId: ids[site.node]!,
+					physicalParent: memberParent as Node,
+					parentVisible,
+					insideList: false,
+				});
+				end = start;
+				continue;
+			}
 			for (let member = end - 1; member >= start; member--) {
 				stack.push({
 					node: children[member]!,
 					papiNode: null,
 					listRecord: null,
+					denseSpan: null,
 					// A program's node owns no record — that is what a program is —
 					// so a member links into `parentId` and nothing else.
 					parentRecord: null,
@@ -4318,7 +4540,215 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			throw hostError('first-screen program carries keyed range members no range claims.');
 		}
 	};
+	/**
+	 * Paint a whole span of one compiled program with one driver call, and
+	 * journal the result as one run (issue #215 D8).
+	 *
+	 * The per-member mount below it is still the only other painter: where the
+	 * emission carries no driver, the members go back on the stack and take that
+	 * path unchanged. So this is an alternative *emission* being used, not an
+	 * alternative applier — the tree either path paints is the same tree, which is
+	 * what the differential and adoption tests decide rather than argue.
+	 *
+	 * What it deletes, per member: the argument array and its pushes, the token
+	 * array, the `boundPrograms` lookup, the spread call, the array the create
+	 * returned, the walk frame that carried the member and the one that attached
+	 * it, the journal entry, and the `programRunLastId` comparison beside it.
+	 * What it adds: five table writes and one array read per parameter. The
+	 * ledger's rows are in `benchmarks/lynx-table/README.md` §8, and D8's
+	 * prediction was written from them before this ran.
+	 */
+	const mountDenseSpan = (
+		span: DenseMemberSpan,
+		parentId: number,
+		physicalParent: Node,
+		parentVisible: boolean,
+	): void => {
+		const plan = span.plan;
+		const count = span.count;
+		const programs = span.programs;
+		const firstId = span.firstId;
+		const memberStride = span.stride;
+		const sites = plan.events;
+		const siteCount = sites.length;
+		const rangeCount = plan.ranges.length;
+		const slots = plan.values;
+		const valueCount = slots.length;
+		const stride = plan.nodes + rangeCount;
+		let bound = boundPrograms.get(plan);
+		if (bound === undefined) {
+			bound = plan.bind(papi);
+			if (typeof bound !== 'function') {
+				throw hostError(
+					'a compiled main-thread program bound to something other than a create function.',
+				);
+			}
+			programEventBindings(plan);
+			boundPrograms.set(plan, bound);
+		}
+		const drive = bound.run;
+		if (drive === undefined) {
+			// A create with no driver beside it. The compiler emits one exactly
+			// where this span's condition holds, so this is a hand-built plan — and
+			// the honest answer for one is the path it had before this slice
+			// existed, not a second loop here that would be a second painter to keep
+			// agreeing with the first.
+			for (let index = count - 1; index >= 0; index--) {
+				stack.push({
+					node: span.children[span.start + index]!,
+					papiNode: null,
+					listRecord: null,
+					denseSpan: null,
+					// A program's node owns no record, so a member of its keyed range
+					// links into `parentId` and nothing else — the same three fields the
+					// per-member push below this span's site sets.
+					parentRecord: null,
+					parentId,
+					physicalParent,
+					parentVisible,
+					insideList: false,
+				});
+			}
+			return;
+		}
+		// Four tables, sized once, holding what `count` separate calls would have
+		// held in `count` argument arrays. `out` is the run's `nodes` table: the
+		// driver writes the instances into it and nothing copies it afterwards.
+		const values: unknown[] = new Array(count * valueCount);
+		const tokens: (LynxNativeEventToken | undefined)[] = new Array(count * siteCount);
+		const texts: unknown[] = new Array(count * rangeCount);
+		const out: unknown[] = new Array(count * stride);
+		for (let instance = 0; instance < count; instance++) {
+			const member = programs[instance]!;
+			const memberValues = member.values!;
+			const valueBase = instance * valueCount;
+			for (let slot = 0; slot < valueCount; slot++) {
+				values[valueBase + slot] = memberValues[slots[slot]!];
+			}
+			const memberTexts = member.texts!;
+			const textBase = instance * rangeCount;
+			for (let hole = 0; hole < rangeCount; hole++) texts[textBase + hole] = memberTexts[hole];
+			// The same announcement walk the per-member mount runs, over this
+			// member's own run, for the same reason: a site's listener is found at a
+			// position in the run rather than searched for, and the cursor advances
+			// only when an announcement is claimed.
+			const announcedAt = member.eventsAt;
+			const announcedCount = member.eventsCount;
+			if ((announcedAt === undefined) !== (announcedCount === undefined)) {
+				throw hostError(
+					'first-screen program carries half an announcement run; `eventsAt` and `eventsCount` are given together or not at all.',
+				);
+			}
+			const runEnd =
+				announcedAt === undefined || announcedCount === undefined
+					? -1
+					: announcedAt + announcedCount;
+			let cursor = announcedAt ?? 0;
+			const ids = member.ids!;
+			const tokenBase = instance * siteCount;
+			for (let index = 0; index < siteCount; index++) {
+				const site = sites[index]!;
+				const hostId = ids[site.node];
+				if (hostId === undefined) {
+					throw hostError(
+						`first-screen program binds an event on node ${site.node}, which it did not number.`,
+					);
+				}
+				let listener: UniversalEventListenerDescriptor | undefined;
+				if (announcedAt === undefined) {
+					listener = eventsByHost.get(hostId)?.find(([type]) => type === site.type)?.[1];
+				} else if (cursor < runEnd) {
+					const binding = envelope.events[cursor];
+					if (binding !== undefined && binding.id === hostId && binding.type === site.type) {
+						listener = binding.listener;
+						cursor++;
+					}
+				}
+				if (listener !== undefined) {
+					// `announced.id` is the one primitive of the five whose proof lives
+					// on the envelope rather than at build or container time, so it is
+					// the one still checked here (issue #215 D6).
+					assertSafeId(listener.id, 'first-screen announcement listener id');
+					tokens[tokenBase + index] = encodePrevalidatedLynxNativeEventToken(
+						container.root,
+						hostId,
+						1,
+						listener.id,
+						site.priority,
+					);
+				}
+			}
+			if (announcedAt !== undefined && cursor !== runEnd) {
+				throw hostError(
+					`first-screen program was handed ${runEnd - announcedAt} announcements for its ${siteCount} event site${siteCount === 1 ? '' : 's'}, and claimed ${cursor - announcedAt} of them.`,
+				);
+			}
+		}
+		drive(container.pageComponentUniqueId, count, values, tokens, texts, out);
+		// Two reads rather than `count * stride` of them, and each one answers a
+		// question the arithmetic cannot.
+		//
+		// The first instance's trailing half says the emission filled it at all:
+		// every hole of every member was handed a string — that is what
+		// `denseMemberSpan` proved, one read per hole — and the compiled test is
+		// `typeof r === 'string'`, so one instance painting every hole settles all
+		// of them. The last instance's root says the loop ran `count` times with
+		// the stride it declared, which is the one way a driver can disagree with
+		// the table its caller sized.
+		for (let hole = 0; hole < rangeCount; hole++) {
+			if (out[plan.nodes + hole] === undefined) {
+				throw hostError(
+					`a compiled main-thread program left keyed range ${hole} open, which this first screen handed it to paint.`,
+				);
+			}
+		}
+		if (out[0] === undefined || out[(count - 1) * stride] === undefined) {
+			throw hostError(
+				`a compiled main-thread program run painted fewer than the ${count} instances it was given.`,
+			);
+		}
+		const mounted: LynxProgramRun<Node> = {
+			count,
+			firstId,
+			// Empty, and that is the whole point: every id in this run is
+			// `firstId + instance * stride + offset`, so a range of 30,000 members
+			// carries no per-member id table at all.
+			stride: memberStride,
+			ids: EMPTY_PROGRAM_IDS,
+			rangeIds: EMPTY_PROGRAM_RANGE_IDS,
+			nodes: out as readonly (Node | undefined)[],
+			// All of them: every instance paints every hole it declares, which is
+			// the condition that made this span dense.
+			owned: count * stride,
+			plan,
+			tokens,
+		};
+		const previous = state.programRuns[state.programRuns.length - 1];
+		if (previous !== undefined && firstId <= programRunLastId(previous)) {
+			state.programRunsDisjoint = false;
+		}
+		state.programRuns.push(mounted);
+		// Attached here rather than through a deferred frame each: an instance
+		// declaring no open hole has no members, so its subtree is complete the
+		// moment the driver returns and there is nothing left to wait for. The
+		// order is the authored one, which is the order the frames this span
+		// replaced would have popped in.
+		//
+		// Nothing is linked into a record, and there is no page-root case, because
+		// a span only ever forms among the keyed range members of a program: those
+		// have a real parent named by `parentId` and no record to hold them, which
+		// is what a program is (issue #215 D5 states the three cases and where each
+		// one is resolved).
+		for (let instance = 0; instance < count; instance++) {
+			append(physicalParent, out[instance * stride] as Node);
+		}
+	};
 	const visit = (frame: WalkFrame): void => {
+		const denseSpan = frame.denseSpan;
+		if (denseSpan !== null) {
+			mountDenseSpan(denseSpan, frame.parentId!, frame.physicalParent, frame.parentVisible);
+			return;
+		}
 		const { node, parentRecord, parentId, physicalParent, parentVisible, insideList } = frame;
 		if (node === null) {
 			const listRecord = frame.listRecord;
@@ -4430,6 +4860,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			node: null,
 			papiNode,
 			listRecord: null,
+			denseSpan: null,
 			parentRecord: null,
 			parentId,
 			physicalParent,
@@ -4444,6 +4875,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 				node: null,
 				papiNode: null,
 				listRecord: record,
+				denseSpan: null,
 				parentRecord: null,
 				parentId,
 				physicalParent,
@@ -4468,6 +4900,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 					node: roots[index]!,
 					papiNode: null,
 					listRecord: null,
+					denseSpan: null,
 					parentRecord: null,
 					parentId: null,
 					physicalParent: container.page as Node,
@@ -4729,6 +5162,12 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 	if (state.ownedPageRoots.size !== state.rootChildren.length) {
 		throw hostError('first-tree page-root ownership does not match logical roots.');
 	}
+	// Both sequences ascend — roots are pushed by the walk in numbering order,
+	// and runs are pushed by mounts in the same pre-order — so a single cursor
+	// into the runs resolves every root in one combined pass instead of one
+	// scan per root, which on a page of thirty thousand top-level program rows
+	// is the difference between a capture and a hang.
+	let runAt = 0;
 	for (const id of state.rootChildren) {
 		// A program's root has no record, so its node comes from the run the mount
 		// kept — the same substitution adoption makes, for the same reason. Only a
@@ -4736,12 +5175,16 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 		// and nothing else, and a keyed range's members sit inside a node the
 		// program made rather than beside it. So this looks at first ids only, and
 		// needs no per-ID view of a journal nothing else here reads by ID.
-		let programRoot: Node | undefined;
-		for (const run of state.programRuns) {
-			if (run.ids[0] !== id) continue;
-			programRoot = run.nodes[0] as Node;
-			break;
-		}
+		//
+		// `firstId` rather than `ids[0]`: the same number for a run holding one
+		// instance, and the only one a dense run has. A dense run never holds a
+		// page root — its instances are keyed range members, and a member has a
+		// parent by construction — so this is a shape the cursor walks past
+		// rather than one it has to resolve.
+		while (runAt < state.programRuns.length && state.programRuns[runAt]!.firstId < id) runAt++;
+		const run = runAt < state.programRuns.length ? state.programRuns[runAt] : undefined;
+		const programRoot =
+			run !== undefined && run.firstId === id ? (run.nodes[0] as Node) : undefined;
 		const node = programRoot ?? state.records.get(id)?.node;
 		if (node === null || node === undefined || !state.ownedPageRoots.has(node)) {
 			throw hostError(`first-tree root ${id} is missing from page-root ownership.`);
@@ -5028,6 +5471,22 @@ function compareFirstTree<Node extends LynxElementRef>(
 			// *is* the ownership journal's answer and the comparison has nothing
 			// left to disagree with. The check is gone because its failure mode is,
 			// not because it stopped mattering.
+			//
+			// Visibility is the other half main does know, by construction rather
+			// than by record: the direct applier refuses a hidden program before
+			// painting anything, so every node a program painted is visible and
+			// carries no `hidden` attribute. A description that calls one of them
+			// hidden therefore disagrees with the painted page — adopting it would
+			// keep content on screen that the accepted tree says is hidden, while
+			// event routing drops its taps as hidden. Nothing red, which is
+			// exactly the class of near-miss this comparator refuses.
+			if (!next.visible) {
+				return mismatch(
+					firstTree,
+					`snapshot.nodes[${id}].visible`,
+					'the visibility state differs.',
+				);
+			}
 			// Events are the exception to all of that, and worth taking. Main does
 			// know what it bound here: the mount installed a token per site the
 			// renderer announced, and journalled it. So the background's record
@@ -8016,6 +8475,13 @@ export function disposeLynxHostContainer<Node extends LynxElementRef>(
 	// node at mount, and a retry that re-adds one puts it in `ownedNodes` — which
 	// is why that set is read first and this only ever adds.
 	for (const run of state.programRuns) {
+		if (run.count !== 1) {
+			// Every entry is owned and none of them is `undefined`: a dense instance
+			// paints every hole it declares, which is the condition that made the run
+			// dense in the first place.
+			for (const node of run.nodes) cleanupNodes.add(node as Node);
+			continue;
+		}
 		const hosts = run.ids.length;
 		for (let position = 0; position < hosts; position++) {
 			cleanupNodes.add(run.nodes[position] as Node);

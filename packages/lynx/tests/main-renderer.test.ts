@@ -629,6 +629,22 @@ describe('Lynx main-thread first-screen renderer', () => {
 				ranges: [{ slot: 0, node: 1, id: 7 }],
 			} as never),
 		).toThrow(/declares a keyed range at position 7, which is not one of its 3 positions/);
+		// Sites out of node order are the same class again, from the reading
+		// side: the announcement walk announces each site at its host's merged
+		// position and the mount claims them in that ascending order, so a plan
+		// whose sites go backwards would leave the earlier site unclaimed and
+		// fault the launch after the paint. Refused at the freeze, it fails the
+		// plan's build instead.
+		expect(() =>
+			universalPlan('lynx', {
+				...program,
+				slots: [null, null],
+				events: [
+					{ slot: 0, node: 1, type: 'tap', priority: 'discrete' },
+					{ slot: 1, node: 0, type: 'tap', priority: 'discrete' },
+				],
+			} as never),
+		).toThrow(/declares its event sites out of node order: node 0 after node 1/);
 		expect(() =>
 			universalPlan('lynx', { ...program, events: [], bind: undefined } as never),
 		).toThrow(/requires a bind function and a node count/);

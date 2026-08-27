@@ -270,6 +270,41 @@ export interface UniversalProgramEvent {
  * it does not mean "render nothing" — it means a bundle carries the generic
  * core where its renderer's main-thread module belongs.
  */
+/**
+ * What a program's `bind` returns: the per-instance create, and optionally a
+ * driver that paints many instances of it in one call (issue #215 D8).
+ *
+ * The create is the ABI every consumer must implement against. The driver is an
+ * emission's report about itself — present only where the emitter could keep an
+ * instance's ID stride constant — so a consumer tests for it rather than
+ * deriving from the plan whether it should be there. Absent, a caller paints
+ * `count` instances with `count` calls and sees exactly the same tree; that is
+ * what makes the driver an optimization and not a second ABI.
+ */
+export interface UniversalProgramCreate {
+	(...args: unknown[]): readonly unknown[];
+	/**
+	 * Paint `count` instances into `out`, reading each one's arguments from the
+	 * three member-major tables.
+	 *
+	 * `values`, `events` and `ranges` hold `count` instances end to end, each
+	 * contributing `plan.values.length`, `plan.events.length` and
+	 * `plan.ranges.length` entries in the order the create takes them. `out` is
+	 * the caller's, sized `count * (plan.nodes + plan.ranges.length)`, and holds
+	 * what `count` separate creates would have returned, concatenated — nodes
+	 * then ranges, per instance. Nothing is appended to a parent: the caller
+	 * still attaches each instance's root, exactly as it does per call.
+	 */
+	readonly run?: (
+		pageId: unknown,
+		count: number,
+		values: readonly unknown[],
+		events: readonly unknown[],
+		ranges: readonly unknown[],
+		out: unknown[],
+	) => void;
+}
+
 export interface UniversalProgramPlan {
 	readonly kind: 'program';
 	/** Per-value-slot kind table; `null` for a slot no node writes. */
@@ -300,7 +335,7 @@ export interface UniversalProgramPlan {
 	 * is the caller's, so a keyed range's members can go into a node the create
 	 * made before any of it is live.
 	 */
-	readonly bind: (host: unknown) => (...args: unknown[]) => readonly unknown[];
+	readonly bind: (host: unknown) => UniversalProgramCreate;
 }
 
 export type UniversalPlanNode =
