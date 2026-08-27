@@ -849,6 +849,17 @@ describe('Lynx main-thread program emission', () => {
 				/cannot own the native event/,
 			],
 			[
+				'an event site at a priority the dispatcher does not know',
+				// Cast, because the refusal is about a program the declared type
+				// says cannot exist. An emitter that trusted that type is the bug
+				// this case catches, so the case has to be able to express it.
+				{
+					nodes: [{ type: 'view', parent: -1, props: {} }],
+					events: [{ node: 0, type: 'bindtap', priority: 'urgent' }],
+				} as unknown as UniversalHostTemplateProgram,
+				/declares priority "urgent", which is not discrete, continuous, or default/,
+			],
+			[
 				'the same event declared twice on one node',
 				{
 					nodes: [{ type: 'view', parent: -1, props: {} }],

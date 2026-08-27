@@ -310,6 +310,23 @@ function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
 				);
 			}
 			bound.add(key);
+			// The third thing a site declares, and until now the only one nothing
+			// stood behind but a per-instance assert chain (issue #215 D6). A
+			// priority outside the three the dispatcher knows encodes into a token
+			// the host accepts and the background then cannot decode: the tap
+			// reaches nothing, which is the same failure the two checks above
+			// refuse, arrived at from a third direction. `emit-main-thread-program`
+			// refuses one at build; this is that refusal restated once per plan,
+			// for the plans that do not come from it.
+			//
+			// Read through `unknown` because that is the honest type of the input:
+			// this function exists for plans it did not build.
+			const priority: unknown = site.priority;
+			if (priority !== 'discrete' && priority !== 'continuous' && priority !== 'default') {
+				throw new TypeError(
+					`A compiled main-thread program binds an event on node ${site.node} at priority ${JSON.stringify(site.priority)}; a site is discrete, continuous, or default.`,
+				);
+			}
 		}
 		// The same for a range's declared position: one outside the program's own
 		// pre-order never matches, so its members would be numbered after the

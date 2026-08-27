@@ -544,6 +544,19 @@ export function emitLynxMainThreadProgram(
 		else if (seen.has(event.type)) {
 			refuse(`node ${event.node} repeats the event ${JSON.stringify(event.type)}`);
 		} else seen.add(event.type);
+		// The plan carries this to the mount, which encodes it into every token the
+		// program installs, so a value outside the three the dispatcher knows is a
+		// tap that reaches nothing (issue #215 D6). Refused here so the mount does
+		// not have to ask per instance, and restated in `freezePlanNode` for a plan
+		// that did not come through this emitter. Read through `unknown` for the
+		// same reason the node index is range-checked above: this runs on a program
+		// object rather than on something it built.
+		const priority: unknown = event.priority;
+		if (priority !== 'discrete' && priority !== 'continuous' && priority !== 'default') {
+			refuse(
+				`event site ${JSON.stringify(event.type)} declares priority ${JSON.stringify(event.priority)}, which is not discrete, continuous, or default`,
+			);
+		}
 		// Guarded, not unconditional. A site's handler is a plan slot the caller
 		// resolves per render, and an authored `onTap?` that is not passed leaves
 		// it undefined. Installing regardless would not misroute a tap — a host
