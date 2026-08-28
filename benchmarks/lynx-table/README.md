@@ -3380,6 +3380,48 @@ thermal and load recorded), in this order, because each step can end the probe:
 Check each window in as its own record under `stages/results/`, the way every
 other window here does, and report it on #215.
 
+### Device round 2: D4 stops at the ART summary; D-train mount is 4 ms at 1k
+
+Round 2 ran commit `03a5ba6087bbd854e5f10066a63828c5957bd555` on the
+same Aries 10 / Explorer 1.0 / Lynx SDK 4.0 device class as round 1. Before each
+sample a build-only background probe called
+`LynxDevToolSetModule.switchLynxDebug(false)` and waited for both the disabled
+lifecycle transition and its acknowledgement; logcat was then cleared without
+restarting the process, so an enabled transition in the measured bundle would
+invalidate the sample. No CDP connection was opened.
+
+The first valid window,
+`stages/results/issue194-d4-art-summary-10000.json`, answered step 1 above:
+
+| 10k cell | n | terminal outcome | load → terminal |
+|---|---:|---|---:|
+| D-train `octane-mts-program` | 5 | ART native crash, 5/5 | 20,397–22,029 ms; median 21,156 ms |
+| template control | 5 | alive at cutoff, 5/5 | 180,000 ms cutoff |
+
+Every crash printed the same leading global-reference classes: 30,026
+`com.lynx.tasm.behavior.PaintingContext$a` instances and 20,444 `m7.w`
+instances, followed by only hundreds of `Class` and `DirectByteBuffer`
+instances. `PaintingContext` is the Lynx platform UI owner the decision tree
+asked for, not an Octane JavaScript container. The protocol therefore stops:
+there is no 6k–8k bisection and no `mts-program` / direct / retain-none arm.
+The 10k result is a platform capacity boundary, not a missing Octane release
+point.
+
+The round-1 bookkeeping detail matters when comparing these records: the cell
+that actually crashed at 10k was `octane-mts-program` built with the
+direct-self diagnostic. The `octane-direct` prototype did not run that window;
+the paired template timed out alive.
+
+The second valid window,
+`stages/results/issue194-d-train-mount-program-1000.json`, remeasured #215's
+device oracle with D1–D8 present. Its five `mountProgram` observations are
+4 / 3 / 3 / 4 / 4 ms, median **4 ms**, against round 1's 8,565 ms: -8,561 ms,
+or -99.95%. The same window's load-to-first-screen medians are 657 ms for the
+program cell and 2,149 ms for the template control. This is one before/after
+reading of C20 + D1 together; the device window does not claim to separate
+their effects. Both windows have zero invalid attempts, n=5 per cell, AB/BA
+ordering, cold launch per sample, and a 35.0 °C / thermal-status-0 gate.
+
 ## Claims and non-claims
 
 Command counts and commit bytes are Octane-owned costs and are gated. The

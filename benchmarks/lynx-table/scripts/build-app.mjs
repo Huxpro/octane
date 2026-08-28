@@ -12,12 +12,16 @@
 //   BENCH_CORE=block BENCH_BLOCK_MODE=derived node scripts/build-app.mjs
 //                                                     # …driven by the compiled app
 //   BENCH_MTS_PROGRAM=1 node scripts/build-app.mjs    # issue-#163 main-thread programs
+//   BENCH_DEVICE_MESSAGECHANNEL_FALLBACK=1 node scripts/build-app.mjs
+//                                                     # SDK 4.0 device has no MessageChannel
+//   BENCH_DISABLE_DEVTOOL=1 node scripts/build-app.mjs # device preflight bundle
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { instrumentLynxStageSources } from '../stages/instrument-source.mjs';
+import { instrumentIssue194NativeSources } from '../stages/issue194-native-instrument.mjs';
 import { instrumentLepusQ2Sources } from '../stages/lepus-cost/instrument-q2-source.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -67,6 +71,41 @@ export function buildTableApp({
 	for (const file of fs.readdirSync(path.join(src, 'src'))) {
 		fs.copyFileSync(path.join(src, 'src', file), path.join(stage, 'src', file));
 	}
+	if (process.env.BENCH_DISABLE_DEVTOOL === '1') {
+		const appFile = path.join(stage, 'src', 'App.lynx.tsrx');
+		const source = fs.readFileSync(appFile, 'utf8');
+		const anchor = "import type { RowData } from './data.js';";
+		if (source.indexOf(anchor) === -1 || source.indexOf(anchor) !== source.lastIndexOf(anchor)) {
+			throw new Error('DevTool preflight anchor is missing or ambiguous.');
+		}
+		fs.writeFileSync(
+			appFile,
+			source
+				.replace(
+					anchor,
+					`${anchor}\n\nfunction disableDevTool(): void {\n\t'background only';\n\tNativeModules.LynxDevToolSetModule.switchLynxDebug(false);\n\tconsole.log('__OCTANE_DEVTOOL_DISABLED__=true');\n}`,
+				)
+				.replace('export function App() @{', 'export function App() @{\n\tdisableDevTool();'),
+		);
+	}
+	if (process.env.BENCH_DEVICE_MESSAGECHANNEL_FALLBACK === '1') {
+		const appFile = path.join(stage, 'src', 'App.lynx.tsrx');
+		const source = fs.readFileSync(appFile, 'utf8');
+		const anchor = 'const _stormChannel = new MessageChannel();';
+		if (source.indexOf(anchor) === -1 || source.indexOf(anchor) !== source.lastIndexOf(anchor)) {
+			throw new Error('device MessageChannel fallback anchor is missing or ambiguous.');
+		}
+		fs.writeFileSync(
+			appFile,
+			source.replace(
+				anchor,
+				`const _stormChannel =
+	typeof MessageChannel === 'undefined'
+		? ({ port1: { onmessage: null }, port2: { postMessage() {} } } as unknown as MessageChannel)
+		: new MessageChannel();`,
+			),
+		);
+	}
 
 	const autoRows = Number(process.env.BENCH_AUTOROWS ?? '0') || 0;
 	const profile = process.env.OCTANE_LYNX_PROFILE === '1';
@@ -77,6 +116,22 @@ export function buildTableApp({
 		: profile
 			? instrumentLynxStageSources(repo)
 			: () => {};
+	const issue194Native = process.env.BENCH_ISSUE194_NATIVE === '1';
+	const issue194DirectOnly = process.env.BENCH_ISSUE194_DIRECT_ONLY === '1';
+	const appendOrder = process.env.BENCH_MTS_APPEND_ORDER ?? 'parent-first';
+	let restoreIssue194 = () => {};
+	try {
+		if (issue194Native) {
+			restoreIssue194 = instrumentIssue194NativeSources(repo, stage, {
+				appendOrder,
+				directOnly: issue194DirectOnly,
+			});
+		}
+	} catch (error) {
+		restore();
+		fs.rmSync(stage, { recursive: true, force: true });
+		throw error;
+	}
 	// Issue-#103 B0: the background core is a build-time choice, so a second
 	// core is a second build of the same sources rather than a second app. The
 	// suffix has to be spelled the same here and in app/lynx.config.mjs, which
@@ -117,6 +172,7 @@ export function buildTableApp({
 			},
 		});
 	} finally {
+		restoreIssue194();
 		restore();
 	}
 
@@ -127,11 +183,14 @@ export function buildTableApp({
 		(autoRows > 0 ? `-rows${autoRows}` : '') +
 		(profile ? '-profile' : '');
 	const from = path.join(stage, `dist${suffix}`);
-	const to = path.join(src, `dist${suffix}`);
+	const outputSuffix =
+		suffix +
+		(issue194Native ? `-issue194-${appendOrder}${issue194DirectOnly ? '-direct-only' : ''}` : '');
+	const to = path.join(src, `dist${outputSuffix}`);
 	fs.rmSync(to, { recursive: true, force: true });
 	fs.cpSync(from, to, { recursive: true });
 	fs.rmSync(stage, { recursive: true, force: true });
-	if (!silent) console.log(`[lynx-table] staged bundles → app/dist${suffix}`);
+	if (!silent) console.log(`[lynx-table] staged bundles → app/dist${outputSuffix}`);
 	return to;
 }
 
