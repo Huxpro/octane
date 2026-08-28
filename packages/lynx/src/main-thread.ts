@@ -2377,9 +2377,18 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			!applyFailed &&
 			prepared.firstTreeAction === 'none' &&
 			prepared.listAncestryDelta.length === 0
-				? provisional
-					? (prepared.compactHostCount ?? countLynxCompactAcknowledgementHosts(message.batch))
-					: (prepared.compactHostCount ?? null)
+				? // Issue #230: preparation records a host count only while it is itself
+					// driving the compact path, and taking that path swaps the driver's
+					// record store to its dense form — which the incremental candidate
+					// test rejects, because it asks for a `Map`. So the second identical
+					// run on a root arrives with no prepared count, and reading that as
+					// "not compact" answered it with one handle per host: 70,000 of them,
+					// 17.4 MB, for the benchmark's second `Create 10,000 rows`. The count
+					// is a property of the batch, so recompute it rather than let the
+					// container the driver happens to be holding records in decide an
+					// encoding. The check below re-validates any count that disagrees
+					// with preparation against the prepared handle deltas.
+					(prepared.compactHostCount ?? countLynxCompactAcknowledgementHosts(message.batch))
 				: null;
 		if (compactCount !== null && compactCount < LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS) {
 			compactCount = null;
