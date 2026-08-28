@@ -871,6 +871,26 @@ export interface FirstScreenSelectorResult {
 	readonly commits: number;
 	readonly commands: number;
 	readonly wireRegime: ReturnType<typeof summarizeRegime>;
+	/**
+	 * What the first screen actually put on the wire, in both directions.
+	 *
+	 * The ops suite has reported bytes since it existed, because a commit's cost
+	 * *is* its serialized size. The first screen reported only counts, on the
+	 * reasoning that a screen the direct applier paints sends no commands — and
+	 * that is true of the background-to-main direction. It says nothing about the
+	 * other one: the main thread still answers the handshake, and what it puts on
+	 * that reply is O(tree) or O(1) depending on a predicate no count here can
+	 * see. Issue #231 found the difference in a browser benchmark rather than
+	 * here, which is the gap this closes.
+	 */
+	readonly wire: ReturnType<typeof summarizeWire>;
+	/**
+	 * Every message, in order, as direction/type/bytes. A first screen sends few
+	 * enough messages that the whole list is readable, and a total cannot say
+	 * which message carried the bytes — which is the first question a wire
+	 * anomaly asks.
+	 */
+	readonly wireTrace: readonly Pick<WireMessageSnapshot, 'direction' | 'type' | 'bytes'>[];
 	readonly diagnostics: readonly string[];
 }
 
@@ -910,6 +930,12 @@ export async function runFirstScreenSelectors(
 			commits: after.commits - before.commits,
 			commands: after.commands - before.commands,
 			wireRegime: summarizeRegime(chassis.wireMessages),
+			wire: summarizeWire(chassis.wireMessages),
+			wireTrace: chassis.wireMessages.map(({ direction, type, bytes }) => ({
+				direction,
+				type,
+				bytes,
+			})),
 			diagnostics: chassis.diagnostics.map((error) => error.message),
 		};
 	} finally {

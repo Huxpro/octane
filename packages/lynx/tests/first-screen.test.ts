@@ -1012,11 +1012,21 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		expect(main.activeIdentity()).toMatchObject({ root: 1, version: 1 });
 		const ready = inbound.filter((message) => message.type === 'main-ready');
 		expect(ready).toHaveLength(1);
+		// The reply states that a first screen was painted here, so the background
+		// adopts it instead of mounting over it. This background reads that as a
+		// fact rather than as a description of the page (issue #231), so the reply
+		// says so and stays a constant size; the description encoding an older
+		// background still needs is proven in `first-screen-ready-wire.test.ts`,
+		// which drives a peer below that rung and asserts it receives the nodes.
+		// What the description used to be asserted for here — that adoption landed
+		// on this painted root at this version — is what the identity above and the
+		// preserved `#first-screen`/`#a`/`#b` nodes assert directly.
 		expect(ready[0]).toMatchObject({
 			type: 'main-ready',
-			firstTree: { root: 1, version: 1 },
+			firstTreePainted: 1,
 			capabilities: { templateProgram: 1, templateRuns: 1, lazyPublicInstances: 1 },
 		});
+		expect(ready[0]).not.toHaveProperty('firstTree');
 		expect((ready[0] as { request: number }).request).toBeGreaterThan(0);
 		const adoptionCommit = outbound.find((message) => message.type === 'commit');
 		expect(adoptionCommit).not.toHaveProperty('ack');

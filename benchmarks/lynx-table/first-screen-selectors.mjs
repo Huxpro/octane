@@ -61,6 +61,19 @@ if (!Number.isSafeInteger(REPS) || REPS <= 0)
 	throw new TypeError('reps must be a positive integer.');
 
 const ARMS = ['before-render', 'after-render'];
+
+/**
+ * What the main thread may put on the wire during a first screen, in bytes.
+ *
+ * Issue #231: the main-ready reply used to carry the whole first-tree
+ * description, so this direction was O(painted tree) — 37 MB for a 30,000-row
+ * page — while every count this harness reports stayed flat and said nothing
+ * was wrong. Nothing the main thread says during a first screen is proportional
+ * to the page: it answers a handshake and acknowledges a commit. The budget is
+ * deliberately loose against the ~500 B this actually spends, because its job is
+ * to catch a payload that scales with the tree, not to pin today's handshake.
+ */
+const MAIN_TO_BACKGROUND_BUDGET_BYTES = 4096;
 const scaleLabel = (rows) => (rows % 1000 === 0 ? `${rows / 1000}k` : String(rows));
 
 /** Build the workload once per scale, because the row count is a build define. */
@@ -152,6 +165,22 @@ try {
 				continue;
 			}
 
+			// A budget rather than a fixed count: this direction must not be a
+			// function of the row count at all, so the same number bounds every
+			// scale.
+			if (result.wire.wireToBackgroundBytes > MAIN_TO_BACKGROUND_BUDGET_BYTES) {
+				failures.push(
+					`rows=${rows} ${arm}: main-to-background wire is ` +
+						`${result.wire.wireToBackgroundBytes} B, over the ` +
+						`${MAIN_TO_BACKGROUND_BUDGET_BYTES} B first-screen budget: ` +
+						result.wireTrace
+							.filter((message) => message.direction === 'main-to-background')
+							.map((message) => `${message.type}=${message.bytes}B`)
+							.join(' '),
+				);
+				continue;
+			}
+
 			cells[`${scaleLabel(rows)}/${arm}`] = {
 				rows,
 				arm,
@@ -163,6 +192,8 @@ try {
 				commits: result.commits,
 				commands: result.commands,
 				wireRegime: result.wireRegime,
+				wireToBackgroundBytes: result.wire.wireToBackgroundBytes,
+				wireToMainBytes: result.wire.wireToMainBytes,
 			};
 			const announced = Object.entries(result.wireRegime.commitAnnouncements)
 				.map(([key, count]) => `${key}=${count}`)
@@ -170,7 +201,8 @@ try {
 			console.log(
 				`rows=${String(rows).padStart(5)} ${arm.padEnd(13)} ` +
 					`installs=${String(result.refSelectorInstalls).padStart(6)}/${result.createdSelectable} ` +
-					`commits=${result.commits} announces=${announced}`,
+					`commits=${result.commits} announces=${announced} ` +
+					`mts->bts=${result.wire.wireToBackgroundBytes}B`,
 			);
 		}
 	}
@@ -224,8 +256,14 @@ function markdown(record) {
 	lines.push(`- reps: ${record.reps} (counts must be identical across them)`);
 	lines.push(`- host: ${record.host.cpus}, node ${record.host.node}`);
 	lines.push('');
-	lines.push('| rows | arm | selectable | installs | commits | announcement regime |');
-	lines.push('| ---: | --- | ---: | ---: | ---: | --- |');
+	lines.push(
+		'`mts->bts` is every byte the main thread put on the wire during the first',
+		'screen. It must not be a function of the row count; issue #231 is what',
+		`happens when it is. Budget: ${MAIN_TO_BACKGROUND_BUDGET_BYTES} B.`,
+		'',
+	);
+	lines.push('| rows | arm | selectable | installs | commits | mts->bts | announcement regime |');
+	lines.push('| ---: | --- | ---: | ---: | ---: | ---: | --- |');
 	for (const cell of Object.values(record.cells)) {
 		const announced = Object.entries(cell.wireRegime.commitAnnouncements)
 			.map(([key, count]) => `\`${key}\` ×${count}`)
@@ -233,7 +271,8 @@ function markdown(record) {
 		lines.push(
 			`| ${cell.rows.toLocaleString('en-US')} | ${cell.arm} | ` +
 				`${cell.createdSelectable.toLocaleString('en-US')} | ` +
-				`${cell.refSelectorInstalls.toLocaleString('en-US')} | ${cell.commits} | ${announced} |`,
+				`${cell.refSelectorInstalls.toLocaleString('en-US')} | ${cell.commits} | ` +
+				`${cell.wireToBackgroundBytes.toLocaleString('en-US')} B | ${announced} |`,
 		);
 	}
 	lines.push('');
