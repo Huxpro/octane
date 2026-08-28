@@ -69,9 +69,22 @@ const ARMS = ['before-render', 'after-render'];
  * description, so this direction was O(painted tree) — 37 MB for a 30,000-row
  * page — while every count this harness reports stayed flat and said nothing
  * was wrong. Nothing the main thread says during a first screen is proportional
- * to the page: it answers a handshake and acknowledges a commit. The budget is
- * deliberately loose against the ~500 B this actually spends, because its job is
- * to catch a payload that scales with the tree, not to pin today's handshake.
+ * to the page: it answers a handshake and acknowledges a commit.
+ *
+ * Both arms here render from the background, so main applies commands and never
+ * captures a first tree of its own. That means this budget never sees the
+ * description #231 was about, and it must not be read as guarding it: measured
+ * on the fixed build it is 468 B at 1,000 rows and 470 B at 30,000, and it reads
+ * the same 470 B with the background dropped below the presence rung, because
+ * neither arm has a description to send in the first place. What it does bound
+ * is the rest of the handshake — that answering a request and acknowledging a
+ * commit stays flat however large the page gets, by any route.
+ *
+ * The description's own budget lives where a main-thread paint exists to produce
+ * one: `packages/lynx/tests/first-screen-ready-wire.test.ts` pins the reply
+ * byte-identical across an 8× tree and under 512 B for a peer at the presence
+ * rung, and proves that budget can fail by driving a peer below it and watching
+ * the same reply grow past 4×.
  */
 const MAIN_TO_BACKGROUND_BUDGET_BYTES = 4096;
 const scaleLabel = (rows) => (rows % 1000 === 0 ? `${rows / 1000}k` : String(rows));
