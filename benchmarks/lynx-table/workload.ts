@@ -657,6 +657,20 @@ export interface TableRunResult {
 	readonly swapEventSurvived: boolean;
 	readonly updateStorm: OpCounters;
 	readonly selectStorm: OpCounters;
+	readonly clear: OpCounters;
+	/**
+	 * The second create, on the container the first one and its teardown left
+	 * behind.
+	 *
+	 * Every cross-framework harness measures create this way. The web runner
+	 * rebuilds a case's pre-state before each sample, so only its first
+	 * repetition ever sees a virgin root, and every repetition after it creates
+	 * over whatever the previous clear left. Every other op here measures the
+	 * first create on a fresh one. A path available only to a virgin container
+	 * reads as fast here and slow there, and this pair is what tells the two
+	 * apart.
+	 */
+	readonly recreate: OpCounters;
 	readonly createdElements: number;
 	/**
 	 * Which regime the run actually negotiated and used, rather than which one the
@@ -826,6 +840,18 @@ export async function runTable(rows: number): Promise<TableRunResult> {
 			await until(harness, () => hasClass(rowViews(harness.papi)[0]!, 'danger'), 'select storm');
 		});
 
+		// Teardown and remount, in that order and last, so the ops above keep
+		// measuring what they always measured on the tree the first create built.
+		const clear = await measure(async () => {
+			await tapButton(harness, 'Clear');
+			await until(harness, () => rowViews(harness.papi).length === 0, 'cleared');
+		});
+
+		const recreate = await measure(async () => {
+			await tapButton(harness, createButton);
+			await until(harness, () => rowViews(harness.papi).length === rows, `${rows} rows again`);
+		});
+
 		return {
 			rows,
 			create,
@@ -836,6 +862,8 @@ export async function runTable(rows: number): Promise<TableRunResult> {
 			swapEventSurvived,
 			updateStorm,
 			selectStorm,
+			clear,
+			recreate,
 			createdElements: harness.papi.createdElements,
 			wireRegime: summarizeRegime(harness.wireMessages),
 			diagnostics: harness.diagnostics.map((error) => error.message),
