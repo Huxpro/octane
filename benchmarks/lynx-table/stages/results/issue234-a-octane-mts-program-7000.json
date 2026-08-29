@@ -1,6 +1,6 @@
 {
   "protocol": "octane-issue194-device-v1",
-  "question": "issue #234 Part B: check the surviving side of the aries_10 global-reference capacity boundary with Octane MTS program eager 7k",
+  "question": "issue #234 Part A same-lease add-on: check the surviving side of the aries_10 global-reference capacity boundary with Octane MTS program eager 7k",
   "createdAt": "2026-08-29T22:02:41.517Z",
   "octaneCommit": "8938c12608524d1a259b5e81f0903ffa5b5eb4d5",
   "serial": "aic-i18n-bd-fullport.byteintl.net:42820",
