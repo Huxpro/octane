@@ -3432,6 +3432,77 @@ thermal and load recorded), in this order, because each step can end the probe:
 Check each window in as its own record under `stages/results/`, the way every
 other window here does, and report it on #215.
 
+## 10. Device correctness gate (`stages/issue234-device-gate.mjs`, issue #234 D)
+
+Every number in this file above is a cost. None of them is a correctness claim,
+and a cost measured on a tree that is quietly wrong is worse than no cost at
+all: it reads as evidence. Rounds 1 and 2 of #194 both spent a device lease
+measuring milliseconds without ever establishing, on the device, that the thing
+being measured painted the right rows, routed a real tap to the right handler,
+or released what it claimed to release. The web container is not a substitute
+for that. It has a different renderer, a different event path, and no reference
+table.
+
+So a device round now opens with a gate rather than a measurement. It answers
+six questions in order, and each one can end the round:
+
+| Step | Question it answers |
+| --- | --- |
+| `first-screen` | did the first screen paint the rows it was given, in order? |
+| `adoption` | did the background adopt that painted tree, rather than repair it? |
+| `native-tap` | does a real native tap reach the handler of the row it landed on? |
+| `slot-update` | does a slot update land on the rows it names, and no others? |
+| `clear-retention` | does clearing empty the tree, and does repeating it retain nothing? |
+| `dispose` | after disposing the root, does anything still answer? |
+
+Three properties are what make this a gate and not a report.
+
+**A missing observation fails its step.** The evaluator never treats an absent
+reading as a pass. A gate that goes green because its oracle could not be read
+is strictly worse than no gate: it converts a collection bug into a correctness
+claim. Fifteen distinct holes are covered by the oracle tests for exactly this
+reason.
+
+**Evaluation stops at the first failure**, and the remaining steps are recorded
+as `skipped`, not as passes. A tree that painted the wrong rows makes every
+later answer meaningless, and a record that scored those later steps anyway
+would read as five-of-six rather than as stopped.
+
+**An absence needs a provocation.** `dispose` does not pass merely because no
+ack arrived; it requires that at least one was provoked after the dispose and
+still did not arrive. An absence nobody gave a chance to be violated is not
+evidence of anything, which is the same reason `clear-retention` requires the
+residual to be *identical* across all N cycles rather than merely small once.
+
+The judgement is pure and lives apart from the collection, so it runs in CI on
+every commit with no device attached, and a window whose collection went wrong
+can be re-judged from the observations it did produce without re-taking the
+lease. The command exits non-zero when any step fails, which is what lets a
+lease script stop before it spends its budget measuring a broken tree:
+
+```bash
+node benchmarks/lynx-table/stages/issue234-device-gate.mjs \
+  --observations results/issue234-gate-observations-1000.json \
+  --out results/issue234-gate-1000.json \
+  --scale 1000 --cycles 3 --serial <adb-serial> \
+  --question 'does the D-train paint, adopt, route, update, clear and dispose correctly on device?'
+```
+
+The record carries the verdict, the per-step reasons, the device stamp, and the
+observations it judged — the last because a record that says `fail` without
+saying what it read cannot be acted on without another lease.
+
+### What is not here yet
+
+The device half — the build-only app probe that produces the observations and
+the adb runner that drives it — is not in this slice. It has a hard dependency
+on the round-2 device branch's build wiring (`BENCH_DISABLE_DEVTOOL` and
+`BENCH_DEVICE_MESSAGECHANNEL_FALLBACK`; SDK 4.0 has no `MessageChannel`), which
+is unmerged, and duplicating that wiring here would create a second home for the
+same workaround and conflict on merge. Until it lands, the gate is exercised
+against checked-in observation fixtures, which is what the oracle and command
+tests do.
+
 ## Claims and non-claims
 
 Command counts and commit bytes are Octane-owned costs and are gated. The
