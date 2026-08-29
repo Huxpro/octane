@@ -34,6 +34,7 @@ import {
 } from '../src/core/protocol.js';
 import type { LynxContextProxy } from '../src/core/protocol.js';
 import type { LynxComponent } from '../src/intrinsics.js';
+import { unwire } from './_fixtures/lynx-wire.js';
 
 // Well above LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS (16) once multiplied by the
 // row template's host count, so main does offer a compact acknowledgement for
@@ -190,7 +191,7 @@ it('acknowledges the second compact-eligible run compactly too (issue #230)', as
 	// Main's own replies, read off the wire, because the encoding is the claim.
 	const acknowledgements: { readonly encoding?: unknown; readonly handles?: unknown }[] = [];
 	context.addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
-		const message = (event as { data?: unknown }).data as
+		const message = unwire((event as { data?: unknown }).data) as
 			| { readonly type?: string; readonly encoding?: unknown; readonly handles?: unknown }
 			| undefined;
 		if (message?.type === 'ack') acknowledgements.push(message);

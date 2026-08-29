@@ -37,6 +37,7 @@ import {
 	type LynxContextProxy,
 	type LynxMainReadyReply,
 } from '../src/core/protocol.js';
+import { unwire, wire } from './_fixtures/lynx-wire.js';
 
 const rowPlan = firstScreenPlan('lynx', { kind: 'host', type: 'view', propsSlot: 0 });
 const scenePlan = firstScreenPlan('lynx', {
@@ -102,29 +103,33 @@ function paintAndAnswer(
 	});
 	globalThis.lynxTestingEnv.switchToMainThread();
 	main = installLynxMainThread({ firstScreen: true });
-	const outbound: LynxMainReadyReply[] = [];
+	// The transport owns encoding, so what crosses is a codec string; the
+	// budget below is honest only if it measures that string, not a re-print.
+	const outbound: { message: LynxMainReadyReply; bytes: number }[] = [];
 	mainContext().addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
-		const message = event.data as LynxMainReadyReply;
-		if (message.type === 'main-ready') outbound.push(message);
+		const message = unwire(event.data) as LynxMainReadyReply;
+		if (message.type === 'main-ready') {
+			outbound.push({ message, bytes: (event.data as string).length });
+		}
 	});
 	// Queued before the paint, which is the order that loses the race in
 	// production: the background does not wait for the main thread to finish
 	// painting before asking, and at 30,000 rows that paint is seconds long.
 	backgroundContext().dispatchEvent({
 		type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-		data: {
+		data: wire({
 			protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 			renderer: LYNX_TRANSPORT_RENDERER,
 			type: 'main-ready-request',
 			request,
-		},
+		}),
 	});
 	firstScreenRoot.render(Scene, {
 		items: Array.from({ length: rows }, (_, index) => `row-${index}`),
 	});
-	const correlated = outbound.filter((message) => message.request === request);
+	const correlated = outbound.filter((entry) => entry.message.request === request);
 	expect(correlated).toHaveLength(1);
-	return { reply: correlated[0]!, bytes: JSON.stringify(correlated[0]).length };
+	return { reply: correlated[0]!.message, bytes: correlated[0]!.bytes };
 }
 
 const presence = (n: number) => LYNX_FIRST_TREE_PRESENCE_READY_REQUEST_BASE + n;

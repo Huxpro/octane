@@ -8,7 +8,7 @@
     "sourceRoot": "modules/react-mapbox/src",
     "testRoot": "modules/react-mapbox/test",
     "license": "MIT",
-    "integrity": "sha256:3a2b9b8de9120db2e7f595e4c7e0c0d74ff76a9a41864464207f4e45f632bf8a",
+    "integrity": "sha256:ddc546dd19395818001f51431a8fc33a91915c13dbe2dc66b4299b4816feaf7a",
     "verification": "verified"
   },
   "upstreamSuites": {
@@ -103,6 +103,11 @@
           ]
         },
         {
+          "path": "packages/react-map-gl/audit/upstream.lock.json",
+          "role": "support",
+          "sha256": "587fe6f21f40cc74760669fb34d744f316c2857f115a315dcedd2ad34481181d"
+        },
+        {
           "path": "packages/react-map-gl/upstream/test/utils/apply-react-style.spec.js",
           "role": "support",
           "sha256": "77d8089345bf68c21f8969996f38d793b8bde0277011f07102bc0a4dc572348c"
@@ -188,6 +193,11 @@
               "fullName": "upstream util specs (adapted) declares every collected upstream case"
             }
           ]
+        },
+        {
+          "path": "packages/react-map-gl/audit/upstream.lock.json",
+          "role": "support",
+          "sha256": "587fe6f21f40cc74760669fb34d744f316c2857f115a315dcedd2ad34481181d"
         },
         {
           "path": "packages/react-map-gl/upstream/test/utils/apply-react-style.spec.js",
