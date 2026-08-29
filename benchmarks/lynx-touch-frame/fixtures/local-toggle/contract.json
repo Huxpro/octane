@@ -1,0 +1,8 @@
+{
+  "shape": "local-toggle",
+  "target": "target-8",
+  "response": "toggle target row background between #ffffff and #ffd54f",
+  "observer": "computed background-color differs from the value captured at touchstart",
+  "interactionRows": 16,
+  "loadRows": 200
+}

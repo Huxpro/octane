@@ -1,0 +1,390 @@
+{
+  "schema": "octane.lepus-cost.model.v1",
+  "issue": "https://github.com/Huxpro/octane/issues/196",
+  "protocol": "https://github.com/Huxpro/octane/issues/194",
+  "generatedAt": "2026-08-26",
+  "device": {
+    "serial": "aic-i18n-bd-fullport.byteintl.net:36527",
+    "model": "aries_10",
+    "android": "10",
+    "fingerprint": "aries_10/aries/aries:10/QQ3A.200805.001/1.5.2:userdebug/test-keys",
+    "abi": "arm64-v8a"
+  },
+  "engine": {
+    "name": "LepusNG",
+    "lepusVersion": "2.3.0",
+    "appBundleEngineVersion": "3.9",
+    "lynxSdkVersion": "4.0"
+  },
+  "inputs": {
+    "dispatch": {
+      "file": "benchmarks/lynx-table/stages/results/lepus-cost-m1-dispatch-property-aries10-2026-08-26.json",
+      "sha256": "55245c6ba9af99328839482b7ad1cd8ac54c4e71221b9dbcf356daeff6fc36c5"
+    },
+    "allocation": {
+      "file": "benchmarks/lynx-table/stages/results/lepus-cost-m1-allocation-string-branch-aries10-2026-08-26.json",
+      "sha256": "9ba413e391c140563503278012ceab6378de4d528dd80efcd76ff622193d9b4a"
+    },
+    "v8": {
+      "file": "benchmarks/lynx-table/stages/results/lepus-cost-m1-v8-context-2026-08-26.json",
+      "sha256": "dbbda2b7cffec0fa4cf456757885ed938dc67c74b38dd8af222e3c5a740bc9ce"
+    },
+    "prediction": {
+      "file": "benchmarks/lynx-table/stages/results/lepus-cost-m2-prediction-2026-08-26.json",
+      "sha256": "fdcfc45276d1e0668b73322a3d17cf581992e7d5941498e087ff562ad284e43a"
+    },
+    "actual": {
+      "file": "benchmarks/lynx-table/stages/results/lepus-cost-m2-actual-q2-aries10-2026-08-26.json",
+      "sha256": "ae525c56783d5f2b3a8b59632d98dda81af87fe2e1e462b6e6b2f2fab2edc16d"
+    },
+    "invalidObserver": {
+      "file": "benchmarks/lynx-table/stages/results/lepus-cost-m2-invalid-observer-timeout-10000-aries10-2026-08-26.json",
+      "sha256": "742bf9b30f790d4f5019be844e4d562e8e13132d6e098c4fb088c92a62d7d670"
+    },
+    "invalidCrossing": {
+      "file": "benchmarks/lynx-table/stages/results/lepus-cost-m2-invalid-crossing-timeout-30000-aries10-2026-08-26.json",
+      "sha256": "94e4a693ddd99c0684ac78a329ac2a3a4674e5d05ba43cc6f3f4d1a04ef8171a"
+    }
+  },
+  "m1": {
+    "method": "AB/BA paired deltas, n=5 at four iteration counts, linear slope over all paired deltas",
+    "primitiveRows": [
+      {
+        "case": "empty_loop",
+        "group": "dispatch",
+        "lepusDeltaNsPerOp": 33.21739130434783,
+        "v8ContextDeltaNsPerOp": 0.4785314086953567,
+        "fitRmseMs": 0.4481847445165792,
+        "fitMaxAbsResidualMs": 0.7826086956521734,
+        "status": "measured"
+      },
+      {
+        "case": "call_0_args",
+        "group": "dispatch",
+        "lepusDeltaNsPerOp": 103.33913043478262,
+        "v8ContextDeltaNsPerOp": -0.18697342608703246,
+        "fitRmseMs": 0.7346102190366287,
+        "fitMaxAbsResidualMs": 1.641739130434786,
+        "status": "measured"
+      },
+      {
+        "case": "call_3_args",
+        "group": "dispatch",
+        "lepusDeltaNsPerOp": 146.7826086956522,
+        "v8ContextDeltaNsPerOp": -0.22496476521713626,
+        "fitRmseMs": 0.6487446070815475,
+        "fitMaxAbsResidualMs": 1.6347826086956516,
+        "status": "measured"
+      },
+      {
+        "case": "call_8_args",
+        "group": "dispatch",
+        "lepusDeltaNsPerOp": 226.4695652173913,
+        "v8ContextDeltaNsPerOp": -0.3125931130436189,
+        "fitRmseMs": 0.4448741883704436,
+        "fitMaxAbsResidualMs": 0.9339130434782597,
+        "status": "measured"
+      },
+      {
+        "case": "property_method_vs_local_binding",
+        "group": "dispatch",
+        "lepusDeltaNsPerOp": 0.1391304347826087,
+        "v8ContextDeltaNsPerOp": -0.020381182608885537,
+        "fitRmseMs": 0.7480990401765287,
+        "fitMaxAbsResidualMs": 1.2121739130434783,
+        "status": "resolution-limited"
+      },
+      {
+        "case": "host_papi_vs_lepus_call",
+        "group": "dispatch",
+        "lepusDeltaNsPerOp": 5.6347826086956525,
+        "v8ContextDeltaNsPerOp": 154.7372218782606,
+        "fitRmseMs": 0.5652240802279794,
+        "fitMaxAbsResidualMs": 1.0295652173913044,
+        "status": "resolution-limited"
+      },
+      {
+        "case": "closure_read_vs_local",
+        "group": "environment",
+        "lepusDeltaNsPerOp": 1.1478260869565218,
+        "v8ContextDeltaNsPerOp": 0.06322907826138162,
+        "fitRmseMs": 0.723758307003465,
+        "fitMaxAbsResidualMs": 1.2939130434782609,
+        "status": "resolution-limited"
+      },
+      {
+        "case": "global_read_vs_local",
+        "group": "environment",
+        "lepusDeltaNsPerOp": 22.469565217391303,
+        "v8ContextDeltaNsPerOp": 149.54319586086928,
+        "fitRmseMs": 0.8233547494720979,
+        "fitMaxAbsResidualMs": 1.5339130434782606,
+        "status": "measured"
+      },
+      {
+        "case": "property_load_vs_local",
+        "group": "property",
+        "lepusDeltaNsPerOp": 31.02608695652174,
+        "v8ContextDeltaNsPerOp": -0.40580319999933867,
+        "fitRmseMs": 0.6804090841097953,
+        "fitMaxAbsResidualMs": 1.3930434782608714,
+        "status": "measured"
+      },
+      {
+        "case": "property_store_vs_local",
+        "group": "property",
+        "lepusDeltaNsPerOp": 18.156521739130437,
+        "v8ContextDeltaNsPerOp": -0.06509245217476618,
+        "fitRmseMs": 0.682960308223469,
+        "fitMaxAbsResidualMs": 1.488695652173913,
+        "status": "measured"
+      },
+      {
+        "case": "array_index_load_vs_local",
+        "group": "property",
+        "lepusDeltaNsPerOp": 33.21739130434783,
+        "v8ContextDeltaNsPerOp": -0.3620256347822325,
+        "fitRmseMs": 0.8371795298604661,
+        "fitMaxAbsResidualMs": 1.582608695652174,
+        "status": "measured"
+      },
+      {
+        "case": "array_index_store_vs_local",
+        "group": "property",
+        "lepusDeltaNsPerOp": 18.26086956521739,
+        "v8ContextDeltaNsPerOp": 1.574297286956995,
+        "fitRmseMs": 0.5793549636561712,
+        "fitMaxAbsResidualMs": 1.2521739130434781,
+        "status": "measured"
+      },
+      {
+        "case": "property_load_2_shapes_vs_1",
+        "group": "shape",
+        "lepusDeltaNsPerOp": -1.2869565217391303,
+        "v8ContextDeltaNsPerOp": 0.4240953739136983,
+        "fitRmseMs": 0.6765642101343986,
+        "fitMaxAbsResidualMs": 1.2660869565217392,
+        "status": "resolution-limited"
+      },
+      {
+        "case": "property_load_8_shapes_vs_1",
+        "group": "shape",
+        "lepusDeltaNsPerOp": 0.1391304347826087,
+        "v8ContextDeltaNsPerOp": 0.3891192695653287,
+        "fitRmseMs": 0.7743721159191125,
+        "fitMaxAbsResidualMs": 1.0295652173913044,
+        "status": "resolution-limited"
+      },
+      {
+        "case": "object_literal_vs_scalar",
+        "group": "allocation",
+        "lepusDeltaNsPerOp": 332.24347826086955,
+        "v8ContextDeltaNsPerOp": -0.09669926956437694,
+        "fitRmseMs": 0.6053385685785239,
+        "fitMaxAbsResidualMs": 1.3530434782608722,
+        "status": "measured"
+      },
+      {
+        "case": "array_literal_vs_scalar",
+        "group": "allocation",
+        "lepusDeltaNsPerOp": 305.18260869565216,
+        "v8ContextDeltaNsPerOp": -1.1441242782598355,
+        "fitRmseMs": 0.7381528061434109,
+        "fitMaxAbsResidualMs": 1.137391304347826,
+        "status": "measured"
+      },
+      {
+        "case": "closure_allocation_vs_scalar",
+        "group": "allocation",
+        "lepusDeltaNsPerOp": 1058.1565217391303,
+        "v8ContextDeltaNsPerOp": 13.022295130434022,
+        "fitRmseMs": 0.9090845849582403,
+        "fitMaxAbsResidualMs": 2.273043478260888,
+        "status": "measured"
+      },
+      {
+        "case": "template_literal_vs_concat",
+        "group": "string",
+        "lepusDeltaNsPerOp": 94.33043478260869,
+        "v8ContextDeltaNsPerOp": -4.318021182607733,
+        "fitRmseMs": 0.8774468892635389,
+        "fitMaxAbsResidualMs": 1.9791304347826078,
+        "status": "measured"
+      },
+      {
+        "case": "string_host_crossing_vs_stays",
+        "group": "string",
+        "lepusDeltaNsPerOp": 989.4608695652173,
+        "v8ContextDeltaNsPerOp": 198.8162962434784,
+        "fitRmseMs": 1.0637914146640983,
+        "fitMaxAbsResidualMs": 2.3895652173913504,
+        "status": "measured"
+      },
+      {
+        "case": "switch_vs_if_4",
+        "group": "branch",
+        "lepusDeltaNsPerOp": 15.82608695652174,
+        "v8ContextDeltaNsPerOp": 0.18193193043325273,
+        "fitRmseMs": 0.7259177100327079,
+        "fitMaxAbsResidualMs": 1.5130434782608688,
+        "status": "measured"
+      },
+      {
+        "case": "table_vs_if_4",
+        "group": "branch",
+        "lepusDeltaNsPerOp": -8.904347826086957,
+        "v8ContextDeltaNsPerOp": -1.2253692521737716,
+        "fitRmseMs": 0.5615196771495073,
+        "fitMaxAbsResidualMs": 1.5078260869565216,
+        "status": "measured"
+      },
+      {
+        "case": "switch_vs_if_16",
+        "group": "branch",
+        "lepusDeltaNsPerOp": 5.6347826086956525,
+        "v8ContextDeltaNsPerOp": -0.12130253913106255,
+        "fitRmseMs": 0.4684850700604718,
+        "fitMaxAbsResidualMs": 0.7026086956521738,
+        "status": "measured"
+      },
+      {
+        "case": "table_vs_if_16",
+        "group": "branch",
+        "lepusDeltaNsPerOp": -133.42608695652171,
+        "v8ContextDeltaNsPerOp": -0.9304186434775424,
+        "fitRmseMs": 0.6410589066061952,
+        "fitMaxAbsResidualMs": 1.6469565217391349,
+        "status": "measured"
+      },
+      {
+        "case": "switch_vs_if_64",
+        "group": "branch",
+        "lepusDeltaNsPerOp": -12.626086956521739,
+        "v8ContextDeltaNsPerOp": 0.08241596521642673,
+        "fitRmseMs": 0.6188348097344963,
+        "fitMaxAbsResidualMs": 1.4452173913043478,
+        "status": "measured"
+      },
+      {
+        "case": "table_vs_if_64",
+        "group": "branch",
+        "lepusDeltaNsPerOp": -599.3391304347826,
+        "v8ContextDeltaNsPerOp": -0.955053321741276,
+        "fitRmseMs": 0.46867064545696,
+        "fitMaxAbsResidualMs": 0.7408695652174053,
+        "status": "measured"
+      }
+    ],
+    "v8Scope": {
+      "decisionUse": "context-only",
+      "hostPapiRowsComparable": false,
+      "reason": "V8 host globals are JavaScript mocks, not Lynx Element PAPI FFI. This run is never used for device decisions or M2 predictions."
+    }
+  },
+  "m2": {
+    "predictionFrozenAt": "2026-08-26T11:11:06.818Z",
+    "predictionWasFrozenBeforeActual": true,
+    "q2Scales": [
+      {
+        "rows": 1000,
+        "predictedProgramMs": 7.756504347826086,
+        "predictedTemplateLowerBoundMs": 8.206208695652172,
+        "actualProgramMedianMs": 150,
+        "actualTemplateMedianMs": 338,
+        "programRelativeAbsoluteError": 0.9482899710144927,
+        "predictedOrdering": "program-faster",
+        "actualOrdering": "program-faster",
+        "status": "measured"
+      },
+      {
+        "rows": 10000,
+        "predictedProgramMs": 77.56504347826086,
+        "predictedTemplateLowerBoundMs": 82.06208695652172,
+        "actualProgramMedianMs": null,
+        "actualTemplateMedianMs": null,
+        "programRelativeAbsoluteError": null,
+        "predictedOrdering": "program-faster",
+        "actualOrdering": null,
+        "status": "invalid-timeout"
+      },
+      {
+        "rows": 30000,
+        "predictedProgramMs": 232.69513043478258,
+        "predictedTemplateLowerBoundMs": 246.1862608695652,
+        "actualProgramMedianMs": null,
+        "actualTemplateMedianMs": null,
+        "programRelativeAbsoluteError": null,
+        "predictedOrdering": "program-faster",
+        "actualOrdering": null,
+        "status": "invalid-timeout"
+      }
+    ],
+    "actualBoundary": {
+      "program": "cumulative emitted program execution against the M1-matched crossing surrogate: numeric factory/append calls use getUniqueId, string calls use setAttribute on one detached sentinel, and no per-call clock is read; emitted after the final expected program node",
+      "template": "first-screen renderPlanNode interpretation, emitted immediately after the outer plan returns and before Element PAPI paint",
+      "probeTermination": "Both arms throw __OCTANE_LEPUS_Q2_STOP__ after logging so native console output flushes and no paint/flush tail enters the window.",
+      "parseEval": null,
+      "parseEvalReason": "DevTool is disabled and native evaluates the bytecode before in-bundle JavaScript can establish a clock boundary. Launch wall includes native load/layout and is not reported as script self time."
+    },
+    "inventoryAttribution": {
+      "frozenHostCrossingsPerRow": 20,
+      "observedSurrogateCrossingsPerRow": 15.121,
+      "observedProgramNodesAt1000Rows": 5041
+    },
+    "c8": {
+      "predictedScriptDeltaMs": 0,
+      "actualScriptDeltaMs": null,
+      "status": "calculated-only"
+    },
+    "gate": {
+      "targetRelativeAbsoluteError": 0.25,
+      "pass": false,
+      "reasons": [
+        "1k program relative absolute error is 94.83%.",
+        "10k observer-instrumented attempt is invalid and timed out.",
+        "30k crossing-surrogate attempt is invalid and timed out.",
+        "C8 has no completed device backtest window."
+      ]
+    }
+  },
+  "m3": {
+    "gateOpen": false,
+    "rows": [
+      {
+        "guide": "absolute emitted-program model",
+        "evidenceStatus": "refuted",
+        "finding": "The 1k prediction missed the protocol-valid surrogate median by 94.83%."
+      },
+      {
+        "guide": "whole-tree unrolling",
+        "evidenceStatus": "refuted",
+        "finding": "The frozen inventory assumed 20 whole-cell crossings per row; the emitted row-shaped program exposed 15.121 surrogate crossings per row and 5,041 program nodes at 1k."
+      },
+      {
+        "guide": "row-shape function plus tight loop",
+        "evidenceStatus": "calculated",
+        "finding": "The current emitted implementation is already row-shaped, but the failed absolute backtest prevents a performance claim."
+      },
+      {
+        "guide": "slot dispatch",
+        "evidenceStatus": "calculated",
+        "finding": "Table lookup beat if/else by 8.90, 133.43, and 599.34 ns/op at 4, 16, and 64 slots; switch crossed from +15.83/+5.63 to -12.63 ns/op. These are M1 deltas, not an end-to-end compiler win."
+      },
+      {
+        "guide": "string construction and crossing",
+        "evidenceStatus": "calculated",
+        "finding": "Template literals cost +94.33 ns/op versus concat, while crossing a string cost +989.46 ns/op; prefer passing through existing strings when semantics permit."
+      },
+      {
+        "guide": "property hoisting",
+        "evidenceStatus": "calculated",
+        "finding": "Generic property load measured +31.03 ns/op, but method-vs-local was only +0.14 ns/op and resolution-limited, so there is no evidence to pay code-size cost for blanket hoisting."
+      },
+      {
+        "guide": "C8 append ordering",
+        "evidenceStatus": "calculated",
+        "finding": "Both variants have the same M1 primitive multiset, predicting 0 ms script delta. Any observed difference is assigned to flush/layout, outside this script model; no C8 device window was completed."
+      }
+    ]
+  }
+}

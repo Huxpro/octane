@@ -184,3 +184,14 @@ dist-redact
 .content-collections
 # Pristine Vitest caches
 packages/*/.vite-pristine/
+
+# Issue-#163 C0 spike outputs. These are written by `node mts-block/derive.mjs`
+# and `node mts-block/build.mjs` and committed so the lowering's program and the
+# main-thread program under test are reviewable; formatting them would make the
+# committed bytes differ from what the generators produce.
+benchmarks/lynx-table/mts-block/programs.json
+benchmarks/lynx-table/mts-block/lepus-root.generated.js
+
+# Issue-#196 device records and derived model. M2 pins byte-exact SHA-256 inputs,
+# so formatting a checked-in result would invalidate the frozen prediction.
+benchmarks/lynx-table/stages/results/lepus-cost-*.json

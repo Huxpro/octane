@@ -1135,6 +1135,22 @@ describe('Lynx main-thread first-screen renderer', () => {
 				ranges: [{ slot: 0, node: 1, id: 7 }],
 			} as never),
 		).toThrow(/declares a keyed range at position 7, which is not one of its 3 positions/);
+		// Sites out of node order are the same class again, from the reading
+		// side: the announcement walk announces each site at its host's merged
+		// position and the mount claims them in that ascending order, so a plan
+		// whose sites go backwards would leave the earlier site unclaimed and
+		// fault the launch after the paint. Refused at the freeze, it fails the
+		// plan's build instead.
+		expect(() =>
+			universalPlan('lynx', {
+				...program,
+				slots: [null, null],
+				events: [
+					{ slot: 0, node: 1, type: 'tap', priority: 'discrete' },
+					{ slot: 1, node: 0, type: 'tap', priority: 'discrete' },
+				],
+			} as never),
+		).toThrow(/declares its event sites out of node order: node 0 after node 1/);
 		expect(() =>
 			universalPlan('lynx', { ...program, events: [], bind: undefined } as never),
 		).toThrow(/requires a bind function and a node count/);
@@ -1231,6 +1247,35 @@ describe('Lynx main-thread first-screen renderer', () => {
 		expect(() => renderLynxFirstScreen(Broken, {})).toThrow(
 			/declares 1 nodes and 2 ranges, but its range positions do not fit that order/,
 		);
+	});
+
+	it('numbers a member handler before a program event site pre-order places after it', () => {
+		// The interpreted arm — which the background independently reproduces —
+		// mints listener ids in strict pre-order with a range's members spliced
+		// at the hole's position. A program that announced its whole event table
+		// before its members would renumber every member handler that pre-order
+		// places before a later site, and a tap on one host would resolve to the
+		// other's handler.
+		const plan = universalPlan('lynx', {
+			kind: 'program',
+			slots: ['r', 'e:bindtap'],
+			nodes: 2,
+			values: [],
+			events: [{ slot: 1, node: 1, type: 'bindtap', priority: 'discrete' }],
+			ranges: [{ slot: 0, node: 0, id: 1 }],
+			bind: () => () => [],
+		} as never);
+		const Program = defineUniversalComponent('lynx', () =>
+			universalValue(plan, [
+				[universalValue(rowPlan, [universalProps([['set', 'bindtap', () => undefined]])])],
+				() => undefined,
+			]),
+		);
+		const result = renderLynxFirstScreen(Program, {});
+		expect(result.envelope.events).toEqual([
+			{ id: 2, type: 'bindtap', listener: { id: 1_000_000, priority: 'discrete' } },
+			{ id: 3, type: 'bindtap', listener: { id: 1_000_001, priority: 'discrete' } },
+		]);
 	});
 
 	it('renders context, keyed control flow, caught errors, and pending fallbacks deterministically', () => {
