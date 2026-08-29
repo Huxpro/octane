@@ -4108,6 +4108,43 @@ describe('Lynx Element PAPI host driver', () => {
 		expect(rows.children.map((node) => node.id)).toEqual(['replacement']);
 	});
 
+	it('tears down a destroy-run too large for one spread over explicit records', () => {
+		// The explicit-records expansion serves exactly the runs too big or too
+		// reordered for the certified path. Its output is count removes plus
+		// count × width destroys; collected with a spread call, anything past
+		// the engine's ~125k-argument ceiling died in RangeError at
+		// batch-prepare — a teardown crash reached only at the page sizes the
+		// fallback exists for.
+		const { container, page } = createHost(93);
+		const count = 17_000;
+		const width = 7;
+		const firstId = 10;
+		const setup: UniversalHostCommand[] = [
+			{ op: 'create', id: 1, type: 'view', props: { id: 'shell' } },
+			{ op: 'create', id: 2, type: 'view', props: { id: 'rows' } },
+		];
+		for (let row = 0; row < count; row++) {
+			const root = firstId + row * width;
+			setup.push({ op: 'create', id: root, type: 'view', props: {} });
+			for (let child = 1; child < width; child++) {
+				setup.push({ op: 'create', id: root + child, type: 'text', props: {} });
+				setup.push({ op: 'insert', parent: root, id: root + child, before: null });
+			}
+			setup.push({ op: 'insert', parent: 2, id: root, before: null });
+		}
+		setup.push({ op: 'insert', parent: 1, id: 2, before: null });
+		setup.push({ op: 'insert', parent: null, id: 1, before: null });
+		prepareLynxHostBatch(container, batch(1, setup)).apply();
+		const rows = page.children[0]!.children[0]!;
+		expect(rows.children).toHaveLength(count);
+
+		prepareLynxHostBatch(
+			container,
+			batch(2, [{ op: 'destroy-run', parent: 2, firstId, count, width }]),
+		).apply();
+		expect(rows.children).toHaveLength(0);
+	});
+
 	it('re-arms incremental compact for fresh ids after a certified teardown', () => {
 		const { container, page } = createHost(66);
 		const program: UniversalHostTemplateProgram = Object.freeze({

@@ -1174,7 +1174,7 @@ function compiledFirstScreenProgram(plan: UniversalPlan): FirstScreenCompiledPro
 	const visit = (node: UniversalPlanNode, parent: number, parentType: string | null): boolean => {
 		if (node.kind === 'slot' || node.kind === 'text') {
 			if (parentType !== 'text') return false;
-			const slot = node.kind === 'slot' ? node.slot : node.slot;
+			const slot = node.slot;
 			if (slot === undefined) {
 				nodes.push(
 					Object.freeze({
@@ -1219,8 +1219,9 @@ function compiledFirstScreenProgram(plan: UniversalPlan): FirstScreenCompiledPro
 			if (forbiddenProp(name) || eventPriority(name) !== null || !isTemplateProgramValue(value)) {
 				return false;
 			}
-			if (name === '__proto__') defineProtoProp(staticProps, value);
-			else staticProps[name] = value;
+			// `__proto__` cannot reach the assignment: `forbiddenProp` just
+			// declined it, the same answer the dynamic-binding loop above gives.
+			staticProps[name] = value;
 		}
 		const bindings: UniversalHostTemplateProgramBinding[] = [];
 		for (const [name, slot] of node.bindings ?? []) {

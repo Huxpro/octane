@@ -1040,7 +1040,9 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 			id >= command.firstId && id < command.firstId + hostCount && this.isRunRoot(id);
 		for (let row = 0; row < command.count; row++) {
 			if (this.nodes[offset + row * width] === undefined) return null;
-			if (this.removed?.has(command.firstId + row * width)) return null;
+			// `removed` stores store-relative offsets, the same unit every other
+			// reader of it uses; an absolute id here would test an unrelated row.
+			if (this.removed?.has(offset + row * width)) return null;
 		}
 		const parentRecord = typeof this.parent === 'number' ? this.prefix.get(this.parent) : undefined;
 		const acceptedChildren =
@@ -6268,7 +6270,12 @@ function expandRecordsRunTeardown<Node extends LynxElementRef>(
 		if (!visit(rootId) || visited !== command.width) return null;
 		removes.push({ op: 'remove', parent: command.parent, id: rootId });
 	}
-	events.push(...removes, ...destroys);
+	// Appended one by one: this fallback exists for exactly the runs too large
+	// or too reordered for the certified path, and spreading count × width
+	// commands into one call blows the engine argument limit near 130k — a
+	// 30k-row teardown is over it.
+	for (const command of removes) events.push(command);
+	for (const command of destroys) events.push(command);
 	return events;
 }
 
