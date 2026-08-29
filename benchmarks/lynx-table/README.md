@@ -3391,6 +3391,36 @@ package's suite, which is a coverage gap rather than a result: the certified
 dense teardown is reachable only behind incremental compact today, and nothing
 pins it independently.
 
+#### Rebuilding the four arms
+
+`stages/issue230-order3-arms.mjs` is the recipe the four digests came from, so
+they can be checked rather than believed:
+
+```bash
+node benchmarks/lynx-table/stages/issue230-order3-arms.mjs patch o3tear | git apply -
+BENCH_DIST_TAG=o3tear node benchmarks/lynx-table/scripts/build-app.mjs
+node benchmarks/lynx-table/stages/issue230-order3-arms.mjs patch o3tear | git apply -R -
+```
+
+Each edit is stated as the exact text it replaces rather than as a line number,
+so it refuses to apply to a tree it does not describe instead of silently
+patching the wrong line of a moved file. `… arms.mjs audit` reports that
+refusal ahead of time, against whatever tree you are standing in.
+
+The record originally cited a path under a scratch directory, which did not
+survive the machine it was written on. The window's other inputs did not either:
+the four `o3*` entries, the `octane-hux` refresh to this base, and the three
+runner records lived only in an uncommitted working tree of the benchmark
+repository, and are gone. What survives is this recipe, the digests, and the
+pooled readings in the record — enough to rebuild the arms and re-derive the
+tables, not enough to replay these three windows. A fourth window would be a new
+measurement, and by the drift shown above it could not be read against these.
+
+**These four builds must never ship.** Every non-control arm relaxes the compact
+acknowledgement guard so a second segment can be applied over a live one, which
+PR #239 pins as a silent loss of reachability for hosts nobody observed. They are
+measurement instruments.
+
 ## Expectation management (restated per #157, as every C-report must)
 
 Of the 11.5 s native create-1k, **10.52 s (91%) is host-driver interpreter

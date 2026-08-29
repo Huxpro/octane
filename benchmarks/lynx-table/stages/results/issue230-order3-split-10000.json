@@ -38,7 +38,7 @@
       "label": "O3 whole chain",
       "config": "Order 3 four-build split: incremental compact + certified dense teardown both live",
       "commit": "8938c12608524d1a259b5e81f0903ffa5b5eb4d5",
-      "patchFile": "scratchpad/o3/arm.py::o3cmp",
+      "patchFile": "benchmarks/lynx-table/stages/issue230-order3-arms.mjs::o3cmp",
       "sha256": {
         "rows-0/main.web.bundle": "e880ffb94bdb56d22c2bfd7214d1ed355c1613468401adb88b596765c587eafe"
       }
@@ -47,7 +47,7 @@
       "label": "O3 teardown only",
       "config": "Order 3 four-build split: certified dense teardown live, incremental compact suppressed",
       "commit": "8938c12608524d1a259b5e81f0903ffa5b5eb4d5",
-      "patchFile": "scratchpad/o3/arm.py::o3tear",
+      "patchFile": "benchmarks/lynx-table/stages/issue230-order3-arms.mjs::o3tear",
       "sha256": {
         "rows-0/main.web.bundle": "919ba7cb574975afa109a701a15b392a83979e458385777881d0ac98945edf5a"
       }
@@ -56,7 +56,7 @@
       "label": "O3 incremental only",
       "config": "Order 3 four-build split: incremental compact live, teardown mirror suppressed",
       "commit": "8938c12608524d1a259b5e81f0903ffa5b5eb4d5",
-      "patchFile": "scratchpad/o3/arm.py::o3gen",
+      "patchFile": "benchmarks/lynx-table/stages/issue230-order3-arms.mjs::o3gen",
       "sha256": {
         "rows-0/main.web.bundle": "697bea26b94b6220e6f0a5801d2ae63bf65cd98640cb7be5ffe2713893cdb832"
       }
