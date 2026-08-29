@@ -3266,6 +3266,125 @@ Follow-ups this slice opened, both recorded rather than fixed here:
   the description instead, so this is now the only per-member allocation left on
   the path.
 
+### The rung the create residual is not on (issue #230 Order 3)
+
+Order 3 read the create residual as state the background accumulates because a
+root that never paints a first screen never reaches the incremental-compact rung
+it negotiated. The reading was right about the rung and wrong about the
+residual. Four arms, 15 readings each, three windows
+(`stages/results/issue230-order3-split-10000.json`, produced by
+`stages/issue230-order3-split.mjs`).
+
+`postFirstTreeLazyPublicInstances` is a single gate. It is set only in the
+first-tree adoption handoff (`core/transport.ts`), it is read per commit when
+the background decides whether to request an incremental compact, and on the
+host side it is what admits both `incrementalCompactCandidate` and
+`teardownMirrorCandidate` (`core/host-driver.ts`). So the split is that one
+enabler crossed with the two consequences it admits:
+
+| arm | enabler | incremental compact | teardown mirror | digest |
+|---|---|---|---|---|
+| `o3ctl` | — | off | off | `0a52f5938f43b87f` |
+| `o3cmp` | on | live | live | `e880ffb94bdb56d2` |
+| `o3tear` | on | suppressed | live | `919ba7cb574975af` |
+| `o3gen` | on | live | suppressed | `697bea26b94b6220` |
+
+`o3ctl` is byte-identical to the vendored `octane-hux` rows-0 bundle, which is
+what makes it the shipping build rather than a rebuild of it.
+
+Every arm relaxes the compact acknowledgement guard so a second segment can be
+applied over a live one. That knowingly loses the reachability of hosts nobody
+observed — the hazard pinned in `packages/lynx/tests/protocol.test.ts` — and is
+why these four builds are measurement instruments that must never ship.
+
+| create@10,000, window 1 | `o3ctl` | `o3cmp` | `o3tear` | `o3gen` |
+|---|---:|---:|---:|---:|
+| latency | 1717.6 [1665.8–1769.3] | 1733.1 [1686.4–1779.7] | 1776.0 [1714.9–1837.1] | 1732.8 [1675.9–1789.7] |
+| btsCpu | 542.6 [448.8–636.4] | 519.3 [424.7–613.8] | 521.4 [431.3–611.5] | 471.2 [391.1–551.3] |
+| mtsCpu | 43.5 [38.4–48.7] | 44.5 [39.2–49.8] | 48.5 [45.1–51.9] | 42.2 [34.5–49.9] |
+| fcp | 56.3 [53.2–59.5] | 56.7 [55.1–58.3] | 56.3 [52.7–59.9] | 56.9 [53.3–60.5] |
+
+No arm's interval clears control's, on any timed metric. The three windows say
+why that is a null rather than an effect too small to resolve: the latency delta
+against control changes sign from window to window.
+
+| latency delta vs control | window 1 | window 2 | window 3 |
+|---|---:|---:|---:|
+| `o3cmp` | +15 | −39 | +9 |
+| `o3tear` | +58 | −19 | −13 |
+| `o3gen` | +15 | +3 | −22 |
+
+The same bundle also reads 1735.5, 1658.2 and 1795.6 ms across the three
+windows — a 138 ms spread against within-window intervals of ±40 to ±71. That
+is the reason each window is compared only with itself, and the reason a number
+here cannot be read against a number from any other window, including
+benchmark #40's.
+
+Heap is the opposite instrument. The runner captures it once per entry per
+window, so the windows are the samples — and they agree to within 64 kB on a
+31.64 MB difference.
+
+| main-thread heap, MB | `o3ctl` | `o3cmp` | `o3tear` | `o3gen` |
+|---|---:|---:|---:|---:|
+| peak, window 1 | 51.20 | 51.19 | 82.81 | 51.20 |
+| peak, window 2 | 51.22 | 51.21 | 82.87 | 51.21 |
+| peak, window 3 | 51.20 | 51.19 | 82.85 | 51.21 |
+| after clear, window 1 | 10.72 | 10.72 | 8.60 | 10.71 |
+| after clear, window 2 | 10.72 | 10.72 | 8.60 | 10.68 |
+| after clear, window 3 | 10.72 | 10.72 | 8.60 | 10.71 |
+
+Background heap does not move in any arm, which is where the effect has to be:
+the record store this is about lives on the main thread.
+
+Three things follow.
+
+- **The rung is not where the create residual lives.** `o3cmp` reaches
+  everything the negotiation offered and creates 10,000 rows in the same time as
+  the build that reaches none of it. Whatever the residual is, turning this on
+  does not collect it, and an E-train aimed at reaching the rung faster would be
+  aimed at nothing. This is the arm to trust on that question: it only *adds* a
+  line, so C12's warning about an ablation that folds to a constant removing more
+  than the code it deleted does not apply to it. It does apply to `o3tear` and
+  `o3gen`, which fold a candidate to `false`, and those two are upper bounds.
+- **The teardown mirror is a heap trade, not a time trade, and the trade is
+  currently bad.** `o3tear` releases 2.12 MB more on the clear and pays 31.64 MB
+  of retained peak for it. The mechanism is in the open: the mirror copies the
+  whole record map per `mount-template-run` and the copy is retained on
+  `state.teardownRecords` until the next batch. At 10,000 rows that is 70,000
+  records copied per run. `o3cmp` does not pay it, because once incremental
+  compact succeeds `state.records` is no longer a `Map` and the mirror's own
+  `instanceof Map` guard declines — so the two consequences of the one enabler
+  are not independent, and the mirror is only reachable in the arm that has
+  incremental compact switched off.
+- **Order 3's root cause is confirmed, by the measurement rather than by
+  reading.** The mirror can only run when an incremental compact was requested,
+  which in the shipping build is impossible. Folding a candidate to `false`
+  cannot *add* a 31 MB copy, so the only way `o3tear` diverges is that its
+  enabler executed — and the enabler sits on the branch taken when no first tree
+  is being adopted. This app therefore does not adopt a first screen, and so
+  never reaches the rung it negotiates.
+
+#### What is not claimed here
+
+- Nothing about the absolute ratio against upstream. These are four Octane
+  builds against each other in one window; the ratio oracle is a different
+  measurement with a different baseline.
+- Nothing about device or native. Web lane only.
+- Nothing about the heap effect's variance *within* a window. Each window
+  contributes one heap reading, so the claim rests on three windows agreeing,
+  not on a spread inside one.
+- Nothing about arm position. The runner orders entries alphabetically, so
+  position is fixed across windows and cannot cancel. It is not what moves
+  `o3tear`: the other three arms sit in positions 1, 2 and 3 and agree within
+  9 kB.
+- Nothing about whether the mirror's trade could be made good. A mirror that
+  did not copy the whole map would be a different measurement.
+
+Suppressing the teardown mirror on its own changes no test in the `lynx`
+package's suite, which is a coverage gap rather than a result: the certified
+dense teardown is reachable only behind incremental compact today, and nothing
+pins it independently.
+
 ## Expectation management (restated per #157, as every C-report must)
 
 Of the 11.5 s native create-1k, **10.52 s (91%) is host-driver interpreter
