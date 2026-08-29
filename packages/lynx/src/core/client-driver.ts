@@ -268,6 +268,8 @@ interface LynxClientContainerState {
 	handles: Map<number, LynxHandleEntry>;
 	generations: Map<number, number>;
 	compactHosts: LynxCompactHostMetadata | null;
+	/** Generation-one tombstones for whole retired runs as sorted [first, last] ranges. */
+	retiredRanges: [number, number][];
 	readonly worklets?: LynxBackgroundFunctionRegistry;
 	readonly createSelectorQuery: LynxCreateSelectorQuery;
 	readonly attachmentSubscribers: Set<(batch: UniversalHostAttachmentBatch) => void>;
@@ -275,6 +277,7 @@ interface LynxClientContainerState {
 	templateProgramMount: boolean;
 	templateProgramRuns: boolean;
 	deferredTemplateProgramRuns: boolean;
+	teardownRuns: boolean;
 	lazyPublicInstances: boolean;
 	/** Hosts a deferred run declared, which main never built. */
 	declaredRuns: LynxDeclaredHostRun[] | null;
@@ -322,6 +325,8 @@ interface LynxCompactHostMetadata {
 	readonly sparse: Map<number, number> | null;
 	readonly names: readonly string[];
 	active: boolean;
+	/** Non-zero codes still reachable; at zero the segment is fully retired. */
+	live: number;
 }
 
 function compactHostCode(metadata: LynxCompactHostMetadata, id: number): number {
@@ -333,12 +338,35 @@ function compactHostCode(metadata: LynxCompactHostMetadata, id: number): number 
 
 function setCompactHostCode(metadata: LynxCompactHostMetadata, id: number, code: number): void {
 	if (metadata.sparse !== null) {
+		const previous = metadata.sparse.get(id) ?? 0;
 		if (code === 0) metadata.sparse.delete(id);
 		else metadata.sparse.set(id, code);
+		metadata.live += (code === 0 ? 0 : 1) - (previous === 0 ? 0 : 1);
 		return;
 	}
 	const offset = id - metadata.base;
-	if (offset >= 0 && offset < metadata.types!.length) metadata.types![offset] = code;
+	if (offset >= 0 && offset < metadata.types!.length) {
+		const previous = metadata.types![offset]!;
+		metadata.types![offset] = code;
+		metadata.live += (code === 0 ? 0 : 1) - (previous === 0 ? 0 : 1);
+	}
+}
+
+function retiredRangeGeneration(ranges: readonly [number, number][], id: number): 0 | 1 {
+	let low = 0;
+	let high = ranges.length - 1;
+	while (low <= high) {
+		const middle = (low + high) >>> 1;
+		const range = ranges[middle]!;
+		if (id < range[0]) {
+			high = middle - 1;
+		} else if (id > range[1]) {
+			low = middle + 1;
+		} else {
+			return 1;
+		}
+	}
+	return 0;
 }
 
 function compactHandle(state: LynxClientContainerState, id: number): LynxHandleEntry | undefined {
@@ -401,6 +429,7 @@ export function createLynxClientContainer(
 		handles: new Map(),
 		generations: new Map(),
 		compactHosts: null,
+		retiredRanges: [],
 		worklets: options.worklets,
 		createSelectorQuery,
 		attachmentSubscribers: new Set(),
@@ -408,6 +437,7 @@ export function createLynxClientContainer(
 		templateProgramMount: false,
 		templateProgramRuns: false,
 		deferredTemplateProgramRuns: false,
+		teardownRuns: false,
 		lazyPublicInstances: false,
 		declaredRuns: null,
 	});
@@ -442,6 +472,10 @@ export function setLynxClientCapabilities(
 	state.templateProgramRuns = state.templateProgramMount && capabilities?.templateRuns === 1;
 	state.deferredTemplateProgramRuns =
 		state.templateProgramRuns && capabilities?.deferredTemplateRuns === 1;
+	state.teardownRuns = state.templateProgramMount && capabilities?.teardownRuns === 1;
+	// Upstream reads the same three flags inline here. The predicate moved to
+	// `protocol.ts` so a core that never builds a driver can ask the same
+	// question; the answer is unchanged.
 	state.lazyPublicInstances = lynxLazyPublicInstancesNegotiated(capabilities);
 }
 
@@ -791,6 +825,11 @@ export function prepareLynxCompactHandleDeltas(
 				throw new Error('Octane Lynx incremental acknowledgement reuses a retired handle.');
 			}
 		}
+		for (const [first, last] of state.retiredRanges) {
+			if (!(finalId < first || run.firstId > last)) {
+				throw new Error('Octane Lynx incremental acknowledgement reuses a retired handle.');
+			}
+		}
 	}
 	const stagedHandles = new Map<number, LynxHandleEntry>(incremental ? originalHandles : undefined);
 	const stagedGenerations = new Map<number, number>(incremental ? originalGenerations : undefined);
@@ -950,6 +989,7 @@ export function prepareLynxCompactHandleDeltas(
 		sparse,
 		names,
 		active: true,
+		live: stagedCount,
 	};
 
 	let applied = false;
@@ -1030,7 +1070,13 @@ export function prepareLynxHandleDeltas(
 		transitions.set(id, transition);
 		return transition;
 	};
+	const runCommands: { firstId: number; hostCount: number; remaining: number }[] = [];
 	for (const command of batch.commands) {
+		if (command.op === 'destroy-run') {
+			const hostCount = command.count * command.width;
+			runCommands.push({ firstId: command.firstId, hostCount, remaining: hostCount });
+			continue;
+		}
 		if (command.op === 'mount-template-run') {
 			// A declared instance is not a host yet, so main creates nothing for it
 			// and there is no transition to acknowledge. Remember the range: the
@@ -1152,12 +1198,59 @@ export function prepareLynxHandleDeltas(
 		if (!priorGenerations.has(id)) priorGenerations.set(id, state.generations.get(id));
 		nextGenerations.set(id, generation);
 	};
+	const runRemovals: {
+		firstId: number;
+		hostCount: number;
+		entries: LynxHandleEntry[];
+	}[] = [];
 	for (const delta of deltas) {
+		if (delta.op === 'remove-run') {
+			const matched = runCommands.findIndex(
+				(candidate) =>
+					candidate.firstId === delta.firstId &&
+					candidate.hostCount === delta.hostCount &&
+					candidate.remaining === candidate.hostCount,
+			);
+			if (matched === -1 || delta.generation !== 1) {
+				throw new Error(
+					`Octane Lynx acknowledgement retires an uncommanded run ${delta.firstId}+${delta.hostCount}.`,
+				);
+			}
+			runCommands.splice(matched, 1);
+			const last = delta.firstId + delta.hostCount - 1;
+			const entries: LynxHandleEntry[] = [];
+			for (const [id, entry] of state.handles) {
+				if (id >= delta.firstId && id <= last) {
+					entries.push(entry);
+					priorStates.set(entry, captureHandleState(entry));
+				}
+			}
+			runRemovals.push({ firstId: delta.firstId, hostCount: delta.hostCount, entries });
+			continue;
+		}
 		if (seen.has(delta.id)) {
 			throw new Error(`Octane Lynx acknowledgement repeats handle ${delta.id}.`);
 		}
 		seen.add(delta.id);
-		const transition = transitions.get(delta.id);
+		let transition = transitions.get(delta.id);
+		if (transition === undefined && delta.op === 'remove') {
+			// A destroy-run command creates no per-host transitions; when the
+			// main thread answers one with per-host removals (partial ranges or
+			// explicit-path stores), derive the destroyed transition on demand.
+			const covered = runCommands.find(
+				(candidate) =>
+					delta.id >= candidate.firstId && delta.id < candidate.firstId + candidate.hostCount,
+			);
+			if (covered !== undefined) {
+				transition = transitionFor(delta.id);
+				if (transition.present) {
+					transition.present = false;
+					transition.type = null;
+					transition.identityChanged = true;
+					covered.remaining -= 1;
+				}
+			}
+		}
 		const expected = transition === undefined ? 'none' : expectedHandleDelta(transition);
 		if (delta.op === 'list-ancestry') {
 			hasTopologyMutation ??= batch.commands.some(
@@ -1212,7 +1305,8 @@ export function prepareLynxHandleDeltas(
 		validateSnapshotIdentity(delta.snapshot, identity, delta);
 		const finalType = transition.type!;
 		if (expected === 'create') {
-			const previousGeneration = state.generations.get(delta.id) ?? 0;
+			const previousGeneration =
+				state.generations.get(delta.id) ?? retiredRangeGeneration(state.retiredRanges, delta.id);
 			if (delta.type !== finalType || delta.generation <= previousGeneration) {
 				throw new Error(`Octane Lynx acknowledgement has invalid created handle ${delta.id}.`);
 			}
@@ -1295,8 +1389,17 @@ export function prepareLynxHandleDeltas(
 			throw new Error(`Octane Lynx acknowledgement omits ${expected}d handle ${id}.`);
 		}
 	}
+	for (const command of runCommands) {
+		if (command.remaining !== 0) {
+			throw new Error(
+				`Octane Lynx acknowledgement omits destroyed run ${command.firstId}+${command.hostCount}.`,
+			);
+		}
+	}
 
 	const removedCompactHosts = new Map<number, number>();
+	const pushedRetiredRanges: [number, number][] = [];
+	let restoreRetiredCompactHosts: () => void = () => {};
 	let applied = false;
 	let rolledBack = false;
 	return {
@@ -1321,6 +1424,44 @@ export function prepareLynxHandleDeltas(
 			// forEach, not for-of destructuring: Map iteration allocates an iterator
 			// result and a two-element entry array per step, and a mount walks one
 			// entry per accepted node.
+			let retiredCompactHosts: LynxCompactHostMetadata | null = null;
+			for (const removal of runRemovals) {
+				const last = removal.firstId + removal.hostCount - 1;
+				for (const entry of removal.entries) {
+					state.handles.delete(entry.id);
+					entry.active = false;
+					entry.attached = false;
+					invalidateHandleBinding(
+						entry,
+						new Error(`Octane Lynx handle ${entry.id}:${entry.generation} was removed.`),
+					);
+				}
+				const metadata = state.compactHosts;
+				if (metadata !== null) {
+					for (let id = removal.firstId; id <= last; id++) {
+						const code = compactHostCode(metadata, id);
+						if (code !== 0) {
+							removedCompactHosts.set(id, code);
+							setCompactHostCode(metadata, id, 0);
+						}
+					}
+				}
+			}
+			for (const removal of runRemovals) {
+				const range: [number, number] = [removal.firstId, removal.firstId + removal.hostCount - 1];
+				pushedRetiredRanges.push(range);
+				state.retiredRanges.push(range);
+			}
+			// Exact remove-run acknowledgements were spliced above; every
+			// remaining command reached zero through complete per-host removals.
+			for (const removal of runCommands) {
+				const range: [number, number] = [removal.firstId, removal.firstId + removal.hostCount - 1];
+				pushedRetiredRanges.push(range);
+				state.retiredRanges.push(range);
+			}
+			if (pushedRetiredRanges.length !== 0) {
+				state.retiredRanges.sort((a, b) => a[0] - b[0]);
+			}
 			stagedHandles.forEach((handle, id) => {
 				if (handle === null) {
 					originalHandles.delete(id);
@@ -1336,6 +1477,22 @@ export function prepareLynxHandleDeltas(
 					originalHandles.set(id, handle);
 				}
 			});
+			// A fully retired segment leaves no reachable compact host, so drop
+			// the metadata: the container is back to explicit handles only and a
+			// later pure template mount may negotiate a fresh incremental
+			// compact acknowledgement.
+			if (state.compactHosts !== null && state.compactHosts.live === 0) {
+				retiredCompactHosts = state.compactHosts;
+				retiredCompactHosts.active = false;
+				state.compactHosts = null;
+			}
+			restoreRetiredCompactHosts = () => {
+				if (retiredCompactHosts !== null) {
+					retiredCompactHosts.active = true;
+					state.compactHosts = retiredCompactHosts;
+					retiredCompactHosts = null;
+				}
+			};
 			nextGenerations.forEach((generation, id) => state.generations.set(id, generation));
 			if (stagedDeclaredRuns !== null || declaredDestroys !== null) {
 				let runs = state.declaredRuns === null ? [] : state.declaredRuns;
@@ -1352,9 +1509,20 @@ export function prepareLynxHandleDeltas(
 		rollback() {
 			if (!applied || rolledBack) return;
 			rolledBack = true;
+			restoreRetiredCompactHosts();
 			if (state.compactHosts !== null) {
 				for (const [id, code] of removedCompactHosts) {
 					setCompactHostCode(state.compactHosts, id, code);
+				}
+			}
+			if (pushedRetiredRanges.length !== 0) {
+				state.retiredRanges = state.retiredRanges.filter(
+					(range) => !pushedRetiredRanges.includes(range),
+				);
+				for (const removal of runRemovals) {
+					for (const entry of removal.entries) {
+						state.handles.set(entry.id, entry);
+					}
 				}
 			}
 			for (const id of stagedHandles.keys()) {
@@ -1597,6 +1765,9 @@ export function createLynxClientDriver(
 			},
 			get deferredTemplateProgramRuns() {
 				return negotiatedState?.deferredTemplateProgramRuns === true;
+			},
+			get teardownRuns() {
+				return negotiatedState?.teardownRuns === true;
 			},
 			get lazyPublicInstances() {
 				return negotiatedState?.lazyPublicInstances === true;

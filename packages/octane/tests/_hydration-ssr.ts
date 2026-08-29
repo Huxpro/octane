@@ -10,11 +10,12 @@ type HydrationBinding =
 	| 'aria'
 	| 'base-ui'
 	| 'docusaurus'
+	| 'formisch'
 	| 'monaco-editor'
 	| 'pdf'
 	| 'rainbowkit'
 	| 'react-map-gl'
-	| 'solana-react'
+	| 'solana-kit'
 	| 'testing-library';
 
 const repositoryRoot = resolve(import.meta.dirname, '../../..');
@@ -59,10 +60,14 @@ function bindingAliases(binding: HydrationBinding) {
 		];
 	}
 
-	if (binding === 'solana-react') {
+	if (binding === 'formisch') {
+		return [{ find: /^@octanejs\/formisch$/, replacement: resolve(source, 'index.ts') }];
+	}
+
+	if (binding === 'solana-kit') {
 		return [
 			{
-				find: /^@octanejs\/solana-react$/,
+				find: /^@octanejs\/solana-kit$/,
 				replacement: resolve(source, 'index.ts'),
 			},
 		];

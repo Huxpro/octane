@@ -56,6 +56,20 @@ export interface OctaneRspeedyPluginOptions {
 	 * extension and needs no marker.
 	 */
 	requireDirective?: boolean;
+	/**
+	 * Compile Octane modules in Rspack worker threads. Forwarded to
+	 * `@octanejs/rspack-plugin`, which enables it by default with at most four
+	 * workers; set `false` to keep compilation on the main thread, or provide
+	 * `maxWorkers` for a different shared worker-pool limit.
+	 *
+	 * A worker receives its loader options by structured clone, so a build whose
+	 * options carry a function — `mainThreadProgramBackend` is the one that does
+	 * — compiles on the main thread whatever this says. Set it explicitly when
+	 * two builds must be compared byte for byte: the worker pool is free to
+	 * reach the minifier with a different module order, and that alone moves the
+	 * short names in the output.
+	 */
+	parallel?: boolean | { maxWorkers?: number };
 }
 
 export const LYNX_BACKGROUND_LAYER: 'octane:background';

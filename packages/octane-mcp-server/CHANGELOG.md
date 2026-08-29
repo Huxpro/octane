@@ -1,5 +1,37 @@
 # @octanejs/mcp-server
 
+## 0.2.20
+
+### Patch Changes
+
+- af0d999: Drain queued behavior-root interactions with amortized cursor compaction and
+  constant-time pending-adoption bookkeeping so late modules and separately
+  settling async adoptions stay linear while preserving FIFO and reentrant delivery.
+  Expose the accompanying browser benchmark through the Octane MCP benchmark tool.
+- 7e62361: Expose the development form-diagnostics benchmark through the MCP benchmark tool.
+- 4393bea: Expose the TSrX component-graph compilation benchmark through the MCP benchmark tool.
+
+## 0.2.19
+
+### Patch Changes
+
+- 7535acd: Deduplicate binding hook sub-slot derivation behind Octane's shared helper while preserving each binding's slotless and symbol-identity behavior.
+
+## 0.2.18
+
+### Patch Changes
+
+- 1a99f1b: Add the deterministic React-library port workflow, preserve the previous skill-name alias, and update React rewrite classifications.
+- 409682b: Expose the Activity benchmark through the MCP benchmark tool.
+
+## 0.2.17
+
+### Patch Changes
+
+- 64c004a: Expose the hook-store-composition benchmark through the MCP benchmark tool.
+- 922b2d4: Expose the universal external-store benchmark through the MCP benchmark tool.
+- 489a886: Expose the hook-memo allocation benchmark through the MCP benchmark tool.
+
 ## 0.2.16
 
 ### Patch Changes

@@ -28,7 +28,8 @@ type LinkProps = {
 	preventScrollReset?: boolean;
 	viewTransition?: boolean;
 	defaultShouldRevalidate?: boolean;
-	ref?: { current: HTMLAnchorElement | null } | ((node: HTMLAnchorElement | null) => void);
+	// A missing forwarded ref stays inert when composed with host-spread refs.
+	ref?: { current: HTMLAnchorElement | null } | ((node: HTMLAnchorElement | null) => void) | null;
 	[key: string]: unknown;
 };
 
@@ -47,7 +48,7 @@ export function Link(props: LinkProps) @{
 		preventScrollReset,
 		viewTransition,
 		defaultShouldRevalidate,
-		ref,
+		ref = null,
 		children,
 		...rest
 	} = props;

@@ -23,14 +23,36 @@ export function X() @{ <div /> }
 function getX() { return <div />; }
 ```
 
+Inside JSX, a nested `@{ … }` block owns a child render scope at its authored
+sibling position. Its setup may use hooks and capture parent locals; the scope
+and hook state survive parent updates. Its final JSX output is optional, so a
+code-only block is valid and renders no element. An empty child block disappears,
+while a render-only child block is transparent grouping.
+
+```tsx
+<section>
+	@{
+		const [count, setCount] = useState(0);
+		<button onClick={() => setCount(count + 1)}>{'Count: ' + count}</button>
+	}
+	@{
+		observe();
+	}
+</section>
+```
+
 ## Text holes
 
 Dynamic text uses a cast: `{expr as string}`.
 
 The cast is optional when the expression is provably a string: a string or
 template literal, a `+`-concatenation involving a string (`{'Count: ' + count}`),
-or a local `const`/param the compiler tracks back to a string. It is required
-otherwise.
+an unshadowed built-in `String(value)` call, or a local `const`/param the compiler
+tracks back to a string. Use `String(value)` when conversion is intended;
+asserting a number `as string` can produce a TypeScript error. Custom Node build
+pipelines can also supply project-aware string proofs through
+`octane/compiler/typescript`; see `docs/compiler-text-inference.md`. Without
+such a proof, retain the explicit string assertion for text intent.
 
 A bare `{expr}` that is not provably a string is a renderable hole: a component,
 an element descriptor, or a coerced primitive.

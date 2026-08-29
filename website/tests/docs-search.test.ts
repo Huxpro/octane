@@ -148,13 +148,24 @@ describe('docs search ranking', () => {
 		}
 	});
 
-	it('deep links Strong-mode searches to the build configuration guide', async () => {
+	it('deep links Strong-mode searches to the render contract guide', async () => {
 		const index = await loadSearchIndex();
 		const [top] = searchDocs(index, 'strong mode');
 
 		expect(top).toBeDefined();
-		expect(top.slug).toBe('build-tools');
+		expect(top.slug).toBe('differences-from-react');
 		expect(top.id).toBe('strong-mode');
+	});
+
+	it('finds browser support and deep links required DOM API searches', async () => {
+		const index = await loadSearchIndex();
+		const [guide] = searchDocs(index, 'browser support');
+		const [requiredApi] = searchDocs(index, 'replaceChildren');
+
+		expect(guide).toMatchObject({ slug: 'browser-support', docTitle: 'Browser support' });
+		expect(requiredApi).toMatchObject({ slug: 'browser-support', id: 'required-apis' });
+		const snippets = requiredApi.lines.map((line) => line.parts.map((part) => part.text).join(''));
+		expect(snippets.join(' ')).toContain('replaceChildren');
 	});
 
 	it('ranks a heading match above an incidental prose mention', async () => {

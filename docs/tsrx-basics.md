@@ -50,6 +50,36 @@ function Label(props) {
 }
 ```
 
+### Nested child scopes
+
+Inside JSX, a nested `@{ … }` block owns a child render scope at that exact
+sibling position. Its setup runs when the child renders, may use hooks and
+capture parent locals, and keeps its hook state across parent updates. The final
+JSX node is optional: a code-only block runs its setup and renders no element.
+
+```jsx
+export function AccountRow(props: {
+	name: string;
+	observe: (name: string) => void;
+}) @{
+	<li>
+		<span>{props.name as string}</span>
+		@{
+			const [expanded, setExpanded] = useState(false);
+			<button onClick={() => setExpanded(!expanded)}>
+				{expanded ? 'Hide details' : 'Show details'}
+			</button>
+		}
+		@{
+			props.observe(props.name);
+		}
+	</li>
+}
+```
+
+An empty child block disappears. A child block containing only a JSX node is
+transparent grouping and does not create an extra render scope.
+
 Dynamic text needs a cast, `{expr as string}`, unless the expression is provably
 a string. A bare `{expr}` is a renderable hole, not text.
 
@@ -364,8 +394,9 @@ JavaScript. Only inject source you trust.
 
 ## Strong mode
 
-Strong mode is an optional compiler check for state and refs. Start with one
-module by putting `"use strong"` before its imports:
+Strong mode is an optional immutable render-snapshot contract with compiler
+checks for state, refs, Effect Events, and detectable impure render calls.
+Start with one module by putting `"use strong"` before its imports:
 
 ```tsx
 "use strong";
@@ -396,16 +427,51 @@ options; use the plugin option for a standalone Rspack setup. An explicit plugin
 setting wins over `octane.config.ts`. Dependencies keep their existing behavior
 unless one of their own modules opts in with `"use strong"`.
 
-Three patterns become compile errors:
+These patterns become compile errors:
 
 - Calling a `useState`, `useReducer`, or `useLinkedState` updater during render.
-- Calling one of those updaters directly while an effect is being set up.
+- Calling one of those updaters synchronously while an effect is being set up.
 - Assigning to a `useRef` object's `current` during render.
+- Calling a statically known `useEffectEvent` result during render
+  (`OCTANE_STRONG_RENDER_EFFECT_EVENT_CALL`).
+- Including a statically known Effect Event in an explicit hook dependency list
+  (`OCTANE_STRONG_EFFECT_EVENT_DEPENDENCY`).
+- Mutating a provable state snapshot during render, including supported aliases
+  and array mutations on state initialized with an array literal
+  (`OCTANE_STRONG_RENDER_SNAPSHOT_MUTATION`).
+- Calling unshadowed `Date.now()`, `Math.random()`, `performance.now()`, `Date()`,
+  or `new Date()` without arguments during render
+  (`OCTANE_STRONG_RENDER_IMPURE_CALL`).
+
+The checks follow provable synchronous calls through local helpers,
+`useCallback` and `useEffectEvent` results, and functions returned by analyzable
+`useMemo` factories. These hooks remain supported; creating a callback is not
+itself an error. Effect Events are non-reactive and should be omitted from hook
+dependencies. Other explicit dependency arrays keep their existing meaning and
+are never rewritten.
+
+The analysis is deliberately bounded. Factories with unknown return values or
+complex control flow remain opaque. Dependency checks follow literal arrays,
+including statically selected or spread literals; they do not assume an aliased
+or externally produced array is unchanged.
 
 Update state in event handlers instead. When state should reset or adjust after
 an input changes, use `useLinkedState`. Effects that connect to external systems,
-and refs used for DOM elements, timers, or event callbacks, remain valid. Strong
-mode does not restrict `Date.now()`, `Math.random()`, or similar values.
+genuinely deferred callbacks, effect cleanup, and refs used for DOM elements,
+timers, or event callbacks remain valid. Obtain changing timestamps or random
+values in events or effects and put them in state. A lazy state initializer such
+as `useState(() => new Date())` may also capture the initial value.
+
+Production client builds can memoize statically named member calls under this
+contract: an unchanged receiver and unchanged inputs must produce the same render
+value. Hooks, ref-backed reads, and opaque callback arguments retain their
+existing conservative treatment. Compiler diagnostics are bounded; an imported
+library with live accessors does not become snapshot-safe just because its
+caller opts in. Keep such consumers in compatibility mode, or pass snapshots to
+a Strong component. See
+[Automatic memoization and calls in templates](./differences-from-react.md#automatic-memoization-and-calls-in-templates)
+for the exact boundary and why changing event captures still invalidates keyed
+rows.
 
 `"use strong"` only affects its own module. Put it at the top of the file, before
 imports or other code; comments and other directives may come first. In files

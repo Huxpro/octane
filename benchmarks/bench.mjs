@@ -330,11 +330,38 @@ const SUITES = [
 				script: 'run.mjs',
 				args: (n) => [target, String(n)],
 			})),
-			...(name === 'event-delegation'
+			...(name === 'event-delegation' || name === 'external-store-fanout'
 				? [{ label: 'work', script: 'work.mjs', args: () => [] }]
 				: []),
 		],
 	})),
+	{
+		// Node/jsdom development-runtime scaling: the same controlled-value commit
+		// at 4k and 32k hosts, normalized per host for a same-process ratio guard.
+		name: 'dev-form-diagnostics',
+		cwd: 'dev-form-diagnostics',
+		servers: [],
+		iter: { normal: 8, quick: 2 },
+		runs: [{ script: 'run.mjs', args: (n) => [String(n)] }],
+	},
+	{
+		// Headless-Chromium production scaling for late behavior events whose
+		// distinct asynchronous adoptions settle one at a time.
+		name: 'behavior-root-events',
+		cwd: 'behavior-root-events',
+		servers: [],
+		iter: { normal: 8, quick: 2 },
+		runs: [{ script: 'run.mjs', args: (n) => [String(n)] }],
+	},
+	{
+		// Node-only app-core route matching across large static, method-miss,
+		// and dynamic route tables with cost normalized per candidate route.
+		name: 'router-dispatch',
+		cwd: 'router-dispatch',
+		servers: [],
+		iter: { normal: 8, quick: 3 },
+		runs: [{ script: 'run.mjs', args: (n) => [String(n)] }],
+	},
 	{
 		// Selector-based fan-out: 512 subscribers read one store through a
 		// selector, then the parent re-renders 20 times with the store untouched.
@@ -349,6 +376,34 @@ const SUITES = [
 			script: 'run.mjs',
 			args: (n) => [target, String(n)],
 		})),
+	},
+	{
+		// Matched direct/nested callback work plus the shipped store bindings.
+		// The fixture builds itself; named production calls are observed in a
+		// separate unminified build so instrumentation stays out of timings.
+		name: 'hook-store-composition',
+		cwd: 'hook-store-composition',
+		servers: [],
+		iter: { normal: 8, quick: 2 },
+		runs: [
+			{ script: 'run.mjs', args: (n) => [String(n)] },
+			{ label: 'work', script: 'work.mjs', args: () => [] },
+		],
+	},
+	{
+		// Public Activity lifecycle and hidden descendant work. The paired fixture
+		// builds itself, and a separate production-work pass defends the range walk.
+		name: 'activity',
+		cwd: 'activity',
+		servers: [],
+		iter: { normal: 8, quick: 2 },
+		runs: [
+			{ script: 'run.mjs', args: (n) => [String(n)] },
+			{ label: 'work', script: 'work.mjs', args: () => [] },
+			{ label: 'refs', script: 'refs.mjs', args: (n) => [String(n)] },
+			{ label: 'refs-work', script: 'refs-work.mjs', args: () => [] },
+			{ label: 'bundle', script: 'bundle.mjs', args: () => [] },
+		],
 	},
 	{
 		name: 'effectful-list',
@@ -594,6 +649,15 @@ const SUITES = [
 		runs: [{ script: 'run.mjs', args: (n) => [String(n)] }],
 	},
 	{
+		// Native universal external-store hooks: stable subscription lifetimes and
+		// bounded state-projection work across parent renders and notification bursts.
+		name: 'universal-external-store',
+		cwd: 'universal-external-store',
+		servers: [],
+		iter: { normal: 5, quick: 3 },
+		runs: [{ script: 'run.mjs', args: (n) => [String(n)] }],
+	},
+	{
 		// Compiled Octane and pinned ReactLynx dual-thread render cost (Node-only)
 		// on the same cheap Element PAPI. Both visible trees and real native taps
 		// must match; three quick samples keep same-run ratio guards stable.
@@ -660,10 +724,45 @@ const SUITES = [
 		runs: [{ script: 'run.mjs', args: () => [] }],
 	},
 	{
+		// Hook memoization's production compiler A/B: execute identical clean
+		// programs, then count function/array creation expressions in separate
+		// observed bundles. Deterministic; no timing or browser server required.
+		name: 'hook-memo',
+		cwd: 'hook-memo',
+		servers: [],
+		iter: { normal: 1, quick: 1 },
+		runs: [{ script: 'run.mjs', args: () => [] }],
+	},
+	{
+		// Strong-mode keyed row reuse, with receiver calls observed outside the
+		// compiled source and DOM/event controls for every dependency change.
+		name: 'template-call-memo',
+		cwd: 'template-call-memo',
+		servers: [],
+		iter: { normal: 1, quick: 1 },
+		runs: [{ script: 'run.mjs', args: () => [] }],
+	},
+	{
 		name: 'compiler-throughput',
 		cwd: 'compiler-throughput',
 		servers: [],
 		iter: { normal: 5, quick: 2 },
+		runs: [{ script: 'run.mjs', args: (n) => [String(n)] }],
+	},
+	{
+		name: 'tsrx-component-graph',
+		cwd: 'tsrx-component-graph',
+		servers: [],
+		iter: { normal: 8, quick: 4 },
+		runs: [{ script: 'run.mjs', args: (n) => [String(n)] }],
+	},
+	{
+		// Development TSRX compiler scaling: distinct authored HTML-nesting
+		// diagnostics at two sizes, normalized per invalid site in one process.
+		name: 'tsrx-nesting-diagnostics',
+		cwd: 'tsrx-nesting-diagnostics',
+		servers: [],
+		iter: { normal: 9, quick: 3 },
 		runs: [{ script: 'run.mjs', args: (n) => [String(n)] }],
 	},
 	{

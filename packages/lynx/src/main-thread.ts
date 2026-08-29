@@ -51,6 +51,7 @@ import {
 	LYNX_LAZY_PUBLIC_INSTANCES,
 	LYNX_LAZY_PUBLIC_INSTANCE_READY_REQUEST_BASE,
 	LYNX_TEMPLATE_RUN_READY_REQUEST_BASE,
+	LYNX_TEARDOWN_RUN_READY_REQUEST_BASE,
 	LYNX_MAIN_TO_BACKGROUND_EVENT,
 	LYNX_READY_ANNOUNCEMENT_REQUEST,
 	LYNX_TRANSPORT_PROTOCOL_VERSION,
@@ -438,12 +439,24 @@ function acknowledgementHandles<Node extends LynxElementRef>(
 	let publishedIds: Set<number> | null = null;
 	const alreadyPublished = (id: number): boolean => {
 		if (publishedIds === null) {
-			publishedIds = new Set(handles.map((handle) => handle.id));
+			publishedIds = new Set();
+			for (const handle of handles) {
+				if ('id' in handle) publishedIds.add(handle.id);
+			}
 		}
 		return publishedIds.has(id);
 	};
 	for (const delta of prepared.handleDelta) {
-		if (delta.op === 'destroy') {
+		if (delta.op === 'destroy-run') {
+			handles.push(
+				Object.freeze({
+					op: 'remove-run',
+					firstId: delta.firstId,
+					hostCount: delta.hostCount,
+					generation: delta.generation,
+				}),
+			);
+		} else if (delta.op === 'destroy') {
 			handles.push(Object.freeze({ op: 'remove', id: delta.id, generation: delta.generation }));
 		} else {
 			handles.push(
@@ -615,7 +628,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	let deferredFirstTreeCapabilities: LynxMainThreadCapabilities | undefined;
 	let firstTreeSnapshotSent = false;
 	let uninstallFirstScreenHost: (() => void) | null = null;
-	const queuedCommits: LynxCommitMessage[] = [];
+	// Reentrant PAPI work can enqueue a large burst; consumed slots are tombstoned
+	// so the drain stays linear without retaining every processed message.
+	const queuedCommits: Array<LynxCommitMessage | undefined> = [];
 	const queuedNativeEvents: Array<readonly LynxQueuedNativeEventDelivery[]> = [];
 	const queuedLifecycleMessages: LynxLifecycleMessage[] = [];
 	const queuedReadyRequests = new Set<number>();
@@ -1370,6 +1385,11 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 							driver.capabilities?.templateProgramRuns === true &&
 							driver.capabilities?.deferredTemplateProgramRuns === true
 								? { deferredTemplateRuns: 1 as const }
+								: null),
+							...(request >= LYNX_TEARDOWN_RUN_READY_REQUEST_BASE &&
+							driver.capabilities?.templateProgramMount === true &&
+							driver.capabilities?.teardownRuns === true
+								? { teardownRuns: 1 as const }
 								: null),
 						},
 					}),
@@ -2466,6 +2486,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		commitInProgress = true;
 		try {
 			let next: LynxCommitMessage | undefined = message;
+			let queuedIndex = 0;
 			do {
 				handleCommitExclusive(next, {
 					protocol: next.protocol,
@@ -2477,8 +2498,14 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 					queuedCommits.length = 0;
 					break;
 				}
-				next = queuedCommits.shift();
+				if (queuedIndex === queuedCommits.length) {
+					next = undefined;
+				} else {
+					next = queuedCommits[queuedIndex];
+					queuedCommits[queuedIndex++] = undefined;
+				}
 			} while (next !== undefined);
+			queuedCommits.length = 0;
 		} catch (error) {
 			// A response delivery failure terminally tears down the background
 			// transport. Do not replay commits it dispatched reentrantly before

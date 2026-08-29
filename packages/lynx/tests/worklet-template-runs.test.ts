@@ -283,13 +283,22 @@ describe('Lynx worklet template runs', () => {
 		await backgroundRoot.render(Scene, { rows: [list[0]!, list[2]!] });
 		await backgroundRoot.flushTransport();
 		const removal = commits.at(-1)!;
-		const destroyed = removal
-			.filter((command) => command.op === 'destroy')
-			.map((command) => (command as { id: number }).id);
 		const hostsPerRow = run.program.nodes.length;
-		expect(destroyed).toHaveLength(hostsPerRow);
-		expect(Math.min(...destroyed)).toBe(run.firstId + hostsPerRow);
-		expect(removal.some((command) => command.op === 'remove')).toBe(true);
+		// The row leaves as one run rather than as per-host removes and destroys:
+		// upstream's collapsed-run teardown (#750, arriving with issue #227) names
+		// the contiguous range and the driver derives the unbinds, removes, and
+		// destroys from the program it already holds. What matters here is that
+		// the range named is exactly the middle row's, so the teardown below
+		// reaches that row's hosts and stops there.
+		expect(removal).toEqual([
+			{
+				op: 'destroy-run',
+				parent: run.parent,
+				firstId: run.firstId + hostsPerRow,
+				count: 1,
+				width: hostsPerRow,
+			},
+		]);
 
 		// The removed row's callback is gone: its execution was the run's, keyed by
 		// the host the run installed it on, and that host's `destroy` released it.

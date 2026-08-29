@@ -199,6 +199,7 @@ function compilerOptions(state: ReturnType<typeof createChain>) {
 		hmr?: boolean;
 		profile?: boolean;
 		requireDirective?: boolean;
+		parallel?: unknown;
 		runtime: string;
 		universalRuntime: unknown;
 		mainThreadProgramBackend?: unknown;
@@ -263,6 +264,28 @@ describe('@octanejs/rspeedy-plugin', () => {
 
 			expect(compilerOptions(state)).toMatchObject(optionSignature);
 		}
+	});
+
+	it('lets a caller pin worker compilation, and otherwise leaves the choice downstream', () => {
+		// The Rspack plugin owns both the default and the shape; this one only
+		// carries the answer across. Two builds that must be compared byte for byte
+		// need to pin it, because the worker pool can reach the minifier with a
+		// different module order and the short names it hands out move with it —
+		// and a build whose options carry a function cannot use workers at all, so
+		// leaving it unset is what makes two such builds differ for no reason
+		// visible in their source.
+		for (const parallel of [false, true, { maxWorkers: 2 }]) {
+			const state = applyPlugin({ thread: 'background', parallel });
+			expect(compilerOptions(state)).toMatchObject({ parallel });
+		}
+		// Unset forwards nothing, so the Rspack plugin's own default stands rather
+		// than being restated here where it could drift. The option's *shape* is
+		// that plugin's to reject too, and it does so when the chain builds; what
+		// this side still owes is the name, which the allowlist keeps honest.
+		expect(compilerOptions(applyPlugin({ thread: 'background' }))).not.toHaveProperty('parallel');
+		expect(() => pluginOctane({ thread: 'background', paralell: false } as never)).toThrow(
+			/unknown option `paralell`/,
+		);
 	});
 
 	it('enforces application output invariants without discarding user configuration', () => {

@@ -1,10 +1,11 @@
 import { Fragment, useContext, useCallback, useMemo, useEffect } from 'octane';
-import type { FC, SVGProps } from 'react';
+import type { Octane } from 'octane/jsx-runtime';
 import type { AxisScale } from '@octanejs/visx/axis';
 import type { AreaProps, LinePathProps } from '@octanejs/visx/shape';
 import { Area, LinePath } from '@octanejs/visx/shape';
 import DataContext from '../../../context/DataContext.tsrx';
 import type { DataContextType, GlyphsProps, SeriesProps } from '../../../types';
+import type { SvgPathComponent } from '../../../types/svgPath';
 import getScaledValueFactory from '../../../utils/getScaledValueFactory';
 import getScaleBaseline from '../../../utils/getScaleBaseline';
 import isValidNumber from '../../../typeguards/isValidNumber';
@@ -24,14 +25,17 @@ export type BaseAreaSeriesProps<XScale extends AxisScale, YScale extends AxisSca
 		/** Sets the curve factory (from @octanejs/visx/curve or d3-curve) for the line generator. Defaults to curveLinear. */
 		curve?: AreaProps<Datum>['curve'];
 		/** Props to be passed to the Line, if rendered. */
-		lineProps?: Omit<LinePathProps<Datum> & SVGProps<SVGPathElement>, | 'data'
+		lineProps?: Omit<LinePathProps<Datum> & Octane.SVGProps<SVGPathElement>, | 'data'
 		| 'x'
 		| 'y'
 		| 'children'
 		| 'defined'>;
 		/** Rendered component which is passed path props by BaseAreaSeries after processing. */
-		PathComponent?: FC<Omit<SVGProps<SVGPathElement>, 'ref'>> | 'path';
-	} & Omit<SVGProps<SVGPathElement>, 'x' | 'y' | 'x0' | 'x1' | 'y0' | 'y1' | 'ref'>;
+		PathComponent?: SvgPathComponent;
+	} & Omit<
+		Octane.SVGProps<SVGPathElement>,
+		'x' | 'y' | 'x0' | 'x1' | 'y0' | 'y1' | 'ref' | 'children'
+	>;
 
 function BaseAreaSeries<XScale extends AxisScale, YScale extends AxisScale, Datum extends object>({
 	PathComponent = 'path',

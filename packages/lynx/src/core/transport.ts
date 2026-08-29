@@ -273,6 +273,12 @@ export function createLynxBackgroundTransport(
 	const pending = new Map<number, PendingCommit>();
 	const pendingMainCalls = new Map<number, PendingMainThreadCall>();
 	const runningBackgroundCalls = new Map<number, RunningBackgroundCall>();
+	// The readiness ladder is cumulative: announcing at a rung declares readiness
+	// for every rung below it, because a main thread that understands the newest
+	// request shape necessarily understands the older ones. Upstream announces at
+	// `LYNX_TEARDOWN_RUN_READY_REQUEST_BASE`; deferred template runs sit one rung
+	// above that (issue #227), so announcing here subsumes the teardown rung
+	// rather than skipping it.
 	const readyRequest = LYNX_DEFERRED_TEMPLATE_RUN_READY_REQUEST_BASE + NEXT_READY_REQUEST++;
 	if (!Number.isSafeInteger(readyRequest)) {
 		throw new Error('Octane Lynx capability-ready request identities are exhausted.');
