@@ -1,0 +1,243 @@
+{
+  "protocol": "octane-issue194-device-v1",
+  "question": "issue #234 Part B: check the surviving side of the aries_10 global-reference capacity boundary with Octane MTS program eager 7k",
+  "createdAt": "2026-08-29T22:02:41.517Z",
+  "octaneCommit": "8938c12608524d1a259b5e81f0903ffa5b5eb4d5",
+  "serial": "aic-i18n-bd-fullport.byteintl.net:42820",
+  "lease": {
+    "endpoint": "https://lynx-sandbox.byted.org/pool/lease",
+    "issuer": "5563315+Huxpro@users.noreply.github.com",
+    "issueId": "octane-234-round3-20260829",
+    "acquired": "aic-i18n-bd-fullport.byteintl.net:42820",
+    "expiredAt": 1788043983537,
+    "expiredAtIso": "2026-08-29T22:53:03.537Z",
+    "released": true,
+    "releaseReceipt": {
+      "acquired": "aic-i18n-bd-fullport.byteintl.net:42820"
+    }
+  },
+  "device": {
+    "model": "aries_10",
+    "product": "aries",
+    "android": "10",
+    "fingerprint": "aries_10/aries/aries:10/QQ3A.200805.001/1.5.2:userdebug/test-keys",
+    "abi": "arm64-v8a",
+    "explorer": "1.0"
+  },
+  "controls": {
+    "devtool": "disabled by a background-only LynxDevToolSetModule.switchLynxDebug(false) preflight before each sample; no CDP/DevTool connection used",
+    "coldLaunchPerSample": true,
+    "thermalGate": "battery <=35.0C and Android thermal status 0 before every accepted attempt",
+    "ordering": "AB/BA (A,B,B,A repeating)",
+    "completionMode": "commit",
+    "workload": null,
+    "adbInput": null,
+    "engineOnly": true,
+    "expectedOutcome": "terminal outcome at 180000 ms: completed, native-crash, or timeout"
+  },
+  "scale": 7000,
+  "targetAcceptedSamplesPerCell": 1,
+  "disableDevToolBundle": {
+    "url": "http://127.0.0.1:8878/disable/main.lynx.bundle",
+    "bundle": {
+      "path": "/tmp/octane-measure.PWwPDY/benchmarks/lynx-table/app/dist-round3-disable/main.lynx.bundle",
+      "bytes": 551466,
+      "sha256": "7e5d119b158329e0945f25981a0c1bbfa60cb949ce66dc5015b45344dbf3741f"
+    }
+  },
+  "cells": {
+    "program7k-a": {
+      "url": "http://127.0.0.1:8878/program7k/main.lynx.bundle",
+      "bundle": {
+        "path": "/tmp/octane-measure.PWwPDY/benchmarks/lynx-table/app/dist-mtsprogram-round3-program7k-rows7000-profile-issue194-parent-first/main.lynx.bundle",
+        "bytes": 558478,
+        "sha256": "ce96e9bc65342d6fedd5f7317b5181eab873cb873a6468c9a6f5e894de34496b"
+      }
+    },
+    "program7k-b": {
+      "url": "http://127.0.0.1:8878/program7k/main.lynx.bundle",
+      "bundle": {
+        "path": "/tmp/octane-measure.PWwPDY/benchmarks/lynx-table/app/dist-mtsprogram-round3-program7k-rows7000-profile-issue194-parent-first/main.lynx.bundle",
+        "bytes": 558478,
+        "sha256": "ce96e9bc65342d6fedd5f7317b5181eab873cb873a6468c9a6f5e894de34496b"
+      }
+    }
+  },
+  "samples": [
+    {
+      "ordinal": 1,
+      "cell": "program7k-a",
+      "accepted": true,
+      "outcome": "completed",
+      "timeoutMs": 180000,
+      "nativeCrash": {
+        "atMs": null,
+        "loadToCrashMs": null,
+        "evidence": [],
+        "artReferenceTableDump": [],
+        "artReferenceTableSummary": []
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.09 0.08 0.05 1/938 30304"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.43 0.16 0.07 3/897 30444"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1788040964.425 30317 30352 I LynxEnv : disable lynx debug",
+          "1788040964.425 30317 30352 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1788040964.425 30317 30352 I lynx    : [6F675F5D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1788040964815,
+        "renderPageMs": 1788040964852,
+        "firstScreenMs": 1788040979444,
+        "loadEndMs": 1788040979518,
+        "loadToRenderPageMs": 37,
+        "renderPageToFirstScreenMs": 14592,
+        "loadToFirstScreenMs": 14629,
+        "loadTemplateMs": 14703
+      },
+      "stateEvidence": {
+        "rowCount": 7000,
+        "firstId": 1,
+        "secondId": 2,
+        "thirdId": 3,
+        "row998Id": 999,
+        "firstLabel": "pretty red table",
+        "selectedId": null
+      },
+      "preStateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "backgroundSettle": {
+        "protocol": "octane-issue194-native-v1",
+        "workload": "startup-create",
+        "scale": 7000,
+        "source": "background-script-start",
+        "boundary": "background-script-start-to-second-native-frame",
+        "startMs": 1788040964925,
+        "commitAckMs": 1788040969270,
+        "firstFrameMs": 1788040969277,
+        "endMs": 1788040969294,
+        "latencyMs": 4369,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "postState": {
+          "rowCount": 7000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "pretty red table",
+          "selectedId": null
+        }
+      },
+      "adbInput": null,
+      "attribution": null,
+      "errors": []
+    },
+    {
+      "ordinal": 2,
+      "cell": "program7k-b",
+      "accepted": true,
+      "outcome": "completed",
+      "timeoutMs": 180000,
+      "nativeCrash": {
+        "atMs": null,
+        "loadToCrashMs": null,
+        "evidence": [],
+        "artReferenceTableDump": [],
+        "artReferenceTableSummary": []
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.43 0.16 0.07 1/895 30452"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.66 0.23 0.10 1/897 30597"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1788040981.704 30465 30500 I LynxEnv : disable lynx debug",
+          "1788040981.704 30465 30500 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1788040981.704 30465 30500 I lynx    : [6F6FB15D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1788040981915,
+        "renderPageMs": 1788040981951,
+        "firstScreenMs": 1788040996511,
+        "loadEndMs": 1788040996585,
+        "loadToRenderPageMs": 36,
+        "renderPageToFirstScreenMs": 14560,
+        "loadToFirstScreenMs": 14596,
+        "loadTemplateMs": 14670
+      },
+      "stateEvidence": {
+        "rowCount": 7000,
+        "firstId": 1,
+        "secondId": 2,
+        "thirdId": 3,
+        "row998Id": 999,
+        "firstLabel": "pretty red table",
+        "selectedId": null
+      },
+      "preStateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "backgroundSettle": {
+        "protocol": "octane-issue194-native-v1",
+        "workload": "startup-create",
+        "scale": 7000,
+        "source": "background-script-start",
+        "boundary": "background-script-start-to-second-native-frame",
+        "startMs": 1788040982022,
+        "commitAckMs": 1788040986373,
+        "firstFrameMs": 1788040986379,
+        "endMs": 1788040986396,
+        "latencyMs": 4374,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "postState": {
+          "rowCount": 7000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "pretty red table",
+          "selectedId": null
+        }
+      },
+      "adbInput": null,
+      "attribution": null,
+      "errors": []
+    }
+  ],
+  "invalidAttempts": []
+}

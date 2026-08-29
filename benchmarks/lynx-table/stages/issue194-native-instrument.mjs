@@ -90,7 +90,7 @@ if (__BENCH_AUTOROWS__ > 0) {
 `,
 				file,
 			);
-			return next;
+			return next.replaceAll('performance.now()', 'Date.now()');
 		});
 
 		updateStage('src/App.lynx.tsrx', (source, file) => {
@@ -173,7 +173,7 @@ function nextMacrotask(cb: () => void) {
 \t_stormChannel.port2.postMessage(0);
 }
 `,
-				`const _stormChannel = typeof MessageChannel === 'function' ? new MessageChannel() : null;
+				`const _stormChannel: MessageChannel | null = null;
 let _stormPending: (() => void) | null = null;
 if (_stormChannel) {
 \t_stormChannel.port1.onmessage = () => {
@@ -234,8 +234,33 @@ function nextMacrotask(cb: () => void) {
 					file,
 				);
 			}
+			next = replaceOnce(
+				next,
+				`<view class="btn" bindtap={clear}>`,
+				`<view class="btn" bindtap={() => measureIssue194Tap('clear', rowsRef.current.length, clear)}>`,
+				file,
+			);
 			return next;
 		});
+
+		updateStage('src/block-program.ts', (source, file) =>
+			replaceOnce(
+				source,
+				'const stormChannel = new MessageChannel();',
+				`const stormChannel: {
+	port1: { onmessage: (() => void) | null };
+	port2: { postMessage(value: number): void };
+} = {
+	port1: { onmessage: null },
+	port2: {
+		postMessage() {
+			setTimeout(() => stormChannel.port1.onmessage?.(), 0);
+		},
+	},
+};`,
+				file,
+			),
+		);
 
 		updateRepo('packages/lynx/src/core/papi.ts', (source, file) => {
 			let next = replaceOnce(
@@ -329,7 +354,11 @@ function requireFunction<
 				`\t\ttry {
 \t\t\tdispatch(acknowledgement);
 `,
-				`\t\t(acknowledgement as any).issue194 = {
+				`\t\tconst issue194AckWire = encodeLynxTransportValue(
+\t\t\tselfCheckLynxBackgroundInboundMessage(acknowledgement),
+\t\t\treportEncodingDiagnostic,
+\t\t);
+\t\tconsole.log('__ISSUE194_MAIN_COMMIT__' + JSON.stringify({
 \t\t\tprotocol: 'octane-issue194-main-v1',
 \t\t\troot: message.root,
 \t\t\tversion: message.version,
@@ -340,7 +369,15 @@ function requireFunction<
 \t\t\tprofileBefore: issue194ProfileBefore,
 \t\t\tprofileAfter: JSON.parse(JSON.stringify(lynxWireProfile())),
 \t\t\tprogram: JSON.parse(JSON.stringify((globalThis as any).__ISSUE194_PROGRAM__ ?? {})),
-\t\t};
+\t\t\twireToBts: {
+\t\t\t\tboundary: 'octane-main-to-background-encoded-payload',
+\t\t\t\twireToBtsBytes: issue194AckWire.length,
+\t\t\t\tackMessages: 1,
+\t\t\t\tackEncoding: compactCount === null ? 'handles' : LYNX_COMPACT_ACKNOWLEDGEMENT,
+\t\t\t\tacknowledgedHostCount: compactCount,
+\t\t\t\tcompletionMessagesAfterAck: applyFailed ? 0 : 1,
+\t\t\t},
+\t\t}));
 \t\ttry {
 \t\t\tdispatch(acknowledgement);
 `,
@@ -403,6 +440,7 @@ function requireFunction<
 		for (const relative of [
 			'packages/lynx/src/core/profiling.ts',
 			'packages/lynx/src/main-renderer.ts',
+			'packages/octane/src/profiling.ts',
 			'packages/octane/src/universal-core.ts',
 		]) {
 			updateRepo(relative, (source) =>
@@ -422,20 +460,6 @@ function requireFunction<
 \t\tif (issue194 !== undefined) {
 \t\t\tconsole.log('__ISSUE194_FIRST_SCREEN__' + JSON.stringify(issue194));
 \t\t}
-`,
-				file,
-			);
-			next = replaceOnce(
-				next,
-				`\tconst handleAcknowledgement = (message: LynxTransportAcknowledgement) => {
-\t\tconst entry = entryFor(message, 'acknowledgement');
-`,
-				`\tconst handleAcknowledgement = (message: LynxTransportAcknowledgement) => {
-\t\tconst issue194 = (message as any).issue194;
-\t\tif (issue194 !== undefined) {
-\t\t\tconsole.log('__ISSUE194_MAIN_COMMIT__' + JSON.stringify(issue194));
-\t\t}
-\t\tconst entry = entryFor(message, 'acknowledgement');
 `,
 				file,
 			);
@@ -466,24 +490,6 @@ function requireFunction<
 `,
 				`...(hasCapabilities ? ['capabilities'] : []),
 \t\t\t...(reply ? ['issue194'] : []),
-`,
-				file,
-			);
-			next = replaceOnce(
-				next,
-				`['protocol', 'renderer', 'root', 'version', 'type', 'encoding', 'count'],
-`,
-				`['protocol', 'renderer', 'root', 'version', 'type', 'encoding', 'count', 'issue194'],
-`,
-				file,
-			);
-			next = replaceOnce(
-				next,
-				`? ['protocol', 'renderer', 'root', 'version', 'type', 'handles', 'adoption']
-\t\t\t\t: ['protocol', 'renderer', 'root', 'version', 'type', 'handles'],
-`,
-				`? ['protocol', 'renderer', 'root', 'version', 'type', 'handles', 'adoption', 'issue194']
-\t\t\t\t: ['protocol', 'renderer', 'root', 'version', 'type', 'handles', 'issue194'],
 `,
 				file,
 			);
@@ -638,7 +644,7 @@ function requireFunction<
 					file,
 				);
 			}
-			return next;
+			return next.replaceAll('performance.now()', 'Date.now()');
 		});
 
 		if (appendOrder === 'child-first') {

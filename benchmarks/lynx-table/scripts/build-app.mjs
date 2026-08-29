@@ -99,10 +99,45 @@ export function buildTableApp({
 			appFile,
 			source.replace(
 				anchor,
-				`const _stormChannel =
-	typeof MessageChannel === 'undefined'
-		? ({ port1: { onmessage: null }, port2: { postMessage() {} } } as unknown as MessageChannel)
-		: new MessageChannel();`,
+				`const _stormChannel: {
+	port1: { onmessage: (() => void) | null };
+	port2: { postMessage(value: number): void };
+} = {
+	port1: { onmessage: null },
+	port2: {
+		postMessage() {
+			setTimeout(() => _stormChannel.port1.onmessage?.(), 0);
+		},
+	},
+};`,
+			),
+		);
+		const blockFile = path.join(stage, 'src', 'block-program.ts');
+		const blockSource = fs.readFileSync(blockFile, 'utf8');
+		const blockAnchor = 'const stormChannel = new MessageChannel();';
+		if (
+			blockSource.indexOf(blockAnchor) === -1 ||
+			blockSource.indexOf(blockAnchor) !== blockSource.lastIndexOf(blockAnchor)
+		) {
+			throw new Error(
+				'device block-program MessageChannel fallback anchor is missing or ambiguous.',
+			);
+		}
+		fs.writeFileSync(
+			blockFile,
+			blockSource.replace(
+				blockAnchor,
+				`const stormChannel: {
+	port1: { onmessage: (() => void) | null };
+	port2: { postMessage(value: number): void };
+} = {
+	port1: { onmessage: null },
+	port2: {
+		postMessage() {
+			setTimeout(() => stormChannel.port1.onmessage?.(), 0);
+		},
+	},
+};`,
 			),
 		);
 	}

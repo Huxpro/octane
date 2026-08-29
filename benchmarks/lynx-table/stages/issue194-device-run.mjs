@@ -20,6 +20,11 @@ const disableFile = path.resolve(readArg('--disable-file'));
 const output = path.resolve(readArg('--out'));
 const checkpointArg = readOptionalArg('--checkpoint');
 const checkpoint = checkpointArg === null ? null : path.resolve(checkpointArg);
+const workload = readOptionalArg('--workload');
+const tapXArg = readOptionalArg('--tap-x');
+const tapYArg = readOptionalArg('--tap-y');
+const tapX = tapXArg === null ? null : Number(tapXArg);
+const tapY = tapYArg === null ? null : Number(tapYArg);
 const question = readArg('--question');
 const scale = Number(readArg('--scale'));
 const samples = Number(readArg('--samples'));
@@ -53,6 +58,15 @@ for (let index = 0; index < args.length; index++) {
 if (!Number.isSafeInteger(scale) || scale < 1) throw new Error('scale must be positive.');
 if (!Number.isSafeInteger(samples) || samples < 1) throw new Error('samples must be positive.');
 if (cells.length !== 2) throw new Error('this AB/BA runner requires exactly two cells.');
+if (workload !== null && workload !== 'create' && workload !== 'clear') {
+	throw new Error('--workload must be create or clear.');
+}
+if (
+	workload !== null &&
+	(!Number.isSafeInteger(tapX) || tapX < 0 || !Number.isSafeInteger(tapY) || tapY < 0)
+) {
+	throw new Error('--workload requires non-negative integer --tap-x and --tap-y.');
+}
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../app');
 const run = (command, commandArgs, { allowFailure = false } = {}) => {
@@ -303,6 +317,10 @@ async function measure(cell, ordinal) {
 	let parsed;
 	let log = '';
 	let completed = false;
+	let tapped = false;
+	let tapAtMs = null;
+	let mainBeforeTap = 0;
+	let nativeBeforeTap = 0;
 	while (Date.now() < deadline) {
 		await delay(2000);
 		log = adb('logcat', '-d', '-v', 'epoch');
@@ -319,13 +337,38 @@ async function measure(cell, ordinal) {
 			break;
 		}
 		if (
+			workload !== null &&
+			!tapped &&
+			parsed.firstScreenMs !== null &&
+			parsed.loadEndMs !== null &&
+			(workload !== 'clear' ||
+				(parsed.main.length > 0 &&
+					parsed.native.some(
+						(entry) => entry.workload === 'startup-create' && entry.scale === scale,
+					)))
+		) {
+			mainBeforeTap = parsed.main.length;
+			nativeBeforeTap = parsed.native.length;
+			tapAtMs = Date.now();
+			adb('shell', 'input', 'tap', String(tapX), String(tapY));
+			tapped = true;
+			continue;
+		}
+		const interactionMain = tapped ? parsed.main.slice(mainBeforeTap) : [];
+		const interactionNative = tapped ? parsed.native.slice(nativeBeforeTap) : [];
+		const matchingNative = interactionNative.some(
+			(entry) => entry.workload === workload && entry.scale === scale,
+		);
+		if (
 			(engineOnly
 				? parsed.firstScreenMs !== null
-				: mode === 'direct-result'
-					? parsed.direct.length > 0
-					: mode === 'first-screen-ready'
-						? parsed.firstScreen.length > 0
-						: parsed.main.length > 0 && parsed.native.length > 0) &&
+				: workload !== null
+					? interactionMain.length > 0 && matchingNative
+					: mode === 'direct-result'
+						? parsed.direct.length > 0
+						: mode === 'first-screen-ready'
+							? parsed.firstScreen.length > 0
+							: parsed.main.length > 0 && parsed.native.length > 0) &&
 			parsed.loadStartMs !== null &&
 			(engineOnly || parsed.renderPageMs !== null) &&
 			parsed.firstScreenMs !== null &&
@@ -340,18 +383,30 @@ async function measure(cell, ordinal) {
 	const after = thermalSnapshot();
 	parsed ??= parseLog(log);
 	const attribution =
-		mode === 'direct-result'
-			? (parsed.direct.at(-1) ?? null)
-			: mode === 'first-screen-ready'
-				? (parsed.firstScreen.at(-1) ?? null)
-				: (parsed.main.at(-1) ?? null);
-	const state = parsed.native.find((entry) => entry.scale === scale)?.postState ?? null;
+		workload !== null
+			? (parsed.main.slice(mainBeforeTap).at(-1) ?? null)
+			: mode === 'direct-result'
+				? (parsed.direct.at(-1) ?? null)
+				: mode === 'first-screen-ready'
+					? (parsed.firstScreen.at(-1) ?? null)
+					: (parsed.main.at(-1) ?? null);
+	const backgroundSettle =
+		workload === null
+			? (parsed.native.find((entry) => entry.scale === scale) ?? null)
+			: (parsed.native
+					.slice(nativeBeforeTap)
+					.find((entry) => entry.workload === workload && entry.scale === scale) ?? null);
+	const state = backgroundSettle?.postState ?? null;
+	const validPopulatedState = (candidate) =>
+		candidate?.rowCount === scale &&
+		candidate.firstId === 1 &&
+		candidate.secondId === 2 &&
+		candidate.thirdId === 3 &&
+		(scale < 999 || candidate.row998Id === 999);
 	const validBackgroundState =
-		state?.rowCount === scale &&
-		state.firstId === 1 &&
-		state.secondId === 2 &&
-		state.thirdId === 3 &&
-		(scale < 999 || state.row998Id === 999);
+		workload === 'clear'
+			? validPopulatedState(backgroundSettle?.preState) && state?.rowCount === 0
+			: validPopulatedState(state);
 	const calls = attribution?.calls;
 	const validFirstScreenShape =
 		calls?.__CreateView?.count === scale + 15 &&
@@ -362,7 +417,7 @@ async function measure(cell, ordinal) {
 	const validState =
 		engineOnly || (mode === 'commit' ? validBackgroundState : validFirstScreenShape);
 	const errors = parsed.lines.filter((line) =>
-		/FATAL EXCEPTION|ReferenceError|__ISSUE194_NATIVE_ERROR__|JNI ERROR|Abort message:|Fatal signal \d+|Process com\.lynx\.explorer .* has died/.test(
+		/FATAL EXCEPTION|app::onAppJSError|main-thread\.js exception|loadCard failed|__ISSUE194_NATIVE_ERROR__|JNI ERROR|Abort message:|Fatal signal \d+|Process com\.lynx\.explorer .* has died/.test(
 			line,
 		),
 	);
@@ -425,8 +480,13 @@ async function measure(cell, ordinal) {
 			loadTemplateMs: elapsed(parsed.loadStartMs, parsed.loadEndMs),
 		},
 		stateEvidence: state,
+		preStateEvidence: backgroundSettle?.preState ?? null,
 		firstScreenShapeEvidence: mode === 'commit' ? null : calls,
-		backgroundSettle: parsed.native.find((entry) => entry.scale === scale) ?? null,
+		backgroundSettle,
+		adbInput:
+			workload === null
+				? null
+				: { workload, x: tapX, y: tapY, issuedAtMs: tapAtMs, issued: tapped },
 		attribution,
 		errors,
 	};
@@ -455,6 +515,15 @@ let report = {
 		thermalGate: 'battery <=35.0C and Android thermal status 0 before every accepted attempt',
 		ordering: 'AB/BA (A,B,B,A repeating)',
 		completionMode: mode,
+		workload,
+		adbInput:
+			workload === null
+				? null
+				: {
+						command: `adb -s <serial> shell input tap ${tapX} ${tapY}`,
+						x: tapX,
+						y: tapY,
+					},
 		engineOnly,
 		expectedOutcome: capacityOutcome
 			? `terminal outcome at ${timeoutMs} ms: completed, native-crash, or timeout`
@@ -515,7 +584,9 @@ for (const [ordinal, cellIndex] of sequenceFor(samples).entries()) {
 					? `[issue194] accepted ${cell.label}: ${sample.outcome}${
 							sample.outcome === 'native-crash'
 								? ` after ${sample.nativeCrash.loadToCrashMs} ms`
-								: ` at ${sample.timeoutMs} ms cutoff`
+								: sample.outcome === 'timeout'
+									? ` at ${sample.timeoutMs} ms cutoff`
+									: ` after ${sample.boundaries.loadToFirstScreenMs} ms`
 						}`
 					: `[issue194] accepted ${cell.label}: ${sample.boundaries.loadToFirstScreenMs} ms`,
 			);

@@ -3422,6 +3422,53 @@ reading of C20 + D1 together; the device window does not claim to separate
 their effects. Both windows have zero invalid attempts, n=5 per cell, AB/BA
 ordering, cold launch per sample, and a 35.0 °C / thermal-status-0 gate.
 
+### Device round 3: cross-framework capacity confirmation and post-fix ACK shapes
+
+Round 3 used `new-lynx` commit
+`8938c12608524d1a259b5e81f0903ffa5b5eb4d5` on `aries_10` / Android 10 /
+Explorer 1.0 / app-bundle engine 3.9 / Lynx SDK 4.0. The checked-in records
+carry the Sandbox acquisition and release receipt. Every accepted attempt used
+the round-2 DevTool-disabled preflight, a cold process, no CDP connection, and
+the same 35.0 °C / thermal-status-0 gate.
+
+Issue #234 Part A is qualitative, and explicitly permits n=1. Two independent
+cold starts of the same vendored ReactLynx eager-10k bundle both aborted at the
+ART global-reference ceiling, 25,706 and 25,789 ms after load start. Both dumps
+have the same leading summary: 30,026
+`com.lynx.tasm.behavior.PaintingContext$a` and 20,441 `m7.w` instances. That is
+the cross-framework confirmation the issue asks for: the owner is the same Lynx
+platform UI class as Octane's round-2 dump, not a ReactLynx-specific holder.
+The record is
+`stages/results/issue234-a-react-eager-art-summary-10000.json`.
+
+The same lease ran the cheap surviving-side check. The Octane MTS-program eager
+7k bundle completed twice, with valid 7,000-row state and no error; load to first
+screen was 14,629 and 14,596 ms, and the background-script-start to second
+native frame observations were 4,369 and 4,374 ms. This pins only the requested
+surviving side of the platform boundary; it is not a bisection or a timing
+ranking. The record is
+`stages/results/issue234-a-octane-mts-program-7000.json`.
+
+Two additional post-#229/#233 interaction probes use real `adb shell input tap`
+events and wait through two native animation frames before accepting state:
+
+| operation | state oracle | native tap → second frame | ACK encoding | encoded ACK bytes | ACK messages |
+|---|---|---:|---|---:|---:|
+| create 1k | 0 → 1,000, ids 1/2/3/999 | 11,500 / 11,446 ms | `compact-v1`, count 7,000 | 107 / 107 | 1 / 1 |
+| clear 1k | 1,000 → 0 | 2,742 / 2,776 ms | per-host `handles` | 286,294 / 286,294 | 1 / 1 |
+
+Each ACK is followed by one separate `complete` message; the table's ACK count
+does not fold that completion into the answer. The byte boundary is the exact
+string returned by Octane's shipping `encodeLynxTransportValue` immediately
+before the main-to-background dispatch, measured before the build-only logger
+runs. It is therefore an ACK-payload measurement, not the web harness's larger
+RPC-envelope aggregate. Create confirms #230's compact recompute at this tip;
+clear is expected to remain a per-host teardown acknowledgement and does not
+claim the compact create shape. These two n=1-per-identical-cell records are
+correctness/wire-shape probes, not statistical timing claims:
+`stages/results/issue194-round3-create-1000.json` and
+`stages/results/issue194-round3-clear-1000.json`.
+
 ## Claims and non-claims
 
 Command counts and commit bytes are Octane-owned costs and are gated. The
