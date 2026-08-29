@@ -3289,8 +3289,14 @@ enabler crossed with the two consequences it admits:
 | `o3tear` | on | suppressed | live | `919ba7cb574975af` |
 | `o3gen` | on | live | suppressed | `697bea26b94b6220` |
 
-`o3ctl` is byte-identical to the vendored `octane-hux` rows-0 bundle, which is
-what makes it the shipping build rather than a rebuild of it.
+`o3ctl` is byte-identical to the `octane-hux` entry as rebuilt at this base,
+which is a stronger statement than it looks: that entry is produced by
+`scripts/build-octane-upstream.mjs` from a clean checkout, and this control by
+`scripts/build-app.mjs` from the worktree, so two independent build paths at
+`8938c1260` emit the same bytes. Read it against the working tree of the
+benchmark repository rather than against its history — the `octane-hux` refresh
+to this base is not committed there, where the entry is still the `07115d67`
+build.
 
 Every arm relaxes the compact acknowledgement guard so a second segment can be
 applied over a live one. That knowingly loses the reachability of hosts nobody
