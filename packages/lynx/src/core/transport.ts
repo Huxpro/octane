@@ -31,6 +31,7 @@ import {
 	LYNX_BACKGROUND_TO_MAIN_EVENT,
 	LYNX_COMPACT_ACKNOWLEDGEMENT,
 	LYNX_DEFERRED_TEMPLATE_RUN_READY_REQUEST_BASE,
+	LYNX_FIRST_TREE_PRESENCE_READY_REQUEST_BASE,
 	LYNX_LAZY_PUBLIC_INSTANCES,
 	LYNX_MAIN_TO_BACKGROUND_EVENT,
 	LYNX_READY_ANNOUNCEMENT_REQUEST,
@@ -278,8 +279,10 @@ export function createLynxBackgroundTransport(
 	// request shape necessarily understands the older ones. Upstream announces at
 	// `LYNX_TEARDOWN_RUN_READY_REQUEST_BASE`; deferred template runs sit one rung
 	// above that (issue #227), so announcing here subsumes the teardown rung
-	// rather than skipping it.
-	const readyRequest = LYNX_DEFERRED_TEMPLATE_RUN_READY_REQUEST_BASE + NEXT_READY_REQUEST++;
+	// rather than skipping it. First-tree presence sits one rung above again
+	// (issue #231): this background reads the painted first screen as a fact, so
+	// it says so and is spared a description proportional to the painted page.
+	const readyRequest = LYNX_FIRST_TREE_PRESENCE_READY_REQUEST_BASE + NEXT_READY_REQUEST++;
 	if (!Number.isSafeInteger(readyRequest)) {
 		throw new Error('Octane Lynx capability-ready request identities are exhausted.');
 	}
@@ -786,7 +789,10 @@ export function createLynxBackgroundTransport(
 		if (readyReceived || readyDeferred.settled) {
 			return;
 		}
-		const adoptingFirstTree = message.firstTree !== undefined;
+		// Either encoding of the same fact (issue #231). A peer at the presence rung
+		// states it as `firstTreePainted`; one below it can only state it by
+		// attaching the whole description, which is what this used to require.
+		const adoptingFirstTree = message.firstTree !== undefined || message.firstTreePainted === 1;
 		const capabilities = adoptingFirstTree ? undefined : message.capabilities;
 		// The first background batch must preserve main's exact first-screen IDs.
 		// New peers can advertise future intrinsic programs on the same correlated

@@ -53,6 +53,7 @@ import {
 	LYNX_TEMPLATE_RUN_READY_REQUEST_BASE,
 	LYNX_TEARDOWN_RUN_READY_REQUEST_BASE,
 	LYNX_MAIN_TO_BACKGROUND_EVENT,
+	LYNX_FIRST_TREE_PRESENCE_READY_REQUEST_BASE,
 	LYNX_READY_ANNOUNCEMENT_REQUEST,
 	LYNX_TRANSPORT_PROTOCOL_VERSION,
 	LYNX_TRANSPORT_RENDERER,
@@ -626,7 +627,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	let correlatedReadySent = false;
 	let negotiatedCapabilities: LynxMainThreadCapabilities | undefined;
 	let deferredFirstTreeCapabilities: LynxMainThreadCapabilities | undefined;
-	let firstTreeSnapshotSent = false;
+	// One reply announces the painted first screen, whichever encoding it uses
+	// (issue #231), because the background adopts once.
+	let firstTreeAnnounced = false;
 	let uninstallFirstScreenHost: (() => void) | null = null;
 	// Reentrant PAPI work can enqueue a large burst; consumed slots are tombstoned
 	// so the drain stays linear without retaining every processed message.
@@ -1349,16 +1352,30 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		// Request 0 is an unsolicited availability hint and can be emitted before a
 		// background listener exists. Put the clone-safe tree on the first correlated
 		// reply so the O(tree) clone happens once and always has a receiver.
-		const snapshot =
-			request === LYNX_READY_ANNOUNCEMENT_REQUEST || firstTreeSnapshotSent || firstTree === null
-				? null
-				: firstTree.snapshot;
+		// Whether this reply carries the first-screen fact at all — that a page was
+		// painted here, so the first background batch must preserve its IDs.
+		// Everything downstream turns on the fact rather than on which encoding
+		// carried it.
+		const announcesFirstTree =
+			request !== LYNX_READY_ANNOUNCEMENT_REQUEST && !firstTreeAnnounced && firstTree !== null;
+		// Issue #231: the background reads that fact as a boolean and never looks
+		// inside the description — `transport.ts` computes `adoptingFirstTree` from
+		// the key's presence, and no other code in this package reads a node out of
+		// it. So a peer that has declared it reads presence gets the bit, and the
+		// O(tree) description is neither cloned onto the wire, validated on receipt,
+		// nor — because `firstTree.snapshot` builds on first read — allocated here.
+		// A peer below that rung is still owed the snapshot: presence *is* the key
+		// for it, so sending the bit alone would tell it no first screen happened.
+		const announcesByPresence =
+			announcesFirstTree && request >= LYNX_FIRST_TREE_PRESENCE_READY_REQUEST_BASE;
+		const snapshot = announcesFirstTree && !announcesByPresence ? firstTree!.snapshot : null;
 		const reply: LynxMainReadyReply = {
 			protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 			renderer: LYNX_TRANSPORT_RENDERER,
 			type: 'main-ready',
 			request,
 			...(snapshot == null ? null : { firstTree: snapshot }),
+			...(announcesByPresence ? { firstTreePainted: 1 as const } : null),
 			...(request < LYNX_CAPABILITY_READY_REQUEST_BASE
 				? null
 				: {
@@ -1404,7 +1421,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			// Delivery must succeed before an inbound commit can exercise any optional
 			// wire behavior. Keep first-tree capabilities dormant until its exact
 			// legacy adoption has completed and the main-thread journal is released.
-			if (snapshot === null) {
+			if (!announcesFirstTree) {
 				negotiatedCapabilities = reply.capabilities;
 			} else {
 				negotiatedCapabilities = undefined;
@@ -1412,7 +1429,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 					reply.capabilities?.templateProgram === 1 ? reply.capabilities : undefined;
 			}
 		}
-		if (snapshot !== null) firstTreeSnapshotSent = true;
+		if (announcesFirstTree) firstTreeAnnounced = true;
 		return true;
 	};
 
@@ -2390,9 +2407,18 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			!applyFailed &&
 			prepared.firstTreeAction === 'none' &&
 			prepared.listAncestryDelta.length === 0
-				? provisional
-					? (prepared.compactHostCount ?? countLynxCompactAcknowledgementHosts(message.batch))
-					: (prepared.compactHostCount ?? null)
+				? // Issue #230: preparation records a host count only while it is itself
+					// driving the compact path, and taking that path swaps the driver's
+					// record store to its dense form — which the incremental candidate
+					// test rejects, because it asks for a `Map`. So the second identical
+					// run on a root arrives with no prepared count, and reading that as
+					// "not compact" answered it with one handle per host: 70,000 of them,
+					// 17.4 MB, for the benchmark's second `Create 10,000 rows`. The count
+					// is a property of the batch, so recompute it rather than let the
+					// container the driver happens to be holding records in decide an
+					// encoding. The check below re-validates any count that disagrees
+					// with preparation against the prepared handle deltas.
+					(prepared.compactHostCount ?? countLynxCompactAcknowledgementHosts(message.batch))
 				: null;
 		if (compactCount !== null && compactCount < LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS) {
 			compactCount = null;

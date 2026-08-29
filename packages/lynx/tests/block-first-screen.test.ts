@@ -28,8 +28,13 @@ import { withLynxBlockProgram, type LynxBlockProgram } from '../src/block.js';
 import { createLynxBlockBackgroundCore } from '../src/core/block-background.js';
 import { createLynxClientContainer } from '../src/core/client-driver.js';
 import { createLynxBackgroundTransport } from '../src/core/transport.js';
+import {
+	LYNX_COMPACT_ACKNOWLEDGEMENT,
+	LYNX_MAIN_TO_BACKGROUND_EVENT,
+} from '../src/core/protocol.js';
 import type { LynxContextProxy } from '../src/core/protocol.js';
 import type { LynxComponent } from '../src/intrinsics.js';
+import { unwire } from './_fixtures/lynx-wire.js';
 
 // Well above LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS (16) once multiplied by the
 // row template's host count, so main does offer a compact acknowledgement for
@@ -174,4 +179,95 @@ it('paints through the Block core behind a first screen main already painted', a
 	await filling;
 
 	expect(rowLabels(dom)).toEqual(Array.from({ length: ROWS }, (_, index) => `row ${index + 1}`));
+});
+
+it('acknowledges the second compact-eligible run compactly too (issue #230)', async () => {
+	const { dom, main } = install();
+
+	firstScreenRoot.render(FirstScreenApp, {});
+	globalThis.lynxTestingEnv.switchToBackgroundThread();
+	const container = createLynxClientContainer();
+	const context = backgroundContext();
+	// Main's own replies, read off the wire, because the encoding is the claim.
+	const acknowledgements: { readonly encoding?: unknown; readonly handles?: unknown }[] = [];
+	context.addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
+		const message = unwire((event as { data?: unknown }).data) as
+			| { readonly type?: string; readonly encoding?: unknown; readonly handles?: unknown }
+			| undefined;
+		if (message?.type === 'ack') acknowledgements.push(message);
+	});
+	const transport = createLynxBackgroundTransport(context, container);
+	const background = createLynxBlockBackgroundCore({ container, transport });
+	transport.bindRoot(background);
+
+	// The benchmark's `Clear` and `Create` are separate clicks, so they are
+	// separate commits: a batch that carried both would hold `remove`/`destroy`
+	// beside the run and be ineligible for the compact form on its face.
+	let fill: ((labels: readonly string[]) => Promise<void>) | null = null;
+	let clear: (() => Promise<void>) | null = null;
+	const program: LynxBlockProgram<Record<string, never>> = {
+		mount(programContext) {
+			const page = programContext.core.mount(null, null, PAGE_TEMPLATE, []);
+			const slot = programContext.core.openForSlot(page, 1);
+			fill = async (labels) => {
+				programContext.core.fillForSlot(
+					slot,
+					ROW_TEMPLATE,
+					labels,
+					(row) => row,
+					(row) => [row],
+				);
+				await programContext.commit();
+			};
+			clear = async () => {
+				programContext.core.clearForSlot(slot);
+				await programContext.commit();
+			};
+		},
+	};
+	const component = withLynxBlockProgram(
+		(() => null) as unknown as LynxComponent<Record<string, never>>,
+		program,
+	);
+
+	const rendering = background.renderAsync(component as never, {});
+	await settle();
+	globalThis.lynxTestingEnv.switchToMainThread();
+	main.markFirstScreenSyncReady();
+	globalThis.lynxTestingEnv.switchToBackgroundThread();
+	await settle();
+	await rendering;
+
+	const labels = (count: number): string[] =>
+		Array.from({ length: count }, (_, index) => `row ${index + 1}`);
+
+	// Commit 2 is the first template run on this root. It is compact-eligible and
+	// main takes the compact form, which is the behaviour already covered above.
+	const first = fill!(labels(ROWS));
+	await settle();
+	await first;
+	const afterFirstRun = acknowledgements.length;
+	expect(acknowledgements[afterFirstRun - 1]!.encoding).toBe(LYNX_COMPACT_ACKNOWLEDGEMENT);
+
+	// Clearing the range and refilling it is the benchmark's `Clear` then
+	// `Create`, and it is where issue #230 lived: taking the compact path swaps
+	// the driver's record store to its dense representation, and the incremental
+	// candidate test asks for a `Map`, so preparation stops recording a host
+	// count. Main used to read that missing count as "not compact" and answer a
+	// second, identical run with one handle per host — 70,000 of them for the
+	// benchmark's 10,000 rows. The count is recomputable from the batch, and the
+	// gate below main's read already re-validates a recomputed count against the
+	// prepared handle deltas, so the encoding must not turn on which container
+	// the driver happens to be holding its records in.
+	const clearing = clear!();
+	await settle();
+	await clearing;
+	const refilling = fill!(labels(ROWS));
+	await settle();
+	await refilling;
+
+	expect(rowLabels(dom)).toEqual(labels(ROWS));
+	const last = acknowledgements[acknowledgements.length - 1]!;
+	expect(last.encoding).toBe(LYNX_COMPACT_ACKNOWLEDGEMENT);
+	expect(last.handles).toBeUndefined();
 });

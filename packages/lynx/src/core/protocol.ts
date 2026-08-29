@@ -97,6 +97,25 @@ export const LYNX_TEARDOWN_RUN_READY_REQUEST_BASE = 2 ** 43;
  * reads `2 ** 43` as teardown. This one moves.
  */
 export const LYNX_DEFERRED_TEMPLATE_RUN_READY_REQUEST_BASE = 2 ** 44;
+/**
+ * Ready requests at or above this base read the painted first screen as a fact
+ * rather than as a description (issue #231).
+ *
+ * The background has only ever needed one bit from `main-ready`: that a first
+ * screen was painted, so its IDs must survive into the first background batch.
+ * `transport.ts` computes exactly that — `message.firstTree !== undefined` —
+ * and nothing anywhere reads a node out of the snapshot it tested. Below this
+ * rung the only way to state the fact was to attach the whole description, so
+ * the reply was O(painted tree): 37 MB for a 30,000-row page, structured-cloned
+ * across the wire and then validated node by node on receipt, to carry a
+ * boolean.
+ *
+ * A peer at this rung is sent `firstTreePainted` instead. A peer below it is
+ * still sent the snapshot, because a background that predates this rung reads
+ * presence off the `firstTree` key itself and would see no first screen at all
+ * without it — the fact would be lost, not merely encoded differently.
+ */
+export const LYNX_FIRST_TREE_PRESENCE_READY_REQUEST_BASE = 2 ** 45;
 export const LYNX_COMPACT_ACKNOWLEDGEMENT = 'compact-v1';
 export const LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS = 16;
 export const LYNX_LAZY_PUBLIC_INSTANCES = 'lazy-v1';
@@ -126,6 +145,14 @@ export interface LynxMainReadyReply {
 	readonly type: 'main-ready';
 	readonly request: number;
 	readonly firstTree?: LynxFirstTreeSnapshot;
+	/**
+	 * The same fact `firstTree` carries — a first screen was painted, so preserve
+	 * its IDs — for a peer at `LYNX_FIRST_TREE_PRESENCE_READY_REQUEST_BASE`.
+	 *
+	 * Mutually exclusive with `firstTree`: a reply states the fact once, in one
+	 * encoding, so a receiver never has to decide which of two spellings wins.
+	 */
+	readonly firstTreePainted?: 1;
 	/** Published only in response to a capability-tagged readiness request. */
 	readonly capabilities?: LynxMainThreadCapabilities;
 }
@@ -1706,6 +1733,8 @@ function assertReady(value: unknown, reply: boolean): LynxMainReadyRequest | Lyn
 	const label = reply ? 'main-ready reply' : 'main-ready request';
 	const message = record(value, label);
 	const hasFirstTree = reply && Object.prototype.hasOwnProperty.call(message, 'firstTree');
+	const hasFirstTreePainted =
+		reply && Object.prototype.hasOwnProperty.call(message, 'firstTreePainted');
 	const hasCapabilities = reply && Object.prototype.hasOwnProperty.call(message, 'capabilities');
 	exactKeys(
 		message,
@@ -1715,6 +1744,7 @@ function assertReady(value: unknown, reply: boolean): LynxMainReadyRequest | Lyn
 			'type',
 			'request',
 			...(hasFirstTree ? ['firstTree'] : []),
+			...(hasFirstTreePainted ? ['firstTreePainted'] : []),
 			...(hasCapabilities ? ['capabilities'] : []),
 		],
 		label,
@@ -1734,6 +1764,22 @@ function assertReady(value: unknown, reply: boolean): LynxMainReadyRequest | Lyn
 	if (reply) nonNegativeInteger(message.request, `${label}.request`);
 	else positiveInteger(message.request, `${label}.request`);
 	if (hasFirstTree) assertFirstTreeSnapshot(message.firstTree, `${label}.firstTree`);
+	if (hasFirstTreePainted) {
+		// Rung-gated for the same reason every other optional key is: a background
+		// below this rung validates the reply with an exact key set and would
+		// reject a key it has never heard of, so the probe is how a peer says it
+		// can read this one (issue #231).
+		if ((message.request as number) < LYNX_FIRST_TREE_PRESENCE_READY_REQUEST_BASE) {
+			fail(`${label}.firstTreePainted`, 'requires a first-tree-presence readiness request.');
+		}
+		if (message.firstTreePainted !== 1) fail(`${label}.firstTreePainted`, 'must be 1.');
+		// Both spellings at once would leave the receiver to decide which is
+		// authoritative about the same page. There is no answer to that question
+		// worth having, so the reply is rejected rather than reconciled.
+		if (hasFirstTree) {
+			fail(`${label}.firstTreePainted`, 'cannot accompany firstTree.');
+		}
+	}
 	if (hasCapabilities) {
 		if ((message.request as number) < LYNX_CAPABILITY_READY_REQUEST_BASE) {
 			fail(`${label}.capabilities`, 'requires a capability-tagged readiness request.');
