@@ -1040,7 +1040,9 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 			id >= command.firstId && id < command.firstId + hostCount && this.isRunRoot(id);
 		for (let row = 0; row < command.count; row++) {
 			if (this.nodes[offset + row * width] === undefined) return null;
-			if (this.removed?.has(command.firstId + row * width)) return null;
+			// `removed` stores store-relative offsets, the same unit every other
+			// reader of it uses; an absolute id here would test an unrelated row.
+			if (this.removed?.has(offset + row * width)) return null;
 		}
 		const parentRecord = typeof this.parent === 'number' ? this.prefix.get(this.parent) : undefined;
 		const acceptedChildren =
@@ -4424,6 +4426,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		}
 		const runEnd = run === undefined || count === undefined ? -1 : run + count;
 		let cursor = run ?? 0;
+		let claimed = 0;
 		for (const site of plan.events) {
 			const hostId = ids[site.node];
 			if (hostId === undefined) {
@@ -4434,11 +4437,25 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			let announced: UniversalEventListenerDescriptor | undefined;
 			if (run === undefined) {
 				announced = eventsByHost.get(hostId)?.find(([type]) => type === site.type)?.[1];
-			} else if (cursor < runEnd) {
-				const binding = envelope.events[cursor];
-				if (binding !== undefined && binding.id === hostId && binding.type === site.type) {
-					announced = binding.listener;
-					cursor++;
+			} else {
+				// The run covers the program's whole merged block, a keyed range's
+				// members spliced at their hole's position between the program's
+				// own sites — because the renderer announces in the same merged
+				// order `assignProgramIds` numbers hosts, every binding in the
+				// block carries an id minted in one ascending walk. A member's
+				// binding therefore sits below the next own site's host id and is
+				// skipped by comparison rather than searched past; a site whose
+				// handler came through undefined announces nothing, so the cursor
+				// stops at an id beyond it and the site stays open without
+				// shifting the sites after it onto the wrong listeners.
+				while (cursor < runEnd && envelope.events[cursor]!.id < hostId) cursor++;
+				if (cursor < runEnd) {
+					const binding = envelope.events[cursor];
+					if (binding !== undefined && binding.id === hostId && binding.type === site.type) {
+						announced = binding.listener;
+						cursor++;
+						claimed++;
+					}
 				}
 			}
 			// Four of this token's five primitives are proven before the mount
@@ -4478,16 +4495,31 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			tokens.push(token);
 			args.push(token);
 		}
-		// An announcement left in the run is the one disagreement a position can
-		// have with the thing it addresses, and the one the search could never
-		// report: a listener the background installed for this program that no site
-		// of this program answers to. Every other shape of mismatch shows up as a
-		// site left open above, which is the answer a missing handler gets too —
-		// this is the shape that is never a missing handler.
-		if (run !== undefined && cursor !== runEnd) {
-			throw hostError(
-				`first-screen program was handed ${runEnd - run} announcements for its ${plan.events.length} event site${plan.events.length === 1 ? '' : 's'}, and claimed ${cursor - run} of them.`,
-			);
+		// An announcement of this program's that no site claimed is the one
+		// disagreement a position can have with the thing it addresses, and the
+		// one the search could never report: a listener announced for one of this
+		// program's own hosts that no site of this program answers to. The block
+		// also carries the members' announcements — spliced at their hole's
+		// position by the same merged walk that numbered them — so the check is
+		// membership, not exhaustion: every binding in the block whose id is one
+		// of this program's own is counted in one ascending pass against the
+		// sorted ids, and that count must equal what the sites claimed. Every
+		// other shape of mismatch shows up as a site left open above, which is
+		// the answer a missing handler gets too — this is the shape that is
+		// never a missing handler.
+		if (run !== undefined) {
+			let own = 0;
+			let at = 0;
+			for (let index = run; index < runEnd; index++) {
+				const id = envelope.events[index]!.id;
+				while (at < ids.length && (ids[at] as number) < id) at++;
+				if (at < ids.length && ids[at] === id) own++;
+			}
+			if (own !== claimed) {
+				throw hostError(
+					`first-screen program was handed ${own} announcement${own === 1 ? '' : 's'} for its ${plan.events.length} event site${plan.events.length === 1 ? '' : 's'}, and claimed ${claimed} of them.`,
+				);
+			}
 		}
 		// Last, after the listeners, exactly as the emission orders its
 		// parameters. A hole this renderer filled itself sends `undefined`, which
@@ -5341,6 +5373,12 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 	if (state.ownedPageRoots.size !== state.rootChildren.length) {
 		throw hostError('first-tree page-root ownership does not match logical roots.');
 	}
+	// Both sequences ascend — roots are pushed by the walk in numbering order,
+	// and runs are pushed by mounts in the same pre-order — so a single cursor
+	// into the runs resolves every root in one combined pass instead of one
+	// scan per root, which on a page of thirty thousand top-level program rows
+	// is the difference between a capture and a hang.
+	let runAt = 0;
 	for (const id of state.rootChildren) {
 		// A program's root has no record, so its node comes from the run the mount
 		// kept — the same substitution adoption makes, for the same reason. Only a
@@ -5348,17 +5386,16 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 		// and nothing else, and a keyed range's members sit inside a node the
 		// program made rather than beside it. So this looks at first ids only, and
 		// needs no per-ID view of a journal nothing else here reads by ID.
-		let programRoot: Node | undefined;
-		for (const run of state.programRuns) {
-			// `firstId` rather than `ids[0]`: the same number for a run holding one
-			// instance, and the only one a dense run has. A dense run never holds a
-			// page root — its instances are keyed range members, and a member has a
-			// parent by construction — so this is a shape the loop declines rather
-			// than one it has to resolve.
-			if (run.firstId !== id) continue;
-			programRoot = run.nodes[0] as Node;
-			break;
-		}
+		//
+		// `firstId` rather than `ids[0]`: the same number for a run holding one
+		// instance, and the only one a dense run has. A dense run never holds a
+		// page root — its instances are keyed range members, and a member has a
+		// parent by construction — so this is a shape the cursor walks past
+		// rather than one it has to resolve.
+		while (runAt < state.programRuns.length && state.programRuns[runAt]!.firstId < id) runAt++;
+		const run = runAt < state.programRuns.length ? state.programRuns[runAt] : undefined;
+		const programRoot =
+			run !== undefined && run.firstId === id ? (run.nodes[0] as Node) : undefined;
 		const node = programRoot ?? state.records.get(id)?.node;
 		if (node === null || node === undefined || !state.ownedPageRoots.has(node)) {
 			throw hostError(`first-tree root ${id} is missing from page-root ownership.`);
@@ -5645,6 +5682,22 @@ function compareFirstTree<Node extends LynxElementRef>(
 			// *is* the ownership journal's answer and the comparison has nothing
 			// left to disagree with. The check is gone because its failure mode is,
 			// not because it stopped mattering.
+			//
+			// Visibility is the other half main does know, by construction rather
+			// than by record: the direct applier refuses a hidden program before
+			// painting anything, so every node a program painted is visible and
+			// carries no `hidden` attribute. A description that calls one of them
+			// hidden therefore disagrees with the painted page — adopting it would
+			// keep content on screen that the accepted tree says is hidden, while
+			// event routing drops its taps as hidden. Nothing red, which is
+			// exactly the class of near-miss this comparator refuses.
+			if (!next.visible) {
+				return mismatch(
+					firstTree,
+					`snapshot.nodes[${id}].visible`,
+					'the visibility state differs.',
+				);
+			}
 			// Events are the exception to all of that, and worth taking. Main does
 			// know what it bound here: the mount installed a token per site the
 			// renderer announced, and journalled it. So the background's record
@@ -6217,7 +6270,12 @@ function expandRecordsRunTeardown<Node extends LynxElementRef>(
 		if (!visit(rootId) || visited !== command.width) return null;
 		removes.push({ op: 'remove', parent: command.parent, id: rootId });
 	}
-	events.push(...removes, ...destroys);
+	// Appended one by one: this fallback exists for exactly the runs too large
+	// or too reordered for the certified path, and spreading count × width
+	// commands into one call blows the engine argument limit near 130k — a
+	// 30k-row teardown is over it.
+	for (const command of removes) events.push(command);
+	for (const command of destroys) events.push(command);
 	return events;
 }
 

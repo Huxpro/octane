@@ -1,0 +1,5498 @@
+{
+  "schema": "octane.lepus-cost.window.v1",
+  "issue": "https://github.com/Huxpro/octane/issues/196",
+  "protocol": "https://github.com/Huxpro/octane/issues/194",
+  "phase": "M1-allocation-string-branch",
+  "window": {
+    "startedAt": "2026-08-26T11:03:05.766Z",
+    "endedAt": "2026-08-26T11:03:45.497Z"
+  },
+  "device": {
+    "serial": "aic-i18n-bd-fullport.byteintl.net:36527",
+    "model": "aries_10",
+    "android": "10",
+    "fingerprint": "aries_10/aries/aries:10/QQ3A.200805.001/1.5.2:userdebug/test-keys",
+    "abi": "arm64-v8a"
+  },
+  "host": {
+    "package": "com.lynx.explorer",
+    "versionName": "1.0",
+    "versionCode": 1,
+    "lastUpdateTime": "2026-08-14 01:06:29"
+  },
+  "engine": {
+    "name": "LepusNG",
+    "lepusVersion": "2.3.0",
+    "appBundleEngineVersion": "3.9",
+    "lynxSdkVersion": "4.0"
+  },
+  "bundles": {
+    "disableDevToolSha256": "033ab31de5a4219cbe38c9ba269c19e16ded3dfb0c8ad76338007ce5c6876cd1",
+    "benchmarkSha256": "a62080097146c6859fcb64440c1625c6c769d7eb20002759e6cf21cd1dab5b9b"
+  },
+  "protocolChecks": {
+    "devToolDisabledBeforeSamples": true,
+    "devToolStayedDisabled": true,
+    "repetitions": 5,
+    "abBa": true,
+    "callsBeforeIdentity": true,
+    "preWindow": {
+      "capturedAt": "2026-08-26T11:03:05.826Z",
+      "loadavg": "0.25 0.24 0.13 1/1123 15900",
+      "thermalStatus": 0,
+      "temperatures": [
+        {
+          "valueC": 30.8,
+          "type": 3,
+          "name": "test temperature sensor",
+          "status": 0
+        },
+        {
+          "valueC": 30.8,
+          "type": 3,
+          "name": "test temperature sensor",
+          "status": 0
+        }
+      ],
+      "battery": {
+        "AC powered": "true",
+        "USB powered": "true",
+        "status": "2",
+        "level": "85",
+        "scale": "100",
+        "temperature": "350"
+      }
+    },
+    "postWindow": {
+      "capturedAt": "2026-08-26T11:03:45.223Z",
+      "loadavg": "0.62 0.34 0.17 1/1132 16343",
+      "thermalStatus": 0,
+      "temperatures": [
+        {
+          "valueC": 30.8,
+          "type": 3,
+          "name": "test temperature sensor",
+          "status": 0
+        },
+        {
+          "valueC": 30.8,
+          "type": 3,
+          "name": "test temperature sensor",
+          "status": 0
+        }
+      ],
+      "battery": {
+        "AC powered": "true",
+        "USB powered": "true",
+        "status": "2",
+        "level": "85",
+        "scale": "100",
+        "temperature": "350"
+      }
+    }
+  },
+  "launch": {
+    "disable": "Starting: Intent { act=android.intent.action.VIEW dat=lynx://open?url=http://127.0.0.1:18765/disable-devtool.lynx.bundle pkg=com.lynx.explorer }\nStatus: ok\nLaunchState: COLD\nActivity: com.lynx.explorer/.LynxViewShellActivity\nTotalTime: 198\nWaitTime: 201\nComplete",
+    "benchmark": "Starting: Intent { act=android.intent.action.VIEW dat=lynx://open?url=http://127.0.0.1:18765/m1-allocation-string-branch.lynx.bundle pkg=com.lynx.explorer }\nStatus: ok\nLaunchState: UNKNOWN (-1)\nActivity: com.lynx.explorer/.LynxViewShellActivity\nWaitTime: 58\nComplete"
+  },
+  "runtime": {
+    "type": "meta",
+    "phase": "M1-allocation-string-branch",
+    "engine": "LepusNG",
+    "lepusVersion": "2.3.0",
+    "clock": "Date.now",
+    "clockResolutionMs": 1,
+    "iterations": [50000, 100000, 200000, 400000],
+    "repetitions": 5
+  },
+  "fullSamples": [
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 2,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 19,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 19,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 2,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 2,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 19,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 19,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 2,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 2,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 19,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 6,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 39,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 39,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 6,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 6,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 39,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 38,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 6,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 6,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 39,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 15,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 80,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 81,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 14,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 15,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 81,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 80,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 14,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 15,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 81,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 32,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 166,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 165,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 32,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 32,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 164,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 164,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 31,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 32,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "object_literal_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 165,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 2,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 18,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 17,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 2,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 3,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 17,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 17,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 3,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 2,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 17,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 6,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 36,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 37,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 6,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 6,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 36,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 36,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 5,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 6,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 37,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 14,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 76,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 76,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 14,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 15,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 75,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 76,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 14,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 15,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 75,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 32,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 154,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 153,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 31,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 32,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 154,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 154,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 32,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 32,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "array_literal_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 153,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 2,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 55,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 55,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 2,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 3,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 54,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 55,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 2,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 2,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 50000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 55,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 4,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 110,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 111,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 4,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 5,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 110,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 110,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 4,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 5,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 100000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 110,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 9,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 220,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 222,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 9,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 9,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 221,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 222,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 9,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 9,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 200000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 223,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 18,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 441,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 441,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 18,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 18,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 441,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 441,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 18,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 18,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "closure_allocation_vs_scalar",
+      "group": "allocation",
+      "n": 400000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 441,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 50000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 23,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 50000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 28,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 50000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 28,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 50000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 23,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 50000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 23,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 50000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 29,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 50000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 28,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 50000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 23,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 50000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 24,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 50000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 28,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 100000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 47,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 100000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 56,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 100000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 57,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 100000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 47,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 100000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 47,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 100000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 55,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 100000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 56,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 100000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 47,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 100000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 47,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 100000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 57,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 200000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 94,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 200000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 114,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 200000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 112,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 200000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 95,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 200000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 93,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 200000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 113,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 200000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 114,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 200000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 94,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 200000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 94,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 200000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 113,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 400000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 188,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 400000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 226,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 400000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 227,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 400000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 189,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 400000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 188,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 400000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 225,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 400000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 227,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 400000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 188,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 400000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 188,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "template_literal_vs_concat",
+      "group": "string",
+      "n": 400000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 225,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 50000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 21,
+      "hostCallsWholeArm": 50000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 50000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 70,
+      "hostCallsWholeArm": 50000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 50000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 71,
+      "hostCallsWholeArm": 50000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 50000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 21,
+      "hostCallsWholeArm": 50000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 50000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 21,
+      "hostCallsWholeArm": 50000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 50000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 70,
+      "hostCallsWholeArm": 50000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 50000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 71,
+      "hostCallsWholeArm": 50000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 50000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 21,
+      "hostCallsWholeArm": 50000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 50000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 21,
+      "hostCallsWholeArm": 50000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 50000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 70,
+      "hostCallsWholeArm": 50000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 100000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 43,
+      "hostCallsWholeArm": 100000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 100000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 142,
+      "hostCallsWholeArm": 100000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 100000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 141,
+      "hostCallsWholeArm": 100000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 100000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 42,
+      "hostCallsWholeArm": 100000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 100000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 43,
+      "hostCallsWholeArm": 100000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 100000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 141,
+      "hostCallsWholeArm": 100000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 100000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 140,
+      "hostCallsWholeArm": 100000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 100000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 43,
+      "hostCallsWholeArm": 100000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 100000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 42,
+      "hostCallsWholeArm": 100000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 100000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 142,
+      "hostCallsWholeArm": 100000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 200000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 84,
+      "hostCallsWholeArm": 200000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 200000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 282,
+      "hostCallsWholeArm": 200000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 200000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 282,
+      "hostCallsWholeArm": 200000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 200000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 85,
+      "hostCallsWholeArm": 200000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 200000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 85,
+      "hostCallsWholeArm": 200000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 200000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 283,
+      "hostCallsWholeArm": 200000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 200000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 282,
+      "hostCallsWholeArm": 200000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 200000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 85,
+      "hostCallsWholeArm": 200000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 200000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 85,
+      "hostCallsWholeArm": 200000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 200000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 284,
+      "hostCallsWholeArm": 200000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 400000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 171,
+      "hostCallsWholeArm": 400000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 400000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 565,
+      "hostCallsWholeArm": 400000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 400000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 564,
+      "hostCallsWholeArm": 400000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 400000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 170,
+      "hostCallsWholeArm": 400000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 400000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 170,
+      "hostCallsWholeArm": 400000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 400000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 565,
+      "hostCallsWholeArm": 400000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 400000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 567,
+      "hostCallsWholeArm": 400000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 400000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 170,
+      "hostCallsWholeArm": 400000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 400000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 170,
+      "hostCallsWholeArm": 400000
+    },
+    {
+      "type": "sample",
+      "case": "string_host_crossing_vs_stays",
+      "group": "string",
+      "n": 400000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 568,
+      "hostCallsWholeArm": 400000
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 5,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 7,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 6,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 5,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 6,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 6,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 6,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 6,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 5,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 6,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 11,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 13,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 12,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 11,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 11,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 12,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 13,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 10,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 11,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 13,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 21,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 25,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 25,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 22,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 21,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 25,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 25,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 22,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 21,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 25,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 43,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 50,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 50,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 43,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 44,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 49,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 50,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 43,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 43,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_4",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 49,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 6,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 5,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 5,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 5,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 6,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 5,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 5,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 5,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 5,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 5,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 11,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 10,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 10,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 11,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 11,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 10,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 10,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 11,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 11,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 10,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 21,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 20,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 20,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 21,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 22,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 20,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 20,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 21,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 22,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 20,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 43,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 40,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 40,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 43,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 44,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 39,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 40,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 44,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 43,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_4",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 40,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 11,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 12,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 12,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 11,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 12,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 12,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 12,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 12,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 11,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 12,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 24,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 24,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 24,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 23,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 24,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 24,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 24,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 24,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 23,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 24,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 47,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 48,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 48,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 47,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 47,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 48,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 48,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 47,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 47,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 48,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 94,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 96,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 96,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 94,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 93,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 96,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 96,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 93,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 94,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_16",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 96,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 12,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 5,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 5,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 12,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 11,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 5,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 5,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 12,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 12,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 5,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 23,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 10,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 10,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 23,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 23,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 10,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 10,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 24,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 23,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 10,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 47,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 20,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 20,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 46,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 47,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 20,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 20,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 47,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 46,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 20,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 94,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 40,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 39,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 94,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 93,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 40,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 41,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 93,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 93,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_16",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 40,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 35,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 34,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 34,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 35,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 35,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 35,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 34,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 35,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 35,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 34,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 70,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 69,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 68,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 70,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 70,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 70,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 68,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 70,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 70,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 68,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 140,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 137,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 137,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 139,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 140,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 137,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 137,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 140,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 140,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 137,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 279,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 274,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 275,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 279,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 280,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 274,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 274,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 280,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 279,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "switch_vs_if_64",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 274,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 34,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 5,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 5,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 35,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 35,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 5,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 5,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 34,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 35,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 50000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 6,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 70,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 10,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 10,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 70,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 70,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 10,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 10,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 70,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 70,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 100000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 10,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 139,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 20,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 20,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 140,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 140,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 20,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 20,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 140,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 140,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 200000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 20,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 280,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 0,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 40,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 40,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 1,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 279,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 280,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 2,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 40,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "candidate",
+      "durationMs": 40,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 3,
+      "order": "candidatecontrol",
+      "arm": "control",
+      "durationMs": 279,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "control",
+      "durationMs": 279,
+      "hostCallsWholeArm": 0
+    },
+    {
+      "type": "sample",
+      "case": "table_vs_if_64",
+      "group": "branch",
+      "n": 400000,
+      "repetition": 4,
+      "order": "controlcandidate",
+      "arm": "candidate",
+      "durationMs": 40,
+      "hostCallsWholeArm": 0
+    }
+  ],
+  "analysis": {
+    "sampleCount": 440,
+    "checksum": 2125796779616,
+    "rows": [
+      {
+        "case": "object_literal_vs_scalar",
+        "group": "allocation",
+        "fit": {
+          "slopeMsPerOp": 0.00033224347826086957,
+          "nsPerOp": 332.24347826086955,
+          "interceptMs": -0.09565217391304515,
+          "rmseMs": 0.6053385685785239,
+          "maxAbsResidualMs": 1.3530434782608722,
+          "residualsMs": [
+            0.4834782608695676, 0.4834782608695676, 0.4834782608695676, 0.4834782608695676,
+            0.4834782608695676, -0.12869565217391, -0.12869565217391, -0.12869565217391,
+            -1.12869565217391, -0.12869565217391, -1.3530434782608722, 0.6469565217391278,
+            -0.35304347826087223, -0.35304347826087223, -0.35304347826087223, 1.1982608695652175,
+            0.1982608695652175, -0.8017391304347825, 0.1982608695652175, 0.1982608695652175
+          ]
+        },
+        "byN": [
+          {
+            "n": 50000,
+            "medianDeltaMs": 17,
+            "minDeltaMs": 17,
+            "maxDeltaMs": 17,
+            "deltasMs": [17, 17, 17, 17, 17]
+          },
+          {
+            "n": 100000,
+            "medianDeltaMs": 33,
+            "minDeltaMs": 32,
+            "maxDeltaMs": 33,
+            "deltasMs": [33, 33, 33, 32, 33]
+          },
+          {
+            "n": 200000,
+            "medianDeltaMs": 66,
+            "minDeltaMs": 65,
+            "maxDeltaMs": 67,
+            "deltasMs": [65, 67, 66, 66, 66]
+          },
+          {
+            "n": 400000,
+            "medianDeltaMs": 133,
+            "minDeltaMs": 132,
+            "maxDeltaMs": 134,
+            "deltasMs": [134, 133, 132, 133, 133]
+          }
+        ]
+      },
+      {
+        "case": "array_literal_vs_scalar",
+        "group": "allocation",
+        "fit": {
+          "slopeMsPerOp": 0.0003051826086956522,
+          "nsPerOp": 305.18260869565216,
+          "interceptMs": -0.1217391304347828,
+          "rmseMs": 0.7381528061434109,
+          "maxAbsResidualMs": 1.137391304347826,
+          "residualsMs": [
+            0.8626086956521739, -0.1373913043478261, -1.137391304347826, -1.137391304347826,
+            -0.1373913043478261, -0.396521739130435, 0.603478260869565, -0.396521739130435,
+            0.603478260869565, 0.603478260869565, 1.0852173913043472, 1.0852173913043472,
+            -0.9147826086956528, 1.0852173913043472, -0.9147826086956528, 0.04869565217390459,
+            0.04869565217390459, 0.04869565217390459, 0.04869565217390459, -0.9513043478260954
+          ]
+        },
+        "byN": [
+          {
+            "n": 50000,
+            "medianDeltaMs": 15,
+            "minDeltaMs": 14,
+            "maxDeltaMs": 16,
+            "deltasMs": [16, 15, 14, 14, 15]
+          },
+          {
+            "n": 100000,
+            "medianDeltaMs": 31,
+            "minDeltaMs": 30,
+            "maxDeltaMs": 31,
+            "deltasMs": [30, 31, 30, 31, 31]
+          },
+          {
+            "n": 200000,
+            "medianDeltaMs": 62,
+            "minDeltaMs": 60,
+            "maxDeltaMs": 62,
+            "deltasMs": [62, 62, 60, 62, 60]
+          },
+          {
+            "n": 400000,
+            "medianDeltaMs": 122,
+            "minDeltaMs": 121,
+            "maxDeltaMs": 122,
+            "deltasMs": [122, 122, 122, 122, 121]
+          }
+        ]
+      },
+      {
+        "case": "closure_allocation_vs_scalar",
+        "group": "allocation",
+        "fit": {
+          "slopeMsPerOp": 0.0010581565217391304,
+          "nsPerOp": 1058.1565217391303,
+          "interceptMs": 0.09565217391303804,
+          "rmseMs": 0.9090845849582403,
+          "maxAbsResidualMs": 2.273043478260888,
+          "residualsMs": [
+            -0.003478260869556493, -0.003478260869556493, -2.0034782608695565,
+            -0.003478260869556493, -0.003478260869556493, 0.08869565217392505, 1.088695652173925,
+            -0.911304347826075, 0.08869565217392505, -0.911304347826075, -0.7269565217391118,
+            1.2730434782608882, 0.27304347826088815, 1.2730434782608882, 2.273043478260888,
+            -0.35826086956518566, -0.35826086956518566, -0.35826086956518566, -0.35826086956518566,
+            -0.35826086956518566
+          ]
+        },
+        "byN": [
+          {
+            "n": 50000,
+            "medianDeltaMs": 53,
+            "minDeltaMs": 51,
+            "maxDeltaMs": 53,
+            "deltasMs": [53, 53, 51, 53, 53]
+          },
+          {
+            "n": 100000,
+            "medianDeltaMs": 106,
+            "minDeltaMs": 105,
+            "maxDeltaMs": 107,
+            "deltasMs": [106, 107, 105, 106, 105]
+          },
+          {
+            "n": 200000,
+            "medianDeltaMs": 213,
+            "minDeltaMs": 211,
+            "maxDeltaMs": 214,
+            "deltasMs": [211, 213, 212, 213, 214]
+          },
+          {
+            "n": 400000,
+            "medianDeltaMs": 423,
+            "minDeltaMs": 423,
+            "maxDeltaMs": 423,
+            "deltasMs": [423, 423, 423, 423, 423]
+          }
+        ]
+      },
+      {
+        "case": "template_literal_vs_concat",
+        "group": "string",
+        "fit": {
+          "slopeMsPerOp": 0.00009433043478260869,
+          "nsPerOp": 94.33043478260869,
+          "interceptMs": 0.11304347826087024,
+          "rmseMs": 0.8774468892635389,
+          "maxAbsResidualMs": 1.9791304347826078,
+          "residualsMs": [
+            0.17043478260869538, 0.17043478260869538, 1.1704347826086954, 0.17043478260869538,
+            -0.8295652173913046, -0.546086956521739, 0.453913043478261, -1.546086956521739,
+            -0.546086956521739, 0.453913043478261, 1.0208695652173922, -1.9791304347826078,
+            1.0208695652173922, 1.0208695652173922, 0.02086956521739225, 0.15478260869565474,
+            0.15478260869565474, -0.8452173913043453, 1.1547826086956547, -0.8452173913043453
+          ]
+        },
+        "byN": [
+          {
+            "n": 50000,
+            "medianDeltaMs": 5,
+            "minDeltaMs": 4,
+            "maxDeltaMs": 6,
+            "deltasMs": [5, 5, 6, 5, 4]
+          },
+          {
+            "n": 100000,
+            "medianDeltaMs": 9,
+            "minDeltaMs": 8,
+            "maxDeltaMs": 10,
+            "deltasMs": [9, 10, 8, 9, 10]
+          },
+          {
+            "n": 200000,
+            "medianDeltaMs": 20,
+            "minDeltaMs": 17,
+            "maxDeltaMs": 20,
+            "deltasMs": [20, 17, 20, 20, 19]
+          },
+          {
+            "n": 400000,
+            "medianDeltaMs": 38,
+            "minDeltaMs": 37,
+            "maxDeltaMs": 39,
+            "deltasMs": [38, 38, 37, 39, 37]
+          }
+        ]
+      },
+      {
+        "case": "string_host_crossing_vs_stays",
+        "group": "string",
+        "fit": {
+          "slopeMsPerOp": 0.0009894608695652173,
+          "nsPerOp": 989.4608695652173,
+          "interceptMs": -0.17391304347825098,
+          "rmseMs": 1.0637914146640983,
+          "maxAbsResidualMs": 2.3895652173913504,
+          "residualsMs": [
+            -0.2991304347826116, 0.7008695652173884, -0.2991304347826116, 0.7008695652173884,
+            -0.2991304347826116, 0.22782608695652584, 0.22782608695652584, -0.7721739130434742,
+            -1.7721739130434742, 1.2278260869565258, 0.2817391304348007, -0.7182608695651993,
+            0.2817391304348007, -0.7182608695651993, 1.2817391304348007, -1.6104347826086496,
+            -1.6104347826086496, -0.6104347826086496, 1.3895652173913504, 2.3895652173913504
+          ]
+        },
+        "byN": [
+          {
+            "n": 50000,
+            "medianDeltaMs": 49,
+            "minDeltaMs": 49,
+            "maxDeltaMs": 50,
+            "deltasMs": [49, 50, 49, 50, 49]
+          },
+          {
+            "n": 100000,
+            "medianDeltaMs": 99,
+            "minDeltaMs": 97,
+            "maxDeltaMs": 100,
+            "deltasMs": [99, 99, 98, 97, 100]
+          },
+          {
+            "n": 200000,
+            "medianDeltaMs": 198,
+            "minDeltaMs": 197,
+            "maxDeltaMs": 199,
+            "deltasMs": [198, 197, 198, 197, 199]
+          },
+          {
+            "n": 400000,
+            "medianDeltaMs": 395,
+            "minDeltaMs": 394,
+            "maxDeltaMs": 398,
+            "deltasMs": [394, 394, 395, 397, 398]
+          }
+        ]
+      },
+      {
+        "case": "switch_vs_if_4",
+        "group": "branch",
+        "fit": {
+          "slopeMsPerOp": 0.00001582608695652174,
+          "nsPerOp": 15.82608695652174,
+          "interceptMs": 0.18260869565217375,
+          "rmseMs": 0.7259177100327079,
+          "maxAbsResidualMs": 1.5130434782608688,
+          "residualsMs": [
+            1.0260869565217394, 0.026086956521739313, -0.9739130434782607, -0.9739130434782607,
+            0.026086956521739313, 0.23478260869565237, -0.7652173913043476, -0.7652173913043476,
+            1.2347826086956524, 0.23478260869565237, 0.6521739130434785, -0.3478260869565215,
+            0.6521739130434785, -0.3478260869565215, 0.6521739130434785, 0.4869565217391312,
+            0.4869565217391312, -1.5130434782608688, 0.4869565217391312, -0.5130434782608688
+          ]
+        },
+        "byN": [
+          {
+            "n": 50000,
+            "medianDeltaMs": 1,
+            "minDeltaMs": 0,
+            "maxDeltaMs": 2,
+            "deltasMs": [2, 1, 0, 0, 1]
+          },
+          {
+            "n": 100000,
+            "medianDeltaMs": 2,
+            "minDeltaMs": 1,
+            "maxDeltaMs": 3,
+            "deltasMs": [2, 1, 1, 3, 2]
+          },
+          {
+            "n": 200000,
+            "medianDeltaMs": 4,
+            "minDeltaMs": 3,
+            "maxDeltaMs": 4,
+            "deltasMs": [4, 3, 4, 3, 4]
+          },
+          {
+            "n": 400000,
+            "medianDeltaMs": 7,
+            "minDeltaMs": 5,
+            "maxDeltaMs": 7,
+            "deltasMs": [7, 7, 5, 7, 6]
+          }
+        ]
+      },
+      {
+        "case": "table_vs_if_4",
+        "group": "branch",
+        "fit": {
+          "slopeMsPerOp": -0.000008904347826086956,
+          "nsPerOp": -8.904347826086957,
+          "interceptMs": 0.06956521739130417,
+          "rmseMs": 0.5615196771495073,
+          "maxAbsResidualMs": 1.5078260869565216,
+          "residualsMs": [
+            -0.6243478260869564, 0.3756521739130437, -0.6243478260869564, 0.3756521739130437,
+            0.3756521739130437, -0.17913043478260848, -0.17913043478260848, -0.17913043478260848,
+            -0.17913043478260848, -0.17913043478260848, 0.7113043478260872, 0.7113043478260872,
+            -0.2886956521739128, 0.7113043478260872, -0.2886956521739128, 0.49217391304347835,
+            0.49217391304347835, -1.5078260869565216, -0.5078260869565216, 0.49217391304347835
+          ]
+        },
+        "byN": [
+          {
+            "n": 50000,
+            "medianDeltaMs": 0,
+            "minDeltaMs": -1,
+            "maxDeltaMs": 0,
+            "deltasMs": [-1, 0, -1, 0, 0]
+          },
+          {
+            "n": 100000,
+            "medianDeltaMs": -1,
+            "minDeltaMs": -1,
+            "maxDeltaMs": -1,
+            "deltasMs": [-1, -1, -1, -1, -1]
+          },
+          {
+            "n": 200000,
+            "medianDeltaMs": -1,
+            "minDeltaMs": -2,
+            "maxDeltaMs": -1,
+            "deltasMs": [-1, -1, -2, -1, -2]
+          },
+          {
+            "n": 400000,
+            "medianDeltaMs": -3,
+            "minDeltaMs": -5,
+            "maxDeltaMs": -3,
+            "deltasMs": [-3, -3, -5, -4, -3]
+          }
+        ]
+      },
+      {
+        "case": "switch_vs_if_16",
+        "group": "branch",
+        "fit": {
+          "slopeMsPerOp": 0.000005634782608695652,
+          "nsPerOp": 5.6347826086956525,
+          "interceptMs": 0.04347826086956519,
+          "rmseMs": 0.4684850700604718,
+          "maxAbsResidualMs": 0.7026086956521738,
+          "residualsMs": [
+            0.6747826086956522, 0.6747826086956522, -0.3252173913043478, -0.3252173913043478,
+            0.6747826086956522, -0.6069565217391304, 0.3930434782608696, -0.6069565217391304,
+            -0.6069565217391304, 0.3930434782608696, -0.1704347826086956, -0.1704347826086956,
+            -0.1704347826086956, -0.1704347826086956, -0.1704347826086956, -0.29739130434782624,
+            -0.29739130434782624, 0.7026086956521738, 0.7026086956521738, -0.29739130434782624
+          ]
+        },
+        "byN": [
+          {
+            "n": 50000,
+            "medianDeltaMs": 1,
+            "minDeltaMs": 0,
+            "maxDeltaMs": 1,
+            "deltasMs": [1, 1, 0, 0, 1]
+          },
+          {
+            "n": 100000,
+            "medianDeltaMs": 0,
+            "minDeltaMs": 0,
+            "maxDeltaMs": 1,
+            "deltasMs": [0, 1, 0, 0, 1]
+          },
+          {
+            "n": 200000,
+            "medianDeltaMs": 1,
+            "minDeltaMs": 1,
+            "maxDeltaMs": 1,
+            "deltasMs": [1, 1, 1, 1, 1]
+          },
+          {
+            "n": 400000,
+            "medianDeltaMs": 2,
+            "minDeltaMs": 2,
+            "maxDeltaMs": 3,
+            "deltasMs": [2, 2, 3, 3, 2]
+          }
+        ]
+      },
+      {
+        "case": "table_vs_if_16",
+        "group": "branch",
+        "fit": {
+          "slopeMsPerOp": -0.00013342608695652173,
+          "nsPerOp": -133.42608695652171,
+          "interceptMs": 0.0173913043478251,
+          "rmseMs": 0.6410589066061952,
+          "maxAbsResidualMs": 1.6469565217391349,
+          "residualsMs": [
+            -0.3460869565217388, -0.3460869565217388, 0.6539130434782612, -0.3460869565217388,
+            -0.3460869565217388, 0.32521739130434746, 0.32521739130434746, 0.32521739130434746,
+            -0.6747826086956525, 0.32521739130434746, -0.33217391304348, 0.66782608695652,
+            -0.33217391304348, -0.33217391304348, 0.66782608695652, -0.6469565217391349,
+            -1.6469565217391349, 0.35304347826086513, 1.3530434782608651, 0.35304347826086513
+          ]
+        },
+        "byN": [
+          {
+            "n": 50000,
+            "medianDeltaMs": -7,
+            "minDeltaMs": -7,
+            "maxDeltaMs": -6,
+            "deltasMs": [-7, -7, -6, -7, -7]
+          },
+          {
+            "n": 100000,
+            "medianDeltaMs": -13,
+            "minDeltaMs": -14,
+            "maxDeltaMs": -13,
+            "deltasMs": [-13, -13, -13, -14, -13]
+          },
+          {
+            "n": 200000,
+            "medianDeltaMs": -27,
+            "minDeltaMs": -27,
+            "maxDeltaMs": -26,
+            "deltasMs": [-27, -26, -27, -27, -26]
+          },
+          {
+            "n": 400000,
+            "medianDeltaMs": -53,
+            "minDeltaMs": -55,
+            "maxDeltaMs": -52,
+            "deltasMs": [-54, -55, -53, -52, -53]
+          }
+        ]
+      },
+      {
+        "case": "switch_vs_if_64",
+        "group": "branch",
+        "fit": {
+          "slopeMsPerOp": -0.00001262608695652174,
+          "nsPerOp": -12.626086956521739,
+          "interceptMs": -0.18260869565217375,
+          "rmseMs": 0.6188348097344963,
+          "maxAbsResidualMs": 1.4452173913043478,
+          "residualsMs": [
+            -0.18608695652173923, -0.18608695652173923, 0.8139130434782608, -0.18608695652173923,
+            -0.18608695652173923, 0.4452173913043478, -0.5547826086956522, 1.4452173913043478,
+            -0.5547826086956522, -0.5547826086956522, -0.2921739130434782, 0.7078260869565218,
+            -0.2921739130434782, -0.2921739130434782, -0.2921739130434782, 0.23304347826086946,
+            1.2330434782608695, -0.7669565217391305, -0.7669565217391305, 0.23304347826086946
+          ]
+        },
+        "byN": [
+          {
+            "n": 50000,
+            "medianDeltaMs": -1,
+            "minDeltaMs": -1,
+            "maxDeltaMs": 0,
+            "deltasMs": [-1, -1, 0, -1, -1]
+          },
+          {
+            "n": 100000,
+            "medianDeltaMs": -2,
+            "minDeltaMs": -2,
+            "maxDeltaMs": 0,
+            "deltasMs": [-1, -2, 0, -2, -2]
+          },
+          {
+            "n": 200000,
+            "medianDeltaMs": -3,
+            "minDeltaMs": -3,
+            "maxDeltaMs": -2,
+            "deltasMs": [-3, -2, -3, -3, -3]
+          },
+          {
+            "n": 400000,
+            "medianDeltaMs": -5,
+            "minDeltaMs": -6,
+            "maxDeltaMs": -4,
+            "deltasMs": [-5, -4, -6, -6, -5]
+          }
+        ]
+      },
+      {
+        "case": "table_vs_if_64",
+        "group": "branch",
+        "fit": {
+          "slopeMsPerOp": -0.0005993391304347826,
+          "nsPerOp": -599.3391304347826,
+          "interceptMs": 0.22608695652172628,
+          "rmseMs": 0.46867064545696,
+          "maxAbsResidualMs": 0.7408695652174053,
+          "residualsMs": [
+            0.7408695652174053, -0.2591304347825947, -0.2591304347825947, 0.7408695652174053,
+            0.7408695652174053, -0.2921739130434631, -0.2921739130434631, -0.2921739130434631,
+            -0.2921739130434631, -0.2921739130434631, 0.6417391304348001, -0.35826086956519987,
+            -0.35826086956519987, -0.35826086956519987, -0.35826086956519987, -0.49043478260867346,
+            0.5095652173913265, -0.49043478260867346, 0.5095652173913265, 0.5095652173913265
+          ]
+        },
+        "byN": [
+          {
+            "n": 50000,
+            "medianDeltaMs": -29,
+            "minDeltaMs": -30,
+            "maxDeltaMs": -29,
+            "deltasMs": [-29, -30, -30, -29, -29]
+          },
+          {
+            "n": 100000,
+            "medianDeltaMs": -60,
+            "minDeltaMs": -60,
+            "maxDeltaMs": -60,
+            "deltasMs": [-60, -60, -60, -60, -60]
+          },
+          {
+            "n": 200000,
+            "medianDeltaMs": -120,
+            "minDeltaMs": -120,
+            "maxDeltaMs": -119,
+            "deltasMs": [-119, -120, -120, -120, -120]
+          },
+          {
+            "n": 400000,
+            "medianDeltaMs": -239,
+            "minDeltaMs": -240,
+            "maxDeltaMs": -239,
+            "deltasMs": [-240, -239, -240, -239, -239]
+          }
+        ]
+      }
+    ]
+  },
+  "logEvidence": [
+    "         1787742182.559 15916 15916 I DevToolLifecycle: DevTool attached. Transitioning to ATTACHED.",
+    "         1787742182.560 15916 15916 W DevToolLifecycle: UnsatisfiedLinkError! Trying to sync state [ATTACHED] before native library is loaded.",
+    "         1787742182.560 15916 15916 I DevToolLifecycle: DevTool enabled. Transitioning to ENABLED.",
+    "         1787742182.561 15916 15916 W DevToolLifecycle: UnsatisfiedLinkError! Trying to sync state [ENABLED] before native library is loaded.",
+    "         1787742182.578 15916 15916 I DevToolLifecycle: DevTool env initialized. Transitioning to INITIALIZED.",
+    "         1787742182.622 15916 15946 I lynx    : [7BA044FD50:INFO:js_cache_manager.cc(608)] bytecode_generate_generate_version: 3400532428",
+    "         1787742182.770 15916 15916 I lynx    : [7C8F5EFED0:INFO:lynx_binary_base_template_reader_impl.cc(113)] App Bundle's engine version: 3.9, lynx sdk version:4.0, min supported lynx version: 1.0",
+    "         1787742182.844 15916 15953 I LynxEnv : disable lynx debug",
+    "         1787742182.844 15916 15953 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED.",
+    "         1787742182.844 15916 15953 I lynx    : [7B988BFD50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+    "         1787742183.055 15916 15916 I lynx    : [7C8F5EFED0:INFO:lynx_binary_base_template_reader_impl.cc(113)] App Bundle's engine version: 3.9, lynx sdk version:4.0, min supported lynx version: 1.0"
+  ]
+}

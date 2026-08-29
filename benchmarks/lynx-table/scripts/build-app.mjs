@@ -18,6 +18,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { instrumentLynxStageSources } from '../stages/instrument-source.mjs';
+import { instrumentLepusQ2Sources } from '../stages/lepus-cost/instrument-q2-source.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repo = path.resolve(root, '../..');
@@ -69,7 +70,13 @@ export function buildTableApp({
 
 	const autoRows = Number(process.env.BENCH_AUTOROWS ?? '0') || 0;
 	const profile = process.env.OCTANE_LYNX_PROFILE === '1';
-	const restore = profile ? instrumentLynxStageSources(repo) : () => {};
+	const q2Profile = process.env.LEPUS_Q2_PROFILE === '1';
+	if (q2Profile && !profile) throw new Error('LEPUS_Q2_PROFILE requires OCTANE_LYNX_PROFILE=1.');
+	const restore = q2Profile
+		? instrumentLepusQ2Sources(repo)
+		: profile
+			? instrumentLynxStageSources(repo)
+			: () => {};
 	// Issue-#103 B0: the background core is a build-time choice, so a second
 	// core is a second build of the same sources rather than a second app. The
 	// suffix has to be spelled the same here and in app/lynx.config.mjs, which

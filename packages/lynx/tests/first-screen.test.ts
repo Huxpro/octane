@@ -41,6 +41,7 @@ import {
 	type LynxBackgroundOutboundMessage,
 	type LynxContextProxy,
 } from '../src/core/protocol.js';
+import { unwire, wire } from './_fixtures/lynx-wire.js';
 
 interface SceneProps {
 	readonly id: string;
@@ -873,10 +874,10 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		const inbound: LynxBackgroundInboundMessage[] = [];
 		const outbound: LynxBackgroundOutboundMessage[] = [];
 		mainContext().addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
-			inbound.push(event.data as LynxBackgroundInboundMessage);
+			inbound.push(unwire(event.data) as LynxBackgroundInboundMessage);
 		});
 		mainContext().addEventListener(LYNX_BACKGROUND_TO_MAIN_EVENT, (event) => {
-			outbound.push(event.data as LynxBackgroundOutboundMessage);
+			outbound.push(unwire(event.data) as LynxBackgroundOutboundMessage);
 		});
 		const effects: string[] = [];
 		const events: unknown[] = [];
@@ -958,7 +959,7 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		const dispatch = originalDispatch.bind(context);
 		const clonedRuns: boolean[] = [];
 		context.dispatchEvent = (event) => {
-			const data = deserialize(serialize(event.data)) as unknown;
+			const data = deserialize(serialize(unwire(event.data))) as unknown;
 			if (
 				data !== null &&
 				typeof data === 'object' &&
@@ -975,7 +976,10 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 					);
 				}
 			}
-			return dispatch({ ...event, data });
+			// Re-dispatch what was actually sent. The observation above is a
+			// read of the wire, not a rewrite of it: handing the decoded object
+			// back would put a live composite on a channel that now carries text.
+			return dispatch(event);
 		};
 		backgroundRoot = createLynxRoot();
 		const rendering = backgroundRoot.render(BackgroundScene, props);
@@ -1144,7 +1148,7 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		const firstNode = dom.window.document.querySelector('#main-value');
 		const inbound: LynxBackgroundInboundMessage[] = [];
 		mainContext().addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
-			inbound.push(event.data as LynxBackgroundInboundMessage);
+			inbound.push(unwire(event.data) as LynxBackgroundInboundMessage);
 		});
 		main.markFirstScreenSyncReady();
 
@@ -1154,14 +1158,14 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		});
 		backgroundContext().dispatchEvent({
 			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-			data: {
+			data: wire({
 				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 				renderer: LYNX_TRANSPORT_RENDERER,
 				root: 1,
 				version: 1,
 				type: 'commit',
 				batch: replacement.batch,
-			},
+			}),
 		});
 
 		expect(inbound.find((message) => message.type === 'ack')).toMatchObject({
@@ -1183,13 +1187,13 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		const inbound: LynxBackgroundInboundMessage[] = [];
 		let queuedSecondCommit = false;
 		mainContext().addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
-			const message = event.data as LynxBackgroundInboundMessage;
+			const message = unwire(event.data) as LynxBackgroundInboundMessage;
 			inbound.push(message);
 			if (message.type !== 'ack' || message.version !== 1 || queuedSecondCommit) return;
 			queuedSecondCommit = true;
 			backgroundContext().dispatchEvent({
 				type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-				data: {
+				data: wire({
 					protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 					renderer: LYNX_TRANSPORT_RENDERER,
 					root: 1,
@@ -1200,7 +1204,7 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 						version: 2,
 						commands: [{ op: 'update', id: 1, props: { id: 'after-adoption' } }],
 					},
-				},
+				}),
 			});
 		});
 		main.markFirstScreenSyncReady();
@@ -1208,14 +1212,14 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		const initial = renderLynxFirstScreen(MainSingleHost, { id: 'first-screen' });
 		backgroundContext().dispatchEvent({
 			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-			data: {
+			data: wire({
 				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 				renderer: LYNX_TRANSPORT_RENDERER,
 				root: 1,
 				version: 1,
 				type: 'commit',
 				batch: initial.batch,
-			},
+			}),
 		});
 
 		expect(inbound.filter((message) => message.type === 'ack')).toEqual([
@@ -1229,13 +1233,13 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 
 		backgroundContext().dispatchEvent({
 			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-			data: {
+			data: wire({
 				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 				renderer: LYNX_TRANSPORT_RENDERER,
 				root: 1,
 				version: 1,
 				type: 'adoption-ready',
-			},
+			}),
 		});
 
 		expect(main.firstScreenSnapshot()).toBeNull();
@@ -1247,7 +1251,7 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		const { main } = installEnvironment();
 		const inbound: LynxBackgroundInboundMessage[] = [];
 		mainContext().addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
-			inbound.push(event.data as LynxBackgroundInboundMessage);
+			inbound.push(unwire(event.data) as LynxBackgroundInboundMessage);
 		});
 
 		main.markFirstScreenSyncReady();
@@ -1281,7 +1285,7 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		});
 		const inbound: LynxBackgroundInboundMessage[] = [];
 		mainContext().addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
-			inbound.push(event.data as LynxBackgroundInboundMessage);
+			inbound.push(unwire(event.data) as LynxBackgroundInboundMessage);
 		});
 		firstScreenRoot.render(MainSingleHost, { id: 'cleanup-retry' });
 
@@ -1308,12 +1312,12 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 
 		backgroundContext().dispatchEvent({
 			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-			data: {
+			data: wire({
 				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 				renderer: LYNX_TRANSPORT_RENDERER,
 				type: 'main-ready-request',
 				request: 43,
-			},
+			}),
 		});
 		expect(dom.window.document.querySelector('#cleanup-retry')).toBeNull();
 		expect(main.firstScreenSnapshot()).toBeNull();
@@ -1341,7 +1345,7 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		});
 		const inbound: LynxBackgroundInboundMessage[] = [];
 		mainContext().addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
-			inbound.push(event.data as LynxBackgroundInboundMessage);
+			inbound.push(unwire(event.data) as LynxBackgroundInboundMessage);
 		});
 
 		expect(firstScreenRoot.render(FeedScene, {})).toMatchObject({ hostCount: 3 });
@@ -1359,12 +1363,12 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		// background to build the whole feed itself.
 		backgroundContext().dispatchEvent({
 			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-			data: {
+			data: wire({
 				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 				renderer: LYNX_TRANSPORT_RENDERER,
 				type: 'main-ready-request',
 				request: 51,
-			},
+			}),
 		});
 		expect(inbound).toEqual([]);
 
@@ -1391,21 +1395,21 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		const paintedList = dom.window.document.querySelector('#feed');
 		const inbound: LynxBackgroundInboundMessage[] = [];
 		mainContext().addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
-			inbound.push(event.data as LynxBackgroundInboundMessage);
+			inbound.push(unwire(event.data) as LynxBackgroundInboundMessage);
 		});
 		main.markFirstScreenSyncReady();
 
 		const background = renderLynxFirstScreen(FeedScene, {});
 		backgroundContext().dispatchEvent({
 			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-			data: {
+			data: wire({
 				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 				renderer: LYNX_TRANSPORT_RENDERER,
 				root: 1,
 				version: 1,
 				type: 'commit',
 				batch: background.batch,
-			},
+			}),
 		});
 
 		expect(inbound.find((message) => message.type === 'ack')).toMatchObject({
@@ -1431,21 +1435,21 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		const paintedList = dom.window.document.querySelector('#feed');
 		const inbound: LynxBackgroundInboundMessage[] = [];
 		mainContext().addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
-			inbound.push(event.data as LynxBackgroundInboundMessage);
+			inbound.push(unwire(event.data) as LynxBackgroundInboundMessage);
 		});
 		main.markFirstScreenSyncReady();
 
 		const background = renderLynxFirstScreen(EmptyFeedScene, {});
 		backgroundContext().dispatchEvent({
 			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-			data: {
+			data: wire({
 				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 				renderer: LYNX_TRANSPORT_RENDERER,
 				root: 1,
 				version: 1,
 				type: 'commit',
 				batch: background.batch,
-			},
+			}),
 		});
 
 		expect(inbound.find((message) => message.type === 'ack')).toMatchObject({
@@ -1465,21 +1469,21 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		const paintedList = dom.window.document.querySelector('#feed');
 		const inbound: LynxBackgroundInboundMessage[] = [];
 		mainContext().addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
-			inbound.push(event.data as LynxBackgroundInboundMessage);
+			inbound.push(unwire(event.data) as LynxBackgroundInboundMessage);
 		});
 		main.markFirstScreenSyncReady();
 
 		const background = renderLynxFirstScreen(RowKeyFeedScene, { itemKey: 'row-9' });
 		backgroundContext().dispatchEvent({
 			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-			data: {
+			data: wire({
 				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 				renderer: LYNX_TRANSPORT_RENDERER,
 				root: 1,
 				version: 1,
 				type: 'commit',
 				batch: background.batch,
-			},
+			}),
 		});
 
 		expect(inbound.find((message) => message.type === 'ack')).toMatchObject({
@@ -1501,7 +1505,7 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		const paintedList = dom.window.document.querySelector('#feed');
 		const inbound: LynxBackgroundInboundMessage[] = [];
 		mainContext().addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
-			inbound.push(event.data as LynxBackgroundInboundMessage);
+			inbound.push(unwire(event.data) as LynxBackgroundInboundMessage);
 		});
 		main.markFirstScreenSyncReady();
 		globalThis.elementTree.enterListItemAtIndex(paintedList as never, 0);
@@ -1509,14 +1513,14 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		const background = renderLynxFirstScreen(FeedScene, {});
 		backgroundContext().dispatchEvent({
 			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-			data: {
+			data: wire({
 				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 				renderer: LYNX_TRANSPORT_RENDERER,
 				root: 1,
 				version: 1,
 				type: 'commit',
 				batch: background.batch,
-			},
+			}),
 		});
 
 		expect(inbound.find((message) => message.type === 'ack')).toMatchObject({
@@ -1817,6 +1821,37 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		expect(dom.window.document.querySelectorAll('list')).toHaveLength(0);
 	});
 
+	it('declines a program-bearing first screen the direct applier cannot finish', () => {
+		// The staged batch path cannot carry a compiled main-thread program —
+		// reading `batch` on such a result throws by design — so when the direct
+		// applier refuses to start the tree (here: a `<list>` on a host with no
+		// list PAPI), the whole first screen declines to the command path instead
+		// of crashing into the batch fallback with an error naming the wrong
+		// problem.
+		const { dom, main } = installEnvironment((target) => {
+			delete target.__CreateList;
+			delete target.__UpdateListCallbacks;
+		});
+		const programPlan = firstScreenPlan('lynx', {
+			kind: 'program',
+			slots: [],
+			nodes: 1,
+			values: [],
+			events: [],
+			ranges: [],
+			bind: () => () => [],
+		} as never);
+		const ProgramBesideList = defineFirstScreenComponent('lynx', () => [
+			firstScreenValue(programPlan, []),
+			firstScreenValue(emptyFeedPlan, ['feed-shell', 'feed']),
+		]);
+
+		expect(firstScreenRoot.render(ProgramBesideList, {})).toBeNull();
+		expect(main.firstScreenSnapshot()).toBeNull();
+		// Declined before anything was painted: no half-built tree stays behind.
+		expect(dom.window.document.querySelectorAll('view')).toHaveLength(0);
+	});
+
 	it('still reports a host that cannot build a list rather than declining it silently', () => {
 		// Without the list PAPI pair a `<list>` cannot be built at all. That is a
 		// fact about the host, not a page to skip quietly, so the tree keeps going
@@ -1850,7 +1885,7 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		});
 		const inbound: LynxBackgroundInboundMessage[] = [];
 		mainContext().addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
-			inbound.push(event.data as LynxBackgroundInboundMessage);
+			inbound.push(unwire(event.data) as LynxBackgroundInboundMessage);
 		});
 
 		expect(() => firstScreenRoot.render(MainSingleHost, { id: 'failed-capture' })).toThrow(
@@ -1862,24 +1897,24 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 
 		backgroundContext().dispatchEvent({
 			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-			data: {
+			data: wire({
 				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 				renderer: LYNX_TRANSPORT_RENDERER,
 				type: 'main-ready-request',
 				request: 41,
-			},
+			}),
 		});
 		expect(dom.window.document.querySelector('#failed-capture')).not.toBeNull();
 		expect(inbound).toEqual([]);
 
 		backgroundContext().dispatchEvent({
 			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-			data: {
+			data: wire({
 				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 				renderer: LYNX_TRANSPORT_RENDERER,
 				type: 'main-ready-request',
 				request: 42,
-			},
+			}),
 		});
 
 		expect(dom.window.document.querySelector('#failed-capture')).toBeNull();
@@ -1900,7 +1935,7 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		});
 		const inbound: LynxBackgroundInboundMessage[] = [];
 		mainContext().addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
-			inbound.push(event.data as LynxBackgroundInboundMessage);
+			inbound.push(unwire(event.data) as LynxBackgroundInboundMessage);
 		});
 		firstScreenRoot.render(MainSingleHost, { id: 'terminal-retry' });
 		const dispose = {
@@ -1911,12 +1946,12 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 			type: 'terminal-dispose' as const,
 		};
 
-		backgroundContext().dispatchEvent({ type: LYNX_BACKGROUND_TO_MAIN_EVENT, data: dispose });
+		backgroundContext().dispatchEvent({ type: LYNX_BACKGROUND_TO_MAIN_EVENT, data: wire(dispose) });
 		expect(inbound.at(-1)).toMatchObject({ type: 'dispose-retry', root: 1, version: 1 });
 		expect(dom.window.document.querySelector('#terminal-retry')).not.toBeNull();
 		expect(main.firstScreenSnapshot()).not.toBeNull();
 
-		backgroundContext().dispatchEvent({ type: LYNX_BACKGROUND_TO_MAIN_EVENT, data: dispose });
+		backgroundContext().dispatchEvent({ type: LYNX_BACKGROUND_TO_MAIN_EVENT, data: wire(dispose) });
 		expect(inbound.at(-1)).toMatchObject({ type: 'dispose-ack', root: 1, version: 1 });
 		expect(dom.window.document.querySelector('#terminal-retry')).toBeNull();
 		expect(main.firstScreenSnapshot()).toBeNull();

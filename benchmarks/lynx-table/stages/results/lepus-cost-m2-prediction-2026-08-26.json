@@ -1,0 +1,157 @@
+{
+  "schema": "octane.lepus-cost.m2-prediction.v1",
+  "issue": "https://github.com/Huxpro/octane/issues/196",
+  "protocol": "https://github.com/Huxpro/octane/issues/194",
+  "phase": "M2-frozen-prediction",
+  "frozenAt": "2026-08-26T11:11:06.818Z",
+  "actualFieldsPresent": false,
+  "inputs": {
+    "dispatchProperty": {
+      "file": "benchmarks/lynx-table/stages/results/lepus-cost-m1-dispatch-property-aries10-2026-08-26.json",
+      "sha256": "55245c6ba9af99328839482b7ad1cd8ac54c4e71221b9dbcf356daeff6fc36c5",
+      "engine": {
+        "name": "LepusNG",
+        "lepusVersion": "2.3.0",
+        "appBundleEngineVersion": "3.9",
+        "lynxSdkVersion": "4.0"
+      }
+    },
+    "allocationStringBranch": {
+      "file": "benchmarks/lynx-table/stages/results/lepus-cost-m1-allocation-string-branch-aries10-2026-08-26.json",
+      "sha256": "9ba413e391c140563503278012ceab6378de4d528dd80efcd76ff622193d9b4a",
+      "engine": {
+        "name": "LepusNG",
+        "lepusVersion": "2.3.0",
+        "appBundleEngineVersion": "3.9",
+        "lynxSdkVersion": "4.0"
+      }
+    }
+  },
+  "model": {
+    "callFit": {
+      "zeroArgumentNs": 102.22466725820766,
+      "perArgumentNs": 15.447027506654832
+    },
+    "hostBoundaryNs": 5.6347826086956525,
+    "stringArgumentNs": 417.63016858917473,
+    "propertyMethodVsLocalNs": 0.1391304347826087,
+    "arrayAllocationNs": 305.18260869565216,
+    "arrayStoreNs": 18.26086956521739,
+    "emptyLoopIterationNs": 33.21739130434783,
+    "propertyLoadNs": 31.02608695652174
+  },
+  "q2": {
+    "emittedProgram": [
+      {
+        "rows": 1000,
+        "predictedMs": 7.756504347826086,
+        "componentsNs": {
+          "hostCalls": 2728729.015084295,
+          "hostStringArguments": 4593931.854480922,
+          "propertyMethodLookup": 834.7826086956521,
+          "returnedArrayAllocation": 305182.60869565216,
+          "returnedArrayStores": 127826.08695652173
+        },
+        "inventory": {
+          "hostCallsByArgumentCount": {
+            "1": 7000,
+            "2": 11000,
+            "4": 2000
+          },
+          "hostStringArguments": 11000,
+          "propertyMethodCalls": 6000,
+          "returnedArrayAllocations": 1000,
+          "returnedArrayStores": 7000,
+          "unpriced": [
+            "parse/eval of emitted source",
+            "large-arity outer create-function entry",
+            "native work inside individual Element PAPI operations",
+            "conditional-event branch absolute cost"
+          ]
+        }
+      },
+      {
+        "rows": 10000,
+        "predictedMs": 77.56504347826086,
+        "componentsNs": {
+          "hostCalls": 27287290.15084295,
+          "hostStringArguments": 45939318.54480922,
+          "propertyMethodLookup": 8347.826086956522,
+          "returnedArrayAllocation": 3051826.0869565215,
+          "returnedArrayStores": 1278260.8695652173
+        },
+        "inventory": {
+          "hostCallsByArgumentCount": {
+            "1": 70000,
+            "2": 110000,
+            "4": 20000
+          },
+          "hostStringArguments": 110000,
+          "propertyMethodCalls": 60000,
+          "returnedArrayAllocations": 10000,
+          "returnedArrayStores": 70000,
+          "unpriced": [
+            "parse/eval of emitted source",
+            "large-arity outer create-function entry",
+            "native work inside individual Element PAPI operations",
+            "conditional-event branch absolute cost"
+          ]
+        }
+      },
+      {
+        "rows": 30000,
+        "predictedMs": 232.69513043478258,
+        "componentsNs": {
+          "hostCalls": 81861870.45252885,
+          "hostStringArguments": 137817955.63442767,
+          "propertyMethodLookup": 25043.478260869564,
+          "returnedArrayAllocation": 9155478.260869564,
+          "returnedArrayStores": 3834782.608695652
+        },
+        "inventory": {
+          "hostCallsByArgumentCount": {
+            "1": 210000,
+            "2": 330000,
+            "4": 60000
+          },
+          "hostStringArguments": 330000,
+          "propertyMethodCalls": 180000,
+          "returnedArrayAllocations": 30000,
+          "returnedArrayStores": 210000,
+          "unpriced": [
+            "parse/eval of emitted source",
+            "large-arity outer create-function entry",
+            "native work inside individual Element PAPI operations",
+            "conditional-event branch absolute cost"
+          ]
+        }
+      }
+    ],
+    "interpretedTemplateLowerBound": [
+      {
+        "rows": 1000,
+        "predictedLowerBoundMs": 8.206208695652172,
+        "extraInterpreterFloorNs": 449704.347826087,
+        "orderingPrediction": "program-faster-than-template"
+      },
+      {
+        "rows": 10000,
+        "predictedLowerBoundMs": 82.06208695652172,
+        "extraInterpreterFloorNs": 4497043.478260869,
+        "orderingPrediction": "program-faster-than-template"
+      },
+      {
+        "rows": 30000,
+        "predictedLowerBoundMs": 246.1862608695652,
+        "extraInterpreterFloorNs": 13491130.43478261,
+        "orderingPrediction": "program-faster-than-template"
+      }
+    ],
+    "absoluteTargetScope": "Emitted create execution only. Parse/eval and operation-specific native PAPI work are unpriced M1 primitives and therefore intentionally predict zero; misses expose that model boundary."
+  },
+  "c8": {
+    "predictedScriptDeltaMs": 0,
+    "orderingPrediction": "tie",
+    "reason": "Parent-first and child-first variants have the same emitted primitive multiset. M1 has no layout dirty-state primitive; any observed delta belongs to flush, not script."
+  }
+}

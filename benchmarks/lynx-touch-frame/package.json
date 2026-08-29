@@ -1,0 +1,19 @@
+{
+  "name": "@octanejs/benchmark-lynx-touch-frame",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "analyze:test": "node --test analyze.test.mjs collect.test.mjs",
+    "octane:typecheck": "tsrx-tsc --noEmit -p octane/tsconfig.json"
+  },
+  "dependencies": {
+    "@octanejs/lynx": "workspace:*",
+    "octane": "workspace:*"
+  },
+  "devDependencies": {
+    "@tsrx/typescript-plugin": "catalog:default",
+    "@types/node": "catalog:default",
+    "typescript": "catalog:lynx"
+  }
+}

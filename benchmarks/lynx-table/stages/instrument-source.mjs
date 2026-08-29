@@ -54,7 +54,7 @@ export function instrumentLynxStageSources(repositoryRoot) {
 			return replaceOnce(
 				next,
 				`\tprofile.commands += record.batch?.commands?.length ?? 0;
-\ttry {
+\tprofile.bytes += encoded.length;
 `,
 				`\tconst commands = record.batch?.commands ?? [];
 \tprofile.commands += commands.length;
@@ -86,7 +86,7 @@ export function instrumentLynxStageSources(repositoryRoot) {
 \t\t\tmeasured.publicHandleCommands = (measured.publicHandleCommands ?? 0) + 1;
 \t\t}
 \t}
-\ttry {
+\tprofile.bytes += encoded.length;
 `,
 				file,
 			);
@@ -453,12 +453,12 @@ import { lynxWireProfile } from './core/profiling.js';
 			);
 			next = replaceOnce(
 				next,
-				`\t\t\tprofile.selfcheckMs += startedDispatch - startedSelfCheck;
-\t\t\tprofileOutboundMessage(profile, message);
+				`\t\t\tprofile.selfcheckMs += startedEncode - startedSelfCheck;
+\t\t\tprofileOutboundMessage(profile, message, encoded);
 \t\t\treturn;
 `,
-				`\t\t\tprofile.selfcheckMs += startedDispatch - startedSelfCheck;
-\t\t\tprofileOutboundMessage(profile, message);
+				`\t\t\tprofile.selfcheckMs += startedEncode - startedSelfCheck;
+\t\t\tprofileOutboundMessage(profile, message, encoded);
 \t\t\tif ((message as { readonly type?: unknown }).type === 'commit' && replayStartedAt !== null) {
 \t\t\t\tprofile.bgReplayMs = (profile.bgReplayMs ?? 0) + startedSelfCheck - replayStartedAt;
 \t\t\t\tbenchReplayWindow(null);

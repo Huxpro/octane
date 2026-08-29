@@ -4115,8 +4115,13 @@ function lynxTemplateObjectAst(root, origin) {
  * emission to the template it was derived from.
  */
 function generatedExpressionFromSource(source, filename, origin) {
-	const statement = parseModule(`(${source});`, filename).body[0];
-	if (statement?.type !== 'ExpressionStatement') {
+	// The whole parse must be one expression statement — checking only body[0]
+	// would let source shaped like `fn); (sideEffect` embed its first expression
+	// and silently drop everything after it, a truncated create function instead
+	// of the build error this guard exists to raise.
+	const parsed = parseModule(`(${source});`, filename).body;
+	const statement = parsed[0];
+	if (parsed.length !== 1 || statement?.type !== 'ExpressionStatement') {
 		throw new TypeError(
 			'Octane main-thread program backend returned source that is not a single expression.',
 		);

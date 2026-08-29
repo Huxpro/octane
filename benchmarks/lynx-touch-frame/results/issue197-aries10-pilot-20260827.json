@@ -1,0 +1,1150 @@
+{
+  "meta": {
+    "windowId": "aries10-pilot-2026-08-27T00-11-24-655Z",
+    "protocolIssue": "Huxpro/octane#197",
+    "protocolBaseline": "Huxpro/octane#194",
+    "deviceSerial": "aic-i18n-bd-fullport.byteintl.net:48108",
+    "deviceModel": "aries_10",
+    "deviceProduct": "aries",
+    "osVersion": "Android 10 (API 29)",
+    "lynxExplorerVersion": "1.0",
+    "lynxSdkVersion": "0.0.1 (host error metadata)",
+    "lepusVersion": "3.9 (host ReportErrorWithMsg.engine version)",
+    "devTool": "off",
+    "cdpConnections": 0,
+    "timingClock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+    "platformClockCalibration": {
+      "source": "android.os.System.currentTimeMillis/SystemClock.uptimeMillis",
+      "unit": "ms",
+      "startPairs": [
+        {
+          "wallBeforeMs": 1787789480152,
+          "uptimeMs": 677041053,
+          "wallAfterMs": 1787789480152
+        },
+        {
+          "wallBeforeMs": 1787789480152,
+          "uptimeMs": 677041053,
+          "wallAfterMs": 1787789480152
+        },
+        {
+          "wallBeforeMs": 1787789480152,
+          "uptimeMs": 677041053,
+          "wallAfterMs": 1787789480152
+        },
+        {
+          "wallBeforeMs": 1787789480152,
+          "uptimeMs": 677041054,
+          "wallAfterMs": 1787789480152
+        },
+        {
+          "wallBeforeMs": 1787789480152,
+          "uptimeMs": 677041054,
+          "wallAfterMs": 1787789480152
+        },
+        {
+          "wallBeforeMs": 1787789480152,
+          "uptimeMs": 677041054,
+          "wallAfterMs": 1787789480152
+        },
+        {
+          "wallBeforeMs": 1787789480152,
+          "uptimeMs": 677041054,
+          "wallAfterMs": 1787789480152
+        },
+        {
+          "wallBeforeMs": 1787789480152,
+          "uptimeMs": 677041054,
+          "wallAfterMs": 1787789480152
+        },
+        {
+          "wallBeforeMs": 1787789480152,
+          "uptimeMs": 677041054,
+          "wallAfterMs": 1787789480152
+        },
+        {
+          "wallBeforeMs": 1787789480152,
+          "uptimeMs": 677041054,
+          "wallAfterMs": 1787789480152
+        },
+        {
+          "wallBeforeMs": 1787789480152,
+          "uptimeMs": 677041054,
+          "wallAfterMs": 1787789480152
+        },
+        {
+          "wallBeforeMs": 1787789480152,
+          "uptimeMs": 677041054,
+          "wallAfterMs": 1787789480152
+        },
+        {
+          "wallBeforeMs": 1787789480152,
+          "uptimeMs": 677041054,
+          "wallAfterMs": 1787789480152
+        },
+        {
+          "wallBeforeMs": 1787789480152,
+          "uptimeMs": 677041054,
+          "wallAfterMs": 1787789480152
+        },
+        {
+          "wallBeforeMs": 1787789480152,
+          "uptimeMs": 677041054,
+          "wallAfterMs": 1787789480152
+        },
+        {
+          "wallBeforeMs": 1787789480152,
+          "uptimeMs": 677041054,
+          "wallAfterMs": 1787789480152
+        },
+        {
+          "wallBeforeMs": 1787789480152,
+          "uptimeMs": 677041054,
+          "wallAfterMs": 1787789480152
+        },
+        {
+          "wallBeforeMs": 1787789480152,
+          "uptimeMs": 677041054,
+          "wallAfterMs": 1787789480152
+        },
+        {
+          "wallBeforeMs": 1787789480152,
+          "uptimeMs": 677041054,
+          "wallAfterMs": 1787789480152
+        },
+        {
+          "wallBeforeMs": 1787789480152,
+          "uptimeMs": 677041054,
+          "wallAfterMs": 1787789480152
+        },
+        {
+          "wallBeforeMs": 1787789480152,
+          "uptimeMs": 677041054,
+          "wallAfterMs": 1787789480152
+        },
+        {
+          "wallBeforeMs": 1787789480152,
+          "uptimeMs": 677041054,
+          "wallAfterMs": 1787789480152
+        },
+        {
+          "wallBeforeMs": 1787789480153,
+          "uptimeMs": 677041054,
+          "wallAfterMs": 1787789480153
+        },
+        {
+          "wallBeforeMs": 1787789480153,
+          "uptimeMs": 677041054,
+          "wallAfterMs": 1787789480153
+        },
+        {
+          "wallBeforeMs": 1787789480153,
+          "uptimeMs": 677041054,
+          "wallAfterMs": 1787789480153
+        },
+        {
+          "wallBeforeMs": 1787789480153,
+          "uptimeMs": 677041054,
+          "wallAfterMs": 1787789480153
+        },
+        {
+          "wallBeforeMs": 1787789480153,
+          "uptimeMs": 677041054,
+          "wallAfterMs": 1787789480153
+        },
+        {
+          "wallBeforeMs": 1787789480153,
+          "uptimeMs": 677041054,
+          "wallAfterMs": 1787789480153
+        },
+        {
+          "wallBeforeMs": 1787789480153,
+          "uptimeMs": 677041054,
+          "wallAfterMs": 1787789480153
+        },
+        {
+          "wallBeforeMs": 1787789480153,
+          "uptimeMs": 677041054,
+          "wallAfterMs": 1787789480153
+        },
+        {
+          "wallBeforeMs": 1787789480153,
+          "uptimeMs": 677041055,
+          "wallAfterMs": 1787789480153
+        },
+        {
+          "wallBeforeMs": 1787789480153,
+          "uptimeMs": 677041055,
+          "wallAfterMs": 1787789480153
+        },
+        {
+          "wallBeforeMs": 1787789480153,
+          "uptimeMs": 677041055,
+          "wallAfterMs": 1787789480153
+        },
+        {
+          "wallBeforeMs": 1787789480153,
+          "uptimeMs": 677041055,
+          "wallAfterMs": 1787789480153
+        },
+        {
+          "wallBeforeMs": 1787789480153,
+          "uptimeMs": 677041055,
+          "wallAfterMs": 1787789480153
+        },
+        {
+          "wallBeforeMs": 1787789480153,
+          "uptimeMs": 677041055,
+          "wallAfterMs": 1787789480153
+        },
+        {
+          "wallBeforeMs": 1787789480153,
+          "uptimeMs": 677041055,
+          "wallAfterMs": 1787789480153
+        },
+        {
+          "wallBeforeMs": 1787789480153,
+          "uptimeMs": 677041055,
+          "wallAfterMs": 1787789480153
+        },
+        {
+          "wallBeforeMs": 1787789480153,
+          "uptimeMs": 677041055,
+          "wallAfterMs": 1787789480153
+        },
+        {
+          "wallBeforeMs": 1787789480153,
+          "uptimeMs": 677041055,
+          "wallAfterMs": 1787789480153
+        },
+        {
+          "wallBeforeMs": 1787789480153,
+          "uptimeMs": 677041055,
+          "wallAfterMs": 1787789480153
+        },
+        {
+          "wallBeforeMs": 1787789480153,
+          "uptimeMs": 677041055,
+          "wallAfterMs": 1787789480153
+        },
+        {
+          "wallBeforeMs": 1787789480153,
+          "uptimeMs": 677041055,
+          "wallAfterMs": 1787789480153
+        },
+        {
+          "wallBeforeMs": 1787789480153,
+          "uptimeMs": 677041055,
+          "wallAfterMs": 1787789480153
+        },
+        {
+          "wallBeforeMs": 1787789480153,
+          "uptimeMs": 677041055,
+          "wallAfterMs": 1787789480153
+        },
+        {
+          "wallBeforeMs": 1787789480153,
+          "uptimeMs": 677041055,
+          "wallAfterMs": 1787789480153
+        },
+        {
+          "wallBeforeMs": 1787789480153,
+          "uptimeMs": 677041055,
+          "wallAfterMs": 1787789480153
+        },
+        {
+          "wallBeforeMs": 1787789480153,
+          "uptimeMs": 677041055,
+          "wallAfterMs": 1787789480153
+        },
+        {
+          "wallBeforeMs": 1787789480154,
+          "uptimeMs": 677041055,
+          "wallAfterMs": 1787789480154
+        },
+        {
+          "wallBeforeMs": 1787789480154,
+          "uptimeMs": 677041055,
+          "wallAfterMs": 1787789480154
+        },
+        {
+          "wallBeforeMs": 1787789480154,
+          "uptimeMs": 677041055,
+          "wallAfterMs": 1787789480154
+        },
+        {
+          "wallBeforeMs": 1787789480154,
+          "uptimeMs": 677041055,
+          "wallAfterMs": 1787789480154
+        },
+        {
+          "wallBeforeMs": 1787789480154,
+          "uptimeMs": 677041055,
+          "wallAfterMs": 1787789480154
+        },
+        {
+          "wallBeforeMs": 1787789480154,
+          "uptimeMs": 677041055,
+          "wallAfterMs": 1787789480154
+        },
+        {
+          "wallBeforeMs": 1787789480154,
+          "uptimeMs": 677041055,
+          "wallAfterMs": 1787789480154
+        },
+        {
+          "wallBeforeMs": 1787789480154,
+          "uptimeMs": 677041056,
+          "wallAfterMs": 1787789480154
+        },
+        {
+          "wallBeforeMs": 1787789480154,
+          "uptimeMs": 677041056,
+          "wallAfterMs": 1787789480154
+        },
+        {
+          "wallBeforeMs": 1787789480154,
+          "uptimeMs": 677041056,
+          "wallAfterMs": 1787789480154
+        },
+        {
+          "wallBeforeMs": 1787789480154,
+          "uptimeMs": 677041056,
+          "wallAfterMs": 1787789480154
+        },
+        {
+          "wallBeforeMs": 1787789480154,
+          "uptimeMs": 677041056,
+          "wallAfterMs": 1787789480154
+        },
+        {
+          "wallBeforeMs": 1787789480154,
+          "uptimeMs": 677041056,
+          "wallAfterMs": 1787789480154
+        },
+        {
+          "wallBeforeMs": 1787789480154,
+          "uptimeMs": 677041056,
+          "wallAfterMs": 1787789480154
+        },
+        {
+          "wallBeforeMs": 1787789480154,
+          "uptimeMs": 677041056,
+          "wallAfterMs": 1787789480154
+        },
+        {
+          "wallBeforeMs": 1787789480154,
+          "uptimeMs": 677041056,
+          "wallAfterMs": 1787789480154
+        }
+      ],
+      "startSelected": {
+        "wallBeforeMs": 1787789480152,
+        "uptimeMs": 677041053,
+        "wallAfterMs": 1787789480152,
+        "bracketMs": 0,
+        "bootEpochMs": 1787112439099
+      },
+      "endPairs": [
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106495,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106495,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106495,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545594,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545594
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106496,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106497,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106497,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106497,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106497,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106497,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106497,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106497,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106497,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106497,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106497,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106497,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106497,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106497,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106497,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106497,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106497,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106497,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106497,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106497,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106497,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106497,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106497,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106497,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106497,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106497,
+          "wallAfterMs": 1787789545595
+        },
+        {
+          "wallBeforeMs": 1787789545595,
+          "uptimeMs": 677106497,
+          "wallAfterMs": 1787789545595
+        }
+      ],
+      "endSelected": {
+        "wallBeforeMs": 1787789545594,
+        "uptimeMs": 677106495,
+        "wallAfterMs": 1787789545594,
+        "bracketMs": 0,
+        "bootEpochMs": 1787112439099
+      },
+      "driftMs": 0
+    },
+    "loadControl": {
+      "element": "scroll-view",
+      "autoScrollRatePxPerSecond": 120
+    },
+    "thermalStart": {
+      "temperatureDeciC": 350,
+      "thermalStatus": 0
+    },
+    "thermalEnd": {
+      "temperatureDeciC": 350,
+      "thermalStatus": 0
+    }
+  },
+  "samples": [
+    {
+      "sequence": 0,
+      "shape": "local-toggle",
+      "load": "idle",
+      "topology": "T0",
+      "inputPlatformTimestamp": 1787789482844,
+      "changedVsyncPlatformTimestamp": 677043762,
+      "changedFrameOrdinal": 1,
+      "inputClock": "unix-epoch-ms",
+      "changedVsyncClock": "android-uptime-ms",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundlePath": "raw-t0/dist/T0-idle/local-toggle.lynx.bundle",
+      "bundleSha256": "a69b4bbec329dc7b01cb0baa2fb3c210131f856ea41f1d0a504545bac5be7870",
+      "cacheKey": "a69b4bbec329dc7b-2026-08-27T00-11-24-388Z-0",
+      "inputUptimePlatformTimestamp": 677043745,
+      "bootEpochCalibrationMs": 1787112439099,
+      "latencyMs": 17
+    },
+    {
+      "sequence": 1,
+      "shape": "local-toggle",
+      "load": "idle",
+      "topology": "T1",
+      "inputPlatformTimestamp": 1787789485521,
+      "changedVsyncPlatformTimestamp": 677046446,
+      "changedFrameOrdinal": 2,
+      "inputClock": "unix-epoch-ms",
+      "changedVsyncClock": "android-uptime-ms",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundlePath": "react/dist/T1-idle/local-toggle.lynx.bundle",
+      "bundleSha256": "65f2cf339564cba201001eb4426793f8ece141f2272deefc13ed4017b564576a",
+      "cacheKey": "65f2cf339564cba2-2026-08-27T00-11-24-388Z-1",
+      "inputUptimePlatformTimestamp": 677046422,
+      "bootEpochCalibrationMs": 1787112439099,
+      "latencyMs": 24
+    },
+    {
+      "sequence": 2,
+      "shape": "local-toggle",
+      "load": "idle",
+      "topology": "T2",
+      "inputPlatformTimestamp": 1787789488231,
+      "changedVsyncPlatformTimestamp": 677049163,
+      "changedFrameOrdinal": 2,
+      "inputClock": "unix-epoch-ms",
+      "changedVsyncClock": "android-uptime-ms",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundlePath": "octane/dist/T2-idle/local-toggle.lynx.bundle",
+      "bundleSha256": "b7e1fbc9684164b909c6b919120e64b8e8b7dc68222df1d2b729696eb74969e2",
+      "cacheKey": "b7e1fbc9684164b9-2026-08-27T00-11-24-388Z-2",
+      "inputUptimePlatformTimestamp": 677049132,
+      "bootEpochCalibrationMs": 1787112439099,
+      "latencyMs": 31
+    },
+    {
+      "sequence": 3,
+      "shape": "local-toggle",
+      "load": "idle",
+      "topology": "T3",
+      "inputPlatformTimestamp": 1787789490994,
+      "changedVsyncPlatformTimestamp": 677051897,
+      "changedFrameOrdinal": 1,
+      "inputClock": "unix-epoch-ms",
+      "changedVsyncClock": "android-uptime-ms",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundlePath": "octane/dist/T3-idle/local-toggle.lynx.bundle",
+      "bundleSha256": "6bcae78c994bdf158a7b7c26248637333acfecb9921f09908a6d17579983d826",
+      "cacheKey": "6bcae78c994bdf15-2026-08-27T00-11-24-388Z-3",
+      "inputUptimePlatformTimestamp": 677051895,
+      "bootEpochCalibrationMs": 1787112439099,
+      "latencyMs": 2
+    },
+    {
+      "sequence": 4,
+      "shape": "local-toggle",
+      "load": "sustained-scroll",
+      "topology": "T0",
+      "inputPlatformTimestamp": 1787789493789,
+      "changedVsyncPlatformTimestamp": 677054697,
+      "changedFrameOrdinal": 1,
+      "inputClock": "unix-epoch-ms",
+      "changedVsyncClock": "android-uptime-ms",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundlePath": "raw-t0/dist/T0-sustained-scroll/local-toggle.lynx.bundle",
+      "bundleSha256": "f8c5c97244cb680bb35f2e4aa016a712ed4dc39bb0483ad034fa0e0b0e6b757a",
+      "cacheKey": "f8c5c97244cb680b-2026-08-27T00-11-24-388Z-4",
+      "inputUptimePlatformTimestamp": 677054690,
+      "bootEpochCalibrationMs": 1787112439099,
+      "latencyMs": 7
+    },
+    {
+      "sequence": 5,
+      "shape": "local-toggle",
+      "load": "sustained-scroll",
+      "topology": "T1",
+      "inputPlatformTimestamp": 1787789496478,
+      "changedVsyncPlatformTimestamp": 677057397,
+      "changedFrameOrdinal": 1,
+      "inputClock": "unix-epoch-ms",
+      "changedVsyncClock": "android-uptime-ms",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundlePath": "react/dist/T1-sustained-scroll/local-toggle.lynx.bundle",
+      "bundleSha256": "236e1ab0eaa1d15b156c9a74b2d9200f41d85cc94407a622cbd586317aba7cc4",
+      "cacheKey": "236e1ab0eaa1d15b-2026-08-27T00-11-24-388Z-5",
+      "inputUptimePlatformTimestamp": 677057379,
+      "bootEpochCalibrationMs": 1787112439099,
+      "latencyMs": 18
+    },
+    {
+      "sequence": 6,
+      "shape": "local-toggle",
+      "load": "sustained-scroll",
+      "topology": "T2",
+      "inputPlatformTimestamp": 1787789499183,
+      "changedVsyncPlatformTimestamp": 677060114,
+      "changedFrameOrdinal": 2,
+      "inputClock": "unix-epoch-ms",
+      "changedVsyncClock": "android-uptime-ms",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundlePath": "octane/dist/T2-sustained-scroll/local-toggle.lynx.bundle",
+      "bundleSha256": "95f233599248b3bf635fa697521fa8d8ef3f55be69dc55daf08d97d9a6abbcc4",
+      "cacheKey": "95f233599248b3bf-2026-08-27T00-11-24-388Z-6",
+      "inputUptimePlatformTimestamp": 677060084,
+      "bootEpochCalibrationMs": 1787112439099,
+      "latencyMs": 30
+    },
+    {
+      "sequence": 7,
+      "shape": "local-toggle",
+      "load": "sustained-scroll",
+      "topology": "T3",
+      "inputPlatformTimestamp": 1787789501881,
+      "changedVsyncPlatformTimestamp": 677062798,
+      "changedFrameOrdinal": 1,
+      "inputClock": "unix-epoch-ms",
+      "changedVsyncClock": "android-uptime-ms",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundlePath": "octane/dist/T3-sustained-scroll/local-toggle.lynx.bundle",
+      "bundleSha256": "c96a1e63bc86d56210032520078934cff8f9b3b107c1525cbfb4ba0d3ac948cb",
+      "cacheKey": "c96a1e63bc86d562-2026-08-27T00-11-24-388Z-7",
+      "inputUptimePlatformTimestamp": 677062782,
+      "bootEpochCalibrationMs": 1787112439099,
+      "latencyMs": 16
+    },
+    {
+      "sequence": 8,
+      "shape": "cross-component",
+      "load": "idle",
+      "topology": "T0",
+      "inputPlatformTimestamp": 1787789504641,
+      "changedVsyncPlatformTimestamp": 677065548,
+      "changedFrameOrdinal": 1,
+      "inputClock": "unix-epoch-ms",
+      "changedVsyncClock": "android-uptime-ms",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundlePath": "raw-t0/dist/T0-idle/cross-component.lynx.bundle",
+      "bundleSha256": "ff573ebe81fdfe0ffcea4590ef84824fdbb0a6c510673fc3ef21e5c2ede419a5",
+      "cacheKey": "ff573ebe81fdfe0f-2026-08-27T00-11-24-388Z-8",
+      "inputUptimePlatformTimestamp": 677065542,
+      "bootEpochCalibrationMs": 1787112439099,
+      "latencyMs": 6
+    },
+    {
+      "sequence": 9,
+      "shape": "cross-component",
+      "load": "idle",
+      "topology": "T1",
+      "inputPlatformTimestamp": 1787789507323,
+      "changedVsyncPlatformTimestamp": 677068248,
+      "changedFrameOrdinal": 2,
+      "inputClock": "unix-epoch-ms",
+      "changedVsyncClock": "android-uptime-ms",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundlePath": "react/dist/T1-idle/cross-component.lynx.bundle",
+      "bundleSha256": "e956a4bb7845dba8d0cde245687a036cc29f4ffc70c7b5075049e4eddb9549c8",
+      "cacheKey": "e956a4bb7845dba8-2026-08-27T00-11-24-388Z-9",
+      "inputUptimePlatformTimestamp": 677068224,
+      "bootEpochCalibrationMs": 1787112439099,
+      "latencyMs": 24
+    },
+    {
+      "sequence": 10,
+      "shape": "cross-component",
+      "load": "idle",
+      "topology": "T2",
+      "inputPlatformTimestamp": 1787789510041,
+      "changedVsyncPlatformTimestamp": 677070965,
+      "changedFrameOrdinal": 2,
+      "inputClock": "unix-epoch-ms",
+      "changedVsyncClock": "android-uptime-ms",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundlePath": "octane/dist/T2-idle/cross-component.lynx.bundle",
+      "bundleSha256": "8acb4a98ce3d8a563f97c29b955f09ac6744ccdfa2ffcde7b0b12e04c8986e87",
+      "cacheKey": "8acb4a98ce3d8a56-2026-08-27T00-11-24-388Z-10",
+      "inputUptimePlatformTimestamp": 677070942,
+      "bootEpochCalibrationMs": 1787112439099,
+      "latencyMs": 23
+    },
+    {
+      "sequence": 11,
+      "shape": "cross-component",
+      "load": "idle",
+      "topology": "T3",
+      "inputPlatformTimestamp": 1787789512803,
+      "changedVsyncPlatformTimestamp": 677073716,
+      "changedFrameOrdinal": 1,
+      "inputClock": "unix-epoch-ms",
+      "changedVsyncClock": "android-uptime-ms",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundlePath": "octane/dist/T3-idle/cross-component.lynx.bundle",
+      "bundleSha256": "ee0ef95ac6489c931bb5fc68bc9ebd2350949cecad68214673810f6a6955d673",
+      "cacheKey": "ee0ef95ac6489c93-2026-08-27T00-11-24-388Z-11",
+      "inputUptimePlatformTimestamp": 677073704,
+      "bootEpochCalibrationMs": 1787112439099,
+      "latencyMs": 12
+    },
+    {
+      "sequence": 12,
+      "shape": "cross-component",
+      "load": "sustained-scroll",
+      "topology": "T0",
+      "inputPlatformTimestamp": 1787789515504,
+      "changedVsyncPlatformTimestamp": 677076416,
+      "changedFrameOrdinal": 1,
+      "inputClock": "unix-epoch-ms",
+      "changedVsyncClock": "android-uptime-ms",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundlePath": "raw-t0/dist/T0-sustained-scroll/cross-component.lynx.bundle",
+      "bundleSha256": "abfa6307e642b64d4602f85ccf8b0706b98a93e6e8857de15104d02f7cc160b0",
+      "cacheKey": "abfa6307e642b64d-2026-08-27T00-11-24-388Z-12",
+      "inputUptimePlatformTimestamp": 677076405,
+      "bootEpochCalibrationMs": 1787112439099,
+      "latencyMs": 11
+    },
+    {
+      "sequence": 13,
+      "shape": "cross-component",
+      "load": "sustained-scroll",
+      "topology": "T1",
+      "inputPlatformTimestamp": 1787789518192,
+      "changedVsyncPlatformTimestamp": 677079116,
+      "changedFrameOrdinal": 2,
+      "inputClock": "unix-epoch-ms",
+      "changedVsyncClock": "android-uptime-ms",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundlePath": "react/dist/T1-sustained-scroll/cross-component.lynx.bundle",
+      "bundleSha256": "70b7ed8a9c93330589cfba990c97fa88344ad25e6010d6b187a0419f72dc1bf1",
+      "cacheKey": "70b7ed8a9c933305-2026-08-27T00-11-24-388Z-13",
+      "inputUptimePlatformTimestamp": 677079093,
+      "bootEpochCalibrationMs": 1787112439099,
+      "latencyMs": 23
+    },
+    {
+      "sequence": 14,
+      "shape": "cross-component",
+      "load": "sustained-scroll",
+      "topology": "T2",
+      "inputPlatformTimestamp": 1787789520963,
+      "changedVsyncPlatformTimestamp": 677081883,
+      "changedFrameOrdinal": 2,
+      "inputClock": "unix-epoch-ms",
+      "changedVsyncClock": "android-uptime-ms",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundlePath": "octane/dist/T2-sustained-scroll/cross-component.lynx.bundle",
+      "bundleSha256": "9821a87d2c2890e206098d4c1560c58cd3e94baaeec8a0dd63e71cec56b1fa8a",
+      "cacheKey": "9821a87d2c2890e2-2026-08-27T00-11-24-388Z-14",
+      "inputUptimePlatformTimestamp": 677081864,
+      "bootEpochCalibrationMs": 1787112439099,
+      "latencyMs": 19
+    },
+    {
+      "sequence": 15,
+      "shape": "cross-component",
+      "load": "sustained-scroll",
+      "topology": "T3",
+      "inputPlatformTimestamp": 1787789523637,
+      "changedVsyncPlatformTimestamp": 677084550,
+      "changedFrameOrdinal": 1,
+      "inputClock": "unix-epoch-ms",
+      "changedVsyncClock": "android-uptime-ms",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundlePath": "octane/dist/T3-sustained-scroll/cross-component.lynx.bundle",
+      "bundleSha256": "a52078146b0bb11407d44f54c42ebd38097bc85a0b2dfb9aa4b17a7b381d0c26",
+      "cacheKey": "a52078146b0bb114-2026-08-27T00-11-24-388Z-15",
+      "inputUptimePlatformTimestamp": 677084538,
+      "bootEpochCalibrationMs": 1787112439099,
+      "latencyMs": 12
+    },
+    {
+      "sequence": 16,
+      "shape": "structural-delete",
+      "load": "idle",
+      "topology": "T0",
+      "inputPlatformTimestamp": 1787789526406,
+      "changedVsyncPlatformTimestamp": 677087317,
+      "changedFrameOrdinal": 1,
+      "inputClock": "unix-epoch-ms",
+      "changedVsyncClock": "android-uptime-ms",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundlePath": "raw-t0/dist/T0-idle/structural-delete.lynx.bundle",
+      "bundleSha256": "902adb7962b890c5ecb20ffad450a66f087528237b9923cfae207cae353e30e5",
+      "cacheKey": "902adb7962b890c5-2026-08-27T00-11-24-388Z-16",
+      "inputUptimePlatformTimestamp": 677087307,
+      "bootEpochCalibrationMs": 1787112439099,
+      "latencyMs": 10
+    },
+    {
+      "sequence": 17,
+      "shape": "structural-delete",
+      "load": "idle",
+      "topology": "T1",
+      "inputPlatformTimestamp": 1787789529067,
+      "changedVsyncPlatformTimestamp": 677089984,
+      "changedFrameOrdinal": 1,
+      "inputClock": "unix-epoch-ms",
+      "changedVsyncClock": "android-uptime-ms",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundlePath": "react/dist/T1-idle/structural-delete.lynx.bundle",
+      "bundleSha256": "dede1841c505898c80b9951356dcba668682699c60f2d77f185fcff9889fb0c8",
+      "cacheKey": "dede1841c505898c-2026-08-27T00-11-24-388Z-17",
+      "inputUptimePlatformTimestamp": 677089968,
+      "bootEpochCalibrationMs": 1787112439099,
+      "latencyMs": 16
+    },
+    {
+      "sequence": 18,
+      "shape": "structural-delete",
+      "load": "idle",
+      "topology": "T2",
+      "inputPlatformTimestamp": 1787789531845,
+      "changedVsyncPlatformTimestamp": 677092768,
+      "changedFrameOrdinal": 2,
+      "inputClock": "unix-epoch-ms",
+      "changedVsyncClock": "android-uptime-ms",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundlePath": "octane/dist/T2-idle/structural-delete.lynx.bundle",
+      "bundleSha256": "e9fa7dc0399149af3c150026daa85edd3e8ab53e1f34f1f8dc7260d422ec9137",
+      "cacheKey": "e9fa7dc0399149af-2026-08-27T00-11-24-388Z-18",
+      "inputUptimePlatformTimestamp": 677092746,
+      "bootEpochCalibrationMs": 1787112439099,
+      "latencyMs": 22
+    },
+    {
+      "sequence": 19,
+      "shape": "structural-delete",
+      "load": "idle",
+      "topology": "T3",
+      "inputPlatformTimestamp": 1787789534546,
+      "changedVsyncPlatformTimestamp": 677095452,
+      "changedFrameOrdinal": 1,
+      "inputClock": "unix-epoch-ms",
+      "changedVsyncClock": "android-uptime-ms",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundlePath": "octane/dist/T3-idle/structural-delete.lynx.bundle",
+      "bundleSha256": "951b7aab9a24ef00e59b2d9d51416e773930cc09fc38f6b57b46f753c5734922",
+      "cacheKey": "951b7aab9a24ef00-2026-08-27T00-11-24-388Z-19",
+      "inputUptimePlatformTimestamp": 677095447,
+      "bootEpochCalibrationMs": 1787112439099,
+      "latencyMs": 5
+    },
+    {
+      "sequence": 20,
+      "shape": "structural-delete",
+      "load": "sustained-scroll",
+      "topology": "T0",
+      "inputPlatformTimestamp": 1787789537269,
+      "changedVsyncPlatformTimestamp": 677098185,
+      "changedFrameOrdinal": 1,
+      "inputClock": "unix-epoch-ms",
+      "changedVsyncClock": "android-uptime-ms",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundlePath": "raw-t0/dist/T0-sustained-scroll/structural-delete.lynx.bundle",
+      "bundleSha256": "bcc8c467fc5e051752c0f1110656daaf895d6a8e292d0ce87fdf267ce791fae0",
+      "cacheKey": "bcc8c467fc5e0517-2026-08-27T00-11-24-388Z-20",
+      "inputUptimePlatformTimestamp": 677098170,
+      "bootEpochCalibrationMs": 1787112439099,
+      "latencyMs": 15
+    },
+    {
+      "sequence": 21,
+      "shape": "structural-delete",
+      "load": "sustained-scroll",
+      "topology": "T1",
+      "inputPlatformTimestamp": 1787789539921,
+      "changedVsyncPlatformTimestamp": 677100836,
+      "changedFrameOrdinal": 1,
+      "inputClock": "unix-epoch-ms",
+      "changedVsyncClock": "android-uptime-ms",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundlePath": "react/dist/T1-sustained-scroll/structural-delete.lynx.bundle",
+      "bundleSha256": "ebf9a0f8c77632bc08655a946f99765358da036b9979ddc60f48093e2142519b",
+      "cacheKey": "ebf9a0f8c77632bc-2026-08-27T00-11-24-388Z-21",
+      "inputUptimePlatformTimestamp": 677100822,
+      "bootEpochCalibrationMs": 1787112439099,
+      "latencyMs": 14
+    },
+    {
+      "sequence": 22,
+      "shape": "structural-delete",
+      "load": "sustained-scroll",
+      "topology": "T2",
+      "inputPlatformTimestamp": 1787789542660,
+      "changedVsyncPlatformTimestamp": 677103586,
+      "changedFrameOrdinal": 2,
+      "inputClock": "unix-epoch-ms",
+      "changedVsyncClock": "android-uptime-ms",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundlePath": "octane/dist/T2-sustained-scroll/structural-delete.lynx.bundle",
+      "bundleSha256": "ab423a9c00b37cc6cb0745c29f8962e71a552a61150beec6be81cc937f6ab86d",
+      "cacheKey": "ab423a9c00b37cc6-2026-08-27T00-11-24-388Z-22",
+      "inputUptimePlatformTimestamp": 677103561,
+      "bootEpochCalibrationMs": 1787112439099,
+      "latencyMs": 25
+    },
+    {
+      "sequence": 23,
+      "shape": "structural-delete",
+      "load": "sustained-scroll",
+      "topology": "T3",
+      "inputPlatformTimestamp": 1787789545355,
+      "changedVsyncPlatformTimestamp": 677106270,
+      "changedFrameOrdinal": 1,
+      "inputClock": "unix-epoch-ms",
+      "changedVsyncClock": "android-uptime-ms",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundlePath": "octane/dist/T3-sustained-scroll/structural-delete.lynx.bundle",
+      "bundleSha256": "e7afe25491bc2b69bd2458e815a620b294ef3504a658f94205405add3b3422dc",
+      "cacheKey": "e7afe25491bc2b69-2026-08-27T00-11-24-388Z-23",
+      "inputUptimePlatformTimestamp": 677106256,
+      "bootEpochCalibrationMs": 1787112439099,
+      "latencyMs": 14
+    }
+  ]
+}

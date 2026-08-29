@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@lynx-js/react": ["node_modules/@lynx-js/react/types/react.d.ts"],
+      "@lynx-js/react/jsx-runtime": ["node_modules/@lynx-js/react/runtime/jsx-runtime/index.d.ts"],
+      "@lynx-js/types": ["node_modules/@lynx-js/types/types/index.d.ts"]
+    },
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "@lynx-js/react",
+    "types": ["@lynx-js/rspeedy/client"]
+  },
+  "include": ["../fixtures/*/react/**/*", "globals.d.ts"]
+}
