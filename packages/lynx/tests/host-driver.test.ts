@@ -4382,6 +4382,97 @@ describe('Lynx Element PAPI host driver', () => {
 		expect(papi.eventCalls).toEqual([[foreign, 'bindEvent', 'tap', undefined]]);
 	});
 
+	it('expands a destroy-run identically whether the run mirror or the record map answers', () => {
+		// A compact `mount-template-run` leaves behind a dense mirror of the
+		// records so the run's later `destroy-run` can be expanded from the run's
+		// own shape instead of from the record map. Both routes are supposed to
+		// describe the same teardown, and until now nothing compared them: the
+		// mirror could be suppressed wholesale without a single test noticing.
+		const program: UniversalHostTemplateProgram = Object.freeze({
+			nodes: Object.freeze([
+				Object.freeze({
+					type: 'view',
+					parent: -1,
+					props: Object.freeze({ class: 'row' }),
+					bindings: Object.freeze([Object.freeze({ name: 'id', valueIndex: 0 })]),
+				}),
+				Object.freeze({ type: 'text', parent: 0, props: Object.freeze({ class: 'label' }) }),
+				Object.freeze({
+					type: '#text',
+					parent: 1,
+					props: Object.freeze({}),
+					bindings: Object.freeze([Object.freeze({ name: 'value', valueIndex: 1 })]),
+				}),
+			]),
+			events: Object.freeze([
+				Object.freeze({ node: 0, type: 'bindtap', priority: 'default' as const }),
+			]),
+		});
+		const values = Object.freeze(['row-1', 'One', 'row-2', 'Two', 'row-3', 'Three']);
+
+		// `spendMirror` retires the mirror before the teardown asks for it, by
+		// committing an idempotent update: any further commit replaces
+		// `teardownRecords`. The painted tree is identical either way, which is
+		// what makes the two teardowns comparable rather than merely adjacent.
+		const paintThenTearDown = (spendMirror: boolean) => {
+			const { container, page, papi } = createHost(80);
+			prepareLynxHostBatch(
+				container,
+				batch(1, [
+					{ op: 'create', id: 1, type: 'view', props: { id: 'shell' } },
+					{ op: 'create', id: 2, type: 'view', props: { id: 'rows' } },
+					{ op: 'create', id: 50, type: 'view', props: { id: 'marker' } },
+					{ op: 'insert', id: 2, parent: 1, before: null },
+					{ op: 'insert', id: 50, parent: 1, before: null },
+					{ op: 'insert', id: 1, parent: null, before: null },
+				]),
+			).apply();
+			const painted = prepareLynxHostBatch(
+				container,
+				batch(2, [
+					{
+						op: 'mount-template-run',
+						parent: 2,
+						before: null,
+						program,
+						firstId: 10,
+						firstListenerId: 900,
+						count: 3,
+						values,
+					},
+				]),
+				{ compact: true, incrementalCompact: true, lazyPublicInstances: true },
+			);
+			painted.apply();
+			if (spendMirror) {
+				prepareLynxHostBatch(
+					container,
+					batch(3, [{ op: 'update', id: 2, props: { id: 'rows' } }]),
+				).apply();
+			}
+			const rows = page.children[0]!.children[0]!;
+			expect(rows.children.map((node) => node.id)).toEqual(['row-1', 'row-2', 'row-3']);
+			papi.resetCalls();
+			const teardown = prepareLynxHostBatch(
+				container,
+				batch(4, [{ op: 'destroy-run', parent: 2, firstId: 10, count: 3, width: 3 }]),
+			);
+			const handleDelta = teardown.handleDelta;
+			teardown.apply();
+			return { container, rows, calls: papi.calls, handleDelta };
+		};
+
+		const mirrored = paintThenTearDown(false);
+		const fromRecords = paintThenTearDown(true);
+
+		expect(mirrored.handleDelta).toEqual(fromRecords.handleDelta);
+		expect(mirrored.calls).toEqual(fromRecords.calls);
+		expect(mirrored.rows.children).toEqual([]);
+		expect(fromRecords.rows.children).toEqual([]);
+		expect(disposeLynxHostContainer(mirrored.container).complete).toBe(true);
+		expect(disposeLynxHostContainer(fromRecords.container).complete).toBe(true);
+	});
+
 	it('accepts a complete destroy-run teardown after an accepted host fault', () => {
 		const { container, page, papi } = createHost(69);
 		const program: UniversalHostTemplateProgram = Object.freeze({
