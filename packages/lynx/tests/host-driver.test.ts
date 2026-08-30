@@ -4473,6 +4473,95 @@ describe('Lynx Element PAPI host driver', () => {
 		expect(disposeLynxHostContainer(fromRecords.container).complete).toBe(true);
 	});
 
+	it('clears a template run at one host call per row, whatever the row carries', () => {
+		// Issue #241's cost oracle in deterministic form. Clearing a table used
+		// to cost one PAPI call per row plus one per listener on it, because the
+		// teardown described every listener detach on its way to destroying the
+		// host that owned it. Only the root removal is observable, so the count
+		// per row must be one and must not move when the row grows listeners.
+		//
+		// The shape is the lynx-table benchmark row: `view.row` over three
+		// `text` cells, each with its own text carrier, and a `bindtap` on two
+		// of them. At 10k rows the old accounting spent 30,001 calls on a clear;
+		// this pins the 10,001 that remain.
+		const benchRow = (events: number): UniversalHostTemplateProgram =>
+			Object.freeze({
+				nodes: Object.freeze([
+					Object.freeze({ type: 'view', parent: -1, props: Object.freeze({ class: 'row' }) }),
+					Object.freeze({ type: 'text', parent: 0, props: Object.freeze({ class: 'col-id' }) }),
+					Object.freeze({ type: 'raw-text', parent: 1, props: Object.freeze({ text: '1' }) }),
+					Object.freeze({ type: 'text', parent: 0, props: Object.freeze({ class: 'col-label' }) }),
+					Object.freeze({ type: 'raw-text', parent: 3, props: Object.freeze({ text: 'label' }) }),
+					Object.freeze({ type: 'text', parent: 0, props: Object.freeze({ class: 'col-remove' }) }),
+					Object.freeze({ type: 'raw-text', parent: 5, props: Object.freeze({ text: 'x' }) }),
+				]),
+				events: Object.freeze(
+					[
+						Object.freeze({ node: 3, type: 'bindtap', priority: 'default' as const }),
+						Object.freeze({ node: 5, type: 'bindtap', priority: 'default' as const }),
+					].slice(0, events),
+				),
+			});
+
+		// `neighbour` parks an explicit host above the run's id space. That keeps
+		// `maxExplicitId` ahead of the run so the incremental compact declines,
+		// the records stay a map, and the clear leaves the certified direct plan
+		// for the general expansion — the route a table clear actually takes once
+		// anything else on the page owns a higher id. Both routes have to meet
+		// the same per-row bound, so both are measured.
+		const clear = (rows: number, events: number, neighbour: boolean) => {
+			const { container, page, papi } = createHost(82);
+			const setup: UniversalHostCommand[] = [
+				{ op: 'create', id: 1, type: 'view', props: { id: 'shell' } },
+				{ op: 'create', id: 2, type: 'view', props: { id: 'rows' } },
+				{ op: 'insert', id: 2, parent: 1, before: null },
+			];
+			if (neighbour) {
+				setup.push({ op: 'create', id: 900, type: 'view', props: { id: 'neighbour' } });
+				setup.push({ op: 'insert', id: 900, parent: 1, before: null });
+			}
+			setup.push({ op: 'insert', id: 1, parent: null, before: null });
+			prepareLynxHostBatch(container, batch(1, setup)).apply();
+			prepareLynxHostBatch(
+				container,
+				batch(2, [
+					{
+						op: 'mount-template-run',
+						parent: 2,
+						before: null,
+						program: benchRow(events),
+						firstId: 100,
+						firstListenerId: events === 0 ? null : 9000,
+						count: rows,
+						values: Object.freeze([]),
+					},
+				]),
+				{ compact: true, incrementalCompact: true, lazyPublicInstances: true },
+			).apply();
+			const list = page.children[0]!.children[0]!;
+			expect(list.children).toHaveLength(rows);
+			papi.resetCalls();
+			prepareLynxHostBatch(
+				container,
+				batch(3, [{ op: 'destroy-run', parent: 2, firstId: 100, count: rows, width: 7 }]),
+			).apply();
+			expect(list.children).toEqual([]);
+			const tally: Record<string, number> = {};
+			for (const call of papi.calls) tally[call] = (tally[call] ?? 0) + 1;
+			expect(disposeLynxHostContainer(container).complete).toBe(true);
+			return tally;
+		};
+
+		for (const neighbour of [false, true]) {
+			for (const rows of [1, 4, 16]) {
+				// Adding listeners to the row must not add host calls to its clear.
+				expect(clear(rows, 0, neighbour)).toEqual({ remove: rows, flush: 1 });
+				expect(clear(rows, 1, neighbour)).toEqual({ remove: rows, flush: 1 });
+				expect(clear(rows, 2, neighbour)).toEqual({ remove: rows, flush: 1 });
+			}
+		}
+	});
+
 	it('accepts a complete destroy-run teardown after an accepted host fault', () => {
 		const { container, page, papi } = createHost(69);
 		const program: UniversalHostTemplateProgram = Object.freeze({
@@ -4672,6 +4761,13 @@ describe('Lynx Element PAPI host driver', () => {
 		expect(rows.children).toHaveLength(3);
 		const removedRow = rows.children[1]!;
 
+		// Captured while the row is still accepted: teardown deliberately leaves
+		// these bindings installed on the detached elements, so the tokens stay
+		// readable and the dispatch guard is what has to refuse them.
+		const removedTap = removedRow.events.get('bindEvent:tap')!;
+		const removedLongPress = removedRow.children[0]!.events.get('bindEvent:longpress')!;
+		const survivorTap = rows.children[0]!.events.get('bindEvent:tap')!;
+
 		const partial = prepareLynxHostBatch(
 			container,
 			batch(3, [{ op: 'destroy-run', parent: 2, firstId: 13, count: 1, width: 3 }]),
@@ -4679,10 +4775,20 @@ describe('Lynx Element PAPI host driver', () => {
 		papi.resetCalls();
 		partial.apply();
 		expect(rows.children).toHaveLength(2);
-		expect(papi.eventCalls).toEqual([
-			[removedRow.children[0], 'bindEvent', 'longpress', undefined],
-			[removedRow, 'bindEvent', 'tap', undefined],
-		]);
+		// Teardown spends no PAPI calls describing listeners on hosts it is
+		// destroying in the same commit. At table scale this is the difference
+		// between one call per row and one per row per listener.
+		expect(papi.eventCalls).toEqual([]);
+		// What makes that safe is the dispatch guard, not the unbind: the record
+		// is gone and the host is detached, so neither token resolves even though
+		// both bindings are still physically installed.
+		expect(resolveLynxHostNativeEvent(container, removedTap)).toBeNull();
+		expect(resolveLynxHostNativeEvent(container, removedLongPress)).toBeNull();
+		// A survivor in the same run keeps dispatching.
+		expect(resolveLynxHostNativeEvent(container, survivorTap)).toEqual({
+			listener: 500,
+			priority: 'default',
+		});
 		expect(rows.children.map((node) => node.id)).toEqual([null, null]);
 		expect(partial.handleDelta.every((delta) => delta.op === 'destroy')).toBe(true);
 

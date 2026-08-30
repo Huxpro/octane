@@ -2082,6 +2082,16 @@ function removeNativeEvent<Node extends LynxElementRef>(
 	state: LynxHostState<Node>,
 	node: Node,
 	type: string,
+	// `teardown` says this host is being destroyed by the same batch, so the
+	// native unbind describes an element that is already detached and about to
+	// be dropped. Dispatch cannot reach it either way: resolveLynxHostNativeEvent
+	// refuses a token whose record was deleted, whose generation moved on, or
+	// whose host is no longer root-connected, and destroy does all three. The
+	// certified direct teardown plan has always skipped these unbinds; this
+	// carries the same property to every other teardown route, which is what
+	// keeps a 10k-row clear from spending 20,000 setEvent calls to describe
+	// listeners on hosts that disappear in the same commit.
+	teardown = false,
 ): void {
 	const events = state.nativeEvents.get(node);
 	const registration = events?.get(type);
@@ -2089,9 +2099,18 @@ function removeNativeEvent<Node extends LynxElementRef>(
 	if (registration.source === 'main-thread') {
 		// Invalidate before native unbind so an engine-retained callback cannot
 		// execute after its host lifetime ends. release() is idempotent for retry.
+		// This half is never skipped: the engine holds the worklet, so only an
+		// explicit release ends its lifetime, whatever happens to the element.
 		requireWorkletRegistry(state).release(
 			registration.listener.value as LynxActivatedMainThreadWorklet,
 		);
+	}
+	if (teardown) {
+		// Bookkeeping still has to go, or the node keeps a native-event entry
+		// that outlives its record.
+		events!.delete(type);
+		if (events!.size === 0) state.nativeEvents.delete(node);
+		return;
 	}
 	let replacement: LynxNativeEventRegistration | undefined;
 	for (const [candidateType, candidate] of events!) {
@@ -2336,10 +2355,11 @@ function activateMainThreadSubtree<Node extends LynxElementRef>(
 function removeAllNativeEvents<Node extends LynxElementRef>(
 	state: LynxHostState<Node>,
 	node: Node,
+	teardown = false,
 ): void {
 	const events = state.nativeEvents.get(node);
 	if (events === undefined) return;
-	for (const type of [...events.keys()]) removeNativeEvent(state, node, type);
+	for (const type of [...events.keys()]) removeNativeEvent(state, node, type, teardown);
 }
 
 function installNativeEvents<Node extends LynxElementRef>(
@@ -6122,7 +6142,7 @@ function prepareDenseTeardown<Node extends LynxElementRef>(
 								}
 								const node = plan.store.nodes[command.id - plan.firstId];
 								if (node === undefined) throw hostError('certified teardown node changed.');
-								removeNativeEvent(state, node, command.type);
+								removeNativeEvent(state, node, command.type, state.lists.size === 0);
 								if (LYNX_PROFILE && run !== null) completedEventDetaches++;
 							}
 						} finally {
@@ -6710,6 +6730,23 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 		}
 	};
 	let destroyedIds: Set<number> | null = null;
+	const batchDestroys = (): ReadonlySet<number> => {
+		if (destroyedIds === null) {
+			destroyedIds = new Set();
+			for (const candidate of batch.commands) {
+				if (candidate?.op !== 'destroy') continue;
+				assertSafeId(candidate.id, 'destroy.id');
+				destroyedIds.add(candidate.id);
+			}
+		}
+		return destroyedIds;
+	};
+	// A native list recycles elements the driver does not own, so a destroyed
+	// record there can hand its element back to the engine still carrying a
+	// binding. Any list topology keeps the explicit unbind. Read live at each
+	// use rather than snapshotted here: a list can appear inside this very
+	// batch, and the two readers run in different phases.
+	const teardownMaySkipUnbind = (): boolean => state.lists.size === 0;
 	const operations: LynxApplyOperation<Node>[] = [];
 	const handleOrder: number[] = [];
 	let touchedHandles: Set<number> | null = null;
@@ -7654,25 +7691,29 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 					}),
 				);
 			}
-			operations.push({
-				op: 'event',
-				id: command.id,
-				type: command.type,
-				previous,
-				next: record.events.get(command.type) ?? null,
-				generation: record.handle.generation,
-				visible: record.visible,
-			});
+			// A detach whose host this same batch destroys is subsumed by the
+			// destroy: the record goes, the element is already detached, and the
+			// destroy lowering clears the native-event bookkeeping. Journalling
+			// the detach as well would spend one PAPI call per listener to
+			// describe a host that no longer exists by the end of the commit.
+			if (
+				command.listener !== null ||
+				!teardownMaySkipUnbind() ||
+				!batchDestroys().has(command.id)
+			) {
+				operations.push({
+					op: 'event',
+					id: command.id,
+					type: command.type,
+					previous,
+					next: record.events.get(command.type) ?? null,
+					generation: record.handle.generation,
+					visible: record.visible,
+				});
+			}
 		} else if (command.op === 'destroy') {
 			abandonCompact();
-			if (destroyedIds === null) {
-				destroyedIds = new Set();
-				for (const candidate of batch.commands) {
-					if (candidate?.op !== 'destroy') continue;
-					assertSafeId(candidate.id, 'destroy.id');
-					destroyedIds.add(candidate.id);
-				}
-			}
+			const destroyed = batchDestroys();
 			assertSafeId(command.id, `command ${index} destroy.id`);
 			const record = getRecord(command.id);
 			if (record === undefined) throw hostError(`unknown destroy target ${command.id}.`);
@@ -7689,7 +7730,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				);
 			}
 			if (typeof record.parent === 'number') {
-				if (!destroyedIds.has(record.parent)) {
+				if (!destroyed.has(record.parent)) {
 					throw hostError(
 						`destroy target ${command.id} remains attached to a surviving detached parent.`,
 					);
@@ -8595,7 +8636,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 								const node = activeNodes.get(operation.id);
 								if (node !== undefined) {
 									if (state.lists.has(operation.id)) disposeNativeListState(state, operation.id);
-									removeAllNativeEvents(state, node);
+									removeAllNativeEvents(state, node, teardownMaySkipUnbind());
 									removeMainThreadRef(state, node);
 									state.ownedNodes.delete(node);
 								}
