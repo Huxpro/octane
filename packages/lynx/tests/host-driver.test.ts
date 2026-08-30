@@ -4109,6 +4109,45 @@ describe('Lynx Element PAPI host driver', () => {
 		expect(rows.children.map((node) => node.id)).toEqual(['replacement']);
 	});
 
+	it('still unbinds a listener detached on an id this batch destroyed and re-created', () => {
+		// One batch may destroy an id and re-create it. A detach on the *new*
+		// incarnation is subsumed by nothing: skipping its unbind because the
+		// old incarnation appears in the batch's destroy set would leave the
+		// native binding installed on a live, root-connected element — a
+		// catch-phase handler that keeps intercepting taps forever.
+		const { container, page } = createHost(91);
+		prepareLynxHostBatch(
+			container,
+			batch(1, [
+				{ op: 'create', id: 1, type: 'view', props: { id: 'shell' } },
+				{ op: 'create', id: 5, type: 'view', props: { id: 'first-life' } },
+				{ op: 'insert', parent: 1, id: 5, before: null },
+				{ op: 'insert', parent: null, id: 1, before: null },
+			]),
+		).apply();
+
+		const firstLife = page.children[0]!.children[0]!;
+		prepareLynxHostBatch(
+			container,
+			batch(2, [
+				{ op: 'remove', parent: 1, id: 5 },
+				{ op: 'destroy', id: 5 },
+				{ op: 'create', id: 5, type: 'view', props: { id: 'second-life' } },
+				{ op: 'insert', parent: 1, id: 5, before: null },
+				{ op: 'event', id: 5, type: 'catchtap', listener: { id: 700, priority: 'discrete' } },
+				{ op: 'event', id: 5, type: 'catchtap', listener: null },
+			]),
+		).apply();
+
+		const shell = page.children[0]!;
+		expect(shell.children).toHaveLength(1);
+		const secondLife = shell.children[0]!;
+		expect(secondLife).not.toBe(firstLife);
+		// The install earlier in the batch bound the native listener on this
+		// live element; the detach must have unbound it again.
+		expect(secondLife.events.size).toBe(0);
+	});
+
 	it('tears down a destroy-run too large for one spread over explicit records', () => {
 		// The explicit-records expansion serves exactly the runs too big or too
 		// reordered for the certified path. Its output is count removes plus

@@ -6739,16 +6739,28 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 		}
 	};
 	let destroyedIds: Set<number> | null = null;
+	let lastDestroyAt: Map<number, number> | null = null;
 	const batchDestroys = (): ReadonlySet<number> => {
 		if (destroyedIds === null) {
 			destroyedIds = new Set();
-			for (const candidate of batch.commands) {
+			lastDestroyAt = new Map();
+			for (let at = 0; at < batch.commands.length; at++) {
+				const candidate = batch.commands[at];
 				if (candidate?.op !== 'destroy') continue;
 				assertSafeId(candidate.id, 'destroy.id');
 				destroyedIds.add(candidate.id);
+				lastDestroyAt.set(candidate.id, at);
 			}
 		}
 		return destroyedIds;
+	};
+	// Whether a later command in this same batch destroys `id`. The set alone
+	// cannot answer this: a batch may destroy an id and re-create it, and a
+	// detach on the new incarnation is subsumed by nothing — skipping it would
+	// leave the native binding installed on a live element.
+	const destroyedLaterInBatch = (id: number, after: number): boolean => {
+		batchDestroys();
+		return (lastDestroyAt!.get(id) ?? -1) > after;
 	};
 	// A native list recycles elements the driver does not own, so a destroyed
 	// record there can hand its element back to the engine still carrying a
@@ -7681,7 +7693,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			if (
 				command.listener !== null ||
 				!teardownMaySkipUnbind() ||
-				!batchDestroys().has(command.id)
+				!destroyedLaterInBatch(command.id, index)
 			) {
 				operations.push({
 					op: 'event',
