@@ -16,6 +16,7 @@ import {
 	getLynxHostEventListener,
 	prepareLynxHostBatch,
 	resolveLynxHostNativeEvent,
+	type LynxHostHandleDelta,
 } from '../src/core/host-driver.js';
 import {
 	LYNX_FIRST_TREE_MISMATCH,
@@ -4108,6 +4109,45 @@ describe('Lynx Element PAPI host driver', () => {
 		expect(rows.children.map((node) => node.id)).toEqual(['replacement']);
 	});
 
+	it('still unbinds a listener detached on an id this batch destroyed and re-created', () => {
+		// One batch may destroy an id and re-create it. A detach on the *new*
+		// incarnation is subsumed by nothing: skipping its unbind because the
+		// old incarnation appears in the batch's destroy set would leave the
+		// native binding installed on a live, root-connected element — a
+		// catch-phase handler that keeps intercepting taps forever.
+		const { container, page } = createHost(91);
+		prepareLynxHostBatch(
+			container,
+			batch(1, [
+				{ op: 'create', id: 1, type: 'view', props: { id: 'shell' } },
+				{ op: 'create', id: 5, type: 'view', props: { id: 'first-life' } },
+				{ op: 'insert', parent: 1, id: 5, before: null },
+				{ op: 'insert', parent: null, id: 1, before: null },
+			]),
+		).apply();
+
+		const firstLife = page.children[0]!.children[0]!;
+		prepareLynxHostBatch(
+			container,
+			batch(2, [
+				{ op: 'remove', parent: 1, id: 5 },
+				{ op: 'destroy', id: 5 },
+				{ op: 'create', id: 5, type: 'view', props: { id: 'second-life' } },
+				{ op: 'insert', parent: 1, id: 5, before: null },
+				{ op: 'event', id: 5, type: 'catchtap', listener: { id: 700, priority: 'discrete' } },
+				{ op: 'event', id: 5, type: 'catchtap', listener: null },
+			]),
+		).apply();
+
+		const shell = page.children[0]!;
+		expect(shell.children).toHaveLength(1);
+		const secondLife = shell.children[0]!;
+		expect(secondLife).not.toBe(firstLife);
+		// The install earlier in the batch bound the native listener on this
+		// live element; the detach must have unbound it again.
+		expect(secondLife.events.size).toBe(0);
+	});
+
 	it('tears down a destroy-run too large for one spread over explicit records', () => {
 		// The explicit-records expansion serves exactly the runs too big or too
 		// reordered for the certified path. Its output is count removes plus
@@ -4382,6 +4422,288 @@ describe('Lynx Element PAPI host driver', () => {
 		expect(papi.eventCalls).toEqual([[foreign, 'bindEvent', 'tap', undefined]]);
 	});
 
+	it('expands a destroy-run identically whether the dense store or the record map answers', () => {
+		// A `mount-template-run` leaves its records in one of two shapes, and the
+		// later `destroy-run` is expanded from whichever it got: the dense store
+		// when the compact fast path took the run, and the plain record map when it
+		// declined. Both routes are supposed to describe the same teardown, and
+		// until now nothing compared them.
+		//
+		// A third shape used to exist — a full `new Map(state.records)` mirror kept
+		// on `state.teardownRecords` purely so a declined run could still be
+		// expanded densely. It is gone (see this commit): it cost a second copy of
+		// every record for the life of the run, and the two routes it sat between
+		// are the ones compared here.
+		const program: UniversalHostTemplateProgram = Object.freeze({
+			nodes: Object.freeze([
+				Object.freeze({
+					type: 'view',
+					parent: -1,
+					props: Object.freeze({ class: 'row' }),
+					bindings: Object.freeze([Object.freeze({ name: 'id', valueIndex: 0 })]),
+				}),
+				Object.freeze({ type: 'text', parent: 0, props: Object.freeze({ class: 'label' }) }),
+				Object.freeze({
+					type: '#text',
+					parent: 1,
+					props: Object.freeze({}),
+					bindings: Object.freeze([Object.freeze({ name: 'value', valueIndex: 1 })]),
+				}),
+			]),
+			events: Object.freeze([
+				Object.freeze({ node: 0, type: 'bindtap', priority: 'default' as const }),
+			]),
+		});
+		const values = Object.freeze(['row-1', 'One', 'row-2', 'Two', 'row-3', 'Three']);
+
+		// `neighbour` parks an explicit host above the run's id space, which is what
+		// makes the incremental compact decline. Instrumenting the dispatch site
+		// confirms the two arms take the two extreme routes rather than merely
+		// adjacent ones: without the neighbour the run never reaches the expansion
+		// loop at all, because `prepareDirectFullTeardown` certifies it; with the
+		// neighbour the records stay a `Map` and `expandRecordsRunTeardown`
+		// answers. Same painted tree either way, which is what makes the two
+		// teardowns comparable.
+		const paintThenTearDown = (neighbour: boolean) => {
+			const { container, page, papi } = createHost(80);
+			const setup: UniversalHostCommand[] = [
+				{ op: 'create', id: 1, type: 'view', props: { id: 'shell' } },
+				{ op: 'create', id: 2, type: 'view', props: { id: 'rows' } },
+				{ op: 'insert', id: 2, parent: 1, before: null },
+			];
+			if (neighbour) {
+				setup.push({ op: 'create', id: 900, type: 'view', props: { id: 'neighbour' } });
+				setup.push({ op: 'insert', id: 900, parent: 1, before: null });
+			}
+			setup.push({ op: 'insert', id: 1, parent: null, before: null });
+			prepareLynxHostBatch(container, batch(1, setup)).apply();
+			prepareLynxHostBatch(
+				container,
+				batch(2, [
+					{
+						op: 'mount-template-run',
+						parent: 2,
+						before: null,
+						program,
+						firstId: 10,
+						firstListenerId: 9000,
+						count: 3,
+						values,
+					},
+				]),
+				{ compact: true, incrementalCompact: true, lazyPublicInstances: true },
+			).apply();
+			const rows = page.children[0]!.children[0]!;
+			expect(rows.children.map((node) => node.id)).toEqual(['row-1', 'row-2', 'row-3']);
+			papi.resetCalls();
+			const teardown = prepareLynxHostBatch(
+				container,
+				batch(4, [{ op: 'destroy-run', parent: 2, firstId: 10, count: 3, width: 3 }]),
+			);
+			const handleDelta = teardown.handleDelta;
+			teardown.apply();
+			return { container, rows, calls: papi.calls, handleDelta };
+		};
+
+		// The two routes are allowed to *publish* differently — a dense run retires
+		// its hosts in one `destroy-run` delta where the record map emits one
+		// `destroy` each — so the comparison is over what the deltas mean: which
+		// identities the peer is told to retire. The physical teardown and the
+		// resulting tree have to agree exactly.
+		const retired = (deltas: readonly LynxHostHandleDelta[]) => {
+			const identities: string[] = [];
+			for (const delta of deltas) {
+				if (delta.op === 'destroy') identities.push(`${delta.id}:${delta.generation}`);
+				else if (delta.op === 'destroy-run') {
+					for (let offset = 0; offset < delta.hostCount; offset++) {
+						identities.push(`${delta.firstId + offset}:${delta.generation}`);
+					}
+				} else identities.push(`${delta.op} ${delta.handle.id}:${delta.handle.generation}`);
+			}
+			return identities.sort();
+		};
+
+		const dense = paintThenTearDown(false);
+		const fromRecords = paintThenTearDown(true);
+
+		expect(retired(dense.handleDelta)).toEqual(retired(fromRecords.handleDelta));
+		expect(retired(dense.handleDelta)).toHaveLength(9);
+		expect(dense.calls).toEqual(fromRecords.calls);
+		expect(dense.rows.children).toEqual([]);
+		expect(fromRecords.rows.children).toEqual([]);
+		expect(disposeLynxHostContainer(dense.container).complete).toBe(true);
+		expect(disposeLynxHostContainer(fromRecords.container).complete).toBe(true);
+	});
+
+	it('clears a template run at one host call per row, whatever the row carries', () => {
+		// Issue #241's cost oracle in deterministic form. Clearing a table used
+		// to cost one PAPI call per row plus one per listener on it, because the
+		// teardown described every listener detach on its way to destroying the
+		// host that owned it. Only the root removal is observable, so the count
+		// per row must be one and must not move when the row grows listeners.
+		//
+		// The shape is the lynx-table benchmark row: `view.row` over three
+		// `text` cells, each with its own text carrier, and a `bindtap` on two
+		// of them. At 10k rows the old accounting spent 30,001 calls on a clear;
+		// this pins the 10,001 that remain.
+		const benchRow = (events: number): UniversalHostTemplateProgram =>
+			Object.freeze({
+				nodes: Object.freeze([
+					Object.freeze({ type: 'view', parent: -1, props: Object.freeze({ class: 'row' }) }),
+					Object.freeze({ type: 'text', parent: 0, props: Object.freeze({ class: 'col-id' }) }),
+					Object.freeze({ type: 'raw-text', parent: 1, props: Object.freeze({ text: '1' }) }),
+					Object.freeze({ type: 'text', parent: 0, props: Object.freeze({ class: 'col-label' }) }),
+					Object.freeze({ type: 'raw-text', parent: 3, props: Object.freeze({ text: 'label' }) }),
+					Object.freeze({ type: 'text', parent: 0, props: Object.freeze({ class: 'col-remove' }) }),
+					Object.freeze({ type: 'raw-text', parent: 5, props: Object.freeze({ text: 'x' }) }),
+				]),
+				events: Object.freeze(
+					[
+						Object.freeze({ node: 3, type: 'bindtap', priority: 'default' as const }),
+						Object.freeze({ node: 5, type: 'bindtap', priority: 'default' as const }),
+					].slice(0, events),
+				),
+			});
+
+		// `neighbour` parks an explicit host above the run's id space. That keeps
+		// `maxExplicitId` ahead of the run so the incremental compact declines,
+		// the records stay a map, and the clear leaves the certified direct plan
+		// for the general expansion — the route a table clear actually takes once
+		// anything else on the page owns a higher id. Both routes have to meet
+		// the same per-row bound, so both are measured.
+		const clear = (rows: number, events: number, neighbour: boolean) => {
+			const { container, page, papi } = createHost(82);
+			const setup: UniversalHostCommand[] = [
+				{ op: 'create', id: 1, type: 'view', props: { id: 'shell' } },
+				{ op: 'create', id: 2, type: 'view', props: { id: 'rows' } },
+				{ op: 'insert', id: 2, parent: 1, before: null },
+			];
+			if (neighbour) {
+				setup.push({ op: 'create', id: 900, type: 'view', props: { id: 'neighbour' } });
+				setup.push({ op: 'insert', id: 900, parent: 1, before: null });
+			}
+			setup.push({ op: 'insert', id: 1, parent: null, before: null });
+			prepareLynxHostBatch(container, batch(1, setup)).apply();
+			prepareLynxHostBatch(
+				container,
+				batch(2, [
+					{
+						op: 'mount-template-run',
+						parent: 2,
+						before: null,
+						program: benchRow(events),
+						firstId: 100,
+						firstListenerId: events === 0 ? null : 9000,
+						count: rows,
+						values: Object.freeze([]),
+					},
+				]),
+				{ compact: true, incrementalCompact: true, lazyPublicInstances: true },
+			).apply();
+			const list = page.children[0]!.children[0]!;
+			expect(list.children).toHaveLength(rows);
+			papi.resetCalls();
+			prepareLynxHostBatch(
+				container,
+				batch(3, [{ op: 'destroy-run', parent: 2, firstId: 100, count: rows, width: 7 }]),
+			).apply();
+			expect(list.children).toEqual([]);
+			const tally: Record<string, number> = {};
+			for (const call of papi.calls) tally[call] = (tally[call] ?? 0) + 1;
+			expect(disposeLynxHostContainer(container).complete).toBe(true);
+			return tally;
+		};
+
+		for (const neighbour of [false, true]) {
+			for (const rows of [1, 4, 16]) {
+				// Adding listeners to the row must not add host calls to its clear.
+				expect(clear(rows, 0, neighbour)).toEqual({ remove: rows, flush: 1 });
+				expect(clear(rows, 1, neighbour)).toEqual({ remove: rows, flush: 1 });
+				expect(clear(rows, 2, neighbour)).toEqual({ remove: rows, flush: 1 });
+			}
+		}
+	});
+
+	it("releases a cleared run's listener journal through its destroy", () => {
+		// The companion to the one-call-per-row oracle above. That test pins what
+		// a clear spends at the host boundary; this one pins that the clear still
+		// *releases* what it stops describing.
+		//
+		// A records-map clear used to synthesize one `event` command per listener
+		// on its way to the `destroy` that retires the same host — two of every
+		// ten commands a bench row's teardown produced, and every one of them
+		// describing a detach the following `destroy` performs anyway through
+		// `removeAllNativeEvents`. They are gone on a container with no native
+		// list. What must not go with them is the release itself: a listener left
+		// in the journal would outlive its record and be unbound again at
+		// disposal, so disposal after a clear has to be silent.
+		const benchRow: UniversalHostTemplateProgram = Object.freeze({
+			nodes: Object.freeze([
+				Object.freeze({ type: 'view', parent: -1, props: Object.freeze({ class: 'row' }) }),
+				Object.freeze({ type: 'text', parent: 0, props: Object.freeze({ class: 'col-id' }) }),
+				Object.freeze({ type: 'raw-text', parent: 1, props: Object.freeze({ text: '1' }) }),
+				Object.freeze({ type: 'text', parent: 0, props: Object.freeze({ class: 'col-label' }) }),
+				Object.freeze({ type: 'raw-text', parent: 3, props: Object.freeze({ text: 'label' }) }),
+				Object.freeze({ type: 'text', parent: 0, props: Object.freeze({ class: 'col-remove' }) }),
+				Object.freeze({ type: 'raw-text', parent: 5, props: Object.freeze({ text: 'x' }) }),
+			]),
+			events: Object.freeze([
+				Object.freeze({ node: 3, type: 'bindtap', priority: 'default' as const }),
+				Object.freeze({ node: 5, type: 'bindtap', priority: 'default' as const }),
+			]),
+		});
+		const rows = 4;
+		const { container, page, papi } = createHost(83);
+		// The neighbour above the run's id space is what declines the incremental
+		// compact, so the records stay a map and the clear takes the expansion
+		// rather than the certified direct plan.
+		prepareLynxHostBatch(
+			container,
+			batch(1, [
+				{ op: 'create', id: 1, type: 'view', props: { id: 'shell' } },
+				{ op: 'create', id: 2, type: 'view', props: { id: 'rows' } },
+				{ op: 'insert', id: 2, parent: 1, before: null },
+				{ op: 'create', id: 900, type: 'view', props: { id: 'neighbour' } },
+				{ op: 'insert', id: 900, parent: 1, before: null },
+				{ op: 'insert', id: 1, parent: null, before: null },
+			]),
+		).apply();
+		prepareLynxHostBatch(
+			container,
+			batch(2, [
+				{
+					op: 'mount-template-run',
+					parent: 2,
+					before: null,
+					program: benchRow,
+					firstId: 100,
+					firstListenerId: 9000,
+					count: rows,
+					values: Object.freeze([]),
+				},
+			]),
+			{ compact: true, incrementalCompact: true, lazyPublicInstances: true },
+		).apply();
+		const list = page.children[0]!.children[0]!;
+		expect(list.children).toHaveLength(rows);
+		papi.resetCalls();
+		prepareLynxHostBatch(
+			container,
+			batch(3, [{ op: 'destroy-run', parent: 2, firstId: 100, count: rows, width: 7 }]),
+		).apply();
+		expect(list.children).toEqual([]);
+		const clearTally: Record<string, number> = {};
+		for (const call of papi.calls) clearTally[call] = (clearTally[call] ?? 0) + 1;
+		expect(clearTally).toEqual({ remove: rows, flush: 1 });
+
+		// Eight listeners were installed and none of them may still be journalled:
+		// disposal unbinds whatever the journal still holds, so any survivor of
+		// the clear shows up here as a `setEvent` the clear should have released.
+		papi.resetCalls();
+		expect(disposeLynxHostContainer(container).complete).toBe(true);
+		expect(papi.calls.filter((call) => call === 'setEvent')).toEqual([]);
+	});
+
 	it('accepts a complete destroy-run teardown after an accepted host fault', () => {
 		const { container, page, papi } = createHost(69);
 		const program: UniversalHostTemplateProgram = Object.freeze({
@@ -4581,6 +4903,13 @@ describe('Lynx Element PAPI host driver', () => {
 		expect(rows.children).toHaveLength(3);
 		const removedRow = rows.children[1]!;
 
+		// Captured while the row is still accepted: teardown deliberately leaves
+		// these bindings installed on the detached elements, so the tokens stay
+		// readable and the dispatch guard is what has to refuse them.
+		const removedTap = removedRow.events.get('bindEvent:tap')!;
+		const removedLongPress = removedRow.children[0]!.events.get('bindEvent:longpress')!;
+		const survivorTap = rows.children[0]!.events.get('bindEvent:tap')!;
+
 		const partial = prepareLynxHostBatch(
 			container,
 			batch(3, [{ op: 'destroy-run', parent: 2, firstId: 13, count: 1, width: 3 }]),
@@ -4588,10 +4917,20 @@ describe('Lynx Element PAPI host driver', () => {
 		papi.resetCalls();
 		partial.apply();
 		expect(rows.children).toHaveLength(2);
-		expect(papi.eventCalls).toEqual([
-			[removedRow.children[0], 'bindEvent', 'longpress', undefined],
-			[removedRow, 'bindEvent', 'tap', undefined],
-		]);
+		// Teardown spends no PAPI calls describing listeners on hosts it is
+		// destroying in the same commit. At table scale this is the difference
+		// between one call per row and one per row per listener.
+		expect(papi.eventCalls).toEqual([]);
+		// What makes that safe is the dispatch guard, not the unbind: the record
+		// is gone and the host is detached, so neither token resolves even though
+		// both bindings are still physically installed.
+		expect(resolveLynxHostNativeEvent(container, removedTap)).toBeNull();
+		expect(resolveLynxHostNativeEvent(container, removedLongPress)).toBeNull();
+		// A survivor in the same run keeps dispatching.
+		expect(resolveLynxHostNativeEvent(container, survivorTap)).toEqual({
+			listener: 500,
+			priority: 'default',
+		});
 		expect(rows.children.map((node) => node.id)).toEqual([null, null]);
 		expect(partial.handleDelta.every((delta) => delta.op === 'destroy')).toBe(true);
 
