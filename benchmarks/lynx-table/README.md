@@ -2,8 +2,8 @@
 
 The unified cross-framework table benchmark for Octane's Lynx renderer: the
 krausest-style row table (`app/`, mirrored operation-for-operation from the
-Vue Lynx unified benchmark matrix) driven through create / update-every-10th /
-select / clear and the update (×50) / select (×30) storms, where every storm
+Vue Lynx unified benchmark matrix) driven through create / update-every-10th / select / swap, the update (×50) /
+select (×30) storms, and a closing clear / re-create cycle, where every storm
 tick runs in its own MessageChannel macrotask so app-layer batching cannot
 merge them.
 
@@ -79,6 +79,43 @@ The run line prints this as `create=1 (1000r, 0/4000 refs)`. `meta.rows_*` also
 records `wireRegime` — the negotiated capabilities, and the acknowledgement,
 public-instance, and announcement regime every commit went out under — because an
 install count is unreadable without knowing whether the commit announced at all.
+
+### The second create, on the container the first one left behind
+
+Every op above measures a first create on a virgin root. No cross-framework
+harness measures create that way past its first repetition: the web runner
+rebuilds a case's pre-state before each sample, so repetition 2 onward creates
+over whatever the previous clear left behind. `clear` and `recreate` close that
+gap — they run last, after the storms, so nothing above them changes, and they
+report the teardown of the whole run followed by the same create again.
+
+Both are gated at one command, which is the wire claim: retiring a run names the
+run, not its rows, and mounting the replacement is the same single template-run
+command the first mount was. Both hold.
+
+What the command counts cannot see is how much of that one command the receiver
+expands back into per-host work, so `meta.rows_*.warmCycle` records it:
+
+| rows | `clear.synthesizedCommands` | `clear.denseValidate` | `create` prepare | `recreate` prepare |
+| ---: | ---: | ---: | ---: | ---: |
+| 1,000 | 10,000 | 0 ms | 14.8 ms | 16.1 ms |
+| 10,000 | **100,000** | 0 ms | 156.8 ms | **293.5 ms** |
+
+A certified teardown consumes the `destroy-run` whole and synthesizes nothing;
+the expansion fallback rebuilds one remove, one destroy and one listener detach
+per host out of accepted state, which is the ten commands per row above. The
+zero beside it is why: the certified path times its validation in
+`denseValidate`, so a zero there means it was never attempted, and the
+`destroy-run` went to `expandRecordsRunTeardown` instead.
+
+Those numbers are informational rather than gated, because the receiver is
+paying them today. `octane-lynx` negotiates `compactAck` and
+`lazyPublicInstances` and its create commit still arrives at
+`prepareLynxHostBatch` with neither: the incremental-compact upgrade that the
+certified teardown mirror hangs off is reached only through a first-tree
+adoption handoff, and this root paints no first screen. Issue #230 carries the
+attribution; this pair is the instrument that made it visible and is what a fix
+has to move.
 
 Because the in-process ContextProxy is synchronous, acknowledgements return
 immediately and the storm gates see one commit per tick; the asynchronous
