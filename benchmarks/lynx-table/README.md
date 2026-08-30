@@ -3432,6 +3432,139 @@ thermal and load recorded), in this order, because each step can end the probe:
 Check each window in as its own record under `stages/results/`, the way every
 other window here does, and report it on #215.
 
+### Device round 2: D4 stops at the ART summary; D-train mount is 4 ms at 1k
+
+Round 2 ran commit `03a5ba6087bbd854e5f10066a63828c5957bd555` on the
+same Aries 10 / Explorer 1.0 / Lynx SDK 4.0 device class as round 1. Before each
+sample a build-only background probe called
+`LynxDevToolSetModule.switchLynxDebug(false)` and waited for both the disabled
+lifecycle transition and its acknowledgement; logcat was then cleared without
+restarting the process, so an enabled transition in the measured bundle would
+invalidate the sample. No CDP connection was opened.
+
+The first valid window,
+`stages/results/issue194-d4-art-summary-10000.json`, answered step 1 above:
+
+| 10k cell | n | terminal outcome | load → terminal |
+|---|---:|---|---:|
+| D-train `octane-mts-program` | 5 | ART native crash, 5/5 | 20,397–22,029 ms; median 21,156 ms |
+| template control | 5 | alive at cutoff, 5/5 | 180,000 ms cutoff |
+
+Every crash printed the same leading global-reference classes: 30,026
+`com.lynx.tasm.behavior.PaintingContext$a` instances and 20,444 `m7.w`
+instances, followed by only hundreds of `Class` and `DirectByteBuffer`
+instances. `PaintingContext` is the Lynx platform UI owner the decision tree
+asked for, not an Octane JavaScript container. The protocol therefore stops:
+there is no 6k–8k bisection and no `mts-program` / direct / retain-none arm.
+The 10k result is a platform capacity boundary, not a missing Octane release
+point.
+
+The round-1 bookkeeping detail matters when comparing these records: the cell
+that actually crashed at 10k was `octane-mts-program` built with the
+direct-self diagnostic. The `octane-direct` prototype did not run that window;
+the paired template timed out alive.
+
+The second valid window,
+`stages/results/issue194-d-train-mount-program-1000.json`, remeasured #215's
+device oracle with D1–D8 present. Its five `mountProgram` observations are
+4 / 3 / 3 / 4 / 4 ms, median **4 ms**, against round 1's 8,565 ms: -8,561 ms,
+or -99.95%. The same window's load-to-first-screen medians are 657 ms for the
+program cell and 2,149 ms for the template control. This is one before/after
+reading of C20 + D1 together; the device window does not claim to separate
+their effects. Both windows have zero invalid attempts, n=5 per cell, AB/BA
+ordering, cold launch per sample, and a 35.0 °C / thermal-status-0 gate.
+
+### Device round 3: cross-framework capacity confirmation and post-fix ACK shapes
+
+Round 3 used `new-lynx` commit
+`8938c12608524d1a259b5e81f0903ffa5b5eb4d5` on `aries_10` / Android 10 /
+Explorer 1.0 / app-bundle engine 3.9 / Lynx SDK 4.0. The checked-in records
+carry the Sandbox acquisition and release receipt. Every accepted attempt used
+the round-2 DevTool-disabled preflight, a cold process, no CDP connection, and
+the same 35.0 °C / thermal-status-0 gate.
+
+Issue #234 Part A is qualitative, and explicitly permits n=1. Two independent
+cold starts of the same vendored ReactLynx eager-10k bundle both aborted at the
+ART global-reference ceiling, 25,706 and 25,789 ms after load start. Both dumps
+have the same leading summary: 30,026
+`com.lynx.tasm.behavior.PaintingContext$a` and 20,441 `m7.w` instances. That is
+the cross-framework confirmation the issue asks for: the owner is the same Lynx
+platform UI class as Octane's round-2 dump, not a ReactLynx-specific holder.
+The record is
+`stages/results/issue234-a-react-eager-art-summary-10000.json`.
+
+The same lease ran the cheap surviving-side check. The Octane MTS-program eager
+7k bundle completed twice, with valid 7,000-row state and no error; load to first
+screen was 14,629 and 14,596 ms, and the background-script-start to second
+native frame observations were 4,369 and 4,374 ms. This pins only the requested
+surviving side of the platform boundary; it is not a bisection or a timing
+ranking. The record is
+`stages/results/issue234-a-octane-mts-program-7000.json`.
+
+Two additional post-#229/#233 interaction probes use real `adb shell input tap`
+events and wait through two native animation frames before accepting state:
+
+| operation | state oracle | native tap → second frame | ACK encoding | encoded ACK bytes | ACK messages |
+|---|---|---:|---|---:|---:|
+| create 1k | 0 → 1,000, ids 1/2/3/999 | 11,500 / 11,446 ms | `compact-v1`, count 7,000 | 107 / 107 | 1 / 1 |
+| clear 1k | 1,000 → 0 | 2,742 / 2,776 ms | per-host `handles` | 286,294 / 286,294 | 1 / 1 |
+
+Each ACK is followed by one separate `complete` message; the table's ACK count
+does not fold that completion into the answer. The byte boundary is the exact
+string returned by Octane's shipping `encodeLynxTransportValue` immediately
+before the main-to-background dispatch, measured before the build-only logger
+runs. It is therefore an ACK-payload measurement, not the web harness's larger
+RPC-envelope aggregate. Create confirms #230's compact recompute at this tip;
+clear is expected to remain a per-host teardown acknowledgement and does not
+claim the compact create shape. These two n=1-per-identical-cell records are
+correctness/wire-shape probes, not statistical timing claims:
+`stages/results/issue194-round3-create-1000.json` and
+`stages/results/issue194-round3-clear-1000.json`.
+
+#### Issue #42 A/B: post-fix sequence and clear fidelity boundary
+
+One later lease on the same device class ran the issue-#42 sequence against the
+exact new-lynx source `8938c12608524d1a259b5e81f0903ffa5b5eb4d5`.
+Two independent cold starts completed create→clear→re-create at 1k with no
+invalid attempt. Both produced the same aggregate ContextProxy wire shape per
+commit:
+
+| commit | state | tap → second frame | MTS→BTS encoded total | messages | ACKs |
+|---|---|---:|---:|---:|---:|
+| create #1 | 0 → 1,000 | 11,390 / 11,427 ms | 182 / 182 B | 2 / 2 | 1 / 1 |
+| clear | 1,000 → 0 | 262 / 252 ms | 222 / 222 B | 2 / 2 | 1 / 1 |
+| create #2 | 0 → 1,000 | 11,376 / 11,513 ms | 182 / 182 B | 2 / 2 | 1 / 1 |
+
+Each create ACK is compact-v1 with count 7,000; each message total contains one
+ACK and one `complete`. This confirms the post-#229/#233 O(1) shape under
+LepusNG. The 182/222-byte totals are the encoded Native ContextProxy boundary,
+not the Web RPC-envelope aggregate, so only shape and counts compare. The same
+source/build family had already passed the surviving ~7,000-row Part-A probe
+above. Record:
+`stages/results/issue42-a-create-clear-recreate-1000.json`.
+
+The clear@1k cross-framework window found a measurement-fidelity boundary, not
+a Native rank:
+
+| cell | preparation | clear receipt | raw latency | transport settlement |
+|---|---|---|---:|---|
+| Hux block/scoped | create→clear | 1,000 → 0 + two frames | 4,644 ms | waits for Octane ACK; 286,141 B / 2 messages / 1 ACK |
+| upstream `9779569e` | eager rows-1000, then clear | 1,000 → 0 + two frames | 2,560 ms | waits for Octane ACK; 286,369 B / 2 messages / 1 ACK |
+| ReactLynx | create→clear, three cold starts | 1,000 → 0 + two frames | 34 / 28 / 31 ms | producer explicitly reports `not-exposed`, `acknowledged: false` |
+
+Upstream's rows-0 create reached its state/frame receipt but its following clear
+handler produced no receipt before timeout, so its accepted number necessarily
+uses the eager-1k preparation and is not preparation-equivalent to Hux or
+React. More importantly, React's second-frame receipt does not wait for the
+transport settlement that both Octane probes include. Dividing these raw
+numbers would rank different completion boundaries. Therefore this window
+neither validates nor falsifies the Web-interp clear ratio; it records the
+fidelity boundary, grants no device prediction stake, and enters no Native
+cohort. Records:
+`stages/results/issue42-b-clear-1000-octane-hux.json`,
+`stages/results/issue42-b-clear-1000-octane-upstream.json`, and
+`stages/results/issue42-b-clear-1000-react.json`.
+
 ## Claims and non-claims
 
 Command counts and commit bytes are Octane-owned costs and are gated. The
