@@ -2,6 +2,12 @@
   "schemaVersion": 1,
   "issue": "https://github.com/Huxpro/octane/issues/57",
   "generatedAt": "2026-08-15T18:36:00.000Z",
+  "provenance": {
+    "status": "historical",
+    "supersededBy": "dcf94cfc83c8e9e8484d01446c3ff680134dd1d1",
+    "supersededByTitle": "perf(lynx): streamline dense clear teardown (#762)",
+    "reason": "The candidate measured here (b04e488d) is not an ancestor of new-lynx, and dcf94cfc8 later rewrote the dense clear teardown these numbers time. They describe a teardown path that no longer exists in the measured form, and the headline claim (clear@10k at 0.800x React) is contradicted by the current 3-lane campaign (Huxpro/lynx-js-framework-benchmark#41: clear@10k hux 801ms vs react 304ms, 2.6x, regime-invariant). Read these samples as a laboratory record of b04e488d only, never as a statement about current clear cost; issue #241 owns the live number."
+  },
   "machine": {
     "id": "65160668d8d9",
     "cpu": "Intel Xeon Platinum 8336C",
