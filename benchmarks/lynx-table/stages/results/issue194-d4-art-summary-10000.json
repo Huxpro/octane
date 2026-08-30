@@ -1,0 +1,1070 @@
+{
+  "protocol": "octane-issue194-device-v1",
+  "question": "D4-art-summary-10000",
+  "createdAt": "2026-08-28T08:07:20.546Z",
+  "octaneCommit": "03a5ba6087bbd854e5f10066a63828c5957bd555",
+  "serial": "aic-i18n-bd-fullport.byteintl.net:44311",
+  "device": {
+    "model": "aries_10",
+    "product": "aries",
+    "android": "10",
+    "fingerprint": "aries_10/aries/aries:10/QQ3A.200805.001/1.5.2:userdebug/test-keys",
+    "abi": "arm64-v8a",
+    "explorer": "1.0"
+  },
+  "controls": {
+    "devtool": "disabled by a background-only LynxDevToolSetModule.switchLynxDebug(false) preflight before each sample; no CDP/DevTool connection used",
+    "coldLaunchPerSample": true,
+    "thermalGate": "battery <=35.0C and Android thermal status 0 before every accepted attempt",
+    "ordering": "AB/BA (A,B,B,A repeating)",
+    "completionMode": "commit",
+    "engineOnly": true,
+    "expectedOutcome": "terminal outcome at 180000 ms: completed, native-crash, or timeout"
+  },
+  "scale": 10000,
+  "targetAcceptedSamplesPerCell": 5,
+  "disableDevToolBundle": {
+    "url": "http://127.0.0.1:8878/dist-disable-devtool/main.lynx.bundle",
+    "bundle": {
+      "path": "/tmp/octane-issue194-round2/benchmarks/lynx-table/app/dist-disable-devtool/main.lynx.bundle",
+      "bytes": 531909,
+      "sha256": "56d71704ad388121a69f2c70e0766c6b578fbfd4212555cee34aff36cb0c4240"
+    }
+  },
+  "cells": {
+    "program": {
+      "url": "http://127.0.0.1:8878/dist-mtsprogram-device-rows10000/main.lynx.bundle",
+      "bundle": {
+        "path": "/tmp/octane-issue194-round2/benchmarks/lynx-table/app/dist-mtsprogram-device-rows10000/main.lynx.bundle",
+        "bytes": 520098,
+        "sha256": "442e797ae4dfb3c4a31e5ece994e7dfd2b32d91b6ada5bed295de6f3d4f2cf18"
+      }
+    },
+    "template": {
+      "url": "http://127.0.0.1:8878/dist-device-rows10000/main.lynx.bundle",
+      "bundle": {
+        "path": "/tmp/octane-issue194-round2/benchmarks/lynx-table/app/dist-device-rows10000/main.lynx.bundle",
+        "bytes": 518674,
+        "sha256": "cecbaff6fcb6f1e10d9ca78ad52077cb71037aaedef4e859bc80054d802000f4"
+      }
+    }
+  },
+  "samples": [
+    {
+      "ordinal": 1,
+      "cell": "program",
+      "accepted": true,
+      "outcome": "native-crash",
+      "timeoutMs": 180000,
+      "nativeCrash": {
+        "atMs": 1787904460320,
+        "loadToCrashMs": 20606,
+        "evidence": [
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666] JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+          "1787904460.368 20045 20045 F m.lynx.explore: runtime.cc:638] JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+          "1787904460.368 20045 20045 F libc    : Fatal signal 6 (SIGABRT), code -1 (SI_QUEUE) in tid 20045 (m.lynx.explorer), pid 20045 (m.lynx.explorer)",
+          "1787904460.448 20202 20202 F DEBUG   : Abort message: 'JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+          "1787904460.836   466  1080 I ActivityManager: Process com.lynx.explorer (pid 20045) has died: fore TOP"
+        ],
+        "artReferenceTableDump": [
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666] JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]   Last 10 entries (of 51200):",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]     51199: 0x1600bf68 m7.w",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]     51198: 0x1600bf08 m7.w",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]     51197: 0x1600bea8 m7.w",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]     51196: 0x1600be48 m7.w",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]     51195: 0x1600bde8 m7.w",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]     51194: 0x1600bd88 m7.w",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]     51193: 0x1600bd28 m7.w",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]     51192: 0x1600bcc8 m7.w",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]     51191: 0x1600bc68 m7.w",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]     51190: 0x1600bc08 m7.w",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]   Summary:",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]     30026 of com.lynx.tasm.behavior.PaintingContext$a (30026 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]     20444 of m7.w (20444 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]       403 of java.lang.Class (330 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]       277 of java.nio.DirectByteBuffer (277 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         4 of java.lang.String (4 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLDisplay (2 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLSurface (2 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLContext (2 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         3 of com.lynx.debugrouter.MessageHandlerDelegate (3 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         3 of java.lang.ref.WeakReference (3 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         2 of dalvik.system.PathClassLoader (1 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.tasm.TasmPlatformInvoker (2 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.tasm.performance.PerformanceController (2 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.debugrouter.NativeStateListenerDelegate (2 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.debugrouter.GlobalHandlerDelegate (2 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         2 of java.lang.ThreadGroup (2 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         2 of android.view.ViewRootImpl$W (2 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.behavior.PaintingContext$b",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.TemplateData",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.behavior.PlatformExtraBundleHolder",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.debugrouter.NativeReportDelegate",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.basedevtool.DevToolGlobalSlot",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.basedevtool.DevToolSlot",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of dalvik.system.VMRuntime",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.app.ActivityThread$ApplicationThread",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.inputmethod.InputMethodManager$ControlledInputConnectionWrapper",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.graphics.HardwareRenderer$ProcessInitializer$1",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.WindowManagerGlobal$1",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.content.ContentProvider$Transport",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.inputmethod.InputMethodManager$1",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.hardware.display.DisplayManagerGlobal$DisplayManagerCallback",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.accessibility.AccessibilityManager$1",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.os.PersistableBundle$1",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.app.LoadedApk$ReceiverDispatcher$InnerReceiver",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]"
+        ],
+        "artReferenceTableSummary": [
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]   Summary:",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]     30026 of com.lynx.tasm.behavior.PaintingContext$a (30026 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]     20444 of m7.w (20444 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]       403 of java.lang.Class (330 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]       277 of java.nio.DirectByteBuffer (277 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         4 of java.lang.String (4 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLDisplay (2 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLSurface (2 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLContext (2 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         3 of com.lynx.debugrouter.MessageHandlerDelegate (3 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         3 of java.lang.ref.WeakReference (3 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         2 of dalvik.system.PathClassLoader (1 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.tasm.TasmPlatformInvoker (2 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.tasm.performance.PerformanceController (2 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.debugrouter.NativeStateListenerDelegate (2 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.debugrouter.GlobalHandlerDelegate (2 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         2 of java.lang.ThreadGroup (2 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         2 of android.view.ViewRootImpl$W (2 unique instances)",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.behavior.PaintingContext$b",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.TemplateData",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.behavior.PlatformExtraBundleHolder",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.debugrouter.NativeReportDelegate",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.basedevtool.DevToolGlobalSlot",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.basedevtool.DevToolSlot",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of dalvik.system.VMRuntime",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.app.ActivityThread$ApplicationThread",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.inputmethod.InputMethodManager$ControlledInputConnectionWrapper",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.graphics.HardwareRenderer$ProcessInitializer$1",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.WindowManagerGlobal$1",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.content.ContentProvider$Transport",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.inputmethod.InputMethodManager$1",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.hardware.display.DisplayManagerGlobal$DisplayManagerCallback",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.accessibility.AccessibilityManager$1",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.os.PersistableBundle$1",
+          "1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.app.LoadedApk$ReceiverDispatcher$InnerReceiver"
+        ]
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.55 0.23 0.11 1/968 20032"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.74 0.31 0.14 1/968 20235"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1787904439.506 20045 20082 I LynxEnv : disable lynx debug",
+          "1787904439.506 20045 20082 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1787904439.506 20045 20082 I lynx    : [6FA0AF2D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1787904439714,
+        "renderPageMs": 1787904439732,
+        "firstScreenMs": null,
+        "loadEndMs": null,
+        "loadToRenderPageMs": 18,
+        "renderPageToFirstScreenMs": null,
+        "loadToFirstScreenMs": null,
+        "loadTemplateMs": null
+      },
+      "stateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "backgroundSettle": null,
+      "attribution": null,
+      "errors": [
+        "         1787904460.320 20045 20045 F m.lynx.explore: java_vm_ext.cc:666] JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+        "         1787904460.368 20045 20045 F m.lynx.explore: runtime.cc:638] JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+        "         1787904460.368 20045 20045 F libc    : Fatal signal 6 (SIGABRT), code -1 (SI_QUEUE) in tid 20045 (m.lynx.explorer), pid 20045 (m.lynx.explorer)",
+        "         1787904460.448 20202 20202 F DEBUG   : Abort message: 'JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+        "         1787904460.836   466  1080 I ActivityManager: Process com.lynx.explorer (pid 20045) has died: fore TOP "
+      ]
+    },
+    {
+      "ordinal": 2,
+      "cell": "template",
+      "accepted": true,
+      "outcome": "timeout",
+      "timeoutMs": 180000,
+      "nativeCrash": {
+        "atMs": null,
+        "loadToCrashMs": null,
+        "evidence": [],
+        "artReferenceTableDump": [],
+        "artReferenceTableSummary": []
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.74 0.31 0.14 1/968 20243"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.99 0.64 0.30 3/967 20901"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1787904465.778 20256 20291 I LynxEnv : disable lynx debug",
+          "1787904465.778 20256 20291 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1787904465.778 20256 20291 I lynx    : [6FA1AF2D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1787904465917,
+        "renderPageMs": 1787904465936,
+        "firstScreenMs": null,
+        "loadEndMs": null,
+        "loadToRenderPageMs": 19,
+        "renderPageToFirstScreenMs": null,
+        "loadToFirstScreenMs": null,
+        "loadTemplateMs": null
+      },
+      "stateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "backgroundSettle": null,
+      "attribution": null,
+      "errors": []
+    },
+    {
+      "ordinal": 3,
+      "cell": "template",
+      "accepted": true,
+      "outcome": "timeout",
+      "timeoutMs": 180000,
+      "nativeCrash": {
+        "atMs": null,
+        "loadToCrashMs": null,
+        "evidence": [],
+        "artReferenceTableDump": [],
+        "artReferenceTableSummary": []
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.99 0.64 0.30 2/965 20909"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "1.00 0.82 0.44 1/967 21575"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1787904647.946 20922 20958 I LynxEnv : disable lynx debug",
+          "1787904647.946 20922 20958 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1787904647.946 20922 20958 I lynx    : [6FA1AF2D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1787904648154,
+        "renderPageMs": 1787904648173,
+        "firstScreenMs": null,
+        "loadEndMs": null,
+        "loadToRenderPageMs": 19,
+        "renderPageToFirstScreenMs": null,
+        "loadToFirstScreenMs": null,
+        "loadTemplateMs": null
+      },
+      "stateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "backgroundSettle": null,
+      "attribution": null,
+      "errors": []
+    },
+    {
+      "ordinal": 4,
+      "cell": "program",
+      "accepted": true,
+      "outcome": "native-crash",
+      "timeoutMs": 180000,
+      "nativeCrash": {
+        "atMs": 1787904852847,
+        "loadToCrashMs": 22029,
+        "evidence": [
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666] JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+          "1787904852.895 21596 21596 F m.lynx.explore: runtime.cc:638] JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+          "1787904852.895 21596 21596 F libc    : Fatal signal 6 (SIGABRT), code -1 (SI_QUEUE) in tid 21596 (m.lynx.explorer), pid 21596 (m.lynx.explorer)",
+          "1787904852.967 21724 21724 F DEBUG   : Abort message: 'JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+          "1787904853.336   466  1184 I ActivityManager: Process com.lynx.explorer (pid 21596) has died: fore TOP"
+        ],
+        "artReferenceTableDump": [
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666] JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]   Last 10 entries (of 51200):",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]     51199: 0x16d862a0 m7.w",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]     51198: 0x16d86240 m7.w",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]     51197: 0x16d861e0 m7.w",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]     51196: 0x16d86180 m7.w",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]     51195: 0x16d86120 m7.w",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]     51194: 0x16d860c0 m7.w",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]     51193: 0x16d86060 m7.w",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]     51192: 0x16d86000 m7.w",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]     51191: 0x16d85fa0 m7.w",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]     51190: 0x16d85f40 m7.w",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]   Summary:",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]     30026 of com.lynx.tasm.behavior.PaintingContext$a (30026 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]     20444 of m7.w (20444 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]       403 of java.lang.Class (330 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]       277 of java.nio.DirectByteBuffer (277 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         4 of java.lang.String (4 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLDisplay (2 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLSurface (2 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLContext (2 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         3 of com.lynx.debugrouter.MessageHandlerDelegate (3 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         3 of java.lang.ref.WeakReference (3 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         2 of dalvik.system.PathClassLoader (1 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.tasm.TasmPlatformInvoker (2 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.tasm.performance.PerformanceController (2 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.debugrouter.NativeStateListenerDelegate (2 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.debugrouter.GlobalHandlerDelegate (2 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         2 of java.lang.ThreadGroup (2 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         2 of android.view.ViewRootImpl$W (2 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.behavior.PaintingContext$b",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.TemplateData",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.behavior.PlatformExtraBundleHolder",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.debugrouter.NativeReportDelegate",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.basedevtool.DevToolGlobalSlot",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.basedevtool.DevToolSlot",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of dalvik.system.VMRuntime",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.app.ActivityThread$ApplicationThread",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.inputmethod.InputMethodManager$ControlledInputConnectionWrapper",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.graphics.HardwareRenderer$ProcessInitializer$1",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.WindowManagerGlobal$1",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.content.ContentProvider$Transport",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.inputmethod.InputMethodManager$1",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.hardware.display.DisplayManagerGlobal$DisplayManagerCallback",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.accessibility.AccessibilityManager$1",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.os.PersistableBundle$1",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.app.LoadedApk$ReceiverDispatcher$InnerReceiver",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]"
+        ],
+        "artReferenceTableSummary": [
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]   Summary:",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]     30026 of com.lynx.tasm.behavior.PaintingContext$a (30026 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]     20444 of m7.w (20444 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]       403 of java.lang.Class (330 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]       277 of java.nio.DirectByteBuffer (277 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         4 of java.lang.String (4 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLDisplay (2 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLSurface (2 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLContext (2 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         3 of com.lynx.debugrouter.MessageHandlerDelegate (3 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         3 of java.lang.ref.WeakReference (3 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         2 of dalvik.system.PathClassLoader (1 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.tasm.TasmPlatformInvoker (2 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.tasm.performance.PerformanceController (2 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.debugrouter.NativeStateListenerDelegate (2 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.debugrouter.GlobalHandlerDelegate (2 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         2 of java.lang.ThreadGroup (2 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         2 of android.view.ViewRootImpl$W (2 unique instances)",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.behavior.PaintingContext$b",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.TemplateData",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.behavior.PlatformExtraBundleHolder",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.debugrouter.NativeReportDelegate",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.basedevtool.DevToolGlobalSlot",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.basedevtool.DevToolSlot",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of dalvik.system.VMRuntime",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.app.ActivityThread$ApplicationThread",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.inputmethod.InputMethodManager$ControlledInputConnectionWrapper",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.graphics.HardwareRenderer$ProcessInitializer$1",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.WindowManagerGlobal$1",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.content.ContentProvider$Transport",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.inputmethod.InputMethodManager$1",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.hardware.display.DisplayManagerGlobal$DisplayManagerCallback",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.accessibility.AccessibilityManager$1",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.os.PersistableBundle$1",
+          "1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.app.LoadedApk$ReceiverDispatcher$InnerReceiver"
+        ]
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "1.00 0.82 0.44 1/965 21583"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.98 0.83 0.46 1/966 21753"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1787904830.633 21596 21632 I LynxEnv : disable lynx debug",
+          "1787904830.633 21596 21632 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1787904830.633 21596 21632 I lynx    : [6FA1AF2D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1787904830818,
+        "renderPageMs": 1787904830838,
+        "firstScreenMs": null,
+        "loadEndMs": null,
+        "loadToRenderPageMs": 20,
+        "renderPageToFirstScreenMs": null,
+        "loadToFirstScreenMs": null,
+        "loadTemplateMs": null
+      },
+      "stateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "backgroundSettle": null,
+      "attribution": null,
+      "errors": [
+        "         1787904852.847 21596 21596 F m.lynx.explore: java_vm_ext.cc:666] JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+        "         1787904852.895 21596 21596 F m.lynx.explore: runtime.cc:638] JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+        "         1787904852.895 21596 21596 F libc    : Fatal signal 6 (SIGABRT), code -1 (SI_QUEUE) in tid 21596 (m.lynx.explorer), pid 21596 (m.lynx.explorer)",
+        "         1787904852.967 21724 21724 F DEBUG   : Abort message: 'JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+        "         1787904853.336   466  1184 I ActivityManager: Process com.lynx.explorer (pid 21596) has died: fore TOP "
+      ]
+    },
+    {
+      "ordinal": 5,
+      "cell": "program",
+      "accepted": true,
+      "outcome": "native-crash",
+      "timeoutMs": 180000,
+      "nativeCrash": {
+        "atMs": 1787904878398,
+        "loadToCrashMs": 21328,
+        "evidence": [
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666] JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+          "1787904878.446 21774 21774 F m.lynx.explore: runtime.cc:638] JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+          "1787904878.446 21774 21774 F libc    : Fatal signal 6 (SIGABRT), code -1 (SI_QUEUE) in tid 21774 (m.lynx.explorer), pid 21774 (m.lynx.explorer)",
+          "1787904878.516 21914 21914 F DEBUG   : Abort message: 'JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+          "1787904878.814   466  8077 I ActivityManager: Process com.lynx.explorer (pid 21774) has died: fore TOP"
+        ],
+        "artReferenceTableDump": [
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666] JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]   Last 10 entries (of 51200):",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]     51199: 0x149bef90 m7.w",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]     51198: 0x149bef20 m7.w",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]     51197: 0x149beeb0 m7.w",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]     51196: 0x149bee40 m7.w",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]     51195: 0x149bedd0 m7.w",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]     51194: 0x149bed60 m7.w",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]     51193: 0x149becf0 m7.w",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]     51192: 0x149bec80 m7.w",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]     51191: 0x149bec10 m7.w",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]     51190: 0x149beba0 m7.w",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]   Summary:",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]     30026 of com.lynx.tasm.behavior.PaintingContext$a (30026 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]     20444 of m7.w (20444 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]       403 of java.lang.Class (330 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]       277 of java.nio.DirectByteBuffer (277 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         4 of java.lang.String (4 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLDisplay (2 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLSurface (2 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLContext (2 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         3 of com.lynx.debugrouter.MessageHandlerDelegate (3 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         3 of java.lang.ref.WeakReference (3 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         2 of dalvik.system.PathClassLoader (1 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.tasm.TasmPlatformInvoker (2 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.tasm.performance.PerformanceController (2 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.debugrouter.NativeStateListenerDelegate (2 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.debugrouter.GlobalHandlerDelegate (2 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         2 of java.lang.ThreadGroup (2 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         2 of android.view.ViewRootImpl$W (2 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.behavior.PaintingContext$b",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.TemplateData",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.behavior.PlatformExtraBundleHolder",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.debugrouter.NativeReportDelegate",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.basedevtool.DevToolGlobalSlot",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.basedevtool.DevToolSlot",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of dalvik.system.VMRuntime",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.app.ActivityThread$ApplicationThread",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.inputmethod.InputMethodManager$ControlledInputConnectionWrapper",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.graphics.HardwareRenderer$ProcessInitializer$1",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.WindowManagerGlobal$1",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.content.ContentProvider$Transport",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.inputmethod.InputMethodManager$1",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.hardware.display.DisplayManagerGlobal$DisplayManagerCallback",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.accessibility.AccessibilityManager$1",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.os.PersistableBundle$1",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.app.LoadedApk$ReceiverDispatcher$InnerReceiver",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]"
+        ],
+        "artReferenceTableSummary": [
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]   Summary:",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]     30026 of com.lynx.tasm.behavior.PaintingContext$a (30026 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]     20444 of m7.w (20444 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]       403 of java.lang.Class (330 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]       277 of java.nio.DirectByteBuffer (277 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         4 of java.lang.String (4 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLDisplay (2 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLSurface (2 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLContext (2 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         3 of com.lynx.debugrouter.MessageHandlerDelegate (3 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         3 of java.lang.ref.WeakReference (3 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         2 of dalvik.system.PathClassLoader (1 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.tasm.TasmPlatformInvoker (2 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.tasm.performance.PerformanceController (2 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.debugrouter.NativeStateListenerDelegate (2 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.debugrouter.GlobalHandlerDelegate (2 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         2 of java.lang.ThreadGroup (2 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         2 of android.view.ViewRootImpl$W (2 unique instances)",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.behavior.PaintingContext$b",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.TemplateData",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.behavior.PlatformExtraBundleHolder",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.debugrouter.NativeReportDelegate",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.basedevtool.DevToolGlobalSlot",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.basedevtool.DevToolSlot",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of dalvik.system.VMRuntime",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.app.ActivityThread$ApplicationThread",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.inputmethod.InputMethodManager$ControlledInputConnectionWrapper",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.graphics.HardwareRenderer$ProcessInitializer$1",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.WindowManagerGlobal$1",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.content.ContentProvider$Transport",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.inputmethod.InputMethodManager$1",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.hardware.display.DisplayManagerGlobal$DisplayManagerCallback",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.accessibility.AccessibilityManager$1",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.os.PersistableBundle$1",
+          "1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.app.LoadedApk$ReceiverDispatcher$InnerReceiver"
+        ]
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.98 0.83 0.46 1/966 21761"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "1.04 0.86 0.48 1/968 21985"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1787904856.862 21774 21809 I LynxEnv : disable lynx debug",
+          "1787904856.862 21774 21809 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1787904856.862 21774 21809 I lynx    : [6FA1AF2D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1787904857070,
+        "renderPageMs": 1787904857089,
+        "firstScreenMs": null,
+        "loadEndMs": null,
+        "loadToRenderPageMs": 19,
+        "renderPageToFirstScreenMs": null,
+        "loadToFirstScreenMs": null,
+        "loadTemplateMs": null
+      },
+      "stateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "backgroundSettle": null,
+      "attribution": null,
+      "errors": [
+        "         1787904878.398 21774 21774 F m.lynx.explore: java_vm_ext.cc:666] JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+        "         1787904878.446 21774 21774 F m.lynx.explore: runtime.cc:638] JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+        "         1787904878.446 21774 21774 F libc    : Fatal signal 6 (SIGABRT), code -1 (SI_QUEUE) in tid 21774 (m.lynx.explorer), pid 21774 (m.lynx.explorer)",
+        "         1787904878.516 21914 21914 F DEBUG   : Abort message: 'JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+        "         1787904878.814   466  8077 I ActivityManager: Process com.lynx.explorer (pid 21774) has died: fore TOP "
+      ]
+    },
+    {
+      "ordinal": 6,
+      "cell": "template",
+      "accepted": true,
+      "outcome": "timeout",
+      "timeoutMs": 180000,
+      "nativeCrash": {
+        "atMs": null,
+        "loadToCrashMs": null,
+        "evidence": [],
+        "artReferenceTableDump": [],
+        "artReferenceTableSummary": []
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "1.04 0.86 0.48 1/968 21995"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "1.00 0.94 0.58 4/969 22656"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1787904883.184 22008 22043 I LynxEnv : disable lynx debug",
+          "1787904883.184 22008 22043 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1787904883.184 22008 22043 I lynx    : [6FA1AF2D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1787904883600,
+        "renderPageMs": 1787904883618,
+        "firstScreenMs": null,
+        "loadEndMs": null,
+        "loadToRenderPageMs": 18,
+        "renderPageToFirstScreenMs": null,
+        "loadToFirstScreenMs": null,
+        "loadTemplateMs": null
+      },
+      "stateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "backgroundSettle": null,
+      "attribution": null,
+      "errors": []
+    },
+    {
+      "ordinal": 7,
+      "cell": "template",
+      "accepted": true,
+      "outcome": "timeout",
+      "timeoutMs": 180000,
+      "nativeCrash": {
+        "atMs": null,
+        "loadToCrashMs": null,
+        "evidence": [],
+        "artReferenceTableDump": [],
+        "artReferenceTableSummary": []
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "1.00 0.94 0.58 2/967 22664"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "1.10 1.01 0.68 3/967 23319"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1787905065.688 22678 22716 I LynxEnv : disable lynx debug",
+          "1787905065.688 22678 22716 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1787905065.688 22678 22716 I lynx    : [6FA1AF2D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1787905065877,
+        "renderPageMs": 1787905065896,
+        "firstScreenMs": null,
+        "loadEndMs": null,
+        "loadToRenderPageMs": 19,
+        "renderPageToFirstScreenMs": null,
+        "loadToFirstScreenMs": null,
+        "loadTemplateMs": null
+      },
+      "stateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "backgroundSettle": null,
+      "attribution": null,
+      "errors": []
+    },
+    {
+      "ordinal": 8,
+      "cell": "program",
+      "accepted": true,
+      "outcome": "native-crash",
+      "timeoutMs": 180000,
+      "nativeCrash": {
+        "atMs": 1787905268938,
+        "loadToCrashMs": 20397,
+        "evidence": [
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666] JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+          "1787905268.985 23340 23340 F m.lynx.explore: runtime.cc:638] JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+          "1787905268.985 23340 23340 F libc    : Fatal signal 6 (SIGABRT), code -1 (SI_QUEUE) in tid 23340 (m.lynx.explorer), pid 23340 (m.lynx.explorer)",
+          "1787905269.045 23465 23465 F DEBUG   : Abort message: 'JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+          "1787905269.437   466   615 I ActivityManager: Process com.lynx.explorer (pid 23340) has died: fore TOP"
+        ],
+        "artReferenceTableDump": [
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666] JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]   Last 10 entries (of 51200):",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]     51199: 0x13014c10 m7.w",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]     51198: 0x13014ba0 m7.w",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]     51197: 0x13014b30 m7.w",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]     51196: 0x13014ac0 m7.w",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]     51195: 0x13014a50 m7.w",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]     51194: 0x130149e0 m7.w",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]     51193: 0x13014970 m7.w",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]     51192: 0x13014900 m7.w",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]     51191: 0x13014890 m7.w",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]     51190: 0x13014820 m7.w",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]   Summary:",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]     30026 of com.lynx.tasm.behavior.PaintingContext$a (30026 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]     20444 of m7.w (20444 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]       403 of java.lang.Class (330 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]       277 of java.nio.DirectByteBuffer (277 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         4 of java.lang.String (4 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLDisplay (2 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLSurface (2 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLContext (2 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         3 of com.lynx.debugrouter.MessageHandlerDelegate (3 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         3 of java.lang.ref.WeakReference (3 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         2 of dalvik.system.PathClassLoader (1 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.tasm.TasmPlatformInvoker (2 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.tasm.performance.PerformanceController (2 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.debugrouter.NativeStateListenerDelegate (2 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.debugrouter.GlobalHandlerDelegate (2 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         2 of java.lang.ThreadGroup (2 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         2 of android.view.ViewRootImpl$W (2 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.behavior.PaintingContext$b",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.TemplateData",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.behavior.PlatformExtraBundleHolder",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.debugrouter.NativeReportDelegate",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.basedevtool.DevToolGlobalSlot",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.basedevtool.DevToolSlot",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of dalvik.system.VMRuntime",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.app.ActivityThread$ApplicationThread",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.inputmethod.InputMethodManager$ControlledInputConnectionWrapper",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.graphics.HardwareRenderer$ProcessInitializer$1",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.WindowManagerGlobal$1",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.content.ContentProvider$Transport",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.inputmethod.InputMethodManager$1",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.hardware.display.DisplayManagerGlobal$DisplayManagerCallback",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.accessibility.AccessibilityManager$1",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.os.PersistableBundle$1",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.app.LoadedApk$ReceiverDispatcher$InnerReceiver",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]"
+        ],
+        "artReferenceTableSummary": [
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]   Summary:",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]     30026 of com.lynx.tasm.behavior.PaintingContext$a (30026 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]     20444 of m7.w (20444 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]       403 of java.lang.Class (330 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]       277 of java.nio.DirectByteBuffer (277 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         4 of java.lang.String (4 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLDisplay (2 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLSurface (2 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLContext (2 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         3 of com.lynx.debugrouter.MessageHandlerDelegate (3 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         3 of java.lang.ref.WeakReference (3 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         2 of dalvik.system.PathClassLoader (1 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.tasm.TasmPlatformInvoker (2 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.tasm.performance.PerformanceController (2 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.debugrouter.NativeStateListenerDelegate (2 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.debugrouter.GlobalHandlerDelegate (2 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         2 of java.lang.ThreadGroup (2 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         2 of android.view.ViewRootImpl$W (2 unique instances)",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.behavior.PaintingContext$b",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.TemplateData",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.behavior.PlatformExtraBundleHolder",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.debugrouter.NativeReportDelegate",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.basedevtool.DevToolGlobalSlot",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.basedevtool.DevToolSlot",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of dalvik.system.VMRuntime",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.app.ActivityThread$ApplicationThread",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.inputmethod.InputMethodManager$ControlledInputConnectionWrapper",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.graphics.HardwareRenderer$ProcessInitializer$1",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.WindowManagerGlobal$1",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.content.ContentProvider$Transport",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.inputmethod.InputMethodManager$1",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.hardware.display.DisplayManagerGlobal$DisplayManagerCallback",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.accessibility.AccessibilityManager$1",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.os.PersistableBundle$1",
+          "1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.app.LoadedApk$ReceiverDispatcher$InnerReceiver"
+        ]
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "1.10 1.01 0.68 2/965 23327"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "1.04 1.01 0.69 1/966 23504"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1787905248.105 23340 23375 I LynxEnv : disable lynx debug",
+          "1787905248.105 23340 23375 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1787905248.105 23340 23375 I lynx    : [6FAA010D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1787905248541,
+        "renderPageMs": 1787905248560,
+        "firstScreenMs": null,
+        "loadEndMs": null,
+        "loadToRenderPageMs": 19,
+        "renderPageToFirstScreenMs": null,
+        "loadToFirstScreenMs": null,
+        "loadTemplateMs": null
+      },
+      "stateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "backgroundSettle": null,
+      "attribution": null,
+      "errors": [
+        "         1787905268.938 23340 23340 F m.lynx.explore: java_vm_ext.cc:666] JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+        "         1787905268.985 23340 23340 F m.lynx.explore: runtime.cc:638] JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+        "         1787905268.985 23340 23340 F libc    : Fatal signal 6 (SIGABRT), code -1 (SI_QUEUE) in tid 23340 (m.lynx.explorer), pid 23340 (m.lynx.explorer)",
+        "         1787905269.045 23465 23465 F DEBUG   : Abort message: 'JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+        "         1787905269.437   466   615 I ActivityManager: Process com.lynx.explorer (pid 23340) has died: fore TOP "
+      ]
+    },
+    {
+      "ordinal": 9,
+      "cell": "program",
+      "accepted": true,
+      "outcome": "native-crash",
+      "timeoutMs": 180000,
+      "nativeCrash": {
+        "atMs": 1787905295852,
+        "loadToCrashMs": 21156,
+        "evidence": [
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666] JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+          "1787905295.900 23525 23525 F m.lynx.explore: runtime.cc:638] JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+          "1787905295.900 23525 23525 F libc    : Fatal signal 6 (SIGABRT), code -1 (SI_QUEUE) in tid 23525 (m.lynx.explorer), pid 23525 (m.lynx.explorer)",
+          "1787905295.960 23670 23670 F DEBUG   : Abort message: 'JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+          "1787905296.316   466   487 I ActivityManager: Process com.lynx.explorer (pid 23525) has died: fore TOP"
+        ],
+        "artReferenceTableDump": [
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666] JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]   Last 10 entries (of 51200):",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]     51199: 0x1705afa0 m7.w",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]     51198: 0x1705af40 m7.w",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]     51197: 0x1705aee0 m7.w",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]     51196: 0x1705ae80 m7.w",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]     51195: 0x1705ae20 m7.w",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]     51194: 0x1705adc0 m7.w",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]     51193: 0x1705ad60 m7.w",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]     51192: 0x1705ad00 m7.w",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]     51191: 0x1705aca0 m7.w",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]     51190: 0x1705ac40 m7.w",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]   Summary:",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]     30026 of com.lynx.tasm.behavior.PaintingContext$a (30026 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]     20444 of m7.w (20444 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]       403 of java.lang.Class (330 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]       277 of java.nio.DirectByteBuffer (277 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         4 of java.lang.String (4 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLDisplay (2 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLSurface (2 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLContext (2 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         3 of com.lynx.debugrouter.MessageHandlerDelegate (3 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         3 of java.lang.ref.WeakReference (3 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         2 of dalvik.system.PathClassLoader (1 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.tasm.TasmPlatformInvoker (2 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.tasm.performance.PerformanceController (2 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.debugrouter.NativeStateListenerDelegate (2 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.debugrouter.GlobalHandlerDelegate (2 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         2 of java.lang.ThreadGroup (2 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         2 of android.view.ViewRootImpl$W (2 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.behavior.PaintingContext$b",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.TemplateData",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.behavior.PlatformExtraBundleHolder",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.debugrouter.NativeReportDelegate",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.basedevtool.DevToolGlobalSlot",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.basedevtool.DevToolSlot",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of dalvik.system.VMRuntime",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.app.ActivityThread$ApplicationThread",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.inputmethod.InputMethodManager$ControlledInputConnectionWrapper",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.graphics.HardwareRenderer$ProcessInitializer$1",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.WindowManagerGlobal$1",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.content.ContentProvider$Transport",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.inputmethod.InputMethodManager$1",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.hardware.display.DisplayManagerGlobal$DisplayManagerCallback",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.accessibility.AccessibilityManager$1",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.os.PersistableBundle$1",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.app.LoadedApk$ReceiverDispatcher$InnerReceiver",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]"
+        ],
+        "artReferenceTableSummary": [
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]   Summary:",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]     30026 of com.lynx.tasm.behavior.PaintingContext$a (30026 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]     20444 of m7.w (20444 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]       403 of java.lang.Class (330 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]       277 of java.nio.DirectByteBuffer (277 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         4 of java.lang.String (4 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLDisplay (2 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLSurface (2 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         3 of android.opengl.EGLContext (2 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         3 of com.lynx.debugrouter.MessageHandlerDelegate (3 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         3 of java.lang.ref.WeakReference (3 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         2 of dalvik.system.PathClassLoader (1 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.tasm.TasmPlatformInvoker (2 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.tasm.performance.PerformanceController (2 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.debugrouter.NativeStateListenerDelegate (2 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         2 of com.lynx.debugrouter.GlobalHandlerDelegate (2 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         2 of java.lang.ThreadGroup (2 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         2 of android.view.ViewRootImpl$W (2 unique instances)",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.behavior.PaintingContext$b",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.TemplateData",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.tasm.behavior.PlatformExtraBundleHolder",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.debugrouter.NativeReportDelegate",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.basedevtool.DevToolGlobalSlot",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of com.lynx.basedevtool.DevToolSlot",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of dalvik.system.VMRuntime",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.app.ActivityThread$ApplicationThread",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.inputmethod.InputMethodManager$ControlledInputConnectionWrapper",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.graphics.HardwareRenderer$ProcessInitializer$1",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.WindowManagerGlobal$1",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.content.ContentProvider$Transport",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.inputmethod.InputMethodManager$1",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.hardware.display.DisplayManagerGlobal$DisplayManagerCallback",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.view.accessibility.AccessibilityManager$1",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.os.PersistableBundle$1",
+          "1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666]         1 of android.app.LoadedApk$ReceiverDispatcher$InnerReceiver"
+        ]
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "1.04 1.01 0.69 1/966 23512"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "1.15 1.04 0.71 1/967 23699"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1787905274.564 23525 23560 I LynxEnv : disable lynx debug",
+          "1787905274.564 23525 23560 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1787905274.564 23525 23560 I lynx    : [6FA1AF2D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1787905274696,
+        "renderPageMs": 1787905274715,
+        "firstScreenMs": null,
+        "loadEndMs": null,
+        "loadToRenderPageMs": 19,
+        "renderPageToFirstScreenMs": null,
+        "loadToFirstScreenMs": null,
+        "loadTemplateMs": null
+      },
+      "stateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "backgroundSettle": null,
+      "attribution": null,
+      "errors": [
+        "         1787905295.852 23525 23525 F m.lynx.explore: java_vm_ext.cc:666] JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+        "         1787905295.900 23525 23525 F m.lynx.explore: runtime.cc:638] JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+        "         1787905295.900 23525 23525 F libc    : Fatal signal 6 (SIGABRT), code -1 (SI_QUEUE) in tid 23525 (m.lynx.explorer), pid 23525 (m.lynx.explorer)",
+        "         1787905295.960 23670 23670 F DEBUG   : Abort message: 'JNI ERROR (app bug): global reference table overflow (max=51200)global reference table dump:",
+        "         1787905296.316   466   487 I ActivityManager: Process com.lynx.explorer (pid 23525) has died: fore TOP "
+      ]
+    },
+    {
+      "ordinal": 10,
+      "cell": "template",
+      "accepted": true,
+      "outcome": "timeout",
+      "timeoutMs": 180000,
+      "nativeCrash": {
+        "atMs": null,
+        "loadToCrashMs": null,
+        "evidence": [],
+        "artReferenceTableDump": [],
+        "artReferenceTableSummary": []
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "1.15 1.04 0.71 1/967 23707"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "1.04 1.05 0.78 3/968 24375"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1787905300.793 23720 23755 I LynxEnv : disable lynx debug",
+          "1787905300.793 23720 23755 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1787905300.793 23720 23755 I lynx    : [6FA1AF2D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1787905301198,
+        "renderPageMs": 1787905301217,
+        "firstScreenMs": null,
+        "loadEndMs": null,
+        "loadToRenderPageMs": 19,
+        "renderPageToFirstScreenMs": null,
+        "loadToFirstScreenMs": null,
+        "loadTemplateMs": null
+      },
+      "stateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "backgroundSettle": null,
+      "attribution": null,
+      "errors": []
+    }
+  ],
+  "invalidAttempts": []
+}

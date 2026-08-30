@@ -183,6 +183,8 @@ try {
 			result.create.refSelectorInstalls,
 			iterations,
 		);
+		octaneOps[`clear_commands_${suffix}`] = countStat(result.clear.commands, iterations);
+		octaneOps[`recreate_commands_${suffix}`] = countStat(result.recreate.commands, iterations);
 		octaneOps[`update10th_commands_${suffix}`] = countStat(result.update10th.commands, iterations);
 		octaneOps[`update10th_item_renders_${suffix}`] = countStat(
 			result.update10th.itemRenders,
@@ -225,6 +227,8 @@ try {
 			swap: result.swap,
 			updateStorm: result.updateStorm,
 			selectStorm: result.selectStorm,
+			clear: result.clear,
+			recreate: result.recreate,
 		})) {
 			meta[`delta_${name}_${suffix}`] = {
 				commits: counters.deltaCommits,
@@ -246,6 +250,12 @@ try {
 		// render floors count only components whose observable props changed.
 		const changed = Math.ceil(rows / 10);
 		modelOps[`create_commands_${suffix}`] = countStat(1, iterations);
+		// Retiring a whole template run names the run, not its rows, and mounting
+		// the replacement is the same single command the first create was: neither
+		// may start scaling with the table because the container is no longer
+		// virgin.
+		modelOps[`clear_commands_${suffix}`] = countStat(1, iterations);
+		modelOps[`recreate_commands_${suffix}`] = countStat(1, iterations);
 		modelOps[`update10th_commands_${suffix}`] = countStat(changed, iterations);
 		modelOps[`update10th_item_renders_${suffix}`] = countStat(changed, iterations);
 		modelOps[`select_commands_${suffix}`] = countStat(2, iterations);
@@ -318,6 +328,49 @@ try {
 					denseReleaseHostCount: result.swap.denseReleaseHostCount,
 				},
 			},
+			// What the second create/teardown cycle costs the main thread, which
+			// the command counts above cannot show: the wire stays at one command
+			// either way, and the whole difference is how much of that command the
+			// receiver has to expand back into per-host work.
+			//
+			// `clear.synthesizedCommands` is the number to read. A certified
+			// teardown consumes the `destroy-run` whole and synthesizes none; the
+			// expansion fallback rebuilds one remove, one destroy and one listener
+			// detach per host from accepted state, and the count is that
+			// expansion. `denseValidate` distinguishes the two: the certified path
+			// times its validation there, so zero means it was never attempted.
+			warmCycle: {
+				clear: {
+					commands: result.clear.commands,
+					bytes: result.clear.bytes,
+					synthesizedCommands: result.clear.synthesizedCommands,
+					papiRemoveCount: result.clear.papiRemoveCount,
+					denseReleaseHostCount: result.clear.denseReleaseHostCount,
+					stagesMs: {
+						prepare: result.clear.prepareMs,
+						apply: result.clear.applyMs,
+						destroyRunExpand: result.clear.destroyRunExpandMs,
+						denseValidate: result.clear.denseValidateMs,
+					},
+				},
+				recreate: {
+					commands: result.recreate.commands,
+					bytes: result.recreate.bytes,
+					createdElements: result.recreate.createdElements,
+					itemRenders: result.recreate.itemRenders,
+					refSelectorInstalls: result.recreate.refSelectorInstalls,
+					stagesMs: {
+						prepare: result.recreate.prepareMs,
+						apply: result.recreate.applyMs,
+					},
+				},
+				// The same op on a virgin container, for the comparison the pair
+				// exists to make.
+				createStagesMs: {
+					prepare: result.create.prepareMs,
+					apply: result.create.applyMs,
+				},
+			},
 		};
 
 		console.log(
@@ -327,7 +380,9 @@ try {
 				`select=${result.select.commands} (${result.select.bytes}B, ${result.select.itemRenders}r)  ` +
 				`swap=${result.swap.commands} (${result.swap.wireToMainBytes + result.swap.wireToBackgroundBytes}B, ${result.swap.itemRenders}r)  ` +
 				`updateStorm=${result.updateStorm.commits}c/${result.updateStorm.commands} (${result.updateStorm.itemRenders}r)  ` +
-				`selectStorm=${result.selectStorm.commits}c/${result.selectStorm.commands} (${result.selectStorm.itemRenders}r)`,
+				`selectStorm=${result.selectStorm.commits}c/${result.selectStorm.commands} (${result.selectStorm.itemRenders}r)  ` +
+				`clear=${result.clear.commands} (+${result.clear.synthesizedCommands} synth)  ` +
+				`recreate=${result.recreate.commands} (${result.recreate.itemRenders}r)`,
 		);
 	}
 
