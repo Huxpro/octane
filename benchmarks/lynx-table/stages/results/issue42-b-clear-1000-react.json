@@ -1,0 +1,427 @@
+{
+  "protocol": "lynx-benchmark-issue42-native-clear-v1",
+  "question": "issue #42 B: clear @1k across post-fix Octane Hux, upstream Octane, and ReactLynx",
+  "createdAt": "2026-08-30T00:16:19.013Z",
+  "benchmarkCommit": "2493d8be88e1a4a07d88a45224dbf2777d48dbdf",
+  "serial": "aic-i18n-bd-fullport.byteintl.net:49265",
+  "lease": {
+    "endpoint": "https://lynx-sandbox.byted.org/pool/lease",
+    "issuer": "5563315+Huxpro@users.noreply.github.com",
+    "issueId": "benchmark-42-native-round3-20260829",
+    "acquired": "aic-i18n-bd-fullport.byteintl.net:49265",
+    "expiredAt": 1788049313194,
+    "expiredAtIso": "2026-08-30T00:21:53.194Z",
+    "released": true,
+    "releaseReceipt": {
+      "acquired": "aic-i18n-bd-fullport.byteintl.net:49265"
+    }
+  },
+  "device": {
+    "model": "aries_10",
+    "product": "aries",
+    "android": "10",
+    "fingerprint": "aries_10/aries/aries:10/QQ3A.200805.001/1.5.2:userdebug/test-keys",
+    "abi": "arm64-v8a",
+    "explorer": "1.0"
+  },
+  "controls": {
+    "devtool": "disabled by a background-only LynxDevToolSetModule.switchLynxDebug(false) preflight before each sample; no CDP/DevTool connection used",
+    "coldLaunchPerSample": true,
+    "display": "ADB wake + dismiss-keyguard before every sample; stay-on-while-plugged gate required",
+    "thermalGate": "battery <=35.0C and Android thermal status 0 before every accepted attempt",
+    "ordering": "three independent cold starts of the same ReactLynx bundle",
+    "measuredBoundary": "native-input-handler-to-second-native-frame",
+    "scale": 1000,
+    "prepare": "real ADB tap create @1k; wait for producer state/frame receipt",
+    "measure": "real ADB tap clear; wait for zero-row state and second native frame"
+  },
+  "targetAcceptedSamplesPerCell": 1,
+  "disableDevToolBundle": {
+    "url": "http://127.0.0.1:8878/dist-round3-disable/main.lynx.bundle",
+    "bundle": {
+      "path": "/tmp/octane-measure.PWwPDY/benchmarks/lynx-table/app/dist-round3-disable/main.lynx.bundle",
+      "bytes": 551466,
+      "sha256": "7e5d119b158329e0945f25981a0c1bbfa60cb949ce66dc5015b45344dbf3741f"
+    }
+  },
+  "cells": {
+    "react-a": {
+      "url": "http://127.0.0.1:8879/entries/react/dist/rows-0/main.lynx.bundle",
+      "bundle": {
+        "path": "/data00/home/xuan.huang/github/lynx-js-framework-benchmark/entries/react/dist/rows-0/main.lynx.bundle",
+        "bytes": 102368,
+        "sha256": "f6dc11bd0c4860be542464d83fb1e3543d8f8f0625f26f84c3c68e59d7b4bd27"
+      }
+    },
+    "react-b": {
+      "url": "http://127.0.0.1:8879/entries/react/dist/rows-0/main.lynx.bundle",
+      "bundle": {
+        "path": "/data00/home/xuan.huang/github/lynx-js-framework-benchmark/entries/react/dist/rows-0/main.lynx.bundle",
+        "bytes": 102368,
+        "sha256": "f6dc11bd0c4860be542464d83fb1e3543d8f8f0625f26f84c3c68e59d7b4bd27"
+      }
+    },
+    "react-c": {
+      "url": "http://127.0.0.1:8879/entries/react/dist/rows-0/main.lynx.bundle",
+      "bundle": {
+        "path": "/data00/home/xuan.huang/github/lynx-js-framework-benchmark/entries/react/dist/rows-0/main.lynx.bundle",
+        "bytes": 102368,
+        "sha256": "f6dc11bd0c4860be542464d83fb1e3543d8f8f0625f26f84c3c68e59d7b4bd27"
+      }
+    }
+  },
+  "samples": [
+    {
+      "ordinal": 1,
+      "cell": "react-a",
+      "accepted": true,
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.65 0.73 0.63 1/986 9297"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.60 0.72 0.63 3/988 9499"
+      },
+      "engine": {
+        "appBundleEngine": "3.2",
+        "lynxSdk": "4.0"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1788048981.851  9339  9389 I LynxEnv : disable lynx debug",
+          "1788048981.851  9339  9389 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1788048981.851  9339  9389 I lynx    : [7C984E5D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "prepareCreate": {
+        "adbInput": {
+          "x": 165,
+          "y": 360,
+          "issuedAtMs": 1788048980938
+        },
+        "result": {
+          "protocol": "lynx-native-bench-v2",
+          "name": "create",
+          "source": "native-tap",
+          "boundary": "native-input-handler-to-second-native-frame",
+          "startMs": 1788048982850,
+          "firstFrameMs": 1788048982991,
+          "endMs": 1788048982992,
+          "latencyMs": 142,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "not-exposed",
+            "acknowledged": false
+          },
+          "preState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          },
+          "postState": {
+            "rowCount": 1000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "small pink table",
+            "selectedId": null
+          }
+        }
+      },
+      "measuredClear": {
+        "adbInput": {
+          "x": 1060,
+          "y": 515,
+          "interTapGuardStartedAtMs": 1788048981701,
+          "minimumGuardMs": 1000,
+          "issued": true
+        },
+        "result": {
+          "protocol": "lynx-native-bench-v2",
+          "name": "clear",
+          "source": "native-tap",
+          "boundary": "native-input-handler-to-second-native-frame",
+          "startMs": 1788048984625,
+          "firstFrameMs": 1788048984652,
+          "endMs": 1788048984659,
+          "latencyMs": 34,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "not-exposed",
+            "acknowledged": false
+          },
+          "preState": {
+            "rowCount": 1000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "small pink table",
+            "selectedId": null
+          },
+          "postState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          }
+        }
+      },
+      "errors": []
+    },
+    {
+      "ordinal": 2,
+      "cell": "react-b",
+      "accepted": true,
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.60 0.72 0.63 2/986 9507"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.71 0.74 0.64 5/988 9689"
+      },
+      "engine": {
+        "appBundleEngine": "3.2",
+        "lynxSdk": "4.0"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1788048986.435  9549  9585 I LynxEnv : disable lynx debug",
+          "1788048986.435  9549  9585 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1788048986.435  9549  9585 I lynx    : [7C9743CD50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "prepareCreate": {
+        "adbInput": {
+          "x": 165,
+          "y": 360,
+          "issuedAtMs": 1788048985484
+        },
+        "result": {
+          "protocol": "lynx-native-bench-v2",
+          "name": "create",
+          "source": "native-tap",
+          "boundary": "native-input-handler-to-second-native-frame",
+          "startMs": 1788048987401,
+          "firstFrameMs": 1788048987542,
+          "endMs": 1788048987559,
+          "latencyMs": 158,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "not-exposed",
+            "acknowledged": false
+          },
+          "preState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          },
+          "postState": {
+            "rowCount": 1000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "small white mouse",
+            "selectedId": null
+          }
+        }
+      },
+      "measuredClear": {
+        "adbInput": {
+          "x": 1060,
+          "y": 515,
+          "interTapGuardStartedAtMs": 1788048986256,
+          "minimumGuardMs": 1000,
+          "issued": true
+        },
+        "result": {
+          "protocol": "lynx-native-bench-v2",
+          "name": "clear",
+          "source": "native-tap",
+          "boundary": "native-input-handler-to-second-native-frame",
+          "startMs": 1788048989181,
+          "firstFrameMs": 1788048989206,
+          "endMs": 1788048989209,
+          "latencyMs": 28,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "not-exposed",
+            "acknowledged": false
+          },
+          "preState": {
+            "rowCount": 1000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "small white mouse",
+            "selectedId": null
+          },
+          "postState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          }
+        }
+      },
+      "errors": []
+    },
+    {
+      "ordinal": 3,
+      "cell": "react-c",
+      "accepted": true,
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.71 0.74 0.64 1/986 9697"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.74 0.75 0.64 1/988 9881"
+      },
+      "engine": {
+        "appBundleEngine": "3.2",
+        "lynxSdk": "4.0"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1788048990.988  9749  9784 I LynxEnv : disable lynx debug",
+          "1788048990.988  9749  9784 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1788048990.988  9749  9784 I lynx    : [7C98527D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "prepareCreate": {
+        "adbInput": {
+          "x": 165,
+          "y": 360,
+          "issuedAtMs": 1788048990103
+        },
+        "result": {
+          "protocol": "lynx-native-bench-v2",
+          "name": "create",
+          "source": "native-tap",
+          "boundary": "native-input-handler-to-second-native-frame",
+          "startMs": 1788048992020,
+          "firstFrameMs": 1788048992163,
+          "endMs": 1788048992176,
+          "latencyMs": 156,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "not-exposed",
+            "acknowledged": false
+          },
+          "preState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          },
+          "postState": {
+            "rowCount": 1000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "quaint orange car",
+            "selectedId": null
+          }
+        }
+      },
+      "measuredClear": {
+        "adbInput": {
+          "x": 1060,
+          "y": 515,
+          "interTapGuardStartedAtMs": 1788048990890,
+          "minimumGuardMs": 1000,
+          "issued": true
+        },
+        "result": {
+          "protocol": "lynx-native-bench-v2",
+          "name": "clear",
+          "source": "native-tap",
+          "boundary": "native-input-handler-to-second-native-frame",
+          "startMs": 1788048993812,
+          "firstFrameMs": 1788048993837,
+          "endMs": 1788048993843,
+          "latencyMs": 31,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "not-exposed",
+            "acknowledged": false
+          },
+          "preState": {
+            "rowCount": 1000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "quaint orange car",
+            "selectedId": null
+          },
+          "postState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          }
+        }
+      },
+      "errors": []
+    }
+  ],
+  "invalidAttempts": []
+}

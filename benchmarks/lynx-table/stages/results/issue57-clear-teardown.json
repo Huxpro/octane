@@ -100,8 +100,16 @@
       "lynxRaw": 483645,
       "lynxGzip": 162910
     },
-    "heap": { "mts": 52722292, "bts": 26416184 },
-    "wire": { "toMtsBytes": 310, "toMtsMessages": 1, "toBtsBytes": 830, "toBtsMessages": 4 }
+    "heap": {
+      "mts": 52722292,
+      "bts": 26416184
+    },
+    "wire": {
+      "toMtsBytes": 310,
+      "toMtsMessages": 1,
+      "toBtsBytes": 830,
+      "toBtsMessages": 4
+    }
   },
   "candidate": {
     "clear10000": {
@@ -125,8 +133,16 @@
       }
     },
     "abba": {
-      "baselineThenCandidate": { "baselineMs": 391.105, "candidateMs": 297.995, "change": -0.238 },
-      "candidateThenBaseline": { "baselineMs": 363.455, "candidateMs": 293.345, "change": -0.193 }
+      "baselineThenCandidate": {
+        "baselineMs": 391.105,
+        "candidateMs": 297.995,
+        "change": -0.238
+      },
+      "candidateThenBaseline": {
+        "baselineMs": 363.455,
+        "candidateMs": 293.345,
+        "change": -0.193
+      }
     },
     "profile": {
       "latencyMs": 280.61,
@@ -148,8 +164,16 @@
       "lynxRaw": 485217,
       "lynxGzip": 163598
     },
-    "heap": { "mts": 51964544, "bts": 26415924 },
-    "wire": { "toMtsBytes": 310, "toMtsMessages": 1, "toBtsBytes": 832, "toBtsMessages": 4 }
+    "heap": {
+      "mts": 51964544,
+      "bts": 26415924
+    },
+    "wire": {
+      "toMtsBytes": 310,
+      "toMtsMessages": 1,
+      "toBtsBytes": 832,
+      "toBtsMessages": 4
+    }
   },
   "challenge": {
     "runs": [
@@ -159,8 +183,14 @@
     "latencyAndFcpCells": 38,
     "dnf": 0,
     "cellsWorseByMoreThanFivePercentInBothOrders": 0,
-    "fallbackClearChange": { "ab": -0.01, "ba": 0.012 },
-    "startup30000Change": { "ab": -0.007, "ba": 0.024 }
+    "fallbackClearChange": {
+      "ab": -0.01,
+      "ba": 0.012
+    },
+    "startup30000Change": {
+      "ab": -0.007,
+      "ba": 0.024
+    }
   },
   "rejectedCandidates": [
     {
