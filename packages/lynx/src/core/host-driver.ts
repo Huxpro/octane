@@ -259,8 +259,6 @@ interface LynxHostState<Node extends LynxElementRef> {
 	 * non-overlapping [first, last] ranges instead of one map entry per host.
 	 */
 	retiredRanges: [number, number][];
-	/** Ordinary pure template runs may retain compact metadata solely for certified teardown. */
-	teardownRecords: LynxDenseHostRecordStore<Node> | null;
 	/**
 	 * Template runs the peer declared under a native `<list>` and asked the host
 	 * not to build. `records` holds what has been materialized; these hold what
@@ -475,7 +473,6 @@ type LynxApplyOperation<Node extends LynxElementRef> =
 			readonly parents: readonly number[];
 			readonly count?: number;
 			readonly dense?: LynxDenseHostRecordStore<Node>;
-			readonly teardownDense?: LynxDenseHostRecordStore<Node>;
 			/** Present only when a compact range owns contiguous lazy host identities. */
 			readonly firstId?: number;
 			readonly program?: LynxPreparedTemplateProgram;
@@ -948,7 +945,6 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 		const width = this.program.shape.types.length;
 		if (
 			state.records !== this ||
-			state.teardownRecords !== null ||
 			state.faulted ||
 			this.hostGenerations !== null ||
 			this.mutated ||
@@ -3277,7 +3273,6 @@ export function createLynxHostContainer<Node extends LynxElementRef>(
 		implicitInitialGenerations: false,
 		maxExplicitId: 0,
 		retiredRanges: [],
-		teardownRecords: null,
 		deferredRuns: null,
 		portalRoot: null,
 		portalChildren: new Map(),
@@ -5999,7 +5994,6 @@ function transferFirstTree<Node extends LynxElementRef>(
 	sourceState.mainThreadRefs.clear();
 	sourceState.mainThreadRefOwners.clear();
 	sourceState.records.clear();
-	sourceState.teardownRecords = null;
 	sourceState.deferredRuns = null;
 	sourceState.rootChildren.length = 0;
 	sourceState.generations.clear();
@@ -6088,7 +6082,6 @@ function prepareDenseTeardown<Node extends LynxElementRef>(
 			try {
 				mutationStarted = true;
 				state.records = plan.records;
-				state.teardownRecords = null;
 				state.rootChildren = plan.rootChildren;
 				if (uniformRun) {
 					// One sorted range replaces one tombstone per retired host.
@@ -6375,8 +6368,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				});
 			}
 		}
-		const teardownStore =
-			state.records instanceof LynxDenseHostRecordStore ? state.records : state.teardownRecords;
+		const teardownStore = state.records instanceof LynxDenseHostRecordStore ? state.records : null;
 		let hasRun = false;
 		for (const command of batch.commands) {
 			if (command !== null && typeof command === 'object' && command.op === 'destroy-run') {
@@ -6454,7 +6446,6 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 	// touched by this batch; the accepted maps remain unchanged until apply().
 	let stagedRecords: LynxHostRecordStore<Node> = new Map<number, LynxHostRecord<Node>>();
 	let acceptedDenseRecords: LynxDenseHostRecordStore<Node> | null = null;
-	let acceptedTeardownRecords: LynxDenseHostRecordStore<Node> | null = null;
 	const deletedRecords = new Set<number>();
 	const stagedGenerations = new Map<number, number>();
 	const initiallyNoGenerations = state.generations.size === 0;
@@ -6488,13 +6479,6 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 		incrementalCompactRun !== null &&
 		// Implicit generation-one identities require a provably fresh id range.
 		incrementalCompactRun.firstId > state.maxExplicitId;
-	const teardownMirrorCandidate =
-		options?.compact === true &&
-		options.incrementalCompact === true &&
-		acceptedLazyPublicInstances &&
-		state.records instanceof Map &&
-		batch.commands.length === 1 &&
-		batch.commands[0]?.op === 'mount-template-run';
 	let compactCandidate =
 		options?.compact === true &&
 		firstTree === undefined &&
@@ -7196,39 +7180,12 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				if (command.before === null) siblings.push(rowFirstId);
 				else siblings.splice(beforeIndex++, 0, rowFirstId);
 			}
-			let teardownDense: LynxDenseHostRecordStore<Node> | undefined;
-			if (
-				teardownMirrorCandidate &&
-				command.op === 'mount-template-run' &&
-				command.before === null &&
-				!isPortalParent(parent) &&
-				(typeof parent !== 'number' || isRootConnected((id) => state.records.get(id), parent))
-			) {
-				const prefix = new Map(state.records as Map<number, LynxHostRecord<Node>>);
-				const finalId = command.firstId + hostCount - 1;
-				for (const [id, record] of stagedRecords) {
-					if (id < command.firstId || id > finalId) prefix.set(id, record);
-				}
-				teardownDense = new LynxDenseHostRecordStore(
-					prefix,
-					container.root,
-					program,
-					command.firstId,
-					count,
-					parent,
-					command.values,
-					command.firstListenerId,
-					templateRecords.map((record) => record.handle.generation),
-				);
-				acceptedTeardownRecords = teardownDense;
-			}
 			operations.push({
 				op: 'mount-template',
 				id: command.firstId,
 				parent,
 				before: command.before,
 				records: templateRecords,
-				...(teardownDense === undefined ? null : { teardownDense }),
 				patches: templatePatches,
 				parents: shape.parents,
 				...(count === 1 ? null : { count }),
@@ -8102,9 +8059,6 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 					);
 					state.deferredRuns = live.length === 0 ? null : live;
 				}
-				if (batch.commands.length !== 0) {
-					state.teardownRecords = acceptedTeardownRecords;
-				}
 				if (stagedRootChildren !== null) state.rootChildren = stagedRootChildren;
 				if (initiallyNoGenerations) {
 					state.generations = stagedGenerations;
@@ -8337,7 +8291,6 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 											);
 										}
 										record.node = node;
-										operation.teardownDense?.setNode(recordIndex, node);
 										// A commit's own `instances` flag says only that this commit's
 										// handle deltas are deferred. Whether the peer announces the
 										// hosts it will query is a property of the negotiated session,
@@ -9144,7 +9097,6 @@ export function disposeLynxHostContainer<Node extends LynxElementRef>(
 		state.mainThreadRefOwners.clear();
 		state.lists.clear();
 		state.records.clear();
-		state.teardownRecords = null;
 		// A declaration retains its whole value array, which is the one thing a
 		// deferred run is deliberately large in. Clearing records without it would
 		// keep 10,000 rows of strings alive on a container that has nothing left.

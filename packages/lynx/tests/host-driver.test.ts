@@ -16,6 +16,7 @@ import {
 	getLynxHostEventListener,
 	prepareLynxHostBatch,
 	resolveLynxHostNativeEvent,
+	type LynxHostHandleDelta,
 } from '../src/core/host-driver.js';
 import {
 	LYNX_FIRST_TREE_MISMATCH,
@@ -4382,12 +4383,18 @@ describe('Lynx Element PAPI host driver', () => {
 		expect(papi.eventCalls).toEqual([[foreign, 'bindEvent', 'tap', undefined]]);
 	});
 
-	it('expands a destroy-run identically whether the run mirror or the record map answers', () => {
-		// A compact `mount-template-run` leaves behind a dense mirror of the
-		// records so the run's later `destroy-run` can be expanded from the run's
-		// own shape instead of from the record map. Both routes are supposed to
-		// describe the same teardown, and until now nothing compared them: the
-		// mirror could be suppressed wholesale without a single test noticing.
+	it('expands a destroy-run identically whether the dense store or the record map answers', () => {
+		// A `mount-template-run` leaves its records in one of two shapes, and the
+		// later `destroy-run` is expanded from whichever it got: the dense store
+		// when the compact fast path took the run, and the plain record map when it
+		// declined. Both routes are supposed to describe the same teardown, and
+		// until now nothing compared them.
+		//
+		// A third shape used to exist — a full `new Map(state.records)` mirror kept
+		// on `state.teardownRecords` purely so a declined run could still be
+		// expanded densely. It is gone (see this commit): it cost a second copy of
+		// every record for the life of the run, and the two routes it sat between
+		// are the ones compared here.
 		const program: UniversalHostTemplateProgram = Object.freeze({
 			nodes: Object.freeze([
 				Object.freeze({
@@ -4410,24 +4417,28 @@ describe('Lynx Element PAPI host driver', () => {
 		});
 		const values = Object.freeze(['row-1', 'One', 'row-2', 'Two', 'row-3', 'Three']);
 
-		// `spendMirror` retires the mirror before the teardown asks for it, by
-		// committing an idempotent update: any further commit replaces
-		// `teardownRecords`. The painted tree is identical either way, which is
-		// what makes the two teardowns comparable rather than merely adjacent.
-		const paintThenTearDown = (spendMirror: boolean) => {
+		// `neighbour` parks an explicit host above the run's id space, which is what
+		// makes the incremental compact decline. Instrumenting the dispatch site
+		// confirms the two arms take the two extreme routes rather than merely
+		// adjacent ones: without the neighbour the run never reaches the expansion
+		// loop at all, because `prepareDirectFullTeardown` certifies it; with the
+		// neighbour the records stay a `Map` and `expandRecordsRunTeardown`
+		// answers. Same painted tree either way, which is what makes the two
+		// teardowns comparable.
+		const paintThenTearDown = (neighbour: boolean) => {
 			const { container, page, papi } = createHost(80);
+			const setup: UniversalHostCommand[] = [
+				{ op: 'create', id: 1, type: 'view', props: { id: 'shell' } },
+				{ op: 'create', id: 2, type: 'view', props: { id: 'rows' } },
+				{ op: 'insert', id: 2, parent: 1, before: null },
+			];
+			if (neighbour) {
+				setup.push({ op: 'create', id: 900, type: 'view', props: { id: 'neighbour' } });
+				setup.push({ op: 'insert', id: 900, parent: 1, before: null });
+			}
+			setup.push({ op: 'insert', id: 1, parent: null, before: null });
+			prepareLynxHostBatch(container, batch(1, setup)).apply();
 			prepareLynxHostBatch(
-				container,
-				batch(1, [
-					{ op: 'create', id: 1, type: 'view', props: { id: 'shell' } },
-					{ op: 'create', id: 2, type: 'view', props: { id: 'rows' } },
-					{ op: 'create', id: 50, type: 'view', props: { id: 'marker' } },
-					{ op: 'insert', id: 2, parent: 1, before: null },
-					{ op: 'insert', id: 50, parent: 1, before: null },
-					{ op: 'insert', id: 1, parent: null, before: null },
-				]),
-			).apply();
-			const painted = prepareLynxHostBatch(
 				container,
 				batch(2, [
 					{
@@ -4436,20 +4447,13 @@ describe('Lynx Element PAPI host driver', () => {
 						before: null,
 						program,
 						firstId: 10,
-						firstListenerId: 900,
+						firstListenerId: 9000,
 						count: 3,
 						values,
 					},
 				]),
 				{ compact: true, incrementalCompact: true, lazyPublicInstances: true },
-			);
-			painted.apply();
-			if (spendMirror) {
-				prepareLynxHostBatch(
-					container,
-					batch(3, [{ op: 'update', id: 2, props: { id: 'rows' } }]),
-				).apply();
-			}
+			).apply();
 			const rows = page.children[0]!.children[0]!;
 			expect(rows.children.map((node) => node.id)).toEqual(['row-1', 'row-2', 'row-3']);
 			papi.resetCalls();
@@ -4462,14 +4466,33 @@ describe('Lynx Element PAPI host driver', () => {
 			return { container, rows, calls: papi.calls, handleDelta };
 		};
 
-		const mirrored = paintThenTearDown(false);
+		// The two routes are allowed to *publish* differently — a dense run retires
+		// its hosts in one `destroy-run` delta where the record map emits one
+		// `destroy` each — so the comparison is over what the deltas mean: which
+		// identities the peer is told to retire. The physical teardown and the
+		// resulting tree have to agree exactly.
+		const retired = (deltas: readonly LynxHostHandleDelta[]) => {
+			const identities: string[] = [];
+			for (const delta of deltas) {
+				if (delta.op === 'destroy') identities.push(`${delta.id}:${delta.generation}`);
+				else if (delta.op === 'destroy-run') {
+					for (let offset = 0; offset < delta.hostCount; offset++) {
+						identities.push(`${delta.firstId + offset}:${delta.generation}`);
+					}
+				} else identities.push(`${delta.op} ${delta.handle.id}:${delta.handle.generation}`);
+			}
+			return identities.sort();
+		};
+
+		const dense = paintThenTearDown(false);
 		const fromRecords = paintThenTearDown(true);
 
-		expect(mirrored.handleDelta).toEqual(fromRecords.handleDelta);
-		expect(mirrored.calls).toEqual(fromRecords.calls);
-		expect(mirrored.rows.children).toEqual([]);
+		expect(retired(dense.handleDelta)).toEqual(retired(fromRecords.handleDelta));
+		expect(retired(dense.handleDelta)).toHaveLength(9);
+		expect(dense.calls).toEqual(fromRecords.calls);
+		expect(dense.rows.children).toEqual([]);
 		expect(fromRecords.rows.children).toEqual([]);
-		expect(disposeLynxHostContainer(mirrored.container).complete).toBe(true);
+		expect(disposeLynxHostContainer(dense.container).complete).toBe(true);
 		expect(disposeLynxHostContainer(fromRecords.container).complete).toBe(true);
 	});
 
