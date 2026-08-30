@@ -844,6 +844,12 @@ records which buckets a fair boundary can separate, the share denominator the
 harness actually uses, and the **±0.04 resolution** a single-window FCP ratio has
 here.
 
+Its sibling [`docs/measurement/heap-after-clear.md`](../../docs/measurement/heap-after-clear.md)
+does the same for `heapMtsAfterClear`, #241's retention oracle. That one is
+measured by the campaign harness rather than by anything in this directory, so
+grepping here for it returns nothing — the pointer is what stops a recipe that
+lives elsewhere from reading as a metric nobody can take.
+
 A single host call is far below the browser's clock granularity, which the
 report records: only per-kind aggregates over many calls carry meaning, and no
 per-call latency is claimed.
