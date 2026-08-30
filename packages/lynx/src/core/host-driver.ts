@@ -538,9 +538,11 @@ type LynxApplyOperation<Node extends LynxElementRef> =
 			readonly generation: number;
 	  }
 	| {
+			// No `events`: the apply reads the live `state.nativeEvents` entry for
+			// the node, so a snapshot taken at lowering would be one allocation per
+			// destroyed host that nothing reads.
 			readonly op: 'destroy';
 			readonly id: number;
-			readonly events: ReadonlyMap<string, UniversalEventListenerDescriptor>;
 	  }
 	| {
 			readonly op: 'ensure-public-instance';
@@ -6259,8 +6261,18 @@ function expandRecordsRunTeardown<Node extends LynxElementRef>(
 	state: LynxHostState<Node>,
 	command: Extract<UniversalHostCommand, { op: 'destroy-run' }>,
 ): UniversalHostCommand[] | null {
+	// Whether this expansion has to describe the listener detaches it would
+	// otherwise leave to `destroy`. It is the same predicate the command
+	// lowering uses to decide whether a detach subsumed by a destroy may skip
+	// the PAPI unbind: with no native list on the container, no element is
+	// recycled behind the driver's back, so structural removal ends the
+	// listener lifetime. Reading it here only ever describes *more* work than
+	// the apply will do — a list appearing later in this same batch makes the
+	// destroy unbind explicitly regardless — so the conservative direction is
+	// safe.
+	const describeDetaches = state.lists.size !== 0;
+	const commands: UniversalHostCommand[] = [];
 	const events: UniversalHostCommand[] = [];
-	const removes: UniversalHostCommand[] = [];
 	const destroys: UniversalHostCommand[] = [];
 	for (let row = 0; row < command.count; row++) {
 		const rootId = command.firstId + row * command.width;
@@ -6274,22 +6286,35 @@ function expandRecordsRunTeardown<Node extends LynxElementRef>(
 			for (const child of record.children) {
 				if (!visit(child)) return false;
 			}
-			for (const type of record.events.keys()) {
-				events.push({ op: 'event', id, type, listener: null });
+			if (describeDetaches) {
+				for (const type of record.events.keys()) {
+					events.push({ op: 'event', id, type, listener: null });
+				}
 			}
 			destroys.push({ op: 'destroy', id });
 			return true;
 		};
 		if (!visit(rootId) || visited !== command.width) return null;
-		removes.push({ op: 'remove', parent: command.parent, id: rootId });
+		commands.push({ op: 'remove', parent: command.parent, id: rootId });
 	}
+	// Detaches first when they are described at all, so the PAPI order stays
+	// unbind-then-remove exactly as before; otherwise `destroy` performs the
+	// same `removeAllNativeEvents` on its way out and the commands that would
+	// only have described it are never built. On a bench row that is two of
+	// every ten commands a clear used to synthesize.
+	//
 	// Appended one by one: this fallback exists for exactly the runs too large
 	// or too reordered for the certified path, and spreading count × width
 	// commands into one call blows the engine argument limit near 130k — a
 	// 30k-row teardown is over it.
-	for (const command of removes) events.push(command);
-	for (const command of destroys) events.push(command);
-	return events;
+	if (events.length !== 0) {
+		const ordered = events;
+		for (const entry of commands) ordered.push(entry);
+		for (const entry of destroys) ordered.push(entry);
+		return ordered;
+	}
+	for (const entry of destroys) commands.push(entry);
+	return commands;
 }
 
 export function prepareLynxHostBatch<Node extends LynxElementRef>(
@@ -6714,16 +6739,28 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 		}
 	};
 	let destroyedIds: Set<number> | null = null;
+	let lastDestroyAt: Map<number, number> | null = null;
 	const batchDestroys = (): ReadonlySet<number> => {
 		if (destroyedIds === null) {
 			destroyedIds = new Set();
-			for (const candidate of batch.commands) {
+			lastDestroyAt = new Map();
+			for (let at = 0; at < batch.commands.length; at++) {
+				const candidate = batch.commands[at];
 				if (candidate?.op !== 'destroy') continue;
 				assertSafeId(candidate.id, 'destroy.id');
 				destroyedIds.add(candidate.id);
+				lastDestroyAt.set(candidate.id, at);
 			}
 		}
 		return destroyedIds;
+	};
+	// Whether a later command in this same batch destroys `id`. The set alone
+	// cannot answer this: a batch may destroy an id and re-create it, and a
+	// detach on the new incarnation is subsumed by nothing — skipping it would
+	// leave the native binding installed on a live element.
+	const destroyedLaterInBatch = (id: number, after: number): boolean => {
+		batchDestroys();
+		return (lastDestroyAt!.get(id) ?? -1) > after;
 	};
 	// A native list recycles elements the driver does not own, so a destroyed
 	// record there can hand its element back to the engine still carrying a
@@ -7656,7 +7693,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			if (
 				command.listener !== null ||
 				!teardownMaySkipUnbind() ||
-				!batchDestroys().has(command.id)
+				!destroyedLaterInBatch(command.id, index)
 			) {
 				operations.push({
 					op: 'event',
@@ -7704,9 +7741,8 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			) {
 				stagedGenerations.set(command.id, record.handle.generation);
 			}
-			const events = new Map(record.events);
 			deleteRecord(command.id);
-			operations.push({ op: 'destroy', id: command.id, events });
+			operations.push({ op: 'destroy', id: command.id });
 			touchHandle(command.id);
 		} else if (command.op === 'lifecycle' || command.op === 'local-callback') {
 			throw hostError(`${command.op} commands are not supported by the Lynx async host.`);
