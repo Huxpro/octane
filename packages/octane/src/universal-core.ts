@@ -558,6 +558,8 @@ export interface UniversalHostCapabilities {
 	 * contract; this only says the renderer has one.
 	 */
 	readonly deferredTemplateProgramRuns?: boolean;
+	/** Accepts one destroy-run command per removed contiguous program-run range. */
+	readonly teardownRuns?: boolean;
 }
 
 export interface UniversalResourceHandle {
@@ -861,7 +863,17 @@ export type UniversalHostCommand =
 			readonly state: 'hidden' | 'visible';
 	  }
 	| { readonly op: 'remove'; readonly parent: UniversalHostParent; readonly id: number }
-	| { readonly op: 'destroy'; readonly id: number };
+	| { readonly op: 'destroy'; readonly id: number }
+	| {
+			/** Removes and destroys `count` contiguous collapsed program-run
+			 * instances of `width` hosts each, starting at `firstId`, without
+			 * shipping their per-host teardown commands. */
+			readonly op: 'destroy-run';
+			readonly parent: UniversalHostParent;
+			readonly firstId: number;
+			readonly count: number;
+			readonly width: number;
+	  };
 
 export type UniversalEventPriority = 'discrete' | 'continuous' | 'default';
 
@@ -1262,6 +1274,14 @@ interface CommittedCollapsedTemplate {
 	readonly firstId?: number;
 	readonly prepared?: PreparedCollapsedTemplateProgram;
 	readonly values?: readonly UniversalHostTemplateProgramValue[];
+	/**
+	 * The run this instance belongs to declared its instances rather than
+	 * creating them, so the renderer holds a program and materializes a row only
+	 * when the platform asks for one. Decided on the blueprint during
+	 * reconciliation and carried here because teardown, which happens commits
+	 * later, is the other place that has to know.
+	 */
+	readonly deferred?: true;
 }
 
 interface CommittedEvent extends BlueprintEvent {
@@ -2649,7 +2669,8 @@ function ownerSubtreeRetainable(owner: UniversalOwnerRecord): boolean {
 	if (
 		owner.updates.size !== 0 ||
 		owner.visibility !== 'visible' ||
-		(owner.isBoundary && (owner.hasBoundaryError || owner.boundaryThenable !== null)) ||
+		owner.boundaryThenable !== null ||
+		(owner.isBoundary && owner.hasBoundaryError) ||
 		(owner.component as any)?.__warm !== undefined ||
 		(owner.component !== null &&
 			universalComponentRevision(owner.component) !== owner.componentRevision)
@@ -3035,18 +3056,26 @@ function blueprintFromLogical(record: LogicalRecord): BlueprintNode {
 	};
 }
 
-function markDraftOwnerSuspenseHidden(owner: DraftOwner): void {
-	owner.visibility = 'suspense-hidden';
-	for (const child of owner.children) markDraftOwnerSuspenseHidden(child);
+function markDraftOwnerHidden(
+	owner: DraftOwner,
+	visibility: Exclude<UniversalVisibility, 'visible'>,
+): void {
+	// An Activity can retain a tree containing an independently suspended
+	// primary. Keep that stricter lifetime until its own boundary retries.
+	owner.visibility = owner.record.visibility === 'suspense-hidden' ? 'suspense-hidden' : visibility;
+	for (const child of owner.children) markDraftOwnerHidden(child, owner.visibility);
 }
 
-function markBlueprintSuspenseHidden(nodes: readonly BlueprintNode[]): void {
+function markBlueprintHidden(
+	nodes: readonly BlueprintNode[],
+	visibility: Exclude<UniversalVisibility, 'visible'>,
+): void {
 	for (const node of nodes) {
 		if (node.kind === 'host') {
-			node.visibility = 'suspense-hidden';
+			if (node.visibility !== 'suspense-hidden') node.visibility = visibility;
 			markUniversalTreeFeature(UNIVERSAL_TREE_HIDDEN);
 		}
-		markBlueprintSuspenseHidden(node.children);
+		markBlueprintHidden(node.children, visibility);
 	}
 }
 
@@ -3066,10 +3095,39 @@ function retainCommittedTryArm(owner: DraftOwner): BlueprintNode[] | null {
 	owner.claimedChildren.add(childRecord);
 	currentAttempt().owners.push(child);
 	retainCommittedOwnerTree(child);
-	markDraftOwnerSuspenseHidden(child);
+	markDraftOwnerHidden(child, 'suspense-hidden');
 	const nodes = ownerRange(child, range.children.map(blueprintFromLogical));
-	markBlueprintSuspenseHidden(nodes);
+	markBlueprintHidden(nodes, 'suspense-hidden');
 	return nodes;
+}
+
+/**
+ * A hidden Activity is its own suspension boundary. Restore only its accepted
+ * owner/host range, leaving the surrounding render free to commit. The failed
+ * draft stays in attempt.owners for memoized-promise replay; a fresh committed
+ * draft prevents its unapplied hook updates from being consumed by retention.
+ * This allocation and tree walk occur only when background work suspends.
+ */
+function retainCommittedActivity(owner: DraftOwner): BlueprintNode[] {
+	const attempt = currentAttempt();
+	const record = owner.record;
+	const parent = owner.parent!;
+	const range = record.mounted
+		? (record.range ?? findLogicalRange(attempt.root.rootRecordForRetention(), record.rangeKey))
+		: null;
+	resetDraftChildren(owner);
+	const retained = draftOwner(record, parent, owner.replayPath);
+	retained.visibility = owner.visibility;
+	retained.canHandleSuspense = owner.canHandleSuspense;
+	retained.boundaryThenable = owner.boundaryThenable;
+	parent.children[parent.children.indexOf(owner)] = retained;
+	attempt.owners.push(retained);
+	retainCommittedOwnerTree(retained);
+	const visibility = retained.visibility as Exclude<UniversalVisibility, 'visible'>;
+	for (const child of retained.children) markDraftOwnerHidden(child, visibility);
+	const nodes = range === null ? [] : range.children.map(blueprintFromLogical);
+	markBlueprintHidden(nodes, visibility);
+	return ownerRange(retained, nodes);
 }
 
 const OWNERLESS_LEAF_PLAN_CACHE = new WeakMap<UniversalPlan, UniversalHostPlan | null>();
@@ -3313,16 +3371,31 @@ function materializeValue(
 		const parent = CURRENT_OWNER;
 		if (parent === null) throw new Error('Universal Activity requires an owning component.');
 		const owner = claimChildOwner(parent, null, [...path, 'activity'], null);
+		const hidden = activity.mode === 'hidden';
+		owner.canHandleSuspense = hidden;
 		owner.visibility =
 			parent.visibility === 'suspense-hidden'
 				? 'suspense-hidden'
-				: parent.visibility === 'activity-hidden' || activity.mode === 'hidden'
+				: parent.visibility === 'activity-hidden' || hidden
 					? 'activity-hidden'
 					: 'visible';
-		const nodes = executeOwner(owner, () =>
-			materializeValue(activity.body(), expectedRenderer, null, [...path, 'activity-output']),
-		);
-		const range = ownerRange(owner, nodes);
+		const attempt = currentAttempt();
+		const universalIdCheckpoint = attempt.nextUniversalId;
+		let range: BlueprintNode[];
+		try {
+			if (owner.boundaryThenable !== null) throw new UniversalSuspense(owner.boundaryThenable);
+			const nodes = executeOwner(owner, () =>
+				materializeValue(activity.body(), expectedRenderer, null, [...path, 'activity-output']),
+			);
+			range = ownerRange(owner, nodes);
+		} catch (error) {
+			if (!hidden || !(error instanceof UniversalSuspense)) throw error;
+			attempt.nextUniversalId = universalIdCheckpoint;
+			// Routed renderer-region suspensions already installed a settlement
+			// callback; render-origin suspensions use the ordinary local replay.
+			if (owner.boundaryThenable === null) attempt.retryThenables.add(error.thenable);
+			range = retainCommittedActivity(owner);
+		}
 		return key === null ? range : [{ kind: 'range', key, children: range }];
 	}
 	if ((value as UniversalIfValue)?.$$kind === UNIVERSAL_IF) {
@@ -5154,6 +5227,13 @@ function projectedStateValue<T>(record: UniversalOwnerRecord, slot: unknown, fal
 	const hook = record.hooks.get(slot) as StateHook<T> | undefined;
 	const queue = record.updates.get(slot);
 	if (queue === undefined) return hook?.kind === 'state' ? hook.value : fallback;
+	// A trailing replacement determines the projected value by itself. External
+	// store invalidations use replacement tokens, so replaying every earlier
+	// update here would make a burst of N notifications quadratic.
+	if (queue.length !== 0) {
+		const last = queue[queue.length - 1];
+		if (typeof last !== 'function') return last as T;
+	}
 	let value =
 		queue.batches === undefined
 			? hook?.kind === 'state'
@@ -5173,13 +5253,19 @@ function visibleStateValue<T>(record: UniversalOwnerRecord, slot: unknown, fallb
 	const hook = record.hooks.get(slot) as StateHook<T> | undefined;
 	const queue = record.updates.get(slot);
 	if (queue === undefined) return hook?.kind === 'state' ? hook.value : fallback;
+	// Urgent reads exclude transition lanes. Only the last applicable update
+	// can take the replacement shortcut; a trailing functional updater still
+	// needs the ordinary ordered replay below.
+	let last = queue.length - 1;
+	while (last >= 0 && queue.batches !== undefined && queue.batches[last] !== null) last--;
+	if (last >= 0 && typeof queue[last] !== 'function') return queue[last] as T;
 	let value =
 		queue.batches === undefined
 			? hook?.kind === 'state'
 				? hook.value
 				: fallback
 			: (queue.baseState as T);
-	for (let index = 0; index < queue.length; index++) {
+	for (let index = 0; index <= last; index++) {
 		if (queue.batches !== undefined && queue.batches[index] !== null) continue;
 		const update = queue[index];
 		value = typeof update === 'function' ? (update as (previous: T) => T)(value) : (update as T);
@@ -5809,7 +5895,12 @@ export function useEffect(
 	enqueueUniversalEffect('passive', create, deps, slot);
 }
 
-export function useMemo<T>(compute: () => T, deps?: readonly unknown[] | null, slot?: unknown): T {
+function memoHookValue<T>(
+	input: T | (() => T),
+	compute: boolean,
+	deps?: readonly unknown[] | null,
+	slot?: unknown,
+): T {
 	const owner = currentDraftOwner();
 	const resolved = resolveHookSlot(slot);
 	const previous = owner.hooks.get(resolved) as MemoHook<T> | undefined;
@@ -5833,11 +5924,17 @@ export function useMemo<T>(compute: () => T, deps?: readonly unknown[] | null, s
 	);
 	const value =
 		warmed === NO_WARM_VALUE
-			? (compute as (...args: unknown[]) => T)(...(normalized ?? []))
+			? compute
+				? (input as (...args: unknown[]) => T)(...(normalized ?? []))
+				: (input as T)
 			: (warmed as T);
 	owner.hooks.set(resolved, { kind: 'memo', value, deps: normalized });
 	owner.clonedHooks.add(resolved);
 	return value;
+}
+
+export function useMemo<T>(compute: () => T, deps?: readonly unknown[] | null, slot?: unknown): T {
+	return memoHookValue<T>(compute, true, deps, slot);
 }
 
 export function useCallback<T extends (...args: any[]) => any>(
@@ -5845,7 +5942,7 @@ export function useCallback<T extends (...args: any[]) => any>(
 	deps?: readonly unknown[] | null,
 	slot?: unknown,
 ): T {
-	return useMemo(() => callback, deps, slot);
+	return memoHookValue<T>(callback, false, deps, slot);
 }
 
 export function useRef<T>(initial: T, slot?: unknown): { current: T } {
@@ -5903,6 +6000,118 @@ export function useId(slot?: unknown): string {
 	return hook.value;
 }
 
+interface UniversalStoreState<T> {
+	instance: UniversalStoreInstance<T>;
+}
+
+interface UniversalStoreInstance<T> {
+	value: T;
+	getSnapshot: () => T;
+	committedState: UniversalStoreState<T>;
+	notificationState: UniversalStoreState<T>;
+	notificationValue: T;
+	notificationFailed: boolean;
+	forceUpdate: (state: UniversalStoreState<T>) => void;
+}
+
+function enqueueUniversalStoreSnapshot(
+	instance: UniversalStoreInstance<any>,
+	value: unknown,
+): void {
+	if (instance.notificationFailed || !Object.is(instance.notificationValue, value)) {
+		instance.notificationFailed = false;
+		instance.notificationValue = value;
+		instance.notificationState = Object.is(instance.value, value)
+			? instance.committedState
+			: { instance };
+	}
+	// Reuse the token for identical notifications. The state setter then keeps
+	// one ordinary pending update instead of appending and rescanning an
+	// ever-growing queue. A held transition can still require urgent rebases.
+	// Distinct snapshots receive distinct tokens, including while
+	// an earlier transition is held; returning to the committed value uses its
+	// token so the setter can preserve an urgent rebase over a pending transition.
+	instance.forceUpdate(instance.notificationState);
+}
+
+function enqueueUniversalStoreError(instance: UniversalStoreInstance<any>): void {
+	// A snapshot failure belongs to the next render, where the owning boundary
+	// can handle it, rather than escaping through the store notifier.
+	if (!instance.notificationFailed) {
+		instance.notificationFailed = true;
+		instance.notificationState = { instance };
+	}
+	instance.forceUpdate(instance.notificationState);
+}
+
+function notifyUniversalStore(instance: UniversalStoreInstance<any>): void {
+	let value: unknown;
+	try {
+		value = instance.getSnapshot();
+	} catch {
+		enqueueUniversalStoreError(instance);
+		return;
+	}
+	enqueueUniversalStoreSnapshot(instance, value);
+}
+
+function checkUniversalStore(instance: UniversalStoreInstance<any>): void {
+	let value: unknown;
+	try {
+		value = instance.getSnapshot();
+	} catch {
+		enqueueUniversalStoreError(instance);
+		return;
+	}
+	// Unlike an actual notification, an internal consistency read must not
+	// promote an unrelated queued transition when the committed value still fits.
+	if (!Object.is(instance.value, value)) enqueueUniversalStoreSnapshot(instance, value);
+}
+
+// Effect callbacks receive their dependency values as positional arguments.
+// Publish only after host acceptance: an abandoned or rejected draft must not
+// replace the getter used by the still-connected committed subscription.
+function updateUniversalStoreInstance<T>(
+	instance: UniversalStoreInstance<T>,
+	value: T,
+	getSnapshot: () => T,
+	state: UniversalStoreState<T>,
+): void {
+	instance.value = value;
+	instance.getSnapshot = getSnapshot;
+	instance.committedState = state;
+	instance.notificationState = state;
+	instance.notificationValue = value;
+	instance.notificationFailed = false;
+	checkUniversalStore(instance);
+}
+
+function subscribeToUniversalStore<T>(
+	instance: UniversalStoreInstance<T>,
+	subscribe: (onStoreChange: () => void) => () => void,
+): () => void {
+	let activeInstance: UniversalStoreInstance<T> | null = instance;
+	const onStoreChange = () => {
+		if (activeInstance !== null) notifyUniversalStore(activeInstance);
+	};
+	let unsubscribe: (() => void) | null = null;
+	try {
+		unsubscribe = subscribe(onStoreChange);
+	} catch (error) {
+		activeInstance = null;
+		throw error;
+	}
+	// subscribe itself can synchronously mutate the store. Checking after it
+	// returns also closes the interval between the render read and connection.
+	checkUniversalStore(instance);
+	return () => {
+		activeInstance = null;
+		const cleanup = unsubscribe;
+		unsubscribe = null;
+		cleanup?.();
+	};
+}
+
 export function useSyncExternalStore<T>(
 	subscribe: (onStoreChange: () => void) => () => void,
 	getSnapshot: () => T,
@@ -5935,21 +6144,32 @@ export function useSyncExternalStore<T>(
 	const base = resolveHookSlot(slot);
 	return withSlot(base, () => {
 		const snapshot = getSnapshot();
-		const [, invalidate] = useState(0, 'state');
+		const [state, forceUpdate] = useState<UniversalStoreState<T>>(() => {
+			const initial = {} as UniversalStoreState<T>;
+			const instance: UniversalStoreInstance<T> = {
+				value: snapshot,
+				getSnapshot,
+				committedState: initial,
+				notificationState: initial,
+				notificationValue: snapshot,
+				notificationFailed: false,
+				forceUpdate: (next) => forceUpdate(next),
+			};
+			initial.instance = instance;
+			return initial;
+		}, 'state');
+		const instance = state.instance;
+		// Getter/snapshot freshness and connection lifetime are independent. The
+		// first effect commits the fresh read; the second stays connected until
+		// subscribe changes or normal effect teardown hides/removes its owner.
 		useLayoutEffect(
-			() => {
-				let current = snapshot;
-				const check = () => {
-					const next = getSnapshot();
-					if (Object.is(current, next)) return;
-					current = next;
-					invalidate((value) => value + 1);
-				};
-				const unsubscribe = subscribe(check);
-				check();
-				return unsubscribe;
-			},
-			[subscribe, getSnapshot, snapshot],
+			updateUniversalStoreInstance as () => void,
+			[instance, snapshot, getSnapshot, state],
+			'snapshot',
+		);
+		useLayoutEffect(
+			subscribeToUniversalStore as () => () => void,
+			[instance, subscribe],
 			'subscribe',
 		);
 		return snapshot;
@@ -6633,7 +6853,7 @@ function routeUniversalOwnerSuspense(
 	thenable: PromiseLike<unknown>,
 ): boolean {
 	for (let current = owner.parent; current !== null; current = current.parent) {
-		if (!current.isBoundary || !current.canHandleSuspense || current.disposed) continue;
+		if (!current.canHandleSuspense || current.disposed) continue;
 		current.boundaryThenable = thenable;
 		current.boundaryError = undefined;
 		current.hasBoundaryError = false;
@@ -6975,7 +7195,13 @@ class UniversalRootImpl<Container, PublicInstance>
 	}
 
 	private attachHostRef(record: LogicalRecord): void {
-		if (this.hostAttachments?.registration == null || this.unmounted) return;
+		if (
+			this.hostAttachments?.registration == null ||
+			this.unmounted ||
+			record.visibility !== 'visible'
+		) {
+			return;
+		}
 		if (!this.readHostAttachment(record.id)) return;
 		const value = this.driver.getPublicInstance(this.container, record.id);
 		// A recycling-aware driver must not publish a ref until both its attachment
@@ -7031,7 +7257,7 @@ class UniversalRootImpl<Container, PublicInstance>
 					records.get(record.id) !== record ||
 					record.ref == null ||
 					record.refAttached ||
-					record.visibility === 'suspense-hidden' ||
+					record.visibility !== 'visible' ||
 					!this.readHostAttachment(record.id)
 				) {
 					return;
@@ -8279,8 +8505,8 @@ class UniversalRootImpl<Container, PublicInstance>
 		// already-active episode keeps its subtree on the full-root path.
 		for (let ancestor = target.parent; ancestor !== null; ancestor = ancestor.parent) {
 			if (
-				ancestor.isBoundary &&
-				(ancestor.hasBoundaryError || ancestor.boundaryThenable !== null)
+				ancestor.boundaryThenable !== null ||
+				(ancestor.isBoundary && ancestor.hasBoundaryError)
 			) {
 				return null;
 			}
@@ -8478,7 +8704,8 @@ class UniversalRootImpl<Container, PublicInstance>
 			) {
 				if (
 					current === null ||
-					(current.isBoundary && (current.hasBoundaryError || current.boundaryThenable !== null))
+					current.boundaryThenable !== null ||
+					(current.isBoundary && current.hasBoundaryError)
 				) {
 					return undefined;
 				}
@@ -9852,10 +10079,59 @@ class UniversalRootImpl<Container, PublicInstance>
 			}
 		};
 		if (topologyChanged) findRemoved(scopeRecord);
+		// A removed root that is itself a still-collapsed program-run instance
+		// with implicit contiguous ids needs no per-host teardown: a capable
+		// driver accepts one destroy-run per contiguous range and derives the
+		// removals, event unbinds, and destroys from the program it already
+		// holds. Anything observable per host (refs, callbacks, explicit node
+		// ids, portals) falls back to expansion.
+		const teardownRunRecords =
+			this.driver.capabilities?.teardownRuns === true
+				? new Map<LogicalRecord, CommittedCollapsedTemplate>()
+				: null;
+		const physicalParentIdOf = (record: LogicalRecord): number | null | undefined => {
+			let ancestor = record.parent;
+			while (ancestor !== undefined && ancestor !== null) {
+				if (ancestor.kind === 'portal') return undefined;
+				if (ancestor.kind === 'host') return ancestor.id;
+				ancestor = ancestor.parent;
+			}
+			return ancestor === null || record.parent === undefined ? null : undefined;
+		};
 		for (const removed of removedRoots) {
-			walkLogical(removed, (record) => {
-				if (record.collapsedTemplate !== undefined) this.expandCollapsedTemplate(record);
-			});
+			const visitRemoved = (record: LogicalRecord, underRemovedHost: boolean): void => {
+				if (record.collapsedTemplate !== undefined) {
+					const collapsed = record.collapsedTemplate;
+					if (
+						teardownRunRecords !== null &&
+						!underRemovedHost &&
+						record.kind === 'host' &&
+						collapsed.prepared !== undefined &&
+						collapsed.firstId !== undefined &&
+						// A deferred run's instances were declared, never created: the
+						// renderer holds the program and materializes a row only when the
+						// platform asks for it (issue #163). `destroy-run` names hosts by
+						// contiguous id and asks the driver to derive their teardown from
+						// what it holds, and for a declared instance it holds nothing —
+						// so a deferred run retires through its own declaration path.
+						collapsed.deferred !== true &&
+						(collapsed.nodes === null || collapsed.nodes.every((node) => node.id === undefined)) &&
+						record.visibility === 'visible' &&
+						record.ref == null &&
+						record.portalRegistration === null &&
+						record.lifecycles.size === 0 &&
+						record.localCallbacks.size === 0 &&
+						physicalParentIdOf(record) !== undefined
+					) {
+						teardownRunRecords.set(record, collapsed);
+						return;
+					}
+					this.expandCollapsedTemplate(record);
+				}
+				const nextUnderRemovedHost = underRemovedHost || record.kind === 'host';
+				for (const child of record.children) visitRemoved(child, nextUnderRemovedHost);
+			};
+			visitRemoved(removed, false);
 		}
 		const previousPortalRegistrations = new Set<UniversalPortalTargetRegistration>();
 		const nextPortalRegistrations = new Set<UniversalPortalTargetRegistration>();
@@ -10174,7 +10450,9 @@ class UniversalRootImpl<Container, PublicInstance>
 				const old = oldPhysical[index];
 				previousPositions.set(old.id, index);
 				if (!desiredIds.has(old.id)) {
-					removes.push({ op: 'remove', parent: sourceParentId, id: old.id });
+					if (teardownRunRecords?.has(old) !== true) {
+						removes.push({ op: 'remove', parent: sourceParentId, id: old.id });
+					}
 				}
 			}
 			if (forceMove) {
@@ -10268,6 +10546,49 @@ class UniversalRootImpl<Container, PublicInstance>
 					});
 				}
 			});
+		}
+		if (teardownRunRecords !== null && teardownRunRecords.size !== 0) {
+			const runs = [...teardownRunRecords.entries()].sort((a, b) => a[1].firstId! - b[1].firstId!);
+			let open: {
+				parent: UniversalHostParent;
+				firstId: number;
+				count: number;
+				width: number;
+				program: PreparedCollapsedTemplateProgram;
+			} | null = null;
+			const flush = () => {
+				if (open === null) return;
+				removes.push({
+					op: 'destroy-run',
+					parent: open.parent,
+					firstId: open.firstId,
+					count: open.count,
+					width: open.width,
+				});
+				open = null;
+			};
+			for (const [record, collapsed] of runs) {
+				const width = collapsed.shape.length;
+				const parent = physicalParentIdOf(record) as number | null;
+				if (
+					open !== null &&
+					open.program === collapsed.prepared &&
+					open.parent === parent &&
+					open.firstId + open.count * open.width === collapsed.firstId!
+				) {
+					open.count++;
+					continue;
+				}
+				flush();
+				open = {
+					parent,
+					firstId: collapsed.firstId!,
+					count: 1,
+					width,
+					program: collapsed.prepared!,
+				};
+			}
+			flush();
 		}
 		const hiddenVisibilityCommands: UniversalHostCommand[] = [];
 		const visibleVisibilityCommands: UniversalHostCommand[] = [];
@@ -10478,6 +10799,7 @@ class UniversalRootImpl<Container, PublicInstance>
 						...(previous.firstId === undefined ? null : { firstId: previous.firstId }),
 						prepared: program,
 						values: previousChangedNode === -1 ? previous.values : next.values,
+						...(previous.deferred === true ? { deferred: true as const } : null),
 					});
 				}
 				continue;
@@ -10585,6 +10907,7 @@ class UniversalRootImpl<Container, PublicInstance>
 					...(next.prepared === undefined
 						? null
 						: { prepared: next.prepared, values: next.values }),
+					...(previous.deferred === true ? { deferred: true as const } : null),
 				});
 			}
 		}
@@ -10630,6 +10953,7 @@ class UniversalRootImpl<Container, PublicInstance>
 					firstId: collapsed.firstId!,
 					prepared: collapsed.prepared,
 					values: collapsed.values,
+					...(collapsed.deferred === true ? { deferred: true as const } : null),
 				});
 				continue;
 			}
@@ -10759,10 +11083,11 @@ class UniversalRootImpl<Container, PublicInstance>
 				}
 			}
 		}
-		const destroys: UniversalHostCommand[] = removedHosts.map((record) => ({
-			op: 'destroy',
-			id: record.id,
-		}));
+		const destroys: UniversalHostCommand[] = [];
+		for (const record of removedHosts) {
+			if (teardownRunRecords?.has(record) === true) continue;
+			destroys.push({ op: 'destroy', id: record.id });
+		}
 		const commands: UniversalHostCommand[] = [
 			...creates,
 			...updates,
@@ -10820,16 +11145,14 @@ class UniversalRootImpl<Container, PublicInstance>
 				if (draft.record.kind !== 'host') return;
 				const blueprintHost = draft.blueprint as BlueprintHost;
 				const nextRef = blueprintHost.ref;
-				const suspenseHide =
-					draft.record.visibility !== 'suspense-hidden' &&
-					blueprintHost.visibility === 'suspense-hidden';
-				const suspenseReveal =
-					draft.record.visibility === 'suspense-hidden' &&
-					blueprintHost.visibility !== 'suspense-hidden';
+				const hide =
+					draft.record.visibility === 'visible' && blueprintHost.visibility !== 'visible';
+				const reveal =
+					draft.record.visibility !== 'visible' && blueprintHost.visibility === 'visible';
 				if (
 					!draft.isNew &&
 					draft.record.refAttached &&
-					(recreated.has(draft.record) || suspenseHide || !Object.is(draft.record.ref, nextRef))
+					(recreated.has(draft.record) || hide || !Object.is(draft.record.ref, nextRef))
 				) {
 					refDetaches.push({
 						record: draft.record,
@@ -10839,10 +11162,10 @@ class UniversalRootImpl<Container, PublicInstance>
 				}
 				if (
 					nextRef != null &&
-					blueprintHost.visibility !== 'suspense-hidden' &&
+					blueprintHost.visibility === 'visible' &&
 					(draft.isNew ||
 						recreated.has(draft.record) ||
-						suspenseReveal ||
+						reveal ||
 						!draft.record.refAttached ||
 						!Object.is(draft.record.ref, nextRef))
 				) {
@@ -11041,6 +11364,12 @@ class UniversalRootImpl<Container, PublicInstance>
 				for (const event of record.events.values()) {
 					previousReplacedEventListeners.add(event.listener);
 				}
+				const collapsed = record.collapsedTemplate;
+				if (collapsed !== undefined && teardownRunRecords?.has(record) === true) {
+					for (const entry of collapsed.events) {
+						previousReplacedEventListeners.add(entry.event.listener);
+					}
+				}
 				for (const callback of record.localCallbacks.values()) {
 					previousReplacedLocalCallbacks.add(callback.listener);
 				}
@@ -11080,6 +11409,12 @@ class UniversalRootImpl<Container, PublicInstance>
 			identity,
 			() => {
 				applyLogicalTopology();
+				if (teardownRunRecords !== null && teardownRunRecords.size !== 0) {
+					for (const record of teardownRunRecords.keys()) {
+						delete record.collapsedTemplate;
+						this.collapsedTemplates?.delete(record);
+					}
+				}
 				if (stagedCollapsedTemplates.size !== 0) {
 					const collapsed = (this.collapsedTemplates ??= new Set());
 					for (const [record, state] of stagedCollapsedTemplates) {

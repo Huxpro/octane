@@ -80,6 +80,7 @@ function normalizeOptions(value) {
 		'exclude',
 		'hmr',
 		'mainThreadProgramBackend',
+		'parallel',
 		'profile',
 		'requireDirective',
 		'thread',
@@ -120,6 +121,10 @@ function normalizeOptions(value) {
 		...(options.requireDirective === undefined
 			? null
 			: { requireDirective: options.requireDirective }),
+		// Forwarded verbatim rather than validated here, so `@octanejs/rspack-plugin`
+		// stays the one place that decides what the option may be and says so when
+		// it is something else.
+		...(options.parallel === undefined ? null : { parallel: options.parallel }),
 		...(options.environments === undefined
 			? null
 			: { environments: normalizeStringArray(options.environments, 'environments') }),
@@ -182,6 +187,7 @@ export function pluginOctane(value) {
 						...(options.requireDirective === undefined
 							? null
 							: { requireDirective: options.requireDirective }),
+						...(options.parallel === undefined ? null : { parallel: options.parallel }),
 					},
 				]);
 				if (options.application) {

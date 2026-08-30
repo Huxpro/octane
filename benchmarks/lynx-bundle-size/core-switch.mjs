@@ -254,6 +254,16 @@ async function buildWithCore(label, core, outputRoot, backend) {
 			plugins: [
 				pluginOctane({
 					core,
+					// Pinned so the arms differ only in what they are measuring. A
+					// worker receives its loader options by structured clone, and the
+					// backend is a pair of functions, so the third arm compiles on the
+					// main thread no matter what — while the first two would reach for
+					// the worker pool. That is not a difference in emitted code, but the
+					// pool reaches the minifier with a different module order, and the
+					// short names it hands out rotate. Under the byte-identity check
+					// below that reads as the backend having moved the background
+					// program when nothing in it moved at all.
+					parallel: false,
 					hmr: false,
 					dev: false,
 					...(backend === undefined ? null : { mainThreadProgramBackend: backend }),

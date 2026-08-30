@@ -1,5 +1,74 @@
 # @octanejs/adapter-vercel
 
+## 0.0.44
+
+### Patch Changes
+
+- Updated dependencies [60581f4]
+- Updated dependencies [7a639fd]
+  - @octanejs/app-core@0.0.43
+
+## 0.0.43
+
+### Patch Changes
+
+- @octanejs/app-core@0.0.42
+
+## 0.0.42
+
+### Patch Changes
+
+- @octanejs/app-core@0.0.41
+
+## 0.0.41
+
+### Patch Changes
+
+- @octanejs/app-core@0.0.40
+
+## 0.0.40
+
+### Patch Changes
+
+- @octanejs/app-core@0.0.39
+
+## 0.0.39
+
+### Patch Changes
+
+- Updated dependencies [afa3722]
+  - @octanejs/app-core@0.0.38
+
+## 0.0.38
+
+### Patch Changes
+
+- @octanejs/app-core@0.0.37
+
+## 0.0.37
+
+### Patch Changes
+
+- @octanejs/app-core@0.0.36
+
+## 0.0.36
+
+### Patch Changes
+
+- @octanejs/app-core@0.0.35
+
+## 0.0.35
+
+### Patch Changes
+
+- @octanejs/app-core@0.0.34
+
+## 0.0.34
+
+### Patch Changes
+
+- @octanejs/app-core@0.0.33
+
 ## 0.0.33
 
 ### Patch Changes

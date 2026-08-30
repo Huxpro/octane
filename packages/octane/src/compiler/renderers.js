@@ -205,8 +205,8 @@ function normalizeRegistryEntry(id, value, path) {
 		assertKnownKeys(value, REGISTRY_ENTRY_KEYS, path);
 		moduleId = validateModuleId(value.module, `${path}.module`);
 		target = value.target ?? 'universal';
-		if (target !== 'dom' && target !== 'universal' && target !== 'lynx') {
-			throw configError(`${path}.target must be "dom", "universal", or "lynx".`);
+		if (target !== 'dom' && target !== 'universal' && target !== 'lynx' && target !== 'valdi') {
+			throw configError(`${path}.target must be "dom", "universal", "lynx", or "valdi".`);
 		}
 
 		server = value.server ?? (target === 'dom' ? 'render' : 'unsupported');
@@ -218,9 +218,18 @@ function normalizeRegistryEntry(id, value, path) {
 		if (target === 'dom' && server !== 'render') {
 			throw configError(`${path}.server must be "render" for the DOM renderer.`);
 		}
-		if (target !== 'dom' && server === 'render') {
+		// Upstream narrowed this from `target !== 'dom'` when it added `valdi`, so
+		// that the Valdi branch below can own its own message rather than being
+		// swallowed here. `lynx` joins `universal` on this side of the split: it is
+		// the same missing server serializer, and the same sentence describes it.
+		if ((target === 'universal' || target === 'lynx') && server === 'render') {
 			throw configError(
 				`${path}.server cannot be "render" until the universal renderer provides a validated server serializer.`,
+			);
+		}
+		if (target === 'valdi' && server === 'render') {
+			throw configError(
+				`${path}.server cannot be "render" for the client-only Valdi writer target.`,
 			);
 		}
 

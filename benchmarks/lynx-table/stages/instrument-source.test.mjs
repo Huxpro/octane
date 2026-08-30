@@ -16,6 +16,7 @@ const repositoryRoot = path.resolve(import.meta.dirname, '../../..');
 const sourceFiles = [
 	'packages/lynx/src/core/profiling.ts',
 	'packages/lynx/src/core/papi.ts',
+	'packages/lynx/src/core/own-symbols.ts',
 	'packages/lynx/src/core/transport.ts',
 	'packages/lynx/src/main-renderer.ts',
 	'packages/lynx/src/main-thread.ts',
@@ -45,17 +46,42 @@ test('instruments an isolated Lynx source copy and restores every byte', () => {
 			fs.readFileSync(path.join(temporary, 'packages/lynx/src/main-thread.ts'), 'utf8'),
 			/mtExpandMs/,
 		);
-		assert.match(
-			fs.readFileSync(path.join(temporary, 'packages/lynx/src/main-renderer.ts'), 'utf8'),
-			/firstScreenPlanMs/,
+		const instrumentedMainThread = fs.readFileSync(
+			path.join(temporary, 'packages/lynx/src/main-thread.ts'),
+			'utf8',
 		);
-		assert.match(
-			fs.readFileSync(path.join(temporary, 'packages/lynx/src/core/papi.ts'), 'utf8'),
-			/papiCreateMs/,
+		// Upstream timed the first screen by wrapping `prepareLynxHostBatch` and
+		// `prepared.apply()`. Neither runs on a first screen the direct applier
+		// paints, so the split moved into the framework itself: `markFirstScreenPhase`
+		// publishes the phase and the probe above reads it.
+		assert.match(instrumentedMainThread, /markFirstScreenPhase\('render'\)/);
+		assert.match(instrumentedMainThread, /mtSliceEvalMs/);
+		assert.doesNotMatch(
+			instrumentedMainThread,
+			/for \(const rawCommand of result\.batch\.commands\)/,
 		);
 		assert.match(
 			fs.readFileSync(path.join(temporary, 'packages/octane/src/universal-core.ts'), 'utf8'),
 			/__BENCH_BG_PREPARES__/,
+		);
+		const instrumentedMainRenderer = fs.readFileSync(
+			path.join(temporary, 'packages/lynx/src/main-renderer.ts'),
+			'utf8',
+		);
+		assert.match(instrumentedMainRenderer, /firstScreenPlanMs/);
+		assert.match(
+			instrumentedMainRenderer,
+			/startedCommandStage[\s\S]*selectFirstScreenTemplates\(nodes\)[\s\S]*const commands/,
+		);
+		// The command stage closes where the batch is built rather than where the
+		// result is frozen, because the batch is built on demand here.
+		assert.match(
+			instrumentedMainRenderer,
+			/const batch = freezeBatch\(commands\);[\s\S]*firstScreenCommandStageMs[\s\S]*return batch;/,
+		);
+		assert.match(
+			fs.readFileSync(path.join(temporary, 'packages/lynx/src/core/papi.ts'), 'utf8'),
+			/papiCreateMs/,
 		);
 		restore();
 		for (const relative of sourceFiles) {

@@ -48,7 +48,13 @@ const LOADER_OPTION_KEYS = new Set([
 	'mainThreadProgramBackend',
 	'layerSpecializations',
 ]);
-const PLUGIN_OPTION_KEYS = new Set([...LOADER_OPTION_KEYS, 'runtime', 'transpile']);
+const PLUGIN_OPTION_KEYS = new Set([
+	...LOADER_OPTION_KEYS,
+	'parallel',
+	'runtime',
+	'transpile',
+	'cssModuleConstants',
+]);
 const LAYER_SPECIALIZATION_KEYS = new Set([
 	'runtime',
 	'renderers',
@@ -207,6 +213,29 @@ function assertBooleanOption(options, key) {
 	}
 }
 
+function normalizeParallelOption(value) {
+	if (value === undefined || typeof value === 'boolean') return value;
+	if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+		throw new TypeError(
+			'@octanejs/rspack-plugin: `parallel` must be a boolean or an options object.',
+		);
+	}
+	for (const key of Object.keys(value)) {
+		if (key !== 'maxWorkers') {
+			throw new TypeError(`@octanejs/rspack-plugin: unknown \`parallel.${key}\` option.`);
+		}
+	}
+	if (
+		value.maxWorkers !== undefined &&
+		(!Number.isSafeInteger(value.maxWorkers) || value.maxWorkers < 1)
+	) {
+		throw new TypeError(
+			'@octanejs/rspack-plugin: `parallel.maxWorkers` must be a positive integer.',
+		);
+	}
+	return Object.freeze(value.maxWorkers === undefined ? {} : { maxWorkers: value.maxWorkers });
+}
+
 function normalizeOptions(value, plugin) {
 	const options = value ?? {};
 	if (typeof options !== 'object' || Array.isArray(options)) {
@@ -241,6 +270,17 @@ function normalizeOptions(value, plugin) {
 		throw new TypeError('@octanejs/rspack-plugin: `exclude` must be an array of path strings.');
 	}
 	if (plugin) assertBooleanOption(options, 'transpile');
+	if (
+		plugin &&
+		options.cssModuleConstants !== undefined &&
+		typeof options.cssModuleConstants !== 'boolean' &&
+		typeof options.cssModuleConstants !== 'function'
+	) {
+		throw new TypeError(
+			'@octanejs/rspack-plugin: `cssModuleConstants` must be a boolean or a provider function.',
+		);
+	}
+	const parallel = plugin ? normalizeParallelOption(options.parallel) : undefined;
 	const renderers =
 		options.renderers === undefined ? undefined : normalizeRendererConfig(options.renderers);
 	const universalRuntime = normalizeUniversalRuntime(options.universalRuntime);
@@ -265,8 +305,12 @@ function normalizeOptions(value, plugin) {
 		...(options.requireDirective === undefined
 			? null
 			: { requireDirective: options.requireDirective }),
+		...(plugin && parallel !== undefined ? { parallel } : null),
 		...(plugin && options.transpile !== undefined ? { transpile: options.transpile } : null),
 		...(plugin && options.runtime !== undefined ? { runtime: options.runtime } : null),
+		...(plugin && options.cssModuleConstants !== undefined
+			? { cssModuleConstants: options.cssModuleConstants }
+			: null),
 	};
 	if (normalized.exclude) Object.freeze(normalized.exclude);
 	return Object.freeze(normalized);

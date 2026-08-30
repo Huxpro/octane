@@ -82,12 +82,40 @@ export const LYNX_CAPABILITY_READY_REQUEST_BASE = 2 ** 40;
 export const LYNX_LAZY_PUBLIC_INSTANCE_READY_REQUEST_BASE = 2 ** 41;
 /** Distinct from the lazy-instance probe so older strict lazy peers never see a new key. */
 export const LYNX_TEMPLATE_RUN_READY_REQUEST_BASE = 2 ** 42;
+
+/** Ready requests at or above this base understand run-teardown commands and deltas. */
+export const LYNX_TEARDOWN_RUN_READY_REQUEST_BASE = 2 ** 43;
 /**
  * Distinct again: a background that understands runs but not deferral validates
  * the reply with an exact key set, so it would reject the newer key outright.
  * The probe is how this background says which keys it can already read.
+ *
+ * `2 ** 44` rather than `2 ** 43` because upstream published `teardownRuns` at
+ * that rung while this fork was carrying deferral there (issue #227). One rung
+ * cannot mean two capabilities — that is the whole reason the ladder exists —
+ * and of the two only upstream's is released, so a peer in the wild already
+ * reads `2 ** 43` as teardown. This one moves.
  */
-export const LYNX_DEFERRED_TEMPLATE_RUN_READY_REQUEST_BASE = 2 ** 43;
+export const LYNX_DEFERRED_TEMPLATE_RUN_READY_REQUEST_BASE = 2 ** 44;
+/**
+ * Ready requests at or above this base read the painted first screen as a fact
+ * rather than as a description (issue #231).
+ *
+ * The background has only ever needed one bit from `main-ready`: that a first
+ * screen was painted, so its IDs must survive into the first background batch.
+ * `transport.ts` computes exactly that — `message.firstTree !== undefined` —
+ * and nothing anywhere reads a node out of the snapshot it tested. Below this
+ * rung the only way to state the fact was to attach the whole description, so
+ * the reply was O(painted tree): 37 MB for a 30,000-row page, structured-cloned
+ * across the wire and then validated node by node on receipt, to carry a
+ * boolean.
+ *
+ * A peer at this rung is sent `firstTreePainted` instead. A peer below it is
+ * still sent the snapshot, because a background that predates this rung reads
+ * presence off the `firstTree` key itself and would see no first screen at all
+ * without it — the fact would be lost, not merely encoded differently.
+ */
+export const LYNX_FIRST_TREE_PRESENCE_READY_REQUEST_BASE = 2 ** 45;
 export const LYNX_COMPACT_ACKNOWLEDGEMENT = 'compact-v1';
 export const LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS = 16;
 export const LYNX_LAZY_PUBLIC_INSTANCES = 'lazy-v1';
@@ -117,6 +145,14 @@ export interface LynxMainReadyReply {
 	readonly type: 'main-ready';
 	readonly request: number;
 	readonly firstTree?: LynxFirstTreeSnapshot;
+	/**
+	 * The same fact `firstTree` carries — a first screen was painted, so preserve
+	 * its IDs — for a peer at `LYNX_FIRST_TREE_PRESENCE_READY_REQUEST_BASE`.
+	 *
+	 * Mutually exclusive with `firstTree`: a reply states the fact once, in one
+	 * encoding, so a receiver never has to decide which of two spellings wins.
+	 */
+	readonly firstTreePainted?: 1;
 	/** Published only in response to a capability-tagged readiness request. */
 	readonly capabilities?: LynxMainThreadCapabilities;
 }
@@ -140,6 +176,8 @@ export interface LynxMainThreadCapabilities {
 	 * unknown field on a command it otherwise understands completely.
 	 */
 	readonly deferredTemplateRuns?: 1;
+	/** One intrinsic command can tear a mounted run down again. */
+	readonly teardownRuns?: 1;
 }
 
 /**
@@ -241,8 +279,19 @@ export interface LynxPublicHandleRemoval {
 	readonly generation: number;
 }
 
+/** Retires `hostCount` contiguous generation-`generation` hosts in one delta. */
+export interface LynxPublicHandleRunRemoval {
+	readonly op: 'remove-run';
+	readonly firstId: number;
+	readonly hostCount: number;
+	readonly generation: number;
+}
+
 export type LynxPublicHandleDelta =
-	LynxPublicHandleUpsert | LynxPublicHandleListAncestry | LynxPublicHandleRemoval;
+	| LynxPublicHandleUpsert
+	| LynxPublicHandleListAncestry
+	| LynxPublicHandleRemoval
+	| LynxPublicHandleRunRemoval;
 
 export interface LynxLegacyTransportAcknowledgement extends UniversalTransportAcknowledgement {
 	readonly handles: readonly LynxPublicHandleDelta[];
@@ -820,6 +869,7 @@ const EVENT_KEYS = Object.freeze(['op', 'id', 'type', 'listener']);
 const VISIBILITY_KEYS = Object.freeze(['op', 'id', 'state']);
 const REMOVE_KEYS = Object.freeze(['op', 'parent', 'id']);
 const DESTROY_KEYS = Object.freeze(['op', 'id']);
+const DESTROY_RUN_KEYS = Object.freeze(['op', 'parent', 'firstId', 'count', 'width']);
 
 interface LynxBatchValidationState {
 	validatedTemplateShapes?: WeakSet<object>;
@@ -1421,6 +1471,21 @@ function assertCommand(
 			exactKeys(command, DESTROY_KEYS, label, index);
 			positiveInteger(command.id, label, index, 'id');
 			return;
+		case 'destroy-run':
+			exactKeys(command, DESTROY_RUN_KEYS, label, index);
+			hostParent(command.parent, label, index, 'parent');
+			positiveInteger(command.firstId, label, index, 'firstId');
+			positiveInteger(command.count, label, index, 'count');
+			positiveInteger(command.width, label, index, 'width');
+			if (
+				typeof command.firstId === 'number' &&
+				typeof command.count === 'number' &&
+				typeof command.width === 'number' &&
+				command.firstId > Number.MAX_SAFE_INTEGER - (command.count * command.width - 1)
+			) {
+				fail(label, 'exceeds the safe host id range.', index, 'count');
+			}
+			return;
 		default:
 			fail(label, `uses unsupported operation ${JSON.stringify(command.op)}.`, index, 'op');
 	}
@@ -1557,6 +1622,7 @@ const UPSERT_HANDLE_KEYS = Object.freeze([
 ]);
 const LIST_ANCESTRY_HANDLE_KEYS = Object.freeze(['op', 'id', 'generation', 'listDescendant']);
 const REMOVE_HANDLE_KEYS = Object.freeze(['op', 'id', 'generation']);
+const REMOVE_RUN_HANDLE_KEYS = Object.freeze(['op', 'firstId', 'hostCount', 'generation']);
 
 function assertHandleDelta(
 	value: unknown,
@@ -1592,6 +1658,20 @@ function assertHandleDelta(
 		exactKeys(delta, REMOVE_HANDLE_KEYS, label, index);
 		positiveInteger(delta.id, label, index, 'id');
 		positiveInteger(delta.generation, label, index, 'generation');
+		return;
+	}
+	if (delta.op === 'remove-run') {
+		exactKeys(delta, REMOVE_RUN_HANDLE_KEYS, label, index);
+		positiveInteger(delta.firstId, label, index, 'firstId');
+		positiveInteger(delta.hostCount, label, index, 'hostCount');
+		positiveInteger(delta.generation, label, index, 'generation');
+		if (
+			typeof delta.firstId === 'number' &&
+			typeof delta.hostCount === 'number' &&
+			delta.firstId > Number.MAX_SAFE_INTEGER - (delta.hostCount - 1)
+		) {
+			fail(label, 'exceeds the safe host id range.', index, 'hostCount');
+		}
 		return;
 	}
 	fail(label, `uses unsupported operation ${JSON.stringify(delta.op)}.`, index, 'op');
@@ -1653,6 +1733,8 @@ function assertReady(value: unknown, reply: boolean): LynxMainReadyRequest | Lyn
 	const label = reply ? 'main-ready reply' : 'main-ready request';
 	const message = record(value, label);
 	const hasFirstTree = reply && Object.prototype.hasOwnProperty.call(message, 'firstTree');
+	const hasFirstTreePainted =
+		reply && Object.prototype.hasOwnProperty.call(message, 'firstTreePainted');
 	const hasCapabilities = reply && Object.prototype.hasOwnProperty.call(message, 'capabilities');
 	exactKeys(
 		message,
@@ -1662,6 +1744,7 @@ function assertReady(value: unknown, reply: boolean): LynxMainReadyRequest | Lyn
 			'type',
 			'request',
 			...(hasFirstTree ? ['firstTree'] : []),
+			...(hasFirstTreePainted ? ['firstTreePainted'] : []),
 			...(hasCapabilities ? ['capabilities'] : []),
 		],
 		label,
@@ -1681,6 +1764,22 @@ function assertReady(value: unknown, reply: boolean): LynxMainReadyRequest | Lyn
 	if (reply) nonNegativeInteger(message.request, `${label}.request`);
 	else positiveInteger(message.request, `${label}.request`);
 	if (hasFirstTree) assertFirstTreeSnapshot(message.firstTree, `${label}.firstTree`);
+	if (hasFirstTreePainted) {
+		// Rung-gated for the same reason every other optional key is: a background
+		// below this rung validates the reply with an exact key set and would
+		// reject a key it has never heard of, so the probe is how a peer says it
+		// can read this one (issue #231).
+		if ((message.request as number) < LYNX_FIRST_TREE_PRESENCE_READY_REQUEST_BASE) {
+			fail(`${label}.firstTreePainted`, 'requires a first-tree-presence readiness request.');
+		}
+		if (message.firstTreePainted !== 1) fail(`${label}.firstTreePainted`, 'must be 1.');
+		// Both spellings at once would leave the receiver to decide which is
+		// authoritative about the same page. There is no answer to that question
+		// worth having, so the reply is rejected rather than reconciled.
+		if (hasFirstTree) {
+			fail(`${label}.firstTreePainted`, 'cannot accompany firstTree.');
+		}
+	}
 	if (hasCapabilities) {
 		if ((message.request as number) < LYNX_CAPABILITY_READY_REQUEST_BASE) {
 			fail(`${label}.capabilities`, 'requires a capability-tagged readiness request.');
@@ -1700,6 +1799,7 @@ function assertReady(value: unknown, reply: boolean): LynxMainReadyRequest | Lyn
 			capabilities,
 			'deferredTemplateRuns',
 		);
+		const hasTeardownRuns = Object.prototype.hasOwnProperty.call(capabilities, 'teardownRuns');
 		exactKeys(
 			capabilities,
 			[
@@ -1709,6 +1809,7 @@ function assertReady(value: unknown, reply: boolean): LynxMainReadyRequest | Lyn
 				...(hasLazyPublicInstances ? ['lazyPublicInstances'] : []),
 				...(hasTemplateRuns ? ['templateRuns'] : []),
 				...(hasDeferredTemplateRuns ? ['deferredTemplateRuns'] : []),
+				...(hasTeardownRuns ? ['teardownRuns'] : []),
 			],
 			`${label}.capabilities`,
 		);
@@ -1764,6 +1865,15 @@ function assertReady(value: unknown, reply: boolean): LynxMainReadyRequest | Lyn
 				`${label}.capabilities.deferredTemplateRuns`,
 				'requires a deferred-template-run readiness request.',
 			);
+		}
+		if (hasTeardownRuns && capabilities.teardownRuns !== 1) {
+			fail(`${label}.capabilities.teardownRuns`, 'must be 1.');
+		}
+		if (hasTeardownRuns && !hasTemplateProgram) {
+			fail(`${label}.capabilities.teardownRuns`, 'requires the templateProgram capability.');
+		}
+		if (hasTeardownRuns && (message.request as number) < LYNX_TEARDOWN_RUN_READY_REQUEST_BASE) {
+			fail(`${label}.capabilities.teardownRuns`, 'requires a teardown-run readiness request.');
 		}
 	}
 	return message as unknown as LynxMainReadyRequest | LynxMainReadyReply;

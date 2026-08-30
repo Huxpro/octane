@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { createElement } from 'octane';
 import { compile } from 'octane/compiler';
 import { renderToString } from 'octane/server';
-import { loadServerFixture } from '../_server-fixture.js';
+import { loadCompiledFixtureSource, loadServerFixture } from '../_server-fixture.js';
 import { collectPipeableStream } from '../_server-stream.js';
 import * as client from './_fixtures/server-input-spread-cascade.tsrx';
 import { createServerRenderMatrix } from './_helpers/server-render-matrix.js';
@@ -10,6 +10,33 @@ import { createServerRenderMatrix } from './_helpers/server-render-matrix.js';
 const FIXTURE = 'packages/octane/tests/conformance/_fixtures/server-input-spread-cascade.tsrx';
 const server = loadServerFixture<typeof client>(FIXTURE);
 const matrix = createServerRenderMatrix({ clientModule: client, serverModule: server });
+const PROD_COMPILE = process.env.OCTANE_TEST_COMPILE_MODE === 'prod';
+
+function cascadeHydrationDiagnostics(expected: readonly string[]) {
+	const assert = (diagnostics: readonly string[], mismatch: boolean) => {
+		if (PROD_COMPILE) {
+			expect(diagnostics).toEqual([]);
+			return;
+		}
+		const formWarnings = diagnostics.filter(
+			(message) =>
+				message.includes('controlled or uncontrolled') ||
+				message.includes('children on <textarea>'),
+		);
+		expect(formWarnings).toHaveLength(expected.length);
+		for (let index = 0; index < expected.length; index++) {
+			expect(formWarnings[index]).toContain(expected[index]);
+		}
+		const mismatches = diagnostics.filter((message) => message.includes('hydration mismatch'));
+		if (mismatch) expect(mismatches.length).toBeGreaterThan(0);
+		else expect(mismatches).toEqual([]);
+		expect(diagnostics).toHaveLength(formWarnings.length + mismatches.length);
+	};
+	return {
+		'hydrate-match': (diagnostics: readonly string[]) => assert(diagnostics, false),
+		'hydrate-mismatch': (diagnostics: readonly string[]) => assert(diagnostics, true),
+	};
+}
 
 // Per ReactDOMServerIntegrationInput-test.js:84 and
 // ReactDOMServerIntegrationCheckbox-test.js:88. A controlled writer wins over
@@ -21,6 +48,12 @@ matrix.itRenders('resolves input controlled/default cascades across spreads', {
 			container.innerHTML = '<aside id="wrong-input-spread-tree">wrong</aside>';
 		},
 	},
+	hydrationDiagnostics: cascadeHydrationDiagnostics(
+		Array.from({ length: 5 }, () => [
+			'<input> has both `value` and `defaultValue`',
+			'<input> has both `checked` and `defaultChecked`',
+		]).flat(),
+	),
 	assertCommon({ root }) {
 		const inputs = root.querySelectorAll<HTMLInputElement>('#input-spread-cascades input');
 		expect(inputs).toHaveLength(5);
@@ -141,6 +174,17 @@ matrix.itRenders('resolves textarea and select form state across spreads', {
 			container.innerHTML = '<aside id="wrong-textarea-select-tree">wrong</aside>';
 		},
 	},
+	hydrationDiagnostics: cascadeHydrationDiagnostics([
+		'<textarea> has both `value` and `defaultValue`',
+		'<textarea> has both `value` and `defaultValue`',
+		'<textarea> has both `value` and `defaultValue`',
+		'<textarea> has both `value` and `defaultValue`',
+		'`defaultValue` or `value` instead of children on <textarea>',
+		'`defaultValue` or `value` instead of children on <textarea>',
+		'`defaultValue` or `value` instead of children on <textarea>',
+		'<select> has both `value` and `defaultValue`',
+		'<select> has both `value` and `defaultValue`',
+	]),
 	assertCommon({ root }) {
 		const textareas = root.querySelectorAll<HTMLTextAreaElement>(
 			'#textarea-select-spread-cascades textarea[data-expected="controlled"]',
@@ -362,6 +406,31 @@ it('preserves arbitrary attribute evaluation order while resolving collisions', 
 // not move its insertion position in the JSX props snapshot.
 it('retains first insertion order when a later direct writer replaces the same prop', () => {
 	expect(renderToString(server.AttributeSpreadOrder).html).toBe('<div a="3" b="2"></div>');
+});
+
+// Distinct raw aliases share one host attribute, but the winning alias keeps
+// its own authored position for coercion and serialization.
+it('orders normalized alias winners by the winning raw prop position', () => {
+	const fixture = loadCompiledFixtureSource(
+		`export function AliasOrder(props) @{ <label htmlFor={props.firstFor} id={props.id} for={props.finalFor}>label</label> }`,
+		{ id: 'server-alias-application-order.tsrx', mode: 'server' },
+	);
+	const log: string[] = [];
+	const value = (label: string) => ({
+		toString() {
+			log.push(label);
+			return label;
+		},
+	});
+
+	expect(
+		renderToString(fixture.AliasOrder, {
+			firstFor: value('overwritten htmlFor'),
+			id: value('id'),
+			finalFor: value('final for'),
+		}).html,
+	).toBe('<label id="id" for="final for">label</label>');
+	expect(log).toEqual(['id', 'final for']);
 });
 
 // Per ReactJSXTransformIntegration-test.js:95. `children` participates in JSX

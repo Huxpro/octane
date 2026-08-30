@@ -179,8 +179,9 @@ hook calls inside a custom hook; it only declines to modify calls to wrappers.
 
 ## Automatic memoization and calls in templates
 
-Production builds automatically memoize component regions under the same
-pure-render, immutable-snapshot contract assumed by React Compiler:
+Production builds automatically memoize component regions. The default
+compatibility mode is conservative about calls whose receivers can hide mutable
+state:
 
 ```tsx
 {formatPrice(cents)} // May memoize: formatPrice is imported.
@@ -196,7 +197,7 @@ A call keeps its surrounding region memoizable only when the callee is an
 imported binding or an unreassigned same-module function whose body is itself a
 value projection. Arguments must satisfy the same rule.
 
-Member calls fail closed because the receiver may be a live object:
+In compatibility mode, member calls fail closed because the receiver may be a live object:
 `header.getIsSorted()` can return a new answer while `header` retains the same
 identity. A module helper that merely wraps that method has the same hazard and
 does not qualify. Component-local callees, hooks (including `unstable_use*`),
@@ -209,6 +210,57 @@ rendering belongs in state or context. Octane cannot read across a module
 boundary, so an imported helper is taken at its word — that is the one place
 this analysis trusts rather than proves, and it matches React Compiler's own
 assumption.
+
+This preserves ordinary React rendering for live receivers; it is not a promise
+to reproduce every React Compiler optimization. React Compiler also identifies
+APIs with interior mutability, including TanStack Table v8, as
+[incompatible with memoization](https://react.dev/reference/eslint-plugin-react-hooks/lints/incompatible-library).
+Stable function or object identity alone does not prove a result is unchanged.
+
+### Strong mode and render calls
+
+A module that opts into [`"use strong"`](#optional-strong-mode) asserts a stricter
+contract: props, state, context, and method receivers represent immutable render
+snapshots. An ordinary render method must be a value projection of those inputs;
+it must not secretly read changing state behind an unchanged receiver. This lets
+production client builds memoize statically named member calls such as
+`item.format(prefix)` and the same-module helpers that wrap them. No new runtime
+cache or global behavior change is involved.
+
+Hooks and ref-backed receivers such as `ref.current.read()` remain live. Dynamic
+method names, callback-bearing or call-produced arguments, and known clocks and
+randomness remain conservative. Strong mode is not a whole-program purity
+proof: imported code and opaque methods still have to honor the snapshot
+contract. Keep a component using live accessors in compatibility mode, or pass an
+actual snapshot into a separate Strong component. Enabling Strong on a caller
+does not make an imported library's live object immutable.
+
+### Keyed rows and logging
+
+A key preserves a surviving row's DOM identity; it does not promise that its
+JavaScript body runs only once. In Strong production builds, diagnostic calls
+such as `console.log('row', item.id)` no longer disqualify an otherwise eligible
+row from reuse. Logging frequency is not a render or commit contract, and can
+differ in development, HMR, and profiling builds.
+
+A changed captured value still invalidates a row, including captures inside its
+event handlers:
+
+```tsx
+onClick={() => setItems(items.filter((entry) => entry.id !== item.id))}
+```
+
+Appending changes `items`, so surviving rows must receive a handler for the new
+snapshot. Skipping that update could make removing an original row also discard
+the appended item. If removal should use the latest state, a functional update
+does not capture the parent array:
+
+```tsx
+onClick={() => setItems((current) => current.filter((entry) => entry.id !== item.id))}
+```
+
+The first form remains correct and supported. Strong mode does not change its
+closure semantics or promise to skip its reevaluation.
 
 ## Derived values are cached at their declaration
 
@@ -223,7 +275,7 @@ An eligible `const` keeps the same identity until its tracked component-local
 inputs change. This lets a region key on the identity of a derived value instead
 of seeing a new array or object on every render.
 
-The same callee rule governs declaration caching. The virtualizer call must stay
+The same callee rule governs declaration caching. In compatibility mode, the virtualizer call must stay
 live because its window can move while the virtualizer object keeps the same
 identity. Most member calls, including arbitrary `items.filter(...)` calls,
 therefore remain uncached.
@@ -318,8 +370,9 @@ The tuple also supports the same optional latest-value getter as `useState`.
 
 ## Optional Strong mode
 
-Strong mode adds compile-time checks for patterns that make rendering harder to
-reason about. Opt into one module with a directive before its imports:
+Strong mode opts into the immutable render-snapshot contract above and adds
+compile-time checks for detectable violations. Opt into one module with a
+directive before its imports:
 
 ```tsx
 "use strong";
@@ -331,11 +384,25 @@ Alternatively, enable it across application-owned modules with
 `compiler: { strong: true }` in `octane.config.ts`. Installed dependencies stay
 in compatibility mode unless their own source opts in.
 
-A Strong module cannot call a state updater during render or directly while
-setting up an effect, and it cannot assign to `ref.current` during render.
-Event handlers, effects that synchronize an external system, and normal DOM or
-timer refs remain supported. Replace prop-driven state resets with
-`useLinkedState` instead of calling a setter during render.
+A Strong module cannot call a state updater during render or synchronously while
+setting up an effect, and it cannot assign to `ref.current` during render. The
+checks follow provable synchronous calls through `useCallback`, `useEffectEvent`,
+and functions returned by analyzable `useMemo` factories. Calling a statically
+known Effect Event during render or including it in an explicit hook dependency
+list is also a compile error. The hooks themselves remain supported, and other
+explicit dependency lists retain their existing meaning.
+
+The compiler also rejects render-time writes through a provable state snapshot
+(`OCTANE_STRONG_RENDER_SNAPSHOT_MUTATION`) and direct calls to known
+non-idempotent globals such as `Date.now()` and `Math.random()`
+(`OCTANE_STRONG_RENDER_IMPURE_CALL`). These checks follow supported aliases and
+synchronous helpers; they do not prove arbitrary method bodies or imported code
+pure. Lazy state initialization may obtain an initial timestamp or random value.
+
+Event handlers, genuinely deferred callbacks, effect cleanup, effects that
+synchronize an external system, and normal DOM or timer refs remain supported.
+Replace prop-driven state resets with `useLinkedState` instead of calling a
+setter during render.
 
 ## JSX values follow the represented render scope
 
@@ -583,6 +650,13 @@ differences:
 Metadata and resources hoist from ANY depth, matching React: an element
 nested inside a host partitions out of the body on both the client and the
 server, and a hoist inside an `@if` arm registers only while that arm renders.
+Two more Fizz-parity behaviors on the server: `<meta charSet>` and
+`<meta name="viewport">` serialize at the FRONT of the head (charset first —
+parsers only honor it within the first 1024 bytes — then viewport, then
+everything else in discovery order), and hoistables authored inside a pending
+boundary's fallback are dropped transitively (a completed boundary nested in a
+fallback is still fallback territory; the streamed head would outlive the
+fallback it came from).
 
 React Float **resources** are supported with React's semantics:
 
@@ -590,7 +664,9 @@ React Float **resources** are supported with React's semantics:
   global resource: deduped by href across the page, hoisted into
   `document.head` with a `data-precedence` attribute, grouped by precedence in
   first-encounter order (later same-precedence sheets append to their group),
-  and retained after unmount. First instance wins; later differing props do
+  and retained after unmount. First encounter follows tree discovery order —
+  parent before child, suspended arms at reveal — so client mounts, SSR, and
+  React agree on group order. First instance wins; later differing props do
   not retarget a live sheet.
 - `<script async src>` (no children/handlers) hoists and dedupes by src, and
   is likewise never removed.
@@ -661,6 +737,19 @@ setPage(next); // If it suspends, show the pending fallback.
 startTransition(() => setPage(next)); // Keep the previous content while pending.
 ```
 
+Already-visible Suspense content stays visible without a timeout during a
+transition, matching React's
+[shell-retention contract](https://github.com/facebook/react/blob/6117d7cca4906492c51fe6a03381e35adfd86e7d/packages/react-reconciler/src/ReactFiberWorkLoop.js#L1356-L1369).
+`isPending` stays true until the transition completes or is superseded. Initial
+boundaries and newly added nested boundaries may show their fallbacks: there is
+no previously visible content for those boundaries to preserve.
+
+`setTransitionFallbackTimeout(ms)` is an Octane extension for applications that
+want a finite deadline. After that deadline, the pending fallback replaces the
+visible primary while `isPending` remains true. `getTransitionFallbackTimeout()`
+returns `Infinity` by default; setting `Infinity` restores the no-timeout policy
+for subsequent holds.
+
 `flushSync` drains both priorities but leaves passive effects asynchronous:
 
 ```tsx
@@ -677,6 +766,32 @@ Other consequences:
   general commit deferral.
 - Fallback-visible boundaries whose retries fully stage reveal together,
   including refs and layout effects.
+- Retry-only Suspense reveals follow React's shared 300ms fallback window.
+  Showing or filling a fallback advances the window, and retries wait if more
+  than 10ms remains. Urgent updates and active `act()` scopes bypass this delay.
+  A committed fallback inside hidden Activity contributes to the window;
+  toggling Activity visibility alone does not.
+  This is separate from the indefinite transition hold above; see
+  [Suspense retry timing](../packages/octane/audit/SUSPENSE_DIVERGENCE.md#5-retry-reveal-throttling--distinct-from-transition-shell-retention).
+- Resource readers can suspend by throwing a thenable during render, on the
+  client and during SSR; `use()` is not required. Pending and error fallback
+  renders can also suspend through an enclosing pending boundary. A catch-only
+  error boundary does not own suspension; promises thrown by effects remain
+  application errors.
+- Without an enclosing Suspense/`@pending` boundary, the client root retains its
+  committed screen, or stays empty on an initial mount, and retries when the
+  thenable settles. Urgent and transition updates retry the latest inputs;
+  superseding requests and unmounts cannot reveal stale work. Initially suspended
+  hydration retains the server DOM until it can adopt it, attach refs, and run
+  layout/passive effects. Actual rejections follow normal
+  error-boundary/root-error routing.
+  See [root suspension coverage](../packages/octane/audit/SUSPENSE_DIVERGENCE.md#10-client-suspension-without-a-boundary--root-hold-and-retry)
+  for the fix to [issue #821](https://github.com/octanejs/octane/issues/821).
+- Incomplete descriptor and memoized subtrees retry before Suspense reveals
+  them, preserving mounted state and DOM identity. Completed siblings whose
+  speculative commit work was discarded are revisited; unaffected memo and
+  identity bailouts remain eligible. See
+  [descriptor retry coverage](../packages/octane/audit/SUSPENSE_DIVERGENCE.md#11-incomplete-descriptor-retry-bailouts).
 - Same-identity synchronous rendering remains per-swap rather than using a
   global React-style work-in-progress tree. See
   [Suspense divergence #4](../packages/octane/audit/SUSPENSE_DIVERGENCE.md).
@@ -686,8 +801,11 @@ Other consequences:
   unchanged values (the concurrent-interleaving window it guards doesn't exist
   here).
 - A hidden `<Activity>` subtree renders synchronously in the same pass — there
-  is no offscreen/idle lane deprioritizing hidden work. Hide/reveal semantics
-  (state preserved, effects unmounted while hidden) match React.
+  is no offscreen/idle lane deprioritizing hidden work. Compatible state and DOM
+  are preserved; refs and layout/passive effects disconnect while hidden and
+  reconnect on reveal. Insertion effects stay connected. Hidden suspension is
+  contained by the Activity, but general structural-deletion atomicity still has
+  the per-swap limitation above. See the [Activity audit](./activity-audit.md).
 - `useId` generates `:<prefix>in-<n>:` identifiers (React 19.2 uses
   `_r_<n>_`). Both are opaque; only the format differs.
 - `version` reports Octane's own package version (`0.x`), not a React version —
@@ -858,6 +976,11 @@ ref detaches thrown while a subtree unmounts) keep their existing boundary
 routing and report through the same callbacks: boundary-claimed →
 `onCaughtError`, unclaimed → `onUncaughtError` (else the default
 `console.error`).
+
+In non-suspending renders, first-mount and parent-driven catches report the
+original error once after the fallback commits, including its refs and layout
+effects. Inline reports retained by Suspense or Activity wait for reveal, and
+are discarded if their catch is abandoned before that commit.
 
 ## Refs are props
 

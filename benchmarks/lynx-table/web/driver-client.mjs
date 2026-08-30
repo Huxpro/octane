@@ -223,15 +223,18 @@ export const DRIVER_CLIENT_JS = `(() => {
   x.papiSnapshot = papiSnapshot;
 
   // -- FCP + settled ---------------------------------------------------------
-  // From viewAttachTime, poll the composed tree per animation frame. FCP =
-  // first frame satisfying the paint predicate — contentCount >= minContent by
-  // default, or an explicit spec for a first screen that carries no rows;
-  // settled = content count then stable for idleMs. Hard timeout aborts as DNF.
+  // From viewAttachTime, poll the composed tree per animation frame. FCP is the
+  // first frame satisfying the paint predicate, chosen from three: an exact
+  // table-row count, an explicit spec for a first screen that carries no rows,
+  // or the workload-agnostic content threshold, which is the public default.
+  // Settled = the selected signal then stable for idleMs. Hard timeout aborts
+  // as DNF.
   x.fcp = (opts = {}) => {
-    const minContent = opts.minContent ?? 5;
-    // Default paint check reuses the content count this tick already walked;
-    // an explicit spec is for a first screen that carries no row content.
+    const targetRows = opts.rowCount ?? null;
+    // An explicit spec is for a first screen that carries no row content; the
+    // default check reuses the content count this tick already walked.
     const spec = opts.spec ?? null;
+    const minContent = targetRows === null ? (opts.minContent ?? 5) : null;
     const idleMs = opts.idleMs ?? 400;
     const timeoutMs = opts.timeoutMs ?? 120000;
     return new Promise((resolve) => {
@@ -240,25 +243,51 @@ export const DRIVER_CLIENT_JS = `(() => {
       let fcp = null;
       let fcpEpoch = null;
       let papiAtFcp = null;
-      let lastCount = -1;
+      let lastSignal = -1;
       let lastChange = performance.now();
       const tick = () => {
         const now = performance.now();
-        const c = x.contentCount();
-        if (fcp == null && (spec === null ? c >= minContent : checkPredicate(spec))) {
+        const signal = targetRows === null ? x.contentCount() : x.rowCount();
+        const reachedFcp =
+          targetRows !== null
+            ? signal === targetRows
+            : spec === null
+              ? signal >= minContent
+              : checkPredicate(spec);
+        if (fcp == null && reachedFcp) {
           fcp = now - t0;
           fcpEpoch = performance.timeOrigin + now;
           // Same-realm read on the observing frame: the host-boundary counters
           // are exact as of first paint, not as of a later cross-realm poll.
           papiAtFcp = papiSnapshot();
         }
-        if (c !== lastCount) { lastCount = c; lastChange = now; }
+        if (signal !== lastSignal) { lastSignal = signal; lastChange = now; }
         if (fcp != null && now - lastChange >= idleMs) {
-          resolve({ fcp, fcpEpoch, papiAtFcp, settled: lastChange - t0, finalCount: c, dnf: false });
+          const tableOracle = x.tableOracle();
+          resolve({
+            fcp,
+            fcpEpoch,
+            papiAtFcp,
+            settled: lastChange - t0,
+            finalCount: x.contentCount(),
+            finalRows: tableOracle.rows,
+            tableOracle,
+            dnf: false,
+          });
           return;
         }
         if (now > deadline) {
-          resolve({ fcp, fcpEpoch, papiAtFcp, settled: null, finalCount: c, dnf: true });
+          const tableOracle = x.tableOracle();
+          resolve({
+            fcp,
+            fcpEpoch,
+            papiAtFcp,
+            settled: null,
+            finalCount: x.contentCount(),
+            finalRows: tableOracle.rows,
+            tableOracle,
+            dnf: true,
+          });
           return;
         }
         requestAnimationFrame(tick);

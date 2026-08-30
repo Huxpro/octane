@@ -1,5 +1,5 @@
 /* eslint react/jsx-handler-names: 0 */
-import type { SVGProps, PointerEvent } from 'react';
+import type { Octane } from 'octane/jsx-runtime';
 import type { HandlerArgs as DragArgs } from '@octanejs/visx/drag';
 import { Drag } from '@octanejs/visx/drag';
 
@@ -9,7 +9,7 @@ import { getPageCoordinates } from './utils';
 
 const DRAGGING_OVERLAY_STYLES = { cursor: 'move' };
 
-type PointerHandler = (event: PointerEvent<SVGRectElement>) => void;
+type PointerHandler = (event: PointerEvent) => void;
 
 export type BrushSelectionProps = {
 	width: number;
@@ -26,7 +26,7 @@ export type BrushSelectionProps = {
 	onMouseMove?: PointerHandler;
 	onMouseUp?: PointerHandler;
 	onClick?: PointerHandler;
-	selectedBoxStyle: SVGProps<SVGRectElement>;
+	selectedBoxStyle: Octane.SVGProps<SVGRectElement>;
 	isControlled?: boolean;
 	isDragInProgress?: boolean;
 };
@@ -166,7 +166,7 @@ export default function BrushSelection(props: BrushSelectionProps) {
 							if (onMouseUp) onMouseUp(event);
 						}}
 						onClick={(event) => {
-							if (onClick) onClick(event as PointerEvent<SVGRectElement>);
+							if (onClick) onClick(event as unknown as PointerEvent);
 						}}
 						style={{
 							pointerEvents: brush.isBrushing || brush.activeHandle ? 'none' : 'all',

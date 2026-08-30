@@ -87,9 +87,11 @@ describe('lynx-target template emission', () => {
 		const universalCode = compileScene('universal');
 		expect(lynxCode).toContain('"kind": "template"');
 		expect(lynxCode).toContain('"slots"');
-		// The keyed @for body hole stays a plan (non-host root), proving mixed
-		// modules keep the interpreted encoding where templates are ineligible.
-		expect(lynxCode).toContain('{ "kind": "slot", "slot": 0 }');
+		// The keyed @for and its component body stay on the interpreted path,
+		// proving mixed modules keep it where templates are ineligible. Upstream's
+		// row compaction (#765) dropped the one-slot plan that used to wrap the
+		// body, so the directive call is what carries the claim now.
+		expect(lynxCode).toContain('universalFor');
 		expect(universalCode).not.toContain('"kind": "template"');
 	});
 
@@ -143,12 +145,18 @@ export function P(props: { t: string; o: boolean; xs: string[] }) @{
 		expect(fromTemplates.hostCount).toBe(fromPlans.hostCount);
 		expect(fromTemplates.logicalCount).toBe(fromPlans.logicalCount);
 		expect(fromTemplates.batch).toEqual(fromPlans.batch);
-		// The batch is real work, not an empty pass: the fixture mounts the
-		// page chrome plus two keyed rows with listeners.
+		// The batch is real work, not an empty pass: the fixture mounts the page
+		// chrome plus its two keyed rows with listeners. Upstream's row compaction
+		// (#765) folds each row into one `mount-template-range` carrying the row's
+		// first listener, so the rows are counted there rather than as loose
+		// `create` and `event` commands.
 		const creates = fromPlans.batch.commands.filter((command) => command.op === 'create');
-		const events = fromPlans.batch.commands.filter((command) => command.op === 'event');
-		expect(creates.length).toBeGreaterThanOrEqual(10);
-		expect(events.length).toBeGreaterThanOrEqual(3);
+		const rows = fromPlans.batch.commands.filter(
+			(command) => command.op === 'mount-template-range',
+		);
+		expect(creates.length).toBeGreaterThanOrEqual(4);
+		expect(rows.length).toBeGreaterThanOrEqual(2);
+		expect(rows.every((row) => row.firstListenerId !== null)).toBe(true);
 	});
 
 	it('rejects native-resource event values identically under both encodings', () => {
