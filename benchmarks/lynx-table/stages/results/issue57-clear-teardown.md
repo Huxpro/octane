@@ -1,5 +1,14 @@
 # Issue 57: clear teardown
 
+> **Historical record — do not read as current clear cost.** The candidate timed
+> here (`b04e488d`) is not an ancestor of `new-lynx`, and
+> `dcf94cfc8` (*perf(lynx): streamline dense clear teardown*, #762) later rewrote
+> the dense clear teardown these numbers measure. The result below — clear@10k at
+> 0.800x React — is contradicted by the current 3-lane campaign
+> (Huxpro/lynx-js-framework-benchmark#41: clear@10k hux 801 ms vs react 304 ms,
+> 2.6x, regime-invariant). Issue #241 owns the live number. Regenerating this
+> record needs an app build, which is why it is annotated rather than re-run.
+
 All reportable browser runs used the same machine (`65160668d8d9`, Intel Xeon Platinum 8336C), pinned Playwright Chromium 1228, the same lockfile, production bundles, seven repetitions, and zero DNF. The runner writes the source JSON before the historical `collect` guard rejects an unrelated old comparison run whose manifest commit predates current upstream; that post-run guard does not invalidate the recorded samples.
 
 ## Result

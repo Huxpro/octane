@@ -459,3 +459,62 @@ export function Card(props: { rows: unknown; label: string }) @{
 		expect(() => compiled(CARD, { backend: trailing })).toThrowError(/not a single expression/);
 	});
 });
+
+// Issue-#230 E1 — what a background-originated mount would have to name, and
+// cannot.
+//
+// #163's join is first-screen-shaped: the main thread *renders*, so it holds the
+// plan object whose `bind` produces the create, and the applier keys its
+// `boundPrograms` cache on that object. Nothing has to be named because nothing
+// crosses a realm.
+//
+// E1 inverts that. The background renders a keyed range and asks the main thread
+// to instantiate a resident program, so it has to name one — and the gate above
+// (`changes nothing outside the main-thread lynx compile`) is exactly the
+// property that leaves it nothing to say. These tests state that consequence
+// positively, so E1's design lands against a checked fact rather than against the
+// readiness table in the issue, which reads as though the addressing already
+// exists.
+describe('naming a resident program from the background (issue #230 E1)', () => {
+	it('compiles one plan to a program on the main thread and a template on the background', () => {
+		const [mainThread] = evaluate(compiled(CARD, { backend: Backend })).roots;
+		const [background] = evaluate(compiled(CARD, { thread: 'background', backend: Backend })).roots;
+		// Same source, same backend, same plan — two node kinds. The background's
+		// is the interpreted description it has always had, because
+		// `lynxMainThreadProgramObjectAst` returns null off the main-thread compile
+		// and the caller falls back to `lynxTemplateObjectAst`.
+		expect(mainThread.kind).toBe('program');
+		expect(background.kind).toBe('template');
+		// The slot map is the contract both representations keep, which is what
+		// makes them two encodings of one plan rather than two plans.
+		expect(background.slots).toEqual(mainThread.slots);
+	});
+
+	it('gives neither side an identifier the other could resolve', () => {
+		const [mainThread] = evaluate(compiled(CARD, { backend: Backend })).roots;
+		const [background] = evaluate(compiled(CARD, { thread: 'background', backend: Backend })).roots;
+		// The whole of what each side carries. A cross-realm reference has to be
+		// something serializable that both compiles agree on, and neither object
+		// has one: no name, no index, no digest. `bind` and `create` are functions,
+		// so they are realm-local by construction and cannot travel.
+		expect(Object.keys(mainThread).sort()).toEqual([
+			'bind',
+			'events',
+			'kind',
+			'nodes',
+			'ranges',
+			'slots',
+			'values',
+		]);
+		expect(Object.keys(background).sort()).toEqual(['create', 'kind', 'slots']);
+		// Stated as the blocker it is: the intersection of the two key sets is the
+		// vocabulary a `mount-program-run` could use to name its program, and it
+		// holds nothing that identifies *which* program.
+		const shared = Object.keys(background).filter((key) => key in mainThread);
+		expect(shared.sort()).toEqual(['kind', 'slots']);
+		// `kind` is a category and `slots` is a shape, so neither distinguishes two
+		// programs that happen to have the same slot map — which two different
+		// rows of one table routinely do.
+		expect(mainThread.slots).toEqual(background.slots);
+	});
+});
