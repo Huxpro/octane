@@ -601,7 +601,7 @@ export function createLynxBackgroundTransport(
 
 	const stopReadinessSignal = (): void => {
 		if (readinessSignal === null) return;
-		globalThis.clearTimeout(readinessSignal);
+		clearTimeout(readinessSignal);
 		readinessSignal = null;
 	};
 
@@ -644,7 +644,7 @@ export function createLynxBackgroundTransport(
 			return;
 		}
 		if (closedError === null && !readyReceived && !readyDeferred.settled) {
-			readinessSignal = globalThis.setTimeout(sendReadinessSignal, READINESS_SIGNAL_DELAY_MS);
+			readinessSignal = setTimeout(sendReadinessSignal, READINESS_SIGNAL_DELAY_MS);
 		}
 	};
 
