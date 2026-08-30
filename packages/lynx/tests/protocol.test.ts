@@ -3028,6 +3028,90 @@ describe('@octanejs/lynx transported protocol', () => {
 		expect(isLynxClientEventTarget(container, acceptedIdentity.root, 5, 2)).toBe(false);
 	});
 
+	it('refuses a second compact segment over a live one, to keep the hosts nobody looked at', () => {
+		// Issue #230 Order 3 found that a root whose first commit took the compact
+		// acknowledgement can never take an incremental one afterwards, and read
+		// the refusal below as the thing standing in the way. It is not in the
+		// way: it is holding the door shut on a silent identity loss, and this
+		// pins *why*, so a fix has to solve the real problem rather than delete
+		// the check.
+		//
+		// A compact host is a handle that has not been materialized yet:
+		// `compactHandle` builds one on demand out of the segment the first time
+		// anything observes it. So most of a shell's hosts live only in the
+		// segment, and `apply()` installs a staged segment by replacing the old
+		// one. Relaxing this refusal for the incremental branch therefore keeps
+		// exactly the hosts someone happened to observe first and drops the rest —
+		// reachability that depends on who looked, which is worse than the refusal
+		// because nothing reports it.
+		const count = LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS;
+		const container = createLynxClientContainer();
+		prepareLynxCompactHandleDeltas(
+			container,
+			templateBatch(count),
+			count,
+			identity(200, 1),
+		).apply();
+
+		// Observed, so materialized into `handles`, which is what carries forward.
+		expect(container.getPublicHandle(1)?.active).toBe(true);
+		// Not observed. Reachable only through the segment — and reachable, which
+		// is the property the refusal exists to keep.
+		expect(container.getPublicHandle(2)?.active).toBe(true);
+
+		const original = templateProgramRunBatch(count, 2);
+		const run = original.commands[0]!;
+		if (run.op !== 'mount-template-run') throw new Error('Expected a contiguous host run.');
+		// Disjoint by a wide margin: this is refused for holding a live segment at
+		// all, not for overlapping one. Every id-overlap check the incremental
+		// branch already makes passes here.
+		const disjoint: UniversalHostBatch = {
+			...original,
+			commands: [Object.freeze({ ...run, firstId: 10_000 })],
+		};
+		expect(() =>
+			prepareLynxCompactHandleDeltas(container, disjoint, count, identity(200, 2), count, true),
+		).toThrow(/fresh client container/);
+	});
+
+	it('keeps the unobserved hosts of a live segment when a second one is attempted', () => {
+		// The half of the property above that must survive independently of how a
+		// fix is spelled. It does not assert the refusal — it swallows whatever
+		// the attempt does and then asks the container for hosts nobody has
+		// observed yet. Today it passes because the attempt is refused; after a
+		// fix it has to pass because the fix preserved them. Either way, a change
+		// that drops them fails here rather than in a ref that comes back null six
+		// screens later.
+		const count = LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS;
+		const container = createLynxClientContainer();
+		prepareLynxCompactHandleDeltas(
+			container,
+			templateBatch(count),
+			count,
+			identity(201, 1),
+		).apply();
+		const original = templateProgramRunBatch(count, 2);
+		const run = original.commands[0]!;
+		if (run.op !== 'mount-template-run') throw new Error('Expected a contiguous host run.');
+		try {
+			prepareLynxCompactHandleDeltas(
+				container,
+				{ ...original, commands: [Object.freeze({ ...run, firstId: 10_000 })] },
+				count,
+				identity(201, 2),
+				count,
+				true,
+			).apply();
+		} catch {
+			// Refused today. The point of this test is what is true afterwards.
+		}
+		// Read here for the first time, deliberately: a host materialized before
+		// the attempt would ride along in `handles` and prove nothing about the
+		// segment.
+		expect(container.getPublicHandle(3)?.active).toBe(true);
+		expect(container.getPublicHandle(count)?.active).toBe(true);
+	});
+
 	it('re-arms compact acknowledgements after the last compact host retires', () => {
 		const count = LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS;
 		const container = createLynxClientContainer();
