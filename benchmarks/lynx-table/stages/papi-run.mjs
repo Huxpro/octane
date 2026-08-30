@@ -759,6 +759,25 @@ for (const rows of scales) {
 				cells.octane.create.counts.total.median - cells[id].create.counts.total.median,
 			startupCountsDeltaMs:
 				cells.octane.startup.counts.total.median - cells[id].startup.counts.total.median,
+			// The FCP window only has a delta when *both* cells measured one, which
+			// needs a pre-populated bundle on each side. Before one existed for a
+			// reference this branch could never be taken, and Octane's first screen
+			// could only be compared against its own composed projection. Absent
+			// rather than zero: a missing delta is a window that was not measured,
+			// and nothing downstream should be able to read it as a gap of nought.
+			...(cells.octane.fcp.measured === true && cells[id].fcp.measured === true
+				? {
+						fcp: attributeDelta({
+							subject: cells.octane.fcp.timed,
+							reference: cells[id].fcp.timed,
+						}),
+						fcpControlDeltaMs:
+							cells.octane.fcp.overhead.timed.control.median -
+							cells[id].fcp.overhead.timed.control.median,
+						fcpCountsDeltaMs:
+							cells.octane.fcp.counts.total.median - cells[id].fcp.counts.total.median,
+					}
+				: null),
 		};
 	}
 	report.scales[rows] = { cells, deltas };
