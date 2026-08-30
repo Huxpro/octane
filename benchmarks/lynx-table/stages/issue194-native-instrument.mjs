@@ -117,6 +117,8 @@ type Issue194Global = typeof globalThis & {
 \t__ISSUE194_SNAPSHOT__?: () => Issue194Snapshot;
 };
 
+let issue194InteractionOrdinal = 0;
+
 function issue194Frame(): Promise<number> {
 \treturn new Promise((resolve) => lynx.requestAnimationFrame(() => resolve(Date.now())));
 }
@@ -127,6 +129,7 @@ function measureIssue194Tap(workload: string, scale: number, action: () => void)
 \tif (flush === undefined) throw new Error('issue #194 native probe has no transport flush.');
 \tconst preState = global.__ISSUE194_SNAPSHOT__?.();
 \tif (preState === undefined) throw new Error('issue #194 native probe has no pre-state.');
+\tconst interactionOrdinal = ++issue194InteractionOrdinal;
 \tconst startMs = Date.now();
 \taction();
 \tvoid flush().then(() => {
@@ -137,6 +140,7 @@ function measureIssue194Tap(workload: string, scale: number, action: () => void)
 \t\t\t\tif (postState === undefined) throw new Error('issue #194 native probe has no post-state.');
 \t\t\t\tconsole.log('__ISSUE194_NATIVE_RESULT__' + JSON.stringify({
 \t\t\t\t\tprotocol: 'octane-issue194-native-v1',
+\t\t\t\t\tinteractionOrdinal,
 \t\t\t\t\tworkload,
 \t\t\t\t\tscale,
 \t\t\t\t\tsource: 'native-tap',
@@ -243,8 +247,8 @@ function nextMacrotask(cb: () => void) {
 			return next;
 		});
 
-		updateStage('src/block-program.ts', (source, file) =>
-			replaceOnce(
+		updateStage('src/block-program.ts', (source, file) => {
+			let next = replaceOnce(
 				source,
 				'const stormChannel = new MessageChannel();',
 				`const stormChannel: {
@@ -258,6 +262,115 @@ function nextMacrotask(cb: () => void) {
 		},
 	},
 };`,
+				file,
+			);
+			next = replaceOnce(
+				next,
+				`const SCOPED = __BENCH_BLOCK_MODE__ !== 'reconcile';
+`,
+				`const SCOPED = __BENCH_BLOCK_MODE__ !== 'reconcile';
+
+interface Issue194BlockSnapshot {
+	readonly rowCount: number;
+	readonly firstId: number | null;
+	readonly secondId: number | null;
+	readonly thirdId: number | null;
+	readonly row998Id: number | null;
+	readonly firstLabel: string | null;
+	readonly selectedId: number | null;
+}
+
+let issue194BlockInteractionOrdinal = 0;
+
+function issue194BlockSnapshot(state: TableState): Issue194BlockSnapshot {
+	return {
+		rowCount: state.rows.length,
+		firstId: state.rows[0]?.id ?? null,
+		secondId: state.rows[1]?.id ?? null,
+		thirdId: state.rows[2]?.id ?? null,
+		row998Id: state.rows[998]?.id ?? null,
+		firstLabel: state.rows[0]?.label ?? null,
+		selectedId: state.selected ?? null,
+	};
+}
+
+function issue194BlockFrame(): Promise<number> {
+	return new Promise((resolve) => lynx.requestAnimationFrame(() => resolve(Date.now())));
+}
+
+function measureIssue194BlockTap(
+	state: TableState,
+	workload: string,
+	scale: number,
+	action: () => void,
+): void {
+	const preState = issue194BlockSnapshot(state);
+	const interactionOrdinal = ++issue194BlockInteractionOrdinal;
+	const startMs = Date.now();
+	action();
+	void state.committing
+		.then(() => {
+			const commitAckMs = Date.now();
+			return issue194BlockFrame().then((firstFrameMs) =>
+				issue194BlockFrame().then((endMs) => {
+					console.log('__ISSUE194_NATIVE_RESULT__' + JSON.stringify({
+						protocol: 'octane-issue194-native-v1',
+						interactionOrdinal,
+						workload,
+						scale,
+						source: 'native-tap',
+						boundary: 'native-input-handler-to-second-native-frame',
+						startMs,
+						commitAckMs,
+						firstFrameMs,
+						endMs,
+						latencyMs: endMs - startMs,
+						renderEvidence: { kind: 'native-animation-frame', frames: 2 },
+						preState,
+						postState: issue194BlockSnapshot(state),
+					}));
+				}),
+			);
+		})
+		.catch((error: unknown) => {
+			console.log('__ISSUE194_NATIVE_ERROR__' + String(error));
+		});
+}
+`,
+				file,
+			);
+			for (const [handlerIndex, scale] of [
+				[0, 1000],
+				[1, 3000],
+				[2, 5000],
+				[3, 10000],
+				[4, 20000],
+				[5, 30000],
+			]) {
+				next = replaceOnce(
+					next,
+					`\t\t\t\t() => create(table, ${scale}),`,
+					`\t\t\t\t() => measureIssue194BlockTap(table, 'create', ${scale}, () => create(table, ${scale})),`,
+					file,
+				);
+			}
+			next = replaceOnce(
+				next,
+				`\t\t\t\t() => clear(table),`,
+				`\t\t\t\t() => measureIssue194BlockTap(table, 'clear', table.rows.length, () => clear(table)),`,
+				file,
+			);
+			return next;
+		});
+
+		updateRepo('packages/lynx/src/core/block-background.ts', (source, file) =>
+			replaceOnce(
+				source,
+				'pending = Promise.allSettled([pending, work]);',
+				`pending = Promise.all([
+\t\t\tpending.catch(() => undefined),
+\t\t\twork.catch(() => undefined),
+\t\t]);`,
 				file,
 			),
 		);
@@ -338,6 +451,48 @@ function requireFunction<
 		updateRepo('packages/lynx/src/main-thread.ts', (source, file) => {
 			let next = replaceOnce(
 				source,
+				`\tconst dispatch = (message: LynxBackgroundInboundMessage): void => {
+\t\tconst validated = selfCheckLynxBackgroundInboundMessage(message);
+\t\tcontext.dispatchEvent({
+\t\t\ttype: LYNX_MAIN_TO_BACKGROUND_EVENT,
+\t\t\tdata: encodeLynxTransportValue(validated, reportEncodingDiagnostic),
+\t\t});
+\t};
+`,
+				`\ttype Issue194CommitWireMessage = {
+\t\treadonly type: string;
+\t\treadonly encodedPayloadBytes: number;
+\t\treadonly contextEventJsonBytes: number;
+\t};
+\ttype Issue194CommitWire = {
+\t\treadonly root: number;
+\t\treadonly version: number;
+\t\treadonly messages: Issue194CommitWireMessage[];
+\t};
+\tlet issue194ActiveCommitWire: Issue194CommitWire | null = null;
+\tconst dispatch = (message: LynxBackgroundInboundMessage): void => {
+\t\tconst validated = selfCheckLynxBackgroundInboundMessage(message);
+\t\tconst encoded = encodeLynxTransportValue(validated, reportEncodingDiagnostic);
+\t\tconst event = { type: LYNX_MAIN_TO_BACKGROUND_EVENT, data: encoded };
+\t\tconst identity = message as Partial<UniversalTransportIdentity> & { type?: unknown };
+\t\tif (
+\t\t\tissue194ActiveCommitWire !== null &&
+\t\t\tidentity.root === issue194ActiveCommitWire.root &&
+\t\t\tidentity.version === issue194ActiveCommitWire.version
+\t\t) {
+\t\t\tissue194ActiveCommitWire.messages.push({
+\t\t\t\ttype: typeof identity.type === 'string' ? identity.type : 'unknown',
+\t\t\t\tencodedPayloadBytes: encoded.length,
+\t\t\t\tcontextEventJsonBytes: JSON.stringify(event).length,
+\t\t\t});
+\t\t}
+\t\tcontext.dispatchEvent(event);
+\t};
+`,
+				file,
+			);
+			next = replaceOnce(
+				next,
 				`\t\tconst startedApply = LYNX_PROFILE ? performance.now() : 0;
 `,
 				`\t\tconst issue194CallsBefore = JSON.parse(JSON.stringify(
@@ -345,6 +500,7 @@ function requireFunction<
 \t\t));
 \t\tconst issue194ProfileBefore = JSON.parse(JSON.stringify(lynxWireProfile()));
 \t\tconst issue194CommitStarted = performance.now();
+\t\tissue194ActiveCommitWire = { root: message.root, version: message.version, messages: [] };
 \t\tconst startedApply = LYNX_PROFILE ? performance.now() : 0;
 `,
 				file,
@@ -354,11 +510,7 @@ function requireFunction<
 				`\t\ttry {
 \t\t\tdispatch(acknowledgement);
 `,
-				`\t\tconst issue194AckWire = encodeLynxTransportValue(
-\t\t\tselfCheckLynxBackgroundInboundMessage(acknowledgement),
-\t\t\treportEncodingDiagnostic,
-\t\t);
-\t\tconsole.log('__ISSUE194_MAIN_COMMIT__' + JSON.stringify({
+				`\t\tconst issue194CommitReport = {
 \t\t\tprotocol: 'octane-issue194-main-v1',
 \t\t\troot: message.root,
 \t\t\tversion: message.version,
@@ -369,17 +521,48 @@ function requireFunction<
 \t\t\tprofileBefore: issue194ProfileBefore,
 \t\t\tprofileAfter: JSON.parse(JSON.stringify(lynxWireProfile())),
 \t\t\tprogram: JSON.parse(JSON.stringify((globalThis as any).__ISSUE194_PROGRAM__ ?? {})),
-\t\t\twireToBts: {
-\t\t\t\tboundary: 'octane-main-to-background-encoded-payload',
-\t\t\t\twireToBtsBytes: issue194AckWire.length,
-\t\t\t\tackMessages: 1,
-\t\t\t\tackEncoding: compactCount === null ? 'handles' : LYNX_COMPACT_ACKNOWLEDGEMENT,
-\t\t\t\tacknowledgedHostCount: compactCount,
-\t\t\t\tcompletionMessagesAfterAck: applyFailed ? 0 : 1,
-\t\t\t},
-\t\t}));
+\t\t\tackEncoding: compactCount === null ? 'handles' : LYNX_COMPACT_ACKNOWLEDGEMENT,
+\t\t\tacknowledgedHostCount: compactCount,
+\t\t};
 \t\ttry {
 \t\t\tdispatch(acknowledgement);
+`,
+				file,
+			);
+			next = replaceOnce(
+				next,
+				`\t\t\t\tdispatch({ ...identity, type: 'complete' });
+\t\t\t\tif (awaitingAdoption === null) drainNativeEvents();
+`,
+				`\t\t\t\tdispatch({ ...identity, type: 'complete' });
+\t\t\t\tconst issue194Wire = issue194ActiveCommitWire;
+\t\t\t\tissue194ActiveCommitWire = null;
+\t\t\t\tif (issue194Wire === null) {
+\t\t\t\t\tthrow new Error('issue #194 native probe lost the active commit wire record.');
+\t\t\t\t}
+\t\t\t\tconst issue194AckMessages = issue194Wire.messages.filter(
+\t\t\t\t\t(entry) => entry.type === 'ack',
+\t\t\t\t).length;
+\t\t\t\tconsole.log('__ISSUE194_MAIN_COMMIT__' + JSON.stringify({
+\t\t\t\t\t...issue194CommitReport,
+\t\t\t\t\twireToBts: {
+\t\t\t\t\t\tboundary: 'native-context-proxy-main-to-background-encoded-payloads',
+\t\t\t\t\t\twireToBtsBytes: issue194Wire.messages.reduce(
+\t\t\t\t\t\t\t(total, entry) => total + entry.encodedPayloadBytes,
+\t\t\t\t\t\t\t0,
+\t\t\t\t\t\t),
+\t\t\t\t\t\twireToBtsMsgs: issue194Wire.messages.length,
+\t\t\t\t\t\tcontextEventJsonBytes: issue194Wire.messages.reduce(
+\t\t\t\t\t\t\t(total, entry) => total + entry.contextEventJsonBytes,
+\t\t\t\t\t\t\t0,
+\t\t\t\t\t\t),
+\t\t\t\t\t\tackMessages: issue194AckMessages,
+\t\t\t\t\t\tackEncoding: issue194CommitReport.ackEncoding,
+\t\t\t\t\t\tacknowledgedHostCount: issue194CommitReport.acknowledgedHostCount,
+\t\t\t\t\t\tmessages: issue194Wire.messages,
+\t\t\t\t\t},
+\t\t\t\t}));
+\t\t\t\tif (awaitingAdoption === null) drainNativeEvents();
 `,
 				file,
 			);

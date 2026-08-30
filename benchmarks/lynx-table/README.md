@@ -3469,6 +3469,50 @@ correctness/wire-shape probes, not statistical timing claims:
 `stages/results/issue194-round3-create-1000.json` and
 `stages/results/issue194-round3-clear-1000.json`.
 
+#### Issue #42 A/B: post-fix sequence and clear fidelity boundary
+
+One later lease on the same device class ran the issue-#42 sequence against the
+exact new-lynx source `8938c12608524d1a259b5e81f0903ffa5b5eb4d5`.
+Two independent cold starts completed create→clear→re-create at 1k with no
+invalid attempt. Both produced the same aggregate ContextProxy wire shape per
+commit:
+
+| commit | state | tap → second frame | MTS→BTS encoded total | messages | ACKs |
+|---|---|---:|---:|---:|---:|
+| create #1 | 0 → 1,000 | 11,390 / 11,427 ms | 182 / 182 B | 2 / 2 | 1 / 1 |
+| clear | 1,000 → 0 | 262 / 252 ms | 222 / 222 B | 2 / 2 | 1 / 1 |
+| create #2 | 0 → 1,000 | 11,376 / 11,513 ms | 182 / 182 B | 2 / 2 | 1 / 1 |
+
+Each create ACK is compact-v1 with count 7,000; each message total contains one
+ACK and one `complete`. This confirms the post-#229/#233 O(1) shape under
+LepusNG. The 182/222-byte totals are the encoded Native ContextProxy boundary,
+not the Web RPC-envelope aggregate, so only shape and counts compare. The same
+source/build family had already passed the surviving ~7,000-row Part-A probe
+above. Record:
+`stages/results/issue42-a-create-clear-recreate-1000.json`.
+
+The clear@1k cross-framework window found a measurement-fidelity boundary, not
+a Native rank:
+
+| cell | preparation | clear receipt | raw latency | transport settlement |
+|---|---|---|---:|---|
+| Hux block/scoped | create→clear | 1,000 → 0 + two frames | 4,644 ms | waits for Octane ACK; 286,141 B / 2 messages / 1 ACK |
+| upstream `9779569e` | eager rows-1000, then clear | 1,000 → 0 + two frames | 2,560 ms | waits for Octane ACK; 286,369 B / 2 messages / 1 ACK |
+| ReactLynx | create→clear, three cold starts | 1,000 → 0 + two frames | 34 / 28 / 31 ms | producer explicitly reports `not-exposed`, `acknowledged: false` |
+
+Upstream's rows-0 create reached its state/frame receipt but its following clear
+handler produced no receipt before timeout, so its accepted number necessarily
+uses the eager-1k preparation and is not preparation-equivalent to Hux or
+React. More importantly, React's second-frame receipt does not wait for the
+transport settlement that both Octane probes include. Dividing these raw
+numbers would rank different completion boundaries. Therefore this window
+neither validates nor falsifies the Web-interp clear ratio; it records the
+fidelity boundary, grants no device prediction stake, and enters no Native
+cohort. Records:
+`stages/results/issue42-b-clear-1000-octane-hux.json`,
+`stages/results/issue42-b-clear-1000-octane-upstream.json`, and
+`stages/results/issue42-b-clear-1000-react.json`.
+
 ## Claims and non-claims
 
 Command counts and commit bytes are Octane-owned costs and are gated. The

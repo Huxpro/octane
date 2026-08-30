@@ -25,6 +25,11 @@ const tapXArg = readOptionalArg('--tap-x');
 const tapYArg = readOptionalArg('--tap-y');
 const tapX = tapXArg === null ? null : Number(tapXArg);
 const tapY = tapYArg === null ? null : Number(tapYArg);
+const clearTapXArg = readOptionalArg('--clear-tap-x');
+const clearTapYArg = readOptionalArg('--clear-tap-y');
+const clearTapX = clearTapXArg === null ? null : Number(clearTapXArg);
+const clearTapY = clearTapYArg === null ? null : Number(clearTapYArg);
+const createClearRecreate = args.includes('--create-clear-recreate');
 const question = readArg('--question');
 const scale = Number(readArg('--scale'));
 const samples = Number(readArg('--samples'));
@@ -57,7 +62,9 @@ for (let index = 0; index < args.length; index++) {
 }
 if (!Number.isSafeInteger(scale) || scale < 1) throw new Error('scale must be positive.');
 if (!Number.isSafeInteger(samples) || samples < 1) throw new Error('samples must be positive.');
-if (cells.length !== 2) throw new Error('this AB/BA runner requires exactly two cells.');
+if (cells.length < 1 || cells.length > 2) {
+	throw new Error('this runner requires one cell or an AB/BA pair.');
+}
 if (workload !== null && workload !== 'create' && workload !== 'clear') {
 	throw new Error('--workload must be create or clear.');
 }
@@ -66,6 +73,18 @@ if (
 	(!Number.isSafeInteger(tapX) || tapX < 0 || !Number.isSafeInteger(tapY) || tapY < 0)
 ) {
 	throw new Error('--workload requires non-negative integer --tap-x and --tap-y.');
+}
+if (
+	createClearRecreate &&
+	(!Number.isSafeInteger(clearTapX) ||
+		clearTapX < 0 ||
+		!Number.isSafeInteger(clearTapY) ||
+		clearTapY < 0 ||
+		workload !== 'create')
+) {
+	throw new Error(
+		'--create-clear-recreate requires --workload create and non-negative clear tap coordinates.',
+	);
 }
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../app');
@@ -237,6 +256,22 @@ async function coolBeforeSample() {
 	throw new Error('device did not return to the <=35C / thermal-status-0 gate.');
 }
 
+async function ensureInteractive() {
+	const stayAwake = Number(
+		adb('shell', 'settings', 'get', 'global', 'stay_on_while_plugged_in').trim(),
+	);
+	if (!Number.isSafeInteger(stayAwake) || stayAwake === 0) {
+		throw new Error('device stay-on-while-plugged gate is not enabled.');
+	}
+	adb('shell', 'input', 'keyevent', 'KEYCODE_WAKEUP');
+	run('adb', ['-s', serial, 'shell', 'wm', 'dismiss-keyguard'], { allowFailure: true });
+	await delay(250);
+	const power = adb('shell', 'dumpsys', 'power');
+	if (!/mWakefulness=Awake/.test(power) || !/Display Power: state=ON/.test(power)) {
+		throw new Error('device did not reach the interactive display-on gate.');
+	}
+}
+
 function bundleIdentity(cell) {
 	const pathname = new URL(cell.url).pathname.replace(/^\//, '');
 	const file = cell.file ?? path.resolve(appRoot, pathname);
@@ -252,6 +287,7 @@ function bundleIdentity(cell) {
 }
 
 function sequenceFor(count) {
+	if (cells.length === 1) return Array.from({ length: count }, () => 0);
 	const sequence = [];
 	const pattern = [0, 1, 1, 0];
 	const accepted = [0, 0];
@@ -266,8 +302,11 @@ function sequenceFor(count) {
 
 async function measure(cell, ordinal) {
 	const before = await coolBeforeSample();
+	await ensureInteractive();
 	adb('shell', 'am', 'force-stop', 'com.lynx.explorer');
 	adb('logcat', '-c');
+	const preflightMarker = `__ISSUE194_LOG_START__preflight-${ordinal}-${Date.now()}`;
+	adb('shell', 'log', '-t', 'octane-issue194', preflightMarker);
 	adb(
 		'shell',
 		'am',
@@ -283,7 +322,9 @@ async function measure(cell, ordinal) {
 	let disableParsed = null;
 	while (Date.now() < disableDeadline) {
 		await delay(250);
-		disableLog = adb('logcat', '-d', '-v', 'epoch');
+		const fullLog = adb('logcat', '-d', '-v', 'epoch');
+		const markerIndex = fullLog.lastIndexOf(preflightMarker);
+		disableLog = markerIndex === -1 ? '' : fullLog.slice(markerIndex);
 		disableParsed = parseLog(disableLog);
 		const disabledIndex = disableLog.lastIndexOf('DevTool disabled. Transitioning to ATTACHED.');
 		const acknowledgementIndex = disableLog.lastIndexOf('__OCTANE_DEVTOOL_DISABLED__=true');
@@ -302,6 +343,8 @@ async function measure(cell, ordinal) {
 	// every enabled line in the next snapshot unambiguously part of the measured
 	// bundle instead of Explorer's cold-start prelude.
 	adb('logcat', '-c');
+	const measurementMarker = `__ISSUE194_LOG_START__measurement-${ordinal}-${Date.now()}`;
+	adb('shell', 'log', '-t', 'octane-issue194', measurementMarker);
 	adb(
 		'shell',
 		'am',
@@ -321,20 +364,119 @@ async function measure(cell, ordinal) {
 	let tapAtMs = null;
 	let mainBeforeTap = 0;
 	let nativeBeforeTap = 0;
+	const observedLifecycle = {
+		loadStartMs: null,
+		renderPageMs: null,
+		firstScreenMs: null,
+		loadEndMs: null,
+		engine: null,
+	};
+	const observedDevtoolEnabledEvidence = [];
+	const observedErrors = [];
+	const observeParsed = (snapshot) => {
+		for (const key of ['loadStartMs', 'renderPageMs', 'firstScreenMs', 'loadEndMs']) {
+			observedLifecycle[key] ??= snapshot[key];
+		}
+		observedLifecycle.engine ??= snapshot.engine;
+		observedDevtoolEnabledEvidence.push(...snapshot.devtoolEnabledEvidence);
+		observedErrors.push(
+			...snapshot.lines.filter((line) =>
+				/FATAL EXCEPTION|app::onAppJSError|main-thread\.js exception|loadCard failed|__ISSUE194_NATIVE_ERROR__|JNI ERROR|Abort message:|Fatal signal \d+|Process com\.lynx\.explorer .* has died/.test(
+					line,
+				),
+			),
+		);
+	};
+	const interactionSequence = createClearRecreate
+		? [
+				{ workload: 'create', x: tapX, y: tapY },
+				{ workload: 'clear', x: clearTapX, y: clearTapY },
+				{ workload: 'create', x: tapX, y: tapY },
+			]
+		: null;
+	const sequenceEvidence = [];
+	let activeSequenceStep = null;
 	while (Date.now() < deadline) {
 		await delay(2000);
-		log = adb('logcat', '-d', '-v', 'epoch');
+		const fullLog = adb('logcat', '-d', '-v', 'epoch');
+		const markerIndex = fullLog.lastIndexOf(measurementMarker);
+		log = markerIndex === -1 ? '' : fullLog.slice(markerIndex);
 		parsed = parseLog(log);
+		observeParsed(parsed);
 		if ((nativeCrashOutcome || capacityOutcome) && parsed.nativeCrashMs !== null) {
 			// ART prints the class Summary after the first overflow line. Give the
 			// crashing process time to finish that dump before taking the terminal
 			// snapshot; stopping at the first JNI line lost precisely this evidence
 			// in device round 1 (#194 / #222).
 			await delay(3000);
-			log = adb('logcat', '-d', '-v', 'epoch');
+			const fullLog = adb('logcat', '-d', '-v', 'epoch');
+			const markerIndex = fullLog.lastIndexOf(measurementMarker);
+			log = markerIndex === -1 ? '' : fullLog.slice(markerIndex);
 			parsed = parseLog(log);
+			observeParsed(parsed);
 			completed = true;
 			break;
+		}
+		if (interactionSequence !== null) {
+			if (
+				activeSequenceStep === null &&
+				sequenceEvidence.length < interactionSequence.length &&
+				(sequenceEvidence.length > 0 ||
+					(parsed.firstScreenMs !== null && parsed.loadEndMs !== null))
+			) {
+				const spec = interactionSequence[sequenceEvidence.length];
+				activeSequenceStep = {
+					...spec,
+					interactionOrdinal: sequenceEvidence.length + 1,
+					mainBefore: parsed.main.length,
+					nativeBefore: parsed.native.length,
+					issuedAtMs: Date.now(),
+				};
+				adb('shell', 'input', 'tap', String(spec.x), String(spec.y));
+				console.log(
+					`[issue194] sequence step ${activeSequenceStep.interactionOrdinal}: issued ${spec.workload} tap`,
+				);
+				continue;
+			}
+			if (activeSequenceStep !== null) {
+				// The device log ring can evict the very large create record while
+				// later commits are still running, so array offsets are not stable
+				// across snapshots. Version 1 is first-tree adoption; the three
+				// serialized interaction commits are therefore versions 2/3/4.
+				const main =
+					parsed.main.find(
+						(entry) => entry.version === activeSequenceStep.interactionOrdinal + 1,
+					) ?? null;
+				const native =
+					parsed.native.find(
+						(entry) =>
+							entry.interactionOrdinal === activeSequenceStep.interactionOrdinal &&
+							entry.workload === activeSequenceStep.workload &&
+							entry.scale === scale,
+					) ?? null;
+				if (main !== null && native !== null) {
+					sequenceEvidence.push({
+						step: activeSequenceStep.interactionOrdinal,
+						workload: activeSequenceStep.workload,
+						adbInput: {
+							x: activeSequenceStep.x,
+							y: activeSequenceStep.y,
+							issuedAtMs: activeSequenceStep.issuedAtMs,
+						},
+						attribution: main,
+						backgroundSettle: native,
+					});
+					console.log(
+						`[issue194] sequence step ${activeSequenceStep.interactionOrdinal}: accepted ${activeSequenceStep.workload}`,
+					);
+					activeSequenceStep = null;
+					if (sequenceEvidence.length === interactionSequence.length) {
+						completed = true;
+						break;
+					}
+				}
+			}
+			continue;
 		}
 		if (
 			workload !== null &&
@@ -382,16 +524,25 @@ async function measure(cell, ordinal) {
 	adb('shell', 'am', 'force-stop', 'com.lynx.explorer');
 	const after = thermalSnapshot();
 	parsed ??= parseLog(log);
-	const attribution =
-		workload !== null
+	for (const key of ['loadStartMs', 'renderPageMs', 'firstScreenMs', 'loadEndMs']) {
+		parsed[key] ??= observedLifecycle[key];
+	}
+	parsed.engine ??= observedLifecycle.engine;
+	parsed.devtoolEnabledEvidence = [
+		...new Set([...observedDevtoolEnabledEvidence, ...parsed.devtoolEnabledEvidence]),
+	];
+	const attribution = createClearRecreate
+		? (sequenceEvidence.at(-1)?.attribution ?? null)
+		: workload !== null
 			? (parsed.main.slice(mainBeforeTap).at(-1) ?? null)
 			: mode === 'direct-result'
 				? (parsed.direct.at(-1) ?? null)
 				: mode === 'first-screen-ready'
 					? (parsed.firstScreen.at(-1) ?? null)
 					: (parsed.main.at(-1) ?? null);
-	const backgroundSettle =
-		workload === null
+	const backgroundSettle = createClearRecreate
+		? (sequenceEvidence.at(-1)?.backgroundSettle ?? null)
+		: workload === null
 			? (parsed.native.find((entry) => entry.scale === scale) ?? null)
 			: (parsed.native
 					.slice(nativeBeforeTap)
@@ -407,6 +558,31 @@ async function measure(cell, ordinal) {
 		workload === 'clear'
 			? validPopulatedState(backgroundSettle?.preState) && state?.rowCount === 0
 			: validPopulatedState(state);
+	const [sequenceCreate, sequenceClear, sequenceRecreate] = sequenceEvidence;
+	const validSequenceState =
+		sequenceEvidence.length === 3 &&
+		sequenceCreate.workload === 'create' &&
+		sequenceCreate.backgroundSettle?.preState?.rowCount === 0 &&
+		sequenceCreate.backgroundSettle?.postState?.rowCount === scale &&
+		sequenceClear.workload === 'clear' &&
+		sequenceClear.backgroundSettle?.preState?.rowCount === scale &&
+		sequenceClear.backgroundSettle?.postState?.rowCount === 0 &&
+		sequenceRecreate.workload === 'create' &&
+		sequenceRecreate.backgroundSettle?.preState?.rowCount === 0 &&
+		sequenceRecreate.backgroundSettle?.postState?.rowCount === scale;
+	const validSequenceWire = sequenceEvidence.every((entry) => {
+		const wire = entry.attribution?.wireToBts;
+		return (
+			wire?.boundary === 'native-context-proxy-main-to-background-encoded-payloads' &&
+			Number.isSafeInteger(wire.wireToBtsBytes) &&
+			wire.wireToBtsBytes > 0 &&
+			Number.isSafeInteger(wire.wireToBtsMsgs) &&
+			wire.wireToBtsMsgs >= 2 &&
+			wire.ackMessages === 1 &&
+			Array.isArray(wire.messages) &&
+			wire.messages.length === wire.wireToBtsMsgs
+		);
+	});
 	const calls = attribution?.calls;
 	const validFirstScreenShape =
 		calls?.__CreateView?.count === scale + 15 &&
@@ -415,12 +591,13 @@ async function measure(cell, ordinal) {
 		calls?.__AddEvent?.count === scale * 2 + 12 &&
 		calls?.__AppendElement?.count === scale * 7 + 41;
 	const validState =
-		engineOnly || (mode === 'commit' ? validBackgroundState : validFirstScreenShape);
-	const errors = parsed.lines.filter((line) =>
-		/FATAL EXCEPTION|app::onAppJSError|main-thread\.js exception|loadCard failed|__ISSUE194_NATIVE_ERROR__|JNI ERROR|Abort message:|Fatal signal \d+|Process com\.lynx\.explorer .* has died/.test(
-			line,
-		),
-	);
+		engineOnly ||
+		(createClearRecreate
+			? validSequenceState && validSequenceWire
+			: mode === 'commit'
+				? validBackgroundState
+				: validFirstScreenShape);
+	const errors = [...new Set(observedErrors)];
 	const completedAndValid =
 		(engineOnly || attribution !== null) &&
 		validState &&
@@ -483,8 +660,10 @@ async function measure(cell, ordinal) {
 		preStateEvidence: backgroundSettle?.preState ?? null,
 		firstScreenShapeEvidence: mode === 'commit' ? null : calls,
 		backgroundSettle,
-		adbInput:
-			workload === null
+		sequenceEvidence: createClearRecreate ? sequenceEvidence : null,
+		adbInput: createClearRecreate
+			? sequenceEvidence.map((entry) => ({ workload: entry.workload, ...entry.adbInput }))
+			: workload === null
 				? null
 				: { workload, x: tapX, y: tapY, issuedAtMs: tapAtMs, issued: tapped },
 		attribution,
@@ -512,12 +691,27 @@ let report = {
 		devtool:
 			'disabled by a background-only LynxDevToolSetModule.switchLynxDebug(false) preflight before each sample; no CDP/DevTool connection used',
 		coldLaunchPerSample: true,
+		display:
+			'ADB wake + dismiss-keyguard before every sample; stay-on-while-plugged gate required for multi-commit input sequences',
 		thermalGate: 'battery <=35.0C and Android thermal status 0 before every accepted attempt',
-		ordering: 'AB/BA (A,B,B,A repeating)',
+		ordering:
+			cells.length === 1 ? 'single-cell repeated cold launches' : 'AB/BA (A,B,B,A repeating)',
 		completionMode: mode,
 		workload,
-		adbInput:
-			workload === null
+		interactionSequence: createClearRecreate ? ['create', 'clear', 'create'] : null,
+		wireBoundary: createClearRecreate
+			? 'native ContextProxy encoded payloads; not the Web RPC-envelope aggregate'
+			: null,
+		adbInput: createClearRecreate
+			? [
+					{ workload: 'create', command: `adb -s <serial> shell input tap ${tapX} ${tapY}` },
+					{
+						workload: 'clear',
+						command: `adb -s <serial> shell input tap ${clearTapX} ${clearTapY}`,
+					},
+					{ workload: 'create', command: `adb -s <serial> shell input tap ${tapX} ${tapY}` },
+				]
+			: workload === null
 				? null
 				: {
 						command: `adb -s <serial> shell input tap ${tapX} ${tapY}`,
@@ -559,7 +753,7 @@ if (checkpoint !== null && fs.existsSync(checkpoint)) {
 	}
 	report = resumed;
 	console.log(
-		`[issue194] resumed ${report.samples.length}/${samples * 2} samples from ${checkpoint}`,
+		`[issue194] resumed ${report.samples.length}/${samples * cells.length} samples from ${checkpoint}`,
 	);
 }
 
@@ -573,7 +767,9 @@ for (const [ordinal, cellIndex] of sequenceFor(samples).entries()) {
 	const cell = cells[cellIndex];
 	let accepted = false;
 	for (let attempt = 1; attempt <= 2 && !accepted; attempt++) {
-		console.log(`[issue194] ${ordinal + 1}/${samples * 2} ${cell.label} attempt ${attempt}`);
+		console.log(
+			`[issue194] ${ordinal + 1}/${samples * cells.length} ${cell.label} attempt ${attempt}`,
+		);
 		const sample = await measure(cell, ordinal + 1);
 		if (sample.accepted) {
 			report.samples.push(sample);
