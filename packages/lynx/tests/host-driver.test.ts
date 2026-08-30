@@ -4585,6 +4585,86 @@ describe('Lynx Element PAPI host driver', () => {
 		}
 	});
 
+	it("releases a cleared run's listener journal through its destroy", () => {
+		// The companion to the one-call-per-row oracle above. That test pins what
+		// a clear spends at the host boundary; this one pins that the clear still
+		// *releases* what it stops describing.
+		//
+		// A records-map clear used to synthesize one `event` command per listener
+		// on its way to the `destroy` that retires the same host — two of every
+		// ten commands a bench row's teardown produced, and every one of them
+		// describing a detach the following `destroy` performs anyway through
+		// `removeAllNativeEvents`. They are gone on a container with no native
+		// list. What must not go with them is the release itself: a listener left
+		// in the journal would outlive its record and be unbound again at
+		// disposal, so disposal after a clear has to be silent.
+		const benchRow: UniversalHostTemplateProgram = Object.freeze({
+			nodes: Object.freeze([
+				Object.freeze({ type: 'view', parent: -1, props: Object.freeze({ class: 'row' }) }),
+				Object.freeze({ type: 'text', parent: 0, props: Object.freeze({ class: 'col-id' }) }),
+				Object.freeze({ type: 'raw-text', parent: 1, props: Object.freeze({ text: '1' }) }),
+				Object.freeze({ type: 'text', parent: 0, props: Object.freeze({ class: 'col-label' }) }),
+				Object.freeze({ type: 'raw-text', parent: 3, props: Object.freeze({ text: 'label' }) }),
+				Object.freeze({ type: 'text', parent: 0, props: Object.freeze({ class: 'col-remove' }) }),
+				Object.freeze({ type: 'raw-text', parent: 5, props: Object.freeze({ text: 'x' }) }),
+			]),
+			events: Object.freeze([
+				Object.freeze({ node: 3, type: 'bindtap', priority: 'default' as const }),
+				Object.freeze({ node: 5, type: 'bindtap', priority: 'default' as const }),
+			]),
+		});
+		const rows = 4;
+		const { container, page, papi } = createHost(83);
+		// The neighbour above the run's id space is what declines the incremental
+		// compact, so the records stay a map and the clear takes the expansion
+		// rather than the certified direct plan.
+		prepareLynxHostBatch(
+			container,
+			batch(1, [
+				{ op: 'create', id: 1, type: 'view', props: { id: 'shell' } },
+				{ op: 'create', id: 2, type: 'view', props: { id: 'rows' } },
+				{ op: 'insert', id: 2, parent: 1, before: null },
+				{ op: 'create', id: 900, type: 'view', props: { id: 'neighbour' } },
+				{ op: 'insert', id: 900, parent: 1, before: null },
+				{ op: 'insert', id: 1, parent: null, before: null },
+			]),
+		).apply();
+		prepareLynxHostBatch(
+			container,
+			batch(2, [
+				{
+					op: 'mount-template-run',
+					parent: 2,
+					before: null,
+					program: benchRow,
+					firstId: 100,
+					firstListenerId: 9000,
+					count: rows,
+					values: Object.freeze([]),
+				},
+			]),
+			{ compact: true, incrementalCompact: true, lazyPublicInstances: true },
+		).apply();
+		const list = page.children[0]!.children[0]!;
+		expect(list.children).toHaveLength(rows);
+		papi.resetCalls();
+		prepareLynxHostBatch(
+			container,
+			batch(3, [{ op: 'destroy-run', parent: 2, firstId: 100, count: rows, width: 7 }]),
+		).apply();
+		expect(list.children).toEqual([]);
+		const clearTally: Record<string, number> = {};
+		for (const call of papi.calls) clearTally[call] = (clearTally[call] ?? 0) + 1;
+		expect(clearTally).toEqual({ remove: rows, flush: 1 });
+
+		// Eight listeners were installed and none of them may still be journalled:
+		// disposal unbinds whatever the journal still holds, so any survivor of
+		// the clear shows up here as a `setEvent` the clear should have released.
+		papi.resetCalls();
+		expect(disposeLynxHostContainer(container).complete).toBe(true);
+		expect(papi.calls.filter((call) => call === 'setEvent')).toEqual([]);
+	});
+
 	it('accepts a complete destroy-run teardown after an accepted host fault', () => {
 		const { container, page, papi } = createHost(69);
 		const program: UniversalHostTemplateProgram = Object.freeze({
