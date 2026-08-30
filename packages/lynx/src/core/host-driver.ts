@@ -1581,13 +1581,8 @@ function prepareTemplateProgram(value: unknown, label: string): LynxPreparedTemp
 				dynamicRoutes[nodeIndex] = 1;
 			} else if (
 				(type === 'view' || type === 'text') &&
-				Object.keys(props).every(
-					(name) => name === 'class' || name === 'className' || name === 'id',
-				) &&
-				copied.every(
-					(binding) =>
-						binding.name === 'class' || binding.name === 'className' || binding.name === 'id',
-				)
+				Object.keys(props).every((name) => isDenseScalarHostProp(type, name)) &&
+				copied.every((binding) => isDenseScalarHostProp(type, binding.name))
 			) {
 				dynamicRoutes[nodeIndex] = 2;
 			}
@@ -1720,6 +1715,24 @@ function planScalarClassAndIdCreation(props: Readonly<Record<string, unknown>>):
 	return Object.freeze(patch);
 }
 
+/**
+ * Whether the dense scalar route carries this prop on this host.
+ *
+ * `text` is the fourth scalar and only on a `text` host, because that is the one
+ * type whose content is a prop: a `<text>` whose lone child was a string the
+ * compiler already held carries it directly and paints no carrier (#242 Cause
+ * A). A `view` with a `text` prop is a program the command path would paint
+ * differently, so it stays off this route.
+ *
+ * `emit-main-thread-program.ts` compiles the same decision ahead of time and has
+ * to agree with this one: a node routed here but not there is a first screen
+ * whose two arms paint different trees.
+ */
+function isDenseScalarHostProp(type: string, name: string): boolean {
+	if (name === 'class' || name === 'className' || name === 'id') return true;
+	return name === 'text' && type === 'text';
+}
+
 function applyDenseScalarHostProps<Node extends LynxElementRef>(
 	papi: LynxElementPAPI<Node>,
 	node: Node,
@@ -1731,10 +1744,17 @@ function applyDenseScalarHostProps<Node extends LynxElementRef>(
 	let id = props.id;
 	let ordinaryClass = props.class;
 	let aliasedClass = props.className;
+	// A `text` host carries its own content when the compiler folded a lone
+	// known text child onto it (#242 Cause A), so the carrier element is never
+	// created. Read here rather than through the generic patch path: this is the
+	// dense route, and going wide for one string would give up the very thing
+	// the route exists for.
+	let text = props.text;
 	let hasAliasedClass = Object.prototype.hasOwnProperty.call(props, 'className');
 	for (const binding of bindings) {
 		const value = values[valueOffset + binding.valueIndex];
 		if (binding.name === 'id') id = value;
+		else if (binding.name === 'text') text = value;
 		else if (binding.name === 'className') {
 			aliasedClass = value;
 			hasAliasedClass = true;
@@ -1743,6 +1763,11 @@ function applyDenseScalarHostProps<Node extends LynxElementRef>(
 		}
 	}
 	if (id !== null && id !== undefined) papi.setId(node, String(id));
+	// Only a string is written. The carrier this replaces renders a non-string
+	// as empty rather than coercing it, and a divergence between the two would
+	// be a first screen that disagrees with the command path about what the row
+	// says.
+	if (typeof text === 'string' && text !== '') papi.setAttribute(node, 'text', text);
 	const candidate = hasAliasedClass ? aliasedClass : ordinaryClass;
 	const classes =
 		typeof candidate === 'string'
