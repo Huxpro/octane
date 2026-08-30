@@ -800,6 +800,13 @@ source. Octane carries the auto-rows bundles, and one reference does too — the
 vendored `react-first-screen` set above. Every other vendored cell is reported
 "not measured" rather than substituted from another window.
 
+Splitting an FCP@N gap against a reference is a procedure with two traps in it,
+so it is written down rather than rediscovered:
+[`docs/measurement/fcp-attribution.md`](../../docs/measurement/fcp-attribution.md)
+records which buckets a fair boundary can separate, the share denominator the
+harness actually uses, and the **±0.04 resolution** a single-window FCP ratio has
+here.
+
 A single host call is far below the browser's clock granularity, which the
 report records: only per-kind aggregates over many calls carry meaning, and no
 per-call latency is claimed.
