@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url';
 
 import { instrumentLynxStageSources } from '../stages/instrument-source.mjs';
 import { instrumentIssue194NativeSources } from '../stages/issue194-native-instrument.mjs';
+import { instrumentIssue196M15NativeSources } from '../stages/issue196-m15-native-instrument.mjs';
 import { instrumentLepusQ2Sources } from '../stages/lepus-cost/instrument-q2-source.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -170,6 +171,11 @@ export function buildTableApp({
 			? instrumentLynxStageSources(repo)
 			: () => {};
 	const issue194Native = process.env.BENCH_ISSUE194_NATIVE === '1';
+	const issue196M15Native = process.env.BENCH_ISSUE196_M15_NATIVE === '1';
+	if (issue194Native && issue196M15Native) {
+		throw new Error('BENCH_ISSUE194_NATIVE and BENCH_ISSUE196_M15_NATIVE are separate bundles.');
+	}
+	if (issue196M15Native) instrumentIssue196M15NativeSources(repo, stage);
 	const issue194DirectOnly = process.env.BENCH_ISSUE194_DIRECT_ONLY === '1';
 	const appendOrder = process.env.BENCH_MTS_APPEND_ORDER ?? 'parent-first';
 	let restoreIssue194 = () => {};
@@ -238,7 +244,8 @@ export function buildTableApp({
 	const from = path.join(stage, `dist${suffix}`);
 	const outputSuffix =
 		suffix +
-		(issue194Native ? `-issue194-${appendOrder}${issue194DirectOnly ? '-direct-only' : ''}` : '');
+		(issue194Native ? `-issue194-${appendOrder}${issue194DirectOnly ? '-direct-only' : ''}` : '') +
+		(issue196M15Native ? '-issue196-m15' : '');
 	const to = path.join(src, `dist${outputSuffix}`);
 	fs.rmSync(to, { recursive: true, force: true });
 	fs.cpSync(from, to, { recursive: true });

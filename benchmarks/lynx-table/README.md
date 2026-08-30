@@ -3565,6 +3565,71 @@ cohort. Records:
 `stages/results/issue42-b-clear-1000-octane-upstream.json`, and
 `stages/results/issue42-b-clear-1000-react.json`.
 
+### Next lease: tap-create segmentation, N0, and M1.5
+
+The next #194 lease measured exact Octane source
+`cc272ad9e1730b971a194eb16fbb89c232db2702` on the same Aries 10 / Explorer
+1.0 / app-bundle engine 3.9 / Lynx SDK 4.0 device class. The checked-in records
+carry the Sandbox acquisition and release receipt. The lease ran #42 A, then
+#45 N0, then #196 M1.5, without changing that order. Every accepted device
+window used the DevTool-disabled preflight, a cold process, no CDP connection,
+and the 35.0 °C / thermal-status-0 gate; there were no invalid attempts.
+
+The #42 A tap-create boundary is now partitioned as requested. BTS render starts
+in the native tap handler and ends after framework render plus commit encoding;
+wire ends when MTS has received and decoded that commit; MTS apply ends when
+validation, preparation, PAPI application, and `__FlushElementTree` return;
+residual ends on the second native animation frame.
+
+| step | tap → second frame | BTS render | wire | MTS apply | residual |
+|---|---:|---:|---:|---:|---:|
+| create #1 | 11,375 / 11,485 ms (median 11,430) | 219 / 219 ms (219) | 2 / 2 ms (2) | 11,110 / 11,218 ms (11,164) | 44 / 46 ms (45) |
+| clear | 265 / 260 ms (262.5) | 34 / 34 ms (34) | 1 / 0 ms (0.5) | 189 / 189 ms (189) | 41 / 37 ms (39) |
+| create #2 | 11,408 / 11,464 ms (11,436) | 239 / 232 ms (235.5) | 5 / 5 ms (5) | 11,117 / 11,180 ms (11,148.5) | 47 / 47 ms (47) |
+
+All six accepted interactions satisfy the exact identity `total = BTS + wire +
+MTS apply + residual`, as well as the existing state, wire, and ACK oracles.
+MTS apply owns 97.67% of the first-create median and 97.49% of the recreate
+median. This localizes the 11.4-second result to the MTS validation/prepare/PAPI
+apply-and-flush interval; it does not claim to divide that interval further.
+Record: `stages/results/issue42-a-tap-create-segments-1000.json`.
+
+#45 N0 used one additional independent cold create as the cheap seam and clock
+probe. Its exact partition is 11,392 = 225 + 1 + 11,108 + 58 ms. MTS received
+the commit at epoch millisecond 1,788,090,042,757 and returned from flush at
+1,788,090,053,865, after the ordered BTS encode timestamp. The PAPI counter
+deltas were 1,000 `__CreateView`, 3,000 `__CreateText`, 3,000
+`__CreateRawText`, 7,000 `__AppendElement`, and one `__FlushElementTree`.
+That establishes the LepusNG public-PAPI seam and a shared, strictly ordered
+`Date.now()` epoch for this probe; it introduces no production clock or API
+change. Record: `stages/results/issue45-n0-lepus-papi-clock.json`.
+
+Thermal headroom then permitted #196 M1.5. One 43,720 ms BTS window measured 12
+ledger primitives at 10k, 30k, 100k, 300k, and 1m operations, with five rotated
+repetitions at every point. The device and V8-context rows execute source hash
+`82ca33cf978520ac93a112384025bd4048e589290658f1af9c3a8d6a5839234b`.
+
+| primitive | LepusNG ns/op slope | net after paired floor | fit residual | V8 context ns/op |
+|---|---:|---:|---:|---:|
+| array index write | 76.56 | — | 0.1335 | 5.33 |
+| array index read | 208.06 | 131.50 | 0.0209 | 6.90 |
+| growing array push | 238.79 | — | 0.1472 | 21.80 |
+| growing map set | 465.15 | — | 36.9591 | 138.79 |
+| map hit | 816.88 | 351.73 | 2.1337 | 183.57 |
+| growing set add | 451.85 | — | 19.7227 | 110.42 |
+| set hit | 807.76 | 355.91 | 3.5393 | 150.82 |
+| one-entry map per host | 751.04 | — | 0.0511 | 44.58 |
+| object literal | 81.26 | — | 1.3964 | 1.21 |
+| frozen object | 1,119.00 | 1,037.74 | 0.1471 | 41.30 |
+| assertion chain | 506.00 | — | 0.0621 | 2.13 |
+| event-prop parse | 662.89 | — | 0.0423 | 17.50 |
+
+The high-residual growing map/set rows and their hit probes are not linear
+budget constants; use the record's `nsPerOpByCount` values for decisions. V8 is
+context only and is not spendable on a LepusNG decision. Raw samples, medians,
+fits, and engine metadata are in
+`stages/results/issue196-m15-ledger-primitives-lepus.json`.
+
 ## Claims and non-claims
 
 Command counts and commit bytes are Octane-owned costs and are gated. The

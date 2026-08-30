@@ -1,0 +1,1027 @@
+{
+  "protocol": "octane-issue194-device-v1",
+  "question": "issue #196 M1.5: LepusNG mount-ledger bookkeeping primitives, exact shared source, n=5 rotated scaling series",
+  "createdAt": "2026-08-30T11:54:51.501Z",
+  "octaneCommit": "cc272ad9e1730b971a194eb16fbb89c232db2702",
+  "serial": "aic-i18n-bd-fullport.byteintl.net:46879",
+  "lease": {
+    "endpoint": "https://lynx-sandbox.byted.org/pool/lease",
+    "issuer": "5563315+Huxpro@users.noreply.github.com",
+    "issueId": "benchmark-194-next-lease-20260830",
+    "acquired": "aic-i18n-bd-fullport.byteintl.net:46879",
+    "expiredAt": 1788093534801,
+    "expiredAtIso": "2026-08-30T12:38:54.801Z",
+    "released": true,
+    "releaseReceipt": {
+      "acquired": "aic-i18n-bd-fullport.byteintl.net:46879"
+    }
+  },
+  "device": {
+    "model": "aries_10",
+    "product": "aries",
+    "android": "10",
+    "fingerprint": "aries_10/aries/aries:10/QQ3A.200805.001/1.5.2:userdebug/test-keys",
+    "abi": "arm64-v8a",
+    "explorer": "1.0"
+  },
+  "controls": {
+    "devtool": "disabled by a background-only LynxDevToolSetModule.switchLynxDebug(false) preflight before each sample; no CDP/DevTool connection used",
+    "coldLaunchPerSample": true,
+    "display": "ADB wake + dismiss-keyguard before every sample; stay-on-while-plugged gate required for multi-commit input sequences",
+    "thermalGate": "battery <=35.0C and Android thermal status 0 before every accepted attempt",
+    "ordering": "single-cell repeated cold launches",
+    "completionMode": "m15-result",
+    "workload": null,
+    "interactionSequence": null,
+    "wireBoundary": null,
+    "segmentBoundary": null,
+    "adbInput": null,
+    "engineOnly": false,
+    "expectedOutcome": "completed"
+  },
+  "scale": 1,
+  "targetAcceptedSamplesPerCell": 1,
+  "disableDevToolBundle": {
+    "url": "http://127.0.0.1:8878/disable/main.lynx.bundle",
+    "bundle": {
+      "path": "/data00/home/xuan.huang/github/.issue194-next-serve/disable/main.lynx.bundle",
+      "bytes": 551473,
+      "sha256": "c12707d9162218a43a3f26e6baeaecf29af02d0fcf48cd64505f4f05483a82c6"
+    }
+  },
+  "cells": {
+    "issue196-m15": {
+      "url": "http://127.0.0.1:8878/m15/main.lynx.bundle",
+      "bundle": {
+        "path": "/data00/home/xuan.huang/github/.issue194-next-serve/m15/main.lynx.bundle",
+        "bytes": 546235,
+        "sha256": "46c370cc6f9d34f8a9e9d04f8dd32c5c525580fedc045512281f77b7fd4f2c80"
+      }
+    }
+  },
+  "samples": [
+    {
+      "ordinal": 1,
+      "cell": "issue196-m15",
+      "accepted": true,
+      "outcome": "completed",
+      "timeoutMs": 180000,
+      "nativeCrash": {
+        "atMs": null,
+        "loadToCrashMs": null,
+        "evidence": [],
+        "artReferenceTableDump": [],
+        "artReferenceTableSummary": []
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.85 0.63 0.35 1/967 7385"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "1.46 0.83 0.43 3/969 7699"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1788090887.711  7436  7473 I LynxEnv : disable lynx debug",
+          "1788090887.711  7436  7473 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1788090887.711  7436  7473 I lynx    : [76A05F5D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1788090887939,
+        "renderPageMs": 1788090887944,
+        "firstScreenMs": 1788090887958,
+        "loadEndMs": 1788090887960,
+        "loadToRenderPageMs": 5,
+        "renderPageToFirstScreenMs": 14,
+        "loadToFirstScreenMs": 19,
+        "loadTemplateMs": 21
+      },
+      "stateEvidence": null,
+      "preStateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "m15Evidence": {
+        "protocol": "octane-issue196-m15-lepus-v1",
+        "slice": "M1.5",
+        "clock": "Date.now",
+        "reps": 5,
+        "series": [10000, 30000, 100000, 300000, 1000000],
+        "source": "stages/ledger-primitives.source.mjs",
+        "sourceSha256": "82ca33cf978520ac93a112384025bd4048e589290658f1af9c3a8d6a5839234b",
+        "windowStartMs": 1788090889065,
+        "windowEndMs": 1788090932785,
+        "windowMs": 43720,
+        "rows": [
+          {
+            "name": "arrayIndexWrite",
+            "note": "preallocated array index write — the floor every other row is read against",
+            "subtract": null,
+            "samples": {
+              "10000": [0, 1, 1, 1, 0],
+              "30000": [3, 3, 2, 2, 3],
+              "100000": [8, 8, 9, 8, 7],
+              "300000": [23, 23, 23, 24, 23],
+              "1000000": [77, 76, 76, 77, 79]
+            },
+            "checksums": {
+              "10000": [9999, 9999, 9999, 9999, 9999],
+              "30000": [29999, 29999, 29999, 29999, 29999],
+              "100000": [99999, 99999, 99999, 99999, 99999],
+              "300000": [299999, 299999, 299999, 299999, 299999],
+              "1000000": [999999, 999999, 999999, 999999, 999999]
+            }
+          },
+          {
+            "name": "arrayIndexRead",
+            "note": "read a preallocated array entry and compare it to a number — the run-search unit",
+            "subtract": "arrayIndexWrite",
+            "samples": {
+              "10000": [2, 2, 2, 2, 2],
+              "30000": [7, 7, 6, 6, 6],
+              "100000": [21, 21, 21, 21, 21],
+              "300000": [62, 63, 63, 62, 62],
+              "1000000": [210, 209, 207, 208, 208]
+            },
+            "checksums": {
+              "10000": [10000, 10000, 10000, 10000, 10000],
+              "30000": [30000, 30000, 30000, 30000, 30000],
+              "100000": [100000, 100000, 100000, 100000, 100000],
+              "300000": [300000, 300000, 300000, 300000, 300000],
+              "1000000": [1000000, 1000000, 1000000, 1000000, 1000000]
+            }
+          },
+          {
+            "name": "arrayPushGrowing",
+            "note": "push into a growing array — the run journal shape",
+            "subtract": null,
+            "samples": {
+              "10000": [4, 3, 3, 2, 2],
+              "30000": [8, 7, 7, 7, 8],
+              "100000": [24, 24, 24, 24, 23],
+              "300000": [71, 72, 72, 72, 72],
+              "1000000": [239, 239, 239, 239, 239]
+            },
+            "checksums": {
+              "10000": [10000, 10000, 10000, 10000, 10000],
+              "30000": [30000, 30000, 30000, 30000, 30000],
+              "100000": [100000, 100000, 100000, 100000, 100000],
+              "300000": [300000, 300000, 300000, 300000, 300000],
+              "1000000": [1000000, 1000000, 1000000, 1000000, 1000000]
+            }
+          },
+          {
+            "name": "mapSetGrowing",
+            "note": "programNodes.set(id, node) — one map growing to count",
+            "subtract": null,
+            "samples": {
+              "10000": [4, 4, 5, 4, 5],
+              "30000": [11, 11, 11, 14, 14],
+              "100000": [38, 39, 39, 38, 39],
+              "300000": [128, 130, 130, 132, 129],
+              "1000000": [459, 464, 456, 462, 470]
+            },
+            "checksums": {
+              "10000": [10000, 10000, 10000, 10000, 10000],
+              "30000": [30000, 30000, 30000, 30000, 30000],
+              "100000": [100000, 100000, 100000, 100000, 100000],
+              "300000": [300000, 300000, 300000, 300000, 300000],
+              "1000000": [1000000, 1000000, 1000000, 1000000, 1000000]
+            }
+          },
+          {
+            "name": "mapGetHit",
+            "note": "adoption resolving a node per described id — every lookup hits",
+            "subtract": "mapSetGrowing",
+            "samples": {
+              "10000": [6, 6, 7, 6, 7],
+              "30000": [18, 20, 17, 17, 18],
+              "100000": [62, 62, 62, 62, 64],
+              "300000": [214, 214, 212, 214, 222],
+              "1000000": [781, 788, 830, 839, 809]
+            },
+            "checksums": {
+              "10000": [49995000, 49995000, 49995000, 49995000, 49995000],
+              "30000": [449985000, 449985000, 449985000, 449985000, 449985000],
+              "100000": [4999950000, 4999950000, 4999950000, 4999950000, 4999950000],
+              "300000": [44999850000, 44999850000, 44999850000, 44999850000, 44999850000],
+              "1000000": [499999500000, 499999500000, 499999500000, 499999500000, 499999500000]
+            }
+          },
+          {
+            "name": "setAddGrowing",
+            "note": "ownedNodes.add(node) — one set growing to count",
+            "subtract": null,
+            "samples": {
+              "10000": [5, 4, 4, 4, 4],
+              "30000": [10, 11, 11, 11, 10],
+              "100000": [38, 40, 38, 38, 38],
+              "300000": [146, 123, 125, 126, 124],
+              "1000000": [506, 439, 449, 440, 475]
+            },
+            "checksums": {
+              "10000": [10000, 10000, 10000, 10000, 10000],
+              "30000": [30000, 30000, 30000, 30000, 30000],
+              "100000": [100000, 100000, 100000, 100000, 100000],
+              "300000": [300000, 300000, 300000, 300000, 300000],
+              "1000000": [1000000, 1000000, 1000000, 1000000, 1000000]
+            }
+          },
+          {
+            "name": "setHasHit",
+            "note": "the adoption compare's ownedNodes.has(programNode) — every probe hits",
+            "subtract": "setAddGrowing",
+            "samples": {
+              "10000": [9, 7, 7, 7, 6],
+              "30000": [18, 20, 19, 19, 20],
+              "100000": [65, 66, 65, 66, 66],
+              "300000": [217, 213, 213, 218, 215],
+              "1000000": [779, 810, 813, 802, 791]
+            },
+            "checksums": {
+              "10000": [10000, 10000, 10000, 10000, 10000],
+              "30000": [30000, 30000, 30000, 30000, 30000],
+              "100000": [100000, 100000, 100000, 100000, 100000],
+              "300000": [300000, 300000, 300000, 300000, 300000],
+              "1000000": [1000000, 1000000, 1000000, 1000000, 1000000]
+            }
+          },
+          {
+            "name": "mapPerHostOneEntry",
+            "note": "nativeEventMap: one map allocated per host, holding one entry",
+            "subtract": null,
+            "samples": {
+              "10000": [8, 7, 8, 8, 8],
+              "30000": [22, 23, 22, 22, 22],
+              "100000": [75, 75, 75, 75, 75],
+              "300000": [226, 226, 226, 225, 226],
+              "1000000": [752, 751, 750, 751, 751]
+            },
+            "checksums": {
+              "10000": [10000, 10000, 10000, 10000, 10000],
+              "30000": [30000, 30000, 30000, 30000, 30000],
+              "100000": [100000, 100000, 100000, 100000, 100000],
+              "300000": [300000, 300000, 300000, 300000, 300000],
+              "1000000": [1000000, 1000000, 1000000, 1000000, 1000000]
+            }
+          },
+          {
+            "name": "objectLiteral",
+            "note": "the journal tuple {source, binding, listener}, unfrozen",
+            "subtract": null,
+            "samples": {
+              "10000": [0, 0, 0, 0, 0],
+              "30000": [2, 2, 1, 2, 1],
+              "100000": [5, 5, 5, 5, 6],
+              "300000": [22, 22, 22, 22, 22],
+              "1000000": [80, 80, 80, 80, 80]
+            },
+            "checksums": {
+              "10000": [49995000, 49995000, 49995000, 49995000, 49995000],
+              "30000": [449985000, 449985000, 449985000, 449985000, 449985000],
+              "100000": [4999950000, 4999950000, 4999950000, 4999950000, 4999950000],
+              "300000": [44999850000, 44999850000, 44999850000, 44999850000, 44999850000],
+              "1000000": [499999500000, 499999500000, 499999500000, 499999500000, 499999500000]
+            }
+          },
+          {
+            "name": "objectFrozen",
+            "note": "the same tuple, frozen — freezing is its own charge on an interpreter",
+            "subtract": "objectLiteral",
+            "samples": {
+              "10000": [17, 10, 10, 10, 11],
+              "30000": [32, 38, 32, 32, 31],
+              "100000": [107, 108, 115, 107, 108],
+              "300000": [332, 332, 331, 338, 332],
+              "1000000": [1117, 1116, 1117, 1117, 1121]
+            },
+            "checksums": {
+              "10000": [49995000, 49995000, 49995000, 49995000, 49995000],
+              "30000": [449985000, 449985000, 449985000, 449985000, 449985000],
+              "100000": [4999950000, 4999950000, 4999950000, 4999950000, 4999950000],
+              "300000": [44999850000, 44999850000, 44999850000, 44999850000, 44999850000],
+              "1000000": [499999500000, 499999500000, 499999500000, 499999500000, 499999500000]
+            }
+          },
+          {
+            "name": "assertChain",
+            "note": "the per-site validation the mount runs before it writes anything",
+            "subtract": null,
+            "samples": {
+              "10000": [5, 6, 5, 5, 6],
+              "30000": [15, 16, 15, 15, 15],
+              "100000": [51, 50, 51, 51, 51],
+              "300000": [152, 153, 152, 153, 153],
+              "1000000": [506, 503, 508, 507, 506]
+            },
+            "checksums": {
+              "10000": [5000, 5000, 5000, 5000, 5000],
+              "30000": [15000, 15000, 15000, 15000, 15000],
+              "100000": [50000, 50000, 50000, 50000, 50000],
+              "300000": [150000, 150000, 150000, 150000, 150000],
+              "1000000": [500000, 500000, 500000, 500000, 500000]
+            }
+          },
+          {
+            "name": "eventPropParse",
+            "note": "parseLynxNativeEventProp resolving a plan constant, once per site per row",
+            "subtract": null,
+            "samples": {
+              "10000": [6, 7, 7, 7, 7],
+              "30000": [20, 20, 20, 20, 20],
+              "100000": [67, 66, 67, 66, 66],
+              "300000": [198, 199, 199, 199, 198],
+              "1000000": [663, 661, 665, 658, 663]
+            },
+            "checksums": {
+              "10000": [45000, 45000, 45000, 45000, 45000],
+              "30000": [135000, 135000, 135000, 135000, 135000],
+              "100000": [450000, 450000, 450000, 450000, 450000],
+              "300000": [1350000, 1350000, 1350000, 1350000, 1350000],
+              "1000000": [4500000, 4500000, 4500000, 4500000, 4500000]
+            }
+          }
+        ]
+      },
+      "backgroundSettle": null,
+      "backgroundRender": null,
+      "segments": null,
+      "sequenceEvidence": null,
+      "adbInput": null,
+      "attribution": {
+        "protocol": "octane-issue196-m15-lepus-v1",
+        "slice": "M1.5",
+        "clock": "Date.now",
+        "reps": 5,
+        "series": [10000, 30000, 100000, 300000, 1000000],
+        "source": "stages/ledger-primitives.source.mjs",
+        "sourceSha256": "82ca33cf978520ac93a112384025bd4048e589290658f1af9c3a8d6a5839234b",
+        "windowStartMs": 1788090889065,
+        "windowEndMs": 1788090932785,
+        "windowMs": 43720,
+        "rows": [
+          {
+            "name": "arrayIndexWrite",
+            "note": "preallocated array index write — the floor every other row is read against",
+            "subtract": null,
+            "samples": {
+              "10000": [0, 1, 1, 1, 0],
+              "30000": [3, 3, 2, 2, 3],
+              "100000": [8, 8, 9, 8, 7],
+              "300000": [23, 23, 23, 24, 23],
+              "1000000": [77, 76, 76, 77, 79]
+            },
+            "checksums": {
+              "10000": [9999, 9999, 9999, 9999, 9999],
+              "30000": [29999, 29999, 29999, 29999, 29999],
+              "100000": [99999, 99999, 99999, 99999, 99999],
+              "300000": [299999, 299999, 299999, 299999, 299999],
+              "1000000": [999999, 999999, 999999, 999999, 999999]
+            }
+          },
+          {
+            "name": "arrayIndexRead",
+            "note": "read a preallocated array entry and compare it to a number — the run-search unit",
+            "subtract": "arrayIndexWrite",
+            "samples": {
+              "10000": [2, 2, 2, 2, 2],
+              "30000": [7, 7, 6, 6, 6],
+              "100000": [21, 21, 21, 21, 21],
+              "300000": [62, 63, 63, 62, 62],
+              "1000000": [210, 209, 207, 208, 208]
+            },
+            "checksums": {
+              "10000": [10000, 10000, 10000, 10000, 10000],
+              "30000": [30000, 30000, 30000, 30000, 30000],
+              "100000": [100000, 100000, 100000, 100000, 100000],
+              "300000": [300000, 300000, 300000, 300000, 300000],
+              "1000000": [1000000, 1000000, 1000000, 1000000, 1000000]
+            }
+          },
+          {
+            "name": "arrayPushGrowing",
+            "note": "push into a growing array — the run journal shape",
+            "subtract": null,
+            "samples": {
+              "10000": [4, 3, 3, 2, 2],
+              "30000": [8, 7, 7, 7, 8],
+              "100000": [24, 24, 24, 24, 23],
+              "300000": [71, 72, 72, 72, 72],
+              "1000000": [239, 239, 239, 239, 239]
+            },
+            "checksums": {
+              "10000": [10000, 10000, 10000, 10000, 10000],
+              "30000": [30000, 30000, 30000, 30000, 30000],
+              "100000": [100000, 100000, 100000, 100000, 100000],
+              "300000": [300000, 300000, 300000, 300000, 300000],
+              "1000000": [1000000, 1000000, 1000000, 1000000, 1000000]
+            }
+          },
+          {
+            "name": "mapSetGrowing",
+            "note": "programNodes.set(id, node) — one map growing to count",
+            "subtract": null,
+            "samples": {
+              "10000": [4, 4, 5, 4, 5],
+              "30000": [11, 11, 11, 14, 14],
+              "100000": [38, 39, 39, 38, 39],
+              "300000": [128, 130, 130, 132, 129],
+              "1000000": [459, 464, 456, 462, 470]
+            },
+            "checksums": {
+              "10000": [10000, 10000, 10000, 10000, 10000],
+              "30000": [30000, 30000, 30000, 30000, 30000],
+              "100000": [100000, 100000, 100000, 100000, 100000],
+              "300000": [300000, 300000, 300000, 300000, 300000],
+              "1000000": [1000000, 1000000, 1000000, 1000000, 1000000]
+            }
+          },
+          {
+            "name": "mapGetHit",
+            "note": "adoption resolving a node per described id — every lookup hits",
+            "subtract": "mapSetGrowing",
+            "samples": {
+              "10000": [6, 6, 7, 6, 7],
+              "30000": [18, 20, 17, 17, 18],
+              "100000": [62, 62, 62, 62, 64],
+              "300000": [214, 214, 212, 214, 222],
+              "1000000": [781, 788, 830, 839, 809]
+            },
+            "checksums": {
+              "10000": [49995000, 49995000, 49995000, 49995000, 49995000],
+              "30000": [449985000, 449985000, 449985000, 449985000, 449985000],
+              "100000": [4999950000, 4999950000, 4999950000, 4999950000, 4999950000],
+              "300000": [44999850000, 44999850000, 44999850000, 44999850000, 44999850000],
+              "1000000": [499999500000, 499999500000, 499999500000, 499999500000, 499999500000]
+            }
+          },
+          {
+            "name": "setAddGrowing",
+            "note": "ownedNodes.add(node) — one set growing to count",
+            "subtract": null,
+            "samples": {
+              "10000": [5, 4, 4, 4, 4],
+              "30000": [10, 11, 11, 11, 10],
+              "100000": [38, 40, 38, 38, 38],
+              "300000": [146, 123, 125, 126, 124],
+              "1000000": [506, 439, 449, 440, 475]
+            },
+            "checksums": {
+              "10000": [10000, 10000, 10000, 10000, 10000],
+              "30000": [30000, 30000, 30000, 30000, 30000],
+              "100000": [100000, 100000, 100000, 100000, 100000],
+              "300000": [300000, 300000, 300000, 300000, 300000],
+              "1000000": [1000000, 1000000, 1000000, 1000000, 1000000]
+            }
+          },
+          {
+            "name": "setHasHit",
+            "note": "the adoption compare's ownedNodes.has(programNode) — every probe hits",
+            "subtract": "setAddGrowing",
+            "samples": {
+              "10000": [9, 7, 7, 7, 6],
+              "30000": [18, 20, 19, 19, 20],
+              "100000": [65, 66, 65, 66, 66],
+              "300000": [217, 213, 213, 218, 215],
+              "1000000": [779, 810, 813, 802, 791]
+            },
+            "checksums": {
+              "10000": [10000, 10000, 10000, 10000, 10000],
+              "30000": [30000, 30000, 30000, 30000, 30000],
+              "100000": [100000, 100000, 100000, 100000, 100000],
+              "300000": [300000, 300000, 300000, 300000, 300000],
+              "1000000": [1000000, 1000000, 1000000, 1000000, 1000000]
+            }
+          },
+          {
+            "name": "mapPerHostOneEntry",
+            "note": "nativeEventMap: one map allocated per host, holding one entry",
+            "subtract": null,
+            "samples": {
+              "10000": [8, 7, 8, 8, 8],
+              "30000": [22, 23, 22, 22, 22],
+              "100000": [75, 75, 75, 75, 75],
+              "300000": [226, 226, 226, 225, 226],
+              "1000000": [752, 751, 750, 751, 751]
+            },
+            "checksums": {
+              "10000": [10000, 10000, 10000, 10000, 10000],
+              "30000": [30000, 30000, 30000, 30000, 30000],
+              "100000": [100000, 100000, 100000, 100000, 100000],
+              "300000": [300000, 300000, 300000, 300000, 300000],
+              "1000000": [1000000, 1000000, 1000000, 1000000, 1000000]
+            }
+          },
+          {
+            "name": "objectLiteral",
+            "note": "the journal tuple {source, binding, listener}, unfrozen",
+            "subtract": null,
+            "samples": {
+              "10000": [0, 0, 0, 0, 0],
+              "30000": [2, 2, 1, 2, 1],
+              "100000": [5, 5, 5, 5, 6],
+              "300000": [22, 22, 22, 22, 22],
+              "1000000": [80, 80, 80, 80, 80]
+            },
+            "checksums": {
+              "10000": [49995000, 49995000, 49995000, 49995000, 49995000],
+              "30000": [449985000, 449985000, 449985000, 449985000, 449985000],
+              "100000": [4999950000, 4999950000, 4999950000, 4999950000, 4999950000],
+              "300000": [44999850000, 44999850000, 44999850000, 44999850000, 44999850000],
+              "1000000": [499999500000, 499999500000, 499999500000, 499999500000, 499999500000]
+            }
+          },
+          {
+            "name": "objectFrozen",
+            "note": "the same tuple, frozen — freezing is its own charge on an interpreter",
+            "subtract": "objectLiteral",
+            "samples": {
+              "10000": [17, 10, 10, 10, 11],
+              "30000": [32, 38, 32, 32, 31],
+              "100000": [107, 108, 115, 107, 108],
+              "300000": [332, 332, 331, 338, 332],
+              "1000000": [1117, 1116, 1117, 1117, 1121]
+            },
+            "checksums": {
+              "10000": [49995000, 49995000, 49995000, 49995000, 49995000],
+              "30000": [449985000, 449985000, 449985000, 449985000, 449985000],
+              "100000": [4999950000, 4999950000, 4999950000, 4999950000, 4999950000],
+              "300000": [44999850000, 44999850000, 44999850000, 44999850000, 44999850000],
+              "1000000": [499999500000, 499999500000, 499999500000, 499999500000, 499999500000]
+            }
+          },
+          {
+            "name": "assertChain",
+            "note": "the per-site validation the mount runs before it writes anything",
+            "subtract": null,
+            "samples": {
+              "10000": [5, 6, 5, 5, 6],
+              "30000": [15, 16, 15, 15, 15],
+              "100000": [51, 50, 51, 51, 51],
+              "300000": [152, 153, 152, 153, 153],
+              "1000000": [506, 503, 508, 507, 506]
+            },
+            "checksums": {
+              "10000": [5000, 5000, 5000, 5000, 5000],
+              "30000": [15000, 15000, 15000, 15000, 15000],
+              "100000": [50000, 50000, 50000, 50000, 50000],
+              "300000": [150000, 150000, 150000, 150000, 150000],
+              "1000000": [500000, 500000, 500000, 500000, 500000]
+            }
+          },
+          {
+            "name": "eventPropParse",
+            "note": "parseLynxNativeEventProp resolving a plan constant, once per site per row",
+            "subtract": null,
+            "samples": {
+              "10000": [6, 7, 7, 7, 7],
+              "30000": [20, 20, 20, 20, 20],
+              "100000": [67, 66, 67, 66, 66],
+              "300000": [198, 199, 199, 199, 198],
+              "1000000": [663, 661, 665, 658, 663]
+            },
+            "checksums": {
+              "10000": [45000, 45000, 45000, 45000, 45000],
+              "30000": [135000, 135000, 135000, 135000, 135000],
+              "100000": [450000, 450000, 450000, 450000, 450000],
+              "300000": [1350000, 1350000, 1350000, 1350000, 1350000],
+              "1000000": [4500000, 4500000, 4500000, 4500000, 4500000]
+            }
+          }
+        ]
+      },
+      "errors": []
+    }
+  ],
+  "invalidAttempts": [],
+  "analysis": {
+    "protocol": "octane-issue196-m15-analysis-v1",
+    "boundary": "median Date.now milliseconds at each count; least-squares slope across 10k..1m",
+    "clockResolutionMs": 1,
+    "sourceSha256": "82ca33cf978520ac93a112384025bd4048e589290658f1af9c3a8d6a5839234b",
+    "deviceRows": [
+      {
+        "name": "arrayIndexWrite",
+        "note": "preallocated array index write — the floor every other row is read against",
+        "subtract": null,
+        "nsPerOp": 76.56,
+        "fixedMs": 0.3497,
+        "residual": 0.1335,
+        "medianMs": {
+          "10000": 1,
+          "30000": 3,
+          "100000": 8,
+          "300000": 23,
+          "1000000": 77
+        },
+        "nsPerOpByCount": {
+          "10000": 100,
+          "30000": 100,
+          "100000": 80,
+          "300000": 76.67,
+          "1000000": 77
+        },
+        "v8Context": {
+          "nsPerOp": 5.33,
+          "residual": 0.5207,
+          "nsPerOpByCount": {
+            "10000": 2.55,
+            "30000": 6.72,
+            "100000": 5.09,
+            "300000": 5.36,
+            "1000000": 5.32
+          }
+        }
+      },
+      {
+        "name": "arrayIndexRead",
+        "note": "read a preallocated array entry and compare it to a number — the run-search unit",
+        "subtract": "arrayIndexWrite",
+        "nsPerOp": 208.06,
+        "fixedMs": -0.1215,
+        "residual": 0.0209,
+        "medianMs": {
+          "10000": 2,
+          "30000": 6,
+          "100000": 21,
+          "300000": 62,
+          "1000000": 208
+        },
+        "nsPerOpByCount": {
+          "10000": 200,
+          "30000": 200,
+          "100000": 210,
+          "300000": 206.67,
+          "1000000": 208
+        },
+        "v8Context": {
+          "nsPerOp": 6.9,
+          "residual": 0.1818,
+          "nsPerOpByCount": {
+            "10000": 4.05,
+            "30000": 7.22,
+            "100000": 6.72,
+            "300000": 6.67,
+            "1000000": 6.89
+          }
+        },
+        "netNsPerOp": 131.5
+      },
+      {
+        "name": "arrayPushGrowing",
+        "note": "push into a growing array — the run journal shape",
+        "subtract": null,
+        "nsPerOp": 238.79,
+        "fixedMs": 0.2271,
+        "residual": 0.1472,
+        "medianMs": {
+          "10000": 3,
+          "30000": 7,
+          "100000": 24,
+          "300000": 72,
+          "1000000": 239
+        },
+        "nsPerOpByCount": {
+          "10000": 300,
+          "30000": 233.33,
+          "100000": 240,
+          "300000": 240,
+          "1000000": 239
+        },
+        "v8Context": {
+          "nsPerOp": 21.8,
+          "residual": 0.7545,
+          "nsPerOpByCount": {
+            "10000": 6.66,
+            "30000": 13.55,
+            "100000": 17.28,
+            "300000": 26.5,
+            "1000000": 21.51
+          }
+        }
+      },
+      {
+        "name": "mapSetGrowing",
+        "note": "programNodes.set(id, node) — one map growing to count",
+        "subtract": null,
+        "nsPerOp": 465.15,
+        "fixedMs": -4.7627,
+        "residual": 36.9591,
+        "medianMs": {
+          "10000": 4,
+          "30000": 11,
+          "100000": 39,
+          "300000": 130,
+          "1000000": 462
+        },
+        "nsPerOpByCount": {
+          "10000": 400,
+          "30000": 366.67,
+          "100000": 390,
+          "300000": 433.33,
+          "1000000": 462
+        },
+        "v8Context": {
+          "nsPerOp": 138.79,
+          "residual": 34.3232,
+          "nsPerOpByCount": {
+            "10000": 540.81,
+            "30000": 67.83,
+            "100000": 88.78,
+            "300000": 130.18,
+            "1000000": 138.32
+          }
+        }
+      },
+      {
+        "name": "mapGetHit",
+        "note": "adoption resolving a node per described id — every lookup hits",
+        "subtract": "mapSetGrowing",
+        "nsPerOp": 816.88,
+        "fixedMs": -13.4613,
+        "residual": 2.1337,
+        "medianMs": {
+          "10000": 6,
+          "30000": 18,
+          "100000": 62,
+          "300000": 214,
+          "1000000": 809
+        },
+        "nsPerOpByCount": {
+          "10000": 600,
+          "30000": 600,
+          "100000": 620,
+          "300000": 713.33,
+          "1000000": 809
+        },
+        "v8Context": {
+          "nsPerOp": 183.57,
+          "residual": 24.0303,
+          "nsPerOpByCount": {
+            "10000": 567.06,
+            "30000": 89.48,
+            "100000": 171.59,
+            "300000": 156.39,
+            "1000000": 183.87
+          }
+        },
+        "netNsPerOp": 351.73
+      },
+      {
+        "name": "setAddGrowing",
+        "note": "ownedNodes.add(node) — one set growing to count",
+        "subtract": null,
+        "nsPerOp": 451.85,
+        "fixedMs": -4.7321,
+        "residual": 19.7227,
+        "medianMs": {
+          "10000": 4,
+          "30000": 11,
+          "100000": 38,
+          "300000": 125,
+          "1000000": 449
+        },
+        "nsPerOpByCount": {
+          "10000": 400,
+          "30000": 366.67,
+          "100000": 380,
+          "300000": 416.67,
+          "1000000": 449
+        },
+        "v8Context": {
+          "nsPerOp": 110.42,
+          "residual": 1.7246,
+          "nsPerOpByCount": {
+            "10000": 71.31,
+            "30000": 57.04,
+            "100000": 70.17,
+            "300000": 101.5,
+            "1000000": 108.66
+          }
+        }
+      },
+      {
+        "name": "setHasHit",
+        "note": "the adoption compare's ownedNodes.has(programNode) — every probe hits",
+        "subtract": "setAddGrowing",
+        "nsPerOp": 807.76,
+        "fixedMs": -10.8342,
+        "residual": 3.5393,
+        "medianMs": {
+          "10000": 7,
+          "30000": 19,
+          "100000": 66,
+          "300000": 215,
+          "1000000": 802
+        },
+        "nsPerOpByCount": {
+          "10000": 700,
+          "30000": 633.33,
+          "100000": 660,
+          "300000": 716.67,
+          "1000000": 802
+        },
+        "v8Context": {
+          "nsPerOp": 150.82,
+          "residual": 3.2209,
+          "nsPerOpByCount": {
+            "10000": 84.71,
+            "30000": 73.51,
+            "100000": 89.51,
+            "300000": 168.75,
+            "1000000": 148.01
+          }
+        },
+        "netNsPerOp": 355.91
+      },
+      {
+        "name": "mapPerHostOneEntry",
+        "note": "nativeEventMap: one map allocated per host, holding one entry",
+        "subtract": null,
+        "nsPerOp": 751.04,
+        "fixedMs": 0.1004,
+        "residual": 0.0511,
+        "medianMs": {
+          "10000": 8,
+          "30000": 22,
+          "100000": 75,
+          "300000": 226,
+          "1000000": 751
+        },
+        "nsPerOpByCount": {
+          "10000": 800,
+          "30000": 733.33,
+          "100000": 750,
+          "300000": 753.33,
+          "1000000": 751
+        },
+        "v8Context": {
+          "nsPerOp": 44.58,
+          "residual": 0.6989,
+          "nsPerOpByCount": {
+            "10000": 46.24,
+            "30000": 46.73,
+            "100000": 78.96,
+            "300000": 47.95,
+            "1000000": 45.5
+          }
+        }
+      },
+      {
+        "name": "objectLiteral",
+        "note": "the journal tuple {source, binding, listener}, unfrozen",
+        "subtract": null,
+        "nsPerOp": 81.26,
+        "fixedMs": -1.6033,
+        "residual": 1.3964,
+        "medianMs": {
+          "10000": 0,
+          "30000": 2,
+          "100000": 5,
+          "300000": 22,
+          "1000000": 80
+        },
+        "nsPerOpByCount": {
+          "10000": 0,
+          "30000": 66.67,
+          "100000": 50,
+          "300000": 73.33,
+          "1000000": 80
+        },
+        "v8Context": {
+          "nsPerOp": 1.21,
+          "residual": 0.2598,
+          "nsPerOpByCount": {
+            "10000": 1.21,
+            "30000": 1.2,
+            "100000": 1.25,
+            "300000": 1.26,
+            "1000000": 1.21
+          }
+        }
+      },
+      {
+        "name": "objectFrozen",
+        "note": "the same tuple, frozen — freezing is its own charge on an interpreter",
+        "subtract": "objectLiteral",
+        "nsPerOp": 1119,
+        "fixedMs": -2.4723,
+        "residual": 0.1471,
+        "medianMs": {
+          "10000": 10,
+          "30000": 32,
+          "100000": 108,
+          "300000": 332,
+          "1000000": 1117
+        },
+        "nsPerOpByCount": {
+          "10000": 1000,
+          "30000": 1066.67,
+          "100000": 1080,
+          "300000": 1106.67,
+          "1000000": 1117
+        },
+        "v8Context": {
+          "nsPerOp": 41.3,
+          "residual": 0.0643,
+          "nsPerOpByCount": {
+            "10000": 41.22,
+            "30000": 40.86,
+            "100000": 40.12,
+            "300000": 41.44,
+            "1000000": 41.27
+          }
+        },
+        "netNsPerOp": 1037.74
+      },
+      {
+        "name": "assertChain",
+        "note": "the per-site validation the mount runs before it writes anything",
+        "subtract": null,
+        "nsPerOp": 506,
+        "fixedMs": 0.271,
+        "residual": 0.0621,
+        "medianMs": {
+          "10000": 5,
+          "30000": 15,
+          "100000": 51,
+          "300000": 153,
+          "1000000": 506
+        },
+        "nsPerOpByCount": {
+          "10000": 500,
+          "30000": 500,
+          "100000": 510,
+          "300000": 510,
+          "1000000": 506
+        },
+        "v8Context": {
+          "nsPerOp": 2.13,
+          "residual": 0.0751,
+          "nsPerOpByCount": {
+            "10000": 2.08,
+            "30000": 2.06,
+            "100000": 2.28,
+            "300000": 2.06,
+            "1000000": 2.13
+          }
+        }
+      },
+      {
+        "name": "eventPropParse",
+        "note": "parseLynxNativeEventProp resolving a plan constant, once per site per row",
+        "subtract": null,
+        "nsPerOp": 662.89,
+        "fixedMs": 0.0869,
+        "residual": 0.0423,
+        "medianMs": {
+          "10000": 7,
+          "30000": 20,
+          "100000": 66,
+          "300000": 199,
+          "1000000": 663
+        },
+        "nsPerOpByCount": {
+          "10000": 700,
+          "30000": 666.67,
+          "100000": 660,
+          "300000": 663.33,
+          "1000000": 663
+        },
+        "v8Context": {
+          "nsPerOp": 17.5,
+          "residual": 0.1276,
+          "nsPerOpByCount": {
+            "10000": 17.96,
+            "30000": 18.2,
+            "100000": 17.57,
+            "300000": 17.87,
+            "1000000": 17.51
+          }
+        }
+      }
+    ],
+    "v8Context": {
+      "file": "m196-m15-ledger-primitives.json",
+      "engine": {
+        "runtime": "node",
+        "node": "v22.22.2",
+        "v8": "12.4.254.21-node.39",
+        "platform": "linux",
+        "release": "6.18.44-fc-v21",
+        "cpus": 4,
+        "cpuModel": "Intel(R) Xeon(R) Processor @ 2.80GHz"
+      },
+      "claim": "context only; no V8 absolute is spendable on a LepusNG decision"
+    }
+  }
+}

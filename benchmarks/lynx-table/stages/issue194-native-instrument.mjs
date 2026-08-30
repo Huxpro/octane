@@ -48,6 +48,7 @@ export function instrumentIssue194NativeSources(
 const issue194BackgroundStartMs = Date.now();
 const issue194Global = globalThis as typeof globalThis & {
 \t__ISSUE194_FLUSH__?: () => Promise<void>;
+\t__ISSUE194_RENDER_START_MS__?: number;
 };
 issue194Global.__ISSUE194_FLUSH__ = () => root.flushTransport();
 
@@ -115,6 +116,7 @@ interface Issue194Snapshot {
 type Issue194Global = typeof globalThis & {
 \t__ISSUE194_FLUSH__?: () => Promise<void>;
 \t__ISSUE194_SNAPSHOT__?: () => Issue194Snapshot;
+\t__ISSUE194_RENDER_START_MS__?: number;
 };
 
 let issue194InteractionOrdinal = 0;
@@ -131,6 +133,7 @@ function measureIssue194Tap(workload: string, scale: number, action: () => void)
 \tif (preState === undefined) throw new Error('issue #194 native probe has no pre-state.');
 \tconst interactionOrdinal = ++issue194InteractionOrdinal;
 \tconst startMs = Date.now();
+\tglobal.__ISSUE194_RENDER_START_MS__ = startMs;
 \taction();
 \tvoid flush().then(() => {
 \t\tconst commitAckMs = Date.now();
@@ -469,6 +472,8 @@ function requireFunction<
 \t\treadonly version: number;
 \t\treadonly messages: Issue194CommitWireMessage[];
 \t};
+\tconst issue194CommitReceiveByIdentity = new Map<string, number>();
+\tconst issue194IdentityKey = (root: number, version: number): string => root + ':' + version;
 \tlet issue194ActiveCommitWire: Issue194CommitWire | null = null;
 \tconst dispatch = (message: LynxBackgroundInboundMessage): void => {
 \t\tconst validated = selfCheckLynxBackgroundInboundMessage(message);
@@ -495,13 +500,40 @@ function requireFunction<
 				next,
 				`\t\tconst startedApply = LYNX_PROFILE ? performance.now() : 0;
 `,
-				`\t\tconst issue194CallsBefore = JSON.parse(JSON.stringify(
+				`\t\tconst issue194ReceiveKey = issue194IdentityKey(message.root, message.version);
+\t\tconst issue194MtsReceiveMs = issue194CommitReceiveByIdentity.get(issue194ReceiveKey);
+\t\tissue194CommitReceiveByIdentity.delete(issue194ReceiveKey);
+\t\tif (issue194MtsReceiveMs === undefined) {
+\t\t\tthrow new Error('issue #194 native probe lost the decoded commit receive timestamp.');
+\t\t}
+\t\tconst issue194CallsBefore = JSON.parse(JSON.stringify(
 \t\t\t(globalThis as any).__ISSUE194_PAPI__ ?? {},
 \t\t));
 \t\tconst issue194ProfileBefore = JSON.parse(JSON.stringify(lynxWireProfile()));
 \t\tconst issue194CommitStarted = performance.now();
 \t\tissue194ActiveCommitWire = { root: message.root, version: message.version, messages: [] };
 \t\tconst startedApply = LYNX_PROFILE ? performance.now() : 0;
+`,
+				file,
+			);
+			next = replaceOnce(
+				next,
+				`\t\ttry {
+\t\t\tprepared.apply();
+\t\t} catch (error) {
+\t\t\tapplyFailed = true;
+\t\t\tapplyError = error;
+\t\t}
+`,
+				`\t\tlet issue194FlushReturnMs = 0;
+\t\ttry {
+\t\t\tprepared.apply();
+\t\t\tissue194FlushReturnMs = Date.now();
+\t\t} catch (error) {
+\t\t\tissue194FlushReturnMs = Date.now();
+\t\t\tapplyFailed = true;
+\t\t\tapplyError = error;
+\t\t}
 `,
 				file,
 			);
@@ -516,6 +548,12 @@ function requireFunction<
 \t\t\tversion: message.version,
 \t\t\tcommands: message.batch.commands.length,
 \t\t\twallMs: performance.now() - issue194CommitStarted,
+\t\t\ttiming: {
+\t\t\t\tboundary: 'mts-after-decode-to-element-papi-flush-return',
+\t\t\t\tmtsReceiveMs: issue194MtsReceiveMs,
+\t\t\t\tflushReturnMs: issue194FlushReturnMs,
+\t\t\t\tmtsApplyMs: issue194FlushReturnMs - issue194MtsReceiveMs,
+\t\t\t},
 \t\t\tcallsBefore: issue194CallsBefore,
 \t\t\tcallsAfter: JSON.parse(JSON.stringify((globalThis as any).__ISSUE194_PAPI__ ?? {})),
 \t\t\tprofileBefore: issue194ProfileBefore,
@@ -582,6 +620,29 @@ function requireFunction<
 `,
 				file,
 			);
+			next = replaceOnce(
+				next,
+				`\t\t\tdata = decodeLynxTransportValue(event.data);
+\t\t\tif (LYNX_PROFILE) lynxWireProfile().decodeMs += performance.now() - startedDecode;
+`,
+				`\t\t\tdata = decodeLynxTransportValue(event.data);
+\t\t\tconst issue194MtsReceiveMs = Date.now();
+\t\t\tif (
+\t\t\t\tdata !== null &&
+\t\t\t\ttypeof data === 'object' &&
+\t\t\t\t(data as any).type === 'commit' &&
+\t\t\t\tNumber.isSafeInteger((data as any).root) &&
+\t\t\t\tNumber.isSafeInteger((data as any).version)
+\t\t\t) {
+\t\t\t\tissue194CommitReceiveByIdentity.set(
+\t\t\t\t\tissue194IdentityKey((data as any).root, (data as any).version),
+\t\t\t\t\tissue194MtsReceiveMs,
+\t\t\t\t);
+\t\t\t}
+\t\t\tif (LYNX_PROFILE) lynxWireProfile().decodeMs += performance.now() - startedDecode;
+`,
+				file,
+			);
 			if (directOnly) {
 				next = replaceOnce(
 					next,
@@ -636,6 +697,64 @@ function requireFunction<
 		updateRepo('packages/lynx/src/core/transport.ts', (source, file) => {
 			let next = replaceOnce(
 				source,
+				`\t\t\tconst startedEncode = performance.now();
+\t\t\tconst encoded = encodeLynxTransportValue(validated, reportEncodingDiagnostic);
+\t\t\tconst startedDispatch = performance.now();
+\t\t\tcontext.dispatchEvent({ type: LYNX_BACKGROUND_TO_MAIN_EVENT, data: encoded });
+`,
+				`\t\t\tconst startedEncode = performance.now();
+\t\t\tconst encoded = encodeLynxTransportValue(validated, reportEncodingDiagnostic);
+\t\t\tconst issue194EncodeDoneMs = Date.now();
+\t\t\tconst issue194RenderStartMs = (globalThis as any).__ISSUE194_RENDER_START_MS__ ?? null;
+\t\t\tconst startedDispatch = performance.now();
+\t\t\tcontext.dispatchEvent({ type: LYNX_BACKGROUND_TO_MAIN_EVENT, data: encoded });
+\t\t\tif ((message as any).type === 'commit') {
+\t\t\t\tconsole.log('__ISSUE194_BTS_COMMIT__' + JSON.stringify({
+\t\t\t\t\tprotocol: 'octane-issue194-bts-v1',
+\t\t\t\t\troot: (message as any).root,
+\t\t\t\t\tversion: (message as any).version,
+\t\t\t\t\tboundary: 'background-render-start-to-commit-encode-done',
+\t\t\t\t\trenderStartMs: issue194RenderStartMs,
+\t\t\t\t\tencodeDoneMs: issue194EncodeDoneMs,
+\t\t\t\t\tbtsRenderMs:
+\t\t\t\t\t\tissue194RenderStartMs === null ? null : issue194EncodeDoneMs - issue194RenderStartMs,
+\t\t\t\t}));
+\t\t\t\tdelete (globalThis as any).__ISSUE194_RENDER_START_MS__;
+\t\t\t}
+`,
+				file,
+			);
+			next = replaceOnce(
+				next,
+				`\t\tconst validated = selfCheckLynxBackgroundOutboundMessage(message);
+\t\tcontext.dispatchEvent({
+\t\t\ttype: LYNX_BACKGROUND_TO_MAIN_EVENT,
+\t\t\tdata: encodeLynxTransportValue(validated, reportEncodingDiagnostic),
+\t\t});
+`,
+				`\t\tconst validated = selfCheckLynxBackgroundOutboundMessage(message);
+\t\tconst encoded = encodeLynxTransportValue(validated, reportEncodingDiagnostic);
+\t\tconst issue194EncodeDoneMs = Date.now();
+\t\tconst issue194RenderStartMs = (globalThis as any).__ISSUE194_RENDER_START_MS__ ?? null;
+\t\tcontext.dispatchEvent({ type: LYNX_BACKGROUND_TO_MAIN_EVENT, data: encoded });
+\t\tif ((message as any).type === 'commit') {
+\t\t\tconsole.log('__ISSUE194_BTS_COMMIT__' + JSON.stringify({
+\t\t\t\tprotocol: 'octane-issue194-bts-v1',
+\t\t\t\troot: (message as any).root,
+\t\t\t\tversion: (message as any).version,
+\t\t\t\tboundary: 'background-render-start-to-commit-encode-done',
+\t\t\t\trenderStartMs: issue194RenderStartMs,
+\t\t\t\tencodeDoneMs: issue194EncodeDoneMs,
+\t\t\t\tbtsRenderMs:
+\t\t\t\t\tissue194RenderStartMs === null ? null : issue194EncodeDoneMs - issue194RenderStartMs,
+\t\t\t}));
+\t\t\tdelete (globalThis as any).__ISSUE194_RENDER_START_MS__;
+\t\t}
+`,
+				file,
+			);
+			next = replaceOnce(
+				next,
 				`\tconst handleReady = (message: LynxMainReadyReply) => {
 `,
 				`\tconst handleReady = (message: LynxMainReadyReply) => {

@@ -37,11 +37,13 @@ const timeoutMs = Number(readArg('--timeout-ms'));
 const nativeCrashOutcome = args.includes('--native-crash-outcome');
 const capacityOutcome = args.includes('--capacity-outcome');
 const engineOnly = args.includes('--engine-only');
-const mode = args.includes('--direct-result')
-	? 'direct-result'
-	: args.includes('--first-screen-ready')
-		? 'first-screen-ready'
-		: 'commit';
+const mode = args.includes('--m15-result')
+	? 'm15-result'
+	: args.includes('--direct-result')
+		? 'direct-result'
+		: args.includes('--first-screen-ready')
+			? 'first-screen-ready'
+			: 'commit';
 const cells = [];
 for (let index = 0; index < args.length; index++) {
 	if (args[index] !== '--cell') continue;
@@ -130,12 +132,48 @@ const epoch = (line) => {
 };
 const elapsed = (start, end) => (start === null || end === null ? null : end - start);
 
+function splitCommitSegments(backgroundRender, attribution, backgroundSettle) {
+	const renderStartMs = backgroundRender?.renderStartMs;
+	const encodeDoneMs = backgroundRender?.encodeDoneMs;
+	const mtsReceiveMs = attribution?.timing?.mtsReceiveMs;
+	const flushReturnMs = attribution?.timing?.flushReturnMs;
+	const secondFrameMs = backgroundSettle?.endMs;
+	if (
+		![renderStartMs, encodeDoneMs, mtsReceiveMs, flushReturnMs, secondFrameMs].every(
+			Number.isSafeInteger,
+		) ||
+		backgroundSettle?.startMs !== renderStartMs ||
+		encodeDoneMs < renderStartMs ||
+		mtsReceiveMs < encodeDoneMs ||
+		flushReturnMs < mtsReceiveMs ||
+		secondFrameMs < flushReturnMs
+	) {
+		return null;
+	}
+	const btsRenderMs = encodeDoneMs - renderStartMs;
+	const wireMs = mtsReceiveMs - encodeDoneMs;
+	const mtsApplyMs = flushReturnMs - mtsReceiveMs;
+	const residueToSecondFrameMs = secondFrameMs - flushReturnMs;
+	return {
+		boundary: 'tap-to-second-frame-partition-v1',
+		totalMs: secondFrameMs - renderStartMs,
+		btsRenderMs,
+		wireMs,
+		mtsApplyMs,
+		residueToSecondFrameMs,
+		identityMs: btsRenderMs + wireMs + mtsApplyMs + residueToSecondFrameMs,
+	};
+}
+
 function parseLog(log) {
 	const lines = log.split('\n');
 	const main = [];
 	const firstScreen = [];
 	const direct = [];
 	const native = [];
+	const bts = [];
+	const m15 = [];
+	const m15Rows = [];
 	let loadStartMs = null;
 	let renderPageMs = null;
 	let firstScreenMs = null;
@@ -173,6 +211,18 @@ function parseLog(log) {
 		if (line.includes('__ISSUE194_NATIVE_RESULT__')) {
 			const value = jsonAfterMarker(line, '__ISSUE194_NATIVE_RESULT__');
 			if (value !== null) native.push(value);
+		}
+		if (line.includes('__ISSUE194_BTS_COMMIT__')) {
+			const value = jsonAfterMarker(line, '__ISSUE194_BTS_COMMIT__');
+			if (value !== null) bts.push(value);
+		}
+		if (line.includes('__ISSUE196_M15_RESULT__')) {
+			const value = jsonAfterMarker(line, '__ISSUE196_M15_RESULT__');
+			if (value !== null) m15.push(value);
+		}
+		if (line.includes('__ISSUE196_M15_ROW__')) {
+			const value = jsonAfterMarker(line, '__ISSUE196_M15_ROW__');
+			if (value !== null) m15Rows.push(value);
 		}
 		if (line.includes('start TemplateAssembler::LoadTemplate')) loadStartMs ??= epoch(line);
 		if (line.includes('LepusClosureEventListener::Invoke name: __RenderPage')) {
@@ -212,6 +262,9 @@ function parseLog(log) {
 		firstScreen,
 		direct,
 		native,
+		bts,
+		m15,
+		m15Rows,
 		loadStartMs,
 		renderPageMs,
 		firstScreenMs,
@@ -456,7 +509,12 @@ async function measure(cell, ordinal) {
 							entry.workload === activeSequenceStep.workload &&
 							entry.scale === scale,
 					) ?? null;
-				if (main !== null && native !== null) {
+				const backgroundRender =
+					parsed.bts.find(
+						(entry) => entry.root === main?.root && entry.version === main?.version,
+					) ?? null;
+				const segments = splitCommitSegments(backgroundRender, main, native);
+				if (main !== null && native !== null && backgroundRender !== null && segments !== null) {
 					sequenceEvidence.push({
 						step: activeSequenceStep.interactionOrdinal,
 						workload: activeSequenceStep.workload,
@@ -466,7 +524,9 @@ async function measure(cell, ordinal) {
 							issuedAtMs: activeSequenceStep.issuedAtMs,
 						},
 						attribution: main,
+						backgroundRender,
 						backgroundSettle: native,
+						segments,
 					});
 					console.log(
 						`[issue194] sequence step ${activeSequenceStep.interactionOrdinal}: accepted ${activeSequenceStep.workload}`,
@@ -509,11 +569,13 @@ async function measure(cell, ordinal) {
 				? parsed.firstScreenMs !== null
 				: workload !== null
 					? interactionMain.length > 0 && matchingNative
-					: mode === 'direct-result'
-						? parsed.direct.length > 0
-						: mode === 'first-screen-ready'
-							? parsed.firstScreen.length > 0
-							: parsed.main.length > 0 && parsed.native.length > 0) &&
+					: mode === 'm15-result'
+						? parsed.m15.length > 0
+						: mode === 'direct-result'
+							? parsed.direct.length > 0
+							: mode === 'first-screen-ready'
+								? parsed.firstScreen.length > 0
+								: parsed.main.length > 0 && parsed.native.length > 0) &&
 			parsed.loadStartMs !== null &&
 			(engineOnly || parsed.renderPageMs !== null) &&
 			parsed.firstScreenMs !== null &&
@@ -538,17 +600,33 @@ async function measure(cell, ordinal) {
 		? (sequenceEvidence.at(-1)?.attribution ?? null)
 		: workload !== null
 			? (parsed.main.filter((entry) => entry.version >= 2).at(-1) ?? null)
-			: mode === 'direct-result'
-				? (parsed.direct.at(-1) ?? null)
-				: mode === 'first-screen-ready'
-					? (parsed.firstScreen.at(-1) ?? null)
-					: (parsed.main.at(-1) ?? null);
+			: mode === 'm15-result'
+				? parsed.m15.length === 0
+					? null
+					: { ...parsed.m15.at(-1), rows: parsed.m15Rows }
+				: mode === 'direct-result'
+					? (parsed.direct.at(-1) ?? null)
+					: mode === 'first-screen-ready'
+						? (parsed.firstScreen.at(-1) ?? null)
+						: (parsed.main.at(-1) ?? null);
 	const backgroundSettle = createClearRecreate
 		? (sequenceEvidence.at(-1)?.backgroundSettle ?? null)
 		: workload === null
 			? (parsed.native.find((entry) => entry.scale === scale) ?? null)
 			: (parsed.native.find((entry) => entry.workload === workload && entry.scale === scale) ??
 				null);
+	const backgroundRender = createClearRecreate
+		? (sequenceEvidence.at(-1)?.backgroundRender ?? null)
+		: workload === null || attribution === null
+			? null
+			: (parsed.bts.find(
+					(entry) => entry.root === attribution.root && entry.version === attribution.version,
+				) ?? null);
+	const segments = createClearRecreate
+		? (sequenceEvidence.at(-1)?.segments ?? null)
+		: workload === null
+			? null
+			: splitCommitSegments(backgroundRender, attribution, backgroundSettle);
 	const state = backgroundSettle?.postState ?? null;
 	const validPopulatedState = (candidate) =>
 		candidate?.rowCount === scale &&
@@ -585,6 +663,16 @@ async function measure(cell, ordinal) {
 			wire.messages.length === wire.wireToBtsMsgs
 		);
 	});
+	const validSequenceSegments = sequenceEvidence.every((entry) => {
+		const segments = entry.segments;
+		return (
+			segments?.boundary === 'tap-to-second-frame-partition-v1' &&
+			segments.totalMs === entry.backgroundSettle?.latencyMs &&
+			segments.identityMs === segments.totalMs &&
+			entry.backgroundRender?.btsRenderMs === segments.btsRenderMs &&
+			entry.attribution?.timing?.mtsApplyMs === segments.mtsApplyMs
+		);
+	});
 	const calls = attribution?.calls;
 	const validFirstScreenShape =
 		calls?.__CreateView?.count === scale + 15 &&
@@ -592,13 +680,30 @@ async function measure(cell, ordinal) {
 		calls?.__CreateRawText?.count === scale * 3 + 13 &&
 		calls?.__AddEvent?.count === scale * 2 + 12 &&
 		calls?.__AppendElement?.count === scale * 7 + 41;
+	const validM15 =
+		attribution?.protocol === 'octane-issue196-m15-lepus-v1' &&
+		attribution.reps === 5 &&
+		Array.isArray(attribution.series) &&
+		attribution.series.length === 5 &&
+		Array.isArray(attribution.rows) &&
+		attribution.rows.length === 12 &&
+		new Set(attribution.rows.map((row) => row.name)).size === 12 &&
+		attribution.rows.every(
+			(row) =>
+				Object.keys(row.samples ?? {}).length === attribution.series.length &&
+				Object.values(row.samples ?? {}).every(
+					(values) => Array.isArray(values) && values.length === attribution.reps,
+				),
+		);
 	const validState =
 		engineOnly ||
-		(createClearRecreate
-			? validSequenceState && validSequenceWire
-			: mode === 'commit'
-				? validBackgroundState
-				: validFirstScreenShape);
+		(mode === 'm15-result'
+			? validM15
+			: createClearRecreate
+				? validSequenceState && validSequenceWire && validSequenceSegments
+				: mode === 'commit'
+					? validBackgroundState && (workload === null || segments !== null)
+					: validFirstScreenShape);
 	const errors = [...new Set(observedErrors)];
 	const completedAndValid =
 		(engineOnly || attribution !== null) &&
@@ -660,8 +765,11 @@ async function measure(cell, ordinal) {
 		},
 		stateEvidence: state,
 		preStateEvidence: backgroundSettle?.preState ?? null,
-		firstScreenShapeEvidence: mode === 'commit' ? null : calls,
+		firstScreenShapeEvidence: mode === 'commit' || mode === 'm15-result' ? null : calls,
+		m15Evidence: mode === 'm15-result' ? attribution : null,
 		backgroundSettle,
+		backgroundRender,
+		segments,
 		sequenceEvidence: createClearRecreate ? sequenceEvidence : null,
 		adbInput: createClearRecreate
 			? sequenceEvidence.map((entry) => ({ workload: entry.workload, ...entry.adbInput }))
@@ -703,6 +811,9 @@ let report = {
 		interactionSequence: createClearRecreate ? ['create', 'clear', 'create'] : null,
 		wireBoundary: createClearRecreate
 			? 'native ContextProxy encoded payloads; not the Web RPC-envelope aggregate'
+			: null,
+		segmentBoundary: createClearRecreate
+			? 'BTS render = tap handler/render start -> commit encode done; wire = encode done -> MTS after decode; MTS apply = after decode -> Element PAPI flush return; residue = flush return -> second native frame'
 			: null,
 		adbInput: createClearRecreate
 			? [
@@ -795,6 +906,39 @@ for (const [ordinal, cellIndex] of sequenceFor(samples).entries()) {
 	}
 	if (!accepted)
 		throw new Error(`two invalid attempts for ${cell.label} at ordinal ${ordinal + 1}.`);
+}
+
+if (createClearRecreate) {
+	const summarizeStep = (step, workload) => {
+		const entries = report.samples.map((sample) => sample.sequenceEvidence[step].segments);
+		const summarizeMetric = (name) => {
+			const values = entries.map((entry) => entry[name]);
+			const sorted = [...values].sort((first, second) => first - second);
+			const middle = sorted.length >> 1;
+			return {
+				values,
+				median:
+					sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle],
+				min: sorted[0],
+				max: sorted.at(-1),
+			};
+		};
+		return {
+			workload,
+			n: entries.length,
+			totalMs: summarizeMetric('totalMs'),
+			btsRenderMs: summarizeMetric('btsRenderMs'),
+			wireMs: summarizeMetric('wireMs'),
+			mtsApplyMs: summarizeMetric('mtsApplyMs'),
+			residueToSecondFrameMs: summarizeMetric('residueToSecondFrameMs'),
+		};
+	};
+	report.segmentSummary = {
+		boundary: 'tap-to-second-frame-partition-v1',
+		create: summarizeStep(0, 'create'),
+		clear: summarizeStep(1, 'clear'),
+		recreate: summarizeStep(2, 'create'),
+	};
 }
 
 fs.mkdirSync(path.dirname(output), { recursive: true });
