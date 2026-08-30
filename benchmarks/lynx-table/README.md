@@ -131,6 +131,35 @@ records the source commit. If a reference bundle is absent the harness prints
 "not measured" for that cell and continues — it never substitutes a number
 from a degraded run.
 
+#### `react-first-screen`: the one reference whose FCP@N is measurable
+
+`reference/react-first-screen/rows-{0,1000,10000}/main.web.bundle` is ReactLynx
+built with a pre-populated first screen, one bundle per row count. Every other
+reference here reports FCP@N as "not measured", because a pre-populated first
+screen is a build-time define of the app source and cannot be produced from a
+shipping bundle. That left the FCP window with no cross-framework control at
+all — Octane could only be compared against its own composed
+`startup + create@N` projection.
+
+It is vendored **beside** `reference/react/`, not over it, because the reason
+that cell has no FCP variant is precisely that rebuilding it would change the
+hash the featured runs recorded. Two artifacts cost 316 KB and cost those runs
+nothing.
+
+The two are genuinely different builds — a different vue-lynx commit and
+`@lynx-js/react` 0.124.0 against the `react` cell's 0.122.1 — and
+`reference/manifest.json` records both under `firstScreen`, with the sha256 the
+source campaign pinned. `papi-run.mjs` reads that section for which row counts
+exist, so a scale nobody vendored reports "not measured" rather than failing
+against a 404, and it re-checks each bundle against its pinned digest on first
+use: this is the one cell whose bytes nothing in this repository builds, so what
+a run reports is only as good as the bytes it actually drove.
+
+**Read the control before comparing them.** Both cells run the same create
+window, so their host calls per row is the check that says whether the two
+workloads still do the same work. If that row diverges, the two are not
+measuring the same benchmark and no delta between them means anything.
+
 ### The `octane-block` cells (issue #103 B0, issue #135 item 1b)
 
 ```bash
@@ -763,11 +792,13 @@ Web Core performs inside it.
 Two windows are measured per page load, both through the byte-identical page
 driver: **startup**, from the main-thread slice start to the first composed
 paint of the app shell, and **create@N**, from `pointerdown` to all N rows in
-the composed tree. Octane additionally carries the pre-populated auto-rows
-bundles, so its **FCP@N** is measured directly; a pre-populated first screen is
-a build-time define of the app source, so the vendored references have no such
-variant and are reported "not measured" rather than substituted from another
-window.
+the composed tree. A third, **FCP@N**, runs from the slice start to all N rows
+in the composed tree on a bundle whose first screen already carries them.
+
+FCP@N needs a pre-populated build, which is a build-time define of the app
+source. Octane carries the auto-rows bundles, and one reference does too — the
+vendored `react-first-screen` set above. Every other vendored cell is reported
+"not measured" rather than substituted from another window.
 
 A single host call is far below the browser's clock granularity, which the
 report records: only per-kind aggregates over many calls carry meaning, and no

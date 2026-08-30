@@ -27,6 +27,7 @@
 // directly; the vendored references have no such variant and are reported
 // "not measured" rather than substituted from a different window.
 import { spawnSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -112,6 +113,49 @@ if (!args['allow-busy-host'] && loadPerCpu > 0.5) {
 // would have refused can only name a path nothing built.
 const controlTag = tagFrom(args['control-dist']);
 
+// The vendored pre-populated ReactLynx set, one bundle per row count. Which row
+// counts exist is read from `reference/manifest.json` rather than written here,
+// so the harness can only offer a scale the manifest pins — a scale nobody
+// vendored reports "not measured" instead of DNF-ing against a 404, and a
+// bundle nobody recorded cannot become a number.
+const reactFirstScreenDir = path.join(root, 'reference/react-first-screen');
+/** @type {Map<number, string>} rows -> the sha256 the manifest pins for it. */
+const reactFirstScreenRows = new Map();
+try {
+	const manifest = JSON.parse(fs.readFileSync(path.join(root, 'reference/manifest.json'), 'utf8'));
+	for (const [key, digest] of Object.entries(manifest.firstScreen?.sha256 ?? {})) {
+		const rows = Number(/^rows-(\d+)\/main\.web\.bundle$/.exec(key)?.[1]);
+		if (Number.isInteger(rows)) reactFirstScreenRows.set(rows, digest);
+	}
+} catch {
+	// No manifest, or one without the section: the cell simply has no variants.
+}
+const reactFirstScreenVerified = new Set();
+/**
+ * The path to a vendored variant, having first checked it against the digest
+ * the manifest pins. Verifying on use rather than on copy is the point: what a
+ * run reports is only as good as the bytes it actually drove, and this is the
+ * one cell whose bytes nothing in this repository builds.
+ * @param {number} rows
+ * @returns {string | null}
+ */
+function reactFirstScreenBundle(rows) {
+	const expected = reactFirstScreenRows.get(rows);
+	if (expected === undefined) return null;
+	const file = path.join(reactFirstScreenDir, `rows-${rows}/main.web.bundle`);
+	if (!reactFirstScreenVerified.has(rows)) {
+		const actual = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+		if (actual !== expected) {
+			throw new Error(
+				`reference/react-first-screen/rows-${rows}/main.web.bundle is ${actual}, ` +
+					`but reference/manifest.json pins ${expected}.`,
+			);
+		}
+		reactFirstScreenVerified.add(rows);
+	}
+	return file;
+}
+
 const CELLS = {
 	octane: {
 		bundle: () => path.join(root, 'app/dist/main.web.bundle'),
@@ -190,6 +234,29 @@ const CELLS = {
 		fcpBundle: () => null,
 		fcpReason:
 			'the vendored ReactLynx bundle is a fixed black-box artifact, and a pre-populated first screen is a build-time define of the app source; rebuilding the reference would change the bundle hash the featured runs recorded',
+	},
+	// The same framework with a pre-populated first screen. This is what makes
+	// FCP@N measurable for a reference at all, and it is a second vendored set
+	// rather than a rebuild of the cell above for exactly the reason that cell
+	// gives: rebuilding it in place would change the hash the featured runs
+	// recorded. Vendoring beside it costs 316 KB and costs those runs nothing.
+	//
+	// It is a different artifact from `react` — a different vue-lynx commit and a
+	// different `@lynx-js/react` — and `reference/manifest.json` says so. That
+	// difference is not taken on trust: both cells run the same create window, and
+	// their host calls per row is the control that says whether the two workloads
+	// still do the same work. A run that wants to compare them should read that
+	// row first.
+	//
+	// `bundle` is the rows-0 variant, so this cell's startup and create windows
+	// come from the same build family as its FCP window rather than from the cell
+	// above. Nothing is borrowed across builds.
+	'react-first-screen': {
+		bundle: () =>
+			reactFirstScreenBundle(0) ?? path.join(reactFirstScreenDir, 'rows-0/main.web.bundle'),
+		fcpBundle: (rows) => reactFirstScreenBundle(rows),
+		fcpReason:
+			'this cell is a vendored set with one bundle per row count, and reference/manifest.json pins no variant at this scale',
 	},
 	'vue-vdom': {
 		bundle: () => path.join(root, 'reference/vdom-ifr-et/main.web.bundle'),
