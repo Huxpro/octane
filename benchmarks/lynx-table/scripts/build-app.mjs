@@ -78,6 +78,16 @@ export function buildTableApp({
 		if (source.indexOf(anchor) === -1 || source.indexOf(anchor) !== source.lastIndexOf(anchor)) {
 			throw new Error('DevTool preflight anchor is missing or ambiguous.');
 		}
+		const callAnchor = 'export function App() @{';
+		if (
+			source.indexOf(callAnchor) === -1 ||
+			source.indexOf(callAnchor) !== source.lastIndexOf(callAnchor)
+		) {
+			// An unchecked call-site anchor would build a bundle that never calls
+			// disableDevTool, and every device sample would then time out in the
+			// preflight blaming the device rather than the build.
+			throw new Error('DevTool preflight call anchor is missing or ambiguous.');
+		}
 		fs.writeFileSync(
 			appFile,
 			source
@@ -85,10 +95,18 @@ export function buildTableApp({
 					anchor,
 					`${anchor}\n\nfunction disableDevTool(): void {\n\t'background only';\n\tNativeModules.LynxDevToolSetModule.switchLynxDebug(false);\n\tconsole.log('__OCTANE_DEVTOOL_DISABLED__=true');\n}`,
 				)
-				.replace('export function App() @{', 'export function App() @{\n\tdisableDevTool();'),
+				.replace(callAnchor, `${callAnchor}\n\tdisableDevTool();`),
 		);
 	}
 	if (process.env.BENCH_DEVICE_MESSAGECHANNEL_FALLBACK === '1') {
+		if (process.env.BENCH_ISSUE194_NATIVE === '1') {
+			// The issue-194 instrument applies its own MessageChannel fallback to
+			// the same anchors; applying this one first makes the instrument fail
+			// later with a misleading missing-anchor error.
+			throw new Error(
+				'BENCH_DEVICE_MESSAGECHANNEL_FALLBACK is redundant with BENCH_ISSUE194_NATIVE: the issue-194 instrument always applies the fallback itself.',
+			);
+		}
 		const appFile = path.join(stage, 'src', 'App.lynx.tsrx');
 		const source = fs.readFileSync(appFile, 'utf8');
 		const anchor = 'const _stormChannel = new MessageChannel();';

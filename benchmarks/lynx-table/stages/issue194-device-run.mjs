@@ -362,8 +362,6 @@ async function measure(cell, ordinal) {
 	let completed = false;
 	let tapped = false;
 	let tapAtMs = null;
-	let mainBeforeTap = 0;
-	let nativeBeforeTap = 0;
 	const observedLifecycle = {
 		loadStartMs: null,
 		renderPageMs: null,
@@ -400,7 +398,11 @@ async function measure(cell, ordinal) {
 		await delay(2000);
 		const fullLog = adb('logcat', '-d', '-v', 'epoch');
 		const markerIndex = fullLog.lastIndexOf(measurementMarker);
-		log = markerIndex === -1 ? '' : fullLog.slice(markerIndex);
+		// The buffer was cleared at window start, so everything in it postdates
+		// the marker. A multi-megabyte ART dump can evict the marker line itself;
+		// falling back to the empty string here would discard exactly that
+		// evidence and reject an otherwise valid crash sample.
+		log = markerIndex === -1 ? fullLog : fullLog.slice(markerIndex);
 		parsed = parseLog(log);
 		observeParsed(parsed);
 		if ((nativeCrashOutcome || capacityOutcome) && parsed.nativeCrashMs !== null) {
@@ -411,7 +413,7 @@ async function measure(cell, ordinal) {
 			await delay(3000);
 			const fullLog = adb('logcat', '-d', '-v', 'epoch');
 			const markerIndex = fullLog.lastIndexOf(measurementMarker);
-			log = markerIndex === -1 ? '' : fullLog.slice(markerIndex);
+			log = markerIndex === -1 ? fullLog : fullLog.slice(markerIndex);
 			parsed = parseLog(log);
 			observeParsed(parsed);
 			completed = true;
@@ -489,18 +491,19 @@ async function measure(cell, ordinal) {
 						(entry) => entry.workload === 'startup-create' && entry.scale === scale,
 					)))
 		) {
-			mainBeforeTap = parsed.main.length;
-			nativeBeforeTap = parsed.native.length;
 			tapAtMs = Date.now();
 			adb('shell', 'input', 'tap', String(tapX), String(tapY));
 			tapped = true;
 			continue;
 		}
-		const interactionMain = tapped ? parsed.main.slice(mainBeforeTap) : [];
-		const interactionNative = tapped ? parsed.native.slice(nativeBeforeTap) : [];
-		const matchingNative = interactionNative.some(
-			(entry) => entry.workload === workload && entry.scale === scale,
-		);
+		// Array offsets are not stable across logcat snapshots (the ring can
+		// evict the large pre-tap records), so the interaction is identified by
+		// its own fields, exactly as the create-clear-recreate path does:
+		// version 1 is first-tree adoption, so the tap's main record is
+		// version >= 2, and the native record names its workload and scale.
+		const interactionMain = tapped ? parsed.main.filter((entry) => entry.version >= 2) : [];
+		const matchingNative =
+			tapped && parsed.native.some((entry) => entry.workload === workload && entry.scale === scale);
 		if (
 			(engineOnly
 				? parsed.firstScreenMs !== null
@@ -534,7 +537,7 @@ async function measure(cell, ordinal) {
 	const attribution = createClearRecreate
 		? (sequenceEvidence.at(-1)?.attribution ?? null)
 		: workload !== null
-			? (parsed.main.slice(mainBeforeTap).at(-1) ?? null)
+			? (parsed.main.filter((entry) => entry.version >= 2).at(-1) ?? null)
 			: mode === 'direct-result'
 				? (parsed.direct.at(-1) ?? null)
 				: mode === 'first-screen-ready'
@@ -544,9 +547,8 @@ async function measure(cell, ordinal) {
 		? (sequenceEvidence.at(-1)?.backgroundSettle ?? null)
 		: workload === null
 			? (parsed.native.find((entry) => entry.scale === scale) ?? null)
-			: (parsed.native
-					.slice(nativeBeforeTap)
-					.find((entry) => entry.workload === workload && entry.scale === scale) ?? null);
+			: (parsed.native.find((entry) => entry.workload === workload && entry.scale === scale) ??
+				null);
 	const state = backgroundSettle?.postState ?? null;
 	const validPopulatedState = (candidate) =>
 		candidate?.rowCount === scale &&
