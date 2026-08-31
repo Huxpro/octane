@@ -274,6 +274,11 @@ interface LynxHostState<Node extends LynxElementRef> {
 	portalRoot: number | null;
 	/** Portal children stay separate from ordinary authored host children. */
 	portalChildren: Map<string, LynxPortalChildren>;
+	/**
+	 * Painted elements this container may hold, or `Infinity` where the engine
+	 * has no per-element ceiling. Read on the two paths that paint.
+	 */
+	readonly paintedElementCeiling: number;
 	readonly ownedNodes: Set<Node>;
 	readonly ownedPageRoots: Set<Node>;
 	/** Physical listener journal retained until native removal succeeds. */
@@ -381,6 +386,58 @@ export interface LynxHostContainer<Node extends LynxElementRef = LynxElementRef>
 	readonly [LYNX_HOST_STATE]: LynxHostState<Node>;
 }
 
+/**
+ * Painted elements a container may hold before a mount is declined, when the
+ * caller asks for the ceiling by name.
+ *
+ * Android's Lynx charges one JNI global reference per painted element — the ART
+ * dump at the crash attributes them to `PaintingContext` — and the table holds
+ * `max=51200`. Crossing it aborts the process with a SIGABRT that carries no
+ * JavaScript cause at all, so a page that paints too much dies without ever
+ * saying why. 45,000 leaves the platform's own bookkeeping the remaining ~6,000
+ * and is a round number to read in a diagnostic.
+ *
+ * It is deliberately not a default of this module. The ceiling is a property of
+ * one engine, not of the host driver: neither iOS nor Lynx-for-Web has such a
+ * table, and a page whose element count runs into the tens of thousands renders
+ * on both without incident. Who knows which engine is running is the main
+ * thread, so that is where the default is applied (see
+ * `installLynxMainThread`); a container asked for no ceiling has none.
+ */
+export const LYNX_PAINTED_ELEMENT_CEILING = 45_000;
+
+/**
+ * What a page that crosses the ceiling is told, in both the first-screen
+ * refusal and the commit that would have painted it.
+ *
+ * One builder for both so the two paths cannot drift into describing the same
+ * platform limit differently, and so the number a reader sees is the projection
+ * that actually tripped rather than a restatement of the constant.
+ */
+function paintedElementCeilingMessage(projected: number, ceiling: number): string {
+	return (
+		`this page paints ${projected} elements, over the ${ceiling} ceiling this container was given. ` +
+		"Android's reference table holds ~51,200 entries and charges one per painted element, " +
+		'so painting them all aborts the process. Use a native `<list>` for large collections (#193).'
+	);
+}
+
+/**
+ * Elements a first-screen program paints for its keyed ranges.
+ *
+ * One per range this first screen handed the program to paint, and none for a
+ * hole it filled itself — that hole's node is among the program's `children`
+ * and is counted there. `texts` is what decides which is which, and it is the
+ * same test the mount applies when it counts what the program owns.
+ */
+function paintedProgramRanges(node: LynxFirstScreenDirectNode): number {
+	const texts = node.texts;
+	if (texts === undefined) return 0;
+	let painted = 0;
+	for (const text of texts) if (text !== undefined) painted++;
+	return painted;
+}
+
 export interface CreateLynxHostContainerOptions<Node extends LynxElementRef = LynxElementRef> {
 	readonly root: number;
 	readonly componentId?: string;
@@ -397,6 +454,16 @@ export interface CreateLynxHostContainerOptions<Node extends LynxElementRef = Ly
 	 * {@link PrepareLynxHostBatchOptions.announcesPublicInstances}.
 	 */
 	readonly announcesPublicInstances?: boolean;
+	/**
+	 * Painted elements this container may hold before a mount that would cross
+	 * the line is declined instead of attempted. Omitted means no ceiling, which
+	 * is every engine without a per-element reference table.
+	 *
+	 * {@link LYNX_PAINTED_ELEMENT_CEILING} is the value derived from Android's
+	 * table; an engine that lifts the limit passes its own, and one that has no
+	 * such limit passes nothing.
+	 */
+	readonly paintedElementCeiling?: number;
 	/** Main-thread bridge for callback-driven list ref/query attachment state. */
 	readonly onAttachments?: (version: number, deltas: readonly LynxHostAttachmentDelta[]) => void;
 	/** Accepted-root fault bridge for native callbacks that run after a commit settles. */
@@ -1949,6 +2016,25 @@ function isPortalParent(parent: LynxHostParent): parent is LynxPortalParent {
 	return parent !== null && typeof parent === 'object';
 }
 
+/**
+ * Hosts a materialized list cell holds.
+ *
+ * The painted-element projection needs this because a `destroy-run` over a
+ * deferred run retires logical rows, and only the cells the platform actually
+ * asked for occupy elements. Attached cells are viewport-bounded, so walking
+ * them costs far less than the run they belong to.
+ */
+function physicalTreeHostCount<Node extends LynxElementRef>(tree: LynxPhysicalTree<Node>): number {
+	let total = 0;
+	const pending: LynxPhysicalTree<Node>[] = [tree];
+	while (pending.length !== 0) {
+		const current = pending.pop()!;
+		total++;
+		for (const child of current.children) pending.push(child);
+	}
+	return total;
+}
+
 function parentHostId(parent: LynxHostParent): number | null | undefined {
 	return isPortalParent(parent) ? parent.target : parent;
 }
@@ -3468,6 +3554,13 @@ export function createLynxHostContainer<Node extends LynxElementRef>(
 	if (componentId.length === 0) throw hostError('componentId must be a non-empty string.');
 	const cssId = options.cssId ?? 0;
 	if (!Number.isSafeInteger(cssId)) throw hostError('cssId must be a safe integer.');
+	const paintedElementCeiling = options.paintedElementCeiling ?? Infinity;
+	if (
+		paintedElementCeiling !== Infinity &&
+		(!Number.isSafeInteger(paintedElementCeiling) || paintedElementCeiling <= 0)
+	) {
+		throw hostError('paintedElementCeiling must be a positive safe integer or omitted.');
+	}
 	const page = options.page ?? papi.createPage(componentId, cssId);
 	const pageComponentUniqueId = papi.getUniqueId(page);
 	if (!Number.isSafeInteger(pageComponentUniqueId)) {
@@ -3485,6 +3578,7 @@ export function createLynxHostContainer<Node extends LynxElementRef>(
 		deferredRuns: null,
 		portalRoot: null,
 		portalChildren: new Map(),
+		paintedElementCeiling,
 		ownedNodes: new Set(),
 		ownedPageRoots: new Set(),
 		nativeEvents: new Map(),
@@ -4325,12 +4419,41 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 	// pre-walk above, paid for the same reason.
 	{
 		const refOwners = new Map<string, number>();
+		// Elements this paint would add to whatever the container already holds,
+		// accumulated as the walk visits them so a page over the line is refused
+		// at the node that crosses it rather than after describing the rest.
+		const ceiling = state.paintedElementCeiling;
+		let projected = ceiling === Infinity ? 0 : state.ownedNodes.size;
 		const pending: [readonly LynxFirstScreenDirectNode[], boolean, boolean][] = [
 			[roots, true, false],
 		];
 		while (pending.length !== 0) {
 			const [nodes, parentVisible, insideList] = pending.pop()!;
 			for (const node of nodes) {
+				if (ceiling !== Infinity) {
+					// A program paints its whole shape in one driver call, so its nodes
+					// and the ranges it was handed to paint are both its own elements —
+					// counted exactly as the mount counts what it owns. An ordinary host
+					// is one element unless it is a row nobody has asked for yet, which
+					// the platform materializes through `componentAtIndex` later and is
+					// why #193 is the answer this refusal points at. A range node paints
+					// nothing itself; its members are nodes of their own.
+					projected +=
+						node.kind === 'program'
+							? (node.ids?.length ?? 0) + paintedProgramRanges(node)
+							: node.kind === 'host' && !insideList
+								? 1
+								: 0;
+					if (projected > ceiling) {
+						// Declined here, in the pre-walk, for the reason the three
+						// refusals below are: nothing has been created yet. The page then
+						// arrives over the command path, which meets the same ceiling at
+						// batch-prepare and rejects the commit with the same message — so
+						// the background is told why, and nothing was painted on the way
+						// to finding out.
+						throw new LynxFirstScreenRefusalError(paintedElementCeilingMessage(projected, ceiling));
+					}
+				}
 				// Every program this applier cannot paint is refused here, in the
 				// pre-walk that runs before anything is created, rather than from
 				// inside the mount after earlier roots are painted. That placement is
@@ -6999,6 +7122,150 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 		handleOrder.push(id);
 	};
 
+	// The same ceiling the direct applier's pre-walk holds, held here because
+	// this path paints the same elements — and this is the one the background
+	// hears about. A first screen that declines still arrives over these
+	// commands, so refusing there alone would only move the abort one message
+	// later; refusing here rejects the commit before its first command runs,
+	// which leaves the tree the previous commit left and puts the reason on the
+	// wire.
+	//
+	// Net rather than gross: a commit that retires a run and mounts its
+	// replacement holds the survivors, not the sum, and projecting the sum would
+	// refuse a page that fits. What that leaves unguarded is a single commit
+	// whose creates all precede its destroys, which no core composes today.
+	//
+	// Membership-aware, because a plain `create` does not always paint. The
+	// applier skips materialization for a create whose record is a direct native
+	// list item with an unattached cell — the row exists logically and the
+	// platform builds it later, through `componentAtIndex`. Only
+	// `mount-template-run` with `deferred: true` announces that shape in the
+	// command itself; a native list composed the ordinary way is `create list`,
+	// `create list-item`, subtree `create`s and `insert`s, and nothing in any one
+	// of those commands says so. Counting them all made this guard refuse a large
+	// native-`<list>` page — the one page shape its own diagnostic recommends —
+	// and, in the other direction, let a `destroy` of a never-materialized row
+	// credit headroom that was never occupied.
+	if (state.paintedElementCeiling !== Infinity) {
+		const ceiling = state.paintedElementCeiling;
+		let projected = state.ownedNodes.size;
+		// Membership is a property of the batch's own topology as much as of
+		// accepted state — the list, the item and the subtree may all be created
+		// here — so parentage and types have to be readable before the first
+		// create is counted. Hence a pre-pass rather than one loop.
+		let batchTypes: Map<number, string> | null = null;
+		let batchParents: Map<number, number | null> | null = null;
+		let sawListTopology = state.hasNativeListTopology;
+		for (const command of batch.commands) {
+			if (command === null || typeof command !== 'object') continue;
+			if (command.op === 'create' || command.op === 'recreate') {
+				if (typeof command.id === 'number' && typeof command.type === 'string') {
+					(batchTypes ??= new Map()).set(command.id, command.type);
+					if (command.type === 'list' || command.type === 'list-item') sawListTopology = true;
+				}
+			} else if (command.op === 'insert' || command.op === 'move') {
+				if (typeof command.id === 'number') {
+					(batchParents ??= new Map()).set(
+						command.id,
+						typeof command.parent === 'number' ? command.parent : null,
+					);
+				}
+			}
+		}
+		const projectedType = (id: number): string | undefined =>
+			batchTypes?.get(id) ?? state.records.get(id)?.type;
+		const projectedParent = (id: number): number | null | undefined => {
+			const staged = batchParents?.get(id);
+			if (staged !== undefined) return staged;
+			const record = state.records.get(id);
+			return record === undefined ? undefined : parentHostId(record.parent);
+		};
+		/**
+		 * The list membership `id` will have once this batch's inserts have run,
+		 * mirroring `directListItem` over the batch joined with accepted state
+		 * rather than approximating it. Non-null only for a host whose whole
+		 * ancestry reaches a `list` through a `list-item`, which is exactly the
+		 * shape the applier's create checks.
+		 */
+		const projectedListItem = (id: number): { listId: number; itemId: number } | null => {
+			let current = id;
+			const visited = new Set<number>();
+			for (;;) {
+				if (visited.has(current)) throw hostError('list ancestry contains a cycle.');
+				visited.add(current);
+				const parent = projectedParent(current);
+				if (typeof parent !== 'number') return null;
+				if (projectedType(parent) === 'list') {
+					return projectedType(current) === 'list-item'
+						? { listId: parent, itemId: current }
+						: null;
+				}
+				current = parent;
+			}
+		};
+		/** Whether the applier will build an element for this host, not just a record. */
+		const paints = (id: number): boolean => {
+			if (!sawListTopology) return true;
+			const membership = projectedListItem(id);
+			return (
+				membership === null ||
+				state.lists.get(membership.listId)?.attachedByItem.has(membership.itemId) === true
+			);
+		};
+		/**
+		 * Hosts a `destroy-run` over `firstId` actually releases.
+		 *
+		 * A deferred run declares every row and paints only the cells the list
+		 * asked for, so retiring it releases the attached cells and nothing else.
+		 * Subtracting the declared count would hand the batch headroom the run
+		 * never occupied, which is the under-guard half of this defect.
+		 */
+		const runReleases = (firstId: number, count: number, width: number): number => {
+			const declared = declaringRun(state.deferredRuns, firstId);
+			if (declared === undefined) return count * width;
+			let released = 0;
+			for (const list of state.lists.values()) {
+				for (const cell of list.attachedByItem.values()) {
+					const item = cell.logicalItemId;
+					if (item !== null && item >= firstId && item < firstId + count * width) {
+						released += physicalTreeHostCount(cell.tree);
+					}
+				}
+			}
+			return released;
+		};
+		for (const command of batch.commands) {
+			if (command === null || typeof command !== 'object') continue;
+			if (command.op === 'create') {
+				if (typeof command.id !== 'number' || paints(command.id)) projected++;
+			} else if (command.op === 'mount-template') {
+				if (Array.isArray(command.nodes)) projected += command.nodes.length;
+			} else if (command.op === 'mount-template-range' || command.op === 'mount-template-run') {
+				// A deferred run declares its instances and builds none: the `<list>`
+				// asks for a cell through `componentAtIndex` when it is about to show
+				// it. Counting a declaration would refuse the very page this
+				// refusal's own diagnostic tells an author to write.
+				if (command.op === 'mount-template-run' && command.deferred === true) continue;
+				const nodes = command.program?.nodes?.length;
+				if (typeof nodes !== 'number') continue;
+				projected += (command.op === 'mount-template-run' ? command.count : 1) * nodes;
+			} else if (command.op === 'destroy') {
+				// The applier's destroy releases an element only when the host has
+				// one: `activeNodes.get(id)` decides, and a row the platform never
+				// materialized answers `undefined`.
+				if (typeof command.id !== 'number' || (state.records.has(command.id) && paints(command.id)))
+					projected--;
+			} else if (command.op === 'destroy-run') {
+				projected -= runReleases(command.firstId, command.count, command.width);
+			}
+			// Nothing else in a batch changes what is painted: `recreate` puts one
+			// element where one element was, `remove` detaches without releasing,
+			// and the rest write props, events, or visibility.
+		}
+		if (projected > ceiling) {
+			throw hostError(paintedElementCeilingMessage(projected, ceiling));
+		}
+	}
 	for (let index = 0; index < batch.commands.length; index++) {
 		const command = batch.commands[index];
 		if (command === null || typeof command !== 'object') {

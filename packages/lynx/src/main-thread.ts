@@ -20,6 +20,7 @@ import {
 	getLynxHostHandle,
 	isLynxHostAttached,
 	isLynxHostDeclared,
+	LYNX_PAINTED_ELEMENT_CEILING,
 	prepareLynxHostBatch,
 	resolveLynxHostNativeEvent,
 	type LynxHostContainer,
@@ -120,6 +121,10 @@ interface LynxMainThreadGlobals {
 }
 
 export type { LynxValidationMode } from './core/protocol.js';
+// Re-exported because `paintedElementCeiling` documents it as the default an
+// embedder derives their own value from, and this module is the public entry
+// that option lives on.
+export { LYNX_PAINTED_ELEMENT_CEILING } from './core/host-driver.js';
 
 export interface InstallLynxMainThreadOptions {
 	/** Main-thread global object containing the public Element PAPI. */
@@ -145,6 +150,17 @@ export interface InstallLynxMainThreadOptions {
 	 */
 	readonly firstScreenRender?: 'immediate' | 'engine';
 	readonly onDiagnostic?: (error: Error) => void;
+	/**
+	 * Painted elements a root of this page may hold before a mount that would
+	 * cross the line is declined rather than attempted.
+	 *
+	 * Defaults to {@link LYNX_PAINTED_ELEMENT_CEILING} on Android, where the
+	 * engine charges one JNI global reference per painted element and aborts the
+	 * process when its table fills, and to no ceiling everywhere else. `null`
+	 * turns it off for an Android engine that lifted the limit; a number sets it
+	 * explicitly on any platform.
+	 */
+	readonly paintedElementCeiling?: number | null;
 	/**
 	 * How much of an inbound commit this receiver re-derives before applying it.
 	 * Defaults to `checked`. See {@link LynxValidationMode}.
@@ -581,6 +597,32 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	if (environmentTarget.SystemInfo === undefined) {
 		environmentTarget.SystemInfo = environmentTarget.lynx?.SystemInfo ?? {};
 	}
+	// The painted-element ceiling is one engine's property, not the host driver's,
+	// and this is the only place that knows which engine is running: `SystemInfo`
+	// has just been resolved above, and Lynx-for-Web reports `web` there exactly
+	// as native reports `Android`. Anything that is not Android — iOS, web, a
+	// JavaScript host under test, an engine too old to say — gets no ceiling,
+	// because only Android's JNI global reference table charges per painted
+	// element. A caller that knows better passes its own number, or `null`.
+	const configuredCeiling = options.paintedElementCeiling;
+	if (
+		configuredCeiling !== undefined &&
+		configuredCeiling !== null &&
+		(!Number.isSafeInteger(configuredCeiling) || configuredCeiling <= 0)
+	) {
+		throw new TypeError(
+			'Octane Lynx main-thread paintedElementCeiling must be a positive safe integer, null, or omitted.',
+		);
+	}
+	const systemPlatform = (environmentTarget.SystemInfo as { platform?: unknown } | undefined)
+		?.platform;
+	const paintedElementCeiling =
+		configuredCeiling === null
+			? undefined
+			: (configuredCeiling ??
+				(typeof systemPlatform === 'string' && systemPlatform.toLowerCase() === 'android'
+					? LYNX_PAINTED_ELEMENT_CEILING
+					: undefined));
 	const papi: LynxElementPAPI<Node> = createLynxElementPAPI<Node>(rawTarget);
 	const componentId = options.componentId ?? '0';
 	if (typeof componentId !== 'string' || componentId.length === 0) {
@@ -1983,6 +2025,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				root: FIRST_SCREEN_ROOT_ID,
 				page,
 				worklets: hostWorklets,
+				paintedElementCeiling,
 			});
 			// Issue-58 L3: the first screen materializes through direct PAPI
 			// emission; trees the direct path declines keep the staged batch path.
@@ -2280,6 +2323,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 						root: message.root,
 						page,
 						worklets: hostWorklets,
+						paintedElementCeiling,
 						// Only a commit composed under the negotiated capability announces
 						// the hosts it will query, and only then can a mounted host skip
 						// carrying a nodes-ref selector nobody asked for. The session's own
