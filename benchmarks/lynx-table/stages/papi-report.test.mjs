@@ -170,3 +170,17 @@ test('renders one split per profile build, each named for its own shipping cell'
 	assert.ok(report.includes('### `octane-mts-program` first-screen phase split @10000'));
 	assert.ok(report.includes('the profile build of `octane-mts-program`'));
 });
+
+// Before a reference carried a pre-populated bundle, no run could produce an
+// FCP delta at all and the section could not exist. Now one cell in this run has
+// one and another does not, in the same file — which is the pair worth pinning:
+// a missing delta has to read as a window nobody measured, never as a gap of
+// nought.
+test('renders the FCP delta only for a reference that measured the window', () => {
+	const report = renderBoundaryReport([frozen('c247-o1', 10000)]);
+	assert.ok(report.includes('### Octane − `react-first-screen`, FCP@10000'));
+	assert.ok(!report.includes('### Octane − `react`, FCP@10000'));
+	// Both cells measured create, so the absence above is the FCP window's own
+	// and not this cell being skipped wholesale.
+	assert.ok(report.includes('### Octane − `react`, create@10000'));
+});
