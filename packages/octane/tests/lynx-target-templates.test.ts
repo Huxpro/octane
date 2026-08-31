@@ -159,6 +159,41 @@ export function P(props: { t: string; o: boolean; xs: string[] }) @{
 		expect(rows.every((row) => row.firstListenerId !== null)).toBe(true);
 	});
 
+	it('folds a compile-time-known text child onto its host, and only that', () => {
+		// #242 Cause A. `<text class="c">{'x'}</text>` painted two hosts: the cell,
+		// and a carrier under it holding nothing but the literal. `<text>` accepts
+		// `text` as a prop through the same `RawTextAttributes` handler `<raw-text>`
+		// uses, so for content the compiler already holds the carrier is an element
+		// painted, addressed, retained and torn down to repeat what its parent could
+		// have said. It is gone.
+		//
+		// The second arm is the boundary, and it is the point of the pair: a hole's
+		// value is not known here and the renderer still has to address the node it
+		// writes, so the carrier stays. Folding that one needs a slot kind the wire
+		// can name (#246), not a plan rewrite.
+		const hostsFor = (body: string, props: Record<string, unknown>) =>
+			MainRenderer.renderLynxFirstScreen(
+				evaluateScene(
+					compileSource(
+						`/** @jsxImportSource @octanejs/lynx/intrinsics */
+export function Scene(props: { label: string }) @{
+	${body}
+}
+`,
+						'lynx',
+					),
+				),
+				props,
+			).hostCount;
+
+		expect(hostsFor(`<view class="a"><text class="c">{'x'}</text></view>`, {})).toBe(2);
+		expect(
+			hostsFor(`<view class="a"><text class="c">{props.label as string}</text></view>`, {
+				label: 'alpha',
+			}),
+		).toBe(3);
+	});
+
 	it('rejects native-resource event values identically under both encodings', () => {
 		// Background-only native resources must fail loudly on the main thread
 		// no matter which template representation carries the event prop.

@@ -768,7 +768,9 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 			componentFor(true, LIST, 'List'),
 		);
 		const madeByProgram = new Set(painted.made);
-		expect(madeByProgram.size).toBe(12);
+		// One fewer than before #242 Cause A: the shell's `Head` text carries its
+		// literal as a `text` prop rather than painting a carrier under it.
+		expect(madeByProgram.size).toBe(11);
 
 		// The background never saw a program: it describes the same page from the
 		// interpreted encoding of both components, which is what makes the IDs it
@@ -857,10 +859,11 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 		);
 		// The premise, so the cell cannot pass by losing the shape it is about:
 		// four hosts and two painted holes per row, three rows, plus the shell's
-		// own two hosts and the `Head` text it paints — every node on the page from
-		// a compiled create.
+		// own two hosts and its `Head` text — every node on the page from a
+		// compiled create. One fewer than before #242 Cause A, which folds `Head`'s
+		// literal onto the cell instead of painting a carrier for it.
 		const madeByProgram = new Set(painted.made);
-		expect(madeByProgram.size).toBe(21);
+		expect(madeByProgram.size).toBe(20);
 
 		const background = MainRenderer.renderLynxFirstScreen(componentFor(false, LIST, 'List'), {
 			rows: rows(componentFor(false, CARD, 'Card')),
@@ -985,9 +988,10 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 		const painted = paint(true, { rows: data }, componentFor(true, LOOP_LIST, 'List'));
 		// The premise, so the cell cannot pass by losing the shape it is about:
 		// four hosts and two painted holes per row, three rows, plus the shell's
-		// two hosts and the `Head` text — every node on the page from a compiled
-		// create, exactly as for the hand-built arm.
-		expect(new Set(painted.made).size).toBe(21);
+		// two hosts and its `Head` text — every node on the page from a compiled
+		// create, exactly as for the hand-built arm. One fewer than before #242
+		// Cause A, which folds `Head`'s literal onto the cell.
+		expect(new Set(painted.made).size).toBe(20);
 
 		const background = MainRenderer.renderLynxFirstScreen(componentFor(false, LOOP_LIST, 'List'), {
 			rows: data,
@@ -1078,7 +1082,8 @@ describe('the direct applier mounting a compiled main-thread program', () => {
 		};
 		const painted = paint(true, { rows: rows(true) }, componentFor(true, LIST, 'List'));
 		const madeByProgram = new Set(painted.made);
-		expect(madeByProgram.size).toBe(14);
+		// One fewer than before #242 Cause A, for the shell's `Head` literal.
+		expect(madeByProgram.size).toBe(13);
 
 		const background = MainRenderer.renderLynxFirstScreen(componentFor(false, LIST, 'List'), {
 			rows: rows(false),

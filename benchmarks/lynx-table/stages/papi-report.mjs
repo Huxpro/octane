@@ -439,6 +439,21 @@ export function renderBoundaryReport(scaleReports) {
 				...deltaTable(delta.startup),
 				'',
 			);
+			// The first-screen delta, when the reference carries a pre-populated
+			// bundle of its own. This is the only window where the two cells run the
+			// same code path they would run in production for the same result, so it
+			// is the one whose delta answers "how far behind is the first screen"
+			// without composing two windows and inheriting the composition's error.
+			if (delta.fcp !== undefined) {
+				lines.push(
+					`### Octane − \`${id}\`, FCP@${rows}`,
+					'',
+					`Certified wall-clock delta: ${round(delta.fcpControlDeltaMs, 1)} ms on the control pages, ${round(delta.fcpCountsDeltaMs, 1)} ms on the counts build. The attribution below runs on the timed build, whose delta is ${round(delta.fcp.deltaMs, 1)} ms; a candidate owner is authorized only by a positive directly observed contribution of at least ${(delta.fcp.gate * 100).toFixed(0)}% of it.`,
+					'',
+					...deltaTable(delta.fcp),
+					'',
+				);
+			}
 		}
 	}
 	const projections = scaleReports.map((scale) => ({
