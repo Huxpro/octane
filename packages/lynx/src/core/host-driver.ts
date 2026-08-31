@@ -264,6 +264,10 @@ interface LynxHostState<Node extends LynxElementRef> {
 	 * not to build. `records` holds what has been materialized; these hold what
 	 * has only been declared. Null while no run has ever been deferred, which is
 	 * every tree without a native list.
+	 *
+	 * Kept sorted by `firstId` over non-overlapping host ranges, like
+	 * `retiredRanges` above and for the same reason: the lookups that answer for a
+	 * declared host are binary searches over it. See `runAtOrBefore`.
 	 */
 	deferredRuns: LynxDeferredTemplateRun[] | null;
 	/** Universal root provenance is fixed by the first accepted portal handle. */
@@ -890,6 +894,16 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 	private removed: Set<number> | null = null;
 	private live: number;
 	private cleared = false;
+	/**
+	 * A write changed something about this store beyond a host's props.
+	 *
+	 * `prepareDirectFullTeardown` is the only reader, and what it certifies is
+	 * topology: the run's nodes, its parent, its child order, and the node
+	 * ownership those imply. It reads no prop. So a write that replaces a host's
+	 * props and leaves everything else alone is not a fact the certification
+	 * rests on, and must not spend it — a table whose author touched one cell
+	 * would otherwise pay the expansion fallback for every row on the next clear.
+	 */
 	private mutated = false;
 
 	constructor(
@@ -937,8 +951,9 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 	 * Directly certify the sole destroy-run for this untouched dense store.
 	 * Accepted state, not synthesized per-host commands, is the authority: the
 	 * store was created from one frozen program and loses this eligibility on
-	 * every logical set/delete. Reordered or non-uniform mirrors deliberately
-	 * return null so the existing expansion validator remains their fallback.
+	 * every logical delete, and on every set that changes more than a host's
+	 * props. Reordered or non-uniform mirrors deliberately return null so the
+	 * existing expansion validator remains their fallback.
 	 */
 	prepareDirectFullTeardown(
 		state: LynxHostState<Node>,
@@ -1253,16 +1268,96 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 			: !this.removed?.has(offset);
 	}
 
+	/**
+	 * Whether `record` is the host already at `offset` carrying different props.
+	 *
+	 * The store has to keep answering for that host afterwards, and it does:
+	 * `values` no longer derives the written props, but `set` keeps the written
+	 * record in `materialized`, and both paths that drop a materialization —
+	 * `delete` and `clear` — already disqualify the store by themselves. The
+	 * stale derivation is therefore unreachable for as long as this store answers
+	 * for the offset at all. A deleted offset needs no separate refusal here for
+	 * the same reason: `delete` dropped its materialization, so there is nothing
+	 * left to compare a later write against and this returns false on its own.
+	 *
+	 * The first screen already settles the question this way. There `stagedRecords`
+	 * *is* the store, an update writes `record.props` straight onto the
+	 * materialized record, and no `set` happens at all — so an in-place props
+	 * write has never spent the certification. This is the clone-and-set route
+	 * agreeing with the route beside it.
+	 *
+	 * `set` is where the store learns what happened to it, and asking here rather
+	 * than at the update command is why its answer does not depend on a caller
+	 * keeping a flag correct for the rest of the batch: two commands against one
+	 * host share one staged clone and arrive as a single `set` carrying both
+	 * changes. That is a property of where the question is asked, not a defect the
+	 * alternative would have shipped — every such pair checked while writing this
+	 * is refused by another line of `prepareDirectFullTeardown` as well.
+	 *
+	 * Every field but `props` is compared by identity rather than structurally,
+	 * because the caller that produces this record is `cloneRecord`, which copies
+	 * each of them across unchanged. Identity holds exactly when the field was
+	 * left alone, and anything that rebuilt one — a recreate's new handle, a
+	 * public-instance request's selector, a child inserted under a row — reads as
+	 * the change it is. Props themselves are not inspected: an update replaces
+	 * the whole bag, so a name the program declared statically can leave it, and
+	 * that is still nothing the teardown certified.
+	 *
+	 * This is deliberately stricter than that one reader needs today. Several of
+	 * the fields below are also caught by another line of `prepareDirectFullTeardown`
+	 * — a recreate stages a generation, a removed root fails the child scan, a
+	 * rebound node only happens under a native list — so refusing on them changes
+	 * no outcome now. They stay because what this answers is a question about the
+	 * store, not about the one caller that currently asks it.
+	 */
+	private isPropsOnlyWrite(offset: number, record: LynxHostRecord<Node>): boolean {
+		const previous = this.materialized.get(offset);
+		// Writing back the very record the store handed out says nothing: whatever
+		// changed was changed in place, and there is no longer anything to compare
+		// it against.
+		if (previous === undefined || previous === record) return false;
+		if (
+			record.node !== previous.node ||
+			record.type !== previous.type ||
+			record.visible !== previous.visible ||
+			record.parent !== previous.parent ||
+			record.handle !== previous.handle ||
+			record.selectorWanted !== previous.selectorWanted ||
+			record.selectorInstalled !== previous.selectorInstalled
+		) {
+			return false;
+		}
+		const children = record.children;
+		const previousChildren = previous.children;
+		if (children !== previousChildren) {
+			if (children.length !== previousChildren.length) return false;
+			for (let index = 0; index < children.length; index++) {
+				if (children[index] !== previousChildren[index]) return false;
+			}
+		}
+		const events = record.events;
+		const previousEvents = previous.events;
+		if (events !== previousEvents) {
+			if (events.size !== previousEvents.size) return false;
+			for (const [type, descriptor] of events) {
+				if (previousEvents.get(type) !== descriptor) return false;
+			}
+		}
+		return true;
+	}
+
 	set(id: number, record: LynxHostRecord<Node>): this {
-		this.mutated = true;
 		const offset = this.offset(id);
 		if (offset !== -1) {
+			if (!this.isPropsOnlyWrite(offset, record)) this.mutated = true;
 			if (this.removed?.delete(offset)) this.live++;
 			this.materialized.set(offset, record);
 			this.nodes[offset] = record.node ?? undefined;
 		} else if (this.prefix.has(id)) {
+			this.mutated = true;
 			this.prefix.set(id, record);
 		} else {
+			this.mutated = true;
 			this.appended.set(id, record);
 		}
 		return this;
@@ -2566,6 +2661,39 @@ interface LynxDeferredTemplateRun extends LynxTemplateRunDeclaration {
 	removed: Set<number> | null;
 }
 
+/**
+ * The index of the last run starting at or before `id`, or `-1`.
+ *
+ * A list of runs is ordered by `firstId` and its ranges are disjoint, so this
+ * is the only run that can declare `id`: every earlier run ends before this one
+ * begins. Disjointness is enforced rather than assumed — `runsOverlapRange`
+ * refuses an overlapping declaration where it is staged — and the order is
+ * maintained at the two places a run enters a list, `insertDeferredRun` while a
+ * commit is staged and `mergeDeferredRuns` when it is accepted.
+ *
+ * These lookups were linear, on the reading that a run is one command per
+ * native `<list>`. It is one command per *contiguous span of one row shape*: a
+ * keyed `@for` whose body has two branches declares a run per row for a feed
+ * that alternates between them, so runs scale with rows rather than with lists.
+ * Every reader that walks a list's rows once per commit was then paying rows ×
+ * runs, which is quadratic in the length of an ordinary heterogeneous feed.
+ */
+function runAtOrBefore(runs: readonly LynxDeferredTemplateRun[], id: number): number {
+	let low = 0;
+	let high = runs.length - 1;
+	let found = -1;
+	while (low <= high) {
+		const middle = (low + high) >> 1;
+		if (runs[middle]!.firstId <= id) {
+			found = middle;
+			low = middle + 1;
+		} else {
+			high = middle - 1;
+		}
+	}
+	return found;
+}
+
 /** Whether any run in `runs` already declares a host in `[first, last]`. */
 function runsOverlapRange(
 	runs: readonly LynxDeferredTemplateRun[] | null,
@@ -2573,29 +2701,76 @@ function runsOverlapRange(
 	last: number,
 ): boolean {
 	if (runs === null) return false;
-	for (const run of runs) {
-		if (first <= run.firstId + (templateRunHostCount(run) - 1) && last >= run.firstId) return true;
-	}
-	return false;
+	// The one candidate is the last run starting at or before `last`, because a
+	// run starting after it starts past the range entirely. No earlier run can
+	// reach `first` either: it ends before the candidate begins, so if the
+	// candidate's own end falls short of `first`, every end below it does too.
+	const index = runAtOrBefore(runs, last);
+	if (index === -1) return false;
+	const run = runs[index]!;
+	return run.firstId + (templateRunHostCount(run) - 1) >= first;
 }
 
-/**
- * The run in `runs` that declares `id`, or undefined once nothing declares it.
- *
- * A linear scan because a run is one command per native list: a tree carries as
- * many of these as it has lists, not as it has rows.
- */
+/** The run in `runs` that declares `id`, or undefined once nothing declares it. */
 function declaringRun(
 	runs: readonly LynxDeferredTemplateRun[] | null,
 	id: number,
 ): { readonly run: LynxDeferredTemplateRun; readonly offset: number } | undefined {
 	if (runs === null) return undefined;
-	for (const run of runs) {
-		const offset = id - run.firstId;
-		if (offset < 0 || offset >= templateRunHostCount(run)) continue;
-		return run.removed?.has(offset) === true ? undefined : { run, offset };
+	const index = runAtOrBefore(runs, id);
+	if (index === -1) return undefined;
+	const run = runs[index]!;
+	const offset = id - run.firstId;
+	if (offset >= templateRunHostCount(run)) return undefined;
+	return run.removed?.has(offset) === true ? undefined : { run, offset };
+}
+
+/**
+ * Add `run` to `runs`, keeping it ordered by `firstId`.
+ *
+ * Ids are minted in ascending order, so the ordinary case appends and the
+ * search below never runs. The search is here because the commands come from a
+ * peer: a run declared out of id order is a well-formed batch this driver has
+ * to place correctly rather than one it may refuse, and placing it at the end
+ * regardless would leave the order every lookup above depends on quietly wrong.
+ *
+ * The shift a mis-ordered run costs is linear, so a peer that declared a whole
+ * feed backwards would pay for it here. That is a bound worth stating and not
+ * one worth a tree: the ordering is this renderer's own, the lookups are what
+ * run per row per commit, and this runs once per declaration.
+ */
+function insertDeferredRun(runs: LynxDeferredTemplateRun[], run: LynxDeferredTemplateRun): void {
+	const last = runs[runs.length - 1];
+	if (last === undefined || last.firstId < run.firstId) {
+		runs.push(run);
+		return;
 	}
-	return undefined;
+	let low = 0;
+	let high = runs.length;
+	while (low < high) {
+		const middle = (low + high) >> 1;
+		if (runs[middle]!.firstId < run.firstId) low = middle + 1;
+		else high = middle;
+	}
+	runs.splice(low, 0, run);
+}
+
+/** The accepted and staged run lists as one, still ordered by `firstId`. */
+function mergeDeferredRuns(
+	accepted: readonly LynxDeferredTemplateRun[],
+	staged: readonly LynxDeferredTemplateRun[],
+): LynxDeferredTemplateRun[] {
+	const merged: LynxDeferredTemplateRun[] = new Array(accepted.length + staged.length);
+	let left = 0;
+	let right = 0;
+	let out = 0;
+	while (left < accepted.length && right < staged.length) {
+		merged[out++] =
+			accepted[left]!.firstId < staged[right]!.firstId ? accepted[left++]! : staged[right++]!;
+	}
+	while (left < accepted.length) merged[out++] = accepted[left++]!;
+	while (right < staged.length) merged[out++] = staged[right++]!;
+	return merged;
 }
 
 /**
@@ -6977,7 +7152,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				}
 				abandonCompact();
 				if (typeof parent === 'number') captureInitialNode(parent);
-				(stagedDeferredRuns ??= []).push({
+				insertDeferredRun((stagedDeferredRuns ??= []), {
 					root: container.root,
 					program,
 					firstId: declaredFirst,
@@ -8108,7 +8283,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 					state.deferredRuns =
 						state.deferredRuns === null
 							? stagedDeferredRuns
-							: [...state.deferredRuns, ...stagedDeferredRuns];
+							: mergeDeferredRuns(state.deferredRuns, stagedDeferredRuns);
 				}
 				if (state.deferredRuns !== null && deletedRecords.size !== 0) {
 					// A declaration outlives the hosts it declares, so a destroyed host
