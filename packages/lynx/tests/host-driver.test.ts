@@ -4503,6 +4503,120 @@ describe('Lynx Element PAPI host driver', () => {
 		expect(papi.eventCalls).toEqual([[foreign, 'bindEvent', 'tap', undefined]]);
 	});
 
+	// Red until E3 lands, and deliberately checked in that way: `it.fails` states
+	// the contract E3 owes rather than pinning the defect as expected behaviour,
+	// and it inverts by itself — the day a slot update stops spending the
+	// certification, this test starts passing and `it.fails` turns red to say so.
+	it.fails('keeps a run certifiable for direct teardown after a bound slot is updated', () => {
+		// E3. A `mount-template-run` earns direct teardown by staying exactly the
+		// run it was declared as: `prepareDirectFullTeardown` refuses a store that
+		// has seen any logical set, because a written host is no longer derivable
+		// from its program. Updating a *bound slot* writes no topology — it
+		// replaces one value the program already reserved a place for — so it must
+		// not spend that certification. Today it does, and a table whose author
+		// touched a single cell pays the expansion fallback for every row on the
+		// next clear.
+		//
+		// The write itself already works: the assertions below the mount pass, and
+		// this test reaches the teardown before failing. What is missing is that
+		// the update routes through `writeRecord`, whose staged clone lands in the
+		// dense store at apply (`state.records.set`) and sets `mutated` — the one
+		// flag `prepareDirectFullTeardown` refuses on.
+		const { container, page } = createHost(71);
+		const program: UniversalHostTemplateProgram = Object.freeze({
+			nodes: Object.freeze([
+				Object.freeze({
+					type: 'view',
+					parent: -1,
+					props: Object.freeze({ class: 'row' }),
+					bindings: Object.freeze([Object.freeze({ name: 'id', valueIndex: 0 })]),
+				}),
+				Object.freeze({
+					type: 'text',
+					parent: 0,
+					props: Object.freeze({}),
+					bindings: Object.freeze([Object.freeze({ name: 'class', valueIndex: 1 })]),
+				}),
+			]),
+			events: Object.freeze([]),
+		});
+		prepareLynxHostBatch(
+			container,
+			batch(1, [
+				{ op: 'create', id: 1, type: 'view', props: { id: 'shell' } },
+				{ op: 'create', id: 2, type: 'view', props: { id: 'rows' } },
+				{ op: 'insert', parent: 1, id: 2, before: null },
+				{ op: 'insert', parent: null, id: 1, before: null },
+			]),
+		).apply();
+		const rows = page.children[0]!.children[0]!;
+		prepareLynxHostBatch(
+			container,
+			batch(2, [
+				{
+					op: 'mount-template-run',
+					parent: 2,
+					before: null,
+					program,
+					firstId: 10,
+					firstListenerId: null,
+					count: 2,
+					values: Object.freeze(['row-1', 'cell-1', 'row-2', 'cell-2']),
+				},
+			]),
+			{ compact: true, incrementalCompact: true, lazyPublicInstances: true },
+		).apply();
+		expect(rows.children.map((node) => node.id)).toEqual(['row-1', 'row-2']);
+
+		// One slot on one row. Every name in the patch is a binding the program
+		// declared, so nothing here is outside what the run can express.
+		prepareLynxHostBatch(
+			container,
+			batch(3, [{ op: 'update', id: 12, props: { id: 'row-2*' } }]),
+		).apply();
+		expect(rows.children.map((node) => node.id)).toEqual(['row-1', 'row-2*']);
+		// A slot on the *other* row, and a slot on a non-root node, so a run that
+		// wrote the right value at the wrong offset fails here rather than
+		// passing on a single-row coincidence.
+		prepareLynxHostBatch(
+			container,
+			batch(4, [
+				{ op: 'update', id: 10, props: { id: 'row-1*' } },
+				{ op: 'update', id: 13, props: { class: 'cell-2*' } },
+			]),
+		).apply();
+		expect(rows.children.map((node) => node.id)).toEqual(['row-1*', 'row-2*']);
+		expect(rows.children[1]!.children[0]!.classes).toBe('cell-2*');
+
+		// Entering the iterable expansion is observable at the batch boundary, the
+		// same way the certified-teardown regression above observes it.
+		const soleDestroyRun: readonly UniversalHostCommand[] = new Proxy(
+			[{ op: 'destroy-run', parent: 2, firstId: 10, count: 2, width: 2 }],
+			{
+				get(target, property, receiver) {
+					if (property === Symbol.iterator) {
+						throw new Error('sole destroy-run entered the expansion fallback');
+					}
+					return Reflect.get(target, property, receiver);
+				},
+			},
+		);
+		const teardown = prepareLynxHostBatch(container, batch(5, soleDestroyRun));
+		expect(teardown.handleDelta).toEqual([
+			{
+				op: 'destroy-run',
+				renderer: 'lynx',
+				root: 71,
+				firstId: 10,
+				hostCount: 4,
+				generation: 1,
+			},
+		]);
+		teardown.apply();
+		expect(rows.children).toEqual([]);
+		expect(disposeLynxHostContainer(container).complete).toBe(true);
+	});
+
 	it('expands a destroy-run identically whether the dense store or the record map answers', () => {
 		// A `mount-template-run` leaves its records in one of two shapes, and the
 		// later `destroy-run` is expanded from whichever it got: the dense store
