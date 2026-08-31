@@ -36,9 +36,12 @@ const { values: args } = parseArgs({
 const repo = new URL('../../..', import.meta.url).pathname.replace(/\/$/, '');
 const scales = args.scales
 	.split(',')
-	.map((value) => Number(value.trim()))
-	.filter(Boolean);
+	.filter((value) => value.trim() !== '')
+	.map((value) => Number(value.trim()));
 if (scales.length === 0) throw new TypeError('at least one scale is required.');
+for (const rows of scales) {
+	if (!Number.isSafeInteger(rows) || rows <= 0) throw new TypeError('scales must be positive.');
+}
 
 const previousTag = process.env.BENCH_DIST_TAG;
 const previousRows = process.env.BENCH_AUTOROWS;
