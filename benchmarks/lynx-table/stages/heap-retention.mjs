@@ -37,6 +37,7 @@ import { createRequire } from 'node:module';
 import { parseArgs } from 'node:util';
 
 import { applyNeutralize, makeBenchHtml } from '../web/driver-client.mjs';
+import { writeEvidenceJson } from '../scripts/evidence.mjs';
 import { buildTableApp } from '../scripts/build-app.mjs';
 import {
 	aggregateHeapSnapshot,
@@ -433,7 +434,9 @@ const record = {
 const resultsDir = path.join(root, 'stages/results');
 fs.mkdirSync(resultsDir, { recursive: true });
 const jsonPath = path.join(resultsDir, `${args.label}-${rows}.json`);
-fs.writeFileSync(jsonPath, `${JSON.stringify(record, null, '\t')}\n`);
+// Through the evidence writer, not a bare stringify: `prettier --check` owns
+// this directory, and a record it rejects fails CI for whoever lands it.
+await writeEvidenceJson(jsonPath, record);
 
 /**
  * The `--attribute` walk, rendered.
