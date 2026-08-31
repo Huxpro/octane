@@ -2,8 +2,8 @@
 
 The unified cross-framework table benchmark for Octane's Lynx renderer: the
 krausest-style row table (`app/`, mirrored operation-for-operation from the
-Vue Lynx unified benchmark matrix) driven through create / update-every-10th /
-select / clear and the update (×50) / select (×30) storms, where every storm
+Vue Lynx unified benchmark matrix) driven through create / update-every-10th / select / swap, the update (×50) /
+select (×30) storms, and a closing clear / re-create cycle, where every storm
 tick runs in its own MessageChannel macrotask so app-layer batching cannot
 merge them.
 
@@ -80,6 +80,43 @@ records `wireRegime` — the negotiated capabilities, and the acknowledgement,
 public-instance, and announcement regime every commit went out under — because an
 install count is unreadable without knowing whether the commit announced at all.
 
+### The second create, on the container the first one left behind
+
+Every op above measures a first create on a virgin root. No cross-framework
+harness measures create that way past its first repetition: the web runner
+rebuilds a case's pre-state before each sample, so repetition 2 onward creates
+over whatever the previous clear left behind. `clear` and `recreate` close that
+gap — they run last, after the storms, so nothing above them changes, and they
+report the teardown of the whole run followed by the same create again.
+
+Both are gated at one command, which is the wire claim: retiring a run names the
+run, not its rows, and mounting the replacement is the same single template-run
+command the first mount was. Both hold.
+
+What the command counts cannot see is how much of that one command the receiver
+expands back into per-host work, so `meta.rows_*.warmCycle` records it:
+
+| rows | `clear.synthesizedCommands` | `clear.denseValidate` | `create` prepare | `recreate` prepare |
+| ---: | ---: | ---: | ---: | ---: |
+| 1,000 | 10,000 | 0 ms | 14.8 ms | 16.1 ms |
+| 10,000 | **100,000** | 0 ms | 156.8 ms | **293.5 ms** |
+
+A certified teardown consumes the `destroy-run` whole and synthesizes nothing;
+the expansion fallback rebuilds one remove, one destroy and one listener detach
+per host out of accepted state, which is the ten commands per row above. The
+zero beside it is why: the certified path times its validation in
+`denseValidate`, so a zero there means it was never attempted, and the
+`destroy-run` went to `expandRecordsRunTeardown` instead.
+
+Those numbers are informational rather than gated, because the receiver is
+paying them today. `octane-lynx` negotiates `compactAck` and
+`lazyPublicInstances` and its create commit still arrives at
+`prepareLynxHostBatch` with neither: the incremental-compact upgrade that the
+certified teardown mirror hangs off is reached only through a first-tree
+adoption handoff, and this root paints no first screen. Issue #230 carries the
+attribution; this pair is the instrument that made it visible and is what a fix
+has to move.
+
 Because the in-process ContextProxy is synchronous, acknowledgements return
 immediately and the storm gates see one commit per tick; the asynchronous
 "renders while a commit is in flight coalesce into the next commit" contract
@@ -130,6 +167,35 @@ then only the `.web.bundle` files are copied here. `reference/manifest.json`
 records the source commit. If a reference bundle is absent the harness prints
 "not measured" for that cell and continues — it never substitutes a number
 from a degraded run.
+
+#### `react-first-screen`: the one reference whose FCP@N is measurable
+
+`reference/react-first-screen/rows-{0,1000,10000}/main.web.bundle` is ReactLynx
+built with a pre-populated first screen, one bundle per row count. Every other
+reference here reports FCP@N as "not measured", because a pre-populated first
+screen is a build-time define of the app source and cannot be produced from a
+shipping bundle. That left the FCP window with no cross-framework control at
+all — Octane could only be compared against its own composed
+`startup + create@N` projection.
+
+It is vendored **beside** `reference/react/`, not over it, because the reason
+that cell has no FCP variant is precisely that rebuilding it would change the
+hash the featured runs recorded. Two artifacts cost 316 KB and cost those runs
+nothing.
+
+The two are genuinely different builds — a different vue-lynx commit and
+`@lynx-js/react` 0.124.0 against the `react` cell's 0.122.1 — and
+`reference/manifest.json` records both under `firstScreen`, with the sha256 the
+source campaign pinned. `papi-run.mjs` reads that section for which row counts
+exist, so a scale nobody vendored reports "not measured" rather than failing
+against a 404, and it re-checks each bundle against its pinned digest on first
+use: this is the one cell whose bytes nothing in this repository builds, so what
+a run reports is only as good as the bytes it actually drove.
+
+**Read the control before comparing them.** Both cells run the same create
+window, so their host calls per row is the check that says whether the two
+workloads still do the same work. If that row diverges, the two are not
+measuring the same benchmark and no delta between them means anything.
 
 ### The `octane-block` cells (issue #103 B0, issue #135 item 1b)
 
@@ -763,11 +829,13 @@ Web Core performs inside it.
 Two windows are measured per page load, both through the byte-identical page
 driver: **startup**, from the main-thread slice start to the first composed
 paint of the app shell, and **create@N**, from `pointerdown` to all N rows in
-the composed tree. Octane additionally carries the pre-populated auto-rows
-bundles, so its **FCP@N** is measured directly; a pre-populated first screen is
-a build-time define of the app source, so the vendored references have no such
-variant and are reported "not measured" rather than substituted from another
-window.
+the composed tree. A third, **FCP@N**, runs from the slice start to all N rows
+in the composed tree on a bundle whose first screen already carries them.
+
+FCP@N needs a pre-populated build, which is a build-time define of the app
+source. Octane carries the auto-rows bundles, and one reference does too — the
+vendored `react-first-screen` set above. Every other vendored cell is reported
+"not measured" rather than substituted from another window.
 
 A single host call is far below the browser's clock granularity, which the
 report records: only per-kind aggregates over many calls carry meaning, and no
@@ -3266,6 +3334,161 @@ Follow-ups this slice opened, both recorded rather than fixed here:
   the description instead, so this is now the only per-member allocation left on
   the path.
 
+### The rung the create residual is not on (issue #230 Order 3)
+
+Order 3 read the create residual as state the background accumulates because a
+root that never paints a first screen never reaches the incremental-compact rung
+it negotiated. The reading was right about the rung and wrong about the
+residual. Four arms, 15 readings each, three windows
+(`stages/results/issue230-order3-split-10000.json`, produced by
+`stages/issue230-order3-split.mjs`).
+
+`postFirstTreeLazyPublicInstances` is a single gate. It is set only in the
+first-tree adoption handoff (`core/transport.ts`), it is read per commit when
+the background decides whether to request an incremental compact, and on the
+host side it is what admits both `incrementalCompactCandidate` and
+`teardownMirrorCandidate` (`core/host-driver.ts`). So the split is that one
+enabler crossed with the two consequences it admits:
+
+| arm | enabler | incremental compact | teardown mirror | digest |
+|---|---|---|---|---|
+| `o3ctl` | — | off | off | `0a52f5938f43b87f` |
+| `o3cmp` | on | live | live | `e880ffb94bdb56d2` |
+| `o3tear` | on | suppressed | live | `919ba7cb574975af` |
+| `o3gen` | on | live | suppressed | `697bea26b94b6220` |
+
+`o3ctl` is byte-identical to the `octane-hux` entry as rebuilt at this base,
+which is a stronger statement than it looks: that entry is produced by
+`scripts/build-octane-upstream.mjs` from a clean checkout, and this control by
+`scripts/build-app.mjs` from the worktree, so two independent build paths at
+`8938c1260` emit the same bytes. Read it against the working tree of the
+benchmark repository rather than against its history — the `octane-hux` refresh
+to this base is not committed there, where the entry is still the `07115d67`
+build.
+
+Every arm relaxes the compact acknowledgement guard so a second segment can be
+applied over a live one. That knowingly loses the reachability of hosts nobody
+observed — the hazard pinned in `packages/lynx/tests/protocol.test.ts` — and is
+why these four builds are measurement instruments that must never ship.
+
+| create@10,000, window 1 | `o3ctl` | `o3cmp` | `o3tear` | `o3gen` |
+|---|---:|---:|---:|---:|
+| latency | 1717.6 [1665.8–1769.3] | 1733.1 [1686.4–1779.7] | 1776.0 [1714.9–1837.1] | 1732.8 [1675.9–1789.7] |
+| btsCpu | 542.6 [448.8–636.4] | 519.3 [424.7–613.8] | 521.4 [431.3–611.5] | 471.2 [391.1–551.3] |
+| mtsCpu | 43.5 [38.4–48.7] | 44.5 [39.2–49.8] | 48.5 [45.1–51.9] | 42.2 [34.5–49.9] |
+| fcp | 56.3 [53.2–59.5] | 56.7 [55.1–58.3] | 56.3 [52.7–59.9] | 56.9 [53.3–60.5] |
+
+No arm's interval clears control's, on any timed metric. The three windows say
+why that is a null rather than an effect too small to resolve: the latency delta
+against control changes sign from window to window.
+
+| latency delta vs control | window 1 | window 2 | window 3 |
+|---|---:|---:|---:|
+| `o3cmp` | +15 | −39 | +9 |
+| `o3tear` | +58 | −19 | −13 |
+| `o3gen` | +15 | +3 | −22 |
+
+The same bundle also reads 1735.5, 1658.2 and 1795.6 ms across the three
+windows — a 138 ms spread against within-window intervals of ±40 to ±71. That
+is the reason each window is compared only with itself, and the reason a number
+here cannot be read against a number from any other window, including
+benchmark #40's.
+
+Heap is the opposite instrument. The runner captures it once per entry per
+window, so the windows are the samples — and they agree to within 64 kB on a
+31.64 MB difference.
+
+| main-thread heap, MB | `o3ctl` | `o3cmp` | `o3tear` | `o3gen` |
+|---|---:|---:|---:|---:|
+| peak, window 1 | 51.20 | 51.19 | 82.81 | 51.20 |
+| peak, window 2 | 51.22 | 51.21 | 82.87 | 51.21 |
+| peak, window 3 | 51.20 | 51.19 | 82.85 | 51.21 |
+| after clear, window 1 | 10.72 | 10.72 | 8.60 | 10.71 |
+| after clear, window 2 | 10.72 | 10.72 | 8.60 | 10.68 |
+| after clear, window 3 | 10.72 | 10.72 | 8.60 | 10.71 |
+
+Background heap does not move in any arm, which is where the effect has to be:
+the record store this is about lives on the main thread.
+
+Three things follow.
+
+- **The rung is not where the create residual lives.** `o3cmp` reaches
+  everything the negotiation offered and creates 10,000 rows in the same time as
+  the build that reaches none of it. Whatever the residual is, turning this on
+  does not collect it, and an E-train aimed at reaching the rung faster would be
+  aimed at nothing. This is the arm to trust on that question: it only *adds* a
+  line, so C12's warning about an ablation that folds to a constant removing more
+  than the code it deleted does not apply to it. It does apply to `o3tear` and
+  `o3gen`, which fold a candidate to `false`, and those two are upper bounds.
+- **The teardown mirror is a heap trade, not a time trade, and the trade is
+  currently bad.** `o3tear` releases 2.12 MB more on the clear and pays 31.64 MB
+  of retained peak for it. The mechanism is in the open: the mirror copies the
+  whole record map per `mount-template-run` and the copy is retained on
+  `state.teardownRecords` until the next batch. At 10,000 rows that is 70,000
+  records copied per run. `o3cmp` does not pay it, because once incremental
+  compact succeeds `state.records` is no longer a `Map` and the mirror's own
+  `instanceof Map` guard declines — so the two consequences of the one enabler
+  are not independent, and the mirror is only reachable in the arm that has
+  incremental compact switched off.
+- **Order 3's root cause is confirmed, by the measurement rather than by
+  reading.** The mirror can only run when an incremental compact was requested,
+  which in the shipping build is impossible. Folding a candidate to `false`
+  cannot *add* a 31 MB copy, so the only way `o3tear` diverges is that its
+  enabler executed — and the enabler sits on the branch taken when no first tree
+  is being adopted. This app therefore does not adopt a first screen, and so
+  never reaches the rung it negotiates.
+
+#### What is not claimed here
+
+- Nothing about the absolute ratio against upstream. These are four Octane
+  builds against each other in one window; the ratio oracle is a different
+  measurement with a different baseline.
+- Nothing about device or native. Web lane only.
+- Nothing about the heap effect's variance *within* a window. Each window
+  contributes one heap reading, so the claim rests on three windows agreeing,
+  not on a spread inside one.
+- Nothing about arm position. The runner orders entries alphabetically, so
+  position is fixed across windows and cannot cancel. It is not what moves
+  `o3tear`: the other three arms sit in positions 1, 2 and 3 and agree within
+  9 kB.
+- Nothing about whether the mirror's trade could be made good. A mirror that
+  did not copy the whole map would be a different measurement.
+
+Suppressing the teardown mirror on its own changes no test in the `lynx`
+package's suite, which is a coverage gap rather than a result: the certified
+dense teardown is reachable only behind incremental compact today, and nothing
+pins it independently.
+
+#### Rebuilding the four arms
+
+`stages/issue230-order3-arms.mjs` is the recipe the four digests came from, so
+they can be checked rather than believed:
+
+```bash
+node benchmarks/lynx-table/stages/issue230-order3-arms.mjs patch o3tear | git apply -
+BENCH_DIST_TAG=o3tear node benchmarks/lynx-table/scripts/build-app.mjs
+node benchmarks/lynx-table/stages/issue230-order3-arms.mjs patch o3tear | git apply -R -
+```
+
+Each edit is stated as the exact text it replaces rather than as a line number,
+so it refuses to apply to a tree it does not describe instead of silently
+patching the wrong line of a moved file. `… arms.mjs audit` reports that
+refusal ahead of time, against whatever tree you are standing in.
+
+The record originally cited a path under a scratch directory, which did not
+survive the machine it was written on. The window's other inputs did not either:
+the four `o3*` entries, the `octane-hux` refresh to this base, and the three
+runner records lived only in an uncommitted working tree of the benchmark
+repository, and are gone. What survives is this recipe, the digests, and the
+pooled readings in the record — enough to rebuild the arms and re-derive the
+tables, not enough to replay these three windows. A fourth window would be a new
+measurement, and by the drift shown above it could not be read against these.
+
+**These four builds must never ship.** Every non-control arm relaxes the compact
+acknowledgement guard so a second segment can be applied over a live one, which
+PR #239 pins as a silent loss of reachability for hosts nobody observed. They are
+measurement instruments.
+
 ## Expectation management (restated per #157, as every C-report must)
 
 Of the 11.5 s native create-1k, **10.52 s (91%) is host-driver interpreter
@@ -3431,6 +3654,209 @@ thermal and load recorded), in this order, because each step can end the probe:
 
 Check each window in as its own record under `stages/results/`, the way every
 other window here does, and report it on #215.
+
+### Device round 2: D4 stops at the ART summary; D-train mount is 4 ms at 1k
+
+Round 2 ran commit `03a5ba6087bbd854e5f10066a63828c5957bd555` on the
+same Aries 10 / Explorer 1.0 / Lynx SDK 4.0 device class as round 1. Before each
+sample a build-only background probe called
+`LynxDevToolSetModule.switchLynxDebug(false)` and waited for both the disabled
+lifecycle transition and its acknowledgement; logcat was then cleared without
+restarting the process, so an enabled transition in the measured bundle would
+invalidate the sample. No CDP connection was opened.
+
+The first valid window,
+`stages/results/issue194-d4-art-summary-10000.json`, answered step 1 above:
+
+| 10k cell | n | terminal outcome | load → terminal |
+|---|---:|---|---:|
+| D-train `octane-mts-program` | 5 | ART native crash, 5/5 | 20,397–22,029 ms; median 21,156 ms |
+| template control | 5 | alive at cutoff, 5/5 | 180,000 ms cutoff |
+
+Every crash printed the same leading global-reference classes: 30,026
+`com.lynx.tasm.behavior.PaintingContext$a` instances and 20,444 `m7.w`
+instances, followed by only hundreds of `Class` and `DirectByteBuffer`
+instances. `PaintingContext` is the Lynx platform UI owner the decision tree
+asked for, not an Octane JavaScript container. The protocol therefore stops:
+there is no 6k–8k bisection and no `mts-program` / direct / retain-none arm.
+The 10k result is a platform capacity boundary, not a missing Octane release
+point.
+
+The round-1 bookkeeping detail matters when comparing these records: the cell
+that actually crashed at 10k was `octane-mts-program` built with the
+direct-self diagnostic. The `octane-direct` prototype did not run that window;
+the paired template timed out alive.
+
+The second valid window,
+`stages/results/issue194-d-train-mount-program-1000.json`, remeasured #215's
+device oracle with D1–D8 present. Its five `mountProgram` observations are
+4 / 3 / 3 / 4 / 4 ms, median **4 ms**, against round 1's 8,565 ms: -8,561 ms,
+or -99.95%. The same window's load-to-first-screen medians are 657 ms for the
+program cell and 2,149 ms for the template control. This is one before/after
+reading of C20 + D1 together; the device window does not claim to separate
+their effects. Both windows have zero invalid attempts, n=5 per cell, AB/BA
+ordering, cold launch per sample, and a 35.0 °C / thermal-status-0 gate.
+
+### Device round 3: cross-framework capacity confirmation and post-fix ACK shapes
+
+Round 3 used `new-lynx` commit
+`8938c12608524d1a259b5e81f0903ffa5b5eb4d5` on `aries_10` / Android 10 /
+Explorer 1.0 / app-bundle engine 3.9 / Lynx SDK 4.0. The checked-in records
+carry the Sandbox acquisition and release receipt. Every accepted attempt used
+the round-2 DevTool-disabled preflight, a cold process, no CDP connection, and
+the same 35.0 °C / thermal-status-0 gate.
+
+Issue #234 Part A is qualitative, and explicitly permits n=1. Two independent
+cold starts of the same vendored ReactLynx eager-10k bundle both aborted at the
+ART global-reference ceiling, 25,706 and 25,789 ms after load start. Both dumps
+have the same leading summary: 30,026
+`com.lynx.tasm.behavior.PaintingContext$a` and 20,441 `m7.w` instances. That is
+the cross-framework confirmation the issue asks for: the owner is the same Lynx
+platform UI class as Octane's round-2 dump, not a ReactLynx-specific holder.
+The record is
+`stages/results/issue234-a-react-eager-art-summary-10000.json`.
+
+The same lease ran the cheap surviving-side check. The Octane MTS-program eager
+7k bundle completed twice, with valid 7,000-row state and no error; load to first
+screen was 14,629 and 14,596 ms, and the background-script-start to second
+native frame observations were 4,369 and 4,374 ms. This pins only the requested
+surviving side of the platform boundary; it is not a bisection or a timing
+ranking. The record is
+`stages/results/issue234-a-octane-mts-program-7000.json`.
+
+Two additional post-#229/#233 interaction probes use real `adb shell input tap`
+events and wait through two native animation frames before accepting state:
+
+| operation | state oracle | native tap → second frame | ACK encoding | encoded ACK bytes | ACK messages |
+|---|---|---:|---|---:|---:|
+| create 1k | 0 → 1,000, ids 1/2/3/999 | 11,500 / 11,446 ms | `compact-v1`, count 7,000 | 107 / 107 | 1 / 1 |
+| clear 1k | 1,000 → 0 | 2,742 / 2,776 ms | per-host `handles` | 286,294 / 286,294 | 1 / 1 |
+
+Each ACK is followed by one separate `complete` message; the table's ACK count
+does not fold that completion into the answer. The byte boundary is the exact
+string returned by Octane's shipping `encodeLynxTransportValue` immediately
+before the main-to-background dispatch, measured before the build-only logger
+runs. It is therefore an ACK-payload measurement, not the web harness's larger
+RPC-envelope aggregate. Create confirms #230's compact recompute at this tip;
+clear is expected to remain a per-host teardown acknowledgement and does not
+claim the compact create shape. These two n=1-per-identical-cell records are
+correctness/wire-shape probes, not statistical timing claims:
+`stages/results/issue194-round3-create-1000.json` and
+`stages/results/issue194-round3-clear-1000.json`.
+
+#### Issue #42 A/B: post-fix sequence and clear fidelity boundary
+
+One later lease on the same device class ran the issue-#42 sequence against the
+exact new-lynx source `8938c12608524d1a259b5e81f0903ffa5b5eb4d5`.
+Two independent cold starts completed create→clear→re-create at 1k with no
+invalid attempt. Both produced the same aggregate ContextProxy wire shape per
+commit:
+
+| commit | state | tap → second frame | MTS→BTS encoded total | messages | ACKs |
+|---|---|---:|---:|---:|---:|
+| create #1 | 0 → 1,000 | 11,390 / 11,427 ms | 182 / 182 B | 2 / 2 | 1 / 1 |
+| clear | 1,000 → 0 | 262 / 252 ms | 222 / 222 B | 2 / 2 | 1 / 1 |
+| create #2 | 0 → 1,000 | 11,376 / 11,513 ms | 182 / 182 B | 2 / 2 | 1 / 1 |
+
+Each create ACK is compact-v1 with count 7,000; each message total contains one
+ACK and one `complete`. This confirms the post-#229/#233 O(1) shape under
+LepusNG. The 182/222-byte totals are the encoded Native ContextProxy boundary,
+not the Web RPC-envelope aggregate, so only shape and counts compare. The same
+source/build family had already passed the surviving ~7,000-row Part-A probe
+above. Record:
+`stages/results/issue42-a-create-clear-recreate-1000.json`.
+
+The clear@1k cross-framework window found a measurement-fidelity boundary, not
+a Native rank:
+
+| cell | preparation | clear receipt | raw latency | transport settlement |
+|---|---|---|---:|---|
+| Hux block/scoped | create→clear | 1,000 → 0 + two frames | 4,644 ms | waits for Octane ACK; 286,141 B / 2 messages / 1 ACK |
+| upstream `9779569e` | eager rows-1000, then clear | 1,000 → 0 + two frames | 2,560 ms | waits for Octane ACK; 286,369 B / 2 messages / 1 ACK |
+| ReactLynx | create→clear, three cold starts | 1,000 → 0 + two frames | 34 / 28 / 31 ms | producer explicitly reports `not-exposed`, `acknowledged: false` |
+
+Upstream's rows-0 create reached its state/frame receipt but its following clear
+handler produced no receipt before timeout, so its accepted number necessarily
+uses the eager-1k preparation and is not preparation-equivalent to Hux or
+React. More importantly, React's second-frame receipt does not wait for the
+transport settlement that both Octane probes include. Dividing these raw
+numbers would rank different completion boundaries. Therefore this window
+neither validates nor falsifies the Web-interp clear ratio; it records the
+fidelity boundary, grants no device prediction stake, and enters no Native
+cohort. Records:
+`stages/results/issue42-b-clear-1000-octane-hux.json`,
+`stages/results/issue42-b-clear-1000-octane-upstream.json`, and
+`stages/results/issue42-b-clear-1000-react.json`.
+
+## 10. Device correctness gate (`stages/issue234-device-gate.mjs`, issue #234 D)
+
+Every number in this file above is a cost. None of them is a correctness claim,
+and a cost measured on a tree that is quietly wrong is worse than no cost at
+all: it reads as evidence. Rounds 1 and 2 of #194 both spent a device lease
+measuring milliseconds without ever establishing, on the device, that the thing
+being measured painted the right rows, routed a real tap to the right handler,
+or released what it claimed to release. The web container is not a substitute
+for that. It has a different renderer, a different event path, and no reference
+table.
+
+So a device round now opens with a gate rather than a measurement. It answers
+six questions in order, and each one can end the round:
+
+| Step | Question it answers |
+| --- | --- |
+| `first-screen` | did the first screen paint the rows it was given, in order? |
+| `adoption` | did the background adopt that painted tree, rather than repair it? |
+| `native-tap` | does a real native tap reach the handler of the row it landed on? |
+| `slot-update` | does a slot update land on the rows it names, and no others? |
+| `clear-retention` | does clearing empty the tree, and does repeating it retain nothing? |
+| `dispose` | after disposing the root, does anything still answer? |
+
+Three properties are what make this a gate and not a report.
+
+**A missing observation fails its step.** The evaluator never treats an absent
+reading as a pass. A gate that goes green because its oracle could not be read
+is strictly worse than no gate: it converts a collection bug into a correctness
+claim. Fifteen distinct holes are covered by the oracle tests for exactly this
+reason.
+
+**Evaluation stops at the first failure**, and the remaining steps are recorded
+as `skipped`, not as passes. A tree that painted the wrong rows makes every
+later answer meaningless, and a record that scored those later steps anyway
+would read as five-of-six rather than as stopped.
+
+**An absence needs a provocation.** `dispose` does not pass merely because no
+ack arrived; it requires that at least one was provoked after the dispose and
+still did not arrive. An absence nobody gave a chance to be violated is not
+evidence of anything, which is the same reason `clear-retention` requires the
+residual to be *identical* across all N cycles rather than merely small once.
+
+The judgement is pure and lives apart from the collection, so it runs in CI on
+every commit with no device attached, and a window whose collection went wrong
+can be re-judged from the observations it did produce without re-taking the
+lease. The command exits non-zero when any step fails, which is what lets a
+lease script stop before it spends its budget measuring a broken tree:
+
+```bash
+node benchmarks/lynx-table/stages/issue234-device-gate.mjs \
+  --observations results/issue234-gate-observations-1000.json \
+  --out results/issue234-gate-1000.json \
+  --scale 1000 --cycles 3 --serial <adb-serial> \
+  --question 'does the D-train paint, adopt, route, update, clear and dispose correctly on device?'
+```
+
+The record carries the verdict, the per-step reasons, the device stamp, and the
+observations it judged — the last because a record that says `fail` without
+saying what it read cannot be acted on without another lease.
+
+### What is not here yet
+
+The device half — the build-only app probe that produces the observations and
+the adb runner that drives it — is not in this slice. It has a hard dependency
+on the round-2 device branch's build wiring (`BENCH_DISABLE_DEVTOOL` and
+`BENCH_DEVICE_MESSAGECHANNEL_FALLBACK`; SDK 4.0 has no `MessageChannel`), which
+has since merged via #244 — the collection half (D2) can now branch off
+`new-lynx` directly. Until D2 lands, the gate is exercised against checked-in
+observation fixtures, which is what the oracle and command tests do.
 
 ## Claims and non-claims
 

@@ -1785,6 +1785,22 @@
   },
   {
     "suite": "lynx-table",
+    "op": "clear_commands_1k",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 1,
+    "note": "Clearing the table retires one whole template run, so the teardown commit must name the run rather than its 1,000 rows: exactly one destroy-run command. A breach means the background is enumerating hosts on the wire again."
+  },
+  {
+    "suite": "lynx-table",
+    "op": "recreate_commands_1k",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 1,
+    "note": "The second create, on the container the first create and its teardown left behind, must be the same single template-run command the first one was. A breach means the shared-template path is available only to a virgin root, which is the shape every cross-framework harness measures against."
+  },
+  {
+    "suite": "lynx-table",
     "op": "swap_wire_bytes_1k",
     "target": "octane-lynx",
     "reference": "changed-rows-model",
@@ -1878,6 +1894,22 @@
     "reference": "changed-rows-model",
     "maxRatio": 1,
     "note": "All 10,000 freshly inserted component-owned rows share one compiled intrinsic template, so creation must remain one contiguous template-run command rather than scaling with row count."
+  },
+  {
+    "suite": "lynx-table",
+    "op": "clear_commands_10k",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 1,
+    "note": "Clearing the table retires one whole template run, so the teardown commit must name the run rather than its 10,000 rows: exactly one destroy-run command. A breach means the background is enumerating hosts on the wire again."
+  },
+  {
+    "suite": "lynx-table",
+    "op": "recreate_commands_10k",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 1,
+    "note": "The second create, on the container the first create and its teardown left behind, must be the same single template-run command the first one was. A breach means the shared-template path is available only to a virgin root, which is the shape every cross-framework harness measures against."
   },
   {
     "suite": "lynx-table",

@@ -259,8 +259,6 @@ interface LynxHostState<Node extends LynxElementRef> {
 	 * non-overlapping [first, last] ranges instead of one map entry per host.
 	 */
 	retiredRanges: [number, number][];
-	/** Ordinary pure template runs may retain compact metadata solely for certified teardown. */
-	teardownRecords: LynxDenseHostRecordStore<Node> | null;
 	/**
 	 * Template runs the peer declared under a native `<list>` and asked the host
 	 * not to build. `records` holds what has been materialized; these hold what
@@ -542,7 +540,6 @@ type LynxApplyOperation<Node extends LynxElementRef> =
 			readonly parents: readonly number[];
 			readonly count?: number;
 			readonly dense?: LynxDenseHostRecordStore<Node>;
-			readonly teardownDense?: LynxDenseHostRecordStore<Node>;
 			/** Present only when a compact range owns contiguous lazy host identities. */
 			readonly firstId?: number;
 			readonly program?: LynxPreparedTemplateProgram;
@@ -608,9 +605,11 @@ type LynxApplyOperation<Node extends LynxElementRef> =
 			readonly generation: number;
 	  }
 	| {
+			// No `events`: the apply reads the live `state.nativeEvents` entry for
+			// the node, so a snapshot taken at lowering would be one allocation per
+			// destroyed host that nothing reads.
 			readonly op: 'destroy';
 			readonly id: number;
-			readonly events: ReadonlyMap<string, UniversalEventListenerDescriptor>;
 	  }
 	| {
 			readonly op: 'ensure-public-instance';
@@ -1015,7 +1014,6 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 		const width = this.program.shape.types.length;
 		if (
 			state.records !== this ||
-			state.teardownRecords !== null ||
 			state.faulted ||
 			this.hostGenerations !== null ||
 			this.mutated ||
@@ -2149,6 +2147,16 @@ function removeNativeEvent<Node extends LynxElementRef>(
 	state: LynxHostState<Node>,
 	node: Node,
 	type: string,
+	// `teardown` says this host is being destroyed by the same batch, so the
+	// native unbind describes an element that is already detached and about to
+	// be dropped. Dispatch cannot reach it either way: resolveLynxHostNativeEvent
+	// refuses a token whose record was deleted, whose generation moved on, or
+	// whose host is no longer root-connected, and destroy does all three. The
+	// certified direct teardown plan has always skipped these unbinds; this
+	// carries the same property to every other teardown route, which is what
+	// keeps a 10k-row clear from spending 20,000 setEvent calls to describe
+	// listeners on hosts that disappear in the same commit.
+	teardown = false,
 ): void {
 	const events = state.nativeEvents.get(node);
 	const registration = events?.get(type);
@@ -2156,9 +2164,18 @@ function removeNativeEvent<Node extends LynxElementRef>(
 	if (registration.source === 'main-thread') {
 		// Invalidate before native unbind so an engine-retained callback cannot
 		// execute after its host lifetime ends. release() is idempotent for retry.
+		// This half is never skipped: the engine holds the worklet, so only an
+		// explicit release ends its lifetime, whatever happens to the element.
 		requireWorkletRegistry(state).release(
 			registration.listener.value as LynxActivatedMainThreadWorklet,
 		);
+	}
+	if (teardown) {
+		// Bookkeeping still has to go, or the node keeps a native-event entry
+		// that outlives its record.
+		events!.delete(type);
+		if (events!.size === 0) state.nativeEvents.delete(node);
+		return;
 	}
 	let replacement: LynxNativeEventRegistration | undefined;
 	for (const [candidateType, candidate] of events!) {
@@ -2403,10 +2420,11 @@ function activateMainThreadSubtree<Node extends LynxElementRef>(
 function removeAllNativeEvents<Node extends LynxElementRef>(
 	state: LynxHostState<Node>,
 	node: Node,
+	teardown = false,
 ): void {
 	const events = state.nativeEvents.get(node);
 	if (events === undefined) return;
-	for (const type of [...events.keys()]) removeNativeEvent(state, node, type);
+	for (const type of [...events.keys()]) removeNativeEvent(state, node, type, teardown);
 }
 
 function installNativeEvents<Node extends LynxElementRef>(
@@ -3331,7 +3349,6 @@ export function createLynxHostContainer<Node extends LynxElementRef>(
 		implicitInitialGenerations: false,
 		maxExplicitId: 0,
 		retiredRanges: [],
-		teardownRecords: null,
 		deferredRuns: null,
 		portalRoot: null,
 		portalChildren: new Map(),
@@ -6083,7 +6100,6 @@ function transferFirstTree<Node extends LynxElementRef>(
 	sourceState.mainThreadRefs.clear();
 	sourceState.mainThreadRefOwners.clear();
 	sourceState.records.clear();
-	sourceState.teardownRecords = null;
 	sourceState.deferredRuns = null;
 	sourceState.rootChildren.length = 0;
 	sourceState.generations.clear();
@@ -6172,7 +6188,6 @@ function prepareDenseTeardown<Node extends LynxElementRef>(
 			try {
 				mutationStarted = true;
 				state.records = plan.records;
-				state.teardownRecords = null;
 				state.rootChildren = plan.rootChildren;
 				if (uniformRun) {
 					// One sorted range replaces one tombstone per retired host.
@@ -6226,7 +6241,7 @@ function prepareDenseTeardown<Node extends LynxElementRef>(
 								}
 								const node = plan.store.nodes[command.id - plan.firstId];
 								if (node === undefined) throw hostError('certified teardown node changed.');
-								removeNativeEvent(state, node, command.type);
+								removeNativeEvent(state, node, command.type, state.lists.size === 0);
 								if (LYNX_PROFILE && run !== null) completedEventDetaches++;
 							}
 						} finally {
@@ -6350,8 +6365,18 @@ function expandRecordsRunTeardown<Node extends LynxElementRef>(
 	state: LynxHostState<Node>,
 	command: Extract<UniversalHostCommand, { op: 'destroy-run' }>,
 ): UniversalHostCommand[] | null {
+	// Whether this expansion has to describe the listener detaches it would
+	// otherwise leave to `destroy`. It is the same predicate the command
+	// lowering uses to decide whether a detach subsumed by a destroy may skip
+	// the PAPI unbind: with no native list on the container, no element is
+	// recycled behind the driver's back, so structural removal ends the
+	// listener lifetime. Reading it here only ever describes *more* work than
+	// the apply will do — a list appearing later in this same batch makes the
+	// destroy unbind explicitly regardless — so the conservative direction is
+	// safe.
+	const describeDetaches = state.lists.size !== 0;
+	const commands: UniversalHostCommand[] = [];
 	const events: UniversalHostCommand[] = [];
-	const removes: UniversalHostCommand[] = [];
 	const destroys: UniversalHostCommand[] = [];
 	for (let row = 0; row < command.count; row++) {
 		const rootId = command.firstId + row * command.width;
@@ -6365,22 +6390,35 @@ function expandRecordsRunTeardown<Node extends LynxElementRef>(
 			for (const child of record.children) {
 				if (!visit(child)) return false;
 			}
-			for (const type of record.events.keys()) {
-				events.push({ op: 'event', id, type, listener: null });
+			if (describeDetaches) {
+				for (const type of record.events.keys()) {
+					events.push({ op: 'event', id, type, listener: null });
+				}
 			}
 			destroys.push({ op: 'destroy', id });
 			return true;
 		};
 		if (!visit(rootId) || visited !== command.width) return null;
-		removes.push({ op: 'remove', parent: command.parent, id: rootId });
+		commands.push({ op: 'remove', parent: command.parent, id: rootId });
 	}
+	// Detaches first when they are described at all, so the PAPI order stays
+	// unbind-then-remove exactly as before; otherwise `destroy` performs the
+	// same `removeAllNativeEvents` on its way out and the commands that would
+	// only have described it are never built. On a bench row that is two of
+	// every ten commands a clear used to synthesize.
+	//
 	// Appended one by one: this fallback exists for exactly the runs too large
 	// or too reordered for the certified path, and spreading count × width
 	// commands into one call blows the engine argument limit near 130k — a
 	// 30k-row teardown is over it.
-	for (const command of removes) events.push(command);
-	for (const command of destroys) events.push(command);
-	return events;
+	if (events.length !== 0) {
+		const ordered = events;
+		for (const entry of commands) ordered.push(entry);
+		for (const entry of destroys) ordered.push(entry);
+		return ordered;
+	}
+	for (const entry of destroys) commands.push(entry);
+	return commands;
 }
 
 export function prepareLynxHostBatch<Node extends LynxElementRef>(
@@ -6459,8 +6497,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				});
 			}
 		}
-		const teardownStore =
-			state.records instanceof LynxDenseHostRecordStore ? state.records : state.teardownRecords;
+		const teardownStore = state.records instanceof LynxDenseHostRecordStore ? state.records : null;
 		let hasRun = false;
 		for (const command of batch.commands) {
 			if (command !== null && typeof command === 'object' && command.op === 'destroy-run') {
@@ -6538,7 +6575,6 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 	// touched by this batch; the accepted maps remain unchanged until apply().
 	let stagedRecords: LynxHostRecordStore<Node> = new Map<number, LynxHostRecord<Node>>();
 	let acceptedDenseRecords: LynxDenseHostRecordStore<Node> | null = null;
-	let acceptedTeardownRecords: LynxDenseHostRecordStore<Node> | null = null;
 	const deletedRecords = new Set<number>();
 	const stagedGenerations = new Map<number, number>();
 	const initiallyNoGenerations = state.generations.size === 0;
@@ -6572,13 +6608,6 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 		incrementalCompactRun !== null &&
 		// Implicit generation-one identities require a provably fresh id range.
 		incrementalCompactRun.firstId > state.maxExplicitId;
-	const teardownMirrorCandidate =
-		options?.compact === true &&
-		options.incrementalCompact === true &&
-		acceptedLazyPublicInstances &&
-		state.records instanceof Map &&
-		batch.commands.length === 1 &&
-		batch.commands[0]?.op === 'mount-template-run';
 	let compactCandidate =
 		options?.compact === true &&
 		firstTree === undefined &&
@@ -6814,6 +6843,35 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 		}
 	};
 	let destroyedIds: Set<number> | null = null;
+	let lastDestroyAt: Map<number, number> | null = null;
+	const batchDestroys = (): ReadonlySet<number> => {
+		if (destroyedIds === null) {
+			destroyedIds = new Set();
+			lastDestroyAt = new Map();
+			for (let at = 0; at < batch.commands.length; at++) {
+				const candidate = batch.commands[at];
+				if (candidate?.op !== 'destroy') continue;
+				assertSafeId(candidate.id, 'destroy.id');
+				destroyedIds.add(candidate.id);
+				lastDestroyAt.set(candidate.id, at);
+			}
+		}
+		return destroyedIds;
+	};
+	// Whether a later command in this same batch destroys `id`. The set alone
+	// cannot answer this: a batch may destroy an id and re-create it, and a
+	// detach on the new incarnation is subsumed by nothing — skipping it would
+	// leave the native binding installed on a live element.
+	const destroyedLaterInBatch = (id: number, after: number): boolean => {
+		batchDestroys();
+		return (lastDestroyAt!.get(id) ?? -1) > after;
+	};
+	// A native list recycles elements the driver does not own, so a destroyed
+	// record there can hand its element back to the engine still carrying a
+	// binding. Any list topology keeps the explicit unbind. Read live at each
+	// use rather than snapshotted here: a list can appear inside this very
+	// batch, and the two readers run in different phases.
+	const teardownMaySkipUnbind = (): boolean => state.lists.size === 0;
 	const operations: LynxApplyOperation<Node>[] = [];
 	const handleOrder: number[] = [];
 	let touchedHandles: Set<number> | null = null;
@@ -7302,39 +7360,12 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				if (command.before === null) siblings.push(rowFirstId);
 				else siblings.splice(beforeIndex++, 0, rowFirstId);
 			}
-			let teardownDense: LynxDenseHostRecordStore<Node> | undefined;
-			if (
-				teardownMirrorCandidate &&
-				command.op === 'mount-template-run' &&
-				command.before === null &&
-				!isPortalParent(parent) &&
-				(typeof parent !== 'number' || isRootConnected((id) => state.records.get(id), parent))
-			) {
-				const prefix = new Map(state.records as Map<number, LynxHostRecord<Node>>);
-				const finalId = command.firstId + hostCount - 1;
-				for (const [id, record] of stagedRecords) {
-					if (id < command.firstId || id > finalId) prefix.set(id, record);
-				}
-				teardownDense = new LynxDenseHostRecordStore(
-					prefix,
-					container.root,
-					program,
-					command.firstId,
-					count,
-					parent,
-					command.values,
-					command.firstListenerId,
-					templateRecords.map((record) => record.handle.generation),
-				);
-				acceptedTeardownRecords = teardownDense;
-			}
 			operations.push({
 				op: 'mount-template',
 				id: command.firstId,
 				parent,
 				before: command.before,
 				records: templateRecords,
-				...(teardownDense === undefined ? null : { teardownDense }),
 				patches: templatePatches,
 				parents: shape.parents,
 				...(count === 1 ? null : { count }),
@@ -7797,25 +7828,29 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 					}),
 				);
 			}
-			operations.push({
-				op: 'event',
-				id: command.id,
-				type: command.type,
-				previous,
-				next: record.events.get(command.type) ?? null,
-				generation: record.handle.generation,
-				visible: record.visible,
-			});
+			// A detach whose host this same batch destroys is subsumed by the
+			// destroy: the record goes, the element is already detached, and the
+			// destroy lowering clears the native-event bookkeeping. Journalling
+			// the detach as well would spend one PAPI call per listener to
+			// describe a host that no longer exists by the end of the commit.
+			if (
+				command.listener !== null ||
+				!teardownMaySkipUnbind() ||
+				!destroyedLaterInBatch(command.id, index)
+			) {
+				operations.push({
+					op: 'event',
+					id: command.id,
+					type: command.type,
+					previous,
+					next: record.events.get(command.type) ?? null,
+					generation: record.handle.generation,
+					visible: record.visible,
+				});
+			}
 		} else if (command.op === 'destroy') {
 			abandonCompact();
-			if (destroyedIds === null) {
-				destroyedIds = new Set();
-				for (const candidate of batch.commands) {
-					if (candidate?.op !== 'destroy') continue;
-					assertSafeId(candidate.id, 'destroy.id');
-					destroyedIds.add(candidate.id);
-				}
-			}
+			const destroyed = batchDestroys();
 			assertSafeId(command.id, `command ${index} destroy.id`);
 			const record = getRecord(command.id);
 			if (record === undefined) throw hostError(`unknown destroy target ${command.id}.`);
@@ -7832,7 +7867,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				);
 			}
 			if (typeof record.parent === 'number') {
-				if (!destroyedIds.has(record.parent)) {
+				if (!destroyed.has(record.parent)) {
 					throw hostError(
 						`destroy target ${command.id} remains attached to a surviving detached parent.`,
 					);
@@ -7849,9 +7884,8 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			) {
 				stagedGenerations.set(command.id, record.handle.generation);
 			}
-			const events = new Map(record.events);
 			deleteRecord(command.id);
-			operations.push({ op: 'destroy', id: command.id, events });
+			operations.push({ op: 'destroy', id: command.id });
 			touchHandle(command.id);
 		} else if (command.op === 'lifecycle' || command.op === 'local-callback') {
 			throw hostError(`${command.op} commands are not supported by the Lynx async host.`);
@@ -8204,9 +8238,6 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 					);
 					state.deferredRuns = live.length === 0 ? null : live;
 				}
-				if (batch.commands.length !== 0) {
-					state.teardownRecords = acceptedTeardownRecords;
-				}
 				if (stagedRootChildren !== null) state.rootChildren = stagedRootChildren;
 				if (initiallyNoGenerations) {
 					state.generations = stagedGenerations;
@@ -8439,7 +8470,6 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 											);
 										}
 										record.node = node;
-										operation.teardownDense?.setNode(recordIndex, node);
 										// A commit's own `instances` flag says only that this commit's
 										// handle deltas are deferred. Whether the peer announces the
 										// hosts it will query is a property of the negotiated session,
@@ -8738,7 +8768,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 								const node = activeNodes.get(operation.id);
 								if (node !== undefined) {
 									if (state.lists.has(operation.id)) disposeNativeListState(state, operation.id);
-									removeAllNativeEvents(state, node);
+									removeAllNativeEvents(state, node, teardownMaySkipUnbind());
 									removeMainThreadRef(state, node);
 									state.ownedNodes.delete(node);
 								}
@@ -9246,7 +9276,6 @@ export function disposeLynxHostContainer<Node extends LynxElementRef>(
 		state.mainThreadRefOwners.clear();
 		state.lists.clear();
 		state.records.clear();
-		state.teardownRecords = null;
 		// A declaration retains its whole value array, which is the one thing a
 		// deferred run is deliberately large in. Clearing records without it would
 		// keep 10,000 rows of strings alive on a container that has nothing left.
