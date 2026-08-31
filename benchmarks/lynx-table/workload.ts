@@ -532,9 +532,25 @@ function tapTokenOf(node: FakeNode): string | null {
 	return typeof listener === 'string' ? listener : null;
 }
 
+/**
+ * What a `<text>` host reads as, whichever carrier holds its content.
+ *
+ * A compile-time-known text child is folded onto the host itself, so the
+ * content is an attribute write on the `<text>` rather than a `raw-text` child
+ * (issue #250). A bound or multi-part child keeps the children. Reading the
+ * children first and falling back to the host covers both without asking which
+ * one the compiler chose.
+ */
+function textContentOf(node: FakeNode): string {
+	return node.children.map((child) => child.text).join('') || node.text;
+}
+
 function buttonTapToken(papi: FakeElementPAPI, label: string): string | null {
-	for (const raw of findAll(papi, (node) => node.type === 'raw-text' && node.text === label)) {
-		let ancestor = raw.parent;
+	for (const host of findAll(
+		papi,
+		(node) => node.type === 'text' && textContentOf(node) === label,
+	)) {
+		let ancestor: FakeNode | null = host;
 		while (ancestor !== null) {
 			const token = tapTokenOf(ancestor);
 			if (token !== null) return token;
@@ -556,7 +572,7 @@ function cellOf(row: FakeNode, cls: string): FakeNode | null {
 function labelTextOf(row: FakeNode): string {
 	const cell = cellOf(row, 'col-label');
 	if (cell === null) return '';
-	return cell.children.map((child) => child.text).join('') || cell.text;
+	return textContentOf(cell);
 }
 
 // -- driving -----------------------------------------------------------------
@@ -578,13 +594,22 @@ async function until(
 	predicate: () => boolean,
 	what: string,
 	turns = 20_000,
+	// What the tree actually looked like when the wait ran out. A predicate that
+	// reads the painted tree fails identically whether the app never rendered or
+	// rendered something the predicate no longer recognizes, and those need
+	// opposite fixes. Issue #250 folded a static text child onto its `<text>`
+	// host, which left this harness looking for a `raw-text` node that no longer
+	// exists — a two-minute run ending in `timed out waiting for mount` and
+	// nothing else. The describer is what makes that difference readable.
+	describe?: () => string,
 ): Promise<void> {
 	for (let turn = 0; turn < turns; turn++) {
 		await settle(harness);
 		if (predicate()) return;
 		await macrotask();
 	}
-	throw new Error(`timed out waiting for ${what}`);
+	const detail = describe?.() ?? '';
+	throw new Error(`timed out waiting for ${what}${detail === '' ? '' : `; ${detail}`}`);
 }
 
 function tap(harness: Harness, token: string): void {
@@ -718,7 +743,20 @@ export async function runTable(rows: number): Promise<TableRunResult> {
 	Math.random = seededRandom(0x0c7a_4e11);
 	try {
 		await harness.root.render(App, {});
-		await until(harness, () => buttonTapToken(harness.papi, createButton) !== null, 'mount', 200);
+		await until(
+			harness,
+			() => buttonTapToken(harness.papi, createButton) !== null,
+			'mount',
+			200,
+			() => {
+				const painted = findAll(harness.papi, (node) => node.type === 'text').map((node) =>
+					JSON.stringify(textContentOf(node)),
+				);
+				return painted.length === 0
+					? `no <text> host painted, so the app rendered nothing this harness can drive`
+					: `no tappable ancestor of a <text> reading ${JSON.stringify(createButton)}; painted: ${painted.slice(0, 12).join(', ')}${painted.length > 12 ? `, +${painted.length - 12} more` : ''}`;
+			},
+		);
 
 		const measure = async (drive: () => Promise<void>): Promise<OpCounters> => {
 			const before = profileSnapshot();
