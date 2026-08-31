@@ -125,10 +125,42 @@ prints **MiB** (`/2**20`). MB and MiB are 4.9% apart, which is inside the range
 where a retention claim can be argued either way. Every number in the generated
 report is MiB, and every number in the JSON is bytes.
 
-## What the probe cannot tell you
+## Naming what holds a bucket — `--attribute`
 
-It names which constructors hold the bytes. It does not name what points at
-them, and a bucket is not a diagnosis. Turning `array:` into "the array in
-`<file>:<line>`" needs a retainer path, which needs the edge graph this
-deliberately does not walk — a separate, heavier step, worth taking only once a
-bucket has earned it by size and by growing per cycle.
+The fold names which constructors hold the bytes. It does not name what points
+at them, and a bucket is not a diagnosis: `array` is V8's own type for an
+unnamed backing store, so `array:` describes the shape of the thing and never
+its owner.
+
+`--attribute <bucket>` walks the edge graph the fold declines to, for the
+`afterClear` snapshot of the median sample:
+
+```bash
+node stages/heap-retention.mjs --rows 10000 --reps 3 --attribute 'array:'
+```
+
+The report then carries, for each of the bucket's largest nodes:
+
+- **`held by`** — every edge in the snapshot that lands on that node. This is
+  exact. A node with three retainers has three, and which of them matters is
+  the reader's call, not the probe's.
+- **a shortest chain from a GC root** — one path, not the only one, and
+  shortest is not the same as responsible. It nominates something to go and
+  read in the source; it does not prove the nomination is why the bytes
+  survived.
+
+It is off by default and should stay off by default. It costs a pass over the
+edge table and a breadth-first walk of the whole graph, on a snapshot this
+probe otherwise drops the moment it is folded. Pay it once a bucket has earned
+it by size and by growing per cycle; never otherwise.
+
+## What the probe still cannot tell you
+
+A retainer path names an owner in the heap, not a line of source. Going from
+`object:Table` to the call that grew it is still reading, and the path is what
+makes that reading short rather than speculative.
+
+Nor does it rank owners: self size says how big a node is, and the chain says
+who reaches it, but neither says how much of the total would be freed if that
+owner let go. That is a dominator-tree question, and this probe does not build
+one.
