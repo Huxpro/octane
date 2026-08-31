@@ -129,6 +129,11 @@ describe('Lynx runtime compatibility evidence', () => {
 				'src/core/profiling.ts',
 				'src/core/protocol.ts',
 				'src/core/renderer-id.ts',
+				// Issue #246 E1: both threads ask what program an addressed run names,
+				// and each answers from its own realm — this one from the command its
+				// own producer lowered. The main thread's answer is residency, and
+				// `program-registry.ts` is deliberately absent here.
+				'src/core/run-program.ts',
 				// Issue #156 slice 1: the codec is in both graphs by design. Each
 				// thread encodes what it sends and decodes what it receives, so
 				// shared ownership of the encoding is the point rather than a leak.
@@ -161,6 +166,12 @@ describe('Lynx runtime compatibility evidence', () => {
 				'src/core/plain-object.ts',
 				'src/core/portal.ts',
 				'src/core/profiling.ts',
+				// Issue #246 E1: the main thread's resident compiled programs, and the
+				// only thing that can turn an address back into the plan it names. It
+				// imports no runtime value from the core — the `packages: []` below is
+				// #163's bundle claim — so the address key and the descriptor freeze are
+				// written out there rather than shared with the background's copy.
+				'src/core/program-registry.ts',
 				'src/core/protocol.ts',
 				'src/core/renderer-id.ts',
 				// Issue #156 slice 1: the other half of the shared codec above.

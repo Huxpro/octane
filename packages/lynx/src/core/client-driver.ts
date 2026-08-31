@@ -44,6 +44,7 @@ import {
 	type LynxNodesRefPathResult,
 } from './nodes-ref.js';
 import { encodeLynxPortalTargetId } from './portal.js';
+import { producedRunProgram } from './run-program.js';
 
 export interface LynxPublicHandle {
 	readonly renderer: typeof LYNX_TRANSPORT_RENDERER;
@@ -277,6 +278,7 @@ interface LynxClientContainerState {
 	templateProgramMount: boolean;
 	templateProgramRuns: boolean;
 	deferredTemplateProgramRuns: boolean;
+	addressedProgramRuns: boolean;
 	teardownRuns: boolean;
 	lazyPublicInstances: boolean;
 	/** Hosts a deferred run declared, which main never built. */
@@ -437,6 +439,7 @@ export function createLynxClientContainer(
 		templateProgramMount: false,
 		templateProgramRuns: false,
 		deferredTemplateProgramRuns: false,
+		addressedProgramRuns: false,
 		teardownRuns: false,
 		lazyPublicInstances: false,
 		declaredRuns: null,
@@ -472,6 +475,13 @@ export function setLynxClientCapabilities(
 	state.templateProgramRuns = state.templateProgramMount && capabilities?.templateRuns === 1;
 	state.deferredTemplateProgramRuns =
 		state.templateProgramRuns && capabilities?.deferredTemplateRuns === 1;
+	// Addressing is a claim about the peer's chunk, not about this one: the
+	// background always holds the descriptor it lowered, so what it learns here
+	// is whether the main thread compiled the same plans and can resolve a name.
+	// Nothing derives this locally — a background that dropped the descriptor
+	// from the wire while the peer held no program would mount nothing at all.
+	state.addressedProgramRuns =
+		state.templateProgramRuns && capabilities?.addressedProgramRuns === 1;
 	state.teardownRuns = state.templateProgramMount && capabilities?.teardownRuns === 1;
 	// Upstream reads the same three flags inline here. The predicate moved to
 	// `protocol.ts` so a core that never builds a driver can ask the same
@@ -588,10 +598,23 @@ export function prepareLynxClientWorkletBatch(
 	try {
 		for (let index = 0; index < batch.commands.length; index++) {
 			const command = batch.commands[index]!;
-			if (command.op === 'mount-template-run' || command.op === 'mount-template-range') {
-				const program = templateProgramWorkletSlots(command.program);
+			if (
+				command.op === 'mount-template-run' ||
+				command.op === 'mount-template-range' ||
+				command.op === 'mount-program-run'
+			) {
+				// The background registered this program before it named it, so the
+				// resolution cannot miss here — but a miss must not be read as "no
+				// worklet slots", which would silently strip a worklet from a run.
+				const wire = producedRunProgram(command) as UniversalHostTemplateProgram | undefined;
+				if (wire === undefined) {
+					throw new Error(
+						'Octane Lynx cannot stage an addressed run whose program this realm does not hold.',
+					);
+				}
+				const program = templateProgramWorkletSlots(wire);
 				if (program === null) continue;
-				const hostCount = command.program.nodes.length;
+				const hostCount = wire.nodes.length;
 				let values: UniversalHostTemplateProgramValue[] | undefined;
 				let owners: Map<number, Set<string>> | undefined;
 				for (let slot = 0; slot < command.values.length; slot++) {
@@ -792,7 +815,7 @@ export function prepareLynxCompactHandleDeltas(
 		!Number.isSafeInteger(count) ||
 		count < LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS ||
 		(knownHostCount === undefined
-			? countLynxCompactAcknowledgementHosts(batch) !== count
+			? countLynxCompactAcknowledgementHosts(batch, producedRunProgram) !== count
 			: knownHostCount !== count)
 	) {
 		throw new Error('Octane Lynx compact acknowledgement has a mismatched host count or batch.');
@@ -804,10 +827,15 @@ export function prepareLynxCompactHandleDeltas(
 	if (incremental) {
 		const run = batch.commands.length === 1 ? batch.commands[0] : undefined;
 		if (
-			run?.op !== 'mount-template-run' ||
+			(run?.op !== 'mount-template-run' && run?.op !== 'mount-program-run') ||
 			!Object.isFrozen(run) ||
 			!Object.isFrozen(run.values) ||
-			!Object.isFrozen(run.program) ||
+			// The same statement for either shape: nothing this acknowledgement
+			// stages handles against can be mutated afterwards. A descriptor run
+			// carries the program, an addressed one carries the name of one — the
+			// program it names is resident and was frozen when its chunk registered
+			// it, which is not this side's object to check.
+			!Object.isFrozen(run.op === 'mount-program-run' ? run.address : run.program) ||
 			!Number.isSafeInteger(run.firstId) ||
 			run.firstId <= 0 ||
 			run.firstId > Number.MAX_SAFE_INTEGER - (count - 1)
@@ -943,8 +971,14 @@ export function prepareLynxCompactHandleDeltas(
 			}
 		} else if (command.op === 'mount-template-range') {
 			stageProgramRange(command.firstId, command.program);
-		} else if (command.op === 'mount-template-run') {
-			const length = command.program.nodes.length;
+		} else if (command.op === 'mount-template-run' || command.op === 'mount-program-run') {
+			const wire = producedRunProgram(command) as UniversalHostTemplateProgram | undefined;
+			if (wire === undefined) {
+				throw new Error(
+					'Octane Lynx compact acknowledgement names a program this realm does not hold.',
+				);
+			}
+			const length = wire.nodes.length;
 			const hosts = command.count * length;
 			if (
 				!Number.isSafeInteger(command.count) ||
@@ -954,7 +988,7 @@ export function prepareLynxCompactHandleDeltas(
 			) {
 				throw new Error('Octane Lynx compact acknowledgement contains an invalid host identity.');
 			}
-			stageProgramRange(command.firstId, command.program);
+			stageProgramRange(command.firstId, wire);
 			if (command.count === 1) continue;
 			const offset = command.firstId - base;
 			if (sparse === null && offset >= 0 && offset <= dense!.length - hosts) {
@@ -975,7 +1009,7 @@ export function prepareLynxCompactHandleDeltas(
 				continue;
 			}
 			for (let instance = 1; instance < command.count; instance++) {
-				stageProgramRange(command.firstId + instance * length, command.program);
+				stageProgramRange(command.firstId + instance * length, wire);
 			}
 		}
 	}
@@ -1077,13 +1111,17 @@ export function prepareLynxHandleDeltas(
 			runCommands.push({ firstId: command.firstId, hostCount, remaining: hostCount });
 			continue;
 		}
-		if (command.op === 'mount-template-run') {
+		if (command.op === 'mount-template-run' || command.op === 'mount-program-run') {
+			const wire = producedRunProgram(command) as UniversalHostTemplateProgram | undefined;
+			if (wire === undefined) {
+				throw new Error('Octane Lynx batch names a program this realm does not hold.');
+			}
 			// A declared instance is not a host yet, so main creates nothing for it
 			// and there is no transition to acknowledge. Remember the range: the
 			// core goes on owning these hosts, and the updates and destroys it
 			// sends for them name handles this side will never hold.
 			if (command.deferred === true) {
-				const hosts = command.program.nodes.length * command.count;
+				const hosts = wire.nodes.length * command.count;
 				(stagedDeclaredRuns ??= []).push({
 					firstId: command.firstId,
 					lastId: command.firstId + hosts - 1,
@@ -1091,7 +1129,7 @@ export function prepareLynxHandleDeltas(
 				});
 				continue;
 			}
-			const length = command.program.nodes.length;
+			const length = wire.nodes.length;
 			for (let instance = 0; instance < command.count; instance++) {
 				const firstId = command.firstId + instance * length;
 				for (let index = 0; index < length; index++) {
@@ -1101,7 +1139,7 @@ export function prepareLynxHandleDeltas(
 						throw new Error(`Octane Lynx batch creates existing handle ${id}.`);
 					}
 					transition.present = true;
-					transition.type = command.program.nodes[index]!.type;
+					transition.type = wire.nodes[index]!.type;
 					transition.snapshotChanged = true;
 				}
 			}
@@ -1765,6 +1803,9 @@ export function createLynxClientDriver(
 			},
 			get deferredTemplateProgramRuns() {
 				return negotiatedState?.deferredTemplateProgramRuns === true;
+			},
+			get addressedProgramRuns() {
+				return negotiatedState?.addressedProgramRuns === true;
 			},
 			get teardownRuns() {
 				return negotiatedState?.teardownRuns === true;

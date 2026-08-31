@@ -336,6 +336,19 @@ export interface UniversalProgramPlan {
 	 * made before any of it is live.
 	 */
 	readonly bind: (host: unknown) => UniversalProgramCreate;
+	/**
+	 * The same descriptor a background would have put on the wire, resident in
+	 * the realm that compiled this program.
+	 *
+	 * Present only in an addressing build. `bind` above paints the first screen,
+	 * but a run that arrives later over the command path re-enters the ordinary
+	 * descriptor applier, and that applier needs a descriptor. Holding one copy
+	 * here is what lets a command name the program instead of carrying it: both
+	 * the applier's preparation and the protocol's validation memoize on program
+	 * identity, so this object is walked and checked once for the chunk's life
+	 * where a per-mount copy misses both memos every time.
+	 */
+	readonly wire?: UniversalHostTemplateProgram;
 }
 
 export type UniversalPlanNode =
@@ -1948,67 +1961,42 @@ export function freezeUniversalProgramAddress(
 	return Object.freeze({ module: address.module, index: address.index, digest: address.digest });
 }
 
-/** Registry key for one address. `\0` cannot appear in a module path. */
-export function universalProgramAddressKey(module: string, index: number): string {
-	return `${module}\0${index}`;
-}
-
 /**
- * Every wire program this realm can name, by address (issue #246 E1).
+ * The wire program the producer of one addressed command lowered.
  *
- * Both realms keep one, and they are populated from opposite ends — which is the
- * whole mechanism, stated as data:
+ * The sending side of E1, and deliberately not a name→program registry. A
+ * background composing a batch has the descriptor in hand — what it stops doing
+ * under E1 is putting one on the wire — and its own consumers (the driver
+ * staging ids, the delta shadow, the transport's compact check) run over that
+ * same in-memory batch before anything is serialized. So the honest key is the
+ * command object itself, and the receiving side, which has no such object, keeps
+ * its own residency in the renderer that compiled the programs.
  *
- * - the **background** registers the program it lowered, at the moment it builds
- *   the first command that names it. It already holds the descriptor; what it
- *   stops doing is *sending* one.
- * - the **main thread** registers the program its own chunk compiled, when the
- *   module declaring it evaluates. It never held a descriptor for a
- *   background-originated mount before, which is the gap E1 exists to close.
+ * Keying the sender by address instead would be wrong, not merely indirect:
+ * `prepareUniversalTemplateProgram` memoizes per encoder, and an encoder is per
+ * root, so two roots in one background rendering the same component hold two
+ * structurally identical wire objects for one address. A receiver's registry
+ * must refuse exactly that — two programs under one name is how a miscompiled
+ * build shows up there — and here it is ordinary.
  *
- * So an addressed mount costs two integers on the wire and resolves, on the
- * receiving side, to a descriptor that has been walked once for the life of the
- * chunk rather than deserialized and walked once per mount.
- *
- * Module scope, not per-root: a program belongs to the chunk that compiled it,
- * and two roots rendering the same component mean the same program.
+ * Weak because the entry is dead the moment the batch is: nothing outlives the
+ * commit that named it.
  */
-const ADDRESSED_PROGRAMS = new Map<string, UniversalHostTemplateProgram>();
+const COMMAND_PROGRAMS = new WeakMap<object, UniversalHostTemplateProgram>();
 
-/**
- * Record the wire program one address names.
- *
- * Registering the same address twice with the same program is ordinary — a
- * module evaluated under two ids, a second root mounting the same component.
- * Registering it with a *different* program is not: it means two programs answer
- * to one name, and whichever mount arrives second would paint a plausible wrong
- * tree. That is the failure a positional key has to make impossible, and the
- * build-time digest comparison is what normally prevents it from getting this
- * far; this is the last line, where the consequence would otherwise be silent.
- */
-export function registerUniversalProgramWire(
-	module: string,
-	index: number,
+/** @internal Bind an addressed command to the program its producer lowered. */
+export function recordUniversalProgramCommand(
+	command: object,
 	program: UniversalHostTemplateProgram,
 ): void {
-	const key = universalProgramAddressKey(module, index);
-	const existing = ADDRESSED_PROGRAMS.get(key);
-	if (existing !== undefined && existing !== program) {
-		throw new TypeError(
-			`Two wire programs claim the address ${module}#${index}. A program address is ` +
-				'positional, so this means the two compiles of this module disagree about ' +
-				'its plan order.',
-		);
-	}
-	ADDRESSED_PROGRAMS.set(key, program);
+	COMMAND_PROGRAMS.set(command, program);
 }
 
-/** The wire program registered under this address, or `undefined` for an unknown one. */
-export function resolveUniversalProgramWire(
-	module: string,
-	index: number,
+/** @internal The program this realm's producer lowered for one addressed command. */
+export function universalProgramCommandWire(
+	command: object,
 ): UniversalHostTemplateProgram | undefined {
-	return ADDRESSED_PROGRAMS.get(universalProgramAddressKey(module, index));
+	return COMMAND_PROGRAMS.get(command);
 }
 
 export function universalPlan(
@@ -10587,9 +10575,7 @@ class UniversalRootImpl<Container, PublicInstance>
 					// required: an address with no registry on the other side would mount
 					// nothing, and a registry with no address has nothing to look up.
 					const address =
-						this.driver.capabilities.addressedProgramRuns === true
-							? collapsed.address
-							: undefined;
+						this.driver.capabilities.addressedProgramRuns === true ? collapsed.address : undefined;
 					const width = collapsed.prepared.wire.nodes.length;
 					const firstId = collapsed.firstId!;
 					const previous = placements[placements.length - 1];
@@ -10625,13 +10611,6 @@ class UniversalRootImpl<Container, PublicInstance>
 						template.run = run;
 						return;
 					}
-					if (address !== undefined) {
-						registerUniversalProgramWire(
-							address.module,
-							address.index,
-							collapsed.prepared.wire,
-						);
-					}
 					const run =
 						address === undefined
 							? {
@@ -10651,18 +10630,26 @@ class UniversalRootImpl<Container, PublicInstance>
 									before,
 									// Rebuilt rather than forwarded: the plan's address also
 									// carries the build-time digest, which is not the wire's
-									// business and would otherwise ride every mount.
-									address: { module: address.module, index: address.index },
-									// Registered here, at the first command that names it,
-									// rather than when the plan was built: a plan whose runs
-									// never reach an addressing renderer never needs an entry,
-									// and this is the one place that knows both halves.
+									// business and would otherwise ride every mount. Frozen
+									// because it stands in for the `program` field a descriptor
+									// run carries, and the compact acknowledgement stages
+									// handles only against a run nothing can mutate afterwards.
+									address: Object.freeze({ module: address.module, index: address.index }),
 									firstId,
 									firstListenerId: null as number | null,
 									count: 1,
 									values: [...collapsed.values!],
 									...(template.deferred === true ? { deferred: true as const } : null),
 								};
+					// This background stops *sending* the descriptor; it does not stop
+					// holding one. Its own consumers — the driver staging ids, the delta
+					// shadow, the transport's compact check — run over this batch before
+					// anything is serialized, so they read the program back off the
+					// command they were handed rather than resolving a name only the
+					// other realm can answer.
+					if (address !== undefined) {
+						recordUniversalProgramCommand(run, collapsed.prepared.wire);
+					}
 					template.run = run;
 					template.runIndex = 0;
 					templateRuns.push(run);

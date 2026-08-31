@@ -4447,6 +4447,23 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 					origin,
 				),
 			),
+			// The descriptor the background would otherwise have sent with every
+			// mount, resident here instead (issue #246 E1).
+			//
+			// The compiled create above paints the first screen; a `mount-program-run`
+			// arriving later over the command path re-enters the ordinary descriptor
+			// applier, so that applier still needs a descriptor to walk. Carrying one
+			// copy in this chunk is what lets the wire carry a name: the walk and the
+			// protocol validation both memoize on program identity, so a resident
+			// program is walked once for the chunk's life where a deserialized one
+			// misses both memos on every mount.
+			//
+			// Emitted only for an addressing build. Without one no command can name
+			// this program, so the field would be bytes in the main-thread chunk that
+			// nothing ever reads.
+			...(state.programModuleId === undefined
+				? []
+				: [b.prop('init', b.literal('wire', '"wire"'), jsonValueToAst(derived.wire, origin))]),
 			// `bind`, not `create`: the emission takes the host once per program and
 			// returns the per-instance create. A distinct `kind` above means a consumer
 			// that only knows the interpreted ABI fails loudly rather than calling this

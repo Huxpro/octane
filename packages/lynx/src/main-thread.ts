@@ -1,4 +1,5 @@
 import { hasOwnSymbolFields } from './core/own-symbols.js';
+import { residentRunProgram } from './core/program-registry.js';
 import { hasCrossRealmPlainPrototype } from './core/plain-object.js';
 import type {
 	UniversalComponent,
@@ -45,6 +46,7 @@ import {
 import {
 	LYNX_BACKGROUND_TO_MAIN_EVENT,
 	LYNX_ANNOUNCED_PUBLIC_INSTANCES,
+	LYNX_ADDRESSED_PROGRAM_RUN_READY_REQUEST_BASE,
 	LYNX_CAPABILITY_READY_REQUEST_BASE,
 	LYNX_COMPACT_ACKNOWLEDGEMENT,
 	LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS,
@@ -1450,6 +1452,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 							driver.capabilities?.teardownRuns === true
 								? { teardownRuns: 1 as const }
 								: null),
+							...(request >= LYNX_ADDRESSED_PROGRAM_RUN_READY_REQUEST_BASE &&
+							driver.capabilities?.templateProgramMount === true &&
+							driver.capabilities?.templateProgramRuns === true &&
+							driver.capabilities?.addressedProgramRuns === true
+								? { addressedProgramRuns: 1 as const }
+								: null),
 						},
 					}),
 		};
@@ -2462,7 +2470,8 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 					// container the driver happens to be holding records in decide an
 					// encoding. The check below re-validates any count that disagrees
 					// with preparation against the prepared handle deltas.
-					(prepared.compactHostCount ?? countLynxCompactAcknowledgementHosts(message.batch))
+					(prepared.compactHostCount ??
+					countLynxCompactAcknowledgementHosts(message.batch, residentRunProgram))
 				: null;
 		if (compactCount !== null && compactCount < LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS) {
 			compactCount = null;
@@ -2735,7 +2744,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		let message: ReturnType<typeof validateLynxBackgroundOutboundMessage>;
 		const startedValidate = LYNX_PROFILE ? performance.now() : 0;
 		try {
-			message = validateLynxBackgroundOutboundMessage(data, validation);
+			message = validateLynxBackgroundOutboundMessage(data, validation, residentRunProgram);
 			if (LYNX_PROFILE) lynxWireProfile().validateMs += performance.now() - startedValidate;
 		} catch (error) {
 			const normalized = report(error, 'Octane Lynx received a malformed outbound message.');

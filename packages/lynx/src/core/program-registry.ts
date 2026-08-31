@@ -23,6 +23,16 @@
  * existence — `universalPlan` is the call the compiler already emits at module
  * scope, so nothing new appears in the chunk but the address arguments.
  *
+ * ## Why this module holds no runtime import from the universal core
+ *
+ * `runtime-compatibility.test.ts` pins the main-thread runtime graph at zero
+ * package dependencies, which is the whole of #163's bundle claim: the MTS chunk
+ * does not ship the universal core. The type below is erased, and the key and
+ * the descriptor walk are a dozen lines, so owning them here costs less than the
+ * dependency would. The background answers the same question from the command
+ * object its own producer lowered — see `run-program.ts`, which is absent from
+ * this graph for the mirrored reason.
+ *
  * ## Why a wrong resolution is impossible rather than unlikely
  *
  * The address is positional, so it says nothing about what it points at. That is
@@ -37,12 +47,13 @@
  * mount rather than approximating it.
  */
 
-import {
-	resolveUniversalProgramWire,
-	universalProgramAddressKey,
-	type UniversalHostProgramAddress,
-	type UniversalProgramPlan,
-} from 'octane/universal/native';
+import type { UniversalHostTemplateProgram, UniversalProgramPlan } from 'octane/universal/native';
+
+/** One address, as a run command carries it. */
+export interface LynxProgramAddress {
+	readonly module: string;
+	readonly index: number;
+}
 
 /**
  * Every addressed program this realm holds.
@@ -53,6 +64,11 @@ import {
  * map lookup with no lifetime question attached to it.
  */
 const RESIDENT_PROGRAMS = new Map<string, UniversalProgramPlan>();
+
+/** One string key per address. A \u0000 cannot appear in a module path. */
+function addressKey(module: string, index: number): string {
+	return `${module}\u0000${index}`;
+}
 
 /**
  * Record one compiled program under the name the background will use for it.
@@ -68,7 +84,7 @@ export function registerUniversalProgram(
 	index: number,
 	plan: UniversalProgramPlan,
 ): void {
-	const key = universalProgramAddressKey(module, index);
+	const key = addressKey(module, index);
 	const existing = RESIDENT_PROGRAMS.get(key);
 	if (existing !== undefined && existing !== plan) {
 		throw new TypeError(
@@ -78,6 +94,35 @@ export function registerUniversalProgram(
 		);
 	}
 	RESIDENT_PROGRAMS.set(key, plan);
+	// The plan is what the first screen paints from; the wire is what a mount
+	// arriving over the command path walks. Both are this one program, and a
+	// chunk that registered a `bind` it could not also describe would accept an
+	// addressed run and then have nothing to apply it with.
+	if (plan.wire !== undefined) deepFreezeWire(plan.wire);
+}
+
+/**
+ * Freeze the resident descriptor through, once, at registration.
+ *
+ * Not hygiene: `prepareTemplateProgram` and `assertTemplateProgram` both decline
+ * to memoize a program they cannot prove immutable, and walk every node, prop
+ * and binding again on each mount that names it. A resident program is one
+ * object for the chunk's life, so that check is the difference between one walk
+ * and one per mount — which is the entire point of naming a program instead of
+ * sending it.
+ *
+ * The compiler emits the descriptor as an object literal, so freezing is some
+ * caller's job either way, and here is the one place every addressed program
+ * passes through. The walk is O(descriptor) once per program at module scope.
+ */
+function deepFreezeWire(value: unknown, seen = new WeakSet<object>()): void {
+	if (value === null || typeof value !== 'object') return;
+	if (seen.has(value)) return;
+	seen.add(value);
+	for (const key of Object.keys(value as Record<string, unknown>)) {
+		deepFreezeWire((value as Record<string, unknown>)[key], seen);
+	}
+	Object.freeze(value);
 }
 
 /** The program registered under this address, or `undefined` for an unknown one. */
@@ -85,15 +130,20 @@ export function resolveUniversalProgram(
 	module: string,
 	index: number,
 ): UniversalProgramPlan | undefined {
-	return RESIDENT_PROGRAMS.get(universalProgramAddressKey(module, index));
+	return RESIDENT_PROGRAMS.get(addressKey(module, index));
 }
 
 /**
  * How many programs this realm holds.
  *
- * For tests and diagnostics. Deliberately not a way to enumerate them: nothing
- * in the mount path should be able to pick a program other than by the name it
- * was given.
+ * The main thread advertises `addressedProgramRuns` from this rather than from
+ * the protocol rung it speaks: understanding the op is free, and resolving an
+ * address needs the main-thread chunk of a two-layer build. An isolated
+ * `thread: 'main-thread'` graph registers nothing (issue #246 §6.3), so it says
+ * so and the peer keeps sending descriptors instead of failing per mount.
+ *
+ * Deliberately not a way to enumerate them: nothing in the mount path should be
+ * able to pick a program other than by the name it was given.
  */
 export function residentUniversalProgramCount(): number {
 	return RESIDENT_PROGRAMS.size;
@@ -102,31 +152,28 @@ export function residentUniversalProgramCount(): number {
 /**
  * The wire program a run command means, whichever way it named one.
  *
- * Every consumer of a run — the background driver staging its ids, the
- * validator counting its hosts, the applier mounting them — asks the same
- * question, and before E1 the answer was always "the field on the command". An
- * addressed run answers it from the realm's own registry instead, so the four
- * call sites stay one question with one answer rather than growing a second
- * shape each has to handle.
+ * The receiving half of the question `producedRunProgram` answers for a
+ * background. Every consumer of a run — the validator counting its hosts, the
+ * applier mounting them — asks it, and before E1 the answer was always "the
+ * field on the command".
  *
  * `undefined` for an address this realm cannot resolve. Callers decline such a
  * mount rather than approximating it: the alternative to a program is not a
  * different program, it is no tree.
  */
-export function runCommandProgram(
+export function residentRunProgram(
 	command:
-		| { readonly op: 'mount-template-range' | 'mount-template-run'; readonly program: unknown }
-		| { readonly op: 'mount-program-run'; readonly address: UniversalHostProgramAddress },
-): unknown {
-	if (command.op === 'mount-program-run') {
-		const address = command.address;
-		if (address === null || typeof address !== 'object') return undefined;
-		if (typeof address.module !== 'string' || !Number.isSafeInteger(address.index)) {
-			return undefined;
-		}
-		return resolveUniversalProgramWire(address.module, address.index);
-	}
-	return command.program;
+		| {
+				readonly op: 'mount-template-range' | 'mount-template-run';
+				readonly program: UniversalHostTemplateProgram;
+		  }
+		| { readonly op: 'mount-program-run'; readonly address: LynxProgramAddress },
+): UniversalHostTemplateProgram | undefined {
+	if (command.op !== 'mount-program-run') return command.program;
+	const address = command.address;
+	if (address === null || typeof address !== 'object') return undefined;
+	if (typeof address.module !== 'string' || !Number.isSafeInteger(address.index)) return undefined;
+	return resolveUniversalProgram(address.module, address.index)?.wire;
 }
 
 /**
@@ -142,7 +189,7 @@ export function runCommandProgram(
  */
 export function unresolvedProgramAddressMessage(
 	label: string,
-	address: UniversalHostProgramAddress,
+	address: LynxProgramAddress,
 ): string {
 	return (
 		`${label} names program ${address.module}#${address.index}, which this realm does not hold. ` +
