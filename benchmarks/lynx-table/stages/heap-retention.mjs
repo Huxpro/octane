@@ -169,7 +169,12 @@ async function capture(client, phase) {
 	chunks.length = 0;
 	const parsed = JSON.parse(text);
 	const aggregate = aggregateHeapSnapshot(parsed);
-	const retainers = args.attribute === undefined ? null : attributeBucket(parsed, args.attribute);
+	// The walk is priced per capture and only the afterClear table is ever
+	// published, so the other three phases of every repetition skip it.
+	const retainers =
+		args.attribute === undefined || phase !== 'afterClear'
+			? null
+			: attributeBucket(parsed, args.attribute);
 	return { phase, usedSize, aggregate, retainers };
 }
 
