@@ -38,11 +38,13 @@ knowing either framework's internals is the **first host call**. Any line drawn
 between them would have to be drawn from framework-specific knowledge, which
 would stop the two cells from being measured the same way. Report the pair fused.
 
-**Bucket 4 is a named exclusive remainder, so it cannot nominate an owner.** It
-is arithmetic — wall minus the terms that were observed — not an observation.
-Naming a mechanism inside it is exactly what the #230 protocol forbids, however
-large it is. A bucket-4 verdict needs an instrument that observes inside it
-first.
+**Bucket 4 is a named exclusive remainder, so on its own it cannot nominate an
+owner.** It is arithmetic — wall minus the terms that were observed — not an
+observation. Naming a mechanism inside it is exactly what the #230 protocol
+forbids, however large it is. A bucket-4 verdict needs an instrument that
+observes inside it, and there are two; **Splitting bucket 4** below is the
+procedure for using them and for the one comparison against the reference that
+they license.
 
 ## Recipe
 
@@ -143,3 +145,135 @@ From the same two windows, at 10,000 rows:
 
 Counts are the reliable currency at this boundary. Milliseconds are for sizing,
 and only against a control measured in the same window.
+
+## Splitting bucket 4
+
+Two instruments observe inside the remainder. They answer different questions,
+sample different windows, and their milliseconds must never be added together
+or divided into each other.
+
+### The phase split — is bucket 4 the framework or the platform?
+
+`papi-run.mjs` already produces it, for any run whose cell list includes
+`octane-profile`:
+
+```bash
+node stages/papi-run.mjs \
+  --cells octane,octane-profile,react-first-screen \
+  --scales 1000,10000 --reps 5 --label <lowercase-dashed>
+```
+
+The framework publishes which first-screen phase is running — render, publish,
+capture, announce — and the boundary probe attributes each host call to the
+phase that issued it, so a phase's own off-boundary time is its wall span minus
+the host time observed inside it. What no phase claims is the **residue**:
+web-core's own script between the host calls, plus the browser's style, layout,
+paint and observer frame. `render` crosses the host boundary not at all, so its
+whole span is framework script by construction rather than by subtraction.
+
+Three things about reading it:
+
+- **The marker folds out of a shipping bundle**, so the split is measured on
+  `octane-profile` and the shipping cell is beside it as the control on what
+  the probe build costs. The two builds are never divided into a ratio.
+- **The residue is an upper bound on the platform's share, not a measurement of
+  it.** Framework script before the first host call is `start_delay`, a separate
+  term, so bundle evaluation is already excluded; what can still land in the
+  residue is framework script inside the window but outside the four phases.
+  That direction flatters Octane, which makes the framework total a floor.
+- **`react-first-screen` has no phase split and cannot be given one.** The
+  vendored bundle is used as built. What it does have is its whole bucket 4,
+  and that total is the only thing Octane's split may be argued against —
+  never against a part of it, because it has no parts.
+
+The comparison the last point licenses is the one that carries the verdict:
+Octane's **framework** row against the reference's **whole** bucket 4. That
+subtracts nothing on the reference side, so it holds however React's own bucket
+4 divides internally.
+
+#### Two shares, two denominators, and only one of them is section 3's
+
+The split invites two different shares, and they are not interchangeable:
+
+| share | denominator | what it answers |
+|---|---|---|
+| framework ÷ Octane's own bucket 4 | `octane-profile` `off_boundary` | how much of Octane's remainder is Octane's script |
+| framework excess ÷ the FCP gap | `median(octane fcp total) − median(reference fcp total)` | how much of the gap against the reference that excess accounts for |
+
+Only the second uses **Section 3's denominator**, and only the second is a claim
+about the gap. The first is a composition statement about one cell and says
+nothing about the reference; quoting it as a share of the gap overstates the
+finding by about 22 points.
+
+Neither share is additive with the buckets in section 3, and for the same
+reason: `frameworkMs` and `residueMs` are each the median of their own
+per-sample series, so they do not sum to the `off_boundary` median beside them
+(516.3 + 92.7 against 594.5, at 10,000 rows in window B). Take them from the
+harness's `firstScreen.frameworkMs` and `.residueMs` fields. Summing the four
+phase medians by hand gives a different and wrong answer — 486.2 rather than
+516.3 in that window — because the median of a sum is not the sum of medians.
+
+#### What this split's resolution actually is
+
+Section 3's ±0.04 is the resolution of a **single-window FCP ratio**. It does
+not transfer to this split, which has its own, measured the same way — from the
+two same-code windows `c247-o2-bucket4-*` and `c247-o2-bucket4-b-*`, at 10,000
+rows:
+
+| quantity | window A | window B | spread |
+|---|---:|---:|---:|
+| `frameworkMs` | 505.0 | 516.3 | 11.3 ms (2.2%) |
+| `residueMs` | 94.9 | 92.7 | 2.2 ms (2.3%) |
+| framework excess over the reference's whole bucket 4 | 281.7 | 278.4 | 3.3 ms (1.2%) |
+| framework ÷ own bucket 4 | 0.842 | 0.869 | **0.027** |
+| framework excess ÷ FCP gap | 0.616 | 0.619 | **0.003** |
+
+**The derived shares are steadier than the terms they are built from**, and that
+is not luck. Within a single window `frameworkMs` spreads 11.2% and 11.5% across
+its five repetitions, and `residueMs` up to 26.5%; a window that runs hot runs
+hot for both cells, so the drift is largely common-mode and divides out of a
+ratio taken inside that window. It does not divide out of a millisecond.
+
+So the ordering of what to quote is the reverse of what the raw numbers suggest:
+the gap share replicates to 0.003 and is the number a verdict should rest on;
+the millisecond excess replicates to 1.2% and is good for sizing; the individual
+phase milliseconds are the least stable thing here and should be read as an
+ordering, not as quantities. A claim on any of them still needs the second
+window — one window cannot show you its own drift.
+
+### The function split — which functions own the framework's share
+
+`mts-profile.mjs` CPU-profiles the hidden main-thread realm and folds the
+frames by the string literals a minifier cannot rename:
+
+```bash
+node stages/mts-profile.mjs --rows 10000 --reps 5 --cells octane \
+  --label <lowercase-dashed>
+```
+
+Its milliseconds are not the boundary instrument's — a sampling profiler
+perturbs the page and this run carries no uninstrumented control — so what
+transfers from it is the **shape**: which function owns the script. Take the
+wall clocks from `papi-run.mjs` and use this only to say what is inside them.
+
+**Read `unnamed by the probe table` before reading any bucket.** A probe is
+matched against minified text in a 160-character window from the frame's start,
+so a probe stops matching when an edit moves it out of that window — the
+function keeps running and its bucket reads 0.0 ms. That is not hypothetical:
+`applier walk` read 0.0 while `visit` and `pushChildren` sat in `unmatched` at
+93.5 and 18.0 ms, the two largest unnamed frames in the run, because a
+dense-span fast path was added ahead of the destructuring the probe was taken
+from. **The largest frames the probe table did not name** is the section that
+makes this visible, and a large frame there is a probe to repair before the
+record is read as an attribution.
+
+### The trap: two windows, one temptation
+
+The phase split and the function split come from different windows and
+different instruments. Their totals do not match and are not meant to: at
+10,000 rows the phase split put Octane's first-screen script at 505.0 ms of
+off-boundary while the profiler saw 392.4 ms of main-thread script self time in
+its own window. Neither number corrects the other. What is legitimate is
+checking that they **order the phases the same way** and put roughly the same
+share in each; what is not is subtracting one from the other, or reporting a
+function's profiled milliseconds as a share of the boundary instrument's wall.

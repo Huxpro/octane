@@ -128,6 +128,14 @@ export function projectedFcp(scale) {
  */
 const PROFILE_SUFFIX = '-profile';
 
+/**
+ * The only vendored cell that measures the first-screen window at all, so the
+ * only one a phase split can be argued against. Named rather than discovered
+ * because "the reference" is a property of the campaign, not of the run: a cell
+ * list without it yields no reference row rather than a wrong one.
+ */
+const REFERENCE_FIRST_SCREEN_ID = 'react-first-screen';
+
 export function profileTransfer(scale, profiledId = 'octane-profile') {
 	// A profile cell's shipping counterpart is its own id without the suffix.
 	// Naming the pair by convention rather than by a table is what lets a run
@@ -157,6 +165,7 @@ export function profileTransfer(scale, profiledId = 'octane-profile') {
 	}
 	const shippingMs = controlWall(shipping.fcp);
 	const profiledMs = controlWall(profiled.fcp);
+	const profiledOffBoundaryMs = profiled.fcp.timed.stages.off_boundary?.median ?? 0;
 	return {
 		profiledId,
 		shippingId,
@@ -165,8 +174,50 @@ export function profileTransfer(scale, profiledId = 'octane-profile') {
 		deltaMs: profiledMs - shippingMs,
 		spread: shippingMs === 0 ? null : profiledMs / shippingMs - 1,
 		shippingOffBoundaryMs: shipping.fcp.timed.stages.off_boundary?.median ?? 0,
-		profiledOffBoundaryMs: profiled.fcp.timed.stages.off_boundary?.median ?? 0,
+		profiledOffBoundaryMs,
 		split,
+		reference: referenceExcess(scale, shipping, split, profiledOffBoundaryMs),
+	};
+}
+
+/**
+ * The framework row measured against a reference cell, which is the only
+ * comparison the split licenses: the vendored reference carries no phase marker
+ * and cannot be given one, so its bucket 4 has no parts and Octane's framework
+ * total may only be argued against the whole of it.
+ *
+ * Two shares come out of that, and they answer different questions, so both are
+ * reported with their denominator named. `shareOfOwnBucket` divides by the
+ * profiled cell's own off-boundary and is a composition statement about one
+ * cell; `shareOfGap` divides by the FCP gap itself and is the only one that is a
+ * claim about the reference. Across the two same-code windows in
+ * `results/c247-o2-bucket4*` the second replicates to 0.003 and the first to
+ * 0.027, because a hot window is hot for both cells and the common-mode drift
+ * divides out of a ratio taken inside it.
+ */
+function referenceExcess(scale, shipping, split, profiledOffBoundaryMs) {
+	const reference = scale.cells[REFERENCE_FIRST_SCREEN_ID];
+	if (reference === undefined || !reference.fcp.measured) return null;
+	if (!shipping.fcp.measured) return null;
+	const referenceOffBoundaryMs = reference.fcp.timed.stages.off_boundary?.median ?? 0;
+	// The same denominator `attributeDelta` divides by — both FCP walls taken from
+	// the *timed* window, because that is the window the numerator's off-boundary
+	// terms come from. Reading either wall from the control build instead would
+	// divide a timed numerator by an uninstrumented denominator, and the mismatch
+	// is not small: it moves this share from 68.0%/85.0% across the two same-code
+	// windows to 61.6%/61.9%. Deliberately not the sum of the bucket deltas
+	// either, since each bucket is a median of its own sample and they do not add
+	// to the whole.
+	const gapMs = shipping.fcp.timed.total.median - reference.fcp.timed.total.median;
+	const frameworkMs = split.frameworkMs.median;
+	const excessMs = frameworkMs - referenceOffBoundaryMs;
+	return {
+		referenceId: REFERENCE_FIRST_SCREEN_ID,
+		referenceOffBoundaryMs,
+		excessMs,
+		gapMs,
+		shareOfOwnBucket: profiledOffBoundaryMs === 0 ? null : frameworkMs / profiledOffBoundaryMs,
+		shareOfGap: gapMs === 0 ? null : excessMs / gapMs,
 	};
 }
 
@@ -392,6 +443,27 @@ export function renderBoundaryReport(scaleReports) {
 				`Off-boundary in the profiled cell's own timed FCP window is ${round(transfer.profiledOffBoundaryMs, 1)} ms, against ${round(transfer.shippingOffBoundaryMs, 1)} ms in \`${transfer.shippingId}\`'s. Only the residue row is outside Octane's reach; the phase rows above it are what a first-screen slice can still attack.`,
 				'',
 			);
+			if (transfer.reference !== null) {
+				const {
+					referenceId,
+					referenceOffBoundaryMs,
+					excessMs,
+					gapMs,
+					shareOfOwnBucket,
+					shareOfGap,
+				} = transfer.reference;
+				lines.push(
+					`Against \`${referenceId}\`, whose whole bucket 4 is ${round(referenceOffBoundaryMs, 1)} ms and has no parts to compare a part against: Octane's first-screen script alone exceeds it by ${round(excessMs, 1)} ms. That subtracts nothing on the reference side, so it holds however the reference's own remainder divides internally.`,
+					'',
+					'| share | denominator | value |',
+					'|---|---|---:|',
+					`| framework ÷ Octane's own bucket 4 | \`${transfer.profiledId}\` off-boundary, ${round(transfer.profiledOffBoundaryMs, 1)} ms | ${shareOfOwnBucket === null ? 'n/a' : (shareOfOwnBucket * 100).toFixed(1) + '%'} |`,
+					`| framework excess ÷ the FCP gap | \`${transfer.shippingId}\` FCP wall − \`${referenceId}\` FCP wall, ${round(gapMs, 1)} ms | ${shareOfGap === null ? 'n/a' : (shareOfGap * 100).toFixed(1) + '%'} |`,
+					'',
+					'Only the second is a claim about the gap; the first is a composition statement about one cell and says nothing about the reference. See `docs/measurement/fcp-attribution.md` for which of the two a verdict may rest on, and for the two-window spread of each.',
+					'',
+				);
+			}
 		}
 		const control = firstScreenControl(scale);
 		if (control !== null) {
