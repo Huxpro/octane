@@ -45,6 +45,12 @@ import {
 	shareOf,
 	topRetainers,
 } from './heap-retention-analyze.mjs';
+import {
+	buildRootPaths,
+	immediateRetainers,
+	nodesInBucket,
+	rootPathFor,
+} from './heap-retainer-paths.mjs';
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(import.meta.dirname, '..');
@@ -56,6 +62,7 @@ const { values: args } = parseArgs({
 		core: { type: 'string', default: 'universal' },
 		label: { type: 'string', default: 'heap-retention' },
 		port: { type: 'string', default: '8371' },
+		attribute: { type: 'string' },
 		'skip-build': { type: 'boolean', default: false },
 		'allow-busy-host': { type: 'boolean', default: false },
 	},
@@ -162,7 +169,42 @@ async function capture(client, phase) {
 	chunks.length = 0;
 	const parsed = JSON.parse(text);
 	const aggregate = aggregateHeapSnapshot(parsed);
-	return { phase, usedSize, aggregate };
+	const retainers = args.attribute === undefined ? null : attributeBucket(parsed, args.attribute);
+	return { phase, usedSize, aggregate, retainers };
+}
+
+/**
+ * Who holds the largest nodes of one bucket, for a run given `--attribute`.
+ *
+ * Off by default and deliberately so. The fold is one linear pass over the
+ * nodes; this adds a pass over the edges and a breadth-first walk of the whole
+ * graph, on a snapshot the probe otherwise drops as soon as it is folded. That
+ * is worth paying once a bucket has earned it by size and by growing per cycle,
+ * and worth paying never otherwise — which is exactly the line
+ * `heap-retention-attribution.md` already drew for this step.
+ *
+ * Both answers are recorded because they answer different questions. The
+ * immediate retainers are *every* edge that lands on the node, which is exact.
+ * The root path is one shortest chain from a GC root, which is context: it
+ * nominates something to read in the source, and does not by itself prove the
+ * nomination is why the bytes survive.
+ */
+function attributeBucket(parsed, bucket) {
+	const nodes = nodesInBucket(parsed, bucket);
+	if (nodes.length === 0) return { bucket, nodes: [] };
+	const retainers = immediateRetainers(
+		parsed,
+		nodes.map((node) => node.ordinal),
+	);
+	const paths = buildRootPaths(parsed);
+	return {
+		bucket,
+		nodes: nodes.map((node) => ({
+			bytes: node.bytes,
+			heldBy: retainers.get(node.ordinal) ?? [],
+			rootPath: rootPathFor(parsed, paths, node.ordinal),
+		})),
+	};
 }
 
 async function clickAndAwait(page, label, predicate) {
@@ -343,6 +385,7 @@ const record = {
 		loadPerCpu: +loadPerCpu.toFixed(2),
 		bundle: path.relative(root, bundle),
 	},
+	attribution: median.afterClear.retainers,
 	scalars: samples.map((sample) => ({
 		freshBytes: sample.fresh.usedSize,
 		afterCreateBytes: sample.afterCreate.usedSize,
@@ -386,6 +429,50 @@ const resultsDir = path.join(root, 'stages/results');
 fs.mkdirSync(resultsDir, { recursive: true });
 const jsonPath = path.join(resultsDir, `${args.label}-${rows}.json`);
 fs.writeFileSync(jsonPath, `${JSON.stringify(record, null, '\t')}\n`);
+
+/**
+ * The `--attribute` walk, rendered.
+ *
+ * Every hop is printed, including the ones that say nothing, because a path
+ * edited down to its interesting steps is a path the reader has to trust rather
+ * than check. The two lists are labelled apart on purpose: `held by` is every
+ * edge into the node and is exact, while the root path is one shortest chain of
+ * many and is a nomination.
+ */
+function attributionSection(attribution) {
+	if (attribution === null || attribution === undefined) return '';
+	if (attribution.nodes.length === 0)
+		return `\n## Retainers of \`${attribution.bucket}\`\n\nNo node in the \`afterClear\` snapshot carries that bucket.\n`;
+	const blocks = attribution.nodes.map((node, index) => {
+		const held = node.heldBy
+			.map((entry) => `- \`${entry.holder}\` via \`${entry.via}\``)
+			.join('\n');
+		const path =
+			node.rootPath === null
+				? '_No GC root reaches this node in this snapshot._'
+				: node.rootPath
+						.map((hop, depth) => `${'  '.repeat(depth)}\`${hop.holder}\` --\`${hop.via}\`-->`)
+						.join('\n');
+		return `### Node ${index + 1} — ${node.bytes.toLocaleString('en-US')} bytes
+
+Held by ${node.heldBy.length} edge${node.heldBy.length === 1 ? '' : 's'}:
+
+${held}
+
+A shortest chain from a GC root:
+
+${path}
+`;
+	});
+	return `
+## Retainers of \`${attribution.bucket}\` — \`afterClear\`, median sample
+
+\`held by\` is every edge that lands on the node, which is exact. The chain
+below it is *a* shortest path from a GC root, not the only one and not
+necessarily the responsible one: it nominates something to read in the source.
+
+${blocks.join('\n')}`;
+}
 
 const scalarRows = record.scalars
 	.map(
@@ -463,7 +550,7 @@ ${table(perCycleTop.head, record.median.afterClear2Bytes - record.median.afterCl
 
 Beyond the top ${topCount}: **${mib(perCycleTop.tailBytes)} MiB** across
 ${perCycleTop.tailBuckets} further buckets, and it names no owner either.
-`;
+${attributionSection(record.attribution)}`;
 const mdPath = path.join(resultsDir, `${args.label}-${rows}.md`);
 fs.writeFileSync(mdPath, report);
 
