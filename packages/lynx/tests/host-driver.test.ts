@@ -4422,25 +4422,19 @@ describe('Lynx Element PAPI host driver', () => {
 		expect(papi.eventCalls).toEqual([[foreign, 'bindEvent', 'tap', undefined]]);
 	});
 
-	// Red until E3 lands, and deliberately checked in that way: `it.fails` states
-	// the contract E3 owes rather than pinning the defect as expected behaviour,
-	// and it inverts by itself — the day a slot update stops spending the
-	// certification, this test starts passing and `it.fails` turns red to say so.
-	it.fails('keeps a run certifiable for direct teardown after a bound slot is updated', () => {
+	it('keeps a run certifiable for direct teardown after a bound slot is updated', () => {
 		// E3. A `mount-template-run` earns direct teardown by staying exactly the
-		// run it was declared as: `prepareDirectFullTeardown` refuses a store that
-		// has seen any logical set, because a written host is no longer derivable
-		// from its program. Updating a *bound slot* writes no topology — it
-		// replaces one value the program already reserved a place for — so it must
-		// not spend that certification. Today it does, and a table whose author
-		// touched a single cell pays the expansion fallback for every row on the
-		// next clear.
+		// run it was declared as, and `prepareDirectFullTeardown` used to refuse a
+		// store that had seen any logical set at all. Updating a *bound slot*
+		// writes no topology — it replaces one value the program already reserved
+		// a place for — so it must not spend that certification, and a table whose
+		// author touched a single cell must not pay the expansion fallback for
+		// every row on the next clear.
 		//
-		// The write itself already works: the assertions below the mount pass, and
-		// this test reaches the teardown before failing. What is missing is that
-		// the update routes through `writeRecord`, whose staged clone lands in the
-		// dense store at apply (`state.records.set`) and sets `mutated` — the one
-		// flag `prepareDirectFullTeardown` refuses on.
+		// The route is what made it: the update goes through `writeRecord`, whose
+		// staged clone lands in the dense store at apply (`state.records.set`).
+		// That write now says what it is, and only a write that changes more than
+		// a host's props sets `mutated`.
 		const { container, page } = createHost(71);
 		const program: UniversalHostTemplateProgram = Object.freeze({
 			nodes: Object.freeze([
@@ -4532,6 +4526,183 @@ describe('Lynx Element PAPI host driver', () => {
 			},
 		]);
 		teardown.apply();
+		expect(rows.children).toEqual([]);
+		expect(disposeLynxHostContainer(container).complete).toBe(true);
+	});
+
+	it('answers an updated run host from what was written, not from the run’s values', () => {
+		// The certification above survives a props write because the store keeps
+		// answering for that host correctly afterwards, and the reason it does is
+		// that the written record stays materialized. Nothing else pins that: a
+		// store that dropped the materialization and re-derived the host from
+		// `values` would still look untouched to the teardown and would silently
+		// serve the props the run was declared with.
+		const { container, page, papi } = createHost(72);
+		const program: UniversalHostTemplateProgram = Object.freeze({
+			nodes: Object.freeze([
+				Object.freeze({
+					type: 'view',
+					parent: -1,
+					props: Object.freeze({ class: 'row' }),
+					bindings: Object.freeze([Object.freeze({ name: 'id', valueIndex: 0 })]),
+				}),
+			]),
+			events: Object.freeze([]),
+		});
+		prepareLynxHostBatch(
+			container,
+			batch(1, [
+				{ op: 'create', id: 2, type: 'view', props: { id: 'rows' } },
+				{ op: 'insert', parent: null, id: 2, before: null },
+			]),
+		).apply();
+		const rows = page.children[0]!;
+		prepareLynxHostBatch(
+			container,
+			batch(2, [
+				{
+					op: 'mount-template-run',
+					parent: 2,
+					before: null,
+					program,
+					firstId: 10,
+					firstListenerId: null,
+					count: 2,
+					values: Object.freeze(['row-1', 'row-2']),
+				},
+			]),
+			{ compact: true, incrementalCompact: true, lazyPublicInstances: true },
+		).apply();
+		// The update drops `class`, which the program declares statically. That is
+		// what an `update` command means — it carries the whole next bag — and it
+		// is exactly the state no derivation from `values` can reproduce.
+		prepareLynxHostBatch(
+			container,
+			batch(3, [{ op: 'update', id: 11, props: { id: 'row-2*' } }]),
+		).apply();
+		expect(rows.children.map((node) => node.id)).toEqual(['row-1', 'row-2*']);
+		expect(rows.children[1]!.classes).toBe('');
+
+		papi.resetCalls();
+		prepareLynxHostBatch(
+			container,
+			batch(4, [{ op: 'update', id: 11, props: { id: 'row-2*' } }]),
+		).apply();
+		// `flush` is the commit itself; every prop call this batch could have made
+		// would sit in front of it.
+		expect(papi.calls).toEqual(['flush']);
+
+		// The discriminating write: restoring `class` touches only `class` if the
+		// store answered `{ id: 'row-2*' }`, and would touch only `id` if it had
+		// reverted to the declared `{ class: 'row', id: 'row-2' }`.
+		papi.resetCalls();
+		prepareLynxHostBatch(
+			container,
+			batch(5, [{ op: 'update', id: 11, props: { id: 'row-2*', class: 'row' } }]),
+		).apply();
+		expect(papi.calls).toEqual(['setClasses', 'flush']);
+		expect(rows.children[1]!.id).toBe('row-2*');
+		expect(rows.children[1]!.classes).toBe('row');
+		expect(disposeLynxHostContainer(container).complete).toBe(true);
+	});
+
+	it('spends the certification when a run host gains a listener rather than props', () => {
+		// The write boundary has to keep refusing everything that is not a props
+		// replacement, and a listener bound after the mount is the case nothing
+		// else in `prepareDirectFullTeardown` would catch: it changes no node, no
+		// parent, no child order and no owned node, and the refusal list does not
+		// read `state.nativeEvents`. The run’s destroy-run therefore has to fall
+		// back to the per-host expansion, because the listener id it bound is not
+		// one the program’s stride derives and a single `destroy-run` delta would
+		// not name it.
+		const { container, page } = createHost(73);
+		const program: UniversalHostTemplateProgram = Object.freeze({
+			nodes: Object.freeze([
+				Object.freeze({
+					type: 'view',
+					parent: -1,
+					props: Object.freeze({ class: 'row' }),
+					bindings: Object.freeze([Object.freeze({ name: 'id', valueIndex: 0 })]),
+				}),
+			]),
+			events: Object.freeze([]),
+		});
+		prepareLynxHostBatch(
+			container,
+			batch(1, [
+				{ op: 'create', id: 2, type: 'view', props: { id: 'rows' } },
+				{ op: 'insert', parent: null, id: 2, before: null },
+			]),
+		).apply();
+		const rows = page.children[0]!;
+		prepareLynxHostBatch(
+			container,
+			batch(2, [
+				{
+					op: 'mount-template-run',
+					parent: 2,
+					before: null,
+					program,
+					firstId: 10,
+					firstListenerId: null,
+					count: 2,
+					values: Object.freeze(['row-1', 'row-2']),
+				},
+			]),
+			{ compact: true, incrementalCompact: true, lazyPublicInstances: true },
+		).apply();
+		prepareLynxHostBatch(
+			container,
+			batch(3, [
+				{ op: 'event', id: 10, type: 'bindtap', listener: { id: 900, priority: 'discrete' } },
+			]),
+		).apply();
+
+		const teardown = prepareLynxHostBatch(
+			container,
+			batch(4, [{ op: 'destroy-run', parent: 2, firstId: 10, count: 2, width: 1 }]),
+		);
+		expect(teardown.handleDelta.every((delta) => delta.op === 'destroy')).toBe(true);
+		expect(teardown.handleDelta).toHaveLength(2);
+		teardown.apply();
+		expect(rows.children).toEqual([]);
+
+		// And the same when the props write and the bind share a batch, where both
+		// commands write one staged clone and the store is handed a single record
+		// carrying both changes. Two mechanisms refuse this one — the listener id
+		// is also announced as a generation — so it pins the outcome rather than
+		// the write boundary that produces it.
+		prepareLynxHostBatch(
+			container,
+			batch(5, [
+				{
+					op: 'mount-template-run',
+					parent: 2,
+					before: null,
+					program,
+					firstId: 20,
+					firstListenerId: null,
+					count: 2,
+					values: Object.freeze(['row-3', 'row-4']),
+				},
+			]),
+			{ compact: true, incrementalCompact: true, lazyPublicInstances: true },
+		).apply();
+		prepareLynxHostBatch(
+			container,
+			batch(6, [
+				{ op: 'update', id: 20, props: { id: 'row-3*', class: 'row' } },
+				{ op: 'event', id: 20, type: 'bindtap', listener: { id: 901, priority: 'discrete' } },
+			]),
+		).apply();
+		expect(rows.children.map((node) => node.id)).toEqual(['row-3*', 'row-4']);
+		const sharedBatchTeardown = prepareLynxHostBatch(
+			container,
+			batch(7, [{ op: 'destroy-run', parent: 2, firstId: 20, count: 2, width: 1 }]),
+		);
+		expect(sharedBatchTeardown.handleDelta.every((delta) => delta.op === 'destroy')).toBe(true);
+		expect(sharedBatchTeardown.handleDelta).toHaveLength(2);
+		sharedBatchTeardown.apply();
 		expect(rows.children).toEqual([]);
 		expect(disposeLynxHostContainer(container).complete).toBe(true);
 	});
