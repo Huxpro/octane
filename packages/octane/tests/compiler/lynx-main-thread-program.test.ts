@@ -303,17 +303,17 @@ export function Card(props: { label: string }) @{
 `;
 		const [root] = evaluate(compiled(MIXED, { backend: Backend })).roots;
 		expect(root.kind).toBe('program');
-		// Node 3, not 2: the literal is its own `#text` node in the compiled
-		// program, which is exactly the contrast this test is drawing.
-		// Position 4, after view(0), the `fixed` text(1), its literal `#text`(2)
-		// and the `live` text(3): the literal is a program node and the dynamic
-		// hole is not, which is the contrast this test is drawing.
+		// Node 2, after view(0) and the `fixed` text(1). The literal is no longer
+		// a node at all: #242 Cause A folds it onto its host as a `text` prop, so
+		// the carrier the program used to carry is gone and the `live` text moved
+		// up one. That sharpens the contrast rather than blurring it — a literal
+		// costs the program no node, and a dynamic hole costs it a range site.
 		// `paintsText` is the fourth member and the one C5 added: the hole stays a
 		// range at build time, and the create function carries the run-time test
 		// that paints it when the value turns out to be a string. It is true here
 		// because the hole's host is a `text`; a hole under a `view` is the
 		// ordinary keyed list at every value and would read `false`.
-		expect(root.ranges).toEqual([{ slot: 0, node: 3, id: 4, paintsText: true }]);
+		expect(root.ranges).toEqual([{ slot: 0, node: 2, id: 3, paintsText: true }]);
 		const papi = createHost();
 		createLynxHostContainer(papi, { root: 1 });
 		const page = papi.pages[0]!;
@@ -323,21 +323,22 @@ export function Card(props: { label: string }) @{
 		// The literal is painted; a hole sent no string is left open. One entry
 		// per range follows the program's nodes either way, so the position of an
 		// answer never depends on what the answer is.
-		expect(nodes).toHaveLength(5);
-		expect(nodes[4]).toBeUndefined();
+		expect(nodes).toHaveLength(4);
+		expect(nodes[3]).toBeUndefined();
 		expect(JSON.stringify(shape(papi.pages[0]!))).toContain('tail');
 		expect(JSON.stringify(shape(papi.pages[0]!))).not.toContain('Live');
 
 		// And the same create, handed the string the hole turned out to hold: the
-		// text is painted by the program, behind the literal's own `#text`, and
-		// comes back in the range's slot so a caller can own the node it now has.
+		// text is painted by the program, behind the `fixed` cell that now carries
+		// its own literal, and comes back in the range's slot so a caller can own
+		// the node it now has.
 		const second = createHost();
 		createLynxHostContainer(second, { root: 1 });
 		const secondPage = second.pages[0]!;
 		const painted = root.bind(second)(secondPage.id, 'Live') as readonly never[];
 		second.insertBefore(secondPage as never, painted[0]!, null);
-		expect(painted).toHaveLength(5);
-		expect(painted[4]).toBeDefined();
+		expect(painted).toHaveLength(4);
+		expect(painted[3]).toBeDefined();
 		const shaped = JSON.stringify(shape(second.pages[0]!));
 		expect(shaped).toContain('tail');
 		expect(shaped).toContain('Live');

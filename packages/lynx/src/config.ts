@@ -93,6 +93,13 @@ const LYNX_BACKGROUND_VALIDATION = {
 		page: [],
 		view: [],
 		text: [
+			// `<text>` accepts its content directly. In `@lynx-js/web-elements` the
+			// `<text>` component composes the very same `RawTextAttributes` handler
+			// that `<raw-text>` does, so the attribute is not an approximation of a
+			// carrier child — it is the same code path. Declaring it here is what
+			// lets the compiler's `text-child-prop` fold retire the carrier for
+			// content it already knows (#242 Cause A).
+			'text',
 			'text-maxline',
 			'text-maxlength',
 			'text-single-line-vertical-align',
@@ -222,7 +229,13 @@ export const lynxBackgroundRenderer = {
 	server: 'unsupported',
 	intrinsics: '@octanejs/lynx/intrinsics',
 	text: 'host',
-	capabilities: ['class-name-alias', 'visibility', 'thread-functions', 'template-program-mount'],
+	capabilities: [
+		'class-name-alias',
+		'visibility',
+		'thread-functions',
+		'template-program-mount',
+		'text-child-prop',
+	],
 	validation: LYNX_BACKGROUND_VALIDATION,
 } as const;
 
@@ -243,6 +256,7 @@ export const lynxMainThreadRenderer = {
 		'visibility',
 		'main-thread-render-only',
 		'thread-functions',
+		'text-child-prop',
 	],
 	firstScreenEvents: ['bind*', 'catch*', 'capture-bind*', 'capture-catch*', 'global-bind*'],
 	validation: LYNX_MAIN_THREAD_VALIDATION,
