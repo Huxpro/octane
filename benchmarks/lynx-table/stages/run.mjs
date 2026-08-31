@@ -40,6 +40,8 @@ import {
 	mutationOperations,
 	operationTimeout,
 	scaleTag,
+	setupPredicateSpec,
+	setupSteps,
 } from './operations.mjs';
 
 const require = createRequire(import.meta.url);
@@ -58,6 +60,10 @@ const { values: args } = parseArgs({
 		'candidate-bundle': { type: 'string' },
 		'min-content': { type: 'string', default: 'public' },
 		'output-tag': { type: 'string', default: 'live' },
+		// The two clear cells, off by default. Every cell is measured in all three
+		// variants at every repetition, so a campaign that is not asking what
+		// teardown costs should not pay for the answer.
+		teardown: { type: 'boolean', default: false },
 	},
 });
 const repetitions = args.smoke ? 1 : requireMinimumRepetitions(args.reps);
@@ -251,7 +257,7 @@ async function runFcp(browser, variant, profile) {
 	}
 }
 
-const operations = buildOperations(rows);
+const operations = buildOperations(rows, { teardown: args.teardown });
 const operationNames = Object.keys(operations);
 const mutationNames = mutationOperations(operations);
 
@@ -277,26 +283,34 @@ async function clickAndWait(page, target, predicate, timeoutMs) {
 }
 
 // `update10th` stamps a suffix onto labels the setup click chose, so its
-// predicate is only knowable once the table exists.
+// predicate is only knowable once the table exists. A setup step that updates
+// — the one `updateThenClear` runs between its create and its clear — has the
+// same problem, so the derivation is shared rather than restated.
+async function derivedFromTable(page, derive) {
+	const before = await page.evaluate((index) => globalThis.__x.labelAt(index), derive.index);
+	return derivedPredicate(derive, before);
+}
+
 async function resolvePredicate(page, operation, oracle) {
 	if (operation.derive === undefined)
 		return operation.predicate ?? { type: 'checksumNot', value: oracle.checksum };
-	const before = await page.evaluate(
-		(index) => globalThis.__x.labelAt(index),
-		operation.derive.index,
-	);
-	return derivedPredicate(operation.derive, before);
+	return derivedFromTable(page, operation.derive);
+}
+
+async function resolveSetupPredicate(page, step) {
+	const spec = setupPredicateSpec(step);
+	return spec.derive === undefined ? spec.predicate : derivedFromTable(page, spec.derive);
 }
 
 async function runOperation(browser, variant, profile, operationName) {
 	const page = await load(browser, variant);
 	try {
 		const operation = operations[operationName];
-		if (operation.setup !== undefined) {
+		for (const step of setupSteps(operation)) {
 			await clickAndWait(
 				page,
-				operation.setup.target,
-				operation.setup.predicate,
+				step.target,
+				await resolveSetupPredicate(page, step),
 				DEFAULT_TIMEOUT_MS,
 			);
 			await page.evaluate(() => globalThis.__x.settle());
