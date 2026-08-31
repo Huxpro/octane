@@ -30,6 +30,7 @@
 // trusted, and #230 requires a metric to self-certify before it is a target.
 import fs from 'node:fs';
 import http from 'node:http';
+import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -291,6 +292,43 @@ const retainedTop = topRetainers(retained, topCount);
 const liveTop = topRetainers(live, topCount);
 const perCycleTop = topRetainers(perCycle, topCount);
 
+/**
+ * The commit this record measured, and whether the tree was clean.
+ *
+ * A record that does not name its code cannot be compared to another one. That
+ * is not hypothetical: the first record this probe checked in was taken before
+ * #250 folded a text child onto its host, and the two differ by half the
+ * retained total — a reader holding both files could not have told which was
+ * which, because neither says.
+ *
+ * `dirty` is part of the answer rather than a footnote. A commit id on a record
+ * taken from a modified tree names code that was not what ran, which is worse
+ * than naming nothing.
+ *
+ * Never fatal. This probe has to run from a checkout without git as readily as
+ * from one with it, and a missing stamp is a known gap where a thrown error
+ * would be a lost measurement.
+ */
+function headCommit() {
+	try {
+		const commit = execFileSync('git', ['rev-parse', 'HEAD'], {
+			cwd: root,
+			encoding: 'utf8',
+			stdio: ['ignore', 'pipe', 'ignore'],
+		}).trim();
+		const status = execFileSync('git', ['status', '--porcelain'], {
+			cwd: root,
+			encoding: 'utf8',
+			stdio: ['ignore', 'pipe', 'ignore'],
+		});
+		return { commit, dirty: status.trim().length > 0 };
+	} catch {
+		return { commit: null, dirty: null };
+	}
+}
+
+const head = headCommit();
+
 const record = {
 	label: args.label,
 	rows,
@@ -298,6 +336,8 @@ const record = {
 	reps: repetitions,
 	generatedAt: new Date().toISOString(),
 	provenance: {
+		commit: head.commit,
+		dirty: head.dirty,
 		node: process.version,
 		chromium: chromiumVersion,
 		loadPerCpu: +loadPerCpu.toFixed(2),
@@ -356,9 +396,15 @@ const scalarRows = record.scalars
 
 const report = `# Retained-heap attribution — ${args.core} core, ${rows.toLocaleString('en-US')} rows
 
-${repetitions} repetitions, a fresh page each. Attribution below is the median
-sample by \`afterClear\`; the scalars from every repetition are listed so the
-median is visible rather than asserted.
+${repetitions} repetition${repetitions === 1 ? '' : 's'}, a fresh page each. Attribution below is the
+median sample by \`afterClear\`; the scalars from every repetition are listed so
+the median is visible rather than asserted.
+
+Measured at \`${head.commit ?? 'unknown commit'}\`${head.dirty === true ? ' **with local modifications**' : ''}, on
+Node ${process.version} and ${chromiumVersion}, 1-minute load ${loadPerCpu.toFixed(2)} per CPU. The
+commit is here because the numbers below are only comparable to another record
+taken at a *named* commit: this probe's readings move with the element count,
+and the element count moves with the code.
 
 ## Scalars (\`Runtime.getHeapUsage\`, post-collection, MiB)
 
