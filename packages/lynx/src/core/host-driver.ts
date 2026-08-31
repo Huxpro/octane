@@ -1690,16 +1690,23 @@ function planScalarClassAndIdCreation(props: Readonly<Record<string, unknown>>):
 	const patch: {
 		id?: { readonly value: string | null };
 		classes?: { readonly value: string };
-		readonly attributes: readonly never[];
+		attributes: readonly { readonly name: string; readonly value: unknown }[];
 		readonly mainThreadEvents: readonly never[];
 		readonly requiresRecreate: false;
 	} = {
-		attributes: EMPTY_RAW_TEXT_CREATE_PATCH.attributes as readonly never[],
+		attributes: EMPTY_RAW_TEXT_CREATE_PATCH.attributes,
 		mainThreadEvents: EMPTY_RAW_TEXT_CREATE_PATCH.mainThreadEvents as readonly never[],
 		requiresRecreate: false,
 	};
 	const id = props.id;
 	if (id !== null && id !== undefined) patch.id = Object.freeze({ value: String(id) });
+	// A `text` host on this route may carry folded content (#242 Cause A). The
+	// dense applier writes it under this exact guard, and two appliers of one
+	// program must make the same Element PAPI calls.
+	const text = props.text;
+	if (typeof text === 'string' && text !== '') {
+		patch.attributes = Object.freeze([Object.freeze({ name: 'text', value: text })]);
+	}
 	const candidate = Object.prototype.hasOwnProperty.call(props, 'className')
 		? props.className
 		: props.class;
