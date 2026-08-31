@@ -527,7 +527,22 @@ node stages/run.mjs --fcp-production-ab --reps 7 --rows 10000 \
   --baseline-bundle /absolute/path/to/baseline/main.web.bundle \
   --candidate-bundle /absolute/path/to/candidate/main.web.bundle \
   --min-content public --output-tag production-ab
+node stages/run.mjs --teardown --reps 5 --output-tag teardown
 ```
+
+`--teardown` adds two cells, `clear` and `updateThenClear`, and it is a pair on
+purpose. `clear` releases only what a create built; `updateThenClear` runs one
+`Update every 10th row` round between the create and the clear, so it also
+releases whatever that round left behind. Same target, same closing predicate,
+same budget: the only thing not held constant is the state the clear has to let
+go of, which is what makes the difference between the two readable as one claim.
+Neither number reads on its own, and neither compares across windows.
+
+It is off by default because every cell is measured in all three variants at
+every repetition, and the campaigns that read this table are about what a frame
+costs to build. A run without the flag measures exactly the cells it measured
+before the pair existed, which is what keeps its records comparable with the
+ones already checked in.
 
 The reportable command builds control and `__OCTANE_LYNX_PROFILE__` variants,
 requires `n >= 5`, opens a fresh page for every sample, alternates control and
