@@ -1870,6 +1870,146 @@ describe('Lynx deferred template runs', () => {
 		expect(scrollThrough(deferredListMount(rows))).toBe(1 + rows * ROW_HOSTS);
 		expect(scrollThrough(eagerMount)).toBe(1 + rows * ROW_HOSTS);
 	});
+
+	/**
+	 * A run at an arbitrary place in id space, carrying values nothing else uses.
+	 *
+	 * The tests below hold more than one run against one list, which is the shape
+	 * a keyed range with two row branches produces: a run covers a contiguous span
+	 * of one row shape, so a feed alternating between the branches declares one run
+	 * per row. `item-key` is unique per list, so each run gets its own tag.
+	 */
+	function runAt(firstId: number, count: number, tag: string) {
+		const values: string[] = [];
+		for (let index = 0; index < count; index++) values.push(`${tag}-${index}`, `${tag} ${index}`);
+		return deferredRun(count, { firstId, values: Object.freeze(values) });
+	}
+
+	it('answers for a row declared by any of many runs, not only the newest', () => {
+		withList(({ container }) => {
+			// Sixty-four runs of one row, laid out the way a fragmented feed lays them
+			// out: ascending contiguous spans, one per row. Finding the run that
+			// declares a host stops at a single candidate rather than scanning every
+			// run, so which run holds a row is exactly what can now go wrong, and one
+			// run per container — what every other test here uses — cannot say.
+			const runs = 64;
+			const commands: UniversalHostCommand[] = [
+				{ op: 'create', id: 1, type: 'list', props: { id: 'feed' } },
+			];
+			for (let index = 0; index < runs; index++) {
+				commands.push(runAt(FIRST_ROW_ID + index * ROW_HOSTS, 1, `run${index}`));
+			}
+			commands.push({ op: 'insert', parent: null, id: 1, before: null });
+			prepareLynxHostBatch(container, batch(1, commands)).apply();
+
+			const list = (container.page as unknown as Element).querySelector('#feed')!;
+			expect(JSON.parse(list.getAttribute('update-list-info')!)[0].insertAction).toHaveLength(runs);
+			for (const index of [0, 1, 31, 62, 63]) {
+				const sign = globalThis.elementTree.enterListItemAtIndex(
+					list as never,
+					index,
+					11 + index,
+					false,
+				);
+				expect(list.firstElementChild?.textContent).toBe(`run${index} 0`);
+				globalThis.elementTree.leaveListItem(list as never, sign);
+			}
+
+			expect(disposeLynxHostContainer(container).errors).toEqual([]);
+		});
+	});
+
+	it('places a run declared out of id order where its ids say it belongs', () => {
+		withList(({ container }) => {
+			// Ids are minted in ascending order, so this is not the shape a commit
+			// ordinarily takes. The commands come from a peer, though, and a run kept
+			// in arrival order would leave every later lookup reading the wrong span.
+			prepareLynxHostBatch(
+				container,
+				batch(1, [
+					{ op: 'create', id: 1, type: 'list', props: { id: 'feed' } },
+					runAt(FIRST_ROW_ID + 3 * ROW_HOSTS, 1, 'late'),
+					runAt(FIRST_ROW_ID, 1, 'early'),
+					{ op: 'insert', parent: null, id: 1, before: null },
+				]),
+			).apply();
+
+			// Rows sit in the order they were declared; each reads its own run's
+			// values, and reading them is what says the run was placed correctly.
+			const list = (container.page as unknown as Element).querySelector('#feed')!;
+			const sign = globalThis.elementTree.enterListItemAtIndex(list as never, 0, 11, false);
+			expect(list.firstElementChild?.textContent).toBe('late 0');
+			globalThis.elementTree.leaveListItem(list as never, sign);
+			globalThis.elementTree.enterListItemAtIndex(list as never, 1, 12, false);
+			expect(list.firstElementChild?.textContent).toBe('early 0');
+
+			expect(disposeLynxHostContainer(container).errors).toEqual([]);
+		});
+	});
+
+	it('places a run declared in a later commit before the ranges already accepted', () => {
+		withList(({ container }) => {
+			prepareLynxHostBatch(
+				container,
+				batch(1, [
+					{ op: 'create', id: 1, type: 'list', props: { id: 'feed' } },
+					runAt(FIRST_ROW_ID + 3 * ROW_HOSTS, 1, 'late'),
+					{ op: 'insert', parent: null, id: 1, before: null },
+				]),
+			).apply();
+			// A commit's own runs are ordered as it stages them, and the accepted ones
+			// were ordered when they were staged. This is the join between the two,
+			// and appending either list to the other leaves the result unordered for
+			// every commit after it — so the row read first below is the low one.
+			prepareLynxHostBatch(container, batch(2, [runAt(FIRST_ROW_ID, 1, 'early')])).apply();
+
+			const list = (container.page as unknown as Element).querySelector('#feed')!;
+			const sign = globalThis.elementTree.enterListItemAtIndex(list as never, 1, 11, false);
+			expect(list.firstElementChild?.textContent).toBe('early 0');
+			globalThis.elementTree.leaveListItem(list as never, sign);
+			globalThis.elementTree.enterListItemAtIndex(list as never, 0, 12, false);
+			expect(list.firstElementChild?.textContent).toBe('late 0');
+
+			expect(disposeLynxHostContainer(container).errors).toEqual([]);
+		});
+	});
+
+	it('refuses a run overlapping a declared range that is not the most recent', () => {
+		withList(({ container }) => {
+			prepareLynxHostBatch(
+				container,
+				batch(1, [
+					{ op: 'create', id: 1, type: 'list', props: { id: 'feed' } },
+					runAt(FIRST_ROW_ID, 1, 'low'),
+					runAt(FIRST_ROW_ID + 8 * ROW_HOSTS, 1, 'high'),
+					{ op: 'insert', parent: null, id: 1, before: null },
+				]),
+			).apply();
+
+			// The collision is with the first of the two, and a check that consulted
+			// only the newest range would accept it — leaving two runs answering for
+			// one id, which is the state every lookup here is written against.
+			expect(() =>
+				prepareLynxHostBatch(container, batch(2, [runAt(FIRST_ROW_ID + 1, 1, 'clash')])),
+			).toThrow(/overlaps another declared host range/);
+
+			// The same collision inside one commit, where the ranges it has to see are
+			// the ones this batch is still staging rather than any it has accepted.
+			expect(() =>
+				prepareLynxHostBatch(
+					container,
+					batch(2, [
+						runAt(FIRST_ROW_ID + 20 * ROW_HOSTS, 1, 'a'),
+						runAt(FIRST_ROW_ID + 40 * ROW_HOSTS, 1, 'b'),
+						runAt(FIRST_ROW_ID + 20 * ROW_HOSTS + 1, 1, 'c'),
+					]),
+				),
+			).toThrow(/overlaps another declared host range/);
+
+			expect(disposeLynxHostContainer(container).errors).toEqual([]);
+		});
+	});
+
 	// Issue #193 Layer 1 — what a recycle spends at the host boundary.
 	//
 	// #193 sketches recycling-as-slot-writes as something program-per-cell would

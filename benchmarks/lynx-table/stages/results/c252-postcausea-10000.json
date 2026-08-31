@@ -1,0 +1,602 @@
+{
+	"label": "c252-postcausea",
+	"rows": 10000,
+	"core": "universal",
+	"reps": 3,
+	"generatedAt": "2026-08-31T07:29:54.760Z",
+	"provenance": {
+		"commit": "a4d22e2953d4103d319586f50f4d331fd6fcb797",
+		"dirty": false,
+		"node": "v22.22.2",
+		"chromium": "141.0.7390.37",
+		"loadPerCpu": 0.04,
+		"bundle": "app/dist/main.web.bundle"
+	},
+	"scalars": [
+		{
+			"freshBytes": 3998576,
+			"afterCreateBytes": 47036612,
+			"afterClearBytes": 5226760,
+			"afterClear2Bytes": 5806716,
+			"createMs": 2750.100000000093,
+			"clearMs": 485.8000000002794,
+			"createMs2": 2855.399999999907,
+			"clearMs2": 654.3000000002794
+		},
+		{
+			"freshBytes": 4024320,
+			"afterCreateBytes": 47051192,
+			"afterClearBytes": 5225676,
+			"afterClear2Bytes": 5804884,
+			"createMs": 2827.5,
+			"clearMs": 535.1999999997206,
+			"createMs2": 3013.1999999997206,
+			"clearMs2": 577.9000000003725
+		},
+		{
+			"freshBytes": 3996692,
+			"afterCreateBytes": 47047036,
+			"afterClearBytes": 5226740,
+			"afterClear2Bytes": 5806648,
+			"createMs": 2644.2999999998137,
+			"clearMs": 500.20000000018626,
+			"createMs2": 3111.5,
+			"clearMs2": 670.1000000000931
+		}
+	],
+	"median": {
+		"freshBytes": 3996692,
+		"afterCreateBytes": 47047036,
+		"afterClearBytes": 5226740,
+		"afterClear2Bytes": 5806648
+	},
+	"retained": {
+		"totalBytes": 16009184,
+		"growthBytes": 16280468,
+		"tailBytes": 512,
+		"tailBuckets": 16,
+		"top": [
+			{
+				"bucket": "native:system / JSArrayBufferData",
+				"bytes": 14745600,
+				"count": 0,
+				"afterBytes": 15925260,
+				"beforeBytes": 1179660
+			},
+			{
+				"bucket": "object:WeakRef",
+				"bytes": 960000,
+				"count": 60000,
+				"afterBytes": 960576,
+				"beforeBytes": 576
+			},
+			{
+				"bucket": "array:",
+				"bytes": 519032,
+				"count": -25,
+				"afterBytes": 658204,
+				"beforeBytes": 139172
+			},
+			{
+				"bucket": "hidden",
+				"bytes": 37835,
+				"count": 252,
+				"afterBytes": 774965,
+				"beforeBytes": 737130
+			},
+			{
+				"bucket": "native:NodeList",
+				"bytes": 4648,
+				"count": 88,
+				"afterBytes": 5920,
+				"beforeBytes": 1272
+			},
+			{
+				"bucket": "native:PerformanceEventTiming",
+				"bytes": 4608,
+				"count": 18,
+				"afterBytes": 4608,
+				"beforeBytes": 0
+			},
+			{
+				"bucket": "native:TaskAttributionTiming",
+				"bytes": 1536,
+				"count": 12,
+				"afterBytes": 1536,
+				"beforeBytes": 0
+			},
+			{
+				"bucket": "object shape:system / Map",
+				"bytes": 1480,
+				"count": 37,
+				"afterBytes": 129400,
+				"beforeBytes": 127920
+			},
+			{
+				"bucket": "native:PerformanceLongTaskTiming",
+				"bytes": 1344,
+				"count": 12,
+				"afterBytes": 1344,
+				"beforeBytes": 0
+			},
+			{
+				"bucket": "array:(object elements)",
+				"bytes": 756,
+				"count": 36,
+				"afterBytes": 36412,
+				"beforeBytes": 35656
+			},
+			{
+				"bucket": "native:PerformanceLongAnimationFrameTiming",
+				"bytes": 720,
+				"count": 5,
+				"afterBytes": 720,
+				"beforeBytes": 0
+			},
+			{
+				"bucket": "native:PerformanceScriptTiming",
+				"bytes": 448,
+				"count": 4,
+				"afterBytes": 448,
+				"beforeBytes": 0
+			},
+			{
+				"bucket": "object shape:system / PrototypeInfo",
+				"bytes": 324,
+				"count": 9,
+				"afterBytes": 15804,
+				"beforeBytes": 15480
+			},
+			{
+				"bucket": "native:system / ExternalStringData",
+				"bytes": 297,
+				"count": 37,
+				"afterBytes": 700329,
+				"beforeBytes": 700032
+			},
+			{
+				"bucket": "object shape:system / WeakArrayList",
+				"bytes": 244,
+				"count": 5,
+				"afterBytes": 1396,
+				"beforeBytes": 1152
+			},
+			{
+				"bucket": "object:Object",
+				"bytes": 232,
+				"count": 9,
+				"afterBytes": 22404,
+				"beforeBytes": 22172
+			},
+			{
+				"bucket": "array:(object properties)",
+				"bytes": 176,
+				"count": 1,
+				"afterBytes": 184704,
+				"beforeBytes": 184528
+			},
+			{
+				"bucket": "object shape:system / TransitionArray",
+				"bytes": 156,
+				"count": 5,
+				"afterBytes": 4604,
+				"beforeBytes": 4448
+			},
+			{
+				"bucket": "native:HTMLCollection",
+				"bytes": 104,
+				"count": 1,
+				"afterBytes": 104,
+				"beforeBytes": 0
+			},
+			{
+				"bucket": "native:Range",
+				"bytes": 88,
+				"count": 1,
+				"afterBytes": 88,
+				"beforeBytes": 0
+			},
+			{
+				"bucket": "object:Array",
+				"bytes": 80,
+				"count": 5,
+				"afterBytes": 16108,
+				"beforeBytes": 16028
+			},
+			{
+				"bucket": "object shape:(enum cache)",
+				"bytes": 64,
+				"count": 4,
+				"afterBytes": 288,
+				"beforeBytes": 224
+			},
+			{
+				"bucket": "object shape:system / Cell",
+				"bytes": 64,
+				"count": 8,
+				"afterBytes": 848,
+				"beforeBytes": 784
+			},
+			{
+				"bucket": "object:HTMLCollection",
+				"bytes": 60,
+				"count": 3,
+				"afterBytes": 60,
+				"beforeBytes": 0
+			},
+			{
+				"bucket": "object:MouseEvent",
+				"bytes": 60,
+				"count": 3,
+				"afterBytes": 60,
+				"beforeBytes": 0
+			}
+		]
+	},
+	"live": {
+		"totalBytes": 94913599,
+		"growthBytes": 94913887,
+		"tailBytes": 6168387,
+		"tailBuckets": 13115,
+		"top": [
+			{
+				"bucket": "native:system / JSArrayBufferData",
+				"bytes": 14745600,
+				"count": 1,
+				"afterBytes": 15925260,
+				"beforeBytes": 1179660
+			},
+			{
+				"bucket": "array:",
+				"bytes": 9997240,
+				"count": 110013,
+				"afterBytes": 10136412,
+				"beforeBytes": 139172
+			},
+			{
+				"bucket": "object:Object",
+				"bytes": 9160440,
+				"count": 370018,
+				"afterBytes": 9182612,
+				"beforeBytes": 22172
+			},
+			{
+				"bucket": "native:<slot name=\"inline-truncation\">",
+				"bytes": 5760000,
+				"count": 30000,
+				"afterBytes": 5762704,
+				"beforeBytes": 2704
+			},
+			{
+				"bucket": "native:<slot part=\"slot\">",
+				"bytes": 5760000,
+				"count": 30000,
+				"afterBytes": 5762704,
+				"beforeBytes": 2704
+			},
+			{
+				"bucket": "native:ShadowRoot",
+				"bytes": 5760000,
+				"count": 30000,
+				"afterBytes": 5762688,
+				"beforeBytes": 2688
+			},
+			{
+				"bucket": "native:<div id=\"inner-box\" part=\"inner-box\">",
+				"bytes": 3600000,
+				"count": 30000,
+				"afterBytes": 3601664,
+				"beforeBytes": 1664
+			},
+			{
+				"bucket": "native:DOMTokenList",
+				"bytes": 3360000,
+				"count": 60000,
+				"afterBytes": 3362744,
+				"beforeBytes": 2744
+			},
+			{
+				"bucket": "native:Text",
+				"bytes": 2880000,
+				"count": 30000,
+				"afterBytes": 2882432,
+				"beforeBytes": 2432
+			},
+			{
+				"bucket": "closure:",
+				"bytes": 2799972,
+				"count": 99999,
+				"afterBytes": 2823204,
+				"beforeBytes": 23232
+			},
+			{
+				"bucket": "object:r1",
+				"bytes": 2640000,
+				"count": 30000,
+				"afterBytes": 2641144,
+				"beforeBytes": 1144
+			},
+			{
+				"bucket": "native:NamedNodeMap",
+				"bytes": 2485152,
+				"count": 60000,
+				"afterBytes": 2486720,
+				"beforeBytes": 1568
+			},
+			{
+				"bucket": "object:system / Context",
+				"bytes": 2359980,
+				"count": 99999,
+				"afterBytes": 2396992,
+				"beforeBytes": 37012
+			},
+			{
+				"bucket": "string",
+				"bytes": 2113664,
+				"count": 39954,
+				"afterBytes": 3135929,
+				"beforeBytes": 1022265
+			},
+			{
+				"bucket": "object:Map",
+				"bytes": 1760032,
+				"count": 110002,
+				"afterBytes": 1761872,
+				"beforeBytes": 1840
+			},
+			{
+				"bucket": "native:CSSStyleDeclaration",
+				"bytes": 1722576,
+				"count": 30000,
+				"afterBytes": 1723640,
+				"beforeBytes": 1064
+			},
+			{
+				"bucket": "native:<x-text class=\"col-id\">",
+				"bytes": 1520000,
+				"count": 10000,
+				"afterBytes": 1520000,
+				"beforeBytes": 0
+			},
+			{
+				"bucket": "native:<x-text class=\"col-label\">",
+				"bytes": 1520000,
+				"count": 10000,
+				"afterBytes": 1520000,
+				"beforeBytes": 0
+			},
+			{
+				"bucket": "native:<x-text class=\"col-remove\" text=\"x\">",
+				"bytes": 1520000,
+				"count": 10000,
+				"afterBytes": 1520000,
+				"beforeBytes": 0
+			},
+			{
+				"bucket": "native:<x-view class=\"row\">",
+				"bytes": 1520000,
+				"count": 10000,
+				"afterBytes": 1520000,
+				"beforeBytes": 0
+			},
+			{
+				"bucket": "array:(object elements)",
+				"bytes": 1360524,
+				"count": 60016,
+				"afterBytes": 1396180,
+				"beforeBytes": 35656
+			},
+			{
+				"bucket": "object:c",
+				"bytes": 1280000,
+				"count": 40000,
+				"afterBytes": 1280944,
+				"beforeBytes": 944
+			},
+			{
+				"bucket": "object:rQ",
+				"bytes": 1200000,
+				"count": 50000,
+				"afterBytes": 1200312,
+				"beforeBytes": 312
+			},
+			{
+				"bucket": "object:Array",
+				"bytes": 960320,
+				"count": 60020,
+				"afterBytes": 976348,
+				"beforeBytes": 16028
+			},
+			{
+				"bucket": "object:WeakRef",
+				"bytes": 960000,
+				"count": 60000,
+				"afterBytes": 960576,
+				"beforeBytes": 576
+			}
+		]
+	},
+	"perCycle": {
+		"totalBytes": 15802817,
+		"growthBytes": 15803713,
+		"tailBytes": 0,
+		"tailBuckets": 0,
+		"top": [
+			{
+				"bucket": "native:system / JSArrayBufferData",
+				"bytes": 15204352,
+				"count": 0,
+				"afterBytes": 31129612,
+				"beforeBytes": 15925260
+			},
+			{
+				"bucket": "array:",
+				"bytes": 524432,
+				"count": 3,
+				"afterBytes": 1182636,
+				"beforeBytes": 658204
+			},
+			{
+				"bucket": "code",
+				"bytes": 45692,
+				"count": 260,
+				"afterBytes": 1373044,
+				"beforeBytes": 1327352
+			},
+			{
+				"bucket": "hidden",
+				"bytes": 14557,
+				"count": 20,
+				"afterBytes": 789522,
+				"beforeBytes": 774965
+			},
+			{
+				"bucket": "native:PerformanceEventTiming",
+				"bytes": 4352,
+				"count": 17,
+				"afterBytes": 8960,
+				"beforeBytes": 4608
+			},
+			{
+				"bucket": "string",
+				"bytes": 2256,
+				"count": 77,
+				"afterBytes": 898205,
+				"beforeBytes": 895949
+			},
+			{
+				"bucket": "native:TaskAttributionTiming",
+				"bytes": 1536,
+				"count": 12,
+				"afterBytes": 3072,
+				"beforeBytes": 1536
+			},
+			{
+				"bucket": "native:NodeList",
+				"bytes": 1376,
+				"count": 0,
+				"afterBytes": 7296,
+				"beforeBytes": 5920
+			},
+			{
+				"bucket": "native:PerformanceLongTaskTiming",
+				"bytes": 1344,
+				"count": 12,
+				"afterBytes": 2688,
+				"beforeBytes": 1344
+			},
+			{
+				"bucket": "object shape:system / DescriptorArray",
+				"bytes": 764,
+				"count": 10,
+				"afterBytes": 194088,
+				"beforeBytes": 193324
+			},
+			{
+				"bucket": "native:PerformanceLongAnimationFrameTiming",
+				"bytes": 720,
+				"count": 5,
+				"afterBytes": 1440,
+				"beforeBytes": 720
+			},
+			{
+				"bucket": "object shape:system / Map",
+				"bytes": 680,
+				"count": 17,
+				"afterBytes": 130080,
+				"beforeBytes": 129400
+			},
+			{
+				"bucket": "native:PerformanceScriptTiming",
+				"bytes": 560,
+				"count": 5,
+				"afterBytes": 1008,
+				"beforeBytes": 448
+			},
+			{
+				"bucket": "native:<slot name=\"inline-truncation\">",
+				"bytes": 192,
+				"count": 0,
+				"afterBytes": 2896,
+				"beforeBytes": 2704
+			},
+			{
+				"bucket": "native:<slot part=\"slot\">",
+				"bytes": 192,
+				"count": 0,
+				"afterBytes": 2896,
+				"beforeBytes": 2704
+			},
+			{
+				"bucket": "object shape:system / PrototypeInfo",
+				"bytes": 144,
+				"count": 4,
+				"afterBytes": 15948,
+				"beforeBytes": 15804
+			},
+			{
+				"bucket": "object:Object",
+				"bytes": 132,
+				"count": 5,
+				"afterBytes": 22536,
+				"beforeBytes": 22404
+			},
+			{
+				"bucket": "object shape:(enum cache)",
+				"bytes": 128,
+				"count": 8,
+				"afterBytes": 416,
+				"beforeBytes": 288
+			},
+			{
+				"bucket": "object shape:system / TransitionArray",
+				"bytes": 96,
+				"count": 2,
+				"afterBytes": 4700,
+				"beforeBytes": 4604
+			},
+			{
+				"bucket": "object shape:system / EnumCache",
+				"bytes": 48,
+				"count": 4,
+				"afterBytes": 132,
+				"beforeBytes": 84
+			},
+			{
+				"bucket": "object:Array",
+				"bytes": 48,
+				"count": 3,
+				"afterBytes": 16156,
+				"beforeBytes": 16108
+			},
+			{
+				"bucket": "array:(object elements)",
+				"bytes": 44,
+				"count": 3,
+				"afterBytes": 36456,
+				"beforeBytes": 36412
+			},
+			{
+				"bucket": "object shape:system / WeakArrayList",
+				"bytes": 28,
+				"count": 1,
+				"afterBytes": 1424,
+				"beforeBytes": 1396
+			},
+			{
+				"bucket": "number",
+				"bytes": 24,
+				"count": 2,
+				"afterBytes": 696,
+				"beforeBytes": 672
+			},
+			{
+				"bucket": "object shape:system / Cell",
+				"bytes": 16,
+				"count": 2,
+				"afterBytes": 864,
+				"beforeBytes": 848
+			}
+		]
+	}
+}
