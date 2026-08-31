@@ -71,16 +71,26 @@ export function run(count) {
 		const { run } = await import(pathToFileURL(output).href);
 		const result = run(1000);
 		const ranges = result.batch.commands.filter((command) => command.op === 'mount-template-range');
-		assert.equal(result.hostCount, 7001);
-		assert.equal(result.logicalCount, 9001);
+		// Six elements per row, not seven: the row's two holes keep the carrier
+		// that addresses their slot, and its one literal — `{'x'}` — is folded
+		// onto the `text` host as a prop (#242 Cause A). The node list below is
+		// the evidence, and it is why `values` stays at 3 while `nodes` drops:
+		// nothing about what the row *binds* moved, only what it paints.
+		assert.equal(result.hostCount, 6001);
+		assert.equal(result.logicalCount, 8001);
 		assert.equal(result.batch.commands.length, 1002);
 		assert.equal(ranges.length, 1000);
 		assert.ok(ranges.every((range) => range.program === ranges[0].program));
-		assert.equal(ranges[0].program.nodes.length, 7);
+		assert.equal(ranges[0].program.nodes.length, 6);
+		assert.deepEqual(
+			ranges[0].program.nodes.map((node) => `${node.type}<-${node.parent}`),
+			['view<--1', 'text<-0', '#text<-1', 'text<-0', '#text<-3', 'text<-0'],
+		);
+		assert.deepEqual(ranges[0].program.nodes[5].props, { text: 'x' });
 		assert.equal(ranges[0].values.length, 3);
 		assert.ok(ranges.every((range) => range.values.length === 3));
 		for (let index = 1; index < ranges.length; index++) {
-			assert.equal(ranges[index].firstId - ranges[index - 1].firstId, 9);
+			assert.equal(ranges[index].firstId - ranges[index - 1].firstId, 8);
 			assert.equal(ranges[index].firstListenerId - ranges[index - 1].firstListenerId, 2);
 		}
 	} finally {
