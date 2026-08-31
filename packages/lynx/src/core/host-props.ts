@@ -596,6 +596,10 @@ function attributeValue(type: string, name: string, value: unknown): unknown {
 	if (type === 'image' && (name === 'src' || name === 'placeholder')) {
 		return decodeLynxAssetSource(value, `<image> ${name}`);
 	}
+	// `text` on a `text` host is a raw-text carrier's content folded onto its
+	// parent (#242 Cause A), so it takes the carrier's semantics rather than
+	// generic attribute semantics: a non-string paints empty, never a coercion.
+	if (type === 'text' && name === 'text') return typeof value === 'string' ? value : '';
 	return value === null || value === undefined ? null : value;
 }
 
@@ -768,15 +772,25 @@ export function planLynxHostPropPatch(
 		const previousValue = hasOwn(previous, name)
 			? attributeValue(type, name, previous[name])
 			: null;
-		if (!Object.is(previousValue, nextValue)) {
-			(attributes ??= []).push(Object.freeze({ name, value: nextValue }));
-		}
+		if (Object.is(previousValue, nextValue)) continue;
+		// Empty text content on a `text` host is painted by making no call: the
+		// dense applier, the compiled main-thread program, and the carrier this
+		// prop replaces all say nothing rather than writing an empty value, and
+		// the appliers of one first screen must make the same calls.
+		if (type === 'text' && name === 'text' && nextValue === '' && previousValue === null) continue;
+		(attributes ??= []).push(Object.freeze({ name, value: nextValue }));
 	}
 	for (const name of previousNames) {
 		if (hasOwn(next, name) || classifyLynxHostPropName(name) !== 'attribute') continue;
-		if (attributeValue(type, name, previous[name]) !== null) {
-			(attributes ??= []).push(Object.freeze({ name, value: null }));
+		const previousValue = attributeValue(type, name, previous[name]);
+		if (previousValue === null) continue;
+		// A withdrawn text prop empties the content over the carrier's own write
+		// channel; the public PAPI promises no attribute removal for it.
+		if (type === 'text' && name === 'text') {
+			if (previousValue !== '') (attributes ??= []).push(Object.freeze({ name, value: '' }));
+			continue;
 		}
+		(attributes ??= []).push(Object.freeze({ name, value: null }));
 	}
 
 	if (attributes !== undefined) patch.attributes = Object.freeze(attributes);

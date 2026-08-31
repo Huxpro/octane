@@ -190,8 +190,11 @@ describe('lynx block template lowering', () => {
 					props: {},
 					bindings: [{ name: 'value', valueIndex: 2 }],
 				},
-				{ type: 'text', parent: 0, props: { class: 'col-remove' } },
-				{ type: '#text', parent: 5, props: { value: 'x' } },
+				// Six nodes, not seven: the `col-remove` cell's content is the literal
+				// `'x'`, which the compiler holds, so it rides the cell as a `text`
+				// prop and paints no carrier (#242 Cause A). The two dynamic cells
+				// above still carry theirs — their value is not known here.
+				{ type: 'text', parent: 0, props: { class: 'col-remove', text: 'x' } },
 			],
 			events: [
 				{ node: 3, type: 'bindtap', priority: 'discrete' },
@@ -219,23 +222,25 @@ describe('lynx block template lowering', () => {
 	it('lowers the page to a run whose last node is the keyed range site', () => {
 		const { prepared } = lower(plans[PAGE]!);
 		const types = prepared.wire.nodes.map((node) => `${node.parent}>${node.type}`);
+		// Nine nodes, not twelve. Every label on this page is a literal, so each
+		// one rides its own cell as a `text` prop and the three carriers that used
+		// to hold them are gone (#242 Cause A). The range site is the only `#text`
+		// left, which is the point: a carrier survives exactly when its content is
+		// not known at build time.
 		expect(types).toEqual([
 			'-1>view', // .page
-			'0>text', // .title
-			'1>#text', // "Octane UI Benchmark on Lynx · ready"
+			'0>text', // .title, carrying "Octane UI Benchmark on Lynx · ready"
 			'0>view', // .toolbar
-			'3>view', // .btn
-			'4>text', // .btn-text
-			'5>#text', // "Create 1,000 rows"
-			'3>view', // .btn
-			'7>text', // .btn-text
-			'8>#text', // "Clear"
+			'2>view', // .btn
+			'3>text', // .btn-text, carrying "Create 1,000 rows"
+			'2>view', // .btn
+			'5>text', // .btn-text, carrying "Clear"
 			'0>view', // .rows
-			'10>#text', // the @for range site — see below
+			'7>#text', // the @for range site — see below
 		]);
 		expect(prepared.wire.events).toEqual([
-			{ node: 4, type: 'bindtap', priority: 'discrete' },
-			{ node: 7, type: 'bindtap', priority: 'discrete' },
+			{ node: 3, type: 'bindtap', priority: 'discrete' },
+			{ node: 5, type: 'bindtap', priority: 'discrete' },
 		]);
 	});
 
@@ -266,7 +271,9 @@ describe('lynx block template lowering', () => {
 		// of the same wire shape. This is the one assertion that they agree.
 		const { prepared } = lower(plans[ROW]!);
 		const template = compileLynxBlockTemplate(prepared.wire);
-		expect(template.hostCount).toBe(7);
+		// Six hosts per row, down from seven, and the Block core reads the same
+		// six. This is the number #242 counts as `papiCreateCalls` per row.
+		expect(template.hostCount).toBe(6);
 		expect(template.valueCount).toBe(3);
 		expect(template.eventCount).toBe(2);
 		expect(template.valueNodes).toEqual([0, 2, 4]);

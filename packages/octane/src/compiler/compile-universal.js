@@ -2258,6 +2258,26 @@ function rendererHasCapability(state, capability) {
 		: false;
 }
 
+const TEXT_CHILD_PROP_CAPABILITY = 'text-child-prop';
+const TEXT_CONTENT_PROP = 'text';
+
+// #242 Cause A. Some renderers give a text element the same content twice over:
+// once as a `text` prop it accepts directly, and once as a child carrier element
+// that holds nothing but that string. Where the compiler already knows the
+// string, the carrier is a second element painted, addressed, retained and torn
+// down to say what the parent could have said itself.
+//
+// A renderer opts in with the capability, which is the semantic claim that the
+// prop and the child render identically, and names the hosts it holds for by
+// listing `text` among their accepted props. Both are load-bearing: the
+// capability alone would not say *which* elements have the prop, and `hostProps`
+// alone would not say that setting it is equivalent to painting a child.
+function hostAbsorbsTextChild(type, state) {
+	if (!rendererHasCapability(state, TEXT_CHILD_PROP_CAPABILITY)) return false;
+	const hostProps = state.renderer.validation?.hostProps;
+	return Array.isArray(hostProps?.[type]) && hostProps[type].includes(TEXT_CONTENT_PROP);
+}
+
 // This proof deliberately covers data expressions, not arbitrary authored calls.
 // Property reads can still reach getters or proxies, so the universal runtime
 // lazily claims the keyed item owner if one invokes a hook or renderer region.
@@ -3165,6 +3185,23 @@ function compileHostElementAst(node, context, state) {
 		}
 	}
 	const children = compileChildrenAst(node.children ?? [], context, state);
+	// Fold a lone compile-time-known text child onto the host, so the carrier
+	// element is never painted. Deliberately narrow, and each condition earns its
+	// place: exactly one child, because a carrier beside a sibling is not the
+	// only thing the parent renders; `kind: 'text'`, which is authored JSX text
+	// and string literals and never a dynamic hole, whose value is unknown here
+	// and whose slot the renderer must still address; and no existing writer of
+	// `text` on this host, since `propsSlot` builds an unordered bag at runtime
+	// that the compiler cannot prove lacks the key. Refuse rather than race it.
+	const absorbsTextChild =
+		children.length === 1 &&
+		children[0].kind === 'text' &&
+		propsSlot === null &&
+		!Object.hasOwn(props, TEXT_CONTENT_PROP) &&
+		!bindings.some(([name]) => name === TEXT_CONTENT_PROP) &&
+		hostAbsorbsTextChild(type, state);
+	if (absorbsTextChild) props[TEXT_CONTENT_PROP] = children[0].value;
+	const emitted = absorbsTextChild ? [] : children;
 	return withPlanOrigin(
 		{
 			kind: 'host',
@@ -3172,7 +3209,7 @@ function compileHostElementAst(node, context, state) {
 			...(Object.keys(props).length === 0 ? null : { props }),
 			...(bindings.length === 0 ? null : { bindings }),
 			...(propsSlot === null ? null : { propsSlot }),
-			...(children.length === 0 ? null : { children }),
+			...(emitted.length === 0 ? null : { children: emitted }),
 		},
 		node,
 	);

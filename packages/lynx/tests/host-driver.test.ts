@@ -2891,6 +2891,87 @@ describe('Lynx Element PAPI host driver', () => {
 		expect(prepared.handleDelta).toHaveLength(14);
 	});
 
+	it('paints folded text content whichever applier mounts the run', () => {
+		// #242 Cause A folds a compile-time-known lone text child onto its `text`
+		// host, and a class binding keeps that node on the scalar route. The
+		// content must not depend on which applier mounts the run, so this run is
+		// prepared without the compact option, which is the shape the dense fast
+		// path cannot take.
+		const { container, page } = createHost(45);
+		const program: UniversalHostTemplateProgram = Object.freeze({
+			nodes: Object.freeze([
+				Object.freeze({
+					type: 'view',
+					parent: -1,
+					props: Object.freeze({}),
+					bindings: Object.freeze([Object.freeze({ name: 'id', valueIndex: 0 })]),
+				}),
+				Object.freeze({
+					type: 'text',
+					parent: 0,
+					props: Object.freeze({ text: 'Price' }),
+					bindings: Object.freeze([Object.freeze({ name: 'class', valueIndex: 1 })]),
+				}),
+			]),
+			events: Object.freeze([]),
+		});
+		prepareLynxHostBatch(
+			container,
+			batch(1, [
+				{ op: 'create', id: 1, type: 'view', props: {} },
+				{ op: 'insert', parent: null, id: 1, before: null },
+				{
+					op: 'mount-template-run',
+					parent: 1,
+					before: null,
+					program,
+					firstId: 10,
+					firstListenerId: null,
+					count: 2,
+					values: Object.freeze(['row-1', 'label', 'row-2', 'label']),
+				},
+			]),
+		).apply();
+		const shell = page.children[0]!;
+		expect(shell.children[0]!.children[0]!).toMatchObject({ classes: 'label', text: 'Price' });
+		expect(shell.children[1]!.children[0]!).toMatchObject({ classes: 'label', text: 'Price' });
+	});
+
+	it('paints nothing for text content the carrier it replaces would not have painted', () => {
+		// The `text` prop on a `text` host stands in for a raw-text carrier child
+		// (#242 Cause A), so it takes the carrier's semantics: a non-string or
+		// empty value paints empty, and — like the dense and compiled arms — by
+		// making no call at all on create.
+		const { container, page, papi } = createHost(46);
+		prepareLynxHostBatch(
+			container,
+			batch(1, [
+				{ op: 'create', id: 1, type: 'text', props: { text: 0 } },
+				{ op: 'insert', parent: null, id: 1, before: null },
+				{ op: 'create', id: 2, type: 'text', props: { text: '' } },
+				{ op: 'insert', parent: null, id: 2, before: null },
+			]),
+		).apply();
+		const zero = page.children[0]!;
+		const empty = page.children[1]!;
+		expect(zero.text).toBe('');
+		expect(empty.text).toBe('');
+		expect(papi.calls.filter((call) => call === 'setAttribute')).toHaveLength(0);
+
+		// Emptying existing content still paints, over the carrier's own write
+		// channel rather than an attribute removal the PAPI does not promise.
+		prepareLynxHostBatch(
+			container,
+			batch(2, [{ op: 'update', id: 1, props: { text: 'x' } }]),
+		).apply();
+		expect(zero.text).toBe('x');
+		prepareLynxHostBatch(
+			container,
+			batch(3, [{ op: 'update', id: 1, props: { text: 0 } }]),
+		).apply();
+		expect(zero.text).toBe('');
+	});
+
 	it('rejects unsafe program runs before entering the Element PAPI', () => {
 		const { container, page, papi } = createHost(44);
 		const program: UniversalHostTemplateProgram = Object.freeze({

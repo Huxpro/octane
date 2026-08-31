@@ -103,6 +103,21 @@ const INTRINSIC_FACTORY: Readonly<Record<string, 'view' | 'text' | 'rawText'>> =
 /** The props `applyDenseScalarHostProps` reads on a `view` or `text`. */
 const SCALAR_HOST_PROPS: readonly string[] = Object.freeze(['class', 'className', 'id']);
 
+const TEXT_SCALAR_HOST_PROPS: readonly string[] = Object.freeze([...SCALAR_HOST_PROPS, 'text']);
+
+/**
+ * `text` is a fourth scalar, and only on a `text` host.
+ *
+ * A `<text>` whose lone child was a string the compiler already held carries
+ * that string itself, and the carrier element is never painted (#242 Cause A).
+ * Nothing else in the intrinsic set renders a `text` prop, so a `view` carrying
+ * one is a program the command path would paint differently — keep refusing
+ * that here rather than widening the scalar set for every type.
+ */
+function scalarHostProps(type: string): readonly string[] {
+	return type === 'text' ? TEXT_SCALAR_HOST_PROPS : SCALAR_HOST_PROPS;
+}
+
 /**
  * Names the emitted function may not take.
  *
@@ -313,8 +328,8 @@ function dynamicRoute(node: UniversalHostTemplateProgramNode): 0 | 1 | 2 {
 	}
 	if (
 		(node.type === 'view' || node.type === 'text') &&
-		names.every((name) => SCALAR_HOST_PROPS.includes(name)) &&
-		bindings.every((binding) => SCALAR_HOST_PROPS.includes(binding.name))
+		names.every((name) => scalarHostProps(node.type).includes(name)) &&
+		bindings.every((binding) => scalarHostProps(node.type).includes(binding.name))
 	) {
 		return 2;
 	}
@@ -379,6 +394,24 @@ function emitScalarProps(
 			const read = id.expression;
 			lines.push(
 				`\t\tif (${read} !== null && ${read} !== undefined) papi.setId(n${index}, String(${read}));`,
+			);
+		}
+	}
+	// Mirrors the applier's order and its string-only guard: the carrier element
+	// this replaces renders a non-string as empty rather than coercing it, so
+	// writing one here would paint a first screen the command path disagrees
+	// with. A statically known string settles that test at build time.
+	const text = node.type === 'text' ? scalarSource(node, 'text') : undefined;
+	if (text !== undefined) {
+		if (text.kind === 'static') {
+			if (typeof text.value === 'string' && text.value !== '') {
+				lines.push(`\t\tpapi.setAttribute(n${index}, 'text', ${JSON.stringify(text.value)});`);
+			}
+		} else {
+			const read = text.expression;
+			lines.push(
+				`\t\tif (typeof ${read} === 'string' && ${read} !== '')` +
+					` papi.setAttribute(n${index}, 'text', ${read});`,
 			);
 		}
 	}
@@ -524,7 +557,7 @@ export function emitLynxMainThreadProgram(
 				...Object.keys(node.props),
 				...(node.bindings ?? []).map((binding) => binding.name),
 			].find((name) =>
-				node.type === '#text' ? name !== 'value' : !SCALAR_HOST_PROPS.includes(name),
+				node.type === '#text' ? name !== 'value' : !scalarHostProps(node.type).includes(name),
 			);
 			// A node carrying nothing at all still reaches this: `raw-text` is the
 			// one type with an intrinsic factory that takes neither route, because

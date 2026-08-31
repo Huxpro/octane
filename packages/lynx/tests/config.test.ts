@@ -43,6 +43,9 @@ describe('@octanejs/lynx renderer preset', () => {
 			capabilities: [
 				'class-name-alias',
 				'template-program-mount',
+				// #242 Cause A: `<text>` absorbs a lone compile-time-known text child
+				// as its own `text` prop, so the carrier element is never painted.
+				'text-child-prop',
 				'thread-functions',
 				'visibility',
 			],
