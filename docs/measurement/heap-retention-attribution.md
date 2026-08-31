@@ -93,6 +93,30 @@ scalar printed beside it. Results land in
 attributing composition rather than timing, since the create/clear milliseconds
 in the scalar table are then not comparable.
 
+## Comparing two records
+
+Every generated report names the commit it measured, and says so in its second
+paragraph rather than only in the JSON. That line is not bookkeeping. This
+probe's largest managed-heap row is one `WeakRef` per painted element, so its
+readings move whenever the element count does — and the element count is a
+property of the compiler, not of the page.
+
+The first campaign is the worked example. `c230-retention-10000` was taken at
+`432c64859`, before #250 folded a compile-time-known text child onto its `text`
+host; `c252-postcausea-10000` was taken after. A row went from seven painted
+elements to six, and the two records differ by half the retained total. Neither
+number is wrong and neither supersedes the other — they measure different code.
+
+`c230-retention-10000` predates the stamp and so carries none; its base is
+recorded here instead. Every record written since names its own.
+
+Two consequences for anyone quoting a figure from one of these files:
+
+- **A retention figure is only comparable to one taken at a named commit.** Two
+  numbers from this probe with no commit between them are not a delta.
+- **`dirty: true` disqualifies a record for comparison.** The stamp then names
+  code that is not what ran, and the report says so in bold.
+
 ## Units
 
 The trap `heap-after-clear.md` names applies here too, one layer further on.
