@@ -890,6 +890,16 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 	private removed: Set<number> | null = null;
 	private live: number;
 	private cleared = false;
+	/**
+	 * A write changed something about this store beyond a host's props.
+	 *
+	 * `prepareDirectFullTeardown` is the only reader, and what it certifies is
+	 * topology: the run's nodes, its parent, its child order, and the node
+	 * ownership those imply. It reads no prop. So a write that replaces a host's
+	 * props and leaves everything else alone is not a fact the certification
+	 * rests on, and must not spend it — a table whose author touched one cell
+	 * would otherwise pay the expansion fallback for every row on the next clear.
+	 */
 	private mutated = false;
 
 	constructor(
@@ -937,8 +947,9 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 	 * Directly certify the sole destroy-run for this untouched dense store.
 	 * Accepted state, not synthesized per-host commands, is the authority: the
 	 * store was created from one frozen program and loses this eligibility on
-	 * every logical set/delete. Reordered or non-uniform mirrors deliberately
-	 * return null so the existing expansion validator remains their fallback.
+	 * every logical delete, and on every set that changes more than a host's
+	 * props. Reordered or non-uniform mirrors deliberately return null so the
+	 * existing expansion validator remains their fallback.
 	 */
 	prepareDirectFullTeardown(
 		state: LynxHostState<Node>,
@@ -1253,16 +1264,96 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 			: !this.removed?.has(offset);
 	}
 
+	/**
+	 * Whether `record` is the host already at `offset` carrying different props.
+	 *
+	 * The store has to keep answering for that host afterwards, and it does:
+	 * `values` no longer derives the written props, but `set` keeps the written
+	 * record in `materialized`, and both paths that drop a materialization —
+	 * `delete` and `clear` — already disqualify the store by themselves. The
+	 * stale derivation is therefore unreachable for as long as this store answers
+	 * for the offset at all. A deleted offset needs no separate refusal here for
+	 * the same reason: `delete` dropped its materialization, so there is nothing
+	 * left to compare a later write against and this returns false on its own.
+	 *
+	 * The first screen already settles the question this way. There `stagedRecords`
+	 * *is* the store, an update writes `record.props` straight onto the
+	 * materialized record, and no `set` happens at all — so an in-place props
+	 * write has never spent the certification. This is the clone-and-set route
+	 * agreeing with the route beside it.
+	 *
+	 * `set` is where the store learns what happened to it, and asking here rather
+	 * than at the update command is why its answer does not depend on a caller
+	 * keeping a flag correct for the rest of the batch: two commands against one
+	 * host share one staged clone and arrive as a single `set` carrying both
+	 * changes. That is a property of where the question is asked, not a defect the
+	 * alternative would have shipped — every such pair checked while writing this
+	 * is refused by another line of `prepareDirectFullTeardown` as well.
+	 *
+	 * Every field but `props` is compared by identity rather than structurally,
+	 * because the caller that produces this record is `cloneRecord`, which copies
+	 * each of them across unchanged. Identity holds exactly when the field was
+	 * left alone, and anything that rebuilt one — a recreate's new handle, a
+	 * public-instance request's selector, a child inserted under a row — reads as
+	 * the change it is. Props themselves are not inspected: an update replaces
+	 * the whole bag, so a name the program declared statically can leave it, and
+	 * that is still nothing the teardown certified.
+	 *
+	 * This is deliberately stricter than that one reader needs today. Several of
+	 * the fields below are also caught by another line of `prepareDirectFullTeardown`
+	 * — a recreate stages a generation, a removed root fails the child scan, a
+	 * rebound node only happens under a native list — so refusing on them changes
+	 * no outcome now. They stay because what this answers is a question about the
+	 * store, not about the one caller that currently asks it.
+	 */
+	private isPropsOnlyWrite(offset: number, record: LynxHostRecord<Node>): boolean {
+		const previous = this.materialized.get(offset);
+		// Writing back the very record the store handed out says nothing: whatever
+		// changed was changed in place, and there is no longer anything to compare
+		// it against.
+		if (previous === undefined || previous === record) return false;
+		if (
+			record.node !== previous.node ||
+			record.type !== previous.type ||
+			record.visible !== previous.visible ||
+			record.parent !== previous.parent ||
+			record.handle !== previous.handle ||
+			record.selectorWanted !== previous.selectorWanted ||
+			record.selectorInstalled !== previous.selectorInstalled
+		) {
+			return false;
+		}
+		const children = record.children;
+		const previousChildren = previous.children;
+		if (children !== previousChildren) {
+			if (children.length !== previousChildren.length) return false;
+			for (let index = 0; index < children.length; index++) {
+				if (children[index] !== previousChildren[index]) return false;
+			}
+		}
+		const events = record.events;
+		const previousEvents = previous.events;
+		if (events !== previousEvents) {
+			if (events.size !== previousEvents.size) return false;
+			for (const [type, descriptor] of events) {
+				if (previousEvents.get(type) !== descriptor) return false;
+			}
+		}
+		return true;
+	}
+
 	set(id: number, record: LynxHostRecord<Node>): this {
-		this.mutated = true;
 		const offset = this.offset(id);
 		if (offset !== -1) {
+			if (!this.isPropsOnlyWrite(offset, record)) this.mutated = true;
 			if (this.removed?.delete(offset)) this.live++;
 			this.materialized.set(offset, record);
 			this.nodes[offset] = record.node ?? undefined;
 		} else if (this.prefix.has(id)) {
+			this.mutated = true;
 			this.prefix.set(id, record);
 		} else {
+			this.mutated = true;
 			this.appended.set(id, record);
 		}
 		return this;
