@@ -27,6 +27,7 @@ import {
 	stats,
 } from '../web/driver-client.mjs';
 import { buildTableApp } from '../scripts/build-app.mjs';
+import { writeEvidenceJson } from '../scripts/evidence.mjs';
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(import.meta.dirname, '..');
@@ -523,7 +524,7 @@ function topOf(list, totalMs, sampleCount) {
 const resultsDir = path.join(root, 'stages/results');
 fs.mkdirSync(resultsDir, { recursive: true });
 const jsonPath = path.join(resultsDir, `bts-profile-${rows}.json`);
-fs.writeFileSync(jsonPath, `${JSON.stringify(report, null, '\t')}\n`);
+await writeEvidenceJson(jsonPath, report);
 
 const lines = [
 	`# Background render attribution @ ${rows.toLocaleString('en-US')} rows`,

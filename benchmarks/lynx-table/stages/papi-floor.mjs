@@ -35,6 +35,7 @@ import {
 	stats,
 } from '../web/driver-client.mjs';
 import { buildTableApp } from '../scripts/build-app.mjs';
+import { writeEvidenceJson } from '../scripts/evidence.mjs';
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(import.meta.dirname, '..');
@@ -621,7 +622,7 @@ const report = {
 const resultsDir = path.join(root, 'stages/results');
 fs.mkdirSync(resultsDir, { recursive: true });
 const jsonPath = path.join(resultsDir, `papi-floor-${rows}.json`);
-fs.writeFileSync(jsonPath, `${JSON.stringify(report, null, '\t')}\n`);
+await writeEvidenceJson(jsonPath, report);
 
 const markdown = renderMarkdown(report);
 const mdPath = path.join(resultsDir, `papi-floor-${rows}.md`);

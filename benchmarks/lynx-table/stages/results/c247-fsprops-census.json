@@ -1,0 +1,73 @@
+{
+  "measured": "2026-08-31T15:22:51.430798+00:00",
+  "what": "First-screen host-node prop memo eligibility for #247 bucket-4 cut sizing. Counts what prepareStaticHostProps would do at the first-screen walk site (host-driver.ts:5040), which today calls cloneProps and planLynxHostPropPatch unconditionally per node while the steady-state mount-template-run path memoizes both. The census changes no host call and no painted output; the paint oracle beside each scale is the evidence of that.",
+  "cell": "octane (universal core)",
+  "build": "node stages/fs-props-census-build.mjs --scales 1000,10000 --tag fsprops --universal",
+  "read": "stages/fs-props-census-source.mjs publishes __OCTANE_FS_PROPS on the main-thread realm",
+  "scales": {
+    "1000": {
+      "census": {
+        "hosts": 6028,
+        "eligible": 3015,
+        "textNodes": 2000,
+        "noProps": 0,
+        "notFrozen": 0,
+        "tooManyKeys": 1013,
+        "nonClassKey": 0,
+        "nonStringValue": 0,
+        "classOnly": 3015,
+        "distinctPropObjects": 4028,
+        "distinctClassKeys": 7
+      },
+      "derived": {
+        "eligibleShare": 0.5001658925016589,
+        "nonTextNodes": 4028,
+        "identityMemoHitRate": 0,
+        "valueMemoHitRate": 0.9976782752902156
+      },
+      "paintOracle": {
+        "rows": 1000,
+        "label0": "pretty red table",
+        "label999": "fancy white table",
+        "danger0": false,
+        "oracle": {
+          "rows": 1000,
+          "checksum": 1150422098
+        },
+        "classCount": 1000
+      }
+    },
+    "10000": {
+      "census": {
+        "hosts": 60028,
+        "eligible": 30015,
+        "textNodes": 20000,
+        "noProps": 0,
+        "notFrozen": 0,
+        "tooManyKeys": 10013,
+        "nonClassKey": 0,
+        "nonStringValue": 0,
+        "classOnly": 30015,
+        "distinctPropObjects": 40028,
+        "distinctClassKeys": 7
+      },
+      "derived": {
+        "eligibleShare": 0.5000166588925168,
+        "nonTextNodes": 40028,
+        "identityMemoHitRate": 0,
+        "valueMemoHitRate": 0.9997667832750291
+      },
+      "paintOracle": {
+        "rows": 10000,
+        "label0": "pretty red table",
+        "label999": "fancy white table",
+        "danger0": false,
+        "oracle": {
+          "rows": 10000,
+          "checksum": 996039633
+        },
+        "classCount": 10000
+      }
+    }
+  }
+}
