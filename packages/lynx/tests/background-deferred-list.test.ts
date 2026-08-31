@@ -28,6 +28,7 @@ import {
 } from '../src/core/protocol.js';
 import { NativeListLifecycleFixture } from './_fixtures/native-list-lifecycle.lynx.tsrx';
 import { NativeListMixedFixture } from './_fixtures/native-list-mixed.lynx.tsrx';
+import { NativeListShapeClassesFixture } from './_fixtures/native-list-shape-classes.lynx.tsrx';
 import { NativeListWorkletFixture } from './_fixtures/native-list-worklet.lynx.tsrx';
 import { unwire } from './_fixtures/lynx-wire.js';
 
@@ -52,6 +53,10 @@ const workletFixture = NativeListWorkletFixture as UniversalComponent<{
 const mixedFixture = NativeListMixedFixture as UniversalComponent<{
 	readonly items: readonly (Row & { readonly tappable: boolean })[];
 	readonly tap: unknown;
+}>;
+
+const shapeClassFixture = NativeListShapeClassesFixture as UniversalComponent<{
+	readonly items: readonly (Row & { readonly caption: string; readonly media: boolean })[];
 }>;
 
 const rows = (count: number, prefix = 'Row'): Row[] =>
@@ -325,6 +330,73 @@ describe.sequential('Lynx deferred native list rows', () => {
 			globalThis.elementTree.leaveListItem(list as never, sign);
 		}
 		expect(main.activeIdentity()).not.toBeNull();
+
+		environment.switchToBackgroundThread();
+		await root.unmount();
+		root = null;
+	});
+
+	it('declares one run per row when a keyed range has more than one row shape', async () => {
+		dom = new JSDOM('<!doctype html><html><body></body></html>');
+		installLynxTestingEnv(globalThis, { window: dom.window as never });
+		const environment = globalThis.lynxTestingEnv;
+		environment.switchToMainThread();
+		const commits: Commands[] = [];
+		const context = (
+			globalThis as unknown as { lynx: { getJSContext(): LynxContextProxy } }
+		).lynx.getJSContext();
+		main = installLynxMainThread({ context: recordingContext(context, commits) });
+		environment.switchToBackgroundThread();
+
+		// Two branches of one `@if`, both plain host structure, so both are
+		// declarable — the case the worklet fixture above cannot show, because there
+		// one branch is refused for a reason of its own.
+		const feed = (media: (index: number) => boolean) =>
+			Array.from({ length: 8 }, (_unused, index) => ({
+				id: String(index),
+				label: `Row ${index}`,
+				caption: `Caption ${index}`,
+				media: media(index),
+			}));
+		const runs = (commit: Commands) =>
+			commit
+				.filter((command) => command.op === 'mount-template-run')
+				.map((command) => ({ deferred: command.deferred, count: command.count }));
+
+		root = createLynxRoot();
+		await root.render(shapeClassFixture, { items: feed(() => false) });
+		await root.flushTransport();
+		// One shape, one run: this is the economy a run exists for, and every
+		// per-run mechanism — the value table, the dense store, the certified
+		// teardown — is priced against it.
+		expect(runs(commits[0]!)).toEqual([{ deferred: true, count: 8 }]);
+
+		await root.unmount();
+		root = createLynxRoot();
+		commits.length = 0;
+		await root.render(shapeClassFixture, { items: feed((index) => index % 2 === 1) });
+		await root.flushTransport();
+		// A run covers a contiguous span of one shape, so a feed that alternates
+		// between two of them declares one run per row. Runs therefore scale with
+		// rows rather than with lists, which is what every reader of a declaration
+		// has to be written against — see `runAtOrBefore` in the host driver — and
+		// what #193's Layer 1 is aimed at: eight commands and eight value tables
+		// where the shape of the page still admits two.
+		expect(runs(commits[0]!)).toEqual(
+			Array.from({ length: 8 }, () => ({ deferred: true, count: 1 })),
+		);
+
+		// Both shapes still paint their own row at their own index.
+		const list = dom.window.document.querySelector('#shape-feed')!;
+		environment.switchToMainThread();
+		for (const index of [0, 1, 6, 7]) {
+			const sign = globalThis.elementTree.enterListItemAtIndex(list as never, index);
+			expect(sign).toBeGreaterThan(0);
+			expect(
+				Array.from(list.children).some((cell) => cell.textContent?.startsWith(`Row ${index}`)),
+			).toBe(true);
+			globalThis.elementTree.leaveListItem(list as never, sign);
+		}
 
 		environment.switchToBackgroundThread();
 		await root.unmount();

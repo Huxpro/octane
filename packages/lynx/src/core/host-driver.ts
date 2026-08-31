@@ -264,6 +264,10 @@ interface LynxHostState<Node extends LynxElementRef> {
 	 * not to build. `records` holds what has been materialized; these hold what
 	 * has only been declared. Null while no run has ever been deferred, which is
 	 * every tree without a native list.
+	 *
+	 * Kept sorted by `firstId` over non-overlapping host ranges, like
+	 * `retiredRanges` above and for the same reason: the lookups that answer for a
+	 * declared host are binary searches over it. See `runAtOrBefore`.
 	 */
 	deferredRuns: LynxDeferredTemplateRun[] | null;
 	/** Universal root provenance is fixed by the first accepted portal handle. */
@@ -2657,6 +2661,39 @@ interface LynxDeferredTemplateRun extends LynxTemplateRunDeclaration {
 	removed: Set<number> | null;
 }
 
+/**
+ * The index of the last run starting at or before `id`, or `-1`.
+ *
+ * A list of runs is ordered by `firstId` and its ranges are disjoint, so this
+ * is the only run that can declare `id`: every earlier run ends before this one
+ * begins. Disjointness is enforced rather than assumed — `runsOverlapRange`
+ * refuses an overlapping declaration where it is staged — and the order is
+ * maintained at the two places a run enters a list, `insertDeferredRun` while a
+ * commit is staged and `mergeDeferredRuns` when it is accepted.
+ *
+ * These lookups were linear, on the reading that a run is one command per
+ * native `<list>`. It is one command per *contiguous span of one row shape*: a
+ * keyed `@for` whose body has two branches declares a run per row for a feed
+ * that alternates between them, so runs scale with rows rather than with lists.
+ * Every reader that walks a list's rows once per commit was then paying rows ×
+ * runs, which is quadratic in the length of an ordinary heterogeneous feed.
+ */
+function runAtOrBefore(runs: readonly LynxDeferredTemplateRun[], id: number): number {
+	let low = 0;
+	let high = runs.length - 1;
+	let found = -1;
+	while (low <= high) {
+		const middle = (low + high) >> 1;
+		if (runs[middle]!.firstId <= id) {
+			found = middle;
+			low = middle + 1;
+		} else {
+			high = middle - 1;
+		}
+	}
+	return found;
+}
+
 /** Whether any run in `runs` already declares a host in `[first, last]`. */
 function runsOverlapRange(
 	runs: readonly LynxDeferredTemplateRun[] | null,
@@ -2664,29 +2701,76 @@ function runsOverlapRange(
 	last: number,
 ): boolean {
 	if (runs === null) return false;
-	for (const run of runs) {
-		if (first <= run.firstId + (templateRunHostCount(run) - 1) && last >= run.firstId) return true;
-	}
-	return false;
+	// The one candidate is the last run starting at or before `last`, because a
+	// run starting after it starts past the range entirely. No earlier run can
+	// reach `first` either: it ends before the candidate begins, so if the
+	// candidate's own end falls short of `first`, every end below it does too.
+	const index = runAtOrBefore(runs, last);
+	if (index === -1) return false;
+	const run = runs[index]!;
+	return run.firstId + (templateRunHostCount(run) - 1) >= first;
 }
 
-/**
- * The run in `runs` that declares `id`, or undefined once nothing declares it.
- *
- * A linear scan because a run is one command per native list: a tree carries as
- * many of these as it has lists, not as it has rows.
- */
+/** The run in `runs` that declares `id`, or undefined once nothing declares it. */
 function declaringRun(
 	runs: readonly LynxDeferredTemplateRun[] | null,
 	id: number,
 ): { readonly run: LynxDeferredTemplateRun; readonly offset: number } | undefined {
 	if (runs === null) return undefined;
-	for (const run of runs) {
-		const offset = id - run.firstId;
-		if (offset < 0 || offset >= templateRunHostCount(run)) continue;
-		return run.removed?.has(offset) === true ? undefined : { run, offset };
+	const index = runAtOrBefore(runs, id);
+	if (index === -1) return undefined;
+	const run = runs[index]!;
+	const offset = id - run.firstId;
+	if (offset >= templateRunHostCount(run)) return undefined;
+	return run.removed?.has(offset) === true ? undefined : { run, offset };
+}
+
+/**
+ * Add `run` to `runs`, keeping it ordered by `firstId`.
+ *
+ * Ids are minted in ascending order, so the ordinary case appends and the
+ * search below never runs. The search is here because the commands come from a
+ * peer: a run declared out of id order is a well-formed batch this driver has
+ * to place correctly rather than one it may refuse, and placing it at the end
+ * regardless would leave the order every lookup above depends on quietly wrong.
+ *
+ * The shift a mis-ordered run costs is linear, so a peer that declared a whole
+ * feed backwards would pay for it here. That is a bound worth stating and not
+ * one worth a tree: the ordering is this renderer's own, the lookups are what
+ * run per row per commit, and this runs once per declaration.
+ */
+function insertDeferredRun(runs: LynxDeferredTemplateRun[], run: LynxDeferredTemplateRun): void {
+	const last = runs[runs.length - 1];
+	if (last === undefined || last.firstId < run.firstId) {
+		runs.push(run);
+		return;
 	}
-	return undefined;
+	let low = 0;
+	let high = runs.length;
+	while (low < high) {
+		const middle = (low + high) >> 1;
+		if (runs[middle]!.firstId < run.firstId) low = middle + 1;
+		else high = middle;
+	}
+	runs.splice(low, 0, run);
+}
+
+/** The accepted and staged run lists as one, still ordered by `firstId`. */
+function mergeDeferredRuns(
+	accepted: readonly LynxDeferredTemplateRun[],
+	staged: readonly LynxDeferredTemplateRun[],
+): LynxDeferredTemplateRun[] {
+	const merged: LynxDeferredTemplateRun[] = new Array(accepted.length + staged.length);
+	let left = 0;
+	let right = 0;
+	let out = 0;
+	while (left < accepted.length && right < staged.length) {
+		merged[out++] =
+			accepted[left]!.firstId < staged[right]!.firstId ? accepted[left++]! : staged[right++]!;
+	}
+	while (left < accepted.length) merged[out++] = accepted[left++]!;
+	while (right < staged.length) merged[out++] = staged[right++]!;
+	return merged;
 }
 
 /**
@@ -7068,7 +7152,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				}
 				abandonCompact();
 				if (typeof parent === 'number') captureInitialNode(parent);
-				(stagedDeferredRuns ??= []).push({
+				insertDeferredRun((stagedDeferredRuns ??= []), {
 					root: container.root,
 					program,
 					firstId: declaredFirst,
@@ -8199,7 +8283,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 					state.deferredRuns =
 						state.deferredRuns === null
 							? stagedDeferredRuns
-							: [...state.deferredRuns, ...stagedDeferredRuns];
+							: mergeDeferredRuns(state.deferredRuns, stagedDeferredRuns);
 				}
 				if (state.deferredRuns !== null && deletedRecords.size !== 0) {
 					// A declaration outlives the hosts it declares, so a destroyed host
