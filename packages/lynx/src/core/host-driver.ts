@@ -7002,7 +7002,6 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 		const projectedParent = (id: number): number | null | undefined => {
 			const staged = batchParents?.get(id);
 			if (staged !== undefined) return staged;
-			if (batchParents?.has(id) === true) return null;
 			const record = state.records.get(id);
 			return record === undefined ? undefined : parentHostId(record.parent);
 		};

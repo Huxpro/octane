@@ -121,6 +121,10 @@ interface LynxMainThreadGlobals {
 }
 
 export type { LynxValidationMode } from './core/protocol.js';
+// Re-exported because `paintedElementCeiling` documents it as the default an
+// embedder derives their own value from, and this module is the public entry
+// that option lives on.
+export { LYNX_PAINTED_ELEMENT_CEILING } from './core/host-driver.js';
 
 export interface InstallLynxMainThreadOptions {
 	/** Main-thread global object containing the public Element PAPI. */
