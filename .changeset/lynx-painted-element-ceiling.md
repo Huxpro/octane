@@ -15,5 +15,8 @@ answer. `installLynxMainThread` derives the default from `SystemInfo.platform`:
 Android gets the ceiling, every other engine — iOS, Lynx-for-Web, an engine that
 reports nothing — gets none, and `paintedElementCeiling: null` turns it off.
 
-A declared native-list row is not painted and is not counted, so the `<list>`
-the diagnostic recommends is not itself refused.
+The projection is membership-aware, so the `<list>` the diagnostic recommends is
+not itself refused. A native-list row paints nothing until the platform asks for
+its cell through `componentAtIndex`, whether the row was declared by a deferred
+`mount-template-run` or composed out of ordinary `create` and `insert` commands,
+and a row nobody materialized releases nothing when it is destroyed.

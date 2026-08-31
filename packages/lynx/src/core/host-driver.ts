@@ -1889,6 +1889,25 @@ function isPortalParent(parent: LynxHostParent): parent is LynxPortalParent {
 	return parent !== null && typeof parent === 'object';
 }
 
+/**
+ * Hosts a materialized list cell holds.
+ *
+ * The painted-element projection needs this because a `destroy-run` over a
+ * deferred run retires logical rows, and only the cells the platform actually
+ * asked for occupy elements. Attached cells are viewport-bounded, so walking
+ * them costs far less than the run they belong to.
+ */
+function physicalTreeHostCount<Node extends LynxElementRef>(tree: LynxPhysicalTree<Node>): number {
+	let total = 0;
+	const pending: LynxPhysicalTree<Node>[] = [tree];
+	while (pending.length !== 0) {
+		const current = pending.pop()!;
+		total++;
+		for (const child of current.children) pending.push(child);
+	}
+	return total;
+}
+
 function parentHostId(parent: LynxHostParent): number | null | undefined {
 	return isPortalParent(parent) ? parent.target : parent;
 }
@@ -6908,13 +6927,112 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 	// replacement holds the survivors, not the sum, and projecting the sum would
 	// refuse a page that fits. What that leaves unguarded is a single commit
 	// whose creates all precede its destroys, which no core composes today.
+	//
+	// Membership-aware, because a plain `create` does not always paint. The
+	// applier skips materialization for a create whose record is a direct native
+	// list item with an unattached cell — the row exists logically and the
+	// platform builds it later, through `componentAtIndex`. Only
+	// `mount-template-run` with `deferred: true` announces that shape in the
+	// command itself; a native list composed the ordinary way is `create list`,
+	// `create list-item`, subtree `create`s and `insert`s, and nothing in any one
+	// of those commands says so. Counting them all made this guard refuse a large
+	// native-`<list>` page — the one page shape its own diagnostic recommends —
+	// and, in the other direction, let a `destroy` of a never-materialized row
+	// credit headroom that was never occupied.
 	if (state.paintedElementCeiling !== Infinity) {
 		const ceiling = state.paintedElementCeiling;
 		let projected = state.ownedNodes.size;
+		// Membership is a property of the batch's own topology as much as of
+		// accepted state — the list, the item and the subtree may all be created
+		// here — so parentage and types have to be readable before the first
+		// create is counted. Hence a pre-pass rather than one loop.
+		let batchTypes: Map<number, string> | null = null;
+		let batchParents: Map<number, number | null> | null = null;
+		let sawListTopology = state.hasNativeListTopology;
 		for (const command of batch.commands) {
 			if (command === null || typeof command !== 'object') continue;
-			if (command.op === 'create') projected++;
-			else if (command.op === 'mount-template') {
+			if (command.op === 'create' || command.op === 'recreate') {
+				if (typeof command.id === 'number' && typeof command.type === 'string') {
+					(batchTypes ??= new Map()).set(command.id, command.type);
+					if (command.type === 'list' || command.type === 'list-item') sawListTopology = true;
+				}
+			} else if (command.op === 'insert' || command.op === 'move') {
+				if (typeof command.id === 'number') {
+					(batchParents ??= new Map()).set(
+						command.id,
+						typeof command.parent === 'number' ? command.parent : null,
+					);
+				}
+			}
+		}
+		const projectedType = (id: number): string | undefined =>
+			batchTypes?.get(id) ?? state.records.get(id)?.type;
+		const projectedParent = (id: number): number | null | undefined => {
+			const staged = batchParents?.get(id);
+			if (staged !== undefined) return staged;
+			if (batchParents?.has(id) === true) return null;
+			const record = state.records.get(id);
+			return record === undefined ? undefined : parentHostId(record.parent);
+		};
+		/**
+		 * The list membership `id` will have once this batch's inserts have run,
+		 * mirroring `directListItem` over the batch joined with accepted state
+		 * rather than approximating it. Non-null only for a host whose whole
+		 * ancestry reaches a `list` through a `list-item`, which is exactly the
+		 * shape the applier's create checks.
+		 */
+		const projectedListItem = (id: number): { listId: number; itemId: number } | null => {
+			let current = id;
+			const visited = new Set<number>();
+			for (;;) {
+				if (visited.has(current)) throw hostError('list ancestry contains a cycle.');
+				visited.add(current);
+				const parent = projectedParent(current);
+				if (typeof parent !== 'number') return null;
+				if (projectedType(parent) === 'list') {
+					return projectedType(current) === 'list-item'
+						? { listId: parent, itemId: current }
+						: null;
+				}
+				current = parent;
+			}
+		};
+		/** Whether the applier will build an element for this host, not just a record. */
+		const paints = (id: number): boolean => {
+			if (!sawListTopology) return true;
+			const membership = projectedListItem(id);
+			return (
+				membership === null ||
+				state.lists.get(membership.listId)?.attachedByItem.has(membership.itemId) === true
+			);
+		};
+		/**
+		 * Hosts a `destroy-run` over `firstId` actually releases.
+		 *
+		 * A deferred run declares every row and paints only the cells the list
+		 * asked for, so retiring it releases the attached cells and nothing else.
+		 * Subtracting the declared count would hand the batch headroom the run
+		 * never occupied, which is the under-guard half of this defect.
+		 */
+		const runReleases = (firstId: number, count: number, width: number): number => {
+			const declared = declaringRun(state.deferredRuns, firstId);
+			if (declared === undefined) return count * width;
+			let released = 0;
+			for (const list of state.lists.values()) {
+				for (const cell of list.attachedByItem.values()) {
+					const item = cell.logicalItemId;
+					if (item !== null && item >= firstId && item < firstId + count * width) {
+						released += physicalTreeHostCount(cell.tree);
+					}
+				}
+			}
+			return released;
+		};
+		for (const command of batch.commands) {
+			if (command === null || typeof command !== 'object') continue;
+			if (command.op === 'create') {
+				if (typeof command.id !== 'number' || paints(command.id)) projected++;
+			} else if (command.op === 'mount-template') {
 				if (Array.isArray(command.nodes)) projected += command.nodes.length;
 			} else if (command.op === 'mount-template-range' || command.op === 'mount-template-run') {
 				// A deferred run declares its instances and builds none: the `<list>`
@@ -6925,8 +7043,15 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				const nodes = command.program?.nodes?.length;
 				if (typeof nodes !== 'number') continue;
 				projected += (command.op === 'mount-template-run' ? command.count : 1) * nodes;
-			} else if (command.op === 'destroy') projected--;
-			else if (command.op === 'destroy-run') projected -= command.count * command.width;
+			} else if (command.op === 'destroy') {
+				// The applier's destroy releases an element only when the host has
+				// one: `activeNodes.get(id)` decides, and a row the platform never
+				// materialized answers `undefined`.
+				if (typeof command.id !== 'number' || (state.records.has(command.id) && paints(command.id)))
+					projected--;
+			} else if (command.op === 'destroy-run') {
+				projected -= runReleases(command.firstId, command.count, command.width);
+			}
 			// Nothing else in a batch changes what is painted: `recreate` puts one
 			// element where one element was, `remove` detaches without releasing,
 			// and the rest write props, events, or visibility.

@@ -285,6 +285,129 @@ describe('painted-element ceiling', () => {
 		}
 	});
 
+	it('does not count a native list page composed out of ordinary commands', () => {
+		// The deferred run above announces itself with `deferred: true`. A native
+		// list composed the ordinary way announces nothing: it is `create list`,
+		// `create list-item`, subtree `create`s and `insert`s, and no single one of
+		// those commands says the row will not paint. Counting them made this
+		// guard refuse a large native-`<list>` page — the one page shape its own
+		// diagnostic recommends — which is the false-refusal half of the defect.
+		const dom = new JSDOM();
+		installLynxTestingEnv(globalThis, { window: dom.window as never });
+		globalThis.lynxTestingEnv.clearGlobal();
+		globalThis.lynxTestingEnv.switchToMainThread();
+		try {
+			const container = createLynxHostContainer(createLynxElementPAPI(globalThis), {
+				root: 1,
+				paintedElementCeiling: 8,
+			});
+			prepareLynxHostBatch(
+				container,
+				batch(1, [
+					{ op: 'create', id: 1, type: 'list', props: { id: 'feed' } },
+					{ op: 'insert', parent: null, id: 1, before: null },
+				]),
+			).apply();
+
+			// Ten rows of two hosts each, every one of them under an unattached
+			// cell: twenty creates against a ceiling of eight, and none of them
+			// paints because the platform has not asked for a single cell.
+			const rows: UniversalHostCommand[] = [];
+			for (let row = 0; row < 10; row++) {
+				const item = 10 + row * 3;
+				rows.push(
+					{ op: 'create', id: item, type: 'list-item', props: { 'item-key': `row-${row}` } },
+					{ op: 'create', id: item + 1, type: 'view', props: {} },
+					{ op: 'create', id: item + 2, type: 'text', props: {} },
+					{ op: 'insert', parent: item, id: item + 1, before: null },
+					// Two levels deep, so a projection that only looked at a create's
+					// immediate parent would count this one and refuse the page.
+					{ op: 'insert', parent: item + 1, id: item + 2, before: null },
+					{ op: 'insert', parent: 1, id: item, before: null },
+				);
+			}
+			prepareLynxHostBatch(container, batch(2, rows)).apply();
+
+			// The list is still the only painted element, so seven more views reach
+			// the ceiling and an eighth crosses it. Both halves are the assertion:
+			// twenty declared rows left neither arrears nor slack.
+			const fill = (version: number, count: number, first: number) =>
+				batch(
+					version,
+					Array.from({ length: count }, (_unused, index) => ({
+						op: 'create' as const,
+						id: first + index,
+						type: 'view',
+						props: {},
+					})),
+				);
+			prepareLynxHostBatch(container, fill(3, 7, 400)).apply();
+			expect(() => prepareLynxHostBatch(container, fill(4, 1, 500))).toThrow(
+				/this page paints 9 elements/,
+			);
+		} finally {
+			globalThis.lynxTestingEnv.clearGlobal();
+			uninstallLynxTestingEnv(globalThis);
+			dom.window.close();
+		}
+	});
+
+	it('does not let a destroy of rows nobody materialized mask real growth', () => {
+		// The other half of the same defect. `projected` starts from
+		// `ownedNodes.size`, the painted reality, so decrementing for a row that
+		// was never painted hands the batch headroom it never occupied — and a
+		// commit retiring declared rows while creating real views crosses the real
+		// table unrefused.
+		const dom = new JSDOM();
+		installLynxTestingEnv(globalThis, { window: dom.window as never });
+		globalThis.lynxTestingEnv.clearGlobal();
+		globalThis.lynxTestingEnv.switchToMainThread();
+		try {
+			const container = createLynxHostContainer(createLynxElementPAPI(globalThis), {
+				root: 1,
+				paintedElementCeiling: 8,
+			});
+			const items = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
+			prepareLynxHostBatch(
+				container,
+				batch(1, [
+					{ op: 'create', id: 1, type: 'list', props: { id: 'feed' } },
+					...items.map((id) => ({
+						op: 'create' as const,
+						id,
+						type: 'list-item',
+						props: { 'item-key': `row-${id}` },
+					})),
+					...items.map((id) => ({ op: 'insert' as const, parent: 1, id, before: null })),
+					{ op: 'insert', parent: null, id: 1, before: null },
+				]),
+			).apply();
+
+			// Retire all ten declared rows and paint eight real views in the same
+			// commit. Gross that is 1 + 8 = 9 painted elements, over the ceiling.
+			// Netting the ten unpainted destroys against it reads -1 and lets the
+			// commit through, which is exactly the under-guard.
+			expect(() =>
+				prepareLynxHostBatch(
+					container,
+					batch(2, [
+						...items.map((id) => ({ op: 'destroy' as const, id })),
+						...Array.from({ length: 8 }, (_unused, index) => ({
+							op: 'create' as const,
+							id: 400 + index,
+							type: 'view',
+							props: {},
+						})),
+					]),
+				),
+			).toThrow(/this page paints 9 elements/);
+		} finally {
+			globalThis.lynxTestingEnv.clearGlobal();
+			uninstallLynxTestingEnv(globalThis);
+			dom.window.close();
+		}
+	});
+
 	it('counts a mounted template by the nodes it materializes', () => {
 		const papi = createFakePAPI();
 		const container = createLynxHostContainer(papi, { root: 1, paintedElementCeiling: 8 });
