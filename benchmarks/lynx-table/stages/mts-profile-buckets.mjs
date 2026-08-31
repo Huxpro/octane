@@ -81,9 +81,34 @@ export const BUCKETS = Object.freeze([
 		where: 'main-thread.ts renderFirstScreenNow',
 	},
 	{
+		// `pushChildren` first, and by property names alone. Its window contains
+		// `denseSpan` too — it initialises the field it pushes — so the broader
+		// probe below would swallow it and the walk's two functions would report
+		// as one site. Property names are what the minifier leaves alone; the
+		// order is the source's own.
 		bucket: 'applier walk',
-		probe: 'physicalParent',
-		where: 'core/host-driver.ts visit and pushChildren',
+		probe: 'papiNode:null,listRecord:null,denseSpan:null',
+		where: 'core/host-driver.ts pushChildren',
+	},
+	{
+		// This bucket read 0.0 ms while 111.5 ms of its two functions sat in
+		// `unmatched` — 93.5 at `visit` and 18.0 at `pushChildren`, the two
+		// largest unnamed frames in the whole run. The probe was `physicalParent`,
+		// taken from a `visit` that destructured its frame at the top. `visit`
+		// still destructures and still has that name in it, but the dense-span
+		// fast path now runs first, so the destructuring — and the probe — moved
+		// past the 160-character window. The bucket did not stop being entered;
+		// its probe stopped being reachable, which is the drift the `unmatched`
+		// report exists to make visible, and this is it being read.
+		//
+		// `denseSpan` is what `visit` reads on its first line, so it is inside any
+		// window this table can afford. Deliberately not `denseSpan;if(null!==`,
+		// which would also pin the minifier's choice to write the comparison with
+		// the constant first — a rewrite that changes nothing about the source
+		// would empty the bucket again.
+		bucket: 'applier walk',
+		probe: 'denseSpan',
+		where: 'core/host-driver.ts visit',
 	},
 	{
 		bucket: 'host record building',

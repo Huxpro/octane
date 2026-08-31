@@ -1,0 +1,124 @@
+{
+  "meta": {
+    "date": "2026-08-31T01:08:51.553Z",
+    "node": "v22.22.2",
+    "cpus": 4,
+    "cpuModel": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "platform": "linux",
+    "release": "6.18.44-fc-v22",
+    "chromium": "141.0.7390.37",
+    "clockGranularityMs": 0.09999999962747097,
+    "repetitions": 5,
+    "scales": [1000, 10000],
+    "cells": ["octane", "octane-profile", "react-first-screen"],
+    "variants": ["control", "counts", "timed"],
+    "reportable": true,
+    "loadStart": [1.38, 1.03, 1.08],
+    "loadEnd": [1.28, 1.49, 1.3],
+    "webCore": "0.22.2",
+    "referenceManifest": {
+      "source": "https://github.com/Huxpro/vue-lynx",
+      "branch": "claude/lynx-implementation-review-n2r0ie",
+      "commit": "02376ecd1cd62d3797ff1de1209d82dc2f9d91d9",
+      "builtAt": "2026-08-07",
+      "build": "pnpm install && pnpm --filter \"vue-lynx...\" build && cd packages/benchmark && node harness/build-unified.mjs --only=vdom-ifr-et,vapor-ifr,react",
+      "cells": {
+        "vdom-ifr-et": {
+          "description": "Vue Lynx vdom top config (vdom +b +ifr; legacy id vdom-ifr-et)",
+          "app": "packages/benchmark/apps/ui-vdom",
+          "framework": "vue 3.6.0-beta.17 (vue-lynx fork)"
+        },
+        "vapor-ifr": {
+          "description": "Vue Lynx vapor top config (vapor +b +ifr; legacy id vapor-ifr)",
+          "app": "packages/benchmark/apps/ui-vapor",
+          "framework": "vue 3.6.0-beta.17 (vue-lynx fork, vapor mode)"
+        },
+        "react": {
+          "description": "ReactLynx default config",
+          "app": "packages/benchmark/apps/ui-react",
+          "framework": "@lynx-js/react 0.122.1"
+        }
+      },
+      "note": "Black-box fixtures: only the .web.bundle files are vendored. They are served unmodified into <lynx-view> by web/run-web.mjs; the app workloads mirror app/src operation-for-operation. The harness host runs @lynx-js/web-core 0.22.2 for every cell (the fork built against 0.22.1 — the host runtime is shared, so the comparison stays same-host).",
+      "firstScreen": {
+        "description": "ReactLynx built with a pre-populated first screen, one bundle per row count. The `react` cell above measures startup and create@N from a click; this set is what makes FCP@N measurable for a reference at all, because a pre-populated first screen is a build-time define of the app source and cannot be produced from the shipping bundle.",
+        "cell": "react-first-screen",
+        "source": "https://github.com/Huxpro/lynx-js-framework-benchmark",
+        "entry": "entries/react",
+        "upstream": {
+          "source": "https://github.com/Huxpro/vue-lynx",
+          "ref": "huxcx/unify-benchmark-system",
+          "commit": "28f7acbab990b3b574f04944e0d21c769719cc68",
+          "patched": true,
+          "patchFile": "entries/_patches/vue-lynx-bench.patch",
+          "builtAt": "2026-07-18T06:43:49+08:00"
+        },
+        "build": "node scripts/build-vue-featured.mjs <vue-lynx-checkout>  # BENCH_AUTOROWS=<rows> per variant",
+        "framework": "@lynx-js/react 0.124.0",
+        "sha256": {
+          "rows-0/main.web.bundle": "090d7b6ce2cbd181250c6772314f082ad29f6260914b72ad6baa6500566acfbd",
+          "rows-1000/main.web.bundle": "7bf437e170392c9212f20ddd811a6ab9981c33d5a2397440c62a8d268a1a200c",
+          "rows-10000/main.web.bundle": "32eca58bd2e7f3a7e78a2bd71ff3de88deb120c907610c660993dba22c5781d0"
+        },
+        "note": "A DIFFERENT ARTIFACT FROM THE `react` CELL, and deliberately so: a different vue-lynx commit and a different @lynx-js/react (0.124.0 against the `react` cell's 0.122.1). It is vendored beside that cell rather than replacing it, so every number the featured runs recorded against `react` keeps its bundle. Both are measured in the same window when a run asks for both, and the create-window host calls per row are the control that says whether the two workloads still agree operation-for-operation. Hashes are the ones the campaign entry pinned; they were re-verified on copy."
+      }
+    },
+    "protocol": "fresh page per sample; control/counts/timed order rotates across repetitions in one host window; startup and create are measured in the same page load; the probe is host-side, so every variant runs the same framework bundle"
+  },
+  "scaling": {
+    "octane": {
+      "points": [
+        {
+          "rows": 1000,
+          "opsPerRow": 20.001,
+          "flushCount": 1
+        },
+        {
+          "rows": 10000,
+          "opsPerRow": 20.0001,
+          "flushCount": 1
+        }
+      ],
+      "opsPerRowDrift": 0.000044999775001164366,
+      "linear": true,
+      "flushConstant": true,
+      "tolerance": 0.05
+    },
+    "octane-profile": {
+      "points": [
+        {
+          "rows": 1000,
+          "opsPerRow": 20.001,
+          "flushCount": 1
+        },
+        {
+          "rows": 10000,
+          "opsPerRow": 20.0001,
+          "flushCount": 1
+        }
+      ],
+      "opsPerRowDrift": 0.000044999775001164366,
+      "linear": true,
+      "flushConstant": true,
+      "tolerance": 0.05
+    },
+    "react-first-screen": {
+      "points": [
+        {
+          "rows": 1000,
+          "opsPerRow": 21.001,
+          "flushCount": 1
+        },
+        {
+          "rows": 10000,
+          "opsPerRow": 21.0001,
+          "flushCount": 1
+        }
+      ],
+      "opsPerRowDrift": 0.000042856938776481,
+      "linear": true,
+      "flushConstant": true,
+      "tolerance": 0.05
+    }
+  }
+}

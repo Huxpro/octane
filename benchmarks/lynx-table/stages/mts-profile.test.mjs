@@ -22,10 +22,24 @@ const MTS = 'blob:http://127.0.0.1:8364/mts';
 const PAGE = 'http://127.0.0.1:8364/control';
 
 // Both taken from a real minified build. `visit` carries no diagnostic of its
-// own in its opening characters — its identity is the frame shape it destructures
-// — and `mountProgram`'s first diagnostic is what names it.
+// own in its opening characters — its identity is the field it reads first —
+// and `mountProgram`'s first diagnostic is what names it.
+//
+// This window is the current shape, and the previous one is why the fixture
+// moved. `visit` used to destructure its frame at the top, so `physicalParent`
+// sat 42 characters in and named the bucket; the dense-span fast path now runs
+// before that destructuring, which pushed the old probe past the 160-character
+// window entirely. Nothing about the walk changed — it was still the largest
+// single frame in the run, at 93.5 ms — but the bucket read 0.0 ms and the
+// frame was reported as unnamed.
 const VISIT =
-	'r=>{var{node:t,parentRecord:n,parentId:i,physicalParent:l,parentVisible:s,insideList:d}=r;if(null===t){var c=r.listRecord;if(null!==c)return void r9(a,c);';
+	'r=>{var n=r.denseSpan;if(null!==n)return void((r,n,i,l)=>{var s=r.plan;var d=r.count;var u=r.programs;var c=r.firstId;var v=r.stride;var p=s.events;var f=p.leng';
+// The walk's other half, and the reason its probe has to be the narrower of the
+// two: it initialises the very field `visit` is named by, so a probe of
+// `denseSpan` alone would name both and the split would report one site holding
+// two functions. `physicalParent` is cut off at the window's end here too.
+const PUSH_CHILDREN =
+	'(e,r,t,n,a,i)=>{for(var o=e.children.length-1;o>=0;o--)$.push({node:e.children[o],papiNode:null,listRecord:null,denseSpan:null,parentRecord:r,parentId:t,physica';
 const MOUNT_PROGRAM =
 	'(r,t,n,i)=>{var l,s=function(r){var t;var n=c[r.node];if(void 0===n)throw eZ(`first-screen program binds an event on node ${r.node}, which it did not number.`);';
 // The same function entered from its other end: a different probe, the same
@@ -114,6 +128,27 @@ test('a frame is named from its own text, never from the function after it', () 
 	// run's largest program-mount cost looks like.
 	assert.equal(buckets.get('applier walk')?.us, 400);
 	assert.equal(buckets.get('program mount')?.us, 200);
+});
+
+test('the walk is named from what `visit` reads first, not from a destructuring behind it', () => {
+	// The regression this pins: `physicalParent` is still in `visit`, and still
+	// in `pushChildren`, and reachable from neither frame's start — the fast path
+	// in one and the pushed object in the other put it past the window. A probe
+	// that names a function only in the shape it had when the probe was written
+	// empties its bucket on the next edit to the function's opening lines, and
+	// the run reports that as a large unnamed frame rather than as an error.
+	assert.ok(!VISIT.includes('physicalParent'));
+	assert.ok(!PUSH_CHILDREN.includes('physicalParent'));
+	assert.equal(bucketOf(VISIT), 'applier walk');
+	assert.equal(bucketOf(PUSH_CHILDREN), 'applier walk');
+});
+
+test('the walk’s two functions are named apart, not folded into one site', () => {
+	// `pushChildren` writes `denseSpan: null` into every frame it pushes, so the
+	// probe that names `visit` by that field reaches it too. Ordering the
+	// narrower probe first is what keeps a site total readable as one function's.
+	assert.equal(probeOf(VISIT)?.where, 'core/host-driver.ts visit');
+	assert.equal(probeOf(PUSH_CHILDREN)?.where, 'core/host-driver.ts pushChildren');
 });
 
 test('the compiled program is named by its caller, having no literal of its own', () => {
@@ -406,6 +441,8 @@ test('every window fixture is a real read, not one trimmed to fit its probe', ()
 	// A fixture shorter than the window could make a probe look separated when
 	// the bundle would have let it reach further.
 	for (const text of [
+		VISIT,
+		PUSH_CHILDREN,
 		APPEND_TEXT,
 		APPEND_SPREAD,
 		APPEND_CHILD,

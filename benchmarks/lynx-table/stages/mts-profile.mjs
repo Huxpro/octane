@@ -217,10 +217,10 @@ function startServer() {
 /**
  * One profiled first screen, sampled as two windows rather than one.
  *
- * The main-thread script is a Blob minted in the page realm, so the URL is
- * recorded there on the way past and its source is fetched back afterwards —
- * the profile names frames by that URL and nothing else can say what the code
- * at a position is.
+ * The main-thread script is a Blob loaded into an `about:srcdoc` realm, so its
+ * URL is read from that realm's own `<script>` and its source is fetched back
+ * afterwards — the profile names frames by that URL and nothing else can say
+ * what the code at a position is.
  *
  * **Two windows, two profiles.** The first is the window this instrument has
  * always had: attach to settled paint. The second runs from there until the
@@ -246,15 +246,6 @@ function startServer() {
 async function profileSample(browser, cell) {
 	const page = await browser.newPage();
 	try {
-		await page.addInitScript(() => {
-			const mint = URL.createObjectURL.bind(URL);
-			globalThis.__OCTANE_BLOB_URLS__ = [];
-			URL.createObjectURL = (blob) => {
-				const url = mint(blob);
-				globalThis.__OCTANE_BLOB_URLS__.push(url);
-				return url;
-			};
-		});
 		await applyNeutralize(page);
 		await applyStageClock(page);
 		await applyMainRealmProbe(page);
@@ -343,19 +334,47 @@ async function profileSample(browser, cell) {
 			}
 		}
 
-		// Selected from the recorded mints rather than "any blob: frame", so a
-		// second blob-backed script in the page realm surfaces as an ambiguity
-		// instead of silently taking the whole fold.
-		const minted = await page.evaluate(() => globalThis.__OCTANE_BLOB_URLS__ ?? []);
-		const profiled = [...new Set(paintProfile.nodes.map((node) => node.callFrame.url))].filter(
-			(url) => url.startsWith('blob:') && minted.includes(url),
-		);
+		// Read out of the main-thread realm's own document rather than recovered
+		// from the page's blob traffic.
+		//
+		// This used to patch `URL.createObjectURL` through `addInitScript` and
+		// keep the URLs the page minted. Observed: that list came back holding
+		// exactly one blob URL, and it was not the one the profiled frames ran
+		// from — so every run refused with "the profile named none". Web Core
+		// mints inside a worker as well as in the page, and `addInitScript`
+		// reaches frames but not workers, which would explain it; that is a
+		// hypothesis about Web Core, not something this harness checked, and it
+		// does not need to be settled because the realm names its own script.
+		//
+		// Naming still comes from a recorded set rather than from "any blob:
+		// frame", so a realm carrying a second blob-backed script surfaces as an
+		// ambiguity instead of silently taking the whole fold.
+		const realmScripts = await page.evaluate(() => {
+			const realm = globalThis.__OCTANE_LYNX_MT_REALM__;
+			if (realm === undefined || realm === null) return null;
+			try {
+				return [...realm.document.querySelectorAll('script[src^="blob:"]')].map(
+					(script) => script.src,
+				);
+			} catch {
+				// Same refusal as an unpublished realm: a realm the page cannot read
+				// is one this instrument cannot attribute a frame to.
+				return null;
+			}
+		});
+		if (realmScripts === null) {
+			throw new Error(
+				`${cell} published no readable main-thread realm; there is no script to attribute frames to.`,
+			);
+		}
+		const sampled = new Set(paintProfile.nodes.map((node) => node.callFrame.url));
+		const profiled = realmScripts.filter((url) => sampled.has(url));
 		if (profiled.length === 0) {
 			throw new Error(`${cell} produced no main-thread script frames; the profile named none.`);
 		}
 		if (profiled.length > 1) {
 			throw new Error(
-				`${cell} profiled ${profiled.length} page-minted scripts; attribution is ambiguous.`,
+				`${cell}'s main-thread realm carries ${profiled.length} blob-backed scripts; attribution is ambiguous.`,
 			);
 		}
 		const scriptUrl = profiled[0];
