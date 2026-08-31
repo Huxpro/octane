@@ -13,6 +13,7 @@ import type {
 	UniversalTransportIdentity,
 	UniversalTransportRejectMessage,
 } from 'octane/universal/native';
+import { resolveUniversalProgramWire } from 'octane/universal/native';
 import type { LynxFirstTreeSnapshot } from './first-screen.js';
 import { LYNX_DEVELOPMENT } from './environment.js';
 import { LYNX_MAX_WIRE_DEPTH } from './transport-codec.js';
@@ -365,14 +366,28 @@ export function countLynxCompactAcknowledgementHosts(batch: UniversalHostBatch):
 			inserted += command.nodes.length;
 			continue;
 		}
-		if (command.op === 'mount-template-range' || command.op === 'mount-template-run') {
+		if (
+			command.op === 'mount-template-range' ||
+			command.op === 'mount-template-run' ||
+			command.op === 'mount-program-run'
+		) {
 			if (command.parent !== null && typeof command.parent !== 'number') return null;
-			let compatible = COMPACT_TEMPLATE_PROGRAMS.get(command.program);
+			// An addressed run's program is resolved rather than carried, and an
+			// address this realm cannot resolve is not compact-acknowledgeable — it
+			// is not mountable at all, which the validator says with a diagnostic.
+			// Declining here keeps that the validator's sentence to pass rather than
+			// this accounting's to pre-empt with a silent `null`.
+			const program =
+				command.op === 'mount-program-run'
+					? resolveUniversalProgramWire(command.address.module, command.address.index)
+					: command.program;
+			if (program === undefined) return null;
+			let compatible = COMPACT_TEMPLATE_PROGRAMS.get(program);
 			if (compatible === undefined) {
 				compatible = true;
-				let immutable = Object.isFrozen(command.program) && Object.isFrozen(command.program.nodes);
-				for (let nodeIndex = 0; nodeIndex < command.program.nodes.length; nodeIndex++) {
-					const node = command.program.nodes[nodeIndex]!;
+				let immutable = Object.isFrozen(program) && Object.isFrozen(program.nodes);
+				for (let nodeIndex = 0; nodeIndex < program.nodes.length; nodeIndex++) {
+					const node = program.nodes[nodeIndex]!;
 					if (
 						node.type === 'list' ||
 						node.type === 'list-item' ||
@@ -396,12 +411,12 @@ export function countLynxCompactAcknowledgementHosts(batch: UniversalHostBatch):
 					}
 					if (!compatible) break;
 				}
-				if (immutable) COMPACT_TEMPLATE_PROGRAMS.set(command.program, compatible);
+				if (immutable) COMPACT_TEMPLATE_PROGRAMS.set(program, compatible);
 			}
 			if (!compatible) return null;
-			const instances = command.op === 'mount-template-run' ? command.count : 1;
+			const instances = command.op === 'mount-template-range' ? 1 : command.count;
 			if (!Number.isSafeInteger(instances) || instances <= 0) return null;
-			const hostCount = command.program.nodes.length * instances;
+			const hostCount = program.nodes.length * instances;
 			if (!Number.isSafeInteger(hostCount) || !Number.isSafeInteger(created + hostCount)) {
 				return null;
 			}
@@ -854,6 +869,20 @@ const TEMPLATE_RUN_KEYS = Object.freeze([
 // worth an ordered fast path of its own: it is recognized by the presence of the
 // field and then checked against this list exactly.
 const TEMPLATE_RUN_DEFERRED_KEYS = Object.freeze([...TEMPLATE_RUN_KEYS, 'deferred']);
+// The addressed run is the descriptor run with `program` replaced by `address`,
+// in the same position, so the two schemas differ by one name and the field
+// order a producer emits stays the one the ordered fast path recognizes.
+const PROGRAM_RUN_KEYS = Object.freeze([
+	'op',
+	'parent',
+	'before',
+	'address',
+	'firstId',
+	'firstListenerId',
+	'count',
+	'values',
+]);
+const PROGRAM_RUN_DEFERRED_KEYS = Object.freeze([...PROGRAM_RUN_KEYS, 'deferred']);
 const TEMPLATE_PROGRAM_KEYS = Object.freeze(['nodes', 'events']);
 const TEMPLATE_PROGRAM_NODE_KEYS = Object.freeze(['type', 'parent', 'props']);
 const TEMPLATE_PROGRAM_BOUND_NODE_KEYS = Object.freeze(['type', 'parent', 'props', 'bindings']);
@@ -1245,10 +1274,17 @@ function assertTemplateRangeCommand(
 	}
 }
 
-function assertTemplateRunCommand(
+/**
+ * Everything a run is checked for before its program is known.
+ *
+ * Shared by the descriptor run and the addressed run because the two differ in
+ * exactly one thing — how they name their program — and a second copy of these
+ * checks is a second place for the two ops to drift apart on placement,
+ * deferral or identity ranges.
+ */
+function assertRunCommandPrefix(
 	command: Record<string, unknown>,
 	index: number,
-	state: LynxBatchValidationState,
 ): void {
 	hostParent(command.parent, COMMANDS_LABEL, index, 'parent');
 	if (command.parent !== null && typeof command.parent !== 'number') {
@@ -1274,8 +1310,16 @@ function assertTemplateRunCommand(
 	}
 	positiveInteger(command.count, COMMANDS_LABEL, index, 'count');
 	positiveInteger(command.firstId, COMMANDS_LABEL, index, 'firstId');
+}
+
+/** The rest of a run's checks, once its program has been resolved and validated. */
+function assertRunCommandTail(
+	command: Record<string, unknown>,
+	index: number,
+	state: LynxBatchValidationState,
+	program: LynxValidatedTemplateProgram,
+): void {
 	const count = command.count as number;
-	const program = assertTemplateProgram(command.program, index, state);
 	const hostCount = count * program.hosts;
 	if (!Number.isSafeInteger(hostCount)) {
 		fail(COMMANDS_LABEL, 'overflows the intrinsic host count.', index, 'count');
@@ -1353,6 +1397,65 @@ function assertTemplateRunCommand(
 	listenerEnds.push(lastListener);
 }
 
+function assertTemplateRunCommand(
+	command: Record<string, unknown>,
+	index: number,
+	state: LynxBatchValidationState,
+): void {
+	assertRunCommandPrefix(command, index);
+	assertRunCommandTail(command, index, state, assertTemplateProgram(command.program, index, state));
+}
+
+/**
+ * An addressed run, checked exactly as a descriptor run is once its program is
+ * in hand (issue #246 E1).
+ *
+ * The one check that has no counterpart is the resolution itself. An address
+ * this realm cannot resolve is refused here rather than at the mount, because
+ * the batch is validated as a whole and a run that cannot be mounted must not
+ * be allowed to leave half a tree behind the commands that follow it.
+ *
+ * The resolved program is then validated by the same memoized path a descriptor
+ * takes — which is the second thing an address buys, after the wire bytes: a
+ * resident program is one object for the life of the chunk, so it is validated
+ * once, where a deserialized descriptor is a fresh object per mount and is
+ * validated every time.
+ */
+function assertProgramRunCommand(
+	command: Record<string, unknown>,
+	index: number,
+	state: LynxBatchValidationState,
+): void {
+	assertRunCommandPrefix(command, index);
+	const address = command.address;
+	if (address === null || typeof address !== 'object' || Array.isArray(address)) {
+		fail(COMMANDS_LABEL, 'must be an object.', index, 'address');
+	}
+	const record = address as Record<string, unknown>;
+	for (const key of Object.keys(record)) {
+		if (key !== 'module' && key !== 'index') {
+			fail(COMMANDS_LABEL, `contains unknown field ${JSON.stringify(key)}.`, index, 'address');
+		}
+	}
+	if (typeof record.module !== 'string' || record.module === '') {
+		fail(COMMANDS_LABEL, 'must be a non-empty string.', index, 'address.module');
+	}
+	if (!Number.isSafeInteger(record.index) || (record.index as number) < 0) {
+		fail(COMMANDS_LABEL, 'must be a non-negative integer.', index, 'address.index');
+	}
+	const resolved = resolveUniversalProgramWire(record.module as string, record.index as number);
+	if (resolved === undefined) {
+		fail(
+			COMMANDS_LABEL,
+			`names program ${record.module as string}#${record.index as number}, which this realm ` +
+				'does not hold.',
+			index,
+			'address',
+		);
+	}
+	assertRunCommandTail(command, index, state, assertTemplateProgram(resolved, index, state));
+}
+
 /** Fuse the hot range-command object and exact-schema trust checks in one own-key walk. */
 function commandRecord(value: unknown, index: number): Record<string, unknown> {
 	if (value === null || typeof value !== 'object' || Array.isArray(value)) {
@@ -1365,11 +1468,13 @@ function commandRecord(value: unknown, index: number): Record<string, unknown> {
 	const keys = Object.keys(value);
 	let orderedRange = keys.length === TEMPLATE_RANGE_KEYS.length;
 	let orderedRun = keys.length === TEMPLATE_RUN_KEYS.length;
+	let orderedProgramRun = keys.length === PROGRAM_RUN_KEYS.length;
 	for (let position = 0; position < keys.length; position++) {
 		const key = keys[position]!;
 		if (orderedRange && key !== TEMPLATE_RANGE_KEYS[position]) orderedRange = false;
 		if (orderedRun && key !== TEMPLATE_RUN_KEYS[position]) orderedRun = false;
-		if (!orderedRange && !orderedRun) break;
+		if (orderedProgramRun && key !== PROGRAM_RUN_KEYS[position]) orderedProgramRun = false;
+		if (!orderedRange && !orderedRun && !orderedProgramRun) break;
 	}
 	const operation: unknown = (value as Record<string, unknown>).op;
 	const schema =
@@ -1383,7 +1488,13 @@ function commandRecord(value: unknown, index: number): Record<string, unknown> {
 					: Object.prototype.hasOwnProperty.call(value, 'deferred')
 						? TEMPLATE_RUN_DEFERRED_KEYS
 						: TEMPLATE_RUN_KEYS
-				: null;
+				: operation === 'mount-program-run'
+					? orderedProgramRun
+						? null
+						: Object.prototype.hasOwnProperty.call(value, 'deferred')
+							? PROGRAM_RUN_DEFERRED_KEYS
+							: PROGRAM_RUN_KEYS
+					: null;
 	if (schema !== null) {
 		for (const required of schema) {
 			if (!keys.includes(required)) {
@@ -1411,6 +1522,9 @@ function assertCommand(
 	switch (command.op) {
 		case 'mount-template-run':
 			assertTemplateRunCommand(command, index, state);
+			return;
+		case 'mount-program-run':
+			assertProgramRunCommand(command, index, state);
 			return;
 		case 'ensure-public-instance':
 			exactKeys(command, DESTROY_KEYS, label, index);

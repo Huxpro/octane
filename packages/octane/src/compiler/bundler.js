@@ -497,6 +497,13 @@ class OctaneBundlerCompiler {
 			// Absent, every module compiles exactly as it did before it existed,
 			// which is what makes #163's byte-identity claim checkable.
 			mainThreadProgramBackend: options.mainThreadProgramBackend,
+			// Whether this build may give a plan a cross-realm name (issue #246 E1).
+			// Only a configuration whose two compiles of a module are layers of one
+			// plugin configuration may: the address is positional, so its safety is
+			// a build-time cross-check between the layers, and a graph with no
+			// second layer has nothing to check against. Absent, no plan is
+			// addressed and every mount keeps the descriptor it carries today.
+			programAddressing: options.programAddressing === true,
 		};
 		this.renderers = normalizeRendererConfig(options.renderers);
 		// Ownership gate for mixed-toolchain projects (e.g. a React app hosting
@@ -1153,6 +1160,13 @@ class OctaneBundlerCompiler {
 				// itself which plans a backend may describe, and a second copy of
 				// that decision here could only disagree with it.
 				...(mainThreadProgramBackend === undefined ? null : { mainThreadProgramBackend }),
+				// The module's own cross-realm name, which is the canonical id this
+				// compiler already computes for every module it touches. Reused rather
+				// than re-derived so the two compiles of one module cannot disagree
+				// about it for a reason no other part of the build would notice.
+				...((options.programAddressing ?? this.defaults.programAddressing) === true
+					? { programModuleId: filename }
+					: null),
 				...(environment === 'client' && typeof options.isVoidComponentImport === 'function'
 					? { isVoidComponentImport: options.isVoidComponentImport }
 					: null),

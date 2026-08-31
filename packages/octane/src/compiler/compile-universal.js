@@ -4264,6 +4264,87 @@ function lynxProgramRangeOrder(wire, ranges) {
 	return order;
 }
 
+/**
+ * Canonical bytes for a derived wire program, so two compiles hash the same
+ * thing (issue #246 §6.1).
+ *
+ * `JSON.stringify` is not canonical — it preserves insertion order — and the
+ * two compiles build these objects through the same code, so their key order
+ * agrees today. Sorting is what keeps that from being a property of the current
+ * implementation: a refactor that reorders a spread must not silently change a
+ * digest, because a changed digest is a failed build and a failing build for a
+ * reason no one can name is worse than the drift it was guarding.
+ */
+function canonicalDigestSource(value) {
+	if (value === null || typeof value !== 'object') return JSON.stringify(value ?? null) ?? 'null';
+	if (Array.isArray(value)) return `[${value.map(canonicalDigestSource).join(',')}]`;
+	const keys = Object.keys(value).sort();
+	const parts = [];
+	for (const key of keys) {
+		if (value[key] === undefined) continue;
+		parts.push(`${JSON.stringify(key)}:${canonicalDigestSource(value[key])}`);
+	}
+	return `{${parts.join(',')}}`;
+}
+
+/**
+ * FNV-1a over the canonical bytes, as 16 lowercase hex digits.
+ *
+ * Hand-rolled rather than `node:crypto` because this module has no node imports
+ * and gains nothing by acquiring one: the digest is a build-time equality
+ * witness between two compiles of the same source, not a security primitive.
+ * What it has to be is deterministic across machines and package managers,
+ * which a fixed integer recurrence over a canonical string is and a hash of an
+ * object's iteration order is not.
+ */
+function programDigest(wire) {
+	const source = canonicalDigestSource(wire);
+	let high = 0x811c9dc5;
+	let low = 0x9dc5811c;
+	for (let index = 0; index < source.length; index++) {
+		const code = source.charCodeAt(index);
+		high = (high ^ code) >>> 0;
+		low = (low ^ ((code << 7) | (code >>> 9))) >>> 0;
+		high = Math.imul(high, 0x01000193) >>> 0;
+		low = Math.imul(low, 0x85ebca6b) >>> 0;
+	}
+	return `${high.toString(16).padStart(8, '0')}${low.toString(16).padStart(8, '0')}`;
+}
+
+/**
+ * The cross-realm name of one plan, or `null` when this build does not address
+ * programs or this plan is not one.
+ *
+ * Called from *both* compiles of a module, and that is the whole point. The
+ * address is positional, so it is only safe if the two compiles agree about
+ * which plans are programs and in what order — and the way to make them agree is
+ * to ask the same question, of the same plan root, through the same derivation,
+ * rather than to have each infer it from its own emission.
+ *
+ * The background is `target: 'universal'` and emits an ordinary host plan, so it
+ * never builds a program and cannot decide eligibility from what it emitted. It
+ * runs the derivation purely as an oracle: `deriveLynxMainThreadProgram` is a
+ * pure build-time lowering with no side effects, and its `null` is exactly the
+ * main thread's "no program here". So the two threads agree by construction
+ * instead of by a rule each implements separately.
+ *
+ * The digest covers exactly the derived wire, per the §6.1 ruling. Derivation by
+ * execution is what makes that complete rather than hopeful: the emission reads
+ * nothing outside the surface the derivation produced, so hashing that surface
+ * hashes everything the emission depends on.
+ */
+function universalProgramAddressAst(state, plan, index, origin) {
+	const backend = state.mainThreadProgramBackend;
+	if (backend === undefined || state.programModuleId === undefined) return null;
+	if (!lynxTemplateEligible(plan.root) || plan.root.kind !== 'host') return null;
+	const derived = backend.deriveLynxMainThreadProgram(plan.root);
+	if (derived === null || derived === undefined) return null;
+	return jsonValueToAst(
+		{ module: state.programModuleId, index, digest: programDigest(derived.wire) },
+		origin,
+	);
+}
+
 function lynxMainThreadProgramObjectAst(state, plan, origin) {
 	const backend = state.mainThreadProgramBackend;
 	if (backend === undefined) return null;
@@ -4381,16 +4462,27 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 }
 
 function universalPlanDeclarationsAst(state, origin = null) {
-	return state.plans.map((plan) => {
+	return state.plans.map((plan, index) => {
 		const planOrigin = plan.origin ?? origin;
 		const rootAst =
 			state.lynxTemplates && lynxTemplateEligible(plan.root) && plan.root.kind === 'host'
 				? (lynxMainThreadProgramObjectAst(state, plan, planOrigin) ??
 					lynxTemplateObjectAst(plan.root, planOrigin))
 				: jsonValueToAst(plan.root, planOrigin);
+		// The third argument, and nothing else, is what an addressing build adds to
+		// the background chunk. #163's byte-identity gate for that chunk is
+		// retired by exactly this and replaced by the narrower one #246 §5 named:
+		// the background compile changes by the addressing and by nothing else.
+		const addressAst = universalProgramAddressAst(state, plan, index, planOrigin);
 		return generatedConst(
 			plan.name,
-			generatedCall(state.helpers.plan, [b.literal(state.renderer.id), rootAst], planOrigin),
+			generatedCall(
+				state.helpers.plan,
+				addressAst === null
+					? [b.literal(state.renderer.id), rootAst]
+					: [b.literal(state.renderer.id), rootAst, addressAst],
+				planOrigin,
+			),
 			planOrigin,
 		);
 	});
@@ -4669,6 +4761,8 @@ export function lowerUniversalRendererRegionAst(
 		runtimeImports: new Map(),
 		planPrefix: prefix,
 		validationImportReferences: [],
+		mainThreadProgramBackend: options.mainThreadProgramBackend,
+		programModuleId: options.programModuleId,
 	};
 	state.explicitThreeHostIntrinsics = collectExplicitThreeHostIntrinsics(
 		options.authoredAst ?? analysisAst,
@@ -4989,6 +5083,12 @@ export function compileUniversal(
 		// Absent, every plan lowers exactly as it did before it existed, which is
 		// what makes #163's byte-identity claim checkable rather than asserted.
 		mainThreadProgramBackend: options.mainThreadProgramBackend,
+		// The module's cross-realm name, supplied by whoever configured the build.
+		// Absent, no plan gets an address and every mount keeps its descriptor —
+		// which is what an isolated single-layer graph gets, because a
+		// configuration that cannot cross-check its two compiles at build time
+		// does not get a fast path whose safety is the cross-check (#246 §6.3).
+		programModuleId: options.programModuleId,
 	};
 	state.explicitThreeHostIntrinsics = collectExplicitThreeHostIntrinsics(ast, renderer);
 	state.ownerFreeThreeHostComponents = collectOwnerFreeThreeHostComponents(

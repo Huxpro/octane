@@ -22,13 +22,16 @@ import type {
 	UniversalKey,
 	UniversalPlan,
 	UniversalPlanNode,
+	UniversalProgramAddress,
 	UniversalProgramPlan,
 	UniversalPropEntry,
 	UniversalRenderable,
 	UniversalRenderContext,
 	UniversalTemplateEnv,
 } from 'octane/universal/native';
+import { freezeUniversalProgramAddress } from 'octane/universal/native';
 import { LynxFirstScreenRefusalError, LYNX_FIRST_SCREEN_REFUSED } from './core/first-screen.js';
+import { registerUniversalProgram } from './core/program-registry.js';
 import { hasOwnSymbolFields } from './core/own-symbols.js';
 import { isLynxNativeResource } from './resource.js';
 
@@ -479,13 +482,29 @@ function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
 	);
 }
 
-export function universalPlan(renderer: string, root: UniversalPlanNode): UniversalPlan {
+export function universalPlan(
+	renderer: string,
+	root: UniversalPlanNode,
+	address?: UniversalProgramAddress,
+): UniversalPlan {
 	assertRenderer(renderer);
-	return Object.freeze({
+	const frozen = freezePlanNode(root);
+	const plan = Object.freeze({
 		$$kind: UNIVERSAL_PLAN,
 		renderer,
-		root: freezePlanNode(root),
+		root: frozen,
+		...(address === undefined ? null : { address: freezeUniversalProgramAddress(address) }),
 	}) as unknown as UniversalPlan;
+	// The registration is here rather than in the emission because this is the
+	// call the compiler already makes at module scope for every plan: the chunk
+	// gains the address arguments and nothing else. `kind: 'program'` is the
+	// gate — an address on a plan this thread did not compile into a program
+	// names something no mount could use, and registering it would let a
+	// background mount resolve to a plan whose `bind` does not exist (issue #246).
+	if (plan.address !== undefined && frozen.kind === 'program') {
+		registerUniversalProgram(plan.address.module, plan.address.index, frozen);
+	}
+	return plan;
 }
 
 export function universalValue(
