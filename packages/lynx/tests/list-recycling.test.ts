@@ -1870,4 +1870,99 @@ describe('Lynx deferred template runs', () => {
 		expect(scrollThrough(deferredListMount(rows))).toBe(1 + rows * ROW_HOSTS);
 		expect(scrollThrough(eagerMount)).toBe(1 + rows * ROW_HOSTS);
 	});
+	// Issue #193 Layer 1 — what a recycle spends at the host boundary.
+	//
+	// #193 sketches recycling-as-slot-writes as something program-per-cell would
+	// buy: "no teardown, no re-describe". Neither is what the renderer does
+	// today, so the sketch would have priced a saving that is already banked.
+	// This counts the boundary instead of arguing about it, and the count is the
+	// oracle a later slice has to beat.
+	//
+	// Every public Element PAPI call is recorded, because that is the only
+	// boundary a compiled row program could issue *fewer* of. What it cannot see
+	// is the framework script that decides those calls — the record and frozen
+	// prop bag `resolveRecord` allocates per host, the patch
+	// `planLynxHostPropPatch` computes to rediscover which names a run already
+	// says are the only ones that vary, and the event set torn down and
+	// reinstalled per host. #195 R2 measured that script at 73% of the callback
+	// wall on device against ~8 ms/window of element+crossing, so a count that
+	// comes out near-minimal here is not the same as a recycle that is cheap:
+	// it locates the remaining cost off this boundary, which is the finding.
+	it('spends only the differing slots at the host boundary when a cell is recycled', () => {
+		const dom = new JSDOM();
+		installLynxTestingEnv(globalThis, { window: dom.window as never });
+		const environment = globalThis.lynxTestingEnv;
+		environment.clearGlobal();
+		environment.switchToMainThread();
+		try {
+			// A plain wrapper rather than a Proxy: `createLynxElementPAPI` returns
+			// frozen non-configurable members, which a Proxy may not report as
+			// anything but themselves.
+			const inner = createLynxElementPAPI(globalThis);
+			const trace: string[] = [];
+			const wrapped: Record<string, unknown> = {};
+			for (const key of Object.keys(inner) as (keyof typeof inner)[]) {
+				const value = inner[key];
+				wrapped[key] =
+					typeof value === 'function'
+						? (...args: unknown[]) => {
+								trace.push(key);
+								return (value as (...rest: unknown[]) => unknown).apply(inner, args);
+							}
+						: value;
+			}
+			const papi = wrapped as unknown as ReturnType<typeof createLynxElementPAPI>;
+			const container = createLynxHostContainer(papi, { root: 1 });
+
+			const rows = 1_000;
+			prepareLynxHostBatch(container, batch(1, deferredListMount(rows))).apply();
+			const list = (container.page as unknown as Element).querySelector('#feed')!;
+			const afterMount = container.instanceCount;
+
+			trace.length = 0;
+			const sign = globalThis.elementTree.enterListItemAtIndex(list as never, 0, 11, false);
+			const fresh = trace.slice();
+			const afterFresh = container.instanceCount;
+
+			globalThis.elementTree.leaveListItem(list as never, sign);
+			trace.length = 0;
+			expect(globalThis.elementTree.enterListItemAtIndex(list as never, 617, 12, false)).toBe(sign);
+			const recycle = trace.slice();
+
+			expect(list.firstElementChild?.textContent).toBe('Row 617');
+
+			// A fresh cell builds the row: one element and one insertion per host.
+			expect(fresh.filter((call) => call === 'createElement')).toHaveLength(ROW_HOSTS);
+			expect(fresh.filter((call) => call === 'insertBefore')).toHaveLength(ROW_HOSTS);
+
+			// A recycle builds nothing and moves nothing. This is the half of
+			// "recycling as slot writes" the renderer already does.
+			expect(recycle).not.toContain('createElement');
+			expect(recycle).not.toContain('insertBefore');
+			expect(recycle).not.toContain('remove');
+			expect(recycle).not.toContain('replace');
+
+			// And it writes only what differs. `class` is static in the program, so
+			// the patch finds nothing on it and `setClasses` never runs — the prop
+			// diff pays for itself here rather than costing. Two writes remain, one
+			// per bound slot, which is the floor a compiled rebind would also hit:
+			// it could not issue fewer, only decide them for less.
+			expect(fresh).toContain('setClasses');
+			expect(recycle).not.toContain('setClasses');
+			expect(recycle.filter((call) => call === 'setAttribute')).toHaveLength(2);
+
+			// The recycle materializes its own row's hosts, and the outgoing row's
+			// stay materialized — the ceiling `holds what an eager mount holds` pins
+			// from the other end. Counted here so the boundary numbers above are
+			// read beside what they cost in records rather than apart from them.
+			expect(afterFresh - afterMount).toBe(ROW_HOSTS);
+			expect(container.instanceCount - afterFresh).toBe(ROW_HOSTS);
+
+			expect(disposeLynxHostContainer(container).errors).toEqual([]);
+		} finally {
+			environment.clearGlobal();
+			uninstallLynxTestingEnv(globalThis);
+			dom.window.close();
+		}
+	});
 });
