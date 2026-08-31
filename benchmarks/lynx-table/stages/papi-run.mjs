@@ -252,8 +252,20 @@ const CELLS = {
 	// come from the same build family as its FCP window rather than from the cell
 	// above. Nothing is borrowed across builds.
 	'react-first-screen': {
-		bundle: () =>
-			reactFirstScreenBundle(0) ?? path.join(reactFirstScreenDir, 'rows-0/main.web.bundle'),
+		// No unverified fallback: a rows-0 bundle the manifest does not pin would
+		// drive this cell's startup and create windows from bytes nothing vouches
+		// for, and a certified-looking number from unverified bytes is worse than
+		// a refusal.
+		bundle: () => {
+			const bundle = reactFirstScreenBundle(0);
+			if (bundle === null) {
+				throw new Error(
+					'reference/manifest.json pins no firstScreen sha256 for rows-0/main.web.bundle; ' +
+						'the react-first-screen cell refuses to run from unverified bytes.',
+				);
+			}
+			return bundle;
+		},
 		fcpBundle: (rows) => reactFirstScreenBundle(rows),
 		fcpReason:
 			'this cell is a vendored set with one bundle per row count, and reference/manifest.json pins no variant at this scale',
