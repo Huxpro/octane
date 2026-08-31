@@ -36,19 +36,36 @@ function split(overrides = {}) {
 	};
 }
 
-function window({ controlMs, offBoundaryMs, firstScreen = null }) {
+function window({ controlMs, offBoundaryMs, firstScreen = null, timedTotalMs = controlMs + 200 }) {
 	return {
 		measured: true,
-		timed: { stages: { off_boundary: stat(offBoundaryMs) }, firstScreen },
+		timed: {
+			total: stat(timedTotalMs),
+			stages: { off_boundary: stat(offBoundaryMs) },
+			firstScreen,
+		},
 		overhead: { timed: { control: stat(controlMs) } },
 	};
 }
 
-function scale({ profileControlMs = 1010, firstScreen = split(), profiled = true } = {}) {
+function scale({
+	profileControlMs = 1010,
+	firstScreen = split(),
+	profiled = true,
+	reference = false,
+} = {}) {
 	const cells = { octane: { fcp: window({ controlMs: 1000, offBoundaryMs: 270 }) } };
 	if (profiled) {
 		cells['octane-profile'] = {
 			fcp: window({ controlMs: profileControlMs, offBoundaryMs: 267, firstScreen }),
+		};
+	}
+	if (reference) {
+		// Control wall 700 against a timed total of 800, so the two candidate
+		// denominators — 1000 − 700 and 1200 − 800 — are 300 and 400 and cannot be
+		// confused for one another by a passing assertion.
+		cells['react-first-screen'] = {
+			fcp: window({ controlMs: 700, timedTotalMs: 800, offBoundaryMs: 60 }),
 		};
 	}
 	return { rows: 10000, cells };
@@ -183,4 +200,57 @@ test('renders the FCP delta only for a reference that measured the window', () =
 	// Both cells measured create, so the absence above is the FCP window's own
 	// and not this cell being skipped wholesale.
 	assert.ok(report.includes('### Octane − `react`, create@10000'));
+});
+
+test('a run without the reference cell yields no reference row rather than a wrong one', () => {
+	assert.equal(profileTransfer(scale()).reference, null);
+});
+
+test('the framework row is measured against the reference’s whole bucket 4', () => {
+	const { reference } = profileTransfer(scale({ reference: true }));
+	assert.equal(reference.referenceId, 'react-first-screen');
+	assert.equal(reference.referenceOffBoundaryMs, 60);
+	// The reference has no phase split and cannot be given one, so only its whole
+	// remainder may be subtracted: 77 of framework against all 60 of it.
+	assert.equal(reference.excessMs, 17);
+});
+
+test('the gap share divides by the timed FCP walls, the window its numerator came from', () => {
+	const { reference } = profileTransfer(scale({ reference: true }));
+	// 1200 − 800, from `fcp.timed.total` — the same denominator `attributeDelta`
+	// uses. Reading the control walls instead would give 1000 − 700 = 300 and a
+	// share of 5.67%, a timed numerator over an uninstrumented denominator.
+	assert.equal(reference.gapMs, 400);
+	assert.ok(Math.abs(reference.shareOfGap - 17 / 400) < 1e-12);
+	assert.ok(Math.abs(reference.shareOfGap - 17 / 300) > 1e-3);
+});
+
+test('the two shares keep separate denominators, because they answer different questions', () => {
+	const { reference, profiledOffBoundaryMs } = profileTransfer(scale({ reference: true }));
+	// A composition statement about one cell: 77 of framework in its own 267 of
+	// off-boundary. It says nothing about the reference, and it is not the gap
+	// share — quoting it as one would overstate the finding here by 26 points.
+	assert.equal(profiledOffBoundaryMs, 267);
+	assert.ok(Math.abs(reference.shareOfOwnBucket - 77 / 267) < 1e-12);
+	assert.ok(reference.shareOfOwnBucket > reference.shareOfGap);
+});
+
+test('the rendered report names the denominator beside each share', () => {
+	const report = renderBoundaryReport([frozen('c247-o2-bucket4', 10000)]);
+	assert.ok(
+		report.includes(
+			'| framework ÷ Octane’s own bucket 4 | `octane-profile` off-boundary, 599.9 ms | 84.2% |'.replace(
+				'’',
+				"'",
+			),
+		),
+	);
+	// 457.1 is the timed FCP walls' difference. The control walls differ by
+	// 414.5, so this line also pins which window the denominator comes from.
+	assert.ok(
+		report.includes(
+			'| framework excess ÷ the FCP gap | `octane` FCP wall − `react-first-screen` FCP wall, 457.1 ms | 61.6% |',
+		),
+	);
+	assert.ok(!report.includes('414.5 ms | 68.0%'));
 });

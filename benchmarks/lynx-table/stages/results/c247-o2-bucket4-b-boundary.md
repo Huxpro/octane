@@ -134,6 +134,15 @@ Measured on `octane-profile`, the profile build of `octane`. Its first-screen wa
 
 Off-boundary in the profiled cell's own timed FCP window is 79.7 ms, against 69.3 ms in `octane`'s. Only the residue row is outside Octane's reach; the phase rows above it are what a first-screen slice can still attack.
 
+Against `react-first-screen`, whose whole bucket 4 is 28.3 ms and has no parts to compare a part against: Octane's first-screen script alone exceeds it by 40.2 ms. That subtracts nothing on the reference side, so it holds however the reference's own remainder divides internally.
+
+| share | denominator | value |
+|---|---|---:|
+| framework ÷ Octane's own bucket 4 | `octane-profile` off-boundary, 79.7 ms | 85.9% |
+| framework excess ÷ the FCP gap | `octane` FCP wall − `react-first-screen` FCP wall, 69.5 ms | 57.8% |
+
+Only the second is a claim about the gap; the first is a composition statement about one cell and says nothing about the reference. See `docs/measurement/fcp-attribution.md` for which of the two a verdict may rest on, and for the two-window spread of each.
+
 ### Octane internal control — first-screen path vs create path @1000
 
 Both paths end in the same composed tree, measured by the same driver on the same bundle family, so no cross-framework difference can enter this comparison. Composing Octane's own shell startup and create windows gives 158.8 ms on the control pages; its direct pre-populated FCP@1000 is 171 ms — an excess of **12.2 ms (7.7%)** for the same rendered result. The counts build agrees: 168 ms composed against 179.6 ms direct.
@@ -308,6 +317,15 @@ Measured on `octane-profile`, the profile build of `octane`. Its first-screen wa
 | **residue — web-core script and the browser frame** | — | — | 92.7 |
 
 Off-boundary in the profiled cell's own timed FCP window is 594.5 ms, against 543.8 ms in `octane`'s. Only the residue row is outside Octane's reach; the phase rows above it are what a first-screen slice can still attack.
+
+Against `react-first-screen`, whose whole bucket 4 is 237.9 ms and has no parts to compare a part against: Octane's first-screen script alone exceeds it by 278.4 ms. That subtracts nothing on the reference side, so it holds however the reference's own remainder divides internally.
+
+| share | denominator | value |
+|---|---|---:|
+| framework ÷ Octane's own bucket 4 | `octane-profile` off-boundary, 594.5 ms | 86.8% |
+| framework excess ÷ the FCP gap | `octane` FCP wall − `react-first-screen` FCP wall, 449.7 ms | 61.9% |
+
+Only the second is a claim about the gap; the first is a composition statement about one cell and says nothing about the reference. See `docs/measurement/fcp-attribution.md` for which of the two a verdict may rest on, and for the two-window spread of each.
 
 ### Octane internal control — first-screen path vs create path @10000
 

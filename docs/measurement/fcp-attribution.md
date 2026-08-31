@@ -191,6 +191,56 @@ Octane's **framework** row against the reference's **whole** bucket 4. That
 subtracts nothing on the reference side, so it holds however React's own bucket
 4 divides internally.
 
+#### Two shares, two denominators, and only one of them is section 3's
+
+The split invites two different shares, and they are not interchangeable:
+
+| share | denominator | what it answers |
+|---|---|---|
+| framework ÷ Octane's own bucket 4 | `octane-profile` `off_boundary` | how much of Octane's remainder is Octane's script |
+| framework excess ÷ the FCP gap | `median(octane fcp total) − median(reference fcp total)` | how much of the gap against the reference that excess accounts for |
+
+Only the second uses **Section 3's denominator**, and only the second is a claim
+about the gap. The first is a composition statement about one cell and says
+nothing about the reference; quoting it as a share of the gap overstates the
+finding by about 22 points.
+
+Neither share is additive with the buckets in section 3, and for the same
+reason: `frameworkMs` and `residueMs` are each the median of their own
+per-sample series, so they do not sum to the `off_boundary` median beside them
+(516.3 + 92.7 against 594.5, at 10,000 rows in window B). Take them from the
+harness's `firstScreen.frameworkMs` and `.residueMs` fields. Summing the four
+phase medians by hand gives a different and wrong answer — 486.2 rather than
+516.3 in that window — because the median of a sum is not the sum of medians.
+
+#### What this split's resolution actually is
+
+Section 3's ±0.04 is the resolution of a **single-window FCP ratio**. It does
+not transfer to this split, which has its own, measured the same way — from the
+two same-code windows `c247-o2-bucket4-*` and `c247-o2-bucket4-b-*`, at 10,000
+rows:
+
+| quantity | window A | window B | spread |
+|---|---:|---:|---:|
+| `frameworkMs` | 505.0 | 516.3 | 11.3 ms (2.2%) |
+| `residueMs` | 94.9 | 92.7 | 2.2 ms (2.3%) |
+| framework excess over the reference's whole bucket 4 | 281.7 | 278.4 | 3.3 ms (1.2%) |
+| framework ÷ own bucket 4 | 0.842 | 0.869 | **0.027** |
+| framework excess ÷ FCP gap | 0.616 | 0.619 | **0.003** |
+
+**The derived shares are steadier than the terms they are built from**, and that
+is not luck. Within a single window `frameworkMs` spreads 11.2% and 11.5% across
+its five repetitions, and `residueMs` up to 26.5%; a window that runs hot runs
+hot for both cells, so the drift is largely common-mode and divides out of a
+ratio taken inside that window. It does not divide out of a millisecond.
+
+So the ordering of what to quote is the reverse of what the raw numbers suggest:
+the gap share replicates to 0.003 and is the number a verdict should rest on;
+the millisecond excess replicates to 1.2% and is good for sizing; the individual
+phase milliseconds are the least stable thing here and should be read as an
+ordering, not as quantities. A claim on any of them still needs the second
+window — one window cannot show you its own drift.
+
 ### The function split — which functions own the framework's share
 
 `mts-profile.mjs` CPU-profiles the hidden main-thread realm and folds the
