@@ -153,6 +153,20 @@ interface LynxHostRecord<Node extends LynxElementRef> {
 	parent: LynxHostParent;
 	children: number[];
 	events: Map<string, UniversalEventListenerDescriptor>;
+	/**
+	 * The root, id and generation this record belongs to.
+	 *
+	 * A record has always known all three — it just spelled them through the
+	 * frozen public handle it minted to hold them, so every reader that wanted
+	 * one number paid for the whole object. Naming them here is what lets the
+	 * handle wait until something actually wants a *handle* (issue #247): a
+	 * first screen mints tens of thousands of them before paint and reads none.
+	 * `generation` moves with `handle`, and `assignHostHandle` is the only
+	 * writer of the pair, so the two can never disagree.
+	 */
+	readonly root: number;
+	readonly id: number;
+	generation: number;
 	handle: LynxHostHandle;
 	/**
 	 * Sticky: someone asked this host for a public instance, so a `nodes-ref`
@@ -747,9 +761,9 @@ class LynxCompactHostRecord<Node extends LynxElementRef> implements LynxHostReco
 	private cachedHandle: LynxHostHandle | null = null;
 
 	constructor(
-		private readonly root: number,
+		readonly root: number,
 		readonly id: number,
-		readonly generation: number,
+		public generation: number,
 		public type: string,
 		public props: Readonly<Record<string, unknown>>,
 		public parent: LynxHostParent,
@@ -1989,6 +2003,14 @@ function cloneRecord<Node extends LynxElementRef>(
 		parent: record.parent,
 		children: record.children.length === 0 ? EMPTY_HOST_CHILDREN : [...record.children],
 		events: record.events.size === 0 ? EMPTY_HOST_EVENTS : new Map(record.events),
+		root: record.root,
+		id: record.id,
+		generation: record.generation,
+		// The copy takes the source's handle *object*, and asking for it here is
+		// what forces a lazy one. That is the correctness half of the laziness:
+		// `isPropsOnlyWrite` decides by handle identity, so two copies that each
+		// minted their own would report a write that changed nothing. No paint
+		// path reaches here — a clone is already an update-path allocation.
 		handle: record.handle,
 		selectorWanted: record.selectorWanted,
 		selectorInstalled: record.selectorInstalled,
@@ -1998,6 +2020,20 @@ function cloneRecord<Node extends LynxElementRef>(
 function hostChildrenForWrite<Node extends LynxElementRef>(record: LynxHostRecord<Node>): number[] {
 	if (record.children === EMPTY_HOST_CHILDREN) record.children = [];
 	return record.children;
+}
+
+/**
+ * Give a record a handle that was minted elsewhere, keeping `generation` with
+ * it. A recreate is the only caller: it bumps the generation and builds the
+ * handle for the ACK, so the record must take both or the two fields would
+ * describe different generations of the same host.
+ */
+function assignHostHandle<Node extends LynxElementRef>(
+	record: LynxHostRecord<Node>,
+	handle: LynxHostHandle,
+): void {
+	record.handle = handle;
+	record.generation = handle.generation;
 }
 
 function createHandle(root: number, id: number, type: string, generation: number): LynxHostHandle {
@@ -2202,12 +2238,16 @@ function applyProps<Node extends LynxElementRef>(
 function installNodesRefSelector<Node extends LynxElementRef>(
 	papi: LynxElementPAPI<Node>,
 	node: Node,
-	handle: LynxHostHandle,
+	record: LynxHostRecord<Node>,
 ): void {
 	// Raw text has no CSS-selectable Element surface. It still receives a cloned
 	// identity handle for ref ordering, but query methods fail with node-not-found.
-	if (handle.type === '#text' || handle.type === 'raw-text') return;
-	papi.setRefSelector(node, `r${handle.root}-h${handle.id}-g${handle.generation}`);
+	if (record.type === '#text' || record.type === 'raw-text') return;
+	// Read off the record rather than its handle. This is the one selector write
+	// every painted host takes, so asking for the handle here would mint one per
+	// host on the first screen — for four numbers the record already holds, and
+	// which this spells out itself rather than reading `handle.selector`.
+	papi.setRefSelector(node, `r${record.root}-h${record.id}-g${record.generation}`);
 }
 
 function ensureNodesRefSelector<Node extends LynxElementRef>(
@@ -2215,7 +2255,7 @@ function ensureNodesRefSelector<Node extends LynxElementRef>(
 	record: LynxHostRecord<Node>,
 ): void {
 	if (record.selectorInstalled || record.node === null) return;
-	installNodesRefSelector(state.papi, record.node, record.handle);
+	installNodesRefSelector(state.papi, record.node, record);
 	record.selectorInstalled = true;
 	// An installed selector is a promise to keep answering, so a later physical
 	// rebind has to restore it rather than decide again.
@@ -2622,15 +2662,15 @@ function directListItem<Node extends LynxElementRef>(
 	let current = getRecord(id);
 	const visited = new Set<number>();
 	while (current !== undefined) {
-		if (visited.has(current.handle.id)) throw hostError('list ancestry contains a cycle.');
-		visited.add(current.handle.id);
+		if (visited.has(current.id)) throw hostError('list ancestry contains a cycle.');
+		visited.add(current.id);
 		const parentId = parentHostId(current.parent);
 		if (typeof parentId !== 'number') return null;
 		const parent = getRecord(parentId);
 		if (parent === undefined) return null;
 		if (parent.type === 'list') {
 			return current.type === 'list-item'
-				? Object.freeze({ listId: parent.handle.id, itemId: current.handle.id })
+				? Object.freeze({ listId: parent.id, itemId: current.id })
 				: null;
 		}
 		current = parent;
@@ -2905,7 +2945,7 @@ function resolveRecord<Node extends LynxElementRef>(
 	// A materialized host is an ordinary record from here on, and ordinary
 	// records announce their generation: without this a later destroy-and-reuse
 	// of the id would mint a second host with the same (root, id, generation).
-	if (!state.generations.has(id)) state.generations.set(id, materialized.handle.generation);
+	if (!state.generations.has(id)) state.generations.set(id, materialized.generation);
 	return materialized;
 }
 
@@ -2940,7 +2980,7 @@ function createPhysicalTree<Node extends LynxElementRef>(
 		record.visible && isAcceptedHostConnected(state, id),
 	);
 	if (record.visible) {
-		installNativeEvents(state, node, container.root, id, record.handle.generation, record.events);
+		installNativeEvents(state, node, container.root, id, record.generation, record.events);
 	}
 	const children: LynxPhysicalTree<Node>[] = [];
 	for (const childId of physicalChildren(record)) {
@@ -3023,7 +3063,7 @@ function clearPhysicalTreeAttachment<Node extends LynxElementRef>(
 		deltas.push(
 			Object.freeze({
 				id: tree.logicalId,
-				generation: record.handle.generation,
+				generation: record.generation,
 				attached: false,
 			}),
 		);
@@ -3058,7 +3098,7 @@ function collectPhysicalTreeAttachment<Node extends LynxElementRef>(
 	deltas.push(
 		Object.freeze({
 			id: tree.logicalId,
-			generation: record.handle.generation,
+			generation: record.generation,
 			attached: true,
 		}),
 	);
@@ -3120,7 +3160,7 @@ function rebindPhysicalTree<Node extends LynxElementRef>(
 			tree.node,
 			container.root,
 			desiredId,
-			desired.handle.generation,
+			desired.generation,
 			desired.events,
 		);
 	}
@@ -3439,7 +3479,7 @@ function beginNativeListNode<Node extends LynxElementRef>(
 		componentAtIndexes,
 	);
 	listState = {
-		hostId: record.handle.id,
+		hostId: record.id,
 		node,
 		componentAtIndex,
 		componentAtIndexes,
@@ -3455,7 +3495,7 @@ function beginNativeListNode<Node extends LynxElementRef>(
 		leaveCount: 0,
 		disposed: false,
 	};
-	state.lists.set(record.handle.id, listState);
+	state.lists.set(record.id, listState);
 	return node;
 }
 
@@ -3467,11 +3507,11 @@ function publishNativeListItems<Node extends LynxElementRef>(
 	state: LynxHostState<Node>,
 	record: LynxHostRecord<Node>,
 ): void {
-	const listState = state.lists.get(record.handle.id);
+	const listState = state.lists.get(record.id);
 	if (listState === undefined) {
-		throw hostError(`<list> ${record.handle.id} has no native list state.`);
+		throw hostError(`<list> ${record.id} has no native list state.`);
 	}
-	const initialItems = listItems((id) => peekRecord(state, id), record.handle.id);
+	const initialItems = listItems((id) => peekRecord(state, id), record.id);
 	listState.items = initialItems;
 	const initialUpdate = planLynxListUpdate([], initialItems);
 	if (hasListUpdate(initialUpdate)) {
@@ -5345,24 +5385,28 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		if (patch.mainThreadEvents.length !== 0 || patch.mainThreadRef !== undefined) {
 			state.hasMainThreadProps = true;
 		}
-		const handle = createHandle(container.root, node.id, type, 1);
 		state.generations.set(node.id, 1);
 		const hostEvents = eventsByHost.get(node.id);
-		const record: LynxHostRecord<Node> = {
-			node: null,
+		// A compact record rather than a literal, for the reason the compact ACK
+		// path uses one (issue #247): the public handle is a frozen seven-field
+		// object holding a `r{root}-h{id}-g{generation}` string, and *nothing on
+		// the paint path reads it*. The selector write spells the string out
+		// itself, and every other pre-paint reader — this walk, the capture that
+		// follows it — wants one number, which the record now names. So the first
+		// screen stops minting one handle and one string per host before paint,
+		// and mints them when a reader asks: adoption, a nodes-ref, an update.
+		const record = new LynxCompactHostRecord<Node>(
+			container.root,
+			node.id,
+			1,
 			type,
 			props,
-			visible,
-			parent: parentId,
-			children: EMPTY_HOST_CHILDREN,
-			events:
-				hostEvents === undefined
-					? EMPTY_HOST_EVENTS
-					: new Map(hostEvents as Iterable<[string, UniversalEventListenerDescriptor]>),
-			handle,
-			selectorWanted: false,
-			selectorInstalled: false,
-		};
+			parentId,
+		);
+		record.visible = visible;
+		if (hostEvents !== undefined) {
+			record.events = new Map(hostEvents as Iterable<[string, UniversalEventListenerDescriptor]>);
+		}
 		state.records.set(node.id, record);
 		if (parentRecord !== null) {
 			if (parentRecord.children === EMPTY_HOST_CHILDREN) parentRecord.children = [];
@@ -5595,7 +5639,7 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 			for (const [type, descriptor] of eventEntries) {
 				const event = Object.freeze({
 					host: id,
-					generation: record.handle.generation,
+					generation: record.generation,
 					type,
 					listener: descriptor.id,
 					priority: descriptor.priority,
@@ -5628,7 +5672,7 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 					id,
 					nativeId: null,
 					type: record.type,
-					generation: record.handle.generation,
+					generation: record.generation,
 					parent: record.parent,
 					children: snapshotFirstTreeChildren(record.children),
 					props: snapshotFirstTreeProps(record.props, cloneState),
@@ -5767,7 +5811,7 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 						id: entry.id,
 						nativeId: entry.nativeId,
 						type: entry.record.type,
-						generation: entry.record.handle.generation,
+						generation: entry.record.generation,
 						parent: entry.parent,
 						children: snapshotFirstTreeChildren(entry.record.children),
 						props: snapshotFirstTreeProps(entry.record.props, cloneState),
@@ -6100,7 +6144,7 @@ function compareFirstTree<Node extends LynxElementRef>(
 				const identity = decodeLynxNativeEventToken(listener);
 				if (
 					identity.id !== id ||
-					identity.generation !== next.handle.generation ||
+					identity.generation !== next.generation ||
 					identity.listener !== descriptor.id ||
 					identity.priority !== descriptor.priority
 				) {
@@ -6119,8 +6163,8 @@ function compareFirstTree<Node extends LynxElementRef>(
 			return mismatch(firstTree, `snapshot.nodes[${id}].type`, 'the host type differs.');
 		}
 		if (
-			captured.generation !== next.handle.generation ||
-			sourceRecord.handle.generation !== captured.generation
+			captured.generation !== next.generation ||
+			sourceRecord.generation !== captured.generation
 		) {
 			return mismatch(
 				firstTree,
@@ -6889,7 +6933,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 		// a promoted host must announce its generation so a reuse of the id after
 		// its destruction bumps rather than repeats it.
 		if (!stagedGenerations.has(id) && !state.generations.has(id)) {
-			stagedGenerations.set(id, record.handle.generation);
+			stagedGenerations.set(id, record.generation);
 		}
 		return record;
 	};
@@ -6930,7 +6974,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				stagedGenerations.get(id) ??
 				state.generations.get(id) ??
 				rangedGeneration(id) ??
-				state.records.get(id)?.handle.generation
+				state.records.get(id)?.generation
 		: initiallyNoGenerations
 			? (id: number): number | undefined => stagedGenerations.get(id) ?? rangedGeneration(id)
 			: (id: number): number | undefined =>
@@ -7016,9 +7060,9 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			accepted === undefined ||
 			current === undefined ||
 			accepted.node === null ||
-			accepted.handle.root !== container.root ||
-			accepted.handle.generation !== identity.generation ||
-			(current.handle.generation !== identity.generation && !removingFromRecreatedTarget) ||
+			accepted.root !== container.root ||
+			accepted.generation !== identity.generation ||
+			(current.generation !== identity.generation && !removingFromRecreatedTarget) ||
 			!isRootConnected((id) => state.records.get(id), identity.id)
 		) {
 			throw hostError(
@@ -7107,7 +7151,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 		compactCandidate = false;
 		for (const [id, record] of stagedRecords) {
 			handleOrder.push(id);
-			if (!stagedGenerations.has(id)) stagedGenerations.set(id, record.handle.generation);
+			if (!stagedGenerations.has(id)) stagedGenerations.set(id, record.generation);
 		}
 	};
 	const touchHandle = (id: number, newlyCreated = false) => {
@@ -7665,6 +7709,9 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 								parent: logicalParent,
 								children: EMPTY_HOST_CHILDREN,
 								events: EMPTY_HOST_EVENTS,
+								root: container.root,
+								id,
+								generation,
 								handle: createHandle(container.root, id, type, generation),
 								selectorWanted: false,
 								selectorInstalled: false,
@@ -7781,9 +7828,12 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 					type,
 					props,
 					visible: true,
-					parent: nodeIndex === 0 ? parent : templateRecords[shape.parents[nodeIndex]!]!.handle.id,
+					parent: nodeIndex === 0 ? parent : templateRecords[shape.parents[nodeIndex]!]!.id,
 					children: EMPTY_HOST_CHILDREN,
 					events: EMPTY_HOST_EVENTS,
+					root: container.root,
+					id: descriptor.id,
+					generation,
 					handle,
 					selectorWanted: false,
 					selectorInstalled: false,
@@ -7855,10 +7905,10 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 					throw hostError(`before host ${command.before} is not a child of the requested parent.`);
 				}
 			}
-			siblings.splice(beforeIndex, 0, rootRecord.handle.id);
+			siblings.splice(beforeIndex, 0, rootRecord.id);
 			operations.push({
 				op: 'mount-template',
-				id: rootRecord.handle.id,
+				id: rootRecord.id,
 				parent,
 				before: command.before,
 				records: templateRecords,
@@ -7906,6 +7956,9 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				parent: undefined,
 				children: EMPTY_HOST_CHILDREN,
 				events: EMPTY_HOST_EVENTS,
+				root: container.root,
+				id: command.id,
+				generation,
 				handle,
 				selectorWanted: false,
 				selectorInstalled: false,
@@ -7969,7 +8022,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			if (patch.mainThreadEvents.length !== 0 || patch.mainThreadRef !== undefined) {
 				hasMainThreadProps = true;
 			}
-			const generation = (getGeneration(command.id) ?? record.handle.generation) + 1;
+			const generation = (getGeneration(command.id) ?? record.generation) + 1;
 			const handle = createHandle(container.root, command.id, command.type, generation);
 			const recreateChildren = Object.freeze([...record.children]);
 			const recreatePortalChildren = Object.freeze([...portalChildrenForTarget(command.id)]);
@@ -7993,7 +8046,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			setGeneration(command.id, generation);
 			recreatedIds.add(command.id);
 			record.props = props;
-			record.handle = handle;
+			assignHostHandle(record, handle);
 			record.selectorInstalled = false;
 			touchHandle(command.id);
 		} else if (command.op === 'insert' || command.op === 'move') {
@@ -8128,7 +8181,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				state: command.state,
 				authoredHidden: authoredHiddenValue(record.props),
 				events: new Map(record.events),
-				generation: record.handle.generation,
+				generation: record.generation,
 			});
 		} else if (command.op === 'event') {
 			assertSafeId(command.id, `command ${index} event.id`);
@@ -8175,7 +8228,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 					type: command.type,
 					previous,
 					next: record.events.get(command.type) ?? null,
-					generation: record.handle.generation,
+					generation: record.generation,
 					visible: record.visible,
 				});
 			}
@@ -8213,7 +8266,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				!stagedGenerations.has(command.id) &&
 				!state.generations.has(command.id)
 			) {
-				stagedGenerations.set(command.id, record.handle.generation);
+				stagedGenerations.set(command.id, record.generation);
 			}
 			deleteRecord(command.id);
 			operations.push({ op: 'destroy', id: command.id });
@@ -8270,8 +8323,8 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			target === undefined ||
 			acceptedTarget === undefined ||
 			acceptedTarget.node === null ||
-			target.handle.generation !== entry.parent.generation ||
-			acceptedTarget.handle.generation !== entry.parent.generation ||
+			target.generation !== entry.parent.generation ||
+			acceptedTarget.generation !== entry.parent.generation ||
 			!isRootConnected(getRecord, entry.parent.target)
 		) {
 			throw hostError(
@@ -8363,7 +8416,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 					listAncestryDelta.push(
 						Object.freeze({
 							id: descendantId,
-							generation: nextDescendant.handle.generation,
+							generation: nextDescendant.generation,
 							listDescendant,
 						}),
 					);
@@ -8640,7 +8693,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 										node,
 										container.root,
 										id,
-										record.handle.generation,
+										record.generation,
 										record.events,
 									);
 									if (hasMainThreadProps && isAcceptedHostConnected(state, id)) {
@@ -8796,7 +8849,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 										state.ownedNodes.add(node);
 										if (!sparse || nodeIndex === 0) {
 											activeNodes.set(
-												firstId === undefined ? record.handle.id : firstId + recordIndex,
+												firstId === undefined ? record.id : firstId + recordIndex,
 												node,
 											);
 										}
@@ -8853,8 +8906,8 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 												state,
 												record.node!,
 												container.root,
-												firstId === undefined ? record.handle.id : firstId + recordIndex,
-												firstId === undefined ? record.handle.generation : 1,
+												firstId === undefined ? record.id : firstId + recordIndex,
+												firstId === undefined ? record.generation : 1,
 												record.events,
 											);
 										}
@@ -9261,8 +9314,8 @@ export function getLynxHostPublicState<Node extends LynxElementRef>(
 	let connected = false;
 	const visited = new Set<number>();
 	while (true) {
-		if (visited.has(current.handle.id)) throw hostError('host ancestry contains a cycle.');
-		visited.add(current.handle.id);
+		if (visited.has(current.id)) throw hostError('host ancestry contains a cycle.');
+		visited.add(current.id);
 		const parentId = parentHostId(current.parent);
 		if (parentId === null) {
 			connected = true;
@@ -9335,7 +9388,7 @@ export function resolveLynxHostNativeEvent<Node extends LynxElementRef>(
 		record === undefined ||
 		record.node === null ||
 		!record.visible ||
-		record.handle.generation !== identity.generation ||
+		record.generation !== identity.generation ||
 		!isRootConnected((id) => state.records.get(id), identity.id)
 	) {
 		return null;
