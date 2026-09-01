@@ -10,6 +10,7 @@ import {
 	captureLynxFirstTree,
 	createLynxHostContainer,
 	disposeLynxHostContainer,
+	getLynxHostHandle,
 	prepareLynxHostBatch,
 	type LynxFirstScreenDirectEnvelope,
 	type LynxFirstScreenDirectNode,
@@ -154,6 +155,53 @@ describe('direct first-screen applier', () => {
 				_wkltId: 'first-screen-direct.test:tap',
 				_c: { values: [{ step: 8 }] },
 			});
+		}
+	});
+
+	// A first screen paints tens of thousands of hosts and asks none of them for
+	// a public handle: the selector write spells its own string, and everything
+	// else before adoption wants a number the record names. So the record mints
+	// the handle on demand (issue #247), and what that has to keep true is
+	// exactly this — the object a reader eventually gets is the one the eager
+	// path would have handed it, and it is the *same* object on every read,
+	// because `isPropsOnlyWrite` decides by handle identity.
+	it('mints a first-screen host handle on demand, identical to the one the staged path builds', () => {
+		const result = renderScene();
+		const directPapi = createFakePAPI();
+		const direct = createLynxHostContainer(directPapi, {
+			root: 1,
+			worklets: createLynxMainThreadWorkletRegistry(),
+		});
+		expect(applyLynxFirstScreenDirect(direct, result.nodes, result.envelope)).toBe(true);
+
+		const stagedResult = renderScene();
+		const stagedPapi = createFakePAPI();
+		const staged = createLynxHostContainer(stagedPapi, {
+			root: 1,
+			worklets: createLynxMainThreadWorkletRegistry(),
+		});
+		prepareLynxHostBatch(staged, stagedResult.batch).apply();
+
+		const ids = captureLynxFirstTree(direct)!.snapshot.nodes.map((node) => node.id);
+		expect(ids.length).toBeGreaterThan(4);
+		for (const id of ids) {
+			const handle = getLynxHostHandle(direct, id);
+			expect(handle).not.toBeNull();
+			expect(handle).toEqual(getLynxHostHandle(staged, id));
+			// Every field the wire and the nodes-ref resolver read off a handle,
+			// asserted against the record's own identity rather than against the
+			// other arm alone — two arms that drifted the same way would agree.
+			expect(handle).toMatchObject({
+				$$kind: 'octane.lynx.element',
+				root: 1,
+				id,
+				generation: 1,
+				// The CSS *query* form. The attribute the paint writes is the bare
+				// `r1-h{id}-g1`, which is why the selector write never wanted this
+				// object: the two strings were never the same string.
+				selector: `[octane-ref=r1-h${id}-g1]`,
+			});
+			expect(getLynxHostHandle(direct, id)).toBe(handle);
 		}
 	});
 
