@@ -52,6 +52,7 @@ import {
 	LYNX_CSS_SCOPE_PROP,
 	classifyLynxHostPropUpdate,
 	hasLynxMainThreadProp,
+	planLynxHostCreatePatch,
 	planLynxHostPropPatch,
 	sameLynxUniversalHostPropValue,
 	type LynxHostPropPatch,
@@ -1709,7 +1710,7 @@ function prepareStaticHostProps(
 	const props = cloneProps(value, label);
 	const prepared = Object.freeze({
 		props,
-		patch: planLynxHostPropPatch(type, EMPTY_HOST_PROPS, props),
+		patch: planLynxHostCreatePatch(type, props),
 	});
 	if (previous === undefined) {
 		PREPARED_STATIC_HOST_PROPS.set(value, new Map([[type, prepared]]));
@@ -1837,7 +1838,7 @@ function prepareTemplateProgram(value: unknown, label: string): LynxPreparedTemp
 			const patch =
 				shape.types[nodeIndex] === '#text' && props[LYNX_CSS_SCOPE_PROP] == null
 					? EMPTY_RAW_TEXT_CREATE_PATCH
-					: planLynxHostPropPatch(shape.types[nodeIndex]!, EMPTY_HOST_PROPS, props);
+					: planLynxHostCreatePatch(shape.types[nodeIndex]!, props);
 			if (patch.mainThreadEvents.length !== 0 || patch.mainThreadRef !== undefined) {
 				throw hostError(`${label}.program.nodes[${nodeIndex}] cannot contain main-thread props.`);
 			}
@@ -2644,7 +2645,7 @@ function installMainThreadProps<Node extends LynxElementRef>(
 	type: string,
 	props: Readonly<Record<string, unknown>>,
 ): void {
-	const patch = planLynxHostPropPatch(type, {}, props);
+	const patch = planLynxHostCreatePatch(type, props);
 	for (const event of patch.mainThreadEvents) {
 		if (event.value !== null) installMainThreadEvent(state, node, event.binding, event.value);
 	}
@@ -3046,7 +3047,7 @@ function createPhysicalTree<Node extends LynxElementRef>(
 		record.type,
 		{},
 		record.props,
-		planLynxHostPropPatch(record.type, {}, record.props),
+		planLynxHostCreatePatch(record.type, record.props),
 		true,
 		record.visible,
 		record.visible && isAcceptedHostConnected(state, id),
@@ -5455,7 +5456,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		const patch =
 			type === '#text' && props[LYNX_CSS_SCOPE_PROP] == null
 				? EMPTY_RAW_TEXT_CREATE_PATCH
-				: planLynxHostPropPatch(type, EMPTY_HOST_PROPS, props);
+				: planLynxHostCreatePatch(type, props);
 		if (patch.mainThreadEvents.length !== 0 || patch.mainThreadRef !== undefined) {
 			state.hasMainThreadProps = true;
 		}
@@ -5785,7 +5786,7 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 			state.hasMainThreadProps &&
 			!(record.type === '#text' && record.props[LYNX_CSS_SCOPE_PROP] == null) &&
 			hasLynxMainThreadProp(record.props)
-				? planLynxHostPropPatch(record.type, EMPTY_HOST_PROPS, record.props)
+				? planLynxHostCreatePatch(record.type, record.props)
 				: null;
 		if (mainThreadPatch !== null) {
 			for (const event of mainThreadPatch.mainThreadEvents) {
@@ -7738,7 +7739,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 							patch =
 								type === '#text' && props[LYNX_CSS_SCOPE_PROP] == null
 									? EMPTY_RAW_TEXT_CREATE_PATCH
-									: planLynxHostPropPatch(type, EMPTY_HOST_PROPS, props);
+									: planLynxHostCreatePatch(type, props);
 							if (patch.mainThreadEvents.length !== 0 || patch.mainThreadRef !== undefined) {
 								// Reachable only from a bound slot: a static main-thread prop is
 								// an object, and `prepareTemplateProgram` refuses a non-scalar
@@ -7890,7 +7891,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 					cachedProps?.patch ??
 					(type === '#text' && props[LYNX_CSS_SCOPE_PROP] == null
 						? EMPTY_RAW_TEXT_CREATE_PATCH
-						: planLynxHostPropPatch(type, EMPTY_HOST_PROPS, props));
+						: planLynxHostCreatePatch(type, props));
 				if (patch.mainThreadEvents.length !== 0 || patch.mainThreadRef !== undefined) {
 					throw hostError(`${label}.nodes[${nodeIndex}] cannot contain direct main-thread props.`);
 				}
@@ -8006,7 +8007,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			const patch =
 				command.type === '#text' && props[LYNX_CSS_SCOPE_PROP] == null
 					? EMPTY_RAW_TEXT_CREATE_PATCH
-					: planLynxHostPropPatch(command.type, EMPTY_HOST_PROPS, props);
+					: planLynxHostCreatePatch(command.type, props);
 			if (patch.mainThreadEvents.length !== 0 || patch.mainThreadRef !== undefined) {
 				abandonCompact();
 				hasMainThreadProps = true;
@@ -8092,7 +8093,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			const patch =
 				command.type === '#text' && props[LYNX_CSS_SCOPE_PROP] == null
 					? EMPTY_RAW_TEXT_CREATE_PATCH
-					: planLynxHostPropPatch(command.type, EMPTY_HOST_PROPS, props);
+					: planLynxHostCreatePatch(command.type, props);
 			if (patch.mainThreadEvents.length !== 0 || patch.mainThreadRef !== undefined) {
 				hasMainThreadProps = true;
 			}
