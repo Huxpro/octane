@@ -83,6 +83,48 @@ async function resolveClientOnlyImports(context, compiler, source, id) {
 }
 
 /**
+ * Issue #246 — what each compile of a module said about its own plan order.
+ *
+ * A program address is positional: `(module id, plan index)`, with a structural
+ * digest of the derived wire beside it. The two thread layers compile the same
+ * module separately, and both run the same derivation as their eligibility
+ * oracle, so they agree by construction — but "by construction" is an argument,
+ * and a wrong address does not fail, it paints a plausible wrong tree. The
+ * digest is what turns the argument into a check, and this is where the check
+ * happens: one build sees both compiles, so it can compare them before either
+ * chunk is written.
+ *
+ * Keyed by compilation so a watch rebuild starts clean; weak so a finished one
+ * is collectable. A build that configures a main-thread program backend runs the
+ * serial loader (see `plugin.js`), which is why one process-local table sees
+ * every layer's compile of a module.
+ */
+const COMPILATION_PROGRAM_DIGESTS = new WeakMap();
+
+function crossCheckProgramAddresses(compilation, addresses) {
+	if (compilation === undefined || compilation === null) return;
+	let digests = COMPILATION_PROGRAM_DIGESTS.get(compilation);
+	if (digests === undefined) COMPILATION_PROGRAM_DIGESTS.set(compilation, (digests = new Map()));
+	for (const address of addresses) {
+		const key = `${address.module}#${address.index}`;
+		const seen = digests.get(key);
+		if (seen === undefined) {
+			digests.set(key, address.digest);
+			continue;
+		}
+		if (seen === address.digest) continue;
+		throw new Error(
+			`@octanejs/rspack-plugin: the thread layers of this build disagree about program ` +
+				`${key}. One compiled a program whose wire surface digests to ${seen}, the other ` +
+				`to ${address.digest}. A program address is positional, so a background run naming ` +
+				`this one would mount whatever the main thread compiled in that slot. Addressing ` +
+				`requires both layers to compile the same module graph; a build that specializes ` +
+				`the two differently must set \`programAddressing: false\`.`,
+		);
+	}
+}
+
+/**
  * Rspack's ESM loader entry. A compiler instance is intentionally scoped to
  * one invocation: Rspack owns output caching and invalidates it from the file
  * and missing-file dependencies registered below, while a fresh neutral
@@ -130,6 +172,11 @@ export default function octaneLoader(source, inputSourceMap) {
 			...(compilerOptions.mainThreadProgramBackend === undefined
 				? null
 				: { mainThreadProgramBackend: compilerOptions.mainThreadProgramBackend }),
+			// Whole-build rather than per layer: the address is positional, so both
+			// compiles have to agree about which plans get one (issue #246).
+			...(compilerOptions.programAddressing === undefined
+				? null
+				: { programAddressing: compilerOptions.programAddressing }),
 			...(options.requireDirective === undefined
 				? null
 				: { requireDirective: options.requireDirective }),
@@ -163,6 +210,9 @@ export default function octaneLoader(source, inputSourceMap) {
 				}
 
 				registerDependencies(this, result);
+				if (result.programAddresses !== undefined) {
+					crossCheckProgramAddresses(this._compilation, result.programAddresses);
+				}
 				finishCssModuleConstants(this, cssModuleConstants, result);
 				if (result.kind === 'none') {
 					callback(null, source, this.sourceMap === false ? undefined : inputSourceMap);

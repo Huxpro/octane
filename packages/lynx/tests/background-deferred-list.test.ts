@@ -248,22 +248,23 @@ describe.sequential('Lynx deferred native list rows', () => {
 
 		const mount = commits[0]!;
 		expect(mount.some((command) => command.op === 'mount-template-run')).toBe(false);
+		// Three hosts a row, not four: `{item.label as string}` is a scalar the
+		// author proved, so it rides the `<text>` as a `text` prop and there is no
+		// carrier to create (#246 B2). What this test pins is that the rows are
+		// *built* rather than declared, and one fewer host per row is what building
+		// them now costs.
 		expect(
 			mount.filter((command) => command.op === 'create').map((command) => command.type),
 		).toEqual([
 			'list',
 			'list-item',
 			'text',
-			'#text',
 			'list-item',
 			'text',
-			'#text',
 			'list-item',
 			'text',
-			'#text',
 			'list-item',
 			'text',
-			'#text',
 		]);
 
 		const list = dom.window.document.querySelector('#worklet-feed')!;
@@ -316,7 +317,7 @@ describe.sequential('Lynx deferred native list rows', () => {
 		]);
 		expect(
 			mount.filter((command) => command.op === 'create').map((command) => command.type),
-		).toEqual(['list', 'list-item', 'text', '#text']);
+		).toEqual(['list', 'list-item', 'text']);
 
 		const list = dom.window.document.querySelector('#mixed-feed')!;
 		environment.switchToMainThread();

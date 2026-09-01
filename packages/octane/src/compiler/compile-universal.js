@@ -2278,6 +2278,30 @@ function hostAbsorbsTextChild(type, state) {
 	return Array.isArray(hostProps?.[type]) && hostProps[type].includes(TEXT_CONTENT_PROP);
 }
 
+// Whether a host's lone compiled child is a dynamic hole the *author* proved
+// scalar, which is the one dynamic child a text-absorbing host can hold.
+//
+// Asked of the authored JSX rather than the plan node, because the proof lives
+// in the source and only in the source: `compile.js` strips every TS-only
+// wrapper before printing, so by the time an expression reaches codegen the cast
+// is gone. The compiled child is still checked — a hole that folded to static
+// text or to a nested plan is not this — so the two views have to agree before
+// anything is folded.
+function isScalarTextChildSite(node, compiled) {
+	if (compiled.kind !== 'slot') return false;
+	const authored = (node.children ?? []).filter(
+		(child) => child.type !== 'JSXText' || normalizeJsxText(child.value ?? '') !== '',
+	);
+	if (authored.length !== 1) return false;
+	const only = authored[0];
+	return (
+		only.type === 'JSXExpressionContainer' &&
+		only.expression != null &&
+		only.expression.type !== 'JSXEmptyExpression' &&
+		isStaticallyPrimitiveTextExpression(only.expression)
+	);
+}
+
 // This proof deliberately covers data expressions, not arbitrary authored calls.
 // Property reads can still reach getters or proxies, so the universal runtime
 // lazily claims the keyed item owner if one invokes a hook or renderer region.
@@ -3185,23 +3209,45 @@ function compileHostElementAst(node, context, state) {
 		}
 	}
 	const children = compileChildrenAst(node.children ?? [], context, state);
-	// Fold a lone compile-time-known text child onto the host, so the carrier
-	// element is never painted. Deliberately narrow, and each condition earns its
-	// place: exactly one child, because a carrier beside a sibling is not the
-	// only thing the parent renders; `kind: 'text'`, which is authored JSX text
-	// and string literals and never a dynamic hole, whose value is unknown here
-	// and whose slot the renderer must still address; and no existing writer of
-	// `text` on this host, since `propsSlot` builds an unordered bag at runtime
-	// that the compiler cannot prove lacks the key. Refuse rather than race it.
-	const absorbsTextChild =
+	// Fold a lone text child onto the host, so the carrier element is never
+	// painted. Deliberately narrow, and each condition earns its place: exactly
+	// one child, because a carrier beside a sibling is not the only thing the
+	// parent renders; a child whose content this host can hold, which is either a
+	// string the compiler already has or a hole the author proved scalar; and no
+	// existing writer of `text` on this host, since `propsSlot` builds an
+	// unordered bag at runtime that the compiler cannot prove lacks the key.
+	// Refuse rather than race it.
+	const absorbsSomeTextChild =
 		children.length === 1 &&
-		children[0].kind === 'text' &&
 		propsSlot === null &&
 		!Object.hasOwn(props, TEXT_CONTENT_PROP) &&
 		!bindings.some(([name]) => name === TEXT_CONTENT_PROP) &&
 		hostAbsorbsTextChild(type, state);
+	// `kind: 'text'` is authored JSX text and string literals: the value is in
+	// hand, so it rides the frozen plan as a static prop (#242 Cause A).
+	const absorbsTextChild = absorbsSomeTextChild && children[0].kind === 'text';
 	if (absorbsTextChild) props[TEXT_CONTENT_PROP] = children[0].value;
-	const emitted = absorbsTextChild ? [] : children;
+	// #242 Cause B / #246 B2. A dynamic hole the author proved scalar folds too,
+	// as a *binding* rather than a static prop: the value is not known here, but
+	// its shape is, and that is all the fold needs. `{expr as string}` is the
+	// authored form `docs/differences-from-react.md` already requires for dynamic
+	// text, so the proof is in the source and this stops erasing it.
+	//
+	// The slot survives the fold at its own index — `addDynamicAst` already
+	// pushed the expression into `context.values` — so nothing renumbers and the
+	// only change to the slot table is that this slot is now written by a prop
+	// rather than instantiated as a range.
+	//
+	// The cast is an assertion, not a proof, and a lying one must not paint a
+	// wrong tree. It cannot: `text` on a `text` host takes the carrier's
+	// semantics in all three appliers — `attributeValue` in `host-props.ts`, the
+	// dense route in `host-driver.ts`, and the compiled create in
+	// `emit-main-thread-program.ts` each render a non-string as empty rather than
+	// coercing it — which is exactly what the carrier this replaces did.
+	const absorbsScalarTextChild =
+		absorbsSomeTextChild && !absorbsTextChild && isScalarTextChildSite(node, children[0]);
+	if (absorbsScalarTextChild) bindings.push([TEXT_CONTENT_PROP, children[0].slot]);
+	const emitted = absorbsTextChild || absorbsScalarTextChild ? [] : children;
 	return withPlanOrigin(
 		{
 			kind: 'host',
@@ -4339,10 +4385,12 @@ function universalProgramAddressAst(state, plan, index, origin) {
 	if (!lynxTemplateEligible(plan.root) || plan.root.kind !== 'host') return null;
 	const derived = backend.deriveLynxMainThreadProgram(plan.root);
 	if (derived === null || derived === undefined) return null;
-	return jsonValueToAst(
-		{ module: state.programModuleId, index, digest: programDigest(derived.wire) },
-		origin,
-	);
+	const address = { module: state.programModuleId, index, digest: programDigest(derived.wire) };
+	// Reported as well as emitted. The digest in the chunk is what a reader can
+	// check; this is what lets the *build* check it, by comparing what the two
+	// layers said about the same module before either chunk is written.
+	(state.programAddresses ??= []).push(address);
+	return jsonValueToAst(address, origin);
 }
 
 function lynxMainThreadProgramObjectAst(state, plan, origin) {
@@ -5201,5 +5249,6 @@ export function compileUniversal(
 	return {
 		...result,
 		...(universalRuntime === undefined ? null : { universalRuntime }),
+		...(state.programAddresses === undefined ? null : { programAddresses: state.programAddresses }),
 	};
 }

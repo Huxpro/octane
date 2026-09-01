@@ -81,6 +81,7 @@ function normalizeOptions(value) {
 		'hmr',
 		'mainThreadProgramBackend',
 		'parallel',
+		'programAddressing',
 		'profile',
 		'requireDirective',
 		'thread',
@@ -91,7 +92,7 @@ function normalizeOptions(value) {
 	if (options.core !== undefined && options.core !== 'universal' && options.core !== 'block') {
 		throw new TypeError(`${PLUGIN_NAME}: \`core\` must be 'universal' or 'block'.`);
 	}
-	for (const key of ['dev', 'hmr', 'profile', 'requireDirective']) {
+	for (const key of ['dev', 'hmr', 'profile', 'programAddressing', 'requireDirective']) {
 		if (options[key] !== undefined && typeof options[key] !== 'boolean') {
 			throw new TypeError(`${PLUGIN_NAME}: \`${key}\` must be a boolean.`);
 		}
@@ -99,6 +100,28 @@ function normalizeOptions(value) {
 	const application = options.thread === undefined;
 	const thread = options.thread ?? 'background';
 	const layer = resolveLynxLayer(thread);
+	// Issue #246 §6.3. An address is positional, so it is only sound when one
+	// configuration sees both compiles of a module and can fail the build when
+	// they disagree about its plan order. An isolated `thread` graph is one
+	// compile: there is nothing to cross-check against, and a chunk built that
+	// way holds no programs for an address to resolve to. So the refusal is
+	// here, at the configuration, rather than as a mount that finds nothing.
+	if (!application && options.programAddressing === true) {
+		throw new TypeError(
+			`${PLUGIN_NAME}: \`programAddressing\` requires the two-layer application build. ` +
+				`An isolated \`thread: '${thread}'\` graph compiles one thread, so nothing can ` +
+				"check that the two agree about a module's plan order, and its chunk holds no " +
+				'compiled programs for an address to name.',
+		);
+	}
+	// On by default for an application build that compiles main-thread programs:
+	// there is a program to address, and both layers of that one build emit the
+	// digest that proves they agree. `false` keeps descriptor mounts, which is
+	// what an A/B measurement and the byte-identity pins need.
+	const programAddressing =
+		application &&
+		options.mainThreadProgramBackend !== undefined &&
+		options.programAddressing !== false;
 	return Object.freeze({
 		...layer,
 		application,
@@ -108,6 +131,19 @@ function normalizeOptions(value) {
 			thread === 'main-thread' ? lynxRspeedyMainThreadRenderers : lynxRspeedyBackgroundRenderers,
 		...(application
 			? { layerSpecializations: applicationLayerSpecializations(options.mainThreadProgramBackend) }
+			: null),
+		...(programAddressing
+			? {
+					programAddressing: true,
+					// Both layers, not just the main thread's. The background decides
+					// whether a plan gets an address by running the same derivation as
+					// the oracle, which is what makes the two compiles agree by
+					// construction rather than by two rules kept in step — so it needs
+					// the backend even though it emits no program of its own. Safe for
+					// the same reason it always was: the universal compiler emits a
+					// program only for a main-thread universal runtime.
+					mainThreadProgramBackend: options.mainThreadProgramBackend,
+				}
 			: null),
 		// An isolated `thread: 'main-thread'` graph has no layer to specialize, so
 		// the backend is the top-level compiler input there. Both forms reach the
@@ -180,6 +216,9 @@ export function pluginOctane(value) {
 						...(options.mainThreadProgramBackend === undefined
 							? null
 							: { mainThreadProgramBackend: options.mainThreadProgramBackend }),
+						...(options.programAddressing === undefined
+							? null
+							: { programAddressing: options.programAddressing }),
 						...(options.dev === undefined ? null : { dev: options.dev }),
 						...(options.hmr === undefined ? null : { hmr: options.hmr }),
 						...(options.profile === undefined ? null : { profile: options.profile }),
