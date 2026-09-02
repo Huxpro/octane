@@ -204,6 +204,19 @@ describe('mounting a resident program by address (issue #246 E1)', () => {
 		).toThrowError(/names program .*#4, which this realm does not hold/);
 	});
 
+	it('accepts a re-evaluated module registering the same program again', () => {
+		// A module evaluated twice — an HMR pass, a chunk loaded under two ids —
+		// mints a fresh plan object each time, so object identity can never say
+		// "same program". What can is the wire, the surface the address digest is
+		// computed over. Structurally equal wire is a no-op that keeps the first
+		// registration, so memoization keyed on the resident object survives.
+		const module = freshModule();
+		registerWire(module, 0, ROW);
+		const first = resolveUniversalProgram(module, 0);
+		expect(() => registerWire(module, 0, JSON.parse(JSON.stringify(ROW)))).not.toThrow();
+		expect(resolveUniversalProgram(module, 0)).toBe(first);
+	});
+
 	it('refuses two different plans under one address', () => {
 		const module = freshModule();
 		registerWire(module, 0, ROW);

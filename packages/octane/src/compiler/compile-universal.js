@@ -4379,12 +4379,23 @@ function programDigest(wire) {
  * nothing outside the surface the derivation produced, so hashing that surface
  * hashes everything the emission depends on.
  */
+// The derivation is a full lowering of the plan tree and a pure oracle, and an
+// addressing build asks for the same root twice in one pass — once for the
+// address digest, once for the emission. One derivation per root per compile.
+function deriveMainThreadProgramOnce(state, root) {
+	const cache = (state.derivedMainThreadPrograms ??= new Map());
+	if (cache.has(root)) return cache.get(root);
+	const derived = state.mainThreadProgramBackend.deriveLynxMainThreadProgram(root) ?? null;
+	cache.set(root, derived);
+	return derived;
+}
+
 function universalProgramAddressAst(state, plan, index, origin) {
 	const backend = state.mainThreadProgramBackend;
 	if (backend === undefined || state.programModuleId === undefined) return null;
 	if (!lynxTemplateEligible(plan.root) || plan.root.kind !== 'host') return null;
-	const derived = backend.deriveLynxMainThreadProgram(plan.root);
-	if (derived === null || derived === undefined) return null;
+	const derived = deriveMainThreadProgramOnce(state, plan.root);
+	if (derived === null) return null;
 	const address = { module: state.programModuleId, index, digest: programDigest(derived.wire) };
 	// Reported as well as emitted. The digest in the chunk is what a reader can
 	// check; this is what lets the *build* check it, by comparing what the two
@@ -4397,8 +4408,8 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 	const backend = state.mainThreadProgramBackend;
 	if (backend === undefined) return null;
 	if (state.universalRuntime?.thread !== 'main-thread') return null;
-	const derived = backend.deriveLynxMainThreadProgram(plan.root);
-	if (derived === null || derived === undefined) return null;
+	const derived = deriveMainThreadProgramOnce(state, plan.root);
+	if (derived === null) return null;
 	// Not `plan.name`: the module already binds that, and the emission's name
 	// becomes a named function expression whose binding would shadow it.
 	const name = allocName(state, `${plan.name}Create`);

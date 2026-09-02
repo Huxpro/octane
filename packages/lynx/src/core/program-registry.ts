@@ -73,11 +73,18 @@ function addressKey(module: string, index: number): string {
 /**
  * Record one compiled program under the name the background will use for it.
  *
- * Re-registering the same address with the same plan is a no-op, because a
+ * Re-registering the same address with the same program is a no-op, because a
  * module evaluated twice — HMR, a chunk loaded under two ids — is an ordinary
- * event and not a drift signal. Re-registering it with a *different* plan is
- * not: it means two programs answer to one name, and whichever mount arrives
- * second would paint a plausible wrong tree. That is the failure this refuses.
+ * event and not a drift signal. "Same" is structural over the wire, never
+ * object identity: each evaluation mints a fresh plan object, so identity would
+ * refuse exactly the ordinary case this tolerance exists for. The wire is the
+ * surface the address digest is computed over, so wire equality is the same
+ * claim the build gate proves. The first registration is the one kept, so
+ * memoization keyed on the resident object survives re-evaluation.
+ *
+ * Re-registering with a *different* program is refused: it means two programs
+ * answer to one name, and whichever mount arrives second would paint a
+ * plausible wrong tree.
  */
 export function registerUniversalProgram(
 	module: string,
@@ -86,7 +93,8 @@ export function registerUniversalProgram(
 ): void {
 	const key = addressKey(module, index);
 	const existing = RESIDENT_PROGRAMS.get(key);
-	if (existing !== undefined && existing !== plan) {
+	if (existing !== undefined) {
+		if (existing === plan || sameWire(existing.wire, plan.wire)) return;
 		throw new TypeError(
 			`Two compiled main-thread programs claim the address ${module}#${index}. ` +
 				'A program address is positional, so this means the two compiles of this ' +
@@ -99,6 +107,34 @@ export function registerUniversalProgram(
 	// chunk that registered a `bind` it could not also describe would accept an
 	// addressed run and then have nothing to apply it with.
 	if (plan.wire !== undefined) deepFreezeWire(plan.wire);
+}
+
+/**
+ * Structural equality over the derived wire surface.
+ *
+ * The walk mirrors what `deepFreezeWire` visits: enumerable own keys of plain
+ * data. Functions never appear on the wire — `bind` lives beside it on the
+ * plan — so `===` on leaves is exact. O(descriptor) once per re-registration,
+ * the same cost class as the freeze below.
+ */
+function sameWire(left: unknown, right: unknown): boolean {
+	if (Object.is(left, right)) return true;
+	if (left === null || right === null || typeof left !== 'object' || typeof right !== 'object') {
+		return false;
+	}
+	if (Array.isArray(left) !== Array.isArray(right)) return false;
+	const leftKeys = Object.keys(left as Record<string, unknown>);
+	const rightKeys = Object.keys(right as Record<string, unknown>);
+	if (leftKeys.length !== rightKeys.length) return false;
+	for (const key of leftKeys) {
+		if (!Object.prototype.hasOwnProperty.call(right, key)) return false;
+		if (
+			!sameWire((left as Record<string, unknown>)[key], (right as Record<string, unknown>)[key])
+		) {
+			return false;
+		}
+	}
+	return true;
 }
 
 /**
