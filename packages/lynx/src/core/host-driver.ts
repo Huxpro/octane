@@ -1563,28 +1563,13 @@ function cloneProps(value: unknown, label: string): Readonly<Record<string, unkn
 	if (value === null || typeof value !== 'object' || Array.isArray(value)) {
 		throw hostError(`${label} must be a plain object.`);
 	}
-	// The render-only main graph authors `main-thread:` event props as tagged
-	// callables. Unwrap them to their plain worklet descriptors here, exactly as
-	// the background client driver does before transport; an untagged function
-	// still fails through cloneHostValue below.
-	let source = value as Record<string, unknown>;
-	const names = Object.keys(source);
-	let rewritten: Record<string, unknown> | null = null;
-	for (const name of names) {
-		if (!name.startsWith('main-thread:') || name === 'main-thread:ref') continue;
-		const item = source[name];
-		if (typeof item !== 'function') continue;
-		const descriptor = getThreadFunctionDescriptor(item);
-		if (descriptor === null) continue;
-		if (rewritten === null) rewritten = { ...source };
-		rewritten[name] = descriptor;
-	}
-	if (rewritten !== null) source = rewritten;
+	const source = value as Record<string, unknown>;
 	if (!hasCrossRealmPlainPrototype(source)) {
 		throw hostError(
 			`host props require plain objects, received ${Object.prototype.toString.call(source)}.`,
 		);
 	}
+	const names = Object.keys(source);
 	if (names.length === 0) return EMPTY_HOST_PROPS;
 
 	const clone = Object.create(null) as Record<string, unknown>;
@@ -1602,12 +1587,99 @@ function cloneProps(value: unknown, label: string): Readonly<Record<string, unkn
 			clone[name] = child;
 			continue;
 		}
+		// The render-only main graph authors `main-thread:` event props as tagged
+		// callables. Unwrap them to their plain worklet descriptors here, exactly as
+		// the background client driver does before transport; an untagged function
+		// still fails through cloneHostValue below.
+		//
+		// Asked of a value rather than of a name (issue #247). A tagged callable is
+		// a function, so it can only reach this branch — which means the question
+		// costs one `startsWith` per *non-scalar* prop instead of one per prop, and
+		// a first screen of scalar bags never asks it at all. The pass this replaces
+		// walked every key of every bag to find, on a 60,002-host page, nothing.
+		if (
+			typeof child === 'function' &&
+			name !== 'main-thread:ref' &&
+			name.startsWith('main-thread:')
+		) {
+			const descriptor = getThreadFunctionDescriptor(child);
+			if (descriptor !== null) {
+				clone[name] = descriptor;
+				continue;
+			}
+		}
 		// Scalar-only host props account for most nodes. Seed cycle/alias tracking
 		// only when the first nested value actually needs a recursive clone.
 		clones ??= new WeakMap<object, object>([[source, clone]]);
 		clone[name] = cloneHostValue(child, clones);
 	}
 	return Object.freeze(clone);
+}
+
+/**
+ * Take the first screen's props bag as it stands, when copying it could only
+ * produce an object with the same keys and the same values (issue #247).
+ *
+ * `cloneProps` exists because a host prop bag normally arrives from the other
+ * thread — a distinct realm in production — so the container has to build data
+ * it owns, out of values it has proved it can hold. The direct first-screen path
+ * has no such crossing. Its bag was built by `universalProps` in this realm, on
+ * this call stack, and frozen at its only construction site, which is why the
+ * copy's remaining products are already true of the original: it is immutable,
+ * it is plain, and when every value is a scalar there is nothing to clone and no
+ * tagged callable to unwrap. Each of those is tested rather than assumed, and a
+ * bag that fails any of them takes the copy.
+ *
+ * That leaves one difference, and it is deliberate: the clone had a null
+ * prototype and the original has `Object.prototype`. Nothing that reads a stored
+ * bag can see it. Every fixed name the driver looks up — `class`, `text`,
+ * `value`, `hidden`, `id`, `js`, `main-thread:ref`, the CSS scope — is absent
+ * from `Object.prototype`; every computed name comes from the bag's own keys or
+ * carries a `data-` prefix; and `for…in` yields the same set either way, because
+ * `Object.prototype`'s own members are all non-enumerable. The differential
+ * against the staged arm is what holds that invariant, and it paints a scene
+ * whose prop names are `Object.prototype` members precisely so a reader that
+ * started spelling one would fail there.
+ *
+ * Anything that fails a test falls back to the copy rather than being refused:
+ * a bag is not wrong for holding an object, it is just not adoptable.
+ */
+function adoptFirstScreenProps(value: unknown, label: string): Readonly<Record<string, unknown>> {
+	if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+		throw hostError(`${label} must be a plain object.`);
+	}
+	const source = value as Record<string, unknown>;
+	// Exactly this realm's `Object.prototype`, or none — not `cloneProps`'s
+	// looser cross-realm shape test, because the two are asking different
+	// questions. That one decides whether a bag from *another* realm is plain
+	// enough to copy out of; this one decides whether this bag can be held as it
+	// is, and a prototype one hop from null can still carry enumerable properties
+	// of its own, which `for…in` over a stored bag would then see. This realm's
+	// `Object.prototype` cannot: its members are all non-enumerable.
+	const prototype = Object.getPrototypeOf(source);
+	if ((prototype === Object.prototype || prototype === null) && Object.isFrozen(source)) {
+		const names = Object.keys(source);
+		let adoptable = true;
+		for (const name of names) {
+			const child = source[name];
+			if (
+				child === null ||
+				child === undefined ||
+				typeof child === 'string' ||
+				typeof child === 'number' ||
+				typeof child === 'bigint' ||
+				typeof child === 'boolean'
+			) {
+				continue;
+			}
+			adoptable = false;
+			break;
+		}
+		// An empty bag keeps answering with the shared singleton the copy returns,
+		// so `EMPTY_HOST_PROPS` stays the one object every propless host holds.
+		if (adoptable) return names.length === 0 ? EMPTY_HOST_PROPS : source;
+	}
+	return cloneProps(value, label);
 }
 
 function prepareStaticHostProps(
@@ -5381,7 +5453,9 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		// journals — cloneProps unwraps tagged callables to plain worklet
 		// descriptors and rejects everything structured clone would refuse.
 		const props =
-			node.props == null ? EMPTY_HOST_PROPS : cloneProps(node.props, 'first-screen host props');
+			node.props == null
+				? EMPTY_HOST_PROPS
+				: adoptFirstScreenProps(node.props, 'first-screen host props');
 		const visible = parentVisible && node.visibility !== 'hidden';
 		const patch =
 			type === '#text' && props[LYNX_CSS_SCOPE_PROP] == null
