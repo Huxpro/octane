@@ -180,6 +180,19 @@ export interface OctaneRspackLoaderOptions {
 	 */
 	mainThreadProgramBackend?: OctaneMainThreadProgramBackend;
 	/**
+	 * @experimental Give each compiled main-thread program a positional address —
+	 * its module id and its index in that module's plan order — so a background
+	 * run command can name a program the main-thread chunk already holds instead
+	 * of carrying its description.
+	 *
+	 * Whole-build and deliberately not specializable: an address is positional,
+	 * so the two layers have to decide eligibility for the same plan the same
+	 * way. Both compiles run the same derivation as the oracle, so they agree by
+	 * construction, and each emits a structural digest of the derived wire for
+	 * the build to cross-check.
+	 */
+	programAddressing?: boolean;
+	/**
 	 * Compiler options selected by the current module's Rspack layer. Unknown
 	 * layers retain the top-level compiler options. Runtime aliases remain a
 	 * class-plugin concern and cannot be configured by the standalone loader.

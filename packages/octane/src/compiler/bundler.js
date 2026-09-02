@@ -98,6 +98,11 @@ function normalizeModulePath(file) {
 	return file.split(/[\\/]/).join('/');
 }
 
+/** `{ programModuleId }` for a module that has a name, and nothing for one that does not. */
+function programModuleIdOption(moduleId) {
+	return moduleId === null ? null : { programModuleId: moduleId };
+}
+
 /**
  * Return the stable ID embedded in hook keys and dev source metadata. Files
  * inside the project root use a root-relative POSIX path so builds are portable;
@@ -497,6 +502,13 @@ class OctaneBundlerCompiler {
 			// Absent, every module compiles exactly as it did before it existed,
 			// which is what makes #163's byte-identity claim checkable.
 			mainThreadProgramBackend: options.mainThreadProgramBackend,
+			// Whether this build may give a plan a cross-realm name (issue #246 E1).
+			// Only a configuration whose two compiles of a module are layers of one
+			// plugin configuration may: the address is positional, so its safety is
+			// a build-time cross-check between the layers, and a graph with no
+			// second layer has nothing to check against. Absent, no plan is
+			// addressed and every mount keeps the descriptor it carries today.
+			programAddressing: options.programAddressing === true,
 		};
 		this.renderers = normalizeRendererConfig(options.renderers);
 		// Ownership gate for mixed-toolchain projects (e.g. a React app hosting
@@ -599,6 +611,38 @@ class OctaneBundlerCompiler {
 
 		this.manifestRuleCache.set(dir, result);
 		return result;
+	}
+
+	/**
+	 * The cross-realm name of one module, or `null` for a module that has none.
+	 *
+	 * Issue #246 §6.2, and package-relative rather than project-relative for the
+	 * reason the ruling gives: a consuming application compiles our shipped
+	 * sources from its own root, so a project-relative id names the same file
+	 * differently in a monorepo build and in a consumer's build of it, and the
+	 * address a background emits has to mean the same program in both.
+	 *
+	 * Deliberately not `_canonicalModuleId`. That one is project-relative, and
+	 * for a file the project root does not contain it falls back to the absolute
+	 * path — which would put a build machine's filesystem layout into a shipped
+	 * chunk and make the id churn between machines.
+	 *
+	 * `null` where no package-relative name exists: no manifest owns the file, or
+	 * it sits outside the root of the package that does. Addressing then declines
+	 * for that module, in both compiles alike, because both ask this same
+	 * question of the same path — so a module with no stable name keeps descriptor
+	 * mounts instead of getting an id two builds could disagree about.
+	 */
+	_programModuleId(file, collected) {
+		const cleaned = cleanModuleId(file);
+		if (!nodePath.isAbsolute(cleaned)) return normalizeModulePath(cleaned);
+		const absolute = nodePath.resolve(cleaned);
+		const lookup = this._nearestOctanePackageRule(nodePath.dirname(absolute));
+		addMetadata(collected, lookup);
+		if (lookup.rule === null) return null;
+		const relative = nodePath.relative(lookup.rule.root, absolute);
+		if (relative === '' || relative.startsWith('..') || nodePath.isAbsolute(relative)) return null;
+		return normalizeModulePath(relative);
 	}
 
 	_hasManualHookSlots(file, collected) {
@@ -1153,6 +1197,14 @@ class OctaneBundlerCompiler {
 				// itself which plans a backend may describe, and a second copy of
 				// that decision here could only disagree with it.
 				...(mainThreadProgramBackend === undefined ? null : { mainThreadProgramBackend }),
+				// The module's own cross-realm name (issue #246 §6.2). Package-relative
+				// and computed from the path alone, so the two compiles of one module
+				// reach the same answer by asking the same question rather than by
+				// being handed it, and a consumer's build of a shipped source names it
+				// what our build named it.
+				...((options.programAddressing ?? this.defaults.programAddressing) === true
+					? programModuleIdOption(this._programModuleId(file, collected))
+					: null),
 				...(environment === 'client' && typeof options.isVoidComponentImport === 'function'
 					? { isVoidComponentImport: options.isVoidComponentImport }
 					: null),
@@ -1191,6 +1243,11 @@ class OctaneBundlerCompiler {
 				kind: 'compile',
 				renderer,
 				...(out.universalRuntime === undefined ? null : { universalRuntime: out.universalRuntime }),
+				// Issue #246: every compiled program this module addressed, with the
+				// digest of the wire surface it was derived from. A build compiles the
+				// module once per thread layer, so an integration that sees both can
+				// prove they agreed about its plan order before either chunk ships.
+				...(out.programAddresses === undefined ? null : { programAddresses: out.programAddresses }),
 				...(clientReference === null ? null : { clientReference }),
 				...(voidComponentAst === null
 					? null

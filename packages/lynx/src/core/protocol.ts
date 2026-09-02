@@ -2,6 +2,7 @@ import type {
 	UNIVERSAL_TRANSPORT_PROTOCOL_VERSION,
 	UniversalHostBatch,
 	UniversalHostCommand,
+	UniversalHostTemplateProgram,
 	UniversalSerializableValue,
 	UniversalTransportAbortMessage,
 	UniversalTransportAcknowledgement,
@@ -23,6 +24,25 @@ import { LYNX_RENDERER_ID } from './renderer-id.js';
 export const LYNX_TRANSPORT_PROTOCOL_VERSION: typeof UNIVERSAL_TRANSPORT_PROTOCOL_VERSION = 1;
 
 export const LYNX_TRANSPORT_RENDERER: typeof LYNX_RENDERER_ID = LYNX_RENDERER_ID;
+
+/**
+ * How this realm turns an addressed run into the program it names (issue #246).
+ *
+ * Passed in rather than imported, because the two realms answer differently and
+ * this module is in both graphs. A background resolves the program its own
+ * producer lowered for that exact command object; a main thread resolves what
+ * its chunk compiled, from residency. Neither module may be imported here —
+ * `run-program.ts` would drag the universal core into the main-thread bundle,
+ * and `program-registry.ts` would drag main-thread residency into the
+ * background's, both of which `runtime-compatibility.test.ts` pins against.
+ *
+ * Omitted means no addressed run can be resolved, so one is refused with the
+ * diagnostic rather than validated against a program that is not there.
+ */
+export type LynxProgramWireResolver = (command: {
+	readonly op: 'mount-program-run';
+	readonly address: { readonly module: string; readonly index: number };
+}) => UniversalHostTemplateProgram | undefined;
 
 /**
  * How much of an inbound message a receiver re-derives before acting on it.
@@ -116,6 +136,19 @@ export const LYNX_DEFERRED_TEMPLATE_RUN_READY_REQUEST_BASE = 2 ** 44;
  * without it — the fact would be lost, not merely encoded differently.
  */
 export const LYNX_FIRST_TREE_PRESENCE_READY_REQUEST_BASE = 2 ** 45;
+/**
+ * Ready requests at or above this base can resolve a program the wire only
+ * names, instead of one it carries (issue #246).
+ *
+ * A `mount-program-run` command replaces the descriptor with the positional
+ * `(module, index)` address of a program the main-thread chunk already holds.
+ * That is only answerable by a realm that compiled the same plans, so it is a
+ * capability of this peer and not of the protocol: a main thread built from an
+ * isolated `thread: 'main-thread'` graph understands the op and still holds
+ * nothing to resolve, which is why the reply is gated on residency rather than
+ * on version alone.
+ */
+export const LYNX_ADDRESSED_PROGRAM_RUN_READY_REQUEST_BASE = 2 ** 46;
 export const LYNX_COMPACT_ACKNOWLEDGEMENT = 'compact-v1';
 export const LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS = 16;
 export const LYNX_LAZY_PUBLIC_INSTANCES = 'lazy-v1';
@@ -178,6 +211,17 @@ export interface LynxMainThreadCapabilities {
 	readonly deferredTemplateRuns?: 1;
 	/** One intrinsic command can tear a mounted run down again. */
 	readonly teardownRuns?: 1;
+	/**
+	 * A run command may name a program this realm already holds instead of
+	 * carrying its descriptor.
+	 *
+	 * Distinct from `templateRuns` because the two ask different questions of the
+	 * same peer. A main thread accepts runs as soon as it understands the op; it
+	 * accepts *addressed* runs only once its own chunk has registered the
+	 * compiled programs the address resolves against, which is a fact about how
+	 * that chunk was built and not about which protocol rung it speaks.
+	 */
+	readonly addressedProgramRuns?: 1;
 }
 
 /**
@@ -333,7 +377,10 @@ function hasCompactCompatibleProps(props: Readonly<Record<string, unknown>>): bo
  * parent, and cycle; equal create/placement counts then imply attachment for
  * a list-free, portal-free initial root.
  */
-export function countLynxCompactAcknowledgementHosts(batch: UniversalHostBatch): number | null {
+export function countLynxCompactAcknowledgementHosts(
+	batch: UniversalHostBatch,
+	resolveProgram?: LynxProgramWireResolver,
+): number | null {
 	let created = 0;
 	let inserted = 0;
 	for (let index = 0; index < batch.commands.length; index++) {
@@ -365,14 +412,26 @@ export function countLynxCompactAcknowledgementHosts(batch: UniversalHostBatch):
 			inserted += command.nodes.length;
 			continue;
 		}
-		if (command.op === 'mount-template-range' || command.op === 'mount-template-run') {
+		if (
+			command.op === 'mount-template-range' ||
+			command.op === 'mount-template-run' ||
+			command.op === 'mount-program-run'
+		) {
 			if (command.parent !== null && typeof command.parent !== 'number') return null;
-			let compatible = COMPACT_TEMPLATE_PROGRAMS.get(command.program);
+			// An addressed run's program is resolved rather than carried, and an
+			// address this realm cannot resolve is not compact-acknowledgeable — it
+			// is not mountable at all, which the validator says with a diagnostic.
+			// Declining here keeps that the validator's sentence to pass rather than
+			// this accounting's to pre-empt with a silent `null`.
+			const program =
+				command.op === 'mount-program-run' ? resolveProgram?.(command) : command.program;
+			if (program === undefined) return null;
+			let compatible = COMPACT_TEMPLATE_PROGRAMS.get(program);
 			if (compatible === undefined) {
 				compatible = true;
-				let immutable = Object.isFrozen(command.program) && Object.isFrozen(command.program.nodes);
-				for (let nodeIndex = 0; nodeIndex < command.program.nodes.length; nodeIndex++) {
-					const node = command.program.nodes[nodeIndex]!;
+				let immutable = Object.isFrozen(program) && Object.isFrozen(program.nodes);
+				for (let nodeIndex = 0; nodeIndex < program.nodes.length; nodeIndex++) {
+					const node = program.nodes[nodeIndex]!;
 					if (
 						node.type === 'list' ||
 						node.type === 'list-item' ||
@@ -396,12 +455,12 @@ export function countLynxCompactAcknowledgementHosts(batch: UniversalHostBatch):
 					}
 					if (!compatible) break;
 				}
-				if (immutable) COMPACT_TEMPLATE_PROGRAMS.set(command.program, compatible);
+				if (immutable) COMPACT_TEMPLATE_PROGRAMS.set(program, compatible);
 			}
 			if (!compatible) return null;
-			const instances = command.op === 'mount-template-run' ? command.count : 1;
+			const instances = command.op === 'mount-template-range' ? 1 : command.count;
 			if (!Number.isSafeInteger(instances) || instances <= 0) return null;
-			const hostCount = command.program.nodes.length * instances;
+			const hostCount = program.nodes.length * instances;
 			if (!Number.isSafeInteger(hostCount) || !Number.isSafeInteger(created + hostCount)) {
 				return null;
 			}
@@ -854,6 +913,20 @@ const TEMPLATE_RUN_KEYS = Object.freeze([
 // worth an ordered fast path of its own: it is recognized by the presence of the
 // field and then checked against this list exactly.
 const TEMPLATE_RUN_DEFERRED_KEYS = Object.freeze([...TEMPLATE_RUN_KEYS, 'deferred']);
+// The addressed run is the descriptor run with `program` replaced by `address`,
+// in the same position, so the two schemas differ by one name and the field
+// order a producer emits stays the one the ordered fast path recognizes.
+const PROGRAM_RUN_KEYS = Object.freeze([
+	'op',
+	'parent',
+	'before',
+	'address',
+	'firstId',
+	'firstListenerId',
+	'count',
+	'values',
+]);
+const PROGRAM_RUN_DEFERRED_KEYS = Object.freeze([...PROGRAM_RUN_KEYS, 'deferred']);
 const TEMPLATE_PROGRAM_KEYS = Object.freeze(['nodes', 'events']);
 const TEMPLATE_PROGRAM_NODE_KEYS = Object.freeze(['type', 'parent', 'props']);
 const TEMPLATE_PROGRAM_BOUND_NODE_KEYS = Object.freeze(['type', 'parent', 'props', 'bindings']);
@@ -872,6 +945,7 @@ const DESTROY_KEYS = Object.freeze(['op', 'id']);
 const DESTROY_RUN_KEYS = Object.freeze(['op', 'parent', 'firstId', 'count', 'width']);
 
 interface LynxBatchValidationState {
+	resolveProgram?: LynxProgramWireResolver;
 	validatedTemplateShapes?: WeakSet<object>;
 	validatedStaticProps?: WeakSet<object>;
 	lastTemplateProgram?: object;
@@ -1245,11 +1319,15 @@ function assertTemplateRangeCommand(
 	}
 }
 
-function assertTemplateRunCommand(
-	command: Record<string, unknown>,
-	index: number,
-	state: LynxBatchValidationState,
-): void {
+/**
+ * Everything a run is checked for before its program is known.
+ *
+ * Shared by the descriptor run and the addressed run because the two differ in
+ * exactly one thing — how they name their program — and a second copy of these
+ * checks is a second place for the two ops to drift apart on placement,
+ * deferral or identity ranges.
+ */
+function assertRunCommandPrefix(command: Record<string, unknown>, index: number): void {
 	hostParent(command.parent, COMMANDS_LABEL, index, 'parent');
 	if (command.parent !== null && typeof command.parent !== 'number') {
 		fail(COMMANDS_LABEL, 'must not target a portal.', index, 'parent');
@@ -1274,8 +1352,16 @@ function assertTemplateRunCommand(
 	}
 	positiveInteger(command.count, COMMANDS_LABEL, index, 'count');
 	positiveInteger(command.firstId, COMMANDS_LABEL, index, 'firstId');
+}
+
+/** The rest of a run's checks, once its program has been resolved and validated. */
+function assertRunCommandTail(
+	command: Record<string, unknown>,
+	index: number,
+	state: LynxBatchValidationState,
+	program: LynxValidatedTemplateProgram,
+): void {
 	const count = command.count as number;
-	const program = assertTemplateProgram(command.program, index, state);
 	const hostCount = count * program.hosts;
 	if (!Number.isSafeInteger(hostCount)) {
 		fail(COMMANDS_LABEL, 'overflows the intrinsic host count.', index, 'count');
@@ -1353,6 +1439,70 @@ function assertTemplateRunCommand(
 	listenerEnds.push(lastListener);
 }
 
+function assertTemplateRunCommand(
+	command: Record<string, unknown>,
+	index: number,
+	state: LynxBatchValidationState,
+): void {
+	assertRunCommandPrefix(command, index);
+	assertRunCommandTail(command, index, state, assertTemplateProgram(command.program, index, state));
+}
+
+/**
+ * An addressed run, checked exactly as a descriptor run is once its program is
+ * in hand (issue #246 E1).
+ *
+ * The one check that has no counterpart is the resolution itself. An address
+ * this realm cannot resolve is refused here rather than at the mount, because
+ * the batch is validated as a whole and a run that cannot be mounted must not
+ * be allowed to leave half a tree behind the commands that follow it.
+ *
+ * The resolved program is then validated by the same memoized path a descriptor
+ * takes — which is the second thing an address buys, after the wire bytes: a
+ * resident program is one object for the life of the chunk, so it is validated
+ * once, where a deserialized descriptor is a fresh object per mount and is
+ * validated every time.
+ */
+function assertProgramRunCommand(
+	command: Record<string, unknown>,
+	index: number,
+	state: LynxBatchValidationState,
+): void {
+	assertRunCommandPrefix(command, index);
+	const address = command.address;
+	if (address === null || typeof address !== 'object' || Array.isArray(address)) {
+		fail(COMMANDS_LABEL, 'must be an object.', index, 'address');
+	}
+	const record = address as Record<string, unknown>;
+	for (const key of Object.keys(record)) {
+		if (key !== 'module' && key !== 'index') {
+			fail(COMMANDS_LABEL, `contains unknown field ${JSON.stringify(key)}.`, index, 'address');
+		}
+	}
+	if (typeof record.module !== 'string' || record.module === '') {
+		fail(COMMANDS_LABEL, 'must be a non-empty string.', index, 'address.module');
+	}
+	if (!Number.isSafeInteger(record.index) || (record.index as number) < 0) {
+		fail(COMMANDS_LABEL, 'must be a non-negative integer.', index, 'address.index');
+	}
+	// A background self-checking a batch it just built resolves the program it
+	// lowered; a main thread validating an inbound one resolves what its own
+	// chunk compiled. Same question, two realms, one of them supplied it.
+	const resolved = state.resolveProgram?.(
+		command as unknown as Parameters<LynxProgramWireResolver>[0],
+	);
+	if (resolved === undefined) {
+		fail(
+			COMMANDS_LABEL,
+			`names program ${record.module as string}#${record.index as number}, which this realm ` +
+				'does not hold.',
+			index,
+			'address',
+		);
+	}
+	assertRunCommandTail(command, index, state, assertTemplateProgram(resolved, index, state));
+}
+
 /** Fuse the hot range-command object and exact-schema trust checks in one own-key walk. */
 function commandRecord(value: unknown, index: number): Record<string, unknown> {
 	if (value === null || typeof value !== 'object' || Array.isArray(value)) {
@@ -1365,11 +1515,13 @@ function commandRecord(value: unknown, index: number): Record<string, unknown> {
 	const keys = Object.keys(value);
 	let orderedRange = keys.length === TEMPLATE_RANGE_KEYS.length;
 	let orderedRun = keys.length === TEMPLATE_RUN_KEYS.length;
+	let orderedProgramRun = keys.length === PROGRAM_RUN_KEYS.length;
 	for (let position = 0; position < keys.length; position++) {
 		const key = keys[position]!;
 		if (orderedRange && key !== TEMPLATE_RANGE_KEYS[position]) orderedRange = false;
 		if (orderedRun && key !== TEMPLATE_RUN_KEYS[position]) orderedRun = false;
-		if (!orderedRange && !orderedRun) break;
+		if (orderedProgramRun && key !== PROGRAM_RUN_KEYS[position]) orderedProgramRun = false;
+		if (!orderedRange && !orderedRun && !orderedProgramRun) break;
 	}
 	const operation: unknown = (value as Record<string, unknown>).op;
 	const schema =
@@ -1383,7 +1535,13 @@ function commandRecord(value: unknown, index: number): Record<string, unknown> {
 					: Object.prototype.hasOwnProperty.call(value, 'deferred')
 						? TEMPLATE_RUN_DEFERRED_KEYS
 						: TEMPLATE_RUN_KEYS
-				: null;
+				: operation === 'mount-program-run'
+					? orderedProgramRun
+						? null
+						: Object.prototype.hasOwnProperty.call(value, 'deferred')
+							? PROGRAM_RUN_DEFERRED_KEYS
+							: PROGRAM_RUN_KEYS
+					: null;
 	if (schema !== null) {
 		for (const required of schema) {
 			if (!keys.includes(required)) {
@@ -1411,6 +1569,9 @@ function assertCommand(
 	switch (command.op) {
 		case 'mount-template-run':
 			assertTemplateRunCommand(command, index, state);
+			return;
+		case 'mount-program-run':
+			assertProgramRunCommand(command, index, state);
 			return;
 		case 'ensure-public-instance':
 			exactKeys(command, DESTROY_KEYS, label, index);
@@ -1495,6 +1656,7 @@ function assertBatch(
 	value: unknown,
 	identity: UniversalTransportIdentity,
 	traverse: boolean,
+	resolveProgram: LynxProgramWireResolver | undefined,
 ): asserts value is UniversalHostBatch {
 	const batch = record(value, 'commit.batch');
 	exactKeys(batch, ['renderer', 'version', 'commands'], 'commit.batch');
@@ -1507,7 +1669,7 @@ function assertBatch(
 	// it would not be a trust decision but a routing bug. The commands are the
 	// O(commands x props) half, and they are what `trusted` declines.
 	if (!traverse) return;
-	const validationState: LynxBatchValidationState = {};
+	const validationState: LynxBatchValidationState = { resolveProgram };
 	for (let index = 0; index < batch.commands.length; index++) {
 		assertCommand(batch.commands[index], index, validationState);
 	}
@@ -1800,6 +1962,10 @@ function assertReady(value: unknown, reply: boolean): LynxMainReadyRequest | Lyn
 			'deferredTemplateRuns',
 		);
 		const hasTeardownRuns = Object.prototype.hasOwnProperty.call(capabilities, 'teardownRuns');
+		const hasAddressedProgramRuns = Object.prototype.hasOwnProperty.call(
+			capabilities,
+			'addressedProgramRuns',
+		);
 		exactKeys(
 			capabilities,
 			[
@@ -1810,6 +1976,7 @@ function assertReady(value: unknown, reply: boolean): LynxMainReadyRequest | Lyn
 				...(hasTemplateRuns ? ['templateRuns'] : []),
 				...(hasDeferredTemplateRuns ? ['deferredTemplateRuns'] : []),
 				...(hasTeardownRuns ? ['teardownRuns'] : []),
+				...(hasAddressedProgramRuns ? ['addressedProgramRuns'] : []),
 			],
 			`${label}.capabilities`,
 		);
@@ -1875,6 +2042,23 @@ function assertReady(value: unknown, reply: boolean): LynxMainReadyRequest | Lyn
 		if (hasTeardownRuns && (message.request as number) < LYNX_TEARDOWN_RUN_READY_REQUEST_BASE) {
 			fail(`${label}.capabilities.teardownRuns`, 'requires a teardown-run readiness request.');
 		}
+		if (hasAddressedProgramRuns && capabilities.addressedProgramRuns !== 1) {
+			fail(`${label}.capabilities.addressedProgramRuns`, 'must be 1.');
+		}
+		// An address names one member of a run, so a peer without runs has nothing
+		// to address.
+		if (hasAddressedProgramRuns && !hasTemplateRuns) {
+			fail(`${label}.capabilities.addressedProgramRuns`, 'requires the templateRuns capability.');
+		}
+		if (
+			hasAddressedProgramRuns &&
+			(message.request as number) < LYNX_ADDRESSED_PROGRAM_RUN_READY_REQUEST_BASE
+		) {
+			fail(
+				`${label}.capabilities.addressedProgramRuns`,
+				'requires an addressed-program-run readiness request.',
+			);
+		}
 	}
 	return message as unknown as LynxMainReadyRequest | LynxMainReadyReply;
 }
@@ -1889,8 +2073,11 @@ function assertReady(value: unknown, reply: boolean): LynxMainReadyRequest | Lyn
  * mount pays for it once per node per direction. Keep it in development, where
  * drift should fail loudly at its origin, and drop it from production sends.
  */
-export function selfCheckLynxBackgroundOutboundMessage<Message>(message: Message): Message {
-	if (LYNX_DEVELOPMENT) validateLynxBackgroundOutboundMessage(message);
+export function selfCheckLynxBackgroundOutboundMessage<Message>(
+	message: Message,
+	resolveProgram?: LynxProgramWireResolver,
+): Message {
+	if (LYNX_DEVELOPMENT) validateLynxBackgroundOutboundMessage(message, 'checked', resolveProgram);
 	return message;
 }
 
@@ -1903,6 +2090,7 @@ export function selfCheckLynxBackgroundInboundMessage<Message>(message: Message)
 export function validateLynxBackgroundOutboundMessage(
 	value: unknown,
 	mode: LynxValidationMode = 'checked',
+	resolveProgram?: LynxProgramWireResolver,
 ): LynxBackgroundOutboundMessage {
 	const traverse = lynxValidationTraverses(mode);
 	const message = record(value, 'outbound message');
@@ -1982,7 +2170,7 @@ export function validateLynxBackgroundOutboundMessage(
 		) {
 			fail('commit.announces', `must be ${JSON.stringify(LYNX_ANNOUNCED_PUBLIC_INSTANCES)}.`);
 		}
-		assertBatch(message.batch, message, traverse);
+		assertBatch(message.batch, message, traverse, resolveProgram);
 		return message as unknown as LynxTransportCommitMessage;
 	}
 	if (message.type === 'abort') {

@@ -1,4 +1,5 @@
 import type { UniversalHostBatch, UniversalHostTemplateProgram } from 'octane/universal/native';
+import { producedRunProgram } from './run-program.js';
 import {
 	encodeLynxDeltaMessage,
 	isLynxDeltaValue,
@@ -184,29 +185,35 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 			const operations: LynxDeltaOperation[] = [];
 			const removedHosts = new Set<number>();
 			for (const command of batch.commands) {
-				if (command.op === 'mount-template-run') {
+				if (command.op === 'mount-template-run' || command.op === 'mount-program-run') {
 					if (
 						command.before !== null ||
 						(command.parent !== null && typeof command.parent !== 'number')
 					)
 						return null;
-					const stride = valueStride(command.program);
+					// The shadow's whole job is to decline what it cannot express, so an
+					// address it cannot resolve declines rather than throws: this runs
+					// beside the real batch, and a throw here would fail a commit the
+					// command path would have carried.
+					const wire = producedRunProgram(command) as UniversalHostTemplateProgram | undefined;
+					if (wire === undefined) return null;
+					const stride = valueStride(wire);
 					if (stride * command.count !== command.values.length) return null;
 					const runValues = scalarValues(command.values);
 					if (runValues === null) return null;
 					const parentSite = siteOf(next, command.parent);
 					if (parentSite === null) return null;
 					const firstInstance = next.nextInstance;
-					let templateId = next.templates.get(command.program);
+					let templateId = next.templates.get(wire);
 					if (templateId === undefined) {
 						templateId = next.nextTemplateId++;
-						next.templates.set(command.program, templateId);
+						next.templates.set(wire, templateId);
 					}
 					const parent = command.parent;
 					const order = next.order.get(parent) ?? [];
 					next.order.set(parent, order);
 					for (let instanceIndex = 0; instanceIndex < command.count; instanceIndex++) {
-						const firstId = command.firstId + instanceIndex * command.program.nodes.length;
+						const firstId = command.firstId + instanceIndex * wire.nodes.length;
 						const values = command.values.slice(
 							instanceIndex * stride,
 							(instanceIndex + 1) * stride,
@@ -215,11 +222,11 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 							firstId,
 							handle: next.nextInstance++,
 							templateId,
-							program: command.program,
+							program: wire,
 							parent,
 							values,
 						});
-						for (let nodeIndex = 0; nodeIndex < command.program.nodes.length; nodeIndex++) {
+						for (let nodeIndex = 0; nodeIndex < wire.nodes.length; nodeIndex++) {
 							next.hosts.set(firstId + nodeIndex, { firstId, nodeIndex });
 						}
 						order.push(firstId);

@@ -336,6 +336,19 @@ export interface UniversalProgramPlan {
 	 * made before any of it is live.
 	 */
 	readonly bind: (host: unknown) => UniversalProgramCreate;
+	/**
+	 * The same descriptor a background would have put on the wire, resident in
+	 * the realm that compiled this program.
+	 *
+	 * Present only in an addressing build. `bind` above paints the first screen,
+	 * but a run that arrives later over the command path re-enters the ordinary
+	 * descriptor applier, and that applier needs a descriptor. Holding one copy
+	 * here is what lets a command name the program instead of carrying it: both
+	 * the applier's preparation and the protocol's validation memoize on program
+	 * identity, so this object is walked and checked once for the chunk's life
+	 * where a per-mount copy misses both memos every time.
+	 */
+	readonly wire?: UniversalHostTemplateProgram;
 }
 
 export type UniversalPlanNode =
@@ -349,10 +362,55 @@ export type UniversalPlanNode =
 	| UniversalTemplatePlan
 	| UniversalProgramPlan;
 
+/**
+ * Where a compiled program lives, said in a form that survives a realm crossing
+ * (issue #246 E1).
+ *
+ * A plan object is realm-local by construction — `bind` and `create` are
+ * functions — so the thread that renders in the background cannot hand the main
+ * thread the program it means. It has to *name* one. The name is positional:
+ * both compiles walk the same source in the same order, so the *n*th plan of one
+ * module is the *n*th plan of the other, and two small fields address it.
+ *
+ * `module` is package-relative and normalized (posix separators, no leading
+ * `./`), rooted at the owning package rather than the workspace: a consuming
+ * application compiles our shipped sources from its own root, and the id has to
+ * agree between a monorepo build and a consumer build of the same file. A
+ * content hash would churn on every edit and make the registry key ephemeral; a
+ * build-assigned index depends on a graph traversal order that `parallel` and
+ * incremental rebuilds do not promise.
+ *
+ * `digest` is not on the wire and is not read at run time. It is a structural
+ * hash over exactly the derived wire surface, emitted into *both* chunks so a
+ * build can compare them and fail when the two compiles disagree about what the
+ * *n*th plan is. That is the whole safety story for a positional key: the key
+ * says nothing about what it points at, so drift has to be a build error rather
+ * than a mount that resolves to something plausible and wrong.
+ */
+export interface UniversalProgramAddress {
+	/** Package-relative, posix-separated module path of the owning source file. */
+	readonly module: string;
+	/** The plan's index in its module's allocation order. */
+	readonly index: number;
+	/** Build-time structural digest of the derived wire surface. */
+	readonly digest: string;
+}
+
 export interface UniversalPlan {
 	readonly $$kind: typeof UNIVERSAL_PLAN;
 	readonly renderer: string;
 	readonly root: UniversalPlanNode;
+	/**
+	 * The cross-realm name of this plan's compiled program, when the build
+	 * established one.
+	 *
+	 * Absent on every plan today's builds produce for a single graph: addressing
+	 * is earned by a two-layer application build, where one plugin configuration
+	 * sees both compiles of the same module and can cross-check them. An isolated
+	 * `thread: 'main-thread'` graph has no second layer to check against, so it
+	 * gets no address and keeps descriptor mounts (#246 §6.3).
+	 */
+	readonly address?: UniversalProgramAddress;
 }
 
 export interface UniversalPlanValue {
@@ -560,6 +618,17 @@ export interface UniversalHostCapabilities {
 	readonly deferredTemplateProgramRuns?: boolean;
 	/** Accepts one destroy-run command per removed contiguous program-run range. */
 	readonly teardownRuns?: boolean;
+	/**
+	 * Accepts a run that names a program the renderer already holds, instead of
+	 * carrying the descriptor the renderer would otherwise walk (issue #246 E1).
+	 *
+	 * This is a claim about the *renderer's realm*, not about the batch: it says
+	 * a resident program registry exists on the other side and a build has
+	 * cross-checked that both compiles agree about what each address means.
+	 * Without it a plan's address is inert and every mount keeps its descriptor,
+	 * which is exactly what an isolated single-layer graph gets.
+	 */
+	readonly addressedProgramRuns?: boolean;
 }
 
 export interface UniversalResourceHandle {
@@ -751,6 +820,20 @@ export interface UniversalHostTemplateProgram {
 }
 
 /**
+ * A program address as it appears in a batch: the two fields that identify one,
+ * and not the digest that proves the two builds agreed about it.
+ *
+ * The digest is a build-time artifact. Sending it would pay bytes on every mount
+ * to re-check something a failed build already prevented from shipping, and
+ * would invite a receiver to trust an address *because* the digest matched —
+ * turning a build gate into a runtime one, which is the trade #246 §6.1 declined.
+ */
+export interface UniversalHostProgramAddress {
+	readonly module: string;
+	readonly index: number;
+}
+
+/**
  * Encoded primitive that can be transported directly without object
  * reconstruction.
  *
@@ -822,6 +905,34 @@ export type UniversalHostCommand =
 			 * host accepts it at all, and where, is the host's own contract; the
 			 * Lynx driver accepts it only directly under a native `<list>`.
 			 */
+			readonly deferred?: true;
+	  }
+	| {
+			/**
+			 * Instantiate a program the receiver already holds (issue #246 E1).
+			 *
+			 * Identical to `mount-template-run` in every field but one: where that
+			 * command carries a `program` descriptor for the receiver to walk, this
+			 * one carries the `address` under which the receiver's own chunk
+			 * registered the compiled program. What is deleted is the
+			 * interpretation, not the host calls — the same hosts are created, the
+			 * same props written, the same listeners installed.
+			 *
+			 * The address is two small fields and no digest: agreement about what
+			 * the address means was established at build time, and a check that
+			 * cannot fail is a check that costs bytes on every mount to say
+			 * nothing. An address the receiver cannot resolve is refused, never
+			 * approximated.
+			 */
+			readonly op: 'mount-program-run';
+			readonly parent: UniversalHostParent;
+			readonly before: number | null;
+			readonly address: UniversalHostProgramAddress;
+			readonly firstId: number;
+			readonly firstListenerId: number | null;
+			readonly count: number;
+			readonly values: readonly UniversalHostTemplateProgramValue[];
+			/** See `mount-template-run`'s field of the same name. */
 			readonly deferred?: true;
 	  }
 	| {
@@ -1193,6 +1304,12 @@ interface BlueprintCollapsedTemplateNode {
 interface BlueprintCollapsedTemplate {
 	readonly program: CompiledCollapsedTemplateProgram;
 	readonly nodes: readonly BlueprintCollapsedTemplateNode[] | null;
+	/**
+	 * The plan's cross-realm name, carried here because this is the last place
+	 * that still knows which plan the collapsed template came from. By the time
+	 * placement builds the command, all it holds is the lowered wire program.
+	 */
+	readonly address?: UniversalProgramAddress;
 	readonly prepared?: PreparedCollapsedTemplateProgram;
 	readonly values?: readonly UniversalHostTemplateProgramValue[];
 	readonly captures?: readonly unknown[];
@@ -1817,9 +1934,83 @@ function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
 	);
 }
 
-export function universalPlan(renderer: string, root: UniversalPlanNode): UniversalPlan {
+/**
+ * Validate and freeze a program address, or refuse one that could not resolve.
+ *
+ * Shared by every renderer that accepts an address, because the two sides have
+ * to agree about what a well-formed one is before either can claim the other
+ * sent a wrong one. A malformed address is a miscompile, and a miscompile that
+ * reaches a mount paints a plausible wrong tree — the failure shape this whole
+ * mechanism exists to keep out of run time.
+ */
+export function freezeUniversalProgramAddress(
+	address: UniversalProgramAddress,
+): UniversalProgramAddress {
+	if (address === null || typeof address !== 'object') {
+		throw new TypeError('A universal program address must be an object.');
+	}
+	if (typeof address.module !== 'string' || address.module === '') {
+		throw new TypeError('A universal program address requires a non-empty module id.');
+	}
+	if (!Number.isSafeInteger(address.index) || address.index < 0) {
+		throw new TypeError('A universal program address requires a non-negative integer index.');
+	}
+	if (typeof address.digest !== 'string' || address.digest === '') {
+		throw new TypeError('A universal program address requires a non-empty digest.');
+	}
+	return Object.freeze({ module: address.module, index: address.index, digest: address.digest });
+}
+
+/**
+ * The wire program the producer of one addressed command lowered.
+ *
+ * The sending side of E1, and deliberately not a name→program registry. A
+ * background composing a batch has the descriptor in hand — what it stops doing
+ * under E1 is putting one on the wire — and its own consumers (the driver
+ * staging ids, the delta shadow, the transport's compact check) run over that
+ * same in-memory batch before anything is serialized. So the honest key is the
+ * command object itself, and the receiving side, which has no such object, keeps
+ * its own residency in the renderer that compiled the programs.
+ *
+ * Keying the sender by address instead would be wrong, not merely indirect:
+ * `prepareUniversalTemplateProgram` memoizes per encoder, and an encoder is per
+ * root, so two roots in one background rendering the same component hold two
+ * structurally identical wire objects for one address. A receiver's registry
+ * must refuse exactly that — two programs under one name is how a miscompiled
+ * build shows up there — and here it is ordinary.
+ *
+ * Weak because the entry is dead the moment the batch is: nothing outlives the
+ * commit that named it.
+ */
+const COMMAND_PROGRAMS = new WeakMap<object, UniversalHostTemplateProgram>();
+
+/** @internal Bind an addressed command to the program its producer lowered. */
+export function recordUniversalProgramCommand(
+	command: object,
+	program: UniversalHostTemplateProgram,
+): void {
+	COMMAND_PROGRAMS.set(command, program);
+}
+
+/** @internal The program this realm's producer lowered for one addressed command. */
+export function universalProgramCommandWire(
+	command: object,
+): UniversalHostTemplateProgram | undefined {
+	return COMMAND_PROGRAMS.get(command);
+}
+
+export function universalPlan(
+	renderer: string,
+	root: UniversalPlanNode,
+	address?: UniversalProgramAddress,
+): UniversalPlan {
 	assertRendererId(renderer, 'universalPlan renderer');
-	return Object.freeze({ $$kind: UNIVERSAL_PLAN, renderer, root: freezePlanNode(root) });
+	return Object.freeze({
+		$$kind: UNIVERSAL_PLAN,
+		renderer,
+		root: freezePlanNode(root),
+		...(address === undefined ? null : { address: freezeUniversalProgramAddress(address) }),
+	});
 }
 
 export function universalValue(
@@ -4286,7 +4477,12 @@ function materializeCollapsedTemplate(value: UniversalPlanValue): BlueprintHost 
 		visibility: 'visible',
 		children: [],
 		templatePlan: value.plan.root,
-		collapsedTemplate: { program, nodes, ids: null },
+		collapsedTemplate: {
+			program,
+			nodes,
+			ids: null,
+			...(value.plan.address === undefined ? null : { address: value.plan.address }),
+		},
 	};
 }
 
@@ -4344,6 +4540,7 @@ function preparedCollapsedTemplateBlueprint(
 		collapsedTemplate: {
 			program,
 			nodes: null,
+			...(plan.address === undefined ? null : { address: plan.address }),
 			prepared,
 			values,
 			captures,
@@ -4630,17 +4827,29 @@ interface PendingUniversalHostTemplateMount {
 		values: readonly UniversalHostTemplateProgramValue[];
 		firstListenerId: number | null;
 	};
-	run?: {
-		op: 'mount-template-run';
-		parent: UniversalHostParent;
-		before: number | null;
-		program: UniversalHostTemplateProgram;
-		firstId: number;
-		firstListenerId: number | null;
-		count: number;
-		values: UniversalHostTemplateProgramValue[];
-		deferred?: true;
-	};
+	run?:
+		| {
+				op: 'mount-template-run';
+				parent: UniversalHostParent;
+				before: number | null;
+				program: UniversalHostTemplateProgram;
+				firstId: number;
+				firstListenerId: number | null;
+				count: number;
+				values: UniversalHostTemplateProgramValue[];
+				deferred?: true;
+		  }
+		| {
+				op: 'mount-program-run';
+				parent: UniversalHostParent;
+				before: number | null;
+				address: UniversalHostProgramAddress;
+				firstId: number;
+				firstListenerId: number | null;
+				count: number;
+				values: UniversalHostTemplateProgramValue[];
+				deferred?: true;
+		  };
 	runIndex?: number;
 }
 
@@ -10361,33 +10570,86 @@ class UniversalRootImpl<Container, PublicInstance>
 			const collapsed = template.collapsed;
 			if (collapsed?.prepared !== undefined) {
 				if (this.driver.capabilities?.templateProgramRuns === true) {
+					// A run names its program when the build gave the plan an address and
+					// the renderer says it holds one under that name. Both halves are
+					// required: an address with no registry on the other side would mount
+					// nothing, and a registry with no address has nothing to look up.
+					const address =
+						this.driver.capabilities.addressedProgramRuns === true ? collapsed.address : undefined;
+					const width = collapsed.prepared.wire.nodes.length;
+					const firstId = collapsed.firstId!;
 					const previous = placements[placements.length - 1];
-					if (
-						// Deferral is not compared: it is decided from the program's root
-						// and the parent, and this already requires both to be the same.
-						previous?.op === 'mount-template-run' &&
-						previous.program === collapsed.prepared.wire &&
-						Object.is(previous.parent, parent) &&
-						previous.before === before &&
-						previous.firstId + previous.count * previous.program.nodes.length === collapsed.firstId
-					) {
+					// Deferral is not compared: it is decided from the program's root and
+					// the parent, and this already requires both to be the same.
+					const adjoins = (candidate: {
+						readonly parent: UniversalHostParent;
+						readonly before: number | null;
+						readonly firstId: number;
+						readonly count: number;
+					}): boolean =>
+						Object.is(candidate.parent, parent) &&
+						candidate.before === before &&
+						candidate.firstId + candidate.count * width === firstId;
+					// The two ops are identified on different things — the wire object for
+					// a descriptor run, the address for an addressed one — because that is
+					// what makes the next instance the same *program's* rather than merely
+					// the same shape's. Written as two branches rather than one condition
+					// so each narrows `previous` to the op it just tested.
+					const continues =
+						address === undefined
+							? previous?.op === 'mount-template-run' &&
+								previous.program === collapsed.prepared.wire &&
+								adjoins(previous)
+							: previous?.op === 'mount-program-run' &&
+								previous.address.module === address.module &&
+								previous.address.index === address.index &&
+								adjoins(previous);
+					if (continues) {
 						const run = previous as NonNullable<PendingUniversalHostTemplateMount['run']>;
 						template.runIndex = run.count++;
 						run.values.push(...collapsed.values!);
 						template.run = run;
 						return;
 					}
-					const run = {
-						op: 'mount-template-run' as const,
-						parent,
-						before,
-						program: collapsed.prepared.wire,
-						firstId: collapsed.firstId!,
-						firstListenerId: null as number | null,
-						count: 1,
-						values: [...collapsed.values!],
-						...(template.deferred === true ? { deferred: true as const } : null),
-					};
+					const run =
+						address === undefined
+							? {
+									op: 'mount-template-run' as const,
+									parent,
+									before,
+									program: collapsed.prepared.wire,
+									firstId,
+									firstListenerId: null as number | null,
+									count: 1,
+									values: [...collapsed.values!],
+									...(template.deferred === true ? { deferred: true as const } : null),
+								}
+							: {
+									op: 'mount-program-run' as const,
+									parent,
+									before,
+									// Rebuilt rather than forwarded: the plan's address also
+									// carries the build-time digest, which is not the wire's
+									// business and would otherwise ride every mount. Frozen
+									// because it stands in for the `program` field a descriptor
+									// run carries, and the compact acknowledgement stages
+									// handles only against a run nothing can mutate afterwards.
+									address: Object.freeze({ module: address.module, index: address.index }),
+									firstId,
+									firstListenerId: null as number | null,
+									count: 1,
+									values: [...collapsed.values!],
+									...(template.deferred === true ? { deferred: true as const } : null),
+								};
+					// This background stops *sending* the descriptor; it does not stop
+					// holding one. Its own consumers — the driver staging ids, the delta
+					// shadow, the transport's compact check — run over this batch before
+					// anything is serialized, so they read the program back off the
+					// command they were handed rather than resolving a name only the
+					// other realm can answer.
+					if (address !== undefined) {
+						recordUniversalProgramCommand(run, collapsed.prepared.wire);
+					}
 					template.run = run;
 					template.runIndex = 0;
 					templateRuns.push(run);

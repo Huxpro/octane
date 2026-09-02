@@ -49,6 +49,11 @@ import {
 	type LynxResolvedFirstTreeEvent,
 } from './first-screen.js';
 import {
+	residentRunProgram,
+	residentUniversalProgramCount,
+	unresolvedProgramAddressMessage,
+} from './program-registry.js';
+import {
 	LYNX_CSS_SCOPE_PROP,
 	classifyLynxHostPropUpdate,
 	hasLynxMainThreadProp,
@@ -6819,10 +6824,14 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			(command) =>
 				command !== null &&
 				typeof command === 'object' &&
-				(command.op === 'mount-template-range' || command.op === 'mount-template-run'),
+				(command.op === 'mount-template-range' ||
+					command.op === 'mount-template-run' ||
+					command.op === 'mount-program-run'),
 		);
 	const incrementalCompactRun =
-		batch.commands.length === 1 && batch.commands[0]?.op === 'mount-template-run'
+		batch.commands.length === 1 &&
+		(batch.commands[0]?.op === 'mount-template-run' ||
+			batch.commands[0]?.op === 'mount-program-run')
 			? batch.commands[0]
 			: null;
 	const incrementalCompactCandidate =
@@ -7240,15 +7249,24 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				if (typeof command.id !== 'number' || paints(command.id)) projected++;
 			} else if (command.op === 'mount-template') {
 				if (Array.isArray(command.nodes)) projected += command.nodes.length;
-			} else if (command.op === 'mount-template-range' || command.op === 'mount-template-run') {
+			} else if (
+				command.op === 'mount-template-range' ||
+				command.op === 'mount-template-run' ||
+				command.op === 'mount-program-run'
+			) {
 				// A deferred run declares its instances and builds none: the `<list>`
 				// asks for a cell through `componentAtIndex` when it is about to show
 				// it. Counting a declaration would refuse the very page this
 				// refusal's own diagnostic tells an author to write.
-				if (command.op === 'mount-template-run' && command.deferred === true) continue;
-				const nodes = command.program?.nodes?.length;
+				if (command.op !== 'mount-template-range' && command.deferred === true) continue;
+				// An unresolvable address counts as nothing here and is refused by the
+				// mount below with a diagnostic. This projection exists to decline a
+				// page before painting it, so a command it cannot size is one it must
+				// not guess at.
+				const resolved = residentRunProgram(command) as UniversalHostTemplateProgram | undefined;
+				const nodes = resolved?.nodes?.length;
 				if (typeof nodes !== 'number') continue;
-				projected += (command.op === 'mount-template-run' ? command.count : 1) * nodes;
+				projected += (command.op === 'mount-template-range' ? 1 : command.count) * nodes;
 			} else if (command.op === 'destroy') {
 				// The applier's destroy releases an element only when the host has
 				// one: `activeNodes.get(id)` decides, and a row the platform never
@@ -7274,15 +7292,29 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 		if (
 			sawCompactRange &&
 			command.op !== 'mount-template-range' &&
-			command.op !== 'mount-template-run'
+			command.op !== 'mount-template-run' &&
+			command.op !== 'mount-program-run'
 		) {
 			sparseCompactNodes = false;
 		}
-		if (command.op === 'mount-template-range' || command.op === 'mount-template-run') {
+		if (
+			command.op === 'mount-template-range' ||
+			command.op === 'mount-template-run' ||
+			command.op === 'mount-program-run'
+		) {
 			const label = `command ${index} ${command.op}`;
-			const program = prepareTemplateProgram(command.program, label);
+			// The one line where the two run ops differ. Everything below reads the
+			// resolved program, so an addressed run is mounted by the code that
+			// mounts a descriptor run rather than beside it — which is what makes
+			// "the same tree, the same ids, the same listeners" a property of the
+			// implementation instead of a claim two appliers have to keep agreeing on.
+			const resolvedProgram = residentRunProgram(command);
+			if (resolvedProgram === undefined && command.op === 'mount-program-run') {
+				throw hostError(unresolvedProgramAddressMessage(label, command.address));
+			}
+			const program = prepareTemplateProgram(resolvedProgram, label);
 			const shape = program.shape;
-			const count = command.op === 'mount-template-run' ? command.count : 1;
+			const count = command.op === 'mount-template-range' ? 1 : command.count;
 			assertSafeId(count, `${label}.count`);
 			const hostCount = count * shape.types.length;
 			assertSafeId(command.firstId, `${label}.firstId`);
@@ -7352,7 +7384,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			) {
 				sparseCompactNodes = false;
 			}
-			const deferred = command.op === 'mount-template-run' && command.deferred === true;
+			const deferred = command.op !== 'mount-template-range' && command.deferred === true;
 			if (deferred) {
 				// A native `<list>` is the one parent that owns which of its children
 				// are on screen, so it is the one parent for which declaring an
@@ -7475,7 +7507,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				}
 			}
 			let denseEligible =
-				command.op === 'mount-template-run' &&
+				command.op !== 'mount-template-range' &&
 				compactCandidate &&
 				options?.lazyPublicInstances === true &&
 				Object.isFrozen(command.values) &&
@@ -9160,6 +9192,18 @@ export function createLynxHostDriver<
 			templateProgramMount: true,
 			templateProgramRuns: true,
 			deferredTemplateProgramRuns: true,
+			// Answered from what this realm actually holds, not from the version it
+			// speaks. Understanding the op is free; resolving an address needs the
+			// main-thread chunk of a two-layer build, whose compiled plans register
+			// themselves as their modules evaluate. An isolated `thread:
+			// 'main-thread'` graph registers nothing (issue #246 §6.3), so it says so
+			// here and the peer keeps sending descriptors instead of failing per
+			// mount. `assertProgramRunCommand` still refuses an individual address
+			// this realm does not hold, which is the case residency cannot answer:
+			// a program whose module has not evaluated yet.
+			get addressedProgramRuns() {
+				return residentUniversalProgramCount() > 0;
+			},
 			teardownRuns: true,
 			lazyPublicInstances: true,
 			stableStaticHostProps: true,

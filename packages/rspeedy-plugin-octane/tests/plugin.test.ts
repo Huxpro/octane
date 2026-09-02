@@ -203,6 +203,7 @@ function compilerOptions(state: ReturnType<typeof createChain>) {
 		runtime: string;
 		universalRuntime: unknown;
 		mainThreadProgramBackend?: unknown;
+		programAddressing?: boolean;
 		layerSpecializations?: Record<
 			string,
 			{
@@ -390,7 +391,7 @@ describe('@octanejs/rspeedy-plugin', () => {
 		};
 		const configured = compilerOptions(
 			applyPlugin(
-				{ mainThreadProgramBackend: backend },
+				{ mainThreadProgramBackend: backend, programAddressing: false },
 				'lynx',
 				{},
 				{
@@ -414,6 +415,70 @@ describe('@octanejs/rspeedy-plugin', () => {
 		expect(byDefault.layerSpecializations?.[LYNX_MAIN_THREAD_LAYER]).not.toHaveProperty(
 			'mainThreadProgramBackend',
 		);
+	});
+
+	it('gives both layers the backend once addressing is on, and only then', () => {
+		// #246 E1 turns the backend into more than an emitter. An address is
+		// positional, so the background has to decide which plans get one exactly
+		// as the main thread will — and it does that by running the same
+		// derivation as a pure oracle. That needs the backend on the background
+		// layer too, even though it emits no program of its own; the top-level
+		// option is how both layers inherit it.
+		//
+		// The background's bytes still do not move by this alone: the universal
+		// compiler emits a program only for a main-thread universal runtime, so
+		// what the background gains is the address literal and nothing else.
+		const backend = {
+			signature: 'fixture-backend/1',
+			deriveLynxMainThreadProgram: () => null,
+			emitLynxMainThreadProgram: () => ({ source: '', valueCount: 0, eventCount: 0 }),
+		};
+		const addressed = compilerOptions(
+			applyPlugin(
+				{ mainThreadProgramBackend: backend },
+				'lynx',
+				{},
+				{
+					app: ['./src/App.lynx.tsrx'],
+				},
+			),
+		);
+		expect(addressed.programAddressing).toBe(true);
+		expect(addressed.mainThreadProgramBackend).toBe(backend);
+		expect(addressed.layerSpecializations?.[LYNX_MAIN_THREAD_LAYER].mainThreadProgramBackend).toBe(
+			backend,
+		);
+
+		// No backend, nothing to address: the option never appears, so a build
+		// that does not compile programs is byte-for-byte what it was.
+		const plain = compilerOptions(
+			applyPlugin(undefined, 'lynx', {}, { app: ['./src/App.lynx.tsrx'] }),
+		);
+		expect(plain).not.toHaveProperty('programAddressing');
+	});
+
+	it('refuses addressing for an isolated thread graph', () => {
+		// #246 §6.3. One compile cannot check itself: there is no second layer to
+		// compare a digest against, and the chunk holds no programs for an address
+		// to name. The refusal is at the configuration rather than at a mount that
+		// finds nothing.
+		const backend = {
+			signature: 'fixture-backend/1',
+			deriveLynxMainThreadProgram: () => null,
+			emitLynxMainThreadProgram: () => ({ source: '', valueCount: 0, eventCount: 0 }),
+		};
+		expect(() =>
+			applyPlugin({
+				thread: 'main-thread',
+				mainThreadProgramBackend: backend,
+				programAddressing: true,
+			}),
+		).toThrow(/requires the two-layer application build/);
+
+		// Nor does an isolated graph opt itself in by omission.
+		expect(
+			compilerOptions(applyPlugin({ thread: 'main-thread', mainThreadProgramBackend: backend })),
+		).not.toHaveProperty('programAddressing');
 	});
 
 	it('makes a backend the compiler-wide option for an isolated main-thread graph', () => {
