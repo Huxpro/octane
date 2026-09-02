@@ -22,6 +22,7 @@ import type {
 	UniversalKey,
 	UniversalPlan,
 	UniversalPlanNode,
+	UniversalProgramAddress,
 	UniversalProgramPlan,
 	UniversalPropEntry,
 	UniversalRenderable,
@@ -29,6 +30,7 @@ import type {
 	UniversalTemplateEnv,
 } from 'octane/universal/native';
 import { LynxFirstScreenRefusalError, LYNX_FIRST_SCREEN_REFUSED } from './core/first-screen.js';
+import { registerUniversalProgram } from './core/program-registry.js';
 import { hasOwnSymbolFields } from './core/own-symbols.js';
 import { isLynxNativeResource } from './resource.js';
 
@@ -405,6 +407,10 @@ function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
 			events: Object.freeze(node.events.map((event) => Object.freeze({ ...event }))),
 			ranges: Object.freeze(node.ranges.map((range) => Object.freeze({ ...range }))),
 			bind: node.bind,
+			// Carried, not walked. An addressing build attaches the descriptor a
+			// later command-path mount needs; `registerUniversalProgram` is what
+			// freezes it, so a plan nothing addresses never pays for the walk.
+			...(node.wire === undefined ? null : { wire: node.wire }),
 		});
 	}
 	if (node.kind === 'host') {
@@ -479,13 +485,58 @@ function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
 	);
 }
 
-export function universalPlan(renderer: string, root: UniversalPlanNode): UniversalPlan {
+/**
+ * Validate and freeze a program address (issue #246 E1).
+ *
+ * The universal core carries the same check for the renderers that share it.
+ * This one is written out again for the reason `freezePlanNode` above is: the
+ * main-thread runtime graph imports no runtime value from the core, which is the
+ * whole of #163's bundle claim and what `runtime-compatibility.test.ts` pins. A
+ * dozen lines cost less here than the dependency would.
+ *
+ * A malformed address is a miscompile, and a miscompile that reaches a mount
+ * paints a plausible wrong tree — the failure shape this whole mechanism exists
+ * to keep out of run time.
+ */
+function freezeProgramAddress(address: UniversalProgramAddress): UniversalProgramAddress {
+	if (address === null || typeof address !== 'object') {
+		throw new TypeError('A universal program address must be an object.');
+	}
+	if (typeof address.module !== 'string' || address.module === '') {
+		throw new TypeError('A universal program address requires a non-empty module id.');
+	}
+	if (!Number.isSafeInteger(address.index) || address.index < 0) {
+		throw new TypeError('A universal program address requires a non-negative integer index.');
+	}
+	if (typeof address.digest !== 'string' || address.digest === '') {
+		throw new TypeError('A universal program address requires a non-empty digest.');
+	}
+	return Object.freeze({ module: address.module, index: address.index, digest: address.digest });
+}
+
+export function universalPlan(
+	renderer: string,
+	root: UniversalPlanNode,
+	address?: UniversalProgramAddress,
+): UniversalPlan {
 	assertRenderer(renderer);
-	return Object.freeze({
+	const frozen = freezePlanNode(root);
+	const plan = Object.freeze({
 		$$kind: UNIVERSAL_PLAN,
 		renderer,
-		root: freezePlanNode(root),
+		root: frozen,
+		...(address === undefined ? null : { address: freezeProgramAddress(address) }),
 	}) as unknown as UniversalPlan;
+	// The registration is here rather than in the emission because this is the
+	// call the compiler already makes at module scope for every plan: the chunk
+	// gains the address arguments and nothing else. `kind: 'program'` is the
+	// gate — an address on a plan this thread did not compile into a program
+	// names something no mount could use, and registering it would let a
+	// background mount resolve to a plan whose `bind` does not exist (issue #246).
+	if (plan.address !== undefined && frozen.kind === 'program') {
+		registerUniversalProgram(plan.address.module, plan.address.index, frozen);
+	}
+	return plan;
 }
 
 export function universalValue(

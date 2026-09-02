@@ -2278,6 +2278,30 @@ function hostAbsorbsTextChild(type, state) {
 	return Array.isArray(hostProps?.[type]) && hostProps[type].includes(TEXT_CONTENT_PROP);
 }
 
+// Whether a host's lone compiled child is a dynamic hole the *author* proved
+// scalar, which is the one dynamic child a text-absorbing host can hold.
+//
+// Asked of the authored JSX rather than the plan node, because the proof lives
+// in the source and only in the source: `compile.js` strips every TS-only
+// wrapper before printing, so by the time an expression reaches codegen the cast
+// is gone. The compiled child is still checked — a hole that folded to static
+// text or to a nested plan is not this — so the two views have to agree before
+// anything is folded.
+function isScalarTextChildSite(node, compiled) {
+	if (compiled.kind !== 'slot') return false;
+	const authored = (node.children ?? []).filter(
+		(child) => child.type !== 'JSXText' || normalizeJsxText(child.value ?? '') !== '',
+	);
+	if (authored.length !== 1) return false;
+	const only = authored[0];
+	return (
+		only.type === 'JSXExpressionContainer' &&
+		only.expression != null &&
+		only.expression.type !== 'JSXEmptyExpression' &&
+		isStaticallyPrimitiveTextExpression(only.expression)
+	);
+}
+
 // This proof deliberately covers data expressions, not arbitrary authored calls.
 // Property reads can still reach getters or proxies, so the universal runtime
 // lazily claims the keyed item owner if one invokes a hook or renderer region.
@@ -3185,23 +3209,45 @@ function compileHostElementAst(node, context, state) {
 		}
 	}
 	const children = compileChildrenAst(node.children ?? [], context, state);
-	// Fold a lone compile-time-known text child onto the host, so the carrier
-	// element is never painted. Deliberately narrow, and each condition earns its
-	// place: exactly one child, because a carrier beside a sibling is not the
-	// only thing the parent renders; `kind: 'text'`, which is authored JSX text
-	// and string literals and never a dynamic hole, whose value is unknown here
-	// and whose slot the renderer must still address; and no existing writer of
-	// `text` on this host, since `propsSlot` builds an unordered bag at runtime
-	// that the compiler cannot prove lacks the key. Refuse rather than race it.
-	const absorbsTextChild =
+	// Fold a lone text child onto the host, so the carrier element is never
+	// painted. Deliberately narrow, and each condition earns its place: exactly
+	// one child, because a carrier beside a sibling is not the only thing the
+	// parent renders; a child whose content this host can hold, which is either a
+	// string the compiler already has or a hole the author proved scalar; and no
+	// existing writer of `text` on this host, since `propsSlot` builds an
+	// unordered bag at runtime that the compiler cannot prove lacks the key.
+	// Refuse rather than race it.
+	const absorbsSomeTextChild =
 		children.length === 1 &&
-		children[0].kind === 'text' &&
 		propsSlot === null &&
 		!Object.hasOwn(props, TEXT_CONTENT_PROP) &&
 		!bindings.some(([name]) => name === TEXT_CONTENT_PROP) &&
 		hostAbsorbsTextChild(type, state);
+	// `kind: 'text'` is authored JSX text and string literals: the value is in
+	// hand, so it rides the frozen plan as a static prop (#242 Cause A).
+	const absorbsTextChild = absorbsSomeTextChild && children[0].kind === 'text';
 	if (absorbsTextChild) props[TEXT_CONTENT_PROP] = children[0].value;
-	const emitted = absorbsTextChild ? [] : children;
+	// #242 Cause B / #246 B2. A dynamic hole the author proved scalar folds too,
+	// as a *binding* rather than a static prop: the value is not known here, but
+	// its shape is, and that is all the fold needs. `{expr as string}` is the
+	// authored form `docs/differences-from-react.md` already requires for dynamic
+	// text, so the proof is in the source and this stops erasing it.
+	//
+	// The slot survives the fold at its own index — `addDynamicAst` already
+	// pushed the expression into `context.values` — so nothing renumbers and the
+	// only change to the slot table is that this slot is now written by a prop
+	// rather than instantiated as a range.
+	//
+	// The cast is an assertion, not a proof, and a lying one must not paint a
+	// wrong tree. It cannot: `text` on a `text` host takes the carrier's
+	// semantics in all three appliers — `attributeValue` in `host-props.ts`, the
+	// dense route in `host-driver.ts`, and the compiled create in
+	// `emit-main-thread-program.ts` each render a non-string as empty rather than
+	// coercing it — which is exactly what the carrier this replaces did.
+	const absorbsScalarTextChild =
+		absorbsSomeTextChild && !absorbsTextChild && isScalarTextChildSite(node, children[0]);
+	if (absorbsScalarTextChild) bindings.push([TEXT_CONTENT_PROP, children[0].slot]);
+	const emitted = absorbsTextChild || absorbsScalarTextChild ? [] : children;
 	return withPlanOrigin(
 		{
 			kind: 'host',
@@ -4264,12 +4310,106 @@ function lynxProgramRangeOrder(wire, ranges) {
 	return order;
 }
 
+/**
+ * Canonical bytes for a derived wire program, so two compiles hash the same
+ * thing (issue #246 §6.1).
+ *
+ * `JSON.stringify` is not canonical — it preserves insertion order — and the
+ * two compiles build these objects through the same code, so their key order
+ * agrees today. Sorting is what keeps that from being a property of the current
+ * implementation: a refactor that reorders a spread must not silently change a
+ * digest, because a changed digest is a failed build and a failing build for a
+ * reason no one can name is worse than the drift it was guarding.
+ */
+function canonicalDigestSource(value) {
+	if (value === null || typeof value !== 'object') return JSON.stringify(value ?? null) ?? 'null';
+	if (Array.isArray(value)) return `[${value.map(canonicalDigestSource).join(',')}]`;
+	const keys = Object.keys(value).sort();
+	const parts = [];
+	for (const key of keys) {
+		if (value[key] === undefined) continue;
+		parts.push(`${JSON.stringify(key)}:${canonicalDigestSource(value[key])}`);
+	}
+	return `{${parts.join(',')}}`;
+}
+
+/**
+ * FNV-1a over the canonical bytes, as 16 lowercase hex digits.
+ *
+ * Hand-rolled rather than `node:crypto` because this module has no node imports
+ * and gains nothing by acquiring one: the digest is a build-time equality
+ * witness between two compiles of the same source, not a security primitive.
+ * What it has to be is deterministic across machines and package managers,
+ * which a fixed integer recurrence over a canonical string is and a hash of an
+ * object's iteration order is not.
+ */
+function programDigest(wire) {
+	const source = canonicalDigestSource(wire);
+	let high = 0x811c9dc5;
+	let low = 0x9dc5811c;
+	for (let index = 0; index < source.length; index++) {
+		const code = source.charCodeAt(index);
+		high = (high ^ code) >>> 0;
+		low = (low ^ ((code << 7) | (code >>> 9))) >>> 0;
+		high = Math.imul(high, 0x01000193) >>> 0;
+		low = Math.imul(low, 0x85ebca6b) >>> 0;
+	}
+	return `${high.toString(16).padStart(8, '0')}${low.toString(16).padStart(8, '0')}`;
+}
+
+/**
+ * The cross-realm name of one plan, or `null` when this build does not address
+ * programs or this plan is not one.
+ *
+ * Called from *both* compiles of a module, and that is the whole point. The
+ * address is positional, so it is only safe if the two compiles agree about
+ * which plans are programs and in what order — and the way to make them agree is
+ * to ask the same question, of the same plan root, through the same derivation,
+ * rather than to have each infer it from its own emission.
+ *
+ * The background is `target: 'universal'` and emits an ordinary host plan, so it
+ * never builds a program and cannot decide eligibility from what it emitted. It
+ * runs the derivation purely as an oracle: `deriveLynxMainThreadProgram` is a
+ * pure build-time lowering with no side effects, and its `null` is exactly the
+ * main thread's "no program here". So the two threads agree by construction
+ * instead of by a rule each implements separately.
+ *
+ * The digest covers exactly the derived wire, per the §6.1 ruling. Derivation by
+ * execution is what makes that complete rather than hopeful: the emission reads
+ * nothing outside the surface the derivation produced, so hashing that surface
+ * hashes everything the emission depends on.
+ */
+// The derivation is a full lowering of the plan tree and a pure oracle, and an
+// addressing build asks for the same root twice in one pass — once for the
+// address digest, once for the emission. One derivation per root per compile.
+function deriveMainThreadProgramOnce(state, root) {
+	const cache = (state.derivedMainThreadPrograms ??= new Map());
+	if (cache.has(root)) return cache.get(root);
+	const derived = state.mainThreadProgramBackend.deriveLynxMainThreadProgram(root) ?? null;
+	cache.set(root, derived);
+	return derived;
+}
+
+function universalProgramAddressAst(state, plan, index, origin) {
+	const backend = state.mainThreadProgramBackend;
+	if (backend === undefined || state.programModuleId === undefined) return null;
+	if (!lynxTemplateEligible(plan.root) || plan.root.kind !== 'host') return null;
+	const derived = deriveMainThreadProgramOnce(state, plan.root);
+	if (derived === null) return null;
+	const address = { module: state.programModuleId, index, digest: programDigest(derived.wire) };
+	// Reported as well as emitted. The digest in the chunk is what a reader can
+	// check; this is what lets the *build* check it, by comparing what the two
+	// layers said about the same module before either chunk is written.
+	(state.programAddresses ??= []).push(address);
+	return jsonValueToAst(address, origin);
+}
+
 function lynxMainThreadProgramObjectAst(state, plan, origin) {
 	const backend = state.mainThreadProgramBackend;
 	if (backend === undefined) return null;
 	if (state.universalRuntime?.thread !== 'main-thread') return null;
-	const derived = backend.deriveLynxMainThreadProgram(plan.root);
-	if (derived === null || derived === undefined) return null;
+	const derived = deriveMainThreadProgramOnce(state, plan.root);
+	if (derived === null) return null;
 	// Not `plan.name`: the module already binds that, and the emission's name
 	// becomes a named function expression whose binding would shadow it.
 	const name = allocName(state, `${plan.name}Create`);
@@ -4366,6 +4506,23 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 					origin,
 				),
 			),
+			// The descriptor the background would otherwise have sent with every
+			// mount, resident here instead (issue #246 E1).
+			//
+			// The compiled create above paints the first screen; a `mount-program-run`
+			// arriving later over the command path re-enters the ordinary descriptor
+			// applier, so that applier still needs a descriptor to walk. Carrying one
+			// copy in this chunk is what lets the wire carry a name: the walk and the
+			// protocol validation both memoize on program identity, so a resident
+			// program is walked once for the chunk's life where a deserialized one
+			// misses both memos on every mount.
+			//
+			// Emitted only for an addressing build. Without one no command can name
+			// this program, so the field would be bytes in the main-thread chunk that
+			// nothing ever reads.
+			...(state.programModuleId === undefined
+				? []
+				: [b.prop('init', b.literal('wire', '"wire"'), jsonValueToAst(derived.wire, origin))]),
 			// `bind`, not `create`: the emission takes the host once per program and
 			// returns the per-instance create. A distinct `kind` above means a consumer
 			// that only knows the interpreted ABI fails loudly rather than calling this
@@ -4381,16 +4538,27 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 }
 
 function universalPlanDeclarationsAst(state, origin = null) {
-	return state.plans.map((plan) => {
+	return state.plans.map((plan, index) => {
 		const planOrigin = plan.origin ?? origin;
 		const rootAst =
 			state.lynxTemplates && lynxTemplateEligible(plan.root) && plan.root.kind === 'host'
 				? (lynxMainThreadProgramObjectAst(state, plan, planOrigin) ??
 					lynxTemplateObjectAst(plan.root, planOrigin))
 				: jsonValueToAst(plan.root, planOrigin);
+		// The third argument, and nothing else, is what an addressing build adds to
+		// the background chunk. #163's byte-identity gate for that chunk is
+		// retired by exactly this and replaced by the narrower one #246 §5 named:
+		// the background compile changes by the addressing and by nothing else.
+		const addressAst = universalProgramAddressAst(state, plan, index, planOrigin);
 		return generatedConst(
 			plan.name,
-			generatedCall(state.helpers.plan, [b.literal(state.renderer.id), rootAst], planOrigin),
+			generatedCall(
+				state.helpers.plan,
+				addressAst === null
+					? [b.literal(state.renderer.id), rootAst]
+					: [b.literal(state.renderer.id), rootAst, addressAst],
+				planOrigin,
+			),
 			planOrigin,
 		);
 	});
@@ -4669,6 +4837,8 @@ export function lowerUniversalRendererRegionAst(
 		runtimeImports: new Map(),
 		planPrefix: prefix,
 		validationImportReferences: [],
+		mainThreadProgramBackend: options.mainThreadProgramBackend,
+		programModuleId: options.programModuleId,
 	};
 	state.explicitThreeHostIntrinsics = collectExplicitThreeHostIntrinsics(
 		options.authoredAst ?? analysisAst,
@@ -4989,6 +5159,12 @@ export function compileUniversal(
 		// Absent, every plan lowers exactly as it did before it existed, which is
 		// what makes #163's byte-identity claim checkable rather than asserted.
 		mainThreadProgramBackend: options.mainThreadProgramBackend,
+		// The module's cross-realm name, supplied by whoever configured the build.
+		// Absent, no plan gets an address and every mount keeps its descriptor —
+		// which is what an isolated single-layer graph gets, because a
+		// configuration that cannot cross-check its two compiles at build time
+		// does not get a fast path whose safety is the cross-check (#246 §6.3).
+		programModuleId: options.programModuleId,
 	};
 	state.explicitThreeHostIntrinsics = collectExplicitThreeHostIntrinsics(ast, renderer);
 	state.ownerFreeThreeHostComponents = collectOwnerFreeThreeHostComponents(
@@ -5084,5 +5260,6 @@ export function compileUniversal(
 	return {
 		...result,
 		...(universalRuntime === undefined ? null : { universalRuntime }),
+		...(state.programAddresses === undefined ? null : { programAddresses: state.programAddresses }),
 	};
 }

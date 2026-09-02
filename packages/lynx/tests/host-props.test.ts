@@ -9,8 +9,10 @@ import {
 	normalizeLynxClass,
 	normalizeLynxDataset,
 	normalizeLynxInlineStyle,
+	planLynxHostCreatePatch,
 	planLynxHostPropPatch,
 } from '../src/core/host-props.js';
+import { LYNX_NODES_REF_ATTRIBUTE } from '../src/core/nodes-ref.js';
 import { decodeLynxTransportValue, encodeLynxTransportValue } from '../src/core/transport-codec.js';
 import { attachThreadFunction } from '../src/core/worklets.js';
 
@@ -498,4 +500,129 @@ describe('Lynx host prop routing', () => {
 			{ name: '__proto__', value: { id: 'injected', style: { width: '99px' } } },
 		]);
 	});
+});
+
+describe('planning a create against nothing', () => {
+	// `planLynxHostCreatePatch` is not a second planner: it is the same body
+	// entered with the previous side already known. So the only thing worth
+	// pinning is that it cannot answer differently from the diff an update
+	// takes. Each scene below lands on a different branch of that body, and both
+	// spellings of "no previous props" a caller can hold — a prototype-less bag
+	// and a plain `{}` — are checked, because the driver passed both.
+	const tap = { _wkltId: 'host-props.test:create-tap', _c: { count: 1 } };
+	const ref = { _wvid: 'host-props.test:create-ref' };
+	const scope = { cssId: 1185352, entryName: 'lazy-card' };
+
+	const emptyBags: readonly (readonly [string, Readonly<Record<string, unknown>>])[] = [
+		['a prototype-less bag', Object.freeze(Object.create(null) as Record<string, unknown>)],
+		['a plain object', {}],
+	];
+
+	const scenes: readonly (readonly [string, string, Record<string, unknown>])[] = [
+		['a propless view', 'view', {}],
+		['a view carrying one class', 'view', { class: 'card' }],
+		['a view carrying the className alias', 'view', { className: 'card' }],
+		['a composed class that leaves the fast path', 'view', { class: ['a', { b: true }] }],
+		['a view carrying two props', 'view', { class: 'card', id: 'row-1' }],
+		['a text host with content', 'text', { text: 'hello' }],
+		['a text host whose content is empty', 'text', { text: '' }],
+		['a text host whose content is not a string', 'text', { text: 42 }],
+		['raw text carrying its value', '#text', { value: 'hello' }],
+		['scoped raw text', '#text', { value: 'hi', [LYNX_CSS_SCOPE_PROP]: scope }],
+		['a numeric id', 'view', { id: 7 }],
+		['an inline style', 'view', { style: { color: 'red' } }],
+		[
+			'dataset props, one of them withdrawn',
+			'view',
+			{
+				'data-row': '1',
+				'data-col': 2,
+				'data-gone': undefined,
+			},
+		],
+		['a CSS scope', 'view', { [LYNX_CSS_SCOPE_PROP]: scope }],
+		['an image source', 'image', { src: 'card.png' }],
+		['a native event prop', 'view', { bindtap: () => {} }],
+		['a main-thread event and ref', 'view', { 'main-thread:bindtap': tap, 'main-thread:ref': ref }],
+		['an attribute that normalizes away', 'view', { 'aria-label': null }],
+		[
+			'every channel at once',
+			'view',
+			{
+				id: 'row-1',
+				class: ['card', { selected: true }],
+				style: { color: 'red' },
+				'data-row': '1',
+				[LYNX_CSS_SCOPE_PROP]: scope,
+				'main-thread:bindtap': tap,
+				'main-thread:ref': ref,
+				'aria-label': 'row one',
+			},
+		],
+	];
+
+	for (const [what, type, props] of scenes) {
+		it(`answers a create for ${what} exactly as a diff from no props does`, () => {
+			const created = planLynxHostCreatePatch(type, props);
+			for (const [label, empty] of emptyBags) {
+				expect(created, label).toEqual(planLynxHostPropPatch(type, empty, props));
+			}
+		});
+	}
+
+	it('writes nothing for an attribute a create never had', () => {
+		// A create answers `null` for every previous attribute without reading the
+		// bag at all. Nothing in the suite pinned that: an arm that answered `''`
+		// instead would push a removal for a prop the host was never given, and
+		// the differential above cannot see it because both arms would do it.
+		expect(planLynxHostCreatePatch('view', { 'aria-label': null }).attributes).toEqual([]);
+		expect(planLynxHostCreatePatch('view', { 'aria-label': undefined }).attributes).toEqual([]);
+		expect(planLynxHostCreatePatch('view', { 'aria-label': '' }).attributes).toEqual([
+			{ name: 'aria-label', value: '' },
+		]);
+	});
+
+	it('hands back the same shared patch objects a diff hands back', () => {
+		// Deep equality would not see this. The driver stores one patch per host
+		// and the propless and single-class cases are meant to share one object,
+		// so a create that built its own would be equal and still cost an
+		// allocation per host on every first screen.
+		const [, empty] = emptyBags[0]!;
+		expect(planLynxHostCreatePatch('view', {})).toBe(planLynxHostPropPatch('view', empty, {}));
+		expect(planLynxHostCreatePatch('view', { class: 'card' })).toBe(
+			planLynxHostPropPatch('view', empty, { class: 'card' }),
+		);
+	});
+
+	const refusals: readonly (readonly [string, string, Record<string, unknown>])[] = [
+		['the reserved nodes-ref attribute', 'view', { [LYNX_NODES_REF_ATTRIBUTE]: 'r1-h2-g1' }],
+		['an unsupported namespaced prop', 'view', { 'main-thread:mystery': 1 }],
+		['an empty dataset key', 'view', { 'data-': 1 }],
+		['a malformed main-thread ref', 'view', { 'main-thread:ref': 42 }],
+		['a malformed main-thread event', 'view', { 'main-thread:bindtap': 42 }],
+		['a direct main-thread prop on raw text', 'raw-text', { 'main-thread:ref': ref }],
+		['CSS scope metadata that is not an object', 'view', { [LYNX_CSS_SCOPE_PROP]: [1] }],
+		['an image source that is not a URL', 'image', { src: 42 }],
+	];
+
+	function refusalMessage(run: () => unknown): string {
+		try {
+			run();
+		} catch (error) {
+			return (error as Error).message;
+		}
+		throw new Error('expected a refusal');
+	}
+
+	for (const [what, type, props] of refusals) {
+		it(`refuses ${what} with the message a diff refuses it with`, () => {
+			const fromCreate = refusalMessage(() => planLynxHostCreatePatch(type, props));
+			expect(fromCreate.length).toBeGreaterThan(0);
+			for (const [label, empty] of emptyBags) {
+				expect(fromCreate, label).toBe(
+					refusalMessage(() => planLynxHostPropPatch(type, empty, props)),
+				);
+			}
+		});
+	}
 });

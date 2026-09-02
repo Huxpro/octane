@@ -45,24 +45,29 @@
  * module it was deriving from.
  *
  * A build has no values, and the compiler's answer is that it does not need
- * them, because it never claims a hole is content. `compile-universal.js` builds
- * `kind: 'text'` only for a literal, and lowers *every* dynamic child — a
- * directive, a component, a bare `{expr}`, and a cast `{expr as string}` alike —
- * to `kind: 'slot'`. That is deliberate and is asserted in
- * `octane/tests/lynx-target-templates.test.ts`: a cast is erased before lowering,
- * so a lying one would put a component in a slot the writer sets in place, and
- * conflating the two leaves the dispatch from operation to slot undecidable (see
- * #61's closure analysis). So the question the runtime has to ask its caller has
- * one answer here, and nothing is evaluated to reach it.
+ * them, because it never claims a *hole* is content. `compile-universal.js`
+ * lowers every dynamic child that stays a child — a directive, a component, a
+ * bare `{expr}` — to `kind: 'slot'`, and never to `kind: 'text'`. That is
+ * deliberate and is asserted in `octane/tests/lynx-target-templates.test.ts`:
+ * conflating a hole the writer sets in place with one whose members are
+ * instantiated leaves the dispatch from operation to slot undecidable (see #61's
+ * closure analysis). So the question the runtime has to ask its caller has one
+ * answer here, and nothing is evaluated to reach it.
  *
- * The consequence is the interesting part, and it is #163 C2's to answer rather
- * than this slice's: dynamic *text* content is a range site at build time, so the
- * compiled create function paints a template's static structure and its bound
- * scalar props, and the text a row actually shows arrives through the range
- * protocol. A hand-written program can say `#text` bound on `value` and get that
- * text compiled — which is what C0 priced — but a plan the compiler produced
- * cannot say it, because at the point the plan is built nobody knows the value is
- * a string.
+ * What *did* change is which children stay children. `{expr as string}` is the
+ * form `docs/differences-from-react.md` requires for dynamic text, so the author
+ * has asserted the shape the compiler could not infer; as the lone child of a
+ * host that accepts `text`, it folds onto that host as a `text` binding and the
+ * carrier is never built (#242 Cause B / #246 B2). The hole is gone rather than
+ * reclassified, so the predicate below is still only ever asked about ranges, and
+ * a lying cast lands in a prop all three appliers render as empty rather than in
+ * a slot the writer would set in place.
+ *
+ * Content the compiler holds neither as a value nor as a proved-scalar binding is
+ * still a range site at build time — a bare `{expr}` under a `<text>`, or any
+ * hole under a host with no `text` prop — so for those the compiled create
+ * function paints the static structure and the bound scalar props, and the text a
+ * row actually shows arrives through the range protocol.
  */
 
 import type { UniversalHostPlan, UniversalHostTemplateProgram } from 'octane/universal/native';

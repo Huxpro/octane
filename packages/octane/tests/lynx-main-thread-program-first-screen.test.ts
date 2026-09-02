@@ -50,15 +50,37 @@ import {
  * there are, and about every listener ID — and would put `onHold` on the wrong
  * node. That is the mistake worth a fixture, so both text holes carry a value
  * and each range therefore has a member that consumes an ID of its own.
+ *
+ * The holes are written bare, and that is load-bearing rather than incidental:
+ * a hole the author proved scalar with a cast folds onto its `<text>` as a
+ * `text` prop (#246 B2), which leaves no carrier, no member and no range — and
+ * a fixture with no range cannot show an interleaving mistake. A bare hole is
+ * still a hole for the reason it always was: it can evaluate to an array or a
+ * component, so the renderer, not the compiler, has to open it. The folded form
+ * is pinned by `folds a proved-scalar hole, and both arms fold it alike` below.
  */
 const CARD = `/** @jsxImportSource @octanejs/lynx/intrinsics */
 export function Card(props: { label: string; detail: string; tone: string; onPick: () => void; onHold: () => void }) @{
 	<view class={props.tone}>
-		<text class="card-label" bindtap={props.onPick}>{props.label as string}</text>
-		<view class="card-body"><text class="d" bindtap={props.onHold}>{props.detail as string}</text></view>
+		<text class="card-label" bindtap={props.onPick}>{props.label}</text>
+		<view class="card-body"><text class="d" bindtap={props.onHold}>{props.detail}</text></view>
 	</view>
 }
 `;
+
+/**
+ * `CARD` with both of its holes proved scalar by their author.
+ *
+ * The form `docs/differences-from-react.md` already requires for dynamic text,
+ * and the one #246 B2 folds: each cast is the lone child of a `<text>`, which
+ * accepts a `text` prop, so the value rides that host and the carrier under it
+ * is never built. This is what real `.tsrx` looks like, which is why the fold
+ * has to be proved on the whole first-screen path and not only in the compiler.
+ */
+const CAST_CARD = CARD.replace('{props.label}', '{props.label as string}').replace(
+	'{props.detail}',
+	'{props.detail as string}',
+);
 
 /**
  * The same tree, the same hosts, the same IDs — and a different event on one of
@@ -93,8 +115,8 @@ const SHIFTED_CARD = CARD.replace(
  * `<text>` there instead.
  */
 const FLAT_CARD = CARD.replace(
-	'<view class="card-body"><text class="d" bindtap={props.onHold}>{props.detail as string}</text></view>',
-	'<text class="d" bindtap={props.onHold}>{props.detail as string}</text>',
+	'<view class="card-body"><text class="d" bindtap={props.onHold}>{props.detail}</text></view>',
+	'<text class="d" bindtap={props.onHold}>{props.detail}</text>',
 );
 
 /**
@@ -117,7 +139,7 @@ const MIXED_PRIORITY_CARD = CARD.replace(
  */
 const INNER = `/** @jsxImportSource @octanejs/lynx/intrinsics */
 export function Inner(props: { note: string }) @{
-	<view class="inner"><text class="note">{props.note as string}</text></view>
+	<view class="inner"><text class="note">{props.note}</text></view>
 }
 `;
 
@@ -170,8 +192,8 @@ export function Shell(props: { rows: unknown }) @{
 const LOOP_LIST = `/** @jsxImportSource @octanejs/lynx/intrinsics */
 function Row(props: { label: string; detail: string; tone: string; onPick: () => void; onHold: () => void }) @{
 	<view class={props.tone}>
-		<text class="card-label" bindtap={props.onPick}>{props.label as string}</text>
-		<view class="card-body"><text class="d" bindtap={props.onHold}>{props.detail as string}</text></view>
+		<text class="card-label" bindtap={props.onPick}>{props.label}</text>
+		<view class="card-body"><text class="d" bindtap={props.onHold}>{props.detail}</text></view>
 	</view>
 }
 export function List(props: { rows: readonly { id: string; label: string }[] }) @{
@@ -184,11 +206,14 @@ export function List(props: { rows: readonly { id: string; label: string }[] }) 
 }
 `;
 
-/** `CARD`, with its first hole opened to hold a component instead of a string. */
-const HOSTING_CARD = CARD.replace('props: { label: string;', 'props: { label: unknown;').replace(
-	'{props.label as string}',
-	'{props.label}',
-);
+/**
+ * `CARD`, with its first hole typed to hold a component instead of a string.
+ *
+ * Only the type moves. The hole itself is already open in `CARD` and lowers the
+ * same way either way — what the annotation changes is what a caller may put
+ * there, which is what this fixture is rendered with.
+ */
+const HOSTING_CARD = CARD.replace('props: { label: string;', 'props: { label: unknown;');
 
 /**
  * The same card, rendered *inside* another component's host tree.
@@ -290,6 +315,55 @@ describe('a compiled main-thread program on the first-screen path', () => {
 		// higher per hole and shift every ID after the first one.
 		expect(program.logicalCount).toBe(interpreted.logicalCount);
 		expect(program.logicalCount).toBe(6);
+	});
+
+	it('folds a proved-scalar hole, and both arms fold it alike', () => {
+		// #246 B2 through the whole first-screen path, which is the level a fold
+		// only one arm performed would be caught at: the two encodings would count
+		// different hosts, and the background would number a tree main did not
+		// paint. The compiler tests prove the fold happens; this proves it does not
+		// desynchronize the two threads.
+		const program = MainRenderer.renderLynxFirstScreen(cardFor(true, CAST_CARD), PROPS as never);
+		const interpreted = MainRenderer.renderLynxFirstScreen(
+			cardFor(false, CAST_CARD),
+			PROPS as never,
+		);
+
+		// Four, not `CARD`'s six: both carriers are gone, and with them the one
+		// text member each hole used to hold.
+		expect(program.hostCount).toBe(interpreted.hostCount);
+		expect(program.hostCount).toBe(4);
+		expect(program.logicalCount).toBe(interpreted.logicalCount);
+		expect(program.logicalCount).toBe(4);
+
+		// Which is what moves the second listener. The label's member no longer
+		// takes an ID on the way past, so the detail `<text>` is host 4 where
+		// `CARD` put it at 5 — and both arms have to move together or a tap lands
+		// on the wrong node.
+		expect(program.envelope).toEqual(interpreted.envelope);
+		expect(program.envelope.events).toEqual([
+			{ id: 2, type: 'bindtap', listener: { id: 1_000_000, priority: 'discrete' } },
+			{ id: 4, type: 'bindtap', listener: { id: 1_000_001, priority: 'discrete' } },
+		]);
+
+		// And the value is painted, on the host itself rather than into a child.
+		// Counting hosts alone cannot tell a fold from a hole the compiler dropped,
+		// and asked of both arms because "the same count" is also true of two arms
+		// that lost the text in the same way.
+		//
+		// The two painted trees are read for this rather than compared to each
+		// other: the direct applier writes a nodes-ref selector where the
+		// interpreted one writes none, which is a difference between the appliers
+		// and not one this fold could cause.
+		for (const arm of [true, false]) {
+			const card = (
+				paint(arm, PROPS, cardFor(arm, CAST_CARD)).tree as {
+					children: readonly { children: readonly { text: unknown; children: unknown[] }[] }[];
+				}
+			).children[0]!;
+			expect(card.children[0]!.text).toBe('Label');
+			expect(card.children[0]!.children).toEqual([]);
+		}
 	});
 
 	it('announces the same listener bindings as the interpreted encoding', () => {

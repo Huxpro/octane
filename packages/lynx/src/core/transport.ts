@@ -11,6 +11,7 @@ import {
 	type UniversalSerializableValue,
 } from 'octane/universal/native';
 import { LYNX_PROFILE, lynxWireProfile, profileOutboundMessage } from './profiling.js';
+import { producedRunProgram } from './run-program.js';
 import {
 	decodeLynxTransportValue,
 	encodeLynxTransportValue,
@@ -30,8 +31,8 @@ import {
 	LYNX_ANNOUNCED_PUBLIC_INSTANCES,
 	LYNX_BACKGROUND_TO_MAIN_EVENT,
 	LYNX_COMPACT_ACKNOWLEDGEMENT,
+	LYNX_ADDRESSED_PROGRAM_RUN_READY_REQUEST_BASE,
 	LYNX_DEFERRED_TEMPLATE_RUN_READY_REQUEST_BASE,
-	LYNX_FIRST_TREE_PRESENCE_READY_REQUEST_BASE,
 	LYNX_LAZY_PUBLIC_INSTANCES,
 	LYNX_MAIN_TO_BACKGROUND_EVENT,
 	LYNX_READY_ANNOUNCEMENT_REQUEST,
@@ -282,7 +283,10 @@ export function createLynxBackgroundTransport(
 	// rather than skipping it. First-tree presence sits one rung above again
 	// (issue #231): this background reads the painted first screen as a fact, so
 	// it says so and is spared a description proportional to the painted page.
-	const readyRequest = LYNX_FIRST_TREE_PRESENCE_READY_REQUEST_BASE + NEXT_READY_REQUEST++;
+	// Addressed program runs sit one rung above that (issue #246): this
+	// background can read a reply that says the peer resolves a named program,
+	// and stops shipping a descriptor it already holds a copy of.
+	const readyRequest = LYNX_ADDRESSED_PROGRAM_RUN_READY_REQUEST_BASE + NEXT_READY_REQUEST++;
 	if (!Number.isSafeInteger(readyRequest)) {
 		throw new Error('Octane Lynx capability-ready request identities are exhausted.');
 	}
@@ -357,7 +361,7 @@ export function createLynxBackgroundTransport(
 		if (LYNX_PROFILE) {
 			const profile = lynxWireProfile();
 			const startedSelfCheck = performance.now();
-			const validated = selfCheckLynxBackgroundOutboundMessage(message);
+			const validated = selfCheckLynxBackgroundOutboundMessage(message, producedRunProgram);
 			const startedEncode = performance.now();
 			const encoded = encodeLynxTransportValue(validated, reportEncodingDiagnostic);
 			const startedDispatch = performance.now();
@@ -368,7 +372,7 @@ export function createLynxBackgroundTransport(
 			profileOutboundMessage(profile, message, encoded);
 			return;
 		}
-		const validated = selfCheckLynxBackgroundOutboundMessage(message);
+		const validated = selfCheckLynxBackgroundOutboundMessage(message, producedRunProgram);
 		context.dispatchEvent({
 			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
 			data: encodeLynxTransportValue(validated, reportEncodingDiagnostic),
@@ -1543,7 +1547,7 @@ export function createLynxBackgroundTransport(
 			// would claim a deferral the peer never agreed to.
 			const deferrablePublicInstances = lazyPublicInstances;
 			try {
-				selfCheckLynxBackgroundOutboundMessage(commit);
+				selfCheckLynxBackgroundOutboundMessage(commit, producedRunProgram);
 			} catch (error) {
 				finalizeWorkletBatch(preparedBatch, false);
 				throw error;
@@ -1593,7 +1597,7 @@ export function createLynxBackgroundTransport(
 							if (pending.get(identity.version) !== entry) return;
 							entry.state = 'sent';
 							const count = compactAcknowledgements
-								? countLynxCompactAcknowledgementHosts(preparedBatch)
+								? countLynxCompactAcknowledgementHosts(preparedBatch, producedRunProgram)
 								: null;
 							const compact = count !== null;
 							entry.compactRequested = compact;
@@ -1604,9 +1608,14 @@ export function createLynxBackgroundTransport(
 								compact &&
 								accepted !== null &&
 								postFirstTreeLazyPublicInstances &&
-								incrementalRun?.op === 'mount-template-run' &&
+								(incrementalRun?.op === 'mount-template-run' ||
+									incrementalRun?.op === 'mount-program-run') &&
 								Object.isFrozen(incrementalRun) &&
-								Object.isFrozen(incrementalRun.program) &&
+								// An addressed run has no `program` field to freeze; what it
+								// names is a resident object the chunk froze once. Its address
+								// is frozen with the command itself, checked above.
+								(incrementalRun.op === 'mount-program-run' ||
+									Object.isFrozen(incrementalRun.program)) &&
 								Object.isFrozen(incrementalRun.values);
 							const deferPublicInstances =
 								compact &&
@@ -1616,11 +1625,14 @@ export function createLynxBackgroundTransport(
 										preparedBatch.commands.every(
 											(command) =>
 												command.op === 'mount-template-range' ||
-												command.op === 'mount-template-run',
+												command.op === 'mount-template-run' ||
+												command.op === 'mount-program-run',
 										))) &&
 								preparedBatch.commands.some(
 									(command) =>
-										command.op === 'mount-template-range' || command.op === 'mount-template-run',
+										command.op === 'mount-template-range' ||
+										command.op === 'mount-template-run' ||
+										command.op === 'mount-program-run',
 								);
 							// The announcement is a property of this background rather than
 							// of the session: every batch it composes names the hosts it

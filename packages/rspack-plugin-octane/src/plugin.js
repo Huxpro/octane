@@ -381,6 +381,9 @@ export class OctaneRspackPlugin {
 			// `layerSpecializationCacheIdentity`. Discovery compilers deliberately
 			// take no backend: they read package manifests, never templates.
 			mainThreadProgramBackend: this.options.mainThreadProgramBackend?.signature,
+			// Addressing changes what every eligible plan compiles to, so a cached
+			// transform must not survive the toggle.
+			programAddressing: this.options.programAddressing === true,
 			layerSpecializations: layerSpecializationCacheIdentity(this.options.layerSpecializations),
 			// Ownership flips which modules compile vs pass through — cached
 			// transform results must not survive a requireDirective toggle.
@@ -427,6 +430,9 @@ export class OctaneRspackPlugin {
 			...(this.options.mainThreadProgramBackend === undefined
 				? null
 				: { mainThreadProgramBackend: this.options.mainThreadProgramBackend }),
+			...(this.options.programAddressing === undefined
+				? null
+				: { programAddressing: this.options.programAddressing }),
 			...(this.options.layerSpecializations === undefined
 				? null
 				: { layerSpecializations: this.options.layerSpecializations }),

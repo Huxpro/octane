@@ -103,7 +103,7 @@ async function runRspack(config: Record<string, unknown>) {
  */
 async function build(
 	name: string,
-	options: { mainThread?: unknown; topLevel?: unknown } = {},
+	options: { mainThread?: unknown; topLevel?: unknown; addressing?: boolean } = {},
 ): Promise<{ main: string; background: string }> {
 	const output = join(root, `dist-${name}`);
 	await runRspack({
@@ -124,6 +124,7 @@ async function build(
 					default: 'lynx',
 				},
 				universalRuntime: { runtime: 'lynx', thread: 'background' },
+				...(options.addressing === undefined ? null : { programAddressing: options.addressing }),
 				...(options.topLevel === undefined ? null : { mainThreadProgramBackend: options.topLevel }),
 				layerSpecializations: {
 					'octane:main-thread': {
@@ -216,5 +217,74 @@ describe('a main-thread program backend, through a real Rspack build', () => {
 		await expect(build('incomplete', { mainThread: { signature: 'x' } })).rejects.toThrow(
 			/deriveLynxMainThreadProgram/,
 		);
+	}, 60_000);
+
+	// Issue-#246 E1 — the addressing, through the same real build.
+	//
+	// A positional address is only safe if both compiles of a module agree about
+	// which plans are programs and in what order, and the whole of §6.1's A+B
+	// split is that the agreement is established *here*, at build time, so the
+	// runtime can do one map lookup and trust it. These are the two halves of
+	// that: what an agreeing build emits, and what a disagreeing one does.
+	it('names each program in both chunks, with one digest the build can compare', async () => {
+		const addressed = await build('addressed', {
+			addressing: true,
+			topLevel: Backend,
+			mainThread: Backend,
+		});
+		// The wire address is positional — `(module id, plan index)` — and the id
+		// is package-relative with posix separators and no leading `./` (§6.2), so
+		// it is the same string in a monorepo build and in a consumer's build of
+		// the same file.
+		expect(addressed.background).toContain('"module": "src/Card.tsrx"');
+		expect(addressed.main).toContain('"module": "src/Card.tsrx"');
+		expect(addressed.background).toContain('"index": 0');
+		// The digest is what the *build* compares, and both chunks carry the same
+		// one because both ran the same derivation over the same plan root.
+		const digest = /"digest": "([0-9a-f]{16})"/.exec(addressed.background);
+		expect(digest).not.toBeNull();
+		expect(addressed.main).toContain(`"digest": "${digest![1]}"`);
+		// Only the main-thread chunk carries the descriptor a later command-path
+		// mount walks. Carrying it in the background chunk would be the descriptor
+		// E1 exists to stop sending, shipped twice.
+		expect(addressed.main).toContain('"wire"');
+		expect(addressed.background).not.toContain('"wire"');
+	}, 60_000);
+
+	it("fails the build when the two layers disagree about a module's programs", async () => {
+		// The failure §3 calls the worst shape in this codebase: a mount that binds
+		// to the wrong program and paints a plausible wrong tree. It cannot reach
+		// runtime, because a positional address is only issued by a build that saw
+		// both compiles say the same thing about the same module.
+		//
+		// The disagreement is manufactured the only way that matters — one layer
+		// derives a different program from the same plan — because that is what a
+		// version skew between the two halves of a backend would actually look
+		// like.
+		//
+		// The skew is one static scalar prop on the root, chosen so the drifted
+		// program still compiles: `id` is a prop the emitter paints on a `view`,
+		// so the build reaches the cross-check with two emittable programs and
+		// refuses the *disagreement*. A perturbation the emitter itself declines —
+		// reordering the nodes, say — would fail this build for the wrong reason
+		// and would leave the drift gate untested.
+		const drifting = {
+			...Backend,
+			deriveLynxMainThreadProgram: (plan: never) => {
+				const derived = Backend.deriveLynxMainThreadProgram(plan);
+				if (derived === null) return null;
+				const [root, ...rest] = derived.wire.nodes;
+				return {
+					...derived,
+					wire: {
+						...derived.wire,
+						nodes: [{ ...root, props: { ...root.props, id: 'skewed' } }, ...rest],
+					},
+				};
+			},
+		};
+		await expect(
+			build('drifted', { addressing: true, topLevel: Backend, mainThread: drifting }),
+		).rejects.toThrow(/disagree about .*src\/Card\.tsrx/);
 	}, 60_000);
 });

@@ -661,13 +661,81 @@ function planTextOnlyHostPropPatch(
 	return Object.freeze(patch);
 }
 
+/**
+ * The previous side of a prop diff, derived once.
+ *
+ * Seven of the diff's inputs are functions of `previous` alone. A *create*
+ * diffs against nothing, so all seven are constants — and a create is most of
+ * what this module is asked for: every first-screen host, every node of a
+ * mounted template, every node a compiled program creates. Naming the seven
+ * lets a create skip deriving them and still run the one comparison body an
+ * update runs, so the two cannot answer differently. `NO_PREVIOUS_PROPS` is
+ * exactly what deriving them from an empty bag produces, and the tests assert
+ * that against the general entry point rather than trusting the claim.
+ */
+interface PreviousPropSide {
+	readonly names: readonly string[];
+	readonly mainThreadRef: LynxMainThreadRefDescriptor | null;
+	readonly id: string | null;
+	readonly classes: string;
+	readonly inlineStyles: string;
+	readonly dataset: Readonly<Record<string, unknown>>;
+	readonly scope: NormalizedLynxCSSScope | null;
+}
+
+const NO_PREVIOUS_PROP_NAMES: readonly string[] = Object.freeze([]);
+
+/**
+ * A create's `previous`. Frozen and prototype-less, so every read answers
+ * `undefined` and `hasOwn` answers false — the same bag a propless host holds.
+ */
+const NO_PREVIOUS_PROP_BAG: Readonly<Record<string, unknown>> = Object.freeze(Object.create(null));
+
+const NO_PREVIOUS_PROPS: PreviousPropSide = Object.freeze({
+	names: NO_PREVIOUS_PROP_NAMES,
+	mainThreadRef: null,
+	id: null,
+	classes: '',
+	inlineStyles: '',
+	dataset: EMPTY_DATASET,
+	scope: null,
+});
+
 /** Build a semantic prop diff for the public Lynx Element PAPI channels. */
 export function planLynxHostPropPatch(
 	type: string,
 	previous: Readonly<Record<string, unknown>>,
 	next: Readonly<Record<string, unknown>>,
 ): LynxHostPropPatch {
-	const previousNames = Object.keys(previous);
+	return planHostPropPatch(type, previous, null, next);
+}
+
+/**
+ * The same plan for a host that has no previous props: a create.
+ *
+ * Not a second planner. It is the same body, entered with the previous side
+ * already known, which is why it cannot drift from the diff an update takes —
+ * there is nothing to keep in step. What it buys is what the derivation costs
+ * when there is nothing to derive. A 10,000-row first screen plans 40,002 host
+ * patches and *every one of them is a create*: 40,002 `Object.keys` calls on
+ * the same empty bag, each allocating an empty array, and for the 10,000 that
+ * reach the body below, an id, class, style, dataset, scope and main-thread ref
+ * derived from it — to reach the same constants every time.
+ */
+export function planLynxHostCreatePatch(
+	type: string,
+	next: Readonly<Record<string, unknown>>,
+): LynxHostPropPatch {
+	return planHostPropPatch(type, NO_PREVIOUS_PROP_BAG, NO_PREVIOUS_PROPS, next);
+}
+
+function planHostPropPatch(
+	type: string,
+	previous: Readonly<Record<string, unknown>>,
+	side: PreviousPropSide | null,
+	next: Readonly<Record<string, unknown>>,
+): LynxHostPropPatch {
+	const previousNames = side === null ? Object.keys(previous) : side.names;
 	const nextNames = Object.keys(next);
 	if (
 		(type === 'view' || type === 'text') &&
@@ -676,7 +744,7 @@ export function planLynxHostPropPatch(
 			(nextNames.length === 1 &&
 				(nextNames[0] === 'class' || nextNames[0] === 'className') &&
 				typeof next[nextNames[0]] === 'string')) &&
-		localPlainPropBag(previous) &&
+		(side !== null || localPlainPropBag(previous)) &&
 		localPlainPropBag(next)
 	) {
 		return nextNames.length === 0
@@ -734,32 +802,36 @@ export function planLynxHostPropPatch(
 		}
 	}
 
-	const previousMainThreadRef = decodeMainThreadRef(previous['main-thread:ref']);
+	const previousMainThreadRef =
+		side === null ? decodeMainThreadRef(previous['main-thread:ref']) : side.mainThreadRef;
 	const nextMainThreadRef = decodeMainThreadRef(next['main-thread:ref']);
 	if (!sameStructuredValue(previousMainThreadRef, nextMainThreadRef)) {
 		patch.mainThreadRef = Object.freeze({ value: nextMainThreadRef });
 	}
 
-	const previousId = previous.id == null ? null : String(previous.id);
+	const previousId = side === null ? (previous.id == null ? null : String(previous.id)) : side.id;
 	const nextId = next.id == null ? null : String(next.id);
 	if (previousId !== nextId) patch.id = Object.freeze({ value: nextId });
 
-	const previousClass = normalizeLynxClass(classProp(previous));
+	const previousClass = side === null ? normalizeLynxClass(classProp(previous)) : side.classes;
 	const nextClass = normalizeLynxClass(classProp(next));
 	if (previousClass !== nextClass) patch.classes = Object.freeze({ value: nextClass });
 
-	const previousStyle = normalizeLynxInlineStyle(previous.style) ?? '';
+	const previousStyle =
+		side === null ? (normalizeLynxInlineStyle(previous.style) ?? '') : side.inlineStyles;
 	const nextStyle = normalizeLynxInlineStyle(next.style) ?? '';
 	if (previousStyle !== nextStyle) patch.inlineStyles = Object.freeze({ value: nextStyle });
 
-	const previousDataset = normalizeLynxDatasetFromNames(previous, previousNames);
+	const previousDataset =
+		side === null ? normalizeLynxDatasetFromNames(previous, previousNames) : side.dataset;
 	const nextDataset = normalizeLynxDatasetFromNames(next, nextNames);
 	if (!sameDataset(previousDataset, nextDataset)) {
 		const removed = Object.keys(previousDataset).filter((name) => !hasOwn(nextDataset, name));
 		patch.dataset = Object.freeze({ value: nextDataset, removed: Object.freeze(removed) });
 	}
 
-	const previousScope = decodeLynxCSSScopeMetadata(previous[LYNX_CSS_SCOPE_PROP]);
+	const previousScope =
+		side === null ? decodeLynxCSSScopeMetadata(previous[LYNX_CSS_SCOPE_PROP]) : side.scope;
 	const nextScope = decodeLynxCSSScopeMetadata(next[LYNX_CSS_SCOPE_PROP]);
 	if (!sameScope(previousScope, nextScope)) {
 		if (nextScope === null) patch.requiresRecreate = previousScope !== null;
@@ -769,9 +841,8 @@ export function planLynxHostPropPatch(
 	for (const name of nextNames) {
 		if (classifyLynxHostPropName(name) !== 'attribute') continue;
 		const nextValue = attributeValue(type, name, next[name]);
-		const previousValue = hasOwn(previous, name)
-			? attributeValue(type, name, previous[name])
-			: null;
+		const previousValue =
+			side !== null || !hasOwn(previous, name) ? null : attributeValue(type, name, previous[name]);
 		if (Object.is(previousValue, nextValue)) continue;
 		// Empty text content on a `text` host is painted by making no call: the
 		// dense applier, the compiled main-thread program, and the carrier this

@@ -95,32 +95,57 @@ describe('lynx-target template emission', () => {
 		expect(universalCode).not.toContain('"kind": "template"');
 	});
 
-	it('marks every renderable hole as a range site', () => {
+	it('marks a renderable hole a range site, and a proved-scalar one a text prop', () => {
 		// A slot kind selects which operation may write the slot, so a hole that
 		// holds instantiated members must not look like one the writer sets in
-		// place. Every renderable hole is the former: a bare expression can
-		// evaluate to an array or a component just as a directive can, so all of
-		// them are ranges and none is a scalar.
+		// place. A bare expression can evaluate to an array or a component just as
+		// a directive can, so those three are ranges and none is a scalar.
+		//
+		// The cast is the exception, and #246 B2 is what stops erasing it.
+		// `{expr as string}` is the form `docs/differences-from-react.md` already
+		// requires for dynamic text, so the author has asserted the shape; as the
+		// lone child of a host that accepts `text`, the hole folds onto its parent
+		// and the slot is written by a prop rather than instantiated as a range.
+		// The carrier element it replaced is not painted at all, which is why this
+		// form now contributes no un-namespaced kind.
 		const forms = {
-			'cast text child': `<view class="a"><text class="l">{props.t as string}</text></view>`,
-			'bare hole': `<view class="a"><text class="l">{props.t}</text></view>`,
-			conditional: `<view class="a">@if (props.o) { <text class="b">{'s'}</text> }</view>`,
-			keyed: `<view class="a">@for (const x of props.xs; key x) { <text class="b">{'s'}</text> }</view>`,
+			'cast text child': {
+				body: `<view class="a"><text class="l">{props.t as string}</text></view>`,
+				holes: [],
+			},
+			'bare hole': {
+				body: `<view class="a"><text class="l">{props.t}</text></view>`,
+				holes: ['r'],
+			},
+			conditional: {
+				body: `<view class="a">@if (props.o) { <text class="b">{'s'}</text> }</view>`,
+				holes: ['r'],
+			},
+			keyed: {
+				body: `<view class="a">@for (const x of props.xs; key x) { <text class="b">{'s'}</text> }</view>`,
+				holes: ['r'],
+			},
 		};
-		for (const [label, body] of Object.entries(forms)) {
+		for (const [label, form] of Object.entries(forms)) {
 			const slots = slotTablesOf(
 				compileSource(
 					`/** @jsxImportSource @octanejs/lynx/intrinsics */
 export function P(props: { t: string; o: boolean; xs: string[] }) @{
-	${body}
+	${form.body}
 }
 `,
 					'lynx',
 				),
 			);
-			const holes = slots.flat().filter((kind) => kind !== null && !kind.includes(':'));
-			expect(holes, label).toEqual(holes.map(() => 'r'));
-			expect(holes.length, label).toBeGreaterThan(0);
+			const kinds = slots.flat();
+			expect(
+				kinds.filter((kind) => kind !== null && !kind.includes(':')),
+				label,
+			).toEqual(form.holes);
+			// Stated positively for the folded form, so "no range site" cannot be
+			// satisfied by a compile that dropped the hole altogether: the value
+			// still occupies a slot, and that slot now writes `text`.
+			expect(kinds.includes('p:text'), label).toBe(form.holes.length === 0);
 		}
 	});
 
@@ -154,12 +179,15 @@ export function P(props: { t: string; o: boolean; xs: string[] }) @{
 		const rows = fromPlans.batch.commands.filter(
 			(command) => command.op === 'mount-template-range',
 		);
-		expect(creates.length).toBeGreaterThanOrEqual(4);
+		// Three, not four: the title's `{'Fixture · ' + String(count)}` is a string
+		// by construction, so #246 B2 folds it onto its `<text>` and the carrier
+		// that used to hold it is never created.
+		expect(creates.length).toBeGreaterThanOrEqual(3);
 		expect(rows.length).toBeGreaterThanOrEqual(2);
 		expect(rows.every((row) => row.firstListenerId !== null)).toBe(true);
 	});
 
-	it('folds a compile-time-known text child onto its host, and only that', () => {
+	it('folds a text child its host can hold, and only that', () => {
 		// #242 Cause A. `<text class="c">{'x'}</text>` painted two hosts: the cell,
 		// and a carrier under it holding nothing but the literal. `<text>` accepts
 		// `text` as a prop through the same `RawTextAttributes` handler `<raw-text>`
@@ -167,10 +195,14 @@ export function P(props: { t: string; o: boolean; xs: string[] }) @{
 		// painted, addressed, retained and torn down to repeat what its parent could
 		// have said. It is gone.
 		//
-		// The second arm is the boundary, and it is the point of the pair: a hole's
-		// value is not known here and the renderer still has to address the node it
-		// writes, so the carrier stays. Folding that one needs a slot kind the wire
-		// can name (#246), not a plan rewrite.
+		// #246 B2 extends that to a hole whose *shape* the compiler holds even
+		// though its value it does not: `{expr as string}` is the authored form for
+		// dynamic text, so the author has already said what a range site cannot be
+		// told. Folding it costs the carrier here too, and the value keeps its slot.
+		//
+		// The third arm is the boundary and is the point of the trio: a bare hole
+		// can evaluate to an array or a component, the renderer still has to address
+		// a node it may instantiate members into, and the carrier stays.
 		const hostsFor = (body: string, props: Record<string, unknown>) =>
 			MainRenderer.renderLynxFirstScreen(
 				evaluateScene(
@@ -189,6 +221,11 @@ export function Scene(props: { label: string }) @{
 		expect(hostsFor(`<view class="a"><text class="c">{'x'}</text></view>`, {})).toBe(2);
 		expect(
 			hostsFor(`<view class="a"><text class="c">{props.label as string}</text></view>`, {
+				label: 'alpha',
+			}),
+		).toBe(2);
+		expect(
+			hostsFor(`<view class="a"><text class="c">{props.label}</text></view>`, {
 				label: 'alpha',
 			}),
 		).toBe(3);

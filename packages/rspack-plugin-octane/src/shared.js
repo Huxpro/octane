@@ -46,6 +46,7 @@ const LOADER_OPTION_KEYS = new Set([
 	'requireDirective',
 	'universalRuntime',
 	'mainThreadProgramBackend',
+	'programAddressing',
 	'layerSpecializations',
 ]);
 const PLUGIN_OPTION_KEYS = new Set([
@@ -204,6 +205,12 @@ export function selectLayerCompilerOptions(options, module) {
 		// without depending on who passed what.
 		mainThreadProgramBackend:
 			specialization?.mainThreadProgramBackend ?? options.mainThreadProgramBackend,
+		// Not per layer, and not specializable. An address is positional, so the
+		// two layers must decide eligibility for the same plan the same way; a
+		// build where one layer addresses and the other does not is exactly the
+		// miscompile the digest exists to catch, and there is no reason to let a
+		// configuration produce it (issue #246 §6.3).
+		programAddressing: options.programAddressing,
 	};
 }
 
@@ -288,6 +295,7 @@ function normalizeOptions(value, plugin) {
 		options.mainThreadProgramBackend,
 		'mainThreadProgramBackend',
 	);
+	assertBooleanOption(options, 'programAddressing');
 	const layerSpecializations = normalizeLayerSpecializations(options.layerSpecializations);
 
 	const normalized = {
@@ -301,6 +309,9 @@ function normalizeOptions(value, plugin) {
 		...(renderers === undefined ? null : { renderers }),
 		...(universalRuntime === undefined ? null : { universalRuntime }),
 		...(mainThreadProgramBackend === undefined ? null : { mainThreadProgramBackend }),
+		...(options.programAddressing === undefined
+			? null
+			: { programAddressing: options.programAddressing }),
 		...(layerSpecializations === undefined ? null : { layerSpecializations }),
 		...(options.requireDirective === undefined
 			? null

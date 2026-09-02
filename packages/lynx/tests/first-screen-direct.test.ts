@@ -10,6 +10,7 @@ import {
 	captureLynxFirstTree,
 	createLynxHostContainer,
 	disposeLynxHostContainer,
+	getLynxHostHandle,
 	prepareLynxHostBatch,
 	type LynxFirstScreenDirectEnvelope,
 	type LynxFirstScreenDirectNode,
@@ -112,6 +113,48 @@ function renderScene() {
 	return renderLynxFirstScreen(Scene as never, {});
 }
 
+// Prop names that are also `Object.prototype` members, beside a nested bag that
+// no adoption may take. A stored props object is read by fixed name, by its own
+// keys, and by `for…in`; on this scene each of those spellings would answer with
+// an inherited function rather than `undefined` if any reader had been relying on
+// the null prototype the copy used to give it.
+const PROTOTYPE_NAME_PLAN = universalPlan('lynx', {
+	kind: 'host',
+	type: 'view',
+	props: {
+		class: 'page',
+		constructor: 'ctor',
+		toString: 'to-string',
+		valueOf: 'value-of',
+		hasOwnProperty: 'has-own',
+		isPrototypeOf: 'is-proto',
+		propertyIsEnumerable: 'prop-enum',
+		toLocaleString: 'to-locale',
+	},
+	children: [
+		{
+			kind: 'host',
+			type: 'text',
+			// A nested bag: not adoptable, so this host takes the copy while its
+			// parent takes the original, and both arms must still agree.
+			props: { class: 'nested', style: { color: 'red' }, 'data-tag': 'x' },
+			children: [{ kind: 'text', value: 'ready' }],
+		},
+	],
+});
+
+const PrototypeNameScene = defineUniversalComponent(
+	'lynx',
+	function PrototypeNameScene() {
+		return universalValue(PROTOTYPE_NAME_PLAN, []);
+	},
+	{ module: '@octanejs/lynx/main-renderer' },
+);
+
+function renderPrototypeNameScene() {
+	return renderLynxFirstScreen(PrototypeNameScene as never, {});
+}
+
 describe('direct first-screen applier', () => {
 	it('produces the identical adoption snapshot, journal, and physical tree as the staged path', () => {
 		const result = renderScene();
@@ -154,6 +197,190 @@ describe('direct first-screen applier', () => {
 				_wkltId: 'first-screen-direct.test:tap',
 				_c: { values: [{ step: 8 }] },
 			});
+		}
+	});
+
+	// A first screen adopts its props bag rather than copying it (issue #247): the
+	// renderer built that bag in this realm and froze it at construction, so a copy
+	// could only produce the same keys holding the same values. The one thing it
+	// would also produce is a null prototype, and the claim that makes the adoption
+	// sound is that no reader of a stored bag can tell. This is that claim under
+	// test — every prop name here *is* an `Object.prototype` member, so a reader
+	// that had been spelling one would read an inherited function where it used to
+	// read `undefined`, and the two arms would stop agreeing.
+	it('paints prototype-member prop names, and an unadoptable bag, exactly as the staged path does', () => {
+		const result = renderPrototypeNameScene();
+		const directPapi = createFakePAPI();
+		const direct = createLynxHostContainer(directPapi, {
+			root: 1,
+			worklets: createLynxMainThreadWorkletRegistry(),
+		});
+		expect(applyLynxFirstScreenDirect(direct, result.nodes, result.envelope)).toBe(true);
+		const directTree = captureLynxFirstTree(direct);
+
+		const stagedResult = renderPrototypeNameScene();
+		const stagedPapi = createFakePAPI();
+		const staged = createLynxHostContainer(stagedPapi, {
+			root: 1,
+			worklets: createLynxMainThreadWorkletRegistry(),
+		});
+		prepareLynxHostBatch(staged, stagedResult.batch).apply();
+		const stagedTree = captureLynxFirstTree(staged);
+
+		expect(directTree).not.toBeNull();
+		expect(stagedTree).not.toBeNull();
+		expect(directTree!.snapshot).toEqual(stagedTree!.snapshot);
+		expect(shape(directPapi.pages[0]!)).toEqual(shape(stagedPapi.pages[0]!));
+
+		// The journal carries the names as ordinary data, so a bag that had started
+		// answering from its prototype would show up here as an extra entry or a
+		// function where a string belongs.
+		const [root] = directTree!.snapshot.nodes;
+		expect(root!.props).toMatchObject({
+			class: 'page',
+			constructor: 'ctor',
+			toString: 'to-string',
+			valueOf: 'value-of',
+			hasOwnProperty: 'has-own',
+		});
+		for (const node of directTree!.snapshot.nodes) {
+			for (const value of Object.values(node.props)) {
+				expect(typeof value).not.toBe('function');
+			}
+		}
+
+		// The nested bag is the decline path: it holds an object, so it is copied
+		// rather than adopted, and the copy is what both arms journal.
+		const nested = directTree!.snapshot.nodes.find((node) => node.props.class === 'nested');
+		expect(nested).toBeDefined();
+		expect(nested!.props.style).toEqual({ color: 'red' });
+	});
+
+	// The two things adoption tests for beyond scalar values, each on its own,
+	// because in product neither can happen and so neither would be noticed here
+	// if it stopped being checked: the renderer freezes at construction, and the
+	// bag it builds is an object literal. A caller driving the applier directly
+	// has no such guarantees, and a bag that keeps changing under the container —
+	// or that reaches it through a class — must take the copy that was there
+	// before, not the adoption.
+	it('copies a first-screen props bag that is still mutable, rather than aliasing it', () => {
+		const props: Record<string, unknown> = { class: 'live' };
+		const node: LynxFirstScreenDirectNode = {
+			kind: 'host',
+			id: 1,
+			type: 'view',
+			props,
+			children: [],
+		};
+		const envelope: LynxFirstScreenDirectEnvelope = { renderer: 'lynx', version: 1, events: [] };
+		const papi = createFakePAPI();
+		const container = createLynxHostContainer(papi, { root: 1 });
+		expect(applyLynxFirstScreenDirect(container, [node], envelope)).toBe(true);
+
+		// The container holds its own copy, so a later write to the caller's object
+		// cannot reach the tree the background is about to adopt.
+		props.class = 'mutated';
+		props.added = 'late';
+		const snapshot = captureLynxFirstTree(container)!.snapshot;
+		expect(snapshot.nodes[0]!.props).toEqual({ class: 'live' });
+	});
+
+	// What a host holds is its own properties, and nothing a prototype happens to
+	// carry — which the copy got from reading own keys, and adoption has to keep
+	// getting some other way. It holds here twice over: adoption declines this bag
+	// on its prototype, and the snapshot walk reads own keys too. That is why this
+	// pins the outcome rather than either mechanism; it stays green if the
+	// prototype test is loosened, and the tightening is defensive, for the `for…in`
+	// readers one path over that a looser test would eventually let see through.
+	it('gives a host only its own props, never a property its prototype carries', () => {
+		const carrier = Object.create(null) as Record<string, unknown>;
+		carrier.inherited = 'from-the-prototype';
+		const props = Object.freeze(
+			Object.create(carrier, {
+				class: { value: 'own', enumerable: true, writable: false, configurable: false },
+			}),
+		) as Readonly<Record<string, unknown>>;
+		const node: LynxFirstScreenDirectNode = {
+			kind: 'host',
+			id: 1,
+			type: 'view',
+			props,
+			children: [],
+		};
+		const envelope: LynxFirstScreenDirectEnvelope = { renderer: 'lynx', version: 1, events: [] };
+		const papi = createFakePAPI();
+		const container = createLynxHostContainer(papi, { root: 1 });
+		expect(applyLynxFirstScreenDirect(container, [node], envelope)).toBe(true);
+
+		expect(captureLynxFirstTree(container)!.snapshot.nodes[0]!.props).toEqual({ class: 'own' });
+	});
+
+	it('refuses a first-screen props bag that reaches the applier through a class', () => {
+		class HostProps {
+			readonly class = 'from-a-class';
+		}
+		const node: LynxFirstScreenDirectNode = {
+			kind: 'host',
+			id: 1,
+			type: 'view',
+			props: Object.freeze(new HostProps()) as unknown as Readonly<Record<string, unknown>>,
+			children: [],
+		};
+		const envelope: LynxFirstScreenDirectEnvelope = { renderer: 'lynx', version: 1, events: [] };
+		const papi = createFakePAPI();
+		const container = createLynxHostContainer(papi, { root: 1 });
+		// Frozen and scalar-valued, so only the prototype separates it from an
+		// adoptable bag: it falls through to the copy, which refuses it exactly as
+		// it always did rather than painting a host whose props came from a class.
+		expect(() => applyLynxFirstScreenDirect(container, [node], envelope)).toThrow(
+			/host props require plain objects/,
+		);
+	});
+
+	// A first screen paints tens of thousands of hosts and asks none of them for
+	// a public handle: the selector write spells its own string, and everything
+	// else before adoption wants a number the record names. So the record mints
+	// the handle on demand (issue #247), and what that has to keep true is
+	// exactly this — the object a reader eventually gets is the one the eager
+	// path would have handed it, and it is the *same* object on every read,
+	// because `isPropsOnlyWrite` decides by handle identity.
+	it('mints a first-screen host handle on demand, identical to the one the staged path builds', () => {
+		const result = renderScene();
+		const directPapi = createFakePAPI();
+		const direct = createLynxHostContainer(directPapi, {
+			root: 1,
+			worklets: createLynxMainThreadWorkletRegistry(),
+		});
+		expect(applyLynxFirstScreenDirect(direct, result.nodes, result.envelope)).toBe(true);
+
+		const stagedResult = renderScene();
+		const stagedPapi = createFakePAPI();
+		const staged = createLynxHostContainer(stagedPapi, {
+			root: 1,
+			worklets: createLynxMainThreadWorkletRegistry(),
+		});
+		prepareLynxHostBatch(staged, stagedResult.batch).apply();
+
+		const ids = captureLynxFirstTree(direct)!.snapshot.nodes.map((node) => node.id);
+		expect(ids.length).toBeGreaterThan(4);
+		for (const id of ids) {
+			const handle = getLynxHostHandle(direct, id);
+			expect(handle).not.toBeNull();
+			expect(handle).toEqual(getLynxHostHandle(staged, id));
+			// Every field the wire and the nodes-ref resolver read off a handle,
+			// asserted against the record's own identity rather than against the
+			// other arm alone — two arms that drifted the same way would agree.
+			expect(handle).toMatchObject({
+				$$kind: 'octane.lynx.element',
+				root: 1,
+				id,
+				generation: 1,
+				// The CSS *query* form. The attribute the paint writes is the bare
+				// `r1-h{id}-g1`, which is why the selector write never wanted this
+				// object: the two strings were never the same string.
+				selector: `[octane-ref=r1-h${id}-g1]`,
+			});
+			expect(getLynxHostHandle(direct, id)).toBe(handle);
 		}
 	});
 

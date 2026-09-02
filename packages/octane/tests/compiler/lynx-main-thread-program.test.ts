@@ -35,19 +35,27 @@ import {
 } from '../../../lynx/tests/_fixtures/fake-element-papi.js';
 
 /**
- * A card: two bound props on one node, a static class beside a tap, two text
- * holes.
+ * A card: two bound props on one node, a static class beside a tap, and both
+ * shapes of text hole.
  *
  * Both props are on the root deliberately. With one binding per node a plan slot
  * and the node that reads it happen to share an index, and a map that returned
  * either would look right — so the fixture makes them disagree, which is the only
  * way the wiring assertion below is an assertion at all.
+ *
+ * The two text holes disagree deliberately too. `{props.label as string}` is the
+ * form the author uses to assert a scalar, so it folds onto its `<text>` as a
+ * bound `text` prop and costs the program no node (#242 Cause B / #246 B2);
+ * `{props.detail}` asserts nothing, so it stays a range site whose members the
+ * renderer instantiates. Keeping one of each is what lets the assertions below
+ * distinguish the two rather than describe whichever one the fixture happened to
+ * use.
  */
 const CARD = `/** @jsxImportSource @octanejs/lynx/intrinsics */
-export function Card(props: { label: string; detail: string; tone: string; ident: string; onPick: () => void }) @{
+export function Card(props: { label: string; detail: unknown; tone: string; ident: string; onPick: () => void }) @{
 	<view class={props.tone} id={props.ident}>
 		<text class="card-label" bindtap={props.onPick}>{props.label as string}</text>
-		<view class="card-body"><text class="d">{props.detail as string}</text></view>
+		<view class="card-body"><text class="d">{props.detail}</text></view>
 	</view>
 }
 `;
@@ -56,15 +64,21 @@ type CompileShape = {
 	readonly target?: 'lynx' | 'universal';
 	readonly thread?: 'main-thread' | 'background';
 	readonly backend?: unknown;
+	/**
+	 * The package-relative module id an addressing build assigns (issue #246
+	 * §6.2). Its presence is what turns the addressing on, in both compiles.
+	 */
+	readonly module?: string;
 };
 
 function compileCard(source: string, options: CompileShape = {}): { code: string; map: any } {
-	const { target = 'lynx', thread = 'main-thread', backend } = options;
+	const { target = 'lynx', thread = 'main-thread', backend, module } = options;
 	return compile(source, '/src/Card.lynx.tsrx', {
 		hmr: false,
 		renderer: { ...lynxMainThreadRenderer, target, id: 'lynx' },
 		universalRuntime: { runtime: 'lynx', thread },
 		...(backend === undefined ? null : { mainThreadProgramBackend: backend }),
+		...(module === undefined ? null : { programModuleId: module }),
 	}) as { code: string; map: any };
 }
 
@@ -113,6 +127,8 @@ function originalLinesOf(mappings: string): number[] {
 interface EvaluatedModule {
 	/** Every plan root the module declared, in declaration order. */
 	readonly roots: readonly any[];
+	/** The address each of those plans was declared with, `undefined` for none. */
+	readonly addresses: readonly any[];
 	/** The module's `Card`, which returns its plan and that plan's value array. */
 	readonly card: (props: unknown) => { readonly values: readonly unknown[] };
 }
@@ -129,9 +145,11 @@ interface EvaluatedModule {
  */
 function evaluate(code: string): EvaluatedModule {
 	const roots: any[] = [];
+	const addresses: any[] = [];
 	const renderer = {
-		universalPlan: (_renderer: string, root: unknown) => {
+		universalPlan: (_renderer: string, root: unknown, address?: unknown) => {
 			roots.push(root);
+			addresses.push(address);
 			return root;
 		},
 		universalValue: (plan: unknown, values: readonly unknown[]) => ({ plan, values }),
@@ -146,7 +164,7 @@ function evaluate(code: string): EvaluatedModule {
 		)
 		.replace('export const Card =', 'const Card =');
 	const card = new Function('__renderer', `${rewritten}\nreturn Card;`)(renderer);
-	return { roots, card: card as EvaluatedModule['card'] };
+	return { roots, addresses, card: card as EvaluatedModule['card'] };
 }
 
 /** The fake host with the intrinsic factories a real PAPI always publishes. */
@@ -245,8 +263,9 @@ describe('emitting a compiled create function from the lynx main-thread compile'
 		expect(root.kind).toBe('program');
 		expect(typeof root.bind).toBe('function');
 		// The keyed slot map survives unchanged: it is the contract, not the
-		// description.
-		expect(root.slots).toEqual(['p:class', 'p:id', 'e:bindtap', 'r', 'r']);
+		// description. `p:text` is the proved-scalar hole folded onto its `<text>`
+		// and `r` the bare one that stayed a range site.
+		expect(root.slots).toEqual(['p:class', 'p:id', 'e:bindtap', 'p:text', 'r']);
 	});
 
 	it('maps each create-function parameter back to the plan slot it reads', () => {
@@ -255,24 +274,25 @@ describe('emitting a compiled create function from the lynx main-thread compile'
 		// The component's own value array is the reference: whatever order the
 		// compiler chose for `v0..vN` and `e0..eM`, these say how to index it.
 		// Plan slots, not node indices: `v0` and `v1` are both written onto node 0,
-		// and `e0` sits on node 1 while reading plan slot 2.
-		expect(root.values).toEqual([0, 1]);
+		// and `e0` sits on node 1 while reading plan slot 2. `v2` reads plan slot 3
+		// — the folded text — and is written onto node 1 beside the listener, which
+		// is the shape a proved-scalar hole takes once it is a prop rather than a
+		// range (#246 B2).
+		expect(root.values).toEqual([0, 1, 3]);
 		// An event site carries what routing a tap needs and nothing a walk could
 		// recover: the driver's event type rather than the authored `bindtap`, and
 		// the priority the driver classified it at.
 		expect(root.events).toEqual([{ slot: 2, node: 1, type: 'bindtap', priority: 'discrete' }]);
-		// Both text holes are keyed ranges — a cast is erased before lowering, so
-		// no plan the compiler builds claims a hole holds a string — and each names
-		// the emitted node its members are appended into.
+		// One range, not two: the `card-label` hole proved itself scalar and folded
+		// into `values` above, and only the bare `{props.detail}` is still a site
+		// whose members the renderer instantiates. It names the emitted node they
+		// are appended into.
 		//
 		// `id` is where the range sat in the plan's pre-order, which is the one
 		// thing the node list cannot say because the program dropped it. Counting
-		// the program's four nodes and its two ranges: view(0), card-label(1),
-		// its range(2), card-body(3), the `d` text(4), its range(5).
-		expect(root.ranges).toEqual([
-			{ slot: 3, node: 1, id: 2, paintsText: true },
-			{ slot: 4, node: 3, id: 5, paintsText: true },
-		]);
+		// the program's four nodes and its one range: view(0), card-label(1),
+		// card-body(2), the `d` text(3), its range(4).
+		expect(root.ranges).toEqual([{ slot: 4, node: 3, id: 4, paintsText: true }]);
 		// The count the create function makes, which is what a consumer claiming
 		// first-screen IDs needs and all it needs: the nodes come back from `bind`
 		// in this order, so nothing walks anything to pair them up.
@@ -288,17 +308,18 @@ describe('emitting a compiled create function from the lynx main-thread compile'
 		expect(value.values[root.values[1]]).toBe('card-1');
 	});
 
-	it('compiles a literal text child but leaves a dynamic one a range site', () => {
+	it('compiles a literal text child but leaves an unproved one a range site', () => {
 		// The line #163's C2 has to answer, pinned here because it is the one thing
 		// a build cannot decide for itself. A literal is a `kind: 'text'` node with
-		// a value, so it compiles into the create function as a `#text` the emitted
-		// code makes. A `{expr as string}` is a `kind: 'slot'` node like any other
-		// dynamic child, because the cast is erased and nothing at build time knows
-		// the value will be a string — so the text a row actually shows is a range,
-		// and the compiled create paints structure and scalar props around it.
+		// a value, so it folds onto its host and costs the program nothing. A bare
+		// `{expr}` asserts nothing about its value — it can be an array or a
+		// component just as a directive can — so it stays a `kind: 'slot'` node,
+		// the text a row actually shows is a range, and the compiled create paints
+		// structure and scalar props around it. (`{expr as string}` is the third
+		// case and folds like the literal; it has its own coverage below.)
 		const MIXED = `/** @jsxImportSource @octanejs/lynx/intrinsics */
-export function Card(props: { label: string }) @{
-	<view class="a"><text class="fixed">{'tail'}</text><text class="live">{props.label as string}</text></view>
+export function Card(props: { label: unknown }) @{
+	<view class="a"><text class="fixed">{'tail'}</text><text class="live">{props.label}</text></view>
 }
 `;
 		const [root] = evaluate(compiled(MIXED, { backend: Backend })).roots;
@@ -403,20 +424,24 @@ export function Card(props: { tone: string; label: string }) @{
 	});
 
 	it("copies each site's paint answer from the emission rather than assuming it", () => {
-		// Both kinds of hole in one program, because the contrast is the point.
-		// `{props.label as string}` sits under a `text`, where a string is raw
-		// text and the create function paints it. `{props.rows}` sits under a
-		// `view`, where a hole is the ordinary keyed list at every value it can
-		// hold — a `rawText` there is the one thing the emitter's node loop
-		// already refuses — so it keeps its parameter and compiles nothing.
+		// Both kinds of *range site* in one program, because the contrast is the
+		// point. `{props.label}` sits under a `text`, where a string is raw text
+		// and the create function paints it. `{props.rows}` sits under a `view`,
+		// where a hole is the ordinary keyed list at every value it can hold — a
+		// `rawText` there is the one thing the emitter's node loop already refuses
+		// — so it keeps its parameter and compiles nothing.
+		//
+		// Both are bare holes, so neither folds: this is about what the emission
+		// does with a site that survived to the program, and a proved-scalar hole
+		// never reaches one.
 		//
 		// The compiler cannot tell those apart without asking: it holds the
 		// derivation, not the emitted source. Assuming `true` is invisible until
 		// a `view` hole happens to hold a string, and then the renderer skips
 		// materializing a member the program never painted.
 		const BOTH = `/** @jsxImportSource @octanejs/lynx/intrinsics */
-export function Card(props: { rows: unknown; label: string }) @{
-	<view class="a"><text class="l">{props.label as string}</text><view class="rows">{props.rows}</view></view>
+export function Card(props: { rows: unknown; label: unknown }) @{
+	<view class="a"><text class="l">{props.label}</text><view class="rows">{props.rows}</view></view>
 }
 `;
 		const [root] = evaluate(compiled(BOTH, { backend: Backend })).roots;
@@ -440,7 +465,7 @@ export function Card(props: { rows: unknown; label: string }) @{
 			}),
 		};
 		expect(() => compiled(CARD, { backend: lying })).toThrowError(
-			/takes 99 value, 1 listener and 2 range parameters, but its derivation declares 2 values, 1 events and 2 ranges/,
+			/takes 99 value, 1 listener and 1 range parameters, but its derivation declares 3 values, 1 events and 1 ranges/,
 		);
 	});
 
@@ -460,8 +485,7 @@ export function Card(props: { rows: unknown; label: string }) @{
 	});
 });
 
-// Issue-#230 E1 — what a background-originated mount would have to name, and
-// cannot.
+// Issue-#246 E1 — how a background-originated mount names a resident program.
 //
 // #163's join is first-screen-shaped: the main thread *renders*, so it holds the
 // plan object whose `bind` produces the create, and the applier keys its
@@ -469,13 +493,12 @@ export function Card(props: { rows: unknown; label: string }) @{
 // crosses a realm.
 //
 // E1 inverts that. The background renders a keyed range and asks the main thread
-// to instantiate a resident program, so it has to name one — and the gate above
-// (`changes nothing outside the main-thread lynx compile`) is exactly the
-// property that leaves it nothing to say. These tests state that consequence
-// positively, so E1's design lands against a checked fact rather than against the
-// readiness table in the issue, which reads as though the addressing already
-// exists.
-describe('naming a resident program from the background (issue #230 E1)', () => {
+// to instantiate a resident program, so it has to name one. These two tests were
+// written for #238 to pin the *absence* of that name; §5 of #246 said they must
+// be converted rather than deleted when the addressing lands, because their
+// value is that the change cannot happen quietly. Converted, they now pin the
+// name itself and the price it is allowed to cost.
+describe('naming a resident program from the background (issue #246 E1)', () => {
 	it('compiles one plan to a program on the main thread and a template on the background', () => {
 		const [mainThread] = evaluate(compiled(CARD, { backend: Backend })).roots;
 		const [background] = evaluate(compiled(CARD, { thread: 'background', backend: Backend })).roots;
@@ -486,18 +509,41 @@ describe('naming a resident program from the background (issue #230 E1)', () => 
 		expect(mainThread.kind).toBe('program');
 		expect(background.kind).toBe('template');
 		// The slot map is the contract both representations keep, which is what
-		// makes them two encodings of one plan rather than two plans.
+		// makes them two encodings of one plan rather than two plans. B2 is why
+		// this is worth re-checking: a proved-scalar hole folds onto its host, and
+		// it has to fold identically in both compiles or the two encodings would
+		// describe different plans while claiming to be one.
 		expect(background.slots).toEqual(mainThread.slots);
+		expect(mainThread.slots).toContain('p:text');
 	});
 
-	it('gives neither side an identifier the other could resolve', () => {
-		const [mainThread] = evaluate(compiled(CARD, { backend: Backend })).roots;
-		const [background] = evaluate(compiled(CARD, { thread: 'background', backend: Backend })).roots;
-		// The whole of what each side carries. A cross-realm reference has to be
-		// something serializable that both compiles agree on, and neither object
-		// has one: no name, no index, no digest. `bind` and `create` are functions,
-		// so they are realm-local by construction and cannot travel.
-		expect(Object.keys(mainThread).sort()).toEqual([
+	it('gives both sides the same identifier, and only when the build assigns one', () => {
+		// Without a module id nothing is addressed, which is #246 §6.3's refusal
+		// reaching the compiler: a build that cannot cross-check its two layers
+		// emits no name for either of them to trust.
+		expect(evaluate(compiled(CARD, { backend: Backend })).addresses).toEqual([undefined]);
+
+		const module = 'src/Card.lynx.tsrx';
+		const mainThread = evaluate(compiled(CARD, { backend: Backend, module }));
+		const background = evaluate(compiled(CARD, { thread: 'background', backend: Backend, module }));
+
+		// The address is what crosses the realm, and it is positional plus a
+		// digest: `(module id, plan index)` is what a `mount-program-run` carries,
+		// and the digest is what the build compares (#246 §6.1's A+B split).
+		expect(Object.keys(mainThread.addresses[0]).sort()).toEqual(['digest', 'index', 'module']);
+		expect(mainThread.addresses[0].module).toBe(module);
+		expect(mainThread.addresses[0].index).toBe(0);
+		// The whole point: the two compiles independently produced the same name
+		// for the same plan. They agree by construction rather than by luck —
+		// both run `deriveLynxMainThreadProgram` as a pure oracle over the same
+		// plan root, and the digest covers exactly the surface it produced.
+		expect(background.addresses).toEqual(mainThread.addresses);
+		expect(mainThread.addresses[0].digest).toMatch(/^[0-9a-f]{16}$/);
+
+		// What each side carries beyond the address. `bind` and `create` are
+		// functions, so they stay realm-local; `wire` is the descriptor a command
+		// -path mount walks, resident on the main thread instead of being sent.
+		expect(Object.keys(mainThread.roots[0]).sort()).toEqual([
 			'bind',
 			'events',
 			'kind',
@@ -505,16 +551,48 @@ describe('naming a resident program from the background (issue #230 E1)', () => 
 			'ranges',
 			'slots',
 			'values',
+			'wire',
 		]);
-		expect(Object.keys(background).sort()).toEqual(['create', 'kind', 'slots']);
-		// Stated as the blocker it is: the intersection of the two key sets is the
-		// vocabulary a `mount-program-run` could use to name its program, and it
-		// holds nothing that identifies *which* program.
-		const shared = Object.keys(background).filter((key) => key in mainThread);
-		expect(shared.sort()).toEqual(['kind', 'slots']);
-		// `kind` is a category and `slots` is a shape, so neither distinguishes two
-		// programs that happen to have the same slot map — which two different
-		// rows of one table routinely do.
-		expect(mainThread.slots).toEqual(background.slots);
+		expect(Object.keys(background.roots[0]).sort()).toEqual(['create', 'kind', 'slots']);
+	});
+
+	it('changes the background chunk by exactly the addressing, and nothing else', () => {
+		// #246 §5. #163's gate for the background chunk was "changes nothing
+		// outside the main-thread lynx compile", and the addressing breaks it by
+		// design: the background has to learn the name or it cannot say it. §5 said
+		// to replace that gate with a narrower one rather than delete it, and this
+		// is it — the background compile changes by the address argument and by
+		// nothing else at all.
+		const module = 'src/Card.lynx.tsrx';
+		const plain = compiled(CARD, { thread: 'background', backend: Backend });
+		const addressed = compiled(CARD, { thread: 'background', backend: Backend, module });
+		expect(addressed).not.toBe(plain);
+		// Whitespace around punctuation is normalized first, and that is the one
+		// concession: a `universalPlan` call with a third argument no longer fits
+		// on one line, so the printer wraps it and re-indents everything inside it.
+		// Every token is the same token; the gate is about what the chunk says, not
+		// how it is laid out. The structural comparison at the end of this test is
+		// what covers the difference a normalization like this could hide.
+		const collapse = (code: string) =>
+			code
+				.replace(/\s+/g, ' ')
+				.replace(/\s*([(){}[\],;])\s*/g, '$1')
+				.trim();
+		// Strip exactly the third argument of every `universalPlan` call and the
+		// two chunks must be identical again. Nothing else may differ: not the plan
+		// encoding, not the module's imports, not a token of the component bodies.
+		const withoutAddress = collapse(addressed).replace(
+			/,\{"module": ?"[^"]*","index": ?\d+,"digest": ?"[0-9a-f]{16}"\}/g,
+			'',
+		);
+		expect(withoutAddress).toBe(collapse(plain));
+		// The strip is not vacuous: it really removed something.
+		expect(withoutAddress).not.toBe(collapse(addressed));
+		// And the plan the background declares is the same plan either way, which
+		// is the property the token comparison stands in for.
+		const [plainRoot] = evaluate(plain).roots;
+		const [addressedRoot] = evaluate(addressed).roots;
+		expect(addressedRoot.slots).toEqual(plainRoot.slots);
+		expect(collapse(addressedRoot.create.toString())).toBe(collapse(plainRoot.create.toString()));
 	});
 });
