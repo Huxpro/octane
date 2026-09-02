@@ -1967,3 +1967,449 @@ describe.sequential('Lynx synchronous first-screen adoption', () => {
 		expect(main.firstScreenSnapshot()).toBeNull();
 	});
 });
+
+describe.sequential('first-tree capture after the paint', () => {
+	type EngineListener = Parameters<LynxContextProxy['addEventListener']>[1];
+	type LynxFirstTreeSnapshotLike = ReturnType<LynxMainThreadController['firstScreenSnapshot']>;
+
+	interface EngineEnvironment extends InstalledEnvironment {
+		/** Deliver the engine lifecycle that renders an engine-mode first screen. */
+		readonly renderPage: () => void;
+		/** Callbacks the receiver handed to the injected after-paint scheduler. */
+		readonly scheduled: (() => void)[];
+		readonly inbound: LynxBackgroundInboundMessage[];
+	}
+
+	function installEngineEnvironment(
+		installOptions?: Partial<Parameters<typeof installLynxMainThread>[0]>,
+		configurePAPI?: (target: Record<string, unknown>) => void,
+	): EngineEnvironment {
+		const engineListeners = new Map<string, Set<EngineListener>>();
+		const engineContext: LynxContextProxy = {
+			dispatchEvent(event) {
+				for (const listener of [...(engineListeners.get(event.type) ?? [])]) listener(event);
+			},
+			addEventListener(type, listener) {
+				let entries = engineListeners.get(type);
+				if (entries === undefined) engineListeners.set(type, (entries = new Set()));
+				entries.add(listener);
+			},
+			removeEventListener(type, listener) {
+				engineListeners.get(type)?.delete(listener);
+			},
+		};
+		const scheduled: (() => void)[] = [];
+		const environment = installEnvironment(
+			(target) => {
+				(target.lynx as Record<string, unknown>).getEngine = () => engineContext;
+				configurePAPI?.(target);
+			},
+			{
+				firstScreenRender: 'engine',
+				scheduleFirstScreenCapture: (callback) => {
+					scheduled.push(callback);
+				},
+				...installOptions,
+			},
+		);
+		const inbound: LynxBackgroundInboundMessage[] = [];
+		mainContext().addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
+			inbound.push(unwire(event.data) as LynxBackgroundInboundMessage);
+		});
+		return {
+			...environment,
+			scheduled,
+			inbound,
+			renderPage: () => {
+				engineContext.dispatchEvent({ type: '__RenderPage', data: [{}, {}] });
+			},
+		};
+	}
+
+	const sceneProps = (id: string): SceneProps => ({
+		id,
+		items: ['a'],
+		onTap() {},
+		onEffect() {},
+	});
+
+	function readyRequest(request: number): void {
+		backgroundContext().dispatchEvent({
+			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
+			data: wire({
+				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
+				renderer: LYNX_TRANSPORT_RENDERER,
+				type: 'main-ready-request',
+				request,
+			}),
+		});
+	}
+
+	it('publishes the frame before it describes the tree', () => {
+		const { dom, main, scheduled, inbound, renderPage } = installEngineEnvironment();
+		firstScreenRoot.render(MainScene as UniversalComponent<SceneProps>, sceneProps('defer-paint'));
+		main.markFirstScreenSyncReady();
+
+		renderPage();
+		// The paint is published and nothing has described it. This is the whole
+		// change: `capture` and `announce` are still ahead, but they are no longer
+		// standing between these elements and the glass.
+		expect(dom.window.document.querySelector('#defer-paint')).not.toBeNull();
+		expect(dom.window.document.querySelector('#a')).not.toBeNull();
+		expect(scheduled).toHaveLength(1);
+		expect(inbound).toEqual([]);
+
+		scheduled.pop()!();
+		expect(inbound).toEqual([expect.objectContaining({ type: 'main-ready' })]);
+		expect(main.firstScreenSnapshot()).toMatchObject({ root: 1, version: 1 });
+		expect(main.diagnostics()).toEqual([]);
+	});
+
+	it('moves capture in time without moving it in order', () => {
+		// The order is `render` → `publish` → `capture` → `announce`, and only the
+		// last two moved. Nothing else in this file pins that: every other test
+		// here reads a result, and a body that ran capture before the flush, or
+		// announced before capture finished, would produce the same results while
+		// putting the walk back in front of the pixels. So measure the seam
+		// directly — capture reads a native ID per described host, and the flush
+		// is the frame publication, so counting one against the other says which
+		// side of the paint the walk is on.
+		let uniqueIdCalls = 0;
+		let callsAtPublish = -1;
+		let callsAtAnnounce = -1;
+		const { main, scheduled, renderPage } = installEngineEnvironment(undefined, (target) => {
+			const getUniqueId = target.__GetElementUniqueID as (node: object) => number;
+			target.__GetElementUniqueID = (node: object) => {
+				uniqueIdCalls++;
+				return getUniqueId(node);
+			};
+			const flush = target.__FlushElementTree as (...args: unknown[]) => unknown;
+			target.__FlushElementTree = (...args: unknown[]) => {
+				if (callsAtPublish === -1) callsAtPublish = uniqueIdCalls;
+				return flush(...args);
+			};
+		});
+		firstScreenRoot.render(MainScene as UniversalComponent<SceneProps>, sceneProps('defer-order'));
+		main.markFirstScreenSyncReady();
+		mainContext().addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, () => {
+			if (callsAtAnnounce === -1) callsAtAnnounce = uniqueIdCalls;
+		});
+
+		renderPage();
+		// The frame published and the walk has not started: not one native ID was
+		// read between the flush and the end of the task that painted.
+		expect(callsAtPublish).toBeGreaterThan(-1);
+		expect(uniqueIdCalls).toBe(callsAtPublish);
+		expect(callsAtAnnounce).toBe(-1);
+
+		scheduled.pop()!();
+		// It ran, on the far side of the paint, and announce still waited for it.
+		expect(uniqueIdCalls).toBeGreaterThan(callsAtPublish);
+		expect(callsAtAnnounce).toBe(uniqueIdCalls);
+		expect(main.diagnostics()).toEqual([]);
+	});
+
+	it('makes a correlated ready request wait for the scheduled capture', () => {
+		// #231/#233's fence, reused rather than rebuilt: a request that lands in
+		// the gap is answered by the capture that was already scheduled, so the
+		// peer gets the same tree it would have got before — never a partial one,
+		// never a second one built to answer it.
+		const { main, scheduled, inbound, renderPage } = installEngineEnvironment();
+		firstScreenRoot.render(MainScene as UniversalComponent<SceneProps>, sceneProps('defer-ready'));
+		main.markFirstScreenSyncReady();
+		renderPage();
+
+		readyRequest(41);
+		expect(inbound).toEqual([]);
+		expect(scheduled).toHaveLength(1);
+
+		scheduled.pop()!();
+		// The first correlated reply also drains the queued lifecycle data, so the
+		// readiness answer is selected out of what that flush put on the wire.
+		const replies = inbound.filter((message) => message.type === 'main-ready');
+		expect(replies).toEqual([expect.objectContaining({ type: 'main-ready', request: 41 })]);
+		expect(replies[0]).toHaveProperty('firstTree');
+		expect(main.diagnostics()).toEqual([]);
+	});
+
+	it('adopts a commit that arrives before the scheduled capture', () => {
+		// Nothing should get here first: the reply that lets a peer commit waits
+		// for capture. But adoption decides between adopting the painted tree and
+		// painting a fresh one by reading `firstTree`, so a peer that commits
+		// anyway must not be handed the "no first screen" branch and paint a
+		// second tree over the one already on the glass.
+		const { dom, main, inbound, renderPage } = installEngineEnvironment();
+		firstScreenRoot.render(MainSingleHost, { id: 'gap-commit' });
+		main.markFirstScreenSyncReady();
+		renderPage();
+		const painted = dom.window.document.querySelector('#gap-commit');
+		expect(painted).not.toBeNull();
+
+		const initial = renderLynxFirstScreen(MainSingleHost, { id: 'gap-commit' });
+		backgroundContext().dispatchEvent({
+			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
+			data: wire({
+				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
+				renderer: LYNX_TRANSPORT_RENDERER,
+				root: 1,
+				version: 1,
+				type: 'commit',
+				batch: initial.batch,
+			}),
+		});
+
+		expect(inbound.filter((message) => message.type === 'ack')).toEqual([
+			expect.objectContaining({ type: 'ack', version: 1, adoption: 'adopted' }),
+		]);
+		expect(dom.window.document.querySelector('#gap-commit')).toBe(painted);
+	});
+
+	it('resolves a tap that lands before the scheduled capture runs', () => {
+		// The token index a tap resolves through is built by capture. Without the
+		// on-demand rung the delivery would find no first-tree target, fall through
+		// to the live-root path, and be discarded as an event with no accepted
+		// root — a painted, tappable tree whose taps go nowhere.
+		const { main, registrations, scheduled, renderPage } = installEngineEnvironment();
+		firstScreenRoot.render(MainScene as UniversalComponent<SceneProps>, sceneProps('defer-tap'));
+		main.markFirstScreenSyncReady();
+		renderPage();
+
+		const token = registrations.find((registration) => registration.name === 'tap')?.listener;
+		expect(token).toBeTypeOf('string');
+		expect(scheduled).toHaveLength(1);
+
+		main.dispatchNativeEvent(token!, { type: 'tap' });
+		expect(main.diagnostics()).toEqual([]);
+		// The tap brought capture forward rather than being dropped, so the timer
+		// that fires afterwards finds the work already done.
+		expect(main.firstScreenSnapshot()).not.toBeNull();
+		scheduled.pop()!();
+		expect(main.diagnostics()).toEqual([]);
+	});
+
+	it('brings capture forward for the public snapshot accessor and captures once', () => {
+		// `null` has meant "no synchronous first screen was painted" since this
+		// accessor existed; it must not start also meaning "painted, not yet
+		// described". Capture must also stay one-shot — running it twice throws
+		// `the root already owns a first-tree journal`.
+		const { main, scheduled, renderPage } = installEngineEnvironment();
+		firstScreenRoot.render(MainScene as UniversalComponent<SceneProps>, sceneProps('defer-read'));
+		main.markFirstScreenSyncReady();
+		renderPage();
+
+		const snapshot = main.firstScreenSnapshot();
+		expect(snapshot).toMatchObject({ root: 1, version: 1 });
+
+		expect(scheduled).toHaveLength(1);
+		scheduled.pop()!();
+		expect(main.firstScreenSnapshot()).toBe(snapshot);
+		expect(main.diagnostics()).toEqual([]);
+	});
+
+	it('settles a post-paint capture fault instead of throwing out of the scheduler', () => {
+		// The render call that would have received this returned when the paint
+		// published, so the fault has nowhere to be thrown to. It settles the
+		// screen the way the synchronous path's `catch` does and reports.
+		const captureFailure = new Error('capture unique ID failed');
+		let uniqueIdCalls = 0;
+		const { main, scheduled, renderPage } = installEngineEnvironment(undefined, (target) => {
+			const getUniqueId = target.__GetElementUniqueID as (node: object) => number;
+			target.__GetElementUniqueID = (node: object) => {
+				if (++uniqueIdCalls === 2) throw captureFailure;
+				return getUniqueId(node);
+			};
+		});
+		firstScreenRoot.render(MainScene as UniversalComponent<SceneProps>, sceneProps('defer-fault'));
+		main.markFirstScreenSyncReady();
+		renderPage();
+
+		expect(scheduled).toHaveLength(1);
+		expect(() => scheduled.pop()!()).not.toThrow();
+		expect(main.diagnostics()).toContain(captureFailure);
+		expect(main.firstScreenSnapshot()).toBeNull();
+	});
+
+	it('finishes the capture when unmount arrives in the gap', () => {
+		// Cleanup disposes a captured journal and retires a declined source. An
+		// uncaptured screen is neither, so an unmount that skipped this would leave
+		// the painted tree on the glass with no owner left to remove it, and then
+		// let the timer capture into a receiver that had already gone.
+		const { dom, main, scheduled, renderPage } = installEngineEnvironment();
+		firstScreenRoot.render(MainSingleHost, { id: 'gap-unmount' });
+		main.markFirstScreenSyncReady();
+		renderPage();
+		expect(dom.window.document.querySelector('#gap-unmount')).not.toBeNull();
+		expect(scheduled).toHaveLength(1);
+
+		firstScreenRoot.unmount();
+		expect(dom.window.document.querySelector('#gap-unmount')).toBeNull();
+		expect(main.firstScreenSnapshot()).toBeNull();
+
+		scheduled.pop()!();
+		expect(main.diagnostics()).toEqual([]);
+	});
+
+	it('finishes the capture when the receiver closes in the gap', () => {
+		// Same obligation on the terminal path: a receiver that closed first would
+		// strand the painted source with no journal to dispose it through.
+		const { dom, main, scheduled, renderPage } = installEngineEnvironment();
+		firstScreenRoot.render(MainSingleHost, { id: 'gap-close' });
+		main.markFirstScreenSyncReady();
+		renderPage();
+		expect(dom.window.document.querySelector('#gap-close')).not.toBeNull();
+		expect(scheduled).toHaveLength(1);
+
+		main.close();
+		expect(dom.window.document.querySelector('#gap-close')).toBeNull();
+
+		scheduled.pop()!();
+		expect(main.diagnostics()).toEqual([]);
+	});
+
+	it('captures once when the announcement reenters the receiver', () => {
+		// Capture announces, the announcement reaches a peer synchronously, and a
+		// peer is entitled to read back on that reply. The pending capture is
+		// therefore taken before it runs, not after: taken after, this reentry
+		// would run the walk a second time and fault on a root that already owns a
+		// first-tree journal.
+		const { main, scheduled, renderPage } = installEngineEnvironment();
+		firstScreenRoot.render(MainScene as UniversalComponent<SceneProps>, sceneProps('gap-reenter'));
+		main.markFirstScreenSyncReady();
+		const reread: (LynxFirstTreeSnapshotLike | null)[] = [];
+		mainContext().addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, () => {
+			reread.push(main.firstScreenSnapshot());
+		});
+
+		renderPage();
+		scheduled.pop()!();
+
+		expect(reread).toHaveLength(1);
+		expect(reread[0]).toMatchObject({ root: 1, version: 1 });
+		expect(main.diagnostics()).toEqual([]);
+	});
+
+	it('answers a sync-ready mark in the gap with the painted tree, not a skip', () => {
+		// `manual` sync exists to announce readiness after the render — which in
+		// engine mode means it can land between the paint and the scheduled
+		// capture. The announcement needs the description, so the mark brings
+		// capture forward; treating the gap as "nothing rendered" would announce a
+		// skip and have the background paint a second tree over the one on the
+		// glass.
+		const { main, scheduled, inbound, renderPage } = installEngineEnvironment();
+		firstScreenRoot.render(MainScene as UniversalComponent<SceneProps>, sceneProps('gap-ready'));
+		renderPage();
+		expect(scheduled).toHaveLength(1);
+		expect(inbound).toEqual([]);
+
+		main.markFirstScreenSyncReady();
+		// The unsolicited announcement never carries the tree; the first correlated
+		// reply does — and it must, or the peer paints the page again on the
+		// command path. Read the wire before any accessor: `firstScreenSnapshot()`
+		// would bring a mishandled capture forward and hide the skip.
+		readyRequest(43);
+		const replies = inbound.filter((message) => message.type === 'main-ready');
+		expect(replies).toContainEqual(
+			expect.objectContaining({ request: 43, firstTree: expect.anything() }),
+		);
+
+		scheduled.pop()!();
+		expect(main.firstScreenSnapshot()).toMatchObject({ root: 1, version: 1 });
+		expect(main.diagnostics()).toEqual([]);
+	});
+
+	it('keeps the first-screen root one-shot during the capture gap', () => {
+		// The render window closes when the first screen paints, not when the
+		// deferred capture describes it. A second `render()` in the gap must take
+		// the same one-shot refusal it takes after capture — accepted, it would
+		// append a second tree onto the already-painted page.
+		const { dom, main, scheduled, renderPage } = installEngineEnvironment();
+		firstScreenRoot.render(MainSingleHost, { id: 'gap-oneshot' });
+		main.markFirstScreenSyncReady();
+		renderPage();
+		expect(dom.window.document.querySelector('#gap-oneshot')).not.toBeNull();
+		expect(scheduled).toHaveLength(1);
+
+		expect(() => firstScreenRoot.render(MainSingleHost, { id: 'gap-oneshot-again' })).toThrow(
+			/one-shot/,
+		);
+		expect(dom.window.document.querySelector('#gap-oneshot-again')).toBeNull();
+		expect(dom.window.document.querySelectorAll('[id^="gap-oneshot"]')).toHaveLength(1);
+
+		scheduled.pop()!();
+		expect(main.firstScreenSnapshot()).toMatchObject({ root: 1, version: 1 });
+		expect(main.diagnostics()).toEqual([]);
+	});
+
+	it('declines the deferral for a receiver given no after-paint rung', () => {
+		// Decline, never approximate: with no macrotask rung there is nowhere to
+		// put capture that is genuinely past the frame, so it keeps today's order
+		// rather than moving to a microtask that would drain before the paint.
+		const { main, scheduled, inbound, renderPage } = installEngineEnvironment({
+			scheduleFirstScreenCapture: null,
+		});
+		firstScreenRoot.render(MainScene as UniversalComponent<SceneProps>, sceneProps('defer-none'));
+		main.markFirstScreenSyncReady();
+
+		renderPage();
+		expect(scheduled).toEqual([]);
+		expect(inbound).toEqual([expect.objectContaining({ type: 'main-ready' })]);
+		expect(main.firstScreenSnapshot()).toMatchObject({ root: 1, version: 1 });
+	});
+
+	it('captures inline when the scheduler refuses the callback', () => {
+		// Otherwise the screen is painted, announced to nobody, and described by
+		// nothing: the deferral was armed and the thing that was going to run it
+		// threw. Fall back to the order a receiver with no rung at all takes.
+		const refusal = new Error('no rung for you');
+		const { dom, main, inbound, renderPage } = installEngineEnvironment({
+			scheduleFirstScreenCapture: () => {
+				throw refusal;
+			},
+		});
+		firstScreenRoot.render(MainScene as UniversalComponent<SceneProps>, sceneProps('defer-throw'));
+		main.markFirstScreenSyncReady();
+
+		renderPage();
+		expect(dom.window.document.querySelector('#defer-throw')).not.toBeNull();
+		// Read the wire before the accessor: `firstScreenSnapshot()` would bring a
+		// stranded capture forward and hide the stranding, so the announcement is
+		// what proves capture already ran rather than merely being reachable.
+		expect(inbound).toEqual([expect.objectContaining({ type: 'main-ready' })]);
+		expect(main.firstScreenSnapshot()).toMatchObject({ root: 1, version: 1 });
+		expect(main.diagnostics()).toContain(refusal);
+	});
+
+	it('declines the deferral for the synchronous adopter that reads the verdict', () => {
+		// An immediate-mode `root.render()` returns the capture verdict to its
+		// caller: `null` for a tree the background cannot adopt, a throw for one
+		// that cannot be captured. Deferring capture there would answer before the
+		// answer exists, so that arm keeps capture in front of the paint.
+		const scheduled: (() => void)[] = [];
+		const { main } = installEnvironment(undefined, {
+			scheduleFirstScreenCapture: (callback) => {
+				scheduled.push(callback);
+			},
+		});
+
+		const result = firstScreenRoot.render(
+			MainScene as UniversalComponent<SceneProps>,
+			sceneProps('sync-adopter'),
+		);
+		expect(result).not.toBeNull();
+		expect(scheduled).toEqual([]);
+		expect(main.firstScreenSnapshot()).toMatchObject({ root: 1, version: 1 });
+	});
+
+	it('rejects a scheduler that is neither a function nor null', () => {
+		// Installed first so the rejected call is the second one: option validation
+		// runs before this receiver touches anything, and the environment the
+		// teardown expects is the one the successful install left behind.
+		installEnvironment();
+		expect(() =>
+			installLynxMainThread({
+				firstScreen: true,
+				scheduleFirstScreenCapture: 0 as unknown as () => void,
+			}),
+		).toThrow(/scheduleFirstScreenCapture must be a function or null/);
+	});
+});

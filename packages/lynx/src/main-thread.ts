@@ -151,6 +151,16 @@ export interface InstallLynxMainThreadOptions {
 	 * by source and JavaScript-host tests.
 	 */
 	readonly firstScreenRender?: 'immediate' | 'engine';
+	/**
+	 * Where the deferred first-tree capture is scheduled, once the first screen
+	 * has published its frame.
+	 *
+	 * Defaults to the ambient `setTimeout`. `null` declines the deferral and
+	 * captures inline, on exactly the order this had before the option existed.
+	 * A host with a better “the frame is on screen” rung than a bare macrotask
+	 * passes it here.
+	 */
+	readonly scheduleFirstScreenCapture?: ((callback: () => void) => void) | null;
 	readonly onDiagnostic?: (error: Error) => void;
 	/**
 	 * Painted elements a root of this page may hold before a mount that would
@@ -172,6 +182,29 @@ export interface InstallLynxMainThreadOptions {
 		worklet: import('./core/protocol.js').LynxMainThreadWorkletWireDescriptor,
 		args: readonly UniversalSerializableValue[],
 	) => unknown;
+}
+
+/**
+ * The rung a deferred first-tree capture is scheduled on, or `null` for none.
+ *
+ * “After the frame is on screen” is a macrotask boundary. A microtask drains
+ * before the host can paint, so scheduling capture on one would move the work
+ * without taking it out of the window — the deferral in name and today's cost
+ * in fact. So `Promise.resolve().then` is deliberately not a fallback here even
+ * though this file schedules a deferred *flush* on exactly that: that one only
+ * has to outlast a dispatch, and this one has to outlast a frame. A receiver
+ * with no macrotask rung declines the deferral rather than approximating it.
+ */
+function resolveFirstScreenCaptureScheduler(
+	schedule: ((callback: () => void) => void) | null | undefined,
+): ((callback: () => void) => void) | null {
+	if (schedule !== undefined) return schedule;
+	const ambient = (globalThis as { setTimeout?: unknown }).setTimeout;
+	if (typeof ambient !== 'function') return null;
+	const timer = ambient as (callback: () => void, delay: number) => unknown;
+	return (callback) => {
+		timer.call(globalThis, callback, 0);
+	};
 }
 
 export interface LynxMainThreadCall<Result = UniversalSerializableValue> {
@@ -571,6 +604,16 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	if (options.firstScreen !== true && options.firstScreenRender !== undefined) {
 		throw new TypeError('Octane Lynx firstScreenRender requires firstScreen: true.');
 	}
+	if (
+		options.scheduleFirstScreenCapture !== undefined &&
+		options.scheduleFirstScreenCapture !== null &&
+		typeof options.scheduleFirstScreenCapture !== 'function'
+	) {
+		throw new TypeError('Octane Lynx scheduleFirstScreenCapture must be a function or null.');
+	}
+	if (options.firstScreen !== true && options.scheduleFirstScreenCapture !== undefined) {
+		throw new TypeError('Octane Lynx scheduleFirstScreenCapture requires firstScreen: true.');
+	}
 	const firstScreenEnabled = options.firstScreen === true;
 	const firstScreenSync = options.firstScreenSync ?? 'automatic';
 	const rawTarget = options.target ?? globalThis;
@@ -660,8 +703,31 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	let firstScreenState: FirstScreenState = firstScreenEnabled ? 'open' : 'skipped';
 	let firstScreenSyncReady = !firstScreenEnabled;
 	const firstScreenRenderMode = options.firstScreenRender ?? 'immediate';
+	const firstScreenCaptureScheduler = resolveFirstScreenCaptureScheduler(
+		options.scheduleFirstScreenCapture,
+	);
 	let pendingFirstScreenRender: (() => void) | null = null;
 	let firstScreenRenderReleased = firstScreenRenderMode !== 'engine';
+	let pendingFirstScreenCapture: (() => void) | null = null;
+	/**
+	 * Bring a deferred capture forward because something is about to read what it
+	 * produces, and run it at most once however many callers ask.
+	 *
+	 * The deferral changes *when* capture runs, never what any reader sees, so
+	 * every read that would have found a captured tree before this landed still
+	 * finds one — a tap resolving its first-tree target, the public snapshot
+	 * accessor, an inbound commit, teardown. A ready request is the one caller
+	 * that deliberately does not come through here: `canAnnounceReady` already
+	 * withholds the reply while the screen is still `open`, so the background
+	 * waits for the scheduled capture and reads the same tree, which is the wait
+	 * branch #231/#233 fenced rather than a second way to build one.
+	 */
+	const ensureFirstScreenCaptured = (): void => {
+		const pending = pendingFirstScreenCapture;
+		if (pending === null) return;
+		pendingFirstScreenCapture = null;
+		pending();
+	};
 	let firstTree: LynxFirstTree<Node> | null = null;
 	let failedFirstScreenSource: LynxHostContainer<Node> | null = null;
 	let awaitingAdoption: UniversalTransportIdentity | null = null;
@@ -1632,6 +1698,13 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		if (!Array.isArray(deliveries)) {
 			throw new TypeError('Octane Lynx native event deliveries must be an array.');
 		}
+		// A tap can land on the painted tree before the scheduled capture runs, and
+		// the token index it resolves through is built by that capture. Without
+		// this the delivery would resolve no first-tree target, fall through to the
+		// live-root path, and be thrown away as an event with no accepted root —
+		// the paint would be tappable and the tap would be lost. Bringing capture
+		// forward costs the tap what today's order charges every first screen.
+		ensureFirstScreenCaptured();
 		return Object.freeze(
 			deliveries.map((delivery, index) => {
 				if (delivery === null || typeof delivery !== 'object' || Array.isArray(delivery)) {
@@ -2006,11 +2079,75 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		if (canAnnounceReady()) announceReady();
 	};
 
+	/**
+	 * The `capture` and `announce` phases, wherever they run.
+	 *
+	 * One body rather than two call orders: an inline capture and a deferred one
+	 * are the same phases against the same source, and the only difference is
+	 * which task they stand in. Sharing the body is what makes “the boundary
+	 * moves in time, not in order” a property of this code instead of a claim
+	 * about it — there is no second sequence that could answer differently.
+	 *
+	 * Returns whether a tree was captured; `false` means the paint was declined
+	 * and the source is already retired.
+	 */
+	const captureFirstScreen = (source: LynxHostContainer<Node>): boolean => {
+		markFirstScreenPhase('capture');
+		const captured = captureLynxFirstTree(source);
+		if (captured === null) {
+			// The page rendered correctly but holds a composition the background
+			// cannot adopt: a native `<list>` that already materialized a cell,
+			// whose physical rows are keyed by native sign rather than by anything
+			// the captured tree describes. That is a property of the page, not a
+			// broken host, so it settles as `skipped` rather than `failed` and
+			// raises no error against an application entitled to the element.
+			// `null` tells the caller its paint was declined.
+			retireFirstScreen(source, 'skipped', 'unadoptable');
+			return false;
+		}
+		firstTree = captured;
+		firstScreenState = 'painted';
+		if (firstScreenSync === 'automatic') firstScreenSyncReady = true;
+		markFirstScreenPhase('announce');
+		announceReady();
+		return true;
+	};
+
+	/**
+	 * The same capture, one task after the frame it describes.
+	 *
+	 * Its failures have nowhere to go: the render call that would have received
+	 * them returned when the paint published, so a fault settles the screen the
+	 * way the synchronous path's `catch` does and reports rather than rethrows.
+	 * A refusal cannot reach here — refusals come out of the render, which is
+	 * over — so anything thrown at this point is a fault.
+	 */
+	const captureFirstScreenAfterPaint = (source: LynxHostContainer<Node>): void => {
+		firstScreenRenderInProgress = true;
+		try {
+			captureFirstScreen(source);
+		} catch (error) {
+			retireFirstScreen(source, 'failed', 'failed');
+			report(error, 'Octane Lynx could not capture its first screen after the paint.');
+		} finally {
+			markFirstScreenPhase(null);
+			firstScreenRenderInProgress = false;
+			if (closePending) finalizeDeferredClose?.();
+		}
+	};
+
 	const renderFirstScreenNow = <Props>(
 		component: UniversalComponent<Props>,
 		props: Props,
+		deferCapture: boolean,
 	): LynxFirstScreenRenderResult | null => {
 		if (closed) throw new Error('Octane Lynx first-screen root rendered after receiver close.');
+		// The render window closes when the first screen paints, not when the
+		// deferred capture describes it. During that gap the state still reads
+		// `open`, so settle the pending capture first and let the one-shot guard
+		// give a second render the same refusal it gets after capture — accepted,
+		// it would append a second tree onto the already-painted page.
+		ensureFirstScreenCaptured();
 		if (firstScreenState !== 'open') {
 			throw new Error(
 				'Octane Lynx first-screen root is one-shot and its render window has closed.',
@@ -2059,25 +2196,32 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 					throw new Error('Octane Lynx first-screen host batch did not cross its apply boundary.');
 				}
 			}
-			markFirstScreenPhase('capture');
-			const captured = captureLynxFirstTree(source);
-			if (captured === null) {
-				// The page rendered correctly but holds a composition the background
-				// cannot adopt: a native `<list>` that already materialized a cell,
-				// whose physical rows are keyed by native sign rather than by anything
-				// the captured tree describes. That is a property of the page, not a
-				// broken host, so it settles as `skipped` rather than `failed` and
-				// raises no error against an application entitled to the element.
-				// `null` tells the caller its paint was declined.
-				retireFirstScreen(source, 'skipped', 'unadoptable');
-				return null;
+			const painted = source;
+			if (deferCapture && firstScreenCaptureScheduler !== null) {
+				// The frame is published. Nothing on the paint path reads what capture
+				// produces — the background has not been told the screen exists, and
+				// `canAnnounceReady` will not tell it while the state is still `open`
+				// — so the walk that describes the tree runs in the next task rather
+				// than in front of the pixels it describes.
+				//
+				// The scheduled callback is `ensureFirstScreenCaptured` rather than
+				// the capture itself, so a reader that had to bring it forward has
+				// already consumed it and the timer finds nothing left to do.
+				pendingFirstScreenCapture = () => captureFirstScreenAfterPaint(painted);
+				try {
+					firstScreenCaptureScheduler(ensureFirstScreenCaptured);
+				} catch (error) {
+					// A rung that will not take the callback is not a rung. Left as it
+					// was, this screen would be painted, announced to nobody, and
+					// described by nothing — so drop the deferral and finish here, on
+					// the order a receiver with no rung at all would have taken.
+					pendingFirstScreenCapture = null;
+					report(error, 'Octane Lynx could not schedule its first-screen capture.');
+					return captureFirstScreen(painted) ? result : null;
+				}
+				return result;
 			}
-			firstTree = captured;
-			firstScreenState = 'painted';
-			if (firstScreenSync === 'automatic') firstScreenSyncReady = true;
-			markFirstScreenPhase('announce');
-			announceReady();
-			return result;
+			return captureFirstScreen(painted) ? result : null;
 		} catch (error) {
 			if (error instanceof LynxFirstScreenRefusalError) {
 				// The capability boundary rather than a fault (issue #163 C3). This
@@ -2113,7 +2257,13 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		component: UniversalComponent<Props>,
 		props: Props,
 	): LynxFirstScreenRenderResult | null => {
-		if (firstScreenRenderReleased) return renderFirstScreenNow(component, props);
+		// A released receiver renders inline and hands this call the verdict:
+		// `null` for a tree the background cannot adopt, a throw for one that
+		// cannot be captured. That answer is the return value of the authored
+		// `root.render()`, so this arm is the synchronous adopter the deferral
+		// declines for — it keeps capture in front of the paint, because moving
+		// it would mean answering before the answer exists.
+		if (firstScreenRenderReleased) return renderFirstScreenNow(component, props, false);
 		if (closed) throw new Error('Octane Lynx first-screen root rendered after receiver close.');
 		if (firstScreenState !== 'open' || pendingFirstScreenRender !== null) {
 			throw new Error(
@@ -2124,7 +2274,10 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		// PageConfig reaches the ElementManager only after main-thread script
 		// evaluation, and elements created earlier bake in unconfigured defaults.
 		pendingFirstScreenRender = () => {
-			renderFirstScreenNow(component, props);
+			// Nothing receives this result: the engine's lifecycle called us, not an
+			// authored `root.render()`, so no caller is waiting on the capture
+			// verdict and the capture can follow the frame.
+			renderFirstScreenNow(component, props, true);
 		};
 		return null;
 	};
@@ -2158,6 +2311,15 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		}
 		if (closed) throw new Error('Octane Lynx first-screen synchronization ran after close.');
 		if (firstScreenSyncReady) return;
+		// A mark landing between the paint and the scheduled capture must not read
+		// the still-`open` state as "nothing rendered": that would settle a painted
+		// screen as skipped and announce readiness with no first tree, and the
+		// background would paint the page again over the one on the glass. The
+		// announcement this mark releases needs the description anyway, so bring
+		// capture forward — before `firstScreenSyncReady` flips, so the capture's
+		// own announce attempt stays withheld and the one below is the one that
+		// goes out.
+		ensureFirstScreenCaptured();
 		firstScreenSyncReady = true;
 		if (
 			firstScreenState === 'open' &&
@@ -2557,6 +2719,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	};
 
 	const handleCommit = (message: LynxCommitMessage): void => {
+		// Adoption reads `firstTree` to decide whether this commit adopts a painted
+		// tree or paints a fresh one. Nothing should get here first — the reply
+		// that lets a peer commit waits for capture — but a peer that commits
+		// anyway must not be handed the “no first screen” branch and paint a second
+		// tree over the one on the glass.
+		ensureFirstScreenCaptured();
 		if (closePending) return;
 		if (commitInProgress) {
 			queuedCommits.push(message);
@@ -2600,6 +2768,11 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	};
 
 	const handleAdoptionReady = (message: LynxAdoptionReadyMessage): void => {
+		// No capture fence here, deliberately. `awaitingAdoption` is armed at
+		// exactly one site — a commit whose prepared batch adopted the first tree —
+		// and that requires a captured journal to have existed when the commit was
+		// prepared, which the commit's own fence guarantees. A fence here would
+		// guard a state this receiver cannot be in.
 		if (
 			awaitingAdoption === null ||
 			active === null ||
@@ -2821,6 +2994,11 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	}
 
 	const closeMainThread = (): void => {
+		// Before the close is observable: capture still announces, and a receiver
+		// that closed first would strand the painted source with no journal to
+		// dispose it through. Running it here also settles `firstScreenState`, so
+		// the guard below sees the same in-progress bit it always has.
+		ensureFirstScreenCaptured();
 		lifecycleClosed = true;
 		queuedLifecycleMessages.length = 0;
 		if (commitInProgress || firstScreenRenderInProgress) {
@@ -2978,6 +3156,11 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				render: renderFirstScreen,
 				markSyncReady: markFirstScreenSyncReady,
 				unmount() {
+					// Cleanup disposes a captured journal and retires a declined source.
+					// An uncaptured screen is neither, and its container would outlive
+					// the receiver with nothing left to dispose it, so unmount finishes
+					// the capture first and then tears down exactly one shape.
+					ensureFirstScreenCaptured();
 					pendingFirstScreenRender = null;
 					firstScreenRenderReleased = true;
 					queuedNativeEvents.length = 0;
@@ -3029,6 +3212,10 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			submitNativeEventBatch(deliveries);
 		},
 		firstScreenSnapshot() {
+			// `null` has meant “no synchronous first screen was painted” since this
+			// accessor existed, and it must not start also meaning “painted, not yet
+			// described”. A caller reading it in the gap gets the description.
+			ensureFirstScreenCaptured();
 			return firstTree?.snapshot ?? null;
 		},
 		markFirstScreenSyncReady,
