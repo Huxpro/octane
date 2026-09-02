@@ -2288,6 +2288,58 @@ describe.sequential('first-tree capture after the paint', () => {
 		expect(main.diagnostics()).toEqual([]);
 	});
 
+	it('answers a sync-ready mark in the gap with the painted tree, not a skip', () => {
+		// `manual` sync exists to announce readiness after the render — which in
+		// engine mode means it can land between the paint and the scheduled
+		// capture. The announcement needs the description, so the mark brings
+		// capture forward; treating the gap as "nothing rendered" would announce a
+		// skip and have the background paint a second tree over the one on the
+		// glass.
+		const { main, scheduled, inbound, renderPage } = installEngineEnvironment();
+		firstScreenRoot.render(MainScene as UniversalComponent<SceneProps>, sceneProps('gap-ready'));
+		renderPage();
+		expect(scheduled).toHaveLength(1);
+		expect(inbound).toEqual([]);
+
+		main.markFirstScreenSyncReady();
+		// The unsolicited announcement never carries the tree; the first correlated
+		// reply does — and it must, or the peer paints the page again on the
+		// command path. Read the wire before any accessor: `firstScreenSnapshot()`
+		// would bring a mishandled capture forward and hide the skip.
+		readyRequest(43);
+		const replies = inbound.filter((message) => message.type === 'main-ready');
+		expect(replies).toContainEqual(
+			expect.objectContaining({ request: 43, firstTree: expect.anything() }),
+		);
+
+		scheduled.pop()!();
+		expect(main.firstScreenSnapshot()).toMatchObject({ root: 1, version: 1 });
+		expect(main.diagnostics()).toEqual([]);
+	});
+
+	it('keeps the first-screen root one-shot during the capture gap', () => {
+		// The render window closes when the first screen paints, not when the
+		// deferred capture describes it. A second `render()` in the gap must take
+		// the same one-shot refusal it takes after capture — accepted, it would
+		// append a second tree onto the already-painted page.
+		const { dom, main, scheduled, renderPage } = installEngineEnvironment();
+		firstScreenRoot.render(MainSingleHost, { id: 'gap-oneshot' });
+		main.markFirstScreenSyncReady();
+		renderPage();
+		expect(dom.window.document.querySelector('#gap-oneshot')).not.toBeNull();
+		expect(scheduled).toHaveLength(1);
+
+		expect(() => firstScreenRoot.render(MainSingleHost, { id: 'gap-oneshot-again' })).toThrow(
+			/one-shot/,
+		);
+		expect(dom.window.document.querySelector('#gap-oneshot-again')).toBeNull();
+		expect(dom.window.document.querySelectorAll('[id^="gap-oneshot"]')).toHaveLength(1);
+
+		scheduled.pop()!();
+		expect(main.firstScreenSnapshot()).toMatchObject({ root: 1, version: 1 });
+		expect(main.diagnostics()).toEqual([]);
+	});
+
 	it('declines the deferral for a receiver given no after-paint rung', () => {
 		// Decline, never approximate: with no macrotask rung there is nowhere to
 		// put capture that is genuinely past the frame, so it keeps today's order

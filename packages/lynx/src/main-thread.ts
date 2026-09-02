@@ -2142,6 +2142,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		deferCapture: boolean,
 	): LynxFirstScreenRenderResult | null => {
 		if (closed) throw new Error('Octane Lynx first-screen root rendered after receiver close.');
+		// The render window closes when the first screen paints, not when the
+		// deferred capture describes it. During that gap the state still reads
+		// `open`, so settle the pending capture first and let the one-shot guard
+		// give a second render the same refusal it gets after capture — accepted,
+		// it would append a second tree onto the already-painted page.
+		ensureFirstScreenCaptured();
 		if (firstScreenState !== 'open') {
 			throw new Error(
 				'Octane Lynx first-screen root is one-shot and its render window has closed.',
@@ -2305,6 +2311,15 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		}
 		if (closed) throw new Error('Octane Lynx first-screen synchronization ran after close.');
 		if (firstScreenSyncReady) return;
+		// A mark landing between the paint and the scheduled capture must not read
+		// the still-`open` state as "nothing rendered": that would settle a painted
+		// screen as skipped and announce readiness with no first tree, and the
+		// background would paint the page again over the one on the glass. The
+		// announcement this mark releases needs the description anyway, so bring
+		// capture forward — before `firstScreenSyncReady` flips, so the capture's
+		// own announce attempt stays withheld and the one below is the one that
+		// goes out.
+		ensureFirstScreenCaptured();
 		firstScreenSyncReady = true;
 		if (
 			firstScreenState === 'open' &&
