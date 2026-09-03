@@ -1,0 +1,1931 @@
+{
+  "protocol": "octane-b230f8a77-lepusng-probe-v1",
+  "startedAt": "2026-09-03T08:57:21.901Z",
+  "targetCommit": "b230f8a77d8199adb536fef4890bbc6911ef5708",
+  "method": {
+    "repetitions": 6,
+    "pairOrder": "AB then BA, repeated; A=Octane, B=upstream ReactLynx",
+    "recycleEveryPages": 2,
+    "lifecycle": "fresh Lynx page for every sample; Explorer process recycled every two pages",
+    "createBoundary": "native input-handler start -> transport ACK -> two native frames",
+    "fcpBoundary": "Performance loadBundle pipeline openTime -> totalFcp/lynxFcp"
+  },
+  "bundles": {
+    "octane": {
+      "0": {
+        "path": "<octane-measurement-worktree>/benchmarks/lynx-table/app/dist-mtsprogram/main.lynx.bundle",
+        "bytes": 558420,
+        "sha256": "b687b1095f7f92fe2da770a381585844d8fc945ac32d5204a08593c2af21c7fe"
+      },
+      "1000": {
+        "path": "<octane-measurement-worktree>/benchmarks/lynx-table/app/dist-mtsprogram-rows1000/main.lynx.bundle",
+        "bytes": 558715,
+        "sha256": "fb3119e7644513ec401cb6af035d71bef97cd98d2d37864a20982c65942291f6"
+      },
+      "10000": {
+        "path": "<octane-measurement-worktree>/benchmarks/lynx-table/app/dist-mtsprogram-rows10000/main.lynx.bundle",
+        "bytes": 558715,
+        "sha256": "2af4a9740daae05b399f016f006c728201a7ff9bda050ad96e1685dc7f9258c2"
+      }
+    },
+    "reactlynx": {
+      "0": {
+        "path": "<benchmark-measurement-worktree>/entries/react/dist/rows-0/main.lynx.bundle",
+        "bytes": 102368,
+        "sha256": "f6dc11bd0c4860be542464d83fb1e3543d8f8f0625f26f84c3c68e59d7b4bd27"
+      },
+      "1000": {
+        "path": "<benchmark-measurement-worktree>/entries/react/dist/rows-1000/main.lynx.bundle",
+        "bytes": 102957,
+        "sha256": "893caede546f1825159ceb1c538c780c4ffafd2ea1536ef806a265164525fa34"
+      },
+      "10000": {
+        "path": "<benchmark-measurement-worktree>/entries/react/dist/rows-10000/main.lynx.bundle",
+        "bytes": 102957,
+        "sha256": "a95673d11a4b51dbd30f1f0c3999f7e17b3d43a59829cee42ab7ec264e491222"
+      }
+    }
+  },
+  "logs": [
+    {
+      "at": "2026-09-03T08:57:23.534Z",
+      "message": "  [sandbox] octane-b230f8a77 rows-1000 session=2"
+    },
+    {
+      "at": "2026-09-03T08:57:38.545Z",
+      "message": "  [sandbox] octane-b230f8a77 startup@1000 DNF: Error: timeout waiting for the Native loadBundle timing pipeline."
+    },
+    {
+      "at": "2026-09-03T08:57:39.053Z",
+      "message": "  [sandbox] react rows-1000 session=3"
+    },
+    {
+      "at": "2026-09-03T08:57:58.364Z",
+      "message": "  [sandbox] react rows-1000 session=2"
+    },
+    {
+      "at": "2026-09-03T08:58:00.026Z",
+      "message": "  [sandbox] octane-b230f8a77 rows-1000 session=3"
+    },
+    {
+      "at": "2026-09-03T08:58:15.036Z",
+      "message": "  [sandbox] octane-b230f8a77 startup@1000 DNF: Error: timeout waiting for the Native loadBundle timing pipeline."
+    },
+    {
+      "at": "2026-09-03T08:58:26.650Z",
+      "message": "  [sandbox] octane-b230f8a77 rows-1000 session=2"
+    },
+    {
+      "at": "2026-09-03T08:58:41.652Z",
+      "message": "  [sandbox] octane-b230f8a77 startup@1000 DNF: Error: CDP Performance.getAllPerformanceEntries failed: Error: timeout waiting 5ms for Performance.getAllPerformanceEntries"
+    },
+    {
+      "at": "2026-09-03T08:58:42.225Z",
+      "message": "  [sandbox] react rows-1000 session=3"
+    },
+    {
+      "at": "2026-09-03T08:59:01.469Z",
+      "message": "  [sandbox] react rows-1000 session=2"
+    },
+    {
+      "at": "2026-09-03T08:59:03.221Z",
+      "message": "  [sandbox] octane-b230f8a77 rows-1000 session=3"
+    },
+    {
+      "at": "2026-09-03T08:59:18.236Z",
+      "message": "  [sandbox] octane-b230f8a77 startup@1000 DNF: Error: timeout waiting for the Native loadBundle timing pipeline."
+    },
+    {
+      "at": "2026-09-03T08:59:29.858Z",
+      "message": "  [sandbox] octane-b230f8a77 rows-1000 session=2"
+    },
+    {
+      "at": "2026-09-03T08:59:44.863Z",
+      "message": "  [sandbox] octane-b230f8a77 startup@1000 DNF: Error: timeout waiting for the Native loadBundle timing pipeline."
+    },
+    {
+      "at": "2026-09-03T08:59:45.370Z",
+      "message": "  [sandbox] react rows-1000 session=3"
+    },
+    {
+      "at": "2026-09-03T09:00:04.840Z",
+      "message": "  [sandbox] react rows-1000 session=2"
+    },
+    {
+      "at": "2026-09-03T09:00:06.492Z",
+      "message": "  [sandbox] octane-b230f8a77 rows-1000 session=3"
+    },
+    {
+      "at": "2026-09-03T09:00:21.509Z",
+      "message": "  [sandbox] octane-b230f8a77 startup@1000 DNF: Error: timeout waiting for the Native loadBundle timing pipeline."
+    }
+  ],
+  "samples": [
+    {
+      "scenario": "fcp@1000",
+      "framework": "octane",
+      "repetition": 1,
+      "pairPosition": 0,
+      "pageOrdinal": 1,
+      "processState": "cold-after-explorer-launch",
+      "startedAt": "2026-09-03T08:57:23.050Z",
+      "bundleSha256": "fb3119e7644513ec401cb6af035d71bef97cd98d2d37864a20982c65942291f6",
+      "attempts": 1,
+      "loadedAt": "2026-09-03T08:57:23.534Z",
+      "observed": {
+        "dnf": true,
+        "failure": {
+          "category": "timeout",
+          "entry": "octane-b230f8a77",
+          "workload": "startup",
+          "scale": 1000,
+          "timeoutMs": 15000,
+          "message": "Error: timeout waiting for the Native loadBundle timing pipeline.",
+          "capabilityScope": "cell",
+          "evidence": {
+            "lastStartupProbe": {
+              "capturedAt": "2026-09-03T08:57:38.528Z",
+              "performanceEntryCount": 0,
+              "pipelineEntries": [],
+              "timingInfo": {
+                "extraTiming": {
+                  "container_init_end": 1788425842409,
+                  "container_init_start": 1788425842405,
+                  "open_time": 1788425842405,
+                  "prepare_template_end": 1788425842411,
+                  "prepare_template_start": 1788425842411
+                }
+              }
+            },
+            "capabilityProven": false,
+            "producerProtocolExpected": "lynx-native-startup-v1"
+          }
+        },
+        "metricContracts": [
+          {
+            "name": "octaneCommitAck",
+            "unit": "ms",
+            "boundary": "native-open-request-to-octane-transport-ack"
+          },
+          {
+            "name": "octaneSecondFrame",
+            "unit": "ms",
+            "boundary": "native-open-request-to-second-frame-after-octane-transport-ack"
+          }
+        ]
+      },
+      "finishedAt": "2026-09-03T08:57:38.546Z"
+    },
+    {
+      "scenario": "fcp@1000",
+      "framework": "reactlynx",
+      "repetition": 1,
+      "pairPosition": 1,
+      "pageOrdinal": 2,
+      "processState": "warm-process",
+      "startedAt": "2026-09-03T08:57:38.546Z",
+      "bundleSha256": "893caede546f1825159ceb1c538c780c4ffafd2ea1536ef806a265164525fa34",
+      "attempts": 1,
+      "loadedAt": "2026-09-03T08:57:39.054Z",
+      "observed": {
+        "fcpMs": 1320.33,
+        "settledMs": 1320.330078125,
+        "detail": {
+          "kind": "pipeline",
+          "pipeline": {
+            "containerInitEnd": 1788425857994,
+            "containerInitStart": 1788425857989,
+            "createLynxEnd": 1788425857996,
+            "createLynxStart": 1788425857995,
+            "create_vdom_end": 1788425858903.464,
+            "create_vdom_start": 1788425858051.913,
+            "entryType": "pipeline",
+            "fcp": {
+              "duration": 1312.33,
+              "endTimestamp": 1788425859309.33,
+              "endTimestampName": "paintEnd",
+              "name": "fcp",
+              "startTimestamp": 1788425857997,
+              "startTimestampName": "prepareTemplateStart"
+            },
+            "ffiEnd": 1788425858036.118,
+            "ffiStart": 1788425858035.971,
+            "frameworkRenderingTiming": {
+              "dataProcessorEnd": 1788425858051.851,
+              "dataProcessorStart": 1788425858051.83,
+              "setInitDataEnd": 1788425858051.854,
+              "setInitDataStart": 1788425858051.852,
+              "vmExecuteEnd": 1788425858051.822,
+              "vmExecuteStart": 1788425858037.636
+            },
+            "hostPlatformTiming": {
+              "drawEnd": 1788425859309.326,
+              "drawStart": 1788425859273.274,
+              "hostPlatformType": "Android",
+              "layoutEnd": 1788425859273.201,
+              "layoutStart": 1788425859272.808,
+              "measureEnd": 1788425859272.769,
+              "measureStart": 1788425859271.706
+            },
+            "instanceId": 2,
+            "layoutEnd": 1788425859232.722,
+            "layoutStart": 1788425859150.338,
+            "layoutUiOperationExecuteEnd": 1788425859268.564,
+            "layoutUiOperationExecuteStart": 1788425859256.714,
+            "loadBackgroundEnd": 1788425858239.689,
+            "loadBackgroundStart": 1788425858052.005,
+            "loadBundleEnd": 1788425859270.328,
+            "loadBundleStart": 1788425858034.894,
+            "loadCoreEnd": 1788425858012.733,
+            "loadCoreStart": 1788425857996.174,
+            "lynxFcp": {
+              "duration": 1274.436,
+              "endTimestamp": 1788425859309.33,
+              "endTimestampName": "paintEnd",
+              "name": "lynxFcp",
+              "startTimestamp": 1788425858034.894,
+              "startTimestampName": "loadBundleStart"
+            },
+            "mtsRenderEnd": 1788425858903.468,
+            "mtsRenderStart": 1788425858037.632,
+            "name": "loadBundle",
+            "openTime": 1788425857989,
+            "paintEnd": 1788425859309.33,
+            "paintingUiOperationExecuteEnd": 1788425859248.273,
+            "paintingUiOperationExecuteStart": 1788425859237.182,
+            "parseEnd": 1788425858037.629,
+            "parseStart": 1788425858036.167,
+            "pipelineEnd": 1788425859309.33,
+            "pipelineStart": 1788425858034.894,
+            "prepareTemplateEnd": 1788425857997,
+            "prepareTemplateStart": 1788425857997,
+            "resolveEnd": 1788425859150.27,
+            "resolveStart": 1788425858903.472,
+            "totalFcp": {
+              "duration": 1320.33,
+              "endTimestamp": 1788425859309.33,
+              "endTimestampName": "paintEnd",
+              "name": "totalFcp",
+              "startTimestamp": 1788425857989,
+              "startTimestampName": "openTime"
+            }
+          },
+          "producer": {
+            "openTime": 1788425857989,
+            "timingInfo": {
+              "extra_timing": {
+                "container_init_end": 1788425857994,
+                "container_init_start": 1788425857989,
+                "open_time": 1788425857989,
+                "prepare_template_end": 1788425857997,
+                "prepare_template_start": 1788425857997
+              },
+              "has_reload": 0,
+              "metrics": {
+                "fcp": 1312.33,
+                "lynx_fcp": 1274.436,
+                "lynx_tti": 1274.436,
+                "total_fcp": 1320.33,
+                "total_tti": 1320.33,
+                "tti": 1312.33
+              },
+              "setup_timing": {
+                "create_lynx_end": 1788425857996,
+                "create_lynx_start": 1788425857995,
+                "create_vdom_end": 1788425858903.464,
+                "create_vdom_start": 1788425858051.913,
+                "data_processor_end": 1788425858051.851,
+                "data_processor_start": 1788425858051.83,
+                "decode_end": 1788425858037.629,
+                "decode_start": 1788425858036.167,
+                "dispatch_end": 1788425859150.27,
+                "dispatch_start": 1788425858903.472,
+                "draw_end": 1788425859309.33,
+                "ffi_end": 1788425858036.118,
+                "ffi_start": 1788425858035.971,
+                "layout_end": 1788425859232.722,
+                "layout_start": 1788425859150.338,
+                "layout_ui_operation_flush_start": 1788425859256.714,
+                "lepus_excute_end": 1788425858051.822,
+                "lepus_excute_start": 1788425858037.636,
+                "load_app_end": 1788425858239.689,
+                "load_app_start": 1788425858052.005,
+                "load_core_end": 1788425858012.733,
+                "load_core_start": 1788425857996.174,
+                "load_template_end": 1788425859270.328,
+                "load_template_start": 1788425858034.894,
+                "painting_ui_operation_flush_end": 1788425859248.273,
+                "pipeline_start": 1788425858034.894,
+                "set_init_data_end": 1788425858051.854,
+                "set_init_data_start": 1788425858051.852,
+                "ui_operation_flush_end": 1788425859268.564,
+                "ui_operation_flush_start": 1788425859237.182
+              },
+              "thread_strategy": 0,
+              "update_timings": {},
+              "url": ""
+            },
+            "startup": {
+              "protocol": "lynx-native-startup-v1",
+              "moduleStartMs": 1788425858076,
+              "renderEvidence": {
+                "kind": "native-animation-frame",
+                "frames": 2
+              },
+              "firstFrameMs": 1788425858253,
+              "secondFrameMs": 1788425858269,
+              "postState": {
+                "rowCount": 1000,
+                "firstId": 1,
+                "secondId": 2,
+                "thirdId": 3,
+                "row998Id": 999,
+                "firstLabel": "large white cookie",
+                "selectedId": null
+              }
+            }
+          }
+        }
+      },
+      "finishedAt": "2026-09-03T08:57:46.763Z"
+    },
+    {
+      "scenario": "fcp@1000",
+      "framework": "reactlynx",
+      "repetition": 2,
+      "pairPosition": 0,
+      "pageOrdinal": 3,
+      "processState": "cold-after-explorer-launch",
+      "startedAt": "2026-09-03T08:57:46.763Z",
+      "bundleSha256": "893caede546f1825159ceb1c538c780c4ffafd2ea1536ef806a265164525fa34",
+      "attempts": 1,
+      "loadedAt": "2026-09-03T08:57:58.365Z",
+      "observed": {
+        "fcpMs": 1398.754,
+        "settledMs": 1398.75390625,
+        "detail": {
+          "kind": "pipeline",
+          "pipeline": {
+            "containerInitEnd": 1788425877248,
+            "containerInitStart": 1788425877244,
+            "createLynxEnd": 1788425877250,
+            "createLynxStart": 1788425877248,
+            "create_vdom_end": 1788425878161.461,
+            "create_vdom_start": 1788425877319.313,
+            "entryType": "pipeline",
+            "fcp": {
+              "duration": 1392.754,
+              "endTimestamp": 1788425878642.754,
+              "endTimestampName": "paintEnd",
+              "name": "fcp",
+              "startTimestamp": 1788425877250,
+              "startTimestampName": "prepareTemplateStart"
+            },
+            "ffiEnd": 1788425877302.817,
+            "ffiStart": 1788425877302.654,
+            "frameworkRenderingTiming": {
+              "dataProcessorEnd": 1788425877319.233,
+              "dataProcessorStart": 1788425877319.212,
+              "setInitDataEnd": 1788425877319.237,
+              "setInitDataStart": 1788425877319.235,
+              "vmExecuteEnd": 1788425877319.204,
+              "vmExecuteStart": 1788425877304.525
+            },
+            "hostPlatformTiming": {
+              "drawEnd": 1788425878642.748,
+              "drawStart": 1788425878609.462,
+              "hostPlatformType": "Android",
+              "layoutEnd": 1788425878609.38,
+              "layoutStart": 1788425878606.621,
+              "measureEnd": 1788425878606.586,
+              "measureStart": 1788425878604.746
+            },
+            "instanceId": 1,
+            "layoutEnd": 1788425878556.816,
+            "layoutStart": 1788425878434.813,
+            "layoutUiOperationExecuteEnd": 1788425878601.689,
+            "layoutUiOperationExecuteStart": 1788425878586.354,
+            "loadBackgroundEnd": 1788425877501.572,
+            "loadBackgroundStart": 1788425877319.384,
+            "loadBundleEnd": 1788425878603.399,
+            "loadBundleStart": 1788425877301.909,
+            "loadCoreEnd": 1788425877265.927,
+            "loadCoreStart": 1788425877249.975,
+            "lynxFcp": {
+              "duration": 1340.845,
+              "endTimestamp": 1788425878642.754,
+              "endTimestampName": "paintEnd",
+              "name": "lynxFcp",
+              "startTimestamp": 1788425877301.909,
+              "startTimestampName": "loadBundleStart"
+            },
+            "mtsRenderEnd": 1788425878161.465,
+            "mtsRenderStart": 1788425877304.522,
+            "name": "loadBundle",
+            "openTime": 1788425877244,
+            "paintEnd": 1788425878642.754,
+            "paintingUiOperationExecuteEnd": 1788425878582.168,
+            "paintingUiOperationExecuteStart": 1788425878561.537,
+            "parseEnd": 1788425877304.519,
+            "parseStart": 1788425877302.876,
+            "pipelineEnd": 1788425878642.754,
+            "pipelineStart": 1788425877301.909,
+            "prepareTemplateEnd": 1788425877250,
+            "prepareTemplateStart": 1788425877250,
+            "resolveEnd": 1788425878434.73,
+            "resolveStart": 1788425878161.469,
+            "totalFcp": {
+              "duration": 1398.754,
+              "endTimestamp": 1788425878642.754,
+              "endTimestampName": "paintEnd",
+              "name": "totalFcp",
+              "startTimestamp": 1788425877244,
+              "startTimestampName": "openTime"
+            }
+          },
+          "producer": {
+            "openTime": 1788425877244,
+            "timingInfo": {
+              "extra_timing": {
+                "container_init_end": 1788425877248,
+                "container_init_start": 1788425877244,
+                "open_time": 1788425877244,
+                "prepare_template_end": 1788425877250,
+                "prepare_template_start": 1788425877250
+              },
+              "has_reload": 0,
+              "metrics": {
+                "fcp": 1392.754,
+                "lynx_fcp": 1340.845,
+                "lynx_tti": 1340.845,
+                "total_fcp": 1398.754,
+                "total_tti": 1398.754,
+                "tti": 1392.754
+              },
+              "setup_timing": {
+                "create_lynx_end": 1788425877250,
+                "create_lynx_start": 1788425877248,
+                "create_vdom_end": 1788425878161.461,
+                "create_vdom_start": 1788425877319.313,
+                "data_processor_end": 1788425877319.233,
+                "data_processor_start": 1788425877319.212,
+                "decode_end": 1788425877304.519,
+                "decode_start": 1788425877302.876,
+                "dispatch_end": 1788425878434.73,
+                "dispatch_start": 1788425878161.469,
+                "draw_end": 1788425878642.754,
+                "ffi_end": 1788425877302.817,
+                "ffi_start": 1788425877302.654,
+                "layout_end": 1788425878556.816,
+                "layout_start": 1788425878434.813,
+                "layout_ui_operation_flush_start": 1788425878586.354,
+                "lepus_excute_end": 1788425877319.204,
+                "lepus_excute_start": 1788425877304.525,
+                "load_app_end": 1788425877501.572,
+                "load_app_start": 1788425877319.384,
+                "load_core_end": 1788425877265.927,
+                "load_core_start": 1788425877249.975,
+                "load_template_end": 1788425878603.399,
+                "load_template_start": 1788425877301.909,
+                "painting_ui_operation_flush_end": 1788425878582.168,
+                "pipeline_start": 1788425877301.909,
+                "set_init_data_end": 1788425877319.237,
+                "set_init_data_start": 1788425877319.235,
+                "ui_operation_flush_end": 1788425878601.689,
+                "ui_operation_flush_start": 1788425878561.537
+              },
+              "thread_strategy": 0,
+              "update_timings": {},
+              "url": ""
+            },
+            "startup": {
+              "protocol": "lynx-native-startup-v1",
+              "moduleStartMs": 1788425877339,
+              "renderEvidence": {
+                "kind": "native-animation-frame",
+                "frames": 2
+              },
+              "firstFrameMs": 1788425877505,
+              "secondFrameMs": 1788425877522,
+              "postState": {
+                "rowCount": 1000,
+                "firstId": 1,
+                "secondId": 2,
+                "thirdId": 3,
+                "row998Id": 999,
+                "firstLabel": "large white cookie",
+                "selectedId": null
+              }
+            }
+          }
+        }
+      },
+      "finishedAt": "2026-09-03T08:57:59.488Z"
+    },
+    {
+      "scenario": "fcp@1000",
+      "framework": "octane",
+      "repetition": 2,
+      "pairPosition": 1,
+      "pageOrdinal": 4,
+      "processState": "warm-process",
+      "startedAt": "2026-09-03T08:57:59.489Z",
+      "bundleSha256": "fb3119e7644513ec401cb6af035d71bef97cd98d2d37864a20982c65942291f6",
+      "attempts": 1,
+      "loadedAt": "2026-09-03T08:58:00.027Z",
+      "observed": {
+        "dnf": true,
+        "failure": {
+          "category": "timeout",
+          "entry": "octane-b230f8a77",
+          "workload": "startup",
+          "scale": 1000,
+          "timeoutMs": 15000,
+          "message": "Error: timeout waiting for the Native loadBundle timing pipeline.",
+          "capabilityScope": "cell",
+          "evidence": {
+            "lastStartupProbe": {
+              "capturedAt": "2026-09-03T08:58:15.019Z",
+              "performanceEntryCount": 0,
+              "pipelineEntries": [],
+              "timingInfo": {
+                "extraTiming": {
+                  "container_init_end": 1788425878922,
+                  "container_init_start": 1788425878919,
+                  "open_time": 1788425878919,
+                  "prepare_template_end": 1788425878925,
+                  "prepare_template_start": 1788425878925
+                }
+              }
+            },
+            "capabilityProven": false,
+            "producerProtocolExpected": "lynx-native-startup-v1"
+          }
+        },
+        "metricContracts": [
+          {
+            "name": "octaneCommitAck",
+            "unit": "ms",
+            "boundary": "native-open-request-to-octane-transport-ack"
+          },
+          {
+            "name": "octaneSecondFrame",
+            "unit": "ms",
+            "boundary": "native-open-request-to-second-frame-after-octane-transport-ack"
+          }
+        ]
+      },
+      "finishedAt": "2026-09-03T08:58:15.036Z"
+    },
+    {
+      "scenario": "fcp@1000",
+      "framework": "octane",
+      "repetition": 3,
+      "pairPosition": 0,
+      "pageOrdinal": 5,
+      "processState": "cold-after-explorer-launch",
+      "startedAt": "2026-09-03T08:58:15.037Z",
+      "bundleSha256": "fb3119e7644513ec401cb6af035d71bef97cd98d2d37864a20982c65942291f6",
+      "attempts": 1,
+      "loadedAt": "2026-09-03T08:58:26.651Z",
+      "observed": {
+        "dnf": true,
+        "failure": {
+          "category": "timeout",
+          "entry": "octane-b230f8a77",
+          "workload": "startup",
+          "scale": 1000,
+          "timeoutMs": 15000,
+          "message": "Error: CDP Performance.getAllPerformanceEntries failed: Error: timeout waiting 5ms for Performance.getAllPerformanceEntries",
+          "capabilityScope": "cell",
+          "evidence": {
+            "lastStartupProbe": {
+              "capturedAt": "2026-09-03T08:58:41.630Z",
+              "performanceEntryCount": 0,
+              "pipelineEntries": [],
+              "timingInfo": {
+                "extraTiming": {
+                  "container_init_end": 1788425905535,
+                  "container_init_start": 1788425905530,
+                  "open_time": 1788425905530,
+                  "prepare_template_end": 1788425905537,
+                  "prepare_template_start": 1788425905537
+                }
+              }
+            },
+            "capabilityProven": false,
+            "producerProtocolExpected": "lynx-native-startup-v1"
+          }
+        },
+        "metricContracts": [
+          {
+            "name": "octaneCommitAck",
+            "unit": "ms",
+            "boundary": "native-open-request-to-octane-transport-ack"
+          },
+          {
+            "name": "octaneSecondFrame",
+            "unit": "ms",
+            "boundary": "native-open-request-to-second-frame-after-octane-transport-ack"
+          }
+        ]
+      },
+      "finishedAt": "2026-09-03T08:58:41.653Z"
+    },
+    {
+      "scenario": "fcp@1000",
+      "framework": "reactlynx",
+      "repetition": 3,
+      "pairPosition": 1,
+      "pageOrdinal": 6,
+      "processState": "warm-process",
+      "startedAt": "2026-09-03T08:58:41.653Z",
+      "bundleSha256": "893caede546f1825159ceb1c538c780c4ffafd2ea1536ef806a265164525fa34",
+      "attempts": 1,
+      "loadedAt": "2026-09-03T08:58:42.225Z",
+      "observed": {
+        "fcpMs": 1333.036,
+        "settledMs": 1333.035888671875,
+        "detail": {
+          "kind": "pipeline",
+          "pipeline": {
+            "containerInitEnd": 1788425921105,
+            "containerInitStart": 1788425921102,
+            "createLynxEnd": 1788425921106,
+            "createLynxStart": 1788425921105,
+            "create_vdom_end": 1788425922018.33,
+            "create_vdom_start": 1788425921163.126,
+            "entryType": "pipeline",
+            "fcp": {
+              "duration": 1328.036,
+              "endTimestamp": 1788425922435.036,
+              "endTimestampName": "paintEnd",
+              "name": "fcp",
+              "startTimestamp": 1788425921107,
+              "startTimestampName": "prepareTemplateStart"
+            },
+            "ffiEnd": 1788425921146.634,
+            "ffiStart": 1788425921146.451,
+            "frameworkRenderingTiming": {
+              "dataProcessorEnd": 1788425921163.06,
+              "dataProcessorStart": 1788425921163.04,
+              "setInitDataEnd": 1788425921163.063,
+              "setInitDataStart": 1788425921163.061,
+              "vmExecuteEnd": 1788425921163.034,
+              "vmExecuteStart": 1788425921148.325
+            },
+            "hostPlatformTiming": {
+              "drawEnd": 1788425922435.027,
+              "drawStart": 1788425922392.98,
+              "hostPlatformType": "Android",
+              "layoutEnd": 1788425922392.903,
+              "layoutStart": 1788425922392.39,
+              "measureEnd": 1788425922392.351,
+              "measureStart": 1788425922391.158
+            },
+            "instanceId": 2,
+            "layoutEnd": 1788425922361.221,
+            "layoutStart": 1788425922277.059,
+            "layoutUiOperationExecuteEnd": 1788425922388.017,
+            "layoutUiOperationExecuteStart": 1788425922376.783,
+            "loadBackgroundEnd": 1788425921345.989,
+            "loadBackgroundStart": 1788425921163.189,
+            "loadBundleEnd": 1788425922389.785,
+            "loadBundleStart": 1788425921145.678,
+            "loadCoreEnd": 1788425921119.581,
+            "loadCoreStart": 1788425921106.59,
+            "lynxFcp": {
+              "duration": 1289.358,
+              "endTimestamp": 1788425922435.036,
+              "endTimestampName": "paintEnd",
+              "name": "lynxFcp",
+              "startTimestamp": 1788425921145.678,
+              "startTimestampName": "loadBundleStart"
+            },
+            "mtsRenderEnd": 1788425922018.334,
+            "mtsRenderStart": 1788425921148.321,
+            "name": "loadBundle",
+            "openTime": 1788425921102,
+            "paintEnd": 1788425922435.036,
+            "paintingUiOperationExecuteEnd": 1788425922374.774,
+            "paintingUiOperationExecuteStart": 1788425922365.537,
+            "parseEnd": 1788425921148.318,
+            "parseStart": 1788425921146.684,
+            "pipelineEnd": 1788425922435.036,
+            "pipelineStart": 1788425921145.678,
+            "prepareTemplateEnd": 1788425921107,
+            "prepareTemplateStart": 1788425921107,
+            "resolveEnd": 1788425922276.992,
+            "resolveStart": 1788425922018.338,
+            "totalFcp": {
+              "duration": 1333.036,
+              "endTimestamp": 1788425922435.036,
+              "endTimestampName": "paintEnd",
+              "name": "totalFcp",
+              "startTimestamp": 1788425921102,
+              "startTimestampName": "openTime"
+            }
+          },
+          "producer": {
+            "openTime": 1788425921102,
+            "timingInfo": {
+              "extra_timing": {
+                "container_init_end": 1788425921105,
+                "container_init_start": 1788425921102,
+                "open_time": 1788425921102,
+                "prepare_template_end": 1788425921107,
+                "prepare_template_start": 1788425921107
+              },
+              "has_reload": 0,
+              "metrics": {
+                "fcp": 1328.036,
+                "lynx_fcp": 1289.358,
+                "lynx_tti": 1289.358,
+                "total_fcp": 1333.036,
+                "total_tti": 1333.036,
+                "tti": 1328.036
+              },
+              "setup_timing": {
+                "create_lynx_end": 1788425921106,
+                "create_lynx_start": 1788425921105,
+                "create_vdom_end": 1788425922018.33,
+                "create_vdom_start": 1788425921163.126,
+                "data_processor_end": 1788425921163.06,
+                "data_processor_start": 1788425921163.04,
+                "decode_end": 1788425921148.318,
+                "decode_start": 1788425921146.684,
+                "dispatch_end": 1788425922276.992,
+                "dispatch_start": 1788425922018.338,
+                "draw_end": 1788425922435.036,
+                "ffi_end": 1788425921146.634,
+                "ffi_start": 1788425921146.451,
+                "layout_end": 1788425922361.221,
+                "layout_start": 1788425922277.059,
+                "layout_ui_operation_flush_start": 1788425922376.783,
+                "lepus_excute_end": 1788425921163.034,
+                "lepus_excute_start": 1788425921148.325,
+                "load_app_end": 1788425921345.989,
+                "load_app_start": 1788425921163.189,
+                "load_core_end": 1788425921119.581,
+                "load_core_start": 1788425921106.59,
+                "load_template_end": 1788425922389.785,
+                "load_template_start": 1788425921145.678,
+                "painting_ui_operation_flush_end": 1788425922374.774,
+                "pipeline_start": 1788425921145.678,
+                "set_init_data_end": 1788425921163.063,
+                "set_init_data_start": 1788425921163.061,
+                "ui_operation_flush_end": 1788425922388.017,
+                "ui_operation_flush_start": 1788425922365.537
+              },
+              "thread_strategy": 0,
+              "update_timings": {},
+              "url": ""
+            },
+            "startup": {
+              "protocol": "lynx-native-startup-v1",
+              "moduleStartMs": 1788425921182,
+              "renderEvidence": {
+                "kind": "native-animation-frame",
+                "frames": 2
+              },
+              "firstFrameMs": 1788425921360,
+              "secondFrameMs": 1788425921377,
+              "postState": {
+                "rowCount": 1000,
+                "firstId": 1,
+                "secondId": 2,
+                "thirdId": 3,
+                "row998Id": 999,
+                "firstLabel": "large white cookie",
+                "selectedId": null
+              }
+            }
+          }
+        }
+      },
+      "finishedAt": "2026-09-03T08:58:49.889Z"
+    },
+    {
+      "scenario": "fcp@1000",
+      "framework": "reactlynx",
+      "repetition": 4,
+      "pairPosition": 0,
+      "pageOrdinal": 7,
+      "processState": "cold-after-explorer-launch",
+      "startedAt": "2026-09-03T08:58:49.890Z",
+      "bundleSha256": "893caede546f1825159ceb1c538c780c4ffafd2ea1536ef806a265164525fa34",
+      "attempts": 1,
+      "loadedAt": "2026-09-03T08:59:01.470Z",
+      "observed": {
+        "fcpMs": 1435.944,
+        "settledMs": 1435.944091796875,
+        "detail": {
+          "kind": "pipeline",
+          "pipeline": {
+            "containerInitEnd": 1788425940405,
+            "containerInitStart": 1788425940400,
+            "createLynxEnd": 1788425940406,
+            "createLynxStart": 1788425940405,
+            "create_vdom_end": 1788425941306.225,
+            "create_vdom_start": 1788425940462.419,
+            "entryType": "pipeline",
+            "fcp": {
+              "duration": 1428.944,
+              "endTimestamp": 1788425941835.944,
+              "endTimestampName": "paintEnd",
+              "name": "fcp",
+              "startTimestamp": 1788425940407,
+              "startTimestampName": "prepareTemplateStart"
+            },
+            "ffiEnd": 1788425940446.403,
+            "ffiStart": 1788425940446.285,
+            "frameworkRenderingTiming": {
+              "dataProcessorEnd": 1788425940462.326,
+              "dataProcessorStart": 1788425940462.305,
+              "setInitDataEnd": 1788425940462.328,
+              "setInitDataStart": 1788425940462.327,
+              "vmExecuteEnd": 1788425940462.3,
+              "vmExecuteStart": 1788425940447.908
+            },
+            "hostPlatformTiming": {
+              "drawEnd": 1788425941835.939,
+              "drawStart": 1788425941796.985,
+              "hostPlatformType": "Android",
+              "layoutEnd": 1788425941796.888,
+              "layoutStart": 1788425941793.32,
+              "measureEnd": 1788425941793.274,
+              "measureStart": 1788425941790.703
+            },
+            "instanceId": 1,
+            "layoutEnd": 1788425941743.619,
+            "layoutStart": 1788425941617.295,
+            "layoutUiOperationExecuteEnd": 1788425941787.433,
+            "layoutUiOperationExecuteStart": 1788425941768.814,
+            "loadBackgroundEnd": 1788425940639.05,
+            "loadBackgroundStart": 1788425940462.47,
+            "loadBundleEnd": 1788425941789.174,
+            "loadBundleStart": 1788425940445.596,
+            "loadCoreEnd": 1788425940423.842,
+            "loadCoreStart": 1788425940406.753,
+            "lynxFcp": {
+              "duration": 1390.348,
+              "endTimestamp": 1788425941835.944,
+              "endTimestampName": "paintEnd",
+              "name": "lynxFcp",
+              "startTimestamp": 1788425940445.596,
+              "startTimestampName": "loadBundleStart"
+            },
+            "mtsRenderEnd": 1788425941306.229,
+            "mtsRenderStart": 1788425940447.905,
+            "name": "loadBundle",
+            "openTime": 1788425940400,
+            "paintEnd": 1788425941835.944,
+            "paintingUiOperationExecuteEnd": 1788425941764.403,
+            "paintingUiOperationExecuteStart": 1788425941748.098,
+            "parseEnd": 1788425940447.903,
+            "parseStart": 1788425940446.456,
+            "pipelineEnd": 1788425941835.944,
+            "pipelineStart": 1788425940445.596,
+            "prepareTemplateEnd": 1788425940407,
+            "prepareTemplateStart": 1788425940407,
+            "resolveEnd": 1788425941617.208,
+            "resolveStart": 1788425941306.232,
+            "totalFcp": {
+              "duration": 1435.944,
+              "endTimestamp": 1788425941835.944,
+              "endTimestampName": "paintEnd",
+              "name": "totalFcp",
+              "startTimestamp": 1788425940400,
+              "startTimestampName": "openTime"
+            }
+          },
+          "producer": {
+            "openTime": 1788425940400,
+            "timingInfo": {
+              "extra_timing": {
+                "container_init_end": 1788425940405,
+                "container_init_start": 1788425940400,
+                "open_time": 1788425940400,
+                "prepare_template_end": 1788425940407,
+                "prepare_template_start": 1788425940407
+              },
+              "has_reload": 0,
+              "metrics": {
+                "fcp": 1428.944,
+                "lynx_fcp": 1390.348,
+                "lynx_tti": 1390.348,
+                "total_fcp": 1435.944,
+                "total_tti": 1435.944,
+                "tti": 1428.944
+              },
+              "setup_timing": {
+                "create_lynx_end": 1788425940406,
+                "create_lynx_start": 1788425940405,
+                "create_vdom_end": 1788425941306.225,
+                "create_vdom_start": 1788425940462.419,
+                "data_processor_end": 1788425940462.326,
+                "data_processor_start": 1788425940462.305,
+                "decode_end": 1788425940447.903,
+                "decode_start": 1788425940446.456,
+                "dispatch_end": 1788425941617.208,
+                "dispatch_start": 1788425941306.232,
+                "draw_end": 1788425941835.944,
+                "ffi_end": 1788425940446.403,
+                "ffi_start": 1788425940446.285,
+                "layout_end": 1788425941743.619,
+                "layout_start": 1788425941617.295,
+                "layout_ui_operation_flush_start": 1788425941768.814,
+                "lepus_excute_end": 1788425940462.3,
+                "lepus_excute_start": 1788425940447.908,
+                "load_app_end": 1788425940639.05,
+                "load_app_start": 1788425940462.47,
+                "load_core_end": 1788425940423.842,
+                "load_core_start": 1788425940406.753,
+                "load_template_end": 1788425941789.174,
+                "load_template_start": 1788425940445.596,
+                "painting_ui_operation_flush_end": 1788425941764.403,
+                "pipeline_start": 1788425940445.596,
+                "set_init_data_end": 1788425940462.328,
+                "set_init_data_start": 1788425940462.327,
+                "ui_operation_flush_end": 1788425941787.433,
+                "ui_operation_flush_start": 1788425941748.098
+              },
+              "thread_strategy": 0,
+              "update_timings": {},
+              "url": ""
+            },
+            "startup": {
+              "protocol": "lynx-native-startup-v1",
+              "moduleStartMs": 1788425940482,
+              "renderEvidence": {
+                "kind": "native-animation-frame",
+                "frames": 2
+              },
+              "firstFrameMs": 1788425940646,
+              "secondFrameMs": 1788425940662,
+              "postState": {
+                "rowCount": 1000,
+                "firstId": 1,
+                "secondId": 2,
+                "thirdId": 3,
+                "row998Id": 999,
+                "firstLabel": "large white cookie",
+                "selectedId": null
+              }
+            }
+          }
+        }
+      },
+      "finishedAt": "2026-09-03T08:59:02.679Z"
+    },
+    {
+      "scenario": "fcp@1000",
+      "framework": "octane",
+      "repetition": 4,
+      "pairPosition": 1,
+      "pageOrdinal": 8,
+      "processState": "warm-process",
+      "startedAt": "2026-09-03T08:59:02.680Z",
+      "bundleSha256": "fb3119e7644513ec401cb6af035d71bef97cd98d2d37864a20982c65942291f6",
+      "attempts": 1,
+      "loadedAt": "2026-09-03T08:59:03.222Z",
+      "observed": {
+        "dnf": true,
+        "failure": {
+          "category": "timeout",
+          "entry": "octane-b230f8a77",
+          "workload": "startup",
+          "scale": 1000,
+          "timeoutMs": 15000,
+          "message": "Error: timeout waiting for the Native loadBundle timing pipeline.",
+          "capabilityScope": "cell",
+          "evidence": {
+            "lastStartupProbe": {
+              "capturedAt": "2026-09-03T08:59:18.219Z",
+              "performanceEntryCount": 0,
+              "pipelineEntries": [],
+              "timingInfo": {
+                "extraTiming": {
+                  "container_init_end": 1788425942113,
+                  "container_init_start": 1788425942110,
+                  "open_time": 1788425942110,
+                  "prepare_template_end": 1788425942117,
+                  "prepare_template_start": 1788425942117
+                }
+              }
+            },
+            "capabilityProven": false,
+            "producerProtocolExpected": "lynx-native-startup-v1"
+          }
+        },
+        "metricContracts": [
+          {
+            "name": "octaneCommitAck",
+            "unit": "ms",
+            "boundary": "native-open-request-to-octane-transport-ack"
+          },
+          {
+            "name": "octaneSecondFrame",
+            "unit": "ms",
+            "boundary": "native-open-request-to-second-frame-after-octane-transport-ack"
+          }
+        ]
+      },
+      "finishedAt": "2026-09-03T08:59:18.236Z"
+    },
+    {
+      "scenario": "fcp@1000",
+      "framework": "octane",
+      "repetition": 5,
+      "pairPosition": 0,
+      "pageOrdinal": 9,
+      "processState": "cold-after-explorer-launch",
+      "startedAt": "2026-09-03T08:59:18.237Z",
+      "bundleSha256": "fb3119e7644513ec401cb6af035d71bef97cd98d2d37864a20982c65942291f6",
+      "attempts": 1,
+      "loadedAt": "2026-09-03T08:59:29.859Z",
+      "observed": {
+        "dnf": true,
+        "failure": {
+          "category": "timeout",
+          "entry": "octane-b230f8a77",
+          "workload": "startup",
+          "scale": 1000,
+          "timeoutMs": 15000,
+          "message": "Error: timeout waiting for the Native loadBundle timing pipeline.",
+          "capabilityScope": "cell",
+          "evidence": {
+            "lastStartupProbe": {
+              "capturedAt": "2026-09-03T08:59:44.847Z",
+              "performanceEntryCount": 0,
+              "pipelineEntries": [],
+              "timingInfo": {
+                "extraTiming": {
+                  "container_init_end": 1788425968757,
+                  "container_init_start": 1788425968753,
+                  "open_time": 1788425968753,
+                  "prepare_template_end": 1788425968760,
+                  "prepare_template_start": 1788425968760
+                }
+              }
+            },
+            "capabilityProven": false,
+            "producerProtocolExpected": "lynx-native-startup-v1"
+          }
+        },
+        "metricContracts": [
+          {
+            "name": "octaneCommitAck",
+            "unit": "ms",
+            "boundary": "native-open-request-to-octane-transport-ack"
+          },
+          {
+            "name": "octaneSecondFrame",
+            "unit": "ms",
+            "boundary": "native-open-request-to-second-frame-after-octane-transport-ack"
+          }
+        ]
+      },
+      "finishedAt": "2026-09-03T08:59:44.864Z"
+    },
+    {
+      "scenario": "fcp@1000",
+      "framework": "reactlynx",
+      "repetition": 5,
+      "pairPosition": 1,
+      "pageOrdinal": 10,
+      "processState": "warm-process",
+      "startedAt": "2026-09-03T08:59:44.864Z",
+      "bundleSha256": "893caede546f1825159ceb1c538c780c4ffafd2ea1536ef806a265164525fa34",
+      "attempts": 1,
+      "loadedAt": "2026-09-03T08:59:45.371Z",
+      "observed": {
+        "fcpMs": 1403.944,
+        "settledMs": 1403.944091796875,
+        "detail": {
+          "kind": "pipeline",
+          "pipeline": {
+            "containerInitEnd": 1788425984313,
+            "containerInitStart": 1788425984311,
+            "createLynxEnd": 1788425984315,
+            "createLynxStart": 1788425984314,
+            "create_vdom_end": 1788425985262.261,
+            "create_vdom_start": 1788425984372.798,
+            "entryType": "pipeline",
+            "fcp": {
+              "duration": 1398.944,
+              "endTimestamp": 1788425985714.944,
+              "endTimestampName": "paintEnd",
+              "name": "fcp",
+              "startTimestamp": 1788425984316,
+              "startTimestampName": "prepareTemplateStart"
+            },
+            "ffiEnd": 1788425984356.436,
+            "ffiStart": 1788425984356.267,
+            "frameworkRenderingTiming": {
+              "dataProcessorEnd": 1788425984372.732,
+              "dataProcessorStart": 1788425984372.71,
+              "setInitDataEnd": 1788425984372.734,
+              "setInitDataStart": 1788425984372.732,
+              "vmExecuteEnd": 1788425984372.704,
+              "vmExecuteStart": 1788425984357.954
+            },
+            "hostPlatformTiming": {
+              "drawEnd": 1788425985714.938,
+              "drawStart": 1788425985669.582,
+              "hostPlatformType": "Android",
+              "layoutEnd": 1788425985669.434,
+              "layoutStart": 1788425985668.663,
+              "measureEnd": 1788425985668.608,
+              "measureStart": 1788425985666.7
+            },
+            "instanceId": 2,
+            "layoutEnd": 1788425985636.197,
+            "layoutStart": 1788425985537.261,
+            "layoutUiOperationExecuteEnd": 1788425985663.474,
+            "layoutUiOperationExecuteStart": 1788425985651.329,
+            "loadBackgroundEnd": 1788425984568.721,
+            "loadBackgroundStart": 1788425984372.874,
+            "loadBundleEnd": 1788425985665.281,
+            "loadBundleStart": 1788425984355.542,
+            "loadCoreEnd": 1788425984331.009,
+            "loadCoreStart": 1788425984315.462,
+            "lynxFcp": {
+              "duration": 1359.402,
+              "endTimestamp": 1788425985714.944,
+              "endTimestampName": "paintEnd",
+              "name": "lynxFcp",
+              "startTimestamp": 1788425984355.542,
+              "startTimestampName": "loadBundleStart"
+            },
+            "mtsRenderEnd": 1788425985262.265,
+            "mtsRenderStart": 1788425984357.95,
+            "name": "loadBundle",
+            "openTime": 1788425984311,
+            "paintEnd": 1788425985714.944,
+            "paintingUiOperationExecuteEnd": 1788425985649.281,
+            "paintingUiOperationExecuteStart": 1788425985640.84,
+            "parseEnd": 1788425984357.949,
+            "parseStart": 1788425984356.487,
+            "pipelineEnd": 1788425985714.944,
+            "pipelineStart": 1788425984355.542,
+            "prepareTemplateEnd": 1788425984316,
+            "prepareTemplateStart": 1788425984316,
+            "resolveEnd": 1788425985537.187,
+            "resolveStart": 1788425985262.269,
+            "totalFcp": {
+              "duration": 1403.944,
+              "endTimestamp": 1788425985714.944,
+              "endTimestampName": "paintEnd",
+              "name": "totalFcp",
+              "startTimestamp": 1788425984311,
+              "startTimestampName": "openTime"
+            }
+          },
+          "producer": {
+            "openTime": 1788425984311,
+            "timingInfo": {
+              "extra_timing": {
+                "container_init_end": 1788425984313,
+                "container_init_start": 1788425984311,
+                "open_time": 1788425984311,
+                "prepare_template_end": 1788425984316,
+                "prepare_template_start": 1788425984316
+              },
+              "has_reload": 0,
+              "metrics": {
+                "fcp": 1398.944,
+                "lynx_fcp": 1359.402,
+                "lynx_tti": 1359.402,
+                "total_fcp": 1403.944,
+                "total_tti": 1403.944,
+                "tti": 1398.944
+              },
+              "setup_timing": {
+                "create_lynx_end": 1788425984315,
+                "create_lynx_start": 1788425984314,
+                "create_vdom_end": 1788425985262.261,
+                "create_vdom_start": 1788425984372.798,
+                "data_processor_end": 1788425984372.732,
+                "data_processor_start": 1788425984372.71,
+                "decode_end": 1788425984357.949,
+                "decode_start": 1788425984356.487,
+                "dispatch_end": 1788425985537.187,
+                "dispatch_start": 1788425985262.269,
+                "draw_end": 1788425985714.944,
+                "ffi_end": 1788425984356.436,
+                "ffi_start": 1788425984356.267,
+                "layout_end": 1788425985636.197,
+                "layout_start": 1788425985537.261,
+                "layout_ui_operation_flush_start": 1788425985651.329,
+                "lepus_excute_end": 1788425984372.704,
+                "lepus_excute_start": 1788425984357.954,
+                "load_app_end": 1788425984568.721,
+                "load_app_start": 1788425984372.874,
+                "load_core_end": 1788425984331.009,
+                "load_core_start": 1788425984315.462,
+                "load_template_end": 1788425985665.281,
+                "load_template_start": 1788425984355.542,
+                "painting_ui_operation_flush_end": 1788425985649.281,
+                "pipeline_start": 1788425984355.542,
+                "set_init_data_end": 1788425984372.734,
+                "set_init_data_start": 1788425984372.732,
+                "ui_operation_flush_end": 1788425985663.474,
+                "ui_operation_flush_start": 1788425985640.84
+              },
+              "thread_strategy": 0,
+              "update_timings": {},
+              "url": ""
+            },
+            "startup": {
+              "protocol": "lynx-native-startup-v1",
+              "moduleStartMs": 1788425984392,
+              "renderEvidence": {
+                "kind": "native-animation-frame",
+                "frames": 2
+              },
+              "firstFrameMs": 1788425984584,
+              "secondFrameMs": 1788425984601,
+              "postState": {
+                "rowCount": 1000,
+                "firstId": 1,
+                "secondId": 2,
+                "thirdId": 3,
+                "row998Id": 999,
+                "firstLabel": "large white cookie",
+                "selectedId": null
+              }
+            }
+          }
+        }
+      },
+      "finishedAt": "2026-09-03T08:59:53.203Z"
+    },
+    {
+      "scenario": "fcp@1000",
+      "framework": "reactlynx",
+      "repetition": 6,
+      "pairPosition": 0,
+      "pageOrdinal": 11,
+      "processState": "cold-after-explorer-launch",
+      "startedAt": "2026-09-03T08:59:53.203Z",
+      "bundleSha256": "893caede546f1825159ceb1c538c780c4ffafd2ea1536ef806a265164525fa34",
+      "attempts": 1,
+      "loadedAt": "2026-09-03T09:00:04.841Z",
+      "observed": {
+        "fcpMs": 1379.74,
+        "settledMs": 1379.739990234375,
+        "detail": {
+          "kind": "pipeline",
+          "pipeline": {
+            "containerInitEnd": 1788426003725,
+            "containerInitStart": 1788426003721,
+            "createLynxEnd": 1788426003727,
+            "createLynxStart": 1788426003726,
+            "create_vdom_end": 1788426004624.784,
+            "create_vdom_start": 1788426003788.069,
+            "entryType": "pipeline",
+            "fcp": {
+              "duration": 1373.74,
+              "endTimestamp": 1788426005100.74,
+              "endTimestampName": "paintEnd",
+              "name": "fcp",
+              "startTimestamp": 1788426003727,
+              "startTimestampName": "prepareTemplateStart"
+            },
+            "ffiEnd": 1788426003772.133,
+            "ffiStart": 1788426003772.007,
+            "frameworkRenderingTiming": {
+              "dataProcessorEnd": 1788426003787.994,
+              "dataProcessorStart": 1788426003787.975,
+              "setInitDataEnd": 1788426003787.997,
+              "setInitDataStart": 1788426003787.995,
+              "vmExecuteEnd": 1788426003787.97,
+              "vmExecuteStart": 1788426003773.728
+            },
+            "hostPlatformTiming": {
+              "drawEnd": 1788426005100.734,
+              "drawStart": 1788426005065.121,
+              "hostPlatformType": "Android",
+              "layoutEnd": 1788426005065.04,
+              "layoutStart": 1788426005062.188,
+              "measureEnd": 1788426005062.152,
+              "measureStart": 1788426005060.277
+            },
+            "instanceId": 1,
+            "layoutEnd": 1788426005015.327,
+            "layoutStart": 1788426004899.983,
+            "layoutUiOperationExecuteEnd": 1788426005057.215,
+            "layoutUiOperationExecuteStart": 1788426005041.64,
+            "loadBackgroundEnd": 1788426003967.282,
+            "loadBackgroundStart": 1788426003788.125,
+            "loadBundleEnd": 1788426005058.919,
+            "loadBundleStart": 1788426003771.358,
+            "loadCoreEnd": 1788426003740.495,
+            "loadCoreStart": 1788426003727.248,
+            "lynxFcp": {
+              "duration": 1329.382,
+              "endTimestamp": 1788426005100.74,
+              "endTimestampName": "paintEnd",
+              "name": "lynxFcp",
+              "startTimestamp": 1788426003771.358,
+              "startTimestampName": "loadBundleStart"
+            },
+            "mtsRenderEnd": 1788426004624.788,
+            "mtsRenderStart": 1788426003773.724,
+            "name": "loadBundle",
+            "openTime": 1788426003721,
+            "paintEnd": 1788426005100.74,
+            "paintingUiOperationExecuteEnd": 1788426005037.491,
+            "paintingUiOperationExecuteStart": 1788426005019.759,
+            "parseEnd": 1788426003773.722,
+            "parseStart": 1788426003772.191,
+            "pipelineEnd": 1788426005100.74,
+            "pipelineStart": 1788426003771.358,
+            "prepareTemplateEnd": 1788426003727,
+            "prepareTemplateStart": 1788426003727,
+            "resolveEnd": 1788426004899.896,
+            "resolveStart": 1788426004624.791,
+            "totalFcp": {
+              "duration": 1379.74,
+              "endTimestamp": 1788426005100.74,
+              "endTimestampName": "paintEnd",
+              "name": "totalFcp",
+              "startTimestamp": 1788426003721,
+              "startTimestampName": "openTime"
+            }
+          },
+          "producer": {
+            "openTime": 1788426003721,
+            "timingInfo": {
+              "extra_timing": {
+                "container_init_end": 1788426003725,
+                "container_init_start": 1788426003721,
+                "open_time": 1788426003721,
+                "prepare_template_end": 1788426003727,
+                "prepare_template_start": 1788426003727
+              },
+              "has_reload": 0,
+              "metrics": {
+                "fcp": 1373.74,
+                "lynx_fcp": 1329.382,
+                "lynx_tti": 1329.382,
+                "total_fcp": 1379.74,
+                "total_tti": 1379.74,
+                "tti": 1373.74
+              },
+              "setup_timing": {
+                "create_lynx_end": 1788426003727,
+                "create_lynx_start": 1788426003726,
+                "create_vdom_end": 1788426004624.784,
+                "create_vdom_start": 1788426003788.069,
+                "data_processor_end": 1788426003787.994,
+                "data_processor_start": 1788426003787.975,
+                "decode_end": 1788426003773.722,
+                "decode_start": 1788426003772.191,
+                "dispatch_end": 1788426004899.896,
+                "dispatch_start": 1788426004624.791,
+                "draw_end": 1788426005100.74,
+                "ffi_end": 1788426003772.133,
+                "ffi_start": 1788426003772.007,
+                "layout_end": 1788426005015.327,
+                "layout_start": 1788426004899.983,
+                "layout_ui_operation_flush_start": 1788426005041.64,
+                "lepus_excute_end": 1788426003787.97,
+                "lepus_excute_start": 1788426003773.728,
+                "load_app_end": 1788426003967.282,
+                "load_app_start": 1788426003788.125,
+                "load_core_end": 1788426003740.495,
+                "load_core_start": 1788426003727.248,
+                "load_template_end": 1788426005058.919,
+                "load_template_start": 1788426003771.358,
+                "painting_ui_operation_flush_end": 1788426005037.491,
+                "pipeline_start": 1788426003771.358,
+                "set_init_data_end": 1788426003787.997,
+                "set_init_data_start": 1788426003787.995,
+                "ui_operation_flush_end": 1788426005057.215,
+                "ui_operation_flush_start": 1788426005019.759
+              },
+              "thread_strategy": 0,
+              "update_timings": {},
+              "url": ""
+            },
+            "startup": {
+              "protocol": "lynx-native-startup-v1",
+              "moduleStartMs": 1788426003807,
+              "renderEvidence": {
+                "kind": "native-animation-frame",
+                "frames": 2
+              },
+              "firstFrameMs": 1788426003970,
+              "secondFrameMs": 1788426003987,
+              "postState": {
+                "rowCount": 1000,
+                "firstId": 1,
+                "secondId": 2,
+                "thirdId": 3,
+                "row998Id": 999,
+                "firstLabel": "large white cookie",
+                "selectedId": null
+              }
+            }
+          }
+        }
+      },
+      "finishedAt": "2026-09-03T09:00:05.950Z"
+    },
+    {
+      "scenario": "fcp@1000",
+      "framework": "octane",
+      "repetition": 6,
+      "pairPosition": 1,
+      "pageOrdinal": 12,
+      "processState": "warm-process",
+      "startedAt": "2026-09-03T09:00:05.951Z",
+      "bundleSha256": "fb3119e7644513ec401cb6af035d71bef97cd98d2d37864a20982c65942291f6",
+      "attempts": 1,
+      "loadedAt": "2026-09-03T09:00:06.493Z",
+      "observed": {
+        "dnf": true,
+        "failure": {
+          "category": "timeout",
+          "entry": "octane-b230f8a77",
+          "workload": "startup",
+          "scale": 1000,
+          "timeoutMs": 15000,
+          "message": "Error: timeout waiting for the Native loadBundle timing pipeline.",
+          "capabilityScope": "cell",
+          "evidence": {
+            "lastStartupProbe": {
+              "capturedAt": "2026-09-03T09:00:21.493Z",
+              "performanceEntryCount": 0,
+              "pipelineEntries": [],
+              "timingInfo": null
+            },
+            "capabilityProven": false,
+            "producerProtocolExpected": "lynx-native-startup-v1"
+          }
+        },
+        "metricContracts": [
+          {
+            "name": "octaneCommitAck",
+            "unit": "ms",
+            "boundary": "native-open-request-to-octane-transport-ack"
+          },
+          {
+            "name": "octaneSecondFrame",
+            "unit": "ms",
+            "boundary": "native-open-request-to-second-frame-after-octane-transport-ack"
+          }
+        ]
+      },
+      "finishedAt": "2026-09-03T09:00:21.510Z"
+    }
+  ],
+  "error": null,
+  "environment": "lynx-native-android-aries_10-10-devtool-direct-recycle2",
+  "machine": {
+    "id": "lynx-native-android-aries_10-10-devtool-direct-recycle2-<redacted-device-lease-id>-245ce14999ea",
+    "platform": "android",
+    "osVersion": "10",
+    "cpuModel": "linaro",
+    "cores": 8,
+    "node": null,
+    "deviceModel": "ByteDance aries_10",
+    "app": "LynxExplorer",
+    "appVersion": "1.0",
+    "explorerPackage": {
+      "versionName": "1.0",
+      "versionCode": 1
+    },
+    "debugRouterVersion": "0.0.1",
+    "lynxSdkVersion": "0.0.1",
+    "connectorPackageTrees": {
+      "protocol": "connector-package-trees-v1",
+      "packages": [
+        {
+          "name": "@byted/agent-lynx",
+          "version": "0.14.4",
+          "available": true,
+          "resolvedPath": "/tmp/lynx-agent-native-3M2RVo/node_modules/@byted/agent-lynx",
+          "rootSha256": "30947a6fd180c1ab174a0c3a68fc6fd620f0e843a3883e6f8c0e16c13352ce2c",
+          "fileCount": 57,
+          "byteCount": 1213849
+        },
+        {
+          "name": "@byted-lynx/devtool-connector",
+          "version": "0.15.0",
+          "available": true,
+          "resolvedPath": "/tmp/lynx-agent-native-3M2RVo/node_modules/@byted-lynx/devtool-connector",
+          "rootSha256": "2647a81dc15ec0c122cfdc59ecb0ae5c62e57dfa930ff8ce52dbd81403c9f39b",
+          "fileCount": 85,
+          "byteCount": 4036024
+        },
+        {
+          "name": "@byted-lynx/bdc-client",
+          "version": "0.4.3",
+          "available": true,
+          "resolvedPath": "/tmp/lynx-agent-native-3M2RVo/node_modules/@byted-lynx/bdc-client",
+          "rootSha256": "12f2527dd46a539774368dc0c441484959b615e0519617e95161f8b4115560b6",
+          "fileCount": 16,
+          "byteCount": 3070734
+        }
+      ],
+      "sha256": "8db2af74a40138d73b5a34c000aca445f1d7c686c36cafa30f715c5e563def88"
+    },
+    "protocol": "native-sandbox-adapter-v3",
+    "defaultTimeoutMs": 15000,
+    "longWorkloadTimeoutMs": 15000,
+    "renderGraceFrames": 2,
+    "debugRouterSettleMs": 100,
+    "explorerRecycleEveryPages": 2,
+    "explorerLaunchSettleMs": 500,
+    "explorerReconnectTimeoutMs": 90000,
+    "clientDiscoveryPollMs": 250,
+    "sessionDiscoveryPollMs": 50,
+    "octaneReadyPollMs": 16,
+    "startupPollMs": 16,
+    "producerProbePollMs": 250,
+    "tapSettleMs": 10,
+    "maxBatteryTemperatureC": 40,
+    "thermalGateTimeoutMs": 300000,
+    "thermalPollMs": 5000,
+    "thermalGateScope": "before-every-bundle-load",
+    "transientAttempts": 3,
+    "leaseCleanupMarginMs": 30000,
+    "leaseStopSafetyOverrideMs": null,
+    "semanticDnfRetries": 0,
+    "retryScope": "transport-only-within-repetition",
+    "deviceClockCalibrationSamples": 7,
+    "explorerLifecycle": "force-stop-at-start-and-recycle-cadence",
+    "octaneTriggerMode": "tap",
+    "devtoolTransport": "direct",
+    "tableProtocol": "lynx-native-bench-v2",
+    "startupProtocol": "lynx-native-startup-v1",
+    "campaignId": "octane-b230f8a77-lepusng-probe-v1",
+    "matrixContractSha256": "51b227b3b0ac1b3f44c0319eec3cbb8597a5cf925f9ab885141741c351ad25ae",
+    "inputReceiptSha256": "89ae97131b85a38799b33279347d25956eb702dba12854da37985ac5a11cc92c",
+    "connectorPackageTreesSha256": "8db2af74a40138d73b5a34c000aca445f1d7c686c36cafa30f715c5e563def88",
+    "harnessConfigId": "245ce14999ea",
+    "serialSha256": "<redacted-device-serial-sha256>",
+    "deviceLeaseId": "<redacted-device-lease-id>",
+    "leaseReceipt": {
+      "protocol": "lynx-sandbox-lease-receipt-v1",
+      "issueId": "octane-b230f8a77-lepusng-baseline-20260903",
+      "expiredAt": 1788428108729,
+      "serialSha256": "<redacted-device-serial-sha256>",
+      "deviceLeaseId": "<redacted-device-lease-id>"
+    },
+    "deviceCohort": {
+      "protocol": "native-device-cohort-v1",
+      "serialSha256": "<redacted-device-serial-sha256>",
+      "environment": "lynx-native-android-aries_10-10-devtool-direct-recycle2",
+      "hardware": {
+        "platform": "android",
+        "osVersion": "10",
+        "cpuModel": "linaro",
+        "cores": 8,
+        "deviceModel": "ByteDance aries_10",
+        "app": "LynxExplorer",
+        "appVersion": "1.0",
+        "explorerPackage": {
+          "versionName": "1.0",
+          "versionCode": 1
+        },
+        "debugRouterVersion": "0.0.1",
+        "lynxSdkVersion": "0.0.1"
+      },
+      "campaignId": "octane-b230f8a77-lepusng-probe-v1",
+      "matrixContractSha256": "51b227b3b0ac1b3f44c0319eec3cbb8597a5cf925f9ab885141741c351ad25ae",
+      "inputReceiptSha256": "89ae97131b85a38799b33279347d25956eb702dba12854da37985ac5a11cc92c",
+      "connectorPackageTreesSha256": "8db2af74a40138d73b5a34c000aca445f1d7c686c36cafa30f715c5e563def88",
+      "harnessConfigId": "245ce14999ea",
+      "id": "606b18ca910bdc48",
+      "sha256": "606b18ca910bdc48137f4cd5d72a58fb215a867a01d709b4e506cb84f0fc7259"
+    },
+    "deviceCohortId": "606b18ca910bdc48",
+    "deviceLeaseIdentitySource": "structured-receipt-v1",
+    "deviceClockOffsetMs": -746,
+    "deviceClockCalibrationRttMs": 24,
+    "thermalStart": {
+      "capturedAt": "2026-09-03T08:57:22.961Z",
+      "batteryTemperatureC": 35,
+      "thermalStatus": 0,
+      "temperatures": [
+        {
+          "valueC": 30.8,
+          "type": 3,
+          "name": "test temperature sensor",
+          "status": 0
+        }
+      ]
+    },
+    "servedInputs": [
+      {
+        "entry": "octane-b230f8a77",
+        "rows": 1000,
+        "suite": "startup",
+        "sha256": "fb3119e7644513ec401cb6af035d71bef97cd98d2d37864a20982c65942291f6",
+        "bytes": 558715,
+        "served": 1
+      },
+      {
+        "entry": "react",
+        "rows": 1000,
+        "suite": "startup",
+        "sha256": "893caede546f1825159ceb1c538c780c4ffafd2ea1536ef806a265164525fa34",
+        "bytes": 102957,
+        "served": 1
+      },
+      {
+        "entry": "react",
+        "rows": 1000,
+        "suite": "startup",
+        "sha256": "893caede546f1825159ceb1c538c780c4ffafd2ea1536ef806a265164525fa34",
+        "bytes": 102957,
+        "served": 1
+      },
+      {
+        "entry": "octane-b230f8a77",
+        "rows": 1000,
+        "suite": "startup",
+        "sha256": "fb3119e7644513ec401cb6af035d71bef97cd98d2d37864a20982c65942291f6",
+        "bytes": 558715,
+        "served": 1
+      },
+      {
+        "entry": "octane-b230f8a77",
+        "rows": 1000,
+        "suite": "startup",
+        "sha256": "fb3119e7644513ec401cb6af035d71bef97cd98d2d37864a20982c65942291f6",
+        "bytes": 558715,
+        "served": 1
+      },
+      {
+        "entry": "react",
+        "rows": 1000,
+        "suite": "startup",
+        "sha256": "893caede546f1825159ceb1c538c780c4ffafd2ea1536ef806a265164525fa34",
+        "bytes": 102957,
+        "served": 1
+      },
+      {
+        "entry": "react",
+        "rows": 1000,
+        "suite": "startup",
+        "sha256": "893caede546f1825159ceb1c538c780c4ffafd2ea1536ef806a265164525fa34",
+        "bytes": 102957,
+        "served": 1
+      },
+      {
+        "entry": "octane-b230f8a77",
+        "rows": 1000,
+        "suite": "startup",
+        "sha256": "fb3119e7644513ec401cb6af035d71bef97cd98d2d37864a20982c65942291f6",
+        "bytes": 558715,
+        "served": 1
+      },
+      {
+        "entry": "octane-b230f8a77",
+        "rows": 1000,
+        "suite": "startup",
+        "sha256": "fb3119e7644513ec401cb6af035d71bef97cd98d2d37864a20982c65942291f6",
+        "bytes": 558715,
+        "served": 1
+      },
+      {
+        "entry": "react",
+        "rows": 1000,
+        "suite": "startup",
+        "sha256": "893caede546f1825159ceb1c538c780c4ffafd2ea1536ef806a265164525fa34",
+        "bytes": 102957,
+        "served": 1
+      },
+      {
+        "entry": "react",
+        "rows": 1000,
+        "suite": "startup",
+        "sha256": "893caede546f1825159ceb1c538c780c4ffafd2ea1536ef806a265164525fa34",
+        "bytes": 102957,
+        "served": 1
+      },
+      {
+        "entry": "octane-b230f8a77",
+        "rows": 1000,
+        "suite": "startup",
+        "sha256": "fb3119e7644513ec401cb6af035d71bef97cd98d2d37864a20982c65942291f6",
+        "bytes": 558715,
+        "served": 1
+      }
+    ],
+    "transientRecoveries": [],
+    "thermalGates": [
+      {
+        "entry": "octane-b230f8a77",
+        "rows": 1000,
+        "suite": "startup",
+        "capturedAt": "2026-09-03T08:57:23.114Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "react",
+        "rows": 1000,
+        "suite": "startup",
+        "capturedAt": "2026-09-03T08:57:38.598Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "react",
+        "rows": 1000,
+        "suite": "startup",
+        "capturedAt": "2026-09-03T08:57:46.814Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-b230f8a77",
+        "rows": 1000,
+        "suite": "startup",
+        "capturedAt": "2026-09-03T08:57:59.541Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-b230f8a77",
+        "rows": 1000,
+        "suite": "startup",
+        "capturedAt": "2026-09-03T08:58:15.089Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "react",
+        "rows": 1000,
+        "suite": "startup",
+        "capturedAt": "2026-09-03T08:58:41.707Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "react",
+        "rows": 1000,
+        "suite": "startup",
+        "capturedAt": "2026-09-03T08:58:49.947Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-b230f8a77",
+        "rows": 1000,
+        "suite": "startup",
+        "capturedAt": "2026-09-03T08:59:02.731Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-b230f8a77",
+        "rows": 1000,
+        "suite": "startup",
+        "capturedAt": "2026-09-03T08:59:18.292Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "react",
+        "rows": 1000,
+        "suite": "startup",
+        "capturedAt": "2026-09-03T08:59:44.918Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "react",
+        "rows": 1000,
+        "suite": "startup",
+        "capturedAt": "2026-09-03T08:59:53.259Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-b230f8a77",
+        "rows": 1000,
+        "suite": "startup",
+        "capturedAt": "2026-09-03T09:00:06.003Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      }
+    ],
+    "thermalEnd": {
+      "capturedAt": "2026-09-03T09:00:21.678Z",
+      "batteryTemperatureC": 35,
+      "thermalStatus": 0,
+      "temperatures": [
+        {
+          "valueC": 30.8,
+          "type": 3,
+          "name": "test temperature sensor",
+          "status": 0
+        }
+      ]
+    }
+  },
+  "completedAt": "2026-09-03T09:00:21.510Z"
+}

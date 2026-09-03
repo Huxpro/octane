@@ -1,0 +1,34 @@
+{
+  "protocol": "octane-lepusng-static-e1-evidence-v1",
+  "targetCommit": "b230f8a77d8199adb536fef4890bbc6911ef5708",
+  "bundle": "rows1000 production LepusNG bundle with BENCH_MTS_PROGRAM=1",
+  "decoder": "@byted-lynx/tasm decode",
+  "decodedArtifact": {
+    "filename": "octane-b230f8a77-rows1000-decoded.json",
+    "sha256": "8e94ba8045551d8ae3fe7abe7269b434433eddea97e6ae2408f4c42108086f6a",
+    "committed": false,
+    "reason": "The full decoded artifact is 2.8 MB; this receipt records the fields used by the report."
+  },
+  "observed": {
+    "isLepusngBinary": true,
+    "mainThreadLepusCodeBytes": 255168,
+    "residentPrograms": [
+      {
+        "module": "examples/lynx-table-bench/src/App.lynx.tsrx",
+        "index": 0,
+        "digest": "0133b4dbe8c5613c",
+        "presentInMainThread": true,
+        "presentInBackgroundThread": true
+      },
+      {
+        "module": "examples/lynx-table-bench/src/App.lynx.tsrx",
+        "index": 1,
+        "digest": "0a9cd69495631d34",
+        "presentInMainThread": true,
+        "presentInBackgroundThread": true
+      }
+    ],
+    "crossThreadDigestMatch": true
+  },
+  "verdict": "verified-static-only"
+}

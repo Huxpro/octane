@@ -1,0 +1,310 @@
+{
+  "protocol": "octane-b230f8a77-lepusng-probe-v1",
+  "startedAt": "2026-09-03T08:38:07.595Z",
+  "targetCommit": "b230f8a77d8199adb536fef4890bbc6911ef5708",
+  "method": {
+    "repetitions": 6,
+    "pairOrder": "AB then BA, repeated; A=Octane, B=upstream ReactLynx",
+    "recycleEveryPages": 2,
+    "lifecycle": "fresh Lynx page for every sample; Explorer process recycled every two pages",
+    "createBoundary": "native input-handler start -> transport ACK -> two native frames",
+    "fcpBoundary": "Performance loadBundle pipeline openTime -> totalFcp/lynxFcp"
+  },
+  "bundles": {
+    "octane": {
+      "0": {
+        "path": "<octane-measurement-worktree>/benchmarks/lynx-table/app/dist-mtsprogram/main.lynx.bundle",
+        "bytes": 558458,
+        "sha256": "30f7aef4ec1f39f118a2bd859744fa64fa3dbc113147f237ceb1b9e3ebb35c61"
+      },
+      "1000": {
+        "path": "<octane-measurement-worktree>/benchmarks/lynx-table/app/dist-mtsprogram-rows1000/main.lynx.bundle",
+        "bytes": 558753,
+        "sha256": "f8efb9737219d3d558de8667a196a679542187f86d7e0c2534db5f130ba43daf"
+      },
+      "10000": {
+        "path": "<octane-measurement-worktree>/benchmarks/lynx-table/app/dist-mtsprogram-rows10000/main.lynx.bundle",
+        "bytes": 558753,
+        "sha256": "257a07cad778aec6f8c020b5706ce0766f790c0e526ae1b76a9f6803828b4367"
+      }
+    },
+    "reactlynx": {
+      "0": {
+        "path": "<benchmark-measurement-worktree>/entries/react/dist/rows-0/main.lynx.bundle",
+        "bytes": 102368,
+        "sha256": "f6dc11bd0c4860be542464d83fb1e3543d8f8f0625f26f84c3c68e59d7b4bd27"
+      },
+      "1000": {
+        "path": "<benchmark-measurement-worktree>/entries/react/dist/rows-1000/main.lynx.bundle",
+        "bytes": 102957,
+        "sha256": "893caede546f1825159ceb1c538c780c4ffafd2ea1536ef806a265164525fa34"
+      },
+      "10000": {
+        "path": "<benchmark-measurement-worktree>/entries/react/dist/rows-10000/main.lynx.bundle",
+        "bytes": 102957,
+        "sha256": "a95673d11a4b51dbd30f1f0c3999f7e17b3d43a59829cee42ab7ec264e491222"
+      }
+    }
+  },
+  "logs": [
+    {
+      "at": "2026-09-03T08:38:09.314Z",
+      "message": "  [sandbox:console] {\"args\":[{\"type\":\"string\",\"value\":\"SetSourceMapRelease.message:debugmetadata:e74e50392d97ad5ca40dcfb4dc8f32b0a3e32ed4\"}],\"consoleId\":3,\"consoleTag\":\"Lepus\",\"executionContextId\":0,\"stackTrace\":{\"callFrames\":[]},\"timestamp\":1788424688362,\"type\":\"info\",\"viewId\":3}"
+    },
+    {
+      "at": "2026-09-03T08:38:09.315Z",
+      "message": "  [sandbox:console] {\"args\":[{\"type\":\"string\",\"value\":\"SetSourceMapRelease.stack:    at <anonymous> (file:///main-thread.js:1:15)\\n    at <eval> (file:///main-thread.js:881:68)\\n\"}],\"consoleId\":3,\"consoleTag\":\"Lepus\",\"executionContextId\":0,\"stackTrace\":{\"callFrames\":[]},\"timestamp\":1788424688363,\"type\":\"info\",\"viewId\":3}"
+    },
+    {
+      "at": "2026-09-03T08:38:09.316Z",
+      "message": "  [sandbox:console] {\"args\":[{\"type\":\"string\",\"value\":\"SetSourceMapRelease.message:debugmetadata:e74e50392d97ad5ca40dcfb4dc8f32b0a3e32ed4\"}],\"consoleId\":3,\"consoleTag\":\"Lepus\",\"executionContextId\":0,\"stackTrace\":{\"callFrames\":[]},\"timestamp\":1788424688363,\"type\":\"info\",\"viewId\":3}"
+    },
+    {
+      "at": "2026-09-03T08:38:09.316Z",
+      "message": "  [sandbox:console] {\"args\":[{\"type\":\"string\",\"value\":\"SetSourceMapRelease.stack:    at <eval> (file://main-thread.js:1:1)\\n\"}],\"consoleId\":3,\"consoleTag\":\"Lepus\",\"executionContextId\":0,\"stackTrace\":{\"callFrames\":[]},\"timestamp\":1788424688363,\"type\":\"info\",\"viewId\":3}"
+    },
+    {
+      "at": "2026-09-03T08:38:09.316Z",
+      "message": "  [sandbox:console] {\"args\":[{\"type\":\"string\",\"value\":\"__ISSUE194_FIRST_SCREEN__{\\\"protocol\\\":\\\"octane-issue194-first-screen-v1\\\",\\\"request\\\":0,\\\"treeNodes\\\":null,\\\"calls\\\":{\\\"__CreatePage\\\":{\\\"count\\\":1,\\\"selfMs\\\":1},\\\"__GetElementUniqueID\\\":{\\\"count\\\":1,\\\"selfMs\\\":0},\\\"__CreateView\\\":{\\\"count\\\":15,\\\"selfMs\\\":1},\\\"__SetClasses\\\":{\\\"count\\\":28,\\\"selfMs\\\":0},\\\"__CreateText\\\":{\\\"count\\\":13,\\\"selfMs\\\":0},\\\"__SetAttribute\\\":{\\\"count\\\":13,\\\"selfMs\\\":1},\\\"__AddEvent\\\":{\\\"count\\\":12,\\\"selfMs\\\":0},\\\"__AppendElement\\\":{\\\"count\\\":28,\\\"selfMs\\\":0},\\\"__FlushElementTree\\\":{\\\"count\\\":1,\\\"selfMs\\\":6,\\\"callsBefore\\\":[111]}},\\\"profile\\\":{\\\"commits\\\":0,\\\"commands\\\":0,\\\"emptyCommits\\\":0,\\\"bytes\\\":0,\\\"selfcheckMs\\\":0,\\\"encodeMs\\\":0,\\\"dispatchMs\\\":0,\\\"decodeMs\\\":0,\\\"validateMs\\\":0,\\\"prepareMs\\\":0,\\\"applyMs\\\":0,\\\"ackMs\\\":0,\\\"deltaCommits\\\":0,\\\"deltaMisses\\\":0,\\\"deltaOps\\\":0,\\\"deltaBytes\\\":0,\\\"firstScreenPhase\\\":\\\"announce\\\",\\\"firstScreenRenderMs\\\":1,\\\"firstScreenPublishMs\\\":11,\\\"firstScreenCaptureMs\\\":0,\\\"firstScreenAnnounceMs\\\":0,\\\"firstTreeAction\\\":null,\\\"firstTreeSettled\\\":0,\\\"handOverMs\\\":0,\\\"destroyRunExpandMs\\\":0,\\\"denseValidateMs\\\":0,\\\"eventDetachMs\\\":0,\\\"papiRemoveMs\\\":0,\\\"denseReleaseMs\\\":0,\\\"synthesizedCommands\\\":0,\\\"eventDetachCount\\\":0,\\\"papiRemoveCount\\\":0,\\\"denseReleaseHostCount\\\":0,\\\"papiCreateMs\\\":2,\\\"firstScreenPlanMs\\\":0},\\\"program\\\":{\\\"bindCount\\\":1,\\\"bindMs\\\":0,\\\"createCount\\\":1,\\\"createExecMs\\\":5,\\\"mountCount\\\":1,\\\"mountMs\\\":5}}\"}],\"consoleId\":3,\"executionContextId\":0,\"stackTrace\":{\"callFrames\":[{\"columnNumber\":261077,\"functionName\":\"<anonymous>\",\"lineNumber\":1,\"scriptId\":\"5\",\"url\":\"file://view3/.rspeedy/main/background.js\"},{\"columnNumber\":261620,\"functionName\":\"eS\",\"lineNumber\":1,\"scriptId\":\"5\",\"url\":\"file://view3/.rspeedy/main/background.js\"}]},\"timestamp\":1788424688363,\"type\":\"log\",\"url\":\"file://view3/.rspeedy/main/background.js\",\"viewId\":3}"
+    },
+    {
+      "at": "2026-09-03T08:38:09.316Z",
+      "message": "  [sandbox:console] {\"args\":[{\"type\":\"string\",\"value\":\"__ISSUE194_FIRST_SCREEN__{\\\"protocol\\\":\\\"octane-issue194-first-screen-v1\\\",\\\"request\\\":70368744177665,\\\"treeNodes\\\":null,\\\"calls\\\":{\\\"__CreatePage\\\":{\\\"count\\\":1,\\\"selfMs\\\":1},\\\"__GetElementUniqueID\\\":{\\\"count\\\":1,\\\"selfMs\\\":0},\\\"__CreateView\\\":{\\\"count\\\":15,\\\"selfMs\\\":1},\\\"__SetClasses\\\":{\\\"count\\\":28,\\\"selfMs\\\":0},\\\"__CreateText\\\":{\\\"count\\\":13,\\\"selfMs\\\":0},\\\"__SetAttribute\\\":{\\\"count\\\":13,\\\"selfMs\\\":1},\\\"__AddEvent\\\":{\\\"count\\\":12,\\\"selfMs\\\":0},\\\"__AppendElement\\\":{\\\"count\\\":28,\\\"selfMs\\\":0},\\\"__FlushElementTree\\\":{\\\"count\\\":1,\\\"selfMs\\\":6,\\\"callsBefore\\\":[111]}},\\\"profile\\\":{\\\"commits\\\":0,\\\"commands\\\":0,\\\"emptyCommits\\\":0,\\\"bytes\\\":0,\\\"selfcheckMs\\\":0,\\\"encodeMs\\\":0,\\\"dispatchMs\\\":0,\\\"decodeMs\\\":0,\\\"validateMs\\\":0,\\\"prepareMs\\\":0,\\\"applyMs\\\":0,\\\"ackMs\\\":0,\\\"deltaCommits\\\":0,\\\"deltaMisses\\\":0,\\\"deltaOps\\\":0,\\\"deltaBytes\\\":0,\\\"firstScreenPhase\\\":null,\\\"firstScreenRenderMs\\\":1,\\\"firstScreenPublishMs\\\":11,\\\"firstScreenCaptureMs\\\":0,\\\"firstScreenAnnounceMs\\\":1,\\\"firstTreeAction\\\":null,\\\"firstTreeSettled\\\":0,\\\"handOverMs\\\":0,\\\"destroyRunExpandMs\\\":0,\\\"denseValidateMs\\\":0,\\\"eventDetachMs\\\":0,\\\"papiRemoveMs\\\":0,\\\"denseReleaseMs\\\":0,\\\"synthesizedCommands\\\":0,\\\"eventDetachCount\\\":0,\\\"papiRemoveCount\\\":0,\\\"denseReleaseHostCount\\\":0,\\\"papiCreateMs\\\":2,\\\"firstScreenPlanMs\\\":0},\\\"program\\\":{\\\"bindCount\\\":1,\\\"bindMs\\\":0,\\\"createCount\\\":1,\\\"createExecMs\\\":5,\\\"mountCount\\\":1,\\\"mountMs\\\":5}}\"}],\"consoleId\":3,\"executionContextId\":0,\"stackTrace\":{\"callFrames\":[{\"columnNumber\":261077,\"functionName\":\"<anonymous>\",\"lineNumber\":1,\"scriptId\":\"5\",\"url\":\"file://view3/.rspeedy/main/background.js\"},{\"columnNumber\":261620,\"functionName\":\"eS\",\"lineNumber\":1,\"scriptId\":\"5\",\"url\":\"file://view3/.rspeedy/main/background.js\"}]},\"timestamp\":1788424688364,\"type\":\"log\",\"url\":\"file://view3/.rspeedy/main/background.js\",\"viewId\":3}"
+    },
+    {
+      "at": "2026-09-03T08:38:09.317Z",
+      "message": "  [sandbox:console] {\"args\":[{\"type\":\"string\",\"value\":\"__NATIVE_BENCH_STARTUP__\"},{\"type\":\"string\",\"value\":\"{\\\"protocol\\\":\\\"lynx-native-startup-v1\\\",\\\"moduleStartMs\\\":1788424688358,\\\"renderEvidence\\\":{\\\"kind\\\":\\\"native-animation-frame\\\",\\\"frames\\\":2},\\\"commitAckMs\\\":1788424688394,\\\"transportEvidence\\\":{\\\"kind\\\":\\\"octane-root.render\\\",\\\"acknowledged\\\":true,\\\"ackMs\\\":1788424688394},\\\"firstFrameMs\\\":1788424688399,\\\"secondFrameMs\\\":1788424688416,\\\"postState\\\":{\\\"rowCount\\\":0,\\\"firstId\\\":null,\\\"secondId\\\":null,\\\"thirdId\\\":null,\\\"row998Id\\\":null,\\\"firstLabel\\\":null,\\\"selectedId\\\":null}}\"}],\"consoleId\":3,\"executionContextId\":0,\"stackTrace\":{\"callFrames\":[{\"columnNumber\":308555,\"functionName\":\"<anonymous>\",\"lineNumber\":1,\"scriptId\":\"5\",\"url\":\"file://view3/.rspeedy/main/background.js\"}]},\"timestamp\":1788424688416,\"type\":\"log\",\"url\":\"file://view3/.rspeedy/main/background.js\",\"viewId\":3}"
+    },
+    {
+      "at": "2026-09-03T08:38:09.329Z",
+      "message": "  [sandbox:octane-ready] {\"status\":{\"ready\":true},\"result\":{\"result\":{\"type\":\"string\",\"value\":\"{\\\"ready\\\":true}\"}}}"
+    },
+    {
+      "at": "2026-09-03T08:38:09.329Z",
+      "message": "  [sandbox] octane-b230f8a77 rows-0 session=2"
+    },
+    {
+      "at": "2026-09-03T08:42:09.527Z",
+      "message": "  [sandbox] octane-b230f8a77 create@1000 DNF; remaining reps for this cell are DNF"
+    }
+  ],
+  "samples": [
+    {
+      "scenario": "wire-probe-create@1000",
+      "framework": "octane",
+      "pageOrdinal": 1,
+      "processState": "cold-after-explorer-launch",
+      "bundleSha256": "88357b731fda08ee285ab3902bb315985cd74bca57836e3352014262d5386822",
+      "observed": {
+        "dnf": true,
+        "failure": {
+          "category": "timeout",
+          "entry": "octane-b230f8a77",
+          "workload": "create",
+          "scale": 1000,
+          "timeoutMs": 240000,
+          "phase": "operation",
+          "triggerMode": "tap",
+          "message": "Error: timeout waiting for Native timing create.",
+          "evidence": {
+            "backgroundSnapshot": {
+              "rowCount": 0,
+              "firstId": null,
+              "secondId": null,
+              "thirdId": null,
+              "row998Id": null,
+              "firstLabel": null,
+              "selectedId": null
+            },
+            "mainLabelNodeCount": 0,
+            "timingEvents": [],
+            "errors": []
+          }
+        }
+      },
+      "finishedAt": "2026-09-03T08:42:11.108Z"
+    }
+  ],
+  "error": null,
+  "environment": "lynx-native-android-aries_10-10-devtool-direct-recycle2",
+  "machine": {
+    "id": "lynx-native-android-aries_10-10-devtool-direct-recycle2-<redacted-device-lease-id>-866a8c4d10dd",
+    "platform": "android",
+    "osVersion": "10",
+    "cpuModel": "linaro",
+    "cores": 8,
+    "node": null,
+    "deviceModel": "ByteDance aries_10",
+    "app": "LynxExplorer",
+    "appVersion": "1.0",
+    "explorerPackage": {
+      "versionName": "1.0",
+      "versionCode": 1
+    },
+    "debugRouterVersion": "0.0.1",
+    "lynxSdkVersion": "0.0.1",
+    "connectorPackageTrees": {
+      "protocol": "connector-package-trees-v1",
+      "packages": [
+        {
+          "name": "@byted/agent-lynx",
+          "version": "0.14.4",
+          "available": true,
+          "resolvedPath": "/tmp/lynx-agent-native-3M2RVo/node_modules/@byted/agent-lynx",
+          "rootSha256": "30947a6fd180c1ab174a0c3a68fc6fd620f0e843a3883e6f8c0e16c13352ce2c",
+          "fileCount": 57,
+          "byteCount": 1213849
+        },
+        {
+          "name": "@byted-lynx/devtool-connector",
+          "version": "0.15.0",
+          "available": true,
+          "resolvedPath": "/tmp/lynx-agent-native-3M2RVo/node_modules/@byted-lynx/devtool-connector",
+          "rootSha256": "2647a81dc15ec0c122cfdc59ecb0ae5c62e57dfa930ff8ce52dbd81403c9f39b",
+          "fileCount": 85,
+          "byteCount": 4036024
+        },
+        {
+          "name": "@byted-lynx/bdc-client",
+          "version": "0.4.3",
+          "available": true,
+          "resolvedPath": "/tmp/lynx-agent-native-3M2RVo/node_modules/@byted-lynx/bdc-client",
+          "rootSha256": "12f2527dd46a539774368dc0c441484959b615e0519617e95161f8b4115560b6",
+          "fileCount": 16,
+          "byteCount": 3070734
+        }
+      ],
+      "sha256": "8db2af74a40138d73b5a34c000aca445f1d7c686c36cafa30f715c5e563def88"
+    },
+    "protocol": "native-sandbox-adapter-v3",
+    "defaultTimeoutMs": 30000,
+    "longWorkloadTimeoutMs": 240000,
+    "renderGraceFrames": 2,
+    "debugRouterSettleMs": 100,
+    "explorerRecycleEveryPages": 2,
+    "explorerLaunchSettleMs": 500,
+    "explorerReconnectTimeoutMs": 90000,
+    "clientDiscoveryPollMs": 250,
+    "sessionDiscoveryPollMs": 50,
+    "octaneReadyPollMs": 16,
+    "startupPollMs": 16,
+    "producerProbePollMs": 250,
+    "tapSettleMs": 10,
+    "maxBatteryTemperatureC": 40,
+    "thermalGateTimeoutMs": 300000,
+    "thermalPollMs": 5000,
+    "thermalGateScope": "before-every-bundle-load",
+    "transientAttempts": 3,
+    "leaseCleanupMarginMs": 30000,
+    "leaseStopSafetyOverrideMs": null,
+    "semanticDnfRetries": 0,
+    "retryScope": "transport-only-within-repetition",
+    "deviceClockCalibrationSamples": 7,
+    "explorerLifecycle": "force-stop-at-start-and-recycle-cadence",
+    "octaneTriggerMode": "tap",
+    "devtoolTransport": "direct",
+    "tableProtocol": "lynx-native-bench-v2",
+    "startupProtocol": "lynx-native-startup-v1",
+    "campaignId": "octane-b230f8a77-lepusng-probe-v1",
+    "matrixContractSha256": "51b227b3b0ac1b3f44c0319eec3cbb8597a5cf925f9ab885141741c351ad25ae",
+    "inputReceiptSha256": "d3439edb8d27e4439bdf3203d5583d258ee3a613b7339dab70881edad489fc9a",
+    "connectorPackageTreesSha256": "8db2af74a40138d73b5a34c000aca445f1d7c686c36cafa30f715c5e563def88",
+    "harnessConfigId": "866a8c4d10dd",
+    "serialSha256": "<redacted-device-serial-sha256>",
+    "deviceLeaseId": "<redacted-device-lease-id>",
+    "leaseReceipt": {
+      "protocol": "lynx-sandbox-lease-receipt-v1",
+      "issueId": "octane-b230f8a77-lepusng-baseline-20260903",
+      "expiredAt": 1788428108729,
+      "serialSha256": "<redacted-device-serial-sha256>",
+      "deviceLeaseId": "<redacted-device-lease-id>"
+    },
+    "deviceCohort": {
+      "protocol": "native-device-cohort-v1",
+      "serialSha256": "<redacted-device-serial-sha256>",
+      "environment": "lynx-native-android-aries_10-10-devtool-direct-recycle2",
+      "hardware": {
+        "platform": "android",
+        "osVersion": "10",
+        "cpuModel": "linaro",
+        "cores": 8,
+        "deviceModel": "ByteDance aries_10",
+        "app": "LynxExplorer",
+        "appVersion": "1.0",
+        "explorerPackage": {
+          "versionName": "1.0",
+          "versionCode": 1
+        },
+        "debugRouterVersion": "0.0.1",
+        "lynxSdkVersion": "0.0.1"
+      },
+      "campaignId": "octane-b230f8a77-lepusng-probe-v1",
+      "matrixContractSha256": "51b227b3b0ac1b3f44c0319eec3cbb8597a5cf925f9ab885141741c351ad25ae",
+      "inputReceiptSha256": "d3439edb8d27e4439bdf3203d5583d258ee3a613b7339dab70881edad489fc9a",
+      "connectorPackageTreesSha256": "8db2af74a40138d73b5a34c000aca445f1d7c686c36cafa30f715c5e563def88",
+      "harnessConfigId": "866a8c4d10dd",
+      "id": "1e9c3b4140de6af6",
+      "sha256": "1e9c3b4140de6af6a86eb895eca9f4d5f9b89aff93aac198305254c52264b963"
+    },
+    "deviceCohortId": "1e9c3b4140de6af6",
+    "deviceLeaseIdentitySource": "structured-receipt-v1",
+    "deviceClockOffsetMs": -726,
+    "deviceClockCalibrationRttMs": 22,
+    "thermalStart": {
+      "capturedAt": "2026-09-03T08:38:08.702Z",
+      "batteryTemperatureC": 35,
+      "thermalStatus": 0,
+      "temperatures": [
+        {
+          "valueC": 30.8,
+          "type": 3,
+          "name": "test temperature sensor",
+          "status": 0
+        }
+      ]
+    },
+    "servedInputs": [
+      {
+        "entry": "octane-b230f8a77",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "88357b731fda08ee285ab3902bb315985cd74bca57836e3352014262d5386822",
+        "bytes": 575289,
+        "served": 1
+      }
+    ],
+    "transientRecoveries": [],
+    "thermalGates": [
+      {
+        "entry": "octane-b230f8a77",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-03T08:38:08.841Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      }
+    ],
+    "thermalEnd": {
+      "capturedAt": "2026-09-03T08:42:11.673Z",
+      "batteryTemperatureC": 35,
+      "thermalStatus": 0,
+      "temperatures": [
+        {
+          "valueC": 30.8,
+          "type": 3,
+          "name": "test temperature sensor",
+          "status": 0
+        }
+      ]
+    }
+  },
+  "completedAt": "2026-09-03T08:42:11.609Z"
+}

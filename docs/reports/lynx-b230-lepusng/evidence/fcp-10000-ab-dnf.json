@@ -1,0 +1,429 @@
+{
+  "protocol": "octane-b230f8a77-lepusng-probe-v1",
+  "startedAt": "2026-09-03T09:00:28.375Z",
+  "targetCommit": "b230f8a77d8199adb536fef4890bbc6911ef5708",
+  "method": {
+    "repetitions": 6,
+    "pairOrder": "AB then BA, repeated; A=Octane, B=upstream ReactLynx",
+    "recycleEveryPages": 2,
+    "lifecycle": "fresh Lynx page for every sample; Explorer process recycled every two pages",
+    "createBoundary": "native input-handler start -> transport ACK -> two native frames",
+    "fcpBoundary": "Performance loadBundle pipeline openTime -> totalFcp/lynxFcp"
+  },
+  "bundles": {
+    "octane": {
+      "0": {
+        "path": "<octane-measurement-worktree>/benchmarks/lynx-table/app/dist-mtsprogram/main.lynx.bundle",
+        "bytes": 558420,
+        "sha256": "b687b1095f7f92fe2da770a381585844d8fc945ac32d5204a08593c2af21c7fe"
+      },
+      "1000": {
+        "path": "<octane-measurement-worktree>/benchmarks/lynx-table/app/dist-mtsprogram-rows1000/main.lynx.bundle",
+        "bytes": 558715,
+        "sha256": "fb3119e7644513ec401cb6af035d71bef97cd98d2d37864a20982c65942291f6"
+      },
+      "10000": {
+        "path": "<octane-measurement-worktree>/benchmarks/lynx-table/app/dist-mtsprogram-rows10000/main.lynx.bundle",
+        "bytes": 558715,
+        "sha256": "2af4a9740daae05b399f016f006c728201a7ff9bda050ad96e1685dc7f9258c2"
+      }
+    },
+    "reactlynx": {
+      "0": {
+        "path": "<benchmark-measurement-worktree>/entries/react/dist/rows-0/main.lynx.bundle",
+        "bytes": 102368,
+        "sha256": "f6dc11bd0c4860be542464d83fb1e3543d8f8f0625f26f84c3c68e59d7b4bd27"
+      },
+      "1000": {
+        "path": "<benchmark-measurement-worktree>/entries/react/dist/rows-1000/main.lynx.bundle",
+        "bytes": 102957,
+        "sha256": "893caede546f1825159ceb1c538c780c4ffafd2ea1536ef806a265164525fa34"
+      },
+      "10000": {
+        "path": "<benchmark-measurement-worktree>/entries/react/dist/rows-10000/main.lynx.bundle",
+        "bytes": 102957,
+        "sha256": "a95673d11a4b51dbd30f1f0c3999f7e17b3d43a59829cee42ab7ec264e491222"
+      }
+    }
+  },
+  "logs": [
+    {
+      "at": "2026-09-03T09:00:34.703Z",
+      "message": "  [sandbox] octane-b230f8a77 rows-10000 session=2"
+    },
+    {
+      "at": "2026-09-03T09:01:04.712Z",
+      "message": "  [sandbox] octane-b230f8a77 startup@10000 DNF: Error: CDP Performance.getAllPerformanceEntries failed: Error: timeout waiting 19850ms for Performance.getAllPerformanceEntries"
+    },
+    {
+      "at": "2026-09-03T09:01:05.248Z",
+      "message": "  [sandbox] react rows-10000 session=3"
+    },
+    {
+      "at": "2026-09-03T09:01:34.801Z",
+      "message": "  [sandbox] transient transport failure; restarting Explorer and retrying sample"
+    },
+    {
+      "at": "2026-09-03T09:01:48.522Z",
+      "message": "  [sandbox] react rows-10000 session=2"
+    },
+    {
+      "at": "2026-09-03T09:02:16.684Z",
+      "message": "  [sandbox] transient transport failure; restarting Explorer and retrying sample"
+    },
+    {
+      "at": "2026-09-03T09:02:18.599Z",
+      "message": "  [sandbox] react rows-10000 session=2"
+    }
+  ],
+  "samples": [
+    {
+      "scenario": "fcp@10000",
+      "framework": "octane",
+      "repetition": 1,
+      "pairPosition": 0,
+      "pageOrdinal": 1,
+      "processState": "cold-after-explorer-launch",
+      "startedAt": "2026-09-03T09:00:34.236Z",
+      "bundleSha256": "2af4a9740daae05b399f016f006c728201a7ff9bda050ad96e1685dc7f9258c2",
+      "attempts": 1,
+      "loadedAt": "2026-09-03T09:00:34.704Z",
+      "observed": {
+        "dnf": true,
+        "failure": {
+          "category": "timeout",
+          "entry": "octane-b230f8a77",
+          "workload": "startup",
+          "scale": 10000,
+          "timeoutMs": 30000,
+          "message": "Error: CDP Performance.getAllPerformanceEntries failed: Error: timeout waiting 19850ms for Performance.getAllPerformanceEntries",
+          "capabilityScope": "cell",
+          "evidence": {
+            "lastStartupProbe": {
+              "capturedAt": "2026-09-03T09:00:44.541Z",
+              "performanceEntryCount": 1,
+              "pipelineEntries": [
+                {
+                  "name": "loadBundle",
+                  "openTime": 1788426033577,
+                  "pipelineEnd": 1788426036892.608,
+                  "hasLynxFcp": true,
+                  "hasTotalFcp": true
+                }
+              ],
+              "timingInfo": {
+                "extraTiming": {
+                  "container_init_end": 1788426033583,
+                  "container_init_start": 1788426033577,
+                  "open_time": 1788426033577,
+                  "prepare_template_end": 1788426033586,
+                  "prepare_template_start": 1788426033585
+                }
+              }
+            },
+            "capabilityProven": false,
+            "producerProtocolExpected": "lynx-native-startup-v1"
+          }
+        },
+        "metricContracts": [
+          {
+            "name": "octaneCommitAck",
+            "unit": "ms",
+            "boundary": "native-open-request-to-octane-transport-ack"
+          },
+          {
+            "name": "octaneSecondFrame",
+            "unit": "ms",
+            "boundary": "native-open-request-to-second-frame-after-octane-transport-ack"
+          }
+        ]
+      },
+      "finishedAt": "2026-09-03T09:01:04.713Z"
+    },
+    {
+      "scenario": "fcp@10000",
+      "framework": "reactlynx",
+      "repetition": 1,
+      "pairPosition": 1,
+      "pageOrdinal": 2,
+      "processState": "warm-process",
+      "startedAt": "2026-09-03T09:01:04.713Z",
+      "bundleSha256": "a95673d11a4b51dbd30f1f0c3999f7e17b3d43a59829cee42ab7ec264e491222",
+      "attempts": 3,
+      "loadedAt": "2026-09-03T09:02:18.600Z",
+      "transientErrors": [
+        "Error: CDP Performance.getAllPerformanceEntries failed: Error: Native CDP channel closed before pending commands completed.",
+        "Error: CDP Performance.getAllPerformanceEntries failed: Error: Native CDP channel closed before pending commands completed."
+      ]
+    }
+  ],
+  "error": {
+    "at": "2026-09-03T09:02:47.495Z",
+    "name": "Error",
+    "message": "CDP Performance.getAllPerformanceEntries failed: Error: Native CDP channel closed before pending commands completed.",
+    "stack": "Error: CDP Performance.getAllPerformanceEntries failed: Error: Native CDP channel closed before pending commands completed.\n    at cdp (file://<benchmark-measurement-worktree>/packages/runner/adapters/lynx-sandbox-android.mjs:715:13)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async waitForStartup (file://<benchmark-measurement-worktree>/packages/runner/adapters/lynx-sandbox-android.mjs:1131:11)\n    at async Object.collectStartup (file://<benchmark-measurement-worktree>/packages/runner/adapters/lynx-sandbox-android.mjs:1483:26)\n    at async file://<benchmark-measurement-worktree>/scripts/run-b230-native-probe.mjs:189:31"
+  },
+  "environment": "lynx-native-android-aries_10-10-devtool-direct-recycle2",
+  "machine": {
+    "id": "lynx-native-android-aries_10-10-devtool-direct-recycle2-<redacted-device-lease-id>-018b0d55b121",
+    "platform": "android",
+    "osVersion": "10",
+    "cpuModel": "linaro",
+    "cores": 8,
+    "node": null,
+    "deviceModel": "ByteDance aries_10",
+    "app": "LynxExplorer",
+    "appVersion": "1.0",
+    "explorerPackage": {
+      "versionName": "1.0",
+      "versionCode": 1
+    },
+    "debugRouterVersion": "0.0.1",
+    "lynxSdkVersion": "0.0.1",
+    "connectorPackageTrees": {
+      "protocol": "connector-package-trees-v1",
+      "packages": [
+        {
+          "name": "@byted/agent-lynx",
+          "version": "0.14.4",
+          "available": true,
+          "resolvedPath": "/tmp/lynx-agent-native-3M2RVo/node_modules/@byted/agent-lynx",
+          "rootSha256": "30947a6fd180c1ab174a0c3a68fc6fd620f0e843a3883e6f8c0e16c13352ce2c",
+          "fileCount": 57,
+          "byteCount": 1213849
+        },
+        {
+          "name": "@byted-lynx/devtool-connector",
+          "version": "0.15.0",
+          "available": true,
+          "resolvedPath": "/tmp/lynx-agent-native-3M2RVo/node_modules/@byted-lynx/devtool-connector",
+          "rootSha256": "2647a81dc15ec0c122cfdc59ecb0ae5c62e57dfa930ff8ce52dbd81403c9f39b",
+          "fileCount": 85,
+          "byteCount": 4036024
+        },
+        {
+          "name": "@byted-lynx/bdc-client",
+          "version": "0.4.3",
+          "available": true,
+          "resolvedPath": "/tmp/lynx-agent-native-3M2RVo/node_modules/@byted-lynx/bdc-client",
+          "rootSha256": "12f2527dd46a539774368dc0c441484959b615e0519617e95161f8b4115560b6",
+          "fileCount": 16,
+          "byteCount": 3070734
+        }
+      ],
+      "sha256": "8db2af74a40138d73b5a34c000aca445f1d7c686c36cafa30f715c5e563def88"
+    },
+    "protocol": "native-sandbox-adapter-v3",
+    "defaultTimeoutMs": 30000,
+    "longWorkloadTimeoutMs": 30000,
+    "renderGraceFrames": 2,
+    "debugRouterSettleMs": 100,
+    "explorerRecycleEveryPages": 2,
+    "explorerLaunchSettleMs": 500,
+    "explorerReconnectTimeoutMs": 90000,
+    "clientDiscoveryPollMs": 250,
+    "sessionDiscoveryPollMs": 50,
+    "octaneReadyPollMs": 16,
+    "startupPollMs": 16,
+    "producerProbePollMs": 250,
+    "tapSettleMs": 10,
+    "maxBatteryTemperatureC": 40,
+    "thermalGateTimeoutMs": 300000,
+    "thermalPollMs": 5000,
+    "thermalGateScope": "before-every-bundle-load",
+    "transientAttempts": 3,
+    "leaseCleanupMarginMs": 30000,
+    "leaseStopSafetyOverrideMs": null,
+    "semanticDnfRetries": 0,
+    "retryScope": "transport-only-within-repetition",
+    "deviceClockCalibrationSamples": 7,
+    "explorerLifecycle": "force-stop-at-start-and-recycle-cadence",
+    "octaneTriggerMode": "tap",
+    "devtoolTransport": "direct",
+    "tableProtocol": "lynx-native-bench-v2",
+    "startupProtocol": "lynx-native-startup-v1",
+    "campaignId": "octane-b230f8a77-lepusng-probe-v1",
+    "matrixContractSha256": "51b227b3b0ac1b3f44c0319eec3cbb8597a5cf925f9ab885141741c351ad25ae",
+    "inputReceiptSha256": "89ae97131b85a38799b33279347d25956eb702dba12854da37985ac5a11cc92c",
+    "connectorPackageTreesSha256": "8db2af74a40138d73b5a34c000aca445f1d7c686c36cafa30f715c5e563def88",
+    "harnessConfigId": "018b0d55b121",
+    "serialSha256": "<redacted-device-serial-sha256>",
+    "deviceLeaseId": "<redacted-device-lease-id>",
+    "leaseReceipt": {
+      "protocol": "lynx-sandbox-lease-receipt-v1",
+      "issueId": "octane-b230f8a77-lepusng-baseline-20260903",
+      "expiredAt": 1788428108729,
+      "serialSha256": "<redacted-device-serial-sha256>",
+      "deviceLeaseId": "<redacted-device-lease-id>"
+    },
+    "deviceCohort": {
+      "protocol": "native-device-cohort-v1",
+      "serialSha256": "<redacted-device-serial-sha256>",
+      "environment": "lynx-native-android-aries_10-10-devtool-direct-recycle2",
+      "hardware": {
+        "platform": "android",
+        "osVersion": "10",
+        "cpuModel": "linaro",
+        "cores": 8,
+        "deviceModel": "ByteDance aries_10",
+        "app": "LynxExplorer",
+        "appVersion": "1.0",
+        "explorerPackage": {
+          "versionName": "1.0",
+          "versionCode": 1
+        },
+        "debugRouterVersion": "0.0.1",
+        "lynxSdkVersion": "0.0.1"
+      },
+      "campaignId": "octane-b230f8a77-lepusng-probe-v1",
+      "matrixContractSha256": "51b227b3b0ac1b3f44c0319eec3cbb8597a5cf925f9ab885141741c351ad25ae",
+      "inputReceiptSha256": "89ae97131b85a38799b33279347d25956eb702dba12854da37985ac5a11cc92c",
+      "connectorPackageTreesSha256": "8db2af74a40138d73b5a34c000aca445f1d7c686c36cafa30f715c5e563def88",
+      "harnessConfigId": "018b0d55b121",
+      "id": "c2c655e69bf85810",
+      "sha256": "c2c655e69bf858100f010a32ffb15e1bad3cbb00e646d1734be04ddba62167ea"
+    },
+    "deviceCohortId": "c2c655e69bf85810",
+    "deviceLeaseIdentitySource": "structured-receipt-v1",
+    "deviceClockOffsetMs": -750,
+    "deviceClockCalibrationRttMs": 22,
+    "thermalStart": {
+      "capturedAt": "2026-09-03T09:00:34.164Z",
+      "batteryTemperatureC": 35,
+      "thermalStatus": 0,
+      "temperatures": [
+        {
+          "valueC": 30.8,
+          "type": 3,
+          "name": "test temperature sensor",
+          "status": 0
+        }
+      ]
+    },
+    "servedInputs": [
+      {
+        "entry": "octane-b230f8a77",
+        "rows": 10000,
+        "suite": "startup",
+        "sha256": "2af4a9740daae05b399f016f006c728201a7ff9bda050ad96e1685dc7f9258c2",
+        "bytes": 558715,
+        "served": 1
+      },
+      {
+        "entry": "react",
+        "rows": 10000,
+        "suite": "startup",
+        "sha256": "a95673d11a4b51dbd30f1f0c3999f7e17b3d43a59829cee42ab7ec264e491222",
+        "bytes": 102957,
+        "served": 1
+      },
+      {
+        "entry": "react",
+        "rows": 10000,
+        "suite": "startup",
+        "sha256": "a95673d11a4b51dbd30f1f0c3999f7e17b3d43a59829cee42ab7ec264e491222",
+        "bytes": 102957,
+        "served": 1
+      },
+      {
+        "entry": "react",
+        "rows": 10000,
+        "suite": "startup",
+        "sha256": "a95673d11a4b51dbd30f1f0c3999f7e17b3d43a59829cee42ab7ec264e491222",
+        "bytes": 102957,
+        "served": 1
+      }
+    ],
+    "transientRecoveries": [
+      {
+        "at": "2026-09-03T09:01:34.801Z",
+        "category": "devtool-transport-disconnect",
+        "message": "Error: CDP Performance.getAllPerformanceEntries failed: Error: Native CDP channel closed before pending commands completed."
+      },
+      {
+        "at": "2026-09-03T09:02:16.684Z",
+        "category": "devtool-transport-disconnect",
+        "message": "Error: CDP Performance.getAllPerformanceEntries failed: Error: Native CDP channel closed before pending commands completed."
+      }
+    ],
+    "thermalGates": [
+      {
+        "entry": "octane-b230f8a77",
+        "rows": 10000,
+        "suite": "startup",
+        "capturedAt": "2026-09-03T09:00:34.288Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "react",
+        "rows": 10000,
+        "suite": "startup",
+        "capturedAt": "2026-09-03T09:01:04.765Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "react",
+        "rows": 10000,
+        "suite": "startup",
+        "capturedAt": "2026-09-03T09:01:37.037Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "react",
+        "rows": 10000,
+        "suite": "startup",
+        "capturedAt": "2026-09-03T09:02:18.215Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      }
+    ],
+    "thermalEnd": {
+      "capturedAt": "2026-09-03T09:02:47.663Z",
+      "batteryTemperatureC": 35,
+      "thermalStatus": 0,
+      "temperatures": [
+        {
+          "valueC": 30.8,
+          "type": 3,
+          "name": "test temperature sensor",
+          "status": 0
+        }
+      ]
+    }
+  }
+}
