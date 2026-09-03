@@ -1,0 +1,82 @@
+{
+  "success": true,
+  "parseSucceeded": true,
+  "trace": {
+    "path": "<benchmark-measurement-worktree>/artifacts/octane-b230-profile-startup.pftrace",
+    "bytes": 125991,
+    "sha256": "a9442bf887a74da3a0ba70776ad20ab6e12de588b1ebdc27a21a7e6b95c57fc7"
+  },
+  "query": {
+    "source": "inline",
+    "text": "WITH rt AS (SELECT clock_value-ts AS offset_ns FROM clock_snapshot WHERE clock_name='REALTIME' LIMIT 1) SELECT s.ts, (s.ts+(SELECT offset_ns FROM rt))/1000000.0 AS realtime_ms, s.dur, s.name, t.name AS thread_name FROM slice s JOIN track tr ON s.track_id=tr.id LEFT JOIN thread_track tt ON tr.id=tt.id LEFT JOIN thread t ON tt.utid=t.utid WHERE s.name IN ('Timing::Mark.mtsRenderStart','Timing::Mark.mtsRenderEnd','Timing::Mark.paintingUiOperationExecuteStart','FirstMeaningfulPaint','Client.onFirstScreen','AnimationFrameTaskHandler::DoFrame') ORDER BY s.ts",
+    "sha256": "f70a4e8654c3b05bb538195a304006f7452ac5ac4a37460008e444d25e38f037"
+  },
+  "columns": [
+    "ts",
+    "realtime_ms",
+    "dur",
+    "name",
+    "thread_name"
+  ],
+  "totalRows": 8,
+  "returnedRows": 8,
+  "truncated": false,
+  "rows": [
+    {
+      "ts": "102152535022261",
+      "realtime_ms": 1788426436225.04,
+      "dur": "0",
+      "name": "Timing::Mark.mtsRenderStart",
+      "thread_name": "m.lynx.explorer"
+    },
+    {
+      "ts": "102152557624312",
+      "realtime_ms": 1788426436247.642,
+      "dur": "0",
+      "name": "Timing::Mark.mtsRenderEnd",
+      "thread_name": "m.lynx.explorer"
+    },
+    {
+      "ts": "102152558013646",
+      "realtime_ms": 1788426436248.0315,
+      "dur": "0",
+      "name": "Timing::Mark.paintingUiOperationExecuteStart",
+      "thread_name": "m.lynx.explorer"
+    },
+    {
+      "ts": "102152559829752",
+      "realtime_ms": 1788426436249.8477,
+      "dur": "78072",
+      "name": "AnimationFrameTaskHandler::DoFrame",
+      "thread_name": "m.lynx.explorer"
+    },
+    {
+      "ts": "102152561932828",
+      "realtime_ms": 1788426436251.9507,
+      "dur": "0",
+      "name": "FirstMeaningfulPaint",
+      "thread_name": "m.lynx.explorer"
+    },
+    {
+      "ts": "102152562213818",
+      "realtime_ms": 1788426436252.2317,
+      "dur": "17009",
+      "name": "Client.onFirstScreen",
+      "thread_name": "m.lynx.explorer"
+    },
+    {
+      "ts": "102152562219857",
+      "realtime_ms": 1788426436252.2375,
+      "dur": "1937",
+      "name": "Client.onFirstScreen",
+      "thread_name": "m.lynx.explorer"
+    },
+    {
+      "ts": "102152564330454",
+      "realtime_ms": 1788426436254.3484,
+      "dur": "125842",
+      "name": "AnimationFrameTaskHandler::DoFrame",
+      "thread_name": "m.lynx.explorer"
+    }
+  ]
+}
