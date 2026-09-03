@@ -15,6 +15,8 @@
 //   BENCH_DEVICE_MESSAGECHANNEL_FALLBACK=1 node scripts/build-app.mjs
 //                                                     # SDK 4.0 device has no MessageChannel
 //   BENCH_DISABLE_DEVTOOL=1 node scripts/build-app.mjs # device preflight bundle
+//   BENCH_ISSUE278_ATTRIBUTION=1 OCTANE_LYNX_PROFILE=1 node scripts/build-app.mjs
+//                                                     # app-only Native attribution
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -162,11 +164,12 @@ export function buildTableApp({
 
 	const autoRows = Number(process.env.BENCH_AUTOROWS ?? '0') || 0;
 	const profile = process.env.OCTANE_LYNX_PROFILE === '1';
+	const issue278Attribution = process.env.BENCH_ISSUE278_ATTRIBUTION === '1';
 	const q2Profile = process.env.LEPUS_Q2_PROFILE === '1';
 	if (q2Profile && !profile) throw new Error('LEPUS_Q2_PROFILE requires OCTANE_LYNX_PROFILE=1.');
 	const restore = q2Profile
 		? instrumentLepusQ2Sources(repo)
-		: profile
+		: profile && !issue278Attribution
 			? instrumentLynxStageSources(repo)
 			: () => {};
 	const issue194Native = process.env.BENCH_ISSUE194_NATIVE === '1';
