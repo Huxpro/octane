@@ -1974,7 +1974,7 @@ describe.sequential('first-tree capture after the paint', () => {
 
 	interface EngineEnvironment extends InstalledEnvironment {
 		/** Deliver the engine lifecycle that renders an engine-mode first screen. */
-		readonly renderPage: () => void;
+		readonly renderPage: (renderOptions?: Record<string, unknown>) => void;
 		/** Callbacks the receiver handed to the injected after-paint scheduler. */
 		readonly scheduled: (() => void)[];
 		readonly inbound: LynxBackgroundInboundMessage[];
@@ -2020,8 +2020,8 @@ describe.sequential('first-tree capture after the paint', () => {
 			...environment,
 			scheduled,
 			inbound,
-			renderPage: () => {
-				engineContext.dispatchEvent({ type: '__RenderPage', data: [{}, {}] });
+			renderPage: (renderOptions = {}) => {
+				engineContext.dispatchEvent({ type: '__RenderPage', data: [{}, renderOptions] });
 			},
 		};
 	}
@@ -2062,6 +2062,38 @@ describe.sequential('first-tree capture after the paint', () => {
 		scheduled.pop()!();
 		expect(inbound).toEqual([expect.objectContaining({ type: 'main-ready' })]);
 		expect(main.firstScreenSnapshot()).toMatchObject({ root: 1, version: 1 });
+		expect(main.diagnostics()).toEqual([]);
+	});
+
+	it('publishes the first screen on the engine loadBundle timing pipeline', () => {
+		const flushes: unknown[][] = [];
+		const { main, scheduled, inbound, renderPage } = installEngineEnvironment(
+			undefined,
+			(target) => {
+				const flush = target.__FlushElementTree as (...args: unknown[]) => unknown;
+				target.__FlushElementTree = (...args: unknown[]) => {
+					flushes.push(args);
+					return flush.apply(target, args);
+				};
+			},
+		);
+		firstScreenRoot.render(MainSingleHost, { id: 'timed-first-screen' });
+		main.markFirstScreenSyncReady();
+		const pipelineOptions = {
+			pipelineID: 'load-bundle-pipeline',
+			pipelineOrigin: 'loadBundle',
+			needTimestamps: true,
+		};
+
+		renderPage({ pipelineOptions });
+
+		expect(flushes).toHaveLength(1);
+		expect(flushes[0]?.[1]).toEqual({ pipelineOptions });
+		// Timing metadata is a host flush option, never a background protocol field.
+		expect(JSON.stringify(inbound)).not.toContain('load-bundle-pipeline');
+
+		scheduled.pop()!();
+		expect(JSON.stringify(inbound)).not.toContain('load-bundle-pipeline');
 		expect(main.diagnostics()).toEqual([]);
 	});
 

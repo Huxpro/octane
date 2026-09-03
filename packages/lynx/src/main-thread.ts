@@ -295,6 +295,12 @@ const LYNX_UPDATE_GLOBAL_PROPS_EVENT = '__UpdateGlobalProps';
 
 type LynxLifecycleMessage = LynxPageDataMessage | LynxGlobalPropsMessage;
 
+interface LynxFirstScreenPipelineOptions {
+	readonly pipelineID: string;
+	readonly pipelineOrigin: string;
+	readonly needTimestamps: boolean;
+}
+
 function lifecycleRecord(value: unknown, label: string): Record<string, unknown> {
 	if (value === null || typeof value !== 'object' || Array.isArray(value)) {
 		throw new TypeError(`Octane Lynx ${label} must be a plain object.`);
@@ -351,6 +357,38 @@ function lifecycleBooleanOption(
 		throw new TypeError(`Octane Lynx ${label}.${name} must be a boolean data property.`);
 	}
 	return descriptor.value;
+}
+
+function lifecycleFirstScreenPipelineOptions(
+	options: Record<string, unknown>,
+): LynxFirstScreenPipelineOptions | null {
+	const descriptor = Object.getOwnPropertyDescriptor(options, 'pipelineOptions');
+	if (descriptor === undefined) return null;
+	if (!descriptor.enumerable || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
+		throw new TypeError(
+			'Octane Lynx __RenderPage render options.pipelineOptions must be a data property.',
+		);
+	}
+	const pipeline = lifecycleRecord(descriptor.value, '__RenderPage render options.pipelineOptions');
+	const pipelineID = pipeline.pipelineID;
+	const pipelineOrigin = pipeline.pipelineOrigin;
+	const needTimestamps = pipeline.needTimestamps;
+	if (typeof pipelineID !== 'string' || pipelineID.length === 0) {
+		throw new TypeError(
+			'Octane Lynx __RenderPage render options.pipelineOptions.pipelineID must be a non-empty string.',
+		);
+	}
+	if (typeof pipelineOrigin !== 'string') {
+		throw new TypeError(
+			'Octane Lynx __RenderPage render options.pipelineOptions.pipelineOrigin must be a string.',
+		);
+	}
+	if (typeof needTimestamps !== 'boolean') {
+		throw new TypeError(
+			'Octane Lynx __RenderPage render options.pipelineOptions.needTimestamps must be a boolean.',
+		);
+	}
+	return Object.freeze({ pipelineID, pipelineOrigin, needTimestamps });
 }
 
 function createDeferred<T>(): Deferred<T> {
@@ -707,6 +745,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		options.scheduleFirstScreenCapture,
 	);
 	let pendingFirstScreenRender: (() => void) | null = null;
+	let firstScreenPipelineOptions: LynxFirstScreenPipelineOptions | null = null;
 	let firstScreenRenderReleased = firstScreenRenderMode !== 'engine';
 	let pendingFirstScreenCapture: (() => void) | null = null;
 	/**
@@ -858,9 +897,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 
 	const onRenderPage = (event: LynxContextProxyEvent): void => {
 		if (lifecycleClosed) return;
+		// Never let a malformed later lifecycle reuse a pipeline from an earlier one.
+		firstScreenPipelineOptions = null;
 		try {
 			const tuple = lifecycleTuple(event, LYNX_RENDER_PAGE_EVENT, 2);
-			lifecycleRecord(tuple[1], '__RenderPage render options');
+			const renderOptions = lifecycleRecord(tuple[1], '__RenderPage render options');
+			firstScreenPipelineOptions = lifecycleFirstScreenPipelineOptions(renderOptions);
 			const data: LynxLifecycleDataRecord = snapshotLynxLifecycleData(
 				tuple[0],
 				'__RenderPage data',
@@ -2155,6 +2197,16 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		}
 		firstScreenRenderInProgress = true;
 		let source: LynxHostContainer<Node> | null = null;
+		// Native starts the loadBundle pipeline before dispatching __RenderPage and
+		// carries that exact identity in renderOptions. The lifecycle callback runs
+		// after script evaluation, outside the original implicit pipeline scope, so
+		// the first-screen flush must hand the identity back explicitly or Lynx has
+		// no paint boundary from which to publish loadBundle FCP.
+		const flushOptions =
+			firstScreenPipelineOptions === null
+				? undefined
+				: Object.freeze({ pipelineOptions: firstScreenPipelineOptions });
+		firstScreenPipelineOptions = null;
 		try {
 			// The first screen is one uninterrupted synchronous run between the
 			// entry's call and the browser's next frame, so nothing outside it can
@@ -2178,7 +2230,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			// is a page whose host offers no list PAPI, which is owed that
 			// diagnostic, and a list topology the direct applier will not start
 			// building because it could not finish without faulting halfway.
-			if (!applyLynxFirstScreenDirect(source, result.nodes, result.envelope)) {
+			if (!applyLynxFirstScreenDirect(source, result.nodes, result.envelope, flushOptions)) {
 				if (result.programs !== 0) {
 					// The staged path cannot carry a compiled program — building a
 					// batch for one would re-describe the subtree the program was
@@ -2191,7 +2243,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 					return null;
 				}
 				const prepared = prepareLynxHostBatch(source, result.batch);
-				prepared.apply();
+				prepared.apply(flushOptions);
 				if (!prepared.mutationStarted) {
 					throw new Error('Octane Lynx first-screen host batch did not cross its apply boundary.');
 				}
