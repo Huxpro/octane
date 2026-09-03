@@ -11,13 +11,7 @@
     "text": "WITH rt AS (SELECT clock_value-ts AS offset_ns FROM clock_snapshot WHERE clock_name='REALTIME' LIMIT 1) SELECT s.ts, (s.ts+(SELECT offset_ns FROM rt))/1000000.0 AS realtime_ms, s.dur, s.name, t.name AS thread_name FROM slice s JOIN track tr ON s.track_id=tr.id LEFT JOIN thread_track tt ON tr.id=tt.id LEFT JOIN thread t ON tt.utid=t.utid WHERE s.name IN ('Timing::Mark.mtsRenderStart','Timing::Mark.mtsRenderEnd','Timing::Mark.paintingUiOperationExecuteStart','FirstMeaningfulPaint','Client.onFirstScreen','AnimationFrameTaskHandler::DoFrame') ORDER BY s.ts",
     "sha256": "f70a4e8654c3b05bb538195a304006f7452ac5ac4a37460008e444d25e38f037"
   },
-  "columns": [
-    "ts",
-    "realtime_ms",
-    "dur",
-    "name",
-    "thread_name"
-  ],
+  "columns": ["ts", "realtime_ms", "dur", "name", "thread_name"],
   "totalRows": 8,
   "returnedRows": 8,
   "truncated": false,
