@@ -4390,12 +4390,26 @@ function deriveMainThreadProgramOnce(state, root) {
 	return derived;
 }
 
+/**
+ * Whether the command path can instantiate exactly the resident wire.
+ *
+ * A compiled create can leave an unproved child hole as a range and decide at
+ * runtime whether that hole paints text. The background template makes the
+ * same runtime decision by lowering that text into its descriptor. Those are
+ * equivalent create paths, but they are not the same fixed wire: the resident
+ * program omits the range while the background descriptor gains a text node
+ * and value slot. An address may therefore name only a range-free program.
+ */
+function addressableMainThreadProgram(derived) {
+	return derived !== null && derived.ranges.length === 0;
+}
+
 function universalProgramAddressAst(state, plan, index, origin) {
 	const backend = state.mainThreadProgramBackend;
 	if (backend === undefined || state.programModuleId === undefined) return null;
 	if (!lynxTemplateEligible(plan.root) || plan.root.kind !== 'host') return null;
 	const derived = deriveMainThreadProgramOnce(state, plan.root);
-	if (derived === null) return null;
+	if (!addressableMainThreadProgram(derived)) return null;
 	const address = { module: state.programModuleId, index, digest: programDigest(derived.wire) };
 	// Reported as well as emitted. The digest in the chunk is what a reader can
 	// check; this is what lets the *build* check it, by comparing what the two
@@ -4520,7 +4534,7 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 			// Emitted only for an addressing build. Without one no command can name
 			// this program, so the field would be bytes in the main-thread chunk that
 			// nothing ever reads.
-			...(state.programModuleId === undefined
+			...(state.programModuleId === undefined || !addressableMainThreadProgram(derived)
 				? []
 				: [b.prop('init', b.literal('wire', '"wire"'), jsonValueToAst(derived.wire, origin))]),
 			// `bind`, not `create`: the emission takes the host once per program and

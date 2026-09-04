@@ -60,6 +60,16 @@ export function Card(props: { label: string; detail: unknown; tone: string; iden
 }
 `;
 
+/** The same program with every child hole proved scalar, so its wire is complete. */
+const ADDRESSABLE_CARD = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+export function Card(props: { label: string; detail: string; tone: string; ident: string; onPick: () => void }) @{
+	<view class={props.tone} id={props.ident}>
+		<text class="card-label" bindtap={props.onPick}>{props.label as string}</text>
+		<view class="card-body"><text class="d">{props.detail as string}</text></view>
+	</view>
+}
+`;
+
 type CompileShape = {
 	readonly target?: 'lynx' | 'universal';
 	readonly thread?: 'main-thread' | 'background';
@@ -499,9 +509,37 @@ export function Card(props: { rows: unknown; label: unknown }) @{
 // value is that the change cannot happen quietly. Converted, they now pin the
 // name itself and the price it is allowed to cost.
 describe('naming a resident program from the background (issue #246 E1)', () => {
+	it('declines an address when runtime text ranges can change the background wire', () => {
+		const source = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+export function Card(props: { row: { id: number; label: string }; isSelected: boolean; onSelect: (id: number) => void; onRemove: (id: number) => void }) @{
+	<view class={['row', props.isSelected && 'danger']}>
+		<text class="col-id">{String(props.row.id)}</text>
+		<text class="col-label" bindtap={() => props.onSelect(props.row.id)}>{props.row.label}</text>
+		<text class="col-remove" bindtap={() => props.onRemove(props.row.id)}>{'x'}</text>
+	</view>
+}
+`;
+		const main = evaluate(compiled(source, { backend: Backend, module: 'src/Row.lynx.tsrx' }));
+		const background = evaluate(
+			compiled(source, { thread: 'background', backend: Backend, module: 'src/Row.lynx.tsrx' }),
+		);
+
+		// This is the real-device #275 shape. The compiled create keeps the two
+		// unproved children as runtime ranges, while the background can observe
+		// their current string values and lower a denser descriptor. Naming the
+		// resident one would make its one value slot validate the background's
+		// three values and reject the dynamic commit before it paints.
+		expect(main.roots[0].values).toEqual([0]);
+		expect(main.roots[0].ranges).toHaveLength(2);
+		expect(main.roots[0]).not.toHaveProperty('wire');
+		expect(main.addresses).toEqual([undefined]);
+		expect(background.addresses).toEqual([undefined]);
+	});
 	it('compiles one plan to a program on the main thread and a template on the background', () => {
-		const [mainThread] = evaluate(compiled(CARD, { backend: Backend })).roots;
-		const [background] = evaluate(compiled(CARD, { thread: 'background', backend: Backend })).roots;
+		const [mainThread] = evaluate(compiled(ADDRESSABLE_CARD, { backend: Backend })).roots;
+		const [background] = evaluate(
+			compiled(ADDRESSABLE_CARD, { thread: 'background', backend: Backend }),
+		).roots;
 		// Same source, same backend, same plan — two node kinds. The background's
 		// is the interpreted description it has always had, because
 		// `lynxMainThreadProgramObjectAst` returns null off the main-thread compile
@@ -521,11 +559,15 @@ describe('naming a resident program from the background (issue #246 E1)', () => 
 		// Without a module id nothing is addressed, which is #246 §6.3's refusal
 		// reaching the compiler: a build that cannot cross-check its two layers
 		// emits no name for either of them to trust.
-		expect(evaluate(compiled(CARD, { backend: Backend })).addresses).toEqual([undefined]);
+		expect(evaluate(compiled(ADDRESSABLE_CARD, { backend: Backend })).addresses).toEqual([
+			undefined,
+		]);
 
 		const module = 'src/Card.lynx.tsrx';
-		const mainThread = evaluate(compiled(CARD, { backend: Backend, module }));
-		const background = evaluate(compiled(CARD, { thread: 'background', backend: Backend, module }));
+		const mainThread = evaluate(compiled(ADDRESSABLE_CARD, { backend: Backend, module }));
+		const background = evaluate(
+			compiled(ADDRESSABLE_CARD, { thread: 'background', backend: Backend, module }),
+		);
 
 		// The address is what crosses the realm, and it is positional plus a
 		// digest: `(module id, plan index)` is what a `mount-program-run` carries,
@@ -564,8 +606,12 @@ describe('naming a resident program from the background (issue #246 E1)', () => 
 		// is it — the background compile changes by the address argument and by
 		// nothing else at all.
 		const module = 'src/Card.lynx.tsrx';
-		const plain = compiled(CARD, { thread: 'background', backend: Backend });
-		const addressed = compiled(CARD, { thread: 'background', backend: Backend, module });
+		const plain = compiled(ADDRESSABLE_CARD, { thread: 'background', backend: Backend });
+		const addressed = compiled(ADDRESSABLE_CARD, {
+			thread: 'background',
+			backend: Backend,
+			module,
+		});
 		expect(addressed).not.toBe(plain);
 		// Whitespace around punctuation is normalized first, and that is the one
 		// concession: a `universalPlan` call with a third argument no longer fits
