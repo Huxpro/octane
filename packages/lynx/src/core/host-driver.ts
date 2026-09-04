@@ -491,6 +491,8 @@ export interface CreateLynxHostContainerOptions<Node extends LynxElementRef = Ly
 }
 
 export interface LynxPreparedHostBatch extends UniversalPreparedHostBatch {
+	/** Host-only options for the one flush that applies this prepared batch. */
+	apply(flushOptions?: Readonly<Record<string, unknown>>): void;
 	/** True once the accepted physical application boundary has been crossed. */
 	readonly mutationStarted: boolean;
 	/** Clone-safe public-handle changes that must be published before acknowledgement. */
@@ -4480,6 +4482,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 	container: LynxHostContainer<Node>,
 	roots: readonly LynxFirstScreenDirectNode[],
 	envelope: LynxFirstScreenDirectEnvelope,
+	flushOptions?: Readonly<Record<string, unknown>>,
 ): boolean {
 	const state = container[LYNX_HOST_STATE];
 	if (state.disposed || state.disposing || state.faulted || state.applying) {
@@ -5590,7 +5593,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		// installed main-thread worklets must be invalidated before any native
 		// callback can fire against a faulted container.
 		try {
-			papi.flush(container.page as Node);
+			papi.flush(container.page as Node, flushOptions);
 			state.cleanupNeedsFlush = false;
 		} catch (error) {
 			state.cleanupNeedsFlush = true;
@@ -8626,7 +8629,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 		...(compactHostCount === undefined ? null : { compactHostCount }),
 		listAncestryDelta,
 		firstTreeAction,
-		apply() {
+		apply(flushOptions) {
 			if (status === 'aborted' || status === 'applied') return;
 			if (status === 'faulted') throw fault;
 			if (status !== 'prepared') return;
@@ -9277,7 +9280,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 						}
 					}
 					try {
-						state.papi.flush(container.page);
+						state.papi.flush(container.page, flushOptions);
 						state.cleanupNeedsFlush = false;
 					} catch (error) {
 						// The logical batch is already accepted, including root removals and

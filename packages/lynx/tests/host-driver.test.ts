@@ -373,6 +373,43 @@ describe('Lynx Element PAPI host driver', () => {
 		}
 	});
 
+	it('hands prepared-batch flush options through to the page flush', () => {
+		// The first-screen staged fallback publishes loadBundle timing by passing
+		// pipeline options into `prepared.apply(flushOptions)`. The contract is
+		// that whatever an apply is handed reaches the host's flush verbatim —
+		// and that an apply handed nothing keeps the bare flush it always had.
+		const papi = createFakePAPI();
+		const flushArgs: unknown[][] = [];
+		const observed = {
+			...papi,
+			flush: (...args: unknown[]) => {
+				flushArgs.push(args);
+				papi.flush();
+			},
+		} as FakePAPI;
+		const commands = [
+			{ op: 'create', id: 1, type: 'view', props: {} },
+			{ op: 'insert', parent: null, id: 1, before: null },
+		] as const;
+		const pipelineOptions = Object.freeze({
+			pipelineID: 'load-bundle-pipeline',
+			pipelineOrigin: 'loadBundle',
+			needTimestamps: true,
+		});
+
+		const timed = createLynxHostContainer(observed, { root: 1 });
+		prepareLynxHostBatch(timed, batch(1, commands as never)).apply(
+			Object.freeze({ pipelineOptions }),
+		);
+		expect(flushArgs).toEqual([[timed.page, { pipelineOptions }]]);
+
+		flushArgs.length = 0;
+		const untimed = createLynxHostContainer(observed, { root: 1 });
+		prepareLynxHostBatch(untimed, batch(1, commands as never)).apply();
+		expect(flushArgs).toHaveLength(1);
+		expect(flushArgs[0]?.[1]).toBeUndefined();
+	});
+
 	it('adopts an entry-owned page without creating a second page', () => {
 		const papi = createFakePAPI();
 		const page = papi.createPage('entry', 0);
