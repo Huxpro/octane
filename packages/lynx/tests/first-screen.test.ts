@@ -1974,7 +1974,10 @@ describe.sequential('first-tree capture after the paint', () => {
 
 	interface EngineEnvironment extends InstalledEnvironment {
 		/** Deliver the engine lifecycle that renders an engine-mode first screen. */
-		readonly renderPage: (renderOptions?: Record<string, unknown>) => void;
+		readonly renderPage: (
+			renderOptions?: Record<string, unknown>,
+			data?: Record<string, unknown>,
+		) => void;
 		/** Callbacks the receiver handed to the injected after-paint scheduler. */
 		readonly scheduled: (() => void)[];
 		readonly inbound: LynxBackgroundInboundMessage[];
@@ -2020,8 +2023,8 @@ describe.sequential('first-tree capture after the paint', () => {
 			...environment,
 			scheduled,
 			inbound,
-			renderPage: (renderOptions = {}) => {
-				engineContext.dispatchEvent({ type: '__RenderPage', data: [{}, renderOptions] });
+			renderPage: (renderOptions = {}, data = {}) => {
+				engineContext.dispatchEvent({ type: '__RenderPage', data: [data, renderOptions] });
 			},
 		};
 	}
@@ -2095,6 +2098,49 @@ describe.sequential('first-tree capture after the paint', () => {
 		scheduled.pop()!();
 		expect(JSON.stringify(inbound)).not.toContain('load-bundle-pipeline');
 		expect(main.diagnostics()).toEqual([]);
+	});
+
+	it('still delivers page data when the pipeline options are malformed', () => {
+		// The pipeline identity is timing observability, not page content. A host
+		// that ships it malformed loses its loadBundle FCP entry and gets the
+		// diagnostic that says so — it must not also lose the initial page data
+		// this same __RenderPage has always delivered.
+		const flushes: unknown[][] = [];
+		const { main, scheduled, inbound, renderPage } = installEngineEnvironment(
+			undefined,
+			(target) => {
+				const flush = target.__FlushElementTree as (...args: unknown[]) => unknown;
+				target.__FlushElementTree = (...args: unknown[]) => {
+					flushes.push(args);
+					return flush.apply(target, args);
+				};
+			},
+		);
+		firstScreenRoot.render(MainSingleHost, { id: 'pipeline-malformed' });
+		main.markFirstScreenSyncReady();
+
+		renderPage(
+			{ pipelineOptions: { pipelineID: 'load-bundle-pipeline', pipelineOrigin: 'loadBundle' } },
+			{ seed: 'octane' },
+		);
+
+		// The paint happened and carried no pipeline identity: a malformed one is
+		// declined, never approximated.
+		expect(flushes).toHaveLength(1);
+		expect(flushes[0]?.[1]).toBeUndefined();
+		expect(main.diagnostics()).toEqual([
+			expect.objectContaining({ message: expect.stringMatching(/pipelineOptions/) }),
+		]);
+
+		scheduled.pop()!();
+		readyRequest(7);
+		expect(inbound).toContainEqual(
+			expect.objectContaining({
+				type: 'page-data',
+				operation: 'replace',
+				data: { seed: 'octane' },
+			}),
+		);
 	});
 
 	it('moves capture in time without moving it in order', () => {

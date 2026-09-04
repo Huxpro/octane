@@ -902,7 +902,15 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		try {
 			const tuple = lifecycleTuple(event, LYNX_RENDER_PAGE_EVENT, 2);
 			const renderOptions = lifecycleRecord(tuple[1], '__RenderPage render options');
-			firstScreenPipelineOptions = lifecycleFirstScreenPipelineOptions(renderOptions);
+			try {
+				firstScreenPipelineOptions = lifecycleFirstScreenPipelineOptions(renderOptions);
+			} catch (error) {
+				// The pipeline identity is timing observability, not page content. A
+				// host that ships it malformed loses its loadBundle FCP entry and gets
+				// the diagnostic that says so; it must not also lose the page data this
+				// same event has always delivered.
+				report(error, 'Octane Lynx received malformed __RenderPage pipeline options.');
+			}
 			const data: LynxLifecycleDataRecord = snapshotLynxLifecycleData(
 				tuple[0],
 				'__RenderPage data',
