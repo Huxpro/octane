@@ -128,7 +128,7 @@ function buildVariants() {
 	}
 	const control = fs.readFileSync(fcpOnly ? variants['control-fcp'] : variants.control);
 	const profile = fs.readFileSync(fcpOnly ? variants['profile-fcp'] : variants.profile);
-	for (const name of ['__OCTANE_LYNX_MT_SLICE_LOAD_START_EPOCH__', 'firstScreenPrepareMs']) {
+	for (const name of ['__OCTANE_LYNX_MT_SLICE_LOAD_START_EPOCH__', 'firstScreenPublishMs']) {
 		const marker = Buffer.from(name);
 		if (control.includes(marker)) {
 			throw new Error(`default production bundle retained stage profiling marker ${name}.`);
@@ -370,7 +370,7 @@ function markdown(report) {
 		'',
 		`## FCP@${report.meta.rows}`,
 		'',
-		`Attribution starts when the shared browser hook assigns the hidden main-thread iframe Blob script URL, before load/parse/evaluation, and ends when the shared composed-tree observer first sees all ${report.meta.rows.toLocaleString('en-US')} rows. Render, command staging, host prepare, host apply, and first-tree capture are directly timed. Nested plan and PAPI-create intervals are subtracted from their enclosing stages. \`publication_layout_predicate_residual\` is the exclusive remainder through Web Core publication, style/layout, and observer-frame delay.`,
+		`Attribution starts when the shared browser hook assigns the hidden main-thread iframe Blob script URL, before load/parse/evaluation, and ends when the shared composed-tree observer first sees all ${report.meta.rows.toLocaleString('en-US')} rows. The framework's current render, publish, capture, and announce phases are directly timed. Nested plan, command-stage, and PAPI-create intervals are subtracted from their enclosing phases. \`presentation_predicate_residual\` is the exclusive remainder through Web Core presentation, style/layout, and observer-frame delay.`,
 		'',
 		'| segment | median ms | min–max ms | share |',
 		'|---|---:|---:|---:|',
@@ -594,7 +594,7 @@ const fcpAttribution = summarizeSamples(samples.fcp.profile.map((sample) => samp
 if (fcpOnly) {
 	const ownerShare =
 		fcpAttribution.stages.first_screen_command_staging.share +
-		fcpAttribution.stages.first_screen_host_prepare.share;
+		fcpAttribution.stages.first_screen_publish_other.share;
 	const report = {
 		meta: {
 			date: new Date().toISOString(),
@@ -619,7 +619,7 @@ if (fcpOnly) {
 		},
 		verdicts: [
 			{
-				step: 'first-screen generic command staging + host prepare owner gate',
+				step: 'first-screen command staging + publish owner gate',
 				verdict: ownerShare >= 0.1 ? 'GO' : 'NO-GO',
 				reason: `directly timed exclusive share is ${(ownerShare * 100).toFixed(1)}%; Phase B requires at least 10.0%.`,
 			},

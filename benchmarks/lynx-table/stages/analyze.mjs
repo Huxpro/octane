@@ -40,27 +40,26 @@ export function analyzeFcpSample({ wallMs, main }) {
 			'FCP plan interpretation and command staging exceed their enclosing first-screen render.',
 		);
 	}
-	const applyMs = observed(main?.firstScreenApplyMs, 'firstScreenApplyMs');
-	const papiCreateMs = observed(main?.firstScreenPapiCreateMs, 'firstScreenPapiCreateMs');
-	if (papiCreateMs > applyMs + 0.5) {
-		throw new Error('FCP PAPI element creation exceeds the enclosing first-screen apply.');
+	const publishMs = observed(main?.firstScreenPublishMs, 'firstScreenPublishMs');
+	const papiCreateMs = observed(main?.papiCreateMs, 'papiCreateMs');
+	if (papiCreateMs > publishMs + 0.5) {
+		throw new Error('FCP PAPI element creation exceeds the enclosing first-screen publish.');
 	}
 	const stages = {
 		mt_slice_eval: observed(main?.mtSliceEvalMs, 'mtSliceEvalMs'),
 		plan_interpretation: planMs,
 		first_screen_render_other: Math.max(0, renderMs - planMs - commandStageMs),
 		first_screen_command_staging: commandStageMs,
-		first_screen_host_container: observed(main?.firstScreenContainerMs, 'firstScreenContainerMs'),
-		first_screen_host_prepare: observed(main?.firstScreenPrepareMs, 'firstScreenPrepareMs'),
 		papi_element_creation: papiCreateMs,
-		first_screen_host_apply_other: Math.max(0, applyMs - papiCreateMs),
+		first_screen_publish_other: Math.max(0, publishMs - papiCreateMs),
 		first_screen_capture: observed(main?.firstScreenCaptureMs, 'firstScreenCaptureMs'),
+		first_screen_announce: observed(main?.firstScreenAnnounceMs, 'firstScreenAnnounceMs'),
 	};
 	return {
 		totalMs,
 		stages: {
 			...stages,
-			publication_layout_predicate_residual: residual(totalMs, stages, 'FCP'),
+			presentation_predicate_residual: residual(totalMs, stages, 'FCP'),
 		},
 	};
 }

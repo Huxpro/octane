@@ -11,15 +11,11 @@ const PROFILE_MARKERS = [
 	'firstScreenPlanMs',
 	'firstScreenRenderMs',
 	'firstScreenCommandStageMs',
-	'firstScreenContainerMs',
-	'firstScreenPrepareMs',
-	'firstScreenApplyMs',
-	'firstScreenPapiCreateMs',
+	'firstScreenPublishMs',
 	'firstScreenCaptureMs',
-	'firstScreenCommands',
-	'firstScreenHosts',
-	'firstScreenLogicalIds',
+	'firstScreenAnnounceMs',
 	'mtSliceEvalMs',
+	'papiCreateMs',
 ];
 
 export function productionAbConfig(args, { rows, cwd = process.cwd() }) {

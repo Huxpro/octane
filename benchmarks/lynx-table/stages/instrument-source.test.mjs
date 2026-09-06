@@ -79,6 +79,21 @@ test('instruments an isolated Lynx source copy and restores every byte', () => {
 			instrumentedMainRenderer,
 			/const batch = freezeBatch\(commands\);[\s\S]*firstScreenCommandStageMs[\s\S]*return batch;/,
 		);
+		const instrumentedProfile = fs.readFileSync(
+			path.join(temporary, 'packages/lynx/src/core/profiling.ts'),
+			'utf8',
+		);
+		for (const obsolete of [
+			'firstScreenContainerMs',
+			'firstScreenPrepareMs',
+			'firstScreenApplyMs',
+			'firstScreenPapiCreateMs',
+			'firstScreenCommands',
+			'firstScreenHosts',
+			'firstScreenLogicalIds',
+		]) {
+			assert.doesNotMatch(instrumentedProfile, new RegExp(obsolete));
+		}
 		assert.match(
 			fs.readFileSync(path.join(temporary, 'packages/lynx/src/core/papi.ts'), 'utf8'),
 			/papiCreateMs/,
