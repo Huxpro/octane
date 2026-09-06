@@ -35,16 +35,7 @@ export function instrumentLynxStageSources(repositoryRoot) {
 \tbgReplayMs?: number;
 \tmtExpandMs?: number;
 \tfirstScreenPlanMs?: number;
-\tfirstScreenRenderMs?: number;
 \tfirstScreenCommandStageMs?: number;
-\tfirstScreenContainerMs?: number;
-\tfirstScreenPrepareMs?: number;
-\tfirstScreenApplyMs?: number;
-\tfirstScreenPapiCreateMs?: number;
-\tfirstScreenCaptureMs?: number;
-\tfirstScreenCommands?: number;
-\tfirstScreenHosts?: number;
-\tfirstScreenLogicalIds?: number;
 \tmtSliceEvalMs?: number;
 \tmtSliceStartEpochMs?: number;
 \tpapiCreateMs?: number;

@@ -612,20 +612,28 @@ driver sees all 10,000 rows:
    walks.
 3. `first_screen_render_other`: the enclosing first-screen render after
    subtracting plan interpretation and command staging.
-4. `first_screen_command_staging`: template selection, command materialization,
-   and batch freezing.
-5. `first_screen_host_container`: main-local host-container creation.
-6. `first_screen_host_prepare`: clone-safe host batch preparation.
-7. `papi_element_creation`: nested Element PAPI page/element/list creation.
-8. `first_screen_host_apply_other`: host apply after subtracting PAPI creation.
-9. `first_screen_capture`: adoptable first-tree capture.
-10. `publication_layout_predicate_residual`: the exclusive wall-clock
-    remainder through Web Core publication, style/layout, and observer-frame
-    delay.
+4. `first_screen_command_staging`: nested template selection, command
+   materialization, and batch freezing when the current direct publisher asks
+   for a fallback batch; zero when it does not.
+5. `papi_element_creation`: nested Element PAPI page/element/list creation.
+6. `first_screen_publish_other`: the enclosing publish phase after subtracting
+   PAPI creation. This is the current direct first-screen path, not the retired
+   staged host-container/prepare/apply split.
+7. `first_screen_capture`: adoptable first-tree capture.
+8. `first_screen_announce`: ready announcement after capture.
+9. `presentation_predicate_residual`: the exclusive wall-clock remainder
+   through Web Core presentation, style/layout, and observer-frame delay.
 
 The analyzer enforces both nesting relations: plan plus command staging cannot
-exceed first-screen render, and PAPI creation cannot exceed host apply. It then
+exceed first-screen render, and PAPI creation cannot exceed publish. It then
 subtracts the nested intervals so every reported segment is exclusive.
+
+Current-head CI also builds and drives a 1,000-row profiled first screen in
+Chromium, then samples the hidden main-thread script three times. The CPU-profile smoke
+requires the critical `applier walk` bucket to be non-zero and leaves at most
+40% of sampled self time unnamed; this catches a stale probe table instead of
+letting a plausible-looking report silently move its largest owner to
+`unmatched`.
 
 Raw view-attach FCP is also reported for control/profile overhead and same-run
 comparison, but decode/fetch before slice evaluation remains outside the

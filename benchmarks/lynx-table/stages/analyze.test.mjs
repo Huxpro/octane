@@ -61,11 +61,10 @@ test('attributes only exclusive observed time and assigns the remainder to named
 				firstScreenRenderMs: 30,
 				firstScreenPlanMs: 10,
 				firstScreenCommandStageMs: 15,
-				firstScreenContainerMs: 2,
-				firstScreenPrepareMs: 8,
-				firstScreenApplyMs: 30,
-				firstScreenPapiCreateMs: 20,
+				firstScreenPublishMs: 30,
+				papiCreateMs: 20,
 				firstScreenCaptureMs: 5,
+				firstScreenAnnounceMs: 2,
 			},
 		}),
 		{
@@ -75,12 +74,11 @@ test('attributes only exclusive observed time and assigns the remainder to named
 				plan_interpretation: 10,
 				first_screen_render_other: 5,
 				first_screen_command_staging: 15,
-				first_screen_host_container: 2,
-				first_screen_host_prepare: 8,
 				papi_element_creation: 20,
-				first_screen_host_apply_other: 10,
+				first_screen_publish_other: 10,
 				first_screen_capture: 5,
-				publication_layout_predicate_residual: 20,
+				first_screen_announce: 2,
+				presentation_predicate_residual: 28,
 			},
 		},
 	);
@@ -100,9 +98,9 @@ test('attributes only exclusive observed time and assigns the remainder to named
 		() =>
 			analyzeFcpSample({
 				wallMs: 100,
-				main: { firstScreenApplyMs: 10, firstScreenPapiCreateMs: 11 },
+				main: { firstScreenPublishMs: 10, papiCreateMs: 11 },
 			}),
-		/exceeds the enclosing first-screen apply/,
+		/exceeds the enclosing first-screen publish/,
 	);
 	assert.deepEqual(
 		analyzeCreateSample({

@@ -38,6 +38,7 @@ import {
 	stats,
 } from '../web/driver-client.mjs';
 import { foldProfile, PROBE_WINDOW, SITES_BY_BUCKET } from './mts-profile-buckets.mjs';
+import { assertMtsProfileCoverage } from './mts-profile-coverage.mjs';
 import { tagFrom } from '../scripts/build-app.mjs';
 import { bundleIdentity, writeEvidenceJson } from '../scripts/evidence.mjs';
 
@@ -57,6 +58,9 @@ const { values: args } = parseArgs({
 		// rather than a duration to sample for: a run that reaches it reports the
 		// window as truncated instead of reporting its buckets as complete.
 		'adoption-timeout': { type: 'string', default: '60000' },
+		// CI smoke only: fail closed when probe drift moves a material share back
+		// into the unnamed remainder. Reportable profiling leaves this unset.
+		'max-unmatched-share': { type: 'string' },
 		// Issue-#163 C10: the same app and the same program backend, built from a
 		// different revision of the renderer into a tagged dist, so an A/B of
 		// main-thread script is one window rather than two runs compared across
@@ -82,6 +86,14 @@ const reps = Number(args.reps);
 const port = Number(args.port);
 const interval = Number(args.interval);
 const adoptionTimeout = Number(args['adoption-timeout']);
+const maxUnmatchedShare =
+	args['max-unmatched-share'] === undefined ? null : Number(args['max-unmatched-share']);
+if (
+	maxUnmatchedShare !== null &&
+	(!Number.isFinite(maxUnmatchedShare) || maxUnmatchedShare <= 0 || maxUnmatchedShare >= 1)
+) {
+	throw new TypeError('--max-unmatched-share must be a number between 0 and 1.');
+}
 const cellIds = args.cells.split(',').map((value) => value.trim());
 
 const controlTags = args['control-dist']
@@ -526,6 +538,7 @@ function attributeWindow(id, windows, sourceAt) {
 	const unmatchedMs = windows.map(
 		(window) => [...window.unmatched.values()].reduce((sum, cell) => sum + cell.us, 0) / 1000,
 	);
+	const totalMs = namedMs.map((value, index) => value + unmatchedMs[index]);
 	// The largest frames the probe table did not name, from the first reading, so
 	// an unnamed cost is inspectable rather than a number with nothing behind it.
 	const worst = [...windows[0].unmatched].sort((a, b) => b[1].us - a[1].us).slice(0, 3);
@@ -534,7 +547,10 @@ function attributeWindow(id, windows, sourceAt) {
 		sites: perSite,
 		namedMs: stats(namedMs),
 		unmatchedMs: stats(unmatchedMs),
-		totalMs: stats(namedMs.map((value, index) => value + unmatchedMs[index])),
+		totalMs: stats(totalMs),
+		unmatchedShare: stats(
+			unmatchedMs.map((value, index) => (totalMs[index] === 0 ? 0 : value / totalMs[index])),
+		),
 		largestUnnamed: worst.map(([position, cell]) => {
 			const [line, column] = position.split(':').map(Number);
 			return {
@@ -619,6 +635,9 @@ const meta = {
 	loadEnd: loadEnd.map((value) => round(value, 2)),
 };
 const report = { meta, cells };
+if (maxUnmatchedShare !== null) {
+	for (const id of cellIds) assertMtsProfileCoverage(cells[id], maxUnmatchedShare);
+}
 const outDir = path.join(import.meta.dirname, 'results');
 fs.mkdirSync(outDir, { recursive: true });
 await writeEvidenceJson(path.join(outDir, `${args.label}-${rows}.json`), report);
@@ -676,6 +695,15 @@ const rowFor = (name, pick, view = (id) => cells[id]) =>
 				: `${round(stat.median, 1)} [${round(stat.min, 1)}–${round(stat.max, 1)}]`;
 		})
 		.join(' | ')} |`;
+const percentRowFor = (name, pick, view = (id) => cells[id]) =>
+	`| ${name} | ${cellIds
+		.map((id) => {
+			const stat = pick(view(id));
+			return stat === undefined || stat === null
+				? '—'
+				: `${round(stat.median * 100, 1)}% [${round(stat.min * 100, 1)}%–${round(stat.max * 100, 1)}%]`;
+		})
+		.join(' | ')} |`;
 /** Buckets one window produced, heaviest first, so two windows order their own. */
 const orderedFor = (view) =>
 	[...new Set(cellIds.flatMap((id) => Object.keys(view(id)?.buckets ?? {})))].sort((a, b) => {
@@ -689,6 +717,7 @@ for (const name of ordered) lines.push(rowFor(name, (cell) => cell.buckets[name]
 lines.push(
 	rowFor('named total', (cell) => cell.namedMs),
 	rowFor('unnamed by the probe table', (cell) => cell.unmatchedMs),
+	percentRowFor('unnamed share', (cell) => cell.unmatchedShare),
 	rowFor('**main-thread script, all frames**', (cell) => cell.totalMs),
 	'',
 );
@@ -727,6 +756,7 @@ if (adoptionCells.length > 0) {
 	lines.push(
 		rowFor('named total', (cell) => cell?.namedMs, adoptionOf),
 		rowFor('unnamed by the probe table', (cell) => cell?.unmatchedMs, adoptionOf),
+		percentRowFor('unnamed share', (cell) => cell?.unmatchedShare, adoptionOf),
 		rowFor('**main-thread script, all frames**', (cell) => cell?.totalMs, adoptionOf),
 		'',
 		'The framework’s own walls for the same three stages, which it measures itself',

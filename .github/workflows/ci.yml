@@ -739,6 +739,7 @@ jobs:
         run: pnpm install --prod false --frozen-lockfile
 
       - name: Install selected Playwright browser
+        id: install_heavy_browser
         if: ${{ matrix.lane == 'browser' }}
         run: pnpm exec playwright install --with-deps ${{ matrix.playwright_browser }}
 
@@ -746,6 +747,15 @@ jobs:
         run: |
           SPECS="$(node scripts/discover-heavy-browser-specs.mjs)"
           pnpm vitest run ${SPECS} --maxWorkers=1
+
+      # A pure fold test cannot prove that an instrument still builds, reaches a
+      # real Lynx-for-Web main-thread realm, or names the frames it sampled.
+      - name: Smoke Lynx stage instruments
+        if: ${{ !cancelled() && steps.install_heavy_browser.outcome == 'success' }}
+        working-directory: benchmarks/lynx-table
+        run: |
+          node stages/run.mjs --smoke --rows 1000 --fcp-only --allow-busy-host --output-tag ci-stage
+          node stages/mts-profile.mjs --rows 1000 --reps 3 --cells octane-profile --allow-busy-host --label ci-mts --max-unmatched-share 0.4
 
   lint_checks:
     name: lint checks

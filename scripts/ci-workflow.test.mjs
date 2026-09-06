@@ -303,6 +303,15 @@ describe('CI workflow aggregation', () => {
 		assert.match(lint, /run: pnpm --dir benchmarks\/lynx-table test:stages/);
 	});
 
+	test('drives the Lynx stage instruments through Chromium in the browser lane', () => {
+		const browser = jobSource('heavy_integration');
+
+		assert.match(browser, /name: Smoke Lynx stage instruments/);
+		assert.match(browser, /node stages\/run\.mjs --smoke --rows 1000 --fcp-only/);
+		assert.match(browser, /node stages\/mts-profile\.mjs --rows 1000 --reps 3/);
+		assert.match(browser, /--max-unmatched-share 0\.4/);
+	});
+
 	test('accepts the generated Octane version source as release metadata', () => {
 		const generatedVersionAllowance = /file\.filename === "packages\/octane\/src\/version\.ts"/;
 
