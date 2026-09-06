@@ -47,6 +47,6 @@ test('rejects a missing critical bucket and excessive unmatched self time', () =
 				},
 				0.4,
 			),
-			/45\.0%.*40\.0%/,
+		/45\.0%.*40\.0%/,
 	);
 });
