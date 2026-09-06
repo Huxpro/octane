@@ -135,6 +135,7 @@ test('profiled first-screen rendering works without a stage-harness slice hook',
 			...sourceFiles,
 			'packages/lynx/src/resource.ts',
 			'packages/lynx/src/core/first-screen.ts',
+			'packages/lynx/src/core/program-registry.ts',
 		]) {
 			const target = path.join(temporary, relative);
 			fs.mkdirSync(path.dirname(target), { recursive: true });
