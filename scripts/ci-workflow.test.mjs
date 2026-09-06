@@ -296,6 +296,13 @@ describe('CI workflow aggregation', () => {
 		assert.match(jobSource('provenance'), /\[ "\$FULL_CI" = false \]/);
 	});
 
+	test('runs the Lynx stage instrument contract suite in the universal lint job', () => {
+		const lint = jobSource('lint_checks');
+
+		assert.match(lint, /name: Test Lynx stage instruments/);
+		assert.match(lint, /run: pnpm --dir benchmarks\/lynx-table test:stages/);
+	});
+
 	test('accepts the generated Octane version source as release metadata', () => {
 		const generatedVersionAllowance = /file\.filename === "packages\/octane\/src\/version\.ts"/;
 

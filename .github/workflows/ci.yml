@@ -801,6 +801,13 @@ jobs:
       - name: Validate CI workflow behavior
         run: pnpm ci:workflow:test
 
+      # The Lynx stage analyzers turn raw benchmark observations into owner and
+      # performance claims. Keep their pure folding, probe, evidence, and report
+      # contracts on every current-head run; browser/device collection remains in
+      # the dedicated benchmark lanes.
+      - name: Test Lynx stage instruments
+        run: pnpm --dir benchmarks/lynx-table test:stages
+
       # A committed test must execute and pass. Intentional framework
       # divergences are ordinary assertions; missing environment prerequisites
       # fail with setup instructions instead of silently turning CI green.
