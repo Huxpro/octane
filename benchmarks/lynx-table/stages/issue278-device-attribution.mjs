@@ -246,7 +246,7 @@ async function scalarSample() {
 	return {
 		arm: 'scalarCountsChecked',
 		capturedAt: new Date().toISOString(),
-		mainNodeCount: await adapter.domSearchCount('.issue278-scalar'),
+		mainNodeCount: await adapter.domSearchCount('issue278-addressed-card'),
 		result,
 	};
 }

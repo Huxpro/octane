@@ -173,7 +173,7 @@ export function Issue278ScalarPlaceholder() @{
 }
 
 export function Issue278ScalarCard(props: { label: string }) @{
-	<view class="issue278-scalar">
+	<view class="issue278-addressed-card">
 		<text class="issue278-scalar-label">{props.label as string}</text>
 	</view>
 }
