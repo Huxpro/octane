@@ -633,6 +633,14 @@ export interface UniversalHostCapabilities {
 	 * which is exactly what an isolated single-layer graph gets.
 	 */
 	readonly addressedProgramRuns?: boolean;
+	/**
+	 * Retains build-addressed program identity beside an expanded fresh mount.
+	 *
+	 * This is producer-local metadata, not permission to replace host commands:
+	 * an asynchronous renderer may compose its first batch before learning what
+	 * the peer can mount, while still carrying a compact proof for adoption.
+	 */
+	readonly programManifests?: boolean;
 }
 
 export interface UniversalResourceHandle {
@@ -1015,6 +1023,26 @@ export interface UniversalHostBatch {
 	readonly renderer: string;
 	readonly version: number;
 	readonly commands: readonly UniversalHostCommand[];
+	/** Build-addressed programs represented by the ordinary commands in this batch. */
+	readonly programs?: readonly UniversalHostProgramManifest[];
+}
+
+/**
+ * Compact identity for an addressed program whose hosts remain fully described
+ * by `commands`. Consumers may use this to certify an already-painted tree, but
+ * must keep the ordinary command path whenever the proof is absent or differs.
+ */
+export interface UniversalHostProgramManifest {
+	readonly op: 'program-manifest';
+	readonly parent: UniversalHostParent;
+	readonly before: number | null;
+	readonly address: UniversalHostProgramAddress;
+	readonly firstId: number;
+	/** Distance between consecutive instance roots in the shared host-ID domain. */
+	readonly stride: number;
+	readonly firstListenerId: number | null;
+	readonly count: number;
+	readonly values: readonly UniversalHostTemplateProgramValue[];
 }
 
 export interface UniversalTransportIdentity {
@@ -1298,6 +1326,8 @@ interface BlueprintHost {
 	templatePlan?: UniversalHostPlan;
 	/** Renderer-approved fresh descendants that have not allocated logical records. */
 	collapsedTemplate?: BlueprintCollapsedTemplate;
+	/** Addressed program proof retained while this host still takes the ordinary path. */
+	programManifest?: BlueprintProgramManifest;
 }
 
 interface BlueprintCollapsedTemplateNode {
@@ -1330,6 +1360,15 @@ interface BlueprintCollapsedTemplate {
 	 * ordinary ones.
 	 */
 	deferred?: true;
+}
+
+interface BlueprintProgramManifest {
+	readonly address: UniversalProgramAddress;
+	readonly program: CompiledCollapsedTemplateProgram;
+	readonly prepared: PreparedCollapsedTemplateProgram;
+	readonly values: readonly UniversalHostTemplateProgramValue[];
+	readonly captures: readonly unknown[];
+	readonly owner: UniversalOwnerRecord;
 }
 
 interface BlueprintPortal {
@@ -4350,6 +4389,33 @@ function materializeNode(
 	];
 }
 
+function prepareProgramManifest(value: UniversalPlanValue): BlueprintProgramManifest | null {
+	const owner = CURRENT_OWNER!;
+	const root = currentAttempt().root;
+	if (
+		root.driverCapabilities().programManifests !== true ||
+		owner.visibility !== 'visible' ||
+		value.plan.address === undefined ||
+		value.plan.root.kind !== 'host'
+	) {
+		return null;
+	}
+	const program = compiledUniversalTemplateProgram(root.encoder, value.plan.root);
+	if (program === null) return null;
+	const prepared = root.prepareCollapsedTemplateProgram(program);
+	if (prepared === null) return null;
+	const values = prepareCollapsedTemplateValues(value, root, program, prepared);
+	if (values === null) return null;
+	return {
+		address: value.plan.address,
+		program,
+		prepared,
+		values,
+		captures: value.values,
+		owner: owner.record,
+	};
+}
+
 function materializePlanValue(
 	value: UniversalPlanValue,
 	expectedRenderer: string,
@@ -4365,7 +4431,11 @@ function materializePlanValue(
 		if (value.key !== null) collapsed.key = value.key;
 		return [collapsed];
 	}
+	const programManifest = prepareProgramManifest(value);
 	const nodes = materializeNode(value.plan.root, value.values, expectedRenderer, [...path, 'plan']);
+	if (programManifest !== null && nodes.length === 1 && nodes[0].kind === 'host') {
+		nodes[0].programManifest = programManifest;
+	}
 	if (
 		currentAttempt().root.driverCapabilities().templateMount === true &&
 		value.plan.root.kind === 'host' &&
@@ -4855,6 +4925,13 @@ interface PendingUniversalHostTemplateMount {
 				deferred?: true;
 		  };
 	runIndex?: number;
+}
+
+interface PendingUniversalHostProgramManifest {
+	readonly source: BlueprintProgramManifest;
+	readonly drafts: readonly DraftRecord[];
+	parent?: UniversalHostParent;
+	before?: number | null;
 }
 
 function collectUniversalHostTemplateDrafts(
@@ -7114,6 +7191,7 @@ function freezeUniversalHostBatch(
 	renderer: string,
 	version: number,
 	commands: readonly UniversalHostCommand[],
+	programs?: readonly UniversalHostProgramManifest[],
 ): UniversalHostBatch {
 	for (const command of commands) {
 		if (
@@ -7128,6 +7206,9 @@ function freezeUniversalHostBatch(
 		renderer,
 		version,
 		commands: Object.freeze(commands),
+		...(programs === undefined || programs.length === 0
+			? null
+			: { programs: Object.freeze(programs) }),
 	});
 }
 
@@ -10466,6 +10547,10 @@ class UniversalRootImpl<Container, PublicInstance>
 		}[] = [];
 		const templateMounts = new Map<LogicalRecord, PendingUniversalHostTemplateMount>();
 		const templatedRecords = new Set<LogicalRecord>();
+		const programManifestMounts =
+			this.driver.capabilities?.programManifests === true
+				? new Map<LogicalRecord, PendingUniversalHostProgramManifest>()
+				: null;
 		const canMountTemplates =
 			this.driver.capabilities?.templateMount === true &&
 			(treeFeatures & templateExcludedFeatures) === 0;
@@ -10473,6 +10558,15 @@ class UniversalRootImpl<Container, PublicInstance>
 			if (draft.record.kind !== 'host') return;
 			hostDrafts.push(draft);
 			const blueprintHost = draft.blueprint as BlueprintHost;
+			if (programManifestMounts !== null && draft.isNew) {
+				const source = blueprintHost.programManifest;
+				if (source !== undefined) {
+					const drafts = collectUniversalHostTemplateDrafts(draft, source.program.shape);
+					if (drafts !== null) {
+						programManifestMounts.set(draft.record, { source, drafts });
+					}
+				}
+			}
 			if (canMountTemplates && draft.isNew && !templatedRecords.has(draft.record)) {
 				const collapsed = blueprintHost.collapsedTemplate;
 				if (collapsed !== undefined) {
@@ -10681,6 +10775,16 @@ class UniversalRootImpl<Container, PublicInstance>
 				nodes: template.nodes!,
 			});
 		};
+		const placeProgramManifest = (
+			record: LogicalRecord,
+			parent: UniversalHostParent,
+			before: number | null,
+		): void => {
+			const manifest = programManifestMounts?.get(record);
+			if (manifest === undefined) return;
+			manifest.parent = parent;
+			manifest.before = before;
+		};
 		const planPlacements = (
 			parentId: UniversalHostParent,
 			oldRecords: readonly LogicalRecord[],
@@ -10692,6 +10796,7 @@ class UniversalRootImpl<Container, PublicInstance>
 			if (oldRecords.length === 0 && !forceMove) {
 				if (newDrafts.length === 0) return;
 				for (const record of physicalDrafts(newDrafts)) {
+					placeProgramManifest(record, parentId, endAnchor);
 					const template = templateMounts.get(record);
 					if (template !== undefined) {
 						placeTemplate(template, parentId, endAnchor);
@@ -10723,6 +10828,9 @@ class UniversalRootImpl<Container, PublicInstance>
 			}
 			if (forceMove) {
 				for (const record of newPhysical) {
+					if (!previousPositions.has(record.id)) {
+						placeProgramManifest(record, parentId, endAnchor);
+					}
 					placements.push({
 						op: previousPositions.has(record.id) ? 'move' : 'insert',
 						parent: parentId,
@@ -10757,6 +10865,7 @@ class UniversalRootImpl<Container, PublicInstance>
 				const id = record.id;
 				const before = nextStable < newPhysical.length ? newPhysical[nextStable].id : endAnchor;
 				if (sources[index] === -1) {
+					placeProgramManifest(record, parentId, before);
 					const template = templateMounts.get(record);
 					if (template !== undefined) placeTemplate(template, parentId, before);
 					else placements.push({ op: 'insert', parent: parentId, id, before });
@@ -11354,6 +11463,116 @@ class UniversalRootImpl<Container, PublicInstance>
 			if (teardownRunRecords?.has(record) === true) continue;
 			destroys.push({ op: 'destroy', id: record.id });
 		}
+		const programManifests: UniversalHostProgramManifest[] = [];
+		if (programManifestMounts !== null) {
+			let open:
+				| {
+						readonly source: BlueprintProgramManifest;
+						readonly parent: number | null;
+						readonly before: number | null;
+						readonly firstId: number;
+						readonly firstListenerId: number | null;
+						stride: number;
+						count: number;
+						readonly values: UniversalHostTemplateProgramValue[];
+				  }
+				| undefined;
+			const publish = (): void => {
+				if (open === undefined) return;
+				const address = Object.freeze({
+					module: open.source.address.module,
+					index: open.source.address.index,
+				});
+				const manifest: UniversalHostProgramManifest = Object.freeze({
+					op: 'program-manifest',
+					parent: open.parent,
+					before: open.before,
+					address,
+					firstId: open.firstId,
+					stride: open.stride || open.source.prepared.wire.nodes.length,
+					firstListenerId: open.firstListenerId,
+					count: open.count,
+					values: Object.freeze(open.values),
+				});
+				recordUniversalProgramCommand(manifest, open.source.prepared.wire);
+				programManifests.push(manifest);
+				open = undefined;
+			};
+			for (const [record, pending] of programManifestMounts) {
+				const parent = pending.parent;
+				const before = pending.before;
+				// The direct first screen declines portals, and an unplaced candidate
+				// describes no host mutation this batch can certify.
+				if (
+					parent === undefined ||
+					(typeof parent === 'object' && parent !== null) ||
+					before === undefined
+				) {
+					publish();
+					continue;
+				}
+				const source = pending.source;
+				const sites = source.prepared.events;
+				let firstListenerId: number | null = null;
+				let listenersComplete = true;
+				for (let index = 0; index < sites.length; index++) {
+					const site = sites[index]!;
+					const event = stagedEvents.get(pending.drafts[site.node]!.record)?.get(site.type);
+					if (
+						event === undefined ||
+						event.handler !== source.captures[site.slot] ||
+						event.owner !== source.owner ||
+						event.priority !== site.priority
+					) {
+						listenersComplete = false;
+						break;
+					}
+					if (firstListenerId === null) firstListenerId = event.listener;
+					else if (event.listener !== firstListenerId + index) {
+						listenersComplete = false;
+						break;
+					}
+				}
+				if (!listenersComplete) {
+					publish();
+					continue;
+				}
+				const sameOpen =
+					open !== undefined &&
+					open.source.prepared === source.prepared &&
+					open.source.address.module === source.address.module &&
+					open.source.address.index === source.address.index &&
+					open.parent === parent &&
+					open.before === before &&
+					(firstListenerId === null
+						? open.firstListenerId === null
+						: open.firstListenerId !== null &&
+							firstListenerId === open.firstListenerId + open.count * sites.length);
+				const nextStride = open === undefined ? 0 : record.id - open.firstId;
+				if (
+					sameOpen &&
+					nextStride > 0 &&
+					(open!.stride === 0 || nextStride === open!.count * open!.stride)
+				) {
+					if (open!.stride === 0) open!.stride = nextStride;
+					open!.count++;
+					open!.values.push(...source.values);
+					continue;
+				}
+				publish();
+				open = {
+					source,
+					parent,
+					before,
+					firstId: record.id,
+					firstListenerId,
+					stride: 0,
+					count: 1,
+					values: [...source.values],
+				};
+			}
+			publish();
+		}
 		const commands: UniversalHostCommand[] = [
 			...creates,
 			...updates,
@@ -11366,7 +11585,12 @@ class UniversalRootImpl<Container, PublicInstance>
 			...visibilityCommands,
 			...destroys,
 		];
-		const batch = freezeUniversalHostBatch(this.renderer, this.nextBatchVersion++, commands);
+		const batch = freezeUniversalHostBatch(
+			this.renderer,
+			this.nextBatchVersion++,
+			commands,
+			programManifests,
+		);
 		const retryThenables = [...attempt.retryThenables];
 		const retryMemos = retryThenables.length === 0 ? ([] as const) : collectSuspendedMemos(attempt);
 

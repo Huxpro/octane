@@ -37,8 +37,10 @@ export function producedRunProgram(
 				readonly op: 'mount-template-range' | 'mount-template-run';
 				readonly program: UniversalHostTemplateProgram;
 		  }
-		| { readonly op: 'mount-program-run' },
+		| { readonly op: 'mount-program-run' | 'program-manifest' },
 ): UniversalHostTemplateProgram | undefined {
-	if (command.op === 'mount-program-run') return universalProgramCommandWire(command);
-	return command.program;
+	if (command.op === 'mount-template-range' || command.op === 'mount-template-run') {
+		return command.program;
+	}
+	return universalProgramCommandWire(command);
 }

@@ -665,7 +665,7 @@ export function prepareUniversalTemplateProgram(
 ): PreparedUniversalTemplateProgram | null {
 	const capabilities = encoder.capabilities();
 	if (
-		capabilities.templateProgramMount !== true ||
+		(capabilities.templateProgramMount !== true && capabilities.programManifests !== true) ||
 		capabilities.stableStaticHostProps !== true ||
 		encoder.textPolicy() !== 'host'
 	) {

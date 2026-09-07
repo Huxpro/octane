@@ -27,6 +27,7 @@ import {
 	useInsertionEffect as useUniversalInsertionEffect,
 	useLayoutEffect as useUniversalLayoutEffect,
 	useState as useUniversalState,
+	type UniversalHostBatch,
 } from '../src/universal.js';
 import { mount } from './_helpers.js';
 import { UniversalBoundaryFixture, UniversalTheme } from './_fixtures/universal-boundary.tsrx';
@@ -3671,6 +3672,53 @@ export function App() @{
 });
 
 describe('universal logical topology and transactions', () => {
+	it('retains an addressed program manifest beside an expanded initial batch', () => {
+		const plan = universalPlan(
+			'object',
+			{
+				kind: 'host',
+				type: 'node',
+				children: [{ kind: 'host', type: 'label', bindings: [['value', 0]] }],
+			},
+			{ module: 'tests/program-manifest.tsrx', index: 0, digest: 'program-manifest-digest' },
+		);
+		const Scene = defineUniversalComponent('object', (props: { values: readonly string[] }) =>
+			universalList(props.values, (value) => universalKey(value, universalValue(plan, [value]))),
+		);
+		const container = createObjectContainer();
+		const base = createObjectDriver();
+		const batches: UniversalHostBatch[] = [];
+		const root = createUniversalRoot(container, {
+			...base,
+			capabilities: {
+				...base.capabilities,
+				stableStaticHostProps: true,
+				programManifests: true,
+			},
+			prepareBatch(target, batch, context) {
+				batches.push(batch);
+				return base.prepareBatch(target, batch, context);
+			},
+		});
+
+		root.render(Scene, { values: ['a', 'b'] });
+
+		expect(batches).toHaveLength(1);
+		expect(batches[0].commands.filter((command) => command.op === 'create')).toHaveLength(4);
+		expect(batches[0].programs).toEqual([
+			expect.objectContaining({
+				op: 'program-manifest',
+				address: { module: 'tests/program-manifest.tsrx', index: 0 },
+				parent: null,
+				before: null,
+				count: 2,
+				values: ['a', 'b'],
+			}),
+		]);
+		expect(container.children.map((child) => child.children[0].props.value)).toEqual(['a', 'b']);
+		root.unmount();
+	});
+
 	it('invalidates memoized universal wrappers when their HMR implementation changes', async () => {
 		const plan = universalPlan('object', {
 			kind: 'host',

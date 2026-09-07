@@ -16,11 +16,20 @@ import {
 	type LynxFirstScreenDirectNode,
 } from '../src/core/host-driver.js';
 import {
+	LYNX_FIRST_TREE_MISMATCH,
 	LYNX_FIRST_TREE_STATE,
 	LynxFirstScreenRefusalError,
 	lynxFirstTreeEventTokens,
 } from '../src/core/first-screen.js';
-import type { UniversalProgramPlan } from 'octane/universal/native';
+import type {
+	UniversalHostBatch,
+	UniversalHostTemplateProgram,
+	UniversalProgramPlan,
+} from 'octane/universal/native';
+import {
+	registerUniversalProgram,
+	residentUniversalProgramAddress,
+} from '../src/core/program-registry.js';
 import { createFakePAPI, shape, type FakeNode } from './_fixtures/fake-element-papi.js';
 import {
 	attachThreadFunction,
@@ -1207,6 +1216,381 @@ describe('direct first-screen applier, compiled main-thread programs', () => {
 	});
 });
 
+describe('first-tree addressed program adoption manifest', () => {
+	const module = 'tests/first-screen-adoption-manifest.tsrx';
+	const wire: UniversalHostTemplateProgram = Object.freeze({
+		nodes: Object.freeze([
+			Object.freeze({
+				type: 'view',
+				parent: -1,
+				props: Object.freeze({}),
+				bindings: Object.freeze([Object.freeze({ name: 'id', valueIndex: 0 })]),
+			}),
+		]),
+		events: Object.freeze([]),
+	});
+	const plan = fakeProgram({
+		nodes: 1,
+		values: [0],
+		wire,
+		bind: (host: unknown) => {
+			const papi = host as {
+				readonly intrinsics: { view(pageId: number): FakeNode };
+				setId(node: FakeNode, value: string | null): void;
+			};
+			return (...args: unknown[]) => {
+				const node = papi.intrinsics.view(args[0] as number);
+				papi.setId(node, args[1] as string);
+				return [node];
+			};
+		},
+	});
+	const alternatePlan: UniversalProgramPlan = Object.freeze({ ...plan });
+	registerUniversalProgram(module, 0, plan);
+	registerUniversalProgram(module, 1, alternatePlan);
+
+	function prepare(
+		main: { readonly index?: number; readonly value?: string } = {},
+		background: {
+			readonly index?: number;
+			readonly value?: string;
+			readonly descriptor?: boolean;
+		} = {},
+	) {
+		const papi = intrinsicHost();
+		const source = createLynxHostContainer(papi, { root: 41 });
+		const mainValue = main.value ?? 'same';
+		const mainPlan = main.index === 1 ? alternatePlan : plan;
+		expect(
+			applyLynxFirstScreenDirect(
+				source,
+				[
+					programNode({
+						plan: mainPlan,
+						values: [mainValue],
+						ids: [1],
+						eventsAt: 0,
+						eventsCount: 0,
+					}),
+				],
+				PROGRAM_ENVELOPE,
+			),
+		).toBe(true);
+		const painted = papi.pages[0]!.children[0]!;
+		const firstTree = captureLynxFirstTree(source)!;
+		const journal = firstTree[LYNX_FIRST_TREE_STATE];
+		expect(journal.programAdoptionRuns).toHaveLength(1);
+		const target = createLynxHostContainer(papi, { root: 41, page: papi.pages[0] });
+		const mismatches: Error[] = [];
+		const command = background.descriptor
+			? {
+					op: 'mount-template-run' as const,
+					parent: null,
+					before: null,
+					program: wire,
+					firstId: 1,
+					firstListenerId: null,
+					count: 1,
+					values: [background.value ?? 'same'],
+				}
+			: null;
+		const batch: UniversalHostBatch = {
+			renderer: 'lynx',
+			version: 1,
+			commands:
+				command === null
+					? [
+							{
+								op: 'create',
+								id: 1,
+								type: 'view',
+								props: { id: background.value ?? 'same' },
+							} as const,
+							{ op: 'insert', parent: null, id: 1, before: null } as const,
+						]
+					: [command],
+			...(command !== null
+				? null
+				: {
+						programs: [
+							{
+								op: 'program-manifest' as const,
+								parent: null,
+								before: null,
+								address: { module, index: background.index ?? 0 },
+								firstId: 1,
+								stride: 1,
+								firstListenerId: null,
+								count: 1,
+								values: [background.value ?? 'same'],
+							},
+						],
+					}),
+		};
+		const prepared = prepareLynxHostBatch(target, batch, {
+			firstTree,
+			onMismatch(error) {
+				mismatches.push(error);
+			},
+		});
+		return { papi, source, target, painted, firstTree, prepared, mismatches };
+	}
+
+	it('adopts the node when address, placement, values, and listener range agree', () => {
+		const arm = prepare();
+		expect(arm.prepared.firstTreeAction).toBe('adopt');
+		expect(arm.mismatches).toEqual([]);
+		arm.prepared.apply();
+		expect(arm.papi.pages[0]!.children).toEqual([arm.painted]);
+		expect(arm.painted.id).toBe('same');
+	});
+
+	it('keeps descriptor-run adoption as the compatibility fallback', () => {
+		const arm = prepare({}, { descriptor: true });
+		expect(arm.prepared.firstTreeAction).toBe('adopt');
+		expect(arm.mismatches).toEqual([]);
+		arm.prepared.apply();
+		expect(arm.papi.pages[0]!.children).toEqual([arm.painted]);
+	});
+
+	it('adopts one dense run covered by multiple addressed command segments', () => {
+		const calls = { create: 0, run: 0 };
+		const densePlan = fakeProgram({
+			nodes: 1,
+			values: [0],
+			wire,
+			bind: (host: unknown) => {
+				const papi = host as {
+					readonly intrinsics: { view(pageId: number): FakeNode };
+					setId(node: FakeNode, value: string | null): void;
+				};
+				const create = (...args: unknown[]): readonly unknown[] => {
+					calls.create++;
+					const node = papi.intrinsics.view(args[0] as number);
+					papi.setId(node, args[1] as string);
+					return [node];
+				};
+				return Object.assign(create, {
+					run(
+						pageId: number,
+						count: number,
+						values: readonly unknown[],
+						_events: readonly unknown[],
+						_ranges: readonly unknown[],
+						out: unknown[],
+					): void {
+						calls.run++;
+						for (let index = 0; index < count; index++) {
+							const node = papi.intrinsics.view(pageId);
+							papi.setId(node, values[index] as string);
+							out[index] = node;
+						}
+					},
+				});
+			},
+		});
+		registerUniversalProgram(module, 2, densePlan);
+		const papi = intrinsicHost();
+		const source = createLynxHostContainer(papi, { root: 43 });
+		const member = (wrapper: number, id: number, value: string): LynxFirstScreenDirectNode => ({
+			kind: 'range',
+			id: wrapper,
+			children: [
+				programNode({
+					id,
+					plan: densePlan,
+					values: [value],
+					ids: [id],
+					eventsAt: 0,
+					eventsCount: 0,
+				}),
+			],
+		});
+		expect(
+			applyLynxFirstScreenDirect(
+				source,
+				[
+					{
+						kind: 'program',
+						id: 1,
+						plan: denseShellPlan(),
+						values: [],
+						ids: [1],
+						spans: [2],
+						texts: [undefined],
+						rangeIds: [undefined],
+						children: [member(2, 3, 'a'), member(4, 5, 'b')],
+					},
+				],
+				PROGRAM_ENVELOPE,
+			),
+		).toBe(true);
+		expect(calls).toEqual({ create: 0, run: 1 });
+		const painted = papi.pages[0]!.children[0]!;
+		const firstTree = captureLynxFirstTree(source)!;
+		expect(firstTree[LYNX_FIRST_TREE_STATE].programAdoptionRuns).toMatchObject([
+			{ count: 2, firstId: 3, stride: 2 },
+		]);
+		const target = createLynxHostContainer(papi, { root: 43, page: papi.pages[0] });
+		const prepared = prepareLynxHostBatch(
+			target,
+			{
+				renderer: 'lynx',
+				version: 1,
+				commands: [
+					{ op: 'create', id: 1, type: 'view', props: {} },
+					...['a', 'b'].map((value, index) => ({
+						op: 'mount-program-run' as const,
+						parent: 1,
+						before: null,
+						address: { module, index: 2 },
+						firstId: 3 + index * 2,
+						firstListenerId: null,
+						count: 1,
+						values: [value],
+					})),
+					{ op: 'insert', parent: null, id: 1, before: null },
+				],
+			},
+			{ firstTree },
+		);
+		expect(prepared.firstTreeAction).toBe('adopt');
+		prepared.apply();
+		expect(papi.pages[0]!.children).toEqual([painted]);
+	});
+
+	it.each([
+		['address', { index: 0 }, { index: 1 }, 'snapshot.programs[1].address'],
+		['dynamic value', { value: 'main' }, { value: 'background' }, 'snapshot.programs[1].values[0]'],
+	] as const)(
+		'repairs a matching host shape with a different program %s',
+		(_, main, background, path) => {
+			const arm = prepare(main, background);
+			expect(arm.prepared.firstTreeAction).toBe('repair');
+			expect(arm.mismatches).toEqual([
+				expect.objectContaining({ code: LYNX_FIRST_TREE_MISMATCH, path }),
+			]);
+			arm.prepared.apply();
+			expect(arm.source.disposed).toBe(true);
+			expect(arm.papi.pages[0]!.children[0]).not.toBe(arm.painted);
+		},
+	);
+
+	it('registers a build-proven address beside the renderer program plan', () => {
+		const address = { module, index: 0, digest: 'build-proven-test-digest' };
+		const addressedPlan = universalPlan('lynx', plan, address);
+		const Scene = defineUniversalComponent('lynx', () => universalValue(addressedPlan, ['same']), {
+			module: 'tests/first-screen-adoption-manifest-scene.tsrx',
+		});
+		const result = renderLynxFirstScreen(Scene as never, {});
+		expect(result.nodes).toHaveLength(1);
+		expect(result.nodes[0]).toMatchObject({ kind: 'program' });
+		expect(residentUniversalProgramAddress(result.nodes[0]!.plan!)).toEqual({
+			module: address.module,
+			index: address.index,
+		});
+	});
+
+	it('repairs when the addressed run listener identity differs', () => {
+		const eventModule = 'tests/first-screen-adoption-manifest-event.tsrx';
+		const eventWire: UniversalHostTemplateProgram = Object.freeze({
+			nodes: Object.freeze([Object.freeze({ type: 'view', parent: -1, props: Object.freeze({}) })]),
+			events: Object.freeze([
+				Object.freeze({ node: 0, type: 'bindtap', priority: 'discrete' as const }),
+			]),
+		});
+		const eventPlan = fakeProgram({
+			nodes: 1,
+			events: [{ slot: 0, node: 0, type: 'bindtap', priority: 'discrete' }],
+			wire: eventWire,
+			bind: (host: unknown) => {
+				const papi = host as {
+					readonly intrinsics: { view(pageId: number): FakeNode };
+					setEvent(node: FakeNode, kind: string, name: string, listener: unknown): void;
+				};
+				return (...args: unknown[]) => {
+					const node = papi.intrinsics.view(args[0] as number);
+					papi.setEvent(node, 'bindEvent', 'tap', args[1]);
+					return [node];
+				};
+			},
+		});
+		registerUniversalProgram(eventModule, 0, eventPlan);
+		const papi = intrinsicHost();
+		const source = createLynxHostContainer(papi, { root: 42 });
+		expect(
+			applyLynxFirstScreenDirect(
+				source,
+				[
+					programNode({
+						plan: eventPlan,
+						values: [() => {}],
+						ids: [1],
+						eventsAt: 0,
+						eventsCount: 1,
+					}),
+				],
+				{
+					renderer: 'lynx',
+					version: 1,
+					events: [{ id: 1, type: 'bindtap', listener: { id: 701, priority: 'discrete' } }],
+				},
+			),
+		).toBe(true);
+		const firstTree = captureLynxFirstTree(source)!;
+		const target = createLynxHostContainer(papi, { root: 42, page: papi.pages[0] });
+		const mismatches: Error[] = [];
+		const prepared = prepareLynxHostBatch(
+			target,
+			{
+				renderer: 'lynx',
+				version: 1,
+				commands: [
+					{
+						op: 'create',
+						id: 1,
+						type: 'view',
+						props: {},
+					},
+					{
+						op: 'event',
+						id: 1,
+						type: 'bindtap',
+						listener: { id: 702, priority: 'discrete' },
+					},
+					{ op: 'insert', parent: null, id: 1, before: null },
+				],
+				programs: [
+					{
+						op: 'program-manifest',
+						parent: null,
+						before: null,
+						address: { module: eventModule, index: 0 },
+						firstId: 1,
+						stride: 1,
+						firstListenerId: 702,
+						count: 1,
+						values: [],
+					},
+				],
+			},
+			{
+				firstTree,
+				onMismatch(error) {
+					mismatches.push(error);
+				},
+			},
+		);
+		expect(prepared.firstTreeAction).toBe('repair');
+		expect(mismatches).toEqual([
+			expect.objectContaining({
+				code: LYNX_FIRST_TREE_MISMATCH,
+				path: 'snapshot.programs[1].listeners',
+			}),
+		]);
+	});
+});
+
 /**
  * A one-node program with one event site, whose create records the token it was
  * handed rather than installing it.
@@ -2072,7 +2456,7 @@ function denseArm(
 	} = {},
 ): {
 	papi: ReturnType<typeof intrinsicHost>;
-	container: ReturnType<typeof createLynxHostContainer>;
+	container: ReturnType<typeof createLynxHostContainer<FakeNode>>;
 	handed: unknown[][];
 	calls: DenseCalls;
 	crossings: [unknown, string, unknown][];

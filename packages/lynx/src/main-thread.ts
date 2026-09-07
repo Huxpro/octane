@@ -57,6 +57,7 @@ import {
 	LYNX_TEARDOWN_RUN_READY_REQUEST_BASE,
 	LYNX_MAIN_TO_BACKGROUND_EVENT,
 	LYNX_FIRST_TREE_PRESENCE_READY_REQUEST_BASE,
+	LYNX_FIRST_TREE_PROGRAM_MANIFEST_READY_REQUEST_BASE,
 	LYNX_READY_ANNOUNCEMENT_REQUEST,
 	LYNX_TRANSPORT_PROTOCOL_VERSION,
 	LYNX_TRANSPORT_RENDERER,
@@ -1607,6 +1608,11 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 							driver.capabilities?.templateProgramRuns === true &&
 							driver.capabilities?.addressedProgramRuns === true
 								? { addressedProgramRuns: 1 as const }
+								: null),
+							...(announcesFirstTree &&
+							request >= LYNX_FIRST_TREE_PROGRAM_MANIFEST_READY_REQUEST_BASE &&
+							driver.capabilities?.addressedProgramRuns === true
+								? { firstTreeProgramManifests: 1 as const }
 								: null),
 						},
 					}),

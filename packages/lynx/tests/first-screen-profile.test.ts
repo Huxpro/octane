@@ -69,6 +69,8 @@ function install(configurePAPI?: (target: Record<string, unknown>) => void): {
 	profile.firstScreenAnnounceMs = 0;
 	profile.firstTreeAction = null;
 	profile.firstTreeSettled = 0;
+	profile.firstTreeProgramManifestRuns = 0;
+	profile.firstTreeProgramManifestMatches = 0;
 	profile.handOverMs = 0;
 	return { profile, dom, main };
 }

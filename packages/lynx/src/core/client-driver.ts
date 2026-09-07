@@ -279,6 +279,7 @@ interface LynxClientContainerState {
 	templateProgramRuns: boolean;
 	deferredTemplateProgramRuns: boolean;
 	addressedProgramRuns: boolean;
+	programManifests: boolean;
 	teardownRuns: boolean;
 	lazyPublicInstances: boolean;
 	/** Hosts a deferred run declared, which main never built. */
@@ -440,6 +441,10 @@ export function createLynxClientContainer(
 		templateProgramRuns: false,
 		deferredTemplateProgramRuns: false,
 		addressedProgramRuns: false,
+		// The first batch is composed before readiness can grant mount features.
+		// Retain only its addressed program proof; the correlated reply turns this
+		// off before any later render can pay for one.
+		programManifests: true,
 		teardownRuns: false,
 		lazyPublicInstances: false,
 		declaredRuns: null,
@@ -482,11 +487,20 @@ export function setLynxClientCapabilities(
 	// from the wire while the peer held no program would mount nothing at all.
 	state.addressedProgramRuns =
 		state.templateProgramRuns && capabilities?.addressedProgramRuns === 1;
+	state.programManifests = false;
 	state.teardownRuns = state.templateProgramMount && capabilities?.teardownRuns === 1;
 	// Upstream reads the same three flags inline here. The predicate moved to
 	// `protocol.ts` so a core that never builds a driver can ask the same
 	// question; the answer is unchanged.
 	state.lazyPublicInstances = lynxLazyPublicInstancesNegotiated(capabilities);
+}
+
+/** @internal Keep the pre-negotiation manifest path only for a painted first tree. */
+export function setLynxClientProgramManifests(
+	container: LynxClientContainer,
+	enabled: boolean,
+): void {
+	containerState(container).programManifests = enabled;
 }
 
 /**
@@ -1806,6 +1820,9 @@ export function createLynxClientDriver(
 			},
 			get addressedProgramRuns() {
 				return negotiatedState?.addressedProgramRuns === true;
+			},
+			get programManifests() {
+				return negotiatedState?.programManifests === true;
 			},
 			get teardownRuns() {
 				return negotiatedState?.teardownRuns === true;

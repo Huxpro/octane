@@ -128,6 +128,10 @@ export interface LynxWireProfile {
 	 * it is deliberately not a wall clock — a profiler owns the milliseconds.
 	 */
 	firstTreeSettled: number;
+	/** Main: build-proven addressed program runs retained by first-screen capture. */
+	firstTreeProgramManifestRuns: number;
+	/** Main: those runs matched by an addressed background mount during adoption. */
+	firstTreeProgramManifestMatches: number;
 	/**
 	 * Main: hand-over time — draining the events the adoption gated, releasing
 	 * the first-screen journal, and reopening background calls. The counterpart
@@ -186,6 +190,8 @@ export function lynxWireProfile(): LynxWireProfile {
 		firstScreenAnnounceMs: 0,
 		firstTreeAction: null,
 		firstTreeSettled: 0,
+		firstTreeProgramManifestRuns: 0,
+		firstTreeProgramManifestMatches: 0,
 		handOverMs: 0,
 		destroyRunExpandMs: 0,
 		denseValidateMs: 0,

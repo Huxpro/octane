@@ -64,6 +64,7 @@ export interface LynxProgramAddress {
  * map lookup with no lifetime question attached to it.
  */
 const RESIDENT_PROGRAMS = new Map<string, UniversalProgramPlan>();
+const RESIDENT_PROGRAM_ADDRESSES = new WeakMap<UniversalProgramPlan, LynxProgramAddress>();
 
 /** One string key per address. A \u0000 cannot appear in a module path. */
 function addressKey(module: string, index: number): string {
@@ -94,7 +95,13 @@ export function registerUniversalProgram(
 	const key = addressKey(module, index);
 	const existing = RESIDENT_PROGRAMS.get(key);
 	if (existing !== undefined) {
-		if (existing === plan || sameWire(existing.wire, plan.wire)) return;
+		if (existing === plan || sameWire(existing.wire, plan.wire)) {
+			RESIDENT_PROGRAM_ADDRESSES.set(
+				plan,
+				RESIDENT_PROGRAM_ADDRESSES.get(existing) ?? Object.freeze({ module, index }),
+			);
+			return;
+		}
 		throw new TypeError(
 			`Two compiled main-thread programs claim the address ${module}#${index}. ` +
 				'A program address is positional, so this means the two compiles of this ' +
@@ -102,11 +109,19 @@ export function registerUniversalProgram(
 		);
 	}
 	RESIDENT_PROGRAMS.set(key, plan);
+	RESIDENT_PROGRAM_ADDRESSES.set(plan, Object.freeze({ module, index }));
 	// The plan is what the first screen paints from; the wire is what a mount
 	// arriving over the command path walks. Both are this one program, and a
 	// chunk that registered a `bind` it could not also describe would accept an
 	// addressed run and then have nothing to apply it with.
 	if (plan.wire !== undefined) deepFreezeWire(plan.wire);
+}
+
+/** The module-scope address registered beside the exact plan the first screen paints. */
+export function residentUniversalProgramAddress(
+	plan: UniversalProgramPlan,
+): LynxProgramAddress | undefined {
+	return RESIDENT_PROGRAM_ADDRESSES.get(plan);
 }
 
 /**
@@ -203,9 +218,12 @@ export function residentRunProgram(
 				readonly op: 'mount-template-range' | 'mount-template-run';
 				readonly program: UniversalHostTemplateProgram;
 		  }
-		| { readonly op: 'mount-program-run'; readonly address: LynxProgramAddress },
+		| { readonly op: 'mount-program-run'; readonly address: LynxProgramAddress }
+		| { readonly op: 'program-manifest'; readonly address: LynxProgramAddress },
 ): UniversalHostTemplateProgram | undefined {
-	if (command.op !== 'mount-program-run') return command.program;
+	if (command.op !== 'mount-program-run' && command.op !== 'program-manifest') {
+		return command.program;
+	}
 	const address = command.address;
 	if (address === null || typeof address !== 'object') return undefined;
 	if (typeof address.module !== 'string' || !Number.isSafeInteger(address.index)) return undefined;
