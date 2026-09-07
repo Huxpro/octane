@@ -237,6 +237,21 @@ export const BUCKETS = Object.freeze([
 		probe: '"identity.root"',
 		where: 'core/native-events.ts encodeCheckedLynxNativeEventToken',
 	},
+	// The cross-thread codec's copy-on-write walk is one of the largest remaining
+	// first-screen frames. Production error compaction made its rare fault strings
+	// unsuitable as probes, but the wire-state fields and number branch are stable
+	// common-path syntax. The encoder encloses the single-use prepare function in
+	// the minified bundle, so its narrower entry must precede prepare's entry.
+	{
+		bucket: 'transport encoding',
+		probe: 'escaped:!1,seen:',
+		where: 'core/transport-codec.ts encodeLynxTransportValue',
+	},
+	{
+		bucket: 'transport encoding',
+		probe: 'case"number":if(Number.isFinite(',
+		where: 'core/transport-codec.ts prepare',
+	},
 	// Issue-#215 D1 gave the mount a second question to ask per program — does
 	// this run start after the previous one ended — and its answer comes from a
 	// helper `mountProgram` calls. Without a probe that lands in the

@@ -116,8 +116,9 @@ causal ratios remain the same-window A/B published with slice 3.
 ## Correctness and local gates
 
 - full Lynx Vitest: 50 files, 856/856 passing;
-- full Rspeedy plugin Vitest: 8 files, 71/71 passing;
-- benchmark stage harness: 228/228 passing after the native-probe correction;
+- full Rspeedy plugin Vitest: 9 files, 74/74 passing;
+- benchmark stage harness: 229/229 passing after the native-probe and
+  production-diagnostic attribution corrections;
 - Lynx source, testing, and typetest TypeScript projects: passing;
 - full repository `pnpm typecheck`, including all workspace packages, examples,
   and benchmark typechecks: passing;

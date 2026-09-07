@@ -240,7 +240,7 @@ export function pluginOctane(value) {
 					const { environment } = context;
 					if (!appliesToEnvironment(environment)) return;
 					applyLynxBackgroundCore(chain, options.core);
-					applyLynxDiagnosticMode(chain, context.isDev === true);
+					applyLynxDiagnosticMode(chain, options.dev ?? context.isDev === true);
 					if (options.application) {
 						const rspeedyConfig =
 							api.useExposed?.(Symbol.for('rspeedy.api'))?.config ?? api.getRsbuildConfig?.() ?? {};

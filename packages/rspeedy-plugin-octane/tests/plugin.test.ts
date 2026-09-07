@@ -990,6 +990,8 @@ export function App() @{ <view /> }
 			[undefined, {}, false],
 			[{ thread: 'background' as const }, {}, false],
 			[{ thread: 'main-thread' as const }, { isDev: true }, true],
+			[{ dev: true }, {}, true],
+			[{ dev: false }, { isDev: true }, false],
 		] as const) {
 			const state = applyPlugin(options as Parameters<typeof pluginOctane>[0], 'lynx', context, {
 				app: ['./src/App.lynx.tsrx'],

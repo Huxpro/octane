@@ -122,7 +122,10 @@ export default defineConfig(({ command }) => {
 		plugins: [
 			pluginOctane({
 				core,
-				dev: development,
+				// The CPU-attribution build is production-minified but retains the
+				// descriptive diagnostics its probe table uses as stable source anchors.
+				// It is a profile-only build; shipping cells keep this false.
+				dev: development || profile,
 				hmr: command === 'dev',
 				...(mainThreadProgramBackend === undefined ? null : { mainThreadProgramBackend }),
 			}),
