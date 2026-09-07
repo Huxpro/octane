@@ -124,31 +124,28 @@ function loadTemplates(): NonNullable<typeof templates> {
 	return templates;
 }
 
-/** One `<Row>`: seven host nodes, three live slots, two tap sites. */
+/** One `<Row>`: four host nodes, three live slots, two tap sites. */
 function rowTemplate(): LynxBlockTemplate {
 	return compileLynxBlockTemplate({
 		nodes: [
 			{ type: 'view', parent: -1, props: {}, bindings: [{ name: 'class', valueIndex: 0 }] },
-			{ type: 'text', parent: 0, props: { class: 'col-id' } },
 			{
-				type: '#text',
-				parent: 1,
-				props: { value: '' },
-				bindings: [{ name: 'value', valueIndex: 1 }],
+				type: 'text',
+				parent: 0,
+				props: { class: 'col-id' },
+				bindings: [{ name: 'text', valueIndex: 1 }],
 			},
-			{ type: 'text', parent: 0, props: { class: 'col-label' } },
 			{
-				type: '#text',
-				parent: 3,
-				props: { value: '' },
-				bindings: [{ name: 'value', valueIndex: 2 }],
+				type: 'text',
+				parent: 0,
+				props: { class: 'col-label' },
+				bindings: [{ name: 'text', valueIndex: 2 }],
 			},
-			{ type: 'text', parent: 0, props: { class: 'col-remove' } },
-			{ type: '#text', parent: 5, props: { value: 'x' } },
+			{ type: 'text', parent: 0, props: { class: 'col-remove', text: 'x' } },
 		],
 		events: [
+			{ node: 2, type: 'bindtap', priority: TAP_PRIORITY },
 			{ node: 3, type: 'bindtap', priority: TAP_PRIORITY },
-			{ node: 5, type: 'bindtap', priority: TAP_PRIORITY },
 		],
 	});
 }

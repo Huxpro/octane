@@ -4,13 +4,20 @@ import {
 	defineUniversalComponent,
 	universalFor,
 	universalPlan,
-	universalProps,
 	universalValue,
+	type UniversalHostCommand,
 } from 'octane/universal/native';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createLynxRoot, type LynxRoot } from '../src/index.js';
 import { root as firstScreenRoot } from '../src/first-screen.js';
 import { installLynxMainThread, type LynxMainThreadController } from '../src/main-thread.js';
+import { registerUniversalProgram } from '../src/core/program-registry.js';
+import {
+	LYNX_BACKGROUND_TO_MAIN_EVENT,
+	type LynxContextProxy,
+	type LynxContextProxyEvent,
+} from '../src/core/protocol.js';
+import { unwire } from './_fixtures/lynx-wire.js';
 import {
 	defineUniversalComponent as defineFirstScreenComponent,
 	universalFor as firstScreenFor,
@@ -48,6 +55,7 @@ const memberPlan = firstScreenPlan('lynx', {
 	kind: 'host',
 	type: 'view',
 	propsSlot: 0,
+	children: [{ kind: 'host', type: 'text', props: { text: 'row' } }],
 });
 
 /**
@@ -127,11 +135,33 @@ const ProgramScene = defineFirstScreenComponent('lynx', (props: ProgramSceneProp
 	]),
 );
 
-const backgroundMemberPlan = universalPlan('lynx', {
-	kind: 'host',
-	type: 'view',
-	propsSlot: 0,
+const BACKGROUND_MEMBER_MODULE = 'tests/FirstScreenProgramMember.lynx.tsrx';
+const backgroundMemberWire = Object.freeze({
+	nodes: Object.freeze([
+		Object.freeze({
+			type: 'view',
+			parent: -1,
+			props: Object.freeze({}),
+			bindings: Object.freeze([Object.freeze({ name: 'id', valueIndex: 0 })]),
+		}),
+		Object.freeze({
+			type: 'text',
+			parent: 0,
+			props: Object.freeze({ text: 'row' }),
+		}),
+	]),
+	events: Object.freeze([]),
 });
+const backgroundMemberPlan = universalPlan(
+	'lynx',
+	{
+		kind: 'host',
+		type: 'view',
+		bindings: [['id', 0]],
+		children: [{ kind: 'host', type: 'text', props: { text: 'row' } }],
+	},
+	{ module: BACKGROUND_MEMBER_MODULE, index: 0, digest: 'first-screen-program-member' },
+);
 
 /**
  * The background's ordinary description of the tree the program above paints.
@@ -171,7 +201,7 @@ const BackgroundProgramScene = defineUniversalComponent('lynx', (props: ProgramS
 		universalFor(
 			props.rows,
 			(row) => row,
-			(row) => universalValue(backgroundMemberPlan, [universalProps([['set', 'id', row]])]),
+			(row) => universalValue(backgroundMemberPlan, [row]),
 			null,
 			true,
 			true,
@@ -188,6 +218,7 @@ interface InstalledEnvironment {
 	readonly dom: JSDOM;
 	readonly main: LynxMainThreadController;
 	readonly registrations: EventRegistration[];
+	readonly commits: (readonly UniversalHostCommand[])[];
 }
 
 let installed: InstalledEnvironment | null = null;
@@ -201,6 +232,7 @@ function installEnvironment(): InstalledEnvironment {
 	globalThis.lynxTestingEnv.switchToMainThread();
 	const target = globalThis as unknown as Record<string, unknown>;
 	const registrations: EventRegistration[] = [];
+	const commits: (readonly UniversalHostCommand[])[] = [];
 	const addEvent = target.__AddEvent as (
 		node: object,
 		kind: string,
@@ -211,8 +243,39 @@ function installEnvironment(): InstalledEnvironment {
 		registrations.push(Object.freeze({ listener }));
 		addEvent(node, kind, name, listener);
 	};
-	const main = installLynxMainThread({ firstScreen: true, firstScreenSync: 'manual' });
-	return (installed = { dom, main, registrations });
+	const context = (target as { lynx: { getJSContext(): LynxContextProxy } }).lynx.getJSContext();
+	const wrappers = new Map<
+		(event: LynxContextProxyEvent) => void,
+		(event: LynxContextProxyEvent) => void
+	>();
+	const recordingContext: LynxContextProxy = {
+		dispatchEvent(event) {
+			return context.dispatchEvent(event);
+		},
+		addEventListener(type, listener) {
+			const wrapper = (event: LynxContextProxyEvent): void => {
+				const message = unwire(event.data) as {
+					readonly type?: unknown;
+					readonly batch?: { readonly commands?: readonly UniversalHostCommand[] };
+				};
+				if (type === LYNX_BACKGROUND_TO_MAIN_EVENT && message.type === 'commit') {
+					commits.push(message.batch?.commands ?? []);
+				}
+				listener(event);
+			};
+			wrappers.set(listener, wrapper);
+			context.addEventListener(type, wrapper);
+		},
+		removeEventListener(type, listener) {
+			context.removeEventListener(type, wrappers.get(listener) ?? listener);
+		},
+	};
+	const main = installLynxMainThread({
+		context: recordingContext,
+		firstScreen: true,
+		firstScreenSync: 'manual',
+	});
+	return (installed = { dom, main, registrations, commits });
 }
 
 afterEach(async () => {
@@ -237,14 +300,24 @@ describe.sequential('Lynx main-thread program first-screen updates', () => {
 		// background's own description resolves against it — and from that moment
 		// the background owns hosts it never created. This is the test that the
 		// ownership is real: ordinary updates reach them.
-		const { dom, main, registrations } = installEnvironment();
+		registerUniversalProgram(BACKGROUND_MEMBER_MODULE, 0, {
+			kind: 'program',
+			slots: [],
+			nodes: 2,
+			values: [0],
+			events: [],
+			ranges: [],
+			wire: backgroundMemberWire,
+			bind: () => () => null,
+		} as never);
+		const { dom, main, registrations, commits } = installEnvironment();
 		const props: ProgramSceneProps = { id: 'program-page', tone: 'calm', rows: ['a', 'b'] };
 
 		const painted = firstScreenRoot.render(ProgramScene, props);
-		// Two hosts the program made plus one per keyed member, which is the count
+		// Two hosts the program made plus two per keyed member, which is the count
 		// that says the range was materialized by the renderer and not by the
 		// program.
-		expect(painted).toMatchObject({ hostCount: 4 });
+		expect(painted).toMatchObject({ hostCount: 6 });
 		const page = dom.window.document.querySelector('#program-page');
 		const label = page?.querySelector('text');
 		const rowA = dom.window.document.querySelector('#a');
@@ -255,9 +328,10 @@ describe.sequential('Lynx main-thread program first-screen updates', () => {
 		expect(rowB).not.toBeNull();
 		// And a program is what painted it, rather than the renderer describing the
 		// same tree: main's own snapshot of the page it just painted holds the two
-		// keyed members and nothing else. Both are parented to a root the
-		// description never mentions, because that root is a node the program made
-		// and no description of a program's subtree exists anywhere.
+		// keyed member roots and their text children, and nothing else. The member
+		// roots are parented to a root the description never mentions, because that
+		// root is a node the program made and no description of a program's subtree
+		// exists anywhere.
 		//
 		// Without this the test would hold just as well on a first screen that was
 		// declined and repainted from the background — every assertion below would
@@ -265,8 +339,8 @@ describe.sequential('Lynx main-thread program first-screen updates', () => {
 		const snapshot = main.firstScreenSnapshot();
 		const programRoot = snapshot?.roots[0];
 		expect(programRoot).toBeTypeOf('number');
-		expect(snapshot?.nodes).toHaveLength(2);
-		expect(snapshot?.nodes.map((node) => node.parent)).toEqual([programRoot, programRoot]);
+		expect(snapshot?.nodes).toHaveLength(4);
+		expect(snapshot?.nodes.filter((node) => node.parent === programRoot)).toHaveLength(2);
 		expect(snapshot?.nodes.map((node) => node.id)).not.toContain(programRoot);
 
 		globalThis.lynxTestingEnv.switchToBackgroundThread();
@@ -300,8 +374,14 @@ describe.sequential('Lynx main-thread program first-screen updates', () => {
 		await background.render(BackgroundProgramScene, {
 			...props,
 			tone: 'alert',
-			rows: ['a', 'b', 'c'],
+			// Eight fresh two-host rows cross the compact-ACK floor. This is the
+			// post-first-tree path that must accept an addressed run with lazy public
+			// instances; a one-row addition would not request that negotiation.
+			rows: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'],
 		});
+		expect(commits.at(-1)).toEqual([
+			expect.objectContaining({ op: 'mount-program-run', count: 8 }),
+		]);
 		const rowC = dom.window.document.querySelector('#c');
 		expect(rowC).not.toBeNull();
 		expect(rowC?.parentElement).toBe(page);

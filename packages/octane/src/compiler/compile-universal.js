@@ -1700,6 +1700,11 @@ function validationAttributeName(attribute) {
 
 function isStaticallyPrimitiveTextExpression(node) {
 	if (!node || typeof node !== 'object') return false;
+	// `compile.js` attaches this only after source-bound TypeScript facts or a
+	// lexical proof of the unshadowed global String intrinsic. Consume the same
+	// proof here so universal layout derivation cannot disagree with the normal
+	// text lowering about whether a lone child is scalar.
+	if (node.metadata?.octane_string_child === true) return true;
 	if (
 		node.type === 'ParenthesizedExpression' ||
 		node.type === 'ChainExpression' ||
@@ -2278,15 +2283,16 @@ function hostAbsorbsTextChild(type, state) {
 	return Array.isArray(hostProps?.[type]) && hostProps[type].includes(TEXT_CONTENT_PROP);
 }
 
-// Whether a host's lone compiled child is a dynamic hole the *author* proved
-// scalar, which is the one dynamic child a text-absorbing host can hold.
+// Whether a host's lone compiled child is a dynamic hole proved scalar by the
+// author or the shared compiler analysis, which is the one dynamic child a
+// text-absorbing host can hold.
 //
-// Asked of the authored JSX rather than the plan node, because the proof lives
-// in the source and only in the source: `compile.js` strips every TS-only
-// wrapper before printing, so by the time an expression reaches codegen the cast
-// is gone. The compiled child is still checked — a hole that folded to static
-// text or to a nested plan is not this — so the two views have to agree before
-// anything is folded.
+// Asked of the authored JSX rather than the plan node, because casts live only
+// in the source and compiler proofs are attached to that source expression:
+// `compile.js` strips every TS-only wrapper before printing, so by the time an
+// expression reaches codegen the cast is gone. The compiled child is still
+// checked — a hole that folded to static text or to a nested plan is not this —
+// so the two views have to agree before anything is folded.
 function isScalarTextChildSite(node, compiled) {
 	if (compiled.kind !== 'slot') return false;
 	const authored = (node.children ?? []).filter(

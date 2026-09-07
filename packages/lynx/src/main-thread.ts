@@ -583,7 +583,10 @@ function acknowledgementHandles<Node extends LynxElementRef>(
 }
 
 function freezeValidatedIntrinsicRun(
-	run: Extract<UniversalHostBatch['commands'][number], { readonly op: 'mount-template-run' }>,
+	run: Extract<
+		UniversalHostBatch['commands'][number],
+		{ readonly op: 'mount-template-run' | 'mount-program-run' }
+	>,
 ): void {
 	// The wire drops every frozen descriptor — `JSON.parse` output is entirely
 	// writable and configurable, as structured clone's was before it — so a
@@ -593,19 +596,27 @@ function freezeValidatedIntrinsicRun(
 	// that names it. It is no longer a defense against a hostile composite —
 	// issue #156 moved that question to the boundary, and the validator above no
 	// longer asks it — but the memo it protects is real, so the freeze stays.
-	const program = run.program;
-	for (const node of program.nodes) {
-		Object.freeze(node.props);
-		if (node.bindings !== undefined) {
-			for (const binding of node.bindings) Object.freeze(binding);
-			Object.freeze(node.bindings);
+	if (run.op === 'mount-template-run') {
+		const program = run.program;
+		for (const node of program.nodes) {
+			Object.freeze(node.props);
+			if (node.bindings !== undefined) {
+				for (const binding of node.bindings) Object.freeze(binding);
+				Object.freeze(node.bindings);
+			}
+			Object.freeze(node);
 		}
-		Object.freeze(node);
+		Object.freeze(program.nodes);
+		for (const event of program.events) Object.freeze(event);
+		Object.freeze(program.events);
+		Object.freeze(program);
+	} else {
+		// The resident descriptor was frozen through at module registration. The
+		// address is the deserialized field this command carries in its place, so
+		// freeze that name before an incremental compact acknowledgement derives
+		// identities from the run.
+		Object.freeze(run.address);
 	}
-	Object.freeze(program.nodes);
-	for (const event of program.events) Object.freeze(event);
-	Object.freeze(program.events);
-	Object.freeze(program);
 	Object.freeze(run.values);
 	Object.freeze(run);
 }
@@ -2461,7 +2472,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 						message.batch.commands.length === 0 ||
 						!message.batch.commands.every(
 							(command) =>
-								command.op === 'mount-template-range' || command.op === 'mount-template-run',
+								command.op === 'mount-template-range' ||
+								command.op === 'mount-template-run' ||
+								command.op === 'mount-program-run',
 						))))
 		) {
 			reject(identity, new Error('Octane Lynx rejected unnegotiated lazy public instances.'));
@@ -2489,7 +2502,8 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		if (
 			peerCapabilities?.templateProgram !== 1 ||
 			peerCapabilities.templateRuns !== 1 ||
-			peerCapabilities.deferredTemplateRuns !== 1
+			peerCapabilities.deferredTemplateRuns !== 1 ||
+			peerCapabilities.addressedProgramRuns !== 1
 		) {
 			for (const command of message.batch.commands) {
 				if (command.op === 'mount-template-range' && peerCapabilities?.templateProgram !== 1) {
@@ -2499,10 +2513,20 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 					);
 					return;
 				}
-				if (command.op === 'mount-template-run' && peerCapabilities?.templateRuns !== 1) {
+				if (
+					(command.op === 'mount-template-run' || command.op === 'mount-program-run') &&
+					peerCapabilities?.templateRuns !== 1
+				) {
 					reject(
 						identity,
 						new Error('Octane Lynx rejected an unnegotiated intrinsic template run.'),
+					);
+					return;
+				}
+				if (command.op === 'mount-program-run' && peerCapabilities?.addressedProgramRuns !== 1) {
+					reject(
+						identity,
+						new Error('Octane Lynx rejected an unnegotiated addressed program run.'),
 					);
 					return;
 				}
@@ -2511,7 +2535,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				// driver would accept the command on its own terms, so nothing below
 				// would notice that the session never allowed it.
 				if (
-					command.op === 'mount-template-run' &&
+					(command.op === 'mount-template-run' || command.op === 'mount-program-run') &&
 					command.deferred === true &&
 					peerCapabilities?.deferredTemplateRuns !== 1
 				) {
@@ -2531,7 +2555,7 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			peerCapabilities.templateProgram === 1 &&
 			peerCapabilities.templateRuns === 1 &&
 			message.ack === LYNX_COMPACT_ACKNOWLEDGEMENT &&
-			incrementalRun?.op === 'mount-template-run'
+			(incrementalRun?.op === 'mount-template-run' || incrementalRun?.op === 'mount-program-run')
 		) {
 			try {
 				freezeValidatedIntrinsicRun(incrementalRun);
