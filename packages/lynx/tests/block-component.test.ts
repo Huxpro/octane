@@ -1477,6 +1477,206 @@ function stableColumnComponent(): LynxComponent<TableProps> {
 }
 
 describe('Lynx compiled component whose rows outlive the render', () => {
+	it('visits only old and new keys for a compiler-certified selection', async () => {
+		let rangeCalls = 0;
+		let rowCalls = 0;
+		let visited: number[] = [];
+		const Row = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Row(props: {
+				readonly row: TableRow;
+				readonly isSelected: boolean;
+				readonly onSelect: (id: number) => void;
+			}) {
+				rowCalls++;
+				return universalValue(ROW_PLAN, [
+					props.isSelected ? 'row danger' : 'row',
+					String(props.row.id),
+					() => props.onSelect(props.row.id),
+					props.row.label,
+				]);
+			},
+		);
+		const Listed = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Listed(props: TableProps) {
+				return universalValue(TABLE_PLAN, [
+					universalFor(
+						props.rows,
+						(row: TableRow) => row.id,
+						(row: TableRow, index: number) => {
+							rangeCalls++;
+							visited.push(row.id * 1000 + index);
+							return universalComponent(
+								LYNX_TRANSPORT_RENDERER,
+								Row,
+								universalProps([
+									['set', 'row', row],
+									['set', 'isSelected', props.selected === row.id],
+									['set', 'onSelect', props.onSelect],
+								]),
+							);
+						},
+						null,
+						false,
+						false,
+						undefined,
+						undefined,
+						undefined,
+						true,
+						[props.selected, [props.onSelect], 'row'],
+					),
+				]);
+			},
+		);
+		const rows = Array.from({ length: 100 }, (_, index) => ({
+			id: index + 1,
+			label: `row ${index + 1}`,
+		}));
+		const onSelect = (): void => {};
+		const core = createLynxBlockCore();
+		const block = blockColumn<TableProps>(core);
+		await block.render(Listed as LynxComponent<TableProps>, {
+			rows,
+			selected: undefined,
+			onSelect,
+		});
+
+		const step = async (selected: number | undefined) => {
+			visited = [];
+			const beforeRange = rangeCalls;
+			const beforeRows = rowCalls;
+			const beforeCore = core.counters();
+			await block.render(Listed as LynxComponent<TableProps>, { rows, selected, onSelect });
+			const afterCore = core.counters();
+			return {
+				rangeCalls: rangeCalls - beforeRange,
+				rowCalls: rowCalls - beforeRows,
+				lookups: afterCore.blockLookups - beforeCore.blockLookups,
+				commands: afterCore.commands - beforeCore.commands,
+				visited,
+			};
+		};
+
+		expect(await step(25)).toEqual({
+			rangeCalls: 1,
+			rowCalls: 1,
+			lookups: 1,
+			commands: 1,
+			visited: [25_024],
+		});
+		expect(await step(75)).toEqual({
+			rangeCalls: 2,
+			rowCalls: 2,
+			lookups: 2,
+			commands: 2,
+			visited: [25_024, 75_074],
+		});
+		// Move backwards to prove old/new rows retain list order rather than
+		// selection-transition order, while receiving their committed indices.
+		expect(await step(25)).toEqual({
+			rangeCalls: 2,
+			rowCalls: 2,
+			lookups: 2,
+			commands: 2,
+			visited: [25_024, 75_074],
+		});
+		expect(await step(25)).toEqual({
+			rangeCalls: 0,
+			rowCalls: 0,
+			lookups: 0,
+			commands: 0,
+			visited: [],
+		});
+	});
+
+	it('falls back to the whole range when rows or another captured dependency change', async () => {
+		let rangeCalls = 0;
+		const Row = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Row(props: {
+				readonly row: TableRow;
+				readonly isSelected: boolean;
+				readonly onSelect: (id: number) => void;
+			}) {
+				return universalValue(ROW_PLAN, [
+					props.isSelected ? 'row danger' : 'row',
+					String(props.row.id),
+					() => props.onSelect(props.row.id),
+					props.row.label,
+				]);
+			},
+		);
+		const Listed = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Listed(props: TableProps) {
+				return universalValue(TABLE_PLAN, [
+					universalFor(
+						props.rows,
+						(row: TableRow) => row.id,
+						(row: TableRow) => {
+							rangeCalls++;
+							return universalComponent(
+								LYNX_TRANSPORT_RENDERER,
+								Row,
+								universalProps([
+									['set', 'row', row],
+									['set', 'isSelected', props.selected === row.id],
+									['set', 'onSelect', props.onSelect],
+								]),
+							);
+						},
+						null,
+						false,
+						false,
+						undefined,
+						undefined,
+						undefined,
+						true,
+						[props.selected, [props.onSelect], 'row'],
+					),
+				]);
+			},
+		);
+		const rows = STABLE_ROWS;
+		const first = (): void => {};
+		const second = (): void => {};
+		const block = blockColumn<TableProps>();
+		await block.render(Listed as LynxComponent<TableProps>, {
+			rows,
+			selected: undefined,
+			onSelect: first,
+		});
+
+		rangeCalls = 0;
+		await block.render(Listed as LynxComponent<TableProps>, {
+			rows,
+			selected: 2,
+			onSelect: second,
+		});
+		expect(rangeCalls).toBe(rows.length);
+
+		rangeCalls = 0;
+		const reordered = [rows[4]!, ...rows.slice(0, 4)];
+		await block.render(Listed as LynxComponent<TableProps>, {
+			rows: reordered,
+			selected: 2,
+			onSelect: second,
+		});
+		expect(rangeCalls).toBe(rows.length);
+
+		// The fallback refreshed each retained row's position. A later sparse
+		// selection on that same reordered source must still reach only its two
+		// keys, including the row whose index moved.
+		rangeCalls = 0;
+		await block.render(Listed as LynxComponent<TableProps>, {
+			rows: reordered,
+			selected: 5,
+			onSelect: second,
+		});
+		expect(rangeCalls).toBe(2);
+	});
+
 	it('paints what the universal core paints while the row objects never change', async () => {
 		const Listed = stableColumnComponent();
 		// One function for every rung: a fresh one each render would change every

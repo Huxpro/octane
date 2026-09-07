@@ -2049,6 +2049,74 @@ function collectComponentNames(ast) {
 	return names;
 }
 
+/** Same-module function components whose binding cannot change after setup. */
+function collectImmutableLocalComponents(ast) {
+	const names = new Set();
+	for (const statement of ast.body ?? []) {
+		const declaration =
+			statement.type === 'ExportNamedDeclaration' || statement.type === 'ExportDefaultDeclaration'
+				? statement.declaration
+				: statement;
+		if (declaration?.type === 'FunctionDeclaration' && declaration.id?.type === 'Identifier') {
+			names.add(declaration.id.name);
+			continue;
+		}
+		if (declaration?.type !== 'VariableDeclaration' || declaration.kind !== 'const') continue;
+		for (const binding of declaration.declarations ?? []) {
+			if (
+				binding.id?.type === 'Identifier' &&
+				(binding.init?.type === 'ArrowFunctionExpression' ||
+					binding.init?.type === 'FunctionExpression')
+			) {
+				names.add(binding.id.name);
+			}
+		}
+	}
+	const lexical = createLexicalAnalysis(ast);
+	const invalidate = (target) => {
+		if (!target || typeof target !== 'object') return;
+		if (target.type === 'Identifier') {
+			const binding = lexical.resolveBinding(
+				lexical.nodeScopes.get(target) ?? lexical.rootScope,
+				target.name,
+			);
+			if (binding?.scope === lexical.rootScope) names.delete(target.name);
+			return;
+		}
+		if (target.type === 'RestElement') {
+			invalidate(target.argument);
+			return;
+		}
+		if (target.type === 'AssignmentPattern') {
+			invalidate(target.left);
+			return;
+		}
+		if (target.type === 'ArrayPattern') {
+			for (const element of target.elements ?? []) invalidate(element);
+			return;
+		}
+		if (target.type === 'ObjectPattern') {
+			for (const property of target.properties ?? [])
+				invalidate(property.argument ?? property.value);
+		}
+	};
+	const seen = new WeakSet();
+	const visit = (node) => {
+		if (!node || typeof node !== 'object') return;
+		if (Array.isArray(node)) {
+			for (const child of node) visit(child);
+			return;
+		}
+		if (seen.has(node)) return;
+		seen.add(node);
+		if (node.type === 'AssignmentExpression') invalidate(node.left);
+		else if (node.type === 'UpdateExpression') invalidate(node.argument);
+		forEachRuntimeAstChild(node, visit);
+	};
+	visit(ast);
+	return { names, lexical };
+}
+
 function collectExplicitThreeHostIntrinsics(ast, renderer) {
 	if (renderer.id !== 'three' || renderer.module !== '@octanejs/three/renderer') return null;
 	const aliases = new Set();
@@ -2575,6 +2643,114 @@ function templateProgramForComponent(node, state) {
 		}
 	}
 	return component;
+}
+
+/**
+ * Prove that one parent value reaches a component row only as the boolean
+ * result of comparing it with that row's key.
+ *
+ * This is the universal/Lynx counterpart of compile.js's
+ * `keyedSelectionDepIndex`. It is intentionally narrower: the row must already
+ * satisfy `templateProgramForComponent`, the key is one direct item property,
+ * and every other outer capture must be passed as a bare prop value. Property
+ * reads on an outer object could hide a getter or a mutation behind stable
+ * identity, so they fail closed. The full range path remains the fallback.
+ */
+function keyedSelectionForComponent(node, component, state, itemBinding, indexBinding) {
+	if (!state.sparseKeyedSelection || itemBinding.type !== 'Identifier') return null;
+	const componentName = component.openingElement?.name ?? component.name;
+	const trusted = state.immutableLocalComponents;
+	if (componentName?.type !== 'JSXIdentifier' || !trusted.names.has(componentName.name)) {
+		return null;
+	}
+	const componentBinding = trusted.lexical.resolveBinding(
+		trusted.lexical.nodeScopes.get(componentName) ?? trusted.lexical.rootScope,
+		componentName.name,
+	);
+	if (componentBinding?.scope !== trusted.lexical.rootScope) return null;
+	const key = unwrapFirstScreenExpression(node.key);
+	if (
+		key?.type !== 'MemberExpression' ||
+		key.computed === true ||
+		key.optional === true ||
+		key.object?.type !== 'Identifier' ||
+		key.object.name !== itemBinding.name ||
+		key.property?.type !== 'Identifier'
+	) {
+		return null;
+	}
+	const keyProperty = key.property.name;
+	const isItemKey = (value) => {
+		const expression = unwrapFirstScreenExpression(value);
+		return (
+			expression?.type === 'MemberExpression' &&
+			expression.computed !== true &&
+			expression.optional !== true &&
+			expression.object?.type === 'Identifier' &&
+			expression.object.name === itemBinding.name &&
+			expression.property?.type === 'Identifier' &&
+			expression.property.name === keyProperty
+		);
+	};
+
+	let selected = null;
+	for (const attribute of component.openingElement?.attributes ?? component.attributes ?? []) {
+		const value = attribute.value;
+		if (value?.type !== 'JSXExpressionContainer') continue;
+		const expression = unwrapFirstScreenExpression(value.expression);
+		if (expression?.type !== 'BinaryExpression' || expression.operator !== '===') continue;
+		const left = unwrapFirstScreenExpression(expression.left);
+		const right = unwrapFirstScreenExpression(expression.right);
+		const candidate = isItemKey(left) ? right : isItemKey(right) ? left : null;
+		if (
+			candidate?.type !== 'Identifier' ||
+			candidate.name === itemBinding.name ||
+			candidate.name === indexBinding?.name ||
+			selected !== null
+		) {
+			continue;
+		}
+		selected = candidate;
+	}
+	if (selected === null) return null;
+
+	const excluded = new Set([itemBinding.name]);
+	if (indexBinding?.type === 'Identifier') excluded.add(indexBinding.name);
+	if (componentName?.type === 'JSXIdentifier') excluded.add(componentName.name);
+	const captures = collectEntryCaptures(component, excluded);
+	const selectedCapture = captures.find((capture) => capture.source === selected.name);
+	if (
+		selectedCapture === undefined ||
+		selectedCapture.nodes.length !== 1 ||
+		selectedCapture.nodes[0] !== selected
+	) {
+		return null;
+	}
+
+	const directPropExpressions = new Set();
+	let itemProp = null;
+	for (const attribute of component.openingElement?.attributes ?? component.attributes ?? []) {
+		if (attribute.value?.type === 'JSXExpressionContainer') {
+			const expression = unwrapFirstScreenExpression(attribute.value.expression);
+			directPropExpressions.add(expression);
+			if (expression?.type === 'Identifier' && expression.name === itemBinding.name) {
+				itemProp ??= attributeName(attribute);
+			}
+		}
+	}
+	if (itemProp === null) return null;
+	const deps = [];
+	for (const capture of captures) {
+		if (capture.source === selected.name) continue;
+		if (
+			capture.nodes.length === 0 ||
+			capture.nodes.some((reference) => !directPropExpressions.has(reference))
+		) {
+			return null;
+		}
+		deps.push(capture.nodes[0]);
+	}
+	return { selected, deps, itemProp };
 }
 
 function allocPlan(state, root, origin = null) {
@@ -3569,6 +3745,10 @@ function compileForAst(node, context, state) {
 		host === null && component === null && !state.hmr
 			? templateProgramForComponent(node, state)
 			: null;
+	const keyedSelection =
+		templateComponent === null
+			? null
+			: keyedSelectionForComponent(node, templateComponent, state, itemBinding, indexBinding);
 	const compactHost =
 		host === null ? null : compileOwnerFreeForHostAst(host, state, itemBinding, indexBinding);
 	const compactComponent =
@@ -3622,6 +3802,20 @@ function compileForAst(node, context, state) {
 			inheritGeneratedOrigin(b.unary('void', b.literal(0)), templateComponent),
 			b.literal(true),
 		);
+		if (keyedSelection !== null) {
+			args.push(
+				inheritGeneratedOrigin(
+					b.array([
+						dynamicExpressionAst(keyedSelection.selected, state),
+						b.array(
+							keyedSelection.deps.map((dependency) => dynamicExpressionAst(dependency, state)),
+						),
+						b.literal(keyedSelection.itemProp),
+					]),
+					templateComponent,
+				),
+			);
+		}
 	} else if (!state.hmr && templateProgramForHost(node, state)) {
 		args.push(b.literal(null, 'null'), b.literal(false), b.literal(false), b.literal(true));
 	} else if (node.empty) {
@@ -4851,6 +5045,11 @@ export function lowerUniversalRendererRegionAst(
 		hmrDialect,
 		hmrComponents: [],
 		profile: options.profile === true,
+		sparseKeyedSelection:
+			options.autoMemo !== false &&
+			options.dev !== true &&
+			hmrDialect === false &&
+			options.profile !== true,
 		profileFilename: options.profileFilename,
 		helpers: {},
 		componentNames: collectComponentNames(analysisAst),
@@ -4864,6 +5063,7 @@ export function lowerUniversalRendererRegionAst(
 		options.authoredAst ?? analysisAst,
 		renderer,
 	);
+	state.immutableLocalComponents = collectImmutableLocalComponents(analysisAst);
 	state.helpers.component = allocName(state, `${prefix}Define`);
 	state.helpers.plan = allocName(state, `${prefix}Plan`);
 	state.helpers.value = allocName(state, `${prefix}Value`);
@@ -5165,6 +5365,11 @@ export function compileUniversal(
 		hmrDialect,
 		hmrComponents: [],
 		profile: options.profile === true,
+		sparseKeyedSelection:
+			options.autoMemo !== false &&
+			options.dev !== true &&
+			hmrDialect === false &&
+			options.profile !== true,
 		profileFilename: options.profileFilename,
 		helpers: {},
 		componentNames: collectComponentNames(ast),
@@ -5187,6 +5392,7 @@ export function compileUniversal(
 		programModuleId: options.programModuleId,
 	};
 	state.explicitThreeHostIntrinsics = collectExplicitThreeHostIntrinsics(ast, renderer);
+	state.immutableLocalComponents = collectImmutableLocalComponents(ast);
 	state.ownerFreeThreeHostComponents = collectOwnerFreeThreeHostComponents(
 		ast,
 		state,

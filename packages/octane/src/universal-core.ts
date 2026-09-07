@@ -524,6 +524,13 @@ export interface UniversalForValue {
 	readonly leafSignature?: string;
 	readonly template?: boolean;
 	readonly componentScope?: boolean;
+	/**
+	 * Compiler-only proof that one captured value affects a component row only
+	 * through a strict comparison with the row key. Renderers may use this to
+	 * revisit the old/new keyed rows when the iterable and every other capture
+	 * are unchanged; an absent proof always means ordinary range evaluation.
+	 */
+	readonly keyedSelection?: readonly [value: unknown, deps: readonly unknown[], itemProp: string];
 }
 
 export interface UniversalTryValue {
@@ -2282,6 +2289,7 @@ export function universalFor<T>(
 	leafPlan?: UniversalPlan,
 	leafSignature?: string,
 	componentScope = false,
+	keyedSelection?: readonly [value: unknown, deps: readonly unknown[], itemProp: string],
 ): UniversalForValue {
 	if (componentScope) {
 		return {
@@ -2293,6 +2301,7 @@ export function universalFor<T>(
 			ownerless,
 			compact,
 			componentScope: true,
+			...(keyedSelection === undefined ? null : { keyedSelection }),
 		};
 	}
 	if (hostComponent === true) {
