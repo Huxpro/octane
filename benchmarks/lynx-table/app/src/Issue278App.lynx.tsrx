@@ -60,6 +60,7 @@ type Issue278Global =
 			readonly atMs: number;
 			readonly profile: Record<string, number | Record<string, number>> | null;
 			readonly codecProfile: Record<string, number | Record<string, number>> | null;
+			readonly timeline: Record<string, number> | null;
 		};
 		__ISSUE278_ROOT__?: { flushTransport(): Promise<void> };
 		__ISSUE278_WIRE__?: Issue278WireEvent[];
@@ -189,6 +190,7 @@ export function App() @{
 				readonly atMs: number;
 				readonly profile: Record<string, number | Record<string, number>> | null;
 				readonly codecProfile: Record<string, number | Record<string, number>> | null;
+				readonly timeline: Record<string, number> | null;
 			};
 		};
 		return target.__ISSUE278_COMMIT_SNAPSHOT__ ?? null;
@@ -373,7 +375,7 @@ export function App() @{
 			target.__ISSUE278_PROGRESS__ = 'read-main-profile';
 			const mts = __OCTANE_LYNX_PROFILE__
 				? await runOnMainThread(readMainProfile)()
-				: { atMs: null, profile: null, codecProfile: null };
+				: { atMs: null, profile: null, codecProfile: null, timeline: null };
 			if (__OCTANE_LYNX_PROFILE__ && mts === null) {
 				throw new Error('issue #278 main-thread commit snapshot is unavailable.');
 			}
@@ -390,6 +392,7 @@ export function App() @{
 				btsCodecProfile,
 				mtsProfile: mts.profile,
 				mtsCodecProfile: mts.codecProfile,
+				mtsTimeline: mts.timeline,
 				mtsSnapshotAtMs: mts.atMs,
 				wire: operationWire,
 			};

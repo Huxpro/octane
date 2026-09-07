@@ -119,7 +119,7 @@ const adapter = await createAdapter({
 });
 
 const evidence = {
-	protocol: 'octane-issue278-native-attribution-v2',
+	protocol: 'octane-issue278-native-attribution-v3',
 	status: 'running',
 	capturedAt: new Date().toISOString(),
 	provenance: {
@@ -137,7 +137,8 @@ const evidence = {
 		instrument:
 			'build-time-restored codec phase counters plus Lynx profileMark; no authored runtime source changes',
 		createBoundary: 'programmatic BTS setRows start to transport commit ACK return',
-		clockResolution: 'integer milliseconds in Explorer Native JS realms',
+		clockResolution:
+			'integer Date.now milliseconds on the shared device clock in BTS and MTS; adapter calibration maps it to trace time',
 		realPathGate: 'range-bearing table must use mount-template-run descriptor fallback',
 		scalarPathGate: 'separate range-free scalar replacement must use mount-program-run',
 		countArm:
@@ -307,6 +308,40 @@ function assertRealGate(sample, { requireProfile = true } = {}) {
 		}
 		assertCodecAccounting(result.btsCodecProfile, 'gate BTS');
 		assertCodecAccounting(result.mtsCodecProfile, 'gate MTS');
+		const timeline = result.mtsTimeline;
+		const names = [
+			'receivedAtMs',
+			'decodedAtMs',
+			'validatedAtMs',
+			'preparedAtMs',
+			'applyStartedAtMs',
+			'appliedAtMs',
+			'ackStartedAtMs',
+			'ackDispatchedAtMs',
+			'completedAtMs',
+		];
+		if (
+			timeline === null ||
+			typeof timeline !== 'object' ||
+			names.some((name) => !Number.isSafeInteger(timeline[name]))
+		) {
+			throw new Error(`gate: missing same-clock commit timeline ${JSON.stringify(timeline)}`);
+		}
+		for (let index = 1; index < names.length; index++) {
+			if (timeline[names[index]] < timeline[names[index - 1]]) {
+				throw new Error(`gate: non-monotonic commit timeline ${JSON.stringify(timeline)}`);
+			}
+		}
+		const commitWire = result.wire.find((event) => event.type === 'octane-lynx:background-to-main');
+		if (
+			commitWire === undefined ||
+			timeline.receivedAtMs < commitWire.startedAtMs ||
+			result.commitAckMs < timeline.completedAtMs
+		) {
+			throw new Error(
+				`gate: cross-realm timeline escaped the device clock ${JSON.stringify({ commitWire, timeline, commitAckMs: result.commitAckMs })}`,
+			);
+		}
 	}
 	return sample;
 }

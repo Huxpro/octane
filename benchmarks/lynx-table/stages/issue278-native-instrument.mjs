@@ -83,6 +83,7 @@ interface Issue278CodecProfile {
 type Issue278CodecGlobals = typeof globalThis & {
 	__ISSUE278_CODEC_PROFILE__?: Issue278CodecProfile;
 	__OCTANE_LYNX_PROF?: Record<string, unknown>;
+	__ISSUE278_COMMIT_TIMELINE__?: Record<string, number>;
 	__ISSUE278_COMMIT_SNAPSHOT__?: unknown;
 };
 
@@ -131,7 +132,14 @@ function issue278BeginCommit(profile: Issue278CodecProfile): void {
 	const target = globalThis as Issue278CodecGlobals;
 	issue278ResetProfileRecord(profile as unknown as Record<string, unknown>);
 	issue278ResetProfileRecord(target.__OCTANE_LYNX_PROF);
+	target.__ISSUE278_COMMIT_TIMELINE__ = { receivedAtMs: Date.now() };
 	delete target.__ISSUE278_COMMIT_SNAPSHOT__;
+}
+
+function issue278MarkDecoded(commit: boolean): void {
+	if (!commit) return;
+	const timeline = (globalThis as Issue278CodecGlobals).__ISSUE278_COMMIT_TIMELINE__;
+	if (timeline !== undefined) timeline.decodedAtMs = Date.now();
 }
 `,
 			file,
@@ -209,12 +217,14 @@ function issue278BeginCommit(profile: Issue278CodecProfile): void {
 	profile.decodeCalls++;
 	if (flags === 0) {
 		profile.decodeFlags0++;
+		issue278MarkDecoded(issue278Commit);
 		return envelope[1];
 	}
 	profile.decodeFlags1++;
 	const startedRestore = performance.now();
 	const restored = restore(envelope[1]);
 	profile.decodeRestoreMs += performance.now() - startedRestore;
+	issue278MarkDecoded(issue278Commit);
 	return restored;
 `,
 			file,
@@ -276,14 +286,95 @@ function issue278CaptureCommitSnapshot(): void {
 	const target = globalThis as typeof globalThis & {
 		__OCTANE_LYNX_PROF?: Record<string, unknown>;
 		__ISSUE278_CODEC_PROFILE__?: Record<string, unknown>;
+		__ISSUE278_COMMIT_TIMELINE__?: Record<string, number>;
 		__ISSUE278_COMMIT_SNAPSHOT__?: unknown;
 	};
 	target.__ISSUE278_COMMIT_SNAPSHOT__ = {
 		atMs: Date.now(),
 		profile: issue278CopyProfile(target.__OCTANE_LYNX_PROF),
 		codecProfile: issue278CopyProfile(target.__ISSUE278_CODEC_PROFILE__),
+		timeline:
+			target.__ISSUE278_COMMIT_TIMELINE__ === undefined
+				? null
+				: { ...target.__ISSUE278_COMMIT_TIMELINE__ },
 	};
 }
+
+function issue278MarkCommitTimeline(name: string): void {
+	const target = globalThis as typeof globalThis & {
+		__ISSUE278_COMMIT_TIMELINE__?: Record<string, number>;
+	};
+	const timeline = target.__ISSUE278_COMMIT_TIMELINE__;
+	if (timeline !== undefined) timeline[name] = Date.now();
+}
+`,
+				mainThreadFile,
+			);
+			mainThreadInstrumented = replaceOnce(
+				mainThreadInstrumented,
+				`\t\t\tmessage = validateLynxBackgroundOutboundMessage(data, validation, residentRunProgram);
+\t\t\tif (LYNX_PROFILE) lynxWireProfile().validateMs += performance.now() - startedValidate;
+`,
+				`\t\t\tmessage = validateLynxBackgroundOutboundMessage(data, validation, residentRunProgram);
+\t\t\tif (LYNX_PROFILE) lynxWireProfile().validateMs += performance.now() - startedValidate;
+\t\t\tif (message.type === 'commit') issue278MarkCommitTimeline('validatedAtMs');
+`,
+				mainThreadFile,
+			);
+			mainThreadInstrumented = replaceOnce(
+				mainThreadInstrumented,
+				`\t\tif (provisional) active = record;
+\t\tif (LYNX_PROFILE) {
+`,
+				`\t\tissue278MarkCommitTimeline('preparedAtMs');
+\t\tif (provisional) active = record;
+\t\tif (LYNX_PROFILE) {
+`,
+				mainThreadFile,
+			);
+			mainThreadInstrumented = replaceOnce(
+				mainThreadInstrumented,
+				`\t\tlet applyFailed = false;
+\t\tlet applyError: unknown;
+\t\tconst startedApply = LYNX_PROFILE ? performance.now() : 0;
+`,
+				`\t\tlet applyFailed = false;
+\t\tlet applyError: unknown;
+\t\tissue278MarkCommitTimeline('applyStartedAtMs');
+\t\tconst startedApply = LYNX_PROFILE ? performance.now() : 0;
+`,
+				mainThreadFile,
+			);
+			mainThreadInstrumented = replaceOnce(
+				mainThreadInstrumented,
+				`\t\tif (LYNX_PROFILE) lynxWireProfile().applyMs += performance.now() - startedApply;
+\t\tif (!prepared.mutationStarted) {
+`,
+				`\t\tif (LYNX_PROFILE) lynxWireProfile().applyMs += performance.now() - startedApply;
+\t\tissue278MarkCommitTimeline('appliedAtMs');
+\t\tif (!prepared.mutationStarted) {
+`,
+				mainThreadFile,
+			);
+			mainThreadInstrumented = replaceOnce(
+				mainThreadInstrumented,
+				`\t\tconst startedAck = LYNX_PROFILE ? performance.now() : 0;
+\t\tlet compactCount: number | null =
+`,
+				`\t\tissue278MarkCommitTimeline('ackStartedAtMs');
+\t\tconst startedAck = LYNX_PROFILE ? performance.now() : 0;
+\t\tlet compactCount: number | null =
+`,
+				mainThreadFile,
+			);
+			mainThreadInstrumented = replaceOnce(
+				mainThreadInstrumented,
+				`\t\t\tdispatch(acknowledgement);
+\t\t\tif (LYNX_PROFILE) lynxWireProfile().ackMs += performance.now() - startedAck;
+`,
+				`\t\t\tdispatch(acknowledgement);
+\t\t\tif (LYNX_PROFILE) lynxWireProfile().ackMs += performance.now() - startedAck;
+\t\t\tissue278MarkCommitTimeline('ackDispatchedAtMs');
 `,
 				mainThreadFile,
 			);
@@ -293,6 +384,7 @@ function issue278CaptureCommitSnapshot(): void {
 				if (awaitingAdoption === null) drainNativeEvents();
 `,
 				`\t\t\t\tdispatch({ ...identity, type: 'complete' });
+				issue278MarkCommitTimeline('completedAtMs');
 				issue278CaptureCommitSnapshot();
 				if (awaitingAdoption === null) drainNativeEvents();
 `,

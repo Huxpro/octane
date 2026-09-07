@@ -38,7 +38,11 @@ test('issue #278 instrumentation splits the real codec and restores every source
 		assert.match(codec, /__BENCH_ISSUE278_COUNTS__/);
 		assert.match(codec, /issue278RecordCommandOps/);
 		assert.match(codec, /issue278BeginCommit/);
+		assert.match(codec, /receivedAtMs: Date\.now\(\)/);
+		assert.match(codec, /issue278MarkDecoded/);
 		assert.match(mainThread, /issue278CaptureCommitSnapshot/);
+		assert.match(mainThread, /issue278MarkCommitTimeline/);
+		assert.match(mainThread, /completedAtMs/);
 		assert.match(entry, /validation: __BENCH_ISSUE278_VALIDATION__/);
 		restore();
 		for (const relative of files) {
