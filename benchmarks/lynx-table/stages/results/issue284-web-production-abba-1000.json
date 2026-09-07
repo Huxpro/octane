@@ -1,0 +1,253 @@
+{
+  "meta": {
+    "date": "2026-09-07T05:03:13.429Z",
+    "node": "v22.22.2",
+    "cpus": 32,
+    "cpuModel": "Intel(R) Xeon(R) Platinum 8336C CPU @ 2.30GHz",
+    "loadStart": [0.27, 0.54, 0.71],
+    "loadEnd": [0.44, 0.56, 0.71],
+    "reps": 7,
+    "scales": [1000],
+    "reference": {
+      "source": "https://github.com/Huxpro/vue-lynx",
+      "branch": "claude/lynx-implementation-review-n2r0ie",
+      "commit": "02376ecd1cd62d3797ff1de1209d82dc2f9d91d9",
+      "builtAt": "2026-08-07",
+      "build": "pnpm install && pnpm --filter \"vue-lynx...\" build && cd packages/benchmark && node harness/build-unified.mjs --only=vdom-ifr-et,vapor-ifr,react",
+      "cells": {
+        "vdom-ifr-et": {
+          "description": "Vue Lynx vdom top config (vdom +b +ifr; legacy id vdom-ifr-et)",
+          "app": "packages/benchmark/apps/ui-vdom",
+          "framework": "vue 3.6.0-beta.17 (vue-lynx fork)"
+        },
+        "vapor-ifr": {
+          "description": "Vue Lynx vapor top config (vapor +b +ifr; legacy id vapor-ifr)",
+          "app": "packages/benchmark/apps/ui-vapor",
+          "framework": "vue 3.6.0-beta.17 (vue-lynx fork, vapor mode)"
+        },
+        "react": {
+          "description": "ReactLynx default config",
+          "app": "packages/benchmark/apps/ui-react",
+          "framework": "@lynx-js/react 0.122.1"
+        }
+      },
+      "note": "Black-box fixtures: only the .web.bundle files are vendored. They are served unmodified into <lynx-view> by web/run-web.mjs; the app workloads mirror app/src operation-for-operation. The harness host runs @lynx-js/web-core 0.22.2 for every cell (the fork built against 0.22.1 — the host runtime is shared, so the comparison stays same-host).",
+      "firstScreen": {
+        "description": "ReactLynx built with a pre-populated first screen, one bundle per row count. The `react` cell above measures startup and create@N from a click; this set is what makes FCP@N measurable for a reference at all, because a pre-populated first screen is a build-time define of the app source and cannot be produced from the shipping bundle.",
+        "cell": "react-first-screen",
+        "source": "https://github.com/Huxpro/lynx-js-framework-benchmark",
+        "entry": "entries/react",
+        "upstream": {
+          "source": "https://github.com/Huxpro/vue-lynx",
+          "ref": "huxcx/unify-benchmark-system",
+          "commit": "28f7acbab990b3b574f04944e0d21c769719cc68",
+          "patched": true,
+          "patchFile": "entries/_patches/vue-lynx-bench.patch",
+          "builtAt": "2026-07-18T06:43:49+08:00"
+        },
+        "build": "node scripts/build-vue-featured.mjs <vue-lynx-checkout>  # BENCH_AUTOROWS=<rows> per variant",
+        "framework": "@lynx-js/react 0.124.0",
+        "sha256": {
+          "rows-0/main.web.bundle": "090d7b6ce2cbd181250c6772314f082ad29f6260914b72ad6baa6500566acfbd",
+          "rows-1000/main.web.bundle": "7bf437e170392c9212f20ddd811a6ab9981c33d5a2397440c62a8d268a1a200c",
+          "rows-10000/main.web.bundle": "32eca58bd2e7f3a7e78a2bd71ff3de88deb120c907610c660993dba22c5781d0"
+        },
+        "note": "A DIFFERENT ARTIFACT FROM THE `react` CELL, and deliberately so: a different vue-lynx commit and a different @lynx-js/react (0.124.0 against the `react` cell's 0.122.1). It is vendored beside that cell rather than replacing it, so every number the featured runs recorded against `react` keeps its bundle. Both are measured in the same window when a run asks for both, and the create-window host calls per row are the control that says whether the two workloads still agree operation-for-operation. Hashes are the ones the campaign entry pinned; they were re-verified on copy."
+      }
+    },
+    "notMeasured": []
+  },
+  "results": {
+    "issue284-candidate": {
+      "1000": {
+        "ops": {
+          "create": {
+            "n": 7,
+            "min": 125,
+            "max": 130.39999961853027,
+            "mean": 126.80000005449567,
+            "median": 126.10000038146973,
+            "std": 1.6212867986925497,
+            "ci95": 1.2010660685107073
+          },
+          "update10th": {
+            "n": 7,
+            "min": 26.5,
+            "max": 31.799999713897705,
+            "mean": 29.042857033865793,
+            "median": 28.799999713897705,
+            "std": 1.9293648429942223,
+            "ci95": 1.4292934776046895
+          },
+          "select": {
+            "n": 7,
+            "min": 17.90000009536743,
+            "max": 20,
+            "mean": 19.19999987738473,
+            "median": 19.199999809265137,
+            "std": 0.6633249108317776,
+            "ci95": 0.49139797069859387
+          },
+          "updateStorm": {
+            "n": 7,
+            "min": 76.40000009536743,
+            "max": 94.7999997138977,
+            "mean": 84.17142868041992,
+            "median": 78.40000009536743,
+            "std": 8.27883954346908,
+            "ci95": 6.133050161343474
+          },
+          "selectStorm": {
+            "n": 7,
+            "min": 14.600000381469727,
+            "max": 22.40000009536743,
+            "mean": 18.485714435577393,
+            "median": 18.299999713897705,
+            "std": 2.8352014239140804,
+            "ci95": 2.100346607646804
+          },
+          "clear": {
+            "n": 7,
+            "min": 22.199999809265137,
+            "max": 26.800000190734863,
+            "mean": 23.714285714285715,
+            "median": 23.40000009536743,
+            "std": 1.5027865926748314,
+            "ci95": 1.1132798873895227
+          }
+        },
+        "counts": null,
+        "wire": null,
+        "work": null,
+        "raw": {
+          "timings": {
+            "create": [
+              130.39999961853027, 127.5, 126.10000038146973, 126, 126.5, 126.10000038146973, 125
+            ],
+            "update10th": [
+              27.09999990463257, 26.5, 28.799999713897705, 29.799999713897705, 27.800000190734863,
+              31.799999713897705, 31.5
+            ],
+            "select": [
+              18.699999809265137, 17.90000009536743, 19.199999809265137, 19.699999809265137,
+              19.199999809265137, 20, 19.699999809265137
+            ],
+            "updateStorm": [
+              76.80000019073486, 76.59999990463257, 92.10000038146973, 76.40000009536743,
+              94.10000038146973, 78.40000009536743, 94.7999997138977
+            ],
+            "selectStorm": [
+              15.300000190734863, 21.300000190734863, 18.299999713897705, 20.700000286102295,
+              22.40000009536743, 14.600000381469727, 16.800000190734863
+            ],
+            "clear": [
+              24, 22.300000190734863, 22.699999809265137, 23.40000009536743, 26.800000190734863,
+              24.59999990463257, 22.199999809265137
+            ]
+          },
+          "counts": {},
+          "wire": {},
+          "work": {}
+        },
+        "notMeasured": [],
+        "dnf": 0
+      }
+    },
+    "issue284-base": {
+      "1000": {
+        "ops": {
+          "create": {
+            "n": 7,
+            "min": 136.2999997138977,
+            "max": 153.40000009536743,
+            "mean": 140.68571424484253,
+            "median": 138.80000019073486,
+            "std": 5.420972180017131,
+            "ci95": 4.0159123907069985
+          },
+          "update10th": {
+            "n": 7,
+            "min": 21,
+            "max": 32.90000009536743,
+            "mean": 29.814285687037877,
+            "median": 32.5,
+            "std": 4.075511712016921,
+            "ci95": 3.019181327491801
+          },
+          "select": {
+            "n": 7,
+            "min": 15.699999809265137,
+            "max": 20,
+            "mean": 17.785714285714285,
+            "median": 17.800000190734863,
+            "std": 1.4788302483973825,
+            "ci95": 1.0955327791910177
+          },
+          "updateStorm": {
+            "n": 7,
+            "min": 76.40000009536743,
+            "max": 94.2000002861023,
+            "mean": 86.71428578240531,
+            "median": 91.80000019073486,
+            "std": 7.670989615234018,
+            "ci95": 5.6827486328671135
+          },
+          "selectStorm": {
+            "n": 7,
+            "min": 14.900000095367432,
+            "max": 28.90000009536743,
+            "mean": 19.557142870766775,
+            "median": 15.599999904632568,
+            "std": 5.835325179357412,
+            "ci95": 4.322869388256465
+          },
+          "clear": {
+            "n": 7,
+            "min": 22.90000009536743,
+            "max": 28.300000190734863,
+            "mean": 25.242857183728898,
+            "median": 24.899999618530273,
+            "std": 1.556421895816606,
+            "ci95": 1.1530134759993977
+          }
+        },
+        "counts": null,
+        "wire": null,
+        "work": null,
+        "raw": {
+          "timings": {
+            "create": [
+              141, 153.40000009536743, 136.90000009536743, 140.2999997138977, 138.09999990463257,
+              136.2999997138977, 138.80000019073486
+            ],
+            "update10th": [
+              29.799999713897705, 27.300000190734863, 32.59999990463257, 32.5, 32.90000009536743,
+              32.59999990463257, 21
+            ],
+            "select": [
+              15.699999809265137, 15.900000095367432, 17.800000190734863, 18.199999809265137, 20,
+              19.300000190734863, 17.59999990463257
+            ],
+            "updateStorm": [
+              93.19999980926514, 91.80000019073486, 76.40000009536743, 78.80000019073486,
+              78.59999990463257, 94.2000002861023, 94
+            ],
+            "selectStorm": [
+              15.599999904632568, 28.09999990463257, 15.200000286102295, 14.900000095367432,
+              19.299999713897705, 28.90000009536743, 14.900000095367432
+            ],
+            "clear": [
+              25.299999713897705, 22.90000009536743, 24.300000190734863, 28.300000190734863,
+              26.200000286102295, 24.899999618530273, 24.800000190734863
+            ]
+          },
+          "counts": {},
+          "wire": {},
+          "work": {}
+        },
+        "notMeasured": [],
+        "dnf": 0
+      }
+    }
+  }
+}

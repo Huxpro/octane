@@ -66,7 +66,10 @@ function Row(props: RowProps) @{
 	countRowRender();
 	<view class={['row', props.isSelected && 'danger']}>
 		<text class="col-id">{String(props.row.id)}</text>
-		<text class="col-label" bindtap={() => props.onSelect(props.row.id)}>{props.row.label}</text>
+		<text
+			class="col-label"
+			bindtap={() => props.onSelect(props.row.id)}
+		>{props.row.label as string}</text>
 		<text class="col-remove" bindtap={() => props.onRemove(props.row.id)}>{'x'}</text>
 	</view>
 }

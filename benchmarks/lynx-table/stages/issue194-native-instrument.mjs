@@ -515,6 +515,7 @@ function requireFunction<
 \t\t\troot: message.root,
 \t\t\tversion: message.version,
 \t\t\tcommands: message.batch.commands.length,
+\t\t\tcommandOps: message.batch.commands.map((command) => command.op),
 \t\t\twallMs: performance.now() - issue194CommitStarted,
 \t\t\tcallsBefore: issue194CallsBefore,
 \t\t\tcallsAfter: JSON.parse(JSON.stringify((globalThis as any).__ISSUE194_PAPI__ ?? {})),

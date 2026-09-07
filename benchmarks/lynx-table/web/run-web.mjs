@@ -716,6 +716,12 @@ async function main() {
 				counts: countsByOp(bucket.countSamples),
 				wire: statsByOp(bucket.wireSamples, WIRE_FIELDS),
 				work: statsByOp(bucket.workSamples, WORK_FIELDS),
+				raw: {
+					timings: bucket.samples,
+					counts: bucket.countSamples,
+					wire: bucket.wireSamples,
+					work: bucket.workSamples,
+				},
 				notMeasured: [...bucket.notMeasured],
 				dnf: bucket.dnf,
 			};

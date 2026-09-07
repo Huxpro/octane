@@ -524,13 +524,63 @@ export function Card(props: { row: { id: number; label: string }; isSelected: bo
 			compiled(source, { thread: 'background', backend: Backend, module: 'src/Row.lynx.tsrx' }),
 		);
 
-		// This is the real-device #275 shape. The compiled create keeps the two
-		// unproved children as runtime ranges, while the background can observe
-		// their current string values and lower a denser descriptor. Naming the
-		// resident one would make its one value slot validate the background's
-		// three values and reject the dynamic commit before it paints.
-		expect(main.roots[0].values).toEqual([0]);
-		expect(main.roots[0].ranges).toHaveLength(2);
+		// This is the real-device #275 shape. The compiler-proved String conversion
+		// now folds, but the unproved label remains a runtime range while the
+		// background can observe its current string value and lower a denser
+		// descriptor. Naming the resident program would still make its fixed value
+		// arity reject the dynamic commit before it paints.
+		expect(main.roots[0].values).toEqual([0, 1]);
+		expect(main.roots[0].ranges).toHaveLength(1);
+		expect(main.roots[0]).not.toHaveProperty('wire');
+		expect(main.addresses).toEqual([undefined]);
+		expect(background.addresses).toEqual([undefined]);
+	});
+
+	it('addresses a real row when intrinsic String and authored casts prove every text scalar', () => {
+		const source = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+export function Card(props: { row: { id: number; label: string }; isSelected: boolean; onSelect: (id: number) => void; onRemove: (id: number) => void }) @{
+	<view class={['row', props.isSelected && 'danger']}>
+		<text class="col-id">{String(props.row.id)}</text>
+		<text class="col-label" bindtap={() => props.onSelect(props.row.id)}>{props.row.label as string}</text>
+		<text class="col-remove" bindtap={() => props.onRemove(props.row.id)}>{'x'}</text>
+	</view>
+}
+`;
+		const module = 'src/Row.lynx.tsrx';
+		const main = evaluate(compiled(source, { backend: Backend, module }));
+		const background = evaluate(
+			compiled(source, { thread: 'background', backend: Backend, module }),
+		);
+
+		// `compile.js` has already proved the unshadowed intrinsic conversion to
+		// produce a string. The universal lowering must consume that same proof so
+		// both graphs derive the one range-free layout that the address names.
+		expect(main.roots[0].ranges).toEqual([]);
+		expect(main.roots[0]).toHaveProperty('wire');
+		expect(main.addresses[0]).toMatchObject({ module, index: 0 });
+		expect(background.addresses).toEqual(main.addresses);
+	});
+
+	it('keeps a call through a local binding named String range-bearing', () => {
+		const source = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+export function Card(props: { row: { id: number; label: string }; render: (id: number) => unknown }) @{
+	const String = props.render;
+	<view>
+		<text>{String(props.row.id)}</text>
+		<text>{props.row.label as string}</text>
+	</view>
+}
+`;
+		const module = 'src/ShadowedRow.lynx.tsrx';
+		const main = evaluate(compiled(source, { backend: Backend, module }));
+		const background = evaluate(
+			compiled(source, { thread: 'background', backend: Backend, module }),
+		);
+
+		// This function may return null, a node, or a nested range. Its spelling is
+		// not permission to consume the global-intrinsic proof or address a fixed
+		// resident wire.
+		expect(main.roots[0].ranges).toHaveLength(1);
 		expect(main.roots[0]).not.toHaveProperty('wire');
 		expect(main.addresses).toEqual([undefined]);
 		expect(background.addresses).toEqual([undefined]);

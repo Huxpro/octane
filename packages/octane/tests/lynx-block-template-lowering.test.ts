@@ -62,7 +62,7 @@ const SOURCE = `interface RowProps {
 function Row(props: RowProps) @{
 	<view class={['row', props.isSelected && 'danger']}>
 		<text class="col-id">{String(props.row.id)}</text>
-		<text class="col-label" bindtap={() => props.onSelect(props.row.id)}>{props.row.label}</text>
+		<text class="col-label" bindtap={() => props.onSelect(props.row.id)}>{props.row.label as string}</text>
 		<text class="col-remove" bindtap={() => props.onRemove(props.row.id)}>{'x'}</text>
 	</view>
 }
@@ -176,46 +176,43 @@ describe('lynx block template lowering', () => {
 		expect(prepared.wire).toEqual({
 			nodes: [
 				{ type: 'view', parent: -1, props: {}, bindings: [{ name: 'class', valueIndex: 0 }] },
-				{ type: 'text', parent: 0, props: { class: 'col-id' } },
 				{
-					type: '#text',
-					parent: 1,
-					props: {},
-					bindings: [{ name: 'value', valueIndex: 1 }],
+					type: 'text',
+					parent: 0,
+					props: { class: 'col-id' },
+					bindings: [{ name: 'text', valueIndex: 1 }],
 				},
-				{ type: 'text', parent: 0, props: { class: 'col-label' } },
 				{
-					type: '#text',
-					parent: 3,
-					props: {},
-					bindings: [{ name: 'value', valueIndex: 2 }],
+					type: 'text',
+					parent: 0,
+					props: { class: 'col-label' },
+					bindings: [{ name: 'text', valueIndex: 2 }],
 				},
-				// Six nodes, not seven: the `col-remove` cell's content is the literal
-				// `'x'`, which the compiler holds, so it rides the cell as a `text`
-				// prop and paints no carrier (#242 Cause A). The two dynamic cells
-				// above still carry theirs — their value is not known here.
+				// Four nodes: the literal remove label and both scalar dynamic text
+				// holes ride their text hosts. The id is proved by the unshadowed
+				// String intrinsic and the label by its authored string cast.
 				{ type: 'text', parent: 0, props: { class: 'col-remove', text: 'x' } },
 			],
 			events: [
+				{ node: 2, type: 'bindtap', priority: 'discrete' },
 				{ node: 3, type: 'bindtap', priority: 'discrete' },
-				{ node: 5, type: 'bindtap', priority: 'discrete' },
 			],
 		});
 	});
 
 	it('gives Row the slot order the hand-written program indexes by', () => {
 		// `ROW_CLASS_SLOT = 0` and `ROW_LABEL_SLOT = 2` are how every scoped write
-		// in the benchmark addresses a row. A lowering that produced the same seven
+		// in the benchmark addresses a row. A lowering that produced the same four
 		// nodes in another binding order would silently write the wrong column.
 		const { prepared } = lower(plans[ROW]!);
 		expect(prepared.values.map((value) => `${value.node}:${value.name}`)).toEqual([
 			'0:class',
-			'2:value',
-			'4:value',
+			'1:text',
+			'2:text',
 		]);
 		expect(prepared.events.map((event) => `${event.node}:${event.prop}`)).toEqual([
+			'2:bindtap',
 			'3:bindtap',
-			'5:bindtap',
 		]);
 	});
 
@@ -271,13 +268,12 @@ describe('lynx block template lowering', () => {
 		// of the same wire shape. This is the one assertion that they agree.
 		const { prepared } = lower(plans[ROW]!);
 		const template = compileLynxBlockTemplate(prepared.wire);
-		// Six hosts per row, down from seven, and the Block core reads the same
-		// six. This is the number #242 counts as `papiCreateCalls` per row.
-		expect(template.hostCount).toBe(6);
+		// Four hosts per row: no scalar text hole needs a raw-text carrier.
+		expect(template.hostCount).toBe(4);
 		expect(template.valueCount).toBe(3);
 		expect(template.eventCount).toBe(2);
-		expect(template.valueNodes).toEqual([0, 2, 4]);
-		expect(template.valueNames).toEqual(['class', 'value', 'value']);
+		expect(template.valueNodes).toEqual([0, 1, 2]);
+		expect(template.valueNames).toEqual(['class', 'text', 'text']);
 		expect(template.mainThreadValues).toBeNull();
 	});
 });

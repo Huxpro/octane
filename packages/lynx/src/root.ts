@@ -195,7 +195,11 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 			const command = batch.commands[index]!;
 			if (command.op === 'create' || command.op === 'update' || command.op === 'recreate') {
 				assign(command.id, executions?.get(index)?.get(command.id));
-			} else if (command.op === 'mount-template-run' || command.op === 'mount-template-range') {
+			} else if (
+				command.op === 'mount-template-run' ||
+				command.op === 'mount-template-range' ||
+				command.op === 'mount-program-run'
+			) {
 				const owners = executions?.get(index);
 				if (owners !== undefined) for (const [id, ids] of owners) assign(id, ids);
 			} else if (command.op === 'destroy') {
