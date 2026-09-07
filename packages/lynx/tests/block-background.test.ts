@@ -193,6 +193,48 @@ describe('Lynx block background core', () => {
 		expect(rowLabels(paint(main.commits))).toEqual(['a', 'b', 'c']);
 	});
 
+	it('publishes afterCommit work only after the host acknowledges the frame', async () => {
+		const harness = scene();
+		let published = 0;
+		const component = withLynxBlockProgram((() => null) as unknown as LynxComponent<ProgramProps>, {
+			mount(context) {
+				context.core.mount(null, null, PAGE_TEMPLATE, []);
+				context.afterCommit(() => published++);
+			},
+		});
+
+		const rendering = harness.background.renderAsync(component as never, { labels: [] });
+		await flushMicrotasks();
+		expect(harness.main.commits).toHaveLength(1);
+		expect(published).toBe(0);
+
+		harness.main.acknowledge(harness.main.commits[0]!);
+		harness.acknowledged++;
+		await rendering;
+		expect(published).toBe(1);
+	});
+
+	it('discards afterCommit work from a render that throws before commit', async () => {
+		const harness = scene();
+		let fail = true;
+		let published = 0;
+		const component = withLynxBlockProgram((() => null) as unknown as LynxComponent<ProgramProps>, {
+			mount(context) {
+				context.afterCommit(() => published++);
+				if (fail) throw new Error('render failed');
+				context.core.mount(null, null, PAGE_TEMPLATE, []);
+			},
+		});
+
+		await expect(
+			harness.background.renderAsync(component as never, { labels: [] }),
+		).rejects.toThrow('render failed');
+		expect(published).toBe(0);
+		fail = false;
+		await settle(harness, harness.background.renderAsync(component as never, { labels: [] }));
+		expect(published).toBe(1);
+	});
+
 	it('routes a native delivery back to the listener the program bound', async () => {
 		const harness = scene();
 		const { main, background } = harness;

@@ -164,12 +164,35 @@ export function createLynxBlockBackgroundCore(
 		transportRoot: options.transportRoot ?? NEXT_BLOCK_TRANSPORT_ROOT++,
 		core,
 	});
+	let afterCommitTasks: (() => void)[] = [];
+	const commitAccepted = async (): Promise<UniversalHostBatch | null> => {
+		const tasks = afterCommitTasks;
+		afterCommitTasks = [];
+		const batch = await blockRoot.commit();
+		let hasError = false;
+		let firstError: unknown;
+		for (const task of tasks) {
+			try {
+				task();
+			} catch (error) {
+				if (!hasError) {
+					hasError = true;
+					firstError = error;
+				}
+			}
+		}
+		if (hasError) throw firstError;
+		return batch;
+	};
 	const context: LynxBlockProgramContext = Object.freeze({
 		root: blockRoot,
 		core,
 		container,
 		commit() {
-			return blockRoot.commit();
+			return commitAccepted();
+		},
+		afterCommit(task: () => void): void {
+			afterCommitTasks.push(task);
 		},
 		scheduleRender(work: () => void): Promise<void> {
 			// The same queue `renderAsync` takes its turn in, for the same
@@ -177,8 +200,13 @@ export function createLynxBlockBackgroundCore(
 			// program driving its own re-render out of band would otherwise
 			// overlap a caller's, and both would flush the core.
 			const run = renderQueue.then(async () => {
-				work();
-				await blockRoot.commit();
+				try {
+					work();
+					await commitAccepted();
+				} catch (error) {
+					afterCommitTasks = [];
+					throw error;
+				}
 			});
 			renderQueue = run.then(
 				() => undefined,
@@ -229,25 +257,31 @@ export function createLynxBlockBackgroundCore(
 		): Promise<UniversalTransaction> {
 			const program = programFor(component as unknown as LynxComponent<unknown>);
 			const run = renderQueue.then(async () => {
-				if (mounted === null) {
-					await program.mount(context, props);
-					mounted = program as unknown as LynxBlockProgram<never>;
-				} else if (mounted !== (program as unknown as LynxBlockProgram<never>)) {
-					throw new Error(
-						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
-							? 'Octane Lynx block root cannot swap the program it mounted.'
-							: 'Octane Lynx OL011',
-					);
-				} else if (typeof program.update === 'function') {
-					await program.update(context, props);
-				} else {
-					throw new Error(
-						(typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
-							? 'Octane Lynx block program declined a re-render: it has no update(). '
-							: 'Octane Lynx OL012') + 'A program that accepts new props must implement update().',
-					);
+				try {
+					if (mounted === null) {
+						await program.mount(context, props);
+						mounted = program as unknown as LynxBlockProgram<never>;
+					} else if (mounted !== (program as unknown as LynxBlockProgram<never>)) {
+						throw new Error(
+							typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+								? 'Octane Lynx block root cannot swap the program it mounted.'
+								: 'Octane Lynx OL011',
+						);
+					} else if (typeof program.update === 'function') {
+						await program.update(context, props);
+					} else {
+						throw new Error(
+							(typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+								? 'Octane Lynx block program declined a re-render: it has no update(). '
+								: 'Octane Lynx OL012') +
+								'A program that accepts new props must implement update().',
+						);
+					}
+					return committedTransaction(await commitAccepted());
+				} catch (error) {
+					afterCommitTasks = [];
+					throw error;
 				}
-				return committedTransaction(await blockRoot.commit());
 			});
 			// A rejected render surfaces to its own caller through `run`; it must
 			// not wedge every later render behind the same rejection.
@@ -267,7 +301,7 @@ export function createLynxBlockBackgroundCore(
 			if (mounted !== null && typeof mounted.unmount === 'function') {
 				await mounted.unmount(context);
 				mounted = null;
-				await blockRoot.commit();
+				await commitAccepted();
 			}
 		},
 

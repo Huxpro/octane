@@ -45,10 +45,10 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
  * A **row** component that calls a hook is still refused by name. Rows render
  * outside the page's scope, and giving each one a scope of its own is giving
  * each one an owner — the per-row cost this core exists to avoid — so whether a
- * row can afford cells is its own question with its own measurement. Effects
- * and context reads are refused at both levels: an effect needs a commit phase
- * this core does not have, and a context read needs the owner chain a single
- * scope deliberately does not build.
+ * row can afford cells is its own question with its own measurement. Page
+ * layout effects run after host acknowledgement; insertion/passive effects are
+ * refused because their phases do not exist, and context reads are refused
+ * because a single scope has no owner chain.
  *
  * A range nested inside a range is refused too. Its rows would need range state
  * of their own, carried through every reconcile of the outer list, and that is
@@ -80,6 +80,7 @@ import {
 	UNIVERSAL_HOOK_SCOPE_CONTEXT_REFUSED,
 	UNIVERSAL_HOOK_SCOPE_EFFECTS_REFUSED,
 	type UniversalHookScope,
+	useLayoutEffect,
 } from 'octane/universal/native';
 import {
 	compiledUniversalTemplateProgram,
@@ -130,9 +131,9 @@ const UNIVERSAL_PROPS: symbol = Symbol.for('octane.universal.props');
 const HOOKS_WITHOUT_ATTEMPT =
 	'Universal hooks may only run while a universal component is rendering.';
 
-/** Why an effect is the same refusal as a hook, said once. */
+/** Why a phase the page scope cannot publish is refused, said once. */
 const EFFECTS_UNSUPPORTED =
-	'its setup declares an effect, and an effect needs a commit phase the Block core does not have yet (issue #135 item 1b).';
+	'its setup declares an effect in the insertion or passive phase, whose commit phase the Block core does not have (issue #135 item 1b).';
 
 /** The two ways out of every refusal below, so they read the same. */
 const REMEDY =
@@ -368,11 +369,10 @@ export function lynxBlockProgramForComponent<Props>(
 	/**
 	 * The second argument a compiled component is called with.
 	 *
-	 * The page's scope stands up cells, not a commit phase and not an owner
-	 * chain: an effect needs somewhere to run after the host accepts the frame,
-	 * and reading a context needs ancestors to search. Passing `undefined` would
-	 * refuse them too, with a TypeError naming a property rather than the layer.
-	 * These refuse by name instead.
+	 * The page's scope stands up cells and the background core gives layout work
+	 * an accepted-host boundary. It still has neither insertion/passive phases
+	 * nor an owner chain. Passing `undefined` would refuse those capabilities
+	 * too, with a TypeError naming a property rather than the layer.
 	 */
 	const renderContext: UniversalRenderContext = Object.freeze({
 		renderer: LYNX_TRANSPORT_RENDERER,
@@ -385,8 +385,8 @@ export function lynxBlockProgramForComponent<Props>(
 		insertionEffect(): never {
 			refuse(rendering, EFFECTS_UNSUPPORTED);
 		},
-		layoutEffect(): never {
-			refuse(rendering, EFFECTS_UNSUPPORTED);
+		layoutEffect(create: () => void | (() => void), deps?: readonly unknown[]): void {
+			useLayoutEffect(create, deps);
 		},
 		effect(): never {
 			refuse(rendering, EFFECTS_UNSUPPORTED);
@@ -481,12 +481,11 @@ export function lynxBlockProgramForComponent<Props>(
 	/**
 	 * Render the page component with its hook cells installed.
 	 *
-	 * Committing here rather than after the block is written is deliberate and
-	 * narrow: every way out of `mount` and `update` below this point either
-	 * succeeds or throws, and a throw from either is terminal for the program —
-	 * a `refuse` names a shape the component will still have next render, and a
-	 * duplicate key is the core rejecting a list it will still be handed. There
-	 * is no later render for uncommitted cells to be right for.
+	 * This only drafts. `mount` and `renderAgain` publish the cells after every
+	 * plan check, slot write, and range reconcile succeeds, then the background
+	 * core runs any layout work after the resulting host commit is acknowledged.
+	 * A refusal therefore cannot publish a subscription for a tree the host
+	 * never accepted.
 	 */
 	const renderSubject = (context: LynxBlockProgramContext, props: unknown): RenderedPlan => {
 		liveContext = context;
@@ -494,6 +493,9 @@ export function lynxBlockProgramForComponent<Props>(
 		const cells = (scope ??= createUniversalHookScope({
 			renderer: LYNX_TRANSPORT_RENDERER,
 			scheduleRender: queueStateRender,
+			scheduleLayoutEffectCommit(task): void {
+				liveContext!.afterCommit(task);
+			},
 		}));
 		let rendered: RenderedPlan;
 		try {
@@ -515,7 +517,6 @@ export function lynxBlockProgramForComponent<Props>(
 			}
 			throw error;
 		}
-		cells.commit();
 		return rendered;
 	};
 
@@ -1051,121 +1052,133 @@ export function lynxBlockProgramForComponent<Props>(
 	 */
 	const renderAgain = (context: LynxBlockProgramContext, props: Props): void => {
 		const rendered = renderSubject(context, props);
-		// A block program mounts one template. A component that returns a
-		// different plan on a later render is a different program, and
-		// `block-background.ts` already refuses to swap the program it mounted;
-		// this is that refusal one level down, where the plan is what changed
-		// rather than the component.
-		if (rendered.plan !== plan) {
-			refuse(
-				subject,
-				'a later render returned a different compiled template than the one it mounted, and a block holds one template for its lifetime.',
-			);
+		try {
+			// A block program mounts one template. A component that returns a
+			// different plan on a later render is a different program, and
+			// `block-background.ts` already refuses to swap the program it mounted;
+			// this is that refusal one level down, where the plan is what changed
+			// rather than the component.
+			if (rendered.plan !== plan) {
+				refuse(
+					subject,
+					'a later render returned a different compiled template than the one it mounted, and a block holds one template for its lifetime.',
+				);
+			}
+			const values = valuesFor(context, rendered.values);
+			// Every row of every range is rendered before the first slot is
+			// written, so a render that refuses anywhere leaves the block exactly as
+			// the last one left it rather than partly moved on.
+			const rows = renderRanges(context, rendered.values);
+			// The live values are the core's, not a copy kept here: a shadow of them
+			// could only ever drift, and comparing against what the block actually
+			// holds is what the core itself compares against.
+			const held = block!.values;
+			const worklets = block!.template.mainThreadValues;
+			for (let index = 0; index < values.length; index++) {
+				// The scoped write: only the slots a render moved reach the core, which
+				// is what keeps `blockLookups` a count of the change rather than of the
+				// template. `Object.is` because that is exactly the comparator the core
+				// applies to an ordinary slot, so skipping here decides what
+				// `setSlotValue` would have decided.
+				//
+				// A worklet slot is never skipped. Its value is an object the compiler
+				// rebuilds every render, so identity cannot answer for it, and the
+				// core's structural comparator is the only one that can — including
+				// for the case where the slot holds a malformed descriptor that a
+				// later write has to repair.
+				if (worklets?.[index] !== true && Object.is(values[index], held[index])) continue;
+				context.core.setSlotValue(block!, index, values[index]!);
+			}
+			// Handlers are fresh closures every render, closing over this render's
+			// props, so the binding is replaced rather than kept. The wire is
+			// untouched: a listener id belongs to the block, and rebinding moves
+			// only which function that id reaches. Released first because binding
+			// skips an empty conditional hole rather than clearing it — a site
+			// whose handler this render withdrew must stop reaching the previous
+			// render's closure.
+			if (prepared!.events.length !== 0) {
+				context.root.releaseListeners(block!);
+				context.root.bindListeners(block!, listenersFor(rendered.values));
+			}
+			for (const row of rows) applyRange(context, row);
+			scope!.commit();
+		} catch (error) {
+			scope?.abort();
+			throw error;
 		}
-		const values = valuesFor(context, rendered.values);
-		// Every row of every range is rendered before the first slot is
-		// written, so a render that refuses anywhere leaves the block exactly as
-		// the last one left it rather than partly moved on.
-		const rows = renderRanges(context, rendered.values);
-		// The live values are the core's, not a copy kept here: a shadow of them
-		// could only ever drift, and comparing against what the block actually
-		// holds is what the core itself compares against.
-		const held = block!.values;
-		const worklets = block!.template.mainThreadValues;
-		for (let index = 0; index < values.length; index++) {
-			// The scoped write: only the slots a render moved reach the core, which
-			// is what keeps `blockLookups` a count of the change rather than of the
-			// template. `Object.is` because that is exactly the comparator the core
-			// applies to an ordinary slot, so skipping here decides what
-			// `setSlotValue` would have decided.
-			//
-			// A worklet slot is never skipped. Its value is an object the compiler
-			// rebuilds every render, so identity cannot answer for it, and the
-			// core's structural comparator is the only one that can — including
-			// for the case where the slot holds a malformed descriptor that a
-			// later write has to repair.
-			if (worklets?.[index] !== true && Object.is(values[index], held[index])) continue;
-			context.core.setSlotValue(block!, index, values[index]!);
-		}
-		// Handlers are fresh closures every render, closing over this render's
-		// props, so the binding is replaced rather than kept. The wire is
-		// untouched: a listener id belongs to the block, and rebinding moves
-		// only which function that id reaches. Released first because binding
-		// skips an empty conditional hole rather than clearing it — a site
-		// whose handler this render withdrew must stop reaching the previous
-		// render's closure.
-		if (prepared!.events.length !== 0) {
-			context.root.releaseListeners(block!);
-			context.root.bindListeners(block!, listenersFor(rendered.values));
-		}
-		for (const row of rows) applyRange(context, row);
 	};
 
 	const program: LynxBlockProgram<Props> = {
 		mount(context, props) {
 			const rendered = renderSubject(context, props);
-			const root = rendered.plan.root;
-			if (root.kind !== 'host') {
-				refuse(
-					subject,
-					`its template is rooted at a ${JSON.stringify(root.kind)} node rather than a host element, and a block mounts one host subtree.`,
+			try {
+				const root = rendered.plan.root;
+				if (root.kind !== 'host') {
+					refuse(
+						subject,
+						`its template is rooted at a ${JSON.stringify(root.kind)} node rather than a host element, and a block mounts one host subtree.`,
+					);
+				}
+				const program = compiledUniversalTemplateProgram(encoderFor(context), root);
+				if (program === null) {
+					refuse(
+						subject,
+						'its template is not entirely compile-time host structure, so there is no static template to mount.',
+					);
+				}
+				const split = universalTemplateProgramWithoutRanges(program, (slot) =>
+					isRangeValue(rendered.values[slot]),
 				);
-			}
-			const program = compiledUniversalTemplateProgram(encoderFor(context), root);
-			if (program === null) {
-				refuse(
-					subject,
-					'its template is not entirely compile-time host structure, so there is no static template to mount.',
-				);
-			}
-			const split = universalTemplateProgramWithoutRanges(program, (slot) =>
-				isRangeValue(rendered.values[slot]),
-			);
-			if (split === null) {
-				refuse(
-					subject,
-					'one of its keyed ranges is not the last child of its host element, and a range appends its rows to that element — so anything authored after it would be painted before every row.',
-				);
-			}
-			const wire = prepareUniversalTemplateProgram(encoderFor(context), split.compiled);
-			if (wire === null) {
-				refuse(
-					subject,
-					'this renderer cannot carry one of its static props or event sites in a template program.',
-				);
-			}
-			plan = rendered.plan;
-			compiled = split.compiled;
-			prepared = wire;
-			ranges =
-				split.ranges.length === 0
-					? EMPTY_RANGES
-					: split.ranges.map((range) => ({
-							slot: range.slot,
-							node: range.node,
-							site: null,
-							plan: null,
-							compiled: null,
-							prepared: null,
-							template: null,
-							retained: null,
-							keys: null,
-							source: null,
-							keyedSelection: null,
-						}));
-			const template: LynxBlockTemplate = compileLynxBlockTemplate(wire.wire);
-			const values = valuesFor(context, rendered.values);
-			const rows = renderRanges(context, rendered.values);
-			// Nothing above this line has written to the core, and nothing below it
-			// refuses. What can still throw below is a duplicate key, which the core
-			// is the authority on and rejects the same way for every caller.
-			block = context.core.mount(null, null, template, values);
-			if (wire.events.length !== 0) {
-				context.root.bindListeners(block, listenersFor(rendered.values));
-			}
-			for (let index = 0; index < ranges.length; index++) {
-				ranges[index]!.site = context.core.openForSlot(block, ranges[index]!.node);
-				applyRange(context, rows[index]!);
+				if (split === null) {
+					refuse(
+						subject,
+						'one of its keyed ranges is not the last child of its host element, and a range appends its rows to that element — so anything authored after it would be painted before every row.',
+					);
+				}
+				const wire = prepareUniversalTemplateProgram(encoderFor(context), split.compiled);
+				if (wire === null) {
+					refuse(
+						subject,
+						'this renderer cannot carry one of its static props or event sites in a template program.',
+					);
+				}
+				plan = rendered.plan;
+				compiled = split.compiled;
+				prepared = wire;
+				ranges =
+					split.ranges.length === 0
+						? EMPTY_RANGES
+						: split.ranges.map((range) => ({
+								slot: range.slot,
+								node: range.node,
+								site: null,
+								plan: null,
+								compiled: null,
+								prepared: null,
+								template: null,
+								retained: null,
+								keys: null,
+								source: null,
+								keyedSelection: null,
+							}));
+				const template: LynxBlockTemplate = compileLynxBlockTemplate(wire.wire);
+				const values = valuesFor(context, rendered.values);
+				const rows = renderRanges(context, rendered.values);
+				// Nothing above this line has written to the core, and nothing below it
+				// refuses. What can still throw below is a duplicate key, which the core
+				// is the authority on and rejects the same way for every caller.
+				block = context.core.mount(null, null, template, values);
+				if (wire.events.length !== 0) {
+					context.root.bindListeners(block, listenersFor(rendered.values));
+				}
+				for (let index = 0; index < ranges.length; index++) {
+					ranges[index]!.site = context.core.openForSlot(block, ranges[index]!.node);
+					applyRange(context, rows[index]!);
+				}
+				scope!.commit();
+			} catch (error) {
+				scope?.abort();
+				throw error;
 			}
 		},
 

@@ -28,9 +28,11 @@ import {
 	useContext,
 	useEffect,
 	useId,
+	useLayoutEffect,
 	useMemo,
 	useRef,
 	useState,
+	useSyncExternalStore,
 } from 'octane/universal/native';
 
 /** A scope plus the schedule calls it made, which is half of what is asserted. */
@@ -234,6 +236,144 @@ describe('universal hook scope', () => {
 				return value;
 			}),
 		).toBe(1);
+		scope.dispose();
+	});
+
+	it('publishes layout-effect subscriptions only through the accepting core', () => {
+		const scheduled: number[] = [];
+		const accepted: (() => void)[] = [];
+		const lifecycle: string[] = [];
+		let snapshot = 1;
+		let notify: (() => void) | null = null;
+		const subscribe = (listener: () => void) => {
+			lifecycle.push('subscribe');
+			notify = listener;
+			return () => {
+				lifecycle.push('unsubscribe');
+				notify = null;
+			};
+		};
+		const getSnapshot = () => snapshot;
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender() {
+				scheduled.push(snapshot);
+			},
+			scheduleLayoutEffectCommit(task) {
+				accepted.push(task);
+			},
+		});
+
+		expect(
+			scope.render(() => useSyncExternalStore(subscribe, getSnapshot, undefined, 'store')),
+		).toBe(1);
+		scope.commit();
+		// Publishing cells is not host acceptance: the subscription must not become
+		// live until the owning core says the frame was accepted.
+		expect(lifecycle).toEqual([]);
+		expect(accepted).toHaveLength(1);
+		accepted.shift()!();
+		expect(lifecycle).toEqual(['subscribe']);
+
+		// A notification whose selected snapshot did not move schedules no render.
+		notify!();
+		expect(scheduled).toEqual([]);
+		snapshot = 2;
+		notify!();
+		expect(scheduled).toEqual([2]);
+
+		expect(
+			scope.render(() => useSyncExternalStore(subscribe, getSnapshot, undefined, 'store')),
+		).toBe(2);
+		scope.commit();
+		accepted.shift()!();
+		// The stable subscribe function keeps the established connection.
+		expect(lifecycle).toEqual(['subscribe']);
+
+		scope.dispose();
+		expect(lifecycle).toEqual(['subscribe', 'unsubscribe']);
+	});
+
+	it('switches external-store subscriptions in cleanup/create order after acceptance', () => {
+		const accepted: (() => void)[] = [];
+		const lifecycle: string[] = [];
+		const subscribe = (name: string) => () => {
+			lifecycle.push(`subscribe ${name}`);
+			return () => lifecycle.push(`unsubscribe ${name}`);
+		};
+		const first = subscribe('first');
+		const second = subscribe('second');
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender() {},
+			scheduleLayoutEffectCommit(task) {
+				accepted.push(task);
+			},
+		});
+		const getSnapshot = () => 1;
+
+		scope.render(() => useSyncExternalStore(first, getSnapshot, undefined, 'store'));
+		scope.commit();
+		accepted.shift()!();
+		expect(lifecycle).toEqual(['subscribe first']);
+
+		scope.render(() => useSyncExternalStore(second, getSnapshot, undefined, 'store'));
+		scope.commit();
+		expect(lifecycle).toEqual(['subscribe first']);
+		accepted.shift()!();
+		expect(lifecycle).toEqual(['subscribe first', 'unsubscribe first', 'subscribe second']);
+
+		scope.dispose();
+		expect(lifecycle.at(-1)).toBe('unsubscribe second');
+	});
+
+	it('cleans up a removed layout effect only after the accepting commit', () => {
+		const accepted: (() => void)[] = [];
+		const lifecycle: string[] = [];
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender() {},
+			scheduleLayoutEffectCommit(task) {
+				accepted.push(task);
+			},
+		});
+
+		scope.render(() =>
+			useLayoutEffect(
+				() => {
+					lifecycle.push('create');
+					return () => lifecycle.push('cleanup');
+				},
+				[],
+				'conditional',
+			),
+		);
+		scope.commit();
+		accepted.shift()!();
+		expect(lifecycle).toEqual(['create']);
+
+		scope.render(() => undefined);
+		scope.commit();
+		expect(lifecycle).toEqual(['create']);
+		accepted.shift()!();
+		expect(lifecycle).toEqual(['create', 'cleanup']);
+		scope.dispose();
+	});
+
+	it('still refuses passive effects when a core implements only layout commits', () => {
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender() {},
+			scheduleLayoutEffectCommit(task) {
+				task();
+			},
+		});
+		expect(() => scope.render(() => useEffect(() => undefined, [], 'passive'))).toThrow(
+			/declared an effect/,
+		);
+		// Prove the capability is phase-specific rather than a dead option.
+		expect(() => scope.render(() => useLayoutEffect(() => undefined, [], 'layout'))).not.toThrow();
+		scope.abort();
 		scope.dispose();
 	});
 

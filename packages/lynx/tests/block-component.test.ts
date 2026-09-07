@@ -40,6 +40,7 @@ import {
 	useContext,
 	useEffect,
 	useState,
+	useSyncExternalStore,
 	type UniversalRenderable,
 } from 'octane/universal/native';
 
@@ -321,6 +322,11 @@ function blockColumn<Props = CardProps>(core?: LynxBlockCore) {
 	});
 	transport.bindRoot(background);
 	let acknowledged = 0;
+	const acknowledgePending = () => {
+		while (acknowledged < main.commits.length) {
+			main.acknowledge(main.commits[acknowledged++]!);
+		}
+	};
 	const settle = async (work: Promise<unknown>): Promise<unknown> => {
 		let settled = false;
 		const tracked = work.then(
@@ -336,9 +342,7 @@ function blockColumn<Props = CardProps>(core?: LynxBlockCore) {
 		tracked.catch(() => undefined);
 		for (let guard = 0; guard < 20 && !settled; guard++) {
 			await flushMicrotasks();
-			while (acknowledged < main.commits.length) {
-				main.acknowledge(main.commits[acknowledged++]!);
-			}
+			acknowledgePending();
 		}
 		return tracked;
 	};
@@ -346,6 +350,7 @@ function blockColumn<Props = CardProps>(core?: LynxBlockCore) {
 		main,
 		background,
 		settle,
+		acknowledgePending,
 		async render(component: LynxComponent<Props>, props: Props): Promise<void> {
 			await settle(background.renderAsync(component as never, props as never));
 		},
@@ -1588,6 +1593,139 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 			commands: 0,
 			visited: [],
 		});
+	});
+
+	it('owns one external-store selector and publishes it only after host acknowledgement', async () => {
+		let selected: number | undefined;
+		let subscriptions = 0;
+		let unsubscriptions = 0;
+		const listeners = new Set<() => void>();
+		const store = {
+			getSnapshot: () => selected,
+			subscribe(listener: () => void) {
+				subscriptions++;
+				listeners.add(listener);
+				return () => {
+					if (listeners.delete(listener)) unsubscriptions++;
+				};
+			},
+			select(value: number | undefined) {
+				selected = value;
+				for (const listener of listeners) listener();
+			},
+			notify() {
+				for (const listener of listeners) listener();
+			},
+		};
+		let rangeCalls = 0;
+		let rowCalls = 0;
+		const Row = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Row(props: { readonly row: TableRow; readonly isSelected: boolean }) {
+				rowCalls++;
+				return universalValue(ROW_PLAN, [
+					props.isSelected ? 'row danger' : 'row',
+					String(props.row.id),
+					noop,
+					props.row.label,
+				]);
+			},
+		);
+		interface StoreTableProps {
+			readonly rows: readonly TableRow[];
+			readonly store: typeof store;
+		}
+		const Listed = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Listed(props: StoreTableProps) {
+				const current = useSyncExternalStore(
+					props.store.subscribe,
+					props.store.getSnapshot,
+					undefined,
+					'selection',
+				);
+				return universalValue(TABLE_PLAN, [
+					universalFor(
+						props.rows,
+						(row: TableRow) => row.id,
+						(row: TableRow) => {
+							rangeCalls++;
+							return universalComponent(
+								LYNX_TRANSPORT_RENDERER,
+								Row,
+								universalProps([
+									['set', 'row', row],
+									['set', 'isSelected', current === row.id],
+								]),
+							);
+						},
+						null,
+						false,
+						false,
+						undefined,
+						undefined,
+						undefined,
+						true,
+						[current, [], 'row'],
+					),
+				]);
+			},
+		);
+		const rows = Array.from({ length: 100 }, (_, index) => ({
+			id: index + 1,
+			label: `row ${index + 1}`,
+		}));
+		const core = createLynxBlockCore();
+		const block = blockColumn<StoreTableProps>(core);
+		const mounting = block.background.renderAsync(Listed as never, { rows, store } as never);
+		await flushMicrotasks();
+
+		// Rendering and sending the frame do not make the subscription live. It
+		// belongs to the accepted tree, so only the main thread's ACK publishes it.
+		expect(block.main.commits).toHaveLength(1);
+		expect(subscriptions).toBe(0);
+		block.acknowledgePending();
+		await mounting;
+		await flushMicrotasks();
+		expect(subscriptions).toBe(1);
+		expect(listeners.size).toBe(1);
+
+		const step = async (value: number | undefined) => {
+			const beforeRange = rangeCalls;
+			const beforeRows = rowCalls;
+			const beforeCore = core.counters();
+			store.select(value);
+			await block.settle(block.background.flushTransport());
+			const afterCore = core.counters();
+			return {
+				rangeCalls: rangeCalls - beforeRange,
+				rowCalls: rowCalls - beforeRows,
+				lookups: afterCore.blockLookups - beforeCore.blockLookups,
+				commands: afterCore.commands - beforeCore.commands,
+			};
+		};
+
+		expect(await step(25)).toEqual({ rangeCalls: 1, rowCalls: 1, lookups: 1, commands: 1 });
+		expect(await step(75)).toEqual({ rangeCalls: 2, rowCalls: 2, lookups: 2, commands: 2 });
+		expect(await step(25)).toEqual({ rangeCalls: 2, rowCalls: 2, lookups: 2, commands: 2 });
+		expect(paint(block.main.commits).tree).toContain('"classes":"row danger"');
+		expect(subscriptions).toBe(1);
+		expect(unsubscriptions).toBe(0);
+
+		const frames = block.main.commits.length;
+		const beforeRange = rangeCalls;
+		const beforeRows = rowCalls;
+		const beforeCore = core.counters();
+		store.notify();
+		await block.settle(block.background.flushTransport());
+		expect(block.main.commits).toHaveLength(frames);
+		expect(rangeCalls).toBe(beforeRange);
+		expect(rowCalls).toBe(beforeRows);
+		expect(core.counters()).toEqual(beforeCore);
+
+		await block.settle(block.background.unmountAsync());
+		expect(unsubscriptions).toBe(1);
+		expect(listeners.size).toBe(0);
 	});
 
 	it('falls back to the whole range when rows or another captured dependency change', async () => {
