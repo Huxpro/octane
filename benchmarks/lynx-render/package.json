@@ -6,6 +6,7 @@
   "description": "Timing benchmark for Octane's dual-thread Lynx render path: empty startup, create 1,000 rows, create 10,000 rows, and native click delivery.",
   "scripts": {
     "bench": "node run.mjs",
+    "bench:context": "node context-run.mjs",
     "bench:store-selector": "node store-selector-run.mjs"
   },
   "dependencies": {

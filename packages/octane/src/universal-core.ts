@@ -2907,6 +2907,31 @@ function ancestorContextsStable(owner: DraftOwner): boolean {
 	return stable;
 }
 
+// A memo wrapper commits its own context reads, but a returned child component
+// materializes after the wrapper call and therefore owns a separate memo proof.
+// Reuse a range across an ancestor provider change only when every component
+// owner below it is memoized and every one of those committed reads still
+// matches. A non-memo child is opaque and keeps the conservative fallback.
+function ownerMemoSubtreeContextsStable(owner: UniversalOwnerRecord, parent: DraftOwner): boolean {
+	if (owner.component !== null) {
+		let memo: ComponentMemoHook | null = null;
+		for (const hook of owner.hooks.values()) {
+			if (hook.kind === 'component-memo') {
+				memo = hook;
+				break;
+			}
+		}
+		if (memo === null) return false;
+		for (const [context, previousValue] of memo.contextReads ?? []) {
+			if (!Object.is(readOwnerContext(parent, context, false), previousValue)) return false;
+		}
+	}
+	for (const child of owner.children) {
+		if (!ownerMemoSubtreeContextsStable(child, parent)) return false;
+	}
+	return true;
+}
+
 // Whether a committed owner subtree can be adopted without re-rendering: no
 // pending hook updates, no active boundary episode, no retained-hidden
 // content, no warm-plan component, and no HMR revision drift anywhere below.
@@ -3136,7 +3161,7 @@ function materializeComponentValue(
 		universalShallowEqual(record.componentProps, normalized.props) &&
 		record.range !== null &&
 		record.range.owner === record &&
-		ancestorContextsStable(parent) &&
+		(ancestorContextsStable(parent) || ownerMemoSubtreeContextsStable(record, parent)) &&
 		ownerSubtreeRetainable(record)
 	) {
 		const features = logicalTreeFeatures(record.range);

@@ -17,6 +17,7 @@ import {
 	createObjectDriver,
 	createUniversalRoot,
 	defineUniversalComponent,
+	memo,
 	type UniversalRoot,
 	universalComponent,
 	universalContext,
@@ -120,7 +121,11 @@ function createTransportDriver(
 ): UniversalHostDriver<TransportContainer, PublicHandle> {
 	const hostDriver = createObjectDriver(RENDERER);
 	return {
-		...hostDriver,
+		id: hostDriver.id,
+		events: hostDriver.events,
+		lifecycles: hostDriver.lifecycles,
+		updates: hostDriver.updates,
+		templates: hostDriver.templates,
 		capabilities: { ...hostDriver.capabilities, localHostCallbacks: false },
 		localCallbacks: undefined,
 		props: withCodec
@@ -1501,6 +1506,90 @@ describe('transported retained component subtrees', () => {
 		expect(rendered).not.toContain(3);
 		expect(items().map((item) => item.props.theme)).toEqual(['dark', 'dark', 'dark']);
 		await root.unmountAsync();
+	});
+
+	it('retains context-independent memo subtrees and refuses opaque descendants', async () => {
+		const { container, root } = transportRoot();
+		const Context = createContext('light');
+		const effects: string[] = [];
+		let stableCompares = 0;
+		let stableRenders = 0;
+		let directRenders = 0;
+		let opaqueRenders = 0;
+		let setTheme!: (theme: string) => void;
+		const Stable = memo(
+			defineUniversalComponent(RENDERER, () => {
+				stableRenders++;
+				useEffect(() => {
+					effects.push('mount:stable');
+					return () => effects.push('cleanup:stable');
+				}, []);
+				return universalValue(itemPlan, [universalProps([['set', 'label', 'stable']])]);
+			}),
+			() => {
+				stableCompares++;
+				return true;
+			},
+		);
+		const DirectConsumer = memo(
+			defineUniversalComponent(RENDERER, () => {
+				directRenders++;
+				return universalValue(itemPlan, [
+					universalProps([
+						['set', 'label', 'direct'],
+						['set', 'theme', useContext(Context)],
+					]),
+				]);
+			}),
+		);
+		const OpaqueConsumer = defineUniversalComponent(RENDERER, () => {
+			opaqueRenders++;
+			return universalValue(itemPlan, [
+				universalProps([
+					['set', 'label', 'opaque'],
+					['set', 'theme', useContext(Context)],
+				]),
+			]);
+		});
+		const MemoParent = memo(
+			defineUniversalComponent(RENDERER, () =>
+				universalComponent(RENDERER, OpaqueConsumer, universalProps([])),
+			),
+		);
+		const Scene = defineUniversalComponent(RENDERER, () => {
+			const [theme, updateTheme] = useState('light', 'theme');
+			setTheme = updateTheme;
+			return universalContext(Context, theme, [
+				universalComponent(RENDERER, Stable, universalProps([])),
+				universalComponent(RENDERER, DirectConsumer, universalProps([])),
+				universalComponent(RENDERER, MemoParent, universalProps([])),
+			]);
+		});
+
+		await root.renderAsync(Scene, undefined);
+		await root.flushTransport();
+		const [stableHost, directHost, opaqueHost] = [...container.host.children];
+		expect(container.host.children.map((item) => item.props.theme ?? null)).toEqual([
+			null,
+			'light',
+			'light',
+		]);
+		expect([stableRenders, directRenders, opaqueRenders]).toEqual([1, 1, 1]);
+
+		setTheme('dark');
+		await root.flushTransport();
+		expect(container.host.children).toEqual([stableHost, directHost, opaqueHost]);
+		expect(container.host.children.map((item) => item.props.theme ?? null)).toEqual([
+			null,
+			'dark',
+			'dark',
+		]);
+		expect(stableCompares).toBe(0);
+		expect([stableRenders, directRenders, opaqueRenders]).toEqual([1, 2, 2]);
+		expect(effects).toEqual(['mount:stable']);
+
+		await root.unmountAsync();
+		expect(effects).toEqual(['mount:stable', 'cleanup:stable']);
 	});
 
 	it('reorders retained keyed children without changing their hosts, effects, or listeners', async () => {
