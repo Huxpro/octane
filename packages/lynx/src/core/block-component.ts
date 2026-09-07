@@ -230,6 +230,15 @@ function blockShallowEqual(previous: unknown, next: unknown): boolean {
 	return true;
 }
 
+/** Object.is tuple comparison, matching hook dependency semantics. */
+function depsEqual(previous: readonly unknown[], next: readonly unknown[]): boolean {
+	if (previous.length !== next.length) return false;
+	for (let index = 0; index < previous.length; index++) {
+		if (!Object.is(previous[index], next[index])) return false;
+	}
+	return true;
+}
+
 /** Whether a hole's value is a keyed range rather than something a slot carries. */
 function isRangeValue(value: unknown): value is UniversalForValue {
 	return (
@@ -290,6 +299,9 @@ interface RangeState {
 	 * find that out for the price of the key comparisons it already makes.
 	 */
 	keys: readonly unknown[] | null;
+	/** Iterable identity and compiler proof adopted by the last applied render. */
+	source: Iterable<unknown> | null;
+	keyedSelection: NonNullable<UniversalForValue['keyedSelection']> | null;
 }
 
 /** One row's last render: what produced it, and what it produced. */
@@ -298,6 +310,8 @@ interface RetainedRow {
 	readonly props: unknown;
 	readonly values: readonly UniversalHostTemplateProgramValue[];
 	readonly listeners: readonly (LynxBlockListener | null)[];
+	/** Last committed list order, used to preserve old/new row evaluation order. */
+	readonly index: number;
 }
 
 const EMPTY_RANGES: readonly RangeState[] = Object.freeze([]);
@@ -316,6 +330,15 @@ interface RangeRender {
 	readonly structural: boolean;
 	/** Indices of the rows this render actually called; the rest were retained. */
 	readonly rendered: readonly number[];
+	readonly source: Iterable<unknown>;
+	readonly keyedSelection: NonNullable<UniversalForValue['keyedSelection']> | null;
+	/** Non-null when a compiler proof reached only the old/new selected keys. */
+	readonly sparse: readonly SparseRangeRow[] | null;
+}
+
+interface SparseRangeRow {
+	readonly key: unknown;
+	readonly retained: RetainedRow;
 }
 
 const EMPTY_RANGE_RENDERS: readonly RangeRender[] = Object.freeze([]);
@@ -742,6 +765,73 @@ export function lynxBlockProgramForComponent<Props>(
 				'one of its keyed ranges declares an @empty block, and a range site on the Block core has no empty branch yet.',
 			);
 		}
+		const nextSelection = list.keyedSelection ?? null;
+		const previousSelection = state.keyedSelection;
+		const previous = state.retained;
+		const previousKeys = state.keys;
+		if (
+			nextSelection !== null &&
+			previousSelection !== null &&
+			state.source === list.items &&
+			previous !== null &&
+			previousKeys !== null &&
+			depsEqual(previousSelection[1], nextSelection[1])
+		) {
+			const sparse: SparseRangeRow[] = [];
+			if (!Object.is(previousSelection[0], nextSelection[0])) {
+				const candidates: { key: unknown; prior: RetainedRow }[] = [];
+				for (const itemKey of [previousSelection[0], nextSelection[0]]) {
+					const prior = previous.get(itemKey);
+					if (prior == null || candidates.some((candidate) => candidate.prior === prior)) continue;
+					candidates.push({ key: itemKey, prior });
+				}
+				candidates.sort((left, right) => left.prior.index - right.prior.index);
+				for (const { key: itemKey, prior } of candidates) {
+					const item = (prior.props as Record<string, unknown>)[nextSelection[2]];
+					const produced = list.render(item, prior.index);
+					const component =
+						produced !== null &&
+						typeof produced === 'object' &&
+						(produced as { $$kind?: unknown }).$$kind === UNIVERSAL_COMPONENT_VALUE
+							? ((produced as UniversalComponentValue).component as unknown as LynxComponent<never>)
+							: null;
+					const props =
+						component === null ? null : forwardedProps(produced as UniversalComponentValue);
+					if (component === null || component !== prior.component) {
+						refuse(
+							subject,
+							'a compiler-certified keyed selection later produced a different row component.',
+						);
+					}
+					if (blockShallowEqual(prior.props, props)) continue;
+					const row = renderRow(context, state, produced, component, props);
+					sparse.push({
+						key: itemKey,
+						retained: {
+							component,
+							props,
+							values: row.values,
+							listeners: row.listeners,
+							index: prior.index,
+						},
+					});
+				}
+			}
+			return {
+				state,
+				items: [],
+				rows: [],
+				handlers: [],
+				keys: previousKeys,
+				retained: previous,
+				structural: false,
+				rendered: [],
+				source: list.items,
+				keyedSelection: nextSelection,
+				sparse,
+			};
+		}
+
 		const items = Array.from(list.items as Iterable<unknown>);
 		const rows: (readonly UniversalHostTemplateProgramValue[])[] = new Array(items.length);
 		const handlers: (readonly (LynxBlockListener | null)[])[] = new Array(items.length);
@@ -751,8 +841,6 @@ export function lynxBlockProgramForComponent<Props>(
 		// for a memo it can never take.
 		const retained = new Map<unknown, RetainedRow | null>();
 		const rendered: number[] = [];
-		const previous = state.retained;
-		const previousKeys = state.keys;
 		// A first render, or one whose key list is a different length, has moved
 		// something by definition; below, a key that differs at its own position
 		// settles it for the rest.
@@ -801,7 +889,7 @@ export function lynxBlockProgramForComponent<Props>(
 					// functions and the same item as fresh ones would.
 					rows[index] = prior.values;
 					handlers[index] = prior.listeners;
-					retained.set(itemKey, prior);
+					retained.set(itemKey, prior.index === index ? prior : { ...prior, index });
 					continue;
 				}
 			}
@@ -813,10 +901,28 @@ export function lynxBlockProgramForComponent<Props>(
 				itemKey,
 				component === null
 					? null
-					: { component, props, values: row.values, listeners: row.listeners },
+					: {
+							component,
+							props,
+							values: row.values,
+							listeners: row.listeners,
+							index,
+						},
 			);
 		}
-		return { state, items, rows, handlers, keys, retained, structural, rendered };
+		return {
+			state,
+			items,
+			rows,
+			handlers,
+			keys,
+			retained,
+			structural,
+			rendered,
+			source: list.items,
+			keyedSelection: nextSelection,
+			sparse: null,
+		};
 	};
 
 	/**
@@ -852,9 +958,23 @@ export function lynxBlockProgramForComponent<Props>(
 	 */
 	const applyRange = (context: LynxBlockProgramContext, render: RangeRender): void => {
 		const state = render.state;
+		if (render.sparse !== null) {
+			state.source = render.source;
+			state.keyedSelection = render.keyedSelection;
+			for (const row of render.sparse) {
+				state.retained!.set(row.key, row.retained);
+				const member = context.core.writeKeyedValues(state.site!, row.key, row.retained.values);
+				if (state.prepared!.events.length === 0 || member === undefined) continue;
+				if (row.retained.listeners.includes(null)) context.root.releaseListeners(member);
+				context.root.bindListeners(member, row.retained.listeners);
+			}
+			return;
+		}
 		// A list that has never had a row has no template to reconcile against,
 		// and nothing mounted to reconcile.
 		if (state.template === null) return;
+		state.source = render.source;
+		state.keyedSelection = render.keyedSelection;
 		state.retained = render.retained;
 		state.keys = render.keys;
 		if (!render.structural) {
@@ -1030,6 +1150,8 @@ export function lynxBlockProgramForComponent<Props>(
 							template: null,
 							retained: null,
 							keys: null,
+							source: null,
+							keyedSelection: null,
 						}));
 			const template: LynxBlockTemplate = compileLynxBlockTemplate(wire.wire);
 			const values = valuesFor(context, rendered.values);

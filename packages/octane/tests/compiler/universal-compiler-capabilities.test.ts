@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
 import { lynxMainThreadRenderer, lynxRenderer } from '../../../lynx/src/config.js';
 import { compile } from '../../src/compiler/compile.js';
+import { normalizeRendererConfig } from '../../src/compiler/renderers.js';
 
 const { parseModule } = createRequire(import.meta.url)('@tsrx/core') as {
 	parseModule(source: string, filename: string): { body: any[] };
@@ -273,6 +274,123 @@ describe('component-owned Lynx template rows', () => {
 				{ type: 'Literal', value: true },
 			],
 		});
+	});
+
+	it('certifies a keyed component selection and snapshots every other bare capture', () => {
+		for (const renderer of [resolvedLynxRenderer, resolvedLynxMainThreadRenderer]) {
+			const args = compiledUniversalForArguments(source, { renderer });
+
+			expect(args[10]).toMatchObject({
+				type: 'ArrayExpression',
+				elements: [
+					{ type: 'Identifier', name: 'selected' },
+					{
+						type: 'ArrayExpression',
+						elements: [{ type: 'Identifier', name: 'onSelect' }],
+					},
+					{ type: 'Literal', value: 'row' },
+				],
+			});
+		}
+	});
+
+	it.each([
+		['development compilation', source, { dev: true }],
+		['profiling compilation', source, { profile: true }],
+		['disabled automatic memoization', source, { autoMemo: false }],
+		[
+			'an additional selection capture',
+			source.replace('onSelect={onSelect}', 'onSelect={selected ? onSelect : undefined}'),
+			{},
+		],
+		[
+			'an outer property read hidden behind stable identity',
+			source.replace('onSelect={onSelect}', 'onSelect={actions.onSelect}'),
+			{},
+		],
+		[
+			'a selection that does not compare with the key',
+			source.replace('selected === row.id', 'selected === row.label'),
+			{},
+		],
+		['the item is not directly forwarded', source.replace('row={row}', 'row={row.data}'), {}],
+		[
+			'an imported live component binding',
+			source.replace(
+				/function Row[\s\S]*?\n\t\t}\n\t\texport function Scene/,
+				"import { Row } from './Row.js';\n\t\texport function Scene",
+			),
+			{},
+		],
+		[
+			'a reassigned local component binding',
+			source.replace(
+				'\n\t\texport function Scene',
+				'\n\t\tRow = Replacement;\n\t\texport function Scene',
+			),
+			{},
+		],
+	])('does not certify keyed selection for %s', (_label, candidate, options) => {
+		const args = compiledUniversalForArguments(candidate, {
+			renderer: resolvedLynxRenderer,
+			...options,
+		});
+
+		expect(args[10]).toBeUndefined();
+	});
+
+	it('certifies index-dependent props because retained rows carry their committed order', () => {
+		const args = compiledUniversalForArguments(
+			source
+				.replace('const row of rows; key row.id', 'const row of rows; index index; key row.id')
+				.replace('onSelect={onSelect}', 'onSelect={index}'),
+			{ renderer: resolvedLynxRenderer },
+		);
+
+		expect(args[10]).toBeDefined();
+	});
+
+	it('keeps keyed-selection proofs behind production memoization gates in boundary regions', () => {
+		const config = normalizeRendererConfig({
+			registry: {
+				object: {
+					module: '@object/renderer',
+					capabilities: ['component-scope-for'],
+				},
+			},
+			boundaries: {
+				'@scene/object': {
+					Canvas: {
+						ownerRenderer: 'dom',
+						childRenderer: 'object',
+						prop: 'children',
+					},
+				},
+			},
+		});
+		const boundarySource = `
+import { Canvas } from '@scene/object';
+function Row({ row, selected }) @{ <node /> }
+export function App({ rows, selected }) @{
+  <Canvas>
+    @for (const row of rows; key row.id) {
+      <Row row={row} selected={selected === row.id} />
+    }
+  </Canvas>
+}
+`;
+		const compileBoundary = (options: Record<string, unknown> = {}) =>
+			compile(boundarySource, '/src/App.tsrx', {
+				hmr: false,
+				rendererBoundaries: config.boundaries,
+				rendererRegistry: config.registry,
+				...options,
+			}).code;
+		const proof = "[selected, [], 'row']";
+
+		expect(compileBoundary()).toContain(proof);
+		expect(compileBoundary({ dev: true })).not.toContain(proof);
+		expect(compileBoundary({ autoMemo: false })).not.toContain(proof);
 	});
 
 	it('does not grant host template programs to the narrow main-thread capability', () => {

@@ -1,0 +1,84 @@
+{
+  "meta": {
+    "date": "2026-09-07T16:59:13.764Z",
+    "node": "v22.22.2",
+    "chromium": "149.0.7827.55",
+    "cpus": 32,
+    "cpuModel": "Intel(R) Xeon(R) Platinum 8336C CPU @ 2.30GHz",
+    "repetitions": 5,
+    "rows": 10000,
+    "reportable": true,
+    "loadStart": [1.13, 0.68, 0.71],
+    "loadEnd": [2.06, 1.66, 1.11],
+    "protocol": "fresh page per operation sample; control/profile AB/BA; one vue-vdom pass after each pair"
+  },
+  "update10th": {
+    "wallMs": {
+      "profile": {
+        "median": 175,
+        "min": 169.5,
+        "max": 207.40000009536743
+      },
+      "control": {
+        "median": 176,
+        "min": 170.59999990463257,
+        "max": 213.60000038146973
+      },
+      "vueVdom": {
+        "median": 127.40000009536743,
+        "min": 118,
+        "max": 141.5
+      }
+    },
+    "backgroundPrepare": {
+      "medianMs": 72.7000002861023,
+      "share": 0.41542857306344166,
+      "rowRenders": 1000,
+      "reconcileVisits": 11028,
+      "hostCommands": 1000
+    },
+    "wire": {
+      "toBackgroundBytes": 285925,
+      "toBackgroundMessages": 10,
+      "toMainBytes": 105248,
+      "toMainMessages": 3
+    }
+  },
+  "select": {
+    "wallMs": {
+      "profile": {
+        "median": 72.59999990463257,
+        "min": 62.10000038146973,
+        "max": 75.40000009536743
+      },
+      "control": {
+        "median": 75.30000019073486,
+        "min": 61,
+        "max": 77.7000002861023
+      },
+      "vueVdom": {
+        "median": 60.59999990463257,
+        "min": 49.10000038146973,
+        "max": 63.59999990463257
+      }
+    },
+    "backgroundPrepare": {
+      "medianMs": 52.5,
+      "share": 0.7231404968176867,
+      "rowRenders": 1,
+      "reconcileVisits": 10029,
+      "hostCommands": 1
+    },
+    "wire": {
+      "toBackgroundBytes": 1019,
+      "toBackgroundMessages": 3,
+      "toMainBytes": 362,
+      "toMainMessages": 1
+    }
+  },
+  "ownerVerdict": {
+    "verdict": "GO",
+    "owner": "universal background update drain",
+    "qualification": "Historical universal owner only; current Block-derived lowering already scopes Row bodies and Block lookups, while its full range enumeration was not exposed by these counters."
+  }
+}

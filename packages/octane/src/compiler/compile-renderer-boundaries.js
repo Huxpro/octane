@@ -824,10 +824,12 @@ function lowerBoundaryNodeAst(node, ownerRenderer, state) {
 			childRenderer,
 			index,
 			{
+				autoMemo: state.autoMemo,
 				authoredAst: state.ast,
 				authoredSource: state.source,
 				components: specialization.components,
 				deferredRendererRegions,
+				dev: state.dev,
 				hmr: state.hmr,
 				profile: state.profile,
 				profileFilename: state.profileFilename,
@@ -966,7 +968,9 @@ export function prepareRendererBoundaryRegions(
 
 	const state = {
 		ast,
+		autoMemo: options?.autoMemo,
 		childValidationImportReferences: new Map(),
+		dev: options?.dev === true,
 		domRegions: [],
 		filename,
 		hmr: options?.hmr === true ? 'vite' : options?.hmr || false,
