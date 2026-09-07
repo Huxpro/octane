@@ -941,6 +941,8 @@ export type UniversalHostCommand =
 			readonly before: number | null;
 			readonly address: UniversalHostProgramAddress;
 			readonly firstId: number;
+			/** Distance between instance roots when component bookkeeping leaves ID gaps. */
+			readonly stride?: number;
 			readonly firstListenerId: number | null;
 			readonly count: number;
 			readonly values: readonly UniversalHostTemplateProgramValue[];
@@ -4919,6 +4921,7 @@ interface PendingUniversalHostTemplateMount {
 				before: number | null;
 				address: UniversalHostProgramAddress;
 				firstId: number;
+				stride?: number;
 				firstListenerId: number | null;
 				count: number;
 				values: UniversalHostTemplateProgramValue[];

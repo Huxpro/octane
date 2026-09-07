@@ -180,6 +180,28 @@ describe('mounting a resident program by address (issue #246 E1)', () => {
 		expect(addressed.handleDelta).toEqual(descriptor.handleDelta);
 	});
 
+	it('mounts a strided addressed run without claiming the component IDs between instances', () => {
+		const module = freshModule();
+		registerWire(module, 0, ROW);
+		const addressed = mountRun({
+			op: 'mount-program-run',
+			parent: 1,
+			before: 2,
+			address: { module, index: 0 },
+			firstId: 10,
+			stride: 5,
+			firstListenerId: 700,
+			count: 3,
+			values: VALUES,
+		} as never);
+
+		expect(addressed.compactHostCount).toBe(14);
+		expect(addressed.handleDelta.map((delta) => delta.handle.id)).toEqual([
+			1, 2, 10, 11, 12, 13, 15, 16, 17, 18, 20, 21, 22, 23,
+		]);
+		expect(JSON.stringify(addressed.tree)).toContain('row-3');
+	});
+
 	it('declines an address this realm does not hold rather than approximating it', () => {
 		const module = freshModule();
 		const { container } = createHost();
@@ -294,5 +316,28 @@ describe('mounting a resident program by address (issue #246 E1)', () => {
 		expect(() => validateLynxBackgroundOutboundMessage(message as never, 'checked')).toThrowError(
 			/program/,
 		);
+		expect(() =>
+			validateLynxBackgroundOutboundMessage(
+				{
+					...message,
+					batch: { ...message.batch, commands: [{ ...run, stride: ROW.nodes.length - 1 }] },
+				} as never,
+				'checked',
+				residentRunProgram,
+			),
+		).toThrowError(/stride.*at least the program host count/);
+		expect(() =>
+			validateLynxBackgroundOutboundMessage(
+				{
+					...message,
+					batch: {
+						...message.batch,
+						commands: [{ ...run, parent: 1, stride: ROW.nodes.length + 1, deferred: true }],
+					},
+				} as never,
+				'checked',
+				residentRunProgram,
+			),
+		).toThrowError(/stride.*omitted.*deferred/);
 	});
 });

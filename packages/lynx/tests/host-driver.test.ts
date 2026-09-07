@@ -936,6 +936,36 @@ describe('Lynx Element PAPI host driver', () => {
 		});
 	});
 
+	it('does not restamp unrequested selectors while adopting an announced first tree', () => {
+		const papi = createFakePAPI();
+		const page = papi.createPage('entry', 0);
+		const commands: UniversalHostCommand[] = [
+			{ op: 'create', id: 1, type: 'view', props: {} },
+			{ op: 'create', id: 2, type: 'text', props: {} },
+			{ op: 'insert', parent: null, id: 1, before: null },
+			{ op: 'insert', parent: 1, id: 2, before: null },
+		];
+		const source = createLynxHostContainer(papi, { root: 27, page });
+		prepareLynxHostBatch(source, batch(1, commands)).apply();
+		const firstTree = captureLynxFirstTree(source);
+		const target = createLynxHostContainer(papi, { root: 27, page });
+
+		papi.resetCalls();
+		const prepared = prepareLynxHostBatch(
+			target,
+			batch(1, [...commands, { op: 'ensure-public-instance', id: 2 }]),
+			{ firstTree, announcesPublicInstances: true },
+		);
+		expect(prepared.firstTreeAction).toBe('adopt');
+		prepared.apply();
+
+		// The selector the first-screen owner installed already has the same
+		// root/id/generation identity, so adoption leaves it in place without a write.
+		expect(page.children[0]!.selector).toBe('r27-h1-g1');
+		expect(page.children[0]!.children[0]!.selector).toBe('r27-h2-g1');
+		expect(papi.calls.filter((call) => call === 'setRefSelector')).toHaveLength(1);
+	});
+
 	it('preserves capture aliases through compatible first-tree adoption', () => {
 		const papi = createFakePAPI();
 		const page = papi.createPage('entry', 0);

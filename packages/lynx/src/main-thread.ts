@@ -96,8 +96,11 @@ import {
 import { createLynxElementPAPI, type LynxElementPAPI, type LynxElementRef } from './core/papi.js';
 import { LYNX_PROFILE, lynxWireProfile, markFirstScreenPhase } from './core/profiling.js';
 import {
+	acceptLynxTransportFrame,
+	createLynxTransportFrameState,
 	decodeLynxTransportValue,
 	encodeLynxTransportValue,
+	frameLynxTransportValue,
 	localizeLynxHostValue,
 	type LynxStructuredValue,
 } from './core/transport-codec.js';
@@ -833,6 +836,8 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	let mainCallPublication: UniversalTransportIdentity | null = null;
 	let nativeDestroyListenerRegistered = false;
 	let nativeDestroyReceived = false;
+	let nextFrameSequence = 1;
+	const inboundFrames = createLynxTransportFrameState();
 	const registeredEngineLifecycleListeners = new Set<string>();
 
 	const report = (value: unknown, fallback = 'Octane Lynx main-thread receiver failed.') => {
@@ -873,10 +878,11 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 
 	const dispatch = (message: LynxBackgroundInboundMessage): void => {
 		const validated = selfCheckLynxBackgroundInboundMessage(message);
-		context.dispatchEvent({
-			type: LYNX_MAIN_TO_BACKGROUND_EVENT,
-			data: encodeLynxTransportValue(validated, reportEncodingDiagnostic),
-		});
+		const encoded = encodeLynxTransportValue(validated, reportEncodingDiagnostic);
+		const frames = frameLynxTransportValue(encoded, nextFrameSequence++);
+		for (const data of frames) {
+			context.dispatchEvent({ type: LYNX_MAIN_TO_BACKGROUND_EVENT, data });
+		}
 	};
 
 	const dispatchLifecycleMessage = (message: LynxLifecycleMessage): void => {
@@ -2745,11 +2751,16 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			}
 		}
 		const startedAck = LYNX_PROFILE ? performance.now() : 0;
+		const compactFirstTreeProgram =
+			candidateFirstTree !== null &&
+			firstTreeProgramRuns &&
+			message.batch.commands.some((command) => command.op === 'mount-program-run') &&
+			prepared.firstTreeAction !== 'none';
 		let compactCount: number | null =
 			message.ack === LYNX_COMPACT_ACKNOWLEDGEMENT &&
 			(provisional || postFirstTreeIncrementalCompact) &&
 			!applyFailed &&
-			prepared.firstTreeAction === 'none' &&
+			(prepared.firstTreeAction === 'none' || compactFirstTreeProgram) &&
 			prepared.listAncestryDelta.length === 0
 				? // Issue #230: preparation records a host count only while it is itself
 					// driving the compact path, and taking that path swaps the driver's
@@ -2763,7 +2774,11 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 					// encoding. The check below re-validates any count that disagrees
 					// with preparation against the prepared handle deltas.
 					(prepared.compactHostCount ??
-					countLynxCompactAcknowledgementHosts(message.batch, residentRunProgram))
+					countLynxCompactAcknowledgementHosts(
+						message.batch,
+						residentRunProgram,
+						compactFirstTreeProgram ? { allowMainThreadState: true } : undefined,
+					))
 				: null;
 		if (compactCount !== null && compactCount < LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS) {
 			compactCount = null;
@@ -2798,6 +2813,11 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 						type: 'ack',
 						encoding: LYNX_COMPACT_ACKNOWLEDGEMENT,
 						count: compactCount,
+						...(prepared.firstTreeAction === 'none'
+							? null
+							: {
+									adoption: prepared.firstTreeAction === 'adopt' ? 'adopted' : 'repaired',
+								}),
 					};
 		try {
 			dispatch(acknowledgement);
@@ -3035,7 +3055,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		const startedDecode = LYNX_PROFILE ? performance.now() : 0;
 		let data: LynxStructuredValue;
 		try {
-			data = decodeLynxTransportValue(event.data);
+			const framed = acceptLynxTransportFrame(event.data, inboundFrames);
+			if (framed === null) return;
+			data = decodeLynxTransportValue(framed);
 			if (LYNX_PROFILE) lynxWireProfile().decodeMs += performance.now() - startedDecode;
 		} catch (error) {
 			// Nothing in an undecodable payload is safe to reflect on, so unlike a

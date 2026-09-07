@@ -90,6 +90,126 @@ export type LynxValueRef = object;
 /** Data materialized into the receiving realm as ordinary arrays and objects. */
 export type LynxStructuredValue = unknown;
 
+/**
+ * Largest encoded message we hand to ContextProxy as one event.
+ *
+ * The Android 3.9 engine used by the native performance gate delivers 33,722
+ * ASCII characters intact and silently drops a 37,649-character event. Keep
+ * the proven-safe case on one crossing, and frame only messages beyond it.
+ */
+const LYNX_CONTEXT_EVENT_UNFRAMED_LIMIT = 34_000;
+const LYNX_CONTEXT_EVENT_FRAME_CHARS = 32_000;
+const LYNX_CONTEXT_EVENT_MAX_FRAMES = 4096;
+// Do not use NUL here: ContextProxy's native string bridge treats a leading
+// U+0000 as the end of the string on the Android engine. Codec payloads always
+// begin with `[`, so this printable prefix is still disjoint from them.
+const FRAME_PREFIX = '!octane-lynx-frame:';
+
+export interface LynxTransportFrameState {
+	sequence: number | null;
+	next: number;
+	total: number;
+	chunks: string[];
+}
+
+export function createLynxTransportFrameState(): LynxTransportFrameState {
+	return { sequence: null, next: 0, total: 0, chunks: [] };
+}
+
+/** Split only messages above the native ContextProxy's proven single-event envelope. */
+export function frameLynxTransportValue(text: string, sequence: number): readonly string[] {
+	if (text.length <= LYNX_CONTEXT_EVENT_UNFRAMED_LIMIT) return [text];
+	if (!Number.isSafeInteger(sequence) || sequence <= 0) {
+		throw new TypeError('Octane Lynx transport frame sequence must be a positive safe integer.');
+	}
+	const total = Math.ceil(text.length / LYNX_CONTEXT_EVENT_FRAME_CHARS);
+	if (total > LYNX_CONTEXT_EVENT_MAX_FRAMES) {
+		throw new TypeError('Octane Lynx transport message exceeds the framed wire limit.');
+	}
+	const frames = new Array<string>(total);
+	for (let index = 0; index < total; index++) {
+		frames[index] =
+			`${FRAME_PREFIX}${sequence}:${index}:${total}:` +
+			text.slice(
+				index * LYNX_CONTEXT_EVENT_FRAME_CHARS,
+				(index + 1) * LYNX_CONTEXT_EVENT_FRAME_CHARS,
+			);
+	}
+	return frames;
+}
+
+function resetFrameState(state: LynxTransportFrameState): void {
+	state.sequence = null;
+	state.next = 0;
+	state.total = 0;
+	state.chunks.length = 0;
+}
+
+/**
+ * Reassemble one ordered sender stream. `null` means the message is not whole
+ * yet; an unframed value passes through unchanged for the common path.
+ */
+export function acceptLynxTransportFrame(
+	value: LynxValue,
+	state: LynxTransportFrameState,
+): LynxValue | null {
+	if (typeof value !== 'string' || !value.startsWith(FRAME_PREFIX)) {
+		if (state.sequence !== null) {
+			resetFrameState(state);
+			throw new TypeError('Octane Lynx transport received an interrupted framed message.');
+		}
+		return value;
+	}
+	const sequenceEnd = value.indexOf(':', FRAME_PREFIX.length);
+	const indexEnd = sequenceEnd < 0 ? -1 : value.indexOf(':', sequenceEnd + 1);
+	const totalEnd = indexEnd < 0 ? -1 : value.indexOf(':', indexEnd + 1);
+	if (sequenceEnd < 0 || indexEnd < 0 || totalEnd < 0) {
+		resetFrameState(state);
+		throw new TypeError('Octane Lynx transport received a malformed frame header.');
+	}
+	const sequence = Number(value.slice(FRAME_PREFIX.length, sequenceEnd));
+	const index = Number(value.slice(sequenceEnd + 1, indexEnd));
+	const total = Number(value.slice(indexEnd + 1, totalEnd));
+	const chunk = value.slice(totalEnd + 1);
+	if (
+		!Number.isSafeInteger(sequence) ||
+		sequence <= 0 ||
+		!Number.isSafeInteger(index) ||
+		index < 0 ||
+		!Number.isSafeInteger(total) ||
+		total < 2 ||
+		total > LYNX_CONTEXT_EVENT_MAX_FRAMES ||
+		index >= total ||
+		chunk.length === 0 ||
+		chunk.length > LYNX_CONTEXT_EVENT_FRAME_CHARS ||
+		(index < total - 1 && chunk.length !== LYNX_CONTEXT_EVENT_FRAME_CHARS)
+	) {
+		resetFrameState(state);
+		throw new TypeError('Octane Lynx transport received an invalid frame.');
+	}
+	if (index === 0) {
+		if (state.sequence !== null) {
+			resetFrameState(state);
+			throw new TypeError('Octane Lynx transport received overlapping framed messages.');
+		}
+		state.sequence = sequence;
+		state.next = 0;
+		state.total = total;
+	} else if (state.sequence === null) {
+		throw new TypeError('Octane Lynx transport received a continuation without a frame start.');
+	}
+	if (state.sequence !== sequence || state.total !== total || state.next !== index) {
+		resetFrameState(state);
+		throw new TypeError('Octane Lynx transport received frames out of order.');
+	}
+	state.chunks.push(chunk);
+	state.next++;
+	if (state.next !== total) return null;
+	const text = state.chunks.join('');
+	resetFrameState(state);
+	return text;
+}
+
 const NUL = '\u0000';
 const UNDEFINED_SENTINEL = `${NUL}undefined`;
 const PROTO_KEY = '__proto__';

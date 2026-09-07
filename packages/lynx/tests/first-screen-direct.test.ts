@@ -1372,6 +1372,14 @@ describe('first-tree addressed program adoption manifest', () => {
 		expect(arm.mismatches).toEqual([]);
 		arm.prepared.apply();
 		expect(arm.papi.pages[0]!.children).toEqual([arm.painted]);
+		const updated = prepareLynxHostBatch(arm.target, {
+			renderer: 'lynx',
+			version: 2,
+			commands: [{ op: 'update', id: 1, props: { id: 'after-adoption' } }],
+		});
+		updated.apply();
+		expect(arm.papi.pages[0]!.children).toEqual([arm.painted]);
+		expect(arm.painted.id).toBe('after-adoption');
 	});
 
 	it('repairs a compact addressed description whose dynamic state differs', () => {

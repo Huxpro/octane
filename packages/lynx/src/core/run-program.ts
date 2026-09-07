@@ -63,6 +63,7 @@ export function promoteProducedProgramManifest(
 	values: readonly UniversalHostTemplateProgramValue[] = manifest.values,
 	run: {
 		readonly firstId: number;
+		readonly stride?: number;
 		readonly firstListenerId: number | null;
 		readonly count: number;
 	} = manifest,
@@ -78,6 +79,7 @@ export function promoteProducedProgramManifest(
 		before: manifest.before,
 		address: manifest.address,
 		firstId: run.firstId,
+		...(run.stride === undefined ? null : { stride: run.stride }),
 		firstListenerId: run.firstListenerId,
 		count: run.count,
 		values,

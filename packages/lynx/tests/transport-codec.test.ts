@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	acceptLynxTransportFrame,
+	createLynxTransportFrameState,
 	decodeLynxTransportValue,
 	encodeLynxTransportValue,
+	frameLynxTransportValue,
 	localizeLynxHostValue,
 } from '../src/core/transport-codec.js';
 
@@ -14,6 +17,32 @@ function roundTrip(value: unknown): unknown {
 }
 
 describe('Lynx transport codec', () => {
+	it('frames only ContextProxy payloads beyond the proven native envelope', () => {
+		const small = encodeLynxTransportValue({ value: 'x'.repeat(33_000) });
+		expect(frameLynxTransportValue(small, 1)).toEqual([small]);
+
+		const encoded = encodeLynxTransportValue({ value: 'x'.repeat(70_000) });
+		const frames = frameLynxTransportValue(encoded, 2);
+		expect(frames).toHaveLength(3);
+		expect(frames.every((frame) => frame.length < 32_100)).toBe(true);
+		const state = createLynxTransportFrameState();
+		let complete: unknown = null;
+		for (const frame of frames) complete = acceptLynxTransportFrame(frame, state);
+		expect(decodeLynxTransportValue(complete)).toEqual({ value: 'x'.repeat(70_000) });
+	});
+
+	it('refuses interrupted, overlapping, and out-of-order ContextProxy frames', () => {
+		const frames = frameLynxTransportValue('x'.repeat(70_000), 3);
+		const state = createLynxTransportFrameState();
+		expect(acceptLynxTransportFrame(frames[0], state)).toBe(null);
+		expect(() => acceptLynxTransportFrame('unframed', state)).toThrow(/interrupted/);
+		expect(() => acceptLynxTransportFrame(frames[1], state)).toThrow(/continuation/);
+		expect(acceptLynxTransportFrame(frames[0], state)).toBe(null);
+		expect(() => acceptLynxTransportFrame(frames[0], state)).toThrow(/overlapping/);
+		expect(acceptLynxTransportFrame(frames[0], state)).toBe(null);
+		expect(() => acceptLynxTransportFrame(frames[2], state)).toThrow(/out of order/);
+	});
+
 	// The receiver's whole reason for existing is that what it gets back is
 	// ordinary local data. Everything else in this file is a way that could stop
 	// being true.

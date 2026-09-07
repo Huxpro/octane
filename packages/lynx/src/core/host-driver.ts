@@ -6133,11 +6133,12 @@ function compareProgramAdoptionRuns<Node extends LynxElementRef>(
 			);
 		}
 		const programWidth = run.plan.nodes + run.plan.ranges.length;
+		const commandStride = command.stride ?? programWidth;
 		if (
 			seen[runIndex] === 1 ||
+			((command.count > 1 || command.stride !== undefined) && commandStride !== run.stride) ||
 			instance !== covered[runIndex] ||
-			instance + command.count > run.count ||
-			(run.stride !== programWidth && command.count !== 1)
+			instance + command.count > run.count
 		) {
 			return failed(
 				mismatch(firstTree, `${path}.count`, 'the program run layout or instance count differs.'),
@@ -6211,6 +6212,7 @@ function compareFirstTree<Node extends LynxElementRef>(
 	getRecord: (id: number) => LynxHostRecord<Node> | undefined,
 	operations: readonly LynxApplyOperation<Node>[],
 	listUpdates: readonly LynxPreparedListUpdate[],
+	programComparison: LynxProgramAdoptionComparison<Node>,
 ): LynxFirstTreeMismatchError | null {
 	const snapshot = firstTree.snapshot;
 	const targetState = target[LYNX_HOST_STATE];
@@ -6264,8 +6266,6 @@ function compareFirstTree<Node extends LynxElementRef>(
 	) {
 		return mismatch(firstTree, 'snapshot.owner', 'the captured host owner is not stable.');
 	}
-	const programComparison = compareProgramAdoptionRuns(batch, firstTree);
-	if (programComparison.mismatch !== null) return programComparison.mismatch;
 	// A native list is adoptable, but only against the same list. The main thread
 	// already wrote `update-list-info` onto the node being adopted; `listUpdates`
 	// is what the background would have written onto a node it created itself.
@@ -6645,6 +6645,7 @@ function transferFirstTree<Node extends LynxElementRef>(
 	firstTree: LynxFirstTree<Node>,
 	source: LynxHostContainer<Node>,
 	activeNodes: Map<number, Node>,
+	compactProgramRuns: ReadonlySet<LynxProgramRun<Node>> | null,
 ): void {
 	const targetState = target[LYNX_HOST_STATE];
 	const sourceState = source[LYNX_HOST_STATE];
@@ -6676,7 +6677,14 @@ function transferFirstTree<Node extends LynxElementRef>(
 			throw hostError(`captured first-tree host ${id} lost its physical node.`);
 		}
 		targetRecord.node = node;
-		activeNodes.set(id, node);
+		// Adoption executes no structural/update operation from the accepted batch;
+		// only explicit public-instance requests survive below, and those read the
+		// record's node directly. A proof-covered program therefore needs no second
+		// row-scale ID→node table merely for this apply call. The ordinary path keeps
+		// it because its selector/event/main-thread replay still consumes the table.
+		if (programRun === undefined || compactProgramRuns?.has(programRun) !== true) {
+			activeNodes.set(id, node);
+		}
 		targetState.ownedNodes.add(node);
 		if (targetRecord.parent === null) targetState.ownedPageRoots.add(node);
 		if (programRun !== undefined && programNode !== undefined) {
@@ -7726,12 +7734,18 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			const program = prepareTemplateProgram(resolvedProgram, label);
 			const shape = program.shape;
 			const count = command.op === 'mount-template-range' ? 1 : command.count;
+			const instanceStride =
+				command.op === 'mount-program-run'
+					? (command.stride ?? shape.types.length)
+					: shape.types.length;
 			assertSafeId(count, `${label}.count`);
 			const hostCount = count * shape.types.length;
 			assertSafeId(command.firstId, `${label}.firstId`);
 			if (
 				!Number.isSafeInteger(hostCount) ||
-				!Number.isSafeInteger(command.firstId + (hostCount - 1))
+				!Number.isSafeInteger(
+					command.firstId + (count - 1) * instanceStride + shape.types.length - 1,
+				)
 			) {
 				throw hostError(`${label}.firstId exceeds the host identity range.`);
 			}
@@ -7919,6 +7933,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			}
 			let denseEligible =
 				command.op !== 'mount-template-range' &&
+				instanceStride === shape.types.length &&
 				compactCandidate &&
 				options?.lazyPublicInstances === true &&
 				Object.isFrozen(command.values) &&
@@ -7998,7 +8013,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				if (incrementalCompactCandidate) acceptedDenseRecords = dense;
 				stagedRecords = dense;
 				for (let row = 0; row < count; row++) {
-					siblings.push(command.firstId + row * shape.types.length);
+					siblings.push(command.firstId + row * instanceStride);
 				}
 				stagedRecordCount += hostCount;
 				compactCreated += hostCount;
@@ -8027,7 +8042,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			let runMainThreadProps = false;
 			for (let rowIndex = 0; rowIndex < count; rowIndex++) {
 				const rowOffset = rowIndex * shape.types.length;
-				const rowFirstId = command.firstId + rowOffset;
+				const rowFirstId = command.firstId + rowIndex * instanceStride;
 				const rowFirstListener =
 					command.firstListenerId === null
 						? null
@@ -8889,18 +8904,24 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 	if (compactHostCount === undefined) materializeHandleDelta();
 	let firstTreeAction: LynxPreparedHostBatch['firstTreeAction'] = 'none';
 	let firstTreeMismatch: LynxFirstTreeMismatchError | null = null;
+	let compactProgramAdoptionRuns: ReadonlySet<LynxProgramRun<Node>> | null = null;
 	if (firstTree !== undefined && firstTreeSource !== null) {
-		firstTreeMismatch = compareFirstTree(
-			container,
-			batch,
-			firstTree,
-			firstTreeSource,
-			finalIds!,
-			childrenForRead(null),
-			getRecord,
-			operations,
-			listUpdates,
-		);
+		const programComparison = compareProgramAdoptionRuns(batch, firstTree);
+		compactProgramAdoptionRuns = programComparison.compactRuns;
+		firstTreeMismatch =
+			programComparison.mismatch ??
+			compareFirstTree(
+				container,
+				batch,
+				firstTree,
+				firstTreeSource,
+				finalIds!,
+				childrenForRead(null),
+				getRecord,
+				operations,
+				listUpdates,
+				programComparison,
+			);
 		firstTreeAction = firstTreeMismatch === null ? 'adopt' : 'repair';
 		if (firstTreeMismatch !== null) options?.onMismatch?.(firstTreeMismatch);
 	}
@@ -9070,22 +9091,36 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 						if (applicationFailed) throw applicationError;
 						if (firstTreeAction === 'adopt') {
 							const logicalRows = firstTree![LYNX_FIRST_TREE_STATE].logicalNodes;
-							transferFirstTree(container, firstTree!, firstTreeSource!, activeNodes);
+							transferFirstTree(
+								container,
+								firstTree!,
+								firstTreeSource!,
+								activeNodes,
+								compactProgramAdoptionRuns,
+							);
+							const compactProgramIndex =
+								compactProgramAdoptionRuns === null ? null : lynxFirstTreeProgramIndex(firstTree!);
 							for (const [id, record] of state.records) {
 								// A native list row owns no element yet. Its selector, listeners
 								// and main-thread props are installed by the cell that
 								// materializes it, exactly as on a root that never adopted.
 								if (logicalRows.has(id)) continue;
+								const compactProgramRun = compactProgramIndex?.runFor(id);
+								if (
+									compactProgramRun !== undefined &&
+									compactProgramAdoptionRuns?.has(compactProgramRun) === true
+								) {
+									continue;
+								}
 								const node = nodeFor(activeNodes, id, 'first-tree adoption');
 								record.node = node;
 								record.selectorInstalled = false;
-								// Deliberately unconditional. These are the physical nodes the
-								// first-screen container already stamped with its own root's
-								// selector, and that root id can equal this one, so a skipped
-								// install would leave a node answering an address that now names a
-								// different host. Overwriting costs the same single write that
-								// clearing would, so there is nothing to defer here.
-								ensureNodesRefSelector(state, record);
+								// The equality proof above includes root, id, and generation. A
+								// selector the first screen installed therefore already names this
+								// exact host; an announced batch that never requests one need not
+								// stamp it again. Unnegotiated batches stay eager through the same
+								// policy every ordinary mount uses.
+								bindNodesRefSelector(state, record);
 								if (record.visible) {
 									installNativeEvents(
 										state,

@@ -629,6 +629,8 @@ export function prepareLynxClientWorkletBatch(
 				const program = templateProgramWorkletSlots(wire);
 				if (program === null) continue;
 				const hostCount = wire.nodes.length;
+				const instanceStride =
+					command.op === 'mount-program-run' ? (command.stride ?? hostCount) : hostCount;
 				let values: UniversalHostTemplateProgramValue[] | undefined;
 				let owners: Map<number, Set<string>> | undefined;
 				for (let slot = 0; slot < command.values.length; slot++) {
@@ -651,7 +653,7 @@ export function prepareLynxClientWorkletBatch(
 					// The host that owns this slot, not the run: an `update` later replaces
 					// exactly this host's callbacks, and its `destroy` is what releases them.
 					const owner =
-						command.firstId + Math.floor(slot / program.arity) * hostCount + binding.node;
+						command.firstId + Math.floor(slot / program.arity) * instanceStride + binding.node;
 					let ids = owners?.get(owner);
 					if (ids === undefined) (owners ??= new Map()).set(owner, (ids = new Set()));
 					collectWorkletExecutionIds(bound, ids);
@@ -994,18 +996,27 @@ export function prepareLynxCompactHandleDeltas(
 			}
 			const length = wire.nodes.length;
 			const hosts = command.count * length;
+			const instanceStride =
+				command.op === 'mount-program-run' ? (command.stride ?? length) : length;
+			const span = (command.count - 1) * instanceStride + length;
 			if (
 				!Number.isSafeInteger(command.count) ||
 				command.count <= 0 ||
 				!Number.isSafeInteger(hosts) ||
-				command.firstId > Number.MAX_SAFE_INTEGER - (hosts - 1)
+				!Number.isSafeInteger(span) ||
+				command.firstId > Number.MAX_SAFE_INTEGER - (span - 1)
 			) {
 				throw new Error('Octane Lynx compact acknowledgement contains an invalid host identity.');
 			}
 			stageProgramRange(command.firstId, wire);
 			if (command.count === 1) continue;
 			const offset = command.firstId - base;
-			if (sparse === null && offset >= 0 && offset <= dense!.length - hosts) {
+			if (
+				instanceStride === length &&
+				sparse === null &&
+				offset >= 0 &&
+				offset <= dense!.length - hosts
+			) {
 				for (let node = length; node < hosts; node++) {
 					if (dense![offset + node] !== 0) {
 						throw new Error(
@@ -1023,7 +1034,7 @@ export function prepareLynxCompactHandleDeltas(
 				continue;
 			}
 			for (let instance = 1; instance < command.count; instance++) {
-				stageProgramRange(command.firstId + instance * length, wire);
+				stageProgramRange(command.firstId + instance * instanceStride, wire);
 			}
 		}
 	}
@@ -1144,8 +1155,10 @@ export function prepareLynxHandleDeltas(
 				continue;
 			}
 			const length = wire.nodes.length;
+			const instanceStride =
+				command.op === 'mount-program-run' ? (command.stride ?? length) : length;
 			for (let instance = 0; instance < command.count; instance++) {
-				const firstId = command.firstId + instance * length;
+				const firstId = command.firstId + instance * instanceStride;
 				for (let index = 0; index < length; index++) {
 					const id = firstId + index;
 					const transition = transitionFor(id);

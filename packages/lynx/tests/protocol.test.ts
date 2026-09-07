@@ -46,6 +46,7 @@ import {
 	LYNX_MAIN_TO_BACKGROUND_EVENT,
 	LYNX_TRANSPORT_PROTOCOL_VERSION,
 	LYNX_TRANSPORT_RENDERER,
+	countLynxCompactAcknowledgementHosts,
 	validateLynxBackgroundInboundMessage,
 	validateLynxBackgroundOutboundMessage,
 	type LynxContextProxy,
@@ -308,7 +309,7 @@ function installMainHarness(
 				for (let instance = 0; instance < command.count; instance++) {
 					for (let node = 0; node < program.nodes.length; node++) {
 						const descriptor = program.nodes[node]!;
-						const id = command.firstId + instance * program.nodes.length + node;
+						const id = command.firstId + instance * (command.stride ?? program.nodes.length) + node;
 						const generation = (generations.get(id) ?? 0) + 1;
 						const props: Record<string, unknown> = { ...descriptor.props };
 						for (const binding of descriptor.bindings ?? []) {
@@ -375,12 +376,30 @@ function installMainHarness(
 		disposals,
 		adoptions,
 		acknowledge(commit, completion = null, adoption) {
-			context.sendToBackground({
-				...commitIdentity(commit),
-				type: 'ack',
-				handles: handleDeltas(commit),
-				...(adoption === undefined ? null : { adoption }),
-			});
+			const compactCount =
+				commit.ack === LYNX_COMPACT_ACKNOWLEDGEMENT
+					? countLynxCompactAcknowledgementHosts(
+							commit.batch,
+							resolveProgram,
+							adoption === undefined ? undefined : { allowMainThreadState: true },
+						)
+					: null;
+			context.sendToBackground(
+				compactCount === null
+					? {
+							...commitIdentity(commit),
+							type: 'ack',
+							handles: handleDeltas(commit),
+							...(adoption === undefined ? null : { adoption }),
+						}
+					: {
+							...commitIdentity(commit),
+							type: 'ack',
+							encoding: LYNX_COMPACT_ACKNOWLEDGEMENT,
+							count: compactCount,
+							...(adoption === undefined ? null : { adoption }),
+						},
+			);
 			if (completion !== null) {
 				context.sendToBackground(
 					completion === 'complete'
@@ -929,12 +948,12 @@ describe('@octanejs/lynx transported protocol', () => {
 		expect(() => validateLynxBackgroundInboundMessage({ ...acknowledgement, handles: [] })).toThrow(
 			/unknown field "handles"/,
 		);
-		expect(() =>
+		expect(
 			validateLynxBackgroundInboundMessage({ ...acknowledgement, adoption: 'adopted' }),
-		).toThrow(/unknown field "adoption"/);
+		).toMatchObject({ adoption: 'adopted' });
 		expect(() =>
 			validateLynxBackgroundInboundMessage({ ...acknowledgement, adoption: 'unknown' }),
-		).toThrow(/unknown field "adoption"/);
+		).toThrow(/ack\.adoption/);
 	});
 
 	it('accepts sparse public-instance commands only with safe IDs and negotiated commit encoding', () => {
@@ -3587,35 +3606,25 @@ describe('@octanejs/lynx transported protocol', () => {
 
 			expect(main.commits).toHaveLength(1);
 			const commit = main.commits[0]!;
-			const commands = componentRows
-				? values.map((value, index) => ({
-						op: 'mount-program-run' as const,
-						address: { module: 'tests/first-tree-manifest.tsrx', index: 0 },
-						parent: null,
-						before: null,
-						firstId: 2 + index * 3,
-						firstListenerId: null,
-						count: 1,
-						values: [value],
-					}))
-				: [
-						{
-							op: 'mount-program-run' as const,
-							address: { module: 'tests/first-tree-manifest.tsrx', index: 0 },
-							parent: null,
-							before: null,
-							firstId: 1,
-							firstListenerId: null,
-							count: values.length,
-							values,
-						},
-					];
+			const commands = [
+				{
+					op: 'mount-program-run' as const,
+					address: { module: 'tests/first-tree-manifest.tsrx', index: 0 },
+					parent: null,
+					before: null,
+					firstId: componentRows ? 2 : 1,
+					...(componentRows ? { stride: 3 } : null),
+					firstListenerId: null,
+					count: values.length,
+					values,
+				},
+			];
 			expect(commit.batch).toEqual({
 				renderer: LYNX_TRANSPORT_RENDERER,
 				version: 1,
 				commands,
 			});
-			expect(commit).not.toHaveProperty('ack');
+			expect(commit).toMatchObject({ ack: LYNX_COMPACT_ACKNOWLEDGEMENT });
 			main.acknowledge(commit, 'complete', 'adopted');
 			await applying;
 			expect(main.adoptions).toEqual([{ ...commitIdentity(commit), type: 'adoption-ready' }]);

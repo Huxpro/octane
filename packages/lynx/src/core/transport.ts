@@ -17,8 +17,11 @@ import {
 import { LYNX_PROFILE, lynxWireProfile, profileOutboundMessage } from './profiling.js';
 import { producedRunProgram, promoteProducedProgramManifest } from './run-program.js';
 import {
+	acceptLynxTransportFrame,
+	createLynxTransportFrameState,
 	decodeLynxTransportValue,
 	encodeLynxTransportValue,
+	frameLynxTransportValue,
 	type LynxStructuredValue,
 } from './transport-codec.js';
 import { createLynxDeltaShadow, type LynxPreparedDeltaShadow } from './delta-shadow.js';
@@ -237,15 +240,10 @@ function compactFirstTreeProgramBatch(batch: UniversalHostBatch): UniversalHostB
 					return decline('program placement mismatch');
 				}
 				const instance = relative / promotion.stride;
-				if (promotion.stride === promotion.width) {
-					if (instance === 0) {
-						promotion.compactIndices.push(compact.length);
-						compact.push(null);
-					}
-				} else {
-					if (instance !== promotion.compactIndices.length) {
-						return decline('out-of-order program placement');
-					}
+				if (instance !== promotion.rootInserts - 1) {
+					return decline('out-of-order program placement');
+				}
+				if (instance === 0) {
 					promotion.compactIndices.push(compact.length);
 					compact.push(null);
 				}
@@ -264,34 +262,19 @@ function compactFirstTreeProgramBatch(batch: UniversalHostBatch): UniversalHostB
 			promotion.inserts !== instances * promotion.width ||
 			promotion.events !== instances * promotion.eventCount ||
 			promotion.rootInserts !== instances ||
-			promotion.compactIndices.length !== (promotion.stride === promotion.width ? 1 : instances)
+			promotion.compactIndices.length !== 1
 		) {
 			return decline('incomplete program description');
 		}
 		const values = promotion.values ?? promotion.manifest.values;
-		const valueCount = values.length / instances;
-		if (promotion.stride === promotion.width) {
-			const promoted = promoteProducedProgramManifest(promotion.manifest, values);
-			if (promoted === null) return decline('producer program unavailable');
-			compact[promotion.compactIndices[0]!] = promoted.command;
-			continue;
-		}
-		for (let instance = 0; instance < instances; instance++) {
-			const promoted = promoteProducedProgramManifest(
-				promotion.manifest,
-				values.slice(instance * valueCount, (instance + 1) * valueCount),
-				{
-					firstId: promotion.firstId + instance * promotion.stride,
-					firstListenerId:
-						promotion.manifest.firstListenerId === null
-							? null
-							: promotion.manifest.firstListenerId + instance * promotion.eventCount,
-					count: 1,
-				},
-			);
-			if (promoted === null) return decline('producer program unavailable');
-			compact[promotion.compactIndices[instance]!] = promoted.command;
-		}
+		const promoted = promoteProducedProgramManifest(promotion.manifest, values, {
+			firstId: promotion.firstId,
+			...(promotion.stride === promotion.width ? null : { stride: promotion.stride }),
+			firstListenerId: promotion.manifest.firstListenerId,
+			count: instances,
+		});
+		if (promoted === null) return decline('producer program unavailable');
+		compact[promotion.compactIndices[0]!] = promoted.command;
 	}
 	if (LYNX_PROFILE) lynxWireProfile().firstTreeProgramCompactions++;
 	return Object.freeze({
@@ -381,6 +364,7 @@ interface PendingCommit {
 	readonly token: PreparedTokenState;
 	state: 'waiting-ready' | 'sent' | 'acknowledged';
 	compactRequested: boolean;
+	firstTreeProgramCompactRequested: boolean;
 	incrementalCompactRequested: boolean;
 	compactHostCount: number | null;
 	abortRequested: boolean;
@@ -544,6 +528,8 @@ export function createLynxBackgroundTransport(
 	let pageDestroyReceived = false;
 	let pageDestroyHandler: (() => void | Promise<void>) | null = null;
 	let pageDestroyHandlerInvoked = false;
+	let nextFrameSequence = 1;
+	const inboundFrames = createLynxTransportFrameState();
 	const finalizedWorkletBatches = new WeakSet<object>();
 	const deltaShadow = LYNX_PROFILE ? createLynxDeltaShadow() : null;
 
@@ -581,7 +567,10 @@ export function createLynxBackgroundTransport(
 			const startedEncode = performance.now();
 			const encoded = encodeLynxTransportValue(validated, reportEncodingDiagnostic);
 			const startedDispatch = performance.now();
-			context.dispatchEvent({ type: LYNX_BACKGROUND_TO_MAIN_EVENT, data: encoded });
+			const frames = frameLynxTransportValue(encoded, nextFrameSequence++);
+			for (const data of frames) {
+				context.dispatchEvent({ type: LYNX_BACKGROUND_TO_MAIN_EVENT, data });
+			}
 			profile.dispatchMs += performance.now() - startedDispatch;
 			profile.encodeMs += startedDispatch - startedEncode;
 			profile.selfcheckMs += startedEncode - startedSelfCheck;
@@ -589,10 +578,11 @@ export function createLynxBackgroundTransport(
 			return;
 		}
 		const validated = selfCheckLynxBackgroundOutboundMessage(message, producedRunProgram);
-		context.dispatchEvent({
-			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-			data: encodeLynxTransportValue(validated, reportEncodingDiagnostic),
-		});
+		const encoded = encodeLynxTransportValue(validated, reportEncodingDiagnostic);
+		const frames = frameLynxTransportValue(encoded, nextFrameSequence++);
+		for (const data of frames) {
+			context.dispatchEvent({ type: LYNX_BACKGROUND_TO_MAIN_EVENT, data });
+		}
 	};
 
 	const wireError = (value: unknown, fallback: string) => {
@@ -1049,11 +1039,16 @@ export function createLynxBackgroundTransport(
 		try {
 			if (message.encoding === LYNX_COMPACT_ACKNOWLEDGEMENT) {
 				if (
-					!compactAcknowledgements ||
+					(!compactAcknowledgements && !entry.firstTreeProgramCompactRequested) ||
 					!entry.compactRequested ||
 					(previousAccepted !== null && !entry.incrementalCompactRequested)
 				) {
 					throw new Error('Octane Lynx received an unnegotiated compact acknowledgement.');
+				}
+				if (entry.firstTreeProgramCompactRequested !== (message.adoption !== undefined)) {
+					throw new Error(
+						'Octane Lynx compact first-tree acknowledgement has a mismatched adoption verdict.',
+					);
 				}
 				handles = prepareLynxCompactHandleDeltas(
 					container,
@@ -1594,7 +1589,9 @@ export function createLynxBackgroundTransport(
 		// has to happen first or not at all.
 		let data: LynxStructuredValue;
 		try {
-			data = decodeLynxTransportValue(event.data);
+			const framed = acceptLynxTransportFrame(event.data, inboundFrames);
+			if (framed === null) return;
+			data = decodeLynxTransportValue(framed);
 		} catch (error) {
 			if (closedError !== null && terminalDisposeIdentity === null) return;
 			// Nothing in an undecodable payload is safe to reflect on, so unlike a
@@ -1812,6 +1809,7 @@ export function createLynxBackgroundTransport(
 						token,
 						state: 'waiting-ready',
 						compactRequested: false,
+						firstTreeProgramCompactRequested: false,
 						incrementalCompactRequested: false,
 						compactHostCount: null,
 						abortRequested: false,
@@ -1833,11 +1831,20 @@ export function createLynxBackgroundTransport(
 											version: preparedBatch.version,
 											commands: preparedBatch.commands,
 										});
+							const firstTreeProgramCompact =
+								accepted === null &&
+								wireBatch !== preparedBatch &&
+								wireBatch.commands.some((command) => command.op === 'mount-program-run');
 							const count = compactAcknowledgements
 								? countLynxCompactAcknowledgementHosts(preparedBatch, producedRunProgram)
-								: null;
+								: firstTreeProgramCompact
+									? countLynxCompactAcknowledgementHosts(preparedBatch, producedRunProgram, {
+											allowMainThreadState: true,
+										})
+									: null;
 							const compact = count !== null;
 							entry.compactRequested = compact;
+							entry.firstTreeProgramCompactRequested = firstTreeProgramCompact && compact;
 							entry.compactHostCount = count;
 							const incrementalRun =
 								preparedBatch.commands.length === 1 ? preparedBatch.commands[0] : undefined;
