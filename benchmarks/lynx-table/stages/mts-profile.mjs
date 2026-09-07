@@ -348,6 +348,29 @@ async function profileSample(browser, cell) {
 				);
 			}
 		}
+		const backgroundProgramPromotion = (
+			await Promise.all(
+				page.workers().map((worker) =>
+					worker
+						.evaluate(() => {
+							const profile = globalThis.__OCTANE_LYNX_PROF;
+							if (profile === undefined) return null;
+							return {
+								compactions: profile.firstTreeProgramCompactions ?? null,
+								fallback: profile.firstTreeProgramCompactionFallback ?? null,
+							};
+						})
+						.catch(() => null),
+				),
+			)
+		).filter((value) => value !== null);
+		if (backgroundProgramPromotion.length > 1) {
+			throw new Error(`${cell} published more than one background profile.`);
+		}
+		if (adoption.reachable === true) {
+			adoption.programCompactions = backgroundProgramPromotion[0]?.compactions ?? null;
+			adoption.programCompactionFallback = backgroundProgramPromotion[0]?.fallback ?? null;
+		}
 
 		// Read out of the main-thread realm's own document rather than recovered
 		// from the page's blob traffic.
@@ -601,6 +624,16 @@ for (const id of cellIds) {
 				programNodeComparisons: facts.every((one) => Number.isFinite(one.programNodeComparisons))
 					? stats(facts.map((one) => one.programNodeComparisons))
 					: null,
+				programCompactions: facts.every((one) => Number.isFinite(one.programCompactions))
+					? stats(facts.map((one) => one.programCompactions))
+					: null,
+				programCompactionFallbacks: [
+					...new Set(
+						facts
+							.map((one) => one.programCompactionFallback)
+							.filter((reason) => typeof reason === 'string'),
+					),
+				],
 				...attributeWindow(
 					`${id} (adoption)`,
 					samples[id].map((sample) => sample.adoption),
@@ -778,6 +811,7 @@ if (adoptionCells.length > 0) {
 		rowFor('hand-over', (cell) => cell?.handOverMs, adoptionOf),
 		rowFor('program manifest runs', (cell) => cell?.programManifestRuns, adoptionOf),
 		rowFor('program manifest matches', (cell) => cell?.programManifestMatches, adoptionOf),
+		rowFor('background program compactions', (cell) => cell?.programCompactions, adoptionOf),
 		rowFor('legacy program-node comparisons', (cell) => cell?.programNodeComparisons, adoptionOf),
 		rowFor('paint → settled', (cell) => cell?.waitedMs, adoptionOf),
 		'',

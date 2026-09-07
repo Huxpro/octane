@@ -6021,7 +6021,6 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 interface LynxProgramAdoptionComparison<Node extends LynxElementRef> {
 	readonly mismatch: LynxFirstTreeMismatchError | null;
 	readonly compactRuns: ReadonlySet<LynxProgramRun<Node>> | null;
-	readonly compactNodeCount: number;
 }
 
 function compareProgramAdoptionRuns<Node extends LynxElementRef>(
@@ -6032,9 +6031,8 @@ function compareProgramAdoptionRuns<Node extends LynxElementRef>(
 	const failed = (error: LynxFirstTreeMismatchError): LynxProgramAdoptionComparison<Node> => ({
 		mismatch: error,
 		compactRuns: null,
-		compactNodeCount: 0,
 	});
-	if (runs.length === 0) return { mismatch: null, compactRuns: null, compactNodeCount: 0 };
+	if (runs.length === 0) return { mismatch: null, compactRuns: null };
 	// A transparent keyed/component range can take IDs between two compiled
 	// instances without making a host. The main painter therefore retains one
 	// dense run with that actual stride while the background quite correctly
@@ -6200,9 +6198,7 @@ function compareProgramAdoptionRuns<Node extends LynxElementRef>(
 		// host records one by one proves nothing additional.
 		if (seen[index] === 2) (compactRuns ??= new Set()).add(run);
 	}
-	let compactNodeCount = 0;
-	if (compactRuns !== null) for (const run of compactRuns) compactNodeCount += run.owned;
-	return { mismatch: null, compactRuns, compactNodeCount };
+	return { mismatch: null, compactRuns };
 }
 
 function compareFirstTree<Node extends LynxElementRef>(
@@ -6381,10 +6377,28 @@ function compareFirstTree<Node extends LynxElementRef>(
 	// built per node here or at capture; what this allocates is one cursor.
 	const programNodes = lynxFirstTreeProgramIndex(firstTree);
 	const comparedIds =
-		programComparison.compactNodeCount !== 0 &&
-		programComparison.compactNodeCount === journal.programNodeCount
-			? [...snapshot.nodes.map((node) => node.id), ...journal.logicalNodes.keys()]
-			: [...finalIds];
+		programComparison.compactRuns === null
+			? [...finalIds]
+			: [...snapshot.nodes.map((node) => node.id), ...journal.logicalNodes.keys()];
+	if (programComparison.compactRuns !== null) {
+		// The compact proof covers only the runs it names. Append the few legacy
+		// program IDs directly from their existing journals instead of falling back
+		// to every final ID merely because a small unaddressed shell program shares
+		// the page with a compact keyed range.
+		for (const run of journal.programRuns) {
+			if (programComparison.compactRuns.has(run)) continue;
+			if (run.count === 1) {
+				for (const id of run.ids) comparedIds.push(id);
+				for (const id of run.rangeIds) if (id !== undefined) comparedIds.push(id);
+				continue;
+			}
+			const width = run.plan.nodes + run.plan.ranges.length;
+			for (let instance = 0; instance < run.count; instance++) {
+				const firstId = run.firstId + instance * run.stride;
+				for (let offset = 0; offset < width; offset++) comparedIds.push(firstId + offset);
+			}
+		}
+	}
 	comparedIds.sort((first, second) => first - second);
 	for (const id of comparedIds) {
 		// Narrowed once and then asked twice: which run could own this ID, then

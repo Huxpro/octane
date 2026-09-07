@@ -9,6 +9,7 @@ import {
 	createUniversalRoot,
 	defineUniversalComponent,
 	recordUniversalProgramCommand,
+	universalComponent,
 	universalKey,
 	universalList,
 	universalPlan,
@@ -3507,104 +3508,134 @@ describe('@octanejs/lynx transported protocol', () => {
 		expect(container.getPublicHandle(1)).toBe(shell);
 	});
 
-	it('promotes a first-tree program manifest into the compact addressed run', async () => {
-		const context = new FakeContextProxy();
-		const program = {
-			nodes: [
-				{ type: 'view', parent: -1, props: {} },
+	it.each([
+		{ label: 'contiguous', componentRows: false },
+		{ label: 'component-strided', componentRows: true },
+	])(
+		'promotes a $label first-tree program manifest into compact addressed runs',
+		async ({ componentRows }) => {
+			const context = new FakeContextProxy();
+			const program = {
+				nodes: [
+					{ type: 'view', parent: -1, props: {} },
+					{
+						type: 'text',
+						parent: 0,
+						props: {},
+						bindings: [{ name: 'value', valueIndex: 0 }],
+					},
+				],
+				events: [],
+			} as const;
+			const main = installMainHarness(
+				context,
+				true,
 				{
-					type: 'text',
-					parent: 0,
-					props: {},
-					bindings: [{ name: 'value', valueIndex: 0 }],
+					compactAck: 1,
+					templateMount: 1,
+					templateProgram: 1,
+					templateRuns: 1,
+					addressedProgramRuns: 1,
+					firstTreeProgramManifests: 1,
 				},
-			],
-			events: [],
-		} as const;
-		const main = installMainHarness(
-			context,
-			true,
-			{
-				compactAck: 1,
-				templateMount: 1,
-				templateProgram: 1,
-				templateRuns: 1,
-				addressedProgramRuns: 1,
-				firstTreeProgramManifests: 1,
-			},
-			true,
-			(command) =>
-				command.address.module === 'tests/first-tree-manifest.tsrx' && command.address.index === 0
-					? program
-					: undefined,
-		);
-		const container = createLynxClientContainer();
-		const transport = createLynxBackgroundTransport(context, container);
-		const driver = createLynxClientDriver(container);
-		expect(driver.capabilities?.programManifests).toBe(true);
-		const root = createUniversalRoot(container, driver, { transport });
-		transport.bindRoot(root);
-		const rowPlan = universalPlan(
-			LYNX_TRANSPORT_RENDERER,
-			{
-				kind: 'host',
-				type: 'view',
-				children: [{ kind: 'host', type: 'text', bindings: [['value', 0]] }],
-			},
-			{ module: 'tests/first-tree-manifest.tsrx', index: 0, digest: 'manifest-digest' },
-		);
-		const Scene = defineUniversalComponent(
-			LYNX_TRANSPORT_RENDERER,
-			(props: { values: readonly string[] }) =>
-				universalList(props.values, (value) =>
-					universalKey(value, universalValue(rowPlan, [value])),
-				),
-		);
-
-		const values = Array.from({ length: 8 }, (_, index) => `row-${index}`);
-		const applying = root.renderAsync(Scene, { values });
-		await flushMicrotasks();
-
-		expect(main.commits).toHaveLength(1);
-		const commit = main.commits[0]!;
-		expect(commit.batch).toEqual({
-			renderer: LYNX_TRANSPORT_RENDERER,
-			version: 1,
-			commands: [
+				true,
+				(command) =>
+					command.address.module === 'tests/first-tree-manifest.tsrx' && command.address.index === 0
+						? program
+						: undefined,
+			);
+			const container = createLynxClientContainer();
+			const transport = createLynxBackgroundTransport(context, container);
+			const driver = createLynxClientDriver(container);
+			expect(driver.capabilities?.programManifests).toBe(true);
+			const root = createUniversalRoot(container, driver, { transport });
+			transport.bindRoot(root);
+			const rowPlan = universalPlan(
+				LYNX_TRANSPORT_RENDERER,
 				{
-					op: 'mount-program-run',
-					address: { module: 'tests/first-tree-manifest.tsrx', index: 0 },
-					parent: null,
-					before: null,
-					firstId: 1,
-					firstListenerId: null,
-					count: values.length,
-					values,
+					kind: 'host',
+					type: 'view',
+					children: [{ kind: 'host', type: 'text', bindings: [['value', 0]] }],
 				},
-			],
-		});
-		expect(commit).toMatchObject({ ack: LYNX_COMPACT_ACKNOWLEDGEMENT });
-		context.sendToBackground({
-			...commitIdentity(commit),
-			type: 'ack',
-			encoding: LYNX_COMPACT_ACKNOWLEDGEMENT,
-			count: values.length * program.nodes.length,
-			adoption: 'adopted',
-		});
-		context.sendToBackground({ ...commitIdentity(commit), type: 'complete' });
-		await applying;
-		expect(main.adoptions).toEqual([{ ...commitIdentity(commit), type: 'adoption-ready' }]);
-		expect(driver.capabilities?.programManifests).toBe(false);
+				{ module: 'tests/first-tree-manifest.tsrx', index: 0, digest: 'manifest-digest' },
+			);
+			const Row = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, (props: { value: string }) =>
+				universalValue(rowPlan, [props.value]),
+			);
+			const Scene = defineUniversalComponent(
+				LYNX_TRANSPORT_RENDERER,
+				(props: { values: readonly string[] }) =>
+					universalList(props.values, (value) =>
+						universalKey(
+							value,
+							componentRows
+								? universalComponent(
+										LYNX_TRANSPORT_RENDERER,
+										Row,
+										universalProps([['set', 'value', value]]),
+									)
+								: universalValue(rowPlan, [value]),
+						),
+					),
+			);
 
-		const updating = root.renderAsync(Scene, { values: [...values, 'row-8'] });
-		await flushMicrotasks();
-		expect(main.commits).toHaveLength(2);
-		const update = main.commits[1]!;
-		expect(update.batch.programs).toBeUndefined();
-		main.acknowledge(update, 'complete');
-		await updating;
-		transport.close();
-	});
+			const values = Array.from({ length: 8 }, (_, index) => `row-${index}`);
+			const applying = root.renderAsync(Scene, { values });
+			await flushMicrotasks();
+
+			expect(main.commits).toHaveLength(1);
+			const commit = main.commits[0]!;
+			const commands = componentRows
+				? values.map((value, index) => ({
+						op: 'mount-program-run' as const,
+						address: { module: 'tests/first-tree-manifest.tsrx', index: 0 },
+						parent: null,
+						before: null,
+						firstId: 2 + index * 3,
+						firstListenerId: null,
+						count: 1,
+						values: [value],
+					}))
+				: [
+						{
+							op: 'mount-program-run' as const,
+							address: { module: 'tests/first-tree-manifest.tsrx', index: 0 },
+							parent: null,
+							before: null,
+							firstId: 1,
+							firstListenerId: null,
+							count: values.length,
+							values,
+						},
+					];
+			expect(commit.batch).toEqual({
+				renderer: LYNX_TRANSPORT_RENDERER,
+				version: 1,
+				commands,
+			});
+			expect(commit).toMatchObject({ ack: LYNX_COMPACT_ACKNOWLEDGEMENT });
+			context.sendToBackground({
+				...commitIdentity(commit),
+				type: 'ack',
+				encoding: LYNX_COMPACT_ACKNOWLEDGEMENT,
+				count: values.length * program.nodes.length,
+				adoption: 'adopted',
+			});
+			context.sendToBackground({ ...commitIdentity(commit), type: 'complete' });
+			await applying;
+			expect(main.adoptions).toEqual([{ ...commitIdentity(commit), type: 'adoption-ready' }]);
+			expect(driver.capabilities?.programManifests).toBe(false);
+
+			const updating = root.renderAsync(Scene, { values: [...values, 'row-8'] });
+			await flushMicrotasks();
+			expect(main.commits).toHaveLength(2);
+			const update = main.commits[1]!;
+			expect(update.batch.programs).toBeUndefined();
+			main.acknowledge(update, 'complete');
+			await updating;
+			transport.close();
+		},
+	);
 
 	it('keeps the complete first-tree description when a program owns main-thread state', async () => {
 		const context = new FakeContextProxy();

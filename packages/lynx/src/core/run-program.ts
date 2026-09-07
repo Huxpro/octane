@@ -61,6 +61,11 @@ export function producedRunProgram(
 export function promoteProducedProgramManifest(
 	manifest: UniversalHostProgramManifest,
 	values: readonly UniversalHostTemplateProgramValue[] = manifest.values,
+	run: {
+		readonly firstId: number;
+		readonly firstListenerId: number | null;
+		readonly count: number;
+	} = manifest,
 ): {
 	readonly command: Extract<UniversalHostCommand, { readonly op: 'mount-program-run' }>;
 	readonly program: UniversalHostTemplateProgram;
@@ -72,9 +77,9 @@ export function promoteProducedProgramManifest(
 		parent: manifest.parent,
 		before: manifest.before,
 		address: manifest.address,
-		firstId: manifest.firstId,
-		firstListenerId: manifest.firstListenerId,
-		count: manifest.count,
+		firstId: run.firstId,
+		firstListenerId: run.firstListenerId,
+		count: run.count,
 		values,
 	});
 	recordUniversalProgramCommand(command, program);

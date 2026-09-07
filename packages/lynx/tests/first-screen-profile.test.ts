@@ -114,6 +114,8 @@ function install(configurePAPI?: (target: Record<string, unknown>) => void): {
 	profile.firstTreeProgramManifestRuns = 0;
 	profile.firstTreeProgramManifestMatches = 0;
 	profile.firstTreeProgramNodeComparisons = 0;
+	profile.firstTreeProgramCompactions = 0;
+	profile.firstTreeProgramCompactionFallback = null;
 	profile.handOverMs = 0;
 	return { profile, dom, main };
 }
@@ -124,6 +126,13 @@ const Host = defineFirstScreenComponent('lynx', (props: { readonly id: string })
 );
 const ProgramHost = defineFirstScreenComponent('lynx', (props: { readonly id: string }) =>
 	firstScreenValue(addressedProgramPlan, [props.id]),
+);
+const ProgramPair = defineFirstScreenComponent(
+	'lynx',
+	(props: { readonly compact: string; readonly expanded: string }) => [
+		firstScreenValue(addressedProgramPlan, [props.compact]),
+		firstScreenValue(addressedProgramPlan, [props.expanded]),
+	],
 );
 
 const compactAckHostCount = 16;
@@ -366,6 +375,45 @@ describe.sequential('Lynx first-tree lifecycle marker', () => {
 		expect(profile.firstTreeAction).toBe('adopt');
 		expect(profile.firstTreeProgramManifestMatches).toBe(1);
 		expect(profile.firstTreeProgramNodeComparisons).toBe(0);
+	});
+
+	it('revisits only an expanded sibling when a compact and legacy program share the page', () => {
+		const { profile, main } = install();
+		firstScreenRoot.render(ProgramPair, { compact: 'compact-program', expanded: 'legacy-program' });
+		main.markFirstScreenSyncReady();
+		backgroundContext().dispatchEvent({
+			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
+			data: wire({
+				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
+				renderer: LYNX_TRANSPORT_RENDERER,
+				type: 'main-ready-request',
+				request: LYNX_FIRST_TREE_PROGRAM_MANIFEST_READY_REQUEST_BASE,
+			}),
+		});
+
+		commit({
+			renderer: LYNX_TRANSPORT_RENDERER,
+			version: 1,
+			commands: [
+				{
+					op: 'mount-program-run',
+					parent: null,
+					before: null,
+					address: { module: addressedProgram.module, index: addressedProgram.index },
+					firstId: 1,
+					firstListenerId: null,
+					count: 1,
+					values: ['compact-program'],
+				},
+				{ op: 'create', id: 2, type: 'view', props: { id: 'legacy-program' } },
+				{ op: 'insert', parent: null, id: 2, before: null },
+			],
+		});
+
+		expect(main.diagnostics()).toEqual([]);
+		expect(profile.firstTreeAction).toBe('adopt');
+		expect(profile.firstTreeProgramManifestMatches).toBe(1);
+		expect(profile.firstTreeProgramNodeComparisons).toBe(1);
 	});
 
 	it('returns one compact acknowledgement for an adopted addressed program', () => {

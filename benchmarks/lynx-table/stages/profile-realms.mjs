@@ -35,7 +35,9 @@ function resetProfile() {
 	}
 	const profile = globalThis.__OCTANE_LYNX_PROF;
 	if (profile === undefined) return;
-	for (const key of Object.keys(profile)) profile[key] = 0;
+	for (const key of Object.keys(profile)) {
+		profile[key] = typeof profile[key] === 'number' ? 0 : null;
+	}
 }
 
 export async function realmSnapshots(page) {

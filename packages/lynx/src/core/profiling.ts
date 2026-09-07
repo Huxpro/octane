@@ -134,6 +134,10 @@ export interface LynxWireProfile {
 	firstTreeProgramManifestMatches: number;
 	/** Main: program-painted hosts that still reached the legacy per-host comparator. */
 	firstTreeProgramNodeComparisons: number;
+	/** Background: first-tree manifest batches promoted to addressed runs. */
+	firstTreeProgramCompactions: number;
+	/** Background: why a manifest batch retained its complete host description. */
+	firstTreeProgramCompactionFallback: string | null;
 	/**
 	 * Main: hand-over time — draining the events the adoption gated, releasing
 	 * the first-screen journal, and reopening background calls. The counterpart
@@ -195,6 +199,8 @@ export function lynxWireProfile(): LynxWireProfile {
 		firstTreeProgramManifestRuns: 0,
 		firstTreeProgramManifestMatches: 0,
 		firstTreeProgramNodeComparisons: 0,
+		firstTreeProgramCompactions: 0,
+		firstTreeProgramCompactionFallback: null,
 		handOverMs: 0,
 		destroyRunExpandMs: 0,
 		denseValidateMs: 0,

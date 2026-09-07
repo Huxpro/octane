@@ -98,10 +98,11 @@ interface FirstTreeProgramPromotion {
 	readonly firstId: number;
 	readonly lastId: number;
 	readonly width: number;
+	readonly stride: number;
 	readonly eventCount: number;
 	readonly hasMainThreadBindings: boolean;
 	values: UniversalHostTemplateProgramValue[] | null;
-	compactIndex: number;
+	readonly compactIndices: number[];
 	creates: number;
 	events: number;
 	inserts: number;
@@ -121,18 +122,21 @@ interface FirstTreeProgramPromotion {
 function compactFirstTreeProgramBatch(batch: UniversalHostBatch): UniversalHostBatch {
 	const manifests = batch.programs;
 	if (manifests === undefined || manifests.length === 0) return batch;
+	const decline = (reason: string): UniversalHostBatch => {
+		if (LYNX_PROFILE) lynxWireProfile().firstTreeProgramCompactionFallback = reason;
+		return batch;
+	};
 	const promotions: FirstTreeProgramPromotion[] = [];
 	for (const manifest of manifests) {
 		const program = producedRunProgram(manifest);
-		if (program === undefined) return batch;
+		if (program === undefined) return decline('producer program unavailable');
 		const width = program.nodes.length;
-		if (width === 0 || manifest.before !== null || manifest.stride !== width) {
-			return batch;
-		}
+		if (width === 0) return decline('empty program layout');
+		if (manifest.before !== null) return decline('program layout has a before sibling');
 		let mainThreadSlots: Set<number> | null = null;
 		for (const node of program.nodes) {
 			for (const name of Object.keys(node.props)) {
-				if (name.startsWith('main-thread:')) return batch;
+				if (name.startsWith('main-thread:')) return decline('static main-thread state');
 			}
 			for (const binding of node.bindings ?? []) {
 				if (!binding.name.startsWith('main-thread:')) continue;
@@ -140,25 +144,28 @@ function compactFirstTreeProgramBatch(batch: UniversalHostBatch): UniversalHostB
 					binding.name === 'main-thread:ref' ||
 					mainThreadSlots?.has(binding.valueIndex) === true
 				) {
-					return batch;
+					return decline('ambiguous main-thread state');
 				}
 				(mainThreadSlots ??= new Set()).add(binding.valueIndex);
 			}
 		}
-		const lastId = manifest.firstId + manifest.count * width - 1;
-		if (!Number.isSafeInteger(lastId)) return batch;
+		const lastId = manifest.firstId + (manifest.count - 1) * manifest.stride + width - 1;
+		if (!Number.isSafeInteger(lastId)) return decline('host range overflow');
 		const previous = promotions[promotions.length - 1];
-		if (previous !== undefined && manifest.firstId <= previous.lastId) return batch;
+		if (previous !== undefined && manifest.firstId <= previous.lastId) {
+			return decline('overlapping program ranges');
+		}
 		promotions.push({
 			manifest,
 			program,
 			firstId: manifest.firstId,
 			lastId,
 			width,
+			stride: manifest.stride,
 			eventCount: program.events.length,
 			hasMainThreadBindings: mainThreadSlots !== null,
 			values: null,
-			compactIndex: -1,
+			compactIndices: [],
 			creates: 0,
 			events: 0,
 			inserts: 0,
@@ -173,7 +180,10 @@ function compactFirstTreeProgramBatch(batch: UniversalHostBatch): UniversalHostB
 			const candidate = promotions[middle]!;
 			if (id < candidate.firstId) high = middle - 1;
 			else if (id > candidate.lastId) low = middle + 1;
-			else return candidate;
+			else {
+				const within = id - candidate.firstId;
+				return within % candidate.stride < candidate.width ? candidate : undefined;
+			}
 		}
 		return undefined;
 	};
@@ -183,7 +193,9 @@ function compactFirstTreeProgramBatch(batch: UniversalHostBatch): UniversalHostB
 		if ('id' in command) promotion = promotionFor(command.id);
 		else if ('firstId' in command) promotion = promotionFor(command.firstId);
 		else if (command.op === 'mount-template') {
-			if (command.nodes.some((node) => promotionFor(node.id) !== undefined)) return batch;
+			if (command.nodes.some((node) => promotionFor(node.id) !== undefined)) {
+				return decline('overlapping template command');
+			}
 		}
 		if (promotion === undefined) {
 			compact.push(command);
@@ -192,14 +204,16 @@ function compactFirstTreeProgramBatch(batch: UniversalHostBatch): UniversalHostB
 		if (command.op === 'create') {
 			promotion.creates++;
 			const relative = command.id - promotion.firstId;
-			const descriptor = promotion.program.nodes[relative % promotion.width]!;
-			if (command.type !== descriptor.type) return batch;
+			const instance = Math.floor(relative / promotion.stride);
+			const descriptor = promotion.program.nodes[relative % promotion.stride]!;
+			if (command.type !== descriptor.type) return decline('host type mismatch');
 			if (promotion.hasMainThreadBindings) {
-				const instance = Math.floor(relative / promotion.width);
 				const valueCount = promotion.manifest.values.length / promotion.manifest.count;
 				for (const binding of descriptor.bindings ?? []) {
 					if (!binding.name.startsWith('main-thread:')) continue;
-					if (!Object.prototype.hasOwnProperty.call(command.props, binding.name)) return batch;
+					if (!Object.prototype.hasOwnProperty.call(command.props, binding.name)) {
+						return decline('main-thread value unavailable');
+					}
 					(promotion.values ??= [...promotion.manifest.values])[
 						instance * valueCount + binding.valueIndex
 					] = command.props[binding.name] as UniversalHostTemplateProgramValue;
@@ -214,17 +228,25 @@ function compactFirstTreeProgramBatch(batch: UniversalHostBatch): UniversalHostB
 		if (command.op === 'insert') {
 			promotion.inserts++;
 			const relative = command.id - promotion.firstId;
-			if (relative % promotion.width === 0) {
+			if (relative % promotion.stride === 0) {
 				promotion.rootInserts++;
 				if (
 					command.parent !== promotion.manifest.parent ||
 					command.before !== promotion.manifest.before
 				) {
-					return batch;
+					return decline('program placement mismatch');
 				}
-				if (relative === 0) {
-					if (promotion.compactIndex !== -1) return batch;
-					promotion.compactIndex = compact.length;
+				const instance = relative / promotion.stride;
+				if (promotion.stride === promotion.width) {
+					if (instance === 0) {
+						promotion.compactIndices.push(compact.length);
+						compact.push(null);
+					}
+				} else {
+					if (instance !== promotion.compactIndices.length) {
+						return decline('out-of-order program placement');
+					}
+					promotion.compactIndices.push(compact.length);
 					compact.push(null);
 				}
 			}
@@ -233,7 +255,7 @@ function compactFirstTreeProgramBatch(batch: UniversalHostBatch): UniversalHostB
 		// Public-instance, lifecycle, visibility, mutation, teardown, and an
 		// already-compact overlapping command all need ordering or state the
 		// manifest does not certify. Keep the complete legacy batch for them.
-		return batch;
+		return decline('overlapping stateful command');
 	}
 	for (const promotion of promotions) {
 		const instances = promotion.manifest.count;
@@ -242,17 +264,36 @@ function compactFirstTreeProgramBatch(batch: UniversalHostBatch): UniversalHostB
 			promotion.inserts !== instances * promotion.width ||
 			promotion.events !== instances * promotion.eventCount ||
 			promotion.rootInserts !== instances ||
-			promotion.compactIndex === -1
+			promotion.compactIndices.length !== (promotion.stride === promotion.width ? 1 : instances)
 		) {
-			return batch;
+			return decline('incomplete program description');
 		}
-		const promoted = promoteProducedProgramManifest(
-			promotion.manifest,
-			promotion.values ?? promotion.manifest.values,
-		);
-		if (promoted === null) return batch;
-		compact[promotion.compactIndex] = promoted.command;
+		const values = promotion.values ?? promotion.manifest.values;
+		const valueCount = values.length / instances;
+		if (promotion.stride === promotion.width) {
+			const promoted = promoteProducedProgramManifest(promotion.manifest, values);
+			if (promoted === null) return decline('producer program unavailable');
+			compact[promotion.compactIndices[0]!] = promoted.command;
+			continue;
+		}
+		for (let instance = 0; instance < instances; instance++) {
+			const promoted = promoteProducedProgramManifest(
+				promotion.manifest,
+				values.slice(instance * valueCount, (instance + 1) * valueCount),
+				{
+					firstId: promotion.firstId + instance * promotion.stride,
+					firstListenerId:
+						promotion.manifest.firstListenerId === null
+							? null
+							: promotion.manifest.firstListenerId + instance * promotion.eventCount,
+					count: 1,
+				},
+			);
+			if (promoted === null) return decline('producer program unavailable');
+			compact[promotion.compactIndices[instance]!] = promoted.command;
+		}
 	}
+	if (LYNX_PROFILE) lynxWireProfile().firstTreeProgramCompactions++;
 	return Object.freeze({
 		renderer: batch.renderer,
 		version: batch.version,
