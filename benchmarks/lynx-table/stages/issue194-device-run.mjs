@@ -164,7 +164,7 @@ function parseLog(log) {
 		}
 		if (line.includes('__ISSUE194_FIRST_SCREEN__')) {
 			const value = jsonAfterMarker(line, '__ISSUE194_FIRST_SCREEN__');
-			if (value !== null) firstScreen.push(value);
+			if (value !== null) firstScreen.push({ ...value, observedAtMs: epoch(line) });
 		}
 		if (line.includes('__ISSUE194_DIRECT_RESULT__')) {
 			const value = jsonAfterMarker(line, '__ISSUE194_DIRECT_RESULT__');

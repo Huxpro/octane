@@ -451,6 +451,54 @@ function requireFunction<
 		updateRepo('packages/lynx/src/main-thread.ts', (source, file) => {
 			let next = replaceOnce(
 				source,
+				`\tconst reported: Error[] = [];
+`,
+				`\tconst reported: Error[] = [];
+\tconst issue277FirstScreenTimeline: {
+\t\tscheduledAtMs: number | null;
+\t\tcaptureAtMs: number | null;
+\t\tannounceAtMs: number | null;
+\t} = { scheduledAtMs: null, captureAtMs: null, announceAtMs: null };
+`,
+				file,
+			);
+			next = replaceOnce(
+				next,
+				`\tconst captureFirstScreen = (source: LynxHostContainer<Node>): boolean => {
+\t\tmarkFirstScreenPhase('capture');
+`,
+				`\tconst captureFirstScreen = (source: LynxHostContainer<Node>): boolean => {
+\t\tissue277FirstScreenTimeline.captureAtMs = Date.now();
+\t\tmarkFirstScreenPhase('capture');
+`,
+				file,
+			);
+			next = replaceOnce(
+				next,
+				`\t\tmarkFirstScreenPhase('announce');
+\t\tannounceReady();
+`,
+				`\t\tmarkFirstScreenPhase('announce');
+\t\tissue277FirstScreenTimeline.announceAtMs = Date.now();
+\t\tannounceReady();
+`,
+				file,
+			);
+			next = replaceOnce(
+				next,
+				`\t\t\t\tpendingFirstScreenCapture = () => captureFirstScreenAfterPaint(painted);
+\t\t\t\ttry {
+\t\t\t\t\tfirstScreenCaptureScheduler(ensureFirstScreenCaptured);
+`,
+				`\t\t\t\tpendingFirstScreenCapture = () => captureFirstScreenAfterPaint(painted);
+\t\t\t\ttry {
+\t\t\t\t\tissue277FirstScreenTimeline.scheduledAtMs = Date.now();
+\t\t\t\t\tfirstScreenCaptureScheduler(ensureFirstScreenCaptured);
+`,
+				file,
+			);
+			next = replaceOnce(
+				next,
 				`\tconst dispatch = (message: LynxBackgroundInboundMessage): void => {
 \t\tconst validated = selfCheckLynxBackgroundInboundMessage(message);
 \t\tcontext.dispatchEvent({
@@ -578,6 +626,7 @@ function requireFunction<
 \t\t\tcalls: JSON.parse(JSON.stringify((globalThis as any).__ISSUE194_PAPI__ ?? {})),
 \t\t\tprofile: JSON.parse(JSON.stringify(lynxWireProfile())),
 \t\t\tprogram: JSON.parse(JSON.stringify((globalThis as any).__ISSUE194_PROGRAM__ ?? {})),
+\t\t\tissue277: { ...issue277FirstScreenTimeline },
 \t\t};
 \t\tif (request !== LYNX_READY_ANNOUNCEMENT_REQUEST && !correlatedReadySent) {
 `,
