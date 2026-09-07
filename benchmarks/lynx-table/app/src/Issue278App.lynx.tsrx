@@ -22,6 +22,7 @@ const INITIAL_ROWS: RowData[] =
 // and production builds fold this branch away with their existing define.
 declare const __OCTANE_LYNX_PROFILE__: boolean;
 declare const __BENCH_ISSUE278_ATTRIBUTION__: boolean;
+declare const __BENCH_ISSUE278_TIMELINE__: boolean;
 function countRowRender(): void {
 	if (!__OCTANE_LYNX_PROFILE__) return;
 	const profile = globalThis as { __BENCH_ROW_RENDERS__?: number };
@@ -400,10 +401,11 @@ export function App() @{
 				wire === undefined ? [] : wire.slice();
 			const postState = snapshot();
 			target.__ISSUE278_PROGRESS__ = 'read-main-profile';
-			const mts = __OCTANE_LYNX_PROFILE__
-				? await runOnMainThread(readMainProfile)()
-				: { atMs: null, profile: null, codecProfile: null, timeline: null };
-			if (__OCTANE_LYNX_PROFILE__ && mts === null) {
+			const mts =
+				__OCTANE_LYNX_PROFILE__ || __BENCH_ISSUE278_TIMELINE__
+					? await runOnMainThread(readMainProfile)()
+					: { atMs: null, profile: null, codecProfile: null, timeline: null };
+			if ((__OCTANE_LYNX_PROFILE__ || __BENCH_ISSUE278_TIMELINE__) && mts === null) {
 				throw new Error('issue #278 main-thread commit snapshot is unavailable.');
 			}
 			const result = {

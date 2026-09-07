@@ -78,9 +78,10 @@ function instrumentIssue278StageConfig(stage) {
 const attribution = true;
 const attributionCounts = process.env.BENCH_ISSUE278_COUNTS === '1';
 const attributionScalar = process.env.BENCH_ISSUE278_SCALAR === '1';
+const attributionTimeline = process.env.BENCH_ISSUE278_TIMELINE === '1';
 const attributionValidation = process.env.BENCH_ISSUE278_VALIDATION ?? 'checked';
 const attributionSuffix = \`-issue278-\${attributionValidation}-\${
-	profile ? (attributionCounts ? 'counts' : 'timed') : 'control'
+	profile ? (attributionCounts ? 'counts' : 'timed') : attributionTimeline ? 'timeline' : 'control'
 }\${attributionScalar ? '-scalar' : ''}\`;
 `,
 		file,
@@ -104,6 +105,7 @@ const attributionSuffix = \`-issue278-\${attributionValidation}-\${
 				__BENCH_ISSUE278_ATTRIBUTION__: 'true',
 				__BENCH_ISSUE278_COUNTS__: JSON.stringify(attributionCounts),
 				__BENCH_ISSUE278_SCALAR__: JSON.stringify(attributionScalar),
+				__BENCH_ISSUE278_TIMELINE__: JSON.stringify(attributionTimeline),
 				__BENCH_ISSUE278_VALIDATION__: JSON.stringify(attributionValidation),
 				performance: '({ now: Date.now, timeOrigin: 0 })',
 `,
@@ -126,12 +128,16 @@ export function buildTableApp({
 	const issue278Attribution = process.env.BENCH_ISSUE278_ATTRIBUTION === '1';
 	const issue278Counts = process.env.BENCH_ISSUE278_COUNTS === '1';
 	const issue278Scalar = process.env.BENCH_ISSUE278_SCALAR === '1';
+	const issue278Timeline = process.env.BENCH_ISSUE278_TIMELINE === '1';
 	const issue278Validation = process.env.BENCH_ISSUE278_VALIDATION ?? 'checked';
 	if (issue278Counts && !profile) {
 		throw new Error('BENCH_ISSUE278_COUNTS requires OCTANE_LYNX_PROFILE=1.');
 	}
-	if ((issue278Counts || issue278Scalar) && !issue278Attribution) {
-		throw new Error('issue #278 count/scalar modes require BENCH_ISSUE278_ATTRIBUTION=1.');
+	if (issue278Timeline && profile) {
+		throw new Error('BENCH_ISSUE278_TIMELINE is the profile-disabled timeline control.');
+	}
+	if ((issue278Counts || issue278Scalar || issue278Timeline) && !issue278Attribution) {
+		throw new Error('issue #278 count/scalar/timeline modes require BENCH_ISSUE278_ATTRIBUTION=1.');
 	}
 	if (issue278Validation !== 'checked' && issue278Validation !== 'trusted') {
 		throw new TypeError('BENCH_ISSUE278_VALIDATION must be checked or trusted.');
@@ -262,7 +268,9 @@ export function buildTableApp({
 	let restoreIssue278 = () => {};
 	try {
 		if (issue278Attribution) {
-			restoreIssue278 = instrumentIssue278NativeSources(repo, { codec: profile });
+			restoreIssue278 = instrumentIssue278NativeSources(repo, {
+				codec: profile || issue278Timeline,
+			});
 		}
 		if (issue194Native) {
 			restoreIssue194 = instrumentIssue194NativeSources(repo, stage, {
@@ -327,7 +335,7 @@ export function buildTableApp({
 		distTag +
 		(autoRows > 0 ? `-rows${autoRows}` : '') +
 		(issue278Attribution
-			? `-issue278-${issue278Validation}-${profile ? (issue278Counts ? 'counts' : 'timed') : 'control'}${issue278Scalar ? '-scalar' : ''}`
+			? `-issue278-${issue278Validation}-${profile ? (issue278Counts ? 'counts' : 'timed') : issue278Timeline ? 'timeline' : 'control'}${issue278Scalar ? '-scalar' : ''}`
 			: '') +
 		(profile ? '-profile' : '');
 	const from = path.join(stage, `dist${suffix}`);

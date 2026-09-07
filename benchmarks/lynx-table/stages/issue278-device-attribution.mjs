@@ -58,6 +58,7 @@ if (!Number.isSafeInteger(expiredAt) || expiredAt <= Date.now()) {
 
 const bundleFiles = Object.freeze({
 	controlChecked: path.resolve(arg('--control-checked-bundle')),
+	timelineChecked: path.resolve(arg('--timeline-checked-bundle')),
 	timedChecked: path.resolve(arg('--timed-checked-bundle')),
 	timedTrusted: path.resolve(arg('--timed-trusted-bundle')),
 	countsChecked: path.resolve(arg('--counts-checked-bundle')),
@@ -70,8 +71,10 @@ const bundles = Object.fromEntries(
 		return [name, { file, bytes, sha256: sha256(bytes) }];
 	}),
 );
-if (new Set(Object.values(bundles).map((bundle) => bundle.sha256)).size !== 5) {
-	throw new Error('issue #278 requires five distinct control/profile/count/scalar bundles.');
+if (new Set(Object.values(bundles).map((bundle) => bundle.sha256)).size !== 6) {
+	throw new Error(
+		'issue #278 requires six distinct control/timeline/profile/count/scalar bundles.',
+	);
 }
 
 const importFromDriver = (relative) => import(pathToFileURL(path.join(driverRoot, relative)).href);
@@ -119,7 +122,7 @@ const adapter = await createAdapter({
 });
 
 const evidence = {
-	protocol: 'octane-issue278-native-attribution-v5',
+	protocol: 'octane-issue278-native-attribution-v6',
 	status: 'running',
 	capturedAt: new Date().toISOString(),
 	provenance: {
@@ -146,7 +149,7 @@ const evidence = {
 		countArm:
 			'deep prepare/restore/alias visits are mechanism evidence only and never timing evidence',
 		profileOverhead:
-			'unprofiled app-driver control versus timed profile, alternating order at create@1k',
+			'unprofiled app-driver control versus profile-disabled timeline versus full timed profile, alternating order at create@1k',
 		validationControl: 'checked versus trusted, alternating order at 1k/2k/3k/5k',
 		floors: {
 			papi: 'detached page; setup outside timer; 7 host nodes per row; public Element PAPI loops',
@@ -441,7 +444,9 @@ try {
 		for (let offset = 0; sections.has('overhead') && offset < repetitions; offset++) {
 			const ordinal = roundStart + offset;
 			const order =
-				ordinal % 2 === 0 ? ['controlChecked', 'timedChecked'] : ['timedChecked', 'controlChecked'];
+				ordinal % 2 === 0
+					? ['controlChecked', 'timelineChecked', 'timedChecked']
+					: ['timedChecked', 'timelineChecked', 'controlChecked'];
 			const pair = { ordinal, order, samples: [] };
 			evidence.profileOverheadPairs.push(pair);
 			for (const arm of order) {
