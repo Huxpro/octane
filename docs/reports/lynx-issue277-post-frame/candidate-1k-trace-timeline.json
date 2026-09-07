@@ -1,0 +1,71 @@
+{
+  "protocol": "octane-issue277-post-frame-order-v1",
+  "candidateCommit": "96a2ef765260b0f3ee28a546a302fac7383eeac7",
+  "profileBundle": {
+    "bytes": 573874,
+    "sha256": "8f7efdfba9d54384bcef6fdc353f5c910f17e80aa2edd841104f9ee6ffe6b834"
+  },
+  "trace": {
+    "bytes": 4736295,
+    "sha256": "bd27de15e7181e397ec45a4a9827dc425ff836fb49aee2afed85d62d3198e763"
+  },
+  "instrumentedTimeline": {
+    "scheduledAtMs": 1788764206706,
+    "scheduledOrdinal": 1,
+    "captureAtMs": 1788764206795,
+    "captureOrdinal": 2,
+    "announceAtMs": 1788764206795,
+    "announceOrdinal": 3
+  },
+  "traceTimeline": {
+    "paintingUiOperationExecuteEnd": {
+      "sliceId": 234178,
+      "realtimeMs": 1788764206659.2275
+    },
+    "captureRafRequest": {
+      "sliceId": 246375,
+      "startRealtimeMs": 1788764206706.7607,
+      "endRealtimeMs": 1788764206706.7622
+    },
+    "firstDoFrameAfterRequest": {
+      "sliceId": 246447,
+      "startRealtimeMs": 1788764206716.585,
+      "endRealtimeMs": 1788764206716.6887
+    },
+    "adjacentDoFrame": {
+      "sliceId": 246454,
+      "startRealtimeMs": 1788764206716.6895,
+      "endRealtimeMs": 1788764206716.816
+    },
+    "firstMeaningfulPaint": {
+      "sliceId": 252581,
+      "realtimeMs": 1788764206776.712
+    },
+    "clientOnFirstScreen": {
+      "sliceId": 252658,
+      "startRealtimeMs": 1788764206797.655,
+      "endRealtimeMs": 1788764206797.671
+    }
+  },
+  "derivedMs": {
+    "paintingUiOperationEndToSchedule": 46.7725,
+    "scheduleToFirstDoFrameEnd": 10.6887,
+    "firstDoFrameEndToCapture": 78.3113,
+    "adjacentDoFrameEndToCapture": 78.184,
+    "firstMeaningfulPaintToCapture": 18.288,
+    "captureToClientOnFirstScreen": 2.655
+  },
+  "clock": {
+    "trace": "Perfetto BOOTTIME",
+    "alignment": "REALTIME clock_snapshot offset",
+    "instrumentation": "Date.now epoch milliseconds",
+    "instrumentationResolutionMs": 1
+  },
+  "verdict": {
+    "publishBeforeFrame": true,
+    "captureAfterFirstDoFrame": true,
+    "captureAfterAdjacentDoFrame": true,
+    "captureAfterFirstMeaningfulPaint": true,
+    "announceAfterCaptureByOrdinal": true
+  }
+}

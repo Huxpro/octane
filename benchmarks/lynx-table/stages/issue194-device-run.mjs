@@ -164,7 +164,7 @@ function parseLog(log) {
 		}
 		if (line.includes('__ISSUE194_FIRST_SCREEN__')) {
 			const value = jsonAfterMarker(line, '__ISSUE194_FIRST_SCREEN__');
-			if (value !== null) firstScreen.push(value);
+			if (value !== null) firstScreen.push({ ...value, observedAtMs: epoch(line) });
 		}
 		if (line.includes('__ISSUE194_DIRECT_RESULT__')) {
 			const value = jsonAfterMarker(line, '__ISSUE194_DIRECT_RESULT__');
@@ -586,12 +586,18 @@ async function measure(cell, ordinal) {
 		);
 	});
 	const calls = attribution?.calls;
+	const rawTextCount = calls?.__CreateRawText?.count ?? 0;
+	const firstScreenLayout =
+		rawTextCount === scale * 3 + 13 && calls?.__AppendElement?.count === scale * 7 + 41
+			? 'expanded-raw-text'
+			: rawTextCount === 0 && calls?.__AppendElement?.count === scale * 4 + 28
+				? 'resident-scalar-text'
+				: null;
 	const validFirstScreenShape =
 		calls?.__CreateView?.count === scale + 15 &&
 		calls?.__CreateText?.count === scale * 3 + 13 &&
-		calls?.__CreateRawText?.count === scale * 3 + 13 &&
 		calls?.__AddEvent?.count === scale * 2 + 12 &&
-		calls?.__AppendElement?.count === scale * 7 + 41;
+		firstScreenLayout !== null;
 	const validState =
 		engineOnly ||
 		(createClearRecreate
@@ -661,6 +667,7 @@ async function measure(cell, ordinal) {
 		stateEvidence: state,
 		preStateEvidence: backgroundSettle?.preState ?? null,
 		firstScreenShapeEvidence: mode === 'commit' ? null : calls,
+		firstScreenLayout: mode === 'commit' ? null : firstScreenLayout,
 		backgroundSettle,
 		sequenceEvidence: createClearRecreate ? sequenceEvidence : null,
 		adbInput: createClearRecreate

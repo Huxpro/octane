@@ -2068,6 +2068,144 @@ describe.sequential('first-tree capture after the paint', () => {
 		expect(main.diagnostics()).toEqual([]);
 	});
 
+	it('defaults capture to one frame callback followed by one timer task', () => {
+		const frames: Array<(time: number) => void> = [];
+		const timers: (() => void)[] = [];
+		const { main, scheduled, inbound, renderPage } = installEngineEnvironment(
+			{ scheduleFirstScreenCapture: undefined },
+			(target) => {
+				target.requestAnimationFrame = (callback: (time: number) => void) => {
+					frames.push(callback);
+					return frames.length;
+				};
+				target.setTimeout = (callback: () => void, delay: number) => {
+					expect(delay).toBe(0);
+					timers.push(callback);
+					return timers.length;
+				};
+			},
+		);
+		firstScreenRoot.render(MainSingleHost, { id: 'default-post-frame' });
+		main.markFirstScreenSyncReady();
+
+		renderPage();
+		expect(scheduled).toEqual([]);
+		expect(frames).toHaveLength(1);
+		expect(timers).toEqual([]);
+		expect(inbound).toEqual([]);
+
+		frames.pop()!(0);
+		expect(timers).toHaveLength(1);
+		expect(inbound).toEqual([]);
+
+		timers.pop()!();
+		expect(inbound).toEqual([expect.objectContaining({ type: 'main-ready' })]);
+		expect(main.firstScreenSnapshot()).toMatchObject({ root: 1, version: 1 });
+		expect(main.diagnostics()).toEqual([]);
+	});
+
+	it.each(['requestAnimationFrame', 'setTimeout'] as const)(
+		'captures inline when the default %s rung is absent',
+		(missing) => {
+			const { main, scheduled, inbound, renderPage } = installEngineEnvironment(
+				{ scheduleFirstScreenCapture: undefined },
+				(target) => {
+					target.requestAnimationFrame =
+						missing === 'requestAnimationFrame' ? undefined : (callback: () => void) => callback();
+					target.setTimeout =
+						missing === 'setTimeout' ? undefined : (callback: () => void) => callback();
+				},
+			);
+			firstScreenRoot.render(MainSingleHost, { id: `default-missing-${missing}` });
+			main.markFirstScreenSyncReady();
+
+			renderPage();
+			expect(scheduled).toEqual([]);
+			expect(inbound).toEqual([expect.objectContaining({ type: 'main-ready' })]);
+			expect(main.firstScreenSnapshot()).toMatchObject({ root: 1, version: 1 });
+			expect(main.diagnostics()).toEqual([]);
+		},
+	);
+
+	it('captures from the frame callback when the default timer throws', () => {
+		const timerFailure = new Error('post-frame timer failed');
+		const frames: Array<() => void> = [];
+		const { main, inbound, renderPage } = installEngineEnvironment(
+			{ scheduleFirstScreenCapture: undefined },
+			(target) => {
+				target.requestAnimationFrame = (callback: () => void) => {
+					frames.push(callback);
+					return frames.length;
+				};
+				target.setTimeout = () => {
+					throw timerFailure;
+				};
+			},
+		);
+		firstScreenRoot.render(MainSingleHost, { id: 'default-timer-throw' });
+		main.markFirstScreenSyncReady();
+		renderPage();
+
+		expect(inbound).toEqual([]);
+		expect(() => frames.pop()!()).not.toThrow();
+		expect(inbound).toEqual([expect.objectContaining({ type: 'main-ready' })]);
+		expect(main.firstScreenSnapshot()).toMatchObject({ root: 1, version: 1 });
+		expect(main.diagnostics()).toContain(timerFailure);
+	});
+
+	it('captures inline when the default frame scheduler throws', () => {
+		const frameFailure = new Error('request frame failed');
+		const { main, inbound, renderPage } = installEngineEnvironment(
+			{ scheduleFirstScreenCapture: undefined },
+			(target) => {
+				target.requestAnimationFrame = () => {
+					throw frameFailure;
+				};
+				target.setTimeout = () => 1;
+			},
+		);
+		firstScreenRoot.render(MainSingleHost, { id: 'default-frame-throw' });
+		main.markFirstScreenSyncReady();
+
+		renderPage();
+		expect(inbound).toEqual([expect.objectContaining({ type: 'main-ready' })]);
+		expect(main.firstScreenSnapshot()).toMatchObject({ root: 1, version: 1 });
+		expect(main.diagnostics()).toContain(frameFailure);
+	});
+
+	it('consumes capture once when a reader lands between the default frame and timer', () => {
+		const frames: Array<() => void> = [];
+		const timers: (() => void)[] = [];
+		const { main, inbound, renderPage } = installEngineEnvironment(
+			{ scheduleFirstScreenCapture: undefined },
+			(target) => {
+				target.requestAnimationFrame = (callback: () => void) => {
+					frames.push(callback);
+					return frames.length;
+				};
+				target.setTimeout = (callback: () => void) => {
+					timers.push(callback);
+					return timers.length;
+				};
+			},
+		);
+		firstScreenRoot.render(MainSingleHost, { id: 'default-second-gap' });
+		main.markFirstScreenSyncReady();
+		renderPage();
+
+		frames.pop()!();
+		expect(timers).toHaveLength(1);
+		expect(inbound).toEqual([]);
+		const snapshot = main.firstScreenSnapshot();
+		expect(snapshot).toMatchObject({ root: 1, version: 1 });
+		expect(inbound).toEqual([expect.objectContaining({ type: 'main-ready' })]);
+
+		timers.pop()!();
+		expect(main.firstScreenSnapshot()).toBe(snapshot);
+		expect(inbound).toHaveLength(1);
+		expect(main.diagnostics()).toEqual([]);
+	});
+
 	it('publishes the first screen on the engine loadBundle timing pipeline', () => {
 		const flushes: unknown[][] = [];
 		const { main, scheduled, inbound, renderPage } = installEngineEnvironment(

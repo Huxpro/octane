@@ -155,10 +155,11 @@ export interface InstallLynxMainThreadOptions {
 	 * Where the deferred first-tree capture is scheduled, once the first screen
 	 * has published its frame.
 	 *
-	 * Defaults to the ambient `setTimeout`. `null` declines the deferral and
-	 * captures inline, on exactly the order this had before the option existed.
-	 * A host with a better “the frame is on screen” rung than a bare macrotask
-	 * passes it here.
+	 * Defaults to the ambient `requestAnimationFrame`, followed by one zero-delay
+	 * `setTimeout` task so capture begins after that frame callback returns. `null`
+	 * declines the deferral and captures inline, on exactly the order this had
+	 * before the option existed. A host with a direct “the frame is on screen”
+	 * rung passes it here.
 	 */
 	readonly scheduleFirstScreenCapture?: ((callback: () => void) => void) | null;
 	readonly onDiagnostic?: (error: Error) => void;
@@ -187,23 +188,41 @@ export interface InstallLynxMainThreadOptions {
 /**
  * The rung a deferred first-tree capture is scheduled on, or `null` for none.
  *
- * “After the frame is on screen” is a macrotask boundary. A microtask drains
- * before the host can paint, so scheduling capture on one would move the work
- * without taking it out of the window — the deferral in name and today's cost
- * in fact. So `Promise.resolve().then` is deliberately not a fallback here even
- * though this file schedules a deferred *flush* on exactly that: that one only
- * has to outlast a dispatch, and this one has to outlast a frame. A receiver
- * with no macrotask rung declines the deferral rather than approximating it.
+ * A timer posted directly after publish may drain before the native host's next
+ * frame. The default therefore enters that frame's callback, then posts one
+ * timer task so capture cannot run until the enclosing frame task returns. A
+ * microtask is deliberately not a fallback: it would drain inside the frame
+ * callback and move the work without taking it past the frame. A receiver
+ * missing either ambient primitive declines the deferral rather than
+ * approximating it; an embedder can still supply a direct post-frame rung.
  */
 function resolveFirstScreenCaptureScheduler(
 	schedule: ((callback: () => void) => void) | null | undefined,
+	ambientTarget: object,
+	onInnerScheduleError: (error: unknown) => void,
 ): ((callback: () => void) => void) | null {
 	if (schedule !== undefined) return schedule;
-	const ambient = (globalThis as { setTimeout?: unknown }).setTimeout;
-	if (typeof ambient !== 'function') return null;
-	const timer = ambient as (callback: () => void, delay: number) => unknown;
+	const ambient = ambientTarget as {
+		requestAnimationFrame?: unknown;
+		setTimeout?: unknown;
+	};
+	const frame = ambient.requestAnimationFrame;
+	const timeout = ambient.setTimeout;
+	if (typeof frame !== 'function' || typeof timeout !== 'function') return null;
+	const requestFrame = frame as (callback: () => void) => unknown;
+	const timer = timeout as (callback: () => void, delay: number) => unknown;
 	return (callback) => {
-		timer.call(globalThis, callback, 0);
+		requestFrame.call(ambientTarget, () => {
+			try {
+				timer.call(ambientTarget, callback, 0);
+			} catch (error) {
+				// The frame already ran, so the publish call that could have taken the
+				// ordinary inline fallback is gone. Report the failed second rung and
+				// capture here: the screen must never remain painted but unannounced.
+				onInnerScheduleError(error);
+				callback();
+			}
+		});
 	};
 }
 
@@ -752,9 +771,6 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	let firstScreenState: FirstScreenState = firstScreenEnabled ? 'open' : 'skipped';
 	let firstScreenSyncReady = !firstScreenEnabled;
 	const firstScreenRenderMode = options.firstScreenRender ?? 'immediate';
-	const firstScreenCaptureScheduler = resolveFirstScreenCaptureScheduler(
-		options.scheduleFirstScreenCapture,
-	);
 	let pendingFirstScreenRender: (() => void) | null = null;
 	let firstScreenPipelineOptions: LynxFirstScreenPipelineOptions | null = null;
 	let firstScreenRenderReleased = firstScreenRenderMode !== 'engine';
@@ -830,6 +846,13 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		}
 		return error;
 	};
+	const firstScreenCaptureScheduler = resolveFirstScreenCaptureScheduler(
+		options.scheduleFirstScreenCapture,
+		rawTarget,
+		(error) => {
+			report(error, 'Octane Lynx could not schedule its first-screen capture after the frame.');
+		},
+	);
 	const requireWorkletFeature = (): LynxMainThreadWorkletFeature => {
 		if (workletFeature !== null) return workletFeature;
 		throw new Error(
@@ -2272,8 +2295,8 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				// The frame is published. Nothing on the paint path reads what capture
 				// produces — the background has not been told the screen exists, and
 				// `canAnnounceReady` will not tell it while the state is still `open`
-				// — so the walk that describes the tree runs in the next task rather
-				// than in front of the pixels it describes.
+				// — so the walk that describes the tree runs after the next frame's
+				// callback rather than in front of the pixels it describes.
 				//
 				// The scheduled callback is `ensureFirstScreenCaptured` rather than
 				// the capture itself, so a reader that had to bring it forward has
