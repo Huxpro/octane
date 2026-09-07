@@ -1,0 +1,525 @@
+{
+  "suite": "lynx-production-deep-context-owner",
+  "meta": {
+    "date": "2026-09-07T23:55:58.584Z",
+    "revisions": {
+      "baseline": "2cca2572ef1f90133f709cb2b6ac0d63b9e5f34b",
+      "candidate": "a8b7ac10335bfc78d4a863e8575a465baeebe6ae"
+    },
+    "node": "v22.22.2",
+    "cpus": "32× Intel(R) Xeon(R) Platinum 8336C CPU @ 2.30GHz",
+    "rows": [1000, 10000, 30000],
+    "depth": 32,
+    "repetitions": 5,
+    "memoryRepetitions": 5,
+    "protocol": "same candidate fixture/compiler/Lynx chassis; only Octane runtime source revision differs; production minified Universal bundles; warm then mirrored ABBA/BAAB with rotated size and changed/control order; fresh mounted root per sample"
+  },
+  "arms": {
+    "baseline": {
+      "bundle": {
+        "bytes": 735990,
+        "gzipBytes": 165807,
+        "sha256": "de3b9abf99696855bffdf48e39cb2a9621035810e5cc12a06d52dde895719782"
+      },
+      "profileBundle": {
+        "bytes": 748247,
+        "gzipBytes": 168599,
+        "sha256": "02655a532b212ea3c91fddb7591ea6411e2e544b628f80ef97e62a82d9f361bf"
+      },
+      "ownerProfile": {
+        "rows": 30000,
+        "counts": {
+          "plainRenders": 0,
+          "layerRenders": 0,
+          "leafRenders": 1
+        },
+        "events": 37,
+        "summary": [
+          {
+            "component": "ContextBenchApp",
+            "attempts": 1,
+            "bails": 0,
+            "totalSelfTime": 184.96660500002326
+          },
+          {
+            "component": "MemoContextBenchLayer",
+            "attempts": 33,
+            "bails": 0,
+            "totalSelfTime": 2.2733279999811202
+          },
+          {
+            "component": "MemoContextBenchRow",
+            "attempts": 1,
+            "bails": 0,
+            "totalSelfTime": 0.35694299996248446
+          },
+          {
+            "component": "MemoContextBenchConsumerRow",
+            "attempts": 1,
+            "bails": 0,
+            "totalSelfTime": 0.08524400001624599
+          },
+          {
+            "component": "MemoContextBenchLeaf",
+            "attempts": 1,
+            "bails": 0,
+            "totalSelfTime": 0.03486400001565926
+          }
+        ]
+      },
+      "memory": {
+        "mountHeapBytes": {
+          "median": 198771528,
+          "min": 198603936,
+          "max": 198784056,
+          "mean": 198709252.8,
+          "p95": 198784056,
+          "samples": 5,
+          "values": [198603936, 198607952, 198771528, 198778792, 198784056]
+        },
+        "transientUpdateBytes": {
+          "median": 30836424,
+          "min": 29437024,
+          "max": 31044488,
+          "mean": 30353777.6,
+          "p95": 31044488,
+          "samples": 5,
+          "values": [29437024, 29517232, 30836424, 30933720, 31044488]
+        },
+        "retainedUpdateBytes": {
+          "median": 13992360,
+          "min": 13990120,
+          "max": 14175136,
+          "mean": 14061990.4,
+          "p95": 14175136,
+          "samples": 5,
+          "values": [13990120, 13990880, 13992360, 14161456, 14175136]
+        }
+      },
+      "results": {
+        "1000": {
+          "changed": {
+            "oracle": {
+              "counts": {
+                "plainRenders": 0,
+                "layerRenders": 0,
+                "leafRenders": 1,
+                "commits": 1,
+                "commands": 2
+              },
+              "leafValues": ["dark"],
+              "leafClasses": "context-leaf dark",
+              "checksum": 4074977838
+            },
+            "timingMs": {
+              "median": 7.765620000001945,
+              "min": 5.042633999983082,
+              "max": 24.13708300000144,
+              "mean": 10.297435900000346,
+              "p95": 24.13708300000144,
+              "samples": 10,
+              "values": [
+                5.042633999983082, 5.048532000000705, 5.252532999991672, 5.949935000011465,
+                7.765620000001945, 10.86505799999577, 11.676487000018824, 13.133629999996629,
+                14.10284700000193, 24.13708300000144
+              ]
+            }
+          },
+          "unchanged": {
+            "oracle": {
+              "counts": {
+                "plainRenders": 0,
+                "layerRenders": 0,
+                "leafRenders": 0,
+                "commits": 0,
+                "commands": 0
+              },
+              "leafValues": [],
+              "leafClasses": "context-leaf light",
+              "checksum": 425163190
+            },
+            "timingMs": {
+              "median": 0.010687000001780689,
+              "min": 0.009324999991804361,
+              "max": 0.01667000000088592,
+              "mean": 0.012058300000717281,
+              "p95": 0.01667000000088592,
+              "samples": 10,
+              "values": [
+                0.009324999991804361, 0.009609999979147688, 0.009902000019792467,
+                0.010437000019010156, 0.010687000001780689, 0.011223000008612871,
+                0.011981999996351078, 0.014203999999153893, 0.01654299999063369, 0.01667000000088592
+              ]
+            }
+          }
+        },
+        "10000": {
+          "changed": {
+            "oracle": {
+              "counts": {
+                "plainRenders": 0,
+                "layerRenders": 0,
+                "leafRenders": 1,
+                "commits": 1,
+                "commands": 2
+              },
+              "leafValues": ["dark"],
+              "leafClasses": "context-leaf dark",
+              "checksum": 3920966948
+            },
+            "timingMs": {
+              "median": 57.17216699999699,
+              "min": 51.455136999997194,
+              "max": 66.47204800000327,
+              "mean": 58.41586700000626,
+              "p95": 66.47204800000327,
+              "samples": 10,
+              "values": [
+                51.455136999997194, 52.59458599999198, 52.82034000000567, 54.58378400001675,
+                57.17216699999699, 59.3211130000127, 61.221503000000666, 62.590978000022005,
+                65.92701400001533, 66.47204800000327
+              ]
+            }
+          },
+          "unchanged": {
+            "oracle": {
+              "counts": {
+                "plainRenders": 0,
+                "layerRenders": 0,
+                "leafRenders": 0,
+                "commits": 0,
+                "commands": 0
+              },
+              "leafValues": [],
+              "leafClasses": "context-leaf light",
+              "checksum": 2071425724
+            },
+            "timingMs": {
+              "median": 0.01587699999799952,
+              "min": 0.014937999992980622,
+              "max": 0.021327000002202112,
+              "mean": 0.016714899997168686,
+              "p95": 0.021327000002202112,
+              "samples": 10,
+              "values": [
+                0.014937999992980622, 0.01502799999434501, 0.01509599998826161,
+                0.015484999981708825, 0.01587699999799952, 0.01600999999209307,
+                0.016921000002184883, 0.01736499999969965, 0.019102000020211563,
+                0.021327000002202112
+              ]
+            }
+          }
+        },
+        "30000": {
+          "changed": {
+            "oracle": {
+              "counts": {
+                "plainRenders": 0,
+                "layerRenders": 0,
+                "leafRenders": 1,
+                "commits": 1,
+                "commands": 2
+              },
+              "leafValues": ["dark"],
+              "leafClasses": "context-leaf dark",
+              "checksum": 225893707
+            },
+            "timingMs": {
+              "median": 163.05880899999465,
+              "min": 153.24094600000535,
+              "max": 189.57485100001213,
+              "mean": 167.39222910000245,
+              "p95": 189.57485100001213,
+              "samples": 10,
+              "values": [
+                153.24094600000535, 155.07048499997472, 156.35761600002297, 157.71985299998778,
+                163.05880899999465, 168.78111199999694, 169.0079320000077, 173.26870800000324,
+                187.8419790000189, 189.57485100001213
+              ]
+            }
+          },
+          "unchanged": {
+            "oracle": {
+              "counts": {
+                "plainRenders": 0,
+                "layerRenders": 0,
+                "leafRenders": 0,
+                "commits": 0,
+                "commands": 0
+              },
+              "leafValues": [],
+              "leafClasses": "context-leaf light",
+              "checksum": 665552991
+            },
+            "timingMs": {
+              "median": 0.02205500000854954,
+              "min": 0.01773900000262074,
+              "max": 0.032490999990841374,
+              "mean": 0.023699300002044767,
+              "p95": 0.032490999990841374,
+              "samples": 10,
+              "values": [
+                0.01773900000262074, 0.01777199999196455, 0.020936999993864447, 0.02192800000193529,
+                0.02205500000854954, 0.022250000001804437, 0.025886000017635524,
+                0.02711200001067482, 0.02882300000055693, 0.032490999990841374
+              ]
+            }
+          }
+        }
+      }
+    },
+    "candidate": {
+      "bundle": {
+        "bytes": 751517,
+        "gzipBytes": 168966,
+        "sha256": "75f8e2c0e301eeb748d02888df395658df3795f9a08bb5f2bf2b0db8f9b84b5c"
+      },
+      "profileBundle": {
+        "bytes": 763774,
+        "gzipBytes": 171732,
+        "sha256": "9bdd1f81661cceddba721ab6d63dd2615ce3e444b25d0387561891efc8ce2493"
+      },
+      "ownerProfile": {
+        "rows": 30000,
+        "counts": {
+          "plainRenders": 0,
+          "layerRenders": 0,
+          "leafRenders": 1
+        },
+        "events": 37,
+        "summary": [
+          {
+            "component": "ContextBenchApp",
+            "attempts": 1,
+            "bails": 0,
+            "totalSelfTime": 158.91679899999872
+          },
+          {
+            "component": "MemoContextBenchLayer",
+            "attempts": 33,
+            "bails": 0,
+            "totalSelfTime": 5.223169000004418
+          },
+          {
+            "component": "MemoContextBenchRow",
+            "attempts": 1,
+            "bails": 0,
+            "totalSelfTime": 0.3299150000093505
+          },
+          {
+            "component": "MemoContextBenchConsumerRow",
+            "attempts": 1,
+            "bails": 0,
+            "totalSelfTime": 0.07379299998865463
+          },
+          {
+            "component": "MemoContextBenchLeaf",
+            "attempts": 1,
+            "bails": 0,
+            "totalSelfTime": 0.07020499999634922
+          }
+        ]
+      },
+      "memory": {
+        "mountHeapBytes": {
+          "median": 199559056,
+          "min": 199551544,
+          "max": 199567312,
+          "mean": 199559427.2,
+          "p95": 199567312,
+          "samples": 5,
+          "values": [199551544, 199556000, 199559056, 199563224, 199567312]
+        },
+        "transientUpdateBytes": {
+          "median": 9890432,
+          "min": 9890128,
+          "max": 9893856,
+          "mean": 9891020.8,
+          "p95": 9893856,
+          "samples": 5,
+          "values": [9890128, 9890248, 9890432, 9890440, 9893856]
+        },
+        "retainedUpdateBytes": {
+          "median": -223584,
+          "min": -223648,
+          "max": -219088,
+          "mean": -222451.2,
+          "p95": -219088,
+          "samples": 5,
+          "values": [-223648, -223600, -223584, -222336, -219088]
+        }
+      },
+      "results": {
+        "1000": {
+          "changed": {
+            "oracle": {
+              "counts": {
+                "plainRenders": 0,
+                "layerRenders": 0,
+                "leafRenders": 1,
+                "commits": 1,
+                "commands": 2
+              },
+              "leafValues": ["dark"],
+              "leafClasses": "context-leaf dark",
+              "checksum": 4074977838
+            },
+            "timingMs": {
+              "median": 3.3570980000004056,
+              "min": 2.6146040000021458,
+              "max": 9.07266800000798,
+              "mean": 4.558636599997771,
+              "p95": 9.07266800000798,
+              "samples": 10,
+              "values": [
+                2.6146040000021458, 2.678341000006185, 2.7270839999837335, 2.8947970000008354,
+                3.3570980000004056, 3.412122999998246, 3.4627179999952205, 6.444683999987319,
+                8.922248999995645, 9.07266800000798
+              ]
+            }
+          },
+          "unchanged": {
+            "oracle": {
+              "counts": {
+                "plainRenders": 0,
+                "layerRenders": 0,
+                "leafRenders": 0,
+                "commits": 0,
+                "commands": 0
+              },
+              "leafValues": [],
+              "leafClasses": "context-leaf light",
+              "checksum": 425163190
+            },
+            "timingMs": {
+              "median": 0.01151199999731034,
+              "min": 0.009805999987293035,
+              "max": 0.0166559999997844,
+              "mean": 0.012700499997663428,
+              "p95": 0.0166559999997844,
+              "samples": 10,
+              "values": [
+                0.009805999987293035, 0.010221000004094094, 0.010317000007489696,
+                0.010766999999759719, 0.01151199999731034, 0.012955999991390854,
+                0.013984000001073582, 0.015085999999428168, 0.015699999989010394, 0.0166559999997844
+              ]
+            }
+          }
+        },
+        "10000": {
+          "changed": {
+            "oracle": {
+              "counts": {
+                "plainRenders": 0,
+                "layerRenders": 0,
+                "leafRenders": 1,
+                "commits": 1,
+                "commands": 2
+              },
+              "leafValues": ["dark"],
+              "leafClasses": "context-leaf dark",
+              "checksum": 3920966948
+            },
+            "timingMs": {
+              "median": 3.260777000003145,
+              "min": 2.7536309999995865,
+              "max": 13.846569000015734,
+              "mean": 7.421300700000574,
+              "p95": 13.846569000015734,
+              "samples": 10,
+              "values": [
+                2.7536309999995865, 2.754639999999199, 2.817570999992313, 2.847907999996096,
+                3.260777000003145, 9.4710180000111, 10.176317999997991, 12.68775499999174,
+                13.596819999998843, 13.846569000015734
+              ]
+            }
+          },
+          "unchanged": {
+            "oracle": {
+              "counts": {
+                "plainRenders": 0,
+                "layerRenders": 0,
+                "leafRenders": 0,
+                "commits": 0,
+                "commands": 0
+              },
+              "leafValues": [],
+              "leafClasses": "context-leaf light",
+              "checksum": 2071425724
+            },
+            "timingMs": {
+              "median": 0.017393000001902692,
+              "min": 0.014005999983055517,
+              "max": 0.03378199998405762,
+              "mean": 0.020041299994773,
+              "p95": 0.03378199998405762,
+              "samples": 10,
+              "values": [
+                0.014005999983055517, 0.014140999992378056, 0.015223000009427778,
+                0.016468999994685873, 0.017393000001902692, 0.017980999982682988,
+                0.0181079999965732, 0.02621500000532251, 0.027094999997643754, 0.03378199998405762
+              ]
+            }
+          }
+        },
+        "30000": {
+          "changed": {
+            "oracle": {
+              "counts": {
+                "plainRenders": 0,
+                "layerRenders": 0,
+                "leafRenders": 1,
+                "commits": 1,
+                "commands": 2
+              },
+              "leafValues": ["dark"],
+              "leafClasses": "context-leaf dark",
+              "checksum": 225893707
+            },
+            "timingMs": {
+              "median": 2.9510449999943376,
+              "min": 2.755487999995239,
+              "max": 6.968821999995271,
+              "mean": 3.893209200000274,
+              "p95": 6.968821999995271,
+              "samples": 10,
+              "values": [
+                2.755487999995239, 2.8714489999983925, 2.9192200000106823, 2.9471020000055432,
+                2.9510449999943376, 3.018227000000479, 3.078190000000177, 5.366454000002705,
+                6.056094999999914, 6.968821999995271
+              ]
+            }
+          },
+          "unchanged": {
+            "oracle": {
+              "counts": {
+                "plainRenders": 0,
+                "layerRenders": 0,
+                "leafRenders": 0,
+                "commits": 0,
+                "commands": 0
+              },
+              "leafValues": [],
+              "leafClasses": "context-leaf light",
+              "checksum": 665552991
+            },
+            "timingMs": {
+              "median": 0.021723999991081655,
+              "min": 0.018897000001743436,
+              "max": 0.034394000002066605,
+              "mean": 0.023163299996667774,
+              "p95": 0.034394000002066605,
+              "samples": 10,
+              "values": [
+                0.018897000001743436, 0.019589000003179535, 0.019620999999460764,
+                0.0208769999735523, 0.021723999991081655, 0.021863999994820915,
+                0.022698999993735924, 0.024970999998913612, 0.026997000008122995,
+                0.034394000002066605
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}
