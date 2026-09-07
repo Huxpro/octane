@@ -119,14 +119,10 @@ causal ratios remain the same-window A/B published with slice 3.
 - full Rspeedy plugin Vitest: 8 files, 71/71 passing;
 - benchmark stage harness: 228/228 passing after the native-probe correction;
 - Lynx source, testing, and typetest TypeScript projects: passing;
+- full repository `pnpm typecheck`, including all workspace packages, examples,
+  and benchmark typechecks: passing;
 - `pnpm sync`, scoped formatting, stable-code completeness, and
   `git diff --check`: passing.
-
-The repository diff-selected typecheck reaches the benchmark app but this
-machine's benchmark project cannot resolve the configured
-`@lynx-js/rspeedy/client` type entry. The package-owned Lynx typecheck and the
-real Rspeedy production builds both pass; current-head CI is retained as the
-authoritative repository-wide type gate.
 
 ## Raw evidence
 
