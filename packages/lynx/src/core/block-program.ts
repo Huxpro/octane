@@ -32,6 +32,11 @@ export interface LynxBlockProgramContext {
 	 */
 	commit(): Promise<UniversalHostBatch | null>;
 	/**
+	 * Run lifecycle work only after the current commit has been acknowledged by
+	 * the host. A render that throws before committing discards the task.
+	 */
+	afterCommit(task: () => void): void;
+	/**
 	 * Run `work`, then commit it, serialized against every other render of this
 	 * root.
 	 *

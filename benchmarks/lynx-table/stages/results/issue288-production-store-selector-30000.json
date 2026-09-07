@@ -1,0 +1,122 @@
+{
+  "suite": "lynx-production-store-selector-owner",
+  "meta": {
+    "date": "2026-09-07T20:02:25.862Z",
+    "node": "v22.22.2",
+    "cpus": "32× Intel(R) Xeon(R) Platinum 8336C CPU @ 2.30GHz",
+    "rows": 30000,
+    "repetitions": 5,
+    "protocol": "same authored .lynx.tsrx; production minified bundles; only background core differs; warm then alternating ABBA/BAAB; fresh root/store per sample"
+  },
+  "selections": [7500, 22500, 7500],
+  "arms": {
+    "universal": {
+      "bundle": {
+        "bytes": 723868,
+        "gzipBytes": 163044
+      },
+      "counts": [
+        {
+          "rowRenders": 1,
+          "commits": 1,
+          "commands": 1
+        },
+        {
+          "rowRenders": 2,
+          "commits": 1,
+          "commands": 2
+        },
+        {
+          "rowRenders": 2,
+          "commits": 1,
+          "commands": 2
+        }
+      ],
+      "timingMs": [
+        {
+          "median": 68.5555060000006,
+          "min": 57.437283999999636,
+          "max": 73.66600499999913,
+          "mean": 68.32808689999857,
+          "p95": 73.66600499999913,
+          "samples": 10
+        },
+        {
+          "median": 57.28881700000056,
+          "min": 54.6212830000004,
+          "max": 62.98295800000051,
+          "mean": 58.596011499999804,
+          "p95": 62.98295800000051,
+          "samples": 10
+        },
+        {
+          "median": 54.64513299999817,
+          "min": 51.85373800000161,
+          "max": 63.85617999999886,
+          "mean": 56.70675370000045,
+          "p95": 63.85617999999886,
+          "samples": 10
+        }
+      ]
+    },
+    "block": {
+      "bundle": {
+        "bytes": 588165,
+        "gzipBytes": 134261
+      },
+      "counts": [
+        {
+          "rowRenders": 1,
+          "commits": 1,
+          "commands": 1
+        },
+        {
+          "rowRenders": 2,
+          "commits": 1,
+          "commands": 2
+        },
+        {
+          "rowRenders": 2,
+          "commits": 1,
+          "commands": 2
+        }
+      ],
+      "timingMs": [
+        {
+          "median": 0.6168889999971725,
+          "min": 0.4913430000015069,
+          "max": 1.3344130000004952,
+          "mean": 0.7233499000003576,
+          "p95": 1.3344130000004952,
+          "samples": 10
+        },
+        {
+          "median": 0.5292039999985718,
+          "min": 0.4912029999977676,
+          "max": 1.0447539999986475,
+          "mean": 0.6023519000002124,
+          "p95": 1.0447539999986475,
+          "samples": 10
+        },
+        {
+          "median": 0.5179390000048443,
+          "min": 0.45317100000102073,
+          "max": 1.3524820000002364,
+          "mean": 0.6274161000017557,
+          "p95": 1.3524820000002364,
+          "samples": 10
+        }
+      ]
+    }
+  },
+  "unchanged": {
+    "rowRenders": 0,
+    "commits": 0,
+    "commands": 0
+  },
+  "subscriptionLifecycle": {
+    "subscribe": 1,
+    "unsubscribe": 1,
+    "remaining": 0
+  }
+}

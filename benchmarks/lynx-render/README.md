@@ -88,3 +88,25 @@ recycling, malformed transport payloads, fallback, and transaction failures.
 This compares the production Snapshot backend, not ReactLynx's experimental
 Element Template backend. It makes no native paint, layout, adoption, memory,
 or device claim; those remain the Android/iOS gates in the Lynx renderer plan.
+
+## External-store selector core A/B
+
+`store-selector-run.mjs` compiles one additional `.lynx.tsrx` page twice, with
+the background core as the only build-time difference. The page owns one
+`useSyncExternalStore` subscription and feeds its selected id into a
+compiler-certified keyed row component. Each sample mounts a fresh 1k/10k/30k
+table, then selects quarter → three-quarters → quarter and sends one unchanged
+notification.
+
+```bash
+TMPDIR=/path/to/tmp node benchmarks/lynx-render/store-selector-run.mjs \
+  --rows 10000 --reps 5 --out result.json
+```
+
+Both shipping, minified arms must paint the same checksum at every step, render
+and command exactly `1 / 2 / 2` rows, establish/clean up exactly one
+subscription, and emit no render, command, or frame for the unchanged selected
+snapshot. Runs warm both bundles and alternate ABBA/BAAB order. Bundle bytes and
+gzip bytes are recorded beside the timing samples. This remains an in-process
+CPU/protocol measurement; native tap-to-frame, layout, and retained-memory gates
+are reported separately.

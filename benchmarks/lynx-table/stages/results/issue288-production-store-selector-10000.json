@@ -1,0 +1,122 @@
+{
+  "suite": "lynx-production-store-selector-owner",
+  "meta": {
+    "date": "2026-09-07T20:01:06.528Z",
+    "node": "v22.22.2",
+    "cpus": "32× Intel(R) Xeon(R) Platinum 8336C CPU @ 2.30GHz",
+    "rows": 10000,
+    "repetitions": 5,
+    "protocol": "same authored .lynx.tsrx; production minified bundles; only background core differs; warm then alternating ABBA/BAAB; fresh root/store per sample"
+  },
+  "selections": [2500, 7500, 2500],
+  "arms": {
+    "universal": {
+      "bundle": {
+        "bytes": 723868,
+        "gzipBytes": 163044
+      },
+      "counts": [
+        {
+          "rowRenders": 1,
+          "commits": 1,
+          "commands": 1
+        },
+        {
+          "rowRenders": 2,
+          "commits": 1,
+          "commands": 2
+        },
+        {
+          "rowRenders": 2,
+          "commits": 1,
+          "commands": 2
+        }
+      ],
+      "timingMs": [
+        {
+          "median": 22.670051000000058,
+          "min": 17.375557000003027,
+          "max": 51.81762499999968,
+          "mean": 25.96449920000041,
+          "p95": 51.81762499999968,
+          "samples": 10
+        },
+        {
+          "median": 18.20018599999821,
+          "min": 15.95075100000031,
+          "max": 34.069297999998525,
+          "mean": 21.17718889999942,
+          "p95": 34.069297999998525,
+          "samples": 10
+        },
+        {
+          "median": 17.613219999999274,
+          "min": 15.241014999999607,
+          "max": 20.080127999999604,
+          "mean": 17.735462799999368,
+          "p95": 20.080127999999604,
+          "samples": 10
+        }
+      ]
+    },
+    "block": {
+      "bundle": {
+        "bytes": 588165,
+        "gzipBytes": 134261
+      },
+      "counts": [
+        {
+          "rowRenders": 1,
+          "commits": 1,
+          "commands": 1
+        },
+        {
+          "rowRenders": 2,
+          "commits": 1,
+          "commands": 2
+        },
+        {
+          "rowRenders": 2,
+          "commits": 1,
+          "commands": 2
+        }
+      ],
+      "timingMs": [
+        {
+          "median": 0.49364000000059605,
+          "min": 0.4122879999995348,
+          "max": 1.0902839999998832,
+          "mean": 0.6224784999998519,
+          "p95": 1.0902839999998832,
+          "samples": 10
+        },
+        {
+          "median": 0.47818700000061654,
+          "min": 0.4366069999996398,
+          "max": 3.726843000000372,
+          "mean": 0.8781661000000895,
+          "p95": 3.726843000000372,
+          "samples": 10
+        },
+        {
+          "median": 0.4573420000015176,
+          "min": 0.42055400000026566,
+          "max": 2.2439200000007986,
+          "mean": 0.6723491000004287,
+          "p95": 2.2439200000007986,
+          "samples": 10
+        }
+      ]
+    }
+  },
+  "unchanged": {
+    "rowRenders": 0,
+    "commits": 0,
+    "commands": 0
+  },
+  "subscriptionLifecycle": {
+    "subscribe": 1,
+    "unsubscribe": 1,
+    "remaining": 0
+  }
+}

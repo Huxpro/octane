@@ -1,4 +1,4 @@
-import { useState } from 'octane';
+import { useState, useSyncExternalStore } from 'octane';
 
 export interface BenchRow {
 	id: number;
@@ -43,4 +43,45 @@ export function BenchApp(props: BenchAppProps) @{
 /** Empty-startup target: the same root and transport with no authored rows. */
 export function EmptyApp() @{
 	<view class="container" />
+}
+
+export interface SelectionStore {
+	readonly subscribe: (listener: () => void) => () => void;
+	readonly getSnapshot: () => number;
+}
+
+export interface StoreBenchAppProps {
+	readonly rows: readonly BenchRow[];
+	readonly store: SelectionStore;
+	readonly onRowRender: (id: number) => void;
+}
+
+function StoreBenchRow(props: {
+	readonly row: BenchRow;
+	readonly isSelected: boolean;
+	readonly onRowRender: (id: number) => void;
+}) @{
+	props.onRowRender(props.row.id);
+	<view class={props.isSelected ? 'row danger' : 'row'} id={`row-${props.row.id}`}>
+		<text class="col-id">{String(props.row.id)}</text>
+		<text class="col-label">{props.row.label as string}</text>
+	</view>
+}
+
+/**
+ * Production compiler path for #288's external-store selector owner: one page
+ * subscription feeds one compiler-certified keyed selection. The row component
+ * is local and immutable, the item is forwarded directly, and the only changing
+ * capture is the selection key, so a Block build may revisit old/new rows only.
+ */
+export function StoreBenchApp(props: StoreBenchAppProps) @{
+	const selected = useSyncExternalStore(props.store.subscribe, props.store.getSnapshot);
+	const onRowRender = props.onRowRender;
+	<view class="container">
+		<view class="table">
+			@for (const row of props.rows; key row.id) {
+				<StoreBenchRow row={row} isSelected={selected === row.id} onRowRender={onRowRender} />
+			}
+		</view>
+	</view>
 }

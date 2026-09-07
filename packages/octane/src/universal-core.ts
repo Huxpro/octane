@@ -5587,11 +5587,13 @@ function visibleStateValue<T>(record: UniversalOwnerRecord, slot: unknown, fallb
  * that calls them.
  *
  * This is the seam that lets it. The scope owns one component's cells and
- * nothing else: no child owners, no effects, no transitions, no suspended
- * replay. What it hands back is the render/commit/abort protocol the universal
+ * nothing else: no child owners, no insertion/passive phases, no transitions,
+ * no suspended replay. What it hands back is the render/commit/abort protocol the universal
  * root already uses, so a core that adopts it inherits the update-queue
  * semantics instead of restating them — which is the point, because a restated
- * queue is where semantic drift enters.
+ * queue is where semantic drift enters. A core may additionally accept layout
+ * effects by scheduling their work at its own accepted-commit boundary; the
+ * scope still has no passive phase of its own.
  *
  * Nothing in `UniversalRootImpl` becomes reachable from a core that uses this:
  * the owner record's root is a two-member stand-in, and the one call the hook
@@ -5606,6 +5608,11 @@ export interface UniversalHookScopeServices {
 	 * render settles inside that render, so this is never re-entrant.
 	 */
 	scheduleRender(): void;
+	/**
+	 * Publish layout-effect cleanup/create work after the host has accepted the
+	 * render this scope just committed. Absence keeps every effect refused.
+	 */
+	readonly scheduleLayoutEffectCommit?: (task: () => void) => void;
 }
 
 export interface UniversalHookScope {
@@ -5732,8 +5739,16 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 				}
 				// An effect cell with nothing to run it is a subscription that
 				// silently never happens, so a setup that declared one on its
-				// settled pass is refused rather than committed.
-				if (owner.seenEffects.length !== 0) {
+				// settled pass is refused rather than committed. A consumer may
+				// supply exactly the accepted-host boundary layout effects need;
+				// insertion and passive effects still require phases this scope
+				// deliberately does not own.
+				if (
+					owner.seenEffects.some(
+						(effect) =>
+							services.scheduleLayoutEffectCommit === undefined || effect.phase !== 'layout',
+					)
+				) {
 					throw new Error(UNIVERSAL_HOOK_SCOPE_EFFECTS_REFUSED);
 				}
 				draft = owner;
@@ -5749,7 +5764,41 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 			const owner = draft;
 			if (owner === null) return;
 			draft = null;
+			const previousEffects = record.effectOrder;
+			const nextEffects = [...owner.seenEffects];
+			const previousBySlot = new Map(previousEffects.map((effect) => [effect.slot, effect]));
+			const nextBySlot = new Map(nextEffects.map((effect) => [effect.slot, effect]));
+			const cleanupTasks: (() => void)[] = [];
+			const createTasks: (() => void)[] = [];
+			for (const previous of previousEffects) {
+				const next = nextBySlot.get(previous.slot);
+				if (
+					next === undefined ||
+					next.phase !== previous.phase ||
+					!depsEqual(previous.deps, next.deps)
+				) {
+					const cleanup = next?.previous === previous ? next : previous;
+					if (cleanup.mounted) cleanupTasks.push(() => runEffectCleanup(cleanup));
+				}
+			}
+			for (const next of nextEffects) {
+				const previous = previousBySlot.get(next.slot);
+				if (
+					previous === undefined ||
+					previous.phase !== next.phase ||
+					!depsEqual(previous.deps, next.deps) ||
+					!previous.mounted
+				) {
+					createTasks.push(() => {
+						if (!record.disposed && record.hooks.get(next.slot) === next) runEffectCreate(next);
+					});
+				}
+			}
+			for (const [slot, hook] of owner.hooks) {
+				if (hook.kind === 'effect' && !nextBySlot.has(slot)) owner.hooks.delete(slot);
+			}
 			record.hooks = owner.hooks;
+			record.effectOrder = nextEffects;
 			record.componentProps = owner.componentProps;
 			// Same drain as an accepted universal commit: an update the render
 			// folded into a cell is gone, one it skipped is still owed.
@@ -5760,6 +5809,11 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 				if (queue.length === 0) record.updates.delete(slot);
 			}
 			record.mounted = true;
+			if (cleanupTasks.length !== 0 || createTasks.length !== 0) {
+				services.scheduleLayoutEffectCommit?.(() =>
+					runCommitTasks([...cleanupTasks, ...createTasks]),
+				);
+			}
 		},
 		abort(): void {
 			draft = null;
@@ -5767,8 +5821,17 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 		dispose(): void {
 			draft = null;
 			record.disposed = true;
-			record.hooks.clear();
-			record.updates.clear();
+			try {
+				runCommitTasks(
+					record.effectOrder
+						.filter((effect) => effect.mounted)
+						.map((effect) => () => runEffectCleanup(effect)),
+				);
+			} finally {
+				record.effectOrder = [];
+				record.hooks.clear();
+				record.updates.clear();
+			}
 		},
 	};
 }

@@ -21,8 +21,18 @@ import {
 	LYNX_TRANSPORT_RENDERER,
 } from '../../packages/lynx/src/core/protocol.js';
 import type { LynxElementEventListener } from '../../packages/lynx/src/core/papi.js';
-import { decodeLynxTransportValue } from '../../packages/lynx/src/core/transport-codec.js';
-import { BenchApp, EmptyApp, type BenchRow } from './src/App.lynx.tsrx';
+import {
+	acceptLynxTransportFrame,
+	createLynxTransportFrameState,
+	decodeLynxTransportValue,
+} from '../../packages/lynx/src/core/transport-codec.js';
+import {
+	BenchApp,
+	EmptyApp,
+	StoreBenchApp,
+	type BenchRow,
+	type SelectionStore,
+} from './src/App.lynx.tsrx';
 
 interface FakeNode {
 	readonly sign: number;
@@ -249,6 +259,13 @@ export class FakeElementPAPI {
 		);
 		return page?.children[0]?.id ?? null;
 	}
+
+	classesForId(id: string): string | null {
+		for (const node of this.nodes.values()) {
+			if (node.id === id) return node.classes;
+		}
+		return null;
+	}
 }
 
 export interface Harness {
@@ -427,12 +444,20 @@ function transportMetrics(harness: Harness): LynxTransportMetrics {
 	let acknowledgements = 0;
 	let compactAcknowledgements = 0;
 	const sharedPrograms = new Set<object>();
+	const frameStates = new Map<string, ReturnType<typeof createLynxTransportFrameState>>();
 	for (const event of harness.transportMessages) {
 		// Decoded, not read: the transport encodes, so `event.data` is the string
 		// the receiver parses. Reading it raw would count zero commands and no
 		// acknowledgements while still producing a number.
 		if (typeof event.data !== 'string') continue;
-		const message = decodeLynxTransportValue(event.data) as {
+		let frameState = frameStates.get(event.type);
+		if (frameState === undefined) {
+			frameState = createLynxTransportFrameState();
+			frameStates.set(event.type, frameState);
+		}
+		const complete = acceptLynxTransportFrame(event.data, frameState);
+		if (complete === null) continue;
+		const message = decodeLynxTransportValue(complete) as {
 			readonly type?: unknown;
 			readonly encoding?: unknown;
 			readonly batch?: {
@@ -565,6 +590,115 @@ export async function runUpdateRows(count: number): Promise<RunResult> {
 	};
 	await harness.dispose();
 	return result;
+}
+
+export interface StoreSelectionStep {
+	readonly selected: number;
+	readonly durationMs: number;
+	readonly rowRenders: number;
+	readonly commits: number;
+	readonly commands: number;
+	readonly selectedClasses: string | null;
+	readonly checksum: number;
+}
+
+export interface StoreSelectionResult {
+	readonly rows: number;
+	readonly steps: readonly StoreSelectionStep[];
+	readonly unchanged: {
+		readonly rowRenders: number;
+		readonly commits: number;
+		readonly commands: number;
+	};
+	readonly subscriptions: number;
+	readonly unsubscriptions: number;
+	readonly listenersAfterUnmount: number;
+	readonly diagnostics: readonly string[];
+}
+
+/**
+ * One production-compiled page-level external-store selector over a stable
+ * keyed list. Each step waits through the real background transport, main
+ * receiver, host apply, acknowledgement, and layout-effect boundary.
+ */
+export async function runStoreSelections(
+	count: number,
+	selections: readonly number[],
+): Promise<StoreSelectionResult> {
+	const harness = createHarness();
+	const listeners = new Set<() => void>();
+	let selected = 0;
+	let subscriptions = 0;
+	let unsubscriptions = 0;
+	const store = {
+		getSnapshot: () => selected,
+		subscribe: (listener: () => void) => {
+			subscriptions++;
+			listeners.add(listener);
+			return () => {
+				if (listeners.delete(listener)) unsubscriptions++;
+			};
+		},
+		select(value: number) {
+			selected = value;
+			for (const listener of listeners) listener();
+		},
+		notify() {
+			for (const listener of listeners) listener();
+		},
+	} satisfies SelectionStore & {
+		select(value: number): void;
+		notify(): void;
+	};
+	let rowRenders = 0;
+	const onRowRender = () => {
+		rowRenders++;
+	};
+	await harness.root.render(StoreBenchApp, {
+		rows: makeRows(count),
+		store,
+		onRowRender,
+	});
+	await settle(harness);
+	const steps: StoreSelectionStep[] = [];
+	for (const value of selections) {
+		const beforeRows = rowRenders;
+		const before = transportMetrics(harness);
+		const started = performance.now();
+		store.select(value);
+		await settle(harness);
+		const durationMs = performance.now() - started;
+		const after = transportMetrics(harness);
+		steps.push({
+			selected: value,
+			durationMs,
+			rowRenders: rowRenders - beforeRows,
+			commits: after.acknowledgements - before.acknowledgements,
+			commands: after.commands - before.commands,
+			selectedClasses: harness.papi.classesForId(`row-${value}`),
+			checksum: harness.papi.reachableChecksum(),
+		});
+	}
+	const beforeRows = rowRenders;
+	const before = transportMetrics(harness);
+	store.notify();
+	await settle(harness);
+	const after = transportMetrics(harness);
+	const unchanged = {
+		rowRenders: rowRenders - beforeRows,
+		commits: after.acknowledgements - before.acknowledgements,
+		commands: after.commands - before.commands,
+	};
+	await harness.dispose();
+	return {
+		rows: count,
+		steps,
+		unchanged,
+		subscriptions,
+		unsubscriptions,
+		listenersAfterUnmount: listeners.size,
+		diagnostics: harness.diagnostics.map((error) => error.message),
+	};
 }
 
 /**
