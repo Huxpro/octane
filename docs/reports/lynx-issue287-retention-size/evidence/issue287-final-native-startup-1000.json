@@ -1,0 +1,1592 @@
+{
+  "protocol": "octane-issue194-device-v1",
+  "question": "Does exact-head compact ownership preserve the native 1,000-row ready state after bundle-debt repayment?",
+  "createdAt": "2026-09-07T16:01:13.774Z",
+  "octaneCommit": "7d9b6707d5e36d3e6440971d464e5d11192f9fa8",
+  "serial": "aic-i18n-bd-fullport.byteintl.net:38940",
+  "device": {
+    "model": "aries_10",
+    "product": "aries",
+    "android": "10",
+    "fingerprint": "aries_10/aries/aries:10/QQ3A.200805.001/1.5.2:userdebug/test-keys",
+    "abi": "arm64-v8a",
+    "explorer": "1.0"
+  },
+  "controls": {
+    "devtool": "disabled by a background-only LynxDevToolSetModule.switchLynxDebug(false) preflight before each sample; no CDP/DevTool connection used",
+    "coldLaunchPerSample": true,
+    "display": "ADB wake + dismiss-keyguard before every sample; stay-on-while-plugged gate required for multi-commit input sequences",
+    "thermalGate": "battery <=35.0C and Android thermal status 0 before every accepted attempt",
+    "ordering": "single-cell repeated cold launches",
+    "completionMode": "commit",
+    "workload": null,
+    "interactionSequence": null,
+    "wireBoundary": null,
+    "adbInput": null,
+    "engineOnly": false,
+    "expectedOutcome": "completed"
+  },
+  "scale": 1000,
+  "targetAcceptedSamplesPerCell": 5,
+  "disableDevToolBundle": {
+    "url": "http://127.0.0.1:8878/dist-issue287-disable-7d9b6707d/main.lynx.bundle",
+    "bundle": {
+      "path": "/data00/home/xuan.huang/.codex/worktrees/68ea/octane-issue287-retention/benchmarks/lynx-table/app/dist-issue287-disable-7d9b6707d/main.lynx.bundle",
+      "bytes": 570995,
+      "sha256": "c093a2b0b052eceb1ea92017ede634f2cfc34bcd8e84c85bb5f719de81ea0258"
+    }
+  },
+  "cells": {
+    "candidate": {
+      "url": "http://127.0.0.1:8878/dist-mtsprogram-issue287-native-7d9b6707d-rows1000-profile-issue194-parent-first/main.lynx.bundle",
+      "bundle": {
+        "path": "/data00/home/xuan.huang/.codex/worktrees/68ea/octane-issue287-retention/benchmarks/lynx-table/app/dist-mtsprogram-issue287-native-7d9b6707d-rows1000-profile-issue194-parent-first/main.lynx.bundle",
+        "bytes": 583279,
+        "sha256": "0e34b75fb6cd3ad979d5098a4ebc18ff8e0fdbcd9a809c11e3d7fdfa1cb8c7c4"
+      }
+    }
+  },
+  "samples": [
+    {
+      "ordinal": 1,
+      "cell": "candidate",
+      "accepted": true,
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "nativeCrash": {
+        "atMs": null,
+        "loadToCrashMs": null,
+        "evidence": [],
+        "artReferenceTableDump": [],
+        "artReferenceTableSummary": []
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.03 0.07 0.21 1/1116 16489"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.19 0.10 0.22 5/1119 16651"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1788796874.156 16537 16581 I LynxEnv : disable lynx debug",
+          "1788796874.156 16537 16581 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1788796874.156 16537 16581 I lynx    : [7C773F5D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1788796874539,
+        "renderPageMs": 1788796874551,
+        "firstScreenMs": 1788796875558,
+        "loadEndMs": 1788796875567,
+        "loadToRenderPageMs": 12,
+        "renderPageToFirstScreenMs": 1007,
+        "loadToFirstScreenMs": 1019,
+        "loadTemplateMs": 1028
+      },
+      "stateEvidence": {
+        "rowCount": 1000,
+        "firstId": 1,
+        "secondId": 2,
+        "thirdId": 3,
+        "row998Id": 999,
+        "firstLabel": "pretty red table",
+        "selectedId": null
+      },
+      "preStateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "firstScreenLayout": null,
+      "backgroundSettle": {
+        "protocol": "octane-issue194-native-v1",
+        "workload": "startup-create",
+        "scale": 1000,
+        "source": "background-script-start",
+        "boundary": "background-script-start-to-second-native-frame",
+        "startMs": 1788796874616,
+        "commitAckMs": 1788796875198,
+        "firstFrameMs": 1788796875213,
+        "endMs": 1788796875229,
+        "latencyMs": 613,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "pretty red table",
+          "selectedId": null
+        }
+      },
+      "sequenceEvidence": null,
+      "adbInput": null,
+      "attribution": {
+        "protocol": "octane-issue194-main-v1",
+        "root": 1,
+        "version": 1,
+        "commands": 69,
+        "commandOps": {
+          "create": 28,
+          "event": 12,
+          "insert": 28,
+          "mount-program-run": 1
+        },
+        "wallMs": 4,
+        "callsBefore": {
+          "__CreatePage": {
+            "count": 1,
+            "selfMs": 0
+          },
+          "__GetElementUniqueID": {
+            "count": 2,
+            "selfMs": 0
+          },
+          "__CreateView": {
+            "count": 1015,
+            "selfMs": 5
+          },
+          "__SetClasses": {
+            "count": 4028,
+            "selfMs": 31
+          },
+          "__CreateText": {
+            "count": 3013,
+            "selfMs": 17
+          },
+          "__SetAttribute": {
+            "count": 3013,
+            "selfMs": 20
+          },
+          "__AddEvent": {
+            "count": 2012,
+            "selfMs": 16
+          },
+          "__AppendElement": {
+            "count": 4028,
+            "selfMs": 14
+          },
+          "__FlushElementTree": {
+            "count": 1,
+            "selfMs": 385,
+            "callsBefore": [17111]
+          }
+        },
+        "callsAfter": {
+          "__CreatePage": {
+            "count": 1,
+            "selfMs": 0
+          },
+          "__GetElementUniqueID": {
+            "count": 2,
+            "selfMs": 0
+          },
+          "__CreateView": {
+            "count": 1015,
+            "selfMs": 5
+          },
+          "__SetClasses": {
+            "count": 4028,
+            "selfMs": 31
+          },
+          "__CreateText": {
+            "count": 3013,
+            "selfMs": 17
+          },
+          "__SetAttribute": {
+            "count": 3013,
+            "selfMs": 20
+          },
+          "__AddEvent": {
+            "count": 2012,
+            "selfMs": 16
+          },
+          "__AppendElement": {
+            "count": 4028,
+            "selfMs": 14
+          },
+          "__FlushElementTree": {
+            "count": 2,
+            "selfMs": 385,
+            "callsBefore": [17111, 17113]
+          }
+        },
+        "profileBefore": {
+          "commits": 1,
+          "commands": 69,
+          "emptyCommits": 0,
+          "bytes": 0,
+          "selfcheckMs": 0,
+          "encodeMs": 0,
+          "dispatchMs": 0,
+          "decodeMs": 1,
+          "validateMs": 9,
+          "prepareMs": 69,
+          "applyMs": 0,
+          "ackMs": 0,
+          "deltaCommits": 0,
+          "deltaMisses": 0,
+          "deltaOps": 0,
+          "deltaBytes": 0,
+          "firstScreenPhase": null,
+          "firstScreenRenderMs": 236,
+          "firstScreenPublishMs": 773,
+          "firstScreenCaptureMs": 0,
+          "firstScreenAnnounceMs": 2,
+          "firstTreeAction": null,
+          "firstTreeSettled": 0,
+          "firstTreeProgramManifestRuns": 1,
+          "firstTreeProgramManifestMatches": 1,
+          "firstTreeProgramNodeComparisons": 28,
+          "firstTreeProgramOwnershipRuns": 0,
+          "firstTreeProgramOwnershipHosts": 0,
+          "firstTreeProgramOwnershipLiveRuns": 0,
+          "firstTreeProgramOwnershipLiveHosts": 0,
+          "firstTreeProgramOwnershipPromotedHosts": 0,
+          "firstTreeProgramOwnershipFallback": null,
+          "firstTreeProgramCompactions": 0,
+          "firstTreeProgramCompactionFallback": null,
+          "handOverMs": 0,
+          "destroyRunExpandMs": 0,
+          "denseValidateMs": 0,
+          "eventDetachMs": 0,
+          "papiRemoveMs": 0,
+          "denseReleaseMs": 0,
+          "synthesizedCommands": 0,
+          "eventDetachCount": 0,
+          "papiRemoveCount": 0,
+          "denseReleaseHostCount": 0,
+          "papiCreateMs": 60,
+          "firstScreenPlanMs": 163,
+          "mtExpandMs": 1
+        },
+        "profileAfter": {
+          "commits": 1,
+          "commands": 69,
+          "emptyCommits": 0,
+          "bytes": 0,
+          "selfcheckMs": 0,
+          "encodeMs": 0,
+          "dispatchMs": 0,
+          "decodeMs": 1,
+          "validateMs": 9,
+          "prepareMs": 69,
+          "applyMs": 3,
+          "ackMs": 0,
+          "deltaCommits": 0,
+          "deltaMisses": 0,
+          "deltaOps": 0,
+          "deltaBytes": 0,
+          "firstScreenPhase": null,
+          "firstScreenRenderMs": 236,
+          "firstScreenPublishMs": 773,
+          "firstScreenCaptureMs": 0,
+          "firstScreenAnnounceMs": 2,
+          "firstTreeAction": "adopt",
+          "firstTreeSettled": 0,
+          "firstTreeProgramManifestRuns": 1,
+          "firstTreeProgramManifestMatches": 1,
+          "firstTreeProgramNodeComparisons": 28,
+          "firstTreeProgramOwnershipRuns": 1,
+          "firstTreeProgramOwnershipHosts": 4000,
+          "firstTreeProgramOwnershipLiveRuns": 1,
+          "firstTreeProgramOwnershipLiveHosts": 4000,
+          "firstTreeProgramOwnershipPromotedHosts": 0,
+          "firstTreeProgramOwnershipFallback": null,
+          "firstTreeProgramCompactions": 0,
+          "firstTreeProgramCompactionFallback": null,
+          "handOverMs": 0,
+          "destroyRunExpandMs": 0,
+          "denseValidateMs": 0,
+          "eventDetachMs": 0,
+          "papiRemoveMs": 0,
+          "denseReleaseMs": 0,
+          "synthesizedCommands": 0,
+          "eventDetachCount": 0,
+          "papiRemoveCount": 0,
+          "denseReleaseHostCount": 0,
+          "papiCreateMs": 60,
+          "firstScreenPlanMs": 163,
+          "mtExpandMs": 1
+        },
+        "program": {
+          "bindCount": 1,
+          "bindMs": 0,
+          "createCount": 1,
+          "createExecMs": 1,
+          "mountCount": 1,
+          "mountMs": 15
+        },
+        "ackEncoding": "compact-v1",
+        "acknowledgedHostCount": 4028,
+        "wireToBts": {
+          "boundary": "native-context-proxy-main-to-background-encoded-payloads",
+          "wireToBtsBytes": 203,
+          "wireToBtsMsgs": 2,
+          "contextEventJsonBytes": 343,
+          "ackMessages": 1,
+          "ackEncoding": "compact-v1",
+          "acknowledgedHostCount": 4028,
+          "messages": [
+            {
+              "type": "ack",
+              "encodedPayloadBytes": 128,
+              "contextEventJsonBytes": 203
+            },
+            {
+              "type": "complete",
+              "encodedPayloadBytes": 75,
+              "contextEventJsonBytes": 140
+            }
+          ]
+        }
+      },
+      "errors": []
+    },
+    {
+      "ordinal": 2,
+      "cell": "candidate",
+      "accepted": true,
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "nativeCrash": {
+        "atMs": null,
+        "loadToCrashMs": null,
+        "evidence": [],
+        "artReferenceTableDump": [],
+        "artReferenceTableSummary": []
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.19 0.10 0.22 1/1117 16661"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.19 0.10 0.22 1/1118 16812"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1788796877.667 16706 16741 I LynxEnv : disable lynx debug",
+          "1788796877.667 16706 16741 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1788796877.667 16706 16741 I lynx    : [7C773F5D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1788796877868,
+        "renderPageMs": 1788796877881,
+        "firstScreenMs": 1788796878898,
+        "loadEndMs": 1788796878907,
+        "loadToRenderPageMs": 13,
+        "renderPageToFirstScreenMs": 1017,
+        "loadToFirstScreenMs": 1030,
+        "loadTemplateMs": 1039
+      },
+      "stateEvidence": {
+        "rowCount": 1000,
+        "firstId": 1,
+        "secondId": 2,
+        "thirdId": 3,
+        "row998Id": 999,
+        "firstLabel": "pretty red table",
+        "selectedId": null
+      },
+      "preStateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "firstScreenLayout": null,
+      "backgroundSettle": {
+        "protocol": "octane-issue194-native-v1",
+        "workload": "startup-create",
+        "scale": 1000,
+        "source": "background-script-start",
+        "boundary": "background-script-start-to-second-native-frame",
+        "startMs": 1788796877945,
+        "commitAckMs": 1788796878528,
+        "firstFrameMs": 1788796878530,
+        "endMs": 1788796878547,
+        "latencyMs": 602,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "pretty red table",
+          "selectedId": null
+        }
+      },
+      "sequenceEvidence": null,
+      "adbInput": null,
+      "attribution": {
+        "protocol": "octane-issue194-main-v1",
+        "root": 1,
+        "version": 1,
+        "commands": 69,
+        "commandOps": {
+          "create": 28,
+          "event": 12,
+          "insert": 28,
+          "mount-program-run": 1
+        },
+        "wallMs": 4,
+        "callsBefore": {
+          "__CreatePage": {
+            "count": 1,
+            "selfMs": 0
+          },
+          "__GetElementUniqueID": {
+            "count": 2,
+            "selfMs": 0
+          },
+          "__CreateView": {
+            "count": 1015,
+            "selfMs": 9
+          },
+          "__SetClasses": {
+            "count": 4028,
+            "selfMs": 40
+          },
+          "__CreateText": {
+            "count": 3013,
+            "selfMs": 19
+          },
+          "__SetAttribute": {
+            "count": 3013,
+            "selfMs": 25
+          },
+          "__AddEvent": {
+            "count": 2012,
+            "selfMs": 18
+          },
+          "__AppendElement": {
+            "count": 4028,
+            "selfMs": 26
+          },
+          "__FlushElementTree": {
+            "count": 1,
+            "selfMs": 371,
+            "callsBefore": [17111]
+          }
+        },
+        "callsAfter": {
+          "__CreatePage": {
+            "count": 1,
+            "selfMs": 0
+          },
+          "__GetElementUniqueID": {
+            "count": 2,
+            "selfMs": 0
+          },
+          "__CreateView": {
+            "count": 1015,
+            "selfMs": 9
+          },
+          "__SetClasses": {
+            "count": 4028,
+            "selfMs": 40
+          },
+          "__CreateText": {
+            "count": 3013,
+            "selfMs": 19
+          },
+          "__SetAttribute": {
+            "count": 3013,
+            "selfMs": 25
+          },
+          "__AddEvent": {
+            "count": 2012,
+            "selfMs": 18
+          },
+          "__AppendElement": {
+            "count": 4028,
+            "selfMs": 26
+          },
+          "__FlushElementTree": {
+            "count": 2,
+            "selfMs": 371,
+            "callsBefore": [17111, 17113]
+          }
+        },
+        "profileBefore": {
+          "commits": 1,
+          "commands": 69,
+          "emptyCommits": 0,
+          "bytes": 0,
+          "selfcheckMs": 0,
+          "encodeMs": 0,
+          "dispatchMs": 0,
+          "decodeMs": 2,
+          "validateMs": 9,
+          "prepareMs": 68,
+          "applyMs": 0,
+          "ackMs": 0,
+          "deltaCommits": 0,
+          "deltaMisses": 0,
+          "deltaOps": 0,
+          "deltaBytes": 0,
+          "firstScreenPhase": null,
+          "firstScreenRenderMs": 261,
+          "firstScreenPublishMs": 757,
+          "firstScreenCaptureMs": 0,
+          "firstScreenAnnounceMs": 2,
+          "firstTreeAction": null,
+          "firstTreeSettled": 0,
+          "firstTreeProgramManifestRuns": 1,
+          "firstTreeProgramManifestMatches": 1,
+          "firstTreeProgramNodeComparisons": 28,
+          "firstTreeProgramOwnershipRuns": 0,
+          "firstTreeProgramOwnershipHosts": 0,
+          "firstTreeProgramOwnershipLiveRuns": 0,
+          "firstTreeProgramOwnershipLiveHosts": 0,
+          "firstTreeProgramOwnershipPromotedHosts": 0,
+          "firstTreeProgramOwnershipFallback": null,
+          "firstTreeProgramCompactions": 0,
+          "firstTreeProgramCompactionFallback": null,
+          "handOverMs": 0,
+          "destroyRunExpandMs": 0,
+          "denseValidateMs": 0,
+          "eventDetachMs": 0,
+          "papiRemoveMs": 0,
+          "denseReleaseMs": 0,
+          "synthesizedCommands": 0,
+          "eventDetachCount": 0,
+          "papiRemoveCount": 0,
+          "denseReleaseHostCount": 0,
+          "papiCreateMs": 59,
+          "firstScreenPlanMs": 187,
+          "mtExpandMs": 1
+        },
+        "profileAfter": {
+          "commits": 1,
+          "commands": 69,
+          "emptyCommits": 0,
+          "bytes": 0,
+          "selfcheckMs": 0,
+          "encodeMs": 0,
+          "dispatchMs": 0,
+          "decodeMs": 2,
+          "validateMs": 9,
+          "prepareMs": 68,
+          "applyMs": 3,
+          "ackMs": 0,
+          "deltaCommits": 0,
+          "deltaMisses": 0,
+          "deltaOps": 0,
+          "deltaBytes": 0,
+          "firstScreenPhase": null,
+          "firstScreenRenderMs": 261,
+          "firstScreenPublishMs": 757,
+          "firstScreenCaptureMs": 0,
+          "firstScreenAnnounceMs": 2,
+          "firstTreeAction": "adopt",
+          "firstTreeSettled": 0,
+          "firstTreeProgramManifestRuns": 1,
+          "firstTreeProgramManifestMatches": 1,
+          "firstTreeProgramNodeComparisons": 28,
+          "firstTreeProgramOwnershipRuns": 1,
+          "firstTreeProgramOwnershipHosts": 4000,
+          "firstTreeProgramOwnershipLiveRuns": 1,
+          "firstTreeProgramOwnershipLiveHosts": 4000,
+          "firstTreeProgramOwnershipPromotedHosts": 0,
+          "firstTreeProgramOwnershipFallback": null,
+          "firstTreeProgramCompactions": 0,
+          "firstTreeProgramCompactionFallback": null,
+          "handOverMs": 0,
+          "destroyRunExpandMs": 0,
+          "denseValidateMs": 0,
+          "eventDetachMs": 0,
+          "papiRemoveMs": 0,
+          "denseReleaseMs": 0,
+          "synthesizedCommands": 0,
+          "eventDetachCount": 0,
+          "papiRemoveCount": 0,
+          "denseReleaseHostCount": 0,
+          "papiCreateMs": 59,
+          "firstScreenPlanMs": 187,
+          "mtExpandMs": 1
+        },
+        "program": {
+          "bindCount": 1,
+          "bindMs": 0,
+          "createCount": 1,
+          "createExecMs": 2,
+          "mountCount": 1,
+          "mountMs": 14
+        },
+        "ackEncoding": "compact-v1",
+        "acknowledgedHostCount": 4028,
+        "wireToBts": {
+          "boundary": "native-context-proxy-main-to-background-encoded-payloads",
+          "wireToBtsBytes": 203,
+          "wireToBtsMsgs": 2,
+          "contextEventJsonBytes": 343,
+          "ackMessages": 1,
+          "ackEncoding": "compact-v1",
+          "acknowledgedHostCount": 4028,
+          "messages": [
+            {
+              "type": "ack",
+              "encodedPayloadBytes": 128,
+              "contextEventJsonBytes": 203
+            },
+            {
+              "type": "complete",
+              "encodedPayloadBytes": 75,
+              "contextEventJsonBytes": 140
+            }
+          ]
+        }
+      },
+      "errors": []
+    },
+    {
+      "ordinal": 3,
+      "cell": "candidate",
+      "accepted": true,
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "nativeCrash": {
+        "atMs": null,
+        "loadToCrashMs": null,
+        "evidence": [],
+        "artReferenceTableDump": [],
+        "artReferenceTableSummary": []
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.19 0.10 0.22 1/1118 16820"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.25 0.12 0.23 1/1119 16992"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1788796880.966 16863 16900 I LynxEnv : disable lynx debug",
+          "1788796880.966 16863 16900 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1788796880.966 16863 16900 I lynx    : [7C773F5D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1788796881151,
+        "renderPageMs": 1788796881162,
+        "firstScreenMs": 1788796882163,
+        "loadEndMs": 1788796882172,
+        "loadToRenderPageMs": 11,
+        "renderPageToFirstScreenMs": 1001,
+        "loadToFirstScreenMs": 1012,
+        "loadTemplateMs": 1021
+      },
+      "stateEvidence": {
+        "rowCount": 1000,
+        "firstId": 1,
+        "secondId": 2,
+        "thirdId": 3,
+        "row998Id": 999,
+        "firstLabel": "pretty red table",
+        "selectedId": null
+      },
+      "preStateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "firstScreenLayout": null,
+      "backgroundSettle": {
+        "protocol": "octane-issue194-native-v1",
+        "workload": "startup-create",
+        "scale": 1000,
+        "source": "background-script-start",
+        "boundary": "background-script-start-to-second-native-frame",
+        "startMs": 1788796881226,
+        "commitAckMs": 1788796881809,
+        "firstFrameMs": 1788796881814,
+        "endMs": 1788796881830,
+        "latencyMs": 604,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "pretty red table",
+          "selectedId": null
+        }
+      },
+      "sequenceEvidence": null,
+      "adbInput": null,
+      "attribution": {
+        "protocol": "octane-issue194-main-v1",
+        "root": 1,
+        "version": 1,
+        "commands": 69,
+        "commandOps": {
+          "create": 28,
+          "event": 12,
+          "insert": 28,
+          "mount-program-run": 1
+        },
+        "wallMs": 3,
+        "callsBefore": {
+          "__CreatePage": {
+            "count": 1,
+            "selfMs": 0
+          },
+          "__GetElementUniqueID": {
+            "count": 2,
+            "selfMs": 0
+          },
+          "__CreateView": {
+            "count": 1015,
+            "selfMs": 6
+          },
+          "__SetClasses": {
+            "count": 4028,
+            "selfMs": 25
+          },
+          "__CreateText": {
+            "count": 3013,
+            "selfMs": 19
+          },
+          "__SetAttribute": {
+            "count": 3013,
+            "selfMs": 20
+          },
+          "__AddEvent": {
+            "count": 2012,
+            "selfMs": 20
+          },
+          "__AppendElement": {
+            "count": 4028,
+            "selfMs": 23
+          },
+          "__FlushElementTree": {
+            "count": 1,
+            "selfMs": 386,
+            "callsBefore": [17111]
+          }
+        },
+        "callsAfter": {
+          "__CreatePage": {
+            "count": 1,
+            "selfMs": 0
+          },
+          "__GetElementUniqueID": {
+            "count": 2,
+            "selfMs": 0
+          },
+          "__CreateView": {
+            "count": 1015,
+            "selfMs": 6
+          },
+          "__SetClasses": {
+            "count": 4028,
+            "selfMs": 25
+          },
+          "__CreateText": {
+            "count": 3013,
+            "selfMs": 19
+          },
+          "__SetAttribute": {
+            "count": 3013,
+            "selfMs": 20
+          },
+          "__AddEvent": {
+            "count": 2012,
+            "selfMs": 20
+          },
+          "__AppendElement": {
+            "count": 4028,
+            "selfMs": 23
+          },
+          "__FlushElementTree": {
+            "count": 2,
+            "selfMs": 386,
+            "callsBefore": [17111, 17113]
+          }
+        },
+        "profileBefore": {
+          "commits": 1,
+          "commands": 69,
+          "emptyCommits": 0,
+          "bytes": 0,
+          "selfcheckMs": 0,
+          "encodeMs": 0,
+          "dispatchMs": 0,
+          "decodeMs": 1,
+          "validateMs": 9,
+          "prepareMs": 69,
+          "applyMs": 0,
+          "ackMs": 0,
+          "deltaCommits": 0,
+          "deltaMisses": 0,
+          "deltaOps": 0,
+          "deltaBytes": 0,
+          "firstScreenPhase": null,
+          "firstScreenRenderMs": 232,
+          "firstScreenPublishMs": 770,
+          "firstScreenCaptureMs": 0,
+          "firstScreenAnnounceMs": 2,
+          "firstTreeAction": null,
+          "firstTreeSettled": 0,
+          "firstTreeProgramManifestRuns": 1,
+          "firstTreeProgramManifestMatches": 1,
+          "firstTreeProgramNodeComparisons": 28,
+          "firstTreeProgramOwnershipRuns": 0,
+          "firstTreeProgramOwnershipHosts": 0,
+          "firstTreeProgramOwnershipLiveRuns": 0,
+          "firstTreeProgramOwnershipLiveHosts": 0,
+          "firstTreeProgramOwnershipPromotedHosts": 0,
+          "firstTreeProgramOwnershipFallback": null,
+          "firstTreeProgramCompactions": 0,
+          "firstTreeProgramCompactionFallback": null,
+          "handOverMs": 0,
+          "destroyRunExpandMs": 0,
+          "denseValidateMs": 0,
+          "eventDetachMs": 0,
+          "papiRemoveMs": 0,
+          "denseReleaseMs": 0,
+          "synthesizedCommands": 0,
+          "eventDetachCount": 0,
+          "papiRemoveCount": 0,
+          "denseReleaseHostCount": 0,
+          "papiCreateMs": 62,
+          "firstScreenPlanMs": 161,
+          "mtExpandMs": 1
+        },
+        "profileAfter": {
+          "commits": 1,
+          "commands": 69,
+          "emptyCommits": 0,
+          "bytes": 0,
+          "selfcheckMs": 0,
+          "encodeMs": 0,
+          "dispatchMs": 0,
+          "decodeMs": 1,
+          "validateMs": 9,
+          "prepareMs": 69,
+          "applyMs": 3,
+          "ackMs": 0,
+          "deltaCommits": 0,
+          "deltaMisses": 0,
+          "deltaOps": 0,
+          "deltaBytes": 0,
+          "firstScreenPhase": null,
+          "firstScreenRenderMs": 232,
+          "firstScreenPublishMs": 770,
+          "firstScreenCaptureMs": 0,
+          "firstScreenAnnounceMs": 2,
+          "firstTreeAction": "adopt",
+          "firstTreeSettled": 0,
+          "firstTreeProgramManifestRuns": 1,
+          "firstTreeProgramManifestMatches": 1,
+          "firstTreeProgramNodeComparisons": 28,
+          "firstTreeProgramOwnershipRuns": 1,
+          "firstTreeProgramOwnershipHosts": 4000,
+          "firstTreeProgramOwnershipLiveRuns": 1,
+          "firstTreeProgramOwnershipLiveHosts": 4000,
+          "firstTreeProgramOwnershipPromotedHosts": 0,
+          "firstTreeProgramOwnershipFallback": null,
+          "firstTreeProgramCompactions": 0,
+          "firstTreeProgramCompactionFallback": null,
+          "handOverMs": 0,
+          "destroyRunExpandMs": 0,
+          "denseValidateMs": 0,
+          "eventDetachMs": 0,
+          "papiRemoveMs": 0,
+          "denseReleaseMs": 0,
+          "synthesizedCommands": 0,
+          "eventDetachCount": 0,
+          "papiRemoveCount": 0,
+          "denseReleaseHostCount": 0,
+          "papiCreateMs": 62,
+          "firstScreenPlanMs": 161,
+          "mtExpandMs": 1
+        },
+        "program": {
+          "bindCount": 1,
+          "bindMs": 0,
+          "createCount": 1,
+          "createExecMs": 2,
+          "mountCount": 1,
+          "mountMs": 14
+        },
+        "ackEncoding": "compact-v1",
+        "acknowledgedHostCount": 4028,
+        "wireToBts": {
+          "boundary": "native-context-proxy-main-to-background-encoded-payloads",
+          "wireToBtsBytes": 203,
+          "wireToBtsMsgs": 2,
+          "contextEventJsonBytes": 343,
+          "ackMessages": 1,
+          "ackEncoding": "compact-v1",
+          "acknowledgedHostCount": 4028,
+          "messages": [
+            {
+              "type": "ack",
+              "encodedPayloadBytes": 128,
+              "contextEventJsonBytes": 203
+            },
+            {
+              "type": "complete",
+              "encodedPayloadBytes": 75,
+              "contextEventJsonBytes": 140
+            }
+          ]
+        }
+      },
+      "errors": []
+    },
+    {
+      "ordinal": 4,
+      "cell": "candidate",
+      "accepted": true,
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "nativeCrash": {
+        "atMs": null,
+        "loadToCrashMs": null,
+        "evidence": [],
+        "artReferenceTableDump": [],
+        "artReferenceTableSummary": []
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.25 0.12 0.23 1/1119 17000"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.31 0.13 0.23 1/1119 17140"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1788796884.260 17042 17080 I LynxEnv : disable lynx debug",
+          "1788796884.260 17042 17080 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1788796884.260 17042 17080 I lynx    : [7C773F5D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1788796884448,
+        "renderPageMs": 1788796884460,
+        "firstScreenMs": 1788796885460,
+        "loadEndMs": 1788796885469,
+        "loadToRenderPageMs": 12,
+        "renderPageToFirstScreenMs": 1000,
+        "loadToFirstScreenMs": 1012,
+        "loadTemplateMs": 1021
+      },
+      "stateEvidence": {
+        "rowCount": 1000,
+        "firstId": 1,
+        "secondId": 2,
+        "thirdId": 3,
+        "row998Id": 999,
+        "firstLabel": "pretty red table",
+        "selectedId": null
+      },
+      "preStateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "firstScreenLayout": null,
+      "backgroundSettle": {
+        "protocol": "octane-issue194-native-v1",
+        "workload": "startup-create",
+        "scale": 1000,
+        "source": "background-script-start",
+        "boundary": "background-script-start-to-second-native-frame",
+        "startMs": 1788796884525,
+        "commitAckMs": 1788796885100,
+        "firstFrameMs": 1788796885114,
+        "endMs": 1788796885131,
+        "latencyMs": 606,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "pretty red table",
+          "selectedId": null
+        }
+      },
+      "sequenceEvidence": null,
+      "adbInput": null,
+      "attribution": {
+        "protocol": "octane-issue194-main-v1",
+        "root": 1,
+        "version": 1,
+        "commands": 69,
+        "commandOps": {
+          "create": 28,
+          "event": 12,
+          "insert": 28,
+          "mount-program-run": 1
+        },
+        "wallMs": 4,
+        "callsBefore": {
+          "__CreatePage": {
+            "count": 1,
+            "selfMs": 0
+          },
+          "__GetElementUniqueID": {
+            "count": 2,
+            "selfMs": 0
+          },
+          "__CreateView": {
+            "count": 1015,
+            "selfMs": 14
+          },
+          "__SetClasses": {
+            "count": 4028,
+            "selfMs": 26
+          },
+          "__CreateText": {
+            "count": 3013,
+            "selfMs": 17
+          },
+          "__SetAttribute": {
+            "count": 3013,
+            "selfMs": 22
+          },
+          "__AddEvent": {
+            "count": 2012,
+            "selfMs": 21
+          },
+          "__AppendElement": {
+            "count": 4028,
+            "selfMs": 28
+          },
+          "__FlushElementTree": {
+            "count": 1,
+            "selfMs": 384,
+            "callsBefore": [17111]
+          }
+        },
+        "callsAfter": {
+          "__CreatePage": {
+            "count": 1,
+            "selfMs": 0
+          },
+          "__GetElementUniqueID": {
+            "count": 2,
+            "selfMs": 0
+          },
+          "__CreateView": {
+            "count": 1015,
+            "selfMs": 14
+          },
+          "__SetClasses": {
+            "count": 4028,
+            "selfMs": 26
+          },
+          "__CreateText": {
+            "count": 3013,
+            "selfMs": 17
+          },
+          "__SetAttribute": {
+            "count": 3013,
+            "selfMs": 22
+          },
+          "__AddEvent": {
+            "count": 2012,
+            "selfMs": 21
+          },
+          "__AppendElement": {
+            "count": 4028,
+            "selfMs": 28
+          },
+          "__FlushElementTree": {
+            "count": 2,
+            "selfMs": 384,
+            "callsBefore": [17111, 17113]
+          }
+        },
+        "profileBefore": {
+          "commits": 1,
+          "commands": 69,
+          "emptyCommits": 0,
+          "bytes": 0,
+          "selfcheckMs": 0,
+          "encodeMs": 0,
+          "dispatchMs": 0,
+          "decodeMs": 1,
+          "validateMs": 9,
+          "prepareMs": 68,
+          "applyMs": 0,
+          "ackMs": 0,
+          "deltaCommits": 0,
+          "deltaMisses": 0,
+          "deltaOps": 0,
+          "deltaBytes": 0,
+          "firstScreenPhase": null,
+          "firstScreenRenderMs": 235,
+          "firstScreenPublishMs": 766,
+          "firstScreenCaptureMs": 0,
+          "firstScreenAnnounceMs": 2,
+          "firstTreeAction": null,
+          "firstTreeSettled": 0,
+          "firstTreeProgramManifestRuns": 1,
+          "firstTreeProgramManifestMatches": 1,
+          "firstTreeProgramNodeComparisons": 28,
+          "firstTreeProgramOwnershipRuns": 0,
+          "firstTreeProgramOwnershipHosts": 0,
+          "firstTreeProgramOwnershipLiveRuns": 0,
+          "firstTreeProgramOwnershipLiveHosts": 0,
+          "firstTreeProgramOwnershipPromotedHosts": 0,
+          "firstTreeProgramOwnershipFallback": null,
+          "firstTreeProgramCompactions": 0,
+          "firstTreeProgramCompactionFallback": null,
+          "handOverMs": 0,
+          "destroyRunExpandMs": 0,
+          "denseValidateMs": 0,
+          "eventDetachMs": 0,
+          "papiRemoveMs": 0,
+          "denseReleaseMs": 0,
+          "synthesizedCommands": 0,
+          "eventDetachCount": 0,
+          "papiRemoveCount": 0,
+          "denseReleaseHostCount": 0,
+          "papiCreateMs": 64,
+          "firstScreenPlanMs": 163,
+          "mtExpandMs": 0
+        },
+        "profileAfter": {
+          "commits": 1,
+          "commands": 69,
+          "emptyCommits": 0,
+          "bytes": 0,
+          "selfcheckMs": 0,
+          "encodeMs": 0,
+          "dispatchMs": 0,
+          "decodeMs": 1,
+          "validateMs": 9,
+          "prepareMs": 68,
+          "applyMs": 3,
+          "ackMs": 0,
+          "deltaCommits": 0,
+          "deltaMisses": 0,
+          "deltaOps": 0,
+          "deltaBytes": 0,
+          "firstScreenPhase": null,
+          "firstScreenRenderMs": 235,
+          "firstScreenPublishMs": 766,
+          "firstScreenCaptureMs": 0,
+          "firstScreenAnnounceMs": 2,
+          "firstTreeAction": "adopt",
+          "firstTreeSettled": 0,
+          "firstTreeProgramManifestRuns": 1,
+          "firstTreeProgramManifestMatches": 1,
+          "firstTreeProgramNodeComparisons": 28,
+          "firstTreeProgramOwnershipRuns": 1,
+          "firstTreeProgramOwnershipHosts": 4000,
+          "firstTreeProgramOwnershipLiveRuns": 1,
+          "firstTreeProgramOwnershipLiveHosts": 4000,
+          "firstTreeProgramOwnershipPromotedHosts": 0,
+          "firstTreeProgramOwnershipFallback": null,
+          "firstTreeProgramCompactions": 0,
+          "firstTreeProgramCompactionFallback": null,
+          "handOverMs": 0,
+          "destroyRunExpandMs": 0,
+          "denseValidateMs": 0,
+          "eventDetachMs": 0,
+          "papiRemoveMs": 0,
+          "denseReleaseMs": 0,
+          "synthesizedCommands": 0,
+          "eventDetachCount": 0,
+          "papiRemoveCount": 0,
+          "denseReleaseHostCount": 0,
+          "papiCreateMs": 64,
+          "firstScreenPlanMs": 163,
+          "mtExpandMs": 0
+        },
+        "program": {
+          "bindCount": 1,
+          "bindMs": 0,
+          "createCount": 1,
+          "createExecMs": 2,
+          "mountCount": 1,
+          "mountMs": 14
+        },
+        "ackEncoding": "compact-v1",
+        "acknowledgedHostCount": 4028,
+        "wireToBts": {
+          "boundary": "native-context-proxy-main-to-background-encoded-payloads",
+          "wireToBtsBytes": 203,
+          "wireToBtsMsgs": 2,
+          "contextEventJsonBytes": 343,
+          "ackMessages": 1,
+          "ackEncoding": "compact-v1",
+          "acknowledgedHostCount": 4028,
+          "messages": [
+            {
+              "type": "ack",
+              "encodedPayloadBytes": 128,
+              "contextEventJsonBytes": 203
+            },
+            {
+              "type": "complete",
+              "encodedPayloadBytes": 75,
+              "contextEventJsonBytes": 140
+            }
+          ]
+        }
+      },
+      "errors": []
+    },
+    {
+      "ordinal": 5,
+      "cell": "candidate",
+      "accepted": true,
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "nativeCrash": {
+        "atMs": null,
+        "loadToCrashMs": null,
+        "evidence": [],
+        "artReferenceTableDump": [],
+        "artReferenceTableSummary": []
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.31 0.13 0.23 1/1119 17148"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.31 0.13 0.23 5/1122 17296"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1788796887.559 17199 17234 I LynxEnv : disable lynx debug",
+          "1788796887.559 17199 17234 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1788796887.559 17199 17234 I lynx    : [7C773F5D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1788796887765,
+        "renderPageMs": 1788796887777,
+        "firstScreenMs": 1788796888775,
+        "loadEndMs": 1788796888784,
+        "loadToRenderPageMs": 12,
+        "renderPageToFirstScreenMs": 998,
+        "loadToFirstScreenMs": 1010,
+        "loadTemplateMs": 1019
+      },
+      "stateEvidence": {
+        "rowCount": 1000,
+        "firstId": 1,
+        "secondId": 2,
+        "thirdId": 3,
+        "row998Id": 999,
+        "firstLabel": "pretty red table",
+        "selectedId": null
+      },
+      "preStateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "firstScreenLayout": null,
+      "backgroundSettle": {
+        "protocol": "octane-issue194-native-v1",
+        "workload": "startup-create",
+        "scale": 1000,
+        "source": "background-script-start",
+        "boundary": "background-script-start-to-second-native-frame",
+        "startMs": 1788796887843,
+        "commitAckMs": 1788796888417,
+        "firstFrameMs": 1788796888431,
+        "endMs": 1788796888448,
+        "latencyMs": 605,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "pretty red table",
+          "selectedId": null
+        }
+      },
+      "sequenceEvidence": null,
+      "adbInput": null,
+      "attribution": {
+        "protocol": "octane-issue194-main-v1",
+        "root": 1,
+        "version": 1,
+        "commands": 69,
+        "commandOps": {
+          "create": 28,
+          "event": 12,
+          "insert": 28,
+          "mount-program-run": 1
+        },
+        "wallMs": 4,
+        "callsBefore": {
+          "__CreatePage": {
+            "count": 1,
+            "selfMs": 0
+          },
+          "__GetElementUniqueID": {
+            "count": 2,
+            "selfMs": 0
+          },
+          "__CreateView": {
+            "count": 1015,
+            "selfMs": 8
+          },
+          "__SetClasses": {
+            "count": 4028,
+            "selfMs": 24
+          },
+          "__CreateText": {
+            "count": 3013,
+            "selfMs": 17
+          },
+          "__SetAttribute": {
+            "count": 3013,
+            "selfMs": 19
+          },
+          "__AddEvent": {
+            "count": 2012,
+            "selfMs": 23
+          },
+          "__AppendElement": {
+            "count": 4028,
+            "selfMs": 24
+          },
+          "__FlushElementTree": {
+            "count": 1,
+            "selfMs": 379,
+            "callsBefore": [17111]
+          }
+        },
+        "callsAfter": {
+          "__CreatePage": {
+            "count": 1,
+            "selfMs": 0
+          },
+          "__GetElementUniqueID": {
+            "count": 2,
+            "selfMs": 0
+          },
+          "__CreateView": {
+            "count": 1015,
+            "selfMs": 8
+          },
+          "__SetClasses": {
+            "count": 4028,
+            "selfMs": 24
+          },
+          "__CreateText": {
+            "count": 3013,
+            "selfMs": 17
+          },
+          "__SetAttribute": {
+            "count": 3013,
+            "selfMs": 19
+          },
+          "__AddEvent": {
+            "count": 2012,
+            "selfMs": 23
+          },
+          "__AppendElement": {
+            "count": 4028,
+            "selfMs": 24
+          },
+          "__FlushElementTree": {
+            "count": 2,
+            "selfMs": 379,
+            "callsBefore": [17111, 17113]
+          }
+        },
+        "profileBefore": {
+          "commits": 1,
+          "commands": 69,
+          "emptyCommits": 0,
+          "bytes": 0,
+          "selfcheckMs": 0,
+          "encodeMs": 0,
+          "dispatchMs": 0,
+          "decodeMs": 2,
+          "validateMs": 9,
+          "prepareMs": 68,
+          "applyMs": 0,
+          "ackMs": 0,
+          "deltaCommits": 0,
+          "deltaMisses": 0,
+          "deltaOps": 0,
+          "deltaBytes": 0,
+          "firstScreenPhase": null,
+          "firstScreenRenderMs": 234,
+          "firstScreenPublishMs": 766,
+          "firstScreenCaptureMs": 1,
+          "firstScreenAnnounceMs": 2,
+          "firstTreeAction": null,
+          "firstTreeSettled": 0,
+          "firstTreeProgramManifestRuns": 1,
+          "firstTreeProgramManifestMatches": 1,
+          "firstTreeProgramNodeComparisons": 28,
+          "firstTreeProgramOwnershipRuns": 0,
+          "firstTreeProgramOwnershipHosts": 0,
+          "firstTreeProgramOwnershipLiveRuns": 0,
+          "firstTreeProgramOwnershipLiveHosts": 0,
+          "firstTreeProgramOwnershipPromotedHosts": 0,
+          "firstTreeProgramOwnershipFallback": null,
+          "firstTreeProgramCompactions": 0,
+          "firstTreeProgramCompactionFallback": null,
+          "handOverMs": 0,
+          "destroyRunExpandMs": 0,
+          "denseValidateMs": 0,
+          "eventDetachMs": 0,
+          "papiRemoveMs": 0,
+          "denseReleaseMs": 0,
+          "synthesizedCommands": 0,
+          "eventDetachCount": 0,
+          "papiRemoveCount": 0,
+          "denseReleaseHostCount": 0,
+          "papiCreateMs": 54,
+          "firstScreenPlanMs": 163,
+          "mtExpandMs": 1
+        },
+        "profileAfter": {
+          "commits": 1,
+          "commands": 69,
+          "emptyCommits": 0,
+          "bytes": 0,
+          "selfcheckMs": 0,
+          "encodeMs": 0,
+          "dispatchMs": 0,
+          "decodeMs": 2,
+          "validateMs": 9,
+          "prepareMs": 68,
+          "applyMs": 3,
+          "ackMs": 0,
+          "deltaCommits": 0,
+          "deltaMisses": 0,
+          "deltaOps": 0,
+          "deltaBytes": 0,
+          "firstScreenPhase": null,
+          "firstScreenRenderMs": 234,
+          "firstScreenPublishMs": 766,
+          "firstScreenCaptureMs": 1,
+          "firstScreenAnnounceMs": 2,
+          "firstTreeAction": "adopt",
+          "firstTreeSettled": 0,
+          "firstTreeProgramManifestRuns": 1,
+          "firstTreeProgramManifestMatches": 1,
+          "firstTreeProgramNodeComparisons": 28,
+          "firstTreeProgramOwnershipRuns": 1,
+          "firstTreeProgramOwnershipHosts": 4000,
+          "firstTreeProgramOwnershipLiveRuns": 1,
+          "firstTreeProgramOwnershipLiveHosts": 4000,
+          "firstTreeProgramOwnershipPromotedHosts": 0,
+          "firstTreeProgramOwnershipFallback": null,
+          "firstTreeProgramCompactions": 0,
+          "firstTreeProgramCompactionFallback": null,
+          "handOverMs": 0,
+          "destroyRunExpandMs": 0,
+          "denseValidateMs": 0,
+          "eventDetachMs": 0,
+          "papiRemoveMs": 0,
+          "denseReleaseMs": 0,
+          "synthesizedCommands": 0,
+          "eventDetachCount": 0,
+          "papiRemoveCount": 0,
+          "denseReleaseHostCount": 0,
+          "papiCreateMs": 54,
+          "firstScreenPlanMs": 163,
+          "mtExpandMs": 1
+        },
+        "program": {
+          "bindCount": 1,
+          "bindMs": 0,
+          "createCount": 1,
+          "createExecMs": 2,
+          "mountCount": 1,
+          "mountMs": 15
+        },
+        "ackEncoding": "compact-v1",
+        "acknowledgedHostCount": 4028,
+        "wireToBts": {
+          "boundary": "native-context-proxy-main-to-background-encoded-payloads",
+          "wireToBtsBytes": 203,
+          "wireToBtsMsgs": 2,
+          "contextEventJsonBytes": 343,
+          "ackMessages": 1,
+          "ackEncoding": "compact-v1",
+          "acknowledgedHostCount": 4028,
+          "messages": [
+            {
+              "type": "ack",
+              "encodedPayloadBytes": 128,
+              "contextEventJsonBytes": 203
+            },
+            {
+              "type": "complete",
+              "encodedPayloadBytes": 75,
+              "contextEventJsonBytes": 140
+            }
+          ]
+        }
+      },
+      "errors": []
+    }
+  ],
+  "invalidAttempts": []
+}

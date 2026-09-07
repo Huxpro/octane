@@ -168,6 +168,12 @@ application path. Development builds wire the pinned Lynx transport. Compatible
 component wrappers and removed thread sites have source/runtime tests, but no
 native live-reload or reconstructing-HMR claim is made.
 
+Production bundles spell runtime failures as stable `Octane Lynx OLnnn`
+identifiers so diagnostic prose does not occupy both thread graphs. Development
+builds and direct source tests retain the complete message at the same throw or
+report site. Search the identifier in `packages/lynx/src` to recover that
+message and its local invariant.
+
 The deterministic `lynx-bundle-size` gate builds the same
 semantic-checksummed application in background-rendered preview and dual-thread
 IFR shapes with the pinned Rspeedy encoder. It verifies the authored visible

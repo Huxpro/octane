@@ -1,3 +1,5 @@
+declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
+
 import {
 	UNIVERSAL_TRANSPORT_PROTOCOL_VERSION,
 	type UniversalAsyncCommitTransport,
@@ -450,7 +452,11 @@ export function createLynxBackgroundTransport(
 	options: LynxBackgroundTransportOptions = {},
 ): LynxBackgroundTransport {
 	if (UNIVERSAL_TRANSPORT_PROTOCOL_VERSION !== LYNX_TRANSPORT_PROTOCOL_VERSION) {
-		throw new Error('Octane Lynx transport protocol does not match the universal runtime.');
+		throw new Error(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx transport protocol does not match the universal runtime.'
+				: 'Octane Lynx OL190',
+		);
 	}
 	if (
 		context === null ||
@@ -460,11 +466,17 @@ export function createLynxBackgroundTransport(
 		typeof context.removeEventListener !== 'function'
 	) {
 		throw new TypeError(
-			'Octane Lynx background transport requires ContextProxy dispatchEvent/addEventListener/removeEventListener.',
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx background transport requires ContextProxy dispatchEvent/addEventListener/removeEventListener.'
+				: 'Octane Lynx OL191',
 		);
 	}
 	if (container.renderer !== LYNX_TRANSPORT_RENDERER) {
-		throw new Error('Octane Lynx background transport received a foreign client container.');
+		throw new Error(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx background transport received a foreign client container.'
+				: 'Octane Lynx OL192',
+		);
 	}
 
 	const validation = resolveLynxValidationMode(options.validation);
@@ -486,7 +498,11 @@ export function createLynxBackgroundTransport(
 	// and stops shipping a descriptor it already holds a copy of.
 	const readyRequest = LYNX_FIRST_TREE_PROGRAM_MANIFEST_READY_REQUEST_BASE + NEXT_READY_REQUEST++;
 	if (!Number.isSafeInteger(readyRequest)) {
-		throw new Error('Octane Lynx capability-ready request identities are exhausted.');
+		throw new Error(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx capability-ready request identities are exhausted.'
+				: 'Octane Lynx OL193',
+		);
 	}
 	const readinessRequest: LynxMainReadyRequest = Object.freeze({
 		protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
@@ -533,13 +549,25 @@ export function createLynxBackgroundTransport(
 	const finalizedWorkletBatches = new WeakSet<object>();
 	const deltaShadow = LYNX_PROFILE ? createLynxDeltaShadow() : null;
 
-	const report = (error: unknown, fallback = 'Octane Lynx transport protocol error.') => {
+	const report = (
+		error: unknown,
+		fallback = typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+			? 'Octane Lynx transport protocol error.'
+			: 'Octane Lynx OL194',
+	) => {
 		const normalized = errorFrom(error, fallback);
 		reported.push(normalized);
 		try {
 			options.onDiagnostic?.(normalized);
 		} catch (diagnosticError) {
-			reported.push(errorFrom(diagnosticError, 'Octane Lynx diagnostic callback failed.'));
+			reported.push(
+				errorFrom(
+					diagnosticError,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx diagnostic callback failed.'
+						: 'Octane Lynx OL195',
+				),
+			);
 		}
 		return normalized;
 	};
@@ -550,7 +578,12 @@ export function createLynxBackgroundTransport(
 		try {
 			(acceptedByHost ? options.onWorkletBatchAccepted : options.onWorkletBatchRejected)?.(batch);
 		} catch (error) {
-			report(error, 'Octane Lynx could not finalize background worklet lifetimes.');
+			report(
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx could not finalize background worklet lifetimes.'
+					: 'Octane Lynx OL196',
+			);
 		}
 	};
 
@@ -615,7 +648,14 @@ export function createLynxBackgroundTransport(
 			// First settlement wins; never overwrite that result with the delivery error.
 			if (pendingMainCalls.get(entry.call) !== entry) return;
 			pendingMainCalls.delete(entry.call);
-			entry.deferred.reject(report(error, 'Octane Lynx could not deliver a main-thread call.'));
+			entry.deferred.reject(
+				report(
+					error,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx could not deliver a main-thread call.'
+						: 'Octane Lynx OL197',
+				),
+			);
 		}
 	};
 
@@ -650,7 +690,9 @@ export function createLynxBackgroundTransport(
 		if (entry === undefined) {
 			report(
 				new Error(
-					`Octane Lynx received a late or duplicate main-thread call result ${message.call}.`,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx received a late or duplicate main-thread call result ${message.call}.`
+						: 'Octane Lynx OL198',
 				),
 			);
 			return;
@@ -658,7 +700,9 @@ export function createLynxBackgroundTransport(
 		if (!callIdentityMatches(entry.identity, message)) {
 			report(
 				new Error(
-					`Octane Lynx received a stale or foreign main-thread call result ${message.call}.`,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx received a stale or foreign main-thread call result ${message.call}.`
+						: 'Octane Lynx OL199',
 				),
 			);
 			return;
@@ -673,7 +717,14 @@ export function createLynxBackgroundTransport(
 					) as UniversalSerializableValue,
 				);
 			} catch (error) {
-				entry.deferred.reject(report(error, 'Octane Lynx received an invalid main-thread result.'));
+				entry.deferred.reject(
+					report(
+						error,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx received an invalid main-thread result.'
+							: 'Octane Lynx OL200',
+					),
+				);
 			}
 		} else entry.deferred.reject(remoteError(message.error));
 	};
@@ -687,10 +738,20 @@ export function createLynxBackgroundTransport(
 				...frozenIdentity(message),
 				type: 'call-background-error',
 				call: message.call,
-				error: wireError(error, 'Octane Lynx background function failed.'),
+				error: wireError(
+					error,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx background function failed.'
+						: 'Octane Lynx OL201',
+				),
 			});
 		} catch (dispatchError) {
-			report(dispatchError, 'Octane Lynx could not deliver a background call error.');
+			report(
+				dispatchError,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx could not deliver a background call error.'
+					: 'Octane Lynx OL202',
+			);
 		}
 	};
 
@@ -701,15 +762,34 @@ export function createLynxBackgroundTransport(
 			message.version > accepted.version ||
 			transportRoot !== message.root
 		) {
-			report(new Error(`Octane Lynx received a stale or foreign background call ${message.call}.`));
-			dispatchBackgroundCallError(message, new Error('Octane Lynx background call is stale.'));
+			report(
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx received a stale or foreign background call ${message.call}.`
+						: 'Octane Lynx OL203',
+				),
+			);
+			dispatchBackgroundCallError(
+				message,
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx background call is stale.'
+						: 'Octane Lynx OL204',
+				),
+			);
 			return;
 		}
 		// The main side allocates call IDs monotonically and ContextProxy preserves
 		// sender order. A scalar high-water mark rejects in-flight and settled
 		// replays while keeping transport memory bounded for long-lived roots.
 		if (message.call <= lastBackgroundCall) {
-			report(new Error(`Octane Lynx received duplicate background call ${message.call}.`));
+			report(
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx received duplicate background call ${message.call}.`
+						: 'Octane Lynx OL205',
+				),
+			);
 			return;
 		}
 		lastBackgroundCall = message.call;
@@ -721,7 +801,11 @@ export function createLynxBackgroundTransport(
 		let result: unknown;
 		try {
 			if (options.executeBackgroundFunction === undefined) {
-				throw new Error('Octane Lynx has no background function registry installed.');
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx has no background function registry installed.'
+						: 'Octane Lynx OL206',
+				);
 			}
 			result = options.executeBackgroundFunction(message.fn, message.args);
 		} catch (error) {
@@ -789,13 +873,21 @@ export function createLynxBackgroundTransport(
 		const entry = pending.get(message.version);
 		if (entry === undefined) {
 			report(
-				new Error(`Octane Lynx transport received late or duplicate ${label} ${message.version}.`),
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx transport received late or duplicate ${label} ${message.version}.`
+						: 'Octane Lynx OL207',
+				),
 			);
 			return null;
 		}
 		if (!sameLynxTransportIdentity(entry.identity, message)) {
 			report(
-				new Error(`Octane Lynx transport received stale or foreign ${label} ${message.version}.`),
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx transport received stale or foreign ${label} ${message.version}.`
+						: 'Octane Lynx OL208',
+				),
 			);
 			return null;
 		}
@@ -808,7 +900,12 @@ export function createLynxBackgroundTransport(
 		try {
 			context.removeEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, receive);
 		} catch (removeError) {
-			report(removeError, 'Octane Lynx failed to remove its transport listener.');
+			report(
+				removeError,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx failed to remove its transport listener.'
+					: 'Octane Lynx OL209',
+			);
 		}
 	};
 
@@ -819,7 +916,12 @@ export function createLynxBackgroundTransport(
 				try {
 					dispatch({ ...entry.identity, type: 'cancel-main', call: entry.call });
 				} catch (cancelError) {
-					report(cancelError, 'Octane Lynx could not cancel a closing main-thread call.');
+					report(
+						cancelError,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx could not cancel a closing main-thread call.'
+							: 'Octane Lynx OL210',
+					);
 				}
 			}
 			entry.deferred.reject(error);
@@ -844,7 +946,12 @@ export function createLynxBackgroundTransport(
 		try {
 			invalidateLynxClientContainer(container);
 		} catch (invalidationError) {
-			report(invalidationError, 'Octane Lynx failed to invalidate its public handles.');
+			report(
+				invalidationError,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx failed to invalidate its public handles.'
+					: 'Octane Lynx OL211',
+			);
 		}
 		return true;
 	};
@@ -864,7 +971,12 @@ export function createLynxBackgroundTransport(
 		void Promise.resolve()
 			.then(() => handler())
 			.catch((error) => {
-				report(error, 'Octane Lynx background page-destroy cleanup failed.');
+				report(
+					error,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx background page-destroy cleanup failed.'
+						: 'Octane Lynx OL212',
+				);
 			});
 	};
 
@@ -874,7 +986,15 @@ export function createLynxBackgroundTransport(
 		terminalDisposeIdentity = null;
 		terminalDisposeRetryQueued = false;
 		logicalTeardownEnabled = true;
-		closeClientState(new Error('Octane Lynx native page lifetime was destroyed.'), false, false);
+		closeClientState(
+			new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx native page lifetime was destroyed.'
+					: 'Octane Lynx OL213',
+			),
+			false,
+			false,
+		);
 		detachReceiver();
 		queuePageDestroyHandler();
 	};
@@ -888,7 +1008,12 @@ export function createLynxBackgroundTransport(
 	function queueTerminalDisposeRetry(error: Error): void {
 		if (terminalDisposeIdentity === null) return;
 		if (terminalDisposeAttempts >= MAX_DISPOSE_ATTEMPTS) {
-			report(error, 'Octane Lynx terminal cleanup exhausted its retry budget.');
+			report(
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx terminal cleanup exhausted its retry budget.'
+					: 'Octane Lynx OL214',
+			);
 			finishTerminalDispose();
 			return;
 		}
@@ -917,7 +1042,9 @@ export function createLynxBackgroundTransport(
 			queueTerminalDisposeRetry(
 				report(
 					disposeError,
-					`Octane Lynx terminal cleanup attempt ${terminalDisposeAttempts} could not be delivered.`,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx terminal cleanup attempt ${terminalDisposeAttempts} could not be delivered.`
+						: 'Octane Lynx OL215',
 				),
 			);
 		}
@@ -969,7 +1096,12 @@ export function createLynxBackgroundTransport(
 		} catch (error) {
 			terminalCloseAfterHostAcceptance(
 				message,
-				report(error, `Octane Lynx could not publish acknowledgement-time main-thread ${phase}.`),
+				report(
+					error,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx could not publish acknowledgement-time main-thread ${phase}.`
+						: 'Octane Lynx OL216',
+				),
 			);
 			return false;
 		} finally {
@@ -986,13 +1118,25 @@ export function createLynxBackgroundTransport(
 			try {
 				dispatch(readinessRequest);
 			} catch (error) {
-				closeInternal(report(error, 'Octane Lynx failed to retry main readiness.'), false);
+				closeInternal(
+					report(
+						error,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx failed to retry main readiness.'
+							: 'Octane Lynx OL217',
+					),
+					false,
+				);
 			}
 			return;
 		}
 		if (message.request !== readyRequest) {
 			report(
-				new Error(`Octane Lynx transport received foreign main-ready request ${message.request}.`),
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx transport received foreign main-ready request ${message.request}.`
+						: 'Octane Lynx OL218',
+				),
 			);
 			return;
 		}
@@ -1029,7 +1173,9 @@ export function createLynxBackgroundTransport(
 		if (entry.state !== 'sent') {
 			report(
 				new Error(
-					`Octane Lynx transport received an acknowledgement while batch ${message.version} was ${entry.state}.`,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx transport received an acknowledgement while batch ${message.version} was ${entry.state}.`
+						: 'Octane Lynx OL219',
 				),
 			);
 			return;
@@ -1043,11 +1189,17 @@ export function createLynxBackgroundTransport(
 					!entry.compactRequested ||
 					(previousAccepted !== null && !entry.incrementalCompactRequested)
 				) {
-					throw new Error('Octane Lynx received an unnegotiated compact acknowledgement.');
+					throw new Error(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx received an unnegotiated compact acknowledgement.'
+							: 'Octane Lynx OL220',
+					);
 				}
 				if (entry.firstTreeProgramCompactRequested !== (message.adoption !== undefined)) {
 					throw new Error(
-						'Octane Lynx compact first-tree acknowledgement has a mismatched adoption verdict.',
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx compact first-tree acknowledgement has a mismatched adoption verdict.'
+							: 'Octane Lynx OL221',
 					);
 				}
 				handles = prepareLynxCompactHandleDeltas(
@@ -1076,7 +1228,9 @@ export function createLynxBackgroundTransport(
 			handles?.rollback();
 			const terminalError = report(
 				error,
-				`Octane Lynx could not accept acknowledgement ${message.version}.`,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx could not accept acknowledgement ${message.version}.`
+					: 'Octane Lynx OL222',
 			);
 			// Main emits ACK only after crossing the physical mutation boundary. If
 			// background validation fails here, neither side can safely continue.
@@ -1090,7 +1244,12 @@ export function createLynxBackgroundTransport(
 				publishingAcknowledgement = false;
 				terminalCloseAfterHostAcceptance(
 					message,
-					report(error, `Octane Lynx could not confirm adoption ${message.version}.`),
+					report(
+						error,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? `Octane Lynx could not confirm adoption ${message.version}.`
+							: 'Octane Lynx OL223',
+					),
 				);
 				return;
 			}
@@ -1155,7 +1314,9 @@ export function createLynxBackgroundTransport(
 			if (entry.state !== 'acknowledged') {
 				const error = report(
 					new Error(
-						`Octane Lynx transport completed batch ${message.version} before acknowledgement.`,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? `Octane Lynx transport completed batch ${message.version} before acknowledgement.`
+							: 'Octane Lynx OL224',
 					),
 				);
 				terminalCloseAfterHostAcceptance(message, error);
@@ -1169,7 +1330,9 @@ export function createLynxBackgroundTransport(
 			if (entry.state === 'acknowledged') {
 				const error = report(
 					new Error(
-						`Octane Lynx transport received pre-ACK rejection after batch ${message.version} was accepted.`,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? `Octane Lynx transport received pre-ACK rejection after batch ${message.version} was accepted.`
+							: 'Octane Lynx OL225',
 					),
 				);
 				terminalCloseAfterHostAcceptance(message, error);
@@ -1181,7 +1344,11 @@ export function createLynxBackgroundTransport(
 		}
 		if (entry.state !== 'acknowledged') {
 			const error = report(
-				new Error(`Octane Lynx transport faulted batch ${message.version} before acknowledgement.`),
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx transport faulted batch ${message.version} before acknowledgement.`
+						: 'Octane Lynx OL226',
+				),
 			);
 			terminalCloseAfterHostAcceptance(message, error);
 			return;
@@ -1253,7 +1420,9 @@ export function createLynxBackgroundTransport(
 		const first = batch.deliveries[0]!.identity;
 		report(
 			new Error(
-				`Octane Lynx received a stale native event for host ${first.id}:${first.generation}.`,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx received a stale native event for host ${first.id}:${first.generation}.`
+					: 'Octane Lynx OL227',
 			),
 		);
 	};
@@ -1268,7 +1437,9 @@ export function createLynxBackgroundTransport(
 		if (queued + batch.deliveries.length > MAX_DEFERRED_NATIVE_EVENT_DELIVERIES) {
 			report(
 				new Error(
-					`Octane Lynx dropped a native event batch after ${MAX_DEFERRED_NATIVE_EVENT_DELIVERIES} deliveries awaiting acknowledgement.`,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx dropped a native event batch after ${MAX_DEFERRED_NATIVE_EVENT_DELIVERIES} deliveries awaiting acknowledgement.`
+						: 'Octane Lynx OL228',
 				),
 			);
 			return;
@@ -1306,18 +1477,33 @@ export function createLynxBackgroundTransport(
 	const handleEvent = (message: Extract<LynxBackgroundInboundMessage, { type: 'event' }>) => {
 		if (accepted === null || !sameLynxTransportIdentity(accepted, message)) {
 			report(
-				new Error(`Octane Lynx transport received a stale or foreign event ${message.version}.`),
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx transport received a stale or foreign event ${message.version}.`
+						: 'Octane Lynx OL229',
+				),
 			);
 			return;
 		}
 		if (boundRoot === null) {
-			report(new Error('Octane Lynx transport received an event before the root was bound.'));
+			report(
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx transport received an event before the root was bound.'
+						: 'Octane Lynx OL230',
+				),
+			);
 			return;
 		}
 		try {
 			boundRoot.dispatchTransportEvent(message);
 		} catch (error) {
-			report(error, 'Octane Lynx transported event failed.');
+			report(
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx transported event failed.'
+					: 'Octane Lynx OL231',
+			);
 		}
 	};
 
@@ -1325,7 +1511,9 @@ export function createLynxBackgroundTransport(
 		if (accepted === null || !sameLynxTransportIdentity(accepted, message)) {
 			report(
 				new Error(
-					`Octane Lynx transport received a stale or foreign host attachment ${message.version}.`,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx transport received a stale or foreign host attachment ${message.version}.`
+						: 'Octane Lynx OL232',
 				),
 			);
 			return;
@@ -1335,7 +1523,12 @@ export function createLynxBackgroundTransport(
 		} catch (error) {
 			terminalCloseAfterHostAcceptance(
 				message,
-				report(error, 'Octane Lynx transported host attachment failed.'),
+				report(
+					error,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx transported host attachment failed.'
+						: 'Octane Lynx OL233',
+				),
 			);
 		}
 	};
@@ -1344,7 +1537,9 @@ export function createLynxBackgroundTransport(
 		if (accepted === null || !sameLynxTransportIdentity(accepted, message)) {
 			report(
 				new Error(
-					`Octane Lynx transport received a stale or foreign host fault ${message.version}.`,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx transport received a stale or foreign host fault ${message.version}.`
+						: 'Octane Lynx OL234',
 				),
 			);
 			return;
@@ -1359,7 +1554,9 @@ export function createLynxBackgroundTransport(
 		if (running === undefined) {
 			report(
 				new Error(
-					`Octane Lynx received a late or duplicate background cancellation ${message.call}.`,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx received a late or duplicate background cancellation ${message.call}.`
+						: 'Octane Lynx OL235',
 				),
 			);
 			return;
@@ -1367,7 +1564,9 @@ export function createLynxBackgroundTransport(
 		if (!sameLynxTransportIdentity(running.identity, message)) {
 			report(
 				new Error(
-					`Octane Lynx received a stale or foreign background cancellation ${message.call}.`,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx received a stale or foreign background cancellation ${message.call}.`
+						: 'Octane Lynx OL236',
 				),
 			);
 			return;
@@ -1401,7 +1600,12 @@ export function createLynxBackgroundTransport(
 			dispatch({ ...identity, type: 'dispose' });
 		} catch (error) {
 			queueDisposeRetry(
-				report(error, `Octane Lynx dispose attempt ${disposeAttempts} could not be delivered.`),
+				report(
+					error,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx dispose attempt ${disposeAttempts} could not be delivered.`
+						: 'Octane Lynx OL237',
+				),
 			);
 		}
 	}
@@ -1422,12 +1626,23 @@ export function createLynxBackgroundTransport(
 			!sameLynxTransportIdentity(disposeIdentity, message)
 		) {
 			report(
-				new Error('Octane Lynx transport received a late or foreign dispose acknowledgement.'),
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx transport received a late or foreign dispose acknowledgement.'
+						: 'Octane Lynx OL238',
+				),
 			);
 			return;
 		}
 		deferred.resolve(undefined);
-		closeInternal(new Error('Octane Lynx background transport was disposed.'), true);
+		closeInternal(
+			new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx background transport was disposed.'
+					: 'Octane Lynx OL239',
+			),
+			true,
+		);
 	};
 
 	const handleDisposeRetry = (message: LynxDisposeRetryMessage): void => {
@@ -1438,7 +1653,9 @@ export function createLynxBackgroundTransport(
 			queueTerminalDisposeRetry(
 				report(
 					remoteError(message.error),
-					'Octane Lynx main thread requested terminal cleanup retry.',
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx main thread requested terminal cleanup retry.'
+						: 'Octane Lynx OL240',
 				),
 			);
 			return;
@@ -1449,11 +1666,22 @@ export function createLynxBackgroundTransport(
 			disposeIdentity === null ||
 			!sameLynxTransportIdentity(disposeIdentity, message)
 		) {
-			report(new Error('Octane Lynx transport received a late or foreign dispose retry.'));
+			report(
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx transport received a late or foreign dispose retry.'
+						: 'Octane Lynx OL241',
+				),
+			);
 			return;
 		}
 		queueDisposeRetry(
-			report(remoteError(message.error), 'Octane Lynx main thread requested a dispose retry.'),
+			report(
+				remoteError(message.error),
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx main thread requested a dispose retry.'
+					: 'Octane Lynx OL242',
+			),
 		);
 	};
 
@@ -1500,11 +1728,21 @@ export function createLynxBackgroundTransport(
 					version: raw.version as number,
 					type: 'call-background-error',
 					call: raw.call as number,
-					error: wireError(error, 'Octane Lynx received a malformed background call.'),
+					error: wireError(
+						error,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx received a malformed background call.'
+							: 'Octane Lynx OL243',
+					),
 				});
 			} catch (dispatchError) {
 				closeInternal(
-					report(dispatchError, 'Octane Lynx could not reject a malformed background call.'),
+					report(
+						dispatchError,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx could not reject a malformed background call.'
+							: 'Octane Lynx OL244',
+					),
 					false,
 				);
 			}
@@ -1597,7 +1835,12 @@ export function createLynxBackgroundTransport(
 			// Nothing in an undecodable payload is safe to reflect on, so unlike a
 			// schema failure there is no identity to recover and no pending call to
 			// reject against — it can only be reported and dropped.
-			report(error, 'Octane Lynx received an inbound message it could not decode.');
+			report(
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx received an inbound message it could not decode.'
+					: 'Octane Lynx OL245',
+			);
 			return;
 		}
 		if (isRootIndependentDataMessage(data)) return;
@@ -1606,7 +1849,12 @@ export function createLynxBackgroundTransport(
 		try {
 			message = validateLynxBackgroundInboundMessage(data, validation);
 		} catch (error) {
-			const normalized = report(error, 'Octane Lynx received a malformed inbound message.');
+			const normalized = report(
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx received a malformed inbound message.'
+					: 'Octane Lynx OL246',
+			);
 			rejectExpectedMalformed(data, normalized);
 			return;
 		}
@@ -1668,7 +1916,9 @@ export function createLynxBackgroundTransport(
 	} catch (error) {
 		const registrationError = report(
 			error,
-			'Octane Lynx failed to install its background transport listener.',
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx failed to install its background transport listener.'
+				: 'Octane Lynx OL247',
 		);
 		closeInternal(registrationError, false);
 		throw registrationError;
@@ -1679,7 +1929,9 @@ export function createLynxBackgroundTransport(
 	} catch (error) {
 		const tombstoneError = report(
 			error,
-			'Octane Lynx failed to read its native page-lifetime tombstone.',
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx failed to read its native page-lifetime tombstone.'
+				: 'Octane Lynx OL248',
 		);
 		closeInternal(tombstoneError, false);
 		throw tombstoneError;
@@ -1690,7 +1942,15 @@ export function createLynxBackgroundTransport(
 		try {
 			dispatch(readinessRequest);
 		} catch (error) {
-			closeInternal(report(error, 'Octane Lynx failed to request main readiness.'), false);
+			closeInternal(
+				report(
+					error,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx failed to request main readiness.'
+						: 'Octane Lynx OL249',
+				),
+				false,
+			);
 		}
 	}
 
@@ -1699,7 +1959,11 @@ export function createLynxBackgroundTransport(
 		ready: readyDeferred.promise,
 		prepareBatch(target, batch, identity): UniversalAsyncPreparedHostBatch {
 			if (target !== container) {
-				throw new Error('Octane Lynx transport received a foreign client container.');
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx transport received a foreign client container.'
+						: 'Octane Lynx OL250',
+				);
 			}
 			preparationCount++;
 			// A manifest only certifies the batch that can adopt the painted first
@@ -1718,14 +1982,22 @@ export function createLynxBackgroundTransport(
 					!Number.isSafeInteger(identity.root) ||
 					identity.root <= 0
 				) {
-					throw new Error('Octane Lynx logical teardown received a foreign identity.');
+					throw new Error(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx logical teardown received a foreign identity.'
+							: 'Octane Lynx OL251',
+					);
 				}
 				let status: 'prepared' | 'applied' | 'aborted' = 'prepared';
 				return Object.freeze({
 					apply(acknowledge: (message: UniversalTransportAcknowledgement) => void) {
 						if (status !== 'prepared') {
 							return Promise.reject(
-								new Error('Octane Lynx logical teardown apply() may only run once.'),
+								new Error(
+									typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+										? 'Octane Lynx logical teardown apply() may only run once.'
+										: 'Octane Lynx OL252',
+								),
 							);
 						}
 						status = 'applied';
@@ -1782,7 +2054,11 @@ export function createLynxBackgroundTransport(
 				apply(acknowledge) {
 					if (token.status !== 'prepared') {
 						return Promise.reject(
-							new Error('Octane Lynx prepared batch apply() may only run once.'),
+							new Error(
+								typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+									? 'Octane Lynx prepared batch apply() may only run once.'
+									: 'Octane Lynx OL253',
+							),
 						);
 					}
 					if (closedError !== null) {
@@ -1792,12 +2068,22 @@ export function createLynxBackgroundTransport(
 					if (transportRoot === null) transportRoot = identity.root;
 					else if (transportRoot !== identity.root) {
 						finalizeWorkletBatch(preparedBatch, false);
-						return Promise.reject(new Error('Octane Lynx transport cannot serve a foreign root.'));
+						return Promise.reject(
+							new Error(
+								typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+									? 'Octane Lynx transport cannot serve a foreign root.'
+									: 'Octane Lynx OL254',
+							),
+						);
 					}
 					if (pending.has(identity.version)) {
 						finalizeWorkletBatch(preparedBatch, false);
 						return Promise.reject(
-							new Error(`Octane Lynx transport already has batch ${identity.version}.`),
+							new Error(
+								typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+									? `Octane Lynx transport already has batch ${identity.version}.`
+									: 'Octane Lynx OL255',
+							),
 						);
 					}
 					token.status = 'applying';
@@ -1900,7 +2186,9 @@ export function createLynxBackgroundTransport(
 							} catch (error) {
 								dispatchError = report(
 									error,
-									`Octane Lynx could not deliver commit ${identity.version}.`,
+									typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+										? `Octane Lynx could not deliver commit ${identity.version}.`
+										: 'Octane Lynx OL256',
 								);
 							} finally {
 								dispatchingCommit = null;
@@ -1932,7 +2220,11 @@ export function createLynxBackgroundTransport(
 						token.status = 'aborted';
 						closeEntry(
 							entry,
-							new Error(`Octane Lynx transport batch ${entry.identity.version} was aborted.`),
+							new Error(
+								typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+									? `Octane Lynx transport batch ${entry.identity.version} was aborted.`
+									: 'Octane Lynx OL257',
+							),
 						);
 						return;
 					}
@@ -1943,7 +2235,12 @@ export function createLynxBackgroundTransport(
 					} catch (error) {
 						terminalCloseAfterHostAcceptance(
 							entry.identity,
-							report(error, 'Octane Lynx failed to send an abort.'),
+							report(
+								error,
+								typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+									? 'Octane Lynx failed to send an abort.'
+									: 'Octane Lynx OL258',
+							),
 						);
 					}
 				},
@@ -1951,16 +2248,28 @@ export function createLynxBackgroundTransport(
 		},
 		bindRoot(root) {
 			if (boundRoot !== null && boundRoot !== root) {
-				throw new Error('Octane Lynx transport is already bound to another root.');
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx transport is already bound to another root.'
+						: 'Octane Lynx OL259',
+				);
 			}
 			boundRoot = root;
 		},
 		bindPageDestroy(handler) {
 			if (typeof handler !== 'function') {
-				throw new TypeError('Octane Lynx page-destroy handler must be a function.');
+				throw new TypeError(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx page-destroy handler must be a function.'
+						: 'Octane Lynx OL260',
+				);
 			}
 			if (pageDestroyHandler !== null && pageDestroyHandler !== handler) {
-				throw new Error('Octane Lynx transport already has a page-destroy handler.');
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx transport already has a page-destroy handler.'
+						: 'Octane Lynx OL261',
+				);
 			}
 			pageDestroyHandler = handler;
 			queuePageDestroyHandler();
@@ -1974,7 +2283,12 @@ export function createLynxBackgroundTransport(
 		dispatchNativeEventBatch(deliveries) {
 			if (deliveries.length === 0) return;
 			if (closedError !== null) {
-				report(closedError, 'Octane Lynx received a native event after the transport closed.');
+				report(
+					closedError,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx received a native event after the transport closed.'
+						: 'Octane Lynx OL262',
+				);
 				return;
 			}
 			const priority = deliveries[0]!.identity.priority;
@@ -1982,12 +2296,22 @@ export function createLynxBackgroundTransport(
 				const { identity } = delivery;
 				if (transportRoot !== null && identity.root !== transportRoot) {
 					report(
-						new Error(`Octane Lynx received a foreign native event for root ${identity.root}.`),
+						new Error(
+							typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+								? `Octane Lynx received a foreign native event for root ${identity.root}.`
+								: 'Octane Lynx OL263',
+						),
 					);
 					return;
 				}
 				if (identity.priority !== priority) {
-					report(new Error('Octane Lynx native event batch mixes listener priorities.'));
+					report(
+						new Error(
+							typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+								? 'Octane Lynx native event batch mixes listener priorities.'
+								: 'Octane Lynx OL264',
+						),
+					);
 					return;
 				}
 			}
@@ -1999,7 +2323,12 @@ export function createLynxBackgroundTransport(
 			if (entries.some((entry) => entry.state !== 'waiting-ready')) return false;
 			const settlements = entries.map((entry) => entry.deferred.promise.then(undefined, () => {}));
 			closeInternal(
-				errorFrom(reason, 'Octane Lynx root was unmounted before main became ready.'),
+				errorFrom(
+					reason,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx root was unmounted before main became ready.'
+						: 'Octane Lynx OL265',
+				),
 				false,
 			);
 			await Promise.all(settlements);
@@ -2019,7 +2348,11 @@ export function createLynxBackgroundTransport(
 			if (closedError !== null) return Promise.reject(closedError);
 			if (accepted === null) {
 				return Promise.reject(
-					new Error('Octane Lynx transport cannot dispose before a batch is accepted.'),
+					new Error(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx transport cannot dispose before a batch is accepted.'
+							: 'Octane Lynx OL266',
+					),
 				);
 			}
 			disposeIdentity = accepted;
@@ -2044,14 +2377,22 @@ export function createLynxBackgroundTransport(
 				const deferred = createDeferred<UniversalSerializableValue>();
 				deferred.reject(
 					new Error(
-						`Octane Lynx main-thread call queue is limited to ${MAX_QUEUED_THREAD_CALLS} entries.`,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? `Octane Lynx main-thread call queue is limited to ${MAX_QUEUED_THREAD_CALLS} entries.`
+							: 'Octane Lynx OL267',
 					),
 				);
 				return Object.freeze({ promise: deferred.promise, cancel() {} });
 			}
 			if (nextThreadCall > Number.MAX_SAFE_INTEGER) {
 				const deferred = createDeferred<UniversalSerializableValue>();
-				deferred.reject(new Error('Octane Lynx main-thread call identity space is exhausted.'));
+				deferred.reject(
+					new Error(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx main-thread call identity space is exhausted.'
+							: 'Octane Lynx OL268',
+					),
+				);
 				return Object.freeze({ promise: deferred.promise, cancel() {} });
 			}
 			const isolatedWorklet = isolateLynxWorkletValue(
@@ -2059,7 +2400,11 @@ export function createLynxBackgroundTransport(
 				'main-thread call target',
 			);
 			if (!isLynxMainThreadWorkletDescriptor(isolatedWorklet)) {
-				throw new TypeError('Octane Lynx main-thread call target is invalid.');
+				throw new TypeError(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx main-thread call target is invalid.'
+						: 'Octane Lynx OL269',
+				);
 			}
 			const isolatedArgs = isolateLynxWorkletValue(
 				args as unknown as LynxWorkletValue[],
@@ -2088,17 +2433,35 @@ export function createLynxBackgroundTransport(
 						try {
 							dispatch({ ...entry.identity, type: 'cancel-main', call: entry.call });
 						} catch (error) {
-							report(error, 'Octane Lynx could not deliver a main-thread cancellation.');
+							report(
+								error,
+								typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+									? 'Octane Lynx could not deliver a main-thread cancellation.'
+									: 'Octane Lynx OL270',
+							);
 						}
 					}
-					const cancellation = errorFrom(reason, 'Octane Lynx main-thread call was cancelled.');
+					const cancellation = errorFrom(
+						reason,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx main-thread call was cancelled.'
+							: 'Octane Lynx OL271',
+					);
 					if (reason === undefined) cancellation.name = 'AbortError';
 					entry.deferred.reject(cancellation);
 				},
 			});
 		},
 		close(reason) {
-			closeInternal(errorFrom(reason, 'Octane Lynx background transport was closed.'), false);
+			closeInternal(
+				errorFrom(
+					reason,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx background transport was closed.'
+						: 'Octane Lynx OL272',
+				),
+				false,
+			);
 		},
 		diagnostics() {
 			return Object.freeze([...reported]);

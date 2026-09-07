@@ -1,3 +1,5 @@
+declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
+
 /**
  * Issue-#103 B0 — the Block core standing where the universal core stands, on
  * the background side of a real Lynx root.
@@ -113,13 +115,21 @@ function committedTransaction(batch: UniversalHostBatch | null): UniversalTransa
 		// to answer `batch`, so it answers with the empty frame that was not sent.
 		batch: batch ?? EMPTY_LYNX_BATCH,
 		commit() {
-			throw new Error('Octane Lynx block commits are asynchronous; this batch is already sent.');
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx block commits are asynchronous; this batch is already sent.'
+					: 'Octane Lynx OL009',
+			);
 		},
 		commitAsync() {
 			return Promise.resolve();
 		},
 		abort() {
-			throw new Error('Octane Lynx block root cannot abort a batch the host has accepted.');
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx block root cannot abort a batch the host has accepted.'
+					: 'Octane Lynx OL010',
+			);
 		},
 	};
 	return Object.freeze(settled);
@@ -223,13 +233,18 @@ export function createLynxBlockBackgroundCore(
 					await program.mount(context, props);
 					mounted = program as unknown as LynxBlockProgram<never>;
 				} else if (mounted !== (program as unknown as LynxBlockProgram<never>)) {
-					throw new Error('Octane Lynx block root cannot swap the program it mounted.');
+					throw new Error(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx block root cannot swap the program it mounted.'
+							: 'Octane Lynx OL011',
+					);
 				} else if (typeof program.update === 'function') {
 					await program.update(context, props);
 				} else {
 					throw new Error(
-						'Octane Lynx block program declined a re-render: it has no update(). ' +
-							'A program that accepts new props must implement update().',
+						(typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx block program declined a re-render: it has no update(). '
+							: 'Octane Lynx OL012') + 'A program that accepts new props must implement update().',
 					);
 				}
 				return committedTransaction(await blockRoot.commit());

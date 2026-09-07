@@ -1,3 +1,5 @@
+declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
+
 import type {
 	UniversalEventListenerDescriptor,
 	UniversalHostBatch,
@@ -658,7 +660,11 @@ type LynxApplyOperation<Node extends LynxElementRef> =
 	  };
 
 function hostError(message: string): Error {
-	return new Error(`Octane Lynx host: ${message}`);
+	return new Error(
+		typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+			? `Octane Lynx host: ${message}`
+			: 'Octane Lynx OL099',
+	);
 }
 
 function assertSafeId(value: unknown, label: string): asserts value is number {
@@ -1108,6 +1114,11 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 		this.adoptedLive--;
 		state.transferredProgramNodes--;
 		state.ownedNodes.add(node);
+		if (LYNX_PROFILE) {
+			const profile = lynxWireProfile();
+			profile.firstTreeProgramOwnershipLiveHosts--;
+			profile.firstTreeProgramOwnershipPromotedHosts++;
+		}
 		this.mutated = true;
 		return true;
 	}
@@ -1128,6 +1139,7 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 		this.nodes[offset] = undefined;
 		this.adoptedLive--;
 		state.transferredProgramNodes--;
+		if (LYNX_PROFILE) lynxWireProfile().firstTreeProgramOwnershipLiveHosts--;
 		return true;
 	}
 
@@ -1138,6 +1150,11 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 		const index = state.programRuns.indexOf(run);
 		if (index !== -1) state.programRuns.splice(index, 1);
 		state.transferredProgramNodes -= this.adoptedLive;
+		if (LYNX_PROFILE) {
+			const profile = lynxWireProfile();
+			profile.firstTreeProgramOwnershipLiveRuns--;
+			profile.firstTreeProgramOwnershipLiveHosts -= this.adoptedLive;
+		}
 		this.adoptedLive = 0;
 		this.adoptedRun = null;
 		state.programRunsDisjoint = true;
@@ -6866,6 +6883,8 @@ function transferFirstTree<Node extends LynxElementRef>(
 				const profile = lynxWireProfile();
 				profile.firstTreeProgramOwnershipRuns++;
 				profile.firstTreeProgramOwnershipHosts += run.owned;
+				profile.firstTreeProgramOwnershipLiveRuns++;
+				profile.firstTreeProgramOwnershipLiveHosts += run.owned;
 			}
 			break;
 		}

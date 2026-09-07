@@ -1,3 +1,5 @@
+declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
+
 import type { UniversalPortalTargetHandle } from 'octane/universal/native';
 import { LYNX_RENDERER_ID } from './renderer-id.js';
 
@@ -20,7 +22,11 @@ export function encodeLynxPortalTargetId(identity: LynxPortalTargetIdentity): st
 		!isPositiveSafeInteger(identity.id) ||
 		!isPositiveSafeInteger(identity.generation)
 	) {
-		throw new TypeError('Octane Lynx portal targets require a valid host identity.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx portal targets require a valid host identity.'
+				: 'Octane Lynx OL172',
+		);
 	}
 	return `octane.lynx.portal:${identity.root}:${identity.id}:${identity.generation}`;
 }

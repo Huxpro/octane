@@ -1,3 +1,5 @@
+declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
+
 /**
  * Background-thread receiver for native `bind*`/`catch*` events.
  *
@@ -87,7 +89,13 @@ function createPathBuffer(
 			sink.deliver(deliveries);
 		} catch (error) {
 			sink.report(
-				error instanceof Error ? error : new Error('Octane Lynx native event delivery failed.'),
+				error instanceof Error
+					? error
+					: new Error(
+							typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+								? 'Octane Lynx native event delivery failed.'
+								: 'Octane Lynx OL106',
+						),
 			);
 		}
 	};
@@ -132,7 +140,13 @@ function routeToken(handler: unknown, event: unknown): boolean {
 		buffers.get(sink)!({ identity, payload });
 	} catch (error) {
 		sink.report(
-			error instanceof Error ? error : new Error('Octane Lynx could not snapshot a native event.'),
+			error instanceof Error
+				? error
+				: new Error(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx could not snapshot a native event.'
+							: 'Octane Lynx OL107',
+					),
 		);
 	}
 	return true;
@@ -148,7 +162,12 @@ export function installLynxNativeEventReceiver(
 	target: object,
 	sink: LynxNativeEventSink,
 ): () => void {
-	if (sinks.has(sink)) throw new Error('Octane Lynx native event sink is already installed.');
+	if (sinks.has(sink))
+		throw new Error(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx native event sink is already installed.'
+				: 'Octane Lynx OL108',
+		);
 	const engine = engineTarget(target);
 	sinks.add(sink);
 	buffers.set(sink, createPathBuffer(sink));

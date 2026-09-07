@@ -1,3 +1,5 @@
+declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
+
 /**
  * Framework-neutral values shared by Octane's Lynx worklet compiler and the
  * two runtime layers. The wire shapes deliberately match the public Lynx
@@ -96,7 +98,11 @@ const compiledBackgroundDefinitions = new Map<string, LynxCompiledThreadFunction
 let nextDefinitionRevision = 1;
 
 function fail(label: string, message: string): never {
-	throw new TypeError(`Octane Lynx ${label}: ${message}`);
+	throw new TypeError(
+		typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+			? `Octane Lynx ${label}: ${message}`
+			: 'Octane Lynx OL273',
+	);
 }
 
 function own(value: object, name: string): boolean {
@@ -575,7 +581,12 @@ export function createLynxMainThreadWorkletRegistry(
 	let closed = false;
 
 	const requireOpen = () => {
-		if (closed) throw new Error('Octane Lynx main-thread worklet registry is closed.');
+		if (closed)
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx main-thread worklet registry is closed.'
+					: 'Octane Lynx OL274',
+			);
 	};
 
 	const activationToken = (value: LynxActivatedMainThreadWorklet | number): number =>
@@ -616,7 +627,11 @@ export function createLynxMainThreadWorkletRegistry(
 		if (isLynxMainThreadWorkletDescriptor(value)) {
 			const definition = mainDefinitions.get(value._wkltId);
 			if (definition === undefined) {
-				throw new Error(`Octane Lynx main-thread worklet ${value._wkltId} is not registered.`);
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx main-thread worklet ${value._wkltId} is not registered.`
+						: 'Octane Lynx OL275',
+				);
 			}
 			revisions.set(value._wkltId, definition.revision);
 			if (value._c !== undefined) {
@@ -633,7 +648,9 @@ export function createLynxMainThreadWorkletRegistry(
 					!sameCloneSafeValue(refInitialValues.get(value._wvid)!, initialValue)
 				) {
 					throw new Error(
-						`Octane Lynx main-thread ref ${value._wvid} has conflicting initial values.`,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? `Octane Lynx main-thread ref ${value._wvid} has conflicting initial values.`
+							: 'Octane Lynx OL276',
 					);
 				}
 				refInitialValues.set(value._wvid, initialValue);
@@ -684,18 +701,30 @@ export function createLynxMainThreadWorkletRegistry(
 		if (isLynxMainThreadRefDescriptor(value)) {
 			const cell = refs.get(value._wvid)?.cell;
 			if (cell === undefined)
-				throw new Error(`Octane Lynx main-thread ref ${value._wvid} is stale.`);
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx main-thread ref ${value._wvid} is stale.`
+						: 'Octane Lynx OL277',
+				);
 			clones.set(value, cell);
 			return cell;
 		}
 		if (isLynxBackgroundFunctionDescriptor(value)) {
 			if (options.callBackground === undefined) {
-				throw new Error('Octane Lynx main-thread worklet has no background call bridge.');
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx main-thread worklet has no background call bridge.'
+						: 'Octane Lynx OL278',
+				);
 			}
 			const hydrated = (...args: unknown[]) => {
 				const activation = activations.get(token);
 				if (activation === undefined) {
-					throw new Error('Octane Lynx main-thread worklet is stale.');
+					throw new Error(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx main-thread worklet is stale.'
+							: 'Octane Lynx OL279',
+					);
 				}
 				const owner = mainDefinitions.get(activation.descriptor._wkltId);
 				if (
@@ -703,7 +732,9 @@ export function createLynxMainThreadWorkletRegistry(
 					activation.revisions.get(activation.descriptor._wkltId) !== owner.revision
 				) {
 					throw new Error(
-						`Octane Lynx main-thread worklet ${activation.descriptor._wkltId} was reloaded.`,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? `Octane Lynx main-thread worklet ${activation.descriptor._wkltId} was reloaded.`
+							: 'Octane Lynx OL280',
 					);
 				}
 				return options.callBackground!(
@@ -735,17 +766,34 @@ export function createLynxMainThreadWorkletRegistry(
 		params: readonly unknown[],
 	): unknown => {
 		const activation = activations.get(token);
-		if (activation === undefined) throw new Error('Octane Lynx main-thread worklet is stale.');
+		if (activation === undefined)
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx main-thread worklet is stale.'
+					: 'Octane Lynx OL281',
+			);
 		const definition = mainDefinitions.get(descriptor._wkltId);
 		if (definition === undefined) {
-			throw new Error(`Octane Lynx main-thread worklet ${descriptor._wkltId} is not registered.`);
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx main-thread worklet ${descriptor._wkltId} is not registered.`
+					: 'Octane Lynx OL282',
+			);
 		}
 		const revision = activation.revisions.get(descriptor._wkltId);
 		if (revision === undefined) {
-			throw new Error(`Octane Lynx main-thread worklet ${descriptor._wkltId} is foreign.`);
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx main-thread worklet ${descriptor._wkltId} is foreign.`
+					: 'Octane Lynx OL283',
+			);
 		}
 		if (definition.revision !== revision) {
-			throw new Error(`Octane Lynx main-thread worklet ${descriptor._wkltId} was reloaded.`);
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx main-thread worklet ${descriptor._wkltId} was reloaded.`
+					: 'Octane Lynx OL284',
+			);
 		}
 		const captures =
 			descriptor._c === undefined ? undefined : hydrate(descriptor._c, token, new Map());
@@ -762,14 +810,22 @@ export function createLynxMainThreadWorkletRegistry(
 		beginRefOwnerPublication() {
 			requireOpen();
 			if (refOwnerPublicationOpen) {
-				throw new Error('Octane Lynx main-thread ref owner publication is already open.');
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx main-thread ref owner publication is already open.'
+						: 'Octane Lynx OL285',
+				);
 			}
 			refOwnerPublicationOpen = true;
 		},
 		finishRefOwnerPublication() {
 			requireOpen();
 			if (!refOwnerPublicationOpen) {
-				throw new Error('Octane Lynx main-thread ref owner publication is not open.');
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx main-thread ref owner publication is not open.'
+						: 'Octane Lynx OL286',
+				);
 			}
 			refOwnerPublicationOpen = false;
 			for (const id of deferredRefCollection) {
@@ -782,14 +838,26 @@ export function createLynxMainThreadWorkletRegistry(
 			requireOpen();
 			const isolated = isolateLynxWorkletValue(descriptor, 'main-thread worklet');
 			if (isolated._owlt !== undefined) {
-				throw new Error('Octane Lynx cannot activate an already-active worklet descriptor.');
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx cannot activate an already-active worklet descriptor.'
+						: 'Octane Lynx OL287',
+				);
 			}
 			const definition = mainDefinitions.get(isolated._wkltId);
 			if (definition === undefined) {
-				throw new Error(`Octane Lynx main-thread worklet ${isolated._wkltId} is not registered.`);
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx main-thread worklet ${isolated._wkltId} is not registered.`
+						: 'Octane Lynx OL288',
+				);
 			}
 			if (!Number.isSafeInteger(nextActivation)) {
-				throw new Error('Octane Lynx exhausted main-thread worklet activation IDs.');
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx exhausted main-thread worklet activation IDs.'
+						: 'Octane Lynx OL289',
+				);
 			}
 			const revisions = new Map<string, number>();
 			const refIds = new Set<string>();
@@ -834,21 +902,37 @@ export function createLynxMainThreadWorkletRegistry(
 		runWorklet(descriptor, params = []) {
 			requireOpen();
 			if (!Array.isArray(params))
-				throw new TypeError('Octane Lynx worklet params must be an array.');
+				throw new TypeError(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx worklet params must be an array.'
+						: 'Octane Lynx OL290',
+				);
 			const isolated = isolateLynxWorkletValue(descriptor, 'active main-thread worklet');
 			if (isolated._owlt === undefined) {
-				throw new Error('Octane Lynx main-thread worklet is not active.');
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx main-thread worklet is not active.'
+						: 'Octane Lynx OL291',
+				);
 			}
 			const activation = activations.get(isolated._owlt);
 			if (activation === undefined || activation.descriptor._wkltId !== isolated._wkltId) {
-				throw new Error('Octane Lynx main-thread worklet is stale or foreign.');
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx main-thread worklet is stale or foreign.'
+						: 'Octane Lynx OL292',
+				);
 			}
 			return execute(activation.descriptor, isolated._owlt, params);
 		},
 		retainRef(descriptor, initialValue) {
 			requireOpen();
 			if (!isLynxMainThreadRefDescriptor(descriptor)) {
-				throw new TypeError('Octane Lynx main-thread ref descriptor is invalid.');
+				throw new TypeError(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx main-thread ref descriptor is invalid.'
+						: 'Octane Lynx OL293',
+				);
 			}
 			const seededValue = own(descriptor, '_initValue')
 				? (descriptor._initValue as LynxWorkletValue)
@@ -879,11 +963,19 @@ export function createLynxMainThreadWorkletRegistry(
 		updateRef(descriptor, value) {
 			requireOpen();
 			if (!isLynxMainThreadRefDescriptor(descriptor)) {
-				throw new TypeError('Octane Lynx main-thread ref descriptor is invalid.');
+				throw new TypeError(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx main-thread ref descriptor is invalid.'
+						: 'Octane Lynx OL294',
+				);
 			}
 			const cell = refs.get(descriptor._wvid)?.cell;
 			if (cell === undefined)
-				throw new Error(`Octane Lynx main-thread ref ${descriptor._wvid} is stale.`);
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx main-thread ref ${descriptor._wvid} is stale.`
+						: 'Octane Lynx OL295',
+				);
 			cell.current = value;
 		},
 		releaseRef(descriptor) {
@@ -898,7 +990,11 @@ export function createLynxMainThreadWorkletRegistry(
 		retainOwner(descriptor) {
 			requireOpen();
 			if (!isLynxMainThreadRefDescriptor(descriptor)) {
-				throw new TypeError('Octane Lynx main-thread ref descriptor is invalid.');
+				throw new TypeError(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx main-thread ref descriptor is invalid.'
+						: 'Octane Lynx OL296',
+				);
 			}
 			const initialized = own(descriptor, '_initValue');
 			const existing = refs.get(descriptor._wvid);
@@ -1040,14 +1136,26 @@ export function createLynxBackgroundFunctionRegistry(): LynxBackgroundFunctionRe
 		if (existing !== undefined) return existing;
 		if (isLynxBackgroundFunctionDescriptor(value)) {
 			if (value._execId !== undefined) {
-				throw new Error('Octane Lynx cannot retain an already-bound background function.');
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx cannot retain an already-bound background function.'
+						: 'Octane Lynx OL297',
+				);
 			}
 			const definition = backgroundDefinitions.get(value._jsFnId);
 			if (definition === undefined) {
-				throw new Error(`Octane Lynx background function ${value._jsFnId} is not registered.`);
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx background function ${value._jsFnId} is not registered.`
+						: 'Octane Lynx OL298',
+				);
 			}
 			if (!Number.isSafeInteger(nextExecution)) {
-				throw new Error('Octane Lynx exhausted background execution IDs.');
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx exhausted background execution IDs.'
+						: 'Octane Lynx OL299',
+				);
 			}
 			const execId = `exec:${nextExecution++}`;
 			const bound: {
@@ -1105,12 +1213,25 @@ export function createLynxBackgroundFunctionRegistry(): LynxBackgroundFunctionRe
 	};
 
 	runExecution = (handle, params = []) => {
-		if (closed) throw new Error('Octane Lynx background function registry is closed.');
+		if (closed)
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx background function registry is closed.'
+					: 'Octane Lynx OL300',
+			);
 		if (!isLynxBackgroundFunctionDescriptor(handle)) {
-			throw new TypeError('Octane Lynx background function handle is invalid.');
+			throw new TypeError(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx background function handle is invalid.'
+					: 'Octane Lynx OL301',
+			);
 		}
 		if (!Array.isArray(params))
-			throw new TypeError('Octane Lynx background params must be an array.');
+			throw new TypeError(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx background params must be an array.'
+					: 'Octane Lynx OL302',
+			);
 		const definition = backgroundDefinitions.get(handle._jsFnId);
 		const retained =
 			handle._execId === undefined
@@ -1122,7 +1243,11 @@ export function createLynxBackgroundFunctionRegistry(): LynxBackgroundFunctionRe
 			retained.functionId !== handle._jsFnId ||
 			retained.revision !== definition.revision
 		) {
-			throw new Error(`Octane Lynx background function ${handle._jsFnId} is stale or foreign.`);
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx background function ${handle._jsFnId} is stale or foreign.`
+					: 'Octane Lynx OL303',
+			);
 		}
 		const args = isolateLynxWorkletValue(
 			params as LynxWorkletValue[],
@@ -1141,7 +1266,12 @@ export function createLynxBackgroundFunctionRegistry(): LynxBackgroundFunctionRe
 
 	return {
 		retain<T extends LynxWorkletValue>(value: T): T {
-			if (closed) throw new Error('Octane Lynx background function registry is closed.');
+			if (closed)
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx background function registry is closed.'
+						: 'Octane Lynx OL304',
+				);
 			const isolated = isolateLynxWorkletValue(value, 'background execution value');
 			const pending = new Map<string, BackgroundExecution>();
 			const bound = bindHandles(isolated, pending, new Map()) as T;
@@ -1169,7 +1299,11 @@ export function installLynxMainThreadWorkletRegistry(
 	registry: LynxMainThreadWorkletRegistry,
 ): () => void {
 	if (installedMainRegistry !== null) {
-		throw new Error('Octane Lynx already has an installed main-thread worklet registry.');
+		throw new Error(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx already has an installed main-thread worklet registry.'
+				: 'Octane Lynx OL305',
+		);
 	}
 	installedMainRegistry = registry;
 	return () => {
@@ -1179,7 +1313,11 @@ export function installLynxMainThreadWorkletRegistry(
 
 function requireMainRegistry(): LynxMainThreadWorkletRegistry {
 	if (installedMainRegistry === null) {
-		throw new Error('Octane Lynx has no installed main-thread worklet registry.');
+		throw new Error(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx has no installed main-thread worklet registry.'
+				: 'Octane Lynx OL306',
+		);
 	}
 	return installedMainRegistry;
 }
@@ -1193,7 +1331,11 @@ registerMainThreadWorklet(
 	function () {
 		const id = this._c?.id;
 		if (typeof id !== 'string') {
-			throw new TypeError('Octane Lynx main-thread ref owner requires a ref id.');
+			throw new TypeError(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx main-thread ref owner requires a ref id.'
+					: 'Octane Lynx OL307',
+			);
 		}
 		const initialValue = this._c?.initialValue as LynxWorkletValue;
 		const descriptor = createLynxMainThreadRefDescriptor(id, initialValue);
@@ -1208,7 +1350,11 @@ registerMainThreadWorklet(
 	function () {
 		const id = this._c?.id;
 		if (typeof id !== 'string') {
-			throw new TypeError('Octane Lynx main-thread ref owner requires a ref id.');
+			throw new TypeError(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx main-thread ref owner requires a ref id.'
+					: 'Octane Lynx OL308',
+			);
 		}
 		requireMainRegistry().releaseOwner(createLynxMainThreadRefDescriptor(id));
 	},
@@ -1337,16 +1483,26 @@ function assertThreadFunctionCurrent(state: TaggedThreadFunctionState): void {
 	const revision = currentThreadDefinitionRevision(state.kind, state.id);
 	if (revision === null) {
 		if (state.revision !== null) {
-			throw new Error(`Octane Lynx ${state.kind} function ${state.id} is stale.`);
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx ${state.kind} function ${state.id} is stale.`
+					: 'Octane Lynx OL309',
+			);
 		}
 		throw new Error(
-			`Octane Lynx ${state.kind} function ${state.id} cannot run in this thread layer.`,
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx ${state.kind} function ${state.id} cannot run in this thread layer.`
+				: 'Octane Lynx OL310',
 		);
 	}
 	if (state.revision === null) {
 		state.revision = revision;
 	} else if (state.revision !== revision) {
-		throw new Error(`Octane Lynx ${state.kind} function ${state.id} was reloaded.`);
+		throw new Error(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx ${state.kind} function ${state.id} was reloaded.`
+				: 'Octane Lynx OL311',
+		);
 	}
 }
 
@@ -1529,7 +1685,11 @@ function invokeLocalThreadDescriptor(
 			? compiledMainDefinitions.get(id)
 			: compiledBackgroundDefinitions.get(id);
 	if (implementation === undefined) {
-		throw new Error(`Octane Lynx ${kind} function ${id} cannot run in this thread layer.`);
+		throw new Error(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx ${kind} function ${id} cannot run in this thread layer.`
+				: 'Octane Lynx OL312',
+		);
 	}
 	const record = descriptor._c;
 	const rawCaptures = (record?.values ?? []) as readonly LynxWorkletValue[];
@@ -1600,7 +1760,9 @@ export function invokeThreadFunction(
 				: compiledBackgroundDefinitions.get(state.id);
 		if (implementation === undefined) {
 			throw new Error(
-				`Octane Lynx ${state.kind} function ${state.id} cannot run in this thread layer.`,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx ${state.kind} function ${state.id} cannot run in this thread layer.`
+					: 'Octane Lynx OL313',
 			);
 		}
 		const { captures } = resolveThreadFunctionState(state);
@@ -1638,7 +1800,11 @@ export interface LynxMainThreadCallBridge {
 }
 
 export class LynxCrossThreadCallCancelledError extends Error {
-	constructor(message = 'Octane Lynx cross-thread call was cancelled.') {
+	constructor(
+		message = typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+			? 'Octane Lynx cross-thread call was cancelled.'
+			: 'Octane Lynx OL314',
+	) {
 		super(message);
 		this.name = 'LynxCrossThreadCallCancelledError';
 	}
@@ -1658,9 +1824,18 @@ function installBridge<T>(
 	set: (next: InstalledBridge<T> | null) => void,
 	label: string,
 ): () => void {
-	if (current !== null) throw new Error(`Octane Lynx already has an installed ${label}.`);
+	if (current !== null)
+		throw new Error(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx already has an installed ${label}.`
+				: 'Octane Lynx OL315',
+		);
 	if (bridge === null || typeof bridge !== 'object')
-		throw new TypeError(`Octane Lynx ${label} must be an object.`);
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx ${label} must be an object.`
+				: 'Octane Lynx OL316',
+		);
 	const installed = { bridge, active: true };
 	set(installed);
 	return () => {
@@ -1671,7 +1846,11 @@ function installBridge<T>(
 
 export function installBackgroundCallBridge(bridge: LynxBackgroundCallBridge): () => void {
 	if (typeof bridge?.callMain !== 'function') {
-		throw new TypeError('Octane Lynx background call bridge requires callMain().');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx background call bridge requires callMain().'
+				: 'Octane Lynx OL317',
+		);
 	}
 	return installBridge(
 		backgroundCallBridge,
@@ -1683,7 +1862,11 @@ export function installBackgroundCallBridge(bridge: LynxBackgroundCallBridge): (
 
 export function installMainThreadCallBridge(bridge: LynxMainThreadCallBridge): () => void {
 	if (typeof bridge?.callBackground !== 'function') {
-		throw new TypeError('Octane Lynx main-thread call bridge requires callBackground().');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx main-thread call bridge requires callBackground().'
+				: 'Octane Lynx OL318',
+		);
 	}
 	return installBridge(
 		mainThreadCallBridge,
@@ -1745,7 +1928,9 @@ export function runOnMainThread<Args extends readonly unknown[], Result>(
 		(state === undefined && !isLynxMainThreadWorkletDescriptor(fn))
 	) {
 		throw new TypeError(
-			'Octane Lynx runOnMainThread() requires a compiler-transformed main-thread function.',
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx runOnMainThread() requires a compiler-transformed main-thread function.'
+				: 'Octane Lynx OL319',
 		);
 	}
 	let descriptor = state === undefined ? (fn as LynxMainThreadWorkletDescriptor) : null;
@@ -1760,11 +1945,19 @@ export function runOnMainThread<Args extends readonly unknown[], Result>(
 			if (installed === null) {
 				installed = backgroundCallBridge;
 				if (installed === null) {
-					throw new Error('Octane Lynx has no installed background call bridge.');
+					throw new Error(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx has no installed background call bridge.'
+							: 'Octane Lynx OL320',
+					);
 				}
 			}
 			if (!installed.active || backgroundCallBridge !== installed) {
-				throw new Error('Octane Lynx background call bridge is stale.');
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx background call bridge is stale.'
+						: 'Octane Lynx OL321',
+				);
 			}
 			return installed.bridge.callMain<Awaited<Result>>(
 				descriptor!,
@@ -1788,7 +1981,9 @@ export function runOnBackground<Args extends readonly unknown[], Result>(
 		(state === undefined && !isLynxBackgroundFunctionDescriptor(fn))
 	) {
 		throw new TypeError(
-			'Octane Lynx runOnBackground() requires a compiler-transformed background-only function.',
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx runOnBackground() requires a compiler-transformed background-only function.'
+				: 'Octane Lynx OL322',
 		);
 	}
 	let descriptor = state === undefined ? (fn as LynxBackgroundFunctionDescriptor) : null;
@@ -1803,11 +1998,19 @@ export function runOnBackground<Args extends readonly unknown[], Result>(
 			if (installed === null) {
 				installed = mainThreadCallBridge;
 				if (installed === null) {
-					throw new Error('Octane Lynx has no installed main-thread call bridge.');
+					throw new Error(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx has no installed main-thread call bridge.'
+							: 'Octane Lynx OL323',
+					);
 				}
 			}
 			if (!installed.active || mainThreadCallBridge !== installed) {
-				throw new Error('Octane Lynx main-thread call bridge is stale.');
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx main-thread call bridge is stale.'
+						: 'Octane Lynx OL324',
+				);
 			}
 			return installed.bridge.callBackground<Awaited<Result>>(
 				descriptor!,

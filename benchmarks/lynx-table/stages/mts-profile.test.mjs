@@ -53,6 +53,13 @@ const MOUNT_RANGES =
 // Emitted code: no diagnostic, no stable name, nothing but the app's own markup.
 const EMITTED = 'create:(e,r)=>{let t=e.h("view");e.p(t,"class","page");';
 const APP = '(e,t)=>(0,r.Zz)(z,[(0,r.DT)("lynx",R,(0,r.uc)([["set","row",e]]))]))';
+// The transport encoder and the single-use recursive prepare it encloses after
+// minification. The outer frame cannot be named by prepare's probe merely
+// because its window reaches the nested function.
+const TRANSPORT_ENCODE =
+	'(e,r){var t={escaped:!1,seen:tz?new Map:null,aliases:0};var n=function e(r,t,n,a=0){switch(typeof r){case"string":if(0!==r.charCodeAt(0))return r;return n.escap';
+const TRANSPORT_PREPARE =
+	'(r,t,n,a=0){switch(typeof r){case"string":if(0!==r.charCodeAt(0))return r;return n.escaped=!0,"\\0"+r;case"number":if(Number.isFinite(r))return r;throw tN(t,`is ';
 
 /** One line, with each snippet laid down at the column a frame will name. */
 function line(placements) {
@@ -183,6 +190,18 @@ test('the harness’s own realm is excluded from the framework total', () => {
 test('bucketOf declines text it cannot name rather than guessing', () => {
 	assert.equal(bucketOf(EMITTED), null);
 	assert.equal(bucketOf(MOUNT_PROGRAM), 'program mount');
+});
+
+test('the transport encoder is named apart from its nested prepare walk', () => {
+	assert.equal(
+		probeOf(TRANSPORT_ENCODE)?.where,
+		'core/transport-codec.ts encodeLynxTransportValue',
+	);
+	assert.equal(probeOf(TRANSPORT_PREPARE)?.where, 'core/transport-codec.ts prepare');
+	const order = ['encodeLynxTransportValue', 'prepare'].map((name) =>
+		BUCKETS.findIndex((entry) => entry.where === `core/transport-codec.ts ${name}`),
+	);
+	assert.ok(order[0] >= 0 && order[1] > order[0], `transport probe order is ${order.join(',')}`);
 });
 
 test('a bucket splits into the functions it folds, and they add back up to it', () => {
@@ -457,6 +476,8 @@ test('every window fixture is a real read, not one trimmed to fit its probe', ()
 		COMPONENT_THUNK,
 		TEMPLATE_ENV_H,
 		TEXT_NODE,
+		TRANSPORT_ENCODE,
+		TRANSPORT_PREPARE,
 		EMITTED_ROW_CREATE,
 		EMITTED_PAGE_CREATE,
 	]) {

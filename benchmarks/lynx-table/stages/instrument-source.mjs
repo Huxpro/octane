@@ -480,8 +480,8 @@ import { lynxWireProfile } from './core/profiling.js';
 			);
 			return replaceOnce(
 				next,
-				"\t\t\t\tif (identity.priority !== priority) {\n\t\t\t\t\treport(new Error('Octane Lynx native event batch mixes listener priorities.'));\n",
-				"\t\t\t\tif (identity.priority !== priority) {\n\t\t\t\t\tbenchReplayWindow(null);\n\t\t\t\t\treport(new Error('Octane Lynx native event batch mixes listener priorities.'));\n",
+				'\t\t\t\tif (identity.priority !== priority) {\n',
+				'\t\t\t\tif (identity.priority !== priority) {\n\t\t\t\t\tbenchReplayWindow(null);\n',
 				file,
 			);
 		});

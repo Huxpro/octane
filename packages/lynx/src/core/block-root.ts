@@ -1,3 +1,5 @@
+declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
+
 /**
  * Issue-#103 U2b — the Block core standing on the background side of the real
  * transport seam.
@@ -101,10 +103,18 @@ interface BoundListener {
 export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoot {
 	const { container, transport, transportRoot } = options;
 	if (!Number.isSafeInteger(transportRoot) || transportRoot <= 0) {
-		throw new TypeError('Octane Lynx block root requires a positive transport root id.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx block root requires a positive transport root id.'
+				: 'Octane Lynx OL016',
+		);
 	}
 	if (transport.mode !== 'async') {
-		throw new TypeError('Octane Lynx block root requires an asynchronous commit transport.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx block root requires an asynchronous commit transport.'
+				: 'Octane Lynx OL017',
+		);
 	}
 	const core = options.core ?? createLynxBlockCore();
 	const listeners = new Map<number, BoundListener>();
@@ -112,7 +122,11 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 
 	const listenerId = (block: LynxBlock, site: number): number => {
 		if (block.firstListenerId === null) {
-			throw new Error('Octane Lynx block root cannot bind an event on an event-free template.');
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx block root cannot bind an event on an event-free template.'
+					: 'Octane Lynx OL018',
+			);
 		}
 		return block.firstListenerId + site;
 	};
@@ -134,14 +148,20 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 			const sites = block.template.program.events;
 			if (bound.length !== sites.length) {
 				throw new Error(
-					`Octane Lynx block root expected ${sites.length} listeners for this template, received ${bound.length}.`,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx block root expected ${sites.length} listeners for this template, received ${bound.length}.`
+						: 'Octane Lynx OL019',
 				);
 			}
 			for (let site = 0; site < sites.length; site++) {
 				const handler = bound[site];
 				if (handler === null || handler === undefined) continue;
 				if (typeof handler !== 'function') {
-					throw new TypeError('Octane Lynx block root listeners must be functions.');
+					throw new TypeError(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx block root listeners must be functions.'
+							: 'Octane Lynx OL020',
+					);
 				}
 				listeners.set(listenerId(block, site), { priority: sites[site]!.priority, handler });
 			}
@@ -157,18 +177,32 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 
 		dispatchTransportEvent(message) {
 			if (message.type !== 'event') {
-				throw new Error('Octane Lynx block root expected a transported event message.');
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx block root expected a transported event message.'
+						: 'Octane Lynx OL021',
+				);
 			}
 			if (message.protocol !== UNIVERSAL_TRANSPORT_PROTOCOL_VERSION) {
 				throw new Error(
-					`Octane Lynx block root event uses protocol ${String(message.protocol)}; expected ${UNIVERSAL_TRANSPORT_PROTOCOL_VERSION}.`,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx block root event uses protocol ${String(message.protocol)}; expected ${UNIVERSAL_TRANSPORT_PROTOCOL_VERSION}.`
+						: 'Octane Lynx OL022',
 				);
 			}
 			if (message.renderer !== LYNX_TRANSPORT_RENDERER) {
-				throw new Error('Octane Lynx block root event belongs to a foreign renderer.');
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx block root event belongs to a foreign renderer.'
+						: 'Octane Lynx OL023',
+				);
 			}
 			if (message.root !== transportRoot) {
-				throw new Error('Octane Lynx block root event belongs to a stale or foreign root.');
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx block root event belongs to a stale or foreign root.'
+						: 'Octane Lynx OL024',
+				);
 			}
 			if (message.version !== acceptedVersion) {
 				// The same identity discipline `universal-core.ts` applies to events:
@@ -176,7 +210,9 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 				// this root no longer paints, and must be refused rather than run
 				// against post-commit state.
 				throw new Error(
-					`Octane Lynx block root event version ${String(message.version)} does not match batch ${acceptedVersion}.`,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx block root event version ${String(message.version)} does not match batch ${acceptedVersion}.`
+						: 'Octane Lynx OL025',
 				);
 			}
 			// Validate the whole propagation batch before invoking any handler, as
@@ -234,24 +270,34 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 					message.version !== batch.version
 				) {
 					throw new Error(
-						`Octane Lynx block root acknowledgement does not match batch ${batch.version}.`,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? `Octane Lynx block root acknowledgement does not match batch ${batch.version}.`
+							: 'Octane Lynx OL026',
 					);
 				}
 				if (message.type !== 'ack') {
 					throw new Error(
-						`Octane Lynx block root expected an acknowledgement for batch ${batch.version}.`,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? `Octane Lynx block root expected an acknowledgement for batch ${batch.version}.`
+							: 'Octane Lynx OL027',
 					);
 				}
 				if (batch.version <= acceptedVersion) {
 					throw new Error(
-						`Octane Lynx block root rejected stale accepted batch version ${batch.version}; current version is ${acceptedVersion}.`,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? `Octane Lynx block root rejected stale accepted batch version ${batch.version}; current version is ${acceptedVersion}.`
+							: 'Octane Lynx OL028',
 					);
 				}
 				acceptedVersion = batch.version;
 				acknowledged = true;
 			});
 			if (!acknowledged) {
-				throw new Error(`Octane Lynx block root batch ${batch.version} was never acknowledged.`);
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx block root batch ${batch.version} was never acknowledged.`
+						: 'Octane Lynx OL029',
+				);
 			}
 			prepared.afterAccept?.();
 			return batch;

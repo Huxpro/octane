@@ -1,3 +1,5 @@
+declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
+
 import {
 	createUniversalRoot,
 	type UniversalComponent,
@@ -85,11 +87,19 @@ interface LynxRootState {
 
 function readBackgroundGlobals(target: object): LynxBackgroundGlobals {
 	if (target === null || typeof target !== 'object') {
-		throw new TypeError('Octane Lynx root target must be a background-thread global object.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx root target must be a background-thread global object.'
+				: 'Octane Lynx OL478',
+		);
 	}
 	const globals = target as LynxBackgroundGlobals;
 	if (typeof globals.lynx?.getJSModule !== 'function') {
-		throw new Error('Octane Lynx roots are available only in the Lynx background runtime.');
+		throw new Error(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx roots are available only in the Lynx background runtime.'
+				: 'Octane Lynx OL479',
+		);
 	}
 	return globals;
 }
@@ -112,7 +122,11 @@ function resolveContext(
 	if (explicit !== undefined) return explicit;
 	const getCoreContext = target.lynx?.getCoreContext;
 	if (typeof getCoreContext !== 'function') {
-		throw new Error('Octane Lynx requires the public background-thread lynx.getCoreContext() API.');
+		throw new Error(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx requires the public background-thread lynx.getCoreContext() API.'
+				: 'Octane Lynx OL480',
+		);
 	}
 	return getCoreContext.call(target.lynx);
 }
@@ -123,7 +137,11 @@ function resolveMicrotaskScheduler(
 ): (callback: () => void) => void {
 	if (explicit !== undefined) {
 		if (typeof explicit !== 'function') {
-			throw new TypeError('Octane Lynx scheduleMicrotask must be a function.');
+			throw new TypeError(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx scheduleMicrotask must be a function.'
+					: 'Octane Lynx OL481',
+			);
 		}
 		return explicit;
 	}
@@ -135,7 +153,9 @@ function resolveMicrotaskScheduler(
 		return (callback) => target.queueMicrotask!(callback);
 	}
 	throw new Error(
-		'Octane Lynx requires lynx.queueMicrotask() or createLynxRoot({ scheduleMicrotask }).',
+		typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+			? 'Octane Lynx requires lynx.queueMicrotask() or createLynxRoot({ scheduleMicrotask }).'
+			: 'Octane Lynx OL482',
 	);
 }
 
@@ -401,7 +421,11 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 				const acceptedBefore = transport.acceptedIdentity();
 				if (acceptedBefore === null) {
 					await transport.cancelPendingBeforeReady(
-						new Error('Octane Lynx root was unmounted before main became ready.'),
+						new Error(
+							typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+								? 'Octane Lynx root was unmounted before main became ready.'
+								: 'Octane Lynx OL483',
+						),
 					);
 				}
 				if (transport.closedReason() !== null) transport.enableLogicalTeardown();

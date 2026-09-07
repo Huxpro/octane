@@ -138,6 +138,12 @@ export interface LynxWireProfile {
 	firstTreeProgramOwnershipRuns: number;
 	/** Main: physical hosts retained by those compressed ownership journals. */
 	firstTreeProgramOwnershipHosts: number;
+	/** Main: compressed ownership runs that are still live in host containers. */
+	firstTreeProgramOwnershipLiveRuns: number;
+	/** Main: hosts that are still owned by a compressed run rather than a node journal. */
+	firstTreeProgramOwnershipLiveHosts: number;
+	/** Main: hosts promoted out of compressed ownership by a later sparse mutation. */
+	firstTreeProgramOwnershipPromotedHosts: number;
 	/** Main: why a proof-covered adoption could not retain run-level ownership. */
 	firstTreeProgramOwnershipFallback: string | null;
 	/** Background: first-tree manifest batches promoted to addressed runs. */
@@ -207,6 +213,9 @@ export function lynxWireProfile(): LynxWireProfile {
 		firstTreeProgramNodeComparisons: 0,
 		firstTreeProgramOwnershipRuns: 0,
 		firstTreeProgramOwnershipHosts: 0,
+		firstTreeProgramOwnershipLiveRuns: 0,
+		firstTreeProgramOwnershipLiveHosts: 0,
+		firstTreeProgramOwnershipPromotedHosts: 0,
 		firstTreeProgramOwnershipFallback: null,
 		firstTreeProgramCompactions: 0,
 		firstTreeProgramCompactionFallback: null,

@@ -1,3 +1,5 @@
+declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
+
 import { LYNX_NODES_REF_ATTRIBUTE } from './nodes-ref.js';
 import type { LynxMainThreadWorkletDescriptor } from './worklets.js';
 
@@ -137,7 +139,11 @@ function requireFunction<
 >(target: object, name: Name): LynxElementPAPIGlobals<Node>[Name] {
 	const value = (target as Record<PropertyKey, unknown>)[name];
 	if (typeof value !== 'function') {
-		throw new Error(`Octane Lynx requires the public Element PAPI function ${String(name)}.`);
+		throw new Error(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx requires the public Element PAPI function ${String(name)}.`
+				: 'Octane Lynx OL167',
+		);
 	}
 	return value.bind(target) as LynxElementPAPIGlobals<Node>[Name];
 }
@@ -166,7 +172,11 @@ export function createLynxElementPAPI<Node extends LynxElementRef = LynxElementR
 		(value) => typeof value === 'function',
 	).length;
 	if (listFunctionCount === 1) {
-		throw new Error('Octane Lynx requires __CreateList and __UpdateListCallbacks together.');
+		throw new Error(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx requires __CreateList and __UpdateListCallbacks together.'
+				: 'Octane Lynx OL168',
+		);
 	}
 	const list =
 		listFunctionCount === 2
@@ -212,12 +222,16 @@ export function createLynxElementPAPI<Node extends LynxElementRef = LynxElementR
 		(target as { lynxTestingEnv?: unknown }).lynxTestingEnv !== undefined;
 	if (getParent !== undefined && elementIsEqual === undefined) {
 		throw new Error(
-			'Octane Lynx requires the public Element PAPI function __ElementIsEqual when __GetParent is available.',
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx requires the public Element PAPI function __ElementIsEqual when __GetParent is available.'
+				: 'Octane Lynx OL169',
 		);
 	}
 	if (getParent === undefined && !hasTestingParentFallback) {
 		throw new Error(
-			'Octane Lynx requires the public Element PAPI function __GetParent for retry-safe cleanup.',
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx requires the public Element PAPI function __GetParent for retry-safe cleanup.'
+				: 'Octane Lynx OL170',
 		);
 	}
 	const normalizedParent = (node: Node): Node | null => {
@@ -227,7 +241,11 @@ export function createLynxElementPAPI<Node extends LynxElementRef = LynxElementR
 			if (parent === null || parent === undefined) return null;
 			if (typeof parent === 'object') return parent as Node;
 		}
-		throw new Error('Octane Lynx could not inspect an Element PAPI parent.');
+		throw new Error(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx could not inspect an Element PAPI parent.'
+				: 'Octane Lynx OL171',
+		);
 	};
 	const elementsAreEqual = (first: Node, second: Node): boolean =>
 		elementIsEqual === undefined ? first === second : elementIsEqual(first, second);

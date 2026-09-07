@@ -1,3 +1,5 @@
+declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
+
 import { hasOwnSymbolFields } from './core/own-symbols.js';
 import { residentRunProgram } from './core/program-registry.js';
 import { hasCrossRealmPlainPrototype } from './core/plain-object.js';
@@ -326,13 +328,25 @@ interface LynxFirstScreenPipelineOptions {
 
 function lifecycleRecord(value: unknown, label: string): Record<string, unknown> {
 	if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-		throw new TypeError(`Octane Lynx ${label} must be a plain object.`);
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx ${label} must be a plain object.`
+				: 'Octane Lynx OL328',
+		);
 	}
 	if (!hasCrossRealmPlainPrototype(value)) {
-		throw new TypeError(`Octane Lynx ${label} must be a plain object.`);
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx ${label} must be a plain object.`
+				: 'Octane Lynx OL329',
+		);
 	}
 	if (hasOwnSymbolFields(value)) {
-		throw new TypeError(`Octane Lynx ${label} contains symbol fields.`);
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx ${label} contains symbol fields.`
+				: 'Octane Lynx OL330',
+		);
 	}
 	return value as Record<string, unknown>;
 }
@@ -344,7 +358,9 @@ function lifecycleTuple(
 ): readonly unknown[] {
 	if (event.type !== expectedType) {
 		throw new TypeError(
-			`Octane Lynx engine lifecycle expected ${JSON.stringify(expectedType)}, received ${JSON.stringify(event.type)}.`,
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx engine lifecycle expected ${JSON.stringify(expectedType)}, received ${JSON.stringify(event.type)}.`
+				: 'Octane Lynx OL331',
 		);
 	}
 	// The engine sent this, not Octane's transport, so it is the one inbound
@@ -353,7 +369,11 @@ function lifecycleTuple(
 	// host-backed reference answers some of those reads and throws on others.
 	const data = localizeLynxHostValue(event.data);
 	if (!Array.isArray(data) || data.length !== length) {
-		throw new TypeError(`Octane Lynx ${expectedType} data must be an exact ${length}-item tuple.`);
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx ${expectedType} data must be an exact ${length}-item tuple.`
+				: 'Octane Lynx OL332',
+		);
 	}
 	// Materialization is also normalization: JSON output is always a dense
 	// ordinary array with exactly its index properties as plain enumerable data
@@ -377,7 +397,11 @@ function lifecycleBooleanOption(
 		!Object.prototype.hasOwnProperty.call(descriptor, 'value') ||
 		typeof descriptor.value !== 'boolean'
 	) {
-		throw new TypeError(`Octane Lynx ${label}.${name} must be a boolean data property.`);
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx ${label}.${name} must be a boolean data property.`
+				: 'Octane Lynx OL333',
+		);
 	}
 	return descriptor.value;
 }
@@ -389,7 +413,9 @@ function lifecycleFirstScreenPipelineOptions(
 	if (descriptor === undefined) return null;
 	if (!descriptor.enumerable || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
 		throw new TypeError(
-			'Octane Lynx __RenderPage render options.pipelineOptions must be a data property.',
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx __RenderPage render options.pipelineOptions must be a data property.'
+				: 'Octane Lynx OL334',
 		);
 	}
 	const pipeline = lifecycleRecord(descriptor.value, '__RenderPage render options.pipelineOptions');
@@ -398,17 +424,23 @@ function lifecycleFirstScreenPipelineOptions(
 	const needTimestamps = pipeline.needTimestamps;
 	if (typeof pipelineID !== 'string' || pipelineID.length === 0) {
 		throw new TypeError(
-			'Octane Lynx __RenderPage render options.pipelineOptions.pipelineID must be a non-empty string.',
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx __RenderPage render options.pipelineOptions.pipelineID must be a non-empty string.'
+				: 'Octane Lynx OL335',
 		);
 	}
 	if (typeof pipelineOrigin !== 'string') {
 		throw new TypeError(
-			'Octane Lynx __RenderPage render options.pipelineOptions.pipelineOrigin must be a string.',
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx __RenderPage render options.pipelineOptions.pipelineOrigin must be a string.'
+				: 'Octane Lynx OL336',
 		);
 	}
 	if (typeof needTimestamps !== 'boolean') {
 		throw new TypeError(
-			'Octane Lynx __RenderPage render options.pipelineOptions.needTimestamps must be a boolean.',
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx __RenderPage render options.pipelineOptions.needTimestamps must be a boolean.'
+				: 'Octane Lynx OL337',
 		);
 	}
 	return Object.freeze({ pipelineID, pipelineOrigin, needTimestamps });
@@ -483,7 +515,11 @@ function resolveContext(
 	if (explicit !== undefined) return explicit;
 	const getJSContext = target.lynx?.getJSContext;
 	if (typeof getJSContext !== 'function') {
-		throw new Error('Octane Lynx requires the public main-thread lynx.getJSContext() API.');
+		throw new Error(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx requires the public main-thread lynx.getJSContext() API.'
+				: 'Octane Lynx OL338',
+		);
 	}
 	return getJSContext.call(target.lynx);
 }
@@ -492,7 +528,11 @@ function resolveNativeLifecycleContext(target: LynxMainThreadGlobals): LynxConte
 	const getNative = target.lynx?.getNative;
 	if (getNative === undefined) return null;
 	if (typeof getNative !== 'function') {
-		throw new TypeError('Octane Lynx main-thread lynx.getNative must be a function when provided.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx main-thread lynx.getNative must be a function when provided.'
+				: 'Octane Lynx OL339',
+		);
 	}
 	const context = getNative.call(target.lynx);
 	if (
@@ -502,7 +542,9 @@ function resolveNativeLifecycleContext(target: LynxMainThreadGlobals): LynxConte
 		typeof context.removeEventListener !== 'function'
 	) {
 		throw new TypeError(
-			'Octane Lynx native lifecycle requires ContextProxy addEventListener/removeEventListener.',
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx native lifecycle requires ContextProxy addEventListener/removeEventListener.'
+				: 'Octane Lynx OL340',
 		);
 	}
 	return context;
@@ -512,7 +554,11 @@ function resolveEngineLifecycleContext(target: LynxMainThreadGlobals): LynxConte
 	const getEngine = target.lynx?.getEngine;
 	if (getEngine === undefined) return null;
 	if (typeof getEngine !== 'function') {
-		throw new TypeError('Octane Lynx main-thread lynx.getEngine must be a function when provided.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx main-thread lynx.getEngine must be a function when provided.'
+				: 'Octane Lynx OL341',
+		);
 	}
 	const context = getEngine.call(target.lynx);
 	if (
@@ -522,7 +568,9 @@ function resolveEngineLifecycleContext(target: LynxMainThreadGlobals): LynxConte
 		typeof context.removeEventListener !== 'function'
 	) {
 		throw new TypeError(
-			'Octane Lynx engine lifecycle requires ContextProxy addEventListener/removeEventListener.',
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx engine lifecycle requires ContextProxy addEventListener/removeEventListener.'
+				: 'Octane Lynx OL342',
 		);
 	}
 	return context;
@@ -653,7 +701,11 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	options: InstallLynxMainThreadOptions = {},
 ): LynxMainThreadController {
 	if (options.firstScreen !== undefined && typeof options.firstScreen !== 'boolean') {
-		throw new TypeError('Octane Lynx firstScreen must be a boolean when provided.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx firstScreen must be a boolean when provided.'
+				: 'Octane Lynx OL343',
+		);
 	}
 	const validation = resolveLynxValidationMode(options.validation);
 	if (
@@ -661,36 +713,64 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		options.firstScreenSync !== 'automatic' &&
 		options.firstScreenSync !== 'manual'
 	) {
-		throw new TypeError('Octane Lynx firstScreenSync must be automatic or manual.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx firstScreenSync must be automatic or manual.'
+				: 'Octane Lynx OL344',
+		);
 	}
 	if (options.firstScreen !== true && options.firstScreenSync !== undefined) {
-		throw new TypeError('Octane Lynx firstScreenSync requires firstScreen: true.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx firstScreenSync requires firstScreen: true.'
+				: 'Octane Lynx OL345',
+		);
 	}
 	if (
 		options.firstScreenRender !== undefined &&
 		options.firstScreenRender !== 'immediate' &&
 		options.firstScreenRender !== 'engine'
 	) {
-		throw new TypeError('Octane Lynx firstScreenRender must be immediate or engine.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx firstScreenRender must be immediate or engine.'
+				: 'Octane Lynx OL346',
+		);
 	}
 	if (options.firstScreen !== true && options.firstScreenRender !== undefined) {
-		throw new TypeError('Octane Lynx firstScreenRender requires firstScreen: true.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx firstScreenRender requires firstScreen: true.'
+				: 'Octane Lynx OL347',
+		);
 	}
 	if (
 		options.scheduleFirstScreenCapture !== undefined &&
 		options.scheduleFirstScreenCapture !== null &&
 		typeof options.scheduleFirstScreenCapture !== 'function'
 	) {
-		throw new TypeError('Octane Lynx scheduleFirstScreenCapture must be a function or null.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx scheduleFirstScreenCapture must be a function or null.'
+				: 'Octane Lynx OL348',
+		);
 	}
 	if (options.firstScreen !== true && options.scheduleFirstScreenCapture !== undefined) {
-		throw new TypeError('Octane Lynx scheduleFirstScreenCapture requires firstScreen: true.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx scheduleFirstScreenCapture requires firstScreen: true.'
+				: 'Octane Lynx OL349',
+		);
 	}
 	const firstScreenEnabled = options.firstScreen === true;
 	const firstScreenSync = options.firstScreenSync ?? 'automatic';
 	const rawTarget = options.target ?? globalThis;
 	if (rawTarget === null || typeof rawTarget !== 'object') {
-		throw new TypeError('Octane Lynx main-thread target must be a global object.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx main-thread target must be a global object.'
+				: 'Octane Lynx OL350',
+		);
 	}
 	const target = rawTarget as LynxMainThreadGlobals;
 	const context = resolveContext(target, options.context);
@@ -704,7 +784,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		typeof context.removeEventListener !== 'function'
 	) {
 		throw new TypeError(
-			'Octane Lynx main-thread receiver requires ContextProxy dispatchEvent/addEventListener/removeEventListener.',
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx main-thread receiver requires ContextProxy dispatchEvent/addEventListener/removeEventListener.'
+				: 'Octane Lynx OL351',
 		);
 	}
 	// The native main thread exposes SystemInfo only as `lynx.SystemInfo`, but
@@ -728,7 +810,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		(!Number.isSafeInteger(configuredCeiling) || configuredCeiling <= 0)
 	) {
 		throw new TypeError(
-			'Octane Lynx main-thread paintedElementCeiling must be a positive safe integer, null, or omitted.',
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx main-thread paintedElementCeiling must be a positive safe integer, null, or omitted.'
+				: 'Octane Lynx OL352',
 		);
 	}
 	const systemPlatform = (environmentTarget.SystemInfo as { platform?: unknown } | undefined)
@@ -743,11 +827,19 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	const papi: LynxElementPAPI<Node> = createLynxElementPAPI<Node>(rawTarget);
 	const componentId = options.componentId ?? '0';
 	if (typeof componentId !== 'string' || componentId.length === 0) {
-		throw new TypeError('Octane Lynx main-thread componentId must be a non-empty string.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx main-thread componentId must be a non-empty string.'
+				: 'Octane Lynx OL353',
+		);
 	}
 	const cssId = options.cssId ?? 0;
 	if (!Number.isSafeInteger(cssId)) {
-		throw new TypeError('Octane Lynx main-thread cssId must be a safe integer.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx main-thread cssId must be a safe integer.'
+				: 'Octane Lynx OL354',
+		);
 	}
 	// A Lynx entry owns one native page. Individual Octane roots are disposed and
 	// replaced within that page rather than manufacturing pages during commits.
@@ -840,14 +932,24 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	const inboundFrames = createLynxTransportFrameState();
 	const registeredEngineLifecycleListeners = new Set<string>();
 
-	const report = (value: unknown, fallback = 'Octane Lynx main-thread receiver failed.') => {
+	const report = (
+		value: unknown,
+		fallback = typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+			? 'Octane Lynx main-thread receiver failed.'
+			: 'Octane Lynx OL355',
+	) => {
 		const error = normalizedError(value, fallback);
 		reported.push(error);
 		try {
 			options.onDiagnostic?.(error);
 		} catch (diagnosticError) {
 			reported.push(
-				normalizedError(diagnosticError, 'Octane Lynx main-thread diagnostic callback failed.'),
+				normalizedError(
+					diagnosticError,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx main-thread diagnostic callback failed.'
+						: 'Octane Lynx OL356',
+				),
 			);
 		}
 		return error;
@@ -856,13 +958,20 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		options.scheduleFirstScreenCapture,
 		rawTarget,
 		(error) => {
-			report(error, 'Octane Lynx could not schedule its first-screen capture after the frame.');
+			report(
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx could not schedule its first-screen capture after the frame.'
+					: 'Octane Lynx OL357',
+			);
 		},
 	);
 	const requireWorkletFeature = (): LynxMainThreadWorkletFeature => {
 		if (workletFeature !== null) return workletFeature;
 		throw new Error(
-			'Octane Lynx received main-thread worklet traffic, but this bundle compiled no worklet feature.',
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx received main-thread worklet traffic, but this bundle compiled no worklet feature.'
+				: 'Octane Lynx OL358',
 		);
 	};
 	// Replaced with the terminal page-lifetime path before any host listener is
@@ -896,7 +1005,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 					lifecycleOverflowReported = true;
 					report(
 						new Error(
-							`Octane Lynx engine lifecycle queue exceeded ${MAX_QUEUED_LIFECYCLE_MESSAGES} entries and was compacted to current state.`,
+							typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+								? `Octane Lynx engine lifecycle queue exceeded ${MAX_QUEUED_LIFECYCLE_MESSAGES} entries and was compacted to current state.`
+								: 'Octane Lynx OL359',
 						),
 					);
 				}
@@ -910,7 +1021,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		} catch (error) {
 			terminateLifecycleDelivery(
 				error,
-				'Octane Lynx could not deliver an engine lifecycle update.',
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx could not deliver an engine lifecycle update.'
+					: 'Octane Lynx OL360',
 			);
 		}
 	};
@@ -926,7 +1039,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				} catch (error) {
 					terminateLifecycleDelivery(
 						error,
-						'Octane Lynx could not deliver a queued engine lifecycle update.',
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx could not deliver a queued engine lifecycle update.'
+							: 'Octane Lynx OL361',
 					);
 				}
 			}
@@ -950,7 +1065,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				// host that ships it malformed loses its loadBundle FCP entry and gets
 				// the diagnostic that says so; it must not also lose the page data this
 				// same event has always delivered.
-				report(error, 'Octane Lynx received malformed __RenderPage pipeline options.');
+				report(
+					error,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx received malformed __RenderPage pipeline options.'
+						: 'Octane Lynx OL362',
+				);
 			}
 			const data: LynxLifecycleDataRecord = snapshotLynxLifecycleData(
 				tuple[0],
@@ -966,7 +1086,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				}),
 			);
 		} catch (error) {
-			report(error, 'Octane Lynx received malformed __RenderPage data.');
+			report(
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx received malformed __RenderPage data.'
+					: 'Octane Lynx OL363',
+			);
 		} finally {
 			// The engine dispatches __RenderPage after script evaluation, once the
 			// decoded PageConfig is installed; a deferred first screen renders here.
@@ -987,7 +1112,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			if (reloadTemplate) {
 				report(
 					new Error(
-						'Octane Lynx does not support __UpdatePage reloadTemplate; reconstruct the page instead.',
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx does not support __UpdatePage reloadTemplate; reconstruct the page instead.'
+							: 'Octane Lynx OL364',
 					),
 				);
 				return;
@@ -1011,7 +1138,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				}),
 			);
 		} catch (error) {
-			report(error, 'Octane Lynx received malformed __UpdatePage data.');
+			report(
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx received malformed __UpdatePage data.'
+					: 'Octane Lynx OL365',
+			);
 		}
 	};
 
@@ -1032,7 +1164,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				}),
 			);
 		} catch (error) {
-			report(error, 'Octane Lynx received malformed __UpdateGlobalProps data.');
+			report(
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx received malformed __UpdateGlobalProps data.'
+					: 'Octane Lynx OL366',
+			);
 		}
 	};
 
@@ -1075,7 +1212,14 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		} catch (error) {
 			if (pendingBackgroundCalls.get(entry.call) !== entry) return;
 			pendingBackgroundCalls.delete(entry.call);
-			entry.deferred.reject(report(error, 'Octane Lynx could not deliver a background call.'));
+			entry.deferred.reject(
+				report(
+					error,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx could not deliver a background call.'
+						: 'Octane Lynx OL367',
+				),
+			);
 		}
 	};
 
@@ -1102,7 +1246,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		if (entry === undefined) {
 			report(
 				new Error(
-					`Octane Lynx received a late or duplicate background call result ${message.call}.`,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx received a late or duplicate background call result ${message.call}.`
+						: 'Octane Lynx OL368',
 				),
 			);
 			return;
@@ -1110,7 +1256,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		if (entry.identity === null || !sameLynxTransportIdentity(entry.identity, message)) {
 			report(
 				new Error(
-					`Octane Lynx received a stale or foreign background call result ${message.call}.`,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx received a stale or foreign background call result ${message.call}.`
+						: 'Octane Lynx OL369',
 				),
 			);
 			return;
@@ -1125,7 +1273,14 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 					) as UniversalSerializableValue,
 				);
 			} catch (error) {
-				entry.deferred.reject(report(error, 'Octane Lynx received an invalid background result.'));
+				entry.deferred.reject(
+					report(
+						error,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx received an invalid background result.'
+							: 'Octane Lynx OL370',
+					),
+				);
 			}
 		} else {
 			const error = new Error(message.error.message);
@@ -1143,10 +1298,20 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				version: message.version,
 				type: 'call-main-error',
 				call: message.call,
-				error: wireError(value, 'Octane Lynx main-thread worklet failed.'),
+				error: wireError(
+					value,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx main-thread worklet failed.'
+						: 'Octane Lynx OL371',
+				),
 			});
 		} catch (error) {
-			report(error, 'Octane Lynx could not deliver a main-thread call error.');
+			report(
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx could not deliver a main-thread call error.'
+					: 'Octane Lynx OL372',
+			);
 		}
 	};
 
@@ -1158,9 +1323,20 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			awaitingAdoption !== null
 		) {
 			report(
-				new Error(`Octane Lynx received a stale or foreign main-thread call ${message.call}.`),
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx received a stale or foreign main-thread call ${message.call}.`
+						: 'Octane Lynx OL373',
+				),
 			);
-			dispatchMainCallError(message, new Error('Octane Lynx main-thread call is stale.'));
+			dispatchMainCallError(
+				message,
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx main-thread call is stale.'
+						: 'Octane Lynx OL374',
+				),
+			);
 			return;
 		}
 		// Call IDs are allocated monotonically and ContextProxy preserves sender
@@ -1168,15 +1344,32 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		// cancelled request cannot be replayed, without retaining one tombstone per
 		// call for the lifetime of the page.
 		if (message.call <= active.lastMainCall) {
-			report(new Error(`Octane Lynx received duplicate main-thread call ${message.call}.`));
+			report(
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx received duplicate main-thread call ${message.call}.`
+						: 'Octane Lynx OL375',
+				),
+			);
 			return;
 		}
 		active.lastMainCall = message.call;
 		if (active.faulted) {
 			report(
-				new Error(`Octane Lynx rejected main-thread call ${message.call} for a faulted root.`),
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx rejected main-thread call ${message.call} for a faulted root.`
+						: 'Octane Lynx OL376',
+				),
 			);
-			dispatchMainCallError(message, new Error('Octane Lynx main-thread root is faulted.'));
+			dispatchMainCallError(
+				message,
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx main-thread root is faulted.'
+						: 'Octane Lynx OL377',
+				),
+			);
 			return;
 		}
 		const running: RunningMainCall = {
@@ -1255,7 +1448,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		if (running === undefined) {
 			report(
 				new Error(
-					`Octane Lynx received a late or duplicate main-thread cancellation ${message.call}.`,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx received a late or duplicate main-thread cancellation ${message.call}.`
+						: 'Octane Lynx OL378',
 				),
 			);
 			return;
@@ -1263,7 +1458,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		if (!sameLynxTransportIdentity(running.identity, message)) {
 			report(
 				new Error(
-					`Octane Lynx received a stale or foreign main-thread cancellation ${message.call}.`,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx received a stale or foreign main-thread cancellation ${message.call}.`
+						: 'Octane Lynx OL379',
 				),
 			);
 			return;
@@ -1274,7 +1471,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	};
 
 	const resetThreadCalls = (reason: unknown): void => {
-		const error = normalizedError(reason, 'Octane Lynx thread calls were disposed.');
+		const error = normalizedError(
+			reason,
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx thread calls were disposed.'
+				: 'Octane Lynx OL380',
+		);
 		backgroundCallsOpen = false;
 		for (const entry of [...pendingBackgroundCalls.values()]) {
 			pendingBackgroundCalls.delete(entry.call);
@@ -1282,7 +1484,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				try {
 					dispatch({ ...entry.identity, type: 'cancel-background', call: entry.call });
 				} catch (cancelError) {
-					report(cancelError, 'Octane Lynx could not cancel a closing background call.');
+					report(
+						cancelError,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx could not cancel a closing background call.'
+							: 'Octane Lynx OL381',
+					);
 				}
 			}
 			entry.deferred.reject(error);
@@ -1300,26 +1507,46 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	): LynxMainThreadCall => {
 		if (closed) {
 			const deferred = createDeferred<UniversalSerializableValue>();
-			deferred.reject(new Error('Octane Lynx main-thread receiver is closed.'));
+			deferred.reject(
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx main-thread receiver is closed.'
+						: 'Octane Lynx OL382',
+				),
+			);
 			return Object.freeze({ promise: deferred.promise, cancel() {} });
 		}
 		if (active?.faulted === true) {
 			const deferred = createDeferred<UniversalSerializableValue>();
-			deferred.reject(new Error('Octane Lynx main-thread root is faulted.'));
+			deferred.reject(
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx main-thread root is faulted.'
+						: 'Octane Lynx OL383',
+				),
+			);
 			return Object.freeze({ promise: deferred.promise, cancel() {} });
 		}
 		if (pendingBackgroundCalls.size >= MAX_QUEUED_THREAD_CALLS) {
 			const deferred = createDeferred<UniversalSerializableValue>();
 			deferred.reject(
 				new Error(
-					`Octane Lynx background call queue is limited to ${MAX_QUEUED_THREAD_CALLS} entries.`,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx background call queue is limited to ${MAX_QUEUED_THREAD_CALLS} entries.`
+						: 'Octane Lynx OL384',
 				),
 			);
 			return Object.freeze({ promise: deferred.promise, cancel() {} });
 		}
 		if (nextThreadCall > Number.MAX_SAFE_INTEGER) {
 			const deferred = createDeferred<UniversalSerializableValue>();
-			deferred.reject(new Error('Octane Lynx background call identity space is exhausted.'));
+			deferred.reject(
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx background call identity space is exhausted.'
+						: 'Octane Lynx OL385',
+				),
+			);
 			return Object.freeze({ promise: deferred.promise, cancel() {} });
 		}
 		const feature = requireWorkletFeature();
@@ -1328,7 +1555,11 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			'background function call target',
 		);
 		if (!feature.isBackgroundFunction(isolatedFn)) {
-			throw new TypeError('Octane Lynx background function call target is invalid.');
+			throw new TypeError(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx background function call target is invalid.'
+					: 'Octane Lynx OL386',
+			);
 		}
 		const isolatedArgs = feature.isolateValue(
 			args as unknown as LynxWorkletValue[],
@@ -1353,10 +1584,20 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 					try {
 						dispatch({ ...entry.identity, type: 'cancel-background', call: entry.call });
 					} catch (error) {
-						report(error, 'Octane Lynx could not deliver a background cancellation.');
+						report(
+							error,
+							typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+								? 'Octane Lynx could not deliver a background cancellation.'
+								: 'Octane Lynx OL387',
+						);
 					}
 				}
-				const cancellation = normalizedError(reason, 'Octane Lynx background call was cancelled.');
+				const cancellation = normalizedError(
+					reason,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx background call was cancelled.'
+						: 'Octane Lynx OL388',
+				);
 				if (reason === undefined) cancellation.name = 'AbortError';
 				entry.deferred.reject(cancellation);
 			},
@@ -1366,7 +1607,11 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	const installWorkletFeature = (feature: LynxMainThreadWorkletFeature): void => {
 		if (workletFeature === feature) return;
 		if (workletFeature !== null) {
-			throw new Error('Octane Lynx main-thread receiver changed worklet features after install.');
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx main-thread receiver changed worklet features after install.'
+					: 'Octane Lynx OL389',
+			);
 		}
 		const registry = feature.createRegistry({
 			callBackground(fn, args) {
@@ -1457,7 +1702,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		try {
 			runHostFlush(args);
 		} catch (error) {
-			report(error, 'Octane Lynx could not flush the element tree after a main-thread event.');
+			report(
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx could not flush the element tree after a main-thread event.'
+					: 'Octane Lynx OL390',
+			);
 		}
 	};
 
@@ -1493,7 +1743,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		if (workletFeature === null) {
 			report(
 				new Error(
-					'Octane Lynx host dispatched a main-thread worklet, but this bundle compiled none.',
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx host dispatched a main-thread worklet, but this bundle compiled none.'
+						: 'Octane Lynx OL391',
 				),
 			);
 			return undefined;
@@ -1538,7 +1790,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		try {
 			worklets.finishRefOwnerPublication();
 		} catch (error) {
-			report(error, 'Octane Lynx could not finish main-thread ref owner publication.');
+			report(
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx could not finish main-thread ref owner publication.'
+					: 'Octane Lynx OL392',
+			);
 		}
 	};
 
@@ -1678,11 +1935,15 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		} catch (error) {
 			const readyError = normalizedError(
 				error,
-				'Octane Lynx could not dispatch the main-ready reply.',
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx could not dispatch the main-ready reply.'
+					: 'Octane Lynx OL393',
 			);
 			terminateLifecycleDelivery(
 				readyError,
-				'Octane Lynx could not dispatch the main-ready reply.',
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx could not dispatch the main-ready reply.'
+					: 'Octane Lynx OL394',
 			);
 			throw readyError;
 		} finally {
@@ -1695,7 +1956,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		try {
 			releaseLynxFirstTree(firstTree);
 		} catch (error) {
-			report(error, 'Octane Lynx could not release its first-screen journal.');
+			report(
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx could not release its first-screen journal.'
+					: 'Octane Lynx OL395',
+			);
 			return;
 		}
 		firstTree = null;
@@ -1715,7 +1981,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		if (firstTree === null) return true;
 		const cleanup = disposeLynxFirstTree(firstTree);
 		for (const error of cleanup.errors) {
-			report(error, 'Octane Lynx first-screen cleanup failed.');
+			report(
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx first-screen cleanup failed.'
+					: 'Octane Lynx OL396',
+			);
 		}
 		if (cleanup.complete) releaseFirstTree();
 		return cleanup.complete && firstTree === null;
@@ -1725,7 +1996,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		if (failedFirstScreenSource === null) return true;
 		const cleanup = disposeLynxHostContainer(failedFirstScreenSource);
 		for (const error of cleanup.errors) {
-			report(error, 'Octane Lynx failed first-screen cleanup retry.');
+			report(
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx failed first-screen cleanup retry.'
+					: 'Octane Lynx OL397',
+			);
 		}
 		if (cleanup.complete) failedFirstScreenSource = null;
 		return cleanup.complete;
@@ -1765,7 +2041,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		if (!retryFirstScreenCleanup()) {
 			report(
 				new Error(
-					`Octane Lynx withheld background readiness because ${reason} first-screen cleanup remains incomplete.`,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx withheld background readiness because ${reason} first-screen cleanup remains incomplete.`
+						: 'Octane Lynx OL398',
 				),
 			);
 		}
@@ -1792,7 +2070,11 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		deliveries: readonly LynxNativeEventDelivery[],
 	): readonly LynxQueuedNativeEventDelivery[] => {
 		if (!Array.isArray(deliveries)) {
-			throw new TypeError('Octane Lynx native event deliveries must be an array.');
+			throw new TypeError(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx native event deliveries must be an array.'
+					: 'Octane Lynx OL399',
+			);
 		}
 		// A tap can land on the painted tree before the scheduled capture runs, and
 		// the token index it resolves through is built by that capture. Without
@@ -1804,10 +2086,18 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		return Object.freeze(
 			deliveries.map((delivery, index) => {
 				if (delivery === null || typeof delivery !== 'object' || Array.isArray(delivery)) {
-					throw new TypeError(`Octane Lynx native event delivery ${index} must be an object.`);
+					throw new TypeError(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? `Octane Lynx native event delivery ${index} must be an object.`
+							: 'Octane Lynx OL400',
+					);
 				}
 				if (typeof delivery.token !== 'string') {
-					throw new TypeError(`Octane Lynx native event delivery ${index} token must be a string.`);
+					throw new TypeError(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? `Octane Lynx native event delivery ${index} token must be a string.`
+							: 'Octane Lynx OL401',
+					);
 				}
 				const resolved =
 					firstTree === null ? null : resolveLynxFirstTreeEvent(firstTree, delivery.token);
@@ -1832,7 +2122,11 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	const deliverNativeEventBatch = (deliveries: readonly LynxQueuedNativeEventDelivery[]): void => {
 		if (deliveries.length === 0) return;
 		if (active === null || active.acceptedVersion <= 0) {
-			throw new Error('Octane Lynx received a native event without an accepted root.');
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx received a native event without an accepted root.'
+					: 'Octane Lynx OL402',
+			);
 		}
 		let priority: UniversalEventPriority | null = null;
 		const transported = deliveries.map((delivery) => {
@@ -1858,11 +2152,19 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 							return Object.freeze({ listener: listener.id, priority: listener.priority });
 						})();
 			if (resolved === null) {
-				throw new Error('Octane Lynx received a stale, hidden, removed, or foreign native event.');
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx received a stale, hidden, removed, or foreign native event.'
+						: 'Octane Lynx OL403',
+				);
 			}
 			if (priority === null) priority = resolved.priority;
 			else if (priority !== resolved.priority) {
-				throw new Error('Octane Lynx native event batch mixes listener priorities.');
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx native event batch mixes listener priorities.'
+						: 'Octane Lynx OL404',
+				);
 			}
 			return Object.freeze({ listener: resolved.listener, payload: delivery.payload });
 		});
@@ -1879,14 +2181,25 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 
 	const submitNativeEventBatch = (deliveries: readonly LynxNativeEventDelivery[]): void => {
 		if (closed) {
-			report(new Error('Octane Lynx received a native event after the main receiver closed.'));
+			report(
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx received a native event after the main receiver closed.'
+						: 'Octane Lynx OL405',
+				),
+			);
 			return;
 		}
 		let snapshot: readonly LynxQueuedNativeEventDelivery[];
 		try {
 			snapshot = snapshotNativeEventBatch(deliveries);
 		} catch (error) {
-			report(error, 'Octane Lynx could not snapshot a native event.');
+			report(
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx could not snapshot a native event.'
+					: 'Octane Lynx OL406',
+			);
 			return;
 		}
 		if (commitInProgress) {
@@ -1897,7 +2210,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			) {
 				report(
 					new Error(
-						`Octane Lynx dropped a first-screen event batch after ${MAX_FIRST_SCREEN_EVENT_DELIVERIES} buffered deliveries.`,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? `Octane Lynx dropped a first-screen event batch after ${MAX_FIRST_SCREEN_EVENT_DELIVERIES} buffered deliveries.`
+							: 'Octane Lynx OL407',
 					),
 				);
 				return;
@@ -1910,7 +2225,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			if (queuedCount + snapshot.length > MAX_FIRST_SCREEN_EVENT_DELIVERIES) {
 				report(
 					new Error(
-						`Octane Lynx dropped a first-screen event batch after ${MAX_FIRST_SCREEN_EVENT_DELIVERIES} buffered deliveries.`,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? `Octane Lynx dropped a first-screen event batch after ${MAX_FIRST_SCREEN_EVENT_DELIVERIES} buffered deliveries.`
+							: 'Octane Lynx OL408',
 					),
 				);
 				return;
@@ -1921,7 +2238,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		try {
 			deliverNativeEventBatch(snapshot);
 		} catch (error) {
-			report(error, 'Octane Lynx could not dispatch a native event.');
+			report(
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx could not dispatch a native event.'
+					: 'Octane Lynx OL409',
+			);
 		}
 	};
 
@@ -1931,7 +2253,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				try {
 					deliverNativeEventBatch(deliveries);
 				} catch (error) {
-					report(error, 'Octane Lynx could not dispatch an acknowledgement-gated native event.');
+					report(
+						error,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx could not dispatch an acknowledgement-gated native event.'
+							: 'Octane Lynx OL410',
+					);
 				}
 			}
 		}
@@ -1943,7 +2270,11 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	): void => {
 		if (deltas.length === 0) return;
 		if (active === null || active.acceptedVersion !== version) {
-			throw new Error('Octane Lynx received a stale or foreign list attachment batch.');
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx received a stale or foreign list attachment batch.'
+					: 'Octane Lynx OL411',
+			);
 		}
 		const changes = deltas.filter((delta) => {
 			const handle = getLynxHostHandle(active!.container, delta.id);
@@ -2006,10 +2337,20 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			dispatch({
 				...identity,
 				type: 'reject',
-				error: wireError(error, 'Octane Lynx rejected a host batch.'),
+				error: wireError(
+					error,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx rejected a host batch.'
+						: 'Octane Lynx OL412',
+				),
 			});
 		} catch (dispatchError) {
-			throw report(dispatchError, 'Octane Lynx could not dispatch a host rejection.');
+			throw report(
+				dispatchError,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx could not dispatch a host rejection.'
+					: 'Octane Lynx OL413',
+			);
 		} finally {
 			// Preserve already-buffered events for the accepted/adopting root while
 			// discarding only callbacks fired reentrantly by this rejection.
@@ -2020,7 +2361,13 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 
 	const disposeRecord = (record: ActiveLynxMainRoot<Node>) => {
 		const cleanup = disposeLynxHostContainer(record.container);
-		for (const error of cleanup.errors) report(error, 'Octane Lynx host cleanup failed.');
+		for (const error of cleanup.errors)
+			report(
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx host cleanup failed.'
+					: 'Octane Lynx OL414',
+			);
 		return cleanup;
 	};
 
@@ -2061,7 +2408,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		} else {
 			report(
 				new Error(
-					`Octane Lynx could not fully clean up root ${record.root} and its first-screen state after ${response} dispatch failed.`,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx could not fully clean up root ${record.root} and its first-screen state after ${response} dispatch failed.`
+						: 'Octane Lynx OL415',
 				),
 			);
 		}
@@ -2069,10 +2418,21 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 	};
 
 	const failAcceptedRoot = (version: number, value: unknown): void => {
-		const error = report(value, 'Octane Lynx accepted host callback failed.');
+		const error = report(
+			value,
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx accepted host callback failed.'
+				: 'Octane Lynx OL416',
+		);
 		const record = active;
 		if (record === null || record.acceptedVersion !== version || record.faulted) {
-			report(new Error('Octane Lynx received a stale or foreign accepted host callback fault.'));
+			report(
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx received a stale or foreign accepted host callback fault.'
+						: 'Octane Lynx OL417',
+				),
+			);
 			return;
 		}
 		record.faulted = true;
@@ -2087,12 +2447,22 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			root: record.root,
 			version,
 			type: 'host-fault',
-			error: wireError(error, 'Octane Lynx accepted host callback failed.'),
+			error: wireError(
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx accepted host callback failed.'
+					: 'Octane Lynx OL418',
+			),
 		};
 		try {
 			dispatch(message);
 		} catch (dispatchError) {
-			report(dispatchError, 'Octane Lynx could not dispatch an accepted host callback fault.');
+			report(
+				dispatchError,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx could not dispatch an accepted host callback fault.'
+					: 'Octane Lynx OL419',
+			);
 		}
 		// ContextProxy delivery can be asynchronous. Do not leave a known-faulted
 		// native tree live while waiting for background to request terminal dispose.
@@ -2109,7 +2479,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			active !== null && message.root === active.root && message.version === active.acceptedVersion;
 		const failExactPhase = (detail: string): void => {
 			const error = new Error(
-				`Octane Lynx received ${detail} for the active main-call publication.`,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx received ${detail} for the active main-call publication.`
+					: 'Octane Lynx OL420',
 			);
 			if (active === null || !exactActive || active.faulted) {
 				report(error);
@@ -2121,7 +2493,13 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 
 		if (message.phase === 'open') {
 			if (!exactActive) {
-				report(new Error('Octane Lynx received a stale or foreign main-call publication open.'));
+				report(
+					new Error(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx received a stale or foreign main-call publication open.'
+							: 'Octane Lynx OL421',
+					),
+				);
 				return;
 			}
 			if (mainCallPublication !== null || message.version <= active!.lastMainCallPublication) {
@@ -2145,13 +2523,25 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		if (mainCallPublication === null) {
 			if (exactActive) failExactPhase('a close without an open');
 			else
-				report(new Error('Octane Lynx received a stale or foreign main-call publication close.'));
+				report(
+					new Error(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx received a stale or foreign main-call publication close.'
+							: 'Octane Lynx OL422',
+					),
+				);
 			return;
 		}
 		if (!sameLynxTransportIdentity(mainCallPublication, message)) {
 			if (exactActive) failExactPhase('a mismatched close');
 			else
-				report(new Error('Octane Lynx received a stale or foreign main-call publication close.'));
+				report(
+					new Error(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx received a stale or foreign main-call publication close.'
+							: 'Octane Lynx OL423',
+					),
+				);
 			return;
 		}
 		finishMainCallPublication();
@@ -2224,7 +2614,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			captureFirstScreen(source);
 		} catch (error) {
 			retireFirstScreen(source, 'failed', 'failed');
-			report(error, 'Octane Lynx could not capture its first screen after the paint.');
+			report(
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx could not capture its first screen after the paint.'
+					: 'Octane Lynx OL424',
+			);
 		} finally {
 			markFirstScreenPhase(null);
 			firstScreenRenderInProgress = false;
@@ -2237,7 +2632,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		props: Props,
 		deferCapture: boolean,
 	): LynxFirstScreenRenderResult | null => {
-		if (closed) throw new Error('Octane Lynx first-screen root rendered after receiver close.');
+		if (closed)
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx first-screen root rendered after receiver close.'
+					: 'Octane Lynx OL425',
+			);
 		// The render window closes when the first screen paints, not when the
 		// deferred capture describes it. During that gap the state still reads
 		// `open`, so settle the pending capture first and let the one-shot guard
@@ -2246,7 +2646,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		ensureFirstScreenCaptured();
 		if (firstScreenState !== 'open') {
 			throw new Error(
-				'Octane Lynx first-screen root is one-shot and its render window has closed.',
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx first-screen root is one-shot and its render window has closed.'
+					: 'Octane Lynx OL426',
 			);
 		}
 		firstScreenRenderInProgress = true;
@@ -2299,7 +2701,11 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				const prepared = prepareLynxHostBatch(source, result.batch);
 				prepared.apply(flushOptions);
 				if (!prepared.mutationStarted) {
-					throw new Error('Octane Lynx first-screen host batch did not cross its apply boundary.');
+					throw new Error(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx first-screen host batch did not cross its apply boundary.'
+							: 'Octane Lynx OL427',
+					);
 				}
 			}
 			const painted = source;
@@ -2322,7 +2728,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 					// described by nothing — so drop the deferral and finish here, on
 					// the order a receiver with no rung at all would have taken.
 					pendingFirstScreenCapture = null;
-					report(error, 'Octane Lynx could not schedule its first-screen capture.');
+					report(
+						error,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx could not schedule its first-screen capture.'
+							: 'Octane Lynx OL428',
+					);
 					return captureFirstScreen(painted) ? result : null;
 				}
 				return result;
@@ -2347,7 +2758,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				return null;
 			}
 			retireFirstScreen(source, 'failed', 'failed');
-			throw report(error, 'Octane Lynx could not render its synchronous first screen.');
+			throw report(
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx could not render its synchronous first screen.'
+					: 'Octane Lynx OL429',
+			);
 		} finally {
 			// Closes whichever phase was open, including on the paths that never
 			// reach `announce`: a tree the background cannot adopt returns early,
@@ -2370,10 +2786,17 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		// declines for — it keeps capture in front of the paint, because moving
 		// it would mean answering before the answer exists.
 		if (firstScreenRenderReleased) return renderFirstScreenNow(component, props, false);
-		if (closed) throw new Error('Octane Lynx first-screen root rendered after receiver close.');
+		if (closed)
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx first-screen root rendered after receiver close.'
+					: 'Octane Lynx OL430',
+			);
 		if (firstScreenState !== 'open' || pendingFirstScreenRender !== null) {
 			throw new Error(
-				'Octane Lynx first-screen root is one-shot and its render window has closed.',
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx first-screen root is one-shot and its render window has closed.'
+					: 'Octane Lynx OL431',
 			);
 		}
 		// Element creation must wait for the engine's post-evaluation lifecycle:
@@ -2413,9 +2836,18 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 
 	const markFirstScreenSyncReady = (): void => {
 		if (!firstScreenEnabled) {
-			throw new Error('Octane Lynx first-screen synchronization is not enabled.');
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx first-screen synchronization is not enabled.'
+					: 'Octane Lynx OL432',
+			);
 		}
-		if (closed) throw new Error('Octane Lynx first-screen synchronization ran after close.');
+		if (closed)
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx first-screen synchronization ran after close.'
+					: 'Octane Lynx OL433',
+			);
 		if (firstScreenSyncReady) return;
 		// A mark landing between the paint and the scheduled capture must not read
 		// the still-`open` state as "nothing rendered": that would settle a painted
@@ -2439,14 +2871,26 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 
 	const handleAbort = (identity: UniversalTransportIdentity): void => {
 		if (disposedRoots.has(identity.root)) {
-			report(new Error(`Octane Lynx received an abort for disposed root ${identity.root}.`));
+			report(
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx received an abort for disposed root ${identity.root}.`
+						: 'Octane Lynx OL434',
+				),
+			);
 			return;
 		}
 		if (
 			active !== null &&
 			(active.root !== identity.root || identity.version <= active.acceptedVersion)
 		) {
-			report(new Error('Octane Lynx received a stale or foreign abort.'));
+			report(
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx received a stale or foreign abort.'
+						: 'Octane Lynx OL435',
+				),
+			);
 			return;
 		}
 		aborted.add(abortKey(identity));
@@ -2461,34 +2905,65 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		identity: UniversalTransportIdentity,
 	): void => {
 		if (disposedRoots.has(message.root)) {
-			reject(identity, new Error(`Octane Lynx root ${message.root} was already disposed.`));
+			reject(
+				identity,
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx root ${message.root} was already disposed.`
+						: 'Octane Lynx OL436',
+				),
+			);
 			return;
 		}
 		if (aborted.delete(abortKey(identity))) {
-			reject(identity, new Error(`Octane Lynx batch ${message.version} was aborted before apply.`));
+			reject(
+				identity,
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx batch ${message.version} was aborted before apply.`
+						: 'Octane Lynx OL437',
+				),
+			);
 			return;
 		}
 		if (mainCallPublication !== null) {
 			const publication = mainCallPublication;
 			failAcceptedRoot(
 				publication.version,
-				new Error('Octane Lynx commit arrived before main-call publication closed.'),
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx commit arrived before main-call publication closed.'
+						: 'Octane Lynx OL438',
+				),
 			);
 			reject(
 				identity,
-				new Error('Octane Lynx commit arrived before main-call publication closed.'),
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx commit arrived before main-call publication closed.'
+						: 'Octane Lynx OL439',
+				),
 			);
 			return;
 		}
 		if (active !== null && active.root !== message.root) {
-			reject(identity, new Error('Octane Lynx commit belongs to a foreign active root.'));
+			reject(
+				identity,
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx commit belongs to a foreign active root.'
+						: 'Octane Lynx OL440',
+				),
+			);
 			return;
 		}
 		if (active !== null && message.version <= active.acceptedVersion) {
 			reject(
 				identity,
 				new Error(
-					`Octane Lynx rejected stale batch ${message.version}; accepted version is ${active.acceptedVersion}.`,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx rejected stale batch ${message.version}; accepted version is ${active.acceptedVersion}.`
+						: 'Octane Lynx OL441',
 				),
 			);
 			return;
@@ -2524,7 +2999,14 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 								command.op === 'mount-program-run',
 						))))
 		) {
-			reject(identity, new Error('Octane Lynx rejected unnegotiated lazy public instances.'));
+			reject(
+				identity,
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx rejected unnegotiated lazy public instances.'
+						: 'Octane Lynx OL442',
+				),
+			);
 			return;
 		}
 		// The announcement itself needs no negotiation. A background names the hosts
@@ -2538,7 +3020,11 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		if (message.instances === LYNX_LAZY_PUBLIC_INSTANCES && !announcesPublicInstances) {
 			reject(
 				identity,
-				new Error('Octane Lynx rejected deferred public instances the commit never announced.'),
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx rejected deferred public instances the commit never announced.'
+						: 'Octane Lynx OL443',
+				),
 			);
 			return;
 		}
@@ -2556,7 +3042,11 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				if (command.op === 'mount-template-range' && peerCapabilities?.templateProgram !== 1) {
 					reject(
 						identity,
-						new Error('Octane Lynx rejected an unnegotiated intrinsic template program.'),
+						new Error(
+							typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+								? 'Octane Lynx rejected an unnegotiated intrinsic template program.'
+								: 'Octane Lynx OL444',
+						),
 					);
 					return;
 				}
@@ -2567,7 +3057,11 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				) {
 					reject(
 						identity,
-						new Error('Octane Lynx rejected an unnegotiated intrinsic template run.'),
+						new Error(
+							typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+								? 'Octane Lynx rejected an unnegotiated intrinsic template run.'
+								: 'Octane Lynx OL445',
+						),
 					);
 					return;
 				}
@@ -2578,7 +3072,11 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				) {
 					reject(
 						identity,
-						new Error('Octane Lynx rejected an unnegotiated addressed program run.'),
+						new Error(
+							typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+								? 'Octane Lynx rejected an unnegotiated addressed program run.'
+								: 'Octane Lynx OL446',
+						),
 					);
 					return;
 				}
@@ -2593,7 +3091,11 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				) {
 					reject(
 						identity,
-						new Error('Octane Lynx rejected an unnegotiated deferred intrinsic template run.'),
+						new Error(
+							typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+								? 'Octane Lynx rejected an unnegotiated deferred intrinsic template run.'
+								: 'Octane Lynx OL447',
+						),
 					);
 					return;
 				}
@@ -2699,7 +3201,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 								: null),
 							announcesPublicInstances,
 							onMismatch(error) {
-								report(error, 'Octane Lynx repaired a first-screen mismatch.');
+								report(
+									error,
+									typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+										? 'Octane Lynx repaired a first-screen mismatch.'
+										: 'Octane Lynx OL448',
+								);
 							},
 						},
 			);
@@ -2848,7 +3355,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			throw failAcceptedResponse(
 				record,
 				error,
-				'Octane Lynx could not dispatch an accepted batch acknowledgement.',
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx could not dispatch an accepted batch acknowledgement.'
+					: 'Octane Lynx OL449',
 				'acknowledgement',
 			);
 		}
@@ -2864,7 +3373,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				throw failAcceptedResponse(
 					record,
 					error,
-					'Octane Lynx could not dispatch accepted batch completion.',
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx could not dispatch accepted batch completion.'
+						: 'Octane Lynx OL450',
 					'completion',
 				);
 			}
@@ -2879,10 +3390,20 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			dispatch({
 				...identity,
 				type: 'fault',
-				error: wireError(applyError, 'Octane Lynx Element PAPI application failed.'),
+				error: wireError(
+					applyError,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx Element PAPI application failed.'
+						: 'Octane Lynx OL451',
+				),
 			});
 		} catch (error) {
-			throw report(error, 'Octane Lynx could not dispatch an accepted host fault.');
+			throw report(
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx could not dispatch an accepted host fault.'
+					: 'Octane Lynx OL452',
+			);
 		} finally {
 			queuedNativeEvents.length = 0;
 		}
@@ -2952,7 +3473,13 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			message.version > active.acceptedVersion ||
 			active.faulted
 		) {
-			report(new Error('Octane Lynx received a stale or foreign adoption-ready message.'));
+			report(
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx received a stale or foreign adoption-ready message.'
+						: 'Octane Lynx OL453',
+				),
+			);
 			return;
 		}
 		const startedHandOver = LYNX_PROFILE ? performance.now() : 0;
@@ -2983,7 +3510,13 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			queuedNativeEvents.length = 0;
 			queuedHostAttachments.length = 0;
 			awaitingAdoption = null;
-			resetThreadCalls(new Error(`Octane Lynx root ${message.root} was disposed.`));
+			resetThreadCalls(
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx root ${message.root} was disposed.`
+						: 'Octane Lynx OL454',
+				),
+			);
 			finishMainCallPublication();
 		};
 		const acknowledge = () => {
@@ -2994,7 +3527,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			try {
 				dispatch(acknowledgement);
 			} catch (error) {
-				throw report(error, 'Octane Lynx could not dispatch dispose acknowledgement.');
+				throw report(
+					error,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx could not dispatch dispose acknowledgement.'
+						: 'Octane Lynx OL455',
+				);
 			}
 		};
 		const requestRetry = (error: Error) => {
@@ -3002,10 +3540,20 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				dispatch({
 					...message,
 					type: 'dispose-retry',
-					error: wireError(error, 'Octane Lynx native cleanup is incomplete.'),
+					error: wireError(
+						error,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx native cleanup is incomplete.'
+							: 'Octane Lynx OL456',
+					),
 				});
 			} catch (dispatchError) {
-				throw report(dispatchError, 'Octane Lynx could not dispatch a dispose retry request.');
+				throw report(
+					dispatchError,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx could not dispatch a dispose retry request.'
+						: 'Octane Lynx OL457',
+				);
 			}
 		};
 		if (disposedRoots.get(message.root) === message.version) {
@@ -3018,7 +3566,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				requestRetry(
 					report(
 						new Error(
-							`Octane Lynx withheld dispose acknowledgement for root ${message.root}; first-screen cleanup remains incomplete.`,
+							typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+								? `Octane Lynx withheld dispose acknowledgement for root ${message.root}; first-screen cleanup remains incomplete.`
+								: 'Octane Lynx OL458',
 						),
 					),
 				);
@@ -3036,7 +3586,13 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				? active.acceptedVersion > message.version
 				: active.acceptedVersion !== message.version)
 		) {
-			report(new Error('Octane Lynx received a stale or foreign dispose request.'));
+			report(
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx received a stale or foreign dispose request.'
+						: 'Octane Lynx OL459',
+				),
+			);
 			return;
 		}
 		resetDisposedState();
@@ -3045,7 +3601,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		if (!cleanup.complete) {
 			const unresolvedError = report(
 				new Error(
-					`Octane Lynx withheld dispose acknowledgement for root ${record.root}; ${cleanup.remainingRoots} native root(s) remain attached.`,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx withheld dispose acknowledgement for root ${record.root}; ${cleanup.remainingRoots} native root(s) remain attached.`
+						: 'Octane Lynx OL460',
 				),
 			);
 			requestRetry(cleanup.errors[0] ?? unresolvedError);
@@ -3055,7 +3613,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			requestRetry(
 				report(
 					new Error(
-						`Octane Lynx withheld dispose acknowledgement for root ${record.root}; first-screen cleanup remains incomplete.`,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? `Octane Lynx withheld dispose acknowledgement for root ${record.root}; first-screen cleanup remains incomplete.`
+							: 'Octane Lynx OL461',
 					),
 				),
 			);
@@ -3083,7 +3643,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			// Nothing in an undecodable payload is safe to reflect on, so unlike a
 			// schema failure there is no identity to recover and no pending call to
 			// settle against — it can only be reported and dropped.
-			report(error, 'Octane Lynx received an outbound message it could not decode.');
+			report(
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx received an outbound message it could not decode.'
+					: 'Octane Lynx OL462',
+			);
 			return;
 		}
 		let message: ReturnType<typeof validateLynxBackgroundOutboundMessage>;
@@ -3092,7 +3657,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			message = validateLynxBackgroundOutboundMessage(data, validation, residentRunProgram);
 			if (LYNX_PROFILE) lynxWireProfile().validateMs += performance.now() - startedValidate;
 		} catch (error) {
-			const normalized = report(error, 'Octane Lynx received a malformed outbound message.');
+			const normalized = report(
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx received a malformed outbound message.'
+					: 'Octane Lynx OL463',
+			);
 			const identity = recoverIdentity(data);
 			const raw =
 				data !== null && typeof data === 'object' ? (data as Record<string, unknown>) : null;
@@ -3129,10 +3699,20 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 						...identity,
 						type: 'call-main-error',
 						call: raw.call as number,
-						error: wireError(normalized, 'Octane Lynx received a malformed main-thread call.'),
+						error: wireError(
+							normalized,
+							typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+								? 'Octane Lynx received a malformed main-thread call.'
+								: 'Octane Lynx OL464',
+						),
 					});
 				} catch (dispatchError) {
-					report(dispatchError, 'Octane Lynx could not reject a malformed main-thread call.');
+					report(
+						dispatchError,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx could not reject a malformed main-thread call.'
+							: 'Octane Lynx OL465',
+					);
 				}
 				return;
 			}
@@ -3187,7 +3767,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 					engineLifecycleContext.removeEventListener(type, listener);
 					registeredEngineLifecycleListeners.delete(type);
 				} catch (error) {
-					report(error, `Octane Lynx could not remove its ${type} engine lifecycle listener.`);
+					report(
+						error,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? `Octane Lynx could not remove its ${type} engine lifecycle listener.`
+							: 'Octane Lynx OL466',
+					);
 				}
 			}
 		}
@@ -3197,10 +3782,21 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				nativeLifecycleContext.removeEventListener(LYNX_DESTROY_LIFETIME_EVENT, onNativeDestroy);
 			} catch (error) {
 				nativeDestroyListenerRegistered = true;
-				report(error, 'Octane Lynx could not remove its native lifetime listener.');
+				report(
+					error,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx could not remove its native lifetime listener.'
+						: 'Octane Lynx OL467',
+				);
 			}
 		}
-		resetThreadCalls(new Error('Octane Lynx main-thread receiver was closed.'));
+		resetThreadCalls(
+			new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx main-thread receiver was closed.'
+					: 'Octane Lynx OL468',
+			),
+		);
 		finishMainCallPublication();
 		queuedCommits.length = 0;
 		queuedNativeEvents.length = 0;
@@ -3216,7 +3812,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			try {
 				context.removeEventListener(LYNX_BACKGROUND_TO_MAIN_EVENT, receive);
 			} catch (error) {
-				report(error, 'Octane Lynx could not remove its main-thread listener.');
+				report(
+					error,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx could not remove its main-thread listener.'
+						: 'Octane Lynx OL469',
+				);
 			}
 		}
 		let activeCleanupComplete = active === null;
@@ -3237,7 +3838,11 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		}
 		if (!firstScreenCleanupComplete) {
 			report(
-				new Error('Octane Lynx retained incomplete first-screen cleanup for a later close retry.'),
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx retained incomplete first-screen cleanup for a later close retry.'
+						: 'Octane Lynx OL470',
+				),
 			);
 		}
 		closeWorkletRuntime();
@@ -3254,7 +3859,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 					type: 'page-destroy',
 				});
 			} catch (error) {
-				report(error, 'Octane Lynx could not notify the background page lifetime.');
+				report(
+					error,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx could not notify the background page lifetime.'
+						: 'Octane Lynx OL471',
+				);
 			}
 		}
 	};
@@ -3269,7 +3879,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		} catch (error) {
 			// Native lifetime callbacks must not leak cleanup failures back into the
 			// engine. Preserve the failure through the controller diagnostics instead.
-			report(error, 'Octane Lynx native lifetime cleanup failed.');
+			report(
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx native lifetime cleanup failed.'
+					: 'Octane Lynx OL472',
+			);
 		}
 	};
 	terminateLifecycleDelivery = (value: unknown, fallback: string): void => {
@@ -3290,7 +3905,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			nativeLifecycleContext.addEventListener(LYNX_DESTROY_LIFETIME_EVENT, onNativeDestroy);
 		} catch (error) {
 			onNativeDestroy();
-			throw report(error, 'Octane Lynx could not install its native lifetime listener.');
+			throw report(
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx could not install its native lifetime listener.'
+					: 'Octane Lynx OL473',
+			);
 		}
 	}
 	if (!closed && engineLifecycleContext !== null) {
@@ -3311,7 +3931,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 					} catch (removeError) {
 						report(
 							removeError,
-							`Octane Lynx could not roll back its ${type} engine lifecycle listener.`,
+							typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+								? `Octane Lynx could not roll back its ${type} engine lifecycle listener.`
+								: 'Octane Lynx OL474',
 						);
 					}
 					break;
@@ -3319,7 +3941,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			}
 		} catch (error) {
 			onNativeDestroy();
-			throw report(error, 'Octane Lynx could not install its engine lifecycle listeners.');
+			throw report(
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx could not install its engine lifecycle listeners.'
+					: 'Octane Lynx OL475',
+			);
 		}
 	}
 	try {
@@ -3346,7 +3973,9 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 						}
 						report(
 							new Error(
-								'Octane Lynx withheld background readiness because first-screen unmount cleanup remains incomplete.',
+								typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+									? 'Octane Lynx withheld background readiness because first-screen unmount cleanup remains incomplete.'
+									: 'Octane Lynx OL476',
 							),
 						);
 						return;
@@ -3361,7 +3990,12 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		if (!closed) announceReady();
 	} catch (error) {
 		onNativeDestroy();
-		throw report(error, 'Octane Lynx could not announce main-thread readiness.');
+		throw report(
+			error,
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx could not announce main-thread readiness.'
+				: 'Octane Lynx OL477',
+		);
 	}
 
 	const controller: LynxMainThreadController = {
@@ -3397,5 +4031,14 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 		// a background transport waiting for readiness cannot be stranded.
 		close: closePageController,
 	};
+	if (LYNX_PROFILE) {
+		const profileTarget = target as LynxMainThreadGlobals & {
+			__OCTANE_BENCH_MAIN_CLOSE__?: () => void;
+		};
+		profileTarget.__OCTANE_BENCH_MAIN_CLOSE__ = () => {
+			closePageController();
+			delete profileTarget.__OCTANE_BENCH_MAIN_CLOSE__;
+		};
+	}
 	return Object.freeze(controller);
 }

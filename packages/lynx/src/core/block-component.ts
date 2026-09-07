@@ -1,3 +1,5 @@
+declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
+
 /**
  * Issue-#135 item 1 — a compiled component driving the Block core.
  *
@@ -187,8 +189,9 @@ function componentName(component: LynxComponent<never>): string {
 
 function refuse(component: LynxComponent<never>, reason: string): never {
 	throw new Error(
-		`Octane Lynx cannot lower component ${componentName(component)} onto the Block core: ` +
-			`${reason} ${REMEDY}`,
+		(typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+			? `Octane Lynx cannot lower component ${componentName(component)} onto the Block core: `
+			: 'Octane Lynx OL013') + `${reason} ${REMEDY}`,
 	);
 }
 
@@ -766,7 +769,9 @@ export function lynxBlockProgramForComponent<Props>(
 			// second pass and a second structure.
 			if (retained.has(itemKey)) {
 				throw new Error(
-					`Octane Lynx block core: duplicate key ${String(itemKey)} in a keyed range.`,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx block core: duplicate key ${String(itemKey)} in a keyed range.`
+						: 'Octane Lynx OL014',
 				);
 			}
 			keys[index] = itemKey;

@@ -984,4 +984,38 @@ export function App() @{ <view /> }
 			expect(defines).toEqual([{ __OCTANE_LYNX_BACKGROUND_CORE__: JSON.stringify(expected) }]);
 		}
 	});
+
+	it('binds production diagnostics to compact identifiers in every graph', () => {
+		for (const [options, context, expected] of [
+			[undefined, {}, false],
+			[{ thread: 'background' as const }, {}, false],
+			[{ thread: 'main-thread' as const }, { isDev: true }, true],
+			[{ dev: true }, {}, true],
+			[{ dev: false }, { isDev: true }, false],
+		] as const) {
+			const state = applyPlugin(options as Parameters<typeof pluginOctane>[0], 'lynx', context, {
+				app: ['./src/App.lynx.tsrx'],
+			});
+			const registered = state.plugins.get('@octanejs/rspeedy-plugin:diagnostic-mode');
+			expect(registered?.options).toEqual([expected]);
+
+			const defines: Record<string, unknown>[] = [];
+			const compiler = {
+				webpack: {
+					DefinePlugin: class {
+						constructor(values: Record<string, unknown>) {
+							defines.push(values);
+						}
+						apply() {}
+					},
+				},
+			};
+			new (
+				registered!.implementation as new (development: boolean) => {
+					apply(c: unknown): void;
+				}
+			)(expected).apply(compiler);
+			expect(defines).toEqual([{ __OCTANE_LYNX_DEVELOPMENT__: expected }]);
+		}
+	});
 });

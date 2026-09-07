@@ -206,15 +206,8 @@ function issue278MarkDecoded(commit: boolean): void {
 		);
 		instrumented = replaceOnce(
 			instrumented,
-			`	if (flags !== 0 && flags !== 1) {
-		throw new TypeError(\`Octane Lynx transport received unknown codec flags \${String(flags)}.\`);
-	}
-	return flags === 0 ? envelope[1] : restore(envelope[1]);
-`,
-			`	if (flags !== 0 && flags !== 1) {
-		throw new TypeError(\`Octane Lynx transport received unknown codec flags \${String(flags)}.\`);
-	}
-	profile.decodeCalls++;
+			'\treturn flags === 0 ? envelope[1] : restore(envelope[1]);\n',
+			`	profile.decodeCalls++;
 	if (flags === 0) {
 		profile.decodeFlags0++;
 		issue278MarkDecoded(issue278Commit);

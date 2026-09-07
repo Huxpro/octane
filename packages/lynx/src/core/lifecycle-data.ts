@@ -1,3 +1,5 @@
+declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
+
 import { hasOwnSymbolFields } from './own-symbols.js';
 import { hasCrossRealmPlainPrototype } from './plain-object.js';
 import type { UniversalSerializableValue } from 'octane/universal/native';
@@ -95,7 +97,11 @@ interface CloneState {
 }
 
 function lifecycleDataError(label: string, message: string): TypeError {
-	return new TypeError(`Octane Lynx lifecycle ${label} ${message}`);
+	return new TypeError(
+		typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+			? `Octane Lynx lifecycle ${label} ${message}`
+			: 'Octane Lynx OL101',
+	);
 }
 
 function ownEnumerableDataNames(
@@ -209,7 +215,11 @@ export function snapshotLynxLifecycleData(value: unknown, label = 'data'): LynxL
 function globalEventEmitter(runtime: Lynx): LynxGlobalEventEmitter {
 	const emitter = runtime.getJSModule('GlobalEventEmitter');
 	if (emitter === null || typeof emitter !== 'object' || typeof emitter.emit !== 'function') {
-		throw new TypeError('Octane Lynx lifecycle requires the public GlobalEventEmitter emit API.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx lifecycle requires the public GlobalEventEmitter emit API.'
+				: 'Octane Lynx OL102',
+		);
 	}
 	return emitter;
 }
