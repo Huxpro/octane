@@ -50,7 +50,9 @@ import {
 } from './first-screen.js';
 import {
 	residentRunProgram,
+	residentUniversalProgramAddress,
 	residentUniversalProgramCount,
+	type LynxProgramAddress,
 	unresolvedProgramAddressMessage,
 } from './program-registry.js';
 import {
@@ -4355,6 +4357,8 @@ function materializeProgramEvents<Node extends LynxElementRef>(state: LynxHostSt
  */
 interface DenseMemberSpan {
 	readonly plan: UniversalProgramPlan;
+	/** Build-proven address registered once beside the shared program plan. */
+	readonly address?: LynxProgramAddress;
 	/** The array the members live in, kept rather than sliced out of. */
 	readonly children: readonly LynxFirstScreenDirectNode[];
 	readonly start: number;
@@ -4435,6 +4439,7 @@ function denseMemberSpan(
 	const plan = leader.plan;
 	if (plan === undefined) return null;
 	const rangeCount = plan.ranges.length;
+	const address = residentUniversalProgramAddress(plan);
 	const leaderIds = leader.ids;
 	if (leaderIds === undefined || leaderIds.length !== plan.nodes) return null;
 	const firstId = leaderIds[0];
@@ -4464,7 +4469,16 @@ function denseMemberSpan(
 		}
 		programs[index] = program;
 	}
-	return { plan, children, start, count, programs, firstId, stride };
+	return {
+		plan,
+		...(address === undefined ? null : { address }),
+		children,
+		start,
+		count,
+		programs,
+		firstId,
+		stride,
+	};
 }
 
 /**
@@ -4895,6 +4909,17 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		const runEnd = run === undefined || count === undefined ? -1 : run + count;
 		let cursor = run ?? 0;
 		let claimed = 0;
+		// The renderer assigned listener IDs while appending this contiguous event
+		// run. With no range members to interleave, exact arity proves every site is
+		// present and the first entry names the whole sequential listener range.
+		const adoptionAddress = residentUniversalProgramAddress(plan);
+		const adoptionCandidate =
+			adoptionAddress !== undefined &&
+			plan.ranges.length === 0 &&
+			run !== undefined &&
+			count === plan.events.length;
+		const adoptionFirstListenerId =
+			adoptionCandidate && count !== 0 ? envelope.events[run]!.listener.id : null;
 		for (const site of plan.events) {
 			const hostId = ids[site.node];
 			if (hostId === undefined) {
@@ -5080,6 +5105,11 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		// a throw partway through it left a run pushed and half its sites
 		// journalled, and there is now no partway.
 		const mounted: LynxProgramRun<Node> = {
+			adoptionAddress: adoptionCandidate ? adoptionAddress : null,
+			adoptionParent: parentId,
+			adoptionValues: adoptionCandidate ? values : null,
+			adoptionValuesSelected: false,
+			adoptionFirstListenerId,
 			count: 1,
 			firstId: ids[0]!,
 			// Unread at a count of one — the scanning readers answer from `ids` —
@@ -5287,6 +5317,9 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		const tokens: (LynxNativeEventToken | undefined)[] = new Array(count * siteCount);
 		const texts: unknown[] = new Array(count * rangeCount);
 		const out: unknown[] = new Array(count * stride);
+		let adoptionCandidate = span.address !== undefined && rangeCount === 0;
+		let adoptionFirstListenerId: number | null = null;
+		let adoptionEventsAt: number | undefined;
 		for (let instance = 0; instance < count; instance++) {
 			const member = programs[instance]!;
 			const memberValues = member.values!;
@@ -5313,6 +5346,21 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 					? -1
 					: announcedAt + announcedCount;
 			let cursor = announcedAt ?? 0;
+			if (adoptionCandidate) {
+				if (
+					announcedAt === undefined ||
+					announcedCount !== siteCount ||
+					(adoptionEventsAt !== undefined &&
+						announcedAt !== adoptionEventsAt + instance * siteCount)
+				) {
+					adoptionCandidate = false;
+				} else if (adoptionEventsAt === undefined) {
+					adoptionEventsAt = announcedAt;
+					if (siteCount !== 0) {
+						adoptionFirstListenerId = envelope.events[announcedAt]!.listener.id;
+					}
+				}
+			}
 			const ids = member.ids!;
 			const tokenBase = instance * siteCount;
 			for (let index = 0; index < siteCount; index++) {
@@ -5377,6 +5425,11 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			);
 		}
 		const mounted: LynxProgramRun<Node> = {
+			adoptionAddress: adoptionCandidate ? span.address! : null,
+			adoptionParent: parentId,
+			adoptionValues: adoptionCandidate ? values : null,
+			adoptionValuesSelected: true,
+			adoptionFirstListenerId,
 			count,
 			firstId,
 			// Empty, and that is the whole point: every id in this run is
@@ -5840,7 +5893,14 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 	// longer a second write to disagree with. What remains is the count, which
 	// the first-tree journal carries so adoption's own equality can use it.
 	let programNodes = 0;
-	for (const run of state.programRuns) programNodes += run.owned;
+	const programAdoptionRuns: LynxProgramRun<Node>[] = [];
+	for (const run of state.programRuns) {
+		programNodes += run.owned;
+		if (run.adoptionAddress !== null) programAdoptionRuns.push(run);
+	}
+	if (LYNX_PROFILE) {
+		lynxWireProfile().firstTreeProgramManifestRuns += programAdoptionRuns.length;
+	}
 	if (state.ownedNodes.size !== state.records.size - logicalNodes.size) {
 		throw hostError('first-tree physical ownership contains untracked nodes.');
 	}
@@ -5933,11 +5993,181 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
 		// tree it took after either — the same reason `roots` is copied above. One
 		// reference per program, where this used to copy one entry per node.
 		[...state.programRuns],
+		programAdoptionRuns,
 		programNodes,
 		state.programRunsDisjoint,
 	);
 	state.firstTree = firstTree;
 	return firstTree;
+}
+
+/**
+ * Compare the compact identity both compiled chunks already assigned to an
+ * addressed program run (issue #287, manifest slice).
+ *
+ * This is deliberately opportunistic. An older background can still send a
+ * descriptor run for a first screen whose main chunk carries an address; that
+ * pair keeps the per-host proof below. A `mount-program-run` with the same
+ * first id, however, is the other half of this manifest and must agree in every
+ * field that decides what the resident program painted. Falling through after
+ * such a disagreement would let two different addressed programs adopt merely
+ * because their expanded host records happened to look alike.
+ *
+ * The main side retained no new value table. One-instance runs point at the
+ * renderer's source values and select through `plan.values` here; dense runs
+ * point at the selected table their compiled driver already consumed. Apps
+ * with no eligible addressed run return before scanning the batch.
+ */
+function compareProgramAdoptionRuns<Node extends LynxElementRef>(
+	batch: UniversalHostBatch,
+	firstTree: LynxFirstTree<Node>,
+): LynxFirstTreeMismatchError | null {
+	const runs = firstTree[LYNX_FIRST_TREE_STATE].programAdoptionRuns;
+	if (runs.length === 0) return null;
+	// A transparent keyed/component range can take IDs between two compiled
+	// instances without making a host. The main painter therefore retains one
+	// dense run with that actual stride while the background quite correctly
+	// emits one addressed command per contiguous host segment. Find each segment
+	// arithmetically instead of expanding either side to one entry per instance.
+	const covered = new Uint32Array(runs.length);
+	const seen = new Uint8Array(runs.length);
+	const runAt = (firstId: number): number => {
+		let low = 0;
+		let high = runs.length - 1;
+		let candidate = -1;
+		while (low <= high) {
+			const middle = (low + high) >>> 1;
+			if (runs[middle]!.firstId <= firstId) {
+				candidate = middle;
+				low = middle + 1;
+			} else high = middle - 1;
+		}
+		if (candidate < 0) return -1;
+		const run = runs[candidate]!;
+		const within = firstId - run.firstId;
+		return within % run.stride === 0 && within / run.stride < run.count ? candidate : -1;
+	};
+	for (const manifest of batch.programs ?? []) {
+		const runIndex = runAt(manifest.firstId);
+		if (runIndex < 0) continue;
+		const run = runs[runIndex]!;
+		const path = `snapshot.programs[${run.firstId}]`;
+		const address = run.adoptionAddress!;
+		if (manifest.address.module !== address.module || manifest.address.index !== address.index) {
+			return mismatch(firstTree, `${path}.address`, 'the compiled program address differs.');
+		}
+		if (
+			manifest.parent !== run.adoptionParent ||
+			manifest.before !== null ||
+			manifest.firstId !== run.firstId ||
+			manifest.stride !== run.stride
+		) {
+			return mismatch(firstTree, `${path}.parent`, 'the program run layout differs.');
+		}
+		if (seen[runIndex] !== 0 || manifest.count !== run.count) {
+			return mismatch(firstTree, `${path}.count`, 'the program run instance count differs.');
+		}
+		if (manifest.firstListenerId !== run.adoptionFirstListenerId) {
+			return mismatch(firstTree, `${path}.listeners`, 'the program listener identity differs.');
+		}
+		const values = run.adoptionValues!;
+		const valueCount = run.plan.values.length;
+		const expectedValues = run.count * valueCount;
+		if (manifest.values.length !== expectedValues) {
+			return mismatch(firstTree, `${path}.values`, 'the program dynamic value count differs.');
+		}
+		for (let index = 0; index < expectedValues; index++) {
+			const painted = run.adoptionValuesSelected ? values[index] : values[run.plan.values[index]!];
+			if (!sameSnapshotValue(painted, manifest.values[index])) {
+				return mismatch(
+					firstTree,
+					`${path}.values[${index}]`,
+					'the program dynamic value differs.',
+				);
+			}
+		}
+		seen[runIndex] = 1;
+		covered[runIndex] = run.count;
+	}
+	for (let commandIndex = 0; commandIndex < batch.commands.length; commandIndex++) {
+		const command = batch.commands[commandIndex];
+		if (command === null || typeof command !== 'object' || command.op !== 'mount-program-run') {
+			continue;
+		}
+		const runIndex = runAt(command.firstId);
+		if (runIndex < 0) continue;
+		const run = runs[runIndex]!;
+		const instance = (command.firstId - run.firstId) / run.stride;
+		const address = run.adoptionAddress!;
+		const path = `snapshot.programs[${run.firstId}]`;
+		if (command.address.module !== address.module || command.address.index !== address.index) {
+			return mismatch(firstTree, `${path}.address`, 'the compiled program address differs.');
+		}
+		if (command.parent !== run.adoptionParent || command.before !== null) {
+			return mismatch(firstTree, `${path}.parent`, 'the program run placement differs.');
+		}
+		if (command.deferred === true) {
+			return mismatch(
+				firstTree,
+				`${path}.mode`,
+				'the background deferred a program run the first screen painted.',
+			);
+		}
+		const programWidth = run.plan.nodes + run.plan.ranges.length;
+		if (
+			seen[runIndex] === 1 ||
+			instance !== covered[runIndex] ||
+			instance + command.count > run.count ||
+			(run.stride !== programWidth && command.count !== 1)
+		) {
+			return mismatch(
+				firstTree,
+				`${path}.count`,
+				'the program run layout or instance count differs.',
+			);
+		}
+		const expectedFirstListenerId =
+			run.adoptionFirstListenerId === null
+				? null
+				: run.adoptionFirstListenerId + instance * run.plan.events.length;
+		if (command.firstListenerId !== expectedFirstListenerId) {
+			return mismatch(firstTree, `${path}.listeners`, 'the program listener identity differs.');
+		}
+		const values = run.adoptionValues!;
+		const valueCount = run.plan.values.length;
+		const expectedValues = command.count * valueCount;
+		if (command.values.length !== expectedValues) {
+			return mismatch(firstTree, `${path}.values`, 'the program dynamic value count differs.');
+		}
+		for (let index = 0; index < expectedValues; index++) {
+			const value = index % valueCount;
+			const painted = run.adoptionValuesSelected
+				? values[instance * valueCount + index]
+				: values[run.plan.values[value]!];
+			if (!sameSnapshotValue(painted, command.values[index])) {
+				return mismatch(
+					firstTree,
+					`${path}.values[${instance * valueCount + index}]`,
+					'the program dynamic value differs.',
+				);
+			}
+		}
+		seen[runIndex] = 2;
+		covered[runIndex] += command.count;
+	}
+	for (let index = 0; index < runs.length; index++) {
+		if (seen[index] === 0) continue;
+		const run = runs[index]!;
+		if (covered[index] !== run.count) {
+			return mismatch(
+				firstTree,
+				`snapshot.programs[${run.firstId}].count`,
+				'the background program manifest does not cover every painted instance.',
+			);
+		}
+		if (LYNX_PROFILE) lynxWireProfile().firstTreeProgramManifestMatches++;
+	}
+	return null;
 }
 
 function compareFirstTree<Node extends LynxElementRef>(
@@ -6003,6 +6233,8 @@ function compareFirstTree<Node extends LynxElementRef>(
 	) {
 		return mismatch(firstTree, 'snapshot.owner', 'the captured host owner is not stable.');
 	}
+	const programMismatch = compareProgramAdoptionRuns(batch, firstTree);
+	if (programMismatch !== null) return programMismatch;
 	// A native list is adoptable, but only against the same list. The main thread
 	// already wrote `update-list-info` onto the node being adopted; `listUpdates`
 	// is what the background would have written onto a node it created itself.

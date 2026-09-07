@@ -25,13 +25,14 @@ import {
 	prepareLynxCompactHandleDeltas,
 	prepareLynxHandleDeltas,
 	setLynxClientCapabilities,
+	setLynxClientProgramManifests,
 	type LynxClientContainer,
 } from './client-driver.js';
 import {
 	LYNX_ANNOUNCED_PUBLIC_INSTANCES,
 	LYNX_BACKGROUND_TO_MAIN_EVENT,
 	LYNX_COMPACT_ACKNOWLEDGEMENT,
-	LYNX_ADDRESSED_PROGRAM_RUN_READY_REQUEST_BASE,
+	LYNX_FIRST_TREE_PROGRAM_MANIFEST_READY_REQUEST_BASE,
 	LYNX_DEFERRED_TEMPLATE_RUN_READY_REQUEST_BASE,
 	LYNX_LAZY_PUBLIC_INSTANCES,
 	LYNX_MAIN_TO_BACKGROUND_EVENT,
@@ -286,7 +287,7 @@ export function createLynxBackgroundTransport(
 	// Addressed program runs sit one rung above that (issue #246): this
 	// background can read a reply that says the peer resolves a named program,
 	// and stops shipping a descriptor it already holds a copy of.
-	const readyRequest = LYNX_ADDRESSED_PROGRAM_RUN_READY_REQUEST_BASE + NEXT_READY_REQUEST++;
+	const readyRequest = LYNX_FIRST_TREE_PROGRAM_MANIFEST_READY_REQUEST_BASE + NEXT_READY_REQUEST++;
 	if (!Number.isSafeInteger(readyRequest)) {
 		throw new Error('Octane Lynx capability-ready request identities are exhausted.');
 	}
@@ -306,6 +307,8 @@ export function createLynxBackgroundTransport(
 	let readyReceived = false;
 	let compactAcknowledgements = false;
 	let lazyPublicInstances = false;
+	let firstTreeProgramManifests = false;
+	let programManifestBatchPrepared = false;
 	let postFirstTreeLazyPublicInstances = false;
 	let deferredFirstTreeCapabilities: LynxMainThreadCapabilities | undefined;
 	let readinessRetrySent = false;
@@ -807,7 +810,12 @@ export function createLynxBackgroundTransport(
 				: undefined;
 		compactAcknowledgements = capabilities?.compactAck === 1;
 		lazyPublicInstances = capabilities?.lazyPublicInstances === 1;
+		firstTreeProgramManifests = message.capabilities?.firstTreeProgramManifests === 1;
 		setLynxClientCapabilities(container, capabilities);
+		setLynxClientProgramManifests(
+			container,
+			adoptingFirstTree && firstTreeProgramManifests && !programManifestBatchPrepared,
+		);
 		readyReceived = true;
 		readyDeferred.resolve(undefined);
 	};
@@ -1484,6 +1492,13 @@ export function createLynxBackgroundTransport(
 				throw new Error('Octane Lynx transport received a foreign client container.');
 			}
 			preparationCount++;
+			// A manifest only certifies the batch that can adopt the painted first
+			// tree. Turn generation off as soon as that batch exists, before a
+			// concurrent follow-up render can pay the same plan scan again.
+			if (!programManifestBatchPrepared) {
+				programManifestBatchPrepared = true;
+				setLynxClientProgramManifests(container, false);
+			}
 			if (closedError !== null) {
 				if (!logicalTeardownEnabled || !isLogicalTeardownBatch(batch)) throw closedError;
 				if (
@@ -1639,14 +1654,24 @@ export function createLynxBackgroundTransport(
 							// will query, so every commit — the pre-handshake first one
 							// included — carries the promise unconditionally.
 							const announces = { announces: LYNX_ANNOUNCED_PUBLIC_INSTANCES } as const;
+							const wireBatch =
+								firstTreeProgramManifests || preparedBatch.programs === undefined
+									? preparedBatch
+									: Object.freeze({
+											renderer: preparedBatch.renderer,
+											version: preparedBatch.version,
+											commands: preparedBatch.commands,
+										});
+							const wireCommit =
+								wireBatch === preparedBatch ? commit : { ...commit, batch: wireBatch };
 							const outboundCommit: LynxTransportCommitMessage = compact
 								? {
-										...commit,
+										...wireCommit,
 										ack: LYNX_COMPACT_ACKNOWLEDGEMENT,
 										...(deferPublicInstances ? { instances: LYNX_LAZY_PUBLIC_INSTANCES } : null),
 										...announces,
 									}
-								: { ...commit, ...announces };
+								: { ...wireCommit, ...announces };
 							let dispatchError: Error | null = null;
 							dispatchingCommit = entry;
 							try {

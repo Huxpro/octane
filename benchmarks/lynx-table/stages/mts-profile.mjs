@@ -328,6 +328,8 @@ async function profileSample(browser, cell) {
 								prepareMs: profile.prepareMs,
 								applyMs: profile.applyMs,
 								handOverMs: profile.handOverMs,
+								programManifestRuns: profile.firstTreeProgramManifestRuns ?? 0,
+								programManifestMatches: profile.firstTreeProgramManifestMatches ?? 0,
 								waitedMs,
 								timedOut: !settled,
 							};
@@ -593,6 +595,8 @@ for (const id of cellIds) {
 				prepareMs: stats(facts.map((one) => one.prepareMs)),
 				applyMs: stats(facts.map((one) => one.applyMs)),
 				handOverMs: stats(facts.map((one) => one.handOverMs)),
+				programManifestRuns: stats(facts.map((one) => one.programManifestRuns)),
+				programManifestMatches: stats(facts.map((one) => one.programManifestMatches)),
 				...attributeWindow(
 					`${id} (adoption)`,
 					samples[id].map((sample) => sample.adoption),
@@ -768,6 +772,8 @@ if (adoptionCells.length > 0) {
 		rowFor('`prepareLynxHostBatch`', (cell) => cell?.prepareMs, adoptionOf),
 		rowFor('`prepared.apply()`', (cell) => cell?.applyMs, adoptionOf),
 		rowFor('hand-over', (cell) => cell?.handOverMs, adoptionOf),
+		rowFor('program manifest runs', (cell) => cell?.programManifestRuns, adoptionOf),
+		rowFor('program manifest matches', (cell) => cell?.programManifestMatches, adoptionOf),
 		rowFor('paint → settled', (cell) => cell?.waitedMs, adoptionOf),
 		'',
 	);

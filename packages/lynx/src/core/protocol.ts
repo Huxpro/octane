@@ -2,6 +2,7 @@ import type {
 	UNIVERSAL_TRANSPORT_PROTOCOL_VERSION,
 	UniversalHostBatch,
 	UniversalHostCommand,
+	UniversalHostProgramManifest,
 	UniversalHostTemplateProgram,
 	UniversalSerializableValue,
 	UniversalTransportAbortMessage,
@@ -40,7 +41,7 @@ export const LYNX_TRANSPORT_RENDERER: typeof LYNX_RENDERER_ID = LYNX_RENDERER_ID
  * diagnostic rather than validated against a program that is not there.
  */
 export type LynxProgramWireResolver = (command: {
-	readonly op: 'mount-program-run';
+	readonly op: 'mount-program-run' | 'program-manifest';
 	readonly address: { readonly module: string; readonly index: number };
 }) => UniversalHostTemplateProgram | undefined;
 
@@ -149,6 +150,8 @@ export const LYNX_FIRST_TREE_PRESENCE_READY_REQUEST_BASE = 2 ** 45;
  * on version alone.
  */
 export const LYNX_ADDRESSED_PROGRAM_RUN_READY_REQUEST_BASE = 2 ** 46;
+/** Ready requests at or above this base can read program proofs beside expanded first batches. */
+export const LYNX_FIRST_TREE_PROGRAM_MANIFEST_READY_REQUEST_BASE = 2 ** 47;
 export const LYNX_COMPACT_ACKNOWLEDGEMENT = 'compact-v1';
 export const LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS = 16;
 export const LYNX_LAZY_PUBLIC_INSTANCES = 'lazy-v1';
@@ -222,6 +225,8 @@ export interface LynxMainThreadCapabilities {
 	 * that chunk was built and not about which protocol rung it speaks.
 	 */
 	readonly addressedProgramRuns?: 1;
+	/** Expanded first-batch commands may carry addressed program adoption proofs. */
+	readonly firstTreeProgramManifests?: 1;
 }
 
 /**
@@ -1000,12 +1005,13 @@ function assertTemplateScalarValues(
 	index: number,
 	mainThreadValues: readonly boolean[] | null,
 	arity: number,
+	collection = COMMANDS_LABEL,
 ): void {
 	if (!Array.isArray(value)) {
-		fail(COMMANDS_LABEL, 'must be an array.', index, 'values');
+		fail(collection, 'must be an array.', index, 'values');
 	}
 	if (value.length !== expected) {
-		fail(COMMANDS_LABEL, 'must match the intrinsic program dynamic-value arity.', index, 'values');
+		fail(collection, 'must match the intrinsic program dynamic-value arity.', index, 'values');
 	}
 	for (let slot = 0; slot < expected; slot++) {
 		const item: unknown = value[slot];
@@ -1015,9 +1021,9 @@ function assertTemplateScalarValues(
 		// by the same validator a `create` command's main-thread prop is walked
 		// by, so the two paths cannot disagree about what a descriptor may hold.
 		if (mainThreadValues?.[slot % arity] !== true) {
-			fail(composePath(COMMANDS_LABEL, index, 'values'), 'must contain only scalar values.', slot);
+			fail(composePath(collection, index, 'values'), 'must contain only scalar values.', slot);
 		}
-		assertWireValue(item, composePath(COMMANDS_LABEL, index, 'values'));
+		assertWireValue(item, composePath(collection, index, 'values'));
 	}
 }
 
@@ -1652,6 +1658,84 @@ function assertCommand(
 	}
 }
 
+function assertProgramManifest(
+	value: unknown,
+	index: number,
+	state: LynxBatchValidationState,
+): asserts value is UniversalHostProgramManifest {
+	const label = `commit.batch.programs[${index}]`;
+	const manifest = record(value, label);
+	exactKeys(
+		manifest,
+		[
+			'op',
+			'parent',
+			'before',
+			'address',
+			'firstId',
+			'stride',
+			'firstListenerId',
+			'count',
+			'values',
+		],
+		label,
+	);
+	if (manifest.op !== 'program-manifest') fail(`${label}.op`, 'must be program-manifest.');
+	hostParent(manifest.parent, label, undefined, 'parent');
+	if (manifest.parent !== null && typeof manifest.parent !== 'number') {
+		fail(`${label}.parent`, 'must not target a portal.');
+	}
+	nullableHostId(manifest.before, label, undefined, 'before');
+	positiveInteger(manifest.firstId, label, undefined, 'firstId');
+	positiveInteger(manifest.stride, label, undefined, 'stride');
+	positiveInteger(manifest.count, label, undefined, 'count');
+	const address = record(manifest.address, `${label}.address`);
+	exactKeys(address, ['module', 'index'], `${label}.address`);
+	if (typeof address.module !== 'string' || address.module === '') {
+		fail(`${label}.address.module`, 'must be a non-empty string.');
+	}
+	if (!Number.isSafeInteger(address.index) || (address.index as number) < 0) {
+		fail(`${label}.address.index`, 'must be a non-negative integer.');
+	}
+	const resolved = state.resolveProgram?.(
+		manifest as unknown as Parameters<LynxProgramWireResolver>[0],
+	);
+	if (resolved === undefined) {
+		fail(label, 'names a program this realm does not hold.', undefined, 'address');
+	}
+	const program = assertTemplateProgram(resolved, index, state);
+	if ((manifest.stride as number) < program.hosts) {
+		fail(`${label}.stride`, 'must cover the intrinsic program width.');
+	}
+	const count = manifest.count as number;
+	const firstId = manifest.firstId as number;
+	const last = firstId + (count - 1) * (manifest.stride as number) + program.hosts - 1;
+	if (!Number.isSafeInteger(last)) fail(`${label}.count`, 'overflows the safe host-ID range.');
+	const valueCount = count * program.values;
+	if (!Number.isSafeInteger(valueCount)) {
+		fail(`${label}.count`, 'overflows the intrinsic dynamic-value count.');
+	}
+	assertTemplateScalarValues(
+		manifest.values,
+		valueCount,
+		index,
+		program.mainThreadValues,
+		program.values,
+		'commit.batch.programs',
+	);
+	if (program.events === 0) {
+		if (manifest.firstListenerId !== null) {
+			fail(`${label}.firstListenerId`, 'must be null when the program has no events.');
+		}
+	} else {
+		positiveInteger(manifest.firstListenerId, label, undefined, 'firstListenerId');
+		const lastListener = (manifest.firstListenerId as number) + count * program.events - 1;
+		if (!Number.isSafeInteger(lastListener)) {
+			fail(`${label}.firstListenerId`, 'overflows the safe listener-ID range.');
+		}
+	}
+}
+
 function assertBatch(
 	value: unknown,
 	identity: UniversalTransportIdentity,
@@ -1659,17 +1743,32 @@ function assertBatch(
 	resolveProgram: LynxProgramWireResolver | undefined,
 ): asserts value is UniversalHostBatch {
 	const batch = record(value, 'commit.batch');
-	exactKeys(batch, ['renderer', 'version', 'commands'], 'commit.batch');
+	const hasPrograms = Object.prototype.hasOwnProperty.call(batch, 'programs');
+	exactKeys(
+		batch,
+		hasPrograms
+			? ['renderer', 'version', 'commands', 'programs']
+			: ['renderer', 'version', 'commands'],
+		'commit.batch',
+	);
 	if (batch.renderer !== identity.renderer)
 		fail('commit.batch.renderer', 'does not match envelope.');
 	if (batch.version !== identity.version) fail('commit.batch.version', 'does not match envelope.');
 	if (!Array.isArray(batch.commands)) fail('commit.batch.commands', 'must be an array.');
+	if (hasPrograms && !Array.isArray(batch.programs)) {
+		fail('commit.batch.programs', 'must be an array.');
+	}
 	// The envelope above is O(1) and stays in both modes: it is what decides
 	// which root a commit belongs to and which version it answers, so skipping
 	// it would not be a trust decision but a routing bug. The commands are the
 	// O(commands x props) half, and they are what `trusted` declines.
 	if (!traverse) return;
 	const validationState: LynxBatchValidationState = { resolveProgram };
+	if (hasPrograms) {
+		for (let index = 0; index < (batch.programs as readonly unknown[]).length; index++) {
+			assertProgramManifest((batch.programs as readonly unknown[])[index], index, validationState);
+		}
+	}
 	for (let index = 0; index < batch.commands.length; index++) {
 		assertCommand(batch.commands[index], index, validationState);
 	}
@@ -1966,6 +2065,10 @@ function assertReady(value: unknown, reply: boolean): LynxMainReadyRequest | Lyn
 			capabilities,
 			'addressedProgramRuns',
 		);
+		const hasFirstTreeProgramManifests = Object.prototype.hasOwnProperty.call(
+			capabilities,
+			'firstTreeProgramManifests',
+		);
 		exactKeys(
 			capabilities,
 			[
@@ -1977,6 +2080,7 @@ function assertReady(value: unknown, reply: boolean): LynxMainReadyRequest | Lyn
 				...(hasDeferredTemplateRuns ? ['deferredTemplateRuns'] : []),
 				...(hasTeardownRuns ? ['teardownRuns'] : []),
 				...(hasAddressedProgramRuns ? ['addressedProgramRuns'] : []),
+				...(hasFirstTreeProgramManifests ? ['firstTreeProgramManifests'] : []),
 			],
 			`${label}.capabilities`,
 		);
@@ -2057,6 +2161,27 @@ function assertReady(value: unknown, reply: boolean): LynxMainReadyRequest | Lyn
 			fail(
 				`${label}.capabilities.addressedProgramRuns`,
 				'requires an addressed-program-run readiness request.',
+			);
+		}
+		if (hasFirstTreeProgramManifests && capabilities.firstTreeProgramManifests !== 1) {
+			fail(`${label}.capabilities.firstTreeProgramManifests`, 'must be 1.');
+		}
+		if (hasFirstTreeProgramManifests && !hasAddressedProgramRuns) {
+			fail(
+				`${label}.capabilities.firstTreeProgramManifests`,
+				'requires the addressedProgramRuns capability.',
+			);
+		}
+		if (hasFirstTreeProgramManifests && !hasFirstTree && !hasFirstTreePainted) {
+			fail(`${label}.capabilities.firstTreeProgramManifests`, 'requires a painted first tree.');
+		}
+		if (
+			hasFirstTreeProgramManifests &&
+			(message.request as number) < LYNX_FIRST_TREE_PROGRAM_MANIFEST_READY_REQUEST_BASE
+		) {
+			fail(
+				`${label}.capabilities.firstTreeProgramManifests`,
+				'requires a first-tree-program-manifest readiness request.',
 			);
 		}
 	}

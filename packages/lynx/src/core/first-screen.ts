@@ -1,5 +1,6 @@
 import type {
 	UniversalEventPriority,
+	UniversalHostProgramAddress,
 	UniversalProgramPlan,
 	UniversalSerializableValue,
 } from 'octane/universal/native';
@@ -164,6 +165,31 @@ export class LynxFirstTreeMismatchError extends Error {
  */
 export interface LynxProgramRun<Node extends LynxElementRef> {
 	/**
+	 * Build-proven identity retained for run-level adoption, or `null` when this
+	 * mount has to keep using the per-host comparator.
+	 *
+	 * The digest stays in the build. The background command carries only
+	 * `(module, index)` because the two build outputs already compared the digest
+	 * before either chunk shipped; the registry retains that wire address once
+	 * beside the shared plan instead of minting one per painted instance.
+	 */
+	readonly adoptionAddress: UniversalHostProgramAddress | null;
+	/** Logical parent the direct first-screen walk mounted the program beneath. */
+	readonly adoptionParent: number | null;
+	/**
+	 * Dynamic values needed to prove the resident run painted the same state.
+	 *
+	 * A one-instance run points at the renderer's source values and resolves
+	 * `plan.values` during comparison. A dense run points at the selected table it
+	 * already handed to the compiled driver. Neither shape copies values merely
+	 * for adoption.
+	 */
+	readonly adoptionValues: readonly unknown[] | null;
+	/** Whether `adoptionValues` is already in program-value order. */
+	readonly adoptionValuesSelected: boolean;
+	/** First listener in the command's build-proven contiguous site range. */
+	readonly adoptionFirstListenerId: number | null;
+	/**
 	 * How many instances of `plan` this one run holds (issue #215 D8).
 	 *
 	 * `1` for every run a single `mountProgram` call pushes, which is what a
@@ -277,6 +303,8 @@ export interface LynxFirstTreeState<Node extends LynxElementRef> {
 	 * background already holds every ID from its own render.
 	 */
 	programRuns: LynxProgramRun<Node>[];
+	/** Addressed runs eligible for the run-level adoption proof. */
+	programAdoptionRuns: LynxProgramRun<Node>[];
 	/** How many physical nodes those runs account for, summed once at capture. */
 	readonly programNodeCount: number;
 	/**
@@ -328,6 +356,7 @@ export function createLynxFirstTree<Node extends LynxElementRef>(
 	logicalNodes: Map<number, LynxFirstTreeLogicalNodeSnapshot>,
 	lists: Map<number, LynxFirstTreeListJournal>,
 	programRuns: LynxProgramRun<Node>[],
+	programAdoptionRuns: LynxProgramRun<Node>[],
 	programNodeCount: number,
 	programRunsDisjoint: boolean,
 ): LynxFirstTree<Node> {
@@ -339,6 +368,7 @@ export function createLynxFirstTree<Node extends LynxElementRef>(
 		logicalNodes,
 		lists,
 		programRuns,
+		programAdoptionRuns,
 		programNodeCount,
 		programRunsDisjoint,
 		programNodes: null,
@@ -840,6 +870,7 @@ export function releaseLynxFirstTree(firstTree: LynxFirstTree): void {
 	state.logicalNodes.clear();
 	state.lists.clear();
 	state.programRuns.length = 0;
+	state.programAdoptionRuns.length = 0;
 	state.programNodes?.clear();
 	state.programNodes = null;
 	// The builder closes over the source container's records, so dropping it is

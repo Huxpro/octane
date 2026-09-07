@@ -8,6 +8,8 @@ import {
 	type UniversalTransportIdentity,
 	createUniversalRoot,
 	defineUniversalComponent,
+	universalKey,
+	universalList,
 	universalPlan,
 	universalProps,
 	universalValue,
@@ -35,6 +37,7 @@ import {
 	LYNX_COMPACT_ACKNOWLEDGEMENT,
 	LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS,
 	LYNX_DEFERRED_TEMPLATE_RUN_READY_REQUEST_BASE,
+	LYNX_FIRST_TREE_PROGRAM_MANIFEST_READY_REQUEST_BASE,
 	LYNX_LAZY_PUBLIC_INSTANCES,
 	LYNX_LAZY_PUBLIC_INSTANCE_READY_REQUEST_BASE,
 	LYNX_TEMPLATE_RUN_READY_REQUEST_BASE,
@@ -48,6 +51,7 @@ import {
 	type LynxDisposeMessage,
 	type LynxMainThreadCapabilities,
 	type LynxMainReadyRequest,
+	type LynxProgramWireResolver,
 	type LynxPublicHandleDelta,
 	type LynxTransportCommitMessage,
 } from '../src/core/protocol.js';
@@ -238,13 +242,19 @@ function installMainHarness(
 	context: FakeContextProxy,
 	autoReady = true,
 	capabilities?: LynxMainThreadCapabilities,
+	firstTreePainted = false,
+	resolveProgram?: LynxProgramWireResolver,
 ): MainHarness {
 	const commits: UniversalTransportCommitMessage[] = [];
 	const disposals: LynxDisposeMessage[] = [];
 	const generations = new Map<number, number>();
 	const types = new Map<number, string>();
 	context.addEventListener(LYNX_BACKGROUND_TO_MAIN_EVENT, (event) => {
-		const message = validateLynxBackgroundOutboundMessage(unwire(event.data));
+		const message = validateLynxBackgroundOutboundMessage(
+			unwire(event.data),
+			'checked',
+			resolveProgram,
+		);
 		if (message.type === 'main-ready-request') {
 			if (autoReady) {
 				context.sendToBackground({
@@ -252,6 +262,7 @@ function installMainHarness(
 					renderer: LYNX_TRANSPORT_RENDERER,
 					type: 'main-ready',
 					request: message.request,
+					...(firstTreePainted ? { firstTreePainted: 1 as const } : null),
 					...(capabilities === undefined ? null : { capabilities }),
 				});
 			}
@@ -771,6 +782,53 @@ describe('@octanejs/lynx transported protocol', () => {
 				capabilities: { ...deferredCapabilities, deferredTemplateRuns: 2 },
 			}),
 		).toThrow(/deferredTemplateRuns.*must be 1/);
+		const manifestCapabilities = {
+			...runCapabilities,
+			addressedProgramRuns: 1,
+			firstTreeProgramManifests: 1,
+		};
+		expect(() =>
+			validateLynxBackgroundInboundMessage({
+				...readiness,
+				request: LYNX_FIRST_TREE_PROGRAM_MANIFEST_READY_REQUEST_BASE + 7,
+				capabilities: manifestCapabilities,
+			}),
+		).toThrow(/firstTreeProgramManifests.*requires a painted first tree/);
+		expect(() =>
+			validateLynxBackgroundInboundMessage({
+				...readiness,
+				request: LYNX_FIRST_TREE_PROGRAM_MANIFEST_READY_REQUEST_BASE + 7,
+				firstTreePainted: 1,
+				capabilities: {
+					compactAck: 1,
+					firstTreeProgramManifests: 1,
+				},
+			}),
+		).toThrow(/firstTreeProgramManifests.*requires the addressedProgramRuns capability/);
+		expect(() =>
+			validateLynxBackgroundInboundMessage({
+				...readiness,
+				request: LYNX_FIRST_TREE_PROGRAM_MANIFEST_READY_REQUEST_BASE - 1,
+				firstTreePainted: 1,
+				capabilities: manifestCapabilities,
+			}),
+		).toThrow(/firstTreeProgramManifests.*first-tree-program-manifest readiness request/);
+		expect(
+			validateLynxBackgroundInboundMessage({
+				...readiness,
+				request: LYNX_FIRST_TREE_PROGRAM_MANIFEST_READY_REQUEST_BASE + 7,
+				firstTreePainted: 1,
+				capabilities: manifestCapabilities,
+			}),
+		).toMatchObject({ capabilities: { firstTreeProgramManifests: 1 } });
+		expect(() =>
+			validateLynxBackgroundInboundMessage({
+				...readiness,
+				request: LYNX_FIRST_TREE_PROGRAM_MANIFEST_READY_REQUEST_BASE + 7,
+				firstTreePainted: 1,
+				capabilities: { ...manifestCapabilities, firstTreeProgramManifests: 2 },
+			}),
+		).toThrow(/firstTreeProgramManifests.*must be 1/);
 		expect(() => validateLynxBackgroundInboundMessage({ ...readiness, request: 1 })).toThrow(
 			/capability-tagged readiness request/,
 		);
@@ -927,6 +985,7 @@ describe('@octanejs/lynx transported protocol', () => {
 			});
 			const transport = createLynxBackgroundTransport(context, container);
 			await transport.ready;
+			expect(driver.capabilities?.programManifests).toBe(false);
 			expect(driver.capabilities?.templateMount).toBe(false);
 			expect(driver.capabilities?.templateProgramMount).toBe(false);
 			expect(driver.capabilities?.templateProgramRuns).toBe(false);
@@ -3407,6 +3466,90 @@ describe('@octanejs/lynx transported protocol', () => {
 		expect(isLynxClientEventTarget(container, root, 2, 1)).toBe(false);
 		expect(isLynxClientEventTarget(container, root, 2, 2)).toBe(true);
 		expect(container.getPublicHandle(1)).toBe(shell);
+	});
+
+	it('carries an addressed program manifest beside an expanded first-tree batch', async () => {
+		const context = new FakeContextProxy();
+		const program = {
+			nodes: [
+				{ type: 'view', parent: -1, props: {} },
+				{
+					type: 'text',
+					parent: 0,
+					props: {},
+					bindings: [{ name: 'value', valueIndex: 0 }],
+				},
+			],
+			events: [],
+		} as const;
+		const main = installMainHarness(
+			context,
+			true,
+			{
+				compactAck: 1,
+				templateMount: 1,
+				templateProgram: 1,
+				templateRuns: 1,
+				addressedProgramRuns: 1,
+				firstTreeProgramManifests: 1,
+			},
+			true,
+			(command) =>
+				command.address.module === 'tests/first-tree-manifest.tsrx' && command.address.index === 0
+					? program
+					: undefined,
+		);
+		const container = createLynxClientContainer();
+		const transport = createLynxBackgroundTransport(context, container);
+		const driver = createLynxClientDriver(container);
+		expect(driver.capabilities?.programManifests).toBe(true);
+		const root = createUniversalRoot(container, driver, { transport });
+		transport.bindRoot(root);
+		const rowPlan = universalPlan(
+			LYNX_TRANSPORT_RENDERER,
+			{
+				kind: 'host',
+				type: 'view',
+				children: [{ kind: 'host', type: 'text', bindings: [['value', 0]] }],
+			},
+			{ module: 'tests/first-tree-manifest.tsrx', index: 0, digest: 'manifest-digest' },
+		);
+		const Scene = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			(props: { values: readonly string[] }) =>
+				universalList(props.values, (value) =>
+					universalKey(value, universalValue(rowPlan, [value])),
+				),
+		);
+
+		const applying = root.renderAsync(Scene, { values: ['a'] });
+		await flushMicrotasks();
+
+		expect(main.commits).toHaveLength(1);
+		const commit = main.commits[0]!;
+		expect(commit.batch.commands.filter((command) => command.op === 'create')).toHaveLength(2);
+		expect(commit.batch.programs).toEqual([
+			expect.objectContaining({
+				op: 'program-manifest',
+				address: { module: 'tests/first-tree-manifest.tsrx', index: 0 },
+				parent: null,
+				before: null,
+				count: 1,
+				values: ['a'],
+			}),
+		]);
+		main.acknowledge(commit, 'complete');
+		await applying;
+		expect(driver.capabilities?.programManifests).toBe(false);
+
+		const updating = root.renderAsync(Scene, { values: ['a', 'b'] });
+		await flushMicrotasks();
+		expect(main.commits).toHaveLength(2);
+		const update = main.commits[1]!;
+		expect(update.batch.programs).toBeUndefined();
+		main.acknowledge(update, 'complete');
+		await updating;
+		transport.close();
 	});
 
 	it('negotiates intrinsic programs and derives every compact host from its implicit ID range', async () => {
