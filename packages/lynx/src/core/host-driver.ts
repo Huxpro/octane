@@ -568,8 +568,10 @@ type LynxApplyOperation<Node extends LynxElementRef> =
 			readonly parents: readonly number[];
 			readonly count?: number;
 			readonly dense?: LynxDenseHostRecordStore<Node>;
-			/** Present only when a compact range owns contiguous lazy host identities. */
+			/** Present only when a compact range owns lazy host identities. */
 			readonly firstId?: number;
+			/** Distance between instance roots when the compact identities are sparse. */
+			readonly stride?: number;
 			readonly program?: LynxPreparedTemplateProgram;
 			readonly firstListenerId?: number | null;
 			readonly lazyPublicInstances?: true;
@@ -8162,7 +8164,12 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				parents: shape.parents,
 				...(count === 1 ? null : { count }),
 				...(compactCandidate
-					? { firstId: command.firstId, program, firstListenerId: command.firstListenerId }
+					? {
+							firstId: command.firstId,
+							...(instanceStride === shape.types.length ? null : { stride: instanceStride }),
+							program,
+							firstListenerId: command.firstListenerId,
+						}
 					: null),
 				...(options?.lazyPublicInstances === true &&
 				(compactCandidate || acceptedLazyPublicInstances)
@@ -9064,7 +9071,8 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 						const rows = operation.count ?? 1;
 						const firstId = operation.dense?.firstId ?? operation.firstId;
 						if (firstId === undefined) continue;
-						const lastId = firstId + rows * width - 1;
+						const stride = operation.stride ?? width;
+						const lastId = firstId + (rows - 1) * stride + width - 1;
 						if (lastId > state.maxExplicitId) state.maxExplicitId = lastId;
 					}
 				}
@@ -9257,6 +9265,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 								const firstId = compactHostCount === undefined ? undefined : operation.firstId;
 								const rows = operation.count ?? 1;
 								const width = operation.parents.length;
+								const stride = operation.stride ?? width;
 								const sparse = firstId !== undefined && sparseCompactNodes;
 								// Worklet lifetime is owned by connectivity, not by insertion order:
 								// a detached subtree installs nothing and `insert` activates it later.
@@ -9283,7 +9292,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 										state.ownedNodes.add(node);
 										if (!sparse || nodeIndex === 0) {
 											activeNodes.set(
-												firstId === undefined ? record.id : firstId + recordIndex,
+												firstId === undefined ? record.id : firstId + rowIndex * stride + nodeIndex,
 												node,
 											);
 										}
@@ -9325,7 +9334,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 													state,
 													records[rowOffset + site.node]!.node!,
 													container.root,
-													firstId + rowOffset + site.node,
+													firstId + rowIndex * stride + site.node,
 													rowListener,
 													site,
 												);

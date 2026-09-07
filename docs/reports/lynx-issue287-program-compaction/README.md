@@ -122,7 +122,7 @@ unmount, and close fences.
 
 The Android engine delivered a 33,722-character ContextProxy event but silently
 dropped a 37,649-character one during diagnosis. Encoded messages at or below
-34,000 characters therefore remain single events; larger messages use ordered
+32,000 characters therefore remain single events; larger messages use ordered
 32,000-character frames with sequence/index/total headers. Receiver state
 rejects malformed, overlapping, interrupted, missing, or out-of-order frames
 before decoding. Small messages retain the original one-event shape.
@@ -172,7 +172,7 @@ At the report head:
 
 - focused mechanism Vitest: 292/292 passing, plus the program-update and
   native-instrument checks after the mechanism commit;
-- full Lynx Vitest: 50 files, 853/853 passing;
+- full Lynx Vitest: 50 files, 854/854 passing;
 - benchmark stage harness: 228/228 passing;
 - full repository `pnpm typecheck`: passing, including the Lynx testing config;
 - native instrumentation tests: 10/10 passing;

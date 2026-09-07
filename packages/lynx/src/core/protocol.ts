@@ -1505,8 +1505,9 @@ function assertProgramRunCommand(
 	state: LynxBatchValidationState,
 ): void {
 	assertRunCommandPrefix(command, index);
-	const stride = command.stride === undefined ? undefined : command.stride;
-	if (stride !== undefined) positiveInteger(stride, COMMANDS_LABEL, index, 'stride');
+	const hasStride = Object.prototype.hasOwnProperty.call(command, 'stride');
+	const stride = command.stride;
+	if (hasStride) positiveInteger(stride, COMMANDS_LABEL, index, 'stride');
 	if (stride !== undefined && command.deferred === true) {
 		fail(COMMANDS_LABEL, 'must be omitted when the addressed run is deferred.', index, 'stride');
 	}

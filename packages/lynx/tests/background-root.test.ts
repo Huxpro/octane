@@ -36,6 +36,7 @@ import {
 import { readAmbientQueueMicrotask } from '../src/core/environment.js';
 import { createLynxNodesRefSelector, LYNX_NODES_REF_ATTRIBUTE } from '../src/core/nodes-ref.js';
 import { LYNX_CSS_SCOPE_PROP } from '../src/core/host-props.js';
+import { frameLynxTransportValue } from '../src/core/transport-codec.js';
 import {
 	LYNX_BACKGROUND_TO_MAIN_EVENT,
 	LYNX_CAPABILITY_READY_REQUEST_BASE,
@@ -289,11 +290,14 @@ function mainContext(target: Record<string, unknown>): LynxContextProxy {
 	).lynx.getJSContext();
 }
 
+let nextLifecycleFrameSequence = 1;
 function sendLifecycleToBackground(env: LynxTestingEnv, message: Record<string, unknown>): void {
 	const context = backgroundContext();
 	env.switchToMainThread();
 	try {
-		context.dispatchEvent({ type: LYNX_MAIN_TO_BACKGROUND_EVENT, data: wire(message) });
+		for (const data of frameLynxTransportValue(wire(message), nextLifecycleFrameSequence++)) {
+			context.dispatchEvent({ type: LYNX_MAIN_TO_BACKGROUND_EVENT, data });
+		}
 	} finally {
 		env.switchToBackgroundThread();
 	}
@@ -569,6 +573,27 @@ describe.sequential('@octanejs/lynx background root in the official JS environme
 		});
 		expect(runtime.__initData).toBe(destroyedData);
 		expect(rawDataEvents).toHaveLength(3);
+	});
+
+	it('reassembles framed page data in the page-lifetime background receiver', () => {
+		const { env } = installEnvironment();
+		const runtime = (
+			globalThis as typeof globalThis & {
+				lynx: LifecycleTestRuntime;
+			}
+		).lynx;
+		backgroundRoot = createLynxRoot();
+		const payload = 'x'.repeat(40_000);
+
+		sendLifecycleToBackground(env, {
+			protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
+			renderer: LYNX_TRANSPORT_RENDERER,
+			type: 'page-data',
+			operation: 'replace',
+			data: { payload },
+		});
+
+		expect(runtime.__initData).toEqual({ payload });
 	});
 
 	it('compacts reentrant background lifecycle overflow to the newest state', async () => {

@@ -18,7 +18,7 @@ function roundTrip(value: unknown): unknown {
 
 describe('Lynx transport codec', () => {
 	it('frames only ContextProxy payloads beyond the proven native envelope', () => {
-		const small = encodeLynxTransportValue({ value: 'x'.repeat(33_000) });
+		const small = encodeLynxTransportValue({ value: 'x'.repeat(31_000) });
 		expect(frameLynxTransportValue(small, 1)).toEqual([small]);
 
 		const encoded = encodeLynxTransportValue({ value: 'x'.repeat(70_000) });

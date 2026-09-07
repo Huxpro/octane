@@ -95,9 +95,10 @@ export type LynxStructuredValue = unknown;
  *
  * The Android 3.9 engine used by the native performance gate delivers 33,722
  * ASCII characters intact and silently drops a 37,649-character event. Keep
- * the proven-safe case on one crossing, and frame only messages beyond it.
+ * every crossing, including a frame header, comfortably below the observed
+ * working size rather than treating the largest observation as a boundary.
  */
-const LYNX_CONTEXT_EVENT_UNFRAMED_LIMIT = 34_000;
+const LYNX_CONTEXT_EVENT_UNFRAMED_LIMIT = 32_000;
 const LYNX_CONTEXT_EVENT_FRAME_CHARS = 32_000;
 const LYNX_CONTEXT_EVENT_MAX_FRAMES = 4096;
 // Do not use NUL here: ContextProxy's native string bridge treats a leading

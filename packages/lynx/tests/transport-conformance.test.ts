@@ -84,9 +84,8 @@ describe('Lynx transport conformance', () => {
 			}
 		}
 		expect(sites).toHaveLength(4);
-		for (const site of sites) {
-			expect(site).toMatch(/(?:\bdata\b|data:\s*encodeLynxTransportValue\()/);
-		}
+		expect(sites.filter((site) => /, data }$/.test(site))).toHaveLength(3);
+		expect(sites.filter((site) => /data:\s*encodeLynxTransportValue\(/.test(site))).toHaveLength(1);
 		// Three ordinary dispatch paths can carry an arbitrary commit and must
 		// frame. The fourth is the deliberately minimal terminal-dispose retry,
 		// whose fixed-size message remains directly encoded.
@@ -125,7 +124,7 @@ describe('Lynx transport conformance', () => {
 		const source = sourceFiles(LYNX_SRC)
 			.map((file) => readFileSync(file, 'utf8'))
 			.join('\n');
-		expect(source.match(/decodeLynxTransportValue\(framed\)/g)).toHaveLength(2);
+		expect(source.match(/decodeLynxTransportValue\(framed\)/g)).toHaveLength(3);
 	});
 
 	// The dynamic half, under traffic the static half cannot see: what a real

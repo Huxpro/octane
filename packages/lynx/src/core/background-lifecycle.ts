@@ -10,7 +10,12 @@ import {
 	type LynxContextProxyEvent,
 	type LynxDataLifecycleMessage,
 } from './protocol.js';
-import { decodeLynxTransportValue, type LynxStructuredValue } from './transport-codec.js';
+import {
+	acceptLynxTransportFrame,
+	createLynxTransportFrameState,
+	decodeLynxTransportValue,
+	type LynxStructuredValue,
+} from './transport-codec.js';
 
 const MAX_QUEUED_LIFECYCLE_MESSAGES = 128;
 
@@ -219,6 +224,7 @@ export function prepareLynxBackgroundLifecycleReceiver(
 	}
 
 	let state!: BackgroundLifecycleState;
+	const inboundFrames = createLynxTransportFrameState();
 	const receive = (event: LynxContextProxyEvent): void => {
 		if (!state.active) return;
 		// This listener shares `LYNX_MAIN_TO_BACKGROUND_EVENT` with the transport's
@@ -228,7 +234,9 @@ export function prepareLynxBackgroundLifecycleReceiver(
 		// one carries acknowledgements and native events.
 		let data: LynxStructuredValue;
 		try {
-			data = decodeLynxTransportValue(event.data);
+			const framed = acceptLynxTransportFrame(event.data, inboundFrames);
+			if (framed === null) return;
+			data = decodeLynxTransportValue(framed);
 		} catch {
 			// The transport's own receiver shares this event and reports the
 			// failure. This listener only ever wanted the two lifecycle messages,

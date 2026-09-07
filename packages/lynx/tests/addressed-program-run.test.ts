@@ -16,7 +16,11 @@
 import type { UniversalHostBatch, UniversalHostCommand } from 'octane/universal/native';
 import { describe, expect, it } from 'vitest';
 
-import { createLynxHostContainer, prepareLynxHostBatch } from '../src/core/host-driver.js';
+import {
+	createLynxHostContainer,
+	prepareLynxHostBatch,
+	resolveLynxHostNativeEvent,
+} from '../src/core/host-driver.js';
 import {
 	registerUniversalProgram,
 	residentRunProgram,
@@ -139,7 +143,7 @@ function mountRun(run: UniversalHostCommand) {
 	const compactHostCount = prepared.compactHostCount;
 	const handleDelta = prepared.handleDelta;
 	prepared.apply();
-	return { tree: shape(page as FakeNode), compactHostCount, handleDelta };
+	return { container, page, tree: shape(page as FakeNode), compactHostCount, handleDelta };
 }
 
 describe('mounting a resident program by address (issue #246 E1)', () => {
@@ -200,6 +204,16 @@ describe('mounting a resident program by address (issue #246 E1)', () => {
 			1, 2, 10, 11, 12, 13, 15, 16, 17, 18, 20, 21, 22, 23,
 		]);
 		expect(JSON.stringify(addressed.tree)).toContain('row-3');
+		const rows = addressed.page.children[0]!.children;
+		expect(
+			resolveLynxHostNativeEvent(addressed.container, rows[1]!.events.get('bindEvent:tap')!),
+		).toEqual({ listener: 702, priority: 'default' });
+		expect(
+			resolveLynxHostNativeEvent(
+				addressed.container,
+				rows[2]!.children[1]!.events.get('catchEvent:tap')!,
+			),
+		).toEqual({ listener: 705, priority: 'discrete' });
 	});
 
 	it('declines an address this realm does not hold rather than approximating it', () => {
@@ -326,6 +340,16 @@ describe('mounting a resident program by address (issue #246 E1)', () => {
 				residentRunProgram,
 			),
 		).toThrowError(/stride.*at least the program host count/);
+		expect(() =>
+			validateLynxBackgroundOutboundMessage(
+				{
+					...message,
+					batch: { ...message.batch, commands: [{ ...run, stride: undefined }] },
+				} as never,
+				'checked',
+				residentRunProgram,
+			),
+		).toThrowError(/stride.*positive safe integer/);
 		expect(() =>
 			validateLynxBackgroundOutboundMessage(
 				{
