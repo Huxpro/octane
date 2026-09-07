@@ -33,8 +33,25 @@ const driverSha = arg('--driver-sha');
 const runtimeLabel = arg('--runtime-label', 'sandbox-default');
 const mode = arg('--mode', 'full');
 const repetitions = Number(arg('--reps', '5'));
+const roundStart = Number(arg('--round-start', '0'));
+const scales = arg('--scales', '1000,2000,3000,5000').split(',').map(Number);
+const sections = new Set(arg('--sections', 'overhead,validation,floors').split(','));
 if (!['gate', 'full'].includes(mode)) throw new Error('--mode must be gate or full.');
-if (!Number.isSafeInteger(repetitions) || repetitions < 5) throw new Error('--reps must be >= 5.');
+if (!Number.isSafeInteger(repetitions) || repetitions < 1) throw new Error('--reps must be >= 1.');
+if (!Number.isSafeInteger(roundStart) || roundStart < 0) {
+	throw new Error('--round-start must be a non-negative integer.');
+}
+if (
+	scales.length === 0 ||
+	new Set(scales).size !== scales.length ||
+	scales.some((scale) => ![1000, 2000, 3000, 5000].includes(scale))
+) {
+	throw new Error('--scales must be a unique comma-separated subset of 1000,2000,3000,5000.');
+}
+const knownSections = new Set(['overhead', 'validation', 'floors']);
+if (sections.size === 0 || [...sections].some((section) => !knownSections.has(section))) {
+	throw new Error('--sections must be a comma-separated subset of overhead,validation,floors.');
+}
 if (!Number.isSafeInteger(expiredAt) || expiredAt <= Date.now()) {
 	throw new Error('--expired-at must be an unexpired epoch-millisecond value.');
 }
@@ -134,6 +151,9 @@ const evidence = {
 			vm: 'same fixed integer loop in BTS and MTS plus Node V8 host control',
 		},
 		repetitions,
+		roundStart,
+		scales,
+		sections: [...sections],
 	},
 	device: adapter.machine,
 	gate: null,
@@ -317,9 +337,10 @@ function vmLoop(iterations) {
 }
 
 function scaleOrder(round) {
-	const scales = [1000, 2000, 3000, 5000];
 	return round % 2 === 0 ? scales : [...scales].reverse();
 }
+
+class StopAfterDnf extends Error {}
 
 async function safeSample(arm, scale, phase, ordinal) {
 	try {
@@ -359,49 +380,65 @@ try {
 	await checkpoint(mode === 'gate' ? 'gate-complete' : 'running');
 
 	if (mode === 'full') {
-		for (let ordinal = 0; ordinal < repetitions; ordinal++) {
+		for (let offset = 0; sections.has('overhead') && offset < repetitions; offset++) {
+			const ordinal = roundStart + offset;
 			const order =
 				ordinal % 2 === 0 ? ['controlChecked', 'timedChecked'] : ['timedChecked', 'controlChecked'];
 			const pair = { ordinal, order, samples: [] };
-			for (const arm of order)
-				pair.samples.push(await safeSample(arm, 1000, 'profile-overhead', ordinal));
 			evidence.profileOverheadPairs.push(pair);
-			await checkpoint();
+			for (const arm of order) {
+				const sample = await safeSample(arm, 1000, 'profile-overhead', ordinal);
+				pair.samples.push(sample);
+				await checkpoint();
+				if (!sample.ok) throw new StopAfterDnf('stopped after profile-overhead DNF');
+			}
 		}
 
-		for (let ordinal = 0; ordinal < repetitions; ordinal++) {
+		for (let offset = 0; sections.has('validation') && offset < repetitions; offset++) {
+			const ordinal = roundStart + offset;
 			for (const scale of scaleOrder(ordinal)) {
 				const order =
 					(ordinal + scale / 1000) % 2 === 0
 						? ['timedChecked', 'timedTrusted']
 						: ['timedTrusted', 'timedChecked'];
 				const pair = { ordinal, scale, order, samples: [] };
-				for (const arm of order) {
-					pair.samples.push(await safeSample(arm, scale, 'validation-control', ordinal));
-				}
 				evidence.validationPairs.push(pair);
-				await checkpoint();
+				for (const arm of order) {
+					const sample = await safeSample(arm, scale, 'validation-control', ordinal);
+					pair.samples.push(sample);
+					await checkpoint();
+					if (!sample.ok) throw new StopAfterDnf('stopped after validation-control DNF');
+				}
 			}
 		}
 
-		await loadFresh('timedChecked', 'floors');
-		const encodedBytes = Math.max(...real.result.wire.map((event) => event.encodedBytes ?? 0));
-		if (!Number.isSafeInteger(encodedBytes) || encodedBytes < 1) {
-			throw new Error('gate did not yield the production commit encoded byte count.');
-		}
-		const iterations = 5_000_000;
-		for (let ordinal = 0; ordinal < repetitions; ordinal++) {
-			evidence.floors.echo.push(
-				await evaluateAsync(`globalThis.__ISSUE278_RUN_ECHO__(${encodedBytes})`, 60_000),
-			);
-			evidence.floors.vm.push(
-				await evaluateAsync(`globalThis.__ISSUE278_RUN_VM_CALIBRATION__(${iterations})`, 60_000),
-			);
-			evidence.floors.nodeV8.push({ iterations, ...vmLoop(iterations) });
-			evidence.floors.papi.push(
-				await evaluateAsync('globalThis.__ISSUE278_RUN_PAPI_FLOOR__(1000)', 240_000),
-			);
-			await checkpoint();
+		if (sections.has('floors')) {
+			await loadFresh('timedChecked', 'floors');
+			const encodedBytes = Math.max(...real.result.wire.map((event) => event.encodedBytes ?? 0));
+			if (!Number.isSafeInteger(encodedBytes) || encodedBytes < 1) {
+				throw new Error('gate did not yield the production commit encoded byte count.');
+			}
+			const iterations = 5_000_000;
+			for (let offset = 0; offset < repetitions; offset++) {
+				const ordinal = roundStart + offset;
+				evidence.floors.echo.push({
+					ordinal,
+					...(await evaluateAsync(`globalThis.__ISSUE278_RUN_ECHO__(${encodedBytes})`, 60_000)),
+				});
+				evidence.floors.vm.push({
+					ordinal,
+					...(await evaluateAsync(
+						`globalThis.__ISSUE278_RUN_VM_CALIBRATION__(${iterations})`,
+						60_000,
+					)),
+				});
+				evidence.floors.nodeV8.push({ ordinal, iterations, ...vmLoop(iterations) });
+				evidence.floors.papi.push({
+					ordinal,
+					...(await evaluateAsync('globalThis.__ISSUE278_RUN_PAPI_FLOOR__(1000)', 240_000)),
+				});
+				await checkpoint();
+			}
 		}
 	}
 
@@ -413,14 +450,19 @@ try {
 				: 'complete-with-dnf',
 	);
 } catch (error) {
-	evidence.failures.push({
-		capturedAt: new Date().toISOString(),
-		phase: 'fatal',
-		message: String(error),
-		stack: error instanceof Error ? error.stack : null,
-	});
-	await checkpoint('failed');
-	throw error;
+	if (error instanceof StopAfterDnf) {
+		evidence.stopReason = error.message;
+		await checkpoint('stopped-after-dnf');
+	} else {
+		evidence.failures.push({
+			capturedAt: new Date().toISOString(),
+			phase: 'fatal',
+			message: String(error),
+			stack: error instanceof Error ? error.stack : null,
+		});
+		await checkpoint('failed');
+		throw error;
+	}
 } finally {
 	await adapter.dispose();
 }
