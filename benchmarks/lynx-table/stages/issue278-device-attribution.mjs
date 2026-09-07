@@ -174,7 +174,7 @@ async function loadFresh(arm, label) {
 			awaitPromise: false,
 			timeoutMs: 5_000,
 		});
-		const expectedNode = scalar ? 'issue278-scalar-placeholder' : 'title';
+		const expectedNode = scalar ? '.issue278-scalar-placeholder' : '.title';
 		if (ready === true && (await adapter.domSearchCount(expectedNode)) === 1) return;
 		await new Promise((resolve) => setTimeout(resolve, 500));
 	}
@@ -235,7 +235,7 @@ async function createSample(arm, scale, phase, ordinal) {
 		ordinal,
 		scale,
 		capturedAt: new Date().toISOString(),
-		mainLabelNodeCount: await adapter.domSearchCount('col-label'),
+		mainLabelNodeCount: await adapter.domSearchCount('.col-label'),
 		result,
 	};
 }
@@ -246,7 +246,7 @@ async function scalarSample() {
 	return {
 		arm: 'scalarCountsChecked',
 		capturedAt: new Date().toISOString(),
-		mainNodeCount: await adapter.domSearchCount('issue278-scalar'),
+		mainNodeCount: await adapter.domSearchCount('.issue278-scalar'),
 		result,
 	};
 }
