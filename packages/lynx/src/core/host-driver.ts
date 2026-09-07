@@ -6018,12 +6018,23 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
  * point at the selected table their compiled driver already consumed. Apps
  * with no eligible addressed run return before scanning the batch.
  */
+interface LynxProgramAdoptionComparison<Node extends LynxElementRef> {
+	readonly mismatch: LynxFirstTreeMismatchError | null;
+	readonly compactRuns: ReadonlySet<LynxProgramRun<Node>> | null;
+	readonly compactNodeCount: number;
+}
+
 function compareProgramAdoptionRuns<Node extends LynxElementRef>(
 	batch: UniversalHostBatch,
 	firstTree: LynxFirstTree<Node>,
-): LynxFirstTreeMismatchError | null {
+): LynxProgramAdoptionComparison<Node> {
 	const runs = firstTree[LYNX_FIRST_TREE_STATE].programAdoptionRuns;
-	if (runs.length === 0) return null;
+	const failed = (error: LynxFirstTreeMismatchError): LynxProgramAdoptionComparison<Node> => ({
+		mismatch: error,
+		compactRuns: null,
+		compactNodeCount: 0,
+	});
+	if (runs.length === 0) return { mismatch: null, compactRuns: null, compactNodeCount: 0 };
 	// A transparent keyed/component range can take IDs between two compiled
 	// instances without making a host. The main painter therefore retains one
 	// dense run with that actual stride while the background quite correctly
@@ -6054,7 +6065,9 @@ function compareProgramAdoptionRuns<Node extends LynxElementRef>(
 		const path = `snapshot.programs[${run.firstId}]`;
 		const address = run.adoptionAddress!;
 		if (manifest.address.module !== address.module || manifest.address.index !== address.index) {
-			return mismatch(firstTree, `${path}.address`, 'the compiled program address differs.');
+			return failed(
+				mismatch(firstTree, `${path}.address`, 'the compiled program address differs.'),
+			);
 		}
 		if (
 			manifest.parent !== run.adoptionParent ||
@@ -6062,27 +6075,31 @@ function compareProgramAdoptionRuns<Node extends LynxElementRef>(
 			manifest.firstId !== run.firstId ||
 			manifest.stride !== run.stride
 		) {
-			return mismatch(firstTree, `${path}.parent`, 'the program run layout differs.');
+			return failed(mismatch(firstTree, `${path}.parent`, 'the program run layout differs.'));
 		}
 		if (seen[runIndex] !== 0 || manifest.count !== run.count) {
-			return mismatch(firstTree, `${path}.count`, 'the program run instance count differs.');
+			return failed(
+				mismatch(firstTree, `${path}.count`, 'the program run instance count differs.'),
+			);
 		}
 		if (manifest.firstListenerId !== run.adoptionFirstListenerId) {
-			return mismatch(firstTree, `${path}.listeners`, 'the program listener identity differs.');
+			return failed(
+				mismatch(firstTree, `${path}.listeners`, 'the program listener identity differs.'),
+			);
 		}
 		const values = run.adoptionValues!;
 		const valueCount = run.plan.values.length;
 		const expectedValues = run.count * valueCount;
 		if (manifest.values.length !== expectedValues) {
-			return mismatch(firstTree, `${path}.values`, 'the program dynamic value count differs.');
+			return failed(
+				mismatch(firstTree, `${path}.values`, 'the program dynamic value count differs.'),
+			);
 		}
 		for (let index = 0; index < expectedValues; index++) {
 			const painted = run.adoptionValuesSelected ? values[index] : values[run.plan.values[index]!];
 			if (!sameSnapshotValue(painted, manifest.values[index])) {
-				return mismatch(
-					firstTree,
-					`${path}.values[${index}]`,
-					'the program dynamic value differs.',
+				return failed(
+					mismatch(firstTree, `${path}.values[${index}]`, 'the program dynamic value differs.'),
 				);
 			}
 		}
@@ -6101,16 +6118,20 @@ function compareProgramAdoptionRuns<Node extends LynxElementRef>(
 		const address = run.adoptionAddress!;
 		const path = `snapshot.programs[${run.firstId}]`;
 		if (command.address.module !== address.module || command.address.index !== address.index) {
-			return mismatch(firstTree, `${path}.address`, 'the compiled program address differs.');
+			return failed(
+				mismatch(firstTree, `${path}.address`, 'the compiled program address differs.'),
+			);
 		}
 		if (command.parent !== run.adoptionParent || command.before !== null) {
-			return mismatch(firstTree, `${path}.parent`, 'the program run placement differs.');
+			return failed(mismatch(firstTree, `${path}.parent`, 'the program run placement differs.'));
 		}
 		if (command.deferred === true) {
-			return mismatch(
-				firstTree,
-				`${path}.mode`,
-				'the background deferred a program run the first screen painted.',
+			return failed(
+				mismatch(
+					firstTree,
+					`${path}.mode`,
+					'the background deferred a program run the first screen painted.',
+				),
 			);
 		}
 		const programWidth = run.plan.nodes + run.plan.ranges.length;
@@ -6120,10 +6141,8 @@ function compareProgramAdoptionRuns<Node extends LynxElementRef>(
 			instance + command.count > run.count ||
 			(run.stride !== programWidth && command.count !== 1)
 		) {
-			return mismatch(
-				firstTree,
-				`${path}.count`,
-				'the program run layout or instance count differs.',
+			return failed(
+				mismatch(firstTree, `${path}.count`, 'the program run layout or instance count differs.'),
 			);
 		}
 		const expectedFirstListenerId =
@@ -6131,13 +6150,17 @@ function compareProgramAdoptionRuns<Node extends LynxElementRef>(
 				? null
 				: run.adoptionFirstListenerId + instance * run.plan.events.length;
 		if (command.firstListenerId !== expectedFirstListenerId) {
-			return mismatch(firstTree, `${path}.listeners`, 'the program listener identity differs.');
+			return failed(
+				mismatch(firstTree, `${path}.listeners`, 'the program listener identity differs.'),
+			);
 		}
 		const values = run.adoptionValues!;
 		const valueCount = run.plan.values.length;
 		const expectedValues = command.count * valueCount;
 		if (command.values.length !== expectedValues) {
-			return mismatch(firstTree, `${path}.values`, 'the program dynamic value count differs.');
+			return failed(
+				mismatch(firstTree, `${path}.values`, 'the program dynamic value count differs.'),
+			);
 		}
 		for (let index = 0; index < expectedValues; index++) {
 			const value = index % valueCount;
@@ -6145,29 +6168,41 @@ function compareProgramAdoptionRuns<Node extends LynxElementRef>(
 				? values[instance * valueCount + index]
 				: values[run.plan.values[value]!];
 			if (!sameSnapshotValue(painted, command.values[index])) {
-				return mismatch(
-					firstTree,
-					`${path}.values[${instance * valueCount + index}]`,
-					'the program dynamic value differs.',
+				return failed(
+					mismatch(
+						firstTree,
+						`${path}.values[${instance * valueCount + index}]`,
+						'the program dynamic value differs.',
+					),
 				);
 			}
 		}
 		seen[runIndex] = 2;
 		covered[runIndex] += command.count;
 	}
+	let compactRuns: Set<LynxProgramRun<Node>> | null = null;
 	for (let index = 0; index < runs.length; index++) {
 		if (seen[index] === 0) continue;
 		const run = runs[index]!;
 		if (covered[index] !== run.count) {
-			return mismatch(
-				firstTree,
-				`snapshot.programs[${run.firstId}].count`,
-				'the background program manifest does not cover every painted instance.',
+			return failed(
+				mismatch(
+					firstTree,
+					`snapshot.programs[${run.firstId}].count`,
+					'the background program manifest does not cover every painted instance.',
+				),
 			);
 		}
 		if (LYNX_PROFILE) lynxWireProfile().firstTreeProgramManifestMatches++;
+		// A sidecar manifest accompanies expanded commands, so those commands still
+		// need the legacy per-host cross-check. A promoted addressed command is the
+		// description: once its address/layout/values match, re-deriving the same
+		// host records one by one proves nothing additional.
+		if (seen[index] === 2) (compactRuns ??= new Set()).add(run);
 	}
-	return null;
+	let compactNodeCount = 0;
+	if (compactRuns !== null) for (const run of compactRuns) compactNodeCount += run.owned;
+	return { mismatch: null, compactRuns, compactNodeCount };
 }
 
 function compareFirstTree<Node extends LynxElementRef>(
@@ -6233,8 +6268,8 @@ function compareFirstTree<Node extends LynxElementRef>(
 	) {
 		return mismatch(firstTree, 'snapshot.owner', 'the captured host owner is not stable.');
 	}
-	const programMismatch = compareProgramAdoptionRuns(batch, firstTree);
-	if (programMismatch !== null) return programMismatch;
+	const programComparison = compareProgramAdoptionRuns(batch, firstTree);
+	if (programComparison.mismatch !== null) return programComparison.mismatch;
 	// A native list is adoptable, but only against the same list. The main thread
 	// already wrote `update-list-info` onto the node being adopted; `listUpdates`
 	// is what the background would have written onto a node it created itself.
@@ -6345,13 +6380,21 @@ function compareFirstTree<Node extends LynxElementRef>(
 	// already wrote, not copied into a table first (issue #215 D1). Nothing is
 	// built per node here or at capture; what this allocates is one cursor.
 	const programNodes = lynxFirstTreeProgramIndex(firstTree);
-	for (const id of [...finalIds].sort((first, second) => first - second)) {
+	const comparedIds =
+		programComparison.compactNodeCount !== 0 &&
+		programComparison.compactNodeCount === journal.programNodeCount
+			? [...snapshot.nodes.map((node) => node.id), ...journal.logicalNodes.keys()]
+			: [...finalIds];
+	comparedIds.sort((first, second) => first - second);
+	for (const id of comparedIds) {
 		// Narrowed once and then asked twice: which run could own this ID, then
 		// what that run knows about it. The node proves the ID is a program's; the
 		// position is what the run's own event table is keyed by (issue #215 D3).
 		const programRun = programNodes.runFor(id);
 		const programNode = programRun === undefined ? undefined : programRunNode(programRun, id);
 		if (programRun !== undefined && programNode !== undefined) {
+			if (programComparison.compactRuns?.has(programRun) === true) continue;
+			if (LYNX_PROFILE) lynxWireProfile().firstTreeProgramNodeComparisons++;
 			// A host a compiled main-thread program painted. There is nothing of
 			// main's to compare the background's description against — no snapshot
 			// entry and no record, by construction — so this is the one place the

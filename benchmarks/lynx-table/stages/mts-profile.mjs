@@ -330,6 +330,7 @@ async function profileSample(browser, cell) {
 								handOverMs: profile.handOverMs,
 								programManifestRuns: profile.firstTreeProgramManifestRuns ?? 0,
 								programManifestMatches: profile.firstTreeProgramManifestMatches ?? 0,
+								programNodeComparisons: profile.firstTreeProgramNodeComparisons ?? null,
 								waitedMs,
 								timedOut: !settled,
 							};
@@ -597,6 +598,9 @@ for (const id of cellIds) {
 				handOverMs: stats(facts.map((one) => one.handOverMs)),
 				programManifestRuns: stats(facts.map((one) => one.programManifestRuns)),
 				programManifestMatches: stats(facts.map((one) => one.programManifestMatches)),
+				programNodeComparisons: facts.every((one) => Number.isFinite(one.programNodeComparisons))
+					? stats(facts.map((one) => one.programNodeComparisons))
+					: null,
 				...attributeWindow(
 					`${id} (adoption)`,
 					samples[id].map((sample) => sample.adoption),
@@ -774,6 +778,7 @@ if (adoptionCells.length > 0) {
 		rowFor('hand-over', (cell) => cell?.handOverMs, adoptionOf),
 		rowFor('program manifest runs', (cell) => cell?.programManifestRuns, adoptionOf),
 		rowFor('program manifest matches', (cell) => cell?.programManifestMatches, adoptionOf),
+		rowFor('legacy program-node comparisons', (cell) => cell?.programNodeComparisons, adoptionOf),
 		rowFor('paint → settled', (cell) => cell?.waitedMs, adoptionOf),
 		'',
 	);

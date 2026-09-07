@@ -3,4 +3,4 @@
 '@octanejs/lynx': patch
 ---
 
-Carry a build-addressed program manifest beside the expanded first Lynx batch so a painted first tree can verify program identity, dynamic values, layout, and listener allocation before adoption. Unsupported and mismatched trees continue through the existing per-host comparison and repair paths.
+Use a build-addressed program manifest to replace eligible expanded first-tree host commands with one compact run. A painted Lynx tree verifies program identity, dynamic values, layout, and listener allocation without revisiting every program host; unsupported and mismatched trees retain the complete comparison and repair paths.

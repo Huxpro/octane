@@ -359,11 +359,9 @@ function issue278MarkCommitTimeline(name: string): void {
 			mainThreadInstrumented = replaceOnce(
 				mainThreadInstrumented,
 				`\t\tconst startedAck = LYNX_PROFILE ? performance.now() : 0;
-\t\tlet compactCount: number | null =
 `,
 				`\t\tissue278MarkCommitTimeline('ackStartedAtMs');
 \t\tconst startedAck = LYNX_PROFILE ? performance.now() : 0;
-\t\tlet compactCount: number | null =
 `,
 				mainThreadFile,
 			);

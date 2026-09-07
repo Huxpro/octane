@@ -132,6 +132,8 @@ export interface LynxWireProfile {
 	firstTreeProgramManifestRuns: number;
 	/** Main: those runs matched by an addressed background mount during adoption. */
 	firstTreeProgramManifestMatches: number;
+	/** Main: program-painted hosts that still reached the legacy per-host comparator. */
+	firstTreeProgramNodeComparisons: number;
 	/**
 	 * Main: hand-over time — draining the events the adoption gated, releasing
 	 * the first-screen journal, and reopening background calls. The counterpart
@@ -192,6 +194,7 @@ export function lynxWireProfile(): LynxWireProfile {
 		firstTreeSettled: 0,
 		firstTreeProgramManifestRuns: 0,
 		firstTreeProgramManifestMatches: 0,
+		firstTreeProgramNodeComparisons: 0,
 		handOverMs: 0,
 		destroyRunExpandMs: 0,
 		denseValidateMs: 0,

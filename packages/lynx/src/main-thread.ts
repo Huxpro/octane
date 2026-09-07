@@ -2488,6 +2488,18 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			return;
 		}
 		const peerCapabilities = active === null ? negotiatedCapabilities : active.capabilities;
+		// A painted first tree deliberately keeps its ordinary mount capabilities
+		// dormant until adoption completes. The manifest rung is narrower: it grants
+		// exactly the addressed run that can either prove that painted program or
+		// rebuild it on mismatch. Do not surface the deferred capability bag to any
+		// other command or session feature before hand-over.
+		const firstTreeProgramRuns =
+			active === null &&
+			firstTree !== null &&
+			deferredFirstTreeCapabilities?.firstTreeProgramManifests === 1 &&
+			deferredFirstTreeCapabilities.templateProgram === 1 &&
+			deferredFirstTreeCapabilities.templateRuns === 1 &&
+			deferredFirstTreeCapabilities.addressedProgramRuns === 1;
 		const postFirstTreeLazyPublicInstances =
 			message.instances === LYNX_LAZY_PUBLIC_INSTANCES && active !== null;
 		const incrementalRun =
@@ -2544,7 +2556,8 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 				}
 				if (
 					(command.op === 'mount-template-run' || command.op === 'mount-program-run') &&
-					peerCapabilities?.templateRuns !== 1
+					peerCapabilities?.templateRuns !== 1 &&
+					!(command.op === 'mount-program-run' && firstTreeProgramRuns)
 				) {
 					reject(
 						identity,
@@ -2552,7 +2565,11 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 					);
 					return;
 				}
-				if (command.op === 'mount-program-run' && peerCapabilities?.addressedProgramRuns !== 1) {
+				if (
+					command.op === 'mount-program-run' &&
+					peerCapabilities?.addressedProgramRuns !== 1 &&
+					!firstTreeProgramRuns
+				) {
 					reject(
 						identity,
 						new Error('Octane Lynx rejected an unnegotiated addressed program run.'),
@@ -2728,11 +2745,20 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			}
 		}
 		const startedAck = LYNX_PROFILE ? performance.now() : 0;
+		// A compact addressed description lets the background make the same
+		// generation-one handle ledger from the expanded batch it retained. Keep
+		// the adoption verdict on that acknowledgement: it is the fence that makes
+		// background publish listeners before main releases the painted journal.
+		const compactFirstTreeProgram =
+			candidateFirstTree !== null &&
+			firstTreeProgramRuns &&
+			message.batch.commands.some((command) => command.op === 'mount-program-run') &&
+			prepared.firstTreeAction !== 'none';
 		let compactCount: number | null =
 			message.ack === LYNX_COMPACT_ACKNOWLEDGEMENT &&
 			(provisional || postFirstTreeIncrementalCompact) &&
 			!applyFailed &&
-			prepared.firstTreeAction === 'none' &&
+			(prepared.firstTreeAction === 'none' || compactFirstTreeProgram) &&
 			prepared.listAncestryDelta.length === 0
 				? // Issue #230: preparation records a host count only while it is itself
 					// driving the compact path, and taking that path swaps the driver's
@@ -2781,6 +2807,11 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 						type: 'ack',
 						encoding: LYNX_COMPACT_ACKNOWLEDGEMENT,
 						count: compactCount,
+						...(prepared.firstTreeAction === 'none'
+							? null
+							: {
+									adoption: prepared.firstTreeAction === 'adopt' ? 'adopted' : 'repaired',
+								}),
 					};
 		try {
 			dispatch(acknowledgement);

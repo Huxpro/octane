@@ -8,6 +8,7 @@ import {
 	type UniversalTransportIdentity,
 	createUniversalRoot,
 	defineUniversalComponent,
+	recordUniversalProgramCommand,
 	universalKey,
 	universalList,
 	universalPlan,
@@ -231,6 +232,7 @@ function templateProgramRunBatch(count: number, version = 1): UniversalHostBatch
 interface MainHarness {
 	readonly commits: UniversalTransportCommitMessage[];
 	readonly disposals: LynxDisposeMessage[];
+	readonly adoptions: UniversalTransportIdentity[];
 	acknowledge(
 		commit: UniversalTransportCommitMessage,
 		completion?: 'complete' | 'fault' | null,
@@ -247,6 +249,7 @@ function installMainHarness(
 ): MainHarness {
 	const commits: UniversalTransportCommitMessage[] = [];
 	const disposals: LynxDisposeMessage[] = [];
+	const adoptions: UniversalTransportIdentity[] = [];
 	const generations = new Map<number, number>();
 	const types = new Map<number, string>();
 	context.addEventListener(LYNX_BACKGROUND_TO_MAIN_EVENT, (event) => {
@@ -270,6 +273,7 @@ function installMainHarness(
 		}
 		if (message.type === 'commit') commits.push(message);
 		else if (message.type === 'dispose') disposals.push(message);
+		else if (message.type === 'adoption-ready') adoptions.push(message);
 	});
 
 	const handleDeltas = (commit: UniversalTransportCommitMessage): LynxPublicHandleDelta[] => {
@@ -290,6 +294,37 @@ function installMainHarness(
 						props: command.props,
 					}),
 				});
+			} else if (command.op === 'mount-program-run') {
+				const program = resolveProgram?.(command);
+				if (program === undefined) throw new Error('Main harness cannot resolve addressed run.');
+				let arity = 0;
+				for (const node of program.nodes) {
+					for (const binding of node.bindings ?? []) {
+						if (binding.valueIndex + 1 > arity) arity = binding.valueIndex + 1;
+					}
+				}
+				for (let instance = 0; instance < command.count; instance++) {
+					for (let node = 0; node < program.nodes.length; node++) {
+						const descriptor = program.nodes[node]!;
+						const id = command.firstId + instance * program.nodes.length + node;
+						const generation = (generations.get(id) ?? 0) + 1;
+						const props: Record<string, unknown> = { ...descriptor.props };
+						for (const binding of descriptor.bindings ?? []) {
+							props[binding.name] = command.values[instance * arity + binding.valueIndex];
+						}
+						generations.set(id, generation);
+						types.set(id, descriptor.type);
+						deltas.push({
+							op: 'upsert',
+							id,
+							type: descriptor.type,
+							generation,
+							attached: true,
+							listDescendant: false,
+							snapshot: handleSnapshot(commit.root, id, descriptor.type, generation, { props }),
+						});
+					}
+				}
 			} else if (command.op === 'update') {
 				deltas.push({
 					op: 'upsert',
@@ -336,6 +371,7 @@ function installMainHarness(
 	return {
 		commits,
 		disposals,
+		adoptions,
 		acknowledge(commit, completion = null) {
 			context.sendToBackground({
 				...commitIdentity(commit),
@@ -890,9 +926,12 @@ describe('@octanejs/lynx transported protocol', () => {
 		expect(() => validateLynxBackgroundInboundMessage({ ...acknowledgement, handles: [] })).toThrow(
 			/unknown field "handles"/,
 		);
-		expect(() =>
+		expect(
 			validateLynxBackgroundInboundMessage({ ...acknowledgement, adoption: 'adopted' }),
-		).toThrow(/unknown field "adoption"/);
+		).toMatchObject({ adoption: 'adopted' });
+		expect(() =>
+			validateLynxBackgroundInboundMessage({ ...acknowledgement, adoption: 'unknown' }),
+		).toThrow(/ack\.adoption.*adopted or repaired/);
 	});
 
 	it('accepts sparse public-instance commands only with safe IDs and negotiated commit encoding', () => {
@@ -3468,7 +3507,7 @@ describe('@octanejs/lynx transported protocol', () => {
 		expect(container.getPublicHandle(1)).toBe(shell);
 	});
 
-	it('carries an addressed program manifest beside an expanded first-tree batch', async () => {
+	it('promotes a first-tree program manifest into the compact addressed run', async () => {
 		const context = new FakeContextProxy();
 		const program = {
 			nodes: [
@@ -3522,33 +3561,119 @@ describe('@octanejs/lynx transported protocol', () => {
 				),
 		);
 
-		const applying = root.renderAsync(Scene, { values: ['a'] });
+		const values = Array.from({ length: 8 }, (_, index) => `row-${index}`);
+		const applying = root.renderAsync(Scene, { values });
 		await flushMicrotasks();
 
 		expect(main.commits).toHaveLength(1);
 		const commit = main.commits[0]!;
-		expect(commit.batch.commands.filter((command) => command.op === 'create')).toHaveLength(2);
-		expect(commit.batch.programs).toEqual([
-			expect.objectContaining({
-				op: 'program-manifest',
-				address: { module: 'tests/first-tree-manifest.tsrx', index: 0 },
-				parent: null,
-				before: null,
-				count: 1,
-				values: ['a'],
-			}),
-		]);
-		main.acknowledge(commit, 'complete');
+		expect(commit.batch).toEqual({
+			renderer: LYNX_TRANSPORT_RENDERER,
+			version: 1,
+			commands: [
+				{
+					op: 'mount-program-run',
+					address: { module: 'tests/first-tree-manifest.tsrx', index: 0 },
+					parent: null,
+					before: null,
+					firstId: 1,
+					firstListenerId: null,
+					count: values.length,
+					values,
+				},
+			],
+		});
+		expect(commit).toMatchObject({ ack: LYNX_COMPACT_ACKNOWLEDGEMENT });
+		context.sendToBackground({
+			...commitIdentity(commit),
+			type: 'ack',
+			encoding: LYNX_COMPACT_ACKNOWLEDGEMENT,
+			count: values.length * program.nodes.length,
+			adoption: 'adopted',
+		});
+		context.sendToBackground({ ...commitIdentity(commit), type: 'complete' });
 		await applying;
+		expect(main.adoptions).toEqual([{ ...commitIdentity(commit), type: 'adoption-ready' }]);
 		expect(driver.capabilities?.programManifests).toBe(false);
 
-		const updating = root.renderAsync(Scene, { values: ['a', 'b'] });
+		const updating = root.renderAsync(Scene, { values: [...values, 'row-8'] });
 		await flushMicrotasks();
 		expect(main.commits).toHaveLength(2);
 		const update = main.commits[1]!;
 		expect(update.batch.programs).toBeUndefined();
 		main.acknowledge(update, 'complete');
 		await updating;
+		transport.close();
+	});
+
+	it('keeps the complete first-tree description when a program owns main-thread state', async () => {
+		const context = new FakeContextProxy();
+		const program = Object.freeze({
+			nodes: Object.freeze([
+				Object.freeze({
+					type: 'view',
+					parent: -1,
+					props: Object.freeze({}),
+					bindings: Object.freeze([Object.freeze({ name: 'main-thread:ref', valueIndex: 0 })]),
+				}),
+			]),
+			events: Object.freeze([]),
+		});
+		const main = installMainHarness(
+			context,
+			true,
+			{
+				compactAck: 1,
+				templateMount: 1,
+				templateProgram: 1,
+				templateRuns: 1,
+				addressedProgramRuns: 1,
+				firstTreeProgramManifests: 1,
+			},
+			true,
+			(command) =>
+				command.address.module === 'tests/main-thread-state.tsrx' && command.address.index === 0
+					? program
+					: undefined,
+		);
+		const container = createLynxClientContainer();
+		const transport = createLynxBackgroundTransport(context, container);
+		await transport.ready;
+		const manifest = Object.freeze({
+			op: 'program-manifest' as const,
+			parent: null,
+			before: null,
+			address: Object.freeze({ module: 'tests/main-thread-state.tsrx', index: 0 }),
+			firstId: 1,
+			stride: 1,
+			firstListenerId: null,
+			count: 1,
+			values: Object.freeze([Object.freeze({ _wvid: 'row-ref' })]),
+		});
+		recordUniversalProgramCommand(manifest, program);
+		const batch: UniversalHostBatch = Object.freeze({
+			renderer: LYNX_TRANSPORT_RENDERER,
+			version: 1,
+			commands: Object.freeze([
+				Object.freeze({
+					op: 'create' as const,
+					id: 1,
+					type: 'view',
+					props: Object.freeze({ 'main-thread:ref': manifest.values[0] }),
+				}),
+				Object.freeze({ op: 'insert' as const, parent: null, id: 1, before: null }),
+			]),
+			programs: Object.freeze([manifest]),
+		});
+		const applying = transport.prepareBatch(container, batch, identity(91, 1)).apply(() => {});
+		await flushMicrotasks();
+
+		expect(main.commits).toHaveLength(1);
+		const commit = main.commits[0]!;
+		expect(commit.batch.commands.map((command) => command.op)).toEqual(['create', 'insert']);
+		expect(commit.batch.programs).toEqual([manifest]);
+		main.acknowledge(commit, 'complete');
+		await applying;
 		transport.close();
 	});
 

@@ -3,6 +3,8 @@ import {
 	type UniversalAsyncCommitTransport,
 	type UniversalAsyncPreparedHostBatch,
 	type UniversalHostBatch,
+	type UniversalHostCommand,
+	type UniversalHostProgramManifest,
 	type UniversalRoot,
 	type UniversalTransportAcknowledgement,
 	type UniversalEventPriority,
@@ -11,7 +13,7 @@ import {
 	type UniversalSerializableValue,
 } from 'octane/universal/native';
 import { LYNX_PROFILE, lynxWireProfile, profileOutboundMessage } from './profiling.js';
-import { producedRunProgram } from './run-program.js';
+import { producedRunProgram, promoteProducedProgramManifest } from './run-program.js';
 import {
 	decodeLynxTransportValue,
 	encodeLynxTransportValue,
@@ -86,6 +88,146 @@ export interface LynxBackgroundTransportOptions {
 		fn: LynxBackgroundFunctionWireDescriptor,
 		args: readonly UniversalSerializableValue[],
 	) => unknown;
+}
+
+interface FirstTreeProgramPromotion {
+	readonly manifest: UniversalHostProgramManifest;
+	readonly command: Extract<UniversalHostCommand, { readonly op: 'mount-program-run' }>;
+	readonly firstId: number;
+	readonly lastId: number;
+	readonly width: number;
+	readonly eventCount: number;
+	creates: number;
+	events: number;
+	inserts: number;
+	rootInserts: number;
+}
+
+function programHasMainThreadProps(
+	program: NonNullable<ReturnType<typeof producedRunProgram>>,
+): boolean {
+	for (const node of program.nodes) {
+		for (const name of Object.keys(node.props)) {
+			if (name.startsWith('main-thread:')) return true;
+		}
+		for (const binding of node.bindings ?? []) {
+			if (binding.name.startsWith('main-thread:')) return true;
+		}
+	}
+	return false;
+}
+
+/**
+ * Replace the first background description of a program-painted tree with the
+ * resident command its manifest already proves (issue #287, deletion slice).
+ *
+ * This runs only after the correlated ready reply advertised the proof rung.
+ * The in-memory expanded batch remains the acknowledgement/worklet fallback;
+ * only this fresh wire view drops commands. A shape outside the exact producer
+ * invariant returns the original batch, so the existing comparator and repair
+ * path remain authoritative rather than approximating a compact encoding.
+ */
+function compactFirstTreeProgramBatch(batch: UniversalHostBatch): UniversalHostBatch {
+	const manifests = batch.programs;
+	if (manifests === undefined || manifests.length === 0) return batch;
+	const promotions: FirstTreeProgramPromotion[] = [];
+	for (const manifest of manifests) {
+		const promoted = promoteProducedProgramManifest(manifest);
+		if (promoted === null) return batch;
+		const width = promoted.program.nodes.length;
+		if (
+			width === 0 ||
+			manifest.before !== null ||
+			manifest.stride !== width ||
+			programHasMainThreadProps(promoted.program)
+		) {
+			return batch;
+		}
+		const lastId = manifest.firstId + manifest.count * width - 1;
+		if (!Number.isSafeInteger(lastId)) return batch;
+		const previous = promotions[promotions.length - 1];
+		if (previous !== undefined && manifest.firstId <= previous.lastId) return batch;
+		promotions.push({
+			manifest,
+			command: promoted.command,
+			firstId: manifest.firstId,
+			lastId,
+			width,
+			eventCount: promoted.program.events.length,
+			creates: 0,
+			events: 0,
+			inserts: 0,
+			rootInserts: 0,
+		});
+	}
+	const promotionFor = (id: number): FirstTreeProgramPromotion | undefined => {
+		let low = 0;
+		let high = promotions.length - 1;
+		while (low <= high) {
+			const middle = (low + high) >>> 1;
+			const candidate = promotions[middle]!;
+			if (id < candidate.firstId) high = middle - 1;
+			else if (id > candidate.lastId) low = middle + 1;
+			else return candidate;
+		}
+		return undefined;
+	};
+	const compact: UniversalHostCommand[] = [];
+	for (const command of batch.commands) {
+		let promotion: FirstTreeProgramPromotion | undefined;
+		if ('id' in command) promotion = promotionFor(command.id);
+		else if ('firstId' in command) promotion = promotionFor(command.firstId);
+		else if (command.op === 'mount-template') {
+			if (command.nodes.some((node) => promotionFor(node.id) !== undefined)) return batch;
+		}
+		if (promotion === undefined) {
+			compact.push(command);
+			continue;
+		}
+		if (command.op === 'create') {
+			promotion.creates++;
+			continue;
+		}
+		if (command.op === 'event') {
+			promotion.events++;
+			continue;
+		}
+		if (command.op === 'insert') {
+			promotion.inserts++;
+			const relative = command.id - promotion.firstId;
+			if (relative % promotion.width === 0) {
+				promotion.rootInserts++;
+				if (
+					command.parent !== promotion.manifest.parent ||
+					command.before !== promotion.manifest.before
+				) {
+					return batch;
+				}
+				if (relative === 0) compact.push(promotion.command);
+			}
+			continue;
+		}
+		// Public-instance, lifecycle, visibility, mutation, teardown, and an
+		// already-compact overlapping command all need ordering or state the
+		// manifest does not certify. Keep the complete legacy batch for them.
+		return batch;
+	}
+	for (const promotion of promotions) {
+		const instances = promotion.manifest.count;
+		if (
+			promotion.creates !== instances * promotion.width ||
+			promotion.inserts !== instances * promotion.width ||
+			promotion.events !== instances * promotion.eventCount ||
+			promotion.rootInserts !== instances
+		) {
+			return batch;
+		}
+	}
+	return Object.freeze({
+		renderer: batch.renderer,
+		version: batch.version,
+		commands: Object.freeze(compact),
+	});
 }
 
 export interface LynxThreadCall<Result = UniversalSerializableValue> {
@@ -168,6 +310,7 @@ interface PendingCommit {
 	readonly token: PreparedTokenState;
 	state: 'waiting-ready' | 'sent' | 'acknowledged';
 	compactRequested: boolean;
+	firstTreeProgramCompactRequested: boolean;
 	incrementalCompactRequested: boolean;
 	compactHostCount: number | null;
 	abortRequested: boolean;
@@ -836,11 +979,16 @@ export function createLynxBackgroundTransport(
 		try {
 			if (message.encoding === LYNX_COMPACT_ACKNOWLEDGEMENT) {
 				if (
-					!compactAcknowledgements ||
+					(!compactAcknowledgements && !entry.firstTreeProgramCompactRequested) ||
 					!entry.compactRequested ||
 					(previousAccepted !== null && !entry.incrementalCompactRequested)
 				) {
 					throw new Error('Octane Lynx received an unnegotiated compact acknowledgement.');
+				}
+				if (entry.firstTreeProgramCompactRequested !== (message.adoption !== undefined)) {
+					throw new Error(
+						'Octane Lynx compact first-tree acknowledgement has a mismatched adoption verdict.',
+					);
 				}
 				handles = prepareLynxCompactHandleDeltas(
 					container,
@@ -1599,6 +1747,7 @@ export function createLynxBackgroundTransport(
 						token,
 						state: 'waiting-ready',
 						compactRequested: false,
+						firstTreeProgramCompactRequested: false,
 						incrementalCompactRequested: false,
 						compactHostCount: null,
 						abortRequested: false,
@@ -1611,11 +1760,26 @@ export function createLynxBackgroundTransport(
 						() => {
 							if (pending.get(identity.version) !== entry) return;
 							entry.state = 'sent';
-							const count = compactAcknowledgements
-								? countLynxCompactAcknowledgementHosts(preparedBatch, producedRunProgram)
-								: null;
+							const wireBatch = firstTreeProgramManifests
+								? compactFirstTreeProgramBatch(preparedBatch)
+								: preparedBatch.programs === undefined
+									? preparedBatch
+									: Object.freeze({
+											renderer: preparedBatch.renderer,
+											version: preparedBatch.version,
+											commands: preparedBatch.commands,
+										});
+							const firstTreeProgramCompact =
+								accepted === null &&
+								wireBatch !== preparedBatch &&
+								wireBatch.commands.some((command) => command.op === 'mount-program-run');
+							const count =
+								compactAcknowledgements || firstTreeProgramCompact
+									? countLynxCompactAcknowledgementHosts(preparedBatch, producedRunProgram)
+									: null;
 							const compact = count !== null;
 							entry.compactRequested = compact;
+							entry.firstTreeProgramCompactRequested = firstTreeProgramCompact && compact;
 							entry.compactHostCount = count;
 							const incrementalRun =
 								preparedBatch.commands.length === 1 ? preparedBatch.commands[0] : undefined;
@@ -1654,14 +1818,6 @@ export function createLynxBackgroundTransport(
 							// will query, so every commit — the pre-handshake first one
 							// included — carries the promise unconditionally.
 							const announces = { announces: LYNX_ANNOUNCED_PUBLIC_INSTANCES } as const;
-							const wireBatch =
-								firstTreeProgramManifests || preparedBatch.programs === undefined
-									? preparedBatch
-									: Object.freeze({
-											renderer: preparedBatch.renderer,
-											version: preparedBatch.version,
-											commands: preparedBatch.commands,
-										});
 							const wireCommit =
 								wireBatch === preparedBatch ? commit : { ...commit, batch: wireBatch };
 							const outboundCommit: LynxTransportCommitMessage = compact
