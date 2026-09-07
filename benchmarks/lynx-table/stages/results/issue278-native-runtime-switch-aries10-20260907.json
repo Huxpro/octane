@@ -1,0 +1,55 @@
+{
+  "protocol": "octane-issue278-native-runtime-switch-v1",
+  "capturedAt": "2026-09-07T04:03:23.253Z",
+  "deviceCohortId": "8537de9593a9a77f",
+  "leaseReceipt": {
+    "protocol": "lynx-sandbox-lease-receipt-v1",
+    "issueId": "Huxpro/octane#278",
+    "expiredAt": 1788754634475,
+    "serialSha256": "7bf152688f01206c5223597c0fdd17c991987b1f2a5d94ab22b277d955985904",
+    "deviceLeaseId": "cf5e19fb52a3"
+  },
+  "tool": {
+    "agentLynxVersion": "0.14.11",
+    "command": "agent-lynx global-switch get/set --key enable_v8",
+    "supportedKeyAdvertised": true
+  },
+  "initialState": {
+    "enableDebugMode": false,
+    "enableV8": false
+  },
+  "attempts": [
+    {
+      "transport": "daemon",
+      "enableDebugMode": false,
+      "requestedEnableV8": true,
+      "result": "No response found for clientId",
+      "readBackEnableV8": false
+    },
+    {
+      "transport": "direct",
+      "enableDebugMode": false,
+      "requestedEnableV8": true,
+      "result": "AbortError: operation timed out",
+      "readBackEnableV8": false
+    },
+    {
+      "transport": "daemon",
+      "enableDebugMode": true,
+      "requestedEnableV8": true,
+      "result": "No response found for clientId",
+      "readBackEnableV8": false
+    }
+  ],
+  "finalState": {
+    "enableDebugMode": false,
+    "enableV8": false,
+    "restored": true
+  },
+  "verdict": {
+    "status": "unsupported-host-switch",
+    "pairedRuntimeComparisonAvailable": false,
+    "reason": "LynxExplorer advertised enable_v8 but rejected every set request and always read back false.",
+    "inferredRuntimeLabels": false
+  }
+}

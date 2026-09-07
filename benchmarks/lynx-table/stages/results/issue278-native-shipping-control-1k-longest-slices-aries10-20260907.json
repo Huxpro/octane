@@ -1,0 +1,820 @@
+{
+  "success": true,
+  "parseSucceeded": true,
+  "trace": {
+    "path": "/data00/home/xuan.huang/.codex/worktrees/68ea/octane/benchmarks/lynx-table/stages/results/issue278-native-shipping-control-1k-aries10-20260907.pftrace",
+    "bytes": 3591669,
+    "sha256": "3f978e8368b0f38d8d3b28bbecb0d71fa5e826fd5064c79840bf5a9adcc8a3d7"
+  },
+  "query": {
+    "source": "inline",
+    "text": "WITH b AS (SELECT MIN(CASE WHEN name='Issue278::create-start' THEN ts END) AS start_ts, MAX(CASE WHEN name='Issue278::commit-ack' THEN ts END) AS end_ts FROM slice) SELECT s.id,s.name,ROUND(s.dur/1000000.0,3) AS dur_ms,th.name AS thread_name,p.name AS process_name,s.depth FROM slice s JOIN track t ON s.track_id=t.id LEFT JOIN thread_track tt ON t.id=tt.id LEFT JOIN thread th ON tt.utid=th.utid LEFT JOIN process p ON th.upid=p.upid,b WHERE s.ts>=b.start_ts AND s.ts<=b.end_ts AND s.dur>0 ORDER BY s.dur DESC LIMIT 100",
+    "sha256": "987184bd84f462487cab6b83031f59cf7b4bd525a16492f3784685d4b8065fba"
+  },
+  "columns": ["id", "name", "dur_ms", "thread_name", "process_name", "depth"],
+  "totalRows": 100,
+  "returnedRows": 100,
+  "truncated": false,
+  "rows": [
+    {
+      "id": "7107",
+      "name": "MessageLoop::FlushTasks",
+      "dur_ms": 9888.943,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "7108",
+      "name": "LynxEngine::Invoke::1",
+      "dur_ms": 9888.932,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "7109",
+      "name": "EventTarget::DispatchEvent",
+      "dur_ms": 9888.89,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "2"
+    },
+    {
+      "id": "7110",
+      "name": "LepusClosureEventListener::Invoke",
+      "dur_ms": 9888.838,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "3"
+    },
+    {
+      "id": "111655",
+      "name": "FiberFlushElementTree",
+      "dur_ms": 870.21,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "4"
+    },
+    {
+      "id": "111656",
+      "name": "ElementManager::OnPatchFinishInnerForFiber",
+      "dur_ms": 870.178,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "5"
+    },
+    {
+      "id": "111657",
+      "name": "PageElement::FlushActionsAsRoot",
+      "dur_ms": 597.74,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "6"
+    },
+    {
+      "id": "111659",
+      "name": "FiberElement::FlushActions",
+      "dur_ms": 597.508,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "7"
+    },
+    {
+      "id": "111662",
+      "name": "FiberElement::FlushActions",
+      "dur_ms": 597.501,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "8"
+    },
+    {
+      "id": "111667",
+      "name": "FiberElement::FlushActions",
+      "dur_ms": 597.489,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "9"
+    },
+    {
+      "id": "111669",
+      "name": "FiberElement::PrepareAndGenerateChildrenActions",
+      "dur_ms": 294.13,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "10"
+    },
+    {
+      "id": "111670",
+      "name": "FiberElement::PrepareChildren",
+      "dur_ms": 288.975,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "11"
+    },
+    {
+      "id": "250824",
+      "name": "TemplateAssembler::RequestLayout",
+      "dur_ms": 272.37,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "6"
+    },
+    {
+      "id": "250825",
+      "name": "LayoutContext::Invoke::1",
+      "dur_ms": 272.365,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "7"
+    },
+    {
+      "id": "250826",
+      "name": "LayoutContext::DispatchLayoutUpdates",
+      "dur_ms": 272.345,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "8"
+    },
+    {
+      "id": "250830",
+      "name": "LayoutContext.Layout",
+      "dur_ms": 272.127,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "9"
+    },
+    {
+      "id": "7082",
+      "name": "MessageLoop::FlushTasks",
+      "dur_ms": 256.451,
+      "thread_name": "Lynx_JS",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "7084",
+      "name": "JsTaskAdapter::SetTimeout",
+      "dur_ms": 256.411,
+      "thread_name": "Lynx_JS",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "250867",
+      "name": "CalculateLayout",
+      "dur_ms": 138.144,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "10"
+    },
+    {
+      "id": "250868",
+      "name": "UpdateMeasure",
+      "dur_ms": 132.453,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "11"
+    },
+    {
+      "id": "254416",
+      "name": "OnLayoutAfter",
+      "dur_ms": 115.364,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "10"
+    },
+    {
+      "id": "254417",
+      "name": "LayoutMediator.OnLayoutAfter",
+      "dur_ms": 115.327,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "11"
+    },
+    {
+      "id": "254418",
+      "name": "LynxEngine::Invoke::1",
+      "dur_ms": 115.316,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "12"
+    },
+    {
+      "id": "254419",
+      "name": "LayoutMediator.HandlePendingLayoutTask",
+      "dur_ms": 115.149,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "13"
+    },
+    {
+      "id": "258434",
+      "name": "LynxUIOperationQueue.Flush",
+      "dur_ms": 104.591,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "14"
+    },
+    {
+      "id": "286026",
+      "name": "Choreographer#doFrame",
+      "dur_ms": 69.827,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "286028",
+      "name": "traversal",
+      "dur_ms": 69.803,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "286114",
+      "name": "draw",
+      "dur_ms": 64.917,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "2"
+    },
+    {
+      "id": "286115",
+      "name": "Record View#draw()",
+      "dur_ms": 62.225,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "3"
+    },
+    {
+      "id": "286116",
+      "name": "LynxView.onDraw",
+      "dur_ms": 62.142,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "4"
+    },
+    {
+      "id": "252565",
+      "name": "Background concurrent copying GC",
+      "dur_ms": 30.058,
+      "thread_name": "HeapTaskDaemon",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "286013",
+      "name": "MessageLoop::FlushTasks",
+      "dur_ms": 26.314,
+      "thread_name": "Lynx_JS",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "286014",
+      "name": "BTSRuntime::Invoke::1",
+      "dur_ms": 26.281,
+      "thread_name": "Lynx_JS",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "286018",
+      "name": "EventTarget::DispatchEvent",
+      "dur_ms": 26.116,
+      "thread_name": "Lynx_JS",
+      "process_name": "com.lynx.explorer",
+      "depth": "2"
+    },
+    {
+      "id": "286019",
+      "name": "JSClosureEventListener::Invoke",
+      "dur_ms": 26.091,
+      "thread_name": "Lynx_JS",
+      "process_name": "com.lynx.explorer",
+      "depth": "3"
+    },
+    {
+      "id": "251079",
+      "name": "Background young concurrent copying GC",
+      "dur_ms": 25.643,
+      "thread_name": "HeapTaskDaemon",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "251120",
+      "name": "CopyingPhase",
+      "dur_ms": 23.671,
+      "thread_name": "HeapTaskDaemon",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "150460",
+      "name": "Background concurrent copying GC",
+      "dur_ms": 20.775,
+      "thread_name": "HeapTaskDaemon",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "251226",
+      "name": "ProcessMarkStack",
+      "dur_ms": 19.176,
+      "thread_name": "HeapTaskDaemon",
+      "process_name": "com.lynx.explorer",
+      "depth": "2"
+    },
+    {
+      "id": "282708",
+      "name": "LynxUIOperationQueue::ExecuteOperation",
+      "dur_ms": 18.367,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "15"
+    },
+    {
+      "id": "282709",
+      "name": "UIOperationQueue::UpdateLayoutPatchingTask",
+      "dur_ms": 18.365,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "16"
+    },
+    {
+      "id": "144846",
+      "name": "Background young concurrent copying GC",
+      "dur_ms": 18.004,
+      "thread_name": "HeapTaskDaemon",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "145009",
+      "name": "CopyingPhase",
+      "dur_ms": 16.397,
+      "thread_name": "HeapTaskDaemon",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "117956",
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxBaseUI$$PropsSetter.b(com.lynx.tasm.behavior.ui.LynxBaseUI, java.lang.String, h7.e1)",
+      "dur_ms": 14.828,
+      "thread_name": "Jit thread pool",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "252976",
+      "name": "CopyingPhase",
+      "dur_ms": 14.724,
+      "thread_name": "HeapTaskDaemon",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "117958",
+      "name": "Compiling",
+      "dur_ms": 14.184,
+      "thread_name": "Jit thread pool",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "252570",
+      "name": "MarkingPhase",
+      "dur_ms": 13.814,
+      "thread_name": "HeapTaskDaemon",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "146018",
+      "name": "ProcessMarkStack",
+      "dur_ms": 13.116,
+      "thread_name": "HeapTaskDaemon",
+      "process_name": "com.lynx.explorer",
+      "depth": "2"
+    },
+    {
+      "id": "250831",
+      "name": "DispatchLayoutBeforeRecursively",
+      "dur_ms": 11.719,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "10"
+    },
+    {
+      "id": "153172",
+      "name": "CopyingPhase",
+      "dur_ms": 11.676,
+      "thread_name": "HeapTaskDaemon",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "125456",
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxBaseUI.updatePropertiesInterval(h7.e1)",
+      "dur_ms": 8.335,
+      "thread_name": "Jit thread pool",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "125458",
+      "name": "Compiling",
+      "dur_ms": 8.088,
+      "thread_name": "Jit thread pool",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "112013",
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.text.BaseTextShadowNode$$PropsSetter.a(com.lynx.tasm.behavior.shadow.ShadowNode, java.lang.String, h7.e1)",
+      "dur_ms": 7.986,
+      "thread_name": "Jit thread pool",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "7102",
+      "name": "MessageLoop::FlushTasks",
+      "dur_ms": 7.873,
+      "thread_name": "Lynx_JS",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "7103",
+      "name": "JsTaskAdapter::SetTimeout",
+      "dur_ms": 7.861,
+      "thread_name": "Lynx_JS",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "112014",
+      "name": "Compiling",
+      "dur_ms": 7.581,
+      "thread_name": "Jit thread pool",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "252977",
+      "name": "ScanCardsForSpace",
+      "dur_ms": 7.5,
+      "thread_name": "HeapTaskDaemon",
+      "process_name": "com.lynx.explorer",
+      "depth": "2"
+    },
+    {
+      "id": "150487",
+      "name": "MarkingPhase",
+      "dur_ms": 7.42,
+      "thread_name": "HeapTaskDaemon",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "250865",
+      "name": "JIT compiling java.lang.CharSequence com.lynx.tasm.behavior.shadow.text.BaseTextShadowNode.D(java.lang.String, boolean)",
+      "dur_ms": 7.41,
+      "thread_name": "Jit thread pool",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "250866",
+      "name": "Compiling",
+      "dur_ms": 7.194,
+      "thread_name": "Jit thread pool",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "16451",
+      "name": "Background young concurrent copying GC",
+      "dur_ms": 7.062,
+      "thread_name": "HeapTaskDaemon",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "254375",
+      "name": "LayoutRecursively",
+      "dur_ms": 6.886,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "10"
+    },
+    {
+      "id": "129662",
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxBaseUI.updatePropertiesInterval(h7.e1)",
+      "dur_ms": 6.8,
+      "thread_name": "Jit thread pool",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "129665",
+      "name": "Compiling",
+      "dur_ms": 6.618,
+      "thread_name": "Jit thread pool",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "154944",
+      "name": "ProcessMarkStack",
+      "dur_ms": 6.062,
+      "thread_name": "HeapTaskDaemon",
+      "process_name": "com.lynx.explorer",
+      "depth": "2"
+    },
+    {
+      "id": "115478",
+      "name": "JIT compiling void com.lynx.tasm.behavior.utils.PropsUpdater.c(com.lynx.tasm.behavior.shadow.ShadowNode, h7.e1)",
+      "dur_ms": 5.543,
+      "thread_name": "Jit thread pool",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "115480",
+      "name": "Compiling",
+      "dur_ms": 5.465,
+      "thread_name": "Jit thread pool",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "253182",
+      "name": "ProcessMarkStack",
+      "dur_ms": 5.424,
+      "thread_name": "HeapTaskDaemon",
+      "process_name": "com.lynx.explorer",
+      "depth": "2"
+    },
+    {
+      "id": "250969",
+      "name": "JIT compiling long com.lynx.tasm.behavior.shadow.text.TextShadowNode.O(com.lynx.tasm.behavior.shadow.LayoutNode, float, l7.g, float, l7.g)",
+      "dur_ms": 5.314,
+      "thread_name": "Jit thread pool",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "199641",
+      "name": "FiberElement::HandleChildrenAction",
+      "dur_ms": 5.153,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "11"
+    },
+    {
+      "id": "250970",
+      "name": "Compiling",
+      "dur_ms": 5.084,
+      "thread_name": "Jit thread pool",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "251427",
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.text.e.n(h7.w)",
+      "dur_ms": 4.987,
+      "thread_name": "Jit thread pool",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "254315",
+      "name": "UpdateAlignment",
+      "dur_ms": 4.817,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "11"
+    },
+    {
+      "id": "251428",
+      "name": "Compiling",
+      "dur_ms": 4.785,
+      "thread_name": "Jit thread pool",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "16497",
+      "name": "CopyingPhase",
+      "dur_ms": 4.687,
+      "thread_name": "HeapTaskDaemon",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "30003",
+      "name": "Background young concurrent copying GC",
+      "dur_ms": 4.682,
+      "thread_name": "HeapTaskDaemon",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "43542",
+      "name": "Background young concurrent copying GC",
+      "dur_ms": 4.529,
+      "thread_name": "HeapTaskDaemon",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "84215",
+      "name": "Background young concurrent copying GC",
+      "dur_ms": 4.233,
+      "thread_name": "HeapTaskDaemon",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "57124",
+      "name": "Background young concurrent copying GC",
+      "dur_ms": 4.048,
+      "thread_name": "HeapTaskDaemon",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "250832",
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.text.TextShadowNode.d()",
+      "dur_ms": 3.94,
+      "thread_name": "Jit thread pool",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "70647",
+      "name": "Background young concurrent copying GC",
+      "dur_ms": 3.933,
+      "thread_name": "HeapTaskDaemon",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "87847",
+      "name": "bool art::ProfileSaver::ProcessProfilingInfo(bool, uint16_t *)",
+      "dur_ms": 3.924,
+      "thread_name": "Profile Saver",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "97902",
+      "name": "Background young concurrent copying GC",
+      "dur_ms": 3.924,
+      "thread_name": "HeapTaskDaemon",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "111510",
+      "name": "Background young concurrent copying GC",
+      "dur_ms": 3.837,
+      "thread_name": "HeapTaskDaemon",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "137309",
+      "name": "JIT compiling java.util.Map m8.a.a(com.lynx.react.bridge.ReadableArray)",
+      "dur_ms": 3.767,
+      "thread_name": "Jit thread pool",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "250833",
+      "name": "Compiling",
+      "dur_ms": 3.758,
+      "thread_name": "Jit thread pool",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "137310",
+      "name": "Compiling",
+      "dur_ms": 3.667,
+      "thread_name": "Jit thread pool",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "114497",
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.text.TextShadowNode$$PropsSetter.a(com.lynx.tasm.behavior.shadow.ShadowNode, java.lang.String, h7.e1)",
+      "dur_ms": 3.586,
+      "thread_name": "Jit thread pool",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "153174",
+      "name": "ScanCardsForSpace",
+      "dur_ms": 3.413,
+      "thread_name": "HeapTaskDaemon",
+      "process_name": "com.lynx.explorer",
+      "depth": "2"
+    },
+    {
+      "id": "30031",
+      "name": "CopyingPhase",
+      "dur_ms": 3.26,
+      "thread_name": "HeapTaskDaemon",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "114498",
+      "name": "Compiling",
+      "dur_ms": 3.214,
+      "thread_name": "Jit thread pool",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "43596",
+      "name": "CopyingPhase",
+      "dur_ms": 3.082,
+      "thread_name": "HeapTaskDaemon",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "282740",
+      "name": "JIT compiling void h7.p0.L(int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, android.graphics.Rect, float[], float, int)",
+      "dur_ms": 3.062,
+      "thread_name": "Jit thread pool",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "285929",
+      "name": "LynxUIOperationQueue::ExecuteOperation",
+      "dur_ms": 3.055,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "15"
+    },
+    {
+      "id": "285930",
+      "name": "UIOperationQueue::UpdateNodeReadyPatchingTask",
+      "dur_ms": 3.046,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "16"
+    },
+    {
+      "id": "283867",
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxFlattenUI.setPosition(int, int)",
+      "dur_ms": 2.894,
+      "thread_name": "Jit thread pool",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "286077",
+      "name": "layout",
+      "dur_ms": 2.885,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "2"
+    },
+    {
+      "id": "282741",
+      "name": "Compiling",
+      "dur_ms": 2.879,
+      "thread_name": "Jit thread pool",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "283868",
+      "name": "Compiling",
+      "dur_ms": 2.864,
+      "thread_name": "Jit thread pool",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "286078",
+      "name": "LynxView.onLayout",
+      "dur_ms": 2.828,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "3"
+    }
+  ]
+}

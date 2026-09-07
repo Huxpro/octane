@@ -1,0 +1,128 @@
+{
+  "success": true,
+  "parseSucceeded": true,
+  "trace": {
+    "path": "/data00/home/xuan.huang/.codex/worktrees/68ea/octane/benchmarks/lynx-table/stages/results/issue278-native-shipping-control-1k-aries10-20260907.pftrace",
+    "bytes": 3591669,
+    "sha256": "3f978e8368b0f38d8d3b28bbecb0d71fa5e826fd5064c79840bf5a9adcc8a3d7"
+  },
+  "query": {
+    "source": "inline",
+    "text": "SELECT s.id,s.name,s.ts,s.dur,t.name AS track_name,th.name AS thread_name,p.name AS process_name FROM slice s JOIN track t ON s.track_id=t.id LEFT JOIN thread_track tt ON t.id=tt.id LEFT JOIN thread th ON tt.utid=th.utid LEFT JOIN process p ON th.upid=p.upid WHERE s.name LIKE 'Issue278::%' ORDER BY s.ts",
+    "sha256": "7f29b7255001dd08725f19a118a57a99468cbf106e6081b8d3d97663d00e1b99"
+  },
+  "columns": ["id", "name", "ts", "dur", "track_name", "thread_name", "process_name"],
+  "totalRows": 12,
+  "returnedRows": 12,
+  "truncated": false,
+  "rows": [
+    {
+      "id": "4369",
+      "name": "Issue278::bts-dispatch-start",
+      "ts": "1578453703571479",
+      "dur": "0",
+      "track_name": null,
+      "thread_name": "Lynx_JS",
+      "process_name": "com.lynx.explorer"
+    },
+    {
+      "id": "4370",
+      "name": "Issue278::bts-dispatch-return",
+      "ts": "1578453703621268",
+      "dur": "0",
+      "track_name": null,
+      "thread_name": "Lynx_JS",
+      "process_name": "com.lynx.explorer"
+    },
+    {
+      "id": "4470",
+      "name": "Issue278::bts-dispatch-start",
+      "ts": "1578453707981342",
+      "dur": "0",
+      "track_name": null,
+      "thread_name": "Lynx_JS",
+      "process_name": "com.lynx.explorer"
+    },
+    {
+      "id": "4476",
+      "name": "Issue278::bts-dispatch-return",
+      "ts": "1578453708008008",
+      "dur": "0",
+      "track_name": null,
+      "thread_name": "Lynx_JS",
+      "process_name": "com.lynx.explorer"
+    },
+    {
+      "id": "4533",
+      "name": "Issue278::bts-dispatch-start",
+      "ts": "1578453710669777",
+      "dur": "0",
+      "track_name": null,
+      "thread_name": "Lynx_JS",
+      "process_name": "com.lynx.explorer"
+    },
+    {
+      "id": "4534",
+      "name": "Issue278::bts-dispatch-return",
+      "ts": "1578453710722142",
+      "dur": "0",
+      "track_name": null,
+      "thread_name": "Lynx_JS",
+      "process_name": "com.lynx.explorer"
+    },
+    {
+      "id": "5360",
+      "name": "Issue278::bts-dispatch-start",
+      "ts": "1578453741520123",
+      "dur": "0",
+      "track_name": null,
+      "thread_name": "Lynx_JS",
+      "process_name": "com.lynx.explorer"
+    },
+    {
+      "id": "5361",
+      "name": "Issue278::bts-dispatch-return",
+      "ts": "1578453741563176",
+      "dur": "0",
+      "track_name": null,
+      "thread_name": "Lynx_JS",
+      "process_name": "com.lynx.explorer"
+    },
+    {
+      "id": "7077",
+      "name": "Issue278::create-start",
+      "ts": "1578474522034152",
+      "dur": "0",
+      "track_name": null,
+      "thread_name": "Lynx_JS",
+      "process_name": "com.lynx.explorer"
+    },
+    {
+      "id": "7105",
+      "name": "Issue278::bts-dispatch-start",
+      "ts": "1578474789330553",
+      "dur": "0",
+      "track_name": null,
+      "thread_name": "Lynx_JS",
+      "process_name": "com.lynx.explorer"
+    },
+    {
+      "id": "7106",
+      "name": "Issue278::bts-dispatch-return",
+      "ts": "1578474789416363",
+      "dur": "0",
+      "track_name": null,
+      "thread_name": "Lynx_JS",
+      "process_name": "com.lynx.explorer"
+    },
+    {
+      "id": "288103",
+      "name": "Issue278::commit-ack",
+      "ts": "1578484705221493",
+      "dur": "0",
+      "track_name": null,
+      "thread_name": "Lynx_JS",
+      "process_name": "com.lynx.explorer"
+    }
+  ]
+}
