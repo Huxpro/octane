@@ -28,9 +28,11 @@ import {
 } from '../../packages/lynx/src/core/transport-codec.js';
 import {
 	BenchApp,
+	ContextBenchApp,
 	EmptyApp,
 	StoreBenchApp,
 	type BenchRow,
+	type ContextBenchAppProps,
 	type SelectionStore,
 } from './src/App.lynx.tsrx';
 
@@ -699,6 +701,147 @@ export async function runStoreSelections(
 		listenersAfterUnmount: listeners.size,
 		diagnostics: harness.diagnostics.map((error) => error.message),
 	};
+}
+
+export interface ContextChangeResult {
+	readonly rows: number;
+	readonly depth: number;
+	readonly nextTone: string;
+	readonly durationMs: number;
+	readonly plainRenders: number;
+	readonly layerRenders: number;
+	readonly leafRenders: number;
+	readonly leafValues: readonly string[];
+	readonly commits: number;
+	readonly commands: number;
+	readonly leafClasses: string | null;
+	readonly checksum: number;
+	readonly diagnostics: readonly string[];
+	readonly ownerProfile?: {
+		readonly events: number;
+		readonly summary: readonly {
+			readonly component: string;
+			readonly attempts: number;
+			readonly bails: number;
+			readonly totalSelfTime: number;
+		}[];
+	};
+}
+
+/**
+ * Change one provider above a stable keyed table with one memoized consumer
+ * branch. Counters distinguish the required deep consumer path from unrelated
+ * row owners; the host oracle proves the committed context value independently.
+ */
+export async function runContextChange(
+	count: number,
+	depth: number,
+	nextTone = 'dark',
+	profileOwners = false,
+): Promise<ContextChangeResult> {
+	if (!Number.isSafeInteger(count) || count < 2) {
+		throw new TypeError('Context row count must be a safe integer >= 2.');
+	}
+	if (!Number.isSafeInteger(depth) || depth < 0) {
+		throw new TypeError('Context depth must be a non-negative safe integer.');
+	}
+	const harness = createHarness();
+	let plainRenders = 0;
+	let layerRenders = 0;
+	let leafRenders = 0;
+	let setTone: ((tone: string) => void) | null = null;
+	const leafValues: string[] = [];
+	const stable = {
+		rows: makeRows(count),
+		consumer: Math.ceil(count / 2),
+		depth,
+		onPlainRender: () => {
+			plainRenders++;
+		},
+		onLayerRender: () => {
+			layerRenders++;
+		},
+		onLeafRender: (tone: string) => {
+			leafRenders++;
+			leafValues.push(tone);
+		},
+		onToneSetter: (setter: (tone: string) => void) => {
+			setTone = setter;
+		},
+	} satisfies Omit<ContextBenchAppProps, 'initialTone'>;
+	await harness.root.render(ContextBenchApp, { ...stable, initialTone: 'light' });
+	await settle(harness);
+	if (setTone === null) {
+		await harness.dispose();
+		throw new Error('Context benchmark did not publish its state setter.');
+	}
+	const before = {
+		plainRenders,
+		layerRenders,
+		leafRenders,
+		transport: transportMetrics(harness),
+	};
+	leafValues.length = 0;
+	const profiler = profileOwners
+		? (
+				globalThis as {
+					__OCTANE_PROFILER__?: {
+						clear(): void;
+						start(options: { bufferSize: number }): void;
+						stop(): void;
+						getEvents(): readonly unknown[];
+						summary(): readonly {
+							readonly component: string;
+							readonly attempts: number;
+							readonly bails: number;
+							readonly totalSelfTime: number;
+						}[];
+					};
+				}
+			).__OCTANE_PROFILER__
+		: undefined;
+	if (profileOwners && profiler === undefined) {
+		await harness.dispose();
+		throw new Error('Context owner profiling requires an Octane profile build.');
+	}
+	profiler?.clear();
+	profiler?.start({ bufferSize: count * 2 + depth * 2 + 100 });
+	const started = performance.now();
+	setTone(nextTone);
+	await settle(harness);
+	const durationMs = performance.now() - started;
+	profiler?.stop();
+	const after = transportMetrics(harness);
+	const result: ContextChangeResult = {
+		rows: count,
+		depth,
+		nextTone,
+		durationMs,
+		plainRenders: plainRenders - before.plainRenders,
+		layerRenders: layerRenders - before.layerRenders,
+		leafRenders: leafRenders - before.leafRenders,
+		leafValues,
+		commits: after.acknowledgements - before.transport.acknowledgements,
+		commands: after.commands - before.transport.commands,
+		leafClasses: harness.papi.classesForId('context-leaf'),
+		checksum: harness.papi.reachableChecksum(),
+		diagnostics: harness.diagnostics.map((error) => error.message),
+		...(profiler === undefined
+			? null
+			: {
+					ownerProfile: {
+						events: profiler.getEvents().length,
+						summary: profiler.summary().map((entry) => ({
+							component: entry.component,
+							attempts: entry.attempts,
+							bails: entry.bails,
+							totalSelfTime: entry.totalSelfTime,
+						})),
+					},
+				}),
+	};
+	await harness.dispose();
+	return result;
 }
 
 /**
