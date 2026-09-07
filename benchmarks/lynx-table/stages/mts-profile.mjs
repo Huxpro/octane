@@ -331,6 +331,9 @@ async function profileSample(browser, cell) {
 								programManifestRuns: profile.firstTreeProgramManifestRuns ?? 0,
 								programManifestMatches: profile.firstTreeProgramManifestMatches ?? 0,
 								programNodeComparisons: profile.firstTreeProgramNodeComparisons ?? null,
+								programOwnershipRuns: profile.firstTreeProgramOwnershipRuns ?? 0,
+								programOwnershipHosts: profile.firstTreeProgramOwnershipHosts ?? 0,
+								programOwnershipFallback: profile.firstTreeProgramOwnershipFallback ?? null,
 								waitedMs,
 								timedOut: !settled,
 							};
@@ -624,6 +627,15 @@ for (const id of cellIds) {
 				programNodeComparisons: facts.every((one) => Number.isFinite(one.programNodeComparisons))
 					? stats(facts.map((one) => one.programNodeComparisons))
 					: null,
+				programOwnershipRuns: stats(facts.map((one) => one.programOwnershipRuns)),
+				programOwnershipHosts: stats(facts.map((one) => one.programOwnershipHosts)),
+				programOwnershipFallbacks: [
+					...new Set(
+						facts
+							.map((one) => one.programOwnershipFallback)
+							.filter((reason) => typeof reason === 'string'),
+					),
+				],
 				programCompactions: facts.every((one) => Number.isFinite(one.programCompactions))
 					? stats(facts.map((one) => one.programCompactions))
 					: null,
