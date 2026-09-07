@@ -423,6 +423,9 @@ describe.sequential('Lynx first-tree lifecycle marker', () => {
 		expect(profile.firstTreeProgramNodeComparisons).toBe(1);
 		expect(profile.firstTreeProgramOwnershipRuns).toBe(1);
 		expect(profile.firstTreeProgramOwnershipHosts).toBe(DENSE_PROGRAM_ROWS.length);
+		expect(profile.firstTreeProgramOwnershipLiveRuns).toBe(1);
+		expect(profile.firstTreeProgramOwnershipLiveHosts).toBe(DENSE_PROGRAM_ROWS.length);
+		expect(profile.firstTreeProgramOwnershipPromotedHosts).toBe(0);
 		expect(profile.firstTreeProgramOwnershipFallback).toBeNull();
 
 		const firstRow = dom.window.document.getElementById(DENSE_PROGRAM_ROWS[0]!.id);
@@ -437,6 +440,9 @@ describe.sequential('Lynx first-tree lifecycle marker', () => {
 			2,
 		);
 		expect(dom.window.document.getElementById('updated-row')).toBe(firstRow);
+		expect(profile.firstTreeProgramOwnershipLiveRuns).toBe(1);
+		expect(profile.firstTreeProgramOwnershipLiveHosts).toBe(DENSE_PROGRAM_ROWS.length - 1);
+		expect(profile.firstTreeProgramOwnershipPromotedHosts).toBe(1);
 
 		const clearCommands: Record<string, unknown>[] = [];
 		for (let index = 0; index < DENSE_PROGRAM_ROWS.length; index++) {
@@ -448,6 +454,8 @@ describe.sequential('Lynx first-tree lifecycle marker', () => {
 		clearCommands.push({ op: 'destroy', id: 1 });
 		commit({ renderer: LYNX_TRANSPORT_RENDERER, version: 3, commands: clearCommands }, false, 3);
 		expect(dom.window.document.body.firstElementChild?.children).toHaveLength(0);
+		expect(profile.firstTreeProgramOwnershipLiveRuns).toBe(0);
+		expect(profile.firstTreeProgramOwnershipLiveHosts).toBe(0);
 		expect(main.diagnostics()).toEqual([]);
 	});
 

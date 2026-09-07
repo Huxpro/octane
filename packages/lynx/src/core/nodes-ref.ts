@@ -1,3 +1,5 @@
+declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
+
 import type { UniversalSerializableValue } from 'octane/universal/native';
 import { hasOwnSymbolFields } from './own-symbols.js';
 
@@ -194,19 +196,31 @@ function normalizedError(value: unknown, fallback: string): Error {
 
 function positiveSafeInteger(value: unknown, label: string): asserts value is number {
 	if (!Number.isSafeInteger(value) || (value as number) <= 0) {
-		throw new TypeError(`Octane Lynx NodesRef ${label} must be a positive safe integer.`);
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx NodesRef ${label} must be a positive safe integer.`
+				: 'Octane Lynx OL111',
+		);
 	}
 }
 
 function nonNegativeSafeInteger(value: unknown, label: string): asserts value is number {
 	if (!Number.isSafeInteger(value) || (value as number) < 0) {
-		throw new TypeError(`Octane Lynx NodesRef ${label} must be a non-negative safe integer.`);
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx NodesRef ${label} must be a non-negative safe integer.`
+				: 'Octane Lynx OL112',
+		);
 	}
 }
 
 function nonEmptyString(value: unknown, label: string): asserts value is string {
 	if (typeof value !== 'string' || value.length === 0) {
-		throw new TypeError(`Octane Lynx NodesRef ${label} must be a non-empty string.`);
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx NodesRef ${label} must be a non-empty string.`
+				: 'Octane Lynx OL113',
+		);
 	}
 }
 
@@ -226,13 +240,25 @@ function cloneSerializable(
 		return value;
 	}
 	if (typeof value !== 'object') {
-		throw new TypeError(`Octane Lynx NodesRef ${label} contains a non-serializable value.`);
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx NodesRef ${label} contains a non-serializable value.`
+				: 'Octane Lynx OL114',
+		);
 	}
 	if (hasOwnSymbolFields(value)) {
-		throw new TypeError(`Octane Lynx NodesRef ${label} contains symbol fields.`);
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx NodesRef ${label} contains symbol fields.`
+				: 'Octane Lynx OL115',
+		);
 	}
 	if (seen.has(value)) {
-		throw new TypeError(`Octane Lynx NodesRef ${label} contains a cycle.`);
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx NodesRef ${label} contains a cycle.`
+				: 'Octane Lynx OL116',
+		);
 	}
 	seen.add(value);
 	try {
@@ -243,7 +269,11 @@ function cloneSerializable(
 		}
 		const prototype = Object.getPrototypeOf(value);
 		if (prototype !== Object.prototype && prototype !== null) {
-			throw new TypeError(`Octane Lynx NodesRef ${label} requires arrays or plain objects.`);
+			throw new TypeError(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx NodesRef ${label} requires arrays or plain objects.`
+					: 'Octane Lynx OL117',
+			);
 		}
 		const output: Record<string, UniversalSerializableValue> = {};
 		for (const [name, entry] of Object.entries(value)) {
@@ -266,7 +296,11 @@ function cloneRecord(
 ): Readonly<Record<string, UniversalSerializableValue>> {
 	const clone = cloneSerializable(value, label);
 	if (clone === null || typeof clone !== 'object' || Array.isArray(clone)) {
-		throw new TypeError(`Octane Lynx NodesRef ${label} must be a plain object.`);
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx NodesRef ${label} must be a plain object.`
+				: 'Octane Lynx OL118',
+		);
 	}
 	return clone as Readonly<Record<string, UniversalSerializableValue>>;
 }
@@ -277,7 +311,11 @@ function nativeStatus(
 ): { code: number; data: UniversalSerializableValue } {
 	const status = cloneRecord(value, label);
 	if (!Number.isSafeInteger(status.code)) {
-		throw new TypeError(`Octane Lynx NodesRef ${label}.code must be a safe integer.`);
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx NodesRef ${label}.code must be a safe integer.`
+				: 'Octane Lynx OL119',
+		);
 	}
 	return { code: status.code as number, data: status.data };
 }
@@ -287,11 +325,18 @@ function nativeFailure(value: unknown, label: string): Error {
 	try {
 		status = nativeStatus(value, label);
 	} catch (error) {
-		return normalizedError(error, `Octane Lynx NodesRef received an invalid ${label}.`);
+		return normalizedError(
+			error,
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx NodesRef received an invalid ${label}.`
+				: 'Octane Lynx OL120',
+		);
 	}
 	return new LynxNodesRefError(
 		'native',
-		`Octane Lynx NodesRef ${label} failed with native code ${status.code}.`,
+		typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+			? `Octane Lynx NodesRef ${label} failed with native code ${status.code}.`
+			: 'Octane Lynx OL121',
 		status.code,
 		status.data,
 	);
@@ -303,13 +348,25 @@ function validateFieldsOptions(
 	const fields = cloneRecord(value, 'fields options');
 	for (const [name, enabled] of Object.entries(fields)) {
 		if (!FIELD_NAMES.has(name)) {
-			throw new TypeError(`Octane Lynx NodesRef fields options contain unknown field ${name}.`);
+			throw new TypeError(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx NodesRef fields options contain unknown field ${name}.`
+					: 'Octane Lynx OL122',
+			);
 		}
 		if (typeof enabled !== 'boolean') {
-			throw new TypeError(`Octane Lynx NodesRef fields option ${name} must be boolean.`);
+			throw new TypeError(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx NodesRef fields option ${name} must be boolean.`
+					: 'Octane Lynx OL123',
+			);
 		}
 		if (name === 'query' && enabled) {
-			throw new TypeError('Octane Lynx NodesRef fields cannot return a live native SelectorQuery.');
+			throw new TypeError(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx NodesRef fields cannot return a live native SelectorQuery.'
+					: 'Octane Lynx OL124',
+			);
 		}
 	}
 	return fields as Readonly<Record<string, boolean>>;
@@ -325,7 +382,11 @@ function validateMeasureOptions(
 			name !== 'androidEnableTransformProps' &&
 			name !== 'iOSEnableAnimationProps'
 		) {
-			throw new TypeError(`Octane Lynx NodesRef measure options contain unknown field ${name}.`);
+			throw new TypeError(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx NodesRef measure options contain unknown field ${name}.`
+					: 'Octane Lynx OL125',
+			);
 		}
 	}
 	if (
@@ -333,44 +394,70 @@ function validateMeasureOptions(
 		options.relativeTo !== null &&
 		typeof options.relativeTo !== 'string'
 	) {
-		throw new TypeError('Octane Lynx NodesRef measure relativeTo must be a string or null.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx NodesRef measure relativeTo must be a string or null.'
+				: 'Octane Lynx OL126',
+		);
 	}
 	if (
 		options.androidEnableTransformProps !== undefined &&
 		typeof options.androidEnableTransformProps !== 'boolean'
 	) {
 		throw new TypeError(
-			'Octane Lynx NodesRef measure androidEnableTransformProps must be boolean.',
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx NodesRef measure androidEnableTransformProps must be boolean.'
+				: 'Octane Lynx OL127',
 		);
 	}
 	if (
 		options.iOSEnableAnimationProps !== undefined &&
 		typeof options.iOSEnableAnimationProps !== 'boolean'
 	) {
-		throw new TypeError('Octane Lynx NodesRef measure iOSEnableAnimationProps must be boolean.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx NodesRef measure iOSEnableAnimationProps must be boolean.'
+				: 'Octane Lynx OL128',
+		);
 	}
 	return options;
 }
 
 function validateMeasureResult(value: UniversalSerializableValue): LynxMeasureResult {
 	if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-		throw new TypeError('Octane Lynx NodesRef measure returned a non-object result.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx NodesRef measure returned a non-object result.'
+				: 'Octane Lynx OL129',
+		);
 	}
 	const result = value as Readonly<Record<string, UniversalSerializableValue>>;
 	if (typeof result.id !== 'string') {
-		throw new TypeError('Octane Lynx NodesRef measure result id must be a string.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx NodesRef measure result id must be a string.'
+				: 'Octane Lynx OL130',
+		);
 	}
 	if (
 		result.dataset === null ||
 		typeof result.dataset !== 'object' ||
 		Array.isArray(result.dataset)
 	) {
-		throw new TypeError('Octane Lynx NodesRef measure result dataset must be an object.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx NodesRef measure result dataset must be an object.'
+				: 'Octane Lynx OL131',
+		);
 	}
 	for (const name of ['left', 'right', 'top', 'bottom', 'width', 'height'] as const) {
 		const coordinate = result[name];
 		if (typeof coordinate !== 'number' || !Number.isFinite(coordinate)) {
-			throw new TypeError(`Octane Lynx NodesRef measure result ${name} must be finite.`);
+			throw new TypeError(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx NodesRef measure result ${name} must be finite.`
+					: 'Octane Lynx OL132',
+			);
 		}
 	}
 	return result as unknown as LynxMeasureResult;
@@ -385,31 +472,53 @@ function validatePathResult(value: unknown): LynxNodesRefPathResult | null {
 	if (value === null) return null;
 	const result = cloneRecord(value, 'path result');
 	if (!Array.isArray(result.data)) {
-		throw new TypeError('Octane Lynx NodesRef path result data must be an array.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx NodesRef path result data must be an array.'
+				: 'Octane Lynx OL133',
+		);
 	}
 	for (let index = 0; index < result.data.length; index++) {
 		const entry = result.data[index];
 		if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
-			throw new TypeError(`Octane Lynx NodesRef path result data[${index}] must be an object.`);
+			throw new TypeError(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx NodesRef path result data[${index}] must be an object.`
+					: 'Octane Lynx OL134',
+			);
 		}
 		const record = entry as Readonly<Record<string, UniversalSerializableValue>>;
 		if (typeof record.tag !== 'string' || typeof record.id !== 'string') {
 			throw new TypeError(
-				`Octane Lynx NodesRef path result data[${index}] requires string tag and id.`,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx NodesRef path result data[${index}] requires string tag and id.`
+					: 'Octane Lynx OL135',
 			);
 		}
 		if (!Array.isArray(record.class) || record.class.some((name) => typeof name !== 'string')) {
-			throw new TypeError(`Octane Lynx NodesRef path result data[${index}].class is invalid.`);
+			throw new TypeError(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx NodesRef path result data[${index}].class is invalid.`
+					: 'Octane Lynx OL136',
+			);
 		}
 		if (
 			record.dataSet === null ||
 			typeof record.dataSet !== 'object' ||
 			Array.isArray(record.dataSet)
 		) {
-			throw new TypeError(`Octane Lynx NodesRef path result data[${index}].dataSet is invalid.`);
+			throw new TypeError(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx NodesRef path result data[${index}].dataSet is invalid.`
+					: 'Octane Lynx OL137',
+			);
 		}
 		if (!Number.isSafeInteger(record.index) || (record.index as number) < 0) {
-			throw new TypeError(`Octane Lynx NodesRef path result data[${index}].index is invalid.`);
+			throw new TypeError(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx NodesRef path result data[${index}].index is invalid.`
+					: 'Octane Lynx OL138',
+			);
 		}
 	}
 	return result as unknown as LynxNodesRefPathResult;
@@ -417,11 +526,19 @@ function validatePathResult(value: unknown): LynxNodesRefPathResult | null {
 
 export function createLynxNodesRef(options: CreateLynxNodesRefOptions): LynxNodesRefBinding {
 	if (options === null || typeof options !== 'object') {
-		throw new TypeError('Octane Lynx NodesRef options must be an object.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx NodesRef options must be an object.'
+				: 'Octane Lynx OL139',
+		);
 	}
 	const identity = options.identity;
 	if (identity === null || typeof identity !== 'object') {
-		throw new TypeError('Octane Lynx NodesRef identity must be an object.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx NodesRef identity must be an object.'
+				: 'Octane Lynx OL140',
+		);
 	}
 	positiveSafeInteger(identity.root, 'identity.root');
 	positiveSafeInteger(identity.id, 'identity.id');
@@ -429,10 +546,18 @@ export function createLynxNodesRef(options: CreateLynxNodesRefOptions): LynxNode
 	nonEmptyString(identity.type, 'identity.type');
 	nonEmptyString(identity.selector, 'identity.selector');
 	if (typeof options.createSelectorQuery !== 'function') {
-		throw new TypeError('Octane Lynx NodesRef createSelectorQuery must be a function.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx NodesRef createSelectorQuery must be a function.'
+				: 'Octane Lynx OL141',
+		);
 	}
 	if (typeof options.readState !== 'function') {
-		throw new TypeError('Octane Lynx NodesRef readState must be a function.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx NodesRef readState must be a function.'
+				: 'Octane Lynx OL142',
+		);
 	}
 
 	const expected = Object.freeze({ ...identity });
@@ -444,7 +569,9 @@ export function createLynxNodesRef(options: CreateLynxNodesRefOptions): LynxNode
 	const inactiveError = () =>
 		new LynxNodesRefError(
 			'inactive',
-			`Octane Lynx NodesRef ${expected.id}:${expected.generation} is inactive.`,
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx NodesRef ${expected.id}:${expected.generation} is inactive.`
+				: 'Octane Lynx OL143',
 		);
 
 	const currentState = (attachmentEpoch: number | null = null): LynxNodesRefState => {
@@ -461,13 +588,17 @@ export function createLynxNodesRef(options: CreateLynxNodesRefOptions): LynxNode
 		) {
 			throw new LynxNodesRefError(
 				'stale',
-				`Octane Lynx NodesRef ${expected.id}:${expected.generation} no longer owns its selector.`,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx NodesRef ${expected.id}:${expected.generation} no longer owns its selector.`
+					: 'Octane Lynx OL144',
 			);
 		}
 		if (attachmentEpoch !== null && state.attachmentEpoch !== attachmentEpoch) {
 			throw new LynxNodesRefError(
 				'stale',
-				`Octane Lynx NodesRef ${expected.id}:${expected.generation} changed physical attachment while an operation was pending.`,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx NodesRef ${expected.id}:${expected.generation} changed physical attachment while an operation was pending.`
+					: 'Octane Lynx OL145',
 			);
 		}
 		return state;
@@ -476,11 +607,19 @@ export function createLynxNodesRef(options: CreateLynxNodesRefOptions): LynxNode
 	const select = (selector: string): LynxNativeNodesRef => {
 		const query = createSelectorQuery();
 		if (query === null || typeof query !== 'object' || typeof query.select !== 'function') {
-			throw new TypeError('Octane Lynx createSelectorQuery() returned an invalid query.');
+			throw new TypeError(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx createSelectorQuery() returned an invalid query.'
+					: 'Octane Lynx OL146',
+			);
 		}
 		const nativeRef = query.select(selector);
 		if (nativeRef === null || typeof nativeRef !== 'object') {
-			throw new TypeError('Octane Lynx SelectorQuery.select() returned an invalid NodesRef.');
+			throw new TypeError(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx SelectorQuery.select() returned an invalid NodesRef.'
+					: 'Octane Lynx OL147',
+			);
 		}
 		return nativeRef;
 	};
@@ -517,7 +656,12 @@ export function createLynxNodesRef(options: CreateLynxNodesRefOptions): LynxNode
 				} catch (error) {
 					finish({
 						ok: false,
-						error: normalizedError(error, 'Octane Lynx NodesRef became inactive.'),
+						error: normalizedError(
+							error,
+							typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+								? 'Octane Lynx NodesRef became inactive.'
+								: 'Octane Lynx OL148',
+						),
 					});
 					return;
 				}
@@ -541,7 +685,12 @@ export function createLynxNodesRef(options: CreateLynxNodesRefOptions): LynxNode
 					(error) => publish({ ok: false, error }),
 				);
 			} catch (error) {
-				forcedError = normalizedError(error, 'Octane Lynx NodesRef operation failed.');
+				forcedError = normalizedError(
+					error,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx NodesRef operation failed.'
+						: 'Octane Lynx OL149',
+				);
 			}
 			dispatching = false;
 
@@ -554,7 +703,12 @@ export function createLynxNodesRef(options: CreateLynxNodesRefOptions): LynxNode
 			} catch (error) {
 				finish({
 					ok: false,
-					error: normalizedError(error, 'Octane Lynx NodesRef became inactive.'),
+					error: normalizedError(
+						error,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx NodesRef became inactive.'
+							: 'Octane Lynx OL150',
+					),
 				});
 				return;
 			}
@@ -588,7 +742,11 @@ export function createLynxNodesRef(options: CreateLynxNodesRefOptions): LynxNode
 			return execute<Result>((selector, succeed, fail) => {
 				const nativeRef = select(selector);
 				if (typeof nativeRef.invoke !== 'function') {
-					throw new TypeError('Octane Lynx native NodesRef does not support invoke().');
+					throw new TypeError(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx native NodesRef does not support invoke().'
+							: 'Octane Lynx OL151',
+					);
 				}
 				const task = nativeRef.invoke({
 					method,
@@ -597,7 +755,14 @@ export function createLynxNodesRef(options: CreateLynxNodesRefOptions): LynxNode
 						try {
 							succeed(cloneSerializable(value, 'invoke result') as Result);
 						} catch (error) {
-							fail(normalizedError(error, 'Octane Lynx invoke returned an invalid result.'));
+							fail(
+								normalizedError(
+									error,
+									typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+										? 'Octane Lynx invoke returned an invalid result.'
+										: 'Octane Lynx OL152',
+								),
+							);
 						}
 					},
 					fail(value) {
@@ -605,7 +770,11 @@ export function createLynxNodesRef(options: CreateLynxNodesRefOptions): LynxNode
 					},
 				});
 				if (task === null || typeof task !== 'object' || typeof task.exec !== 'function') {
-					throw new TypeError('Octane Lynx NodesRef.invoke() returned an invalid query task.');
+					throw new TypeError(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx NodesRef.invoke() returned an invalid query task.'
+							: 'Octane Lynx OL153',
+					);
 				}
 				task.exec();
 			});
@@ -631,7 +800,11 @@ export function createLynxNodesRef(options: CreateLynxNodesRefOptions): LynxNode
 			return execute<LynxNodesRefFieldsResult>((selector, succeed, fail) => {
 				const nativeRef = select(selector);
 				if (typeof nativeRef.fields !== 'function') {
-					throw new TypeError('Octane Lynx native NodesRef does not support fields().');
+					throw new TypeError(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx native NodesRef does not support fields().'
+							: 'Octane Lynx OL154',
+					);
 				}
 				const task = nativeRef.fields(fields, (value, rawStatus) => {
 					try {
@@ -640,7 +813,9 @@ export function createLynxNodesRef(options: CreateLynxNodesRefOptions): LynxNode
 							fail(
 								new LynxNodesRefError(
 									'native',
-									`Octane Lynx NodesRef fields failed with native code ${status.code}.`,
+									typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+										? `Octane Lynx NodesRef fields failed with native code ${status.code}.`
+										: 'Octane Lynx OL155',
 									status.code,
 									status.data,
 								),
@@ -649,11 +824,22 @@ export function createLynxNodesRef(options: CreateLynxNodesRefOptions): LynxNode
 						}
 						succeed(validateFieldsResult(value));
 					} catch (error) {
-						fail(normalizedError(error, 'Octane Lynx fields returned an invalid result.'));
+						fail(
+							normalizedError(
+								error,
+								typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+									? 'Octane Lynx fields returned an invalid result.'
+									: 'Octane Lynx OL156',
+							),
+						);
 					}
 				});
 				if (task === null || typeof task !== 'object' || typeof task.exec !== 'function') {
-					throw new TypeError('Octane Lynx NodesRef.fields() returned an invalid query task.');
+					throw new TypeError(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx NodesRef.fields() returned an invalid query task.'
+							: 'Octane Lynx OL157',
+					);
 				}
 				task.exec();
 			});
@@ -662,7 +848,11 @@ export function createLynxNodesRef(options: CreateLynxNodesRefOptions): LynxNode
 			return execute<LynxNodesRefPathResult | null>((selector, succeed, fail) => {
 				const nativeRef = select(selector);
 				if (typeof nativeRef.path !== 'function') {
-					throw new TypeError('Octane Lynx native NodesRef does not support path().');
+					throw new TypeError(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx native NodesRef does not support path().'
+							: 'Octane Lynx OL158',
+					);
 				}
 				const task = nativeRef.path((value, rawStatus) => {
 					try {
@@ -671,7 +861,9 @@ export function createLynxNodesRef(options: CreateLynxNodesRefOptions): LynxNode
 							fail(
 								new LynxNodesRefError(
 									'native',
-									`Octane Lynx NodesRef path failed with native code ${status.code}.`,
+									typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+										? `Octane Lynx NodesRef path failed with native code ${status.code}.`
+										: 'Octane Lynx OL159',
 									status.code,
 									status.data,
 								),
@@ -680,11 +872,22 @@ export function createLynxNodesRef(options: CreateLynxNodesRefOptions): LynxNode
 						}
 						succeed(validatePathResult(value));
 					} catch (error) {
-						fail(normalizedError(error, 'Octane Lynx path returned an invalid result.'));
+						fail(
+							normalizedError(
+								error,
+								typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+									? 'Octane Lynx path returned an invalid result.'
+									: 'Octane Lynx OL160',
+							),
+						);
 					}
 				});
 				if (task === null || typeof task !== 'object' || typeof task.exec !== 'function') {
-					throw new TypeError('Octane Lynx NodesRef.path() returned an invalid query task.');
+					throw new TypeError(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx NodesRef.path() returned an invalid query task.'
+							: 'Octane Lynx OL161',
+					);
 				}
 				task.exec();
 			});
@@ -700,8 +903,12 @@ export function createLynxNodesRef(options: CreateLynxNodesRefOptions): LynxNode
 				) {
 					throw new TypeError(
 						Object.prototype.hasOwnProperty.call(clonedProps, 'style')
-							? 'Octane Lynx NodesRef setNativeProps cannot set the whole style prop.'
-							: 'Octane Lynx NodesRef setNativeProps cannot replace its reserved ref selector.',
+							? typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+								? 'Octane Lynx NodesRef setNativeProps cannot set the whole style prop.'
+								: 'Octane Lynx OL162'
+							: typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+								? 'Octane Lynx NodesRef setNativeProps cannot replace its reserved ref selector.'
+								: 'Octane Lynx OL163',
 					);
 				}
 			} catch (error) {
@@ -710,12 +917,18 @@ export function createLynxNodesRef(options: CreateLynxNodesRefOptions): LynxNode
 			return execute<void>((selector, succeed) => {
 				const nativeRef = select(selector);
 				if (typeof nativeRef.setNativeProps !== 'function') {
-					throw new TypeError('Octane Lynx native NodesRef does not support setNativeProps().');
+					throw new TypeError(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx native NodesRef does not support setNativeProps().'
+							: 'Octane Lynx OL164',
+					);
 				}
 				const task = nativeRef.setNativeProps(clonedProps);
 				if (task === null || typeof task !== 'object' || typeof task.exec !== 'function') {
 					throw new TypeError(
-						'Octane Lynx NodesRef.setNativeProps() returned an invalid query task.',
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx NodesRef.setNativeProps() returned an invalid query task.'
+							: 'Octane Lynx OL165',
 					);
 				}
 				task.exec();
@@ -735,7 +948,12 @@ export function createLynxNodesRef(options: CreateLynxNodesRefOptions): LynxNode
 			invalidated =
 				reason === undefined
 					? inactiveError()
-					: normalizedError(reason, 'Octane Lynx NodesRef was invalidated.');
+					: normalizedError(
+							reason,
+							typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+								? 'Octane Lynx NodesRef was invalidated.'
+								: 'Octane Lynx OL166',
+						);
 			for (const operation of [...pending]) operation.reject(invalidated);
 		},
 	};

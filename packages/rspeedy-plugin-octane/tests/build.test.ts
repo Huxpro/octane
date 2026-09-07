@@ -301,6 +301,10 @@ describe('@octanejs/rspeedy-plugin native production entries', () => {
 
 				const output = readJavaScript(outputRoot);
 				if (thread === 'background') expect(output).toContain('octane-phase1-es2017');
+				expect(output).toContain('Octane Lynx OL');
+				expect(output).not.toContain(
+					'Octane Lynx transport received a payload nesting deeper than 512 levels.',
+				);
 				expect(output).not.toMatch(/\?\.|\?\?/);
 				expect(withoutKnownDiagnosticText(output)).not.toMatch(
 					/\b(?:document|window|HTMLElement|MutationObserver)\b/,

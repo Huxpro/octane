@@ -18,7 +18,26 @@ import './app.css';
 // is what the derived cell is read against.
 declare const __BENCH_CORE__: string;
 declare const __BENCH_BLOCK_MODE__: string;
+declare const __OCTANE_LYNX_PROFILE__: boolean;
 
-void root.render(
-	__BENCH_CORE__ === 'block' && __BENCH_BLOCK_MODE__ !== 'derived' ? blockApp(App) : App,
-);
+if (__OCTANE_LYNX_PROFILE__) {
+	const rendered = root.render(
+		__BENCH_CORE__ === 'block' && __BENCH_BLOCK_MODE__ !== 'derived' ? blockApp(App) : App,
+	);
+	const globals = globalThis as typeof globalThis & {
+		__OCTANE_BENCH_UNMOUNT__?: () => Promise<void>;
+	};
+	globals.__OCTANE_BENCH_UNMOUNT__ = async () => {
+		await rendered;
+		await root.unmount();
+		delete globals.__OCTANE_BENCH_UNMOUNT__;
+	};
+	void rendered;
+	// Keep the profile-disabled branch source-identical to the shipping entry.
+	// `instrument-source.mjs` already gates that define fold byte-for-byte; this
+	// branch extends the same contract to the lifecycle hook above.
+} else {
+	void root.render(
+		__BENCH_CORE__ === 'block' && __BENCH_BLOCK_MODE__ !== 'derived' ? blockApp(App) : App,
+	);
+}

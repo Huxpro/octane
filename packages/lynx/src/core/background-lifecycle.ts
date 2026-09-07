@@ -1,3 +1,5 @@
+declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
+
 import type { Lynx } from '../platform.js';
 import {
 	applyLynxBackgroundLifecycleData,
@@ -108,7 +110,13 @@ function detach(state: BackgroundLifecycleState, destroyed = false): void {
 	try {
 		state.context.removeEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, state.receive);
 	} catch (error) {
-		report(state, error, 'Octane Lynx could not detach the background lifecycle receiver.');
+		report(
+			state,
+			error,
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx could not detach the background lifecycle receiver.'
+				: 'Octane Lynx OL001',
+		);
 	} finally {
 		state.diagnostics.clear();
 	}
@@ -123,7 +131,13 @@ function drain(state: BackgroundLifecycleState): void {
 			try {
 				applyLynxBackgroundLifecycleData(state.runtime, message);
 			} catch (error) {
-				report(state, error, 'Octane Lynx could not apply background lifecycle data.');
+				report(
+					state,
+					error,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx could not apply background lifecycle data.'
+						: 'Octane Lynx OL002',
+				);
 			}
 		}
 	} finally {
@@ -143,9 +157,13 @@ function enqueue(state: BackgroundLifecycleState, message: LynxDataLifecycleMess
 			report(
 				state,
 				new Error(
-					`Octane Lynx background lifecycle exceeded ${MAX_QUEUED_LIFECYCLE_MESSAGES} queued messages and was compacted to current state.`,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx background lifecycle exceeded ${MAX_QUEUED_LIFECYCLE_MESSAGES} queued messages and was compacted to current state.`
+						: 'Octane Lynx OL003',
 				),
-				'Octane Lynx background lifecycle queue overflowed.',
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx background lifecycle queue overflowed.'
+					: 'Octane Lynx OL004',
 			);
 		}
 		return;
@@ -205,7 +223,9 @@ export function prepareLynxBackgroundLifecycleReceiver(
 	if (existing !== undefined && existing.active) {
 		if (existing.context !== context) {
 			throw new Error(
-				'Octane Lynx background lifecycle is already installed for a different ContextProxy.',
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx background lifecycle is already installed for a different ContextProxy.'
+					: 'Octane Lynx OL005',
 			);
 		}
 		if (subscriber !== null) existing.diagnostics.add(subscriber);
@@ -219,7 +239,9 @@ export function prepareLynxBackgroundLifecycleReceiver(
 		typeof context.removeEventListener !== 'function'
 	) {
 		throw new TypeError(
-			'Octane Lynx background lifecycle requires ContextProxy addEventListener/removeEventListener.',
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx background lifecycle requires ContextProxy addEventListener/removeEventListener.'
+				: 'Octane Lynx OL006',
 		);
 	}
 
@@ -249,7 +271,13 @@ export function prepareLynxBackgroundLifecycleReceiver(
 		try {
 			message = validateLynxBackgroundInboundMessage(data);
 		} catch (error) {
-			report(state, error, 'Octane Lynx received malformed background lifecycle data.');
+			report(
+				state,
+				error,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx received malformed background lifecycle data.'
+					: 'Octane Lynx OL007',
+			);
 			return;
 		}
 		if (message.type === 'page-destroy') {
@@ -287,7 +315,9 @@ export function prepareLynxBackgroundLifecycleReceiver(
 			report(
 				state,
 				cleanupError,
-				'Octane Lynx could not roll back a failed background lifecycle registration.',
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx could not roll back a failed background lifecycle registration.'
+					: 'Octane Lynx OL008',
 			);
 		}
 		state.diagnostics.clear();

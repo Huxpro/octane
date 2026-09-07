@@ -1,3 +1,5 @@
+declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
+
 import type {
 	UniversalEventPriority,
 	UniversalHostProgramAddress,
@@ -145,7 +147,11 @@ export class LynxFirstTreeMismatchError extends Error {
 	readonly plan: string | null;
 
 	constructor(path: string, message: string, plan: string | null = null) {
-		super(`Octane Lynx first-screen mismatch at ${path}: ${message}`);
+		super(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx first-screen mismatch at ${path}: ${message}`
+				: 'Octane Lynx OL096',
+		);
 		this.name = 'LynxFirstTreeMismatchError';
 		this.path = path;
 		this.plan = plan;
@@ -380,7 +386,11 @@ export function createLynxFirstTree<Node extends LynxElementRef>(
 			if (state.snapshot !== null) return state.snapshot;
 			const build = state.describe;
 			if (build === null) {
-				throw new Error('Octane Lynx first tree was released before it was described.');
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx first tree was released before it was described.'
+						: 'Octane Lynx OL097',
+				);
 			}
 			const snapshot = build();
 			state.snapshot = snapshot;
@@ -861,7 +871,11 @@ export function releaseLynxFirstTree(firstTree: LynxFirstTree): void {
 	const state = firstTree[LYNX_FIRST_TREE_STATE];
 	if (state.status === 'released') return;
 	if (state.status === 'available') {
-		throw new Error('Octane Lynx first tree must be adopted or disposed before release.');
+		throw new Error(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx first tree must be adopted or disposed before release.'
+				: 'Octane Lynx OL098',
+		);
 	}
 	state.owner = null;
 	state.eventsByToken?.clear();

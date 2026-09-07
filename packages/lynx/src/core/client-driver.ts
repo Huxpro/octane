@@ -1,3 +1,5 @@
+declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
+
 import type {
 	UniversalHostAttachmentBatch,
 	UniversalHostBatch,
@@ -139,7 +141,11 @@ function restoreHandleState(
 function nextAttachmentEpoch(entry: LynxHandleEntry, attached: boolean): number {
 	if (entry.attached === attached) return entry.attachmentEpoch;
 	if (entry.attachmentEpoch === Number.MAX_SAFE_INTEGER) {
-		throw new Error('Octane Lynx physical attachment epoch is exhausted.');
+		throw new Error(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx physical attachment epoch is exhausted.'
+				: 'Octane Lynx OL030',
+		);
 	}
 	return entry.attachmentEpoch + 1;
 }
@@ -415,11 +421,17 @@ export function createLynxClientContainer(
 		options.createSelectorQuery ??
 		(() => {
 			throw new Error(
-				'Octane Lynx NodesRef requires the public background-thread lynx.createSelectorQuery() API.',
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx NodesRef requires the public background-thread lynx.createSelectorQuery() API.'
+					: 'Octane Lynx OL031',
 			);
 		});
 	if (typeof createSelectorQuery !== 'function') {
-		throw new TypeError('Octane Lynx createSelectorQuery must be a function when provided.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx createSelectorQuery must be a function when provided.'
+				: 'Octane Lynx OL032',
+		);
 	}
 	const container: LynxClientContainer = Object.freeze({
 		renderer: LYNX_TRANSPORT_RENDERER,
@@ -623,7 +635,9 @@ export function prepareLynxClientWorkletBatch(
 				const wire = producedRunProgram(command) as UniversalHostTemplateProgram | undefined;
 				if (wire === undefined) {
 					throw new Error(
-						'Octane Lynx cannot stage an addressed run whose program this realm does not hold.',
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx cannot stage an addressed run whose program this realm does not hold.'
+							: 'Octane Lynx OL033',
 					);
 				}
 				const program = templateProgramWorkletSlots(wire);
@@ -646,7 +660,9 @@ export function prepareLynxClientWorkletBatch(
 						: getThreadFunctionDescriptor(value);
 					if (!isLynxMainThreadWorkletDescriptor(descriptor)) {
 						throw new TypeError(
-							`Octane Lynx ${JSON.stringify(binding.name)} requires a compiler-transformed main-thread function.`,
+							typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+								? `Octane Lynx ${JSON.stringify(binding.name)} requires a compiler-transformed main-thread function.`
+								: 'Octane Lynx OL034',
 						);
 					}
 					const bound = worklets.retain(descriptor);
@@ -683,7 +699,9 @@ export function prepareLynxClientWorkletBatch(
 				const descriptor = getThreadFunctionDescriptor(value);
 				if (!isLynxMainThreadWorkletDescriptor(descriptor)) {
 					throw new TypeError(
-						`Octane Lynx ${JSON.stringify(name)} requires a compiler-transformed main-thread function.`,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? `Octane Lynx ${JSON.stringify(name)} requires a compiler-transformed main-thread function.`
+							: 'Octane Lynx OL035',
 					);
 				}
 				const bound = worklets.retain(descriptor as LynxWorkletValue);
@@ -715,7 +733,11 @@ export function prepareLynxClientWorkletBatch(
 function containerState(container: LynxClientContainer): LynxClientContainerState {
 	const state = CONTAINER_STATE.get(container);
 	if (state === undefined) {
-		throw new TypeError('Octane Lynx client driver received a foreign container.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx client driver received a foreign container.'
+				: 'Octane Lynx OL036',
+		);
 	}
 	return state;
 }
@@ -746,7 +768,11 @@ function cloneSnapshot(value: UniversalSerializableValue): UniversalSerializable
 }
 
 function foreignSnapshotIdentity(id: number, name: string): never {
-	throw new Error(`Octane Lynx acknowledgement snapshot has foreign ${name} for handle ${id}.`);
+	throw new Error(
+		typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+			? `Octane Lynx acknowledgement snapshot has foreign ${name} for handle ${id}.`
+			: 'Octane Lynx OL037',
+	);
 }
 
 function validateSnapshotIdentity(
@@ -756,7 +782,9 @@ function validateSnapshotIdentity(
 ): void {
 	if (snapshot === null || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
 		throw new Error(
-			`Octane Lynx acknowledgement snapshot for handle ${delta.id} is not an object.`,
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx acknowledgement snapshot for handle ${delta.id} is not an object.`
+				: 'Octane Lynx OL038',
 		);
 	}
 	// One acknowledged node per accepted host node runs this, so the checks are
@@ -819,13 +847,21 @@ export function prepareLynxCompactHandleDeltas(
 		!Number.isSafeInteger(identity.root) ||
 		identity.root <= 0
 	) {
-		throw new Error('Octane Lynx compact acknowledgement has a foreign transport identity.');
+		throw new Error(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx compact acknowledgement has a foreign transport identity.'
+				: 'Octane Lynx OL039',
+		);
 	}
 	if (
 		state.compactHosts !== null ||
 		(!incremental && (state.handles.size !== 0 || state.generations.size !== 0))
 	) {
-		throw new Error('Octane Lynx compact acknowledgement requires a fresh client container.');
+		throw new Error(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx compact acknowledgement requires a fresh client container.'
+				: 'Octane Lynx OL040',
+		);
 	}
 	if (
 		!Number.isSafeInteger(count) ||
@@ -834,7 +870,11 @@ export function prepareLynxCompactHandleDeltas(
 			? countLynxCompactAcknowledgementHosts(batch, producedRunProgram) !== count
 			: knownHostCount !== count)
 	) {
-		throw new Error('Octane Lynx compact acknowledgement has a mismatched host count or batch.');
+		throw new Error(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx compact acknowledgement has a mismatched host count or batch.'
+				: 'Octane Lynx OL041',
+		);
 	}
 
 	const originalHandles = state.handles;
@@ -856,22 +896,38 @@ export function prepareLynxCompactHandleDeltas(
 			run.firstId <= 0 ||
 			run.firstId > Number.MAX_SAFE_INTEGER - (count - 1)
 		) {
-			throw new Error('Octane Lynx incremental acknowledgement requires one frozen host run.');
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx incremental acknowledgement requires one frozen host run.'
+					: 'Octane Lynx OL042',
+			);
 		}
 		const finalId = run.firstId + (count - 1);
 		for (const [id, handle] of originalHandles) {
 			if (handle.root !== identity.root || (id >= run.firstId && id <= finalId)) {
-				throw new Error('Octane Lynx incremental acknowledgement overlaps an accepted handle.');
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx incremental acknowledgement overlaps an accepted handle.'
+						: 'Octane Lynx OL043',
+				);
 			}
 		}
 		for (const id of originalGenerations.keys()) {
 			if (id >= run.firstId && id <= finalId) {
-				throw new Error('Octane Lynx incremental acknowledgement reuses a retired handle.');
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx incremental acknowledgement reuses a retired handle.'
+						: 'Octane Lynx OL044',
+				);
 			}
 		}
 		for (const [first, last] of state.retiredRanges) {
 			if (!(finalId < first || run.firstId > last)) {
-				throw new Error('Octane Lynx incremental acknowledgement reuses a retired handle.');
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx incremental acknowledgement reuses a retired handle.'
+						: 'Octane Lynx OL045',
+				);
 			}
 		}
 	}
@@ -886,7 +942,11 @@ export function prepareLynxCompactHandleDeltas(
 	const patterns = new WeakMap<UniversalHostTemplateProgram, Uint16Array>();
 	const typeCode = (type: string): number => {
 		if (typeof type !== 'string' || type.length === 0) {
-			throw new Error('Octane Lynx compact acknowledgement contains an invalid host identity.');
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx compact acknowledgement contains an invalid host identity.'
+					: 'Octane Lynx OL046',
+			);
 		}
 		let code = codes.get(type);
 		if (code === undefined) {
@@ -905,7 +965,11 @@ export function prepareLynxCompactHandleDeltas(
 	};
 	const stage = (id: number, type: string): void => {
 		if (!Number.isSafeInteger(id) || id <= 0) {
-			throw new Error('Octane Lynx compact acknowledgement contains an invalid host identity.');
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx compact acknowledgement contains an invalid host identity.'
+					: 'Octane Lynx OL047',
+			);
 		}
 		const code = typeCode(type);
 		if (stagedCount === 0) {
@@ -922,12 +986,20 @@ export function prepareLynxCompactHandleDeltas(
 		}
 		if (sparse !== null) {
 			if (sparse.has(id)) {
-				throw new Error(`Octane Lynx compact acknowledgement repeats handle ${id}.`);
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx compact acknowledgement repeats handle ${id}.`
+						: 'Octane Lynx OL048',
+				);
 			}
 			sparse.set(id, code);
 		} else {
 			if (dense![offset] !== 0) {
-				throw new Error(`Octane Lynx compact acknowledgement repeats handle ${id}.`);
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx compact acknowledgement repeats handle ${id}.`
+						: 'Octane Lynx OL049',
+				);
 			}
 			dense![offset] = code;
 		}
@@ -941,7 +1013,11 @@ export function prepareLynxCompactHandleDeltas(
 			length === 0 ||
 			firstId > Number.MAX_SAFE_INTEGER - (length - 1)
 		) {
-			throw new Error('Octane Lynx compact acknowledgement contains an invalid host identity.');
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx compact acknowledgement contains an invalid host identity.'
+					: 'Octane Lynx OL050',
+			);
 		}
 		let pattern = patterns.get(program);
 		if (pattern === undefined) {
@@ -966,7 +1042,11 @@ export function prepareLynxCompactHandleDeltas(
 		if (sparse === null && offset >= 0 && offset <= dense!.length - length) {
 			for (let index = 0; index < length; index++) {
 				if (dense![offset + index] !== 0) {
-					throw new Error(`Octane Lynx compact acknowledgement repeats handle ${firstId + index}.`);
+					throw new Error(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? `Octane Lynx compact acknowledgement repeats handle ${firstId + index}.`
+							: 'Octane Lynx OL051',
+					);
 				}
 			}
 			dense!.set(pattern, offset);
@@ -991,7 +1071,9 @@ export function prepareLynxCompactHandleDeltas(
 			const wire = producedRunProgram(command) as UniversalHostTemplateProgram | undefined;
 			if (wire === undefined) {
 				throw new Error(
-					'Octane Lynx compact acknowledgement names a program this realm does not hold.',
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx compact acknowledgement names a program this realm does not hold.'
+						: 'Octane Lynx OL052',
 				);
 			}
 			const length = wire.nodes.length;
@@ -1006,7 +1088,11 @@ export function prepareLynxCompactHandleDeltas(
 				!Number.isSafeInteger(span) ||
 				command.firstId > Number.MAX_SAFE_INTEGER - (span - 1)
 			) {
-				throw new Error('Octane Lynx compact acknowledgement contains an invalid host identity.');
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx compact acknowledgement contains an invalid host identity.'
+						: 'Octane Lynx OL053',
+				);
 			}
 			stageProgramRange(command.firstId, wire);
 			if (command.count === 1) continue;
@@ -1020,7 +1106,9 @@ export function prepareLynxCompactHandleDeltas(
 				for (let node = length; node < hosts; node++) {
 					if (dense![offset + node] !== 0) {
 						throw new Error(
-							`Octane Lynx compact acknowledgement repeats handle ${command.firstId + node}.`,
+							typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+								? `Octane Lynx compact acknowledgement repeats handle ${command.firstId + node}.`
+								: 'Octane Lynx OL054',
 						);
 					}
 				}
@@ -1039,7 +1127,11 @@ export function prepareLynxCompactHandleDeltas(
 		}
 	}
 	if (stagedCount !== count) {
-		throw new Error('Octane Lynx compact acknowledgement omitted an accepted host.');
+		throw new Error(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx compact acknowledgement omitted an accepted host.'
+				: 'Octane Lynx OL055',
+		);
 	}
 	const stagedCompactHosts: LynxCompactHostMetadata = {
 		root: identity.root,
@@ -1075,7 +1167,11 @@ export function prepareLynxCompactHandleDeltas(
 				if (handle.facade !== null || handle.binding !== null) {
 					invalidateHandleBinding(
 						handle,
-						new Error(`Octane Lynx handle ${handle.id}:${handle.generation} was rolled back.`),
+						new Error(
+							typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+								? `Octane Lynx handle ${handle.id}:${handle.generation} was rolled back.`
+								: 'Octane Lynx OL056',
+						),
 					);
 				}
 			}
@@ -1099,7 +1195,11 @@ export function prepareLynxHandleDeltas(
 		!Number.isSafeInteger(identity.root) ||
 		identity.root <= 0
 	) {
-		throw new Error('Octane Lynx acknowledgement has a foreign transport identity.');
+		throw new Error(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx acknowledgement has a foreign transport identity.'
+				: 'Octane Lynx OL057',
+		);
 	}
 	const originalHandles = state.handles;
 	const stagedHandles = new Map<number, LynxHandleEntry | null>();
@@ -1139,7 +1239,11 @@ export function prepareLynxHandleDeltas(
 		if (command.op === 'mount-template-run' || command.op === 'mount-program-run') {
 			const wire = producedRunProgram(command) as UniversalHostTemplateProgram | undefined;
 			if (wire === undefined) {
-				throw new Error('Octane Lynx batch names a program this realm does not hold.');
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx batch names a program this realm does not hold.'
+						: 'Octane Lynx OL058',
+				);
 			}
 			// A declared instance is not a host yet, so main creates nothing for it
 			// and there is no transition to acknowledge. Remember the range: the
@@ -1163,7 +1267,11 @@ export function prepareLynxHandleDeltas(
 					const id = firstId + index;
 					const transition = transitionFor(id);
 					if (transition.present) {
-						throw new Error(`Octane Lynx batch creates existing handle ${id}.`);
+						throw new Error(
+							typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+								? `Octane Lynx batch creates existing handle ${id}.`
+								: 'Octane Lynx OL059',
+						);
 					}
 					transition.present = true;
 					transition.type = wire.nodes[index]!.type;
@@ -1177,7 +1285,11 @@ export function prepareLynxHandleDeltas(
 				const id = command.firstId + index;
 				const transition = transitionFor(id);
 				if (transition.present) {
-					throw new Error(`Octane Lynx batch creates existing handle ${id}.`);
+					throw new Error(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? `Octane Lynx batch creates existing handle ${id}.`
+							: 'Octane Lynx OL060',
+					);
 				}
 				transition.present = true;
 				transition.type = command.program.nodes[index]!.type;
@@ -1190,7 +1302,11 @@ export function prepareLynxHandleDeltas(
 				const node = command.nodes[index]!;
 				const transition = transitionFor(node.id);
 				if (transition.present) {
-					throw new Error(`Octane Lynx batch creates existing handle ${node.id}.`);
+					throw new Error(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? `Octane Lynx batch creates existing handle ${node.id}.`
+							: 'Octane Lynx OL061',
+					);
 				}
 				transition.present = true;
 				transition.type = command.shape[index]!.type;
@@ -1218,30 +1334,50 @@ export function prepareLynxHandleDeltas(
 				declaredDestroys.set(declared, (declaredDestroys.get(declared) ?? 0) + 1);
 				continue;
 			}
-			throw new Error(`Octane Lynx batch rebuilds declared handle ${command.id}.`);
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx batch rebuilds declared handle ${command.id}.`
+					: 'Octane Lynx OL062',
+			);
 		}
 		const transition = transitionFor(command.id);
 		if (command.op === 'create') {
 			if (transition.present) {
-				throw new Error(`Octane Lynx batch creates existing handle ${command.id}.`);
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx batch creates existing handle ${command.id}.`
+						: 'Octane Lynx OL063',
+				);
 			}
 			transition.present = true;
 			transition.type = command.type;
 			transition.snapshotChanged = true;
 		} else if (command.op === 'update') {
 			if (!transition.present) {
-				throw new Error(`Octane Lynx batch updates missing handle ${command.id}.`);
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx batch updates missing handle ${command.id}.`
+						: 'Octane Lynx OL064',
+				);
 			}
 			transition.snapshotChanged = true;
 		} else if (command.op === 'recreate') {
 			if (!transition.present || transition.type !== command.type) {
-				throw new Error(`Octane Lynx batch recreates invalid handle ${command.id}.`);
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx batch recreates invalid handle ${command.id}.`
+						: 'Octane Lynx OL065',
+				);
 			}
 			transition.identityChanged = true;
 			transition.snapshotChanged = true;
 		} else {
 			if (!transition.present) {
-				throw new Error(`Octane Lynx batch destroys missing handle ${command.id}.`);
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx batch destroys missing handle ${command.id}.`
+						: 'Octane Lynx OL066',
+				);
 			}
 			transition.present = false;
 			transition.type = null;
@@ -1278,7 +1414,9 @@ export function prepareLynxHandleDeltas(
 			);
 			if (matched === -1 || delta.generation !== 1) {
 				throw new Error(
-					`Octane Lynx acknowledgement retires an uncommanded run ${delta.firstId}+${delta.hostCount}.`,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx acknowledgement retires an uncommanded run ${delta.firstId}+${delta.hostCount}.`
+						: 'Octane Lynx OL067',
 				);
 			}
 			runCommands.splice(matched, 1);
@@ -1294,7 +1432,11 @@ export function prepareLynxHandleDeltas(
 			continue;
 		}
 		if (seen.has(delta.id)) {
-			throw new Error(`Octane Lynx acknowledgement repeats handle ${delta.id}.`);
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx acknowledgement repeats handle ${delta.id}.`
+					: 'Octane Lynx OL068',
+			);
 		}
 		seen.add(delta.id);
 		let transition = transitions.get(delta.id);
@@ -1331,12 +1473,16 @@ export function prepareLynxHandleDeltas(
 				handle.generation !== delta.generation
 			) {
 				throw new Error(
-					`Octane Lynx acknowledgement changes list ancestry for stale or transitioning handle ${delta.id}:${delta.generation}.`,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx acknowledgement changes list ancestry for stale or transitioning handle ${delta.id}:${delta.generation}.`
+						: 'Octane Lynx OL069',
 				);
 			}
 			if (handle.listDescendant === delta.listDescendant) {
 				throw new Error(
-					`Octane Lynx acknowledgement publishes unchanged list ancestry for handle ${delta.id}.`,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx acknowledgement publishes unchanged list ancestry for handle ${delta.id}.`
+						: 'Octane Lynx OL070',
 				);
 			}
 			priorStates.set(handle, captureHandleState(handle));
@@ -1347,16 +1493,26 @@ export function prepareLynxHandleDeltas(
 			continue;
 		}
 		if (transition === undefined || expected === 'none') {
-			throw new Error(`Octane Lynx acknowledgement publishes unchanged handle ${delta.id}.`);
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx acknowledgement publishes unchanged handle ${delta.id}.`
+					: 'Octane Lynx OL071',
+			);
 		}
 		if (delta.op === 'remove') {
 			if (expected !== 'remove') {
-				throw new Error(`Octane Lynx acknowledgement removes non-destroyed handle ${delta.id}.`);
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx acknowledgement removes non-destroyed handle ${delta.id}.`
+						: 'Octane Lynx OL072',
+				);
 			}
 			const previous = transition.initial!;
 			if (previous.generation !== delta.generation) {
 				throw new Error(
-					`Octane Lynx acknowledgement removes stale handle ${delta.id}:${delta.generation}.`,
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx acknowledgement removes stale handle ${delta.id}:${delta.generation}.`
+						: 'Octane Lynx OL073',
 				);
 			}
 			priorStates.set(previous, captureHandleState(previous));
@@ -1365,7 +1521,11 @@ export function prepareLynxHandleDeltas(
 		}
 
 		if (expected === 'remove') {
-			throw new Error(`Octane Lynx acknowledgement retains destroyed handle ${delta.id}.`);
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx acknowledgement retains destroyed handle ${delta.id}.`
+					: 'Octane Lynx OL074',
+			);
 		}
 		validateSnapshotIdentity(delta.snapshot, identity, delta);
 		const finalType = transition.type!;
@@ -1373,7 +1533,11 @@ export function prepareLynxHandleDeltas(
 			const previousGeneration =
 				state.generations.get(delta.id) ?? retiredRangeGeneration(state.retiredRanges, delta.id);
 			if (delta.type !== finalType || delta.generation <= previousGeneration) {
-				throw new Error(`Octane Lynx acknowledgement has invalid created handle ${delta.id}.`);
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx acknowledgement has invalid created handle ${delta.id}.`
+						: 'Octane Lynx OL075',
+				);
 			}
 			const handle = createHandleEntry(
 				identity.root,
@@ -1399,7 +1563,11 @@ export function prepareLynxHandleDeltas(
 		}
 		const previous = transition.initial!;
 		if (previous.root !== identity.root) {
-			throw new Error(`Octane Lynx acknowledgement changes root for retained handle ${delta.id}.`);
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx acknowledgement changes root for retained handle ${delta.id}.`
+					: 'Octane Lynx OL076',
+			);
 		}
 		if (expected === 'recreate') {
 			const previousGeneration = state.generations.get(delta.id) ?? previous.generation;
@@ -1408,7 +1576,11 @@ export function prepareLynxHandleDeltas(
 				delta.generation <= previous.generation ||
 				delta.generation <= previousGeneration
 			) {
-				throw new Error(`Octane Lynx acknowledgement has stale recreated handle ${delta.id}.`);
+				throw new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx acknowledgement has stale recreated handle ${delta.id}.`
+						: 'Octane Lynx OL077',
+				);
 			}
 			priorStates.set(previous, captureHandleState(previous));
 			const handle = createHandleEntry(
@@ -1434,7 +1606,11 @@ export function prepareLynxHandleDeltas(
 			continue;
 		}
 		if (delta.type !== finalType || delta.generation !== previous.generation) {
-			throw new Error(`Octane Lynx acknowledgement changes retained handle ${delta.id}.`);
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx acknowledgement changes retained handle ${delta.id}.`
+					: 'Octane Lynx OL078',
+			);
 		}
 		priorStates.set(previous, captureHandleState(previous));
 		nextStates.set(previous, {
@@ -1451,13 +1627,19 @@ export function prepareLynxHandleDeltas(
 		if (seen.has(id)) continue;
 		const expected = expectedHandleDelta(transition);
 		if (expected !== 'none') {
-			throw new Error(`Octane Lynx acknowledgement omits ${expected}d handle ${id}.`);
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx acknowledgement omits ${expected}d handle ${id}.`
+					: 'Octane Lynx OL079',
+			);
 		}
 	}
 	for (const command of runCommands) {
 		if (command.remaining !== 0) {
 			throw new Error(
-				`Octane Lynx acknowledgement omits destroyed run ${command.firstId}+${command.hostCount}.`,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx acknowledgement omits destroyed run ${command.firstId}+${command.hostCount}.`
+					: 'Octane Lynx OL080',
 			);
 		}
 	}
@@ -1477,7 +1659,11 @@ export function prepareLynxHandleDeltas(
 					handle.attached = false;
 					invalidateHandleBinding(
 						handle,
-						new Error(`Octane Lynx handle ${handle.id}:${handle.generation} was replaced.`),
+						new Error(
+							typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+								? `Octane Lynx handle ${handle.id}:${handle.generation} was replaced.`
+								: 'Octane Lynx OL081',
+						),
 					);
 				}
 			}
@@ -1498,7 +1684,11 @@ export function prepareLynxHandleDeltas(
 					entry.attached = false;
 					invalidateHandleBinding(
 						entry,
-						new Error(`Octane Lynx handle ${entry.id}:${entry.generation} was removed.`),
+						new Error(
+							typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+								? `Octane Lynx handle ${entry.id}:${entry.generation} was removed.`
+								: 'Octane Lynx OL082',
+						),
 					);
 				}
 				const metadata = state.compactHosts;
@@ -1605,7 +1795,11 @@ export function prepareLynxHandleDeltas(
 				handle.attached = false;
 				invalidateHandleBinding(
 					handle,
-					new Error(`Octane Lynx handle ${handle.id}:${handle.generation} was rolled back.`),
+					new Error(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? `Octane Lynx handle ${handle.id}:${handle.generation} was rolled back.`
+							: 'Octane Lynx OL083',
+					),
 				);
 			}
 			for (const [id, previous] of priorGenerations) {
@@ -1681,7 +1875,11 @@ export function invalidateLynxClientContainer(container: LynxClientContainer): v
 		capture(() =>
 			invalidateHandleBinding(
 				handle,
-				new Error(`Octane Lynx handle ${handle.id}:${handle.generation} was disposed.`),
+				new Error(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx handle ${handle.id}:${handle.generation} was disposed.`
+						: 'Octane Lynx OL084',
+				),
 			),
 		);
 	}
@@ -1706,7 +1904,11 @@ export function applyLynxHostAttachments(
 	changes: readonly LynxHostAttachmentChange[],
 ): UniversalHostAttachmentBatch {
 	if (!Array.isArray(changes)) {
-		throw new TypeError('Octane Lynx host attachment changes must be an array.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx host attachment changes must be an array.'
+				: 'Octane Lynx OL085',
+		);
 	}
 	const state = containerState(container);
 	const staged: Array<{
@@ -1717,10 +1919,18 @@ export function applyLynxHostAttachments(
 	const seen = new Set<number>();
 	for (const change of changes) {
 		if (change === null || typeof change !== 'object' || Array.isArray(change)) {
-			throw new TypeError('Octane Lynx host attachment change must be an object.');
+			throw new TypeError(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx host attachment change must be an object.'
+					: 'Octane Lynx OL086',
+			);
 		}
 		if (seen.has(change.id)) {
-			throw new Error(`Octane Lynx host attachment repeats handle ${change.id}.`);
+			throw new Error(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx host attachment repeats handle ${change.id}.`
+					: 'Octane Lynx OL087',
+			);
 		}
 		seen.add(change.id);
 		const handle = compactHandle(state, change.id);
@@ -1731,7 +1941,9 @@ export function applyLynxHostAttachments(
 			typeof change.attached !== 'boolean'
 		) {
 			throw new Error(
-				`Octane Lynx host attachment targets stale or invalid handle ${change.id}:${change.generation}.`,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx host attachment targets stale or invalid handle ${change.id}:${change.generation}.`
+					: 'Octane Lynx OL088',
 			);
 		}
 		if (handle.attached !== change.attached) {
@@ -1866,12 +2078,16 @@ export function createLynxClientDriver(
 					!entry.active
 				) {
 					throw new TypeError(
-						'Octane Lynx portals require a current, active LynxPublicHandle from this root. Initial portals must wait for the target ref acknowledgement.',
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx portals require a current, active LynxPublicHandle from this root. Initial portals must wait for the target ref acknowledgement.'
+							: 'Octane Lynx OL089',
 					);
 				}
 				if (!entry.attached) {
 					throw new Error(
-						`Octane Lynx portal target ${handle.id}:${handle.generation} is not physically attached.`,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? `Octane Lynx portal target ${handle.id}:${handle.generation} is not physically attached.`
+							: 'Octane Lynx OL090',
 					);
 				}
 				if (
@@ -1881,12 +2097,16 @@ export function createLynxClientDriver(
 					handle.type === 'list-item'
 				) {
 					throw new Error(
-						`Octane Lynx portal target type ${JSON.stringify(handle.type)} is not supported.`,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? `Octane Lynx portal target type ${JSON.stringify(handle.type)} is not supported.`
+							: 'Octane Lynx OL091',
 					);
 				}
 				if (entry.listDescendant) {
 					throw new Error(
-						`Octane Lynx portal target ${handle.id}:${handle.generation} is a native-list descendant.`,
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? `Octane Lynx portal target ${handle.id}:${handle.generation} is a native-list descendant.`
+							: 'Octane Lynx OL092',
 					);
 				}
 				const portalHandle = createPortalTargetHandle(
@@ -1908,7 +2128,11 @@ export function createLynxClientDriver(
 				onChange: (batch: UniversalHostAttachmentBatch) => void,
 			) {
 				if (typeof onChange !== 'function') {
-					throw new TypeError('Octane Lynx host attachment subscriber must be a function.');
+					throw new TypeError(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx host attachment subscriber must be a function.'
+							: 'Octane Lynx OL093',
+					);
 				}
 				const state = containerState(container);
 				state.attachmentSubscribers.add(onChange);
@@ -1943,7 +2167,9 @@ export function createLynxClientDriver(
 					const descriptor = getThreadFunctionDescriptor(context.value);
 					if (!isLynxMainThreadWorkletDescriptor(descriptor)) {
 						throw new TypeError(
-							`Octane Lynx ${JSON.stringify(context.name)} requires a compiler-transformed main-thread function.`,
+							typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+								? `Octane Lynx ${JSON.stringify(context.name)} requires a compiler-transformed main-thread function.`
+								: 'Octane Lynx OL094',
 						);
 					}
 					return {
@@ -1981,7 +2207,9 @@ export function createLynxClientDriver(
 		}),
 		prepareBatch() {
 			throw new Error(
-				'Octane Lynx client driver cannot mutate the main-thread host; use the async transport.',
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx client driver cannot mutate the main-thread host; use the async transport.'
+					: 'Octane Lynx OL095',
 			);
 		},
 		getPublicInstance(container: LynxClientContainer, id: number) {

@@ -1,3 +1,5 @@
+declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
+
 /**
  * PrimJS-safe, one-shot renderer ABI for Lynx's synchronous first screen.
  *
@@ -1001,13 +1003,25 @@ class FirstScreenProgramProbe {
 		Object.freeze(this);
 	}
 	[Symbol.toPrimitive](): never {
-		throw new TypeError('Octane Lynx first-screen program probe was used as a value.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx first-screen program probe was used as a value.'
+				: 'Octane Lynx OL325',
+		);
 	}
 	toString(): never {
-		throw new TypeError('Octane Lynx first-screen program probe was used as a value.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx first-screen program probe was used as a value.'
+				: 'Octane Lynx OL326',
+		);
 	}
 	valueOf(): never {
-		throw new TypeError('Octane Lynx first-screen program probe was used as a value.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx first-screen program probe was used as a value.'
+				: 'Octane Lynx OL327',
+		);
 	}
 }
 

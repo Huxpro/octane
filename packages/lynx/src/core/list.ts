@@ -1,3 +1,5 @@
+declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
+
 export interface LynxListItemDescriptor {
 	readonly id: number;
 	readonly type: 'list-item';
@@ -30,7 +32,11 @@ export interface LynxListUpdateInfo {
 }
 
 function listError(message: string): Error {
-	return new TypeError(`Octane Lynx list: ${message}`);
+	return new TypeError(
+		typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+			? `Octane Lynx list: ${message}`
+			: 'Octane Lynx OL103',
+	);
 }
 
 /** Decode and validate the native metadata for one direct `<list-item>` child. */

@@ -1,3 +1,5 @@
+declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
+
 import { hasOwnSymbolFields } from './own-symbols.js';
 import type { UniversalEventPriority } from 'octane/universal/native';
 
@@ -121,7 +123,11 @@ const TOKEN_IDENTITY_KEYS = ['root', 'id', 'generation', 'listener', 'priority']
 const TOKEN_NUMERIC_KEYS = ['root', 'id', 'generation', 'listener'] as const;
 
 function tokenError(message: string): TypeError {
-	return new TypeError(`Octane Lynx native event token ${message}`);
+	return new TypeError(
+		typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+			? `Octane Lynx native event token ${message}`
+			: 'Octane Lynx OL109',
+	);
 }
 
 function assertPositiveSafeInteger(value: unknown, name: string): asserts value is number {
@@ -272,7 +278,11 @@ const EVENT_RESERVED_FIELDS = new Set([
 ]);
 
 function payloadError(path: string, message: string): TypeError {
-	return new TypeError(`Octane Lynx native event payload ${path} ${message}`);
+	return new TypeError(
+		typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+			? `Octane Lynx native event payload ${path} ${message}`
+			: 'Octane Lynx OL110',
+	);
 }
 
 function assignSnapshotField(

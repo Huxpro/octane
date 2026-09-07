@@ -1,3 +1,7 @@
+declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
+
+import { LYNX_DEVELOPMENT } from './environment.js';
+
 /**
  * The Lynx transport's encoding boundary.
  *
@@ -76,8 +80,6 @@
  * `JSON.parse` with no walk of its own — the cost of the escape machinery is
  * paid only by payloads that actually use it. Four bytes buy that.
  */
-import { LYNX_DEVELOPMENT } from './environment.js';
-
 /** The generic native value algebra a Lynx host can carry. */
 export type LynxValue = unknown;
 
@@ -121,11 +123,19 @@ export function createLynxTransportFrameState(): LynxTransportFrameState {
 export function frameLynxTransportValue(text: string, sequence: number): readonly string[] {
 	if (text.length <= LYNX_CONTEXT_EVENT_UNFRAMED_LIMIT) return [text];
 	if (!Number.isSafeInteger(sequence) || sequence <= 0) {
-		throw new TypeError('Octane Lynx transport frame sequence must be a positive safe integer.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx transport frame sequence must be a positive safe integer.'
+				: 'Octane Lynx OL175',
+		);
 	}
 	const total = Math.ceil(text.length / LYNX_CONTEXT_EVENT_FRAME_CHARS);
 	if (total > LYNX_CONTEXT_EVENT_MAX_FRAMES) {
-		throw new TypeError('Octane Lynx transport message exceeds the framed wire limit.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx transport message exceeds the framed wire limit.'
+				: 'Octane Lynx OL176',
+		);
 	}
 	const frames = new Array<string>(total);
 	for (let index = 0; index < total; index++) {
@@ -157,7 +167,11 @@ export function acceptLynxTransportFrame(
 	if (typeof value !== 'string' || !value.startsWith(FRAME_PREFIX)) {
 		if (state.sequence !== null) {
 			resetFrameState(state);
-			throw new TypeError('Octane Lynx transport received an interrupted framed message.');
+			throw new TypeError(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx transport received an interrupted framed message.'
+					: 'Octane Lynx OL177',
+			);
 		}
 		return value;
 	}
@@ -166,7 +180,11 @@ export function acceptLynxTransportFrame(
 	const totalEnd = indexEnd < 0 ? -1 : value.indexOf(':', indexEnd + 1);
 	if (sequenceEnd < 0 || indexEnd < 0 || totalEnd < 0) {
 		resetFrameState(state);
-		throw new TypeError('Octane Lynx transport received a malformed frame header.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx transport received a malformed frame header.'
+				: 'Octane Lynx OL178',
+		);
 	}
 	const sequence = Number(value.slice(FRAME_PREFIX.length, sequenceEnd));
 	const index = Number(value.slice(sequenceEnd + 1, indexEnd));
@@ -186,22 +204,38 @@ export function acceptLynxTransportFrame(
 		(index < total - 1 && chunk.length !== LYNX_CONTEXT_EVENT_FRAME_CHARS)
 	) {
 		resetFrameState(state);
-		throw new TypeError('Octane Lynx transport received an invalid frame.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx transport received an invalid frame.'
+				: 'Octane Lynx OL179',
+		);
 	}
 	if (index === 0) {
 		if (state.sequence !== null) {
 			resetFrameState(state);
-			throw new TypeError('Octane Lynx transport received overlapping framed messages.');
+			throw new TypeError(
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? 'Octane Lynx transport received overlapping framed messages.'
+					: 'Octane Lynx OL180',
+			);
 		}
 		state.sequence = sequence;
 		state.next = 0;
 		state.total = total;
 	} else if (state.sequence === null) {
-		throw new TypeError('Octane Lynx transport received a continuation without a frame start.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx transport received a continuation without a frame start.'
+				: 'Octane Lynx OL181',
+		);
 	}
 	if (state.sequence !== sequence || state.total !== total || state.next !== index) {
 		resetFrameState(state);
-		throw new TypeError('Octane Lynx transport received frames out of order.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx transport received frames out of order.'
+				: 'Octane Lynx OL182',
+		);
 	}
 	state.chunks.push(chunk);
 	state.next++;
@@ -225,7 +259,11 @@ function isProtoEscapeFamily(key: string): boolean {
 }
 
 function codecError(path: string, message: string): TypeError {
-	return new TypeError(`Octane Lynx transport value at ${path} ${message}`);
+	return new TypeError(
+		typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+			? `Octane Lynx transport value at ${path} ${message}`
+			: 'Octane Lynx OL183',
+	);
 }
 
 /** Name a refused composite by its constructor, so the message says which kind. */
@@ -399,7 +437,9 @@ function restore(value: unknown, depth = 0): unknown {
 	if (value === null || typeof value !== 'object') return value;
 	if (depth >= LYNX_MAX_WIRE_DEPTH) {
 		throw new TypeError(
-			`Octane Lynx transport received a payload nesting deeper than ${LYNX_MAX_WIRE_DEPTH} levels.`,
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx transport received a payload nesting deeper than ${LYNX_MAX_WIRE_DEPTH} levels.`
+				: 'Octane Lynx OL184',
 		);
 	}
 	if (Array.isArray(value)) {
@@ -466,7 +506,9 @@ export function encodeLynxTransportValue(
 	if (LYNX_DEVELOPMENT && state.aliases >= ALIAS_REPORT_THRESHOLD && onDiagnostic !== undefined) {
 		onDiagnostic(
 			new Error(
-				`Octane Lynx encoded a message sharing ${state.aliases} composite references; JSON has no back-references, so each is expanded once per reference.`,
+				typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+					? `Octane Lynx encoded a message sharing ${state.aliases} composite references; JSON has no back-references, so each is expanded once per reference.`
+					: 'Octane Lynx OL185',
 			),
 		);
 	}
@@ -484,7 +526,9 @@ export function encodeLynxTransportValue(
 export function decodeLynxTransportValue(text: LynxValue): LynxStructuredValue {
 	if (typeof text !== 'string') {
 		throw new TypeError(
-			`Octane Lynx transport received ${text === null ? 'null' : typeof text} where the wire carries a string. An unencoded value may be a host-backed reference, which the receiver must never reflect on.`,
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx transport received ${text === null ? 'null' : typeof text} where the wire carries a string. An unencoded value may be a host-backed reference, which the receiver must never reflect on.`
+				: 'Octane Lynx OL186',
 		);
 	}
 	let envelope: unknown;
@@ -492,15 +536,25 @@ export function decodeLynxTransportValue(text: LynxValue): LynxStructuredValue {
 		envelope = JSON.parse(text) as unknown;
 	} catch (error) {
 		throw new TypeError(
-			`Octane Lynx transport received a payload that is not JSON: ${(error as Error).message}`,
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx transport received a payload that is not JSON: ${(error as Error).message}`
+				: 'Octane Lynx OL187',
 		);
 	}
 	if (!Array.isArray(envelope) || envelope.length !== 2) {
-		throw new TypeError('Octane Lynx transport received a payload with no codec envelope.');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx transport received a payload with no codec envelope.'
+				: 'Octane Lynx OL188',
+		);
 	}
 	const flags: unknown = envelope[0];
 	if (flags !== 0 && flags !== 1) {
-		throw new TypeError(`Octane Lynx transport received unknown codec flags ${String(flags)}.`);
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? `Octane Lynx transport received unknown codec flags ${String(flags)}.`
+				: 'Octane Lynx OL189',
+		);
 	}
 	return flags === 0 ? envelope[1] : restore(envelope[1]);
 }

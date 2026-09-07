@@ -25,6 +25,9 @@ const FIRST_SCREEN_RENDER_DEFINE = '__OCTANE_LYNX_FIRST_SCREEN_RENDER__';
 // Build-time constant `@octanejs/lynx` reads to bind its background core. See
 // BackgroundCorePlugin and packages/lynx/src/core/environment.ts.
 const BACKGROUND_CORE_DEFINE = '__OCTANE_LYNX_BACKGROUND_CORE__';
+// Build-time branch used by @octanejs/lynx to keep descriptive diagnostics in
+// development while shipping compact, stable error identifiers in production.
+const DIAGNOSTIC_MODE_DEFINE = '__OCTANE_LYNX_DEVELOPMENT__';
 const ENTRY_METADATA_KEYS = new Set([
 	'asyncChunks',
 	'baseUri',
@@ -139,6 +142,27 @@ class BackgroundCorePlugin {
  */
 export function applyLynxBackgroundCore(chain, core) {
 	chain.plugin(`${PLUGIN_NAME}:background-core`).use(BackgroundCorePlugin, [core]);
+}
+
+class DiagnosticModePlugin {
+	constructor(development) {
+		this.development = development;
+	}
+
+	apply(compiler) {
+		const DefinePlugin = compiler.webpack?.DefinePlugin;
+		if (typeof DefinePlugin !== 'function') {
+			throw new TypeError(
+				`${PLUGIN_NAME}: this Rspack compiler does not expose webpack.DefinePlugin.`,
+			);
+		}
+		new DefinePlugin({ [DIAGNOSTIC_MODE_DEFINE]: this.development }).apply(compiler);
+	}
+}
+
+/** Bind the runtime diagnostic branch for both application and isolated-thread graphs. */
+export function applyLynxDiagnosticMode(chain, development) {
+	chain.plugin(`${PLUGIN_NAME}:diagnostic-mode`).use(DiagnosticModePlugin, [development]);
 }
 
 function environmentKind(name) {

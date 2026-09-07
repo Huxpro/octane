@@ -1,3 +1,5 @@
+declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
+
 import type {
 	CreateLynxMainThreadWorkletRegistryOptions,
 	LynxActivatedMainThreadWorklet,
@@ -36,7 +38,11 @@ const subscribers = new Set<FeatureSubscriber>();
 export function provideLynxMainThreadWorkletFeature(feature: LynxMainThreadWorkletFeature): void {
 	if (providedFeature === feature) return;
 	if (providedFeature !== null) {
-		throw new Error('Octane Lynx main-thread worklet feature was provided twice.');
+		throw new Error(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx main-thread worklet feature was provided twice.'
+				: 'Octane Lynx OL104',
+		);
 	}
 	providedFeature = feature;
 	for (const subscriber of subscribers) subscriber(feature);
@@ -56,7 +62,9 @@ export function subscribeLynxMainThreadWorkletFeature(subscriber: FeatureSubscri
 
 function unavailable(): never {
 	throw new Error(
-		'Octane Lynx received main-thread worklet state, but this bundle compiled no worklet feature.',
+		typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+			? 'Octane Lynx received main-thread worklet state, but this bundle compiled no worklet feature.'
+			: 'Octane Lynx OL105',
 	);
 }
 

@@ -1,3 +1,5 @@
+declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
+
 import { LYNX_NODES_REF_ATTRIBUTE } from './nodes-ref.js';
 import { hasCrossRealmPlainPrototype } from './plain-object.js';
 import {
@@ -122,7 +124,11 @@ const hasOwn = (value: Readonly<Record<string, unknown>>, name: string): boolean
 	Object.prototype.hasOwnProperty.call(value, name);
 
 function propError(message: string): Error {
-	return new TypeError(`Octane Lynx host prop: ${message}`);
+	return new TypeError(
+		typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+			? `Octane Lynx host prop: ${message}`
+			: 'Octane Lynx OL100',
+	);
 }
 
 /** Octane's clsx-style class composition without importing the DOM runtime. */

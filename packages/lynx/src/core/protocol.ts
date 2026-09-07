@@ -1,3 +1,7 @@
+declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
+
+import { LYNX_DEVELOPMENT } from './environment.js';
+
 import type {
 	UNIVERSAL_TRANSPORT_PROTOCOL_VERSION,
 	UniversalHostBatch,
@@ -16,7 +20,6 @@ import type {
 	UniversalTransportRejectMessage,
 } from 'octane/universal/native';
 import type { LynxFirstTreeSnapshot } from './first-screen.js';
-import { LYNX_DEVELOPMENT } from './environment.js';
 import { LYNX_MAX_WIRE_DEPTH } from './transport-codec.js';
 import { decodeLynxPortalTargetId } from './portal.js';
 import { LYNX_RENDERER_ID } from './renderer-id.js';
@@ -76,7 +79,11 @@ export type LynxValidationMode = 'checked' | 'trusted';
 export function resolveLynxValidationMode(value: unknown): LynxValidationMode {
 	const mode = value ?? 'checked';
 	if (mode !== 'checked' && mode !== 'trusted') {
-		throw new TypeError('Octane Lynx validation must be "checked" or "trusted".');
+		throw new TypeError(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx validation must be "checked" or "trusted".'
+				: 'Octane Lynx OL173',
+		);
 	}
 	return mode;
 }
@@ -655,7 +662,11 @@ function composePath(label: string, index?: number, field?: string): string {
 }
 
 function fail(label: string, message: string, index?: number, field?: string): never {
-	throw new TypeError(`Octane Lynx transport ${composePath(label, index, field)}: ${message}`);
+	throw new TypeError(
+		typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+			? `Octane Lynx transport ${composePath(label, index, field)}: ${message}`
+			: 'Octane Lynx OL174',
+	);
 }
 
 /**

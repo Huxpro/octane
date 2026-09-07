@@ -1,3 +1,5 @@
+declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
+
 /**
  * Issue-#103 U2 — the first vertical slice of the Lynx-specialized background
  * core: `runtime.ts`'s Block model with a wire address where the DOM node was.
@@ -70,7 +72,11 @@ export interface LynxBlockTemplate {
 }
 
 function fail(message: string): never {
-	throw new Error(`Octane Lynx block core: ${message}.`);
+	throw new Error(
+		typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+			? `Octane Lynx block core: ${message}.`
+			: 'Octane Lynx OL015',
+	);
 }
 
 /**
