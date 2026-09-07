@@ -62,6 +62,7 @@ function stat(samples) {
 		mean,
 		p95: sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1)],
 		samples: sorted.length,
+		values: sorted,
 	};
 }
 
