@@ -13,8 +13,6 @@ const autoSuffix = autoRows > 0 ? `-rows${autoRows}` : '';
 // (globalThis.__OCTANE_LYNX_PROF on both threads). Off by default so the
 // default bundle measures the shipping configuration.
 const profile = process.env.OCTANE_LYNX_PROFILE === '1';
-const attribution = process.env.BENCH_ISSUE278_ATTRIBUTION === '1';
-const attributionWireOps = process.env.BENCH_ISSUE278_WIRE_OPS === '1';
 
 /** The Block core's drive modes, spelled once. `scoped` carries no suffix. */
 const BLOCK_MODES = new Set(['scoped', 'reconcile', 'derived']);
@@ -118,16 +116,6 @@ export default defineConfig(({ command }) => {
 				__OCTANE_LYNX_PROFILE__: JSON.stringify(profile),
 				__BENCH_CORE__: JSON.stringify(core),
 				__BENCH_BLOCK_MODE__: JSON.stringify(blockMode),
-				__BENCH_ISSUE278_ATTRIBUTION__: JSON.stringify(attribution),
-				__BENCH_ISSUE278_WIRE_OPS__: JSON.stringify(attributionWireOps),
-				// Explorer 1.0 exposes Date.now() in both Native realms but not the
-				// Web Performance API. Keep the substitution local to this benchmark
-				// app build; no framework source is patched for the attribution run.
-				...(attribution
-					? {
-							performance: '({ now: Date.now, timeOrigin: 0 })',
-						}
-					: null),
 			},
 		},
 		splitChunks: false,

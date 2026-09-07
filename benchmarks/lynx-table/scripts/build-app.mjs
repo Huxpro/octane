@@ -16,7 +16,9 @@
 //                                                     # SDK 4.0 device has no MessageChannel
 //   BENCH_DISABLE_DEVTOOL=1 node scripts/build-app.mjs # device preflight bundle
 //   BENCH_ISSUE278_ATTRIBUTION=1 OCTANE_LYNX_PROFILE=1 node scripts/build-app.mjs
-//                                                     # app-only Native attribution
+//                                                     # timed Native attribution
+//   BENCH_ISSUE278_ATTRIBUTION=1 BENCH_ISSUE278_COUNTS=1 OCTANE_LYNX_PROFILE=1 \
+//     node scripts/build-app.mjs                       # deep count-only control
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -24,6 +26,7 @@ import { fileURLToPath } from 'node:url';
 
 import { instrumentLynxStageSources } from '../stages/instrument-source.mjs';
 import { instrumentIssue194NativeSources } from '../stages/issue194-native-instrument.mjs';
+import { instrumentIssue278NativeSources } from '../stages/issue278-native-instrument.mjs';
 import { instrumentLepusQ2Sources } from '../stages/lepus-cost/instrument-q2-source.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -56,6 +59,59 @@ export function tagFrom(value) {
 	return `-${value}`;
 }
 
+function replaceStageOnce(source, search, replacement, file) {
+	const first = source.indexOf(search);
+	if (first === -1) throw new Error(`issue #278 stage anchor missing in ${file}.`);
+	if (source.indexOf(search, first + search.length) !== -1) {
+		throw new Error(`issue #278 stage anchor is ambiguous in ${file}.`);
+	}
+	return source.slice(0, first) + replacement + source.slice(first + search.length);
+}
+
+function instrumentIssue278StageConfig(stage) {
+	const file = path.join(stage, 'lynx.config.mjs');
+	let source = fs.readFileSync(file, 'utf8');
+	source = replaceStageOnce(
+		source,
+		"const profile = process.env.OCTANE_LYNX_PROFILE === '1';\n",
+		`const profile = process.env.OCTANE_LYNX_PROFILE === '1';
+const attribution = true;
+const attributionCounts = process.env.BENCH_ISSUE278_COUNTS === '1';
+const attributionScalar = process.env.BENCH_ISSUE278_SCALAR === '1';
+const attributionValidation = process.env.BENCH_ISSUE278_VALIDATION ?? 'checked';
+const attributionSuffix = \`-issue278-\${attributionValidation}-\${
+	profile ? (attributionCounts ? 'counts' : 'timed') : 'control'
+}\${attributionScalar ? '-scalar' : ''}\`;
+`,
+		file,
+	);
+	source = replaceStageOnce(
+		source,
+		"\t\t\t\t\tautoSuffix +\n\t\t\t\t\t(profile ? '-profile' : ''),\n",
+		"\t\t\t\t\tautoSuffix +\n\t\t\t\t\tattributionSuffix +\n\t\t\t\t\t(profile ? '-profile' : ''),\n",
+		file,
+	);
+	source = replaceStageOnce(
+		source,
+		"\t\t\t\tmain: './src/index.ts',\n",
+		"\t\t\t\tmain: './src/issue278-index.ts',\n",
+		file,
+	);
+	source = replaceStageOnce(
+		source,
+		'\t\t\t\t__BENCH_BLOCK_MODE__: JSON.stringify(blockMode),\n',
+		`\t\t\t\t__BENCH_BLOCK_MODE__: JSON.stringify(blockMode),
+				__BENCH_ISSUE278_ATTRIBUTION__: 'true',
+				__BENCH_ISSUE278_COUNTS__: JSON.stringify(attributionCounts),
+				__BENCH_ISSUE278_SCALAR__: JSON.stringify(attributionScalar),
+				__BENCH_ISSUE278_VALIDATION__: JSON.stringify(attributionValidation),
+				performance: '({ now: Date.now, timeOrigin: 0 })',
+`,
+		file,
+	);
+	fs.writeFileSync(file, source);
+}
+
 export function buildTableApp({
 	silent = false,
 	core = 'universal',
@@ -65,16 +121,42 @@ export function buildTableApp({
 	const pluginDir = path.join(repo, 'packages/rspeedy-plugin-octane');
 	const src = path.join(root, 'app');
 	const stage = path.join(pluginDir, 'examples', STAGE_NAME);
+	const autoRows = Number(process.env.BENCH_AUTOROWS ?? '0') || 0;
+	const profile = process.env.OCTANE_LYNX_PROFILE === '1';
+	const issue278Attribution = process.env.BENCH_ISSUE278_ATTRIBUTION === '1';
+	const issue278Counts = process.env.BENCH_ISSUE278_COUNTS === '1';
+	const issue278Scalar = process.env.BENCH_ISSUE278_SCALAR === '1';
+	const issue278Validation = process.env.BENCH_ISSUE278_VALIDATION ?? 'checked';
+	if (issue278Counts && !profile) {
+		throw new Error('BENCH_ISSUE278_COUNTS requires OCTANE_LYNX_PROFILE=1.');
+	}
+	if ((issue278Counts || issue278Scalar) && !issue278Attribution) {
+		throw new Error('issue #278 count/scalar modes require BENCH_ISSUE278_ATTRIBUTION=1.');
+	}
+	if (issue278Validation !== 'checked' && issue278Validation !== 'trusted') {
+		throw new TypeError('BENCH_ISSUE278_VALIDATION must be checked or trusted.');
+	}
 	fs.rmSync(stage, { recursive: true, force: true });
 	fs.mkdirSync(path.join(stage, 'src'), { recursive: true });
 	for (const file of ['lynx.config.mjs', 'tsconfig.json']) {
 		fs.copyFileSync(path.join(src, file), path.join(stage, file));
 	}
 	for (const file of fs.readdirSync(path.join(src, 'src'))) {
+		if (
+			!issue278Attribution &&
+			(file === 'Issue278App.lynx.tsrx' || file === 'issue278-index.ts')
+		) {
+			continue;
+		}
 		fs.copyFileSync(path.join(src, 'src', file), path.join(stage, 'src', file));
 	}
+	if (issue278Attribution) instrumentIssue278StageConfig(stage);
 	if (process.env.BENCH_DISABLE_DEVTOOL === '1') {
-		const appFile = path.join(stage, 'src', 'App.lynx.tsrx');
+		const appFile = path.join(
+			stage,
+			'src',
+			issue278Attribution ? 'Issue278App.lynx.tsrx' : 'App.lynx.tsrx',
+		);
 		const source = fs.readFileSync(appFile, 'utf8');
 		const anchor = "import type { RowData } from './data.js';";
 		if (source.indexOf(anchor) === -1 || source.indexOf(anchor) !== source.lastIndexOf(anchor)) {
@@ -109,7 +191,11 @@ export function buildTableApp({
 				'BENCH_DEVICE_MESSAGECHANNEL_FALLBACK is redundant with BENCH_ISSUE194_NATIVE: the issue-194 instrument always applies the fallback itself.',
 			);
 		}
-		const appFile = path.join(stage, 'src', 'App.lynx.tsrx');
+		const appFile = path.join(
+			stage,
+			'src',
+			issue278Attribution ? 'Issue278App.lynx.tsrx' : 'App.lynx.tsrx',
+		);
 		const source = fs.readFileSync(appFile, 'utf8');
 		const anchor = 'const _stormChannel = new MessageChannel();';
 		if (source.indexOf(anchor) === -1 || source.indexOf(anchor) !== source.lastIndexOf(anchor)) {
@@ -162,9 +248,6 @@ export function buildTableApp({
 		);
 	}
 
-	const autoRows = Number(process.env.BENCH_AUTOROWS ?? '0') || 0;
-	const profile = process.env.OCTANE_LYNX_PROFILE === '1';
-	const issue278Attribution = process.env.BENCH_ISSUE278_ATTRIBUTION === '1';
 	const q2Profile = process.env.LEPUS_Q2_PROFILE === '1';
 	if (q2Profile && !profile) throw new Error('LEPUS_Q2_PROFILE requires OCTANE_LYNX_PROFILE=1.');
 	const restore = q2Profile
@@ -176,7 +259,11 @@ export function buildTableApp({
 	const issue194DirectOnly = process.env.BENCH_ISSUE194_DIRECT_ONLY === '1';
 	const appendOrder = process.env.BENCH_MTS_APPEND_ORDER ?? 'parent-first';
 	let restoreIssue194 = () => {};
+	let restoreIssue278 = () => {};
 	try {
+		if (issue278Attribution) {
+			restoreIssue278 = instrumentIssue278NativeSources(repo, { codec: profile });
+		}
 		if (issue194Native) {
 			restoreIssue194 = instrumentIssue194NativeSources(repo, stage, {
 				appendOrder,
@@ -184,6 +271,7 @@ export function buildTableApp({
 			});
 		}
 	} catch (error) {
+		restoreIssue278();
 		restore();
 		fs.rmSync(stage, { recursive: true, force: true });
 		throw error;
@@ -229,6 +317,7 @@ export function buildTableApp({
 		});
 	} finally {
 		restoreIssue194();
+		restoreIssue278();
 		restore();
 	}
 
@@ -237,6 +326,9 @@ export function buildTableApp({
 		programSuffix +
 		distTag +
 		(autoRows > 0 ? `-rows${autoRows}` : '') +
+		(issue278Attribution
+			? `-issue278-${issue278Validation}-${profile ? (issue278Counts ? 'counts' : 'timed') : 'control'}${issue278Scalar ? '-scalar' : ''}`
+			: '') +
 		(profile ? '-profile' : '');
 	const from = path.join(stage, `dist${suffix}`);
 	const outputSuffix =

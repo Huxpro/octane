@@ -1,9 +1,9 @@
 // Issue #278 Native attribution runner.
 //
-// This is intentionally a benchmark-app driver, not a runtime instrument. It
-// loads one immutable bundle through the reviewed Native adapter, invokes the
-// app's programmatic create entry point (bypassing #275's touch path), and
-// writes raw boundary evidence through the repository's canonical JSON writer.
+// This is a benchmark-app instrument, not a runtime feature. It keeps the real
+// descriptor fallback separate from the scalar E1 capability probe, compares
+// checked/trusted validation in alternating same-lease windows, and never uses
+// the deeply counted arm as a timing result.
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -25,12 +25,12 @@ function arg(name, fallback) {
 const driverRoot = path.resolve(arg('--driver-root'));
 const serial = arg('--serial');
 const expiredAt = Number(arg('--expired-at'));
-const bundleFile = path.resolve(arg('--bundle'));
 const outputFile = path.resolve(arg('--out'));
 const appPatchSha256 = arg('--app-patch-sha256');
 const octaneSha = arg('--octane-sha');
 const instrumentationSha = arg('--instrumentation-sha');
 const driverSha = arg('--driver-sha');
+const runtimeLabel = arg('--runtime-label', 'sandbox-default');
 const mode = arg('--mode', 'full');
 const repetitions = Number(arg('--reps', '5'));
 if (!['gate', 'full'].includes(mode)) throw new Error('--mode must be gate or full.');
@@ -39,7 +39,24 @@ if (!Number.isSafeInteger(expiredAt) || expiredAt <= Date.now()) {
 	throw new Error('--expired-at must be an unexpired epoch-millisecond value.');
 }
 
+const bundleFiles = Object.freeze({
+	controlChecked: path.resolve(arg('--control-checked-bundle')),
+	timedChecked: path.resolve(arg('--timed-checked-bundle')),
+	timedTrusted: path.resolve(arg('--timed-trusted-bundle')),
+	countsChecked: path.resolve(arg('--counts-checked-bundle')),
+	scalarCountsChecked: path.resolve(arg('--scalar-counts-checked-bundle')),
+});
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
+const bundles = Object.fromEntries(
+	Object.entries(bundleFiles).map(([name, file]) => {
+		const bytes = fs.readFileSync(file);
+		return [name, { file, bytes, sha256: sha256(bytes) }];
+	}),
+);
+if (new Set(Object.values(bundles).map((bundle) => bundle.sha256)).size !== 5) {
+	throw new Error('issue #278 requires five distinct control/profile/count/scalar bundles.');
+}
+
 const importFromDriver = (relative) => import(pathToFileURL(path.join(driverRoot, relative)).href);
 const [{ default: createAdapter }, connectorModule, nativeProtocol] = await Promise.all([
 	importFromDriver('packages/runner/adapters/lynx-sandbox-android.mjs'),
@@ -54,12 +71,20 @@ const leaseReceipt = nativeProtocol.parseNativeLeaseReceipt(
 const connectorPackageTrees = connectorModule.resolveConnectorPackageTrees({
 	fromPath: path.join(driverRoot, 'packages/runner/adapters/lynx-sandbox-android.mjs'),
 });
-const bundleBytes = fs.readFileSync(bundleFile);
-const bundleSha256 = sha256(bundleBytes);
-const identitySeed = `${octaneSha}:${appPatchSha256}:${bundleSha256}`;
+const bundleReceipt = Object.fromEntries(
+	Object.entries(bundles).map(([name, bundle]) => [
+		name,
+		{
+			path: path.relative(path.resolve(import.meta.dirname, '../../..'), bundle.file),
+			bytes: bundle.bytes.length,
+			sha256: bundle.sha256,
+		},
+	]),
+);
+const identitySeed = JSON.stringify({ octaneSha, appPatchSha256, bundleReceipt });
 const campaignIdentity = {
 	campaignId: `octane-278-${sha256(identitySeed).slice(0, 12)}`,
-	matrixContractSha256: sha256('octane-278-attribution-v1'),
+	matrixContractSha256: sha256('octane-278-attribution-v2'),
 	inputReceiptSha256: sha256(identitySeed),
 	connectorPackageTreesSha256: connectorPackageTrees.sha256,
 	connectorPackageTrees,
@@ -75,28 +100,85 @@ const adapter = await createAdapter({
 		console.log(message);
 	},
 });
-const entry = { id: 'octane-issue278-attribution', framework: 'issue278' };
-const samples = [];
-const floors = { echo: [], vm: [], papi: [], nodeV8: [] };
-let gate = null;
 
-async function loadFresh(label) {
+const evidence = {
+	protocol: 'octane-issue278-native-attribution-v2',
+	status: 'running',
+	capturedAt: new Date().toISOString(),
+	provenance: {
+		octaneSha,
+		instrumentationSha,
+		appPatchSha256,
+		driverRoot,
+		driverSha,
+		runtimeLabel,
+		bundles: bundleReceipt,
+		connectorPackageTrees,
+		leaseReceipt,
+	},
+	method: {
+		instrument:
+			'build-time-restored codec phase counters plus Lynx profileMark; no authored runtime source changes',
+		createBoundary: 'programmatic BTS setRows start to transport commit ACK return',
+		clockResolution: 'integer milliseconds in Explorer Native JS realms',
+		realPathGate: 'range-bearing table must use mount-template-run descriptor fallback',
+		scalarPathGate: 'separate range-free scalar replacement must use mount-program-run',
+		countArm:
+			'deep prepare/restore/alias visits are mechanism evidence only and never timing evidence',
+		profileOverhead:
+			'unprofiled app-driver control versus timed profile, alternating order at create@1k',
+		validationControl: 'checked versus trusted, alternating order at 1k/2k/3k/5k',
+		floors: {
+			papi: 'detached page; setup outside timer; 7 host nodes per row; public Element PAPI loops',
+			echo: 'ContextProxy round trip carrying one string sized to the 1k production commit',
+			vm: 'same fixed integer loop in BTS and MTS plus Node V8 host control',
+		},
+		repetitions,
+	},
+	device: adapter.machine,
+	gate: null,
+	profileOverheadPairs: [],
+	validationPairs: [],
+	floors: { echo: [], vm: [], papi: [], nodeV8: [] },
+	failures: [],
+	logs,
+};
+
+async function checkpoint(status = evidence.status) {
+	evidence.status = status;
+	await writeEvidenceJson(outputFile, evidence);
+}
+
+function ensureLease() {
+	if (Date.now() >= expiredAt)
+		throw new Error('issue #278 Sandbox lease expired during the campaign.');
+}
+
+async function loadFresh(arm, label) {
+	ensureLease();
+	const bundle = bundles[arm];
+	const entry = { id: `octane-issue278-${arm}`, framework: 'issue278' };
 	await adapter.loadBundle(entry, {
 		rows: 0,
-		bundleBytes,
-		bundleSha256,
+		bundleBytes: bundle.bytes,
+		bundleSha256: bundle.sha256,
 		suite: `issue278-${label}`,
 	});
+	const scalar = arm === 'scalarCountsChecked';
+	const readyExpression = scalar
+		? "typeof globalThis.__ISSUE278_RUN_SCALAR__ === 'function'"
+		: "typeof globalThis.__ISSUE278_RUN_CREATE__ === 'function' && typeof globalThis.__ISSUE278_RUN_VM_CALIBRATION__ === 'function'";
 	const deadline = Date.now() + 30_000;
 	while (Date.now() < deadline) {
-		const ready = await adapter.evaluate(
-			"typeof globalThis.__ISSUE278_RUN_CREATE__ === 'function' && typeof globalThis.__ISSUE278_RUN_VM_CALIBRATION__ === 'function'",
-			{ awaitPromise: false, timeoutMs: 5_000 },
-		);
-		if (ready === true && (await adapter.domSearchCount('title')) === 1) return;
+		const ready = await adapter.evaluate(readyExpression, {
+			awaitPromise: false,
+			timeoutMs: 5_000,
+		});
+		const expectedNode = scalar ? 'issue278-scalar-placeholder' : 'title';
+		if (ready === true && (await adapter.domSearchCount(expectedNode)) === 1) return;
 		await new Promise((resolve) => setTimeout(resolve, 500));
 	}
-	throw new Error('timeout waiting for issue #278 benchmark-app driver.');
+	throw new Error(`timeout waiting for issue #278 ${arm} benchmark-app driver.`);
 }
 
 let asyncProbeOrdinal = 0;
@@ -112,33 +194,82 @@ async function evaluateAsync(expression, timeoutMs) {
 		})()`,
 		{ awaitPromise: false, timeoutMs: 5_000 },
 	);
-	const event = await adapter.waitForConsoleMarker('__ISSUE278_ASYNC__', { key, timeoutMs });
+	let event;
+	try {
+		event = await adapter.waitForConsoleMarker('__ISSUE278_ASYNC__', { key, timeoutMs });
+	} catch (error) {
+		const diagnostic = await adapter
+			.evaluate(
+				`JSON.stringify({
+					progress: globalThis.__ISSUE278_PROGRESS__ ?? null,
+					snapshot: globalThis.__ISSUE278_SNAPSHOT__?.() ?? null,
+					last: globalThis.__ISSUE278_LAST__ ?? null,
+					wire: globalThis.__ISSUE278_WIRE__ ?? null,
+					btsProfile: globalThis.__OCTANE_LYNX_PROF ?? null,
+					btsCodecProfile: globalThis.__ISSUE278_CODEC_PROFILE__ ?? null,
+				})`,
+				{ awaitPromise: false, timeoutMs: 5_000 },
+			)
+			.catch((diagnosticError) => JSON.stringify({ diagnosticError: String(diagnosticError) }));
+		throw new Error(`${error.message}; diagnostic=${diagnostic}`, { cause: error });
+	}
 	const markerIndex = event.args.indexOf('__ISSUE278_ASYNC__');
 	const serialized = event.args[markerIndex + 2];
 	if (typeof serialized !== 'string') throw new Error('Native async marker omitted its payload.');
 	const settled = JSON.parse(serialized);
-	if (!settled.ok)
+	if (!settled.ok) {
 		throw new Error(`Native async probe failed: ${settled.error}\n${settled.stack ?? ''}`);
+	}
 	return settled.value;
 }
 
-async function createSample(scale, phase, ordinal) {
-	await loadFresh(`${phase}-${scale}-${ordinal}`);
-	const result = await evaluateAsync(`globalThis.__ISSUE278_RUN_CREATE__(${scale})`, 180_000);
-	const mainLabelNodeCount = await adapter.domSearchCount('col-label');
+async function createSample(arm, scale, phase, ordinal) {
+	await loadFresh(arm, `${phase}-${scale}-${ordinal}`);
+	const result = await evaluateAsync(
+		`globalThis.__ISSUE278_RUN_CREATE__(${scale})`,
+		Number(process.env.ISSUE278_CREATE_TIMEOUT_MS ?? 240_000),
+	);
 	return {
+		arm,
 		phase,
 		ordinal,
 		scale,
 		capturedAt: new Date().toISOString(),
-		mainLabelNodeCount,
+		mainLabelNodeCount: await adapter.domSearchCount('col-label'),
 		result,
 	};
 }
 
-function assertGate(sample) {
+async function scalarSample() {
+	await loadFresh('scalarCountsChecked', 'scalar-e1-gate');
+	const result = await evaluateAsync('globalThis.__ISSUE278_RUN_SCALAR__()', 60_000);
+	return {
+		arm: 'scalarCountsChecked',
+		capturedAt: new Date().toISOString(),
+		mainNodeCount: await adapter.domSearchCount('issue278-scalar'),
+		result,
+	};
+}
+
+function commandOps(sample) {
+	const value = sample.result?.btsCodecProfile?.commandOps;
+	return value !== null && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function assertCodecAccounting(profile, label) {
+	if (profile === null || typeof profile !== 'object')
+		throw new Error(`${label}: missing codec profile.`);
+	if (profile.encodeCalls !== profile.encodeFlags0 + profile.encodeFlags1) {
+		throw new Error(`${label}: encode flag counts do not account for every encode.`);
+	}
+	if (profile.decodeCalls !== profile.decodeFlags0 + profile.decodeFlags1) {
+		throw new Error(`${label}: decode flag counts do not account for every decode.`);
+	}
+}
+
+function assertRealGate(sample, { requireProfile = true } = {}) {
 	const { result, mainLabelNodeCount, scale } = sample;
-	if (result?.protocol !== 'octane-issue278-create-v1') {
+	if (result?.protocol !== 'octane-issue278-create-v2') {
 		throw new Error(`gate: unexpected result protocol ${JSON.stringify(result?.protocol)}`);
 	}
 	if (result.preState?.rowCount !== 0 || result.postState?.rowCount !== scale) {
@@ -147,24 +278,29 @@ function assertGate(sample) {
 	if (mainLabelNodeCount !== scale) {
 		throw new Error(`gate: main-thread label count ${mainLabelNodeCount}, expected ${scale}`);
 	}
-	const ops = result.wire?.flatMap((event) => event.commandOps ?? []) ?? [];
-	if (!ops.includes('mount-program-run')) {
-		throw new Error(
-			`gate: dynamic create silently missed mount-program-run (${JSON.stringify(ops)})`,
-		);
+	if (requireProfile) {
+		const ops = commandOps(sample);
+		if (!(ops['mount-template-run'] > 0) || (ops['mount-program-run'] ?? 0) !== 0) {
+			throw new Error(
+				`gate: real range-bearing create missed descriptor fallback: ${JSON.stringify(ops)}`,
+			);
+		}
+		assertCodecAccounting(result.btsCodecProfile, 'gate BTS');
+		assertCodecAccounting(result.mtsCodecProfile, 'gate MTS');
 	}
-	if (ops.includes('<wire-decode-failed>')) throw new Error('gate: wire envelope decode failed.');
-	return {
-		passed: true,
-		correctness: {
-			btsRowCount: result.postState.rowCount,
-			mainLabelNodeCount,
-			firstId: result.postState.firstId,
-			row998Id: result.postState.row998Id,
-		},
-		wireOps: ops,
-		mountProgramRunObserved: true,
-	};
+	return sample;
+}
+
+function assertScalarGate(sample) {
+	if (sample.result?.protocol !== 'octane-issue278-scalar-v2' || sample.mainNodeCount !== 1) {
+		throw new Error(`scalar gate: incorrect result ${JSON.stringify(sample)}`);
+	}
+	const ops = commandOps(sample);
+	if (!(ops['mount-program-run'] > 0) || (ops['mount-template-run'] ?? 0) !== 0) {
+		throw new Error(`scalar gate: range-free probe missed E1: ${JSON.stringify(ops)}`);
+	}
+	assertCodecAccounting(sample.result.btsCodecProfile, 'scalar BTS');
+	return sample;
 }
 
 function vmLoop(iterations) {
@@ -174,100 +310,119 @@ function vmLoop(iterations) {
 		checksum = Math.imul(checksum ^ index, 1664525) + 1013904223;
 		checksum ^= checksum >>> 13;
 	}
-	const elapsedMs = Number(process.hrtime.bigint() - startedAtNs) / 1e6;
-	return { elapsedMs, checksum: checksum >>> 0 };
+	return {
+		elapsedMs: Number(process.hrtime.bigint() - startedAtNs) / 1e6,
+		checksum: checksum >>> 0,
+	};
 }
 
-function scaleSchedule(reps) {
-	const ascending = [1000, 2000, 3000, 5000];
-	const descending = [...ascending].reverse();
-	const counts = new Map(ascending.map((scale) => [scale, 0]));
-	const schedule = [];
-	for (let round = 0; [...counts.values()].some((count) => count < reps); round++) {
-		for (const scale of round % 2 === 0 ? ascending : descending) {
-			if (counts.get(scale) >= reps) continue;
-			counts.set(scale, counts.get(scale) + 1);
-			schedule.push(scale);
-		}
+function scaleOrder(round) {
+	const scales = [1000, 2000, 3000, 5000];
+	return round % 2 === 0 ? scales : [...scales].reverse();
+}
+
+async function safeSample(arm, scale, phase, ordinal) {
+	try {
+		return {
+			ok: true,
+			sample: assertRealGate(await createSample(arm, scale, phase, ordinal), {
+				requireProfile: arm !== 'controlChecked',
+			}),
+		};
+	} catch (error) {
+		const failure = {
+			capturedAt: new Date().toISOString(),
+			arm,
+			scale,
+			phase,
+			ordinal,
+			message: String(error),
+		};
+		evidence.failures.push(failure);
+		await checkpoint('incomplete-with-dnf');
+		return { ok: false, failure };
 	}
-	return schedule;
 }
 
 try {
-	const gateSample = await createSample(1000, 'correctness-and-wire-gate', 0);
-	gate = { ...assertGate(gateSample), sample: gateSample };
+	const real = assertRealGate(
+		await createSample('countsChecked', 1000, 'correctness-path-flags-gate', 0),
+	);
+	const scalar = assertScalarGate(await scalarSample());
+	evidence.gate = {
+		passed: true,
+		real,
+		scalar,
+		realPath: 'mount-template-run',
+		scalarPath: 'mount-program-run',
+	};
+	await checkpoint(mode === 'gate' ? 'gate-complete' : 'running');
+
 	if (mode === 'full') {
-		await loadFresh('floors');
-		const encodedBytes = gateSample.result.wire.find((event) =>
-			event.commandOps?.includes('mount-program-run'),
-		)?.encodedBytes;
+		for (let ordinal = 0; ordinal < repetitions; ordinal++) {
+			const order =
+				ordinal % 2 === 0 ? ['controlChecked', 'timedChecked'] : ['timedChecked', 'controlChecked'];
+			const pair = { ordinal, order, samples: [] };
+			for (const arm of order)
+				pair.samples.push(await safeSample(arm, 1000, 'profile-overhead', ordinal));
+			evidence.profileOverheadPairs.push(pair);
+			await checkpoint();
+		}
+
+		for (let ordinal = 0; ordinal < repetitions; ordinal++) {
+			for (const scale of scaleOrder(ordinal)) {
+				const order =
+					(ordinal + scale / 1000) % 2 === 0
+						? ['timedChecked', 'timedTrusted']
+						: ['timedTrusted', 'timedChecked'];
+				const pair = { ordinal, scale, order, samples: [] };
+				for (const arm of order) {
+					pair.samples.push(await safeSample(arm, scale, 'validation-control', ordinal));
+				}
+				evidence.validationPairs.push(pair);
+				await checkpoint();
+			}
+		}
+
+		await loadFresh('timedChecked', 'floors');
+		const encodedBytes = Math.max(...real.result.wire.map((event) => event.encodedBytes ?? 0));
 		if (!Number.isSafeInteger(encodedBytes) || encodedBytes < 1) {
 			throw new Error('gate did not yield the production commit encoded byte count.');
 		}
 		const iterations = 5_000_000;
 		for (let ordinal = 0; ordinal < repetitions; ordinal++) {
-			floors.echo.push(
+			evidence.floors.echo.push(
 				await evaluateAsync(`globalThis.__ISSUE278_RUN_ECHO__(${encodedBytes})`, 60_000),
 			);
-			floors.vm.push(
+			evidence.floors.vm.push(
 				await evaluateAsync(`globalThis.__ISSUE278_RUN_VM_CALIBRATION__(${iterations})`, 60_000),
 			);
-			floors.nodeV8.push({ iterations, ...vmLoop(iterations) });
-			floors.papi.push(
-				await evaluateAsync('globalThis.__ISSUE278_RUN_PAPI_FLOOR__(1000)', 180_000),
+			evidence.floors.nodeV8.push({ iterations, ...vmLoop(iterations) });
+			evidence.floors.papi.push(
+				await evaluateAsync('globalThis.__ISSUE278_RUN_PAPI_FLOOR__(1000)', 240_000),
 			);
-		}
-		const ordinalByScale = new Map();
-		for (const scale of scaleSchedule(repetitions)) {
-			const ordinal = ordinalByScale.get(scale) ?? 0;
-			ordinalByScale.set(scale, ordinal + 1);
-			const sample = await createSample(scale, 'scale-scan', ordinal);
-			assertGate(sample);
-			samples.push(sample);
+			await checkpoint();
 		}
 	}
+
+	await checkpoint(
+		mode === 'gate'
+			? 'gate-complete'
+			: evidence.failures.length === 0
+				? 'complete'
+				: 'complete-with-dnf',
+	);
+} catch (error) {
+	evidence.failures.push({
+		capturedAt: new Date().toISOString(),
+		phase: 'fatal',
+		message: String(error),
+		stack: error instanceof Error ? error.stack : null,
+	});
+	await checkpoint('failed');
+	throw error;
 } finally {
 	await adapter.dispose();
 }
 
-const evidence = {
-	protocol: 'octane-issue278-native-attribution-v1',
-	status: mode === 'gate' ? 'gate-only' : 'complete',
-	capturedAt: new Date().toISOString(),
-	provenance: {
-		octaneSha,
-		instrumentationSha,
-		appPatchSha256,
-		bundle: {
-			path: path.relative(path.resolve(import.meta.dirname, '../../..'), bundleFile),
-			bytes: bundleBytes.length,
-			sha256: bundleSha256,
-		},
-		driverRoot,
-		driverSha,
-		connectorPackageTrees,
-		leaseReceipt,
-	},
-	method: {
-		instrument: 'benchmark-app Date.now counters plus Lynx profileMark; no runtime source edits',
-		createBoundary: 'programmatic BTS setRows start to transport commit ACK return',
-		trigger: 'globalThis.__ISSUE278_RUN_CREATE__; programmatic bypass of #275 touch path',
-		clockResolution: 'integer milliseconds in Explorer Native JS realms',
-		wireGate: 'gate build decodes only the app-owned transport envelope to list command op names',
-		floors: {
-			papi: 'detached page; setup outside timer; 7 host nodes per row; outer-timed public PAPI loops',
-			echo: 'ContextProxy round trip carrying one string sized to the 1k production commit',
-			vm: 'same fixed integer loop in BTS and MTS plus Node V8 host control',
-		},
-		repetitions,
-		scaleOrder: scaleSchedule(repetitions),
-	},
-	device: adapter.machine,
-	gate,
-	floors,
-	samples,
-	logs,
-};
-fs.mkdirSync(path.dirname(outputFile), { recursive: true });
-await writeEvidenceJson(outputFile, evidence);
 console.log(`[issue278] wrote ${outputFile}`);

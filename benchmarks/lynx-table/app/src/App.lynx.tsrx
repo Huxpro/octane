@@ -6,7 +6,6 @@
 // updates + a keyed `@for` over a `Row` component. The rendered class
 // structure (.page/.toolbar/.btn>.btn-text/.rows/.row(.danger)>.col-*) is the
 // harness contract and must match the other apps exactly.
-import { runOnMainThread } from '@octanejs/lynx';
 import { useCallback, useRef, useState } from 'octane';
 
 import { buildData, buildDataSeeded } from './data.js';
@@ -21,74 +20,10 @@ const INITIAL_ROWS: RowData[] =
 // Count Row bodies only in the deterministic profile build. Normal browser
 // and production builds fold this branch away with their existing define.
 declare const __OCTANE_LYNX_PROFILE__: boolean;
-declare const __BENCH_ISSUE278_ATTRIBUTION__: boolean;
 function countRowRender(): void {
 	if (!__OCTANE_LYNX_PROFILE__) return;
 	const profile = globalThis as { __BENCH_ROW_RENDERS__?: number };
 	profile.__BENCH_ROW_RENDERS__ = (profile.__BENCH_ROW_RENDERS__ ?? 0) + 1;
-}
-
-interface Issue278Profile {
-	readonly [name: string]: number;
-}
-
-interface Issue278Snapshot {
-	readonly rowCount: number;
-	readonly firstId: number | null;
-	readonly row998Id: number | null;
-	readonly firstLabel: string | null;
-}
-
-interface Issue278WireEvent {
-	readonly direction: 'bts-to-mts';
-	readonly type: string;
-	readonly startedAtMs: number;
-	readonly returnedAtMs: number;
-	readonly encodedBytes: number | null;
-	readonly commandOps: readonly string[] | null;
-}
-
-type Issue278Global =
-	typeof globalThis & {
-		__OCTANE_LYNX_PROF?: Record<string, unknown>;
-		__ISSUE278_ROOT__?: { flushTransport(): Promise<void> };
-		__ISSUE278_WIRE__?: Issue278WireEvent[];
-		__ISSUE278_RUN_CREATE__?: (rows: number) => Promise<unknown>;
-		__ISSUE278_RUN_ECHO__?: (bytes: number) => Promise<unknown>;
-		__ISSUE278_RUN_VM_CALIBRATION__?: (iterations: number) => Promise<unknown>;
-		__ISSUE278_RUN_PAPI_FLOOR__?: (rows: number) => Promise<unknown>;
-		__ISSUE278_SNAPSHOT__?: () => Issue278Snapshot;
-		__ISSUE278_LAST__?: unknown;
-		__ISSUE278_PROGRESS__?: string;
-	};
-
-function copyIssue278Profile(): Issue278Profile | null {
-	const raw = (globalThis as Issue278Global).__OCTANE_LYNX_PROF;
-	if (raw === undefined) return null;
-	const copy: Record<string, number> = {};
-	for (const name of Object.keys(raw)) {
-		const value = raw[name];
-		if (typeof value === 'number') copy[name] = value;
-	}
-	return copy;
-}
-
-function resetIssue278Profile(): void {
-	const raw = (globalThis as Issue278Global).__OCTANE_LYNX_PROF;
-	if (raw === undefined) return;
-	for (const name of Object.keys(raw)) {
-		if (typeof raw[name] === 'number') raw[name] = 0;
-	}
-}
-
-function issue278Calibration(iterations: number): { elapsedMs: number; checksum: number } {
-	let checksum = 0x9e3779b9;
-	const startedAtMs = Date.now();
-	for (let index = 0; index < iterations; index++) {
-		checksum = Math.imul(checksum ^ index, 1664525) + 1013904223;
-		checksum ^= checksum >>> 13;
-	}
-	return { elapsedMs: Date.now() - startedAtMs, checksum: checksum >>> 0 };
 }
 
 // -- storms: N sequential state→render→DOM ticks from one click --------------
@@ -139,103 +74,6 @@ function Row(props: RowProps) @{
 export function App() @{
 	const [rows, setRows] = useState<RowData[]>(INITIAL_ROWS);
 	const [selected, setSelected] = useState<number | undefined>(undefined);
-
-	const readMainProfile = () => {
-		'main thread';
-		const raw = (globalThis as { __OCTANE_LYNX_PROF?: Record<string, unknown> }).__OCTANE_LYNX_PROF;
-		if (raw === undefined) return { atMs: Date.now(), profile: null };
-		const copy: Record<string, number> = {};
-		for (const name of Object.keys(raw)) {
-			const value = raw[name];
-			if (typeof value === 'number') copy[name] = value;
-		}
-		return { atMs: Date.now(), profile: copy };
-	};
-	const resetMainProfile = () => {
-		'main thread';
-		const raw = (globalThis as { __OCTANE_LYNX_PROF?: Record<string, unknown> }).__OCTANE_LYNX_PROF;
-		if (raw !== undefined) {
-			for (const name of Object.keys(raw)) {
-				if (typeof raw[name] === 'number') raw[name] = 0;
-			}
-		}
-		return Date.now();
-	};
-	const echoOnMain = (value: string) => {
-		'main thread';
-		return { value, receivedAtMs: Date.now() };
-	};
-	const calibrateMain = (iterations: number) => {
-		'main thread';
-		let checksum = 0x9e3779b9;
-		const startedAtMs = Date.now();
-		for (let index = 0; index < iterations; index++) {
-			checksum = Math.imul(checksum ^ index, 1664525) + 1013904223;
-			checksum ^= checksum >>> 13;
-		}
-		return { elapsedMs: Date.now() - startedAtMs, checksum: checksum >>> 0 };
-	};
-	const papiFloorOnMain = (count: number) => {
-		'main thread';
-		// This is deliberately a detached, independently-created page. Keeping the
-		// floor out of the benchmark's resident template avoids a main-thread ref,
-		// which would make that template ineligible for mount-program-run and would
-		// change the path being attributed. Page/container setup is outside timing.
-		const page = __CreatePage('issue278-papi-floor', 0);
-		const uid = __GetElementUniqueID(page);
-		const rowsContainer = __CreateView(uid);
-		__SetClasses(rowsContainer, 'rows');
-		__AppendElement(page, rowsContainer);
-		const views = new Array(count);
-		const idTexts = new Array(count);
-		const labelTexts = new Array(count);
-		const removeTexts = new Array(count);
-		const idRaws = new Array(count);
-		const labelRaws = new Array(count);
-		const removeRaws = new Array(count);
-		const startedAtMs = Date.now();
-		for (let index = 0; index < count; index++) {
-			views[index] = __CreateView(uid);
-			idTexts[index] = __CreateText(uid);
-			labelTexts[index] = __CreateText(uid);
-			removeTexts[index] = __CreateText(uid);
-			idRaws[index] = __CreateRawText(String(index + 1));
-			labelRaws[index] = __CreateRawText('pretty red table');
-			removeRaws[index] = __CreateRawText('x');
-		}
-		const factoriesEndMs = Date.now();
-		for (let index = 0; index < count; index++) {
-			__SetClasses(views[index], 'row');
-			__SetClasses(idTexts[index], 'col-id');
-			__SetClasses(labelTexts[index], 'col-label');
-			__SetClasses(removeTexts[index], 'col-remove');
-			__AddEvent(labelTexts[index], 'bindEvent', 'tap', `issue278-${index}-select`);
-			__AddEvent(removeTexts[index], 'bindEvent', 'tap', `issue278-${index}-remove`);
-		}
-		const propsEndMs = Date.now();
-		for (let index = 0; index < count; index++) {
-			const view = views[index];
-			__AppendElement(view, idTexts[index]);
-			__AppendElement(idTexts[index], idRaws[index]);
-			__AppendElement(view, labelTexts[index]);
-			__AppendElement(labelTexts[index], labelRaws[index]);
-			__AppendElement(view, removeTexts[index]);
-			__AppendElement(removeTexts[index], removeRaws[index]);
-			__AppendElement(rowsContainer, view);
-		}
-		const treeEndMs = Date.now();
-		__FlushElementTree(page);
-		const flushEndMs = Date.now();
-		return {
-			rows: count,
-			hosts: count * 7,
-			factoriesMs: factoriesEndMs - startedAtMs,
-			propsAndEventsMs: propsEndMs - factoriesEndMs,
-			treeMs: treeEndMs - propsEndMs,
-			flushReturnMs: flushEndMs - treeEndMs,
-			totalMs: flushEndMs - startedAtMs,
-		};
-	};
 
 	const run = useCallback(() => {
 		setRows(buildData());
@@ -301,88 +139,6 @@ export function App() @{
 	// captures a stale rows binding (same shape as the React app).
 	const idsRef = useRef<number[]>([]);
 	idsRef.current = rows.map((r) => r.id);
-	const rowsRef = useRef<RowData[]>(rows);
-	rowsRef.current = rows;
-	const snapshot = (): Issue278Snapshot => {
-		const current = rowsRef.current;
-		return {
-			rowCount: current.length,
-			firstId: current[0]?.id ?? null,
-			row998Id: current[998]?.id ?? null,
-			firstLabel: current[0]?.label ?? null,
-		};
-	};
-	if (__BENCH_ISSUE278_ATTRIBUTION__) {
-		const target = globalThis as Issue278Global;
-		target.__ISSUE278_SNAPSHOT__ = snapshot;
-		target.__ISSUE278_RUN_CREATE__ = async (count: number) => {
-			if (!Number.isInteger(count) || count <= 0) throw new Error('row count must be positive.');
-			const root = target.__ISSUE278_ROOT__;
-			if (root === undefined) throw new Error('issue #278 root is unavailable.');
-			target.__ISSUE278_PROGRESS__ = 'reset-main-profile';
-			await runOnMainThread(resetMainProfile)();
-			target.__ISSUE278_PROGRESS__ = 'reset-bts-profile';
-			resetIssue278Profile();
-			const wire = target.__ISSUE278_WIRE__;
-			if (wire !== undefined) wire.length = 0;
-			const preState = snapshot();
-			const startedAtMs = Date.now();
-			lynx.performance?.profileMark?.('Issue278::create-start');
-			setRows(buildData(count));
-			setSelected(undefined);
-			target.__ISSUE278_PROGRESS__ = 'commit-flush';
-			await root.flushTransport();
-			target.__ISSUE278_PROGRESS__ = 'commit-acked';
-			const commitAckMs = Date.now();
-			lynx.performance?.profileMark?.('Issue278::commit-ack');
-			const btsProfile = copyIssue278Profile();
-			const operationWire =
-				wire === undefined ? [] : wire.slice();
-			const postState = snapshot();
-			target.__ISSUE278_PROGRESS__ = 'read-main-profile';
-			const mts = await runOnMainThread(readMainProfile)();
-			const result = {
-				protocol: 'octane-issue278-create-v1',
-				rows: count,
-				boundary: 'programmatic-bts-state-update-to-commit-complete',
-				startedAtMs,
-				commitAckMs,
-				wallMs: commitAckMs - startedAtMs,
-				preState,
-				postState,
-				btsProfile,
-				mtsProfile: mts.profile,
-				mtsSnapshotAtMs: mts.atMs,
-				wire: operationWire,
-			};
-			target.__ISSUE278_LAST__ = result;
-			target.__ISSUE278_PROGRESS__ = 'complete';
-			console.log('__ISSUE278_CREATE__', JSON.stringify(result));
-			return result;
-		};
-		target.__ISSUE278_RUN_ECHO__ = async (bytes: number) => {
-			const value = 'x'.repeat(bytes);
-			const startedAtMs = Date.now();
-			const echoed = await runOnMainThread(echoOnMain)(value);
-			const returnedAtMs = Date.now();
-			return {
-				protocol: 'octane-issue278-echo-v1',
-				bytes,
-				startedAtMs,
-				receivedAtMs: echoed.receivedAtMs,
-				returnedAtMs,
-				roundTripMs: returnedAtMs - startedAtMs,
-				correct: echoed.value.length === bytes && echoed.value === value,
-			};
-		};
-		target.__ISSUE278_RUN_VM_CALIBRATION__ = async (iterations: number) => ({
-			protocol: 'octane-issue278-vm-calibration-v1',
-			iterations,
-			bts: issue278Calibration(iterations),
-			mts: await runOnMainThread(calibrateMain)(iterations),
-		});
-		target.__ISSUE278_RUN_PAPI_FLOOR__ = (count: number) => runOnMainThread(papiFloorOnMain)(count);
-	}
 
 	const stormUpdate = useCallback(() => {
 		runStorm(
