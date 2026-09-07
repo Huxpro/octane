@@ -65,6 +65,7 @@ type Issue278Global =
 		__ISSUE278_ROOT__?: { flushTransport(): Promise<void> };
 		__ISSUE278_WIRE__?: Issue278WireEvent[];
 		__ISSUE278_RUN_CREATE__?: (rows: number) => Promise<unknown>;
+		__ISSUE278_WAIT_READY__?: () => Promise<boolean>;
 		__ISSUE278_RUN_ECHO__?: (bytes: number) => Promise<unknown>;
 		__ISSUE278_RUN_VM_CALIBRATION__?: (iterations: number) => Promise<unknown>;
 		__ISSUE278_RUN_PAPI_FLOOR__?: (rows: number) => Promise<unknown>;
@@ -349,6 +350,11 @@ export function App() @{
 	if (__BENCH_ISSUE278_ATTRIBUTION__) {
 		const target = globalThis as Issue278Global;
 		target.__ISSUE278_SNAPSHOT__ = snapshot;
+		target.__ISSUE278_WAIT_READY__ = async () => {
+			const value = 'issue278-first-tree-ready';
+			const echoed = await runOnMainThread(echoOnMain)(value);
+			return echoed.value === value;
+		};
 		target.__ISSUE278_RUN_CREATE__ = async (count: number) => {
 			if (!Number.isInteger(count) || count <= 0) throw new Error('row count must be positive.');
 			const root = target.__ISSUE278_ROOT__;

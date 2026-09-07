@@ -119,7 +119,7 @@ const adapter = await createAdapter({
 });
 
 const evidence = {
-	protocol: 'octane-issue278-native-attribution-v3',
+	protocol: 'octane-issue278-native-attribution-v4',
 	status: 'running',
 	capturedAt: new Date().toISOString(),
 	provenance: {
@@ -137,6 +137,8 @@ const evidence = {
 		instrument:
 			'build-time-restored codec phase counters plus Lynx profileMark; no authored runtime source changes',
 		createBoundary: 'programmatic BTS setRows start to transport commit ACK return',
+		readinessBoundary:
+			'every real-path page completes a timed-out runOnMainThread echo before the operation profiles are reset and create timing starts',
 		clockResolution:
 			'integer Date.now milliseconds on the shared device clock in BTS and MTS; adapter calibration maps it to trace time',
 		realPathGate: 'range-bearing table must use mount-template-run descriptor fallback',
@@ -196,7 +198,15 @@ async function loadFresh(arm, label) {
 			timeoutMs: 5_000,
 		});
 		const expectedNode = scalar ? '.issue278-scalar-placeholder' : '.title';
-		if (ready === true && (await adapter.domSearchCount(expectedNode)) === 1) return;
+		if (ready === true && (await adapter.domSearchCount(expectedNode)) === 1) {
+			if (!scalar) {
+				const firstTreeReady = await evaluateAsync('globalThis.__ISSUE278_WAIT_READY__()', 120_000);
+				if (firstTreeReady !== true) {
+					throw new Error('issue #278 first-tree readiness round trip returned false.');
+				}
+			}
+			return;
+		}
 		await new Promise((resolve) => setTimeout(resolve, 500));
 	}
 	throw new Error(`timeout waiting for issue #278 ${arm} benchmark-app driver.`);
