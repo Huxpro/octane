@@ -455,10 +455,22 @@ function requireFunction<
 `,
 				`\tconst reported: Error[] = [];
 \tconst issue277FirstScreenTimeline: {
+\t\tnextOrdinal: number;
 \t\tscheduledAtMs: number | null;
+\t\tscheduledOrdinal: number | null;
 \t\tcaptureAtMs: number | null;
+\t\tcaptureOrdinal: number | null;
 \t\tannounceAtMs: number | null;
-\t} = { scheduledAtMs: null, captureAtMs: null, announceAtMs: null };
+\t\tannounceOrdinal: number | null;
+\t} = {
+\t\tnextOrdinal: 0,
+\t\tscheduledAtMs: null,
+\t\tscheduledOrdinal: null,
+\t\tcaptureAtMs: null,
+\t\tcaptureOrdinal: null,
+\t\tannounceAtMs: null,
+\t\tannounceOrdinal: null,
+\t};
 `,
 				file,
 			);
@@ -468,6 +480,7 @@ function requireFunction<
 \t\tmarkFirstScreenPhase('capture');
 `,
 				`\tconst captureFirstScreen = (source: LynxHostContainer<Node>): boolean => {
+\t\tissue277FirstScreenTimeline.captureOrdinal = ++issue277FirstScreenTimeline.nextOrdinal;
 \t\tissue277FirstScreenTimeline.captureAtMs = Date.now();
 \t\tmarkFirstScreenPhase('capture');
 `,
@@ -479,6 +492,7 @@ function requireFunction<
 \t\tannounceReady();
 `,
 				`\t\tmarkFirstScreenPhase('announce');
+\t\tissue277FirstScreenTimeline.announceOrdinal = ++issue277FirstScreenTimeline.nextOrdinal;
 \t\tissue277FirstScreenTimeline.announceAtMs = Date.now();
 \t\tannounceReady();
 `,
@@ -492,6 +506,8 @@ function requireFunction<
 `,
 				`\t\t\t\tpendingFirstScreenCapture = () => captureFirstScreenAfterPaint(painted);
 \t\t\t\ttry {
+\t\t\t\t\tissue277FirstScreenTimeline.scheduledOrdinal =
+\t\t\t\t\t\t++issue277FirstScreenTimeline.nextOrdinal;
 \t\t\t\t\tissue277FirstScreenTimeline.scheduledAtMs = Date.now();
 \t\t\t\t\tfirstScreenCaptureScheduler(ensureFirstScreenCaptured);
 `,
@@ -626,7 +642,14 @@ function requireFunction<
 \t\t\tcalls: JSON.parse(JSON.stringify((globalThis as any).__ISSUE194_PAPI__ ?? {})),
 \t\t\tprofile: JSON.parse(JSON.stringify(lynxWireProfile())),
 \t\t\tprogram: JSON.parse(JSON.stringify((globalThis as any).__ISSUE194_PROGRAM__ ?? {})),
-\t\t\tissue277: { ...issue277FirstScreenTimeline },
+\t\t\tissue277: {
+\t\t\t\tscheduledAtMs: issue277FirstScreenTimeline.scheduledAtMs,
+\t\t\t\tscheduledOrdinal: issue277FirstScreenTimeline.scheduledOrdinal,
+\t\t\t\tcaptureAtMs: issue277FirstScreenTimeline.captureAtMs,
+\t\t\t\tcaptureOrdinal: issue277FirstScreenTimeline.captureOrdinal,
+\t\t\t\tannounceAtMs: issue277FirstScreenTimeline.announceAtMs,
+\t\t\t\tannounceOrdinal: issue277FirstScreenTimeline.announceOrdinal,
+\t\t\t},
 \t\t};
 \t\tif (request !== LYNX_READY_ANNOUNCEMENT_REQUEST && !correlatedReadySent) {
 `,
