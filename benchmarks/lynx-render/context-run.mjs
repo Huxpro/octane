@@ -115,6 +115,7 @@ async function buildWorkload(label, octaneSource, profile) {
 	const bytes = fs.readFileSync(file);
 	return {
 		module: await import(`${pathToFileURL(file).href}?arm=${label}&profile=${profile}`),
+		file,
 		bundle: {
 			bytes: bytes.length,
 			gzipBytes: gzipSync(bytes).length,
@@ -280,7 +281,18 @@ try {
 		]),
 	);
 	const runMemory = async (name, record) => {
-		const result = await arms[name].shipping.module.runContextMemory(profileCount, depth);
+		const moduleUrl = pathToFileURL(arms[name].shipping.file).href;
+		const source =
+			`const workload = await import(${JSON.stringify(moduleUrl)});` +
+			`await workload.runContextMemory(${profileCount}, ${depth});` +
+			`const result = await workload.runContextMemory(${profileCount}, ${depth});` +
+			`process.stdout.write(JSON.stringify(result));`;
+		const result = JSON.parse(
+			execFileSync(process.execPath, ['--expose-gc', '--input-type=module', '--eval', source], {
+				encoding: 'utf8',
+				maxBuffer: 1024 * 1024,
+			}),
+		);
 		if (
 			result.diagnostics.length !== 0 ||
 			result.commits !== 1 ||
@@ -295,7 +307,6 @@ try {
 		}
 	};
 	if (memoryRepetitions !== 0) {
-		for (const name of Object.keys(arms)) await runMemory(name, false);
 		for (let repetition = 0; repetition < memoryRepetitions; repetition++) {
 			const order =
 				baselineRoot === null
