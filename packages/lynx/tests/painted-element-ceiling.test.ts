@@ -32,7 +32,7 @@ import {
 import { installLynxMainThread, type LynxMainThreadController } from '../src/main-thread.js';
 import { createLynxElementPAPI } from '../src/core/papi.js';
 import { createFakePAPI } from './_fixtures/fake-element-papi.js';
-import { unwire, wire } from './_fixtures/lynx-wire.js';
+import { createUnwireReceiver, wire } from './_fixtures/lynx-wire.js';
 
 const envelope: LynxFirstScreenDirectEnvelope = { renderer: 'lynx', version: 1, events: [] };
 
@@ -523,8 +523,10 @@ function installOn(
 		globalThis as typeof globalThis & { lynx: { getCoreContext(): LynxContextProxy } }
 	).lynx.getCoreContext();
 	const inbound: Record<string, unknown>[] = [];
+	const receive = createUnwireReceiver();
 	context.addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
-		inbound.push(unwire(event.data) as Record<string, unknown>);
+		const received = receive(event.data);
+		if (received !== null) inbound.push(received.message as Record<string, unknown>);
 	});
 	return {
 		inbound,

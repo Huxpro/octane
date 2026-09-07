@@ -14,7 +14,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createLynxRoot, type LynxRoot } from '../src/index.js';
 import { installLynxMainThread, type LynxMainThreadController } from '../src/main-thread.js';
 import type { LynxContextProxy, LynxContextProxyEvent } from '../src/core/protocol.js';
-import { conformingContextProxy, unwire } from './_fixtures/lynx-wire.js';
+import { encodeLynxTransportValue, frameLynxTransportValue } from '../src/core/transport-codec.js';
+import { conformingContextProxy, createUnwireReceiver, unwire } from './_fixtures/lynx-wire.js';
 
 const LYNX_SRC = fileURLToPath(new URL('../src', import.meta.url));
 
@@ -52,14 +53,30 @@ function dispatchEventArguments(source: string): string[] {
 }
 
 describe('Lynx transport conformance', () => {
+	it('publishes one logical test message only after all physical frames arrive', () => {
+		const encoded = encodeLynxTransportValue({ text: 'x'.repeat(70_000) });
+		const frames = frameLynxTransportValue(encoded, 91);
+		const receive = createUnwireReceiver();
+		for (const frame of frames.slice(0, -1)) expect(receive(frame)).toBeNull();
+		const received = receive(frames.at(-1));
+		expect(received).not.toBeNull();
+		expect(received?.message).toEqual({ text: 'x'.repeat(70_000) });
+		expect(received?.encoded).toBe(encoded);
+		expect(received?.bytes).toBe(frames.reduce((total, frame) => total + frame.length, 0));
+	});
+
 	// The static half. A runtime probe only proves what it executed, and the
 	// claim being made is about every path, so the send sites are counted and
 	// read directly. Adding a fifth one, or dropping the encode from an existing
 	// one, is what this notices.
-	it('encodes at every send site in the package, and there are exactly four', () => {
+	it('encodes at every send site and frames every general dispatch', () => {
 		const sites: string[] = [];
+		let framed = 0;
+		let frameLoops = 0;
 		for (const file of sourceFiles(LYNX_SRC)) {
 			const source = readFileSync(file, 'utf8');
+			framed += source.match(/frameLynxTransportValue\(encoded,/g)?.length ?? 0;
+			frameLoops += source.match(/for \(const data of frames\)/g)?.length ?? 0;
 			for (const argument of dispatchEventArguments(source)) {
 				// Only the two transport channels; a host PAPI dispatch is not ours.
 				if (!/LYNX_(?:MAIN_TO_BACKGROUND|BACKGROUND_TO_MAIN)_EVENT/.test(argument)) continue;
@@ -68,8 +85,13 @@ describe('Lynx transport conformance', () => {
 		}
 		expect(sites).toHaveLength(4);
 		for (const site of sites) {
-			expect(site).toMatch(/data:\s*encoded\b|data:\s*encodeLynxTransportValue\(/);
+			expect(site).toMatch(/(?:\bdata\b|data:\s*encodeLynxTransportValue\()/);
 		}
+		// Three ordinary dispatch paths can carry an arbitrary commit and must
+		// frame. The fourth is the deliberately minimal terminal-dispose retry,
+		// whose fixed-size message remains directly encoded.
+		expect(framed).toBe(3);
+		expect(frameLoops).toBe(3);
 	});
 
 	// The receiving half of the same claim. `event.data` is whatever the other
@@ -94,8 +116,16 @@ describe('Lynx transport conformance', () => {
 		}
 		expect(reads).toHaveLength(4);
 		for (const read of reads) {
-			expect(read).toMatch(/(?:decodeLynxTransportValue|localizeLynxHostValue)\($/);
+			expect(read).toMatch(
+				/(?:acceptLynxTransportFrame|decodeLynxTransportValue|localizeLynxHostValue)\($/,
+			);
 		}
+		// The two transport receive paths first assemble physical frames, then
+		// materialize the complete codec string before schema code can see it.
+		const source = sourceFiles(LYNX_SRC)
+			.map((file) => readFileSync(file, 'utf8'))
+			.join('\n');
+		expect(source.match(/decodeLynxTransportValue\(framed\)/g)).toHaveLength(2);
 	});
 
 	// The dynamic half, under traffic the static half cannot see: what a real

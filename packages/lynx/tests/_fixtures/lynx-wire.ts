@@ -12,6 +12,8 @@
  * test is playing, and the conforming proxy that refuses anything else.
  */
 import {
+	acceptLynxTransportFrame,
+	createLynxTransportFrameState,
 	decodeLynxTransportValue,
 	encodeLynxTransportValue,
 } from '../../src/core/transport-codec.js';
@@ -32,6 +34,42 @@ export function wire(message: unknown): string {
  */
 export function unwire(data: unknown): unknown {
 	return decodeLynxTransportValue(data);
+}
+
+export interface LynxWireReceipt {
+	/** Receiver-local logical message after frame assembly and codec decode. */
+	readonly message: unknown;
+	/** Complete encoded message, without physical frame headers. */
+	readonly encoded: string;
+	/** Characters carried by every physical crossing that made this message. */
+	readonly bytes: number;
+}
+
+/**
+ * Make the receiving half of a test wire.
+ *
+ * A callback attached directly to the testing environment stands in for a
+ * transport receiver, not for one physical ContextProxy event. Large logical
+ * messages use several ordered events, so publishing only after reassembly is
+ * part of keeping that stand-in honest.
+ */
+export function createUnwireReceiver(): (data: unknown) => LynxWireReceipt | null {
+	const frames = createLynxTransportFrameState();
+	let bytes = 0;
+	return (data) => {
+		if (typeof data === 'string') bytes += data.length;
+		try {
+			const encoded = acceptLynxTransportFrame(data, frames);
+			if (encoded === null) return null;
+			const message = decodeLynxTransportValue(encoded);
+			const receipt = { message, encoded: encoded as string, bytes };
+			bytes = 0;
+			return receipt;
+		} catch (error) {
+			bytes = 0;
+			throw error;
+		}
+	};
 }
 
 /** What a conforming proxy observed, so a run cannot pass by doing nothing. */
@@ -59,6 +97,7 @@ export function conformingContextProxy(delegate: LynxContextProxy): {
 	readonly conformance: LynxWireConformance;
 } {
 	const crossings: string[] = [];
+	const receive = createUnwireReceiver();
 	const conformance: LynxWireConformance = {
 		crossings,
 		bytes: () => crossings.reduce((total, payload) => total + payload.length, 0),
@@ -73,8 +112,8 @@ export function conformingContextProxy(delegate: LynxContextProxy): {
 			// Decoding here is the strict half: a string that is not this codec's
 			// output would still be receiver-local, but it would mean a sender
 			// bypassed the transport, which is the same defect one step later.
-			decodeLynxTransportValue(event.data);
 			crossings.push(event.data);
+			receive(event.data);
 			return delegate.dispatchEvent(event);
 		},
 		addEventListener(type: string, listener: (event: LynxContextProxyEvent) => void): void {
