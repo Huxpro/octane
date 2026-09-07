@@ -353,6 +353,8 @@ interface LynxHostState<Node extends LynxElementRef> {
 	 * and every reader that wants all of them reads both.
 	 */
 	readonly programRuns: LynxProgramRun<Node>[];
+	/** Physical nodes still owned by proof-covered runs transferred at adoption. */
+	transferredProgramNodes: number;
 	/**
 	 * Whether the runs' event journals have been written into `nativeEvents`.
 	 *
@@ -907,6 +909,8 @@ interface LynxTemplateRunDeclaration {
 	readonly program: LynxPreparedTemplateProgram;
 	readonly firstId: number;
 	readonly count: number;
+	/** Distance in logical host IDs between two instance roots. */
+	readonly stride: number;
 	readonly parent: LynxAttachedHostParent;
 	readonly values: readonly UniversalHostTemplateProgramValue[];
 	readonly firstListenerId: number | null;
@@ -932,7 +936,7 @@ function templateRunRecord<Node extends LynxElementRef>(
 	const width = program.shape.types.length;
 	const row = Math.floor(offset / width);
 	const node = offset - row * width;
-	const rowFirstId = run.firstId + row * width;
+	const rowFirstId = run.firstId + row * run.stride;
 	const id = rowFirstId + node;
 	const bindings = program.bindings[node];
 	let props = program.props[node]!;
@@ -981,9 +985,12 @@ function templateRunRecord<Node extends LynxElementRef>(
  * topology, props, events, and public snapshots when one host is observed.
  */
 class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostRecordStore<Node> {
-	readonly nodes: (Node | undefined)[];
+	nodes: (Node | undefined)[];
 	private readonly materialized = new Map<number, LynxHostRecord<Node>>();
 	private readonly appended = new Map<number, LynxHostRecord<Node>>();
+	private promotedNodes: Map<number, Node> | null = null;
+	private adoptedRun: LynxProgramRun<Node> | null = null;
+	private adoptedLive = 0;
 	private removed: Set<number> | null = null;
 	private live: number;
 	private cleared = false;
@@ -1005,6 +1012,7 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 		readonly program: LynxPreparedTemplateProgram,
 		readonly firstId: number,
 		readonly count: number,
+		readonly stride: number,
 		readonly parent: LynxAttachedHostParent,
 		readonly values: readonly UniversalHostTemplateProgramValue[],
 		readonly firstListenerId: number | null,
@@ -1023,11 +1031,141 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 	}
 
 	setNode(offset: number, node: Node): void {
-		this.nodes[offset] = node;
+		if (this.promotedNodes?.has(offset)) this.promotedNodes.set(offset, node);
+		else this.nodes[offset] = node;
 		if (this.materialized.size !== 0) {
 			const record = this.materialized.get(offset);
 			if (record !== undefined) record.node = node;
 		}
+	}
+
+	/**
+	 * Take a proof-covered main-thread run as this store's physical backing.
+	 *
+	 * Both sides already retain the nodes in program order. The addressed
+	 * manifest proved address, layout, values, and listener identity before this
+	 * is called, so copying that array into records and ownership sets one host at
+	 * a time would add no information. Restrict the alias to the exact dense,
+	 * event-compatible shape this store derives: no painted range holes, the
+	 * same logical stride (including transparent range IDs), one physical node
+	 * per store slot, and a non-page parent (page roots still need one external-
+	 * edge journal entry each).
+	 */
+	adoptProgramRun(run: LynxProgramRun<Node>): boolean {
+		const width = this.program.shape.types.length;
+		if (
+			this.adoptedRun !== null ||
+			this.materialized.size !== 0 ||
+			this.appended.size !== 0 ||
+			this.removed?.size ||
+			this.parent === null ||
+			run.adoptionParent !== this.parent ||
+			run.firstId !== this.firstId ||
+			run.count !== this.count ||
+			run.stride !== this.stride ||
+			run.plan.nodes !== width ||
+			run.plan.ranges.length !== 0 ||
+			run.nodes.length !== this.nodes.length ||
+			Object.isFrozen(run.nodes)
+		) {
+			return false;
+		}
+		this.nodes = run.nodes as (Node | undefined)[];
+		this.adoptedRun = run;
+		this.adoptedLive = run.owned;
+		return true;
+	}
+
+	/** Entries not represented by the adopted dense run. */
+	*explicitEntries(): IterableIterator<[number, LynxHostRecord<Node>]> {
+		yield* this.prefix;
+		yield* this.appended;
+	}
+
+	/** Number of nodes still owned by the compressed adopted-run journal. */
+	get adoptedNodeCount(): number {
+		return this.adoptedLive;
+	}
+
+	get adoptedProgramRun(): LynxProgramRun<Node> | null {
+		return this.adoptedRun;
+	}
+
+	/**
+	 * Move one adopted node into the ordinary journals before an operation needs
+	 * to edit its event/ref lifetime independently of the run.
+	 */
+	promoteAdoptedNode(state: LynxHostState<Node>, id: number, node: Node): boolean {
+		const run = this.adoptedRun;
+		if (run === null) return false;
+		const offset = this.slot(id);
+		if (offset === -1) return false;
+		if (this.promotedNodes?.has(offset)) return false;
+		if (this.nodes[offset] !== node) return false;
+		materializeOneProgramNodeEvents(state, run, offset, node);
+		this.nodes[offset] = undefined;
+		(this.promotedNodes ??= new Map()).set(offset, node);
+		this.adoptedLive--;
+		state.transferredProgramNodes--;
+		state.ownedNodes.add(node);
+		this.mutated = true;
+		return true;
+	}
+
+	/**
+	 * Retire one still-compressed node after its accepted destroy completes.
+	 * Until then the run keeps the node, so a fault remains fully disposable.
+	 */
+	retireAdoptedNode(state: LynxHostState<Node>, id: number, node: Node): boolean {
+		const run = this.adoptedRun;
+		if (run === null) return false;
+		const offset = this.slot(id);
+		if (offset === -1 || this.promotedNodes?.has(offset)) {
+			return false;
+		}
+		if (this.nodes[offset] !== node) return false;
+		discardOneProgramNodeEvents(run, offset);
+		this.nodes[offset] = undefined;
+		this.adoptedLive--;
+		state.transferredProgramNodes--;
+		return true;
+	}
+
+	/** Drop an empty or structurally removed adopted run from container ownership. */
+	releaseAdoptedRun(state: LynxHostState<Node>): void {
+		const run = this.adoptedRun;
+		if (run === null) return;
+		const index = state.programRuns.indexOf(run);
+		if (index !== -1) state.programRuns.splice(index, 1);
+		state.transferredProgramNodes -= this.adoptedLive;
+		this.adoptedLive = 0;
+		this.adoptedRun = null;
+		state.programRunsDisjoint = true;
+		for (let at = 1; at < state.programRuns.length; at++) {
+			if (state.programRuns[at]!.firstId <= programRunLastId(state.programRuns[at - 1]!)) {
+				state.programRunsDisjoint = false;
+				break;
+			}
+		}
+	}
+
+	private nodeAt(offset: number): Node | undefined {
+		return this.promotedNodes?.get(offset) ?? this.nodes[offset];
+	}
+
+	private slot(id: number): number {
+		const within = id - this.firstId;
+		if (!Number.isSafeInteger(within) || within < 0) return -1;
+		const row = Math.floor(within / this.stride);
+		const node = within - row * this.stride;
+		const width = this.program.shape.types.length;
+		return row < this.count && node < width ? row * width + node : -1;
+	}
+
+	private idAt(offset: number): number {
+		const width = this.program.shape.types.length;
+		const row = Math.floor(offset / width);
+		return this.firstId + row * this.stride + (offset - row * width);
 	}
 
 	private isRunRoot(id: number): boolean {
@@ -1035,8 +1173,8 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 		return (
 			Number.isSafeInteger(offset) &&
 			offset >= 0 &&
-			offset < this.nodes.length &&
-			offset % this.program.shape.types.length === 0
+			Math.floor(offset / this.stride) < this.count &&
+			offset % this.stride === 0
 		);
 	}
 
@@ -1064,6 +1202,7 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 			this.live !== this.nodes.length ||
 			this.nodes.length === 0 ||
 			this.nodes.length !== this.count * width ||
+			this.stride !== width ||
 			command.width !== width ||
 			command.firstId !== this.firstId ||
 			command.count !== this.count ||
@@ -1076,7 +1215,7 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 			state.mainThreadRefOwners.size !== 0 ||
 			state.lists.size !== 0 ||
 			!state.implicitInitialGenerations ||
-			state.ownedNodes.size !== this.prefix.size + this.nodes.length
+			state.ownedNodes.size + state.transferredProgramNodes !== this.prefix.size + this.nodes.length
 		) {
 			return null;
 		}
@@ -1134,6 +1273,7 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 		command: Extract<UniversalHostCommand, { op: 'destroy-run' }>,
 	): UniversalHostCommand[] | null {
 		const width = this.program.shape.types.length;
+		if (this.stride !== width) return null;
 		if (command.width !== width) return null;
 		if (this.cleared) return null;
 		if (!Object.is(command.parent, this.parent)) return null;
@@ -1198,6 +1338,7 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 		batch: UniversalHostBatch,
 	): LynxDenseTeardownPlan<Node> | null {
 		const lastCommand = batch.commands[batch.commands.length - 1];
+		if (this.stride !== this.program.shape.types.length) return null;
 		if (batch.commands.length < this.nodes.length + this.count || lastCommand?.op !== 'destroy') {
 			return null;
 		}
@@ -1294,7 +1435,12 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 		}
 		if (commandIndex !== batch.commands.length) return null;
 
-		if (state.ownedNodes.size !== this.prefix.size + this.nodes.length) return null;
+		if (
+			state.ownedNodes.size + state.transferredProgramNodes !==
+			this.prefix.size + this.nodes.length
+		) {
+			return null;
+		}
 		for (const record of this.prefix.values()) {
 			if (record.node === null || !state.ownedNodes.has(record.node)) return null;
 		}
@@ -1333,13 +1479,7 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 	}
 
 	private offset(id: number): number {
-		const offset = id - this.firstId;
-		return !this.cleared &&
-			Number.isSafeInteger(offset) &&
-			offset >= 0 &&
-			offset < this.nodes.length
-			? offset
-			: -1;
+		return this.cleared ? -1 : this.slot(id);
 	}
 
 	get(id: number): LynxHostRecord<Node> | undefined {
@@ -1349,7 +1489,7 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 		const previous = this.materialized.get(offset);
 		if (previous !== undefined) return previous;
 		const record = templateRunRecord<Node>(this, offset, this.generationAt(offset));
-		record.node = this.nodes[offset] ?? null;
+		record.node = this.nodeAt(offset) ?? null;
 		this.materialized.set(offset, record);
 		return record;
 	}
@@ -1445,7 +1585,12 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 			if (!this.isPropsOnlyWrite(offset, record)) this.mutated = true;
 			if (this.removed?.delete(offset)) this.live++;
 			this.materialized.set(offset, record);
-			this.nodes[offset] = record.node ?? undefined;
+			if (this.promotedNodes?.has(offset)) {
+				if (record.node === null) this.promotedNodes.delete(offset);
+				else this.promotedNodes.set(offset, record.node);
+			} else if (this.adoptedRun === null || record.node !== null) {
+				this.nodes[offset] = record.node ?? undefined;
+			}
 		} else if (this.prefix.has(id)) {
 			this.mutated = true;
 			this.prefix.set(id, record);
@@ -1463,7 +1608,13 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 			this.mutated = true;
 			(this.removed ??= new Set()).add(offset);
 			this.materialized.delete(offset);
-			this.nodes[offset] = undefined;
+			// A compressed adopted node stays in the run until its physical destroy
+			// succeeds. That is the fault journal if apply stops after accepting the
+			// logical delete but before reaching the destroy operation.
+			if (this.adoptedRun === null || this.promotedNodes?.has(offset)) {
+				this.nodes[offset] = undefined;
+				this.promotedNodes?.delete(offset);
+			}
 			this.live--;
 			return true;
 		}
@@ -1476,6 +1627,7 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 		this.prefix.clear();
 		this.appended.clear();
 		this.materialized.clear();
+		this.promotedNodes?.clear();
 		this.removed?.clear();
 		this.nodes.length = 0;
 		this.live = 0;
@@ -1486,7 +1638,7 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 		yield* this.prefix.keys();
 		if (!this.cleared) {
 			for (let offset = 0; offset < this.nodes.length; offset++) {
-				if (!this.removed?.has(offset)) yield this.firstId + offset;
+				if (!this.removed?.has(offset)) yield this.idAt(offset);
 			}
 		}
 		yield* this.appended.keys();
@@ -1497,7 +1649,7 @@ class LynxDenseHostRecordStore<Node extends LynxElementRef> implements LynxHostR
 		if (!this.cleared) {
 			for (let offset = 0; offset < this.nodes.length; offset++) {
 				if (this.removed?.has(offset)) continue;
-				const id = this.firstId + offset;
+				const id = this.idAt(offset);
 				yield [id, this.get(id)!];
 			}
 		}
@@ -3715,6 +3867,7 @@ export function createLynxHostContainer<Node extends LynxElementRef>(
 		hasMainThreadProps: false,
 		hasNativeListTopology: false,
 		programRuns: [],
+		transferredProgramNodes: 0,
 		programEventsMaterialized: false,
 		programRunsDisjoint: true,
 		acceptedVersion: 0,
@@ -4225,6 +4378,7 @@ function firstScreenTreeHasList(nodes: readonly LynxFirstScreenDirectNode[]): bo
  */
 function clearProgramRuns<Node extends LynxElementRef>(state: LynxHostState<Node>): void {
 	state.programRuns.length = 0;
+	state.transferredProgramNodes = 0;
 	state.programRunsDisjoint = true;
 	state.programEventsMaterialized = false;
 }
@@ -4314,6 +4468,43 @@ function programNodeEvents<Node extends LynxElementRef>(
 	return events;
 }
 
+/** Stop the compressed run from answering for one host's event sites. */
+function discardOneProgramNodeEvents(run: LynxProgramRun<LynxElementRef>, position: number): void {
+	const plan = run.plan;
+	const instance = run.count === 1 ? 0 : Math.floor(position / plan.nodes);
+	const node = position - instance * plan.nodes;
+	const base = instance * plan.events.length;
+	const tokens = run.tokens as (LynxNativeEventToken | undefined)[];
+	for (let index = 0; index < plan.events.length; index++) {
+		if (plan.events[index]!.node === node) tokens[base + index] = undefined;
+	}
+}
+
+/**
+ * Promote one host's compressed listener journal before an independent update.
+ * Existing ordinary entries win: a second promotion must not restore the token
+ * an earlier background event command replaced or removed.
+ */
+function materializeOneProgramNodeEvents<Node extends LynxElementRef>(
+	state: LynxHostState<Node>,
+	run: LynxProgramRun<Node>,
+	position: number,
+	node: Node,
+): void {
+	const compressed = programNodeEvents(run, position);
+	if (compressed !== undefined) {
+		let ordinary = state.nativeEvents.get(node);
+		if (ordinary === undefined) {
+			ordinary = new Map();
+			state.nativeEvents.set(node, ordinary);
+		}
+		for (const [type, registration] of compressed) {
+			if (!ordinary.has(type)) ordinary.set(type, registration);
+		}
+	}
+	discardOneProgramNodeEvents(run, position);
+}
+
 /**
  * Write every program's event journal into the ordinary per-node one.
  *
@@ -4331,6 +4522,8 @@ function materializeProgramEvents<Node extends LynxElementRef>(state: LynxHostSt
 		// makes flat rather than one deep (issue #215 D8).
 		const hosts = programRunHostCount(run);
 		for (let position = 0; position < hosts; position++) {
+			const node = programRunHostNode(run, position);
+			if (node === undefined) continue;
 			const events = programNodeEvents(run, position);
 			if (events === undefined) continue;
 			// Merged rather than assigned. Nothing outside the mount writes into a
@@ -4339,7 +4532,6 @@ function materializeProgramEvents<Node extends LynxElementRef>(state: LynxHostSt
 			// absent. But this is the function whose job is to lose no tuple, and
 			// not assuming costs one lookup on a path that has already left the
 			// paint behind.
-			const node = programRunHostNode(run, position);
 			const existing = state.nativeEvents.get(node);
 			if (existing === undefined) state.nativeEvents.set(node, events);
 			else for (const [type, registration] of events) existing.set(type, registration);
@@ -6656,7 +6848,42 @@ function transferFirstTree<Node extends LynxElementRef>(
 	// licensed this transfer built nothing for this one to reuse (issue #215 D1),
 	// and the two walks reach the IDs in different orders anyway.
 	const programNodes = lynxFirstTreeProgramIndex(firstTree);
-	for (const [id, targetRecord] of targetState.records) {
+	let adoptedDenseRun: LynxProgramRun<Node> | null = null;
+	if (
+		LYNX_PROFILE &&
+		compactProgramRuns !== null &&
+		!(targetState.records instanceof LynxDenseHostRecordStore)
+	) {
+		lynxWireProfile().firstTreeProgramOwnershipFallback ??= 'record-map';
+	}
+	if (targetState.records instanceof LynxDenseHostRecordStore && compactProgramRuns !== null) {
+		for (const run of compactProgramRuns) {
+			if (!targetState.records.adoptProgramRun(run)) continue;
+			adoptedDenseRun = run;
+			targetState.programRuns.push(run);
+			targetState.transferredProgramNodes += run.owned;
+			if (LYNX_PROFILE) {
+				const profile = lynxWireProfile();
+				profile.firstTreeProgramOwnershipRuns++;
+				profile.firstTreeProgramOwnershipHosts += run.owned;
+			}
+			break;
+		}
+		if (LYNX_PROFILE && adoptedDenseRun === null) {
+			const run = compactProgramRuns.values().next().value as LynxProgramRun<Node> | undefined;
+			const profile = lynxWireProfile();
+			const detail = run === undefined ? 'missing-run' : 'dense-run-mismatch';
+			profile.firstTreeProgramOwnershipFallback =
+				profile.firstTreeProgramOwnershipFallback === null
+					? detail
+					: `${profile.firstTreeProgramOwnershipFallback};${detail}`;
+		}
+	}
+	const records =
+		adoptedDenseRun === null
+			? targetState.records
+			: (targetState.records as LynxDenseHostRecordStore<Node>).explicitEntries();
+	for (const [id, targetRecord] of records) {
 		const sourceRecord = sourceState.records.get(id);
 		// A native list row was never painted, so there is nothing to move. It
 		// stays a record with no node, and the list's callbacks give it one when
@@ -6957,6 +7184,7 @@ function prepareDenseTeardown<Node extends LynxElementRef>(
 					}
 					const startedDenseRelease = LYNX_PROFILE && run !== null ? performance.now() : 0;
 					try {
+						plan.store.releaseAdoptedRun(state);
 						state.ownedNodes.clear();
 						for (const record of plan.records.values()) state.ownedNodes.add(record.node!);
 						if (plan.parent === null) {
@@ -7107,6 +7335,8 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			state.records.size !== 0 ||
 			state.generations.size !== 0 ||
 			state.ownedNodes.size !== 0 ||
+			state.transferredProgramNodes !== 0 ||
+			state.programRuns.length !== 0 ||
 			state.ownedPageRoots.size !== 0 ||
 			state.nativeEvents.size !== 0 ||
 			state.mainThreadRefs.size !== 0 ||
@@ -7264,9 +7494,15 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 		incrementalCompactRun !== null &&
 		// Implicit generation-one identities require a provably fresh id range.
 		incrementalCompactRun.firstId > state.maxExplicitId;
+	const compactFirstTreeCandidate =
+		firstTree !== undefined &&
+		batch.commands.some(
+			(command) =>
+				command !== null && typeof command === 'object' && command.op === 'mount-program-run',
+		);
 	let compactCandidate =
 		options?.compact === true &&
-		firstTree === undefined &&
+		(firstTree === undefined || compactFirstTreeCandidate) &&
 		!state.hasMainThreadProps &&
 		!state.hasNativeListTopology &&
 		((initiallyEmpty && initiallyNoGenerations) || incrementalCompactCandidate);
@@ -7578,7 +7814,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 	// credit headroom that was never occupied.
 	if (state.paintedElementCeiling !== Infinity) {
 		const ceiling = state.paintedElementCeiling;
-		let projected = state.ownedNodes.size;
+		let projected = state.ownedNodes.size + state.transferredProgramNodes;
 		// Membership is a property of the batch's own topology as much as of
 		// accepted state — the list, the item and the subtree may all be created
 		// here — so parentage and types have to be readable before the first
@@ -7883,6 +8119,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 					program,
 					firstId: declaredFirst,
 					count,
+					stride: shape.types.length,
 					parent,
 					// The declaration outlives the command that carried it, so a mutable
 					// array would let the peer rewrite hosts it already mounted. The copy
@@ -7935,18 +8172,26 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			}
 			let denseEligible =
 				command.op !== 'mount-template-range' &&
-				instanceStride === shape.types.length &&
+				instanceStride >= shape.types.length &&
 				compactCandidate &&
-				options?.lazyPublicInstances === true &&
+				(compactFirstTreeCandidate || options?.lazyPublicInstances === true) &&
 				Object.isFrozen(command.values) &&
 				command.before === null &&
 				!sawCompactRange &&
 				stagedRecords instanceof Map &&
-				program.bindings.every(
-					(binding, node) => binding === undefined || program.dynamicRoutes[node] !== 0,
-				);
+				(firstTree !== undefined && command.op === 'mount-program-run'
+					? true
+					: program.bindings.every(
+							(binding, node) => binding === undefined || program.dynamicRoutes[node] !== 0,
+						));
 			if (denseEligible) {
-				const end = command.firstId + (hostCount - 1);
+				const end = command.firstId + (count - 1) * instanceStride + shape.types.length - 1;
+				const belongsToRun = (id: number): boolean => {
+					const within = id - command.firstId;
+					if (within < 0) return false;
+					const row = Math.floor(within / instanceStride);
+					return row < count && within - row * instanceStride < shape.types.length;
+				};
 				if (
 					incrementalCompactCandidate &&
 					(typeof parent !== 'number' || !isRootConnected((id) => state.records.get(id), parent))
@@ -7954,14 +8199,14 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 					denseEligible = false;
 				}
 				for (const id of stagedRecords.keys()) {
-					if (id >= command.firstId && id <= end) {
+					if (belongsToRun(id)) {
 						denseEligible = false;
 						break;
 					}
 				}
 				if (incrementalCompactCandidate) {
 					for (const id of state.generations.keys()) {
-						if (id >= command.firstId && id <= end) {
+						if (belongsToRun(id)) {
 							denseEligible = false;
 							break;
 						}
@@ -7983,6 +8228,22 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 						denseEligible = false;
 					}
 				}
+			}
+			if (
+				LYNX_PROFILE &&
+				!denseEligible &&
+				firstTree !== undefined &&
+				command.op === 'mount-program-run'
+			) {
+				const reasons: string[] = [];
+				if (!compactCandidate) reasons.push('not-compact');
+				if (options?.lazyPublicInstances !== true) reasons.push('not-lazy');
+				if (!Object.isFrozen(command.values)) reasons.push('mutable-values');
+				if (command.before !== null) reasons.push('before');
+				if (sawCompactRange) reasons.push('second-run');
+				if (!(stagedRecords instanceof Map)) reasons.push('not-map-prefix');
+				lynxWireProfile().firstTreeProgramOwnershipFallback =
+					reasons.length === 0 ? 'dense-validation' : reasons.join(',');
 			}
 			if (denseEligible) {
 				for (let row = 0; row < count; row++) {
@@ -8008,6 +8269,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 					program,
 					command.firstId,
 					count,
+					instanceStride,
 					parent,
 					command.values,
 					command.firstListenerId,
@@ -8034,7 +8296,9 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 					firstId: command.firstId,
 					program,
 					firstListenerId: command.firstListenerId,
-					lazyPublicInstances: true,
+					...(options?.lazyPublicInstances === true
+						? { lazyPublicInstances: true as const }
+						: null),
 				});
 				continue;
 			}
@@ -8711,9 +8975,21 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			hasNativeListTopology ||
 			stagedPortalRoot !== null)
 	) {
+		if (LYNX_PROFILE && compactFirstTreeCandidate) {
+			lynxWireProfile().firstTreeProgramOwnershipFallback ??= 'compact-final';
+		}
 		abandonCompact();
 	}
 	const compactHostCount = compactCandidate ? compactCreated : undefined;
+	const programComparison =
+		firstTree !== undefined && firstTreeSource !== null
+			? compareProgramAdoptionRuns(batch, firstTree)
+			: null;
+	const compactProgramAdoptionRuns = programComparison?.compactRuns ?? null;
+	const compactProgramIndex =
+		compactProgramAdoptionRuns === null || firstTree === undefined
+			? null
+			: lynxFirstTreeProgramIndex(firstTree);
 
 	const finalIds =
 		firstTree !== undefined || hasMainThreadProps || hasNativeListTopology
@@ -8775,6 +9051,17 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 		}
 	}
 	for (const id of finalIds ?? []) {
+		const compactProgramRun = compactProgramIndex?.runFor(id);
+		if (
+			compactProgramRun !== undefined &&
+			compactProgramAdoptionRuns?.has(compactProgramRun) === true
+		) {
+			// The addressed-run proof already matched the program shape that decides
+			// type, props, events, and topology. Main-thread props and native-list
+			// hosts are excluded when that program is prepared, so materializing each
+			// dense record to repeat those two global audits adds no safety fact.
+			continue;
+		}
 		const record = getRecord(id)!;
 		assertNoMainThreadEventCollision(record.props, record.events);
 		const mainThreadRef = record.props['main-thread:ref'] as
@@ -8911,12 +9198,9 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 	if (compactHostCount === undefined) materializeHandleDelta();
 	let firstTreeAction: LynxPreparedHostBatch['firstTreeAction'] = 'none';
 	let firstTreeMismatch: LynxFirstTreeMismatchError | null = null;
-	let compactProgramAdoptionRuns: ReadonlySet<LynxProgramRun<Node>> | null = null;
 	if (firstTree !== undefined && firstTreeSource !== null) {
-		const programComparison = compareProgramAdoptionRuns(batch, firstTree);
-		compactProgramAdoptionRuns = programComparison.compactRuns;
 		firstTreeMismatch =
-			programComparison.mismatch ??
+			programComparison!.mismatch ??
 			compareFirstTree(
 				container,
 				batch,
@@ -8927,7 +9211,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				getRecord,
 				operations,
 				listUpdates,
-				programComparison,
+				programComparison!,
 			);
 		firstTreeAction = firstTreeMismatch === null ? 'adopt' : 'repair';
 		if (firstTreeMismatch !== null) options?.onMismatch?.(firstTreeMismatch);
@@ -9093,6 +9377,11 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				}
 				const activeNodes = new Map(initialNodes);
 				try {
+					const adoptedDenseRecords =
+						state.records instanceof LynxDenseHostRecordStore &&
+						state.records.adoptedProgramRun !== null
+							? state.records
+							: null;
 					let applicationFailed = preApplicationFailed;
 					let applicationError: unknown = preApplicationError;
 					try {
@@ -9108,7 +9397,12 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 							);
 							const compactProgramIndex =
 								compactProgramAdoptionRuns === null ? null : lynxFirstTreeProgramIndex(firstTree!);
-							for (const [id, record] of state.records) {
+							const adoptionRecords =
+								state.records instanceof LynxDenseHostRecordStore &&
+								state.records.adoptedProgramRun !== null
+									? state.records.explicitEntries()
+									: state.records;
+							for (const [id, record] of adoptionRecords) {
 								// A native list row owns no element yet. Its selector, listeners
 								// and main-thread props are installed by the cell that
 								// materializes it, exactly as on a root that never adopted.
@@ -9155,6 +9449,18 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 								: operations;
 						for (const operation of applicationOperations) {
 							if (hasNativeListTopology && retiredPhysicalIds.has(operation.id)) continue;
+							if (
+								adoptedDenseRecords !== null &&
+								(operation.op === 'update' ||
+									operation.op === 'recreate' ||
+									operation.op === 'visibility' ||
+									operation.op === 'event')
+							) {
+								const adoptedNode = activeNodes.get(operation.id);
+								if (adoptedNode !== undefined) {
+									adoptedDenseRecords.promoteAdoptedNode(state, operation.id, adoptedNode);
+								}
+							}
 							if (operation.op === 'mount-template') {
 								if (operation.dense !== undefined && compactHostCount !== undefined) {
 									const dense = operation.dense;
@@ -9217,6 +9523,24 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 														bindings,
 														dense.values,
 														valueOffset,
+													);
+												} else if (program.dynamicRoutes[index] === 0) {
+													// Route 0 is admitted only for a first-tree addressed run.
+													// Successful adoption never reaches this painter; a proof
+													// mismatch must still repair from the complete background
+													// props, and may pay the ordinary patch planning it needs.
+													const id = dense.firstId + row * dense.stride + index;
+													const record = dense.get(id)!;
+													applyProps(
+														state,
+														node,
+														type,
+														EMPTY_HOST_PROPS,
+														record.props,
+														planLynxHostCreatePatch(type, record.props),
+														true,
+														true,
+														false,
 													);
 												}
 											} else {
@@ -9597,10 +9921,15 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 									if (state.lists.has(operation.id)) disposeNativeListState(state, operation.id);
 									removeAllNativeEvents(state, node, teardownMaySkipUnbind());
 									removeMainThreadRef(state, node);
-									state.ownedNodes.delete(node);
+									if (adoptedDenseRecords?.retireAdoptedNode(state, operation.id, node) !== true) {
+										state.ownedNodes.delete(node);
+									}
 								}
 								activeNodes.delete(operation.id);
 							}
+						}
+						if (adoptedDenseRecords?.adoptedNodeCount === 0) {
+							adoptedDenseRecords.releaseAdoptedRun(state);
 						}
 						for (const update of listUpdates) {
 							if (state.records.has(update.hostId)) applyListUpdate(state, update);
@@ -9964,19 +10293,21 @@ export function disposeLynxHostContainer<Node extends LynxElementRef>(
 			// Every entry is owned and none of them is `undefined`: a dense instance
 			// paints every hole it declares, which is the condition that made the run
 			// dense in the first place.
-			for (const node of run.nodes) cleanupNodes.add(node as Node);
+			for (const node of run.nodes) if (node !== undefined) cleanupNodes.add(node);
 			continue;
 		}
 		const hosts = run.ids.length;
 		for (let position = 0; position < hosts; position++) {
-			cleanupNodes.add(run.nodes[position] as Node);
+			const node = run.nodes[position];
+			if (node !== undefined) cleanupNodes.add(node);
 		}
 		for (let range = 0; range < run.rangeIds.length; range++) {
 			// A hole this first screen filled itself is an ordinary host with an
 			// ordinary record, already in `ownedNodes`; the program painted nothing
 			// there and owns nothing to remove.
 			if (run.rangeIds[range] === undefined) continue;
-			cleanupNodes.add(run.nodes[hosts + range] as Node);
+			const node = run.nodes[hosts + range];
+			if (node !== undefined) cleanupNodes.add(node);
 		}
 	}
 	let cleanupNodeIndex: ReadonlyMap<number, Node> | null = null;

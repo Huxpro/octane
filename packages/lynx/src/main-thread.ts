@@ -2600,6 +2600,18 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 			}
 		}
 		let postFirstTreeIncrementalCompact = false;
+		const compactFirstTreeProgramBatch =
+			firstTreeProgramRuns && message.ack === LYNX_COMPACT_ACKNOWLEDGEMENT;
+		if (compactFirstTreeProgramBatch) {
+			try {
+				for (const command of message.batch.commands) {
+					if (command.op === 'mount-program-run') freezeValidatedIntrinsicRun(command);
+				}
+			} catch (error) {
+				reject(identity, error);
+				return;
+			}
+		}
 		if (
 			postFirstTreeLazyPublicInstances &&
 			active?.postFirstTreeUpgrade === true &&
@@ -2677,6 +2689,14 @@ export function installLynxMainThread<Node extends LynxElementRef = LynxElementR
 								: { announcesPublicInstances }
 					: {
 							firstTree: candidateFirstTree,
+							...(compactFirstTreeProgramBatch
+								? {
+										compact: true,
+										...(message.instances === LYNX_LAZY_PUBLIC_INSTANCES
+											? { lazyPublicInstances: true }
+											: null),
+									}
+								: null),
 							announcesPublicInstances,
 							onMismatch(error) {
 								report(error, 'Octane Lynx repaired a first-screen mismatch.');

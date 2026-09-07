@@ -15,6 +15,7 @@ import { root as firstScreenRoot } from '../src/first-screen.js';
 import {
 	defineUniversalComponent as defineFirstScreenComponent,
 	renderLynxFirstScreen,
+	universalFor,
 	universalPlan as firstScreenPlan,
 	universalProps as firstScreenProps,
 	universalValue as firstScreenValue,
@@ -23,6 +24,7 @@ import { installLynxMainThread, type LynxMainThreadController } from '../src/mai
 import { unwire, wire } from './_fixtures/lynx-wire.js';
 import {
 	LYNX_BACKGROUND_TO_MAIN_EVENT,
+	LYNX_COMPACT_ACKNOWLEDGEMENT,
 	LYNX_FIRST_TREE_PROGRAM_MANIFEST_READY_REQUEST_BASE,
 	LYNX_MAIN_TO_BACKGROUND_EVENT,
 	LYNX_TRANSPORT_PROTOCOL_VERSION,
@@ -67,11 +69,27 @@ const addressedProgramPlan = firstScreenPlan(
 				readonly intrinsics: { view(pageId: number): object };
 				setId(node: object, value: string | null): void;
 			};
-			return (...args: unknown[]) => {
+			const create = (...args: unknown[]) => {
 				const node = papi.intrinsics.view(args[0] as number);
 				papi.setId(node, args[1] as string);
 				return [node];
 			};
+			return Object.assign(create, {
+				run(
+					pageId: unknown,
+					count: number,
+					values: readonly unknown[],
+					_events: readonly unknown[],
+					_ranges: readonly unknown[],
+					out: unknown[],
+				): void {
+					for (let index = 0; index < count; index++) {
+						const node = papi.intrinsics.view(pageId as number);
+						papi.setId(node, values[index] as string);
+						out[index] = node;
+					}
+				},
+			});
 		},
 	},
 	addressedProgram,
@@ -113,6 +131,9 @@ function install(configurePAPI?: (target: Record<string, unknown>) => void): {
 	profile.firstTreeProgramManifestRuns = 0;
 	profile.firstTreeProgramManifestMatches = 0;
 	profile.firstTreeProgramNodeComparisons = 0;
+	profile.firstTreeProgramOwnershipRuns = 0;
+	profile.firstTreeProgramOwnershipHosts = 0;
+	profile.firstTreeProgramOwnershipFallback = null;
 	profile.firstTreeProgramCompactions = 0;
 	profile.firstTreeProgramCompactionFallback = null;
 	profile.handOverMs = 0;
@@ -133,18 +154,43 @@ const ProgramPair = defineFirstScreenComponent(
 		firstScreenValue(addressedProgramPlan, [props.expanded]),
 	],
 );
+const denseShellPlan = firstScreenPlan('lynx', {
+	kind: 'program',
+	slots: ['r'],
+	nodes: 1,
+	values: [],
+	events: [],
+	ranges: [{ slot: 0, node: 0, id: 1 }],
+	bind: (host: unknown) => {
+		const papi = host as { readonly intrinsics: { view(pageId: number): object } };
+		return (...args: unknown[]) => [papi.intrinsics.view(args[0] as number), undefined];
+	},
+} as never);
+const DENSE_PROGRAM_ROWS = Array.from({ length: 128 }, (_, index) => ({
+	id: `row-${index}`,
+}));
+const DenseProgramRows = defineFirstScreenComponent('lynx', () =>
+	firstScreenValue(denseShellPlan, [
+		universalFor(
+			DENSE_PROGRAM_ROWS,
+			(row) => row.id,
+			(row) => firstScreenValue(addressedProgramPlan, [row.id]),
+		),
+	]),
+);
 
 /** The message a background sends once it has described the same first screen. */
-function commit(batch: unknown): void {
+function commit(batch: unknown, compact = false, version = 1): void {
 	backgroundContext().dispatchEvent({
 		type: LYNX_BACKGROUND_TO_MAIN_EVENT,
 		data: wire({
 			protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
 			renderer: LYNX_TRANSPORT_RENDERER,
 			root: 1,
-			version: 1,
+			version,
 			type: 'commit',
 			batch,
+			...(compact ? { ack: LYNX_COMPACT_ACKNOWLEDGEMENT } : null),
 		}),
 	});
 }
@@ -317,12 +363,92 @@ describe.sequential('Lynx first-tree lifecycle marker', () => {
 				},
 			],
 		});
-
 		expect(main.diagnostics()).toEqual([]);
 		expect(profile.firstTreeProgramManifestRuns).toBe(1);
 		expect(profile.firstTreeAction).toBe('adopt');
 		expect(profile.firstTreeProgramManifestMatches).toBe(1);
 		expect(profile.firstTreeProgramNodeComparisons).toBe(0);
+	});
+
+	it('retains a matched strided addressed run as one ownership journal', () => {
+		const { profile, main, dom } = install();
+		firstScreenRoot.render(DenseProgramRows, {});
+		main.markFirstScreenSyncReady();
+		backgroundContext().dispatchEvent({
+			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
+			data: wire({
+				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
+				renderer: LYNX_TRANSPORT_RENDERER,
+				type: 'main-ready-request',
+				request: LYNX_FIRST_TREE_PROGRAM_MANIFEST_READY_REQUEST_BASE,
+			}),
+		});
+
+		commit(
+			{
+				renderer: LYNX_TRANSPORT_RENDERER,
+				version: 1,
+				commands: [
+					{ op: 'create', id: 1, type: 'view', props: {} },
+					{
+						op: 'mount-program-run',
+						parent: 1,
+						before: null,
+						address: { module: addressedProgram.module, index: addressedProgram.index },
+						firstId: 3,
+						stride: 2,
+						firstListenerId: null,
+						count: DENSE_PROGRAM_ROWS.length,
+						values: DENSE_PROGRAM_ROWS.map((row) => row.id),
+					},
+					{ op: 'insert', parent: null, id: 1, before: null },
+				],
+			},
+			true,
+		);
+		backgroundContext().dispatchEvent({
+			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
+			data: wire({
+				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
+				renderer: LYNX_TRANSPORT_RENDERER,
+				root: 1,
+				version: 1,
+				type: 'adoption-ready',
+			}),
+		});
+
+		expect(main.diagnostics()).toEqual([]);
+		expect(profile.firstTreeAction).toBe('adopt');
+		expect(profile.firstTreeProgramManifestMatches).toBe(1);
+		expect(profile.firstTreeProgramNodeComparisons).toBe(1);
+		expect(profile.firstTreeProgramOwnershipRuns).toBe(1);
+		expect(profile.firstTreeProgramOwnershipHosts).toBe(DENSE_PROGRAM_ROWS.length);
+		expect(profile.firstTreeProgramOwnershipFallback).toBeNull();
+
+		const firstRow = dom.window.document.getElementById(DENSE_PROGRAM_ROWS[0]!.id);
+		expect(firstRow).not.toBeNull();
+		commit(
+			{
+				renderer: LYNX_TRANSPORT_RENDERER,
+				version: 2,
+				commands: [{ op: 'update', id: 3, props: { id: 'updated-row' } }],
+			},
+			false,
+			2,
+		);
+		expect(dom.window.document.getElementById('updated-row')).toBe(firstRow);
+
+		const clearCommands: Record<string, unknown>[] = [];
+		for (let index = 0; index < DENSE_PROGRAM_ROWS.length; index++) {
+			const id = 3 + index * 2;
+			clearCommands.push({ op: 'remove', parent: 1, id });
+			clearCommands.push({ op: 'destroy', id });
+		}
+		clearCommands.push({ op: 'remove', parent: null, id: 1 });
+		clearCommands.push({ op: 'destroy', id: 1 });
+		commit({ renderer: LYNX_TRANSPORT_RENDERER, version: 3, commands: clearCommands }, false, 3);
+		expect(dom.window.document.body.firstElementChild?.children).toHaveLength(0);
+		expect(main.diagnostics()).toEqual([]);
 	});
 
 	it('revisits only an expanded sibling when a compact and legacy program share the page', () => {

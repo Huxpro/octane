@@ -404,6 +404,8 @@ export function profileSnapshot(): {
 	eventDetachCount: number;
 	papiRemoveCount: number;
 	denseReleaseHostCount: number;
+	firstTreeProgramOwnershipRuns: number;
+	firstTreeProgramOwnershipHosts: number;
 } {
 	const profile = (globalThis as ProfileGlobals).__OCTANE_LYNX_PROF;
 	// Both fake threads share this realm, so the main-thread receiver also
@@ -433,6 +435,8 @@ export function profileSnapshot(): {
 		eventDetachCount: profile?.eventDetachCount ?? 0,
 		papiRemoveCount: profile?.papiRemoveCount ?? 0,
 		denseReleaseHostCount: profile?.denseReleaseHostCount ?? 0,
+		firstTreeProgramOwnershipRuns: profile?.firstTreeProgramOwnershipRuns ?? 0,
+		firstTreeProgramOwnershipHosts: profile?.firstTreeProgramOwnershipHosts ?? 0,
 	};
 }
 
@@ -670,6 +674,8 @@ export interface OpCounters {
 	readonly eventDetachCount: number;
 	readonly papiRemoveCount: number;
 	readonly denseReleaseHostCount: number;
+	readonly firstTreeProgramOwnershipRuns: number;
+	readonly firstTreeProgramOwnershipHosts: number;
 }
 
 export interface TableRunResult {
@@ -796,6 +802,10 @@ export async function runTable(rows: number): Promise<TableRunResult> {
 				eventDetachCount: after.eventDetachCount - before.eventDetachCount,
 				papiRemoveCount: after.papiRemoveCount - before.papiRemoveCount,
 				denseReleaseHostCount: after.denseReleaseHostCount - before.denseReleaseHostCount,
+				firstTreeProgramOwnershipRuns:
+					after.firstTreeProgramOwnershipRuns - before.firstTreeProgramOwnershipRuns,
+				firstTreeProgramOwnershipHosts:
+					after.firstTreeProgramOwnershipHosts - before.firstTreeProgramOwnershipHosts,
 			};
 		};
 

@@ -134,6 +134,12 @@ export interface LynxWireProfile {
 	firstTreeProgramManifestMatches: number;
 	/** Main: program-painted hosts that still reached the legacy per-host comparator. */
 	firstTreeProgramNodeComparisons: number;
+	/** Main: proof-covered program runs transferred as compressed ownership journals. */
+	firstTreeProgramOwnershipRuns: number;
+	/** Main: physical hosts retained by those compressed ownership journals. */
+	firstTreeProgramOwnershipHosts: number;
+	/** Main: why a proof-covered adoption could not retain run-level ownership. */
+	firstTreeProgramOwnershipFallback: string | null;
 	/** Background: first-tree manifest batches promoted to addressed runs. */
 	firstTreeProgramCompactions: number;
 	/** Background: why a manifest batch retained its complete host description. */
@@ -199,6 +205,9 @@ export function lynxWireProfile(): LynxWireProfile {
 		firstTreeProgramManifestRuns: 0,
 		firstTreeProgramManifestMatches: 0,
 		firstTreeProgramNodeComparisons: 0,
+		firstTreeProgramOwnershipRuns: 0,
+		firstTreeProgramOwnershipHosts: 0,
+		firstTreeProgramOwnershipFallback: null,
 		firstTreeProgramCompactions: 0,
 		firstTreeProgramCompactionFallback: null,
 		handOverMs: 0,
