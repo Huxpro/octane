@@ -1,0 +1,694 @@
+{
+  "protocol": "octane-issue287-adoption-retention-v1",
+  "label": "issue287-retention-final",
+  "createdAt": "2026-09-07T16:03:33.719Z",
+  "octaneCommit": "7d9b6707d5e36d3e6440971d464e5d11192f9fa8",
+  "dirty": false,
+  "rows": 1000,
+  "repetitions": 5,
+  "chromium": "149.0.7827.55",
+  "bundle": {
+    "path": "app/dist-mtsprogram-issue287-retention-7d9b6707d-rows1000-profile/main.web.bundle",
+    "bytes": 595547
+  },
+  "summary": {
+    "fresh": {
+      "usedBytes": {
+        "n": 5,
+        "min": 1973032,
+        "max": 1979148,
+        "mean": 1975296.8,
+        "median": 1973064,
+        "std": 2770.766709775473,
+        "ci95": 2428.6841034377444
+      },
+      "totalBytes": {
+        "n": 5,
+        "min": 2621440,
+        "max": 2621440,
+        "mean": 2621440,
+        "median": 2621440,
+        "std": 0,
+        "ci95": 0
+      },
+      "liveRuns": null,
+      "liveHosts": null,
+      "promotedHosts": null
+    },
+    "handOver": {
+      "usedBytes": {
+        "n": 5,
+        "min": 8373504,
+        "max": 8411656,
+        "mean": 8389616,
+        "median": 8383188,
+        "std": 14255.098736943213,
+        "ci95": 12495.144962296354
+      },
+      "totalBytes": {
+        "n": 5,
+        "min": 8704000,
+        "max": 8966144,
+        "mean": 8756428.8,
+        "median": 8704000,
+        "std": 104857.6,
+        "ci95": 91911.73885053293
+      },
+      "liveRuns": {
+        "n": 5,
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "median": 1,
+        "std": 0,
+        "ci95": 0
+      },
+      "liveHosts": {
+        "n": 5,
+        "min": 4000,
+        "max": 4000,
+        "mean": 4000,
+        "median": 4000,
+        "std": 0,
+        "ci95": 0
+      },
+      "promotedHosts": {
+        "n": 5,
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "std": 0,
+        "ci95": 0
+      }
+    },
+    "sparseUpdate": {
+      "usedBytes": {
+        "n": 5,
+        "min": 8383492,
+        "max": 8421644,
+        "mean": 8399987.2,
+        "median": 8394140,
+        "std": 14034.52301148849,
+        "ci95": 12301.801814305543
+      },
+      "totalBytes": {
+        "n": 5,
+        "min": 8704000,
+        "max": 8966144,
+        "mean": 8808857.6,
+        "median": 8704000,
+        "std": 128423.80782643068,
+        "ci95": 112568.43077787325
+      },
+      "liveRuns": {
+        "n": 5,
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "median": 1,
+        "std": 0,
+        "ci95": 0
+      },
+      "liveHosts": {
+        "n": 5,
+        "min": 3999,
+        "max": 3999,
+        "mean": 3999,
+        "median": 3999,
+        "std": 0,
+        "ci95": 0
+      },
+      "promotedHosts": {
+        "n": 5,
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "median": 1,
+        "std": 0,
+        "ci95": 0
+      }
+    },
+    "unmount": {
+      "usedBytes": {
+        "n": 5,
+        "min": 8310168,
+        "max": 8341956,
+        "mean": 8322127.2,
+        "median": 8313212,
+        "std": 13482.984927678292,
+        "ci95": 11818.357368454348
+      },
+      "totalBytes": {
+        "n": 5,
+        "min": 8966144,
+        "max": 8966144,
+        "mean": 8966144,
+        "median": 8966144,
+        "std": 0,
+        "ci95": 0
+      },
+      "liveRuns": {
+        "n": 5,
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "std": 0,
+        "ci95": 0
+      },
+      "liveHosts": {
+        "n": 5,
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "std": 0,
+        "ci95": 0
+      },
+      "promotedHosts": {
+        "n": 5,
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "median": 1,
+        "std": 0,
+        "ci95": 0
+      }
+    },
+    "close": {
+      "usedBytes": {
+        "n": 5,
+        "min": 4908816,
+        "max": 4911048,
+        "mean": 4910167.2,
+        "median": 4910324,
+        "std": 746.5521816993103,
+        "ci95": 654.3818393959294
+      },
+      "totalBytes": {
+        "n": 5,
+        "min": 5558272,
+        "max": 5820416,
+        "mean": 5610700.8,
+        "median": 5558272,
+        "std": 104857.6,
+        "ci95": 91911.73885053293
+      },
+      "liveRuns": {
+        "n": 5,
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "std": 0,
+        "ci95": 0
+      },
+      "liveHosts": {
+        "n": 5,
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "std": 0,
+        "ci95": 0
+      },
+      "promotedHosts": {
+        "n": 5,
+        "min": 1,
+        "max": 1,
+        "mean": 1,
+        "median": 1,
+        "std": 0,
+        "ci95": 0
+      }
+    }
+  },
+  "samples": [
+    {
+      "paint": {
+        "fcp": 153.90000009536743,
+        "fcpEpoch": 1788797006854.4,
+        "papiAtFcp": null,
+        "settled": 153.90000009536743,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "tableOracle": {
+          "rows": 1000,
+          "checksum": 1150422098
+        },
+        "dnf": false
+      },
+      "phases": [
+        {
+          "phase": "fresh",
+          "usedBytes": 1973064,
+          "totalBytes": 2621440,
+          "profile": null,
+          "workers": 1,
+          "rows": -1
+        },
+        {
+          "phase": "handOver",
+          "usedBytes": 8379160,
+          "totalBytes": 8704000,
+          "profile": {
+            "action": "adopt",
+            "settled": 1,
+            "ownershipRuns": 1,
+            "ownershipHosts": 4000,
+            "liveRuns": 1,
+            "liveHosts": 4000,
+            "promotedHosts": 0,
+            "fallback": null
+          },
+          "workers": 2,
+          "rows": 1000
+        },
+        {
+          "phase": "sparseUpdate",
+          "usedBytes": 8390100,
+          "totalBytes": 8966144,
+          "profile": {
+            "action": "adopt",
+            "settled": 1,
+            "ownershipRuns": 1,
+            "ownershipHosts": 4000,
+            "liveRuns": 1,
+            "liveHosts": 3999,
+            "promotedHosts": 1,
+            "fallback": null
+          },
+          "workers": 2,
+          "rows": 1000
+        },
+        {
+          "phase": "unmount",
+          "usedBytes": 8310552,
+          "totalBytes": 8966144,
+          "profile": {
+            "action": "adopt",
+            "settled": 1,
+            "ownershipRuns": 1,
+            "ownershipHosts": 4000,
+            "liveRuns": 0,
+            "liveHosts": 0,
+            "promotedHosts": 1,
+            "fallback": null
+          },
+          "workers": 2,
+          "rows": -1
+        },
+        {
+          "phase": "close",
+          "usedBytes": 4910324,
+          "totalBytes": 5558272,
+          "profile": {
+            "action": "adopt",
+            "settled": 1,
+            "ownershipRuns": 1,
+            "ownershipHosts": 4000,
+            "liveRuns": 0,
+            "liveHosts": 0,
+            "promotedHosts": 1,
+            "fallback": null
+          },
+          "workers": 2,
+          "rows": -1
+        }
+      ]
+    },
+    {
+      "paint": {
+        "fcp": 154,
+        "fcpEpoch": 1788797008331,
+        "papiAtFcp": null,
+        "settled": 154,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "tableOracle": {
+          "rows": 1000,
+          "checksum": 1150422098
+        },
+        "dnf": false
+      },
+      "phases": [
+        {
+          "phase": "fresh",
+          "usedBytes": 1973048,
+          "totalBytes": 2621440,
+          "profile": null,
+          "workers": 1,
+          "rows": -1
+        },
+        {
+          "phase": "handOver",
+          "usedBytes": 8400572,
+          "totalBytes": 8704000,
+          "profile": {
+            "action": "adopt",
+            "settled": 1,
+            "ownershipRuns": 1,
+            "ownershipHosts": 4000,
+            "liveRuns": 1,
+            "liveHosts": 4000,
+            "promotedHosts": 0,
+            "fallback": null
+          },
+          "workers": 2,
+          "rows": 1000
+        },
+        {
+          "phase": "sparseUpdate",
+          "usedBytes": 8410560,
+          "totalBytes": 8704000,
+          "profile": {
+            "action": "adopt",
+            "settled": 1,
+            "ownershipRuns": 1,
+            "ownershipHosts": 4000,
+            "liveRuns": 1,
+            "liveHosts": 3999,
+            "promotedHosts": 1,
+            "fallback": null
+          },
+          "workers": 2,
+          "rows": 1000
+        },
+        {
+          "phase": "unmount",
+          "usedBytes": 8334748,
+          "totalBytes": 8966144,
+          "profile": {
+            "action": "adopt",
+            "settled": 1,
+            "ownershipRuns": 1,
+            "ownershipHosts": 4000,
+            "liveRuns": 0,
+            "liveHosts": 0,
+            "promotedHosts": 1,
+            "fallback": null
+          },
+          "workers": 2,
+          "rows": -1
+        },
+        {
+          "phase": "close",
+          "usedBytes": 4910560,
+          "totalBytes": 5820416,
+          "profile": {
+            "action": "adopt",
+            "settled": 1,
+            "ownershipRuns": 1,
+            "ownershipHosts": 4000,
+            "liveRuns": 0,
+            "liveHosts": 0,
+            "promotedHosts": 1,
+            "fallback": null
+          },
+          "workers": 2,
+          "rows": -1
+        }
+      ]
+    },
+    {
+      "paint": {
+        "fcp": 149.40000009536743,
+        "fcpEpoch": 1788797009660.6,
+        "papiAtFcp": null,
+        "settled": 149.40000009536743,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "tableOracle": {
+          "rows": 1000,
+          "checksum": 1150422098
+        },
+        "dnf": false
+      },
+      "phases": [
+        {
+          "phase": "fresh",
+          "usedBytes": 1978192,
+          "totalBytes": 2621440,
+          "profile": null,
+          "workers": 1,
+          "rows": -1
+        },
+        {
+          "phase": "handOver",
+          "usedBytes": 8383188,
+          "totalBytes": 8704000,
+          "profile": {
+            "action": "adopt",
+            "settled": 1,
+            "ownershipRuns": 1,
+            "ownershipHosts": 4000,
+            "liveRuns": 1,
+            "liveHosts": 4000,
+            "promotedHosts": 0,
+            "fallback": null
+          },
+          "workers": 2,
+          "rows": 1000
+        },
+        {
+          "phase": "sparseUpdate",
+          "usedBytes": 8394140,
+          "totalBytes": 8966144,
+          "profile": {
+            "action": "adopt",
+            "settled": 1,
+            "ownershipRuns": 1,
+            "ownershipHosts": 4000,
+            "liveRuns": 1,
+            "liveHosts": 3999,
+            "promotedHosts": 1,
+            "fallback": null
+          },
+          "workers": 2,
+          "rows": 1000
+        },
+        {
+          "phase": "unmount",
+          "usedBytes": 8313212,
+          "totalBytes": 8966144,
+          "profile": {
+            "action": "adopt",
+            "settled": 1,
+            "ownershipRuns": 1,
+            "ownershipHosts": 4000,
+            "liveRuns": 0,
+            "liveHosts": 0,
+            "promotedHosts": 1,
+            "fallback": null
+          },
+          "workers": 2,
+          "rows": -1
+        },
+        {
+          "phase": "close",
+          "usedBytes": 4908816,
+          "totalBytes": 5558272,
+          "profile": {
+            "action": "adopt",
+            "settled": 1,
+            "ownershipRuns": 1,
+            "ownershipHosts": 4000,
+            "liveRuns": 0,
+            "liveHosts": 0,
+            "promotedHosts": 1,
+            "fallback": null
+          },
+          "workers": 2,
+          "rows": -1
+        }
+      ]
+    },
+    {
+      "paint": {
+        "fcp": 164.69999980926514,
+        "fcpEpoch": 1788797011161.3,
+        "papiAtFcp": null,
+        "settled": 164.69999980926514,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "tableOracle": {
+          "rows": 1000,
+          "checksum": 1150422098
+        },
+        "dnf": false
+      },
+      "phases": [
+        {
+          "phase": "fresh",
+          "usedBytes": 1973032,
+          "totalBytes": 2621440,
+          "profile": null,
+          "workers": 1,
+          "rows": -1
+        },
+        {
+          "phase": "handOver",
+          "usedBytes": 8373504,
+          "totalBytes": 8966144,
+          "profile": {
+            "action": "adopt",
+            "settled": 1,
+            "ownershipRuns": 1,
+            "ownershipHosts": 4000,
+            "liveRuns": 1,
+            "liveHosts": 4000,
+            "promotedHosts": 0,
+            "fallback": null
+          },
+          "workers": 2,
+          "rows": 1000
+        },
+        {
+          "phase": "sparseUpdate",
+          "usedBytes": 8383492,
+          "totalBytes": 8704000,
+          "profile": {
+            "action": "adopt",
+            "settled": 1,
+            "ownershipRuns": 1,
+            "ownershipHosts": 4000,
+            "liveRuns": 1,
+            "liveHosts": 3999,
+            "promotedHosts": 1,
+            "fallback": null
+          },
+          "workers": 2,
+          "rows": 1000
+        },
+        {
+          "phase": "unmount",
+          "usedBytes": 8310168,
+          "totalBytes": 8966144,
+          "profile": {
+            "action": "adopt",
+            "settled": 1,
+            "ownershipRuns": 1,
+            "ownershipHosts": 4000,
+            "liveRuns": 0,
+            "liveHosts": 0,
+            "promotedHosts": 1,
+            "fallback": null
+          },
+          "workers": 2,
+          "rows": -1
+        },
+        {
+          "phase": "close",
+          "usedBytes": 4910088,
+          "totalBytes": 5558272,
+          "profile": {
+            "action": "adopt",
+            "settled": 1,
+            "ownershipRuns": 1,
+            "ownershipHosts": 4000,
+            "liveRuns": 0,
+            "liveHosts": 0,
+            "promotedHosts": 1,
+            "fallback": null
+          },
+          "workers": 2,
+          "rows": -1
+        }
+      ]
+    },
+    {
+      "paint": {
+        "fcp": 150.40000009536743,
+        "fcpEpoch": 1788797012532.5,
+        "papiAtFcp": null,
+        "settled": 150.40000009536743,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "tableOracle": {
+          "rows": 1000,
+          "checksum": 1150422098
+        },
+        "dnf": false
+      },
+      "phases": [
+        {
+          "phase": "fresh",
+          "usedBytes": 1979148,
+          "totalBytes": 2621440,
+          "profile": null,
+          "workers": 1,
+          "rows": -1
+        },
+        {
+          "phase": "handOver",
+          "usedBytes": 8411656,
+          "totalBytes": 8704000,
+          "profile": {
+            "action": "adopt",
+            "settled": 1,
+            "ownershipRuns": 1,
+            "ownershipHosts": 4000,
+            "liveRuns": 1,
+            "liveHosts": 4000,
+            "promotedHosts": 0,
+            "fallback": null
+          },
+          "workers": 2,
+          "rows": 1000
+        },
+        {
+          "phase": "sparseUpdate",
+          "usedBytes": 8421644,
+          "totalBytes": 8704000,
+          "profile": {
+            "action": "adopt",
+            "settled": 1,
+            "ownershipRuns": 1,
+            "ownershipHosts": 4000,
+            "liveRuns": 1,
+            "liveHosts": 3999,
+            "promotedHosts": 1,
+            "fallback": null
+          },
+          "workers": 2,
+          "rows": 1000
+        },
+        {
+          "phase": "unmount",
+          "usedBytes": 8341956,
+          "totalBytes": 8966144,
+          "profile": {
+            "action": "adopt",
+            "settled": 1,
+            "ownershipRuns": 1,
+            "ownershipHosts": 4000,
+            "liveRuns": 0,
+            "liveHosts": 0,
+            "promotedHosts": 1,
+            "fallback": null
+          },
+          "workers": 2,
+          "rows": -1
+        },
+        {
+          "phase": "close",
+          "usedBytes": 4911048,
+          "totalBytes": 5558272,
+          "profile": {
+            "action": "adopt",
+            "settled": 1,
+            "ownershipRuns": 1,
+            "ownershipHosts": 4000,
+            "liveRuns": 0,
+            "liveHosts": 0,
+            "promotedHosts": 1,
+            "fallback": null
+          },
+          "workers": 2,
+          "rows": -1
+        }
+      ]
+    }
+  ]
+}
