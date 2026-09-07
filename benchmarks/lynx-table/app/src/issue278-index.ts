@@ -120,7 +120,10 @@ if (__BENCH_ISSUE278_ATTRIBUTION__) {
 	target.__ISSUE278_ROOT__ = root;
 	if (__BENCH_ISSUE278_SCALAR__) {
 		target.__ISSUE278_RUN_SCALAR__ = async () => {
-			await initialRender;
+			// The runner has already observed the placeholder in the Native DOM.
+			// Explorer's first-screen root.render() promise remains pending after that
+			// observable commit, so awaiting it here would prevent the scalar update
+			// from ever being dispatched. flushTransport() is the commit boundary.
 			await root.flushTransport();
 			resetIssue278BackgroundProfiles(target);
 			const wire = target.__ISSUE278_WIRE__;
