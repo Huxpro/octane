@@ -27,7 +27,6 @@ const { values: args } = parseArgs({
 		reps: { type: 'string', default: '5' },
 		'baseline-root': { type: 'string' },
 		'memory-reps': { type: 'string', default: '0' },
-		'plain-attempts': { type: 'string' },
 		out: { type: 'string' },
 	},
 });
@@ -228,11 +227,6 @@ try {
 		}
 	}
 	const profileCount = Math.max(...rowCounts);
-	const candidatePlainAttempts =
-		args['plain-attempts'] === undefined ? profileCount - 1 : Number(args['plain-attempts']);
-	if (!Number.isSafeInteger(candidatePlainAttempts) || candidatePlainAttempts < 0) {
-		throw new TypeError('plain-attempts must be a non-negative integer.');
-	}
 	const ownerProfiles = {};
 	for (const [name, arm] of Object.entries(arms)) {
 		const ownerProfile = await arm.profile.module.runContextChange(
@@ -247,10 +241,9 @@ try {
 		const profileAttempts = Object.fromEntries(
 			(ownerProfile.ownerProfile?.summary ?? []).map((entry) => [entry.component, entry.attempts]),
 		);
-		const expectedPlainAttempts = name === 'baseline' ? profileCount - 1 : candidatePlainAttempts;
 		const expectedProfileAttempts = {
 			ContextBenchApp: 1,
-			...(expectedPlainAttempts === 0 ? null : { MemoContextBenchPlainRow: expectedPlainAttempts }),
+			MemoContextBenchRow: 1,
 			MemoContextBenchLayer: depth + 1,
 			MemoContextBenchConsumerRow: 1,
 			MemoContextBenchLeaf: 1,

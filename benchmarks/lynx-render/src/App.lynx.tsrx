@@ -154,6 +154,28 @@ function ContextBenchConsumerRow(props: {
 
 const MemoContextBenchConsumerRow = memo(ContextBenchConsumerRow);
 
+function ContextBenchRow(props: {
+	readonly row: BenchRow;
+	readonly consumer: number;
+	readonly depth: number;
+	readonly onPlainRender: (id: number) => void;
+	readonly onLayerRender: (depth: number) => void;
+	readonly onLeafRender: (tone: string) => void;
+}) @{
+	@if (props.row.id === props.consumer) {
+		<MemoContextBenchConsumerRow
+			row={props.row}
+			depth={props.depth}
+			onLayerRender={props.onLayerRender}
+			onLeafRender={props.onLeafRender}
+		/>
+	} @else {
+		<MemoContextBenchPlainRow row={props.row} onPlainRender={props.onPlainRender} />
+	}
+}
+
+const MemoContextBenchRow = memo(ContextBenchRow);
+
 export interface ContextBenchAppProps extends ContextBenchCallbacks {
 	readonly rows: readonly BenchRow[];
 	readonly consumer: number;
@@ -170,19 +192,22 @@ export interface ContextBenchAppProps extends ContextBenchCallbacks {
 export function ContextBenchApp(props: ContextBenchAppProps) @{
 	const [tone, setTone] = useState(props.initialTone);
 	props.onToneSetter(setTone);
+	const consumer = props.consumer;
+	const depth = props.depth;
+	const onPlainRender = props.onPlainRender;
+	const onLayerRender = props.onLayerRender;
+	const onLeafRender = props.onLeafRender;
 	<ContextBenchTone.Provider value={tone}>
 		<view class="table">
 			@for (const row of props.rows; key row.id) {
-				@if (row.id === props.consumer) {
-					<MemoContextBenchConsumerRow
-						row={row}
-						depth={props.depth}
-						onLayerRender={props.onLayerRender}
-						onLeafRender={props.onLeafRender}
-					/>
-				} @else {
-					<MemoContextBenchPlainRow row={row} onPlainRender={props.onPlainRender} />
-				}
+				<MemoContextBenchRow
+					row={row}
+					consumer={consumer}
+					depth={depth}
+					onPlainRender={onPlainRender}
+					onLayerRender={onLayerRender}
+					onLeafRender={onLeafRender}
+				/>
 			}
 		</view>
 	</ContextBenchTone.Provider>
