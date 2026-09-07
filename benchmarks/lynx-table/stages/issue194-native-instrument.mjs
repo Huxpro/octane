@@ -43,7 +43,7 @@ export function instrumentIssue194NativeSources(
 		updateStage('src/index.ts', (source, file) => {
 			let next = replaceOnce(
 				source,
-				'void root.render(\n',
+				'const rendered = root.render(\n',
 				`declare const __BENCH_AUTOROWS__: number;
 const issue194BackgroundStartMs = Date.now();
 const issue194Global = globalThis as typeof globalThis & {
@@ -51,7 +51,7 @@ const issue194Global = globalThis as typeof globalThis & {
 };
 issue194Global.__ISSUE194_FLUSH__ = () => root.flushTransport();
 
-void root.render(
+const rendered = root.render(
 `,
 				file,
 			);
