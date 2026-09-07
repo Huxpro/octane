@@ -237,6 +237,7 @@ interface MainHarness {
 	acknowledge(
 		commit: UniversalTransportCommitMessage,
 		completion?: 'complete' | 'fault' | null,
+		adoption?: 'adopted' | 'repaired',
 	): void;
 	reject(commit: UniversalTransportCommitMessage, message: string): void;
 }
@@ -373,11 +374,12 @@ function installMainHarness(
 		commits,
 		disposals,
 		adoptions,
-		acknowledge(commit, completion = null) {
+		acknowledge(commit, completion = null, adoption) {
 			context.sendToBackground({
 				...commitIdentity(commit),
 				type: 'ack',
 				handles: handleDeltas(commit),
+				...(adoption === undefined ? null : { adoption }),
 			});
 			if (completion !== null) {
 				context.sendToBackground(
@@ -927,12 +929,12 @@ describe('@octanejs/lynx transported protocol', () => {
 		expect(() => validateLynxBackgroundInboundMessage({ ...acknowledgement, handles: [] })).toThrow(
 			/unknown field "handles"/,
 		);
-		expect(
+		expect(() =>
 			validateLynxBackgroundInboundMessage({ ...acknowledgement, adoption: 'adopted' }),
-		).toMatchObject({ adoption: 'adopted' });
+		).toThrow(/unknown field "adoption"/);
 		expect(() =>
 			validateLynxBackgroundInboundMessage({ ...acknowledgement, adoption: 'unknown' }),
-		).toThrow(/ack\.adoption.*adopted or repaired/);
+		).toThrow(/unknown field "adoption"/);
 	});
 
 	it('accepts sparse public-instance commands only with safe IDs and negotiated commit encoding', () => {
@@ -3613,15 +3615,8 @@ describe('@octanejs/lynx transported protocol', () => {
 				version: 1,
 				commands,
 			});
-			expect(commit).toMatchObject({ ack: LYNX_COMPACT_ACKNOWLEDGEMENT });
-			context.sendToBackground({
-				...commitIdentity(commit),
-				type: 'ack',
-				encoding: LYNX_COMPACT_ACKNOWLEDGEMENT,
-				count: values.length * program.nodes.length,
-				adoption: 'adopted',
-			});
-			context.sendToBackground({ ...commitIdentity(commit), type: 'complete' });
+			expect(commit).not.toHaveProperty('ack');
+			main.acknowledge(commit, 'complete', 'adopted');
 			await applying;
 			expect(main.adoptions).toEqual([{ ...commitIdentity(commit), type: 'adoption-ready' }]);
 			expect(driver.capabilities?.programManifests).toBe(false);

@@ -353,7 +353,7 @@ export interface LynxCompactTransportAcknowledgement extends UniversalTransportA
 	readonly encoding: typeof LYNX_COMPACT_ACKNOWLEDGEMENT;
 	readonly count: number;
 	readonly handles?: never;
-	readonly adoption?: 'adopted' | 'repaired';
+	readonly adoption?: never;
 }
 
 export type LynxTransportAcknowledgement =
@@ -2392,12 +2392,9 @@ export function validateLynxBackgroundInboundMessage(
 	}
 	if (message.type === 'ack') {
 		if (Object.prototype.hasOwnProperty.call(message, 'encoding')) {
-			const hasAdoption = Object.prototype.hasOwnProperty.call(message, 'adoption');
 			exactKeys(
 				message,
-				hasAdoption
-					? ['protocol', 'renderer', 'root', 'version', 'type', 'encoding', 'count', 'adoption']
-					: ['protocol', 'renderer', 'root', 'version', 'type', 'encoding', 'count'],
+				['protocol', 'renderer', 'root', 'version', 'type', 'encoding', 'count'],
 				'ack',
 			);
 			if (message.encoding !== LYNX_COMPACT_ACKNOWLEDGEMENT) {
@@ -2406,9 +2403,6 @@ export function validateLynxBackgroundInboundMessage(
 			positiveInteger(message.count, 'ack.count');
 			if ((message.count as number) < LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS) {
 				fail('ack.count', `must be at least ${LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS}.`);
-			}
-			if (hasAdoption && message.adoption !== 'adopted' && message.adoption !== 'repaired') {
-				fail('ack.adoption', 'must be adopted or repaired.');
 			}
 			return message as unknown as LynxCompactTransportAcknowledgement;
 		}

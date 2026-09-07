@@ -381,7 +381,6 @@ interface PendingCommit {
 	readonly token: PreparedTokenState;
 	state: 'waiting-ready' | 'sent' | 'acknowledged';
 	compactRequested: boolean;
-	firstTreeProgramCompactRequested: boolean;
 	incrementalCompactRequested: boolean;
 	compactHostCount: number | null;
 	abortRequested: boolean;
@@ -1050,16 +1049,11 @@ export function createLynxBackgroundTransport(
 		try {
 			if (message.encoding === LYNX_COMPACT_ACKNOWLEDGEMENT) {
 				if (
-					(!compactAcknowledgements && !entry.firstTreeProgramCompactRequested) ||
+					!compactAcknowledgements ||
 					!entry.compactRequested ||
 					(previousAccepted !== null && !entry.incrementalCompactRequested)
 				) {
 					throw new Error('Octane Lynx received an unnegotiated compact acknowledgement.');
-				}
-				if (entry.firstTreeProgramCompactRequested !== (message.adoption !== undefined)) {
-					throw new Error(
-						'Octane Lynx compact first-tree acknowledgement has a mismatched adoption verdict.',
-					);
 				}
 				handles = prepareLynxCompactHandleDeltas(
 					container,
@@ -1818,7 +1812,6 @@ export function createLynxBackgroundTransport(
 						token,
 						state: 'waiting-ready',
 						compactRequested: false,
-						firstTreeProgramCompactRequested: false,
 						incrementalCompactRequested: false,
 						compactHostCount: null,
 						abortRequested: false,
@@ -1840,17 +1833,11 @@ export function createLynxBackgroundTransport(
 											version: preparedBatch.version,
 											commands: preparedBatch.commands,
 										});
-							const firstTreeProgramCompact =
-								accepted === null &&
-								wireBatch !== preparedBatch &&
-								wireBatch.commands.some((command) => command.op === 'mount-program-run');
-							const count =
-								compactAcknowledgements || firstTreeProgramCompact
-									? countLynxCompactAcknowledgementHosts(preparedBatch, producedRunProgram)
-									: null;
+							const count = compactAcknowledgements
+								? countLynxCompactAcknowledgementHosts(preparedBatch, producedRunProgram)
+								: null;
 							const compact = count !== null;
 							entry.compactRequested = compact;
-							entry.firstTreeProgramCompactRequested = firstTreeProgramCompact && compact;
 							entry.compactHostCount = count;
 							const incrementalRun =
 								preparedBatch.commands.length === 1 ? preparedBatch.commands[0] : undefined;

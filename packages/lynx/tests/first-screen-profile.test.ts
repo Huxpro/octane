@@ -23,7 +23,6 @@ import { installLynxMainThread, type LynxMainThreadController } from '../src/mai
 import { unwire, wire } from './_fixtures/lynx-wire.js';
 import {
 	LYNX_BACKGROUND_TO_MAIN_EVENT,
-	LYNX_COMPACT_ACKNOWLEDGEMENT,
 	LYNX_FIRST_TREE_PROGRAM_MANIFEST_READY_REQUEST_BASE,
 	LYNX_MAIN_TO_BACKGROUND_EVENT,
 	LYNX_TRANSPORT_PROTOCOL_VERSION,
@@ -133,57 +132,6 @@ const ProgramPair = defineFirstScreenComponent(
 		firstScreenValue(addressedProgramPlan, [props.compact]),
 		firstScreenValue(addressedProgramPlan, [props.expanded]),
 	],
-);
-
-const compactAckHostCount = 16;
-const compactAckProgram = {
-	module: 'tests/first-screen-profile-compact-ack.tsrx',
-	index: 0,
-	digest: 'first-screen-profile-compact-ack-digest',
-} as const;
-const compactAckPlan = firstScreenPlan(
-	'lynx',
-	{
-		kind: 'program',
-		slots: [],
-		nodes: compactAckHostCount,
-		values: Array.from({ length: compactAckHostCount }, (_, index) => index),
-		events: [],
-		ranges: [],
-		wire: {
-			nodes: Array.from({ length: compactAckHostCount }, (_, index) => ({
-				type: 'view',
-				parent: index === 0 ? -1 : 0,
-				props: {},
-				bindings: [{ name: 'id', valueIndex: index }],
-			})),
-			events: [],
-		},
-		bind: (host: unknown) => {
-			const papi = host as {
-				readonly intrinsics: { view(pageId: number): object };
-				insertBefore(parent: object, child: object, before: object | null): void;
-				setId(node: object, value: string | null): void;
-			};
-			return (...args: unknown[]) => {
-				const nodes = new Array<object>(compactAckHostCount);
-				for (let index = 0; index < compactAckHostCount; index++) {
-					const node = papi.intrinsics.view(args[0] as number);
-					papi.setId(node, args[index + 1] as string);
-					nodes[index] = node;
-				}
-				for (let index = 1; index < compactAckHostCount; index++) {
-					papi.insertBefore(nodes[0]!, nodes[index]!, null);
-				}
-				return nodes;
-			};
-		},
-	},
-	compactAckProgram,
-);
-const CompactAckHost = defineFirstScreenComponent(
-	'lynx',
-	(props: { readonly ids: readonly string[] }) => firstScreenValue(compactAckPlan, props.ids),
 );
 
 /** The message a background sends once it has described the same first screen. */
@@ -414,70 +362,6 @@ describe.sequential('Lynx first-tree lifecycle marker', () => {
 		expect(profile.firstTreeAction).toBe('adopt');
 		expect(profile.firstTreeProgramManifestMatches).toBe(1);
 		expect(profile.firstTreeProgramNodeComparisons).toBe(1);
-	});
-
-	it('returns one compact acknowledgement for an adopted addressed program', () => {
-		const { profile, main, dom } = install();
-		const ids = Array.from({ length: compactAckHostCount }, (_, index) => `compact-${index}`);
-		firstScreenRoot.render(CompactAckHost, { ids });
-		main.markFirstScreenSyncReady();
-		const replies: unknown[] = [];
-		backgroundContext().addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
-			replies.push(unwire(event.data));
-		});
-		backgroundContext().dispatchEvent({
-			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-			data: wire({
-				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
-				renderer: LYNX_TRANSPORT_RENDERER,
-				type: 'main-ready-request',
-				request: LYNX_FIRST_TREE_PROGRAM_MANIFEST_READY_REQUEST_BASE,
-			}),
-		});
-
-		backgroundContext().dispatchEvent({
-			type: LYNX_BACKGROUND_TO_MAIN_EVENT,
-			data: wire({
-				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
-				renderer: LYNX_TRANSPORT_RENDERER,
-				root: 1,
-				version: 1,
-				type: 'commit',
-				ack: LYNX_COMPACT_ACKNOWLEDGEMENT,
-				batch: {
-					renderer: LYNX_TRANSPORT_RENDERER,
-					version: 1,
-					commands: [
-						{
-							op: 'mount-program-run',
-							parent: null,
-							before: null,
-							address: { module: compactAckProgram.module, index: compactAckProgram.index },
-							firstId: 1,
-							firstListenerId: null,
-							count: 1,
-							values: ids,
-						},
-					],
-				},
-			}),
-		});
-
-		expect(replies.filter((reply) => (reply as { type?: string }).type === 'ack')).toEqual([
-			expect.objectContaining({
-				type: 'ack',
-				encoding: LYNX_COMPACT_ACKNOWLEDGEMENT,
-				count: compactAckHostCount,
-				adoption: 'adopted',
-			}),
-		]);
-		expect(
-			replies.find((reply) => (reply as { type?: string }).type === 'ack') as object,
-		).not.toHaveProperty('handles');
-		expect(profile.firstTreeAction).toBe('adopt');
-		expect(profile.firstTreeProgramNodeComparisons).toBe(0);
-		expect(ids.every((id) => dom.window.document.querySelector(`#${id}`) !== null)).toBe(true);
-		expect(main.diagnostics()).toEqual([]);
 	});
 
 	it('waits for hand-over before calling an adoption settled', () => {
