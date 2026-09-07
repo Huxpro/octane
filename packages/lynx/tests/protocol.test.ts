@@ -3677,6 +3677,87 @@ describe('@octanejs/lynx transported protocol', () => {
 		transport.close();
 	});
 
+	it('promotes the staged execution value for an unambiguous main-thread event slot', async () => {
+		const context = new FakeContextProxy();
+		const program = Object.freeze({
+			nodes: Object.freeze([
+				Object.freeze({
+					type: 'view',
+					parent: -1,
+					props: Object.freeze({}),
+					bindings: Object.freeze([Object.freeze({ name: 'main-thread:bindtap', valueIndex: 0 })]),
+				}),
+			]),
+			events: Object.freeze([]),
+		});
+		const main = installMainHarness(
+			context,
+			true,
+			{
+				compactAck: 1,
+				templateMount: 1,
+				templateProgram: 1,
+				templateRuns: 1,
+				addressedProgramRuns: 1,
+				firstTreeProgramManifests: 1,
+			},
+			true,
+			(command) =>
+				command.address.module === 'tests/main-thread-event.tsrx' && command.address.index === 0
+					? program
+					: undefined,
+		);
+		const container = createLynxClientContainer();
+		const transport = createLynxBackgroundTransport(context, container);
+		await transport.ready;
+		const source = Object.freeze({ _wkltId: 'tap' });
+		const staged = Object.freeze({ _wkltId: 'tap', _execId: 'tap:1' });
+		const manifest = Object.freeze({
+			op: 'program-manifest' as const,
+			parent: null,
+			before: null,
+			address: Object.freeze({ module: 'tests/main-thread-event.tsrx', index: 0 }),
+			firstId: 1,
+			stride: 1,
+			firstListenerId: null,
+			count: 1,
+			values: Object.freeze([source]),
+		});
+		recordUniversalProgramCommand(manifest, program);
+		const batch: UniversalHostBatch = Object.freeze({
+			renderer: LYNX_TRANSPORT_RENDERER,
+			version: 1,
+			commands: Object.freeze([
+				Object.freeze({
+					op: 'create' as const,
+					id: 1,
+					type: 'view',
+					props: Object.freeze({ 'main-thread:bindtap': staged }),
+				}),
+				Object.freeze({ op: 'insert' as const, parent: null, id: 1, before: null }),
+			]),
+			programs: Object.freeze([manifest]),
+		});
+		const applying = transport.prepareBatch(container, batch, identity(92, 1)).apply(() => {});
+		await flushMicrotasks();
+
+		expect(main.commits).toHaveLength(1);
+		const commit = main.commits[0]!;
+		expect(commit).not.toHaveProperty('ack');
+		expect(commit.batch).toMatchObject({
+			commands: [
+				{
+					op: 'mount-program-run',
+					values: [staged],
+				},
+			],
+		});
+		expect(commit.batch.programs).toBeUndefined();
+		main.acknowledge(commit, 'complete');
+		await applying;
+		transport.close();
+	});
+
 	it('negotiates intrinsic programs and derives every compact host from its implicit ID range', async () => {
 		const context = new FakeContextProxy();
 		const main = installMainHarness(context, true, {

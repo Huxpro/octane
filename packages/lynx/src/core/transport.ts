@@ -5,6 +5,8 @@ import {
 	type UniversalHostBatch,
 	type UniversalHostCommand,
 	type UniversalHostProgramManifest,
+	type UniversalHostTemplateProgram,
+	type UniversalHostTemplateProgramValue,
 	type UniversalRoot,
 	type UniversalTransportAcknowledgement,
 	type UniversalEventPriority,
@@ -92,29 +94,18 @@ export interface LynxBackgroundTransportOptions {
 
 interface FirstTreeProgramPromotion {
 	readonly manifest: UniversalHostProgramManifest;
-	readonly command: Extract<UniversalHostCommand, { readonly op: 'mount-program-run' }>;
+	readonly program: UniversalHostTemplateProgram;
 	readonly firstId: number;
 	readonly lastId: number;
 	readonly width: number;
 	readonly eventCount: number;
+	readonly hasMainThreadBindings: boolean;
+	values: UniversalHostTemplateProgramValue[] | null;
+	compactIndex: number;
 	creates: number;
 	events: number;
 	inserts: number;
 	rootInserts: number;
-}
-
-function programHasMainThreadProps(
-	program: NonNullable<ReturnType<typeof producedRunProgram>>,
-): boolean {
-	for (const node of program.nodes) {
-		for (const name of Object.keys(node.props)) {
-			if (name.startsWith('main-thread:')) return true;
-		}
-		for (const binding of node.bindings ?? []) {
-			if (binding.name.startsWith('main-thread:')) return true;
-		}
-	}
-	return false;
 }
 
 /**
@@ -132,16 +123,27 @@ function compactFirstTreeProgramBatch(batch: UniversalHostBatch): UniversalHostB
 	if (manifests === undefined || manifests.length === 0) return batch;
 	const promotions: FirstTreeProgramPromotion[] = [];
 	for (const manifest of manifests) {
-		const promoted = promoteProducedProgramManifest(manifest);
-		if (promoted === null) return batch;
-		const width = promoted.program.nodes.length;
-		if (
-			width === 0 ||
-			manifest.before !== null ||
-			manifest.stride !== width ||
-			programHasMainThreadProps(promoted.program)
-		) {
+		const program = producedRunProgram(manifest);
+		if (program === undefined) return batch;
+		const width = program.nodes.length;
+		if (width === 0 || manifest.before !== null || manifest.stride !== width) {
 			return batch;
+		}
+		let mainThreadSlots: Set<number> | null = null;
+		for (const node of program.nodes) {
+			for (const name of Object.keys(node.props)) {
+				if (name.startsWith('main-thread:')) return batch;
+			}
+			for (const binding of node.bindings ?? []) {
+				if (!binding.name.startsWith('main-thread:')) continue;
+				if (
+					binding.name === 'main-thread:ref' ||
+					mainThreadSlots?.has(binding.valueIndex) === true
+				) {
+					return batch;
+				}
+				(mainThreadSlots ??= new Set()).add(binding.valueIndex);
+			}
 		}
 		const lastId = manifest.firstId + manifest.count * width - 1;
 		if (!Number.isSafeInteger(lastId)) return batch;
@@ -149,11 +151,14 @@ function compactFirstTreeProgramBatch(batch: UniversalHostBatch): UniversalHostB
 		if (previous !== undefined && manifest.firstId <= previous.lastId) return batch;
 		promotions.push({
 			manifest,
-			command: promoted.command,
+			program,
 			firstId: manifest.firstId,
 			lastId,
 			width,
-			eventCount: promoted.program.events.length,
+			eventCount: program.events.length,
+			hasMainThreadBindings: mainThreadSlots !== null,
+			values: null,
+			compactIndex: -1,
 			creates: 0,
 			events: 0,
 			inserts: 0,
@@ -172,7 +177,7 @@ function compactFirstTreeProgramBatch(batch: UniversalHostBatch): UniversalHostB
 		}
 		return undefined;
 	};
-	const compact: UniversalHostCommand[] = [];
+	const compact: (UniversalHostCommand | null)[] = [];
 	for (const command of batch.commands) {
 		let promotion: FirstTreeProgramPromotion | undefined;
 		if ('id' in command) promotion = promotionFor(command.id);
@@ -186,6 +191,20 @@ function compactFirstTreeProgramBatch(batch: UniversalHostBatch): UniversalHostB
 		}
 		if (command.op === 'create') {
 			promotion.creates++;
+			const relative = command.id - promotion.firstId;
+			const descriptor = promotion.program.nodes[relative % promotion.width]!;
+			if (command.type !== descriptor.type) return batch;
+			if (promotion.hasMainThreadBindings) {
+				const instance = Math.floor(relative / promotion.width);
+				const valueCount = promotion.manifest.values.length / promotion.manifest.count;
+				for (const binding of descriptor.bindings ?? []) {
+					if (!binding.name.startsWith('main-thread:')) continue;
+					if (!Object.prototype.hasOwnProperty.call(command.props, binding.name)) return batch;
+					(promotion.values ??= [...promotion.manifest.values])[
+						instance * valueCount + binding.valueIndex
+					] = command.props[binding.name] as UniversalHostTemplateProgramValue;
+				}
+			}
 			continue;
 		}
 		if (command.op === 'event') {
@@ -203,7 +222,11 @@ function compactFirstTreeProgramBatch(batch: UniversalHostBatch): UniversalHostB
 				) {
 					return batch;
 				}
-				if (relative === 0) compact.push(promotion.command);
+				if (relative === 0) {
+					if (promotion.compactIndex !== -1) return batch;
+					promotion.compactIndex = compact.length;
+					compact.push(null);
+				}
 			}
 			continue;
 		}
@@ -218,15 +241,22 @@ function compactFirstTreeProgramBatch(batch: UniversalHostBatch): UniversalHostB
 			promotion.creates !== instances * promotion.width ||
 			promotion.inserts !== instances * promotion.width ||
 			promotion.events !== instances * promotion.eventCount ||
-			promotion.rootInserts !== instances
+			promotion.rootInserts !== instances ||
+			promotion.compactIndex === -1
 		) {
 			return batch;
 		}
+		const promoted = promoteProducedProgramManifest(
+			promotion.manifest,
+			promotion.values ?? promotion.manifest.values,
+		);
+		if (promoted === null) return batch;
+		compact[promotion.compactIndex] = promoted.command;
 	}
 	return Object.freeze({
 		renderer: batch.renderer,
 		version: batch.version,
-		commands: Object.freeze(compact),
+		commands: Object.freeze(compact as UniversalHostCommand[]),
 	});
 }
 

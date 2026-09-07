@@ -24,6 +24,7 @@ import {
 	type UniversalHostCommand,
 	type UniversalHostProgramManifest,
 	type UniversalHostTemplateProgram,
+	type UniversalHostTemplateProgramValue,
 } from 'octane/universal/native';
 
 /**
@@ -57,7 +58,10 @@ export function producedRunProgram(
  * object: background self-checks still need the descriptor even though the
  * peer resolves only the address.
  */
-export function promoteProducedProgramManifest(manifest: UniversalHostProgramManifest): {
+export function promoteProducedProgramManifest(
+	manifest: UniversalHostProgramManifest,
+	values: readonly UniversalHostTemplateProgramValue[] = manifest.values,
+): {
 	readonly command: Extract<UniversalHostCommand, { readonly op: 'mount-program-run' }>;
 	readonly program: UniversalHostTemplateProgram;
 } | null {
@@ -71,7 +75,7 @@ export function promoteProducedProgramManifest(manifest: UniversalHostProgramMan
 		firstId: manifest.firstId,
 		firstListenerId: manifest.firstListenerId,
 		count: manifest.count,
-		values: manifest.values,
+		values,
 	});
 	recordUniversalProgramCommand(command, program);
 	return Object.freeze({ command, program });
