@@ -14,12 +14,12 @@ This is a material adoption/ready improvement, not an FCP improvement. At 10k
 on Lynx for Web, the profile build reduced the framework adoption window from
 437.9 to 135.0 ms and paint-to-settled from 1047.9 to 477.1 ms. On native
 Android at 1k, the exact mechanism A/B reduced commands from 10,068 to 69, the
-acknowledgement from 973,504 to 203 bytes, and main-thread apply from 4544 to
-3764 ms. Cold FCP remained neutral in both Web and native observations.
+acknowledgement from 973,504 to 203 bytes, and main-thread apply from 4570 to
+3778 ms. Cold FCP remained neutral in both Web and native observations.
 
 Issue #287 remains open. The production bundle is still larger than slice 1,
 and this slice did not collect an adoption-specific post-GC heap series. Those
-are explicit remaining gates, not zeroes. The native apply is also still 3.76 s
+are explicit remaining gates, not zeroes. The native apply is also still 3.78 s
 at 1k on this LepusNG device, so the retained per-host ownership transfer needs
 another representation-level deletion before the roadmap can call native ready
 competitive.
@@ -29,9 +29,12 @@ competitive.
 - merged slice-1 baseline: `99576f6ea7196d79a8f71e0c93e002e986584267`
   (tree-identical source build at `d26c25770966dc9e607a14ebd4043ce43a13a44d`)
 - product implementation: `338239970ad75c69d7eccec2d67c41e88c54f9d3`
-- evidence-head commit: `4be3e550fd07ea5082bc3696d11331bfb6f7c3b3`
-  (the later commit changes only bounded benchmark logging)
-- native mechanism control: `cf1035b62e76b79faa48e8e6ffd3c5e855f569cb`
+- exact measured candidate: `8d834fbcbb0bd7095e85e0330dc256f569e345e2`
+  (adds bounded benchmark logging, production-equivalent wire fixtures, and
+  the 32k envelope, sparse-host-ID, and background-lifecycle corrections)
+- Web owner-attribution build: `338239970ad75c69d7eccec2d67c41e88c54f9d3`;
+  exact-head shipping Web and native measurements use the candidate above
+- native mechanism control: `ae58d5ab638f3e203a75fa0441087931cbd5773c`
   (candidate plus one runtime early return that retains expanded commands;
   framing, protocol, ACK support, profiling, app, and compiler output remain)
 - Web: Lynx for Web 0.22.2, Chromium 149.0.7827.55, five fresh pages per cell
@@ -53,12 +56,12 @@ claim.
 
 | scale | baseline median (min–max) | candidate median (min–max) | ratio |
 | ---: | ---: | ---: | ---: |
-| 1k | 151.3 (144.7–184.2) ms | 151.2 (143.2–157.1) ms | 0.999x |
-| 10k | 835.2 (807.2–950.6) ms | 860.8 (815.9–883.2) ms | 1.031x |
+| 1k | 142.6 (142.3–146.1) ms | 145.1 (143.2–151.8) ms | 1.018x |
+| 10k | 843.7 (800.5–873.6) ms | 821.6 (781.7–838.8) ms | 0.974x |
 
-The 10k candidate median is 3.1% slower in this five-sample window. The mechanism
-runs after paint, so the report treats that movement as noise/cost evidence and
-does not use the much larger post-paint profile gain to relabel it.
+The two exact-head windows move in opposite directions and both ranges overlap.
+The mechanism runs after paint, so the report treats those movements as neutral
+and does not use the much larger post-paint profile gain to relabel either one.
 
 ## Web adoption attribution
 
@@ -88,8 +91,10 @@ DevTool, or crossed the thermal gate.
 
 | native startup measure | expanded control | compact candidate | ratio |
 | --- | ---: | ---: | ---: |
-| cold FCP | 1009 [980–1027] ms | 1006 [985–1024] ms | 0.997x |
-| main apply | 4544 [4512–4552] ms | 3764 [3740–3811] ms | 0.828x |
+| cold FCP | 1003 [984–1018] ms | 994 [985–1020] ms | 0.991x |
+| background start to second frame | 605 [585–621] ms | 605 [599–616] ms | 1.000x |
+| background start to transport ACK | 573 [562–592] ms | 581 [576–592] ms | 1.014x |
+| main apply | 4570 [4557–4575] ms | 3778 [3754–3779] ms | 0.827x |
 | commands | 10,068 | 69 | 0.0069x |
 | program-node comparisons | 4,028 | 28 | 0.0070x |
 | main-to-background ACK + complete | 973,504 B | 203 B | 0.00021x |
@@ -108,9 +113,9 @@ startup deletion did not change or hide clear work.
 
 | native first Clear | expanded control | compact candidate | ratio |
 | --- | ---: | ---: | ---: |
-| tap to transport ACK | 2279 [2271–2286] ms | 2309 [2285–2314] ms | 1.013x |
-| tap to second native frame | 2308 [2299–2319] ms | 2341 [2317–2345] ms | 1.014x |
-| main apply wall | 1008 [1004–1017] ms | 1017 [1010–1023] ms | 1.009x |
+| tap to transport ACK | 2280 [2279–2287] ms | 2299 [2290–2315] ms | 1.008x |
+| tap to second native frame | 2308 [2299–2310] ms | 2325 [2310–2346] ms | 1.007x |
+| main apply wall | 961 [955–964] ms | 960 [959–972] ms | 0.999x |
 
 This small adverse movement is reported as observed, not called a regression or
 a win from five samples. It rules out a large transfer of deleted adoption work
@@ -140,8 +145,8 @@ Exact uninstrumented production sizes:
 
 | target | slice-1 baseline | candidate | delta |
 | --- | ---: | ---: | ---: |
-| Web | 582,545 B | 594,311 B | +11,766 B (+2.02%) |
-| Lynx | 564,273 B | 575,534 B | +11,261 B (+2.00%) |
+| Web | 582,545 B | 594,553 B | +12,008 B (+2.06%) |
+| Lynx | 564,273 B | 575,777 B | +11,504 B (+2.04%) |
 
 Slice 1 itself was already +11,656 B Web / +10,406 B Lynx over the pre-manifest
 revision. The compact wire repays the runtime description cost but not the code
@@ -153,7 +158,7 @@ The next #287 slice must:
 1. remove or consolidate enough protocol/compaction code to repay the temporary
    manifest debt in the shipping bundle;
 2. replace the remaining per-host native ownership transfer that leaves 1k
-   LepusNG apply at 3.76 s;
+   LepusNG apply at 3.78 s;
 3. collect a same-window, forced-GC adoption retention series after hand-over,
    update, unmount, and close;
 4. rerun native first-interaction and Web/native ready gates from the resulting
