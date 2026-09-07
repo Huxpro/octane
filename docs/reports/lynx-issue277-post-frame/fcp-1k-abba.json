@@ -1,0 +1,620 @@
+{
+  "protocol": "octane-issue194-device-v1",
+  "question": "Does the post-frame capture default preserve uninstrumented row-bearing 1k loadBundle FCP?",
+  "createdAt": "2026-09-07T06:42:27.783Z",
+  "octaneCommit": "b09750edc2b1f86ea726946fe1f07e0fccc24026",
+  "serial": "aic-i18n-bd-fullport.byteintl.net:40007",
+  "device": {
+    "model": "aries_10",
+    "product": "aries",
+    "android": "10",
+    "fingerprint": "aries_10/aries/aries:10/QQ3A.200805.001/1.5.2:userdebug/test-keys",
+    "abi": "arm64-v8a",
+    "explorer": "1.0"
+  },
+  "controls": {
+    "devtool": "disabled by a background-only LynxDevToolSetModule.switchLynxDebug(false) preflight before each sample; no CDP/DevTool connection used",
+    "coldLaunchPerSample": true,
+    "display": "ADB wake + dismiss-keyguard before every sample; stay-on-while-plugged gate required for multi-commit input sequences",
+    "thermalGate": "battery <=35.0C and Android thermal status 0 before every accepted attempt",
+    "ordering": "AB/BA (A,B,B,A repeating)",
+    "completionMode": "commit",
+    "workload": null,
+    "interactionSequence": null,
+    "wireBoundary": null,
+    "adbInput": null,
+    "engineOnly": true,
+    "expectedOutcome": "completed"
+  },
+  "scale": 1000,
+  "targetAcceptedSamplesPerCell": 5,
+  "disableDevToolBundle": {
+    "url": "http://127.0.0.1:8123/octane-issue277/benchmarks/lynx-table/app/dist-i277-disable/main.lynx.bundle",
+    "bundle": {
+      "path": "/data00/home/xuan.huang/.codex/worktrees/68ea/octane-issue277/benchmarks/lynx-table/app/dist-i277-disable/main.lynx.bundle",
+      "bytes": 565633,
+      "sha256": "8a0dcf3fbd35475cf57de4cbb4995344a240724ef07d5418e2bd716fea2da434"
+    }
+  },
+  "cells": {
+    "baseline": {
+      "url": "http://127.0.0.1:8123/octane-issue277-base/benchmarks/lynx-table/app/dist-mtsprogram-i277-base-rows1000/main.lynx.bundle",
+      "bundle": {
+        "path": "/data00/home/xuan.huang/.codex/worktrees/68ea/octane-issue277-base/benchmarks/lynx-table/app/dist-mtsprogram-i277-base-rows1000/main.lynx.bundle",
+        "bytes": 553824,
+        "sha256": "8e4b6170d717acc94c89d1884a725d488f3cde6cd01726fdd9b98ca8fa2fca7a"
+      }
+    },
+    "candidate": {
+      "url": "http://127.0.0.1:8123/octane-issue277/benchmarks/lynx-table/app/dist-mtsprogram-i277-cand-rows1000/main.lynx.bundle",
+      "bundle": {
+        "path": "/data00/home/xuan.huang/.codex/worktrees/68ea/octane-issue277/benchmarks/lynx-table/app/dist-mtsprogram-i277-cand-rows1000/main.lynx.bundle",
+        "bytes": 554073,
+        "sha256": "5e7e36aa439b11e28157e8e47ba7f887252e4b76e768004cbdff88b94f449ec7"
+      }
+    }
+  },
+  "samples": [
+    {
+      "ordinal": 1,
+      "cell": "baseline",
+      "accepted": true,
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "nativeCrash": {
+        "atMs": null,
+        "loadToCrashMs": null,
+        "evidence": [],
+        "artReferenceTableDump": [],
+        "artReferenceTableSummary": []
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.02 0.02 0.00 1/1229 17955"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.26 0.07 0.02 3/1202 18126"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1788763346.344 17999 18034 I LynxEnv : disable lynx debug",
+          "1788763346.344 17999 18034 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1788763346.344 17999 18034 I lynx    : [7E65AF2D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1788763346818,
+        "renderPageMs": 1788763346829,
+        "firstScreenMs": 1788763347596,
+        "loadEndMs": 1788763347606,
+        "loadToRenderPageMs": 11,
+        "renderPageToFirstScreenMs": 767,
+        "loadToFirstScreenMs": 778,
+        "loadTemplateMs": 788
+      },
+      "stateEvidence": null,
+      "preStateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "backgroundSettle": null,
+      "sequenceEvidence": null,
+      "adbInput": null,
+      "attribution": null,
+      "errors": []
+    },
+    {
+      "ordinal": 2,
+      "cell": "candidate",
+      "accepted": true,
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "nativeCrash": {
+        "atMs": null,
+        "loadToCrashMs": null,
+        "evidence": [],
+        "artReferenceTableDump": [],
+        "artReferenceTableSummary": []
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.26 0.07 0.02 2/1200 18134"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.32 0.09 0.02 1/1200 18284"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1788763349.926 18182 18218 I LynxEnv : disable lynx debug",
+          "1788763349.926 18182 18218 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1788763349.926 18182 18218 I lynx    : [7E64A83D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1788763350135,
+        "renderPageMs": 1788763350146,
+        "firstScreenMs": 1788763350915,
+        "loadEndMs": 1788763350926,
+        "loadToRenderPageMs": 11,
+        "renderPageToFirstScreenMs": 769,
+        "loadToFirstScreenMs": 780,
+        "loadTemplateMs": 791
+      },
+      "stateEvidence": null,
+      "preStateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "backgroundSettle": null,
+      "sequenceEvidence": null,
+      "adbInput": null,
+      "attribution": null,
+      "errors": []
+    },
+    {
+      "ordinal": 3,
+      "cell": "candidate",
+      "accepted": true,
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "nativeCrash": {
+        "atMs": null,
+        "loadToCrashMs": null,
+        "evidence": [],
+        "artReferenceTableDump": [],
+        "artReferenceTableSummary": []
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.32 0.09 0.02 2/1200 18292"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.32 0.09 0.02 1/1201 18438"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1788763353.225 18335 18370 I LynxEnv : disable lynx debug",
+          "1788763353.225 18335 18370 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1788763353.225 18335 18370 I lynx    : [7E65AF2D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1788763353402,
+        "renderPageMs": 1788763353413,
+        "firstScreenMs": 1788763354208,
+        "loadEndMs": 1788763354219,
+        "loadToRenderPageMs": 11,
+        "renderPageToFirstScreenMs": 795,
+        "loadToFirstScreenMs": 806,
+        "loadTemplateMs": 817
+      },
+      "stateEvidence": null,
+      "preStateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "backgroundSettle": null,
+      "sequenceEvidence": null,
+      "adbInput": null,
+      "attribution": null,
+      "errors": []
+    },
+    {
+      "ordinal": 4,
+      "cell": "baseline",
+      "accepted": true,
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "nativeCrash": {
+        "atMs": null,
+        "loadToCrashMs": null,
+        "evidence": [],
+        "artReferenceTableDump": [],
+        "artReferenceTableSummary": []
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.32 0.09 0.02 1/1201 18446"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.45 0.12 0.03 3/1203 18587"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1788763356.481 18489 18529 I LynxEnv : disable lynx debug",
+          "1788763356.481 18489 18529 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1788763356.481 18489 18529 I lynx    : [7E65BFBD50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1788763356669,
+        "renderPageMs": 1788763356681,
+        "firstScreenMs": 1788763357453,
+        "loadEndMs": 1788763357463,
+        "loadToRenderPageMs": 12,
+        "renderPageToFirstScreenMs": 772,
+        "loadToFirstScreenMs": 784,
+        "loadTemplateMs": 794
+      },
+      "stateEvidence": null,
+      "preStateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "backgroundSettle": null,
+      "sequenceEvidence": null,
+      "adbInput": null,
+      "attribution": null,
+      "errors": []
+    },
+    {
+      "ordinal": 5,
+      "cell": "baseline",
+      "accepted": true,
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "nativeCrash": {
+        "atMs": null,
+        "loadToCrashMs": null,
+        "evidence": [],
+        "artReferenceTableDump": [],
+        "artReferenceTableSummary": []
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.45 0.12 0.03 3/1201 18595"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.50 0.14 0.04 1/1205 18738"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1788763359.770 18642 18677 I LynxEnv : disable lynx debug",
+          "1788763359.770 18642 18677 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1788763359.770 18642 18677 I lynx    : [7E65AF2D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1788763360186,
+        "renderPageMs": 1788763360198,
+        "firstScreenMs": 1788763360976,
+        "loadEndMs": 1788763360987,
+        "loadToRenderPageMs": 12,
+        "renderPageToFirstScreenMs": 778,
+        "loadToFirstScreenMs": 790,
+        "loadTemplateMs": 801
+      },
+      "stateEvidence": null,
+      "preStateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "backgroundSettle": null,
+      "sequenceEvidence": null,
+      "adbInput": null,
+      "attribution": null,
+      "errors": []
+    },
+    {
+      "ordinal": 6,
+      "cell": "candidate",
+      "accepted": true,
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "nativeCrash": {
+        "atMs": null,
+        "loadToCrashMs": null,
+        "evidence": [],
+        "artReferenceTableDump": [],
+        "artReferenceTableSummary": []
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.50 0.14 0.04 1/1205 18746"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.50 0.14 0.04 2/1204 18888"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1788763363.260 18788 18823 I LynxEnv : disable lynx debug",
+          "1788763363.260 18788 18823 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1788763363.260 18788 18823 I lynx    : [7E65AF2D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1788763363420,
+        "renderPageMs": 1788763363431,
+        "firstScreenMs": 1788763364188,
+        "loadEndMs": 1788763364198,
+        "loadToRenderPageMs": 11,
+        "renderPageToFirstScreenMs": 757,
+        "loadToFirstScreenMs": 768,
+        "loadTemplateMs": 778
+      },
+      "stateEvidence": null,
+      "preStateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "backgroundSettle": null,
+      "sequenceEvidence": null,
+      "adbInput": null,
+      "attribution": null,
+      "errors": []
+    },
+    {
+      "ordinal": 7,
+      "cell": "candidate",
+      "accepted": true,
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "nativeCrash": {
+        "atMs": null,
+        "loadToCrashMs": null,
+        "evidence": [],
+        "artReferenceTableDump": [],
+        "artReferenceTableSummary": []
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.50 0.14 0.04 2/1202 18896"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.86 0.22 0.06 1/1203 19032"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1788763366.528 18939 18974 I LynxEnv : disable lynx debug",
+          "1788763366.528 18939 18974 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1788763366.528 18939 18974 I lynx    : [7E65AF2D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1788763366704,
+        "renderPageMs": 1788763366716,
+        "firstScreenMs": 1788763367496,
+        "loadEndMs": 1788763367506,
+        "loadToRenderPageMs": 12,
+        "renderPageToFirstScreenMs": 780,
+        "loadToFirstScreenMs": 792,
+        "loadTemplateMs": 802
+      },
+      "stateEvidence": null,
+      "preStateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "backgroundSettle": null,
+      "sequenceEvidence": null,
+      "adbInput": null,
+      "attribution": null,
+      "errors": []
+    },
+    {
+      "ordinal": 8,
+      "cell": "baseline",
+      "accepted": true,
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "nativeCrash": {
+        "atMs": null,
+        "loadToCrashMs": null,
+        "evidence": [],
+        "artReferenceTableDump": [],
+        "artReferenceTableSummary": []
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.86 0.22 0.06 1/1203 19040"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.87 0.23 0.07 2/1203 19177"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1788763369.764 19082 19117 I LynxEnv : disable lynx debug",
+          "1788763369.764 19082 19117 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1788763369.764 19082 19117 I lynx    : [7E65AF2D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1788763369987,
+        "renderPageMs": 1788763370000,
+        "firstScreenMs": 1788763370783,
+        "loadEndMs": 1788763370793,
+        "loadToRenderPageMs": 13,
+        "renderPageToFirstScreenMs": 783,
+        "loadToFirstScreenMs": 796,
+        "loadTemplateMs": 806
+      },
+      "stateEvidence": null,
+      "preStateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "backgroundSettle": null,
+      "sequenceEvidence": null,
+      "adbInput": null,
+      "attribution": null,
+      "errors": []
+    },
+    {
+      "ordinal": 9,
+      "cell": "baseline",
+      "accepted": true,
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "nativeCrash": {
+        "atMs": null,
+        "loadToCrashMs": null,
+        "evidence": [],
+        "artReferenceTableDump": [],
+        "artReferenceTableSummary": []
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.87 0.23 0.07 1/1203 19185"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.87 0.23 0.07 2/1205 19324"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1788763373.046 19227 19262 I LynxEnv : disable lynx debug",
+          "1788763373.046 19227 19262 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1788763373.047 19227 19262 I lynx    : [7E65AF2D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1788763373271,
+        "renderPageMs": 1788763373283,
+        "firstScreenMs": 1788763374043,
+        "loadEndMs": 1788763374053,
+        "loadToRenderPageMs": 12,
+        "renderPageToFirstScreenMs": 760,
+        "loadToFirstScreenMs": 772,
+        "loadTemplateMs": 782
+      },
+      "stateEvidence": null,
+      "preStateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "backgroundSettle": null,
+      "sequenceEvidence": null,
+      "adbInput": null,
+      "attribution": null,
+      "errors": []
+    },
+    {
+      "ordinal": 10,
+      "cell": "candidate",
+      "accepted": true,
+      "outcome": "completed",
+      "timeoutMs": 30000,
+      "nativeCrash": {
+        "atMs": null,
+        "loadToCrashMs": null,
+        "evidence": [],
+        "artReferenceTableDump": [],
+        "artReferenceTableSummary": []
+      },
+      "thermalBefore": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.87 0.23 0.07 1/1203 19334"
+      },
+      "thermalAfter": {
+        "batteryTemperatureTenthsC": 350,
+        "thermalStatus": 0,
+        "loadavg": "0.96 0.26 0.08 1/1203 19477"
+      },
+      "devtool": {
+        "preflightDisabledEvidence": [
+          "1788763376.376 19376 19411 I LynxEnv : disable lynx debug",
+          "1788763376.376 19376 19411 I DevToolLifecycle: DevTool disabled. Transitioning to ATTACHED."
+        ],
+        "preflightAcknowledgement": "1788763376.376 19376 19411 I lynx    : [7E65AF2D50:INFO:lynx_console.cc(254)] \"__OCTANE_DEVTOOL_DISABLED__=true\"",
+        "disabledEvidence": [],
+        "enabledEvidence": [],
+        "stayedDisabled": true
+      },
+      "engine": {
+        "appBundleEngine": "3.9",
+        "lynxSdk": "4.0"
+      },
+      "boundaries": {
+        "loadStartMs": 1788763376556,
+        "renderPageMs": 1788763376573,
+        "firstScreenMs": 1788763377360,
+        "loadEndMs": 1788763377371,
+        "loadToRenderPageMs": 17,
+        "renderPageToFirstScreenMs": 787,
+        "loadToFirstScreenMs": 804,
+        "loadTemplateMs": 815
+      },
+      "stateEvidence": null,
+      "preStateEvidence": null,
+      "firstScreenShapeEvidence": null,
+      "backgroundSettle": null,
+      "sequenceEvidence": null,
+      "adbInput": null,
+      "attribution": null,
+      "errors": []
+    }
+  ],
+  "invalidAttempts": []
+}

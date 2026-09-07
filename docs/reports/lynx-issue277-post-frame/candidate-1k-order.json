@@ -1,0 +1,217 @@
+{
+  "success": true,
+  "parseSucceeded": true,
+  "trace": {
+    "path": "/data00/home/xuan.huang/.codex/tmp/issue277-native/final-candidate-1k-profile.pftrace",
+    "bytes": 4736295,
+    "sha256": "bd27de15e7181e397ec45a4a9827dc425ff836fb49aee2afed85d62d3198e763"
+  },
+  "query": {
+    "source": "inline",
+    "text": "WITH rt AS (SELECT clock_value - ts AS offset_ns FROM clock_snapshot WHERE clock_name = 'REALTIME' ORDER BY ts LIMIT 1) SELECT s.id, s.name, s.ts, s.dur, (s.ts + (SELECT offset_ns FROM rt)) / 1000000.0 AS realtime_start_ms, (s.ts + s.dur + (SELECT offset_ns FROM rt)) / 1000000.0 AS realtime_end_ms, t.name AS thread_name, p.name AS process_name, s.depth FROM slice s LEFT JOIN thread_track tt ON s.track_id = tt.id LEFT JOIN thread t ON tt.utid = t.utid LEFT JOIN process p ON t.upid = p.upid WHERE s.name IN ('Timing::Mark.mtsRenderStart','Timing::Mark.mtsRenderEnd','Timing::Mark.paintingUiOperationExecuteStart','Timing::Mark.paintingUiOperationExecuteEnd','FirstMeaningfulPaint','Client.onFirstScreen','AnimationFrameTaskHandler::DoFrame','AnimationFrameTaskHandler::RequestAnimationFrame','RequestAnimationFrame') ORDER BY s.ts",
+    "sha256": "dc49520d61995e35c3715ec5a6c86cd01cb7c50b5586e1e3b4a5eef48d446946"
+  },
+  "columns": [
+    "id",
+    "name",
+    "ts",
+    "dur",
+    "realtime_start_ms",
+    "realtime_end_ms",
+    "thread_name",
+    "process_name",
+    "depth"
+  ],
+  "totalRows": 17,
+  "returnedRows": 17,
+  "truncated": false,
+  "rows": [
+    {
+      "id": "1506",
+      "name": "Timing::Mark.mtsRenderStart",
+      "ts": "865909576713155",
+      "dur": "0",
+      "realtime_start_ms": 1788764204807.6863,
+      "realtime_end_ms": 1788764204807.6863,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "5"
+    },
+    {
+      "id": "1566",
+      "name": "RequestAnimationFrame",
+      "ts": "865909585538345",
+      "dur": "78687",
+      "realtime_start_ms": 1788764204816.5115,
+      "realtime_end_ms": 1788764204816.59,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "6"
+    },
+    {
+      "id": "1567",
+      "name": "AnimationFrameTaskHandler::RequestAnimationFrame",
+      "ts": "865909585612733",
+      "dur": "3397",
+      "realtime_start_ms": 1788764204816.586,
+      "realtime_end_ms": 1788764204816.5894,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "7"
+    },
+    {
+      "id": "219017",
+      "name": "Timing::Mark.paintingUiOperationExecuteStart",
+      "ts": "865911374205928",
+      "dur": "0",
+      "realtime_start_ms": 1788764206605.1792,
+      "realtime_end_ms": 1788764206605.1792,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "19"
+    },
+    {
+      "id": "234178",
+      "name": "Timing::Mark.paintingUiOperationExecuteEnd",
+      "ts": "865911428254519",
+      "dur": "0",
+      "realtime_start_ms": 1788764206659.2275,
+      "realtime_end_ms": 1788764206659.2275,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "19"
+    },
+    {
+      "id": "246374",
+      "name": "RequestAnimationFrame",
+      "ts": "865911475781944",
+      "dur": "7943",
+      "realtime_start_ms": 1788764206706.7551,
+      "realtime_end_ms": 1788764206706.763,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "7"
+    },
+    {
+      "id": "246375",
+      "name": "AnimationFrameTaskHandler::RequestAnimationFrame",
+      "ts": "865911475787532",
+      "dur": "1657",
+      "realtime_start_ms": 1788764206706.7607,
+      "realtime_end_ms": 1788764206706.7622,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "8"
+    },
+    {
+      "id": "246377",
+      "name": "Timing::Mark.mtsRenderEnd",
+      "ts": "865911484351930",
+      "dur": "0",
+      "realtime_start_ms": 1788764206715.3252,
+      "realtime_end_ms": 1788764206715.3252,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "5"
+    },
+    {
+      "id": "246421",
+      "name": "Timing::Mark.paintingUiOperationExecuteStart",
+      "ts": "865911485029313",
+      "dur": "0",
+      "realtime_start_ms": 1788764206716.0024,
+      "realtime_end_ms": 1788764206716.0024,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "5"
+    },
+    {
+      "id": "246447",
+      "name": "AnimationFrameTaskHandler::DoFrame",
+      "ts": "865911485611942",
+      "dur": "103524",
+      "realtime_start_ms": 1788764206716.585,
+      "realtime_end_ms": 1788764206716.6887,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "2"
+    },
+    {
+      "id": "246452",
+      "name": "RequestAnimationFrame",
+      "ts": "865911485663101",
+      "dur": "45818",
+      "realtime_start_ms": 1788764206716.6362,
+      "realtime_end_ms": 1788764206716.682,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "4"
+    },
+    {
+      "id": "246453",
+      "name": "AnimationFrameTaskHandler::RequestAnimationFrame",
+      "ts": "865911485705530",
+      "dur": "2683",
+      "realtime_start_ms": 1788764206716.6787,
+      "realtime_end_ms": 1788764206716.6814,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "5"
+    },
+    {
+      "id": "246454",
+      "name": "AnimationFrameTaskHandler::DoFrame",
+      "ts": "865911485716205",
+      "dur": "126465",
+      "realtime_start_ms": 1788764206716.6895,
+      "realtime_end_ms": 1788764206716.816,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "2"
+    },
+    {
+      "id": "252581",
+      "name": "FirstMeaningfulPaint",
+      "ts": "865911545738844",
+      "dur": "0",
+      "realtime_start_ms": 1788764206776.712,
+      "realtime_end_ms": 1788764206776.712,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "5"
+    },
+    {
+      "id": "252658",
+      "name": "Client.onFirstScreen",
+      "ts": "865911566682014",
+      "dur": "15655",
+      "realtime_start_ms": 1788764206797.655,
+      "realtime_end_ms": 1788764206797.671,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "252659",
+      "name": "Client.onFirstScreen",
+      "ts": "865911566685493",
+      "dur": "2158",
+      "realtime_start_ms": 1788764206797.6587,
+      "realtime_end_ms": 1788764206797.6606,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "252663",
+      "name": "AnimationFrameTaskHandler::DoFrame",
+      "ts": "865911566737768",
+      "dur": "2002",
+      "realtime_start_ms": 1788764206797.711,
+      "realtime_end_ms": 1788764206797.713,
+      "thread_name": "m.lynx.explorer",
+      "process_name": "com.lynx.explorer",
+      "depth": "2"
+    }
+  ]
+}
