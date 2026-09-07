@@ -148,9 +148,7 @@
         "__FlushElementTree": {
           "count": 1,
           "selfMs": 365,
-          "callsBefore": [
-            17111
-          ]
+          "callsBefore": [17111]
         }
       },
       "firstScreenLayout": "resident-scalar-text",
@@ -221,9 +219,7 @@
           "__FlushElementTree": {
             "count": 1,
             "selfMs": 365,
-            "callsBefore": [
-              17111
-            ]
+            "callsBefore": [17111]
           }
         },
         "profile": {
@@ -368,9 +364,7 @@
         "__FlushElementTree": {
           "count": 1,
           "selfMs": 347,
-          "callsBefore": [
-            17111
-          ]
+          "callsBefore": [17111]
         }
       },
       "firstScreenLayout": "resident-scalar-text",
@@ -441,9 +435,7 @@
           "__FlushElementTree": {
             "count": 1,
             "selfMs": 347,
-            "callsBefore": [
-              17111
-            ]
+            "callsBefore": [17111]
           }
         },
         "profile": {
@@ -596,9 +588,7 @@
         "__FlushElementTree": {
           "count": 1,
           "selfMs": 345,
-          "callsBefore": [
-            17111
-          ]
+          "callsBefore": [17111]
         }
       },
       "firstScreenLayout": "resident-scalar-text",
@@ -669,9 +659,7 @@
           "__FlushElementTree": {
             "count": 1,
             "selfMs": 345,
-            "callsBefore": [
-              17111
-            ]
+            "callsBefore": [17111]
           }
         },
         "profile": {
@@ -824,9 +812,7 @@
         "__FlushElementTree": {
           "count": 1,
           "selfMs": 354,
-          "callsBefore": [
-            17111
-          ]
+          "callsBefore": [17111]
         }
       },
       "firstScreenLayout": "resident-scalar-text",
@@ -897,9 +883,7 @@
           "__FlushElementTree": {
             "count": 1,
             "selfMs": 354,
-            "callsBefore": [
-              17111
-            ]
+            "callsBefore": [17111]
           }
         },
         "profile": {
@@ -1044,9 +1028,7 @@
         "__FlushElementTree": {
           "count": 1,
           "selfMs": 363,
-          "callsBefore": [
-            17111
-          ]
+          "callsBefore": [17111]
         }
       },
       "firstScreenLayout": "resident-scalar-text",
@@ -1117,9 +1099,7 @@
           "__FlushElementTree": {
             "count": 1,
             "selfMs": 363,
-            "callsBefore": [
-              17111
-            ]
+            "callsBefore": [17111]
           }
         },
         "profile": {
@@ -1264,9 +1244,7 @@
         "__FlushElementTree": {
           "count": 1,
           "selfMs": 371,
-          "callsBefore": [
-            17111
-          ]
+          "callsBefore": [17111]
         }
       },
       "firstScreenLayout": "resident-scalar-text",
@@ -1337,9 +1315,7 @@
           "__FlushElementTree": {
             "count": 1,
             "selfMs": 371,
-            "callsBefore": [
-              17111
-            ]
+            "callsBefore": [17111]
           }
         },
         "profile": {
@@ -1492,9 +1468,7 @@
         "__FlushElementTree": {
           "count": 1,
           "selfMs": 367,
-          "callsBefore": [
-            17111
-          ]
+          "callsBefore": [17111]
         }
       },
       "firstScreenLayout": "resident-scalar-text",
@@ -1565,9 +1539,7 @@
           "__FlushElementTree": {
             "count": 1,
             "selfMs": 367,
-            "callsBefore": [
-              17111
-            ]
+            "callsBefore": [17111]
           }
         },
         "profile": {
@@ -1720,9 +1692,7 @@
         "__FlushElementTree": {
           "count": 1,
           "selfMs": 369,
-          "callsBefore": [
-            17111
-          ]
+          "callsBefore": [17111]
         }
       },
       "firstScreenLayout": "resident-scalar-text",
@@ -1793,9 +1763,7 @@
           "__FlushElementTree": {
             "count": 1,
             "selfMs": 369,
-            "callsBefore": [
-              17111
-            ]
+            "callsBefore": [17111]
           }
         },
         "profile": {
@@ -1940,9 +1908,7 @@
         "__FlushElementTree": {
           "count": 1,
           "selfMs": 368,
-          "callsBefore": [
-            17111
-          ]
+          "callsBefore": [17111]
         }
       },
       "firstScreenLayout": "resident-scalar-text",
@@ -2013,9 +1979,7 @@
           "__FlushElementTree": {
             "count": 1,
             "selfMs": 368,
-            "callsBefore": [
-              17111
-            ]
+            "callsBefore": [17111]
           }
         },
         "profile": {
@@ -2160,9 +2124,7 @@
         "__FlushElementTree": {
           "count": 1,
           "selfMs": 359,
-          "callsBefore": [
-            17111
-          ]
+          "callsBefore": [17111]
         }
       },
       "firstScreenLayout": "resident-scalar-text",
@@ -2233,9 +2195,7 @@
           "__FlushElementTree": {
             "count": 1,
             "selfMs": 359,
-            "callsBefore": [
-              17111
-            ]
+            "callsBefore": [17111]
           }
         },
         "profile": {
