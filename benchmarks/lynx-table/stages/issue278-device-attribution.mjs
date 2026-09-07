@@ -119,7 +119,7 @@ const adapter = await createAdapter({
 });
 
 const evidence = {
-	protocol: 'octane-issue278-native-attribution-v4',
+	protocol: 'octane-issue278-native-attribution-v5',
 	status: 'running',
 	capturedAt: new Date().toISOString(),
 	provenance: {
@@ -138,9 +138,9 @@ const evidence = {
 			'build-time-restored codec phase counters plus Lynx profileMark; no authored runtime source changes',
 		createBoundary: 'programmatic BTS setRows start to transport commit ACK return',
 		readinessBoundary:
-			'every real-path page completes a timed-out runOnMainThread echo before the operation profiles are reset and create timing starts',
+			'every real-path page completes seven timed-out runOnMainThread clock echoes before operation profiles are reset and create timing starts; the first echo also proves first-tree calls are open',
 		clockResolution:
-			'integer Date.now milliseconds on the shared device clock in BTS and MTS; adapter calibration maps it to trace time',
+			'integer Date.now milliseconds, calibrated per page across BTS and MTS with seven round trips; the minimum-RTT sample supplies offset and half-RTT uncertainty',
 		realPathGate: 'range-bearing table must use mount-template-run descriptor fallback',
 		scalarPathGate: 'separate range-free scalar replacement must use mount-program-run',
 		countArm:
@@ -199,13 +199,20 @@ async function loadFresh(arm, label) {
 		});
 		const expectedNode = scalar ? '.issue278-scalar-placeholder' : '.title';
 		if (ready === true && (await adapter.domSearchCount(expectedNode)) === 1) {
-			if (!scalar) {
-				const firstTreeReady = await evaluateAsync('globalThis.__ISSUE278_WAIT_READY__()', 120_000);
-				if (firstTreeReady !== true) {
-					throw new Error('issue #278 first-tree readiness round trip returned false.');
-				}
+			if (scalar) return null;
+			const calibration = await evaluateAsync('globalThis.__ISSUE278_CALIBRATE_CLOCK__()', 120_000);
+			if (
+				calibration?.protocol !== 'octane-issue278-cross-realm-clock-v1' ||
+				!Array.isArray(calibration.samples) ||
+				calibration.samples.length !== 7 ||
+				!Number.isFinite(calibration.offsetMs) ||
+				!Number.isFinite(calibration.uncertaintyMs)
+			) {
+				throw new Error(
+					`issue #278 cross-realm clock calibration is invalid: ${JSON.stringify(calibration)}`,
+				);
 			}
-			return;
+			return calibration;
 		}
 		await new Promise((resolve) => setTimeout(resolve, 500));
 	}
@@ -255,7 +262,7 @@ async function evaluateAsync(expression, timeoutMs) {
 }
 
 async function createSample(arm, scale, phase, ordinal) {
-	await loadFresh(arm, `${phase}-${scale}-${ordinal}`);
+	const clockCalibration = await loadFresh(arm, `${phase}-${scale}-${ordinal}`);
 	const result = await evaluateAsync(
 		`globalThis.__ISSUE278_RUN_CREATE__(${scale})`,
 		Number(process.env.ISSUE278_CREATE_TIMEOUT_MS ?? 240_000),
@@ -266,6 +273,7 @@ async function createSample(arm, scale, phase, ordinal) {
 		ordinal,
 		scale,
 		capturedAt: new Date().toISOString(),
+		clockCalibration,
 		mainLabelNodeCount: await adapter.domSearchCount('.col-label'),
 		result,
 	};
@@ -343,13 +351,18 @@ function assertRealGate(sample, { requireProfile = true } = {}) {
 			}
 		}
 		const commitWire = result.wire.find((event) => event.type === 'octane-lynx:background-to-main');
+		const calibration = sample.clockCalibration;
+		const normalizedReceivedAtMs = timeline.receivedAtMs - calibration?.offsetMs;
+		const uncertaintyMs = calibration?.uncertaintyMs;
 		if (
 			commitWire === undefined ||
-			timeline.receivedAtMs < commitWire.startedAtMs ||
-			result.commitAckMs < timeline.completedAtMs
+			!Number.isFinite(normalizedReceivedAtMs) ||
+			!Number.isFinite(uncertaintyMs) ||
+			normalizedReceivedAtMs + uncertaintyMs < commitWire.startedAtMs ||
+			result.commitAckMs < timeline.completedAtMs - calibration.offsetMs - uncertaintyMs
 		) {
 			throw new Error(
-				`gate: cross-realm timeline escaped the device clock ${JSON.stringify({ commitWire, timeline, commitAckMs: result.commitAckMs })}`,
+				`gate: calibrated cross-realm timeline escaped its uncertainty ${JSON.stringify({ commitWire, timeline, calibration, commitAckMs: result.commitAckMs })}`,
 			);
 		}
 	}

@@ -65,7 +65,7 @@ type Issue278Global =
 		__ISSUE278_ROOT__?: { flushTransport(): Promise<void> };
 		__ISSUE278_WIRE__?: Issue278WireEvent[];
 		__ISSUE278_RUN_CREATE__?: (rows: number) => Promise<unknown>;
-		__ISSUE278_WAIT_READY__?: () => Promise<boolean>;
+		__ISSUE278_CALIBRATE_CLOCK__?: () => Promise<unknown>;
 		__ISSUE278_RUN_ECHO__?: (bytes: number) => Promise<unknown>;
 		__ISSUE278_RUN_VM_CALIBRATION__?: (iterations: number) => Promise<unknown>;
 		__ISSUE278_RUN_PAPI_FLOOR__?: (rows: number) => Promise<unknown>;
@@ -350,10 +350,31 @@ export function App() @{
 	if (__BENCH_ISSUE278_ATTRIBUTION__) {
 		const target = globalThis as Issue278Global;
 		target.__ISSUE278_SNAPSHOT__ = snapshot;
-		target.__ISSUE278_WAIT_READY__ = async () => {
-			const value = 'issue278-first-tree-ready';
-			const echoed = await runOnMainThread(echoOnMain)(value);
-			return echoed.value === value;
+		target.__ISSUE278_CALIBRATE_CLOCK__ = async () => {
+			const samples = [];
+			for (let ordinal = 0; ordinal < 7; ordinal++) {
+				const value = `issue278-clock-${ordinal}`;
+				const startedAtMs = Date.now();
+				const echoed = await runOnMainThread(echoOnMain)(value);
+				const returnedAtMs = Date.now();
+				if (echoed.value !== value) throw new Error('issue #278 clock echo changed its payload.');
+				samples.push({
+					ordinal,
+					startedAtMs,
+					receivedAtMs: echoed.receivedAtMs,
+					returnedAtMs,
+					roundTripMs: returnedAtMs - startedAtMs,
+				});
+			}
+			const best = samples.reduce(
+				(left, right) => right.roundTripMs < left.roundTripMs ? right : left,
+			);
+			return {
+				protocol: 'octane-issue278-cross-realm-clock-v1',
+				samples,
+				offsetMs: best.receivedAtMs - (best.startedAtMs + best.returnedAtMs) / 2,
+				uncertaintyMs: best.roundTripMs / 2,
+			};
 		};
 		target.__ISSUE278_RUN_CREATE__ = async (count: number) => {
 			if (!Number.isInteger(count) || count <= 0) throw new Error('row count must be positive.');
