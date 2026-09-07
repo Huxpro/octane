@@ -37,6 +37,7 @@ type Issue278Global = typeof globalThis & {
 	__ISSUE278_ROOT__?: ReturnType<typeof createLynxRoot>;
 	__ISSUE278_WIRE__?: Issue278WireEvent[];
 	__ISSUE278_RUN_SCALAR__?: () => Promise<unknown>;
+	__ISSUE278_PROGRESS__?: string;
 };
 
 function resetIssue278BackgroundProfiles(target: Issue278Global): void {
@@ -121,17 +122,21 @@ if (__BENCH_ISSUE278_ATTRIBUTION__) {
 	if (__BENCH_ISSUE278_SCALAR__) {
 		target.__ISSUE278_RUN_SCALAR__ = async () => {
 			// The runner has already observed the placeholder in the Native DOM.
-			// Explorer's first-screen root.render() promise remains pending after that
-			// observable commit, so awaiting it here would prevent the scalar update
-			// from ever being dispatched. flushTransport() is the commit boundary.
-			await root.flushTransport();
+			// Explorer keeps both its first root.render() promise and an idle
+			// flushTransport() pending after that observable commit. Neither is a
+			// usable second readiness gate; the update's own flush below is its commit
+			// boundary.
+			target.__ISSUE278_PROGRESS__ = 'scalar-reset';
 			resetIssue278BackgroundProfiles(target);
 			const wire = target.__ISSUE278_WIRE__;
 			if (wire !== undefined) wire.length = 0;
 			const startedAtMs = Date.now();
 			lynx.performance?.profileMark?.('Issue278::scalar-start');
-			await root.render(Issue278ScalarCard, { label: 'scalar addressed program' });
+			target.__ISSUE278_PROGRESS__ = 'scalar-render';
+			void root.render(Issue278ScalarCard, { label: 'scalar addressed program' });
+			target.__ISSUE278_PROGRESS__ = 'scalar-flush';
 			await root.flushTransport();
+			target.__ISSUE278_PROGRESS__ = 'scalar-acked';
 			const commitAckMs = Date.now();
 			lynx.performance?.profileMark?.('Issue278::scalar-ack');
 			return {
