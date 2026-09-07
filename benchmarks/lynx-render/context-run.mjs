@@ -26,6 +26,7 @@ const { values: args } = parseArgs({
 		rows: { type: 'string', default: '1000,10000,30000' },
 		depth: { type: 'string', default: '32' },
 		reps: { type: 'string', default: '9' },
+		'plain-attempts': { type: 'string' },
 		out: { type: 'string' },
 	},
 });
@@ -189,6 +190,11 @@ try {
 		}
 	}
 	const profileCount = Math.max(...rowCounts);
+	const expectedPlainAttempts =
+		args['plain-attempts'] === undefined ? profileCount - 1 : Number(args['plain-attempts']);
+	if (!Number.isSafeInteger(expectedPlainAttempts) || expectedPlainAttempts < 0) {
+		throw new TypeError('plain-attempts must be a non-negative integer.');
+	}
 	const ownerProfile = await profileWorkload.module.runContextChange(
 		profileCount,
 		depth,
@@ -203,7 +209,7 @@ try {
 	);
 	const expectedProfileAttempts = {
 		ContextBenchApp: 1,
-		MemoContextBenchPlainRow: profileCount - 1,
+		...(expectedPlainAttempts === 0 ? null : { MemoContextBenchPlainRow: expectedPlainAttempts }),
 		MemoContextBenchLayer: depth + 1,
 		MemoContextBenchConsumerRow: 1,
 		MemoContextBenchLeaf: 1,
