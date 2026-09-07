@@ -1,0 +1,165 @@
+{
+  "meta": {
+    "date": "2026-09-07T13:17:10.135Z",
+    "node": "v22.22.2",
+    "cpus": 32,
+    "cpuModel": "Intel(R) Xeon(R) Platinum 8336C CPU @ 2.30GHz",
+    "platform": "linux",
+    "release": "5.15.120.bsk.3-amd64",
+    "chromium": "149.0.7827.55",
+    "repetitions": 5,
+    "rows": 1000,
+    "reportable": true,
+    "loadStart": [1, 2.13, 2.03],
+    "loadEnd": [1.32, 2.18, 2.05],
+    "protocol": "fresh page per sample; production baseline/candidate order alternates AB/BA; neither cell reads profiler state"
+  },
+  "threshold": {
+    "mode": "public",
+    "fcpOptions": {
+      "minContent": 5
+    },
+    "rowCount": 1000
+  },
+  "bundles": {
+    "baseline": {
+      "path": "/data00/home/xuan.huang/.codex/worktrees/68ea/octane-issue287-compact/benchmarks/lynx-table/app/dist-mtsprogram-base287compact-rows1000/main.web.bundle",
+      "bytes": 582545,
+      "sha256": "349ee799dc274fab6ce7e1b3949f87ff11ff5d4b3461691f53feb9cf5109c72a"
+    },
+    "candidate": {
+      "path": "/data00/home/xuan.huang/.codex/worktrees/68ea/octane-issue287-compact/benchmarks/lynx-table/app/dist-mtsprogram-cand287-8d834fb-rows1000/main.web.bundle",
+      "bytes": 594553,
+      "sha256": "9501d5e040cf5e24a5a8e6d28b1557f9be79acbdc2014eb336a3dd291764363f"
+    }
+  },
+  "results": {
+    "baseline": {
+      "fcp": {
+        "median": 142.59999990463257,
+        "min": 142.2999997138977,
+        "max": 146.10000038146973,
+        "spread": 3.8000006675720215,
+        "n": 5
+      },
+      "settled": {
+        "median": 142.59999990463257,
+        "min": 142.2999997138977,
+        "max": 146.10000038146973,
+        "spread": 3.8000006675720215,
+        "n": 5
+      }
+    },
+    "candidate": {
+      "fcp": {
+        "median": 145.09999990463257,
+        "min": 143.19999980926514,
+        "max": 151.7999997138977,
+        "spread": 8.599999904632568,
+        "n": 5
+      },
+      "settled": {
+        "median": 145.09999990463257,
+        "min": 143.19999980926514,
+        "max": 151.7999997138977,
+        "spread": 8.599999904632568,
+        "n": 5
+      }
+    },
+    "semantic": {
+      "finalRows": 1000,
+      "finalCount": 2000,
+      "checksum": 1150422098
+    },
+    "ratios": {
+      "fcp": 1.0175315568139687,
+      "settled": 1.0175315568139687
+    }
+  },
+  "samples": {
+    "baseline": [
+      {
+        "fcpMs": 146.10000038146973,
+        "fcpEpochMs": 1788787023838,
+        "settledMs": 146.10000038146973,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "checksum": 1150422098
+      },
+      {
+        "fcpMs": 142.2999997138977,
+        "fcpEpochMs": 1788787025831.8,
+        "settledMs": 142.2999997138977,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "checksum": 1150422098
+      },
+      {
+        "fcpMs": 142.5,
+        "fcpEpochMs": 1788787026459.4,
+        "settledMs": 142.5,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "checksum": 1150422098
+      },
+      {
+        "fcpMs": 142.59999990463257,
+        "fcpEpochMs": 1788787028339.1,
+        "settledMs": 142.59999990463257,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "checksum": 1150422098
+      },
+      {
+        "fcpMs": 144.7999997138977,
+        "fcpEpochMs": 1788787028965.3,
+        "settledMs": 144.7999997138977,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "checksum": 1150422098
+      }
+    ],
+    "candidate": [
+      {
+        "fcpMs": 147,
+        "fcpEpochMs": 1788787024499.9,
+        "settledMs": 147,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "checksum": 1150422098
+      },
+      {
+        "fcpMs": 145.09999990463257,
+        "fcpEpochMs": 1788787025207,
+        "settledMs": 145.09999990463257,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "checksum": 1150422098
+      },
+      {
+        "fcpMs": 143.19999980926514,
+        "fcpEpochMs": 1788787027097.7002,
+        "settledMs": 143.19999980926514,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "checksum": 1150422098
+      },
+      {
+        "fcpMs": 144.2999997138977,
+        "fcpEpochMs": 1788787027715.7002,
+        "settledMs": 144.2999997138977,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "checksum": 1150422098
+      },
+      {
+        "fcpMs": 151.7999997138977,
+        "fcpEpochMs": 1788787029613.2,
+        "settledMs": 151.7999997138977,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "checksum": 1150422098
+      }
+    ]
+  }
+}

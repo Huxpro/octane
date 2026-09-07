@@ -212,8 +212,12 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 					const parent = command.parent;
 					const order = next.order.get(parent) ?? [];
 					next.order.set(parent, order);
+					const instanceStride =
+						command.op === 'mount-program-run'
+							? (command.stride ?? wire.nodes.length)
+							: wire.nodes.length;
 					for (let instanceIndex = 0; instanceIndex < command.count; instanceIndex++) {
-						const firstId = command.firstId + instanceIndex * wire.nodes.length;
+						const firstId = command.firstId + instanceIndex * instanceStride;
 						const values = command.values.slice(
 							instanceIndex * stride,
 							(instanceIndex + 1) * stride,

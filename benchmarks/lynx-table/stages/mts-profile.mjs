@@ -330,6 +330,7 @@ async function profileSample(browser, cell) {
 								handOverMs: profile.handOverMs,
 								programManifestRuns: profile.firstTreeProgramManifestRuns ?? 0,
 								programManifestMatches: profile.firstTreeProgramManifestMatches ?? 0,
+								programNodeComparisons: profile.firstTreeProgramNodeComparisons ?? null,
 								waitedMs,
 								timedOut: !settled,
 							};
@@ -346,6 +347,29 @@ async function profileSample(browser, cell) {
 						`(action ${JSON.stringify(adoption.action)}); an adoption window that never closed is not one to report.`,
 				);
 			}
+		}
+		const backgroundProgramPromotion = (
+			await Promise.all(
+				page.workers().map((worker) =>
+					worker
+						.evaluate(() => {
+							const profile = globalThis.__OCTANE_LYNX_PROF;
+							if (profile === undefined) return null;
+							return {
+								compactions: profile.firstTreeProgramCompactions ?? null,
+								fallback: profile.firstTreeProgramCompactionFallback ?? null,
+							};
+						})
+						.catch(() => null),
+				),
+			)
+		).filter((value) => value !== null);
+		if (backgroundProgramPromotion.length > 1) {
+			throw new Error(`${cell} published more than one background profile.`);
+		}
+		if (adoption.reachable === true) {
+			adoption.programCompactions = backgroundProgramPromotion[0]?.compactions ?? null;
+			adoption.programCompactionFallback = backgroundProgramPromotion[0]?.fallback ?? null;
 		}
 
 		// Read out of the main-thread realm's own document rather than recovered
@@ -597,6 +621,19 @@ for (const id of cellIds) {
 				handOverMs: stats(facts.map((one) => one.handOverMs)),
 				programManifestRuns: stats(facts.map((one) => one.programManifestRuns)),
 				programManifestMatches: stats(facts.map((one) => one.programManifestMatches)),
+				programNodeComparisons: facts.every((one) => Number.isFinite(one.programNodeComparisons))
+					? stats(facts.map((one) => one.programNodeComparisons))
+					: null,
+				programCompactions: facts.every((one) => Number.isFinite(one.programCompactions))
+					? stats(facts.map((one) => one.programCompactions))
+					: null,
+				programCompactionFallbacks: [
+					...new Set(
+						facts
+							.map((one) => one.programCompactionFallback)
+							.filter((reason) => typeof reason === 'string'),
+					),
+				],
 				...attributeWindow(
 					`${id} (adoption)`,
 					samples[id].map((sample) => sample.adoption),
@@ -774,6 +811,8 @@ if (adoptionCells.length > 0) {
 		rowFor('hand-over', (cell) => cell?.handOverMs, adoptionOf),
 		rowFor('program manifest runs', (cell) => cell?.programManifestRuns, adoptionOf),
 		rowFor('program manifest matches', (cell) => cell?.programManifestMatches, adoptionOf),
+		rowFor('background program compactions', (cell) => cell?.programCompactions, adoptionOf),
+		rowFor('legacy program-node comparisons', (cell) => cell?.programNodeComparisons, adoptionOf),
 		rowFor('paint → settled', (cell) => cell?.waitedMs, adoptionOf),
 		'',
 	);

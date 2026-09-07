@@ -476,6 +476,20 @@ function requireFunction<
 			);
 			next = replaceOnce(
 				next,
+				`\t\tconst error = normalizedError(value, fallback);
+\t\treported.push(error);
+`,
+				`\t\tconst error = normalizedError(value, fallback);
+\t\tconsole.log('__ISSUE194_MAIN_DIAGNOSTIC__' + JSON.stringify({
+\t\t\tname: error.name,
+\t\t\tmessage: error.message,
+\t\t}));
+\t\treported.push(error);
+`,
+				file,
+			);
+			next = replaceOnce(
+				next,
 				`\tconst captureFirstScreen = (source: LynxHostContainer<Node>): boolean => {
 \t\tmarkFirstScreenPhase('capture');
 `,
@@ -517,10 +531,11 @@ function requireFunction<
 				next,
 				`\tconst dispatch = (message: LynxBackgroundInboundMessage): void => {
 \t\tconst validated = selfCheckLynxBackgroundInboundMessage(message);
-\t\tcontext.dispatchEvent({
-\t\t\ttype: LYNX_MAIN_TO_BACKGROUND_EVENT,
-\t\t\tdata: encodeLynxTransportValue(validated, reportEncodingDiagnostic),
-\t\t});
+\t\tconst encoded = encodeLynxTransportValue(validated, reportEncodingDiagnostic);
+\t\tconst frames = frameLynxTransportValue(encoded, nextFrameSequence++);
+\t\tfor (const data of frames) {
+\t\t\tcontext.dispatchEvent({ type: LYNX_MAIN_TO_BACKGROUND_EVENT, data });
+\t\t}
 \t};
 `,
 				`\ttype Issue194CommitWireMessage = {
@@ -537,20 +552,27 @@ function requireFunction<
 \tconst dispatch = (message: LynxBackgroundInboundMessage): void => {
 \t\tconst validated = selfCheckLynxBackgroundInboundMessage(message);
 \t\tconst encoded = encodeLynxTransportValue(validated, reportEncodingDiagnostic);
-\t\tconst event = { type: LYNX_MAIN_TO_BACKGROUND_EVENT, data: encoded };
+\t\tconst frames = frameLynxTransportValue(encoded, nextFrameSequence++);
 \t\tconst identity = message as Partial<UniversalTransportIdentity> & { type?: unknown };
-\t\tif (
-\t\t\tissue194ActiveCommitWire !== null &&
-\t\t\tidentity.root === issue194ActiveCommitWire.root &&
-\t\t\tidentity.version === issue194ActiveCommitWire.version
-\t\t) {
-\t\t\tissue194ActiveCommitWire.messages.push({
-\t\t\t\ttype: typeof identity.type === 'string' ? identity.type : 'unknown',
-\t\t\t\tencodedPayloadBytes: encoded.length,
-\t\t\t\tcontextEventJsonBytes: JSON.stringify(event).length,
-\t\t\t});
+	\tif (
+	\t\tissue194ActiveCommitWire !== null &&
+	\t\tidentity.root === issue194ActiveCommitWire.root &&
+	\t\tidentity.version === issue194ActiveCommitWire.version
+	\t) {
+	\t\tissue194ActiveCommitWire.messages.push({
+	\t\t\ttype: typeof identity.type === 'string' ? identity.type : 'unknown',
+	\t\t\tencodedPayloadBytes: frames.reduce((total, data) => total + data.length, 0),
+	\t\t\tcontextEventJsonBytes: frames.reduce(
+	\t\t\t\t(total, data) =>
+	\t\t\t\t\ttotal + JSON.stringify({ type: LYNX_MAIN_TO_BACKGROUND_EVENT, data }).length,
+	\t\t\t\t0,
+	\t\t\t),
+	\t\t});
+	\t}
+\t\tfor (const data of frames) {
+\t\t\tconst event = { type: LYNX_MAIN_TO_BACKGROUND_EVENT, data };
+\t\t\tcontext.dispatchEvent(event);
 \t\t}
-\t\tcontext.dispatchEvent(event);
 \t};
 `,
 				file,
@@ -579,7 +601,10 @@ function requireFunction<
 \t\t\troot: message.root,
 \t\t\tversion: message.version,
 \t\t\tcommands: message.batch.commands.length,
-\t\t\tcommandOps: message.batch.commands.map((command) => command.op),
+\t\t\tcommandOps: message.batch.commands.reduce((counts, command) => {
+\t\t\t\tcounts[command.op] = (counts[command.op] ?? 0) + 1;
+\t\t\t\treturn counts;
+\t\t\t}, {} as Record<string, number>),
 \t\t\twallMs: performance.now() - issue194CommitStarted,
 \t\t\tcallsBefore: issue194CallsBefore,
 \t\t\tcallsAfter: JSON.parse(JSON.stringify((globalThis as any).__ISSUE194_PAPI__ ?? {})),
@@ -716,6 +741,73 @@ function requireFunction<
 \t\tif (issue194 !== undefined) {
 \t\t\tconsole.log('__ISSUE194_FIRST_SCREEN__' + JSON.stringify(issue194));
 \t\t}
+`,
+				file,
+			);
+			next = replaceOnce(
+				next,
+				`\t\treadyDeferred.resolve(undefined);
+\t};
+`,
+				`\t\treadyDeferred.resolve(undefined);
+\t\tconsole.log('__ISSUE194_BACKGROUND_STAGE__' + JSON.stringify({
+\t\t\tstage: 'ready',
+\t\t\trequest: message.request,
+\t\t\tfirstTreePainted: message.firstTreePainted === 1,
+\t\t\tprogramManifests: firstTreeProgramManifests,
+\t\t}));
+\t};
+`,
+				file,
+			);
+			next = replaceOnce(
+				next,
+				`\t\tprepareBatch(target, batch, identity): UniversalAsyncPreparedHostBatch {
+`,
+				`\t\tprepareBatch(target, batch, identity): UniversalAsyncPreparedHostBatch {
+\t\t\tconsole.log('__ISSUE194_BACKGROUND_STAGE__' + JSON.stringify({
+\t\t\t\tstage: 'prepare',
+\t\t\t\troot: identity.root,
+\t\t\t\tversion: identity.version,
+\t\t\t\tcommands: batch.commands.length,
+\t\t\t\tprograms: batch.programs?.length ?? 0,
+\t\t\t}));
+`,
+				file,
+			);
+			next = replaceOnce(
+				next,
+				`\t\t\t\t\t\t\t\tdispatch(outboundCommit);
+`,
+				`\t\t\t\t\t\t\t\tconsole.log('__ISSUE194_BACKGROUND_STAGE__' + JSON.stringify({
+\t\t\t\t\t\t\t\t\tstage: 'dispatch',
+\t\t\t\t\t\t\t\t\troot: identity.root,
+\t\t\t\t\t\t\t\t\tversion: identity.version,
+\t\t\t\t\t\t\t\t\tcommands: outboundCommit.batch.commands.length,
+\t\t\t\t\t\t\t\t}));
+\t\t\t\t\t\t\t\tdispatch(outboundCommit);
+`,
+				file,
+			);
+			next = replaceOnce(
+				next,
+				`\t\t\tconst startedDispatch = performance.now();
+\t\t\tconst frames = frameLynxTransportValue(encoded, nextFrameSequence++);
+\t\t\tfor (const data of frames) {
+\t\t\t\tcontext.dispatchEvent({ type: LYNX_BACKGROUND_TO_MAIN_EVENT, data });
+\t\t\t}
+`,
+				`\t\t\tconst startedDispatch = performance.now();
+\t\t\tconst frames = frameLynxTransportValue(encoded, nextFrameSequence++);
+\t\t\tconsole.log('__ISSUE194_BACKGROUND_STAGE__' + JSON.stringify({
+\t\t\t\tstage: 'wire',
+\t\t\t\ttype: message.type,
+\t\t\t\tbytes: encoded.length,
+\t\t\t\tframes: frames.length,
+\t\t\t}));
+\t\t\tfor (const data of frames) {
+\t\t\t\tcontext.dispatchEvent({ type: LYNX_BACKGROUND_TO_MAIN_EVENT, data });
+\t\t\t}
 `,
 				file,
 			);

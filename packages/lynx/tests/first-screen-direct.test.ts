@@ -1254,6 +1254,7 @@ describe('first-tree addressed program adoption manifest', () => {
 		background: {
 			readonly index?: number;
 			readonly value?: string;
+			readonly compact?: boolean;
 			readonly descriptor?: boolean;
 		} = {},
 	) {
@@ -1282,18 +1283,30 @@ describe('first-tree addressed program adoption manifest', () => {
 		expect(journal.programAdoptionRuns).toHaveLength(1);
 		const target = createLynxHostContainer(papi, { root: 41, page: papi.pages[0] });
 		const mismatches: Error[] = [];
-		const command = background.descriptor
-			? {
-					op: 'mount-template-run' as const,
-					parent: null,
-					before: null,
-					program: wire,
-					firstId: 1,
-					firstListenerId: null,
-					count: 1,
-					values: [background.value ?? 'same'],
-				}
-			: null;
+		const command =
+			background.descriptor || background.compact
+				? background.compact
+					? {
+							op: 'mount-program-run' as const,
+							parent: null,
+							before: null,
+							address: { module, index: background.index ?? 0 },
+							firstId: 1,
+							firstListenerId: null,
+							count: 1,
+							values: [background.value ?? 'same'],
+						}
+					: {
+							op: 'mount-template-run' as const,
+							parent: null,
+							before: null,
+							program: wire,
+							firstId: 1,
+							firstListenerId: null,
+							count: 1,
+							values: [background.value ?? 'same'],
+						}
+				: null;
 		const batch: UniversalHostBatch = {
 			renderer: 'lynx',
 			version: 1,
@@ -1351,6 +1364,37 @@ describe('first-tree addressed program adoption manifest', () => {
 		expect(arm.mismatches).toEqual([]);
 		arm.prepared.apply();
 		expect(arm.papi.pages[0]!.children).toEqual([arm.painted]);
+	});
+
+	it('adopts the compact addressed description without replaying its host records', () => {
+		const arm = prepare({}, { compact: true });
+		expect(arm.prepared.firstTreeAction).toBe('adopt');
+		expect(arm.mismatches).toEqual([]);
+		arm.prepared.apply();
+		expect(arm.papi.pages[0]!.children).toEqual([arm.painted]);
+		const updated = prepareLynxHostBatch(arm.target, {
+			renderer: 'lynx',
+			version: 2,
+			commands: [{ op: 'update', id: 1, props: { id: 'after-adoption' } }],
+		});
+		updated.apply();
+		expect(arm.papi.pages[0]!.children).toEqual([arm.painted]);
+		expect(arm.painted.id).toBe('after-adoption');
+	});
+
+	it('repairs a compact addressed description whose dynamic state differs', () => {
+		const arm = prepare({ value: 'main' }, { compact: true, value: 'background' });
+		expect(arm.prepared.firstTreeAction).toBe('repair');
+		expect(arm.mismatches).toEqual([
+			expect.objectContaining({
+				code: LYNX_FIRST_TREE_MISMATCH,
+				path: 'snapshot.programs[1].values[0]',
+			}),
+		]);
+		arm.prepared.apply();
+		expect(arm.source.disposed).toBe(true);
+		expect(arm.papi.pages[0]!.children[0]).not.toBe(arm.painted);
+		expect(arm.papi.pages[0]!.children[0]!.id).toBe('background');
 	});
 
 	it('adopts one dense run covered by multiple addressed command segments', () => {

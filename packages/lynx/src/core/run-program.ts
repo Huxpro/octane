@@ -19,8 +19,12 @@
  */
 
 import {
+	recordUniversalProgramCommand,
 	universalProgramCommandWire,
+	type UniversalHostCommand,
+	type UniversalHostProgramManifest,
 	type UniversalHostTemplateProgram,
+	type UniversalHostTemplateProgramValue,
 } from 'octane/universal/native';
 
 /**
@@ -43,4 +47,43 @@ export function producedRunProgram(
 		return command.program;
 	}
 	return universalProgramCommandWire(command);
+}
+
+/**
+ * Turn producer-local first-tree proof into the addressed command the peer can
+ * execute if adoption declines.
+ *
+ * The command is a fresh object because `op` is part of both wire validation
+ * and dispatch. Preserve the producer's command→program association on that
+ * object: background self-checks still need the descriptor even though the
+ * peer resolves only the address.
+ */
+export function promoteProducedProgramManifest(
+	manifest: UniversalHostProgramManifest,
+	values: readonly UniversalHostTemplateProgramValue[] = manifest.values,
+	run: {
+		readonly firstId: number;
+		readonly stride?: number;
+		readonly firstListenerId: number | null;
+		readonly count: number;
+	} = manifest,
+): {
+	readonly command: Extract<UniversalHostCommand, { readonly op: 'mount-program-run' }>;
+	readonly program: UniversalHostTemplateProgram;
+} | null {
+	const program = universalProgramCommandWire(manifest);
+	if (program === undefined) return null;
+	const command = Object.freeze({
+		op: 'mount-program-run' as const,
+		parent: manifest.parent,
+		before: manifest.before,
+		address: manifest.address,
+		firstId: run.firstId,
+		...(run.stride === undefined ? null : { stride: run.stride }),
+		firstListenerId: run.firstListenerId,
+		count: run.count,
+		values,
+	});
+	recordUniversalProgramCommand(command, program);
+	return Object.freeze({ command, program });
 }

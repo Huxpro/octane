@@ -37,7 +37,7 @@ import {
 	type LynxContextProxy,
 	type LynxMainReadyReply,
 } from '../src/core/protocol.js';
-import { unwire, wire } from './_fixtures/lynx-wire.js';
+import { createUnwireReceiver, wire } from './_fixtures/lynx-wire.js';
 
 const rowPlan = firstScreenPlan('lynx', { kind: 'host', type: 'view', propsSlot: 0 });
 const scenePlan = firstScreenPlan('lynx', {
@@ -106,10 +106,13 @@ function paintAndAnswer(
 	// The transport owns encoding, so what crosses is a codec string; the
 	// budget below is honest only if it measures that string, not a re-print.
 	const outbound: { message: LynxMainReadyReply; bytes: number }[] = [];
+	const receive = createUnwireReceiver();
 	mainContext().addEventListener(LYNX_MAIN_TO_BACKGROUND_EVENT, (event) => {
-		const message = unwire(event.data) as LynxMainReadyReply;
+		const received = receive(event.data);
+		if (received === null) return;
+		const message = received.message as LynxMainReadyReply;
 		if (message.type === 'main-ready') {
-			outbound.push({ message, bytes: (event.data as string).length });
+			outbound.push({ message, bytes: received.bytes });
 		}
 	});
 	// Queued before the paint, which is the order that loses the race in

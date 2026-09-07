@@ -353,7 +353,7 @@ export interface LynxCompactTransportAcknowledgement extends UniversalTransportA
 	readonly encoding: typeof LYNX_COMPACT_ACKNOWLEDGEMENT;
 	readonly count: number;
 	readonly handles?: never;
-	readonly adoption?: never;
+	readonly adoption?: 'adopted' | 'repaired';
 }
 
 export type LynxTransportAcknowledgement =
@@ -362,17 +362,24 @@ export type LynxTransportAcknowledgement =
 const COMPACT_STATIC_PROPS = new WeakMap<object, boolean>();
 const COMPACT_TEMPLATE_PROGRAMS = new WeakMap<object, boolean>();
 
-function hasCompactCompatibleProps(props: Readonly<Record<string, unknown>>): boolean {
-	const cached = COMPACT_STATIC_PROPS.get(props);
+function hasCompactCompatibleProps(
+	props: Readonly<Record<string, unknown>>,
+	allowMainThreadState: boolean,
+): boolean {
+	const cached = allowMainThreadState ? undefined : COMPACT_STATIC_PROPS.get(props);
 	if (cached !== undefined) return cached;
 	let compatible = true;
 	for (const name in props) {
-		if (name === 'ref' || name.startsWith('main-thread:')) {
+		if (
+			name === 'ref' ||
+			name === 'main-thread:ref' ||
+			(!allowMainThreadState && name.startsWith('main-thread:'))
+		) {
 			compatible = false;
 			break;
 		}
 	}
-	if (Object.isFrozen(props)) COMPACT_STATIC_PROPS.set(props, compatible);
+	if (!allowMainThreadState && Object.isFrozen(props)) COMPACT_STATIC_PROPS.set(props, compatible);
 	return compatible;
 }
 
@@ -385,7 +392,9 @@ function hasCompactCompatibleProps(props: Readonly<Record<string, unknown>>): bo
 export function countLynxCompactAcknowledgementHosts(
 	batch: UniversalHostBatch,
 	resolveProgram?: LynxProgramWireResolver,
+	options?: { readonly allowMainThreadState?: true },
 ): number | null {
+	const allowMainThreadState = options?.allowMainThreadState === true;
 	let created = 0;
 	let inserted = 0;
 	for (let index = 0; index < batch.commands.length; index++) {
@@ -394,7 +403,7 @@ export function countLynxCompactAcknowledgementHosts(
 			if (
 				command.type === 'list' ||
 				command.type === 'list-item' ||
-				!hasCompactCompatibleProps(command.props)
+				!hasCompactCompatibleProps(command.props, allowMainThreadState)
 			) {
 				return null;
 			}
@@ -408,7 +417,7 @@ export function countLynxCompactAcknowledgementHosts(
 				if (
 					type === 'list' ||
 					type === 'list-item' ||
-					!hasCompactCompatibleProps(command.nodes[nodeIndex]!.props)
+					!hasCompactCompatibleProps(command.nodes[nodeIndex]!.props, allowMainThreadState)
 				) {
 					return null;
 				}
@@ -431,7 +440,7 @@ export function countLynxCompactAcknowledgementHosts(
 			const program =
 				command.op === 'mount-program-run' ? resolveProgram?.(command) : command.program;
 			if (program === undefined) return null;
-			let compatible = COMPACT_TEMPLATE_PROGRAMS.get(program);
+			let compatible = allowMainThreadState ? undefined : COMPACT_TEMPLATE_PROGRAMS.get(program);
 			if (compatible === undefined) {
 				compatible = true;
 				let immutable = Object.isFrozen(program) && Object.isFrozen(program.nodes);
@@ -440,7 +449,7 @@ export function countLynxCompactAcknowledgementHosts(
 					if (
 						node.type === 'list' ||
 						node.type === 'list-item' ||
-						!hasCompactCompatibleProps(node.props)
+						!hasCompactCompatibleProps(node.props, allowMainThreadState)
 					) {
 						compatible = false;
 						break;
@@ -453,14 +462,20 @@ export function countLynxCompactAcknowledgementHosts(
 					}
 					for (const binding of node.bindings ?? []) {
 						if (immutable && !Object.isFrozen(binding)) immutable = false;
-						if (binding.name === 'ref' || binding.name.startsWith('main-thread:')) {
+						if (
+							binding.name === 'ref' ||
+							binding.name === 'main-thread:ref' ||
+							(!allowMainThreadState && binding.name.startsWith('main-thread:'))
+						) {
 							compatible = false;
 							break;
 						}
 					}
 					if (!compatible) break;
 				}
-				if (immutable) COMPACT_TEMPLATE_PROGRAMS.set(program, compatible);
+				if (!allowMainThreadState && immutable) {
+					COMPACT_TEMPLATE_PROGRAMS.set(program, compatible);
+				}
 			}
 			if (!compatible) return null;
 			const instances = command.op === 'mount-template-range' ? 1 : command.count;
@@ -931,7 +946,19 @@ const PROGRAM_RUN_KEYS = Object.freeze([
 	'count',
 	'values',
 ]);
+const PROGRAM_STRIDED_RUN_KEYS = Object.freeze([
+	'op',
+	'parent',
+	'before',
+	'address',
+	'firstId',
+	'stride',
+	'firstListenerId',
+	'count',
+	'values',
+]);
 const PROGRAM_RUN_DEFERRED_KEYS = Object.freeze([...PROGRAM_RUN_KEYS, 'deferred']);
+const PROGRAM_STRIDED_RUN_DEFERRED_KEYS = Object.freeze([...PROGRAM_STRIDED_RUN_KEYS, 'deferred']);
 const TEMPLATE_PROGRAM_KEYS = Object.freeze(['nodes', 'events']);
 const TEMPLATE_PROGRAM_NODE_KEYS = Object.freeze(['type', 'parent', 'props']);
 const TEMPLATE_PROGRAM_BOUND_NODE_KEYS = Object.freeze(['type', 'parent', 'props', 'bindings']);
@@ -1366,6 +1393,7 @@ function assertRunCommandTail(
 	index: number,
 	state: LynxBatchValidationState,
 	program: LynxValidatedTemplateProgram,
+	stride = program.hosts,
 ): void {
 	const count = command.count as number;
 	const hostCount = count * program.hosts;
@@ -1373,10 +1401,11 @@ function assertRunCommandTail(
 		fail(COMMANDS_LABEL, 'overflows the intrinsic host count.', index, 'count');
 	}
 	const firstId = command.firstId as number;
-	if (firstId > Number.MAX_SAFE_INTEGER - (hostCount - 1)) {
+	const span = (count - 1) * stride + program.hosts;
+	if (!Number.isSafeInteger(span) || firstId > Number.MAX_SAFE_INTEGER - (span - 1)) {
 		fail(COMMANDS_LABEL, 'overflows the safe host-ID range.', index, 'firstId');
 	}
-	const lastId = firstId + (hostCount - 1);
+	const lastId = firstId + (span - 1);
 	const starts = (state.templateRangeStarts ??= []);
 	const ends = (state.templateRangeEnds ??= []);
 	if (starts.length !== 0 && firstId <= ends[ends.length - 1]!) {
@@ -1388,7 +1417,8 @@ function assertRunCommandTail(
 	}
 	if (state.templateNodeIds !== undefined) {
 		for (const id of state.templateNodeIds) {
-			if (id >= firstId && id <= lastId) {
+			const relative = id - firstId;
+			if (relative >= 0 && relative < span && relative % stride < program.hosts) {
 				fail(COMMANDS_LABEL, 'overlaps a previously created template host.', index, 'firstId');
 			}
 		}
@@ -1475,6 +1505,12 @@ function assertProgramRunCommand(
 	state: LynxBatchValidationState,
 ): void {
 	assertRunCommandPrefix(command, index);
+	const hasStride = Object.prototype.hasOwnProperty.call(command, 'stride');
+	const stride = command.stride;
+	if (hasStride) positiveInteger(stride, COMMANDS_LABEL, index, 'stride');
+	if (stride !== undefined && command.deferred === true) {
+		fail(COMMANDS_LABEL, 'must be omitted when the addressed run is deferred.', index, 'stride');
+	}
 	const address = command.address;
 	if (address === null || typeof address !== 'object' || Array.isArray(address)) {
 		fail(COMMANDS_LABEL, 'must be an object.', index, 'address');
@@ -1506,7 +1542,11 @@ function assertProgramRunCommand(
 			'address',
 		);
 	}
-	assertRunCommandTail(command, index, state, assertTemplateProgram(resolved, index, state));
+	const program = assertTemplateProgram(resolved, index, state);
+	if (stride !== undefined && (stride as number) < program.hosts) {
+		fail(COMMANDS_LABEL, 'must be at least the program host count.', index, 'stride');
+	}
+	assertRunCommandTail(command, index, state, program, stride as number | undefined);
 }
 
 /** Fuse the hot range-command object and exact-schema trust checks in one own-key walk. */
@@ -1544,9 +1584,13 @@ function commandRecord(value: unknown, index: number): Record<string, unknown> {
 				: operation === 'mount-program-run'
 					? orderedProgramRun
 						? null
-						: Object.prototype.hasOwnProperty.call(value, 'deferred')
-							? PROGRAM_RUN_DEFERRED_KEYS
-							: PROGRAM_RUN_KEYS
+						: Object.prototype.hasOwnProperty.call(value, 'stride')
+							? Object.prototype.hasOwnProperty.call(value, 'deferred')
+								? PROGRAM_STRIDED_RUN_DEFERRED_KEYS
+								: PROGRAM_STRIDED_RUN_KEYS
+							: Object.prototype.hasOwnProperty.call(value, 'deferred')
+								? PROGRAM_RUN_DEFERRED_KEYS
+								: PROGRAM_RUN_KEYS
 					: null;
 	if (schema !== null) {
 		for (const required of schema) {
@@ -2392,9 +2436,12 @@ export function validateLynxBackgroundInboundMessage(
 	}
 	if (message.type === 'ack') {
 		if (Object.prototype.hasOwnProperty.call(message, 'encoding')) {
+			const hasAdoption = Object.prototype.hasOwnProperty.call(message, 'adoption');
 			exactKeys(
 				message,
-				['protocol', 'renderer', 'root', 'version', 'type', 'encoding', 'count'],
+				hasAdoption
+					? ['protocol', 'renderer', 'root', 'version', 'type', 'encoding', 'count', 'adoption']
+					: ['protocol', 'renderer', 'root', 'version', 'type', 'encoding', 'count'],
 				'ack',
 			);
 			if (message.encoding !== LYNX_COMPACT_ACKNOWLEDGEMENT) {
@@ -2403,6 +2450,9 @@ export function validateLynxBackgroundInboundMessage(
 			positiveInteger(message.count, 'ack.count');
 			if ((message.count as number) < LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS) {
 				fail('ack.count', `must be at least ${LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS}.`);
+			}
+			if (hasAdoption && message.adoption !== 'adopted' && message.adoption !== 'repaired') {
+				fail('ack.adoption', 'must be adopted or repaired.');
 			}
 			return message as unknown as LynxCompactTransportAcknowledgement;
 		}

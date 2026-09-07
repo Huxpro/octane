@@ -568,8 +568,10 @@ type LynxApplyOperation<Node extends LynxElementRef> =
 			readonly parents: readonly number[];
 			readonly count?: number;
 			readonly dense?: LynxDenseHostRecordStore<Node>;
-			/** Present only when a compact range owns contiguous lazy host identities. */
+			/** Present only when a compact range owns lazy host identities. */
 			readonly firstId?: number;
+			/** Distance between instance roots when the compact identities are sparse. */
+			readonly stride?: number;
 			readonly program?: LynxPreparedTemplateProgram;
 			readonly firstListenerId?: number | null;
 			readonly lazyPublicInstances?: true;
@@ -6018,12 +6020,21 @@ export function captureLynxFirstTree<Node extends LynxElementRef>(
  * point at the selected table their compiled driver already consumed. Apps
  * with no eligible addressed run return before scanning the batch.
  */
+interface LynxProgramAdoptionComparison<Node extends LynxElementRef> {
+	readonly mismatch: LynxFirstTreeMismatchError | null;
+	readonly compactRuns: ReadonlySet<LynxProgramRun<Node>> | null;
+}
+
 function compareProgramAdoptionRuns<Node extends LynxElementRef>(
 	batch: UniversalHostBatch,
 	firstTree: LynxFirstTree<Node>,
-): LynxFirstTreeMismatchError | null {
+): LynxProgramAdoptionComparison<Node> {
 	const runs = firstTree[LYNX_FIRST_TREE_STATE].programAdoptionRuns;
-	if (runs.length === 0) return null;
+	const failed = (error: LynxFirstTreeMismatchError): LynxProgramAdoptionComparison<Node> => ({
+		mismatch: error,
+		compactRuns: null,
+	});
+	if (runs.length === 0) return { mismatch: null, compactRuns: null };
 	// A transparent keyed/component range can take IDs between two compiled
 	// instances without making a host. The main painter therefore retains one
 	// dense run with that actual stride while the background quite correctly
@@ -6054,7 +6065,9 @@ function compareProgramAdoptionRuns<Node extends LynxElementRef>(
 		const path = `snapshot.programs[${run.firstId}]`;
 		const address = run.adoptionAddress!;
 		if (manifest.address.module !== address.module || manifest.address.index !== address.index) {
-			return mismatch(firstTree, `${path}.address`, 'the compiled program address differs.');
+			return failed(
+				mismatch(firstTree, `${path}.address`, 'the compiled program address differs.'),
+			);
 		}
 		if (
 			manifest.parent !== run.adoptionParent ||
@@ -6062,27 +6075,31 @@ function compareProgramAdoptionRuns<Node extends LynxElementRef>(
 			manifest.firstId !== run.firstId ||
 			manifest.stride !== run.stride
 		) {
-			return mismatch(firstTree, `${path}.parent`, 'the program run layout differs.');
+			return failed(mismatch(firstTree, `${path}.parent`, 'the program run layout differs.'));
 		}
 		if (seen[runIndex] !== 0 || manifest.count !== run.count) {
-			return mismatch(firstTree, `${path}.count`, 'the program run instance count differs.');
+			return failed(
+				mismatch(firstTree, `${path}.count`, 'the program run instance count differs.'),
+			);
 		}
 		if (manifest.firstListenerId !== run.adoptionFirstListenerId) {
-			return mismatch(firstTree, `${path}.listeners`, 'the program listener identity differs.');
+			return failed(
+				mismatch(firstTree, `${path}.listeners`, 'the program listener identity differs.'),
+			);
 		}
 		const values = run.adoptionValues!;
 		const valueCount = run.plan.values.length;
 		const expectedValues = run.count * valueCount;
 		if (manifest.values.length !== expectedValues) {
-			return mismatch(firstTree, `${path}.values`, 'the program dynamic value count differs.');
+			return failed(
+				mismatch(firstTree, `${path}.values`, 'the program dynamic value count differs.'),
+			);
 		}
 		for (let index = 0; index < expectedValues; index++) {
 			const painted = run.adoptionValuesSelected ? values[index] : values[run.plan.values[index]!];
 			if (!sameSnapshotValue(painted, manifest.values[index])) {
-				return mismatch(
-					firstTree,
-					`${path}.values[${index}]`,
-					'the program dynamic value differs.',
+				return failed(
+					mismatch(firstTree, `${path}.values[${index}]`, 'the program dynamic value differs.'),
 				);
 			}
 		}
@@ -6101,29 +6118,32 @@ function compareProgramAdoptionRuns<Node extends LynxElementRef>(
 		const address = run.adoptionAddress!;
 		const path = `snapshot.programs[${run.firstId}]`;
 		if (command.address.module !== address.module || command.address.index !== address.index) {
-			return mismatch(firstTree, `${path}.address`, 'the compiled program address differs.');
+			return failed(
+				mismatch(firstTree, `${path}.address`, 'the compiled program address differs.'),
+			);
 		}
 		if (command.parent !== run.adoptionParent || command.before !== null) {
-			return mismatch(firstTree, `${path}.parent`, 'the program run placement differs.');
+			return failed(mismatch(firstTree, `${path}.parent`, 'the program run placement differs.'));
 		}
 		if (command.deferred === true) {
-			return mismatch(
-				firstTree,
-				`${path}.mode`,
-				'the background deferred a program run the first screen painted.',
+			return failed(
+				mismatch(
+					firstTree,
+					`${path}.mode`,
+					'the background deferred a program run the first screen painted.',
+				),
 			);
 		}
 		const programWidth = run.plan.nodes + run.plan.ranges.length;
+		const commandStride = command.stride ?? programWidth;
 		if (
 			seen[runIndex] === 1 ||
+			((command.count > 1 || command.stride !== undefined) && commandStride !== run.stride) ||
 			instance !== covered[runIndex] ||
-			instance + command.count > run.count ||
-			(run.stride !== programWidth && command.count !== 1)
+			instance + command.count > run.count
 		) {
-			return mismatch(
-				firstTree,
-				`${path}.count`,
-				'the program run layout or instance count differs.',
+			return failed(
+				mismatch(firstTree, `${path}.count`, 'the program run layout or instance count differs.'),
 			);
 		}
 		const expectedFirstListenerId =
@@ -6131,13 +6151,17 @@ function compareProgramAdoptionRuns<Node extends LynxElementRef>(
 				? null
 				: run.adoptionFirstListenerId + instance * run.plan.events.length;
 		if (command.firstListenerId !== expectedFirstListenerId) {
-			return mismatch(firstTree, `${path}.listeners`, 'the program listener identity differs.');
+			return failed(
+				mismatch(firstTree, `${path}.listeners`, 'the program listener identity differs.'),
+			);
 		}
 		const values = run.adoptionValues!;
 		const valueCount = run.plan.values.length;
 		const expectedValues = command.count * valueCount;
 		if (command.values.length !== expectedValues) {
-			return mismatch(firstTree, `${path}.values`, 'the program dynamic value count differs.');
+			return failed(
+				mismatch(firstTree, `${path}.values`, 'the program dynamic value count differs.'),
+			);
 		}
 		for (let index = 0; index < expectedValues; index++) {
 			const value = index % valueCount;
@@ -6145,29 +6169,39 @@ function compareProgramAdoptionRuns<Node extends LynxElementRef>(
 				? values[instance * valueCount + index]
 				: values[run.plan.values[value]!];
 			if (!sameSnapshotValue(painted, command.values[index])) {
-				return mismatch(
-					firstTree,
-					`${path}.values[${instance * valueCount + index}]`,
-					'the program dynamic value differs.',
+				return failed(
+					mismatch(
+						firstTree,
+						`${path}.values[${instance * valueCount + index}]`,
+						'the program dynamic value differs.',
+					),
 				);
 			}
 		}
 		seen[runIndex] = 2;
 		covered[runIndex] += command.count;
 	}
+	let compactRuns: Set<LynxProgramRun<Node>> | null = null;
 	for (let index = 0; index < runs.length; index++) {
 		if (seen[index] === 0) continue;
 		const run = runs[index]!;
 		if (covered[index] !== run.count) {
-			return mismatch(
-				firstTree,
-				`snapshot.programs[${run.firstId}].count`,
-				'the background program manifest does not cover every painted instance.',
+			return failed(
+				mismatch(
+					firstTree,
+					`snapshot.programs[${run.firstId}].count`,
+					'the background program manifest does not cover every painted instance.',
+				),
 			);
 		}
 		if (LYNX_PROFILE) lynxWireProfile().firstTreeProgramManifestMatches++;
+		// A sidecar manifest accompanies expanded commands, so those commands still
+		// need the legacy per-host cross-check. A promoted addressed command is the
+		// description: once its address/layout/values match, re-deriving the same
+		// host records one by one proves nothing additional.
+		if (seen[index] === 2) (compactRuns ??= new Set()).add(run);
 	}
-	return null;
+	return { mismatch: null, compactRuns };
 }
 
 function compareFirstTree<Node extends LynxElementRef>(
@@ -6180,6 +6214,7 @@ function compareFirstTree<Node extends LynxElementRef>(
 	getRecord: (id: number) => LynxHostRecord<Node> | undefined,
 	operations: readonly LynxApplyOperation<Node>[],
 	listUpdates: readonly LynxPreparedListUpdate[],
+	programComparison: LynxProgramAdoptionComparison<Node>,
 ): LynxFirstTreeMismatchError | null {
 	const snapshot = firstTree.snapshot;
 	const targetState = target[LYNX_HOST_STATE];
@@ -6233,8 +6268,6 @@ function compareFirstTree<Node extends LynxElementRef>(
 	) {
 		return mismatch(firstTree, 'snapshot.owner', 'the captured host owner is not stable.');
 	}
-	const programMismatch = compareProgramAdoptionRuns(batch, firstTree);
-	if (programMismatch !== null) return programMismatch;
 	// A native list is adoptable, but only against the same list. The main thread
 	// already wrote `update-list-info` onto the node being adopted; `listUpdates`
 	// is what the background would have written onto a node it created itself.
@@ -6345,13 +6378,39 @@ function compareFirstTree<Node extends LynxElementRef>(
 	// already wrote, not copied into a table first (issue #215 D1). Nothing is
 	// built per node here or at capture; what this allocates is one cursor.
 	const programNodes = lynxFirstTreeProgramIndex(firstTree);
-	for (const id of [...finalIds].sort((first, second) => first - second)) {
+	const comparedIds =
+		programComparison.compactRuns === null
+			? [...finalIds]
+			: [...snapshot.nodes.map((node) => node.id), ...journal.logicalNodes.keys()];
+	if (programComparison.compactRuns !== null) {
+		// The compact proof covers only the runs it names. Append the few legacy
+		// program IDs directly from their existing journals instead of falling back
+		// to every final ID merely because a small unaddressed shell program shares
+		// the page with a compact keyed range.
+		for (const run of journal.programRuns) {
+			if (programComparison.compactRuns.has(run)) continue;
+			if (run.count === 1) {
+				for (const id of run.ids) comparedIds.push(id);
+				for (const id of run.rangeIds) if (id !== undefined) comparedIds.push(id);
+				continue;
+			}
+			const width = run.plan.nodes + run.plan.ranges.length;
+			for (let instance = 0; instance < run.count; instance++) {
+				const firstId = run.firstId + instance * run.stride;
+				for (let offset = 0; offset < width; offset++) comparedIds.push(firstId + offset);
+			}
+		}
+	}
+	comparedIds.sort((first, second) => first - second);
+	for (const id of comparedIds) {
 		// Narrowed once and then asked twice: which run could own this ID, then
 		// what that run knows about it. The node proves the ID is a program's; the
 		// position is what the run's own event table is keyed by (issue #215 D3).
 		const programRun = programNodes.runFor(id);
 		const programNode = programRun === undefined ? undefined : programRunNode(programRun, id);
 		if (programRun !== undefined && programNode !== undefined) {
+			if (programComparison.compactRuns?.has(programRun) === true) continue;
+			if (LYNX_PROFILE) lynxWireProfile().firstTreeProgramNodeComparisons++;
 			// A host a compiled main-thread program painted. There is nothing of
 			// main's to compare the background's description against — no snapshot
 			// entry and no record, by construction — so this is the one place the
@@ -6588,6 +6647,7 @@ function transferFirstTree<Node extends LynxElementRef>(
 	firstTree: LynxFirstTree<Node>,
 	source: LynxHostContainer<Node>,
 	activeNodes: Map<number, Node>,
+	compactProgramRuns: ReadonlySet<LynxProgramRun<Node>> | null,
 ): void {
 	const targetState = target[LYNX_HOST_STATE];
 	const sourceState = source[LYNX_HOST_STATE];
@@ -6619,7 +6679,14 @@ function transferFirstTree<Node extends LynxElementRef>(
 			throw hostError(`captured first-tree host ${id} lost its physical node.`);
 		}
 		targetRecord.node = node;
-		activeNodes.set(id, node);
+		// Adoption executes no structural/update operation from the accepted batch;
+		// only explicit public-instance requests survive below, and those read the
+		// record's node directly. A proof-covered program therefore needs no second
+		// row-scale ID→node table merely for this apply call. The ordinary path keeps
+		// it because its selector/event/main-thread replay still consumes the table.
+		if (programRun === undefined || compactProgramRuns?.has(programRun) !== true) {
+			activeNodes.set(id, node);
+		}
 		targetState.ownedNodes.add(node);
 		if (targetRecord.parent === null) targetState.ownedPageRoots.add(node);
 		if (programRun !== undefined && programNode !== undefined) {
@@ -7669,12 +7736,18 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			const program = prepareTemplateProgram(resolvedProgram, label);
 			const shape = program.shape;
 			const count = command.op === 'mount-template-range' ? 1 : command.count;
+			const instanceStride =
+				command.op === 'mount-program-run'
+					? (command.stride ?? shape.types.length)
+					: shape.types.length;
 			assertSafeId(count, `${label}.count`);
 			const hostCount = count * shape.types.length;
 			assertSafeId(command.firstId, `${label}.firstId`);
 			if (
 				!Number.isSafeInteger(hostCount) ||
-				!Number.isSafeInteger(command.firstId + (hostCount - 1))
+				!Number.isSafeInteger(
+					command.firstId + (count - 1) * instanceStride + shape.types.length - 1,
+				)
 			) {
 				throw hostError(`${label}.firstId exceeds the host identity range.`);
 			}
@@ -7862,6 +7935,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			}
 			let denseEligible =
 				command.op !== 'mount-template-range' &&
+				instanceStride === shape.types.length &&
 				compactCandidate &&
 				options?.lazyPublicInstances === true &&
 				Object.isFrozen(command.values) &&
@@ -7941,7 +8015,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				if (incrementalCompactCandidate) acceptedDenseRecords = dense;
 				stagedRecords = dense;
 				for (let row = 0; row < count; row++) {
-					siblings.push(command.firstId + row * shape.types.length);
+					siblings.push(command.firstId + row * instanceStride);
 				}
 				stagedRecordCount += hostCount;
 				compactCreated += hostCount;
@@ -7970,7 +8044,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 			let runMainThreadProps = false;
 			for (let rowIndex = 0; rowIndex < count; rowIndex++) {
 				const rowOffset = rowIndex * shape.types.length;
-				const rowFirstId = command.firstId + rowOffset;
+				const rowFirstId = command.firstId + rowIndex * instanceStride;
 				const rowFirstListener =
 					command.firstListenerId === null
 						? null
@@ -8090,7 +8164,12 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				parents: shape.parents,
 				...(count === 1 ? null : { count }),
 				...(compactCandidate
-					? { firstId: command.firstId, program, firstListenerId: command.firstListenerId }
+					? {
+							firstId: command.firstId,
+							...(instanceStride === shape.types.length ? null : { stride: instanceStride }),
+							program,
+							firstListenerId: command.firstListenerId,
+						}
 					: null),
 				...(options?.lazyPublicInstances === true &&
 				(compactCandidate || acceptedLazyPublicInstances)
@@ -8832,18 +8911,24 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 	if (compactHostCount === undefined) materializeHandleDelta();
 	let firstTreeAction: LynxPreparedHostBatch['firstTreeAction'] = 'none';
 	let firstTreeMismatch: LynxFirstTreeMismatchError | null = null;
+	let compactProgramAdoptionRuns: ReadonlySet<LynxProgramRun<Node>> | null = null;
 	if (firstTree !== undefined && firstTreeSource !== null) {
-		firstTreeMismatch = compareFirstTree(
-			container,
-			batch,
-			firstTree,
-			firstTreeSource,
-			finalIds!,
-			childrenForRead(null),
-			getRecord,
-			operations,
-			listUpdates,
-		);
+		const programComparison = compareProgramAdoptionRuns(batch, firstTree);
+		compactProgramAdoptionRuns = programComparison.compactRuns;
+		firstTreeMismatch =
+			programComparison.mismatch ??
+			compareFirstTree(
+				container,
+				batch,
+				firstTree,
+				firstTreeSource,
+				finalIds!,
+				childrenForRead(null),
+				getRecord,
+				operations,
+				listUpdates,
+				programComparison,
+			);
 		firstTreeAction = firstTreeMismatch === null ? 'adopt' : 'repair';
 		if (firstTreeMismatch !== null) options?.onMismatch?.(firstTreeMismatch);
 	}
@@ -8986,7 +9071,8 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 						const rows = operation.count ?? 1;
 						const firstId = operation.dense?.firstId ?? operation.firstId;
 						if (firstId === undefined) continue;
-						const lastId = firstId + rows * width - 1;
+						const stride = operation.stride ?? width;
+						const lastId = firstId + (rows - 1) * stride + width - 1;
 						if (lastId > state.maxExplicitId) state.maxExplicitId = lastId;
 					}
 				}
@@ -9013,22 +9099,36 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 						if (applicationFailed) throw applicationError;
 						if (firstTreeAction === 'adopt') {
 							const logicalRows = firstTree![LYNX_FIRST_TREE_STATE].logicalNodes;
-							transferFirstTree(container, firstTree!, firstTreeSource!, activeNodes);
+							transferFirstTree(
+								container,
+								firstTree!,
+								firstTreeSource!,
+								activeNodes,
+								compactProgramAdoptionRuns,
+							);
+							const compactProgramIndex =
+								compactProgramAdoptionRuns === null ? null : lynxFirstTreeProgramIndex(firstTree!);
 							for (const [id, record] of state.records) {
 								// A native list row owns no element yet. Its selector, listeners
 								// and main-thread props are installed by the cell that
 								// materializes it, exactly as on a root that never adopted.
 								if (logicalRows.has(id)) continue;
+								const compactProgramRun = compactProgramIndex?.runFor(id);
+								if (
+									compactProgramRun !== undefined &&
+									compactProgramAdoptionRuns?.has(compactProgramRun) === true
+								) {
+									continue;
+								}
 								const node = nodeFor(activeNodes, id, 'first-tree adoption');
 								record.node = node;
 								record.selectorInstalled = false;
-								// Deliberately unconditional. These are the physical nodes the
-								// first-screen container already stamped with its own root's
-								// selector, and that root id can equal this one, so a skipped
-								// install would leave a node answering an address that now names a
-								// different host. Overwriting costs the same single write that
-								// clearing would, so there is nothing to defer here.
-								ensureNodesRefSelector(state, record);
+								// The equality proof above includes root, id, and generation. A
+								// selector the first screen installed therefore already names this
+								// exact host; an announced batch that never requests one need not
+								// stamp it again. Unnegotiated batches stay eager through the same
+								// policy every ordinary mount uses.
+								bindNodesRefSelector(state, record);
 								if (record.visible) {
 									installNativeEvents(
 										state,
@@ -9165,6 +9265,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 								const firstId = compactHostCount === undefined ? undefined : operation.firstId;
 								const rows = operation.count ?? 1;
 								const width = operation.parents.length;
+								const stride = operation.stride ?? width;
 								const sparse = firstId !== undefined && sparseCompactNodes;
 								// Worklet lifetime is owned by connectivity, not by insertion order:
 								// a detached subtree installs nothing and `insert` activates it later.
@@ -9191,7 +9292,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 										state.ownedNodes.add(node);
 										if (!sparse || nodeIndex === 0) {
 											activeNodes.set(
-												firstId === undefined ? record.id : firstId + recordIndex,
+												firstId === undefined ? record.id : firstId + rowIndex * stride + nodeIndex,
 												node,
 											);
 										}
@@ -9233,7 +9334,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 													state,
 													records[rowOffset + site.node]!.node!,
 													container.root,
-													firstId + rowOffset + site.node,
+													firstId + rowIndex * stride + site.node,
 													rowListener,
 													site,
 												);
