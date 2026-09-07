@@ -3,7 +3,8 @@
 ## Provenance
 
 - baseline source: `Huxpro/octane:new-lynx@dc42bdd513d58b026c576f76a013231cdbff8e09`
-- candidate source: this change, based exactly on that baseline
+- candidate source: `13afbf028d6588c00a21439b42681ba7a8176bfe`, based
+  exactly on that baseline
 - default production candidate Lynx bundle: 553,323 bytes,
 	`a8361d1ed3f8c5aeeb8a2db2b212a0e3c207f9e6eeda1aa892dc054a39eb1654`
 - default production baseline Lynx bundle: 552,689 bytes,
@@ -46,10 +47,10 @@ their first attempt; there were no invalid attempts or DNF.
 
 | 1k native create median (`n=5`) | candidate | baseline | ratio |
 | --- | ---: | ---: | ---: |
-| native tap → second native frame | 5,367 ms | 9,001 ms | 0.596× |
-| native tap → transport ACK | 5,335 ms | 8,971 ms | 0.595× |
-| accepted main-thread commit wall/apply | 5,040 ms | 8,684 ms | 0.580× |
-| measured PAPI create self-time | 58 ms | 101 ms | 0.574× |
+| native tap → second native frame | 5,393 ms | 9,062 ms | 0.595× |
+| native tap → transport ACK | 5,371 ms | 9,036 ms | 0.594× |
+| accepted main-thread commit wall/apply | 5,064 ms | 8,750 ms | 0.579× |
+| measured PAPI create self-time | 70 ms | 110 ms | 0.636× |
 
 Every candidate sample carried exactly one `mount-program-run`; every baseline
 sample carried exactly one `mount-template-run`. The candidate acknowledged
@@ -64,7 +65,7 @@ The attribution bundles are identified in
 `issue284-native-abba-1000.json` as:
 
 - candidate: 571,700 bytes,
-  `9b47c368c67939c056622b58bc44b40c28f09c352a09a8d487eb18419885d223`
+	`7c84d730606c43bc632d7ee576573480226a3e25954f4bb46bc29331e6514427`
 - baseline: 571,063 bytes,
   `ec83ec4666f2e6535980467b4ad4968fa2eb986033a92576cfd5e9a9a7513372`
 
