@@ -728,6 +728,74 @@ export interface ContextChangeResult {
 	};
 }
 
+export interface ContextMemoryResult {
+	readonly rows: number;
+	readonly depth: number;
+	readonly mountHeapBytes: number;
+	readonly transientUpdateBytes: number;
+	readonly retainedUpdateBytes: number;
+	readonly commits: number;
+	readonly commands: number;
+	readonly leafClasses: string | null;
+	readonly diagnostics: readonly string[];
+}
+
+/** Forced-GC ledger for the same mounted provider update as runContextChange. */
+export async function runContextMemory(count: number, depth: number): Promise<ContextMemoryResult> {
+	if (!Number.isSafeInteger(count) || count < 2) {
+		throw new TypeError('Context row count must be a safe integer >= 2.');
+	}
+	if (!Number.isSafeInteger(depth) || depth < 0) {
+		throw new TypeError('Context depth must be a non-negative safe integer.');
+	}
+	const collect = (globalThis as { gc?: () => void }).gc;
+	if (collect === undefined)
+		throw new Error('Context memory measurement requires node --expose-gc.');
+	collect();
+	const beforeMount = process.memoryUsage().heapUsed;
+	const harness = createHarness();
+	let setTone: ((tone: string) => void) | null = null;
+	const stable = {
+		rows: makeRows(count),
+		consumer: Math.ceil(count / 2),
+		depth,
+		onPlainRender: () => {},
+		onLayerRender: () => {},
+		onLeafRender: () => {},
+		onToneSetter: (setter: (tone: string) => void) => {
+			setTone = setter;
+		},
+	} satisfies Omit<ContextBenchAppProps, 'initialTone'>;
+	await harness.root.render(ContextBenchApp, { ...stable, initialTone: 'light' });
+	await settle(harness);
+	if (setTone === null) {
+		await harness.dispose();
+		throw new Error('Context memory benchmark did not publish its state setter.');
+	}
+	collect();
+	const afterMount = process.memoryUsage().heapUsed;
+	const before = transportMetrics(harness);
+	setTone('dark');
+	await settle(harness);
+	const afterUpdate = process.memoryUsage().heapUsed;
+	const after = transportMetrics(harness);
+	collect();
+	const afterUpdateGc = process.memoryUsage().heapUsed;
+	const result = {
+		rows: count,
+		depth,
+		mountHeapBytes: afterMount - beforeMount,
+		transientUpdateBytes: afterUpdate - afterMount,
+		retainedUpdateBytes: afterUpdateGc - afterMount,
+		commits: after.acknowledgements - before.acknowledgements,
+		commands: after.commands - before.commands,
+		leafClasses: harness.papi.classesForId('context-leaf'),
+		diagnostics: harness.diagnostics.map((error) => error.message),
+	};
+	await harness.dispose();
+	return result;
+}
+
 /**
  * Change one provider above a stable keyed table with one memoized consumer
  * branch. Counters distinguish the required deep consumer path from unrelated

@@ -20,12 +20,13 @@ import { lynxRenderers } from '../../packages/lynx/src/config.runtime.js';
 const ROOT = import.meta.dirname;
 const REPO = path.resolve(ROOT, '../..');
 const LYNX_SOURCE = path.join(REPO, 'packages/lynx/src');
-const OCTANE_SOURCE = path.join(REPO, 'packages/octane/src');
 const { values: args } = parseArgs({
 	options: {
 		rows: { type: 'string', default: '1000,10000,30000' },
 		depth: { type: 'string', default: '32' },
-		reps: { type: 'string', default: '9' },
+		reps: { type: 'string', default: '5' },
+		'baseline-root': { type: 'string' },
+		'memory-reps': { type: 'string', default: '0' },
 		'plain-attempts': { type: 'string' },
 		out: { type: 'string' },
 	},
@@ -33,6 +34,7 @@ const { values: args } = parseArgs({
 const rowCounts = args.rows.split(',').map(Number);
 const depth = Number(args.depth);
 const repetitions = Number(args.reps);
+const memoryRepetitions = Number(args['memory-reps']);
 if (
 	rowCounts.length === 0 ||
 	rowCounts.some((count) => !Number.isSafeInteger(count) || count < 2)
@@ -44,6 +46,9 @@ if (!Number.isSafeInteger(depth) || depth < 0) {
 }
 if (!Number.isSafeInteger(repetitions) || repetitions <= 0) {
 	throw new TypeError('reps must be a positive integer.');
+}
+if (!Number.isSafeInteger(memoryRepetitions) || memoryRepetitions < 0) {
+	throw new TypeError('memory-reps must be a non-negative integer.');
 }
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'octane-lynx-context-'));
 
@@ -60,8 +65,8 @@ function stat(samples) {
 	};
 }
 
-async function buildWorkload(profile) {
-	const outDir = path.join(tempDir, profile ? 'profile' : 'shipping');
+async function buildWorkload(label, octaneSource, profile) {
+	const outDir = path.join(tempDir, label, profile ? 'profile' : 'shipping');
 	await build({
 		configFile: false,
 		root: REPO,
@@ -76,14 +81,14 @@ async function buildWorkload(profile) {
 				{ find: /^@octanejs\/lynx\/(.*)$/, replacement: `${LYNX_SOURCE}/$1.ts` },
 				{
 					find: /^octane\/universal\/native$/,
-					replacement: path.join(OCTANE_SOURCE, 'universal-native.ts'),
+					replacement: path.join(octaneSource, 'universal-native.ts'),
 				},
 				{
 					find: /^octane\/profiling$/,
-					replacement: path.join(OCTANE_SOURCE, 'profiling.ts'),
+					replacement: path.join(octaneSource, 'profiling.ts'),
 				},
-				{ find: /^octane\/universal$/, replacement: path.join(OCTANE_SOURCE, 'universal.ts') },
-				{ find: /^octane$/, replacement: path.join(OCTANE_SOURCE, 'index.ts') },
+				{ find: /^octane\/universal$/, replacement: path.join(octaneSource, 'universal.ts') },
+				{ find: /^octane$/, replacement: path.join(octaneSource, 'index.ts') },
 			],
 		},
 		plugins: [octane({ renderers: lynxRenderers, ssr: false, profile })],
@@ -109,7 +114,7 @@ async function buildWorkload(profile) {
 	const file = path.join(outDir, 'workload.js');
 	const bytes = fs.readFileSync(file);
 	return {
-		module: await import(`${pathToFileURL(file).href}?profile=${profile}`),
+		module: await import(`${pathToFileURL(file).href}?arm=${label}&profile=${profile}`),
 		bundle: {
 			bytes: bytes.length,
 			gzipBytes: gzipSync(bytes).length,
@@ -120,21 +125,41 @@ async function buildWorkload(profile) {
 
 let payload;
 try {
-	const workload = await buildWorkload(false);
-	const profileWorkload = await buildWorkload(true);
+	const baselineRoot =
+		args['baseline-root'] === undefined ? null : path.resolve(args['baseline-root']);
+	if (
+		baselineRoot !== null &&
+		!fs.existsSync(path.join(baselineRoot, 'packages/octane/src/universal-core.ts'))
+	) {
+		throw new Error(`baseline-root is not an Octane checkout: ${baselineRoot}`);
+	}
+	const armRoots =
+		baselineRoot === null ? { candidate: REPO } : { baseline: baselineRoot, candidate: REPO };
+	const arms = {};
+	for (const [name, root] of Object.entries(armRoots)) {
+		const octaneSource = path.join(root, 'packages/octane/src');
+		arms[name] = {
+			root,
+			gitSha: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
+			shipping: await buildWorkload(name, octaneSource, false),
+			profile: await buildWorkload(name, octaneSource, true),
+		};
+	}
 	const failures = [];
 	const durations = new Map(
-		rowCounts.flatMap((count) => [
-			[`${count}:changed`, []],
-			[`${count}:unchanged`, []],
-		]),
+		Object.keys(arms).flatMap((name) =>
+			rowCounts.flatMap((count) => [
+				[`${name}:${count}:changed`, []],
+				[`${name}:${count}:unchanged`, []],
+			]),
+		),
 	);
 	const oracles = new Map();
-	const run = async (count, kind, record) => {
+	const run = async (name, count, kind, record) => {
 		const nextTone = kind === 'changed' ? 'dark' : 'light';
-		const result = await workload.module.runContextChange(count, depth, nextTone);
+		const result = await arms[name].shipping.module.runContextChange(count, depth, nextTone);
 		if (result.diagnostics.length !== 0) {
-			failures.push(`${count}: ${result.diagnostics.join(' | ')}`);
+			failures.push(`${name}:${count}: ${result.diagnostics.join(' | ')}`);
 		}
 		const counts = {
 			plainRenders: result.plainRenders,
@@ -149,7 +174,7 @@ try {
 				: { plainRenders: 0, layerRenders: 0, leafRenders: 0, commits: 0, commands: 0 };
 		if (JSON.stringify(counts) !== JSON.stringify(expectedCounts)) {
 			failures.push(
-				`${count}:${kind}: counts ${JSON.stringify(counts)}, expected ${JSON.stringify(expectedCounts)}.`,
+				`${name}:${count}:${kind}: counts ${JSON.stringify(counts)}, expected ${JSON.stringify(expectedCounts)}.`,
 			);
 		}
 		const oracle = {
@@ -171,14 +196,17 @@ try {
 		if (JSON.stringify(result.leafValues) !== expectedLeafValues) {
 			failures.push(`${key}: leaf values were ${JSON.stringify(result.leafValues)}.`);
 		}
-		if (record) durations.get(key).push(result.durationMs);
+		if (record) durations.get(`${name}:${key}`).push(result.durationMs);
 	};
 
-	// Warm every size once, then rotate the first size to avoid a fixed ordering
-	// advantage while each measured update still uses a fresh mounted root.
-	for (const count of rowCounts) {
-		await run(count, 'changed', false);
-		await run(count, 'unchanged', false);
+	// Warm every arm/size once. A revision A/B uses mirrored ABBA/BAAB order;
+	// size and changed/unchanged order also rotate while every sample gets a
+	// fresh mounted root.
+	for (const name of Object.keys(arms)) {
+		for (const count of rowCounts) {
+			await run(name, count, 'changed', false);
+			await run(name, count, 'unchanged', false);
+		}
 	}
 	for (let repetition = 0; repetition < repetitions; repetition++) {
 		const pivot = repetition % rowCounts.length;
@@ -186,61 +214,56 @@ try {
 		if (repetition % 2 !== 0) order.reverse();
 		for (const count of order) {
 			const kinds = repetition % 2 === 0 ? ['changed', 'unchanged'] : ['unchanged', 'changed'];
-			for (const kind of kinds) await run(count, kind, true);
+			const armOrder =
+				baselineRoot === null
+					? ['candidate']
+					: repetition % 2 === 0
+						? ['baseline', 'candidate', 'candidate', 'baseline']
+						: ['candidate', 'baseline', 'baseline', 'candidate'];
+			for (const name of armOrder) {
+				for (const kind of kinds) await run(name, count, kind, true);
+			}
 		}
 	}
 	const profileCount = Math.max(...rowCounts);
-	const expectedPlainAttempts =
+	const candidatePlainAttempts =
 		args['plain-attempts'] === undefined ? profileCount - 1 : Number(args['plain-attempts']);
-	if (!Number.isSafeInteger(expectedPlainAttempts) || expectedPlainAttempts < 0) {
+	if (!Number.isSafeInteger(candidatePlainAttempts) || candidatePlainAttempts < 0) {
 		throw new TypeError('plain-attempts must be a non-negative integer.');
 	}
-	const ownerProfile = await profileWorkload.module.runContextChange(
-		profileCount,
-		depth,
-		'dark',
-		true,
-	);
-	if (ownerProfile.diagnostics.length !== 0) {
-		failures.push(`profile: ${ownerProfile.diagnostics.join(' | ')}`);
-	}
-	const profileAttempts = Object.fromEntries(
-		(ownerProfile.ownerProfile?.summary ?? []).map((entry) => [entry.component, entry.attempts]),
-	);
-	const expectedProfileAttempts = {
-		ContextBenchApp: 1,
-		...(expectedPlainAttempts === 0 ? null : { MemoContextBenchPlainRow: expectedPlainAttempts }),
-		MemoContextBenchLayer: depth + 1,
-		MemoContextBenchConsumerRow: 1,
-		MemoContextBenchLeaf: 1,
-	};
-	if (
-		Object.keys(profileAttempts).length !== Object.keys(expectedProfileAttempts).length ||
-		Object.entries(expectedProfileAttempts).some(
-			([component, attempts]) => profileAttempts[component] !== attempts,
-		)
-	) {
-		failures.push(
-			`profile attempts ${JSON.stringify(profileAttempts)}, expected ${JSON.stringify(expectedProfileAttempts)}.`,
-		);
-	}
-
-	payload = {
-		suite: 'lynx-production-deep-context-owner',
-		meta: {
-			date: new Date().toISOString(),
-			gitSha: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: REPO, encoding: 'utf8' }).trim(),
-			node: process.version,
-			cpus: `${os.cpus().length}× ${os.cpus()[0]?.model ?? 'unknown'}`,
-			rows: rowCounts,
+	const ownerProfiles = {};
+	for (const [name, arm] of Object.entries(arms)) {
+		const ownerProfile = await arm.profile.module.runContextChange(
+			profileCount,
 			depth,
-			repetitions,
-			protocol:
-				'production minified Universal bundle; warm each size; rotated/reversed size order; fresh mounted root per sample; provider light→dark; one deep memo consumer among stable memo rows',
-		},
-		bundle: workload.bundle,
-		profileBundle: profileWorkload.bundle,
-		ownerProfile: {
+			'dark',
+			true,
+		);
+		if (ownerProfile.diagnostics.length !== 0) {
+			failures.push(`${name}:profile: ${ownerProfile.diagnostics.join(' | ')}`);
+		}
+		const profileAttempts = Object.fromEntries(
+			(ownerProfile.ownerProfile?.summary ?? []).map((entry) => [entry.component, entry.attempts]),
+		);
+		const expectedPlainAttempts = name === 'baseline' ? profileCount - 1 : candidatePlainAttempts;
+		const expectedProfileAttempts = {
+			ContextBenchApp: 1,
+			...(expectedPlainAttempts === 0 ? null : { MemoContextBenchPlainRow: expectedPlainAttempts }),
+			MemoContextBenchLayer: depth + 1,
+			MemoContextBenchConsumerRow: 1,
+			MemoContextBenchLeaf: 1,
+		};
+		if (
+			Object.keys(profileAttempts).length !== Object.keys(expectedProfileAttempts).length ||
+			Object.entries(expectedProfileAttempts).some(
+				([component, attempts]) => profileAttempts[component] !== attempts,
+			)
+		) {
+			failures.push(
+				`${name}: profile attempts ${JSON.stringify(profileAttempts)}, expected ${JSON.stringify(expectedProfileAttempts)}.`,
+			);
+		}
+		ownerProfiles[name] = {
 			rows: profileCount,
 			counts: {
 				plainRenders: ownerProfile.plainRenders,
@@ -248,19 +271,90 @@ try {
 				leafRenders: ownerProfile.leafRenders,
 			},
 			...ownerProfile.ownerProfile,
+		};
+	}
+	const memorySamples = Object.fromEntries(
+		Object.keys(arms).map((name) => [
+			name,
+			{ mountHeapBytes: [], transientUpdateBytes: [], retainedUpdateBytes: [] },
+		]),
+	);
+	const runMemory = async (name, record) => {
+		const result = await arms[name].shipping.module.runContextMemory(profileCount, depth);
+		if (
+			result.diagnostics.length !== 0 ||
+			result.commits !== 1 ||
+			result.commands !== 2 ||
+			result.leafClasses !== 'context-leaf dark'
+		) {
+			failures.push(`${name}: invalid memory oracle ${JSON.stringify(result)}.`);
+		}
+		if (!record) return;
+		for (const field of ['mountHeapBytes', 'transientUpdateBytes', 'retainedUpdateBytes']) {
+			memorySamples[name][field].push(result[field]);
+		}
+	};
+	if (memoryRepetitions !== 0) {
+		for (const name of Object.keys(arms)) await runMemory(name, false);
+		for (let repetition = 0; repetition < memoryRepetitions; repetition++) {
+			const order =
+				baselineRoot === null
+					? ['candidate']
+					: repetition % 2 === 0
+						? ['baseline', 'candidate']
+						: ['candidate', 'baseline'];
+			for (const name of order) await runMemory(name, true);
+		}
+	}
+
+	payload = {
+		suite: 'lynx-production-deep-context-owner',
+		meta: {
+			date: new Date().toISOString(),
+			revisions: Object.fromEntries(Object.entries(arms).map(([name, arm]) => [name, arm.gitSha])),
+			node: process.version,
+			cpus: `${os.cpus().length}× ${os.cpus()[0]?.model ?? 'unknown'}`,
+			rows: rowCounts,
+			depth,
+			repetitions,
+			memoryRepetitions,
+			protocol:
+				baselineRoot === null
+					? 'production minified Universal bundle; warm each size; rotated/reversed size order; fresh mounted root per sample; provider state light→dark plus same-value control; one deep memo consumer among stable memo rows'
+					: 'same candidate fixture/compiler/Lynx chassis; only Octane runtime source revision differs; production minified Universal bundles; warm then mirrored ABBA/BAAB with rotated size and changed/control order; fresh mounted root per sample',
 		},
-		results: Object.fromEntries(
-			rowCounts.map((count) => [
-				count,
-				Object.fromEntries(
-					['changed', 'unchanged'].map((kind) => [
-						kind,
-						{
-							oracle: oracles.get(`${count}:${kind}`),
-							timingMs: stat(durations.get(`${count}:${kind}`)),
-						},
-					]),
-				),
+		arms: Object.fromEntries(
+			Object.entries(arms).map(([name, arm]) => [
+				name,
+				{
+					bundle: arm.shipping.bundle,
+					profileBundle: arm.profile.bundle,
+					ownerProfile: ownerProfiles[name],
+					...(memoryRepetitions === 0
+						? null
+						: {
+								memory: Object.fromEntries(
+									Object.entries(memorySamples[name]).map(([field, samples]) => [
+										field,
+										stat(samples),
+									]),
+								),
+							}),
+					results: Object.fromEntries(
+						rowCounts.map((count) => [
+							count,
+							Object.fromEntries(
+								['changed', 'unchanged'].map((kind) => [
+									kind,
+									{
+										oracle: oracles.get(`${count}:${kind}`),
+										timingMs: stat(durations.get(`${name}:${count}:${kind}`)),
+									},
+								]),
+							),
+						]),
+					),
+				},
 			]),
 		),
 		...(failures.length === 0 ? null : { failed: failures.join(' | ') }),
