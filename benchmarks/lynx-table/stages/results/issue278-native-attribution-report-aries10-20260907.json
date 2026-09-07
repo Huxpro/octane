@@ -1,0 +1,1247 @@
+{
+  "protocol": "octane-issue278-native-attribution-report-v1",
+  "generatedAt": "2026-09-07T04:08:43.050Z",
+  "provenance": {
+    "octaneSha": "7ae87beebb4b5c240b01659d35d9636f8036d24b",
+    "instrumentationSha": "cdef1fd4f281f170ca3240172edba41eda47f74e1b62f756f739ca9b897a0d04",
+    "appPatchSha256": "f057697138c55584f52f99e09abe0e8af54b687266fa1cfe3ce36c1e04f5fc0c",
+    "driverSha": "4c69193c7ff63db5a2f4c1ec31138b3c4b4ea1d9",
+    "bundleReceipts": {
+      "controlChecked": {
+        "path": "benchmarks/lynx-table/app/dist-mtsprogram-issue278-checked-control/main.lynx.bundle",
+        "bytes": 580567,
+        "sha256": "8bf4701ffc8837ad70c20b8551a78f7db43f514157d2107109c4a40c13601dce"
+      },
+      "timelineChecked": {
+        "path": "benchmarks/lynx-table/app/dist-mtsprogram-issue278-checked-timeline/main.lynx.bundle",
+        "bytes": 584803,
+        "sha256": "bd6dcbebdb9307d3e40a0926255de2f9cf0583bda5fde6061daa6dce7c77b107"
+      },
+      "timedChecked": {
+        "path": "benchmarks/lynx-table/app/dist-mtsprogram-issue278-checked-timed-profile/main.lynx.bundle",
+        "bytes": 595652,
+        "sha256": "e4e766320e912306bf8f2629b6e6921c89e1995bacc2ddbd0047808a882d9fe0"
+      },
+      "timedTrusted": {
+        "path": "benchmarks/lynx-table/app/dist-mtsprogram-issue278-trusted-timed-profile/main.lynx.bundle",
+        "bytes": 595652,
+        "sha256": "37e12f47a781cd016b9b959e0d6b6f24936b929ca0ab28dc97408344c66a9e9a"
+      },
+      "countsChecked": {
+        "path": "benchmarks/lynx-table/app/dist-mtsprogram-issue278-checked-counts-profile/main.lynx.bundle",
+        "bytes": 595712,
+        "sha256": "18b8e50b174ab0fee9e2bdb396d7d5c837b13e0bc0ae5705f15816ba09372f9e"
+      },
+      "scalarCountsChecked": {
+        "path": "benchmarks/lynx-table/app/dist-mtsprogram-issue278-checked-counts-scalar-profile/main.lynx.bundle",
+        "bytes": 597808,
+        "sha256": "0b2829b7cc80f46f01c27130bc3693cb6093c9ebabde4f5f20203337e219c965"
+      }
+    },
+    "deviceCohortId": "8537de9593a9a77f",
+    "deviceCohort": {
+      "protocol": "native-device-cohort-v1",
+      "serialSha256": "7bf152688f01206c5223597c0fdd17c991987b1f2a5d94ab22b277d955985904",
+      "environment": "lynx-native-android-aries_10-10-devtool-direct-recycle1",
+      "hardware": {
+        "platform": "android",
+        "osVersion": "10",
+        "cpuModel": "linaro",
+        "cores": 8,
+        "deviceModel": "ByteDance aries_10",
+        "app": "LynxExplorer",
+        "appVersion": "1.0",
+        "explorerPackage": {
+          "versionName": "1.0",
+          "versionCode": 1
+        },
+        "debugRouterVersion": "0.0.1",
+        "lynxSdkVersion": "0.0.1"
+      },
+      "campaignId": "octane-278-40a11e7e49e2",
+      "matrixContractSha256": "80492eb8864a3c48549b12313af797688b10e52e24f424e694b51ef5ad2bdc40",
+      "inputReceiptSha256": "40a11e7e49e2810c357cd805031ca8d18aed42c86b7f33a29bdba0f79b038401",
+      "connectorPackageTreesSha256": "e824caf637b76a6af7afdcfbcaa2f6c083b0e37c55a84e89f1e78f4f5320c29a",
+      "harnessConfigId": "87e1ec684116",
+      "id": "8537de9593a9a77f",
+      "sha256": "8537de9593a9a77f7d3f048f1727428938cbb2faa5905fbb2e61532b4c4d8104"
+    },
+    "leaseReceipt": {
+      "protocol": "lynx-sandbox-lease-receipt-v1",
+      "issueId": "Huxpro/octane#278",
+      "expiredAt": 1788754634475,
+      "serialSha256": "7bf152688f01206c5223597c0fdd17c991987b1f2a5d94ab22b277d955985904",
+      "deviceLeaseId": "cf5e19fb52a3"
+    }
+  },
+  "qualification": {
+    "completeShards": 3,
+    "deviceCohortId": "8537de9593a9a77f",
+    "explorerRecycleEveryPages": 1,
+    "path": "mount-template-run",
+    "scalarCapabilityPath": "mount-program-run"
+  },
+  "overhead": {
+    "arms": {
+      "controlChecked": {
+        "n": 5,
+        "median": 9507,
+        "min": 9454,
+        "max": 9554
+      },
+      "timelineChecked": {
+        "n": 5,
+        "median": 9496,
+        "min": 9440,
+        "max": 9534
+      },
+      "timedChecked": {
+        "n": 5,
+        "median": 9451,
+        "min": 9442,
+        "max": 9522
+      }
+    },
+    "pairedRatios": {
+      "timelineOverControl": {
+        "n": 5,
+        "median": 0.9988429578205533,
+        "min": 0.9917312120577768,
+        "max": 1.0047598899936534
+      },
+      "timedOverControl": {
+        "n": 5,
+        "median": 0.9992598858109537,
+        "min": 0.9892191752145698,
+        "max": 1.0034905859953458
+      },
+      "mtsApplyShareOfControl": {
+        "n": 5,
+        "median": 0.9635229435398605,
+        "min": 0.9538413230060707,
+        "max": 0.9671038713771949
+      }
+    },
+    "accepted": true
+  },
+  "scales": {
+    "1000": {
+      "rows": 1000,
+      "pairs": 5,
+      "checked": {
+        "wallMs": {
+          "n": 5,
+          "median": 9507,
+          "min": 9388,
+          "max": 9551
+        },
+        "segments": {
+          "btsRenderBuildMs": {
+            "n": 5,
+            "median": 270,
+            "min": 269,
+            "max": 276
+          },
+          "btsSelfcheckMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "btsEncodeMs": {
+            "n": 5,
+            "median": 7,
+            "min": 7,
+            "max": 8
+          },
+          "bridgeToMainMs": {
+            "n": 5,
+            "median": 0,
+            "min": -0.5,
+            "max": 1
+          },
+          "mtsDecodeMs": {
+            "n": 5,
+            "median": 2,
+            "min": 1,
+            "max": 2
+          },
+          "mtsValidateMs": {
+            "n": 5,
+            "median": 6,
+            "min": 6,
+            "max": 7
+          },
+          "mtsPrepareMs": {
+            "n": 5,
+            "median": 20,
+            "min": 20,
+            "max": 20
+          },
+          "mtsPreApplyGapMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "mtsApplyMs": {
+            "n": 5,
+            "median": 9175,
+            "min": 9049,
+            "max": 9218
+          },
+          "mtsPostApplyGapMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "mtsAckMs": {
+            "n": 5,
+            "median": 1,
+            "min": 0,
+            "max": 3
+          },
+          "mtsCompleteMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "bridgeToBackgroundMs": {
+            "n": 5,
+            "median": 27,
+            "min": 25,
+            "max": 28
+          },
+          "reconciliationMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "clockUncertaintyMs": {
+            "n": 5,
+            "median": 1,
+            "min": 0.5,
+            "max": 1
+          },
+          "btsDispatchCallMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "profile": {
+          "btsPrepareMs": {
+            "n": 5,
+            "median": 6,
+            "min": 6,
+            "max": 6
+          },
+          "btsStringifyMs": {
+            "n": 5,
+            "median": 1,
+            "min": 1,
+            "max": 2
+          },
+          "mtsParseMs": {
+            "n": 5,
+            "median": 2,
+            "min": 1,
+            "max": 2
+          },
+          "mtsRestoreMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "wireBytes": {
+            "n": 5,
+            "median": 33779,
+            "min": 33722,
+            "max": 33861
+          }
+        }
+      },
+      "trusted": {
+        "wallMs": {
+          "n": 5,
+          "median": 9485,
+          "min": 9414,
+          "max": 9562
+        },
+        "segments": {
+          "btsRenderBuildMs": {
+            "n": 5,
+            "median": 272,
+            "min": 270,
+            "max": 279
+          },
+          "btsSelfcheckMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "btsEncodeMs": {
+            "n": 5,
+            "median": 8,
+            "min": 7,
+            "max": 8
+          },
+          "bridgeToMainMs": {
+            "n": 5,
+            "median": 0,
+            "min": -1,
+            "max": 0
+          },
+          "mtsDecodeMs": {
+            "n": 5,
+            "median": 2,
+            "min": 2,
+            "max": 2
+          },
+          "mtsValidateMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "mtsPrepareMs": {
+            "n": 5,
+            "median": 20,
+            "min": 20,
+            "max": 20
+          },
+          "mtsPreApplyGapMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "mtsApplyMs": {
+            "n": 5,
+            "median": 9149,
+            "min": 9087,
+            "max": 9234
+          },
+          "mtsPostApplyGapMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "mtsAckMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 1
+          },
+          "mtsCompleteMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "bridgeToBackgroundMs": {
+            "n": 5,
+            "median": 28,
+            "min": 27,
+            "max": 28
+          },
+          "reconciliationMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "clockUncertaintyMs": {
+            "n": 5,
+            "median": 1,
+            "min": 0.5,
+            "max": 1
+          },
+          "btsDispatchCallMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "profile": {
+          "btsPrepareMs": {
+            "n": 5,
+            "median": 6,
+            "min": 6,
+            "max": 7
+          },
+          "btsStringifyMs": {
+            "n": 5,
+            "median": 1,
+            "min": 1,
+            "max": 2
+          },
+          "mtsParseMs": {
+            "n": 5,
+            "median": 2,
+            "min": 1,
+            "max": 2
+          },
+          "mtsRestoreMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "wireBytes": {
+            "n": 5,
+            "median": 33819,
+            "min": 33700,
+            "max": 33934
+          }
+        }
+      },
+      "validationControl": {
+        "pairedWallRatio": {
+          "n": 5,
+          "median": 0.9988496130516629,
+          "min": 0.9924939211333121,
+          "max": 1.0098789037603568
+        },
+        "checkedValidateMs": {
+          "n": 5,
+          "median": 6,
+          "min": 6,
+          "max": 7
+        },
+        "trustedValidateMs": {
+          "n": 5,
+          "median": 0,
+          "min": 0,
+          "max": 0
+        }
+      }
+    },
+    "2000": {
+      "rows": 2000,
+      "pairs": 5,
+      "checked": {
+        "wallMs": {
+          "n": 5,
+          "median": 35937,
+          "min": 35826,
+          "max": 36307
+        },
+        "segments": {
+          "btsRenderBuildMs": {
+            "n": 5,
+            "median": 535,
+            "min": 529,
+            "max": 540
+          },
+          "btsSelfcheckMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "btsEncodeMs": {
+            "n": 5,
+            "median": 15,
+            "min": 14,
+            "max": 15
+          },
+          "bridgeToMainMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 1
+          },
+          "mtsDecodeMs": {
+            "n": 5,
+            "median": 3,
+            "min": 3,
+            "max": 3
+          },
+          "mtsValidateMs": {
+            "n": 5,
+            "median": 12,
+            "min": 11,
+            "max": 12
+          },
+          "mtsPrepareMs": {
+            "n": 5,
+            "median": 39,
+            "min": 38,
+            "max": 39
+          },
+          "mtsPreApplyGapMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 1
+          },
+          "mtsApplyMs": {
+            "n": 5,
+            "median": 35281,
+            "min": 35169,
+            "max": 35649
+          },
+          "mtsPostApplyGapMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "mtsAckMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 3
+          },
+          "mtsCompleteMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "bridgeToBackgroundMs": {
+            "n": 5,
+            "median": 53,
+            "min": 49,
+            "max": 54
+          },
+          "reconciliationMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "clockUncertaintyMs": {
+            "n": 5,
+            "median": 1,
+            "min": 1,
+            "max": 1
+          },
+          "btsDispatchCallMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 3
+          }
+        },
+        "profile": {
+          "btsPrepareMs": {
+            "n": 5,
+            "median": 13,
+            "min": 12,
+            "max": 13
+          },
+          "btsStringifyMs": {
+            "n": 5,
+            "median": 2,
+            "min": 2,
+            "max": 3
+          },
+          "mtsParseMs": {
+            "n": 5,
+            "median": 3,
+            "min": 3,
+            "max": 3
+          },
+          "mtsRestoreMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "wireBytes": {
+            "n": 5,
+            "median": 67728,
+            "min": 67602,
+            "max": 67956
+          }
+        }
+      },
+      "trusted": {
+        "wallMs": {
+          "n": 5,
+          "median": 35923,
+          "min": 35690,
+          "max": 36422
+        },
+        "segments": {
+          "btsRenderBuildMs": {
+            "n": 5,
+            "median": 534,
+            "min": 531,
+            "max": 551
+          },
+          "btsSelfcheckMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "btsEncodeMs": {
+            "n": 5,
+            "median": 15,
+            "min": 14,
+            "max": 15
+          },
+          "bridgeToMainMs": {
+            "n": 5,
+            "median": -0.5,
+            "min": -1,
+            "max": 1
+          },
+          "mtsDecodeMs": {
+            "n": 5,
+            "median": 3,
+            "min": 3,
+            "max": 3
+          },
+          "mtsValidateMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 1
+          },
+          "mtsPrepareMs": {
+            "n": 5,
+            "median": 39,
+            "min": 38,
+            "max": 39
+          },
+          "mtsPreApplyGapMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "mtsApplyMs": {
+            "n": 5,
+            "median": 35279,
+            "min": 35049,
+            "max": 35772
+          },
+          "mtsPostApplyGapMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "mtsAckMs": {
+            "n": 5,
+            "median": 1,
+            "min": 0,
+            "max": 1
+          },
+          "mtsCompleteMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 1
+          },
+          "bridgeToBackgroundMs": {
+            "n": 5,
+            "median": 53,
+            "min": 52.5,
+            "max": 53
+          },
+          "reconciliationMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "clockUncertaintyMs": {
+            "n": 5,
+            "median": 1,
+            "min": 0.5,
+            "max": 1
+          },
+          "btsDispatchCallMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 1
+          }
+        },
+        "profile": {
+          "btsPrepareMs": {
+            "n": 5,
+            "median": 12,
+            "min": 12,
+            "max": 13
+          },
+          "btsStringifyMs": {
+            "n": 5,
+            "median": 2,
+            "min": 2,
+            "max": 3
+          },
+          "mtsParseMs": {
+            "n": 5,
+            "median": 3,
+            "min": 3,
+            "max": 3
+          },
+          "mtsRestoreMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "wireBytes": {
+            "n": 5,
+            "median": 67850,
+            "min": 67565,
+            "max": 67895
+          }
+        }
+      },
+      "validationControl": {
+        "pairedWallRatio": {
+          "n": 5,
+          "median": 0.9995261852337022,
+          "min": 0.9901158640382186,
+          "max": 1.0038105912020174
+        },
+        "checkedValidateMs": {
+          "n": 5,
+          "median": 12,
+          "min": 11,
+          "max": 12
+        },
+        "trustedValidateMs": {
+          "n": 5,
+          "median": 0,
+          "min": 0,
+          "max": 1
+        }
+      }
+    },
+    "3000": {
+      "rows": 3000,
+      "pairs": 5,
+      "checked": {
+        "wallMs": {
+          "n": 5,
+          "median": 79454,
+          "min": 79187,
+          "max": 80437
+        },
+        "segments": {
+          "btsRenderBuildMs": {
+            "n": 5,
+            "median": 809,
+            "min": 801,
+            "max": 819
+          },
+          "btsSelfcheckMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "btsEncodeMs": {
+            "n": 5,
+            "median": 21,
+            "min": 21,
+            "max": 22
+          },
+          "bridgeToMainMs": {
+            "n": 5,
+            "median": 0,
+            "min": -1,
+            "max": 0.5
+          },
+          "mtsDecodeMs": {
+            "n": 5,
+            "median": 4,
+            "min": 4,
+            "max": 5
+          },
+          "mtsValidateMs": {
+            "n": 5,
+            "median": 17,
+            "min": 16,
+            "max": 17
+          },
+          "mtsPrepareMs": {
+            "n": 5,
+            "median": 57,
+            "min": 57,
+            "max": 58
+          },
+          "mtsPreApplyGapMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "mtsApplyMs": {
+            "n": 5,
+            "median": 78465,
+            "min": 78208,
+            "max": 79451
+          },
+          "mtsPostApplyGapMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "mtsAckMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 1
+          },
+          "mtsCompleteMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 1
+          },
+          "bridgeToBackgroundMs": {
+            "n": 5,
+            "median": 79,
+            "min": 78,
+            "max": 80
+          },
+          "reconciliationMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "clockUncertaintyMs": {
+            "n": 5,
+            "median": 1,
+            "min": 0.5,
+            "max": 1
+          },
+          "btsDispatchCallMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "profile": {
+          "btsPrepareMs": {
+            "n": 5,
+            "median": 18,
+            "min": 18,
+            "max": 19
+          },
+          "btsStringifyMs": {
+            "n": 5,
+            "median": 3,
+            "min": 3,
+            "max": 3
+          },
+          "mtsParseMs": {
+            "n": 5,
+            "median": 4,
+            "min": 4,
+            "max": 5
+          },
+          "mtsRestoreMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "wireBytes": {
+            "n": 5,
+            "median": 101799,
+            "min": 101421,
+            "max": 101882
+          }
+        }
+      },
+      "trusted": {
+        "wallMs": {
+          "n": 5,
+          "median": 79716,
+          "min": 79423,
+          "max": 80041
+        },
+        "segments": {
+          "btsRenderBuildMs": {
+            "n": 5,
+            "median": 805,
+            "min": 793,
+            "max": 821
+          },
+          "btsSelfcheckMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "btsEncodeMs": {
+            "n": 5,
+            "median": 22,
+            "min": 21,
+            "max": 23
+          },
+          "bridgeToMainMs": {
+            "n": 5,
+            "median": 0,
+            "min": -1,
+            "max": 0
+          },
+          "mtsDecodeMs": {
+            "n": 5,
+            "median": 4,
+            "min": 4,
+            "max": 5
+          },
+          "mtsValidateMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 1
+          },
+          "mtsPrepareMs": {
+            "n": 5,
+            "median": 57,
+            "min": 57,
+            "max": 58
+          },
+          "mtsPreApplyGapMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "mtsApplyMs": {
+            "n": 5,
+            "median": 78747,
+            "min": 78448,
+            "max": 79056
+          },
+          "mtsPostApplyGapMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "mtsAckMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 1
+          },
+          "mtsCompleteMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 1
+          },
+          "bridgeToBackgroundMs": {
+            "n": 5,
+            "median": 79,
+            "min": 78,
+            "max": 81
+          },
+          "reconciliationMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "clockUncertaintyMs": {
+            "n": 5,
+            "median": 1,
+            "min": 1,
+            "max": 1
+          },
+          "btsDispatchCallMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 1
+          }
+        },
+        "profile": {
+          "btsPrepareMs": {
+            "n": 5,
+            "median": 19,
+            "min": 18,
+            "max": 19
+          },
+          "btsStringifyMs": {
+            "n": 5,
+            "median": 3,
+            "min": 3,
+            "max": 4
+          },
+          "mtsParseMs": {
+            "n": 5,
+            "median": 4,
+            "min": 4,
+            "max": 5
+          },
+          "mtsRestoreMs": {
+            "n": 5,
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "wireBytes": {
+            "n": 5,
+            "median": 101677,
+            "min": 101520,
+            "max": 101753
+          }
+        }
+      },
+      "validationControl": {
+        "pairedWallRatio": {
+          "n": 5,
+          "median": 0.9962966682567979,
+          "min": 0.9893304681350807,
+          "max": 1.0127670825831308
+        },
+        "checkedValidateMs": {
+          "n": 5,
+          "median": 17,
+          "min": 16,
+          "max": 17
+        },
+        "trustedValidateMs": {
+          "n": 5,
+          "median": 0,
+          "min": 0,
+          "max": 1
+        }
+      }
+    }
+  },
+  "scaling": {
+    "wall": 1.9310488295036867,
+    "mtsApply": 1.952406646760775,
+    "mtsPrepare": 0.954405235424626,
+    "btsEncode": 1.0107182039885372,
+    "wireBytes": 1.0040849762108945
+  },
+  "floors": {
+    "echoMs": {
+      "n": 5,
+      "median": 3,
+      "min": 3,
+      "max": 4
+    },
+    "papiMs": {
+      "n": 5,
+      "median": 1263,
+      "min": 1227,
+      "max": 1336
+    },
+    "btsVmMs": {
+      "n": 5,
+      "median": 2245,
+      "min": 2239,
+      "max": 2253
+    },
+    "mtsVmMs": {
+      "n": 5,
+      "median": 3739,
+      "min": 3738,
+      "max": 3746
+    },
+    "nodeV8Ms": {
+      "n": 5,
+      "median": 14.521152,
+      "min": 13.018338,
+      "max": 15.315746
+    },
+    "multiples": {
+      "applyOverPapi": 7.264449722882027,
+      "bridgeOverEcho": 0,
+      "btsVmOverNodeV8": 154.60205912037833,
+      "mtsVmOverNodeV8": 257.48645837465233
+    }
+  },
+  "flags": {
+    "commitWireFlags": {
+      "0": 15,
+      "1": 0
+    },
+    "mtsDecodeFlags0": 15,
+    "mtsDecodeFlags1": 0,
+    "mtsRestoreMs": {
+      "n": 15,
+      "median": 0,
+      "min": 0,
+      "max": 0
+    },
+    "verifiedNoRestore": true
+  },
+  "capacity": {
+    "rows": 5000,
+    "status": "complete",
+    "checkedWallMs": 220150,
+    "trustedWallMs": 221224,
+    "checkedOverTrusted": 0.9951451922033776,
+    "countedAsImprovement": false
+  },
+  "trace": {
+    "protocol": "octane-issue278-native-trace-v1",
+    "capturedAt": "2026-09-07T03:59:49.502Z",
+    "provenance": {
+      "octaneSha": "7ae87beebb4b5c240b01659d35d9636f8036d24b",
+      "driverSha": "4c69193c7ff63db5a2f4c1ec31138b3c4b4ea1d9",
+      "deviceCohortId": "8537de9593a9a77f",
+      "runtimeLabel": "sandbox-explorer-default-recycle1",
+      "bundle": {
+        "path": "benchmarks/lynx-table/app/dist-mtsprogram-issue278-checked-control/main.lynx.bundle",
+        "bytes": 580567,
+        "sha256": "8bf4701ffc8837ad70c20b8551a78f7db43f514157d2107109c4a40c13601dce"
+      },
+      "leaseReceipt": {
+        "protocol": "lynx-sandbox-lease-receipt-v1",
+        "issueId": "Huxpro/octane#278",
+        "expiredAt": 1788754634475,
+        "serialSha256": "7bf152688f01206c5223597c0fdd17c991987b1f2a5d94ab22b277d955985904",
+        "deviceLeaseId": "cf5e19fb52a3"
+      }
+    },
+    "capture": {
+      "agentLynxVersion": "0.14.11",
+      "categories": "*",
+      "systrace": true,
+      "forceGc": false,
+      "started": true,
+      "dataLossOccurred": false,
+      "debugModeRestored": true
+    },
+    "operation": {
+      "rows": 1000,
+      "boundary": "programmatic-bts-state-update-to-commit-complete",
+      "startedAtMs": 1788753579319,
+      "commitAckMs": 1788753589502,
+      "wallMs": 10183,
+      "preRowCount": 0,
+      "postRowCount": 1000,
+      "mainLabelNodeCountObserved": false,
+      "wireBytes": 33670,
+      "codecFlag": 0
+    },
+    "trace": {
+      "path": "benchmarks/lynx-table/stages/results/issue278-native-shipping-control-1k-aries10-20260907.pftrace",
+      "bytes": 3591669,
+      "sha256": "3f978e8368b0f38d8d3b28bbecb0d71fa5e826fd5064c79840bf5a9adcc8a3d7"
+    },
+    "queries": {
+      "events": {
+        "path": "benchmarks/lynx-table/stages/results/issue278-native-shipping-control-1k-events-aries10-20260907.json",
+        "sha256": "6d378af18cd3d1316e1c224b3546343bac18f296431a6824aaaa2fba5b9d095e"
+      },
+      "marks": {
+        "path": "benchmarks/lynx-table/stages/results/issue278-native-shipping-control-1k-marks-aries10-20260907.json",
+        "sha256": "694e1875a2da6b3cb3e3b81f303c7edc70d5710a542d253278ba1693519bda2c"
+      },
+      "longestSlices": {
+        "path": "benchmarks/lynx-table/stages/results/issue278-native-shipping-control-1k-longest-slices-aries10-20260907.json",
+        "sha256": "ce5fafea0bc6108d766a10c88fafe6a63716329d2c923168c395f962ee22fc13"
+      },
+      "selfTime": {
+        "path": "benchmarks/lynx-table/stages/results/issue278-native-shipping-control-1k-self-time-aries10-20260907.json",
+        "sha256": "5a1ba62a94913479e6094fac43e8972c7290edb9ab777d6802e72d9fed0e1541"
+      }
+    },
+    "verdict": {
+      "owner": "main-thread Lepus event application",
+      "createWindowMs": 10183.187341,
+      "eventListenerSlice": {
+        "name": "LepusClosureEventListener::Invoke",
+        "sliceId": 7110,
+        "durationMs": 9888.838,
+        "selfTimeMs": 8448.904
+      },
+      "fiberFlushSlice": {
+        "name": "FiberFlushElementTree",
+        "sliceId": 111655,
+        "durationMs": 870.21
+      },
+      "layoutSlice": {
+        "name": "TemplateAssembler::RequestLayout",
+        "sliceId": 250824,
+        "durationMs": 272.37
+      },
+      "backgroundLongestSliceMs": 256.451,
+      "transportOrCodecOwner": false
+    }
+  },
+  "runtimeSwitch": {
+    "protocol": "octane-issue278-native-runtime-switch-v1",
+    "capturedAt": "2026-09-07T04:03:23.253Z",
+    "deviceCohortId": "8537de9593a9a77f",
+    "leaseReceipt": {
+      "protocol": "lynx-sandbox-lease-receipt-v1",
+      "issueId": "Huxpro/octane#278",
+      "expiredAt": 1788754634475,
+      "serialSha256": "7bf152688f01206c5223597c0fdd17c991987b1f2a5d94ab22b277d955985904",
+      "deviceLeaseId": "cf5e19fb52a3"
+    },
+    "tool": {
+      "agentLynxVersion": "0.14.11",
+      "command": "agent-lynx global-switch get/set --key enable_v8",
+      "supportedKeyAdvertised": true
+    },
+    "initialState": {
+      "enableDebugMode": false,
+      "enableV8": false
+    },
+    "attempts": [
+      {
+        "transport": "daemon",
+        "enableDebugMode": false,
+        "requestedEnableV8": true,
+        "result": "No response found for clientId",
+        "readBackEnableV8": false
+      },
+      {
+        "transport": "direct",
+        "enableDebugMode": false,
+        "requestedEnableV8": true,
+        "result": "AbortError: operation timed out",
+        "readBackEnableV8": false
+      },
+      {
+        "transport": "daemon",
+        "enableDebugMode": true,
+        "requestedEnableV8": true,
+        "result": "No response found for clientId",
+        "readBackEnableV8": false
+      }
+    ],
+    "finalState": {
+      "enableDebugMode": false,
+      "enableV8": false,
+      "restored": true
+    },
+    "verdict": {
+      "status": "unsupported-host-switch",
+      "pairedRuntimeComparisonAvailable": false,
+      "reason": "LynxExplorer advertised enable_v8 but rejected every set request and always read back false.",
+      "inferredRuntimeLabels": false
+    }
+  },
+  "owner": {
+    "segment": "mtsApply",
+    "status": "verified",
+    "anchorShareOfShippingWall": 0.9635229435398605,
+    "scalingExponent": 1.952406646760775,
+    "sequenceChange": false
+  }
+}

@@ -2,20 +2,23 @@
 //
 // Octane publishes every importable module as authored, so `@octanejs/lynx`'s
 // build-time main-thread backend is TypeScript (issue #163 C1d). Node 22 strips
-// the types by itself and needs nothing for that, but it does not rewrite a
-// relative `./x.js` specifier to the `./x.ts` file beside it — the extension
-// TypeScript makes an author write is the one Node then cannot find. So an
-// unaided `import()` of the backend fails on its first internal import with
-// ERR_MODULE_NOT_FOUND, and every module below it would fail the same way.
+// erasable types by itself, but it neither rewrites a relative `./x.js`
+// specifier to the `./x.ts` file beside it nor accepts TypeScript parameter
+// properties. An unaided import therefore first fails with ERR_MODULE_NOT_FOUND
+// and, after resolution, with ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX.
 //
 // That is the whole gap this closes. It is a measurement device rather than a
 // build tool: a real Lynx build hands the backend over from a config its own
 // loader understands, and `packages/octane/src/compiler/register.js` is the
 // product-side hook with the same resolve shape plus the compilation a running
-// application needs. This benchmark wants neither — only to reach a module.
-import { statSync } from 'node:fs';
+// application needs. This benchmark wants neither — only to reach a module, so
+// the load hook performs TypeScript's syntax-only transpilation with no runtime
+// source rewrite.
+import { readFileSync, statSync } from 'node:fs';
 import { registerHooks } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+
+import ts from 'typescript';
 
 const AUTHORED_EXTENSIONS = ['.ts', '.tsx'];
 
@@ -57,6 +60,22 @@ export function registerTypeScriptSourceResolution() {
 				}
 				throw error;
 			}
+		},
+		load(url, context, nextLoad) {
+			if (!AUTHORED_EXTENSIONS.some((extension) => url.endsWith(extension))) {
+				return nextLoad(url, context);
+			}
+			const source = readFileSync(new URL(url), 'utf8');
+			const { outputText } = ts.transpileModule(source, {
+				compilerOptions: {
+					jsx: ts.JsxEmit.Preserve,
+					module: ts.ModuleKind.ESNext,
+					target: ts.ScriptTarget.ESNext,
+					verbatimModuleSyntax: true,
+				},
+				fileName: fileURLToPath(url),
+			});
+			return { format: 'module', source: outputText, shortCircuit: true };
 		},
 	});
 }

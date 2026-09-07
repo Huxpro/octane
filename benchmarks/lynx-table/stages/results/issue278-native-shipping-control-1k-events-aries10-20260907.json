@@ -1,0 +1,3222 @@
+{
+  "success": true,
+  "parseSucceeded": true,
+  "trace": {
+    "path": "/data00/home/xuan.huang/.codex/worktrees/68ea/octane/benchmarks/lynx-table/stages/results/issue278-native-shipping-control-1k-aries10-20260907.pftrace",
+    "bytes": 3591669,
+    "sha256": "3f978e8368b0f38d8d3b28bbecb0d71fa5e826fd5064c79840bf5a9adcc8a3d7"
+  },
+  "eventSource": "slice.name",
+  "totalEvents": 294202,
+  "uniqueEventNames": 802,
+  "events": [
+    {
+      "name": "MessageLoop::FlushTasks",
+      "count": 16293
+    },
+    {
+      "name": "FiberElement::ResolveParentComponentElement",
+      "count": 16088
+    },
+    {
+      "name": "Element::SetStyleInternal",
+      "count": 12184
+    },
+    {
+      "name": "LynxUIOperationQueue::ExecuteOperation",
+      "count": 9151
+    },
+    {
+      "name": "FiberElement::ConsumeStyle",
+      "count": 8056
+    },
+    {
+      "name": "Devtool::ON_NODE_MODIFIED",
+      "count": 7081
+    },
+    {
+      "name": "OnElementDataModelSet",
+      "count": 7081
+    },
+    {
+      "name": "FiberElement::FlushActions",
+      "count": 6064
+    },
+    {
+      "name": "FiberElement::FlushSelf",
+      "count": 6061
+    },
+    {
+      "name": "FiberElement::PrepareAndGenerateChildrenActions",
+      "count": 6061
+    },
+    {
+      "name": "FiberElement::Constructor",
+      "count": 6031
+    },
+    {
+      "name": "Catalyzer::FlushProps::NoPaintingNode",
+      "count": 6029
+    },
+    {
+      "name": "Devtool::CheckAndProcessSlotForInspector",
+      "count": 6029
+    },
+    {
+      "name": "Devtool::ON_NODE_ADDED",
+      "count": 6029
+    },
+    {
+      "name": "Devtool::ON_NODE_CREATE",
+      "count": 6029
+    },
+    {
+      "name": "Devtool::PrepareNodeForInspector",
+      "count": 6029
+    },
+    {
+      "name": "FiberElement::FlushProps",
+      "count": 6029
+    },
+    {
+      "name": "FiberElement::HandleCreate",
+      "count": 6029
+    },
+    {
+      "name": "OnElementNodeAdded",
+      "count": 6029
+    },
+    {
+      "name": "FiberAppendElement",
+      "count": 6028
+    },
+    {
+      "name": "FiberElement::HandleContainerInsertion",
+      "count": 6028
+    },
+    {
+      "name": "FiberElement::HandleInsertChildAction",
+      "count": 6028
+    },
+    {
+      "name": "FiberElement::InsertNode",
+      "count": 6028
+    },
+    {
+      "name": "LayoutContext.CreateLayoutNode",
+      "count": 5014
+    },
+    {
+      "name": "FiberElement::PrepareForCreateOrUpdate",
+      "count": 4057
+    },
+    {
+      "name": "Element::UpdateLayout",
+      "count": 4031
+    },
+    {
+      "name": "CSSPatching::ResolveStyle",
+      "count": 4029
+    },
+    {
+      "name": "FiberElement::DoFullStyleResolve",
+      "count": 4029
+    },
+    {
+      "name": "FiberElement::HandleStyle",
+      "count": 4029
+    },
+    {
+      "name": "FiberElement::RefreshStyle",
+      "count": 4029
+    },
+    {
+      "name": "FiberElement::HandleSetStyle",
+      "count": 4028
+    },
+    {
+      "name": "FiberElement::SetClass",
+      "count": 4028
+    },
+    {
+      "name": "FiberSetClasses",
+      "count": 4028
+    },
+    {
+      "name": "FiberElement::PrepareChildren",
+      "count": 4018
+    },
+    {
+      "name": "LynxFlattenUI.draw.",
+      "count": 3057
+    },
+    {
+      "name": "Element::WillConsumeAttribute",
+      "count": 3041
+    },
+    {
+      "name": "FiberElement::HandleAttr",
+      "count": 3041
+    },
+    {
+      "name": "FiberElement::SetAttribute",
+      "count": 3041
+    },
+    {
+      "name": "InsertPaintingNode",
+      "count": 3040
+    },
+    {
+      "name": "UIOperationQueue::InsertPaintingNodeTask",
+      "count": 3040
+    },
+    {
+      "name": "CreatePaintingNode",
+      "count": 3029
+    },
+    {
+      "name": "PaintingContextAndroid::CreatePaintingNode",
+      "count": 3029
+    },
+    {
+      "name": "UIOperationQueue::CreatePaintingNodeTask",
+      "count": 3029
+    },
+    {
+      "name": "UIOperationQueue::createNode.enqueueCreateView",
+      "count": 3029
+    },
+    {
+      "name": "text.FlattenUIText.onDraw",
+      "count": 3026
+    },
+    {
+      "name": "FiberElement::HandleChildrenAction",
+      "count": 3016
+    },
+    {
+      "name": "FiberCreateText",
+      "count": 3013
+    },
+    {
+      "name": "TextShadowNode.measure",
+      "count": 3013
+    },
+    {
+      "name": "UIOperationQueue::UpdatePlatformExtraBundleTask",
+      "count": 3013
+    },
+    {
+      "name": "UIOwner.AfterCreateViewAsync.text",
+      "count": 3013
+    },
+    {
+      "name": "UIOwner.createViewAsync.text",
+      "count": 3013
+    },
+    {
+      "name": "UIOwner.updateLayout.text",
+      "count": 3013
+    },
+    {
+      "name": "UIOwner.updateViewExtraData.text",
+      "count": 3013
+    },
+    {
+      "name": "FiberElement::HandleFontSizeChange",
+      "count": 3012
+    },
+    {
+      "name": "FiberAddEvent",
+      "count": 2012
+    },
+    {
+      "name": "FiberElement::HandleEvents",
+      "count": 2012
+    },
+    {
+      "name": "FiberElement::SetJSEventHandler",
+      "count": 2012
+    },
+    {
+      "name": "FiberCreateRawText",
+      "count": 2000
+    },
+    {
+      "name": "FiberSetAttribute",
+      "count": 1041
+    },
+    {
+      "name": "FiberCreateView",
+      "count": 1015
+    },
+    {
+      "name": "virtual void art::jit::MarkCodeClosure::Run(art::Thread *)",
+      "count": 330
+    },
+    {
+      "name": "ScopedCodeCacheWrite",
+      "count": 270
+    },
+    {
+      "name": "mprotect all",
+      "count": 270
+    },
+    {
+      "name": "mprotect code",
+      "count": 270
+    },
+    {
+      "name": "void art::IndirectReferenceTable::Trim()",
+      "count": 259
+    },
+    {
+      "name": "virtual void art::MemMapArenaPool::TrimMaps()",
+      "count": 258
+    },
+    {
+      "name": "Compiling",
+      "count": 253
+    },
+    {
+      "name": "TrimMaps",
+      "count": 253
+    },
+    {
+      "name": "Generate JIT debug info",
+      "count": 252
+    },
+    {
+      "name": "(Paused)ClearCards",
+      "count": 168
+    },
+    {
+      "name": "GetStringEnv",
+      "count": 148
+    },
+    {
+      "name": "ReadStringDirectly",
+      "count": 129
+    },
+    {
+      "name": "GetBoolEnv",
+      "count": 96
+    },
+    {
+      "name": "GetExternalEnv",
+      "count": 88
+    },
+    {
+      "name": "UnitHandler::Process",
+      "count": 64
+    },
+    {
+      "name": "EventTracker::Flush",
+      "count": 54
+    },
+    {
+      "name": "ConcurrentWorker AWoke",
+      "count": 53
+    },
+    {
+      "name": "GetLongEnv",
+      "count": 51
+    },
+    {
+      "name": "query",
+      "count": 48
+    },
+    {
+      "name": "UIOwner.updateLayout.view",
+      "count": 41
+    },
+    {
+      "name": "Lock contention on thread suspend count lock (owner tid: 1564)",
+      "count": 39
+    },
+    {
+      "name": "FiberElement::Destructor",
+      "count": 30
+    },
+    {
+      "name": "ElementContainer::StyleChanged",
+      "count": 28
+    },
+    {
+      "name": "ElementContainer::ZIndexChanged",
+      "count": 28
+    },
+    {
+      "name": "EventTarget::DispatchEvent",
+      "count": 28
+    },
+    {
+      "name": "FiberElement::UpdateFiberElement",
+      "count": 28
+    },
+    {
+      "name": "ProcessReferences",
+      "count": 28
+    },
+    {
+      "name": "Catalyzer.UpdatePaintingNode",
+      "count": 26
+    },
+    {
+      "name": "FiberElement::UpdatePaintingNode",
+      "count": 26
+    },
+    {
+      "name": "Run checkpoint function",
+      "count": 26
+    },
+    {
+      "name": "UIOperationQueue::UpdatePaintingNodeTask",
+      "count": 26
+    },
+    {
+      "name": "RecordFree",
+      "count": 25
+    },
+    {
+      "name": "LynxUIOperationQueue.Flush",
+      "count": 23
+    },
+    {
+      "name": "LynxUIOperationQueue::ExecuteHighPriorityOperation.",
+      "count": 23
+    },
+    {
+      "name": "UIOwner.rebuildViewTree",
+      "count": 23
+    },
+    {
+      "name": "BTSRuntime::AfterInvoked",
+      "count": 22
+    },
+    {
+      "name": "CSSPatching::ProcessRaw",
+      "count": 22
+    },
+    {
+      "name": "BTSRuntime::Invoke::1",
+      "count": 21
+    },
+    {
+      "name": "QuickContext::LepusRefGetPropertyCallBack",
+      "count": 21
+    },
+    {
+      "name": "LynxEngine::AfterInvoked",
+      "count": 19
+    },
+    {
+      "name": "Lock contention on thread suspend count lock (owner tid: 0)",
+      "count": 18
+    },
+    {
+      "name": "LynxEngine::Invoke::1",
+      "count": 18
+    },
+    {
+      "name": "InitInterpreterTls",
+      "count": 17
+    },
+    {
+      "name": "InitStackHwm",
+      "count": 17
+    },
+    {
+      "name": "InitTlsEntryPoints",
+      "count": 17
+    },
+    {
+      "name": "ScanImmuneSpaces",
+      "count": 17
+    },
+    {
+      "name": "Thread::Init",
+      "count": 17
+    },
+    {
+      "name": "ThreadList::Register",
+      "count": 17
+    },
+    {
+      "name": "VisitConcurrentRoots",
+      "count": 17
+    },
+    {
+      "name": "VisitNonThreadRoots",
+      "count": 17
+    },
+    {
+      "name": "InspectorClientDelegateImpl::SendResponse",
+      "count": 16
+    },
+    {
+      "name": "JSClosureEventListener::ConvertEventToPiperValue",
+      "count": 16
+    },
+    {
+      "name": "JSClosureEventListener::Invoke",
+      "count": 16
+    },
+    {
+      "name": "UIOwner.AfterCreateViewAsync.view",
+      "count": 15
+    },
+    {
+      "name": "UIOwner.createViewAsync.view",
+      "count": 15
+    },
+    {
+      "name": "(Paused)FlipCallback",
+      "count": 14
+    },
+    {
+      "name": "(Paused)GrayAllNewlyDirtyImmuneObjects",
+      "count": 14
+    },
+    {
+      "name": "(Paused)SetFromSpace",
+      "count": 14
+    },
+    {
+      "name": "ClearFromSpace",
+      "count": 14
+    },
+    {
+      "name": "CopyingPhase",
+      "count": 14
+    },
+    {
+      "name": "EmptyRBMarkBitStack",
+      "count": 14
+    },
+    {
+      "name": "EnqueueFinalizerReferences",
+      "count": 14
+    },
+    {
+      "name": "FlipOtherThreads",
+      "count": 14
+    },
+    {
+      "name": "FlipThreadRoots",
+      "count": 14
+    },
+    {
+      "name": "ForwardSoftReferences",
+      "count": 14
+    },
+    {
+      "name": "GrayAllDirtyImmuneObjects",
+      "count": 14
+    },
+    {
+      "name": "InitializePhase",
+      "count": 14
+    },
+    {
+      "name": "MarkZygoteLargeObjects",
+      "count": 14
+    },
+    {
+      "name": "ProcessMarkStack",
+      "count": 14
+    },
+    {
+      "name": "ReclaimPhase",
+      "count": 14
+    },
+    {
+      "name": "ResumeOtherThreads",
+      "count": 14
+    },
+    {
+      "name": "ResumeRunnableThreads",
+      "count": 14
+    },
+    {
+      "name": "ScanCardsForSpace",
+      "count": 14
+    },
+    {
+      "name": "SwapBitmaps",
+      "count": 14
+    },
+    {
+      "name": "SweepSystemWeaks",
+      "count": 14
+    },
+    {
+      "name": "ThreadListFlip",
+      "count": 14
+    },
+    {
+      "name": "UnBindBitmaps",
+      "count": 14
+    },
+    {
+      "name": "LayoutContext.UpdateLayoutNode",
+      "count": 13
+    },
+    {
+      "name": "Lock contention on thread suspend count lock (owner tid: 1551)",
+      "count": 13
+    },
+    {
+      "name": "TemplateAssembler::EnsureOnLayoutReadyHooksFinish",
+      "count": 13
+    },
+    {
+      "name": "UIOwner.updateProps.text",
+      "count": 13
+    },
+    {
+      "name": "UIOwner.updateProps.view",
+      "count": 13
+    },
+    {
+      "name": "AttachCurrentThread",
+      "count": 12
+    },
+    {
+      "name": "Lock contention on Jit code cache (owner tid: 1553)",
+      "count": 12
+    },
+    {
+      "name": "PaintingContext::RemovePaintingNode",
+      "count": 12
+    },
+    {
+      "name": "Thread birth",
+      "count": 12
+    },
+    {
+      "name": "Thread::Attach",
+      "count": 12
+    },
+    {
+      "name": "UIOperationQueue::RemovePaintingNodeTask",
+      "count": 12
+    },
+    {
+      "name": "UIOwner.remove.view.view",
+      "count": 12
+    },
+    {
+      "name": "Background young concurrent copying GC",
+      "count": 11
+    },
+    {
+      "name": "FindSpecificSection",
+      "count": 11
+    },
+    {
+      "name": "ResetStack",
+      "count": 11
+    },
+    {
+      "name": "SweepArray",
+      "count": 11
+    },
+    {
+      "name": "TemplateEntryHolder::FindEntry",
+      "count": 11
+    },
+    {
+      "name": "Choreographer#doFrame",
+      "count": 10
+    },
+    {
+      "name": "LynxEventReporter::updateGenericInfo",
+      "count": 10
+    },
+    {
+      "name": "notifyFramePending",
+      "count": 10
+    },
+    {
+      "name": "BackgroundThread::SetTimeout",
+      "count": 9
+    },
+    {
+      "name": "JsTaskAdapter::SetTimeout",
+      "count": 9
+    },
+    {
+      "name": "LynxEventReporter::OnEvent",
+      "count": 9
+    },
+    {
+      "name": "LynxEventReporter::handleEvent",
+      "count": 9
+    },
+    {
+      "name": "LayoutContext::AfterInvoked",
+      "count": 8
+    },
+    {
+      "name": "LepusDecoder::DecodeMessage",
+      "count": 8
+    },
+    {
+      "name": "MessageLoopImpl::Bind",
+      "count": 8
+    },
+    {
+      "name": "NativeFacade::AfterInvoked",
+      "count": 8
+    },
+    {
+      "name": "draw",
+      "count": 8
+    },
+    {
+      "name": "input",
+      "count": 8
+    },
+    {
+      "name": "traversal",
+      "count": 8
+    },
+    {
+      "name": "DrawFrame",
+      "count": 7
+    },
+    {
+      "name": "LayoutContext::Invoke::1",
+      "count": 7
+    },
+    {
+      "name": "NativeFacade::Invoke::1",
+      "count": 7
+    },
+    {
+      "name": "Record View#draw()",
+      "count": 7
+    },
+    {
+      "name": "TemplateData.FromMap",
+      "count": 7
+    },
+    {
+      "name": "dequeueBuffer",
+      "count": 7
+    },
+    {
+      "name": "eglBeginFrame",
+      "count": 7
+    },
+    {
+      "name": "eglSwapBuffersWithDamageKHR",
+      "count": 7
+    },
+    {
+      "name": "flush commands",
+      "count": 7
+    },
+    {
+      "name": "measure",
+      "count": 7
+    },
+    {
+      "name": "prepareTree",
+      "count": 7
+    },
+    {
+      "name": "queueBuffer",
+      "count": 7
+    },
+    {
+      "name": "setSurfaceDamage",
+      "count": 7
+    },
+    {
+      "name": "syncFrameState",
+      "count": 7
+    },
+    {
+      "name": "CleanOptionsForTiming",
+      "count": 6
+    },
+    {
+      "name": "ClosureEventListener::Invoke",
+      "count": 6
+    },
+    {
+      "name": "FinishLayoutOperation",
+      "count": 6
+    },
+    {
+      "name": "LepusClosureEventListener::Invoke",
+      "count": 6
+    },
+    {
+      "name": "QuickContext::LepusConvertToObjectCallBack",
+      "count": 6
+    },
+    {
+      "name": "Theme::ApplyStyle",
+      "count": 6
+    },
+    {
+      "name": "UIOperationQueue::FinishLayoutOperationTask",
+      "count": 6
+    },
+    {
+      "name": "Visiting class table",
+      "count": 6
+    },
+    {
+      "name": "layout",
+      "count": 6
+    },
+    {
+      "name": "Code cache collection",
+      "count": 5
+    },
+    {
+      "name": "DoCollection",
+      "count": 5
+    },
+    {
+      "name": "GarbageCollectCache",
+      "count": 5
+    },
+    {
+      "name": "Issue278::bts-dispatch-return",
+      "count": 5
+    },
+    {
+      "name": "Issue278::bts-dispatch-start",
+      "count": 5
+    },
+    {
+      "name": "LayoutContext.Layout",
+      "count": 5
+    },
+    {
+      "name": "LayoutMediator.HandleListOrComponentUpdated",
+      "count": 5
+    },
+    {
+      "name": "LayoutMediator.HandlePendingLayoutTask",
+      "count": 5
+    },
+    {
+      "name": "LayoutMediator.OnLayoutAfter",
+      "count": 5
+    },
+    {
+      "name": "LynxView.onDraw",
+      "count": 5
+    },
+    {
+      "name": "LynxView.onMeasure",
+      "count": 5
+    },
+    {
+      "name": "RemoveUnmarkedCode",
+      "count": 5
+    },
+    {
+      "name": "TemplateAssembler::ExecuteOnLayoutReadyHooks",
+      "count": 5
+    },
+    {
+      "name": "TemplateAssembler::OnLayoutAfter",
+      "count": 5
+    },
+    {
+      "name": "UIBody.innerSetMeasuredDimension",
+      "count": 5
+    },
+    {
+      "name": "UIOperationQueue::UpdateNodeReadyPatchingTask",
+      "count": 5
+    },
+    {
+      "name": "ViewLayoutTick.triggerLayout",
+      "count": 5
+    },
+    {
+      "name": "DecodeSpecificSection",
+      "count": 4
+    },
+    {
+      "name": "DetachCurrentThread",
+      "count": 4
+    },
+    {
+      "name": "ElementManager::OnPatchFinishInnerForFiber",
+      "count": 4
+    },
+    {
+      "name": "FiberElement::ParallelFlushAsRoot",
+      "count": 4
+    },
+    {
+      "name": "FinishTasmOperation",
+      "count": 4
+    },
+    {
+      "name": "FreeList",
+      "count": 4
+    },
+    {
+      "name": "InspectorClientDelegateBaseImpl::DispatchMessageAsync",
+      "count": 4
+    },
+    {
+      "name": "InspectorClientDelegateBaseImpl::FlushMessageQueueWithLockHeld",
+      "count": 4
+    },
+    {
+      "name": "LayoutContext.RequestLayout",
+      "count": 4
+    },
+    {
+      "name": "LynxDevToolMediator::DispatchBTSMessage",
+      "count": 4
+    },
+    {
+      "name": "LynxView.onLayout",
+      "count": 4
+    },
+    {
+      "name": "PageElement::FlushActionsAsRoot",
+      "count": 4
+    },
+    {
+      "name": "UIOperationQueue::FinishTasmOperationTask",
+      "count": 4
+    },
+    {
+      "name": "UIOperationQueue::UpdateLayoutPatchingTask",
+      "count": 4
+    },
+    {
+      "name": "notifyContentCapture(false) for a",
+      "count": 4
+    },
+    {
+      "name": "setSurface",
+      "count": 4
+    },
+    {
+      "name": "void art::gc::Heap::TrimIndirectReferenceTables(art::Thread *)",
+      "count": 4
+    },
+    {
+      "name": "void art::gc::Heap::TrimSpaces(art::Thread *)",
+      "count": 4
+    },
+    {
+      "name": "Background concurrent copying GC",
+      "count": 3
+    },
+    {
+      "name": "CaptureThreadRootsForMarking",
+      "count": 3
+    },
+    {
+      "name": "Catalyzer::TriggerOnNodeReady",
+      "count": 3
+    },
+    {
+      "name": "ElementManager::UpdateZIndexList",
+      "count": 3
+    },
+    {
+      "name": "FiberFlushElementTree",
+      "count": 3
+    },
+    {
+      "name": "FiberFlushElementTreeEnd",
+      "count": 3
+    },
+    {
+      "name": "HIDL::IMapper::freeBuffer::passthrough",
+      "count": 3
+    },
+    {
+      "name": "HIDL::IMapper::getTransportSize::passthrough",
+      "count": 3
+    },
+    {
+      "name": "HIDL::IMapper::importBuffer::passthrough",
+      "count": 3
+    },
+    {
+      "name": "HIDL::IMapper::validateBufferSize::passthrough",
+      "count": 3
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxFlattenUI.measure()",
+      "count": 3
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxFlattenUI.t(int, int, android.graphics.Rect)",
+      "count": 3
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.UIGroup.afterDispatchDraw(android.graphics.Canvas)",
+      "count": 3
+    },
+    {
+      "name": "LayoutContext.UpdateViewport",
+      "count": 3
+    },
+    {
+      "name": "LayoutContext::DispatchLayoutUpdates",
+      "count": 3
+    },
+    {
+      "name": "LepusBuffer::EncodeMessage",
+      "count": 3
+    },
+    {
+      "name": "Lock contention on JNI global reference table lock (owner tid: 18446744073709551615)",
+      "count": 3
+    },
+    {
+      "name": "Lock contention on Region lock (owner tid: 1551)",
+      "count": 3
+    },
+    {
+      "name": "Lock contention on Region lock (owner tid: 1564)",
+      "count": 3
+    },
+    {
+      "name": "Lock contention on Region lock (owner tid: 1594)",
+      "count": 3
+    },
+    {
+      "name": "Lock contention on thread suspend count lock (owner tid: 1553)",
+      "count": 3
+    },
+    {
+      "name": "MarkStackAsLive",
+      "count": 3
+    },
+    {
+      "name": "MarkingPhase",
+      "count": 3
+    },
+    {
+      "name": "Sweep",
+      "count": 3
+    },
+    {
+      "name": "SweepAllocSpace",
+      "count": 3
+    },
+    {
+      "name": "SweepLargeObjects",
+      "count": 3
+    },
+    {
+      "name": "TemplateAssembler::RequestLayout",
+      "count": 3
+    },
+    {
+      "name": "TemplateEntryHolder::ForEachEntry",
+      "count": 3
+    },
+    {
+      "name": "evaluateJavaScript",
+      "count": 3
+    },
+    {
+      "name": "freeBuffer",
+      "count": 3
+    },
+    {
+      "name": "importBuffer",
+      "count": 3
+    },
+    {
+      "name": "inflate",
+      "count": 3
+    },
+    {
+      "name": "~GraphicBuffer",
+      "count": 3
+    },
+    {
+      "name": "App::loadScript",
+      "count": 2
+    },
+    {
+      "name": "App::prepareAndEvalScript",
+      "count": 2
+    },
+    {
+      "name": "CalculateLayout",
+      "count": 2
+    },
+    {
+      "name": "CleanupReference.LazyHolder.handleMessage",
+      "count": 2
+    },
+    {
+      "name": "Client.onDestory",
+      "count": 2
+    },
+    {
+      "name": "Client.onFirstScreen",
+      "count": 2
+    },
+    {
+      "name": "Client.onLynxViewAndJSRuntimeDestroy",
+      "count": 2
+    },
+    {
+      "name": "Client.onReportComponentInfo",
+      "count": 2
+    },
+    {
+      "name": "Client.onTimingSetup",
+      "count": 2
+    },
+    {
+      "name": "DecodePageConfig",
+      "count": 2
+    },
+    {
+      "name": "DispatchLayoutBeforeRecursively",
+      "count": 2
+    },
+    {
+      "name": "ElementContainer::TransitionToNativeView",
+      "count": 2
+    },
+    {
+      "name": "ElementManager::UpdateViewport",
+      "count": 2
+    },
+    {
+      "name": "FiberElement::TransitionToNativeView",
+      "count": 2
+    },
+    {
+      "name": "FiberGetElementUniqueID",
+      "count": 2
+    },
+    {
+      "name": "FrameLayout",
+      "count": 2
+    },
+    {
+      "name": "Get class loaders",
+      "count": 2
+    },
+    {
+      "name": "InspectorClientDelegateBaseImpl::DispatchInitMessage",
+      "count": 2
+    },
+    {
+      "name": "JIT compiling boolean com.lynx.tasm.utils.f.g()",
+      "count": 2
+    },
+    {
+      "name": "JIT compiling int com.lynx.tasm.behavior.shadow.text.a.hashCode()",
+      "count": 2
+    },
+    {
+      "name": "JIT compiling int h7.c1.createNode(int, java.lang.String, com.lynx.tasm.behavior.ui.PropBundle, com.lynx.react.bridge.mapbuffer.ReadableMapBuffer, boolean)",
+      "count": 2
+    },
+    {
+      "name": "JIT compiling java.lang.StringBuilder androidx.activity.d.a(java.lang.String)",
+      "count": 2
+    },
+    {
+      "name": "JIT compiling org.json.JSONObject com.lynx.tasm.behavior.ui.UIBody$c.getUITreeRecursively(com.lynx.tasm.behavior.ui.LynxBaseUI)",
+      "count": 2
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.base.TraceEvent.a(long, java.lang.String)",
+      "count": 2
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.PaintingContext.UpdateLayoutPatching(int[], int[], float[], float[], int[])",
+      "count": 2
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.PaintingContext.w(int[])",
+      "count": 2
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.ShadowNode.n()",
+      "count": 2
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.text.BaseTextShadowNode.z(android.text.Layout, android.text.SpannableStringBuilder, l7.a, a.i, android.graphics.PointF)",
+      "count": 2
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxBaseUI.onNodeReady()",
+      "count": 2
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxBaseUI.updatePropertiesInterval(h7.e1)",
+      "count": 2
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxFlattenUI.l(android.graphics.Canvas)",
+      "count": 2
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxFlattenUI.r(android.graphics.Canvas)",
+      "count": 2
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxUI.invalidate()",
+      "count": 2
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.UIGroup.drawChild(com.lynx.tasm.behavior.ui.LynxFlattenUI, android.graphics.Canvas)",
+      "count": 2
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.utils.PropsUpdater.c(com.lynx.tasm.behavior.shadow.ShadowNode, h7.e1)",
+      "count": 2
+    },
+    {
+      "name": "JIT compiling void h7.p0.L(int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, android.graphics.Rect, float[], float, int)",
+      "count": 2
+    },
+    {
+      "name": "JIT compiling void h7.p0.t(int, int, int)",
+      "count": 2
+    },
+    {
+      "name": "LayoutContext.LayoutResult",
+      "count": 2
+    },
+    {
+      "name": "LayoutRecursively",
+      "count": 2
+    },
+    {
+      "name": "LinearLayout",
+      "count": 2
+    },
+    {
+      "name": "Lock contention on Class loader classes (owner tid: 18446744073709551615)",
+      "count": 2
+    },
+    {
+      "name": "Lock contention on ClassLinker classes lock (owner tid: 1564)",
+      "count": 2
+    },
+    {
+      "name": "Lock contention on InternTable lock (owner tid: 1564)",
+      "count": 2
+    },
+    {
+      "name": "Lock contention on thread suspend count lock (owner tid: 1682)",
+      "count": 2
+    },
+    {
+      "name": "LynxEngine.UpdateViewport",
+      "count": 2
+    },
+    {
+      "name": "LynxShell.UpdateViewport",
+      "count": 2
+    },
+    {
+      "name": "OnLayoutAfter",
+      "count": 2
+    },
+    {
+      "name": "QuickContext::Call",
+      "count": 2
+    },
+    {
+      "name": "QuickContext::GetAndCall",
+      "count": 2
+    },
+    {
+      "name": "RemoveAlgorithmRecursive",
+      "count": 2
+    },
+    {
+      "name": "ResourcesManager#applyConfigurationToResourcesLocked",
+      "count": 2
+    },
+    {
+      "name": "ResourcesManager#getResources",
+      "count": 2
+    },
+    {
+      "name": "RoundToPixelGrid",
+      "count": 2
+    },
+    {
+      "name": "SetSourceMapRelease",
+      "count": 2
+    },
+    {
+      "name": "Timing::Mark.paintingUiOperationExecuteStart",
+      "count": 2
+    },
+    {
+      "name": "Timing::Mark.resolveEnd",
+      "count": 2
+    },
+    {
+      "name": "Timing::Mark.resolveStart",
+      "count": 2
+    },
+    {
+      "name": "Timing::OnPipelineStart",
+      "count": 2
+    },
+    {
+      "name": "UpdateAlignment",
+      "count": 2
+    },
+    {
+      "name": "UpdateLayoutRecursively",
+      "count": 2
+    },
+    {
+      "name": "UpdateMeasure",
+      "count": 2
+    },
+    {
+      "name": "ViewLayoutTick.requestLayout",
+      "count": 2
+    },
+    {
+      "name": "[pluginDebugMetadata] SetSourceMapInfo",
+      "count": 2
+    },
+    {
+      "name": "computePalette",
+      "count": 2
+    },
+    {
+      "name": "executeLoadedScript",
+      "count": 2
+    },
+    {
+      "name": "notifyContentCapture(false) for FrameLayout",
+      "count": 2
+    },
+    {
+      "name": "notifyContentCapture(false) for LinearLayout",
+      "count": 2
+    },
+    {
+      "name": "notifyContentCapture(false) for View",
+      "count": 2
+    },
+    {
+      "name": "notifyContentCapture(false) for b",
+      "count": 2
+    },
+    {
+      "name": "setBufferCount",
+      "count": 2
+    },
+    {
+      "name": "topResumedActivityChangeItem",
+      "count": 2
+    },
+    {
+      "name": "void art::ProfileSaver::FetchAndCacheResolvedClassesAndMethods(bool)",
+      "count": 2
+    },
+    {
+      "name": "App::updateCardData",
+      "count": 1
+    },
+    {
+      "name": "AssetManager::GetResourceConfigurations",
+      "count": 1
+    },
+    {
+      "name": "AssetManager::OpenXmlAsset(res/color/highlighted_text_material.xml)",
+      "count": 1
+    },
+    {
+      "name": "AssetManager::OpenXmlAsset(res/color/hint_foreground_material_light.xml)",
+      "count": 1
+    },
+    {
+      "name": "AssetManager::OpenXmlAsset(res/color/text_color_primary.xml)",
+      "count": 1
+    },
+    {
+      "name": "AssetManager::OpenXmlAsset(res/drawable/back_light.xml)",
+      "count": 1
+    },
+    {
+      "name": "AssetManager::OpenXmlAsset(res/interpolator/linear_out_slow_in.xml)",
+      "count": 1
+    },
+    {
+      "name": "AssetManager::OpenXmlAsset(res/layout/abc_screen_content_include.xml)",
+      "count": 1
+    },
+    {
+      "name": "AssetManager::OpenXmlAsset(res/layout/abc_screen_simple.xml)",
+      "count": 1
+    },
+    {
+      "name": "AssetManager::OpenXmlAsset(res/layout/default_display.xml)",
+      "count": 1
+    },
+    {
+      "name": "AssetManager::OpenXmlAsset(res/layout/screen_simple.xml)",
+      "count": 1
+    },
+    {
+      "name": "AssetManager::OpenXmlAsset(res/transition/fade.xml)",
+      "count": 1
+    },
+    {
+      "name": "AssetManager::OpenXmlAsset(res/transition/move.xml)",
+      "count": 1
+    },
+    {
+      "name": "AssetManager::SetApkAssets",
+      "count": 1
+    },
+    {
+      "name": "AssetManager::SetConfiguration",
+      "count": 1
+    },
+    {
+      "name": "BTSRuntime::Invoke::0",
+      "count": 1
+    },
+    {
+      "name": "BTSRuntime::PreloadJSSourcesGetter",
+      "count": 1
+    },
+    {
+      "name": "BackgroundThread::QueueMicrotask",
+      "count": 1
+    },
+    {
+      "name": "CSSStyleSheetManager::GetCSSStyleSheet",
+      "count": 1
+    },
+    {
+      "name": "CardLifeTimeCallback:onDestroy",
+      "count": 1
+    },
+    {
+      "name": "Client.onLoadSuccess",
+      "count": 1
+    },
+    {
+      "name": "Client.onPageStart",
+      "count": 1
+    },
+    {
+      "name": "Client.onPageUpdate",
+      "count": 1
+    },
+    {
+      "name": "Client.onRuntimeReady",
+      "count": 1
+    },
+    {
+      "name": "Client.onTASMFinishedByNative",
+      "count": 1
+    },
+    {
+      "name": "Client.onUpdateDataWithoutChange",
+      "count": 1
+    },
+    {
+      "name": "ComponentElement::PrepareForRootCSSVariables",
+      "count": 1
+    },
+    {
+      "name": "Context::CreateMTSRuntime",
+      "count": 1
+    },
+    {
+      "name": "ConvertValueWithReadOnly",
+      "count": 1
+    },
+    {
+      "name": "CreateLynxView",
+      "count": 1
+    },
+    {
+      "name": "DecodeCSSDescriptor",
+      "count": 1
+    },
+    {
+      "name": "DecodeCSSFontFaceToken",
+      "count": 1
+    },
+    {
+      "name": "DecodeCSSFragment",
+      "count": 1
+    },
+    {
+      "name": "DecodeCSSKeyframesToken",
+      "count": 1
+    },
+    {
+      "name": "DecodeCSSParseToken",
+      "count": 1
+    },
+    {
+      "name": "DecodeContext",
+      "count": 1
+    },
+    {
+      "name": "DecodeFlexibleTemplateBody",
+      "count": 1
+    },
+    {
+      "name": "DecodeHeader",
+      "count": 1
+    },
+    {
+      "name": "DecodeSectionRoute",
+      "count": 1
+    },
+    {
+      "name": "DecodeTemplateBody",
+      "count": 1
+    },
+    {
+      "name": "Delete thread pool",
+      "count": 1
+    },
+    {
+      "name": "Deoptimizing android.graphics.Rect com.lynx.tasm.behavior.ui.LynxBaseUI.getClipBounds(): JIT inline cache",
+      "count": 1
+    },
+    {
+      "name": "Deoptimizing int h7.c1.createNode(int, java.lang.String, com.lynx.tasm.behavior.ui.PropBundle, com.lynx.react.bridge.mapbuffer.ReadableMapBuffer, boolean): JIT inline cache",
+      "count": 1
+    },
+    {
+      "name": "Deoptimizing void com.lynx.tasm.behavior.shadow.ShadowNode.n(): JIT inline cache",
+      "count": 1
+    },
+    {
+      "name": "Deoptimizing void com.lynx.tasm.behavior.ui.LynxFlattenUI.l(android.graphics.Canvas): JIT inline cache",
+      "count": 1
+    },
+    {
+      "name": "Deoptimizing void com.lynx.tasm.behavior.ui.LynxFlattenUI.r(android.graphics.Canvas): JIT inline cache",
+      "count": 1
+    },
+    {
+      "name": "Deoptimizing void com.lynx.tasm.behavior.ui.LynxUI.invalidate(): JIT inline cache",
+      "count": 1
+    },
+    {
+      "name": "Deoptimizing void com.lynx.tasm.behavior.ui.UIGroup.afterDispatchDraw(android.graphics.Canvas): JIT inline cache",
+      "count": 1
+    },
+    {
+      "name": "Deoptimizing void com.lynx.tasm.behavior.ui.UIGroup.drawChild(com.lynx.tasm.behavior.ui.LynxFlattenUI, android.graphics.Canvas): JIT inline cache",
+      "count": 1
+    },
+    {
+      "name": "Deoptimizing void com.lynx.tasm.behavior.utils.PropsUpdater.c(com.lynx.tasm.behavior.shadow.ShadowNode, h7.e1): JIT inline cache",
+      "count": 1
+    },
+    {
+      "name": "DeserializeJSSourceSection",
+      "count": 1
+    },
+    {
+      "name": "DestroyLynxView",
+      "count": 1
+    },
+    {
+      "name": "Devtool::PrepareComponentNodeForInspector",
+      "count": 1
+    },
+    {
+      "name": "DidDecodeAppType",
+      "count": 1
+    },
+    {
+      "name": "DidDecodeTemplate",
+      "count": 1
+    },
+    {
+      "name": "DumpUITreeLayout",
+      "count": 1
+    },
+    {
+      "name": "ElementManager::OnPatchFinishForFiberNoPatch",
+      "count": 1
+    },
+    {
+      "name": "FiberCreatePage",
+      "count": 1
+    },
+    {
+      "name": "FirstMeaningfulPaint",
+      "count": 1
+    },
+    {
+      "name": "FromBinary",
+      "count": 1
+    },
+    {
+      "name": "FullSuspendCheck",
+      "count": 1
+    },
+    {
+      "name": "GPU completion fence 0 has signaled",
+      "count": 1
+    },
+    {
+      "name": "GPU completion fence 1 has signaled",
+      "count": 1
+    },
+    {
+      "name": "GPU completion fence 2 has signaled",
+      "count": 1
+    },
+    {
+      "name": "GPU completion fence 3 has signaled",
+      "count": 1
+    },
+    {
+      "name": "GPU completion fence 4 has signaled",
+      "count": 1
+    },
+    {
+      "name": "GPU completion fence 5 has signaled",
+      "count": 1
+    },
+    {
+      "name": "GPU completion fence 6 has signaled",
+      "count": 1
+    },
+    {
+      "name": "GetProfiledMethods",
+      "count": 1
+    },
+    {
+      "name": "HWC release fence 0 has signaled",
+      "count": 1
+    },
+    {
+      "name": "HWC release fence 1 has signaled",
+      "count": 1
+    },
+    {
+      "name": "HWC release fence 2 has signaled",
+      "count": 1
+    },
+    {
+      "name": "HWC release fence 3 has signaled",
+      "count": 1
+    },
+    {
+      "name": "HWC release fence 4 has signaled",
+      "count": 1
+    },
+    {
+      "name": "HWC release fence 5 has signaled",
+      "count": 1
+    },
+    {
+      "name": "HWC release fence 6 has signaled",
+      "count": 1
+    },
+    {
+      "name": "HandleEventInternal",
+      "count": 1
+    },
+    {
+      "name": "InitCardEnv",
+      "count": 1
+    },
+    {
+      "name": "InitRuntime",
+      "count": 1
+    },
+    {
+      "name": "Issue278::commit-ack",
+      "count": 1
+    },
+    {
+      "name": "Issue278::create-start",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling android.content.res.Resources androidx.appcompat.app.c.getResources()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling android.graphics.PointF com.lynx.tasm.behavior.shadow.text.e.j()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling android.graphics.RecordingCanvas android.graphics.RenderNode.beginRecording()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling android.graphics.Rect com.lynx.tasm.behavior.ui.LynxBaseUI.getClipBounds()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling android.graphics.RectF z7.b.b()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling android.graphics.Typeface com.lynx.tasm.behavior.shadow.text.b.k(h7.w, com.lynx.tasm.behavior.shadow.text.a)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling android.graphics.Typeface com.lynx.tasm.utils.DeviceUtils.a()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling android.text.Layout$Alignment com.lynx.tasm.behavior.shadow.text.a.d(boolean)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling android.text.StaticLayout$Builder com.lynx.tasm.behavior.shadow.text.e.e(java.lang.CharSequence, android.text.Layout$Alignment, android.text.TextPaint, float)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling android.text.TextPaint com.lynx.tasm.behavior.shadow.text.b.m(com.lynx.tasm.behavior.shadow.text.a, android.graphics.Typeface)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling boolean android.graphics.RenderNode.setPosition(int, int, int, int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling boolean com.lynx.react.bridge.JavaOnlyMap$a.hasNextKey()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling boolean com.lynx.react.bridge.JavaOnlyMap.hasKey(java.lang.String)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling boolean com.lynx.tasm.LynxEnv.runJavaTaskOnConcurrentLoop(java.lang.Runnable, int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling boolean com.lynx.tasm.behavior.PaintingContext.o()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling boolean com.lynx.tasm.behavior.PaintingContext.p(java.lang.String, int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling boolean com.lynx.tasm.behavior.shadow.text.RawTextShadowNode.m()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling boolean com.lynx.tasm.behavior.shadow.text.TextShadowNode.G()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling boolean com.lynx.tasm.behavior.shadow.text.a.equals(java.lang.Object)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling boolean com.lynx.tasm.behavior.shadow.text.e.k()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling boolean com.lynx.tasm.behavior.shadow.text.f$a.equals(java.lang.Object)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling boolean com.lynx.tasm.behavior.shadow.text.f.equals(java.lang.Object)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling boolean com.lynx.tasm.behavior.ui.LynxFlattenUI.isFlatten()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling boolean com.lynx.tasm.rendernode.compat.RenderNodeImpl.hasDisplayList()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling boolean com.lynx.tasm.utils.f.h(float)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling boolean d3.y.s(float, float)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling boolean d7.a.d(h7.e1)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling boolean f7.a.g(h7.e1)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling boolean h7.e1.i()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling boolean h7.p0.s(h7.e1)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling boolean h7.w.y()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling boolean z8.i.m(int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling com.lynx.debugrouter.DebugRouter com.lynx.debugrouter.DebugRouter.getInstance()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling com.lynx.react.bridge.JavaOnlyMap com.lynx.react.bridge.JavaOnlyArray.getMap(int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling com.lynx.react.bridge.JavaOnlyMap com.lynx.react.bridge.JavaOnlyMap.create()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling com.lynx.react.bridge.ReadableMapKeySetIterator com.lynx.react.bridge.JavaOnlyMap.keySetIterator()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling com.lynx.react.bridge.ReadableType com.lynx.react.bridge.JavaOnlyMap.getType(java.lang.String)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling com.lynx.tasm.LynxEnv com.lynx.tasm.LynxEnv.inst()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling com.lynx.tasm.behavior.shadow.ShadowNode com.lynx.tasm.behavior.shadow.ShadowNode.h(int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling com.lynx.tasm.behavior.shadow.text.a com.lynx.tasm.behavior.shadow.text.a.a()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling com.lynx.tasm.behavior.shadow.text.e m7.v.a(h7.w, com.lynx.tasm.behavior.shadow.text.f)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling com.lynx.tasm.behavior.ui.LynxBaseUI com.lynx.tasm.behavior.ui.LynxBaseUI.getChildAt(int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling com.lynx.tasm.behavior.ui.LynxBaseUI h7.p0.a(com.lynx.tasm.behavior.ui.LynxBaseUI, com.lynx.tasm.behavior.ui.UIShadowProxy, h7.e1)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling com.lynx.tasm.behavior.ui.LynxBaseUI h7.p0.e(java.lang.String, boolean, java.lang.Object)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling com.lynx.tasm.behavior.ui.LynxBaseUI h7.p0.g(n7.h)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling com.lynx.tasm.behavior.ui.PropBundle com.lynx.tasm.behavior.ui.PropBundle.createPropBundle()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling com.lynx.tasm.behavior.utils.LynxUISetter com.lynx.tasm.behavior.utils.PropsUpdater.b(java.lang.Class)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling com.lynx.tasm.g com.lynx.tasm.behavior.shadow.text.TextShadowNode.b(l7.h, l7.e)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling com.lynx.tasm.rendernode.compat.RenderNodeFactory com.lynx.tasm.rendernode.compat.RenderNodeFactory.getInstance()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling double com.lynx.react.bridge.JavaOnlyMap.getDouble(java.lang.String)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling float a.d.c(float, float, float, float)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling float h7.e1.e(java.lang.String, float)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling float t1.b.b(long)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling float t1.b.h(long)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling float[] com.lynx.tasm.behavior.shadow.LayoutNode.measure(float, int, float, int, boolean)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling h7.a h7.c.b(java.lang.String)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling int android.text.SpannableStringBuilder.hashCode()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling int com.lynx.react.bridge.JavaOnlyArray.size()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling int com.lynx.react.bridge.JavaOnlyMap.getInt(java.lang.String)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling int com.lynx.react.bridge.JavaOnlyMap.size()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling int com.lynx.tasm.behavior.shadow.ShadowNode.i()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling int com.lynx.tasm.behavior.shadow.text.e.g()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling int com.lynx.tasm.behavior.shadow.text.e.i()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling int com.lynx.tasm.behavior.shadow.text.f$a.hashCode()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling int com.lynx.tasm.behavior.shadow.text.f.hashCode()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling java.lang.CharSequence com.lynx.tasm.behavior.shadow.text.BaseTextShadowNode.C(java.lang.String, boolean)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling java.lang.CharSequence com.lynx.tasm.behavior.shadow.text.BaseTextShadowNode.D(java.lang.String, boolean)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling java.lang.Integer z8.i.f(int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling java.lang.Object com.lynx.tasm.behavior.PaintingContext.createNode(int, java.lang.String, com.lynx.tasm.behavior.ui.PropBundle, com.lynx.react.bridge.mapbuffer.ReadableMapBuffer, boolean, int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling java.lang.Object com.lynx.tasm.behavior.PlatformExtraBundleHolder.getBundle(int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling java.lang.Object com.lynx.tasm.behavior.shadow.text.TextShadowNode.k()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling java.lang.Object h7.c1.getExtraBundle(int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling java.lang.Object h7.o0.call()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling java.lang.String com.lynx.react.bridge.JavaOnlyMap$a.nextKey()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling java.lang.String com.lynx.react.bridge.JavaOnlyMap.getString(java.lang.String)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling java.lang.String com.lynx.tasm.behavior.shadow.text.a.c()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling java.lang.String com.lynx.tasm.behavior.shadow.text.b.c(v6.a)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling java.util.Map f8.a.a(com.lynx.react.bridge.ReadableArray)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling java.util.Map m8.a.a(com.lynx.react.bridge.ReadableArray)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling long com.lynx.tasm.behavior.shadow.text.TextShadowNode.O(com.lynx.tasm.behavior.shadow.LayoutNode, float, l7.g, float, l7.g)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling long t1.b.i(float, float)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void a.i.<init>()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void android.graphics.RenderNode.<init>(java.lang.String, android.graphics.RenderNode$AnimationHost)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void android.text.SpannableStringBuilder.drawTextRun(android.graphics.BaseCanvas, int, int, int, int, float, float, boolean, android.graphics.Paint)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.basedevtool.DevToolSlot.sendMessage(java.lang.String, java.lang.String)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.debugrouter.DebugRouter.sendDataAsync(java.lang.String, int, java.lang.String, int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.debugrouter.log.LLog.internalLog(int, java.lang.String, java.lang.String, com.lynx.debugrouter.log.LogSource)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.debugrouter.log.LLog.log(int, java.lang.String, java.lang.String)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.devtool.tracing.FPSTrace$d.println(java.lang.String)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.react.bridge.JavaOnlyArray.<init>()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.react.bridge.JavaOnlyArray.pushDouble(double)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.react.bridge.JavaOnlyArray.pushInt(int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.react.bridge.JavaOnlyArray.pushMap(com.lynx.react.bridge.WritableMap)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.react.bridge.JavaOnlyMap$a.<init>(com.lynx.react.bridge.JavaOnlyMap)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.react.bridge.JavaOnlyMap.<init>()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.react.bridge.JavaOnlyMap.putDouble(java.lang.String, double)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.react.bridge.JavaOnlyMap.putInt(java.lang.String, int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.react.bridge.JavaOnlyMap.putString(java.lang.String, java.lang.String)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.LynxEnv.onJavaTaskOnConcurrentLoop(long, int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.base.TraceEvent.b(long, java.lang.String, java.util.Map)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.base.TraceEvent.f(long, java.lang.String)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.LayoutNodeManager.f(int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.LayoutNodeManager.i(int, java.lang.Object)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.PaintingContext$a.<init>(com.lynx.tasm.behavior.PaintingContext, java.util.concurrent.Future, int, java.lang.String, com.lynx.react.bridge.ReadableMap, com.lynx.react.bridge.mapbuffer.ReadableMapBuffer, com.lynx.react.bridge.ReadableArray, boolean, int, com.lynx.react.bridge.ReadableArray)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.PaintingContext$a.run()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.PaintingContext.insertNode(int, int, int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.PaintingContext.q(int, java.lang.String, com.lynx.tasm.behavior.ui.PropBundle, com.lynx.react.bridge.mapbuffer.ReadableMapBuffer)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.PaintingContext.r(int, int, int, java.lang.Integer)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.PaintingContext.s(int, java.lang.Object)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.PaintingContext.u(int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, android.graphics.Rect, float[], float, int, boolean)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.PaintingContext.updateExtraData(int, java.lang.Object)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.PlatformExtraBundleHolder.putBundle(int, java.lang.Object)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.LayoutNode.<init>()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.LayoutNode.align()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.LayoutNode.c(long)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.ShadowNode.<init>()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.ShadowNode.f(com.lynx.tasm.behavior.shadow.ShadowNode, int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.ShadowNode.y(h7.e1)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.text.BaseTextShadowNode$$PropsSetter.a(com.lynx.tasm.behavior.shadow.ShadowNode, java.lang.String, h7.e1)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.text.BaseTextShadowNode.<init>()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.text.BaseTextShadowNode.A(int, int, java.util.List)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.text.BaseTextShadowNode.H(android.text.SpannableStringBuilder, l7.h, l7.e)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.text.BaseTextShadowNode.f(com.lynx.tasm.behavior.shadow.ShadowNode, int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.text.BaseTextShadowNode.setColor(v6.a)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.text.BaseTextShadowNode.t(h7.w)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.text.RawTextShadowNode$$PropsSetter.a(com.lynx.tasm.behavior.shadow.ShadowNode, java.lang.String, h7.e1)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.text.TextShadowNode$$PropsSetter.a(com.lynx.tasm.behavior.shadow.ShadowNode, java.lang.String, h7.e1)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.text.TextShadowNode.<init>()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.text.TextShadowNode.A(int, int, java.util.List)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.text.TextShadowNode.a(l7.a, a.i)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.text.TextShadowNode.d()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.text.a.<init>()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.text.b.f(android.graphics.Canvas, android.text.Layout)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.text.e$a.<init>()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.text.e.<init>(h7.w, com.lynx.tasm.behavior.shadow.text.f)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.text.e.a(com.lynx.tasm.behavior.shadow.text.e$a)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.text.e.n(h7.w)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.shadow.text.f$a.<init>(java.lang.CharSequence, com.lynx.tasm.behavior.shadow.text.a)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxBaseUI$$PropsSetter.b(com.lynx.tasm.behavior.ui.LynxBaseUI, java.lang.String, h7.e1)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxBaseUI.<init>(h7.w, java.lang.Object)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxBaseUI.afterPropsUpdated(h7.e1)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxBaseUI.onLayoutUpdated()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxBaseUI.onPropsUpdated()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxBaseUI.sendLayoutChangeEvent()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxBaseUI.setFontSize(float)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxBaseUI.setGestureDetectors(java.util.Map)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxBaseUI.setLeft(int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxBaseUI.setParent(n7.i)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxBaseUI.setTop(int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxBaseUI.updateLayout(int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, android.graphics.Rect)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxBaseUI.updateLayoutInfo(int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, android.graphics.Rect)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxBaseUI.updateLayoutSize(int, int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxBaseUI.updateSticky(float[])",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxFlattenUI$$PropsSetter.b(com.lynx.tasm.behavior.ui.LynxBaseUI, java.lang.String, h7.e1)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxFlattenUI.invalidate()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxFlattenUI.onDrawingPositionChanged()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxFlattenUI.requestLayout()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxFlattenUI.setPosition(int, int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxFlattenUI.setSign(int, java.lang.String)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxFlattenUI.u(android.graphics.Canvas)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.LynxUI.requestLayout()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.PropBundle.<init>()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.PropBundle.putDouble(java.lang.String, double)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.PropBundle.putEventHandler(com.lynx.react.bridge.JavaOnlyMap)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.PropBundle.putInt(java.lang.String, int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.PropBundle.putString(java.lang.String, java.lang.String)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.UIBody$c.requestLayout()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.UIGroup.drawFlattenRendererContentBeforeUI(com.lynx.tasm.behavior.ui.LynxBaseUI, android.graphics.Canvas)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.UIGroup.finishInactiveFlattenRendererHosts(com.lynx.tasm.behavior.ui.LynxBaseUI, android.graphics.Canvas)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.text.FlattenUIText$$PropsSetter.b(com.lynx.tasm.behavior.ui.LynxBaseUI, java.lang.String, h7.e1)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.text.FlattenUIText.onLayoutUpdated()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.text.FlattenUIText.onNodeReady()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.text.FlattenUIText.u(android.graphics.Canvas)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.text.FlattenUIText.updateExtraData(java.lang.Object)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.text.FlattenUIText.v()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.utils.BackgroundDrawable.draw(android.graphics.Canvas)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.behavior.ui.utils.BackgroundDrawable.l(double, double, double, double, double, double, double, double, android.graphics.PointF)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.g.<init>(float, float, float)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.rendernode.compat.RenderNodeImpl.drawRenderNode(android.graphics.Canvas)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void com.lynx.tasm.rendernode.compat.RenderNodeImpl.endRecording(android.graphics.Canvas)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void d8.l.<init>(java.util.concurrent.FutureTask)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void f8.a.<init>(java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void h7.c1.dispatchOnLayout(int, int, int, int, int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void h7.c1.dispatchOnLayoutBefore(int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void h7.c1.insertNode(int, int, int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void h7.e1.<init>(com.lynx.react.bridge.ReadableMap, com.lynx.react.bridge.mapbuffer.a)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void h7.o0.<init>(h7.p0, java.lang.String, int, int, boolean, h7.e1, java.util.Map, java.util.Map)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void h7.p0.A(int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void h7.p0.G(int, java.lang.String, boolean, int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void h7.p0.H(int, java.lang.String, boolean)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void h7.p0.I(java.lang.String)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void h7.p0.J(java.lang.String)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void h7.p0.K(int, java.lang.String, h7.e1)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void h7.p0.N(int, java.lang.Object)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void h7.p0.c(int, int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void h7.p0.u(int, com.lynx.tasm.behavior.ui.LynxBaseUI)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void h7.p0.v(com.lynx.tasm.behavior.ui.LynxBaseUI)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void h7.p0.w(com.lynx.tasm.behavior.ui.LynxBaseUI, com.lynx.tasm.behavior.ui.LynxBaseUI, int)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void h7.t0.run()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void l7.a.<init>()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void l7.e.<init>(boolean)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void l7.h.<init>()",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void m7.w.<init>(android.text.Layout, boolean, java.util.Set, boolean)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void u0.p.<init>(com.lynx.tasm.behavior.shadow.LayoutNode)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void y7.a.j(android.text.Spanned)",
+      "count": 1
+    },
+    {
+      "name": "JIT compiling void y7.b.a(m7.w, com.lynx.tasm.behavior.ui.LynxBaseUI)",
+      "count": 1
+    },
+    {
+      "name": "JSContextWrapper::prepareJSEnv",
+      "count": 1
+    },
+    {
+      "name": "JSExecutor::loadPreJSBundle",
+      "count": 1
+    },
+    {
+      "name": "JsTaskAdapter::QueueMicrotask",
+      "count": 1
+    },
+    {
+      "name": "LayoutContext::Invoke::0",
+      "count": 1
+    },
+    {
+      "name": "LazyDecodeCSSFragment",
+      "count": 1
+    },
+    {
+      "name": "LepusNG.DeSerialize",
+      "count": 1
+    },
+    {
+      "name": "LepusNG.Execute",
+      "count": 1
+    },
+    {
+      "name": "LepusValueToJSValue",
+      "count": 1
+    },
+    {
+      "name": "LoadJSApp",
+      "count": 1
+    },
+    {
+      "name": "Lock contention on ClassLinker classes lock (owner tid: 18446744073709551615)",
+      "count": 1
+    },
+    {
+      "name": "Lock contention on GC barrier lock (owner tid: 0)",
+      "count": 1
+    },
+    {
+      "name": "Lock contention on GC barrier lock (owner tid: 1564)",
+      "count": 1
+    },
+    {
+      "name": "Lock contention on GC barrier lock (owner tid: 1682)",
+      "count": 1
+    },
+    {
+      "name": "Lock contention on InternTable lock (owner tid: 1553)",
+      "count": 1
+    },
+    {
+      "name": "Lock contention on JNI global reference table lock (owner tid: 0)",
+      "count": 1
+    },
+    {
+      "name": "Lock contention on Jit code cache (owner tid: 0)",
+      "count": 1
+    },
+    {
+      "name": "Lock contention on Region lock (owner tid: 0)",
+      "count": 1
+    },
+    {
+      "name": "Lock contention on Region lock (owner tid: 1591)",
+      "count": 1
+    },
+    {
+      "name": "Lock contention on a monitor lock (owner tid: 1682)",
+      "count": 1
+    },
+    {
+      "name": "Lock contention on runtime shutdown lock (owner tid: 1667)",
+      "count": 1
+    },
+    {
+      "name": "Lock contention on runtime shutdown lock (owner tid: 1683)",
+      "count": 1
+    },
+    {
+      "name": "Lock contention on runtime shutdown lock (owner tid: 1735)",
+      "count": 1
+    },
+    {
+      "name": "Lock contention on runtime shutdown lock (owner tid: 1809)",
+      "count": 1
+    },
+    {
+      "name": "Lock contention on thread list lock (owner tid: 0)",
+      "count": 1
+    },
+    {
+      "name": "Lock contention on thread list lock (owner tid: 1555)",
+      "count": 1
+    },
+    {
+      "name": "Lock contention on thread suspend count lock (owner tid: 1578)",
+      "count": 1
+    },
+    {
+      "name": "LynxCreateAndLoadApp",
+      "count": 1
+    },
+    {
+      "name": "LynxDecode",
+      "count": 1
+    },
+    {
+      "name": "LynxDevtool initialized",
+      "count": 1
+    },
+    {
+      "name": "LynxDomReady",
+      "count": 1
+    },
+    {
+      "name": "LynxEngine::CallJSFunction",
+      "count": 1
+    },
+    {
+      "name": "LynxEngine::Invoke::0",
+      "count": 1
+    },
+    {
+      "name": "LynxEngine::LoadTemplate",
+      "count": 1
+    },
+    {
+      "name": "LynxEngine::~LynxEngine",
+      "count": 1
+    },
+    {
+      "name": "LynxEngineVersion",
+      "count": 1
+    },
+    {
+      "name": "LynxIntersectionObserverManager initialized",
+      "count": 1
+    },
+    {
+      "name": "LynxJSLoadCore",
+      "count": 1
+    },
+    {
+      "name": "LynxLoadTemplate",
+      "count": 1
+    },
+    {
+      "name": "LynxRuntime::CallJSFunction",
+      "count": 1
+    },
+    {
+      "name": "LynxShell.EnsureGlobalPropsThreadSafe",
+      "count": 1
+    },
+    {
+      "name": "LynxShell::Create",
+      "count": 1
+    },
+    {
+      "name": "LynxShell::Create::CreateEngineActor",
+      "count": 1
+    },
+    {
+      "name": "LynxShell::InitRuntime",
+      "count": 1
+    },
+    {
+      "name": "LynxShell::~LynxShell",
+      "count": 1
+    },
+    {
+      "name": "LynxTemplateRender.destroy",
+      "count": 1
+    },
+    {
+      "name": "LynxTemplateRender.loadTemplateWithMeta",
+      "count": 1
+    },
+    {
+      "name": "LynxTemplateRender.renderTemplate",
+      "count": 1
+    },
+    {
+      "name": "LynxTemplateRender.setExtraTiming",
+      "count": 1
+    },
+    {
+      "name": "LynxUIOwner initialized",
+      "count": 1
+    },
+    {
+      "name": "LynxUpdateGlobalProps",
+      "count": 1
+    },
+    {
+      "name": "LynxView.onAttachedToWindow",
+      "count": 1
+    },
+    {
+      "name": "LynxView.onDetachedFromWindow",
+      "count": 1
+    },
+    {
+      "name": "NativeFacade::Invoke::0",
+      "count": 1
+    },
+    {
+      "name": "NotifyJSUpdatePageData",
+      "count": 1
+    },
+    {
+      "name": "ObserverManager.ObserverHandler",
+      "count": 1
+    },
+    {
+      "name": "OnCSSStyleSheetAdded",
+      "count": 1
+    },
+    {
+      "name": "OnDocumentUpdated",
+      "count": 1
+    },
+    {
+      "name": "OnElementManagerWillDestroy",
+      "count": 1
+    },
+    {
+      "name": "OnLayoutAfter.EnqueueOperation.AppendOptionsForTiming",
+      "count": 1
+    },
+    {
+      "name": "OnPageConfigDecoded",
+      "count": 1
+    },
+    {
+      "name": "PaintingContext.AppendOptionsForTiming",
+      "count": 1
+    },
+    {
+      "name": "PerformanceMediator::OnPerformanceEvent",
+      "count": 1
+    },
+    {
+      "name": "PerformanceMediator::OnPerformanceEventBTSEngine",
+      "count": 1
+    },
+    {
+      "name": "ProfileCompilationInfo::ProfileLoadStatus art::ProfileCompilationInfo::LoadInternal(int32_t, std::string *, bool, const art::ProfileCompilationInfo::ProfileLoadFilterFn &)",
+      "count": 1
+    },
+    {
+      "name": "QuickContext::ApplyConfig",
+      "count": 1
+    },
+    {
+      "name": "Releasing app image spaces metadata",
+      "count": 1
+    },
+    {
+      "name": "ResourcesImpl#updateConfiguration",
+      "count": 1
+    },
+    {
+      "name": "ResourcesManager#createBaseActivityResources",
+      "count": 1
+    },
+    {
+      "name": "ResourcesManager#updateResourcesForActivity",
+      "count": 1
+    },
+    {
+      "name": "RunningInJS",
+      "count": 1
+    },
+    {
+      "name": "RuntimeManager::CreateJSRuntime",
+      "count": 1
+    },
+    {
+      "name": "RuntimeManager::CreateRuntime",
+      "count": 1
+    },
+    {
+      "name": "RuntimeManager::CreateSingleContextRuntime",
+      "count": 1
+    },
+    {
+      "name": "RuntimeManager::JSContextWrapperInitGlobal",
+      "count": 1
+    },
+    {
+      "name": "RuntimeManager::JSContextWrapperPrepareJSEnv",
+      "count": 1
+    },
+    {
+      "name": "RuntimeManager::MakeRuntime",
+      "count": 1
+    },
+    {
+      "name": "SetFunctionFileName",
+      "count": 1
+    },
+    {
+      "name": "StartLoad",
+      "count": 1
+    },
+    {
+      "name": "TasmPlatformInvokerAndroid::ConvertToJavaOnlyMap",
+      "count": 1
+    },
+    {
+      "name": "TemplateAssembler::OnJSPrepared",
+      "count": 1
+    },
+    {
+      "name": "TemplateAssembler::Scope::Scope",
+      "count": 1
+    },
+    {
+      "name": "TemplateAssembler::TemplateAssembler",
+      "count": 1
+    },
+    {
+      "name": "TemplateEntry::InitWithPageConfigger",
+      "count": 1
+    },
+    {
+      "name": "TemplateEntry::RegisterBuiltin",
+      "count": 1
+    },
+    {
+      "name": "TemplateEntry::SetInitData",
+      "count": 1
+    },
+    {
+      "name": "TemplateEntry::SetTemplateAssembler",
+      "count": 1
+    },
+    {
+      "name": "TemplateEntry::TemplateEntry",
+      "count": 1
+    },
+    {
+      "name": "TemplateRender.createLynxEngine",
+      "count": 1
+    },
+    {
+      "name": "TemplateRender.init",
+      "count": 1
+    },
+    {
+      "name": "TemplateRender.initPiper",
+      "count": 1
+    },
+    {
+      "name": "TemplateRender.initWithContext",
+      "count": 1
+    },
+    {
+      "name": "TemplateRender.setGlobalProps",
+      "count": 1
+    },
+    {
+      "name": "TimeToInteractive",
+      "count": 1
+    },
+    {
+      "name": "Timing::Mark.create_vdom_end",
+      "count": 1
+    },
+    {
+      "name": "Timing::Mark.create_vdom_start",
+      "count": 1
+    },
+    {
+      "name": "Timing::Mark.ffiEnd",
+      "count": 1
+    },
+    {
+      "name": "Timing::Mark.layoutEnd",
+      "count": 1
+    },
+    {
+      "name": "Timing::Mark.layoutStart",
+      "count": 1
+    },
+    {
+      "name": "Timing::Mark.layoutUiOperationExecuteEnd",
+      "count": 1
+    },
+    {
+      "name": "Timing::Mark.layoutUiOperationExecuteStart",
+      "count": 1
+    },
+    {
+      "name": "Timing::Mark.loadBackgroundEnd",
+      "count": 1
+    },
+    {
+      "name": "Timing::Mark.loadBackgroundStart",
+      "count": 1
+    },
+    {
+      "name": "Timing::Mark.loadBundleEnd",
+      "count": 1
+    },
+    {
+      "name": "Timing::Mark.loadBundleStart",
+      "count": 1
+    },
+    {
+      "name": "Timing::Mark.loadCoreEnd",
+      "count": 1
+    },
+    {
+      "name": "Timing::Mark.loadCoreStart",
+      "count": 1
+    },
+    {
+      "name": "Timing::Mark.mtsRenderEnd",
+      "count": 1
+    },
+    {
+      "name": "Timing::Mark.mtsRenderStart",
+      "count": 1
+    },
+    {
+      "name": "Timing::Mark.paintEnd",
+      "count": 1
+    },
+    {
+      "name": "Timing::Mark.paintingUiOperationExecuteEnd",
+      "count": 1
+    },
+    {
+      "name": "Timing::Mark.parseEnd",
+      "count": 1
+    },
+    {
+      "name": "Timing::Mark.parseStart",
+      "count": 1
+    },
+    {
+      "name": "Timing::Mark.prepareTemplateEnd",
+      "count": 1
+    },
+    {
+      "name": "Timing::MarkFrameWorkTiming.dataProcessorEnd",
+      "count": 1
+    },
+    {
+      "name": "Timing::MarkFrameWorkTiming.dataProcessorStart",
+      "count": 1
+    },
+    {
+      "name": "Timing::MarkFrameWorkTiming.setInitDataEnd",
+      "count": 1
+    },
+    {
+      "name": "Timing::MarkFrameWorkTiming.setInitDataStart",
+      "count": 1
+    },
+    {
+      "name": "Timing::MarkFrameWorkTiming.vmExecuteEnd",
+      "count": 1
+    },
+    {
+      "name": "Timing::MarkFrameWorkTiming.vmExecuteStart",
+      "count": 1
+    },
+    {
+      "name": "Timing::MarkHostPlatformTiming.drawEnd",
+      "count": 1
+    },
+    {
+      "name": "Timing::MarkHostPlatformTiming.drawStart",
+      "count": 1
+    },
+    {
+      "name": "Timing::MarkHostPlatformTiming.layoutEnd",
+      "count": 1
+    },
+    {
+      "name": "Timing::MarkHostPlatformTiming.layoutStart",
+      "count": 1
+    },
+    {
+      "name": "Timing::MarkHostPlatformTiming.measureEnd",
+      "count": 1
+    },
+    {
+      "name": "Timing::MarkHostPlatformTiming.measureStart",
+      "count": 1
+    },
+    {
+      "name": "TimingMediator::ReportSetupEvent",
+      "count": 1
+    },
+    {
+      "name": "TimingMediator::TriggerSetupClientCallback",
+      "count": 1
+    },
+    {
+      "name": "TimingMediator::TriggerSetupRuntimeCallback",
+      "count": 1
+    },
+    {
+      "name": "TouchEventHandler::HandleCustomEvent",
+      "count": 1
+    },
+    {
+      "name": "UIOperationQueue::SetNeedMarkPaintEndTiming",
+      "count": 1
+    },
+    {
+      "name": "UIOwner.createView.page",
+      "count": 1
+    },
+    {
+      "name": "UIOwner.destroy",
+      "count": 1
+    },
+    {
+      "name": "UIOwner.updateLayout.page",
+      "count": 1
+    },
+    {
+      "name": "Update VectorDrawables",
+      "count": 1
+    },
+    {
+      "name": "UpdateScreenSize",
+      "count": 1
+    },
+    {
+      "name": "VMExecute",
+      "count": 1
+    },
+    {
+      "name": "VectorDrawable repaint 74x74",
+      "count": 1
+    },
+    {
+      "name": "VectorDrawable#inflate",
+      "count": 1
+    },
+    {
+      "name": "ViewStub",
+      "count": 1
+    },
+    {
+      "name": "activityDestroy",
+      "count": 1
+    },
+    {
+      "name": "activityPause",
+      "count": 1
+    },
+    {
+      "name": "activityResume",
+      "count": 1
+    },
+    {
+      "name": "activityShowWindow",
+      "count": 1
+    },
+    {
+      "name": "activityStart",
+      "count": 1
+    },
+    {
+      "name": "androidx.appcompat.widget.ContentFrameLayout",
+      "count": 1
+    },
+    {
+      "name": "androidx.appcompat.widget.FitWindowsLinearLayout",
+      "count": 1
+    },
+    {
+      "name": "androidx.appcompat.widget.Toolbar",
+      "count": 1
+    },
+    {
+      "name": "androidx.appcompat.widget.ViewStubCompat",
+      "count": 1
+    },
+    {
+      "name": "animation",
+      "count": 1
+    },
+    {
+      "name": "bool art::ProfileCompilationInfo::Load(const std::string &, bool)",
+      "count": 1
+    },
+    {
+      "name": "bool art::ProfileCompilationInfo::Save(const std::string &, uint64_t *)",
+      "count": 1
+    },
+    {
+      "name": "bool art::ProfileCompilationInfo::Save(int)",
+      "count": 1
+    },
+    {
+      "name": "bool art::ProfileSaver::ProcessProfilingInfo(bool, uint16_t *)",
+      "count": 1
+    },
+    {
+      "name": "connect",
+      "count": 1
+    },
+    {
+      "name": "disconnect",
+      "count": 1
+    },
+    {
+      "name": "dispatchApplyInsets",
+      "count": 1
+    },
+    {
+      "name": "dispatchContentCapture() for ViewRootImpl",
+      "count": 1
+    },
+    {
+      "name": "eglGetDisplay",
+      "count": 1
+    },
+    {
+      "name": "flushContentCapture for ViewRootImpl",
+      "count": 1
+    },
+    {
+      "name": "frameComplete 1",
+      "count": 1
+    },
+    {
+      "name": "generatePipelineOptions",
+      "count": 1
+    },
+    {
+      "name": "getPlatformDisplay",
+      "count": 1
+    },
+    {
+      "name": "hintActivityLaunch",
+      "count": 1
+    },
+    {
+      "name": "lynxview onAttachedToWindow com.lynx.tasm.LynxTemplateRender@177472c",
+      "count": 1
+    },
+    {
+      "name": "lynxview onDetachedFromWindow com.lynx.tasm.LynxTemplateRender@e425242",
+      "count": 1
+    },
+    {
+      "name": "monitor contention with owner Okio Watchdog (1686) at void java.lang.Object.wait(long, int)(Object.java:-2) waiters=0 blocking from void fc.b.i()(:4)",
+      "count": 1
+    },
+    {
+      "name": "notifyContentCapture(PAUSE) for {com.lynx.explorer/com.lynx.explorer.LynxViewShellActivity}",
+      "count": 1
+    },
+    {
+      "name": "notifyContentCapture(RESUME) for {com.lynx.explorer/com.lynx.explorer.LynxViewShellActivity}",
+      "count": 1
+    },
+    {
+      "name": "notifyContentCapture(START) for {com.lynx.explorer/com.lynx.explorer.LynxViewShellActivity}",
+      "count": 1
+    },
+    {
+      "name": "notifyContentCapture(STOP) for {com.lynx.explorer/com.lynx.explorer.LynxViewShellActivity}",
+      "count": 1
+    },
+    {
+      "name": "notifyContentCapture(false) for ContentFrameLayout",
+      "count": 1
+    },
+    {
+      "name": "notifyContentCapture(false) for DecorView",
+      "count": 1
+    },
+    {
+      "name": "notifyContentCapture(false) for FitWindowsLinearLayout",
+      "count": 1
+    },
+    {
+      "name": "notifyContentCapture(false) for LynxView",
+      "count": 1
+    },
+    {
+      "name": "notifyContentCapture(false) for ViewStub",
+      "count": 1
+    },
+    {
+      "name": "notifyContentCapture(false) for ViewStubCompat",
+      "count": 1
+    },
+    {
+      "name": "notifyContentCapture(false) for d",
+      "count": 1
+    },
+    {
+      "name": "open",
+      "count": 1
+    },
+    {
+      "name": "purgePendingResources",
+      "count": 1
+    },
+    {
+      "name": "res/color/highlighted_text_material.xml",
+      "count": 1
+    },
+    {
+      "name": "res/color/hint_foreground_material_light.xml",
+      "count": 1
+    },
+    {
+      "name": "res/color/text_color_primary.xml",
+      "count": 1
+    },
+    {
+      "name": "res/drawable/back_light.xml",
+      "count": 1
+    },
+    {
+      "name": "setSwapInterval",
+      "count": 1
+    }
+  ]
+}

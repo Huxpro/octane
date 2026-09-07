@@ -1,0 +1,88 @@
+{
+  "protocol": "octane-issue278-native-trace-v1",
+  "capturedAt": "2026-09-07T03:59:49.502Z",
+  "provenance": {
+    "octaneSha": "7ae87beebb4b5c240b01659d35d9636f8036d24b",
+    "driverSha": "4c69193c7ff63db5a2f4c1ec31138b3c4b4ea1d9",
+    "deviceCohortId": "8537de9593a9a77f",
+    "runtimeLabel": "sandbox-explorer-default-recycle1",
+    "bundle": {
+      "path": "benchmarks/lynx-table/app/dist-mtsprogram-issue278-checked-control/main.lynx.bundle",
+      "bytes": 580567,
+      "sha256": "8bf4701ffc8837ad70c20b8551a78f7db43f514157d2107109c4a40c13601dce"
+    },
+    "leaseReceipt": {
+      "protocol": "lynx-sandbox-lease-receipt-v1",
+      "issueId": "Huxpro/octane#278",
+      "expiredAt": 1788754634475,
+      "serialSha256": "7bf152688f01206c5223597c0fdd17c991987b1f2a5d94ab22b277d955985904",
+      "deviceLeaseId": "cf5e19fb52a3"
+    }
+  },
+  "capture": {
+    "agentLynxVersion": "0.14.11",
+    "categories": "*",
+    "systrace": true,
+    "forceGc": false,
+    "started": true,
+    "dataLossOccurred": false,
+    "debugModeRestored": true
+  },
+  "operation": {
+    "rows": 1000,
+    "boundary": "programmatic-bts-state-update-to-commit-complete",
+    "startedAtMs": 1788753579319,
+    "commitAckMs": 1788753589502,
+    "wallMs": 10183,
+    "preRowCount": 0,
+    "postRowCount": 1000,
+    "mainLabelNodeCountObserved": false,
+    "wireBytes": 33670,
+    "codecFlag": 0
+  },
+  "trace": {
+    "path": "benchmarks/lynx-table/stages/results/issue278-native-shipping-control-1k-aries10-20260907.pftrace",
+    "bytes": 3591669,
+    "sha256": "3f978e8368b0f38d8d3b28bbecb0d71fa5e826fd5064c79840bf5a9adcc8a3d7"
+  },
+  "queries": {
+    "events": {
+      "path": "benchmarks/lynx-table/stages/results/issue278-native-shipping-control-1k-events-aries10-20260907.json",
+      "sha256": "6d378af18cd3d1316e1c224b3546343bac18f296431a6824aaaa2fba5b9d095e"
+    },
+    "marks": {
+      "path": "benchmarks/lynx-table/stages/results/issue278-native-shipping-control-1k-marks-aries10-20260907.json",
+      "sha256": "694e1875a2da6b3cb3e3b81f303c7edc70d5710a542d253278ba1693519bda2c"
+    },
+    "longestSlices": {
+      "path": "benchmarks/lynx-table/stages/results/issue278-native-shipping-control-1k-longest-slices-aries10-20260907.json",
+      "sha256": "ce5fafea0bc6108d766a10c88fafe6a63716329d2c923168c395f962ee22fc13"
+    },
+    "selfTime": {
+      "path": "benchmarks/lynx-table/stages/results/issue278-native-shipping-control-1k-self-time-aries10-20260907.json",
+      "sha256": "5a1ba62a94913479e6094fac43e8972c7290edb9ab777d6802e72d9fed0e1541"
+    }
+  },
+  "verdict": {
+    "owner": "main-thread Lepus event application",
+    "createWindowMs": 10183.187341,
+    "eventListenerSlice": {
+      "name": "LepusClosureEventListener::Invoke",
+      "sliceId": 7110,
+      "durationMs": 9888.838,
+      "selfTimeMs": 8448.904
+    },
+    "fiberFlushSlice": {
+      "name": "FiberFlushElementTree",
+      "sliceId": 111655,
+      "durationMs": 870.21
+    },
+    "layoutSlice": {
+      "name": "TemplateAssembler::RequestLayout",
+      "sliceId": 250824,
+      "durationMs": 272.37
+    },
+    "backgroundLongestSliceMs": 256.451,
+    "transportOrCodecOwner": false
+  }
+}

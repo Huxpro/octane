@@ -1,0 +1,720 @@
+{
+  "success": true,
+  "parseSucceeded": true,
+  "trace": {
+    "path": "/data00/home/xuan.huang/.codex/worktrees/68ea/octane/benchmarks/lynx-table/stages/results/issue278-native-shipping-control-1k-aries10-20260907.pftrace",
+    "bytes": 3591669,
+    "sha256": "3f978e8368b0f38d8d3b28bbecb0d71fa5e826fd5064c79840bf5a9adcc8a3d7"
+  },
+  "query": {
+    "source": "inline",
+    "text": "WITH b AS (SELECT MIN(CASE WHEN name='Issue278::create-start' THEN ts END) start_ts,MAX(CASE WHEN name='Issue278::commit-ack' THEN ts END) end_ts FROM slice), child AS (SELECT parent_id,SUM(dur) child_dur FROM slice WHERE parent_id IS NOT NULL GROUP BY parent_id), x AS (SELECT s.name,s.track_id,s.dur-COALESCE(child.child_dur,0) self_dur FROM slice s LEFT JOIN child ON child.parent_id=s.id,b WHERE s.ts>=b.start_ts AND s.ts<=b.end_ts AND s.dur>0) SELECT x.name,th.name thread_name,COUNT(*) count,ROUND(SUM(x.self_dur)/1000000.0,3) self_ms,ROUND(SUM(x.self_dur)/COUNT(*)/1000000.0,6) avg_self_ms FROM x JOIN track t ON x.track_id=t.id LEFT JOIN thread_track tt ON t.id=tt.id LEFT JOIN thread th ON tt.utid=th.utid GROUP BY x.name,th.name ORDER BY SUM(x.self_dur) DESC LIMIT 100",
+    "sha256": "a283b642789272c4d6d1a151a2208c95669128ec340dc822d3534540602d3945"
+  },
+  "columns": ["name", "thread_name", "count", "self_ms", "avg_self_ms"],
+  "totalRows": 100,
+  "returnedRows": 100,
+  "truncated": false,
+  "rows": [
+    {
+      "name": "LepusClosureEventListener::Invoke",
+      "thread_name": "m.lynx.explorer",
+      "count": "1",
+      "self_ms": 8448.904,
+      "avg_self_ms": 8448.904298
+    },
+    {
+      "name": "MessageLoop::FlushTasks",
+      "thread_name": "devtool",
+      "count": "12146",
+      "self_ms": 583.635,
+      "avg_self_ms": 0.048051
+    },
+    {
+      "name": "JsTaskAdapter::SetTimeout",
+      "thread_name": "Lynx_JS",
+      "count": "5",
+      "self_ms": 264.847,
+      "avg_self_ms": 52.969454
+    },
+    {
+      "name": "OnElementNodeAdded",
+      "thread_name": "m.lynx.explorer",
+      "count": "6000",
+      "self_ms": 195.319,
+      "avg_self_ms": 0.032553
+    },
+    {
+      "name": "Compiling",
+      "thread_name": "Jit thread pool",
+      "count": "219",
+      "self_ms": 163.117,
+      "avg_self_ms": 0.744825
+    },
+    {
+      "name": "OnElementDataModelSet",
+      "thread_name": "m.lynx.explorer",
+      "count": "7000",
+      "self_ms": 161.678,
+      "avg_self_ms": 0.023096
+    },
+    {
+      "name": "FiberElement::HandleContainerInsertion",
+      "thread_name": "m.lynx.explorer",
+      "count": "6000",
+      "self_ms": 149.27,
+      "avg_self_ms": 0.024878
+    },
+    {
+      "name": "TextShadowNode.measure",
+      "thread_name": "m.lynx.explorer",
+      "count": "3000",
+      "self_ms": 99.499,
+      "avg_self_ms": 0.033166
+    },
+    {
+      "name": "LayoutContext.CreateLayoutNode",
+      "thread_name": "m.lynx.explorer",
+      "count": "5000",
+      "self_ms": 53.603,
+      "avg_self_ms": 0.01072
+    },
+    {
+      "name": "FiberElement::PrepareForCreateOrUpdate",
+      "thread_name": "m.lynx.explorer",
+      "count": "4000",
+      "self_ms": 52.681,
+      "avg_self_ms": 0.01317
+    },
+    {
+      "name": "ProcessMarkStack",
+      "thread_name": "HeapTaskDaemon",
+      "count": "12",
+      "self_ms": 43.173,
+      "avg_self_ms": 3.597723
+    },
+    {
+      "name": "UpdateMeasure",
+      "thread_name": "m.lynx.explorer",
+      "count": "1",
+      "self_ms": 32.655,
+      "avg_self_ms": 32.655191
+    },
+    {
+      "name": "FiberElement::ConsumeStyle",
+      "thread_name": "m.lynx.explorer",
+      "count": "8000",
+      "self_ms": 30.372,
+      "avg_self_ms": 0.003796
+    },
+    {
+      "name": "JSClosureEventListener::Invoke",
+      "thread_name": "Lynx_JS",
+      "count": "4",
+      "self_ms": 26.312,
+      "avg_self_ms": 6.577915
+    },
+    {
+      "name": "UIOwner.createViewAsync.text",
+      "thread_name": "LynxHighTask1",
+      "count": "1115",
+      "self_ms": 25.956,
+      "avg_self_ms": 0.023278
+    },
+    {
+      "name": "Devtool::PrepareNodeForInspector",
+      "thread_name": "m.lynx.explorer",
+      "count": "6000",
+      "self_ms": 25.383,
+      "avg_self_ms": 0.00423
+    },
+    {
+      "name": "FiberElement::PrepareChildren",
+      "thread_name": "m.lynx.explorer",
+      "count": "4001",
+      "self_ms": 25.016,
+      "avg_self_ms": 0.006252
+    },
+    {
+      "name": "FiberElement::HandleInsertChildAction",
+      "thread_name": "m.lynx.explorer",
+      "count": "6000",
+      "self_ms": 24.033,
+      "avg_self_ms": 0.004005
+    },
+    {
+      "name": "FiberElement::FlushActions",
+      "thread_name": "m.lynx.explorer",
+      "count": "6005",
+      "self_ms": 23.281,
+      "avg_self_ms": 0.003876
+    },
+    {
+      "name": "FiberElement::HandleAttr",
+      "thread_name": "m.lynx.explorer",
+      "count": "3000",
+      "self_ms": 23.234,
+      "avg_self_ms": 0.007744
+    },
+    {
+      "name": "FiberCreateText",
+      "thread_name": "m.lynx.explorer",
+      "count": "3000",
+      "self_ms": 20.885,
+      "avg_self_ms": 0.006961
+    },
+    {
+      "name": "UIOwner.AfterCreateViewAsync.text",
+      "thread_name": "m.lynx.explorer",
+      "count": "3000",
+      "self_ms": 20.359,
+      "avg_self_ms": 0.006786
+    },
+    {
+      "name": "MarkingPhase",
+      "thread_name": "HeapTaskDaemon",
+      "count": "2",
+      "self_ms": 19.121,
+      "avg_self_ms": 9.560648
+    },
+    {
+      "name": "FiberCreateRawText",
+      "thread_name": "m.lynx.explorer",
+      "count": "2000",
+      "self_ms": 18.796,
+      "avg_self_ms": 0.009398
+    },
+    {
+      "name": "ScanCardsForSpace",
+      "thread_name": "HeapTaskDaemon",
+      "count": "12",
+      "self_ms": 18.372,
+      "avg_self_ms": 1.530997
+    },
+    {
+      "name": "LynxView.onDraw",
+      "thread_name": "m.lynx.explorer",
+      "count": "1",
+      "self_ms": 18.115,
+      "avg_self_ms": 18.114829
+    },
+    {
+      "name": "UIOperationQueue::createNode.enqueueCreateView",
+      "thread_name": "m.lynx.explorer",
+      "count": "3000",
+      "self_ms": 18.033,
+      "avg_self_ms": 0.00601
+    },
+    {
+      "name": "FiberSetClasses",
+      "thread_name": "m.lynx.explorer",
+      "count": "4000",
+      "self_ms": 17.881,
+      "avg_self_ms": 0.00447
+    },
+    {
+      "name": "FiberAppendElement",
+      "thread_name": "m.lynx.explorer",
+      "count": "6000",
+      "self_ms": 17.573,
+      "avg_self_ms": 0.002928
+    },
+    {
+      "name": "Devtool::ON_NODE_ADDED",
+      "thread_name": "m.lynx.explorer",
+      "count": "6000",
+      "self_ms": 17.546,
+      "avg_self_ms": 0.002924
+    },
+    {
+      "name": "Element::SetStyleInternal",
+      "thread_name": "m.lynx.explorer",
+      "count": "12000",
+      "self_ms": 17.249,
+      "avg_self_ms": 0.001437
+    },
+    {
+      "name": "Devtool::ON_NODE_MODIFIED",
+      "thread_name": "m.lynx.explorer",
+      "count": "7000",
+      "self_ms": 17.239,
+      "avg_self_ms": 0.002462
+    },
+    {
+      "name": "Catalyzer::FlushProps::NoPaintingNode",
+      "thread_name": "m.lynx.explorer",
+      "count": "6000",
+      "self_ms": 16.753,
+      "avg_self_ms": 0.002792
+    },
+    {
+      "name": "FiberElement::HandleEvents",
+      "thread_name": "m.lynx.explorer",
+      "count": "2000",
+      "self_ms": 16.448,
+      "avg_self_ms": 0.008224
+    },
+    {
+      "name": "FiberElement::InsertNode",
+      "thread_name": "m.lynx.explorer",
+      "count": "6000",
+      "self_ms": 15.616,
+      "avg_self_ms": 0.002602
+    },
+    {
+      "name": "FiberElement::HandleCreate",
+      "thread_name": "m.lynx.explorer",
+      "count": "6000",
+      "self_ms": 15.2,
+      "avg_self_ms": 0.002533
+    },
+    {
+      "name": "LynxUIOperationQueue::ExecuteOperation",
+      "thread_name": "m.lynx.explorer",
+      "count": "9008",
+      "self_ms": 15.001,
+      "avg_self_ms": 0.001665
+    },
+    {
+      "name": "FiberAddEvent",
+      "thread_name": "m.lynx.explorer",
+      "count": "2000",
+      "self_ms": 14.437,
+      "avg_self_ms": 0.007218
+    },
+    {
+      "name": "ScanImmuneSpaces",
+      "thread_name": "HeapTaskDaemon",
+      "count": "14",
+      "self_ms": 14.426,
+      "avg_self_ms": 1.030427
+    },
+    {
+      "name": "FiberElement::PrepareAndGenerateChildrenActions",
+      "thread_name": "m.lynx.explorer",
+      "count": "6003",
+      "self_ms": 13.893,
+      "avg_self_ms": 0.002314
+    },
+    {
+      "name": "FiberElement::FlushProps",
+      "thread_name": "m.lynx.explorer",
+      "count": "6000",
+      "self_ms": 13.546,
+      "avg_self_ms": 0.002257
+    },
+    {
+      "name": "UIOperationQueue::CreatePaintingNodeTask",
+      "thread_name": "m.lynx.explorer",
+      "count": "3000",
+      "self_ms": 12.888,
+      "avg_self_ms": 0.004295
+    },
+    {
+      "name": "UIOperationQueue::UpdatePlatformExtraBundleTask",
+      "thread_name": "m.lynx.explorer",
+      "count": "3000",
+      "self_ms": 12.367,
+      "avg_self_ms": 0.004122
+    },
+    {
+      "name": "FiberElement::DoFullStyleResolve",
+      "thread_name": "m.lynx.explorer",
+      "count": "4000",
+      "self_ms": 12.187,
+      "avg_self_ms": 0.003046
+    },
+    {
+      "name": "FiberElement::ResolveParentComponentElement",
+      "thread_name": "m.lynx.explorer",
+      "count": "16000",
+      "self_ms": 12.093,
+      "avg_self_ms": 0.000755
+    },
+    {
+      "name": "UIOwner.createViewAsync.text",
+      "thread_name": "LynxHighTask3",
+      "count": "512",
+      "self_ms": 12.089,
+      "avg_self_ms": 0.02361
+    },
+    {
+      "name": "Generate JIT debug info",
+      "thread_name": "Jit thread pool",
+      "count": "218",
+      "self_ms": 11.903,
+      "avg_self_ms": 0.054599
+    },
+    {
+      "name": "DispatchLayoutBeforeRecursively",
+      "thread_name": "m.lynx.explorer",
+      "count": "1",
+      "self_ms": 11.719,
+      "avg_self_ms": 11.718655
+    },
+    {
+      "name": "Devtool::ON_NODE_CREATE",
+      "thread_name": "m.lynx.explorer",
+      "count": "6000",
+      "self_ms": 10.999,
+      "avg_self_ms": 0.001833
+    },
+    {
+      "name": "FiberElement::HandleChildrenAction",
+      "thread_name": "m.lynx.explorer",
+      "count": "3001",
+      "self_ms": 10.708,
+      "avg_self_ms": 0.003568
+    },
+    {
+      "name": "VisitConcurrentRoots",
+      "thread_name": "HeapTaskDaemon",
+      "count": "14",
+      "self_ms": 10.383,
+      "avg_self_ms": 0.741614
+    },
+    {
+      "name": "FiberElement::FlushSelf",
+      "thread_name": "m.lynx.explorer",
+      "count": "6003",
+      "self_ms": 9.994,
+      "avg_self_ms": 0.001664
+    },
+    {
+      "name": "FiberElement::HandleSetStyle",
+      "thread_name": "m.lynx.explorer",
+      "count": "4000",
+      "self_ms": 9.861,
+      "avg_self_ms": 0.002465
+    },
+    {
+      "name": "UIOperationQueue::InsertPaintingNodeTask",
+      "thread_name": "m.lynx.explorer",
+      "count": "3000",
+      "self_ms": 9.802,
+      "avg_self_ms": 0.003267
+    },
+    {
+      "name": "FiberElement::HandleStyle",
+      "thread_name": "m.lynx.explorer",
+      "count": "4000",
+      "self_ms": 9.731,
+      "avg_self_ms": 0.002432
+    },
+    {
+      "name": "text.FlattenUIText.onDraw",
+      "thread_name": "m.lynx.explorer",
+      "count": "912",
+      "self_ms": 9.58,
+      "avg_self_ms": 0.010503
+    },
+    {
+      "name": "ClearFromSpace",
+      "thread_name": "HeapTaskDaemon",
+      "count": "12",
+      "self_ms": 9.571,
+      "avg_self_ms": 0.797606
+    },
+    {
+      "name": "UIOperationQueue::UpdateLayoutPatchingTask",
+      "thread_name": "m.lynx.explorer",
+      "count": "1",
+      "self_ms": 9.3,
+      "avg_self_ms": 9.299694
+    },
+    {
+      "name": "PaintingContextAndroid::CreatePaintingNode",
+      "thread_name": "m.lynx.explorer",
+      "count": "3000",
+      "self_ms": 9.284,
+      "avg_self_ms": 0.003094
+    },
+    {
+      "name": "CSSPatching::ResolveStyle",
+      "thread_name": "m.lynx.explorer",
+      "count": "4000",
+      "self_ms": 9.243,
+      "avg_self_ms": 0.00231
+    },
+    {
+      "name": "FiberElement::RefreshStyle",
+      "thread_name": "m.lynx.explorer",
+      "count": "4000",
+      "self_ms": 9.173,
+      "avg_self_ms": 0.002293
+    },
+    {
+      "name": "UIOwner.updateLayout.text",
+      "thread_name": "m.lynx.explorer",
+      "count": "3000",
+      "self_ms": 8.869,
+      "avg_self_ms": 0.002956
+    },
+    {
+      "name": "UIOwner.createViewAsync.text",
+      "thread_name": "LynxHighTask2",
+      "count": "405",
+      "self_ms": 8.868,
+      "avg_self_ms": 0.021896
+    },
+    {
+      "name": "UIOwner.createViewAsync.text",
+      "thread_name": "LynxHighTask4",
+      "count": "321",
+      "self_ms": 7.888,
+      "avg_self_ms": 0.024572
+    },
+    {
+      "name": "virtual void art::MemMapArenaPool::TrimMaps()",
+      "thread_name": "Jit thread pool",
+      "count": "219",
+      "self_ms": 7.568,
+      "avg_self_ms": 0.034556
+    },
+    {
+      "name": "Devtool::CheckAndProcessSlotForInspector",
+      "thread_name": "m.lynx.explorer",
+      "count": "6000",
+      "self_ms": 7.545,
+      "avg_self_ms": 0.001257
+    },
+    {
+      "name": "FiberCreateView",
+      "thread_name": "m.lynx.explorer",
+      "count": "1000",
+      "self_ms": 7.366,
+      "avg_self_ms": 0.007366
+    },
+    {
+      "name": "LynxUIOperationQueue.Flush",
+      "thread_name": "m.lynx.explorer",
+      "count": "5",
+      "self_ms": 7.101,
+      "avg_self_ms": 1.420189
+    },
+    {
+      "name": "UIOwner.createViewAsync.text",
+      "thread_name": "LynxHighTask5",
+      "count": "298",
+      "self_ms": 7.07,
+      "avg_self_ms": 0.023726
+    },
+    {
+      "name": "LayoutRecursively",
+      "thread_name": "m.lynx.explorer",
+      "count": "1",
+      "self_ms": 6.886,
+      "avg_self_ms": 6.886145
+    },
+    {
+      "name": "LayoutMediator.HandlePendingLayoutTask",
+      "thread_name": "m.lynx.explorer",
+      "count": "2",
+      "self_ms": 6.137,
+      "avg_self_ms": 3.068574
+    },
+    {
+      "name": "InsertPaintingNode",
+      "thread_name": "m.lynx.explorer",
+      "count": "3000",
+      "self_ms": 5.654,
+      "avg_self_ms": 0.001884
+    },
+    {
+      "name": "UIOwner.updateViewExtraData.text",
+      "thread_name": "m.lynx.explorer",
+      "count": "3000",
+      "self_ms": 5.638,
+      "avg_self_ms": 0.001879
+    },
+    {
+      "name": "CreatePaintingNode",
+      "thread_name": "m.lynx.explorer",
+      "count": "3000",
+      "self_ms": 5.296,
+      "avg_self_ms": 0.001765
+    },
+    {
+      "name": "ScopedCodeCacheWrite",
+      "thread_name": "Jit thread pool",
+      "count": "233",
+      "self_ms": 5.251,
+      "avg_self_ms": 0.022536
+    },
+    {
+      "name": "LynxFlattenUI.draw.",
+      "thread_name": "m.lynx.explorer",
+      "count": "915",
+      "self_ms": 4.968,
+      "avg_self_ms": 0.005428
+    },
+    {
+      "name": "UpdateAlignment",
+      "thread_name": "m.lynx.explorer",
+      "count": "1",
+      "self_ms": 4.817,
+      "avg_self_ms": 4.817206
+    },
+    {
+      "name": "FiberElement::HandleFontSizeChange",
+      "thread_name": "m.lynx.explorer",
+      "count": "3000",
+      "self_ms": 4.748,
+      "avg_self_ms": 0.001582
+    },
+    {
+      "name": "FiberElement::SetAttribute",
+      "thread_name": "m.lynx.explorer",
+      "count": "3000",
+      "self_ms": 4.743,
+      "avg_self_ms": 0.001581
+    },
+    {
+      "name": "FiberSetAttribute",
+      "thread_name": "m.lynx.explorer",
+      "count": "1000",
+      "self_ms": 3.832,
+      "avg_self_ms": 0.003832
+    },
+    {
+      "name": "FiberElement::SetClass",
+      "thread_name": "m.lynx.explorer",
+      "count": "4000",
+      "self_ms": 3.703,
+      "avg_self_ms": 0.000925
+    },
+    {
+      "name": "Element::UpdateLayout",
+      "thread_name": "m.lynx.explorer",
+      "count": "4002",
+      "self_ms": 3.542,
+      "avg_self_ms": 0.000884
+    },
+    {
+      "name": "UIOperationQueue::UpdateNodeReadyPatchingTask",
+      "thread_name": "m.lynx.explorer",
+      "count": "2",
+      "self_ms": 3.082,
+      "avg_self_ms": 1.540845
+    },
+    {
+      "name": "UIOwner.createViewAsync.text",
+      "thread_name": "LynxHighTask6",
+      "count": "140",
+      "self_ms": 2.895,
+      "avg_self_ms": 0.020681
+    },
+    {
+      "name": "FiberElement::SetJSEventHandler",
+      "thread_name": "m.lynx.explorer",
+      "count": "2000",
+      "self_ms": 2.861,
+      "avg_self_ms": 0.00143
+    },
+    {
+      "name": "LynxView.onLayout",
+      "thread_name": "m.lynx.explorer",
+      "count": "1",
+      "self_ms": 2.778,
+      "avg_self_ms": 2.778068
+    },
+    {
+      "name": "Element::WillConsumeAttribute",
+      "thread_name": "m.lynx.explorer",
+      "count": "3000",
+      "self_ms": 2.769,
+      "avg_self_ms": 0.000922
+    },
+    {
+      "name": "draw",
+      "thread_name": "m.lynx.explorer",
+      "count": "1",
+      "self_ms": 2.692,
+      "avg_self_ms": 2.692061
+    },
+    {
+      "name": "UIOwner.createViewAsync.text",
+      "thread_name": "LynxHighTask7",
+      "count": "125",
+      "self_ms": 2.639,
+      "avg_self_ms": 0.021112
+    },
+    {
+      "name": "ProcessReferences",
+      "thread_name": "HeapTaskDaemon",
+      "count": "24",
+      "self_ms": 2.27,
+      "avg_self_ms": 0.094567
+    },
+    {
+      "name": "FlipOtherThreads",
+      "thread_name": "HeapTaskDaemon",
+      "count": "12",
+      "self_ms": 1.962,
+      "avg_self_ms": 0.163539
+    },
+    {
+      "name": "Background young concurrent copying GC",
+      "thread_name": "HeapTaskDaemon",
+      "count": "10",
+      "self_ms": 1.715,
+      "avg_self_ms": 0.171493
+    },
+    {
+      "name": "mprotect all",
+      "thread_name": "Jit thread pool",
+      "count": "233",
+      "self_ms": 1.697,
+      "avg_self_ms": 0.007283
+    },
+    {
+      "name": "InitializePhase",
+      "thread_name": "HeapTaskDaemon",
+      "count": "12",
+      "self_ms": 1.661,
+      "avg_self_ms": 0.138387
+    },
+    {
+      "name": "UIOwner.createViewAsync.text",
+      "thread_name": "LynxHighTask8",
+      "count": "84",
+      "self_ms": 1.57,
+      "avg_self_ms": 0.018694
+    },
+    {
+      "name": "GrayAllDirtyImmuneObjects",
+      "thread_name": "HeapTaskDaemon",
+      "count": "12",
+      "self_ms": 1.521,
+      "avg_self_ms": 0.126716
+    },
+    {
+      "name": "SweepSystemWeaks",
+      "thread_name": "HeapTaskDaemon",
+      "count": "12",
+      "self_ms": 1.374,
+      "avg_self_ms": 0.114499
+    },
+    {
+      "name": "LynxView.onMeasure",
+      "thread_name": "m.lynx.explorer",
+      "count": "1",
+      "self_ms": 1.246,
+      "avg_self_ms": 1.246343
+    },
+    {
+      "name": "mprotect code",
+      "thread_name": "Jit thread pool",
+      "count": "233",
+      "self_ms": 1.177,
+      "avg_self_ms": 0.005051
+    },
+    {
+      "name": "ProfileCompilationInfo::ProfileLoadStatus art::ProfileCompilationInfo::LoadInternal(int32_t, std::string *, bool, const art::ProfileCompilationInfo::ProfileLoadFilterFn &)",
+      "thread_name": "Profile Saver",
+      "count": "1",
+      "self_ms": 1.03,
+      "avg_self_ms": 1.030072
+    }
+  ]
+}

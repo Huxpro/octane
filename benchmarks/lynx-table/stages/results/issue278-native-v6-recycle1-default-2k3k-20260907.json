@@ -1,0 +1,5539 @@
+{
+  "protocol": "octane-issue278-native-attribution-v6",
+  "status": "complete",
+  "capturedAt": "2026-09-07T03:26:12.965Z",
+  "provenance": {
+    "octaneSha": "7ae87beebb4b5c240b01659d35d9636f8036d24b",
+    "instrumentationSha": "cdef1fd4f281f170ca3240172edba41eda47f74e1b62f756f739ca9b897a0d04",
+    "appPatchSha256": "f057697138c55584f52f99e09abe0e8af54b687266fa1cfe3ce36c1e04f5fc0c",
+    "driverRoot": "/data00/home/xuan.huang/.codex/worktrees/68ea/lynx-js-framework-benchmark-native-driver",
+    "driverSha": "4c69193c7ff63db5a2f4c1ec31138b3c4b4ea1d9",
+    "runtimeLabel": "sandbox-explorer-default-recycle1",
+    "bundles": {
+      "controlChecked": {
+        "path": "benchmarks/lynx-table/app/dist-mtsprogram-issue278-checked-control/main.lynx.bundle",
+        "bytes": 580567,
+        "sha256": "8bf4701ffc8837ad70c20b8551a78f7db43f514157d2107109c4a40c13601dce"
+      },
+      "timelineChecked": {
+        "path": "benchmarks/lynx-table/app/dist-mtsprogram-issue278-checked-timeline/main.lynx.bundle",
+        "bytes": 584803,
+        "sha256": "bd6dcbebdb9307d3e40a0926255de2f9cf0583bda5fde6061daa6dce7c77b107"
+      },
+      "timedChecked": {
+        "path": "benchmarks/lynx-table/app/dist-mtsprogram-issue278-checked-timed-profile/main.lynx.bundle",
+        "bytes": 595652,
+        "sha256": "e4e766320e912306bf8f2629b6e6921c89e1995bacc2ddbd0047808a882d9fe0"
+      },
+      "timedTrusted": {
+        "path": "benchmarks/lynx-table/app/dist-mtsprogram-issue278-trusted-timed-profile/main.lynx.bundle",
+        "bytes": 595652,
+        "sha256": "37e12f47a781cd016b9b959e0d6b6f24936b929ca0ab28dc97408344c66a9e9a"
+      },
+      "countsChecked": {
+        "path": "benchmarks/lynx-table/app/dist-mtsprogram-issue278-checked-counts-profile/main.lynx.bundle",
+        "bytes": 595712,
+        "sha256": "18b8e50b174ab0fee9e2bdb396d7d5c837b13e0bc0ae5705f15816ba09372f9e"
+      },
+      "scalarCountsChecked": {
+        "path": "benchmarks/lynx-table/app/dist-mtsprogram-issue278-checked-counts-scalar-profile/main.lynx.bundle",
+        "bytes": 597808,
+        "sha256": "0b2829b7cc80f46f01c27130bc3693cb6093c9ebabde4f5f20203337e219c965"
+      }
+    },
+    "connectorPackageTrees": {
+      "protocol": "connector-package-trees-v1",
+      "packages": [
+        {
+          "name": "@byted/agent-lynx",
+          "version": "0.14.11",
+          "available": true,
+          "resolvedPath": "/data00/home/xuan.huang/github/lynx-js-framework-benchmark-issue278-driver/node_modules/.pnpm/@byted+agent-lynx@0.14.11/node_modules/@byted/agent-lynx",
+          "rootSha256": "bad857b039c39c551dfe0188f1ba740a7259d456073033a36fe2e5ccfc30e8dc",
+          "fileCount": 66,
+          "byteCount": 1292521
+        },
+        {
+          "name": "@byted-lynx/devtool-connector",
+          "version": "0.15.4",
+          "available": true,
+          "resolvedPath": "/data00/home/xuan.huang/github/lynx-js-framework-benchmark-issue278-driver/node_modules/.pnpm/@byted-lynx+devtool-connector@0.15.4/node_modules/@byted-lynx/devtool-connector",
+          "rootSha256": "8026a665865c3e3b6619c018c1295bb5485abd94e88fbca99d3e349ff8931d1a",
+          "fileCount": 86,
+          "byteCount": 1594634
+        },
+        {
+          "name": "@byted-lynx/bdc-client",
+          "version": "0.4.5",
+          "available": true,
+          "resolvedPath": "/data00/home/xuan.huang/github/lynx-js-framework-benchmark-issue278-driver/node_modules/.pnpm/@byted-lynx+bdc-client@0.4.5/node_modules/@byted-lynx/bdc-client",
+          "rootSha256": "3979846b8e0438bb823c2639be4d358be29184222a644f1d03466e3807358dca",
+          "fileCount": 15,
+          "byteCount": 616839
+        }
+      ],
+      "sha256": "e824caf637b76a6af7afdcfbcaa2f6c083b0e37c55a84e89f1e78f4f5320c29a"
+    },
+    "leaseReceipt": {
+      "protocol": "lynx-sandbox-lease-receipt-v1",
+      "issueId": "Huxpro/octane#278",
+      "expiredAt": 1788754634475,
+      "serialSha256": "7bf152688f01206c5223597c0fdd17c991987b1f2a5d94ab22b277d955985904",
+      "deviceLeaseId": "cf5e19fb52a3"
+    }
+  },
+  "method": {
+    "instrument": "build-time-restored codec phase counters plus Lynx profileMark; no authored runtime source changes",
+    "createBoundary": "programmatic BTS setRows start to transport commit ACK return",
+    "readinessBoundary": "every real-path page completes seven timed-out runOnMainThread clock echoes before operation profiles are reset and create timing starts; the first echo also proves first-tree calls are open",
+    "clockResolution": "integer Date.now milliseconds, calibrated per page across BTS and MTS with seven round trips; the minimum-RTT sample supplies offset and half-RTT uncertainty",
+    "realPathGate": "range-bearing table must use mount-template-run descriptor fallback",
+    "scalarPathGate": "separate range-free scalar replacement must use mount-program-run",
+    "countArm": "deep prepare/restore/alias visits are mechanism evidence only and never timing evidence",
+    "profileOverhead": "unprofiled app-driver control versus profile-disabled timeline versus full timed profile, alternating order at create@1k",
+    "validationControl": "checked versus trusted, alternating order at 1k/2k/3k/5k",
+    "floors": {
+      "papi": "detached page; setup outside timer; 7 host nodes per row; public Element PAPI loops",
+      "echo": "ContextProxy round trip carrying one string sized to the 1k production commit",
+      "vm": "same fixed integer loop in BTS and MTS plus Node V8 host control"
+    },
+    "repetitions": 5,
+    "roundStart": 0,
+    "scales": [2000, 3000],
+    "sections": ["validation"]
+  },
+  "device": {
+    "id": "lynx-native-android-aries_10-10-devtool-direct-recycle1-cf5e19fb52a3-87e1ec684116",
+    "platform": "android",
+    "osVersion": "10",
+    "cpuModel": "linaro",
+    "cores": 8,
+    "node": null,
+    "deviceModel": "ByteDance aries_10",
+    "app": "LynxExplorer",
+    "appVersion": "1.0",
+    "explorerPackage": {
+      "versionName": "1.0",
+      "versionCode": 1
+    },
+    "debugRouterVersion": "0.0.1",
+    "lynxSdkVersion": "0.0.1",
+    "connectorPackageTrees": {
+      "protocol": "connector-package-trees-v1",
+      "packages": [
+        {
+          "name": "@byted/agent-lynx",
+          "version": "0.14.11",
+          "available": true,
+          "resolvedPath": "/data00/home/xuan.huang/github/lynx-js-framework-benchmark-issue278-driver/node_modules/.pnpm/@byted+agent-lynx@0.14.11/node_modules/@byted/agent-lynx",
+          "rootSha256": "bad857b039c39c551dfe0188f1ba740a7259d456073033a36fe2e5ccfc30e8dc",
+          "fileCount": 66,
+          "byteCount": 1292521
+        },
+        {
+          "name": "@byted-lynx/devtool-connector",
+          "version": "0.15.4",
+          "available": true,
+          "resolvedPath": "/data00/home/xuan.huang/github/lynx-js-framework-benchmark-issue278-driver/node_modules/.pnpm/@byted-lynx+devtool-connector@0.15.4/node_modules/@byted-lynx/devtool-connector",
+          "rootSha256": "8026a665865c3e3b6619c018c1295bb5485abd94e88fbca99d3e349ff8931d1a",
+          "fileCount": 86,
+          "byteCount": 1594634
+        },
+        {
+          "name": "@byted-lynx/bdc-client",
+          "version": "0.4.5",
+          "available": true,
+          "resolvedPath": "/data00/home/xuan.huang/github/lynx-js-framework-benchmark-issue278-driver/node_modules/.pnpm/@byted-lynx+bdc-client@0.4.5/node_modules/@byted-lynx/bdc-client",
+          "rootSha256": "3979846b8e0438bb823c2639be4d358be29184222a644f1d03466e3807358dca",
+          "fileCount": 15,
+          "byteCount": 616839
+        }
+      ],
+      "sha256": "e824caf637b76a6af7afdcfbcaa2f6c083b0e37c55a84e89f1e78f4f5320c29a"
+    },
+    "protocol": "native-sandbox-adapter-v3",
+    "defaultTimeoutMs": 30000,
+    "longWorkloadTimeoutMs": 240000,
+    "renderGraceFrames": 2,
+    "debugRouterSettleMs": 100,
+    "explorerRecycleEveryPages": 1,
+    "explorerLaunchSettleMs": 500,
+    "explorerReconnectTimeoutMs": 90000,
+    "clientDiscoveryPollMs": 250,
+    "sessionDiscoveryPollMs": 50,
+    "octaneReadyPollMs": 16,
+    "startupPollMs": 16,
+    "producerProbePollMs": 250,
+    "tapSettleMs": 10,
+    "maxBatteryTemperatureC": 40,
+    "thermalGateTimeoutMs": 300000,
+    "thermalPollMs": 5000,
+    "thermalGateScope": "before-every-bundle-load",
+    "transientAttempts": 3,
+    "leaseCleanupMarginMs": 30000,
+    "leaseStopSafetyOverrideMs": null,
+    "semanticDnfRetries": 0,
+    "retryScope": "transport-only-within-repetition",
+    "deviceClockCalibrationSamples": 7,
+    "explorerLifecycle": "force-stop-at-start-and-recycle-cadence",
+    "octaneTriggerMode": "tap",
+    "devtoolTransport": "direct",
+    "tableProtocol": "lynx-native-bench-v2",
+    "startupProtocol": "lynx-native-startup-v1",
+    "campaignId": "octane-278-40a11e7e49e2",
+    "matrixContractSha256": "80492eb8864a3c48549b12313af797688b10e52e24f424e694b51ef5ad2bdc40",
+    "inputReceiptSha256": "40a11e7e49e2810c357cd805031ca8d18aed42c86b7f33a29bdba0f79b038401",
+    "connectorPackageTreesSha256": "e824caf637b76a6af7afdcfbcaa2f6c083b0e37c55a84e89f1e78f4f5320c29a",
+    "harnessConfigId": "87e1ec684116",
+    "serialSha256": "7bf152688f01206c5223597c0fdd17c991987b1f2a5d94ab22b277d955985904",
+    "deviceLeaseId": "cf5e19fb52a3",
+    "leaseReceipt": {
+      "protocol": "lynx-sandbox-lease-receipt-v1",
+      "issueId": "Huxpro/octane#278",
+      "expiredAt": 1788754634475,
+      "serialSha256": "7bf152688f01206c5223597c0fdd17c991987b1f2a5d94ab22b277d955985904",
+      "deviceLeaseId": "cf5e19fb52a3"
+    },
+    "deviceCohort": {
+      "protocol": "native-device-cohort-v1",
+      "serialSha256": "7bf152688f01206c5223597c0fdd17c991987b1f2a5d94ab22b277d955985904",
+      "environment": "lynx-native-android-aries_10-10-devtool-direct-recycle1",
+      "hardware": {
+        "platform": "android",
+        "osVersion": "10",
+        "cpuModel": "linaro",
+        "cores": 8,
+        "deviceModel": "ByteDance aries_10",
+        "app": "LynxExplorer",
+        "appVersion": "1.0",
+        "explorerPackage": {
+          "versionName": "1.0",
+          "versionCode": 1
+        },
+        "debugRouterVersion": "0.0.1",
+        "lynxSdkVersion": "0.0.1"
+      },
+      "campaignId": "octane-278-40a11e7e49e2",
+      "matrixContractSha256": "80492eb8864a3c48549b12313af797688b10e52e24f424e694b51ef5ad2bdc40",
+      "inputReceiptSha256": "40a11e7e49e2810c357cd805031ca8d18aed42c86b7f33a29bdba0f79b038401",
+      "connectorPackageTreesSha256": "e824caf637b76a6af7afdcfbcaa2f6c083b0e37c55a84e89f1e78f4f5320c29a",
+      "harnessConfigId": "87e1ec684116",
+      "id": "8537de9593a9a77f",
+      "sha256": "8537de9593a9a77f7d3f048f1727428938cbb2faa5905fbb2e61532b4c4d8104"
+    },
+    "deviceCohortId": "8537de9593a9a77f",
+    "deviceLeaseIdentitySource": "structured-receipt-v1",
+    "deviceClockOffsetMs": 471,
+    "deviceClockCalibrationRttMs": 20,
+    "thermalStart": {
+      "capturedAt": "2026-09-07T03:26:12.897Z",
+      "batteryTemperatureC": 35,
+      "thermalStatus": 0,
+      "temperatures": [
+        {
+          "valueC": 30.8,
+          "type": 3,
+          "name": "test temperature sensor",
+          "status": 0
+        }
+      ]
+    },
+    "servedInputs": [
+      {
+        "entry": "octane-issue278-countsChecked",
+        "rows": 0,
+        "suite": "issue278-correctness-path-flags-gate-1000-0",
+        "sha256": "18b8e50b174ab0fee9e2bdb396d7d5c837b13e0bc0ae5705f15816ba09372f9e",
+        "bytes": 595712,
+        "served": 1
+      },
+      {
+        "entry": "octane-issue278-scalarCountsChecked",
+        "rows": 0,
+        "suite": "issue278-scalar-e1-gate",
+        "sha256": "0b2829b7cc80f46f01c27130bc3693cb6093c9ebabde4f5f20203337e219c965",
+        "bytes": 597808,
+        "served": 1
+      },
+      {
+        "entry": "octane-issue278-timedChecked",
+        "rows": 0,
+        "suite": "issue278-validation-control-2000-0",
+        "sha256": "e4e766320e912306bf8f2629b6e6921c89e1995bacc2ddbd0047808a882d9fe0",
+        "bytes": 595652,
+        "served": 1
+      },
+      {
+        "entry": "octane-issue278-timedTrusted",
+        "rows": 0,
+        "suite": "issue278-validation-control-2000-0",
+        "sha256": "37e12f47a781cd016b9b959e0d6b6f24936b929ca0ab28dc97408344c66a9e9a",
+        "bytes": 595652,
+        "served": 1
+      },
+      {
+        "entry": "octane-issue278-timedTrusted",
+        "rows": 0,
+        "suite": "issue278-validation-control-3000-0",
+        "sha256": "37e12f47a781cd016b9b959e0d6b6f24936b929ca0ab28dc97408344c66a9e9a",
+        "bytes": 595652,
+        "served": 1
+      },
+      {
+        "entry": "octane-issue278-timedChecked",
+        "rows": 0,
+        "suite": "issue278-validation-control-3000-0",
+        "sha256": "e4e766320e912306bf8f2629b6e6921c89e1995bacc2ddbd0047808a882d9fe0",
+        "bytes": 595652,
+        "served": 1
+      },
+      {
+        "entry": "octane-issue278-timedChecked",
+        "rows": 0,
+        "suite": "issue278-validation-control-3000-1",
+        "sha256": "e4e766320e912306bf8f2629b6e6921c89e1995bacc2ddbd0047808a882d9fe0",
+        "bytes": 595652,
+        "served": 1
+      },
+      {
+        "entry": "octane-issue278-timedTrusted",
+        "rows": 0,
+        "suite": "issue278-validation-control-3000-1",
+        "sha256": "37e12f47a781cd016b9b959e0d6b6f24936b929ca0ab28dc97408344c66a9e9a",
+        "bytes": 595652,
+        "served": 1
+      },
+      {
+        "entry": "octane-issue278-timedTrusted",
+        "rows": 0,
+        "suite": "issue278-validation-control-2000-1",
+        "sha256": "37e12f47a781cd016b9b959e0d6b6f24936b929ca0ab28dc97408344c66a9e9a",
+        "bytes": 595652,
+        "served": 1
+      },
+      {
+        "entry": "octane-issue278-timedChecked",
+        "rows": 0,
+        "suite": "issue278-validation-control-2000-1",
+        "sha256": "e4e766320e912306bf8f2629b6e6921c89e1995bacc2ddbd0047808a882d9fe0",
+        "bytes": 595652,
+        "served": 1
+      },
+      {
+        "entry": "octane-issue278-timedChecked",
+        "rows": 0,
+        "suite": "issue278-validation-control-2000-2",
+        "sha256": "e4e766320e912306bf8f2629b6e6921c89e1995bacc2ddbd0047808a882d9fe0",
+        "bytes": 595652,
+        "served": 1
+      },
+      {
+        "entry": "octane-issue278-timedTrusted",
+        "rows": 0,
+        "suite": "issue278-validation-control-2000-2",
+        "sha256": "37e12f47a781cd016b9b959e0d6b6f24936b929ca0ab28dc97408344c66a9e9a",
+        "bytes": 595652,
+        "served": 1
+      },
+      {
+        "entry": "octane-issue278-timedTrusted",
+        "rows": 0,
+        "suite": "issue278-validation-control-3000-2",
+        "sha256": "37e12f47a781cd016b9b959e0d6b6f24936b929ca0ab28dc97408344c66a9e9a",
+        "bytes": 595652,
+        "served": 1
+      },
+      {
+        "entry": "octane-issue278-timedChecked",
+        "rows": 0,
+        "suite": "issue278-validation-control-3000-2",
+        "sha256": "e4e766320e912306bf8f2629b6e6921c89e1995bacc2ddbd0047808a882d9fe0",
+        "bytes": 595652,
+        "served": 1
+      },
+      {
+        "entry": "octane-issue278-timedChecked",
+        "rows": 0,
+        "suite": "issue278-validation-control-3000-3",
+        "sha256": "e4e766320e912306bf8f2629b6e6921c89e1995bacc2ddbd0047808a882d9fe0",
+        "bytes": 595652,
+        "served": 1
+      },
+      {
+        "entry": "octane-issue278-timedTrusted",
+        "rows": 0,
+        "suite": "issue278-validation-control-3000-3",
+        "sha256": "37e12f47a781cd016b9b959e0d6b6f24936b929ca0ab28dc97408344c66a9e9a",
+        "bytes": 595652,
+        "served": 1
+      },
+      {
+        "entry": "octane-issue278-timedTrusted",
+        "rows": 0,
+        "suite": "issue278-validation-control-2000-3",
+        "sha256": "37e12f47a781cd016b9b959e0d6b6f24936b929ca0ab28dc97408344c66a9e9a",
+        "bytes": 595652,
+        "served": 1
+      },
+      {
+        "entry": "octane-issue278-timedChecked",
+        "rows": 0,
+        "suite": "issue278-validation-control-2000-3",
+        "sha256": "e4e766320e912306bf8f2629b6e6921c89e1995bacc2ddbd0047808a882d9fe0",
+        "bytes": 595652,
+        "served": 1
+      },
+      {
+        "entry": "octane-issue278-timedChecked",
+        "rows": 0,
+        "suite": "issue278-validation-control-2000-4",
+        "sha256": "e4e766320e912306bf8f2629b6e6921c89e1995bacc2ddbd0047808a882d9fe0",
+        "bytes": 595652,
+        "served": 1
+      },
+      {
+        "entry": "octane-issue278-timedTrusted",
+        "rows": 0,
+        "suite": "issue278-validation-control-2000-4",
+        "sha256": "37e12f47a781cd016b9b959e0d6b6f24936b929ca0ab28dc97408344c66a9e9a",
+        "bytes": 595652,
+        "served": 1
+      },
+      {
+        "entry": "octane-issue278-timedTrusted",
+        "rows": 0,
+        "suite": "issue278-validation-control-3000-4",
+        "sha256": "37e12f47a781cd016b9b959e0d6b6f24936b929ca0ab28dc97408344c66a9e9a",
+        "bytes": 595652,
+        "served": 1
+      },
+      {
+        "entry": "octane-issue278-timedChecked",
+        "rows": 0,
+        "suite": "issue278-validation-control-3000-4",
+        "sha256": "e4e766320e912306bf8f2629b6e6921c89e1995bacc2ddbd0047808a882d9fe0",
+        "bytes": 595652,
+        "served": 1
+      }
+    ],
+    "transientRecoveries": [],
+    "thermalGates": [
+      {
+        "entry": "octane-issue278-countsChecked",
+        "rows": 0,
+        "suite": "issue278-correctness-path-flags-gate-1000-0",
+        "capturedAt": "2026-09-07T03:26:13.037Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-issue278-scalarCountsChecked",
+        "rows": 0,
+        "suite": "issue278-scalar-e1-gate",
+        "capturedAt": "2026-09-07T03:26:23.055Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-issue278-timedChecked",
+        "rows": 0,
+        "suite": "issue278-validation-control-2000-0",
+        "capturedAt": "2026-09-07T03:26:25.115Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-issue278-timedTrusted",
+        "rows": 0,
+        "suite": "issue278-validation-control-2000-0",
+        "capturedAt": "2026-09-07T03:27:06.482Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-issue278-timedTrusted",
+        "rows": 0,
+        "suite": "issue278-validation-control-3000-0",
+        "capturedAt": "2026-09-07T03:27:44.791Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-issue278-timedChecked",
+        "rows": 0,
+        "suite": "issue278-validation-control-3000-0",
+        "capturedAt": "2026-09-07T03:29:06.389Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-issue278-timedChecked",
+        "rows": 0,
+        "suite": "issue278-validation-control-3000-1",
+        "capturedAt": "2026-09-07T03:30:28.084Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-issue278-timedTrusted",
+        "rows": 0,
+        "suite": "issue278-validation-control-3000-1",
+        "capturedAt": "2026-09-07T03:31:49.167Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-issue278-timedTrusted",
+        "rows": 0,
+        "suite": "issue278-validation-control-2000-1",
+        "capturedAt": "2026-09-07T03:33:11.097Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-issue278-timedChecked",
+        "rows": 0,
+        "suite": "issue278-validation-control-2000-1",
+        "capturedAt": "2026-09-07T03:33:48.867Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-issue278-timedChecked",
+        "rows": 0,
+        "suite": "issue278-validation-control-2000-2",
+        "capturedAt": "2026-09-07T03:34:26.622Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-issue278-timedTrusted",
+        "rows": 0,
+        "suite": "issue278-validation-control-2000-2",
+        "capturedAt": "2026-09-07T03:35:04.316Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-issue278-timedTrusted",
+        "rows": 0,
+        "suite": "issue278-validation-control-3000-2",
+        "capturedAt": "2026-09-07T03:35:41.856Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-issue278-timedChecked",
+        "rows": 0,
+        "suite": "issue278-validation-control-3000-2",
+        "capturedAt": "2026-09-07T03:37:03.559Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-issue278-timedChecked",
+        "rows": 0,
+        "suite": "issue278-validation-control-3000-3",
+        "capturedAt": "2026-09-07T03:38:24.911Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-issue278-timedTrusted",
+        "rows": 0,
+        "suite": "issue278-validation-control-3000-3",
+        "capturedAt": "2026-09-07T03:39:47.231Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-issue278-timedTrusted",
+        "rows": 0,
+        "suite": "issue278-validation-control-2000-3",
+        "capturedAt": "2026-09-07T03:41:08.567Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-issue278-timedChecked",
+        "rows": 0,
+        "suite": "issue278-validation-control-2000-3",
+        "capturedAt": "2026-09-07T03:41:46.379Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-issue278-timedChecked",
+        "rows": 0,
+        "suite": "issue278-validation-control-2000-4",
+        "capturedAt": "2026-09-07T03:42:24.206Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-issue278-timedTrusted",
+        "rows": 0,
+        "suite": "issue278-validation-control-2000-4",
+        "capturedAt": "2026-09-07T03:43:02.435Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-issue278-timedTrusted",
+        "rows": 0,
+        "suite": "issue278-validation-control-3000-4",
+        "capturedAt": "2026-09-07T03:43:40.796Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-issue278-timedChecked",
+        "rows": 0,
+        "suite": "issue278-validation-control-3000-4",
+        "capturedAt": "2026-09-07T03:45:02.352Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      }
+    ]
+  },
+  "gate": {
+    "passed": true,
+    "real": {
+      "arm": "countsChecked",
+      "phase": "correctness-path-flags-gate",
+      "ordinal": 0,
+      "scale": 1000,
+      "capturedAt": "2026-09-07T03:26:22.980Z",
+      "clockCalibration": {
+        "protocol": "octane-issue278-cross-realm-clock-v1",
+        "samples": [
+          {
+            "ordinal": 0,
+            "startedAtMs": 1788751573913,
+            "receivedAtMs": 1788751573915,
+            "returnedAtMs": 1788751573915,
+            "roundTripMs": 2
+          },
+          {
+            "ordinal": 1,
+            "startedAtMs": 1788751573915,
+            "receivedAtMs": 1788751573917,
+            "returnedAtMs": 1788751573917,
+            "roundTripMs": 2
+          },
+          {
+            "ordinal": 2,
+            "startedAtMs": 1788751573917,
+            "receivedAtMs": 1788751573919,
+            "returnedAtMs": 1788751573920,
+            "roundTripMs": 3
+          },
+          {
+            "ordinal": 3,
+            "startedAtMs": 1788751573920,
+            "receivedAtMs": 1788751573921,
+            "returnedAtMs": 1788751573922,
+            "roundTripMs": 2
+          },
+          {
+            "ordinal": 4,
+            "startedAtMs": 1788751573922,
+            "receivedAtMs": 1788751573923,
+            "returnedAtMs": 1788751573924,
+            "roundTripMs": 2
+          },
+          {
+            "ordinal": 5,
+            "startedAtMs": 1788751573924,
+            "receivedAtMs": 1788751573925,
+            "returnedAtMs": 1788751573926,
+            "roundTripMs": 2
+          },
+          {
+            "ordinal": 6,
+            "startedAtMs": 1788751573926,
+            "receivedAtMs": 1788751573927,
+            "returnedAtMs": 1788751573928,
+            "roundTripMs": 2
+          }
+        ],
+        "offsetMs": 1,
+        "uncertaintyMs": 1
+      },
+      "mainLabelNodeCount": 1000,
+      "result": {
+        "protocol": "octane-issue278-create-v2",
+        "rows": 1000,
+        "boundary": "programmatic-bts-state-update-to-commit-complete",
+        "startedAtMs": 1788751573977,
+        "commitAckMs": 1788751583417,
+        "wallMs": 9440,
+        "preState": {
+          "rowCount": 0,
+          "firstId": null,
+          "row998Id": null,
+          "firstLabel": null
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "row998Id": 999,
+          "firstLabel": "pretty brown sandwich"
+        },
+        "btsProfile": {
+          "commits": 1,
+          "commands": 1,
+          "emptyCommits": 0,
+          "bytes": 33884,
+          "selfcheckMs": 0,
+          "encodeMs": 9,
+          "dispatchMs": 0,
+          "decodeMs": 0,
+          "validateMs": 0,
+          "prepareMs": 0,
+          "applyMs": 0,
+          "ackMs": 0,
+          "deltaCommits": 0,
+          "deltaMisses": 1,
+          "deltaOps": 0,
+          "deltaBytes": 0,
+          "firstScreenRenderMs": 0,
+          "firstScreenPublishMs": 0,
+          "firstScreenCaptureMs": 0,
+          "firstScreenAnnounceMs": 0,
+          "firstTreeSettled": 0,
+          "handOverMs": 0,
+          "destroyRunExpandMs": 0,
+          "denseValidateMs": 0,
+          "eventDetachMs": 0,
+          "papiRemoveMs": 0,
+          "denseReleaseMs": 0,
+          "synthesizedCommands": 0,
+          "eventDetachCount": 0,
+          "papiRemoveCount": 0,
+          "denseReleaseHostCount": 0
+        },
+        "btsCodecProfile": {
+          "encodeCalls": 1,
+          "encodePrepareMs": 8,
+          "encodeStringifyMs": 1,
+          "encodedBytes": 33884,
+          "encodeFlags0": 1,
+          "encodeFlags1": 0,
+          "decodeCalls": 4,
+          "decodeParseMs": 0,
+          "decodeRestoreMs": 0,
+          "decodeFlags0": 4,
+          "decodeFlags1": 0,
+          "prepareVisits": 3072,
+          "restoreVisits": 0,
+          "aliases": 2,
+          "localizeCalls": 0,
+          "localizeMs": 0,
+          "commandOps": {
+            "mount-template-run": 1
+          }
+        },
+        "mtsProfile": {
+          "commits": 1,
+          "commands": 1,
+          "emptyCommits": 0,
+          "bytes": 0,
+          "selfcheckMs": 0,
+          "encodeMs": 0,
+          "dispatchMs": 0,
+          "decodeMs": 2,
+          "validateMs": 6,
+          "prepareMs": 20,
+          "applyMs": 9104,
+          "ackMs": 0,
+          "deltaCommits": 0,
+          "deltaMisses": 0,
+          "deltaOps": 0,
+          "deltaBytes": 0,
+          "firstScreenRenderMs": 0,
+          "firstScreenPublishMs": 0,
+          "firstScreenCaptureMs": 0,
+          "firstScreenAnnounceMs": 0,
+          "firstTreeSettled": 0,
+          "handOverMs": 0,
+          "destroyRunExpandMs": 0,
+          "denseValidateMs": 0,
+          "eventDetachMs": 0,
+          "papiRemoveMs": 0,
+          "denseReleaseMs": 0,
+          "synthesizedCommands": 0,
+          "eventDetachCount": 0,
+          "papiRemoveCount": 0,
+          "denseReleaseHostCount": 0
+        },
+        "mtsCodecProfile": {
+          "encodeCalls": 2,
+          "encodePrepareMs": 0,
+          "encodeStringifyMs": 0,
+          "encodedBytes": 182,
+          "encodeFlags0": 2,
+          "encodeFlags1": 0,
+          "decodeCalls": 1,
+          "decodeParseMs": 2,
+          "decodeRestoreMs": 0,
+          "decodeFlags0": 1,
+          "decodeFlags1": 0,
+          "prepareVisits": 14,
+          "restoreVisits": 0,
+          "aliases": 0,
+          "localizeCalls": 0,
+          "localizeMs": 0,
+          "commandOps": {}
+        },
+        "mtsTimeline": {
+          "receivedAtMs": 1788751574258,
+          "decodedAtMs": 1788751574260,
+          "validatedAtMs": 1788751574266,
+          "preparedAtMs": 1788751574286,
+          "applyStartedAtMs": 1788751574286,
+          "appliedAtMs": 1788751583390,
+          "ackStartedAtMs": 1788751583390,
+          "ackDispatchedAtMs": 1788751583390,
+          "completedAtMs": 1788751583391
+        },
+        "mtsSnapshotAtMs": 1788751583391,
+        "wire": [
+          {
+            "direction": "bts-to-mts",
+            "type": "octane-lynx:background-to-main",
+            "startedAtMs": 1788751574257,
+            "returnedAtMs": 1788751574257,
+            "encodedBytes": 33884,
+            "codecFlag": 0
+          }
+        ]
+      }
+    },
+    "scalar": {
+      "arm": "scalarCountsChecked",
+      "capturedAt": "2026-09-07T03:26:24.777Z",
+      "mainNodeCount": 1,
+      "result": {
+        "protocol": "octane-issue278-scalar-v2",
+        "startedAtMs": 1788751585194,
+        "commitAckMs": 1788751585195,
+        "wallMs": 1,
+        "btsProfile": {
+          "commits": 1,
+          "commands": 3,
+          "emptyCommits": 0,
+          "bytes": 437,
+          "selfcheckMs": 0,
+          "encodeMs": 0,
+          "dispatchMs": 0,
+          "decodeMs": 0,
+          "validateMs": 0,
+          "prepareMs": 0,
+          "applyMs": 0,
+          "ackMs": 0,
+          "deltaCommits": 0,
+          "deltaMisses": 1,
+          "deltaOps": 0,
+          "deltaBytes": 0,
+          "firstScreenRenderMs": 0,
+          "firstScreenPublishMs": 0,
+          "firstScreenCaptureMs": 0,
+          "firstScreenAnnounceMs": 0,
+          "firstTreeSettled": 0,
+          "handOverMs": 0,
+          "destroyRunExpandMs": 0,
+          "denseValidateMs": 0,
+          "eventDetachMs": 0,
+          "papiRemoveMs": 0,
+          "denseReleaseMs": 0,
+          "synthesizedCommands": 0,
+          "eventDetachCount": 0,
+          "papiRemoveCount": 0,
+          "denseReleaseHostCount": 0
+        },
+        "btsCodecProfile": {
+          "encodeCalls": 1,
+          "encodePrepareMs": 0,
+          "encodeStringifyMs": 0,
+          "encodedBytes": 437,
+          "encodeFlags0": 1,
+          "encodeFlags1": 0,
+          "decodeCalls": 0,
+          "decodeParseMs": 0,
+          "decodeRestoreMs": 0,
+          "decodeFlags0": 0,
+          "decodeFlags1": 0,
+          "prepareVisits": 30,
+          "restoreVisits": 0,
+          "aliases": 0,
+          "localizeCalls": 0,
+          "localizeMs": 0,
+          "commandOps": {
+            "remove": 1,
+            "mount-program-run": 1,
+            "destroy": 1
+          }
+        },
+        "wire": [
+          {
+            "direction": "bts-to-mts",
+            "type": "octane-lynx:background-to-main",
+            "startedAtMs": 1788751585195,
+            "returnedAtMs": 1788751585195,
+            "encodedBytes": 437,
+            "codecFlag": 0
+          }
+        ]
+      }
+    },
+    "realPath": "mount-template-run",
+    "scalarPath": "mount-program-run"
+  },
+  "profileOverheadPairs": [],
+  "validationPairs": [
+    {
+      "ordinal": 0,
+      "scale": 2000,
+      "order": ["timedChecked", "timedTrusted"],
+      "samples": [
+        {
+          "ok": true,
+          "sample": {
+            "arm": "timedChecked",
+            "phase": "validation-control",
+            "ordinal": 0,
+            "scale": 2000,
+            "capturedAt": "2026-09-07T03:27:06.364Z",
+            "clockCalibration": {
+              "protocol": "octane-issue278-cross-realm-clock-v1",
+              "samples": [
+                {
+                  "ordinal": 0,
+                  "startedAtMs": 1788751590685,
+                  "receivedAtMs": 1788751590686,
+                  "returnedAtMs": 1788751590687,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 1,
+                  "startedAtMs": 1788751590687,
+                  "receivedAtMs": 1788751590689,
+                  "returnedAtMs": 1788751590689,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 2,
+                  "startedAtMs": 1788751590689,
+                  "receivedAtMs": 1788751590691,
+                  "returnedAtMs": 1788751590691,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 3,
+                  "startedAtMs": 1788751590691,
+                  "receivedAtMs": 1788751590693,
+                  "returnedAtMs": 1788751590693,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 4,
+                  "startedAtMs": 1788751590693,
+                  "receivedAtMs": 1788751590695,
+                  "returnedAtMs": 1788751590695,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 5,
+                  "startedAtMs": 1788751590695,
+                  "receivedAtMs": 1788751590697,
+                  "returnedAtMs": 1788751590697,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 6,
+                  "startedAtMs": 1788751590697,
+                  "receivedAtMs": 1788751590698,
+                  "returnedAtMs": 1788751590699,
+                  "roundTripMs": 2
+                }
+              ],
+              "offsetMs": 0,
+              "uncertaintyMs": 1
+            },
+            "mainLabelNodeCount": 2000,
+            "result": {
+              "protocol": "octane-issue278-create-v2",
+              "rows": 2000,
+              "boundary": "programmatic-bts-state-update-to-commit-complete",
+              "startedAtMs": 1788751590736,
+              "commitAckMs": 1788751626798,
+              "wallMs": 36062,
+              "preState": {
+                "rowCount": 0,
+                "firstId": null,
+                "row998Id": null,
+                "firstLabel": null
+              },
+              "postState": {
+                "rowCount": 2000,
+                "firstId": 1,
+                "row998Id": 999,
+                "firstLabel": "inexpensive red sandwich"
+              },
+              "btsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 67661,
+                "selfcheckMs": 0,
+                "encodeMs": 15,
+                "dispatchMs": 0,
+                "decodeMs": 0,
+                "validateMs": 0,
+                "prepareMs": 0,
+                "applyMs": 0,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 1,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "btsCodecProfile": {
+                "encodeCalls": 1,
+                "encodePrepareMs": 12,
+                "encodeStringifyMs": 3,
+                "encodedBytes": 67661,
+                "encodeFlags0": 1,
+                "encodeFlags1": 0,
+                "decodeCalls": 4,
+                "decodeParseMs": 0,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 4,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {
+                  "mount-template-run": 1
+                }
+              },
+              "mtsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 0,
+                "selfcheckMs": 0,
+                "encodeMs": 0,
+                "dispatchMs": 0,
+                "decodeMs": 3,
+                "validateMs": 11,
+                "prepareMs": 37,
+                "applyMs": 35411,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 0,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "mtsCodecProfile": {
+                "encodeCalls": 2,
+                "encodePrepareMs": 0,
+                "encodeStringifyMs": 0,
+                "encodedBytes": 183,
+                "encodeFlags0": 2,
+                "encodeFlags1": 0,
+                "decodeCalls": 1,
+                "decodeParseMs": 3,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 1,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {}
+              },
+              "mtsTimeline": {
+                "receivedAtMs": 1788751591280,
+                "decodedAtMs": 1788751591283,
+                "validatedAtMs": 1788751591294,
+                "preparedAtMs": 1788751591333,
+                "applyStartedAtMs": 1788751591333,
+                "appliedAtMs": 1788751626744,
+                "ackStartedAtMs": 1788751626744,
+                "ackDispatchedAtMs": 1788751626744,
+                "completedAtMs": 1788751626744
+              },
+              "mtsSnapshotAtMs": 1788751626744,
+              "wire": [
+                {
+                  "direction": "bts-to-mts",
+                  "type": "octane-lynx:background-to-main",
+                  "startedAtMs": 1788751591280,
+                  "returnedAtMs": 1788751591280,
+                  "encodedBytes": 67661,
+                  "codecFlag": 0
+                }
+              ]
+            }
+          }
+        },
+        {
+          "ok": true,
+          "sample": {
+            "arm": "timedTrusted",
+            "phase": "validation-control",
+            "ordinal": 0,
+            "scale": 2000,
+            "capturedAt": "2026-09-07T03:27:44.685Z",
+            "clockCalibration": {
+              "protocol": "octane-issue278-cross-realm-clock-v1",
+              "samples": [
+                {
+                  "ordinal": 0,
+                  "startedAtMs": 1788751628633,
+                  "receivedAtMs": 1788751628635,
+                  "returnedAtMs": 1788751628636,
+                  "roundTripMs": 3
+                },
+                {
+                  "ordinal": 1,
+                  "startedAtMs": 1788751628636,
+                  "receivedAtMs": 1788751628637,
+                  "returnedAtMs": 1788751628638,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 2,
+                  "startedAtMs": 1788751628638,
+                  "receivedAtMs": 1788751628639,
+                  "returnedAtMs": 1788751628640,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 3,
+                  "startedAtMs": 1788751628640,
+                  "receivedAtMs": 1788751628641,
+                  "returnedAtMs": 1788751628642,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 4,
+                  "startedAtMs": 1788751628642,
+                  "receivedAtMs": 1788751628643,
+                  "returnedAtMs": 1788751628643,
+                  "roundTripMs": 1
+                },
+                {
+                  "ordinal": 5,
+                  "startedAtMs": 1788751628643,
+                  "receivedAtMs": 1788751628645,
+                  "returnedAtMs": 1788751628645,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 6,
+                  "startedAtMs": 1788751628645,
+                  "receivedAtMs": 1788751628647,
+                  "returnedAtMs": 1788751628647,
+                  "roundTripMs": 2
+                }
+              ],
+              "offsetMs": 0.5,
+              "uncertaintyMs": 0.5
+            },
+            "mainLabelNodeCount": 2000,
+            "result": {
+              "protocol": "octane-issue278-create-v2",
+              "rows": 2000,
+              "boundary": "programmatic-bts-state-update-to-commit-complete",
+              "startedAtMs": 1788751628696,
+              "commitAckMs": 1788751665118,
+              "wallMs": 36422,
+              "preState": {
+                "rowCount": 0,
+                "firstId": null,
+                "row998Id": null,
+                "firstLabel": null
+              },
+              "postState": {
+                "rowCount": 2000,
+                "firstId": 1,
+                "row998Id": 999,
+                "firstLabel": "important black car"
+              },
+              "btsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 67622,
+                "selfcheckMs": 0,
+                "encodeMs": 14,
+                "dispatchMs": 0,
+                "decodeMs": 0,
+                "validateMs": 0,
+                "prepareMs": 0,
+                "applyMs": 0,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 1,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "btsCodecProfile": {
+                "encodeCalls": 1,
+                "encodePrepareMs": 12,
+                "encodeStringifyMs": 2,
+                "encodedBytes": 67622,
+                "encodeFlags0": 1,
+                "encodeFlags1": 0,
+                "decodeCalls": 4,
+                "decodeParseMs": 1,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 4,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {
+                  "mount-template-run": 1
+                }
+              },
+              "mtsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 0,
+                "selfcheckMs": 0,
+                "encodeMs": 0,
+                "dispatchMs": 0,
+                "decodeMs": 3,
+                "validateMs": 1,
+                "prepareMs": 37,
+                "applyMs": 35772,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 0,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "mtsCodecProfile": {
+                "encodeCalls": 2,
+                "encodePrepareMs": 0,
+                "encodeStringifyMs": 1,
+                "encodedBytes": 183,
+                "encodeFlags0": 2,
+                "encodeFlags1": 0,
+                "decodeCalls": 1,
+                "decodeParseMs": 3,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 1,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {}
+              },
+              "mtsTimeline": {
+                "receivedAtMs": 1788751629251,
+                "decodedAtMs": 1788751629254,
+                "validatedAtMs": 1788751629255,
+                "preparedAtMs": 1788751629293,
+                "applyStartedAtMs": 1788751629293,
+                "appliedAtMs": 1788751665065,
+                "ackStartedAtMs": 1788751665065,
+                "ackDispatchedAtMs": 1788751665065,
+                "completedAtMs": 1788751665066
+              },
+              "mtsSnapshotAtMs": 1788751665066,
+              "wire": [
+                {
+                  "direction": "bts-to-mts",
+                  "type": "octane-lynx:background-to-main",
+                  "startedAtMs": 1788751629251,
+                  "returnedAtMs": 1788751629251,
+                  "encodedBytes": 67622,
+                  "codecFlag": 0
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "ordinal": 0,
+      "scale": 3000,
+      "order": ["timedTrusted", "timedChecked"],
+      "samples": [
+        {
+          "ok": true,
+          "sample": {
+            "arm": "timedTrusted",
+            "phase": "validation-control",
+            "ordinal": 0,
+            "scale": 3000,
+            "capturedAt": "2026-09-07T03:29:06.278Z",
+            "clockCalibration": {
+              "protocol": "octane-issue278-cross-realm-clock-v1",
+              "samples": [
+                {
+                  "ordinal": 0,
+                  "startedAtMs": 1788751666949,
+                  "receivedAtMs": 1788751666951,
+                  "returnedAtMs": 1788751666951,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 1,
+                  "startedAtMs": 1788751666951,
+                  "receivedAtMs": 1788751666953,
+                  "returnedAtMs": 1788751666953,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 2,
+                  "startedAtMs": 1788751666953,
+                  "receivedAtMs": 1788751666955,
+                  "returnedAtMs": 1788751666955,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 3,
+                  "startedAtMs": 1788751666955,
+                  "receivedAtMs": 1788751666957,
+                  "returnedAtMs": 1788751666957,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 4,
+                  "startedAtMs": 1788751666957,
+                  "receivedAtMs": 1788751666959,
+                  "returnedAtMs": 1788751666959,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 5,
+                  "startedAtMs": 1788751666959,
+                  "receivedAtMs": 1788751666961,
+                  "returnedAtMs": 1788751666961,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 6,
+                  "startedAtMs": 1788751666961,
+                  "receivedAtMs": 1788751666962,
+                  "returnedAtMs": 1788751666963,
+                  "roundTripMs": 2
+                }
+              ],
+              "offsetMs": 1,
+              "uncertaintyMs": 1
+            },
+            "mainLabelNodeCount": 3000,
+            "result": {
+              "protocol": "octane-issue278-create-v2",
+              "rows": 3000,
+              "boundary": "programmatic-bts-state-update-to-commit-complete",
+              "startedAtMs": 1788751667008,
+              "commitAckMs": 1788751746724,
+              "wallMs": 79716,
+              "preState": {
+                "rowCount": 0,
+                "firstId": null,
+                "row998Id": null,
+                "firstLabel": null
+              },
+              "postState": {
+                "rowCount": 3000,
+                "firstId": 1,
+                "row998Id": 999,
+                "firstLabel": "inexpensive orange mouse"
+              },
+              "btsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 101677,
+                "selfcheckMs": 0,
+                "encodeMs": 22,
+                "dispatchMs": 0,
+                "decodeMs": 0,
+                "validateMs": 0,
+                "prepareMs": 0,
+                "applyMs": 0,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 1,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "btsCodecProfile": {
+                "encodeCalls": 1,
+                "encodePrepareMs": 19,
+                "encodeStringifyMs": 3,
+                "encodedBytes": 101677,
+                "encodeFlags0": 1,
+                "encodeFlags1": 0,
+                "decodeCalls": 4,
+                "decodeParseMs": 0,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 4,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {
+                  "mount-template-run": 1
+                }
+              },
+              "mtsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 0,
+                "selfcheckMs": 0,
+                "encodeMs": 0,
+                "dispatchMs": 0,
+                "decodeMs": 4,
+                "validateMs": 1,
+                "prepareMs": 55,
+                "applyMs": 78747,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 0,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "mtsCodecProfile": {
+                "encodeCalls": 2,
+                "encodePrepareMs": 0,
+                "encodeStringifyMs": 0,
+                "encodedBytes": 183,
+                "encodeFlags0": 2,
+                "encodeFlags1": 0,
+                "decodeCalls": 1,
+                "decodeParseMs": 4,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 1,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {}
+              },
+              "mtsTimeline": {
+                "receivedAtMs": 1788751667835,
+                "decodedAtMs": 1788751667839,
+                "validatedAtMs": 1788751667840,
+                "preparedAtMs": 1788751667897,
+                "applyStartedAtMs": 1788751667897,
+                "appliedAtMs": 1788751746644,
+                "ackStartedAtMs": 1788751746644,
+                "ackDispatchedAtMs": 1788751746644,
+                "completedAtMs": 1788751746644
+              },
+              "mtsSnapshotAtMs": 1788751746644,
+              "wire": [
+                {
+                  "direction": "bts-to-mts",
+                  "type": "octane-lynx:background-to-main",
+                  "startedAtMs": 1788751667835,
+                  "returnedAtMs": 1788751667835,
+                  "encodedBytes": 101677,
+                  "codecFlag": 0
+                }
+              ]
+            }
+          }
+        },
+        {
+          "ok": true,
+          "sample": {
+            "arm": "timedChecked",
+            "phase": "validation-control",
+            "ordinal": 0,
+            "scale": 3000,
+            "capturedAt": "2026-09-07T03:30:27.980Z",
+            "clockCalibration": {
+              "protocol": "octane-issue278-cross-realm-clock-v1",
+              "samples": [
+                {
+                  "ordinal": 0,
+                  "startedAtMs": 1788751748531,
+                  "receivedAtMs": 1788751748532,
+                  "returnedAtMs": 1788751748533,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 1,
+                  "startedAtMs": 1788751748533,
+                  "receivedAtMs": 1788751748534,
+                  "returnedAtMs": 1788751748535,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 2,
+                  "startedAtMs": 1788751748535,
+                  "receivedAtMs": 1788751748536,
+                  "returnedAtMs": 1788751748537,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 3,
+                  "startedAtMs": 1788751748537,
+                  "receivedAtMs": 1788751748538,
+                  "returnedAtMs": 1788751748539,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 4,
+                  "startedAtMs": 1788751748539,
+                  "receivedAtMs": 1788751748540,
+                  "returnedAtMs": 1788751748541,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 5,
+                  "startedAtMs": 1788751748541,
+                  "receivedAtMs": 1788751748542,
+                  "returnedAtMs": 1788751748543,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 6,
+                  "startedAtMs": 1788751748543,
+                  "receivedAtMs": 1788751748544,
+                  "returnedAtMs": 1788751748545,
+                  "roundTripMs": 2
+                }
+              ],
+              "offsetMs": 0,
+              "uncertaintyMs": 1
+            },
+            "mainLabelNodeCount": 3000,
+            "result": {
+              "protocol": "octane-issue278-create-v2",
+              "rows": 3000,
+              "boundary": "programmatic-bts-state-update-to-commit-complete",
+              "startedAtMs": 1788751748586,
+              "commitAckMs": 1788751828411,
+              "wallMs": 79825,
+              "preState": {
+                "rowCount": 0,
+                "firstId": null,
+                "row998Id": null,
+                "firstLabel": null
+              },
+              "postState": {
+                "rowCount": 3000,
+                "firstId": 1,
+                "row998Id": 999,
+                "firstLabel": "large blue cookie"
+              },
+              "btsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 101799,
+                "selfcheckMs": 0,
+                "encodeMs": 21,
+                "dispatchMs": 0,
+                "decodeMs": 0,
+                "validateMs": 0,
+                "prepareMs": 0,
+                "applyMs": 0,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 1,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "btsCodecProfile": {
+                "encodeCalls": 1,
+                "encodePrepareMs": 18,
+                "encodeStringifyMs": 3,
+                "encodedBytes": 101799,
+                "encodeFlags0": 1,
+                "encodeFlags1": 0,
+                "decodeCalls": 4,
+                "decodeParseMs": 0,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 4,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {
+                  "mount-template-run": 1
+                }
+              },
+              "mtsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 0,
+                "selfcheckMs": 0,
+                "encodeMs": 0,
+                "dispatchMs": 0,
+                "decodeMs": 5,
+                "validateMs": 16,
+                "prepareMs": 56,
+                "applyMs": 78826,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 0,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "mtsCodecProfile": {
+                "encodeCalls": 2,
+                "encodePrepareMs": 0,
+                "encodeStringifyMs": 0,
+                "encodedBytes": 183,
+                "encodeFlags0": 2,
+                "encodeFlags1": 0,
+                "decodeCalls": 1,
+                "decodeParseMs": 5,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 1,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {}
+              },
+              "mtsTimeline": {
+                "receivedAtMs": 1788751749426,
+                "decodedAtMs": 1788751749431,
+                "validatedAtMs": 1788751749447,
+                "preparedAtMs": 1788751749505,
+                "applyStartedAtMs": 1788751749505,
+                "appliedAtMs": 1788751828331,
+                "ackStartedAtMs": 1788751828331,
+                "ackDispatchedAtMs": 1788751828331,
+                "completedAtMs": 1788751828332
+              },
+              "mtsSnapshotAtMs": 1788751828332,
+              "wire": [
+                {
+                  "direction": "bts-to-mts",
+                  "type": "octane-lynx:background-to-main",
+                  "startedAtMs": 1788751749426,
+                  "returnedAtMs": 1788751749426,
+                  "encodedBytes": 101799,
+                  "codecFlag": 0
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "ordinal": 1,
+      "scale": 3000,
+      "order": ["timedChecked", "timedTrusted"],
+      "samples": [
+        {
+          "ok": true,
+          "sample": {
+            "arm": "timedChecked",
+            "phase": "validation-control",
+            "ordinal": 1,
+            "scale": 3000,
+            "capturedAt": "2026-09-07T03:31:49.064Z",
+            "clockCalibration": {
+              "protocol": "octane-issue278-cross-realm-clock-v1",
+              "samples": [
+                {
+                  "ordinal": 0,
+                  "startedAtMs": 1788751830229,
+                  "receivedAtMs": 1788751830231,
+                  "returnedAtMs": 1788751830231,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 1,
+                  "startedAtMs": 1788751830231,
+                  "receivedAtMs": 1788751830233,
+                  "returnedAtMs": 1788751830233,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 2,
+                  "startedAtMs": 1788751830233,
+                  "receivedAtMs": 1788751830235,
+                  "returnedAtMs": 1788751830235,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 3,
+                  "startedAtMs": 1788751830235,
+                  "receivedAtMs": 1788751830237,
+                  "returnedAtMs": 1788751830237,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 4,
+                  "startedAtMs": 1788751830237,
+                  "receivedAtMs": 1788751830239,
+                  "returnedAtMs": 1788751830239,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 5,
+                  "startedAtMs": 1788751830239,
+                  "receivedAtMs": 1788751830241,
+                  "returnedAtMs": 1788751830241,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 6,
+                  "startedAtMs": 1788751830241,
+                  "receivedAtMs": 1788751830243,
+                  "returnedAtMs": 1788751830243,
+                  "roundTripMs": 2
+                }
+              ],
+              "offsetMs": 1,
+              "uncertaintyMs": 1
+            },
+            "mainLabelNodeCount": 3000,
+            "result": {
+              "protocol": "octane-issue278-create-v2",
+              "rows": 3000,
+              "boundary": "programmatic-bts-state-update-to-commit-complete",
+              "startedAtMs": 1788751830288,
+              "commitAckMs": 1788751909475,
+              "wallMs": 79187,
+              "preState": {
+                "rowCount": 0,
+                "firstId": null,
+                "row998Id": null,
+                "firstLabel": null
+              },
+              "postState": {
+                "rowCount": 3000,
+                "firstId": 1,
+                "row998Id": 999,
+                "firstLabel": "large black sandwich"
+              },
+              "btsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 101806,
+                "selfcheckMs": 0,
+                "encodeMs": 21,
+                "dispatchMs": 0,
+                "decodeMs": 0,
+                "validateMs": 0,
+                "prepareMs": 0,
+                "applyMs": 0,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 1,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "btsCodecProfile": {
+                "encodeCalls": 1,
+                "encodePrepareMs": 18,
+                "encodeStringifyMs": 3,
+                "encodedBytes": 101806,
+                "encodeFlags0": 1,
+                "encodeFlags1": 0,
+                "decodeCalls": 4,
+                "decodeParseMs": 0,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 4,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {
+                  "mount-template-run": 1
+                }
+              },
+              "mtsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 0,
+                "selfcheckMs": 0,
+                "encodeMs": 0,
+                "dispatchMs": 0,
+                "decodeMs": 5,
+                "validateMs": 17,
+                "prepareMs": 55,
+                "applyMs": 78208,
+                "ackMs": 1,
+                "deltaCommits": 0,
+                "deltaMisses": 0,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "mtsCodecProfile": {
+                "encodeCalls": 2,
+                "encodePrepareMs": 0,
+                "encodeStringifyMs": 0,
+                "encodedBytes": 183,
+                "encodeFlags0": 2,
+                "encodeFlags1": 0,
+                "decodeCalls": 1,
+                "decodeParseMs": 4,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 1,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {}
+              },
+              "mtsTimeline": {
+                "receivedAtMs": 1788751831111,
+                "decodedAtMs": 1788751831115,
+                "validatedAtMs": 1788751831132,
+                "preparedAtMs": 1788751831189,
+                "applyStartedAtMs": 1788751831189,
+                "appliedAtMs": 1788751909397,
+                "ackStartedAtMs": 1788751909397,
+                "ackDispatchedAtMs": 1788751909398,
+                "completedAtMs": 1788751909398
+              },
+              "mtsSnapshotAtMs": 1788751909398,
+              "wire": [
+                {
+                  "direction": "bts-to-mts",
+                  "type": "octane-lynx:background-to-main",
+                  "startedAtMs": 1788751831110,
+                  "returnedAtMs": 1788751831110,
+                  "encodedBytes": 101806,
+                  "codecFlag": 0
+                }
+              ]
+            }
+          }
+        },
+        {
+          "ok": true,
+          "sample": {
+            "arm": "timedTrusted",
+            "phase": "validation-control",
+            "ordinal": 1,
+            "scale": 3000,
+            "capturedAt": "2026-09-07T03:33:10.999Z",
+            "clockCalibration": {
+              "protocol": "octane-issue278-cross-realm-clock-v1",
+              "samples": [
+                {
+                  "ordinal": 0,
+                  "startedAtMs": 1788751911317,
+                  "receivedAtMs": 1788751911318,
+                  "returnedAtMs": 1788751911319,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 1,
+                  "startedAtMs": 1788751911319,
+                  "receivedAtMs": 1788751911320,
+                  "returnedAtMs": 1788751911321,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 2,
+                  "startedAtMs": 1788751911321,
+                  "receivedAtMs": 1788751911322,
+                  "returnedAtMs": 1788751911323,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 3,
+                  "startedAtMs": 1788751911323,
+                  "receivedAtMs": 1788751911324,
+                  "returnedAtMs": 1788751911325,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 4,
+                  "startedAtMs": 1788751911325,
+                  "receivedAtMs": 1788751911326,
+                  "returnedAtMs": 1788751911327,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 5,
+                  "startedAtMs": 1788751911327,
+                  "receivedAtMs": 1788751911328,
+                  "returnedAtMs": 1788751911329,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 6,
+                  "startedAtMs": 1788751911329,
+                  "receivedAtMs": 1788751911330,
+                  "returnedAtMs": 1788751911331,
+                  "roundTripMs": 2
+                }
+              ],
+              "offsetMs": 0,
+              "uncertaintyMs": 1
+            },
+            "mainLabelNodeCount": 3000,
+            "result": {
+              "protocol": "octane-issue278-create-v2",
+              "rows": 3000,
+              "boundary": "programmatic-bts-state-update-to-commit-complete",
+              "startedAtMs": 1788751911376,
+              "commitAckMs": 1788751991417,
+              "wallMs": 80041,
+              "preState": {
+                "rowCount": 0,
+                "firstId": null,
+                "row998Id": null,
+                "firstLabel": null
+              },
+              "postState": {
+                "rowCount": 3000,
+                "firstId": 1,
+                "row998Id": 999,
+                "firstLabel": "pretty red keyboard"
+              },
+              "btsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 101753,
+                "selfcheckMs": 0,
+                "encodeMs": 23,
+                "dispatchMs": 0,
+                "decodeMs": 0,
+                "validateMs": 0,
+                "prepareMs": 0,
+                "applyMs": 0,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 1,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "btsCodecProfile": {
+                "encodeCalls": 1,
+                "encodePrepareMs": 19,
+                "encodeStringifyMs": 4,
+                "encodedBytes": 101753,
+                "encodeFlags0": 1,
+                "encodeFlags1": 0,
+                "decodeCalls": 4,
+                "decodeParseMs": 0,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 4,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {
+                  "mount-template-run": 1
+                }
+              },
+              "mtsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 0,
+                "selfcheckMs": 0,
+                "encodeMs": 0,
+                "dispatchMs": 0,
+                "decodeMs": 4,
+                "validateMs": 0,
+                "prepareMs": 55,
+                "applyMs": 79056,
+                "ackMs": 1,
+                "deltaCommits": 0,
+                "deltaMisses": 0,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "mtsCodecProfile": {
+                "encodeCalls": 2,
+                "encodePrepareMs": 0,
+                "encodeStringifyMs": 1,
+                "encodedBytes": 183,
+                "encodeFlags0": 2,
+                "encodeFlags1": 0,
+                "decodeCalls": 1,
+                "decodeParseMs": 4,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 1,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {}
+              },
+              "mtsTimeline": {
+                "receivedAtMs": 1788751912220,
+                "decodedAtMs": 1788751912224,
+                "validatedAtMs": 1788751912224,
+                "preparedAtMs": 1788751912282,
+                "applyStartedAtMs": 1788751912282,
+                "appliedAtMs": 1788751991338,
+                "ackStartedAtMs": 1788751991338,
+                "ackDispatchedAtMs": 1788751991339,
+                "completedAtMs": 1788751991339
+              },
+              "mtsSnapshotAtMs": 1788751991339,
+              "wire": [
+                {
+                  "direction": "bts-to-mts",
+                  "type": "octane-lynx:background-to-main",
+                  "startedAtMs": 1788751912220,
+                  "returnedAtMs": 1788751912220,
+                  "encodedBytes": 101753,
+                  "codecFlag": 0
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "ordinal": 1,
+      "scale": 2000,
+      "order": ["timedTrusted", "timedChecked"],
+      "samples": [
+        {
+          "ok": true,
+          "sample": {
+            "arm": "timedTrusted",
+            "phase": "validation-control",
+            "ordinal": 1,
+            "scale": 2000,
+            "capturedAt": "2026-09-07T03:33:48.768Z",
+            "clockCalibration": {
+              "protocol": "octane-issue278-cross-realm-clock-v1",
+              "samples": [
+                {
+                  "ordinal": 0,
+                  "startedAtMs": 1788751993277,
+                  "receivedAtMs": 1788751993278,
+                  "returnedAtMs": 1788751993279,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 1,
+                  "startedAtMs": 1788751993279,
+                  "receivedAtMs": 1788751993280,
+                  "returnedAtMs": 1788751993281,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 2,
+                  "startedAtMs": 1788751993281,
+                  "receivedAtMs": 1788751993282,
+                  "returnedAtMs": 1788751993283,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 3,
+                  "startedAtMs": 1788751993283,
+                  "receivedAtMs": 1788751993284,
+                  "returnedAtMs": 1788751993285,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 4,
+                  "startedAtMs": 1788751993285,
+                  "receivedAtMs": 1788751993286,
+                  "returnedAtMs": 1788751993287,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 5,
+                  "startedAtMs": 1788751993287,
+                  "receivedAtMs": 1788751993288,
+                  "returnedAtMs": 1788751993289,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 6,
+                  "startedAtMs": 1788751993289,
+                  "receivedAtMs": 1788751993290,
+                  "returnedAtMs": 1788751993291,
+                  "roundTripMs": 2
+                }
+              ],
+              "offsetMs": 0,
+              "uncertaintyMs": 1
+            },
+            "mainLabelNodeCount": 2000,
+            "result": {
+              "protocol": "octane-issue278-create-v2",
+              "rows": 2000,
+              "boundary": "programmatic-bts-state-update-to-commit-complete",
+              "startedAtMs": 1788751993336,
+              "commitAckMs": 1788752029215,
+              "wallMs": 35879,
+              "preState": {
+                "rowCount": 0,
+                "firstId": null,
+                "row998Id": null,
+                "firstLabel": null
+              },
+              "postState": {
+                "rowCount": 2000,
+                "firstId": 1,
+                "row998Id": 999,
+                "firstLabel": "pretty brown pizza"
+              },
+              "btsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 67895,
+                "selfcheckMs": 0,
+                "encodeMs": 15,
+                "dispatchMs": 0,
+                "decodeMs": 0,
+                "validateMs": 0,
+                "prepareMs": 0,
+                "applyMs": 0,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 1,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "btsCodecProfile": {
+                "encodeCalls": 1,
+                "encodePrepareMs": 12,
+                "encodeStringifyMs": 3,
+                "encodedBytes": 67895,
+                "encodeFlags0": 1,
+                "encodeFlags1": 0,
+                "decodeCalls": 4,
+                "decodeParseMs": 0,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 4,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {
+                  "mount-template-run": 1
+                }
+              },
+              "mtsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 0,
+                "selfcheckMs": 0,
+                "encodeMs": 0,
+                "dispatchMs": 0,
+                "decodeMs": 3,
+                "validateMs": 0,
+                "prepareMs": 37,
+                "applyMs": 35217,
+                "ackMs": 1,
+                "deltaCommits": 0,
+                "deltaMisses": 0,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "mtsCodecProfile": {
+                "encodeCalls": 2,
+                "encodePrepareMs": 1,
+                "encodeStringifyMs": 0,
+                "encodedBytes": 183,
+                "encodeFlags0": 2,
+                "encodeFlags1": 0,
+                "decodeCalls": 1,
+                "decodeParseMs": 3,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 1,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {}
+              },
+              "mtsTimeline": {
+                "receivedAtMs": 1788751993902,
+                "decodedAtMs": 1788751993905,
+                "validatedAtMs": 1788751993905,
+                "preparedAtMs": 1788751993944,
+                "applyStartedAtMs": 1788751993944,
+                "appliedAtMs": 1788752029161,
+                "ackStartedAtMs": 1788752029161,
+                "ackDispatchedAtMs": 1788752029162,
+                "completedAtMs": 1788752029162
+              },
+              "mtsSnapshotAtMs": 1788752029162,
+              "wire": [
+                {
+                  "direction": "bts-to-mts",
+                  "type": "octane-lynx:background-to-main",
+                  "startedAtMs": 1788751993902,
+                  "returnedAtMs": 1788751993902,
+                  "encodedBytes": 67895,
+                  "codecFlag": 0
+                }
+              ]
+            }
+          }
+        },
+        {
+          "ok": true,
+          "sample": {
+            "arm": "timedChecked",
+            "phase": "validation-control",
+            "ordinal": 1,
+            "scale": 2000,
+            "capturedAt": "2026-09-07T03:34:26.504Z",
+            "clockCalibration": {
+              "protocol": "octane-issue278-cross-realm-clock-v1",
+              "samples": [
+                {
+                  "ordinal": 0,
+                  "startedAtMs": 1788752031031,
+                  "receivedAtMs": 1788752031033,
+                  "returnedAtMs": 1788752031034,
+                  "roundTripMs": 3
+                },
+                {
+                  "ordinal": 1,
+                  "startedAtMs": 1788752031034,
+                  "receivedAtMs": 1788752031035,
+                  "returnedAtMs": 1788752031036,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 2,
+                  "startedAtMs": 1788752031036,
+                  "receivedAtMs": 1788752031037,
+                  "returnedAtMs": 1788752031038,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 3,
+                  "startedAtMs": 1788752031038,
+                  "receivedAtMs": 1788752031039,
+                  "returnedAtMs": 1788752031040,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 4,
+                  "startedAtMs": 1788752031040,
+                  "receivedAtMs": 1788752031041,
+                  "returnedAtMs": 1788752031042,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 5,
+                  "startedAtMs": 1788752031042,
+                  "receivedAtMs": 1788752031043,
+                  "returnedAtMs": 1788752031044,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 6,
+                  "startedAtMs": 1788752031044,
+                  "receivedAtMs": 1788752031045,
+                  "returnedAtMs": 1788752031046,
+                  "roundTripMs": 2
+                }
+              ],
+              "offsetMs": 0,
+              "uncertaintyMs": 1
+            },
+            "mainLabelNodeCount": 2000,
+            "result": {
+              "protocol": "octane-issue278-create-v2",
+              "rows": 2000,
+              "boundary": "programmatic-bts-state-update-to-commit-complete",
+              "startedAtMs": 1788752031086,
+              "commitAckMs": 1788752066948,
+              "wallMs": 35862,
+              "preState": {
+                "rowCount": 0,
+                "firstId": null,
+                "row998Id": null,
+                "firstLabel": null
+              },
+              "postState": {
+                "rowCount": 2000,
+                "firstId": 1,
+                "row998Id": 999,
+                "firstLabel": "cheap purple pony"
+              },
+              "btsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 67741,
+                "selfcheckMs": 0,
+                "encodeMs": 15,
+                "dispatchMs": 3,
+                "decodeMs": 0,
+                "validateMs": 0,
+                "prepareMs": 0,
+                "applyMs": 0,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 1,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "btsCodecProfile": {
+                "encodeCalls": 1,
+                "encodePrepareMs": 13,
+                "encodeStringifyMs": 2,
+                "encodedBytes": 67741,
+                "encodeFlags0": 1,
+                "encodeFlags1": 0,
+                "decodeCalls": 4,
+                "decodeParseMs": 0,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 4,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {
+                  "mount-template-run": 1
+                }
+              },
+              "mtsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 0,
+                "selfcheckMs": 0,
+                "encodeMs": 0,
+                "dispatchMs": 0,
+                "decodeMs": 3,
+                "validateMs": 12,
+                "prepareMs": 37,
+                "applyMs": 35200,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 0,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "mtsCodecProfile": {
+                "encodeCalls": 2,
+                "encodePrepareMs": 0,
+                "encodeStringifyMs": 0,
+                "encodedBytes": 183,
+                "encodeFlags0": 2,
+                "encodeFlags1": 0,
+                "decodeCalls": 1,
+                "decodeParseMs": 3,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 1,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {}
+              },
+              "mtsTimeline": {
+                "receivedAtMs": 1788752031641,
+                "decodedAtMs": 1788752031644,
+                "validatedAtMs": 1788752031656,
+                "preparedAtMs": 1788752031694,
+                "applyStartedAtMs": 1788752031695,
+                "appliedAtMs": 1788752066895,
+                "ackStartedAtMs": 1788752066895,
+                "ackDispatchedAtMs": 1788752066895,
+                "completedAtMs": 1788752066895
+              },
+              "mtsSnapshotAtMs": 1788752066895,
+              "wire": [
+                {
+                  "direction": "bts-to-mts",
+                  "type": "octane-lynx:background-to-main",
+                  "startedAtMs": 1788752031641,
+                  "returnedAtMs": 1788752031644,
+                  "encodedBytes": 67741,
+                  "codecFlag": 0
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "ordinal": 2,
+      "scale": 2000,
+      "order": ["timedChecked", "timedTrusted"],
+      "samples": [
+        {
+          "ok": true,
+          "sample": {
+            "arm": "timedChecked",
+            "phase": "validation-control",
+            "ordinal": 2,
+            "scale": 2000,
+            "capturedAt": "2026-09-07T03:35:04.207Z",
+            "clockCalibration": {
+              "protocol": "octane-issue278-cross-realm-clock-v1",
+              "samples": [
+                {
+                  "ordinal": 0,
+                  "startedAtMs": 1788752068784,
+                  "receivedAtMs": 1788752068786,
+                  "returnedAtMs": 1788752068787,
+                  "roundTripMs": 3
+                },
+                {
+                  "ordinal": 1,
+                  "startedAtMs": 1788752068787,
+                  "receivedAtMs": 1788752068788,
+                  "returnedAtMs": 1788752068789,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 2,
+                  "startedAtMs": 1788752068789,
+                  "receivedAtMs": 1788752068790,
+                  "returnedAtMs": 1788752068791,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 3,
+                  "startedAtMs": 1788752068791,
+                  "receivedAtMs": 1788752068792,
+                  "returnedAtMs": 1788752068793,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 4,
+                  "startedAtMs": 1788752068793,
+                  "receivedAtMs": 1788752068794,
+                  "returnedAtMs": 1788752068795,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 5,
+                  "startedAtMs": 1788752068795,
+                  "receivedAtMs": 1788752068796,
+                  "returnedAtMs": 1788752068797,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 6,
+                  "startedAtMs": 1788752068797,
+                  "receivedAtMs": 1788752068798,
+                  "returnedAtMs": 1788752068799,
+                  "roundTripMs": 2
+                }
+              ],
+              "offsetMs": 0,
+              "uncertaintyMs": 1
+            },
+            "mainLabelNodeCount": 2000,
+            "result": {
+              "protocol": "octane-issue278-create-v2",
+              "rows": 2000,
+              "boundary": "programmatic-bts-state-update-to-commit-complete",
+              "startedAtMs": 1788752068836,
+              "commitAckMs": 1788752104662,
+              "wallMs": 35826,
+              "preState": {
+                "rowCount": 0,
+                "firstId": null,
+                "row998Id": null,
+                "firstLabel": null
+              },
+              "postState": {
+                "rowCount": 2000,
+                "firstId": 1,
+                "row998Id": 999,
+                "firstLabel": "small brown pony"
+              },
+              "btsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 67728,
+                "selfcheckMs": 0,
+                "encodeMs": 15,
+                "dispatchMs": 0,
+                "decodeMs": 0,
+                "validateMs": 0,
+                "prepareMs": 0,
+                "applyMs": 0,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 1,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "btsCodecProfile": {
+                "encodeCalls": 1,
+                "encodePrepareMs": 13,
+                "encodeStringifyMs": 2,
+                "encodedBytes": 67728,
+                "encodeFlags0": 1,
+                "encodeFlags1": 0,
+                "decodeCalls": 4,
+                "decodeParseMs": 0,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 4,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {
+                  "mount-template-run": 1
+                }
+              },
+              "mtsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 0,
+                "selfcheckMs": 0,
+                "encodeMs": 0,
+                "dispatchMs": 0,
+                "decodeMs": 3,
+                "validateMs": 12,
+                "prepareMs": 38,
+                "applyMs": 35169,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 0,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "mtsCodecProfile": {
+                "encodeCalls": 2,
+                "encodePrepareMs": 0,
+                "encodeStringifyMs": 0,
+                "encodedBytes": 183,
+                "encodeFlags0": 2,
+                "encodeFlags1": 0,
+                "decodeCalls": 1,
+                "decodeParseMs": 3,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 1,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {}
+              },
+              "mtsTimeline": {
+                "receivedAtMs": 1788752069386,
+                "decodedAtMs": 1788752069389,
+                "validatedAtMs": 1788752069401,
+                "preparedAtMs": 1788752069440,
+                "applyStartedAtMs": 1788752069440,
+                "appliedAtMs": 1788752104609,
+                "ackStartedAtMs": 1788752104609,
+                "ackDispatchedAtMs": 1788752104609,
+                "completedAtMs": 1788752104609
+              },
+              "mtsSnapshotAtMs": 1788752104609,
+              "wire": [
+                {
+                  "direction": "bts-to-mts",
+                  "type": "octane-lynx:background-to-main",
+                  "startedAtMs": 1788752069386,
+                  "returnedAtMs": 1788752069386,
+                  "encodedBytes": 67728,
+                  "codecFlag": 0
+                }
+              ]
+            }
+          }
+        },
+        {
+          "ok": true,
+          "sample": {
+            "arm": "timedTrusted",
+            "phase": "validation-control",
+            "ordinal": 2,
+            "scale": 2000,
+            "capturedAt": "2026-09-07T03:35:41.748Z",
+            "clockCalibration": {
+              "protocol": "octane-issue278-cross-realm-clock-v1",
+              "samples": [
+                {
+                  "ordinal": 0,
+                  "startedAtMs": 1788752106456,
+                  "receivedAtMs": 1788752106458,
+                  "returnedAtMs": 1788752106459,
+                  "roundTripMs": 3
+                },
+                {
+                  "ordinal": 1,
+                  "startedAtMs": 1788752106459,
+                  "receivedAtMs": 1788752106460,
+                  "returnedAtMs": 1788752106461,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 2,
+                  "startedAtMs": 1788752106461,
+                  "receivedAtMs": 1788752106462,
+                  "returnedAtMs": 1788752106463,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 3,
+                  "startedAtMs": 1788752106463,
+                  "receivedAtMs": 1788752106464,
+                  "returnedAtMs": 1788752106464,
+                  "roundTripMs": 1
+                },
+                {
+                  "ordinal": 4,
+                  "startedAtMs": 1788752106464,
+                  "receivedAtMs": 1788752106466,
+                  "returnedAtMs": 1788752106466,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 5,
+                  "startedAtMs": 1788752106466,
+                  "receivedAtMs": 1788752106468,
+                  "returnedAtMs": 1788752106468,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 6,
+                  "startedAtMs": 1788752106468,
+                  "receivedAtMs": 1788752106470,
+                  "returnedAtMs": 1788752106470,
+                  "roundTripMs": 2
+                }
+              ],
+              "offsetMs": 0.5,
+              "uncertaintyMs": 0.5
+            },
+            "mainLabelNodeCount": 2000,
+            "result": {
+              "protocol": "octane-issue278-create-v2",
+              "rows": 2000,
+              "boundary": "programmatic-bts-state-update-to-commit-complete",
+              "startedAtMs": 1788752106507,
+              "commitAckMs": 1788752142197,
+              "wallMs": 35690,
+              "preState": {
+                "rowCount": 0,
+                "firstId": null,
+                "row998Id": null,
+                "firstLabel": null
+              },
+              "postState": {
+                "rowCount": 2000,
+                "firstId": 1,
+                "row998Id": 999,
+                "firstLabel": "unsightly pink burger"
+              },
+              "btsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 67565,
+                "selfcheckMs": 0,
+                "encodeMs": 15,
+                "dispatchMs": 1,
+                "decodeMs": 0,
+                "validateMs": 0,
+                "prepareMs": 0,
+                "applyMs": 0,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 1,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "btsCodecProfile": {
+                "encodeCalls": 1,
+                "encodePrepareMs": 13,
+                "encodeStringifyMs": 2,
+                "encodedBytes": 67565,
+                "encodeFlags0": 1,
+                "encodeFlags1": 0,
+                "decodeCalls": 4,
+                "decodeParseMs": 0,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 4,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {
+                  "mount-template-run": 1
+                }
+              },
+              "mtsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 0,
+                "selfcheckMs": 0,
+                "encodeMs": 0,
+                "dispatchMs": 0,
+                "decodeMs": 3,
+                "validateMs": 0,
+                "prepareMs": 37,
+                "applyMs": 35049,
+                "ackMs": 1,
+                "deltaCommits": 0,
+                "deltaMisses": 0,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "mtsCodecProfile": {
+                "encodeCalls": 2,
+                "encodePrepareMs": 0,
+                "encodeStringifyMs": 0,
+                "encodedBytes": 183,
+                "encodeFlags0": 2,
+                "encodeFlags1": 0,
+                "decodeCalls": 1,
+                "decodeParseMs": 3,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 1,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {}
+              },
+              "mtsTimeline": {
+                "receivedAtMs": 1788752107053,
+                "decodedAtMs": 1788752107056,
+                "validatedAtMs": 1788752107056,
+                "preparedAtMs": 1788752107095,
+                "applyStartedAtMs": 1788752107095,
+                "appliedAtMs": 1788752142144,
+                "ackStartedAtMs": 1788752142144,
+                "ackDispatchedAtMs": 1788752142145,
+                "completedAtMs": 1788752142145
+              },
+              "mtsSnapshotAtMs": 1788752142145,
+              "wire": [
+                {
+                  "direction": "bts-to-mts",
+                  "type": "octane-lynx:background-to-main",
+                  "startedAtMs": 1788752107053,
+                  "returnedAtMs": 1788752107054,
+                  "encodedBytes": 67565,
+                  "codecFlag": 0
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "ordinal": 2,
+      "scale": 3000,
+      "order": ["timedTrusted", "timedChecked"],
+      "samples": [
+        {
+          "ok": true,
+          "sample": {
+            "arm": "timedTrusted",
+            "phase": "validation-control",
+            "ordinal": 2,
+            "scale": 3000,
+            "capturedAt": "2026-09-07T03:37:03.447Z",
+            "clockCalibration": {
+              "protocol": "octane-issue278-cross-realm-clock-v1",
+              "samples": [
+                {
+                  "ordinal": 0,
+                  "startedAtMs": 1788752144009,
+                  "receivedAtMs": 1788752144011,
+                  "returnedAtMs": 1788752144011,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 1,
+                  "startedAtMs": 1788752144011,
+                  "receivedAtMs": 1788752144013,
+                  "returnedAtMs": 1788752144013,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 2,
+                  "startedAtMs": 1788752144013,
+                  "receivedAtMs": 1788752144015,
+                  "returnedAtMs": 1788752144015,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 3,
+                  "startedAtMs": 1788752144015,
+                  "receivedAtMs": 1788752144017,
+                  "returnedAtMs": 1788752144017,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 4,
+                  "startedAtMs": 1788752144017,
+                  "receivedAtMs": 1788752144018,
+                  "returnedAtMs": 1788752144019,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 5,
+                  "startedAtMs": 1788752144019,
+                  "receivedAtMs": 1788752144020,
+                  "returnedAtMs": 1788752144021,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 6,
+                  "startedAtMs": 1788752144021,
+                  "receivedAtMs": 1788752144022,
+                  "returnedAtMs": 1788752144023,
+                  "roundTripMs": 2
+                }
+              ],
+              "offsetMs": 1,
+              "uncertaintyMs": 1
+            },
+            "mainLabelNodeCount": 3000,
+            "result": {
+              "protocol": "octane-issue278-create-v2",
+              "rows": 3000,
+              "boundary": "programmatic-bts-state-update-to-commit-complete",
+              "startedAtMs": 1788752144066,
+              "commitAckMs": 1788752223895,
+              "wallMs": 79829,
+              "preState": {
+                "rowCount": 0,
+                "firstId": null,
+                "row998Id": null,
+                "firstLabel": null
+              },
+              "postState": {
+                "rowCount": 3000,
+                "firstId": 1,
+                "row998Id": 999,
+                "firstLabel": "easy brown bbq"
+              },
+              "btsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 101654,
+                "selfcheckMs": 0,
+                "encodeMs": 22,
+                "dispatchMs": 0,
+                "decodeMs": 0,
+                "validateMs": 0,
+                "prepareMs": 0,
+                "applyMs": 0,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 1,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "btsCodecProfile": {
+                "encodeCalls": 1,
+                "encodePrepareMs": 19,
+                "encodeStringifyMs": 3,
+                "encodedBytes": 101654,
+                "encodeFlags0": 1,
+                "encodeFlags1": 0,
+                "decodeCalls": 4,
+                "decodeParseMs": 0,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 4,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {
+                  "mount-template-run": 1
+                }
+              },
+              "mtsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 0,
+                "selfcheckMs": 0,
+                "encodeMs": 0,
+                "dispatchMs": 0,
+                "decodeMs": 5,
+                "validateMs": 0,
+                "prepareMs": 55,
+                "applyMs": 78861,
+                "ackMs": 1,
+                "deltaCommits": 0,
+                "deltaMisses": 0,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "mtsCodecProfile": {
+                "encodeCalls": 2,
+                "encodePrepareMs": 1,
+                "encodeStringifyMs": 0,
+                "encodedBytes": 183,
+                "encodeFlags0": 2,
+                "encodeFlags1": 0,
+                "decodeCalls": 1,
+                "decodeParseMs": 5,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 1,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {}
+              },
+              "mtsTimeline": {
+                "receivedAtMs": 1788752144893,
+                "decodedAtMs": 1788752144898,
+                "validatedAtMs": 1788752144898,
+                "preparedAtMs": 1788752144955,
+                "applyStartedAtMs": 1788752144955,
+                "appliedAtMs": 1788752223816,
+                "ackStartedAtMs": 1788752223816,
+                "ackDispatchedAtMs": 1788752223817,
+                "completedAtMs": 1788752223817
+              },
+              "mtsSnapshotAtMs": 1788752223817,
+              "wire": [
+                {
+                  "direction": "bts-to-mts",
+                  "type": "octane-lynx:background-to-main",
+                  "startedAtMs": 1788752144893,
+                  "returnedAtMs": 1788752144893,
+                  "encodedBytes": 101654,
+                  "codecFlag": 0
+                }
+              ]
+            }
+          }
+        },
+        {
+          "ok": true,
+          "sample": {
+            "arm": "timedChecked",
+            "phase": "validation-control",
+            "ordinal": 2,
+            "scale": 3000,
+            "capturedAt": "2026-09-07T03:38:24.781Z",
+            "clockCalibration": {
+              "protocol": "octane-issue278-cross-realm-clock-v1",
+              "samples": [
+                {
+                  "ordinal": 0,
+                  "startedAtMs": 1788752225712,
+                  "receivedAtMs": 1788752225714,
+                  "returnedAtMs": 1788752225714,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 1,
+                  "startedAtMs": 1788752225714,
+                  "receivedAtMs": 1788752225716,
+                  "returnedAtMs": 1788752225716,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 2,
+                  "startedAtMs": 1788752225716,
+                  "receivedAtMs": 1788752225718,
+                  "returnedAtMs": 1788752225718,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 3,
+                  "startedAtMs": 1788752225718,
+                  "receivedAtMs": 1788752225720,
+                  "returnedAtMs": 1788752225720,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 4,
+                  "startedAtMs": 1788752225720,
+                  "receivedAtMs": 1788752225722,
+                  "returnedAtMs": 1788752225722,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 5,
+                  "startedAtMs": 1788752225722,
+                  "receivedAtMs": 1788752225724,
+                  "returnedAtMs": 1788752225724,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 6,
+                  "startedAtMs": 1788752225724,
+                  "receivedAtMs": 1788752225725,
+                  "returnedAtMs": 1788752225726,
+                  "roundTripMs": 2
+                }
+              ],
+              "offsetMs": 1,
+              "uncertaintyMs": 1
+            },
+            "mainLabelNodeCount": 3000,
+            "result": {
+              "protocol": "octane-issue278-create-v2",
+              "rows": 3000,
+              "boundary": "programmatic-bts-state-update-to-commit-complete",
+              "startedAtMs": 1788752225777,
+              "commitAckMs": 1788752305231,
+              "wallMs": 79454,
+              "preState": {
+                "rowCount": 0,
+                "firstId": null,
+                "row998Id": null,
+                "firstLabel": null
+              },
+              "postState": {
+                "rowCount": 3000,
+                "firstId": 1,
+                "row998Id": 999,
+                "firstLabel": "unsightly brown pony"
+              },
+              "btsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 101686,
+                "selfcheckMs": 0,
+                "encodeMs": 22,
+                "dispatchMs": 0,
+                "decodeMs": 0,
+                "validateMs": 0,
+                "prepareMs": 0,
+                "applyMs": 0,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 1,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "btsCodecProfile": {
+                "encodeCalls": 1,
+                "encodePrepareMs": 19,
+                "encodeStringifyMs": 3,
+                "encodedBytes": 101686,
+                "encodeFlags0": 1,
+                "encodeFlags1": 0,
+                "decodeCalls": 4,
+                "decodeParseMs": 0,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 4,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {
+                  "mount-template-run": 1
+                }
+              },
+              "mtsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 0,
+                "selfcheckMs": 0,
+                "encodeMs": 0,
+                "dispatchMs": 0,
+                "decodeMs": 4,
+                "validateMs": 17,
+                "prepareMs": 56,
+                "applyMs": 78465,
+                "ackMs": 1,
+                "deltaCommits": 0,
+                "deltaMisses": 0,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "mtsCodecProfile": {
+                "encodeCalls": 2,
+                "encodePrepareMs": 0,
+                "encodeStringifyMs": 1,
+                "encodedBytes": 183,
+                "encodeFlags0": 2,
+                "encodeFlags1": 0,
+                "decodeCalls": 1,
+                "decodeParseMs": 4,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 1,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {}
+              },
+              "mtsTimeline": {
+                "receivedAtMs": 1788752226608,
+                "decodedAtMs": 1788752226612,
+                "validatedAtMs": 1788752226629,
+                "preparedAtMs": 1788752226687,
+                "applyStartedAtMs": 1788752226687,
+                "appliedAtMs": 1788752305152,
+                "ackStartedAtMs": 1788752305152,
+                "ackDispatchedAtMs": 1788752305153,
+                "completedAtMs": 1788752305153
+              },
+              "mtsSnapshotAtMs": 1788752305153,
+              "wire": [
+                {
+                  "direction": "bts-to-mts",
+                  "type": "octane-lynx:background-to-main",
+                  "startedAtMs": 1788752226608,
+                  "returnedAtMs": 1788752226608,
+                  "encodedBytes": 101686,
+                  "codecFlag": 0
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "ordinal": 3,
+      "scale": 3000,
+      "order": ["timedChecked", "timedTrusted"],
+      "samples": [
+        {
+          "ok": true,
+          "sample": {
+            "arm": "timedChecked",
+            "phase": "validation-control",
+            "ordinal": 3,
+            "scale": 3000,
+            "capturedAt": "2026-09-07T03:39:47.112Z",
+            "clockCalibration": {
+              "protocol": "octane-issue278-cross-realm-clock-v1",
+              "samples": [
+                {
+                  "ordinal": 0,
+                  "startedAtMs": 1788752307061,
+                  "receivedAtMs": 1788752307063,
+                  "returnedAtMs": 1788752307064,
+                  "roundTripMs": 3
+                },
+                {
+                  "ordinal": 1,
+                  "startedAtMs": 1788752307064,
+                  "receivedAtMs": 1788752307065,
+                  "returnedAtMs": 1788752307066,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 2,
+                  "startedAtMs": 1788752307066,
+                  "receivedAtMs": 1788752307067,
+                  "returnedAtMs": 1788752307067,
+                  "roundTripMs": 1
+                },
+                {
+                  "ordinal": 3,
+                  "startedAtMs": 1788752307067,
+                  "receivedAtMs": 1788752307069,
+                  "returnedAtMs": 1788752307069,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 4,
+                  "startedAtMs": 1788752307069,
+                  "receivedAtMs": 1788752307071,
+                  "returnedAtMs": 1788752307071,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 5,
+                  "startedAtMs": 1788752307071,
+                  "receivedAtMs": 1788752307073,
+                  "returnedAtMs": 1788752307073,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 6,
+                  "startedAtMs": 1788752307073,
+                  "receivedAtMs": 1788752307075,
+                  "returnedAtMs": 1788752307075,
+                  "roundTripMs": 2
+                }
+              ],
+              "offsetMs": 0.5,
+              "uncertaintyMs": 0.5
+            },
+            "mainLabelNodeCount": 3000,
+            "result": {
+              "protocol": "octane-issue278-create-v2",
+              "rows": 3000,
+              "boundary": "programmatic-bts-state-update-to-commit-complete",
+              "startedAtMs": 1788752307116,
+              "commitAckMs": 1788752387553,
+              "wallMs": 80437,
+              "preState": {
+                "rowCount": 0,
+                "firstId": null,
+                "row998Id": null,
+                "firstLabel": null
+              },
+              "postState": {
+                "rowCount": 3000,
+                "firstId": 1,
+                "row998Id": 999,
+                "firstLabel": "tall red car"
+              },
+              "btsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 101882,
+                "selfcheckMs": 0,
+                "encodeMs": 21,
+                "dispatchMs": 0,
+                "decodeMs": 0,
+                "validateMs": 0,
+                "prepareMs": 0,
+                "applyMs": 0,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 1,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "btsCodecProfile": {
+                "encodeCalls": 1,
+                "encodePrepareMs": 18,
+                "encodeStringifyMs": 3,
+                "encodedBytes": 101882,
+                "encodeFlags0": 1,
+                "encodeFlags1": 0,
+                "decodeCalls": 4,
+                "decodeParseMs": 0,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 4,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {
+                  "mount-template-run": 1
+                }
+              },
+              "mtsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 0,
+                "selfcheckMs": 0,
+                "encodeMs": 0,
+                "dispatchMs": 0,
+                "decodeMs": 4,
+                "validateMs": 17,
+                "prepareMs": 55,
+                "applyMs": 79451,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 0,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "mtsCodecProfile": {
+                "encodeCalls": 2,
+                "encodePrepareMs": 0,
+                "encodeStringifyMs": 0,
+                "encodedBytes": 183,
+                "encodeFlags0": 2,
+                "encodeFlags1": 0,
+                "decodeCalls": 1,
+                "decodeParseMs": 4,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 1,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {}
+              },
+              "mtsTimeline": {
+                "receivedAtMs": 1788752307945,
+                "decodedAtMs": 1788752307949,
+                "validatedAtMs": 1788752307966,
+                "preparedAtMs": 1788752308023,
+                "applyStartedAtMs": 1788752308023,
+                "appliedAtMs": 1788752387474,
+                "ackStartedAtMs": 1788752387474,
+                "ackDispatchedAtMs": 1788752387474,
+                "completedAtMs": 1788752387475
+              },
+              "mtsSnapshotAtMs": 1788752387475,
+              "wire": [
+                {
+                  "direction": "bts-to-mts",
+                  "type": "octane-lynx:background-to-main",
+                  "startedAtMs": 1788752307944,
+                  "returnedAtMs": 1788752307944,
+                  "encodedBytes": 101882,
+                  "codecFlag": 0
+                }
+              ]
+            }
+          }
+        },
+        {
+          "ok": true,
+          "sample": {
+            "arm": "timedTrusted",
+            "phase": "validation-control",
+            "ordinal": 3,
+            "scale": 3000,
+            "capturedAt": "2026-09-07T03:41:08.443Z",
+            "clockCalibration": {
+              "protocol": "octane-issue278-cross-realm-clock-v1",
+              "samples": [
+                {
+                  "ordinal": 0,
+                  "startedAtMs": 1788752389403,
+                  "receivedAtMs": 1788752389406,
+                  "returnedAtMs": 1788752389406,
+                  "roundTripMs": 3
+                },
+                {
+                  "ordinal": 1,
+                  "startedAtMs": 1788752389406,
+                  "receivedAtMs": 1788752389408,
+                  "returnedAtMs": 1788752389408,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 2,
+                  "startedAtMs": 1788752389408,
+                  "receivedAtMs": 1788752389410,
+                  "returnedAtMs": 1788752389410,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 3,
+                  "startedAtMs": 1788752389410,
+                  "receivedAtMs": 1788752389412,
+                  "returnedAtMs": 1788752389412,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 4,
+                  "startedAtMs": 1788752389412,
+                  "receivedAtMs": 1788752389414,
+                  "returnedAtMs": 1788752389414,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 5,
+                  "startedAtMs": 1788752389414,
+                  "receivedAtMs": 1788752389415,
+                  "returnedAtMs": 1788752389416,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 6,
+                  "startedAtMs": 1788752389416,
+                  "receivedAtMs": 1788752389417,
+                  "returnedAtMs": 1788752389418,
+                  "roundTripMs": 2
+                }
+              ],
+              "offsetMs": 1,
+              "uncertaintyMs": 1
+            },
+            "mainLabelNodeCount": 3000,
+            "result": {
+              "protocol": "octane-issue278-create-v2",
+              "rows": 3000,
+              "boundary": "programmatic-bts-state-update-to-commit-complete",
+              "startedAtMs": 1788752389456,
+              "commitAckMs": 1788752468879,
+              "wallMs": 79423,
+              "preState": {
+                "rowCount": 0,
+                "firstId": null,
+                "row998Id": null,
+                "firstLabel": null
+              },
+              "postState": {
+                "rowCount": 3000,
+                "firstId": 1,
+                "row998Id": 999,
+                "firstLabel": "tall blue burger"
+              },
+              "btsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 101520,
+                "selfcheckMs": 0,
+                "encodeMs": 21,
+                "dispatchMs": 1,
+                "decodeMs": 0,
+                "validateMs": 0,
+                "prepareMs": 0,
+                "applyMs": 0,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 1,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "btsCodecProfile": {
+                "encodeCalls": 1,
+                "encodePrepareMs": 18,
+                "encodeStringifyMs": 3,
+                "encodedBytes": 101520,
+                "encodeFlags0": 1,
+                "encodeFlags1": 0,
+                "decodeCalls": 4,
+                "decodeParseMs": 1,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 4,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {
+                  "mount-template-run": 1
+                }
+              },
+              "mtsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 0,
+                "selfcheckMs": 0,
+                "encodeMs": 0,
+                "dispatchMs": 0,
+                "decodeMs": 4,
+                "validateMs": 0,
+                "prepareMs": 55,
+                "applyMs": 78448,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 0,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "mtsCodecProfile": {
+                "encodeCalls": 2,
+                "encodePrepareMs": 0,
+                "encodeStringifyMs": 1,
+                "encodedBytes": 183,
+                "encodeFlags0": 2,
+                "encodeFlags1": 0,
+                "decodeCalls": 1,
+                "decodeParseMs": 4,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 1,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {}
+              },
+              "mtsTimeline": {
+                "receivedAtMs": 1788752390290,
+                "decodedAtMs": 1788752390294,
+                "validatedAtMs": 1788752390294,
+                "preparedAtMs": 1788752390351,
+                "applyStartedAtMs": 1788752390351,
+                "appliedAtMs": 1788752468799,
+                "ackStartedAtMs": 1788752468799,
+                "ackDispatchedAtMs": 1788752468799,
+                "completedAtMs": 1788752468800
+              },
+              "mtsSnapshotAtMs": 1788752468800,
+              "wire": [
+                {
+                  "direction": "bts-to-mts",
+                  "type": "octane-lynx:background-to-main",
+                  "startedAtMs": 1788752390289,
+                  "returnedAtMs": 1788752390290,
+                  "encodedBytes": 101520,
+                  "codecFlag": 0
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "ordinal": 3,
+      "scale": 2000,
+      "order": ["timedTrusted", "timedChecked"],
+      "samples": [
+        {
+          "ok": true,
+          "sample": {
+            "arm": "timedTrusted",
+            "phase": "validation-control",
+            "ordinal": 3,
+            "scale": 2000,
+            "capturedAt": "2026-09-07T03:41:46.256Z",
+            "clockCalibration": {
+              "protocol": "octane-issue278-cross-realm-clock-v1",
+              "samples": [
+                {
+                  "ordinal": 0,
+                  "startedAtMs": 1788752470733,
+                  "receivedAtMs": 1788752470735,
+                  "returnedAtMs": 1788752470735,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 1,
+                  "startedAtMs": 1788752470735,
+                  "receivedAtMs": 1788752470737,
+                  "returnedAtMs": 1788752470737,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 2,
+                  "startedAtMs": 1788752470737,
+                  "receivedAtMs": 1788752470739,
+                  "returnedAtMs": 1788752470739,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 3,
+                  "startedAtMs": 1788752470739,
+                  "receivedAtMs": 1788752470740,
+                  "returnedAtMs": 1788752470741,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 4,
+                  "startedAtMs": 1788752470741,
+                  "receivedAtMs": 1788752470742,
+                  "returnedAtMs": 1788752470743,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 5,
+                  "startedAtMs": 1788752470743,
+                  "receivedAtMs": 1788752470744,
+                  "returnedAtMs": 1788752470745,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 6,
+                  "startedAtMs": 1788752470745,
+                  "receivedAtMs": 1788752470746,
+                  "returnedAtMs": 1788752470747,
+                  "roundTripMs": 2
+                }
+              ],
+              "offsetMs": 1,
+              "uncertaintyMs": 1
+            },
+            "mainLabelNodeCount": 2000,
+            "result": {
+              "protocol": "octane-issue278-create-v2",
+              "rows": 2000,
+              "boundary": "programmatic-bts-state-update-to-commit-complete",
+              "startedAtMs": 1788752470787,
+              "commitAckMs": 1788752506710,
+              "wallMs": 35923,
+              "preState": {
+                "rowCount": 0,
+                "firstId": null,
+                "row998Id": null,
+                "firstLabel": null
+              },
+              "postState": {
+                "rowCount": 2000,
+                "firstId": 1,
+                "row998Id": 999,
+                "firstLabel": "unsightly orange bbq"
+              },
+              "btsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 67884,
+                "selfcheckMs": 0,
+                "encodeMs": 15,
+                "dispatchMs": 0,
+                "decodeMs": 0,
+                "validateMs": 0,
+                "prepareMs": 0,
+                "applyMs": 0,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 1,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "btsCodecProfile": {
+                "encodeCalls": 1,
+                "encodePrepareMs": 12,
+                "encodeStringifyMs": 3,
+                "encodedBytes": 67884,
+                "encodeFlags0": 1,
+                "encodeFlags1": 0,
+                "decodeCalls": 4,
+                "decodeParseMs": 0,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 4,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {
+                  "mount-template-run": 1
+                }
+              },
+              "mtsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 0,
+                "selfcheckMs": 0,
+                "encodeMs": 0,
+                "dispatchMs": 0,
+                "decodeMs": 3,
+                "validateMs": 0,
+                "prepareMs": 37,
+                "applyMs": 35279,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 0,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "mtsCodecProfile": {
+                "encodeCalls": 2,
+                "encodePrepareMs": 1,
+                "encodeStringifyMs": 0,
+                "encodedBytes": 183,
+                "encodeFlags0": 2,
+                "encodeFlags1": 0,
+                "decodeCalls": 1,
+                "decodeParseMs": 3,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 1,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {}
+              },
+              "mtsTimeline": {
+                "receivedAtMs": 1788752471336,
+                "decodedAtMs": 1788752471339,
+                "validatedAtMs": 1788752471339,
+                "preparedAtMs": 1788752471378,
+                "applyStartedAtMs": 1788752471378,
+                "appliedAtMs": 1788752506657,
+                "ackStartedAtMs": 1788752506657,
+                "ackDispatchedAtMs": 1788752506657,
+                "completedAtMs": 1788752506658
+              },
+              "mtsSnapshotAtMs": 1788752506658,
+              "wire": [
+                {
+                  "direction": "bts-to-mts",
+                  "type": "octane-lynx:background-to-main",
+                  "startedAtMs": 1788752471336,
+                  "returnedAtMs": 1788752471336,
+                  "encodedBytes": 67884,
+                  "codecFlag": 0
+                }
+              ]
+            }
+          }
+        },
+        {
+          "ok": true,
+          "sample": {
+            "arm": "timedChecked",
+            "phase": "validation-control",
+            "ordinal": 3,
+            "scale": 2000,
+            "capturedAt": "2026-09-07T03:42:24.078Z",
+            "clockCalibration": {
+              "protocol": "octane-issue278-cross-realm-clock-v1",
+              "samples": [
+                {
+                  "ordinal": 0,
+                  "startedAtMs": 1788752508535,
+                  "receivedAtMs": 1788752508537,
+                  "returnedAtMs": 1788752508538,
+                  "roundTripMs": 3
+                },
+                {
+                  "ordinal": 1,
+                  "startedAtMs": 1788752508538,
+                  "receivedAtMs": 1788752508539,
+                  "returnedAtMs": 1788752508540,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 2,
+                  "startedAtMs": 1788752508540,
+                  "receivedAtMs": 1788752508541,
+                  "returnedAtMs": 1788752508542,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 3,
+                  "startedAtMs": 1788752508542,
+                  "receivedAtMs": 1788752508543,
+                  "returnedAtMs": 1788752508544,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 4,
+                  "startedAtMs": 1788752508544,
+                  "receivedAtMs": 1788752508545,
+                  "returnedAtMs": 1788752508546,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 5,
+                  "startedAtMs": 1788752508546,
+                  "receivedAtMs": 1788752508547,
+                  "returnedAtMs": 1788752508548,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 6,
+                  "startedAtMs": 1788752508548,
+                  "receivedAtMs": 1788752508549,
+                  "returnedAtMs": 1788752508550,
+                  "roundTripMs": 2
+                }
+              ],
+              "offsetMs": 0,
+              "uncertaintyMs": 1
+            },
+            "mainLabelNodeCount": 2000,
+            "result": {
+              "protocol": "octane-issue278-create-v2",
+              "rows": 2000,
+              "boundary": "programmatic-bts-state-update-to-commit-complete",
+              "startedAtMs": 1788752508597,
+              "commitAckMs": 1788752544534,
+              "wallMs": 35937,
+              "preState": {
+                "rowCount": 0,
+                "firstId": null,
+                "row998Id": null,
+                "firstLabel": null
+              },
+              "postState": {
+                "rowCount": 2000,
+                "firstId": 1,
+                "row998Id": 999,
+                "firstLabel": "expensive brown chair"
+              },
+              "btsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 67956,
+                "selfcheckMs": 0,
+                "encodeMs": 15,
+                "dispatchMs": 0,
+                "decodeMs": 0,
+                "validateMs": 0,
+                "prepareMs": 0,
+                "applyMs": 0,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 1,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "btsCodecProfile": {
+                "encodeCalls": 1,
+                "encodePrepareMs": 13,
+                "encodeStringifyMs": 2,
+                "encodedBytes": 67956,
+                "encodeFlags0": 1,
+                "encodeFlags1": 0,
+                "decodeCalls": 4,
+                "decodeParseMs": 0,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 4,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {
+                  "mount-template-run": 1
+                }
+              },
+              "mtsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 0,
+                "selfcheckMs": 0,
+                "encodeMs": 0,
+                "dispatchMs": 0,
+                "decodeMs": 3,
+                "validateMs": 12,
+                "prepareMs": 38,
+                "applyMs": 35281,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 0,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "mtsCodecProfile": {
+                "encodeCalls": 2,
+                "encodePrepareMs": 0,
+                "encodeStringifyMs": 0,
+                "encodedBytes": 183,
+                "encodeFlags0": 2,
+                "encodeFlags1": 0,
+                "decodeCalls": 1,
+                "decodeParseMs": 3,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 1,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {}
+              },
+              "mtsTimeline": {
+                "receivedAtMs": 1788752509147,
+                "decodedAtMs": 1788752509150,
+                "validatedAtMs": 1788752509162,
+                "preparedAtMs": 1788752509201,
+                "applyStartedAtMs": 1788752509201,
+                "appliedAtMs": 1788752544482,
+                "ackStartedAtMs": 1788752544482,
+                "ackDispatchedAtMs": 1788752544482,
+                "completedAtMs": 1788752544482
+              },
+              "mtsSnapshotAtMs": 1788752544482,
+              "wire": [
+                {
+                  "direction": "bts-to-mts",
+                  "type": "octane-lynx:background-to-main",
+                  "startedAtMs": 1788752509147,
+                  "returnedAtMs": 1788752509147,
+                  "encodedBytes": 67956,
+                  "codecFlag": 0
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "ordinal": 4,
+      "scale": 2000,
+      "order": ["timedChecked", "timedTrusted"],
+      "samples": [
+        {
+          "ok": true,
+          "sample": {
+            "arm": "timedChecked",
+            "phase": "validation-control",
+            "ordinal": 4,
+            "scale": 2000,
+            "capturedAt": "2026-09-07T03:43:02.310Z",
+            "clockCalibration": {
+              "protocol": "octane-issue278-cross-realm-clock-v1",
+              "samples": [
+                {
+                  "ordinal": 0,
+                  "startedAtMs": 1788752546393,
+                  "receivedAtMs": 1788752546394,
+                  "returnedAtMs": 1788752546395,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 1,
+                  "startedAtMs": 1788752546395,
+                  "receivedAtMs": 1788752546396,
+                  "returnedAtMs": 1788752546397,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 2,
+                  "startedAtMs": 1788752546397,
+                  "receivedAtMs": 1788752546398,
+                  "returnedAtMs": 1788752546399,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 3,
+                  "startedAtMs": 1788752546399,
+                  "receivedAtMs": 1788752546400,
+                  "returnedAtMs": 1788752546401,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 4,
+                  "startedAtMs": 1788752546401,
+                  "receivedAtMs": 1788752546402,
+                  "returnedAtMs": 1788752546403,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 5,
+                  "startedAtMs": 1788752546403,
+                  "receivedAtMs": 1788752546404,
+                  "returnedAtMs": 1788752546405,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 6,
+                  "startedAtMs": 1788752546405,
+                  "receivedAtMs": 1788752546407,
+                  "returnedAtMs": 1788752546408,
+                  "roundTripMs": 3
+                }
+              ],
+              "offsetMs": 0,
+              "uncertaintyMs": 1
+            },
+            "mainLabelNodeCount": 2000,
+            "result": {
+              "protocol": "octane-issue278-create-v2",
+              "rows": 2000,
+              "boundary": "programmatic-bts-state-update-to-commit-complete",
+              "startedAtMs": 1788752546457,
+              "commitAckMs": 1788752582764,
+              "wallMs": 36307,
+              "preState": {
+                "rowCount": 0,
+                "firstId": null,
+                "row998Id": null,
+                "firstLabel": null
+              },
+              "postState": {
+                "rowCount": 2000,
+                "firstId": 1,
+                "row998Id": 999,
+                "firstLabel": "short yellow car"
+              },
+              "btsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 67602,
+                "selfcheckMs": 0,
+                "encodeMs": 14,
+                "dispatchMs": 0,
+                "decodeMs": 0,
+                "validateMs": 0,
+                "prepareMs": 0,
+                "applyMs": 0,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 1,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "btsCodecProfile": {
+                "encodeCalls": 1,
+                "encodePrepareMs": 12,
+                "encodeStringifyMs": 2,
+                "encodedBytes": 67602,
+                "encodeFlags0": 1,
+                "encodeFlags1": 0,
+                "decodeCalls": 4,
+                "decodeParseMs": 0,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 4,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {
+                  "mount-template-run": 1
+                }
+              },
+              "mtsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 0,
+                "selfcheckMs": 0,
+                "encodeMs": 0,
+                "dispatchMs": 0,
+                "decodeMs": 4,
+                "validateMs": 11,
+                "prepareMs": 37,
+                "applyMs": 35649,
+                "ackMs": 3,
+                "deltaCommits": 0,
+                "deltaMisses": 0,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "mtsCodecProfile": {
+                "encodeCalls": 2,
+                "encodePrepareMs": 0,
+                "encodeStringifyMs": 0,
+                "encodedBytes": 183,
+                "encodeFlags0": 2,
+                "encodeFlags1": 0,
+                "decodeCalls": 1,
+                "decodeParseMs": 3,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 1,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {}
+              },
+              "mtsTimeline": {
+                "receivedAtMs": 1788752547010,
+                "decodedAtMs": 1788752547013,
+                "validatedAtMs": 1788752547024,
+                "preparedAtMs": 1788752547063,
+                "applyStartedAtMs": 1788752547063,
+                "appliedAtMs": 1788752582712,
+                "ackStartedAtMs": 1788752582712,
+                "ackDispatchedAtMs": 1788752582715,
+                "completedAtMs": 1788752582715
+              },
+              "mtsSnapshotAtMs": 1788752582715,
+              "wire": [
+                {
+                  "direction": "bts-to-mts",
+                  "type": "octane-lynx:background-to-main",
+                  "startedAtMs": 1788752547009,
+                  "returnedAtMs": 1788752547009,
+                  "encodedBytes": 67602,
+                  "codecFlag": 0
+                }
+              ]
+            }
+          }
+        },
+        {
+          "ok": true,
+          "sample": {
+            "arm": "timedTrusted",
+            "phase": "validation-control",
+            "ordinal": 4,
+            "scale": 2000,
+            "capturedAt": "2026-09-07T03:43:40.663Z",
+            "clockCalibration": {
+              "protocol": "octane-issue278-cross-realm-clock-v1",
+              "samples": [
+                {
+                  "ordinal": 0,
+                  "startedAtMs": 1788752584684,
+                  "receivedAtMs": 1788752584685,
+                  "returnedAtMs": 1788752584686,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 1,
+                  "startedAtMs": 1788752584686,
+                  "receivedAtMs": 1788752584687,
+                  "returnedAtMs": 1788752584688,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 2,
+                  "startedAtMs": 1788752584688,
+                  "receivedAtMs": 1788752584689,
+                  "returnedAtMs": 1788752584690,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 3,
+                  "startedAtMs": 1788752584690,
+                  "receivedAtMs": 1788752584691,
+                  "returnedAtMs": 1788752584692,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 4,
+                  "startedAtMs": 1788752584692,
+                  "receivedAtMs": 1788752584693,
+                  "returnedAtMs": 1788752584694,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 5,
+                  "startedAtMs": 1788752584694,
+                  "receivedAtMs": 1788752584696,
+                  "returnedAtMs": 1788752584696,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 6,
+                  "startedAtMs": 1788752584696,
+                  "receivedAtMs": 1788752584697,
+                  "returnedAtMs": 1788752584698,
+                  "roundTripMs": 2
+                }
+              ],
+              "offsetMs": 0,
+              "uncertaintyMs": 1
+            },
+            "mainLabelNodeCount": 2000,
+            "result": {
+              "protocol": "octane-issue278-create-v2",
+              "rows": 2000,
+              "boundary": "programmatic-bts-state-update-to-commit-complete",
+              "startedAtMs": 1788752584737,
+              "commitAckMs": 1788752621131,
+              "wallMs": 36394,
+              "preState": {
+                "rowCount": 0,
+                "firstId": null,
+                "row998Id": null,
+                "firstLabel": null
+              },
+              "postState": {
+                "rowCount": 2000,
+                "firstId": 1,
+                "row998Id": 999,
+                "firstLabel": "helpful orange car"
+              },
+              "btsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 67850,
+                "selfcheckMs": 0,
+                "encodeMs": 14,
+                "dispatchMs": 0,
+                "decodeMs": 0,
+                "validateMs": 0,
+                "prepareMs": 0,
+                "applyMs": 0,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 1,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "btsCodecProfile": {
+                "encodeCalls": 1,
+                "encodePrepareMs": 12,
+                "encodeStringifyMs": 2,
+                "encodedBytes": 67850,
+                "encodeFlags0": 1,
+                "encodeFlags1": 0,
+                "decodeCalls": 4,
+                "decodeParseMs": 0,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 4,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {
+                  "mount-template-run": 1
+                }
+              },
+              "mtsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 0,
+                "selfcheckMs": 0,
+                "encodeMs": 0,
+                "dispatchMs": 0,
+                "decodeMs": 3,
+                "validateMs": 0,
+                "prepareMs": 37,
+                "applyMs": 35752,
+                "ackMs": 1,
+                "deltaCommits": 0,
+                "deltaMisses": 0,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "mtsCodecProfile": {
+                "encodeCalls": 2,
+                "encodePrepareMs": 1,
+                "encodeStringifyMs": 0,
+                "encodedBytes": 183,
+                "encodeFlags0": 2,
+                "encodeFlags1": 0,
+                "decodeCalls": 1,
+                "decodeParseMs": 3,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 1,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {}
+              },
+              "mtsTimeline": {
+                "receivedAtMs": 1788752585284,
+                "decodedAtMs": 1788752585287,
+                "validatedAtMs": 1788752585287,
+                "preparedAtMs": 1788752585325,
+                "applyStartedAtMs": 1788752585325,
+                "appliedAtMs": 1788752621077,
+                "ackStartedAtMs": 1788752621077,
+                "ackDispatchedAtMs": 1788752621078,
+                "completedAtMs": 1788752621078
+              },
+              "mtsSnapshotAtMs": 1788752621078,
+              "wire": [
+                {
+                  "direction": "bts-to-mts",
+                  "type": "octane-lynx:background-to-main",
+                  "startedAtMs": 1788752585283,
+                  "returnedAtMs": 1788752585283,
+                  "encodedBytes": 67850,
+                  "codecFlag": 0
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "ordinal": 4,
+      "scale": 3000,
+      "order": ["timedTrusted", "timedChecked"],
+      "samples": [
+        {
+          "ok": true,
+          "sample": {
+            "arm": "timedTrusted",
+            "phase": "validation-control",
+            "ordinal": 4,
+            "scale": 3000,
+            "capturedAt": "2026-09-07T03:45:02.219Z",
+            "clockCalibration": {
+              "protocol": "octane-issue278-cross-realm-clock-v1",
+              "samples": [
+                {
+                  "ordinal": 0,
+                  "startedAtMs": 1788752622971,
+                  "receivedAtMs": 1788752622973,
+                  "returnedAtMs": 1788752622973,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 1,
+                  "startedAtMs": 1788752622973,
+                  "receivedAtMs": 1788752622975,
+                  "returnedAtMs": 1788752622975,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 2,
+                  "startedAtMs": 1788752622975,
+                  "receivedAtMs": 1788752622977,
+                  "returnedAtMs": 1788752622977,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 3,
+                  "startedAtMs": 1788752622977,
+                  "receivedAtMs": 1788752622979,
+                  "returnedAtMs": 1788752622979,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 4,
+                  "startedAtMs": 1788752622979,
+                  "receivedAtMs": 1788752622980,
+                  "returnedAtMs": 1788752622981,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 5,
+                  "startedAtMs": 1788752622981,
+                  "receivedAtMs": 1788752622982,
+                  "returnedAtMs": 1788752622983,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 6,
+                  "startedAtMs": 1788752622983,
+                  "receivedAtMs": 1788752622984,
+                  "returnedAtMs": 1788752622985,
+                  "roundTripMs": 2
+                }
+              ],
+              "offsetMs": 1,
+              "uncertaintyMs": 1
+            },
+            "mainLabelNodeCount": 3000,
+            "result": {
+              "protocol": "octane-issue278-create-v2",
+              "rows": 3000,
+              "boundary": "programmatic-bts-state-update-to-commit-complete",
+              "startedAtMs": 1788752623026,
+              "commitAckMs": 1788752702684,
+              "wallMs": 79658,
+              "preState": {
+                "rowCount": 0,
+                "firstId": null,
+                "row998Id": null,
+                "firstLabel": null
+              },
+              "postState": {
+                "rowCount": 3000,
+                "firstId": 1,
+                "row998Id": 999,
+                "firstLabel": "small orange burger"
+              },
+              "btsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 101721,
+                "selfcheckMs": 0,
+                "encodeMs": 21,
+                "dispatchMs": 0,
+                "decodeMs": 0,
+                "validateMs": 0,
+                "prepareMs": 0,
+                "applyMs": 0,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 1,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "btsCodecProfile": {
+                "encodeCalls": 1,
+                "encodePrepareMs": 18,
+                "encodeStringifyMs": 3,
+                "encodedBytes": 101721,
+                "encodeFlags0": 1,
+                "encodeFlags1": 0,
+                "decodeCalls": 4,
+                "decodeParseMs": 0,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 4,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {
+                  "mount-template-run": 1
+                }
+              },
+              "mtsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 0,
+                "selfcheckMs": 0,
+                "encodeMs": 0,
+                "dispatchMs": 0,
+                "decodeMs": 5,
+                "validateMs": 0,
+                "prepareMs": 55,
+                "applyMs": 78704,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 0,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "mtsCodecProfile": {
+                "encodeCalls": 2,
+                "encodePrepareMs": 1,
+                "encodeStringifyMs": 0,
+                "encodedBytes": 183,
+                "encodeFlags0": 2,
+                "encodeFlags1": 0,
+                "decodeCalls": 1,
+                "decodeParseMs": 4,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 1,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {}
+              },
+              "mtsTimeline": {
+                "receivedAtMs": 1788752623841,
+                "decodedAtMs": 1788752623845,
+                "validatedAtMs": 1788752623845,
+                "preparedAtMs": 1788752623902,
+                "applyStartedAtMs": 1788752623902,
+                "appliedAtMs": 1788752702606,
+                "ackStartedAtMs": 1788752702606,
+                "ackDispatchedAtMs": 1788752702606,
+                "completedAtMs": 1788752702607
+              },
+              "mtsSnapshotAtMs": 1788752702607,
+              "wire": [
+                {
+                  "direction": "bts-to-mts",
+                  "type": "octane-lynx:background-to-main",
+                  "startedAtMs": 1788752623840,
+                  "returnedAtMs": 1788752623840,
+                  "encodedBytes": 101721,
+                  "codecFlag": 0
+                }
+              ]
+            }
+          }
+        },
+        {
+          "ok": true,
+          "sample": {
+            "arm": "timedChecked",
+            "phase": "validation-control",
+            "ordinal": 4,
+            "scale": 3000,
+            "capturedAt": "2026-09-07T03:46:23.578Z",
+            "clockCalibration": {
+              "protocol": "octane-issue278-cross-realm-clock-v1",
+              "samples": [
+                {
+                  "ordinal": 0,
+                  "startedAtMs": 1788752704623,
+                  "receivedAtMs": 1788752704625,
+                  "returnedAtMs": 1788752704625,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 1,
+                  "startedAtMs": 1788752704625,
+                  "receivedAtMs": 1788752704627,
+                  "returnedAtMs": 1788752704627,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 2,
+                  "startedAtMs": 1788752704627,
+                  "receivedAtMs": 1788752704629,
+                  "returnedAtMs": 1788752704629,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 3,
+                  "startedAtMs": 1788752704629,
+                  "receivedAtMs": 1788752704631,
+                  "returnedAtMs": 1788752704631,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 4,
+                  "startedAtMs": 1788752704631,
+                  "receivedAtMs": 1788752704632,
+                  "returnedAtMs": 1788752704633,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 5,
+                  "startedAtMs": 1788752704633,
+                  "receivedAtMs": 1788752704634,
+                  "returnedAtMs": 1788752704635,
+                  "roundTripMs": 2
+                },
+                {
+                  "ordinal": 6,
+                  "startedAtMs": 1788752704635,
+                  "receivedAtMs": 1788752704636,
+                  "returnedAtMs": 1788752704637,
+                  "roundTripMs": 2
+                }
+              ],
+              "offsetMs": 1,
+              "uncertaintyMs": 1
+            },
+            "mainLabelNodeCount": 3000,
+            "result": {
+              "protocol": "octane-issue278-create-v2",
+              "rows": 3000,
+              "boundary": "programmatic-bts-state-update-to-commit-complete",
+              "startedAtMs": 1788752704676,
+              "commitAckMs": 1788752784039,
+              "wallMs": 79363,
+              "preState": {
+                "rowCount": 0,
+                "firstId": null,
+                "row998Id": null,
+                "firstLabel": null
+              },
+              "postState": {
+                "rowCount": 3000,
+                "firstId": 1,
+                "row998Id": 999,
+                "firstLabel": "important purple house"
+              },
+              "btsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 101421,
+                "selfcheckMs": 0,
+                "encodeMs": 21,
+                "dispatchMs": 0,
+                "decodeMs": 0,
+                "validateMs": 0,
+                "prepareMs": 0,
+                "applyMs": 0,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 1,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "btsCodecProfile": {
+                "encodeCalls": 1,
+                "encodePrepareMs": 18,
+                "encodeStringifyMs": 3,
+                "encodedBytes": 101421,
+                "encodeFlags0": 1,
+                "encodeFlags1": 0,
+                "decodeCalls": 4,
+                "decodeParseMs": 0,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 4,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {
+                  "mount-template-run": 1
+                }
+              },
+              "mtsProfile": {
+                "commits": 1,
+                "commands": 1,
+                "emptyCommits": 0,
+                "bytes": 0,
+                "selfcheckMs": 0,
+                "encodeMs": 0,
+                "dispatchMs": 0,
+                "decodeMs": 4,
+                "validateMs": 17,
+                "prepareMs": 55,
+                "applyMs": 78367,
+                "ackMs": 0,
+                "deltaCommits": 0,
+                "deltaMisses": 0,
+                "deltaOps": 0,
+                "deltaBytes": 0,
+                "firstScreenRenderMs": 0,
+                "firstScreenPublishMs": 0,
+                "firstScreenCaptureMs": 0,
+                "firstScreenAnnounceMs": 0,
+                "firstTreeSettled": 0,
+                "handOverMs": 0,
+                "destroyRunExpandMs": 0,
+                "denseValidateMs": 0,
+                "eventDetachMs": 0,
+                "papiRemoveMs": 0,
+                "denseReleaseMs": 0,
+                "synthesizedCommands": 0,
+                "eventDetachCount": 0,
+                "papiRemoveCount": 0,
+                "denseReleaseHostCount": 0
+              },
+              "mtsCodecProfile": {
+                "encodeCalls": 2,
+                "encodePrepareMs": 0,
+                "encodeStringifyMs": 0,
+                "encodedBytes": 183,
+                "encodeFlags0": 2,
+                "encodeFlags1": 0,
+                "decodeCalls": 1,
+                "decodeParseMs": 4,
+                "decodeRestoreMs": 0,
+                "decodeFlags0": 1,
+                "decodeFlags1": 0,
+                "prepareVisits": 0,
+                "restoreVisits": 0,
+                "aliases": 0,
+                "localizeCalls": 0,
+                "localizeMs": 0,
+                "commandOps": {}
+              },
+              "mtsTimeline": {
+                "receivedAtMs": 1788752705515,
+                "decodedAtMs": 1788752705519,
+                "validatedAtMs": 1788752705536,
+                "preparedAtMs": 1788752705593,
+                "applyStartedAtMs": 1788752705593,
+                "appliedAtMs": 1788752783960,
+                "ackStartedAtMs": 1788752783960,
+                "ackDispatchedAtMs": 1788752783960,
+                "completedAtMs": 1788752783960
+              },
+              "mtsSnapshotAtMs": 1788752783960,
+              "wire": [
+                {
+                  "direction": "bts-to-mts",
+                  "type": "octane-lynx:background-to-main",
+                  "startedAtMs": 1788752705514,
+                  "returnedAtMs": 1788752705514,
+                  "encodedBytes": 101421,
+                  "codecFlag": 0
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "floors": {
+    "echo": [],
+    "vm": [],
+    "papi": [],
+    "nodeV8": []
+  },
+  "failures": [],
+  "logs": [
+    {
+      "at": "2026-09-07T03:26:13.417Z",
+      "message": "  [sandbox] octane-issue278-countsChecked rows-0 session=2"
+    },
+    {
+      "at": "2026-09-07T03:26:24.698Z",
+      "message": "  [sandbox] octane-issue278-scalarCountsChecked rows-0 session=2"
+    },
+    {
+      "at": "2026-09-07T03:26:30.189Z",
+      "message": "  [sandbox] octane-issue278-timedChecked rows-0 session=2"
+    },
+    {
+      "at": "2026-09-07T03:27:08.137Z",
+      "message": "  [sandbox] octane-issue278-timedTrusted rows-0 session=2"
+    },
+    {
+      "at": "2026-09-07T03:27:46.451Z",
+      "message": "  [sandbox] octane-issue278-timedTrusted rows-0 session=2"
+    },
+    {
+      "at": "2026-09-07T03:29:08.031Z",
+      "message": "  [sandbox] octane-issue278-timedChecked rows-0 session=2"
+    },
+    {
+      "at": "2026-09-07T03:30:29.727Z",
+      "message": "  [sandbox] octane-issue278-timedChecked rows-0 session=2"
+    },
+    {
+      "at": "2026-09-07T03:31:50.814Z",
+      "message": "  [sandbox] octane-issue278-timedTrusted rows-0 session=2"
+    },
+    {
+      "at": "2026-09-07T03:33:12.772Z",
+      "message": "  [sandbox] octane-issue278-timedTrusted rows-0 session=2"
+    },
+    {
+      "at": "2026-09-07T03:33:50.526Z",
+      "message": "  [sandbox] octane-issue278-timedChecked rows-0 session=2"
+    },
+    {
+      "at": "2026-09-07T03:34:28.278Z",
+      "message": "  [sandbox] octane-issue278-timedChecked rows-0 session=2"
+    },
+    {
+      "at": "2026-09-07T03:35:05.949Z",
+      "message": "  [sandbox] octane-issue278-timedTrusted rows-0 session=2"
+    },
+    {
+      "at": "2026-09-07T03:35:43.501Z",
+      "message": "  [sandbox] octane-issue278-timedTrusted rows-0 session=2"
+    },
+    {
+      "at": "2026-09-07T03:37:05.202Z",
+      "message": "  [sandbox] octane-issue278-timedChecked rows-0 session=2"
+    },
+    {
+      "at": "2026-09-07T03:38:26.550Z",
+      "message": "  [sandbox] octane-issue278-timedChecked rows-0 session=2"
+    },
+    {
+      "at": "2026-09-07T03:39:48.890Z",
+      "message": "  [sandbox] octane-issue278-timedTrusted rows-0 session=2"
+    },
+    {
+      "at": "2026-09-07T03:41:10.218Z",
+      "message": "  [sandbox] octane-issue278-timedTrusted rows-0 session=2"
+    },
+    {
+      "at": "2026-09-07T03:41:48.019Z",
+      "message": "  [sandbox] octane-issue278-timedChecked rows-0 session=2"
+    },
+    {
+      "at": "2026-09-07T03:42:25.875Z",
+      "message": "  [sandbox] octane-issue278-timedChecked rows-0 session=2"
+    },
+    {
+      "at": "2026-09-07T03:43:04.166Z",
+      "message": "  [sandbox] octane-issue278-timedTrusted rows-0 session=2"
+    },
+    {
+      "at": "2026-09-07T03:43:42.453Z",
+      "message": "  [sandbox] octane-issue278-timedTrusted rows-0 session=2"
+    },
+    {
+      "at": "2026-09-07T03:45:04.103Z",
+      "message": "  [sandbox] octane-issue278-timedChecked rows-0 session=2"
+    }
+  ]
+}
