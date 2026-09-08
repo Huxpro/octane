@@ -4,6 +4,9 @@ Issue: #290
 
 Baseline source: `Huxpro/octane@f8e6773efe27454002ac0da78d82358a29b4e711`
 
+Candidate implementation source:
+`Huxpro/octane@d248bd1544f17edc0a000745498005e962941658`
+
 Fixture: `benchmarks/lynx-table/app`, `BENCH_AUTOROWS=0`, production Native build
 
 Decision: **accept compile-time removal of production host-error arguments**
@@ -34,10 +37,10 @@ the candidate main/background program SHA-256 values are
 and
 `9e0fa649f5062e38de0e7b28a63095f5bf87869c470b6d488be731e801394027`.
 
-The external baseline and candidate receipts have SHA-256
+The external baseline and exact-clean candidate receipts have SHA-256
 `980ca87baa7e2ac35108218c1cb5e48b5572d285034a27c955d9a059010389d4`
 and
-`ba588d08638178f6424064245ddc3c2ea79da4321f09f38fb5ae2a48a1f8c7ea`.
+`97b454731e013d8f2df08fa2ebfa76acc0d7dcabc1702142d1453fcd914b8167`.
 
 ## Rejected alternative
 
