@@ -24,6 +24,9 @@ import { LYNX_MAX_WIRE_DEPTH } from './transport-codec.js';
 import { decodeLynxPortalTargetId } from './portal.js';
 import { LYNX_RENDERER_ID } from './renderer-id.js';
 
+const LYNX_PROTOCOL_DEVELOPMENT =
+	typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__;
+
 /** Kept local to the main-thread protocol graph; the type pins it to the core ABI. */
 export const LYNX_TRANSPORT_PROTOCOL_VERSION: typeof UNIVERSAL_TRANSPORT_PROTOCOL_VERSION = 1;
 
@@ -80,7 +83,7 @@ export function resolveLynxValidationMode(value: unknown): LynxValidationMode {
 	const mode = value ?? 'checked';
 	if (mode !== 'checked' && mode !== 'trusted') {
 		throw new TypeError(
-			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+			LYNX_PROTOCOL_DEVELOPMENT
 				? 'Octane Lynx validation must be "checked" or "trusted".'
 				: 'Octane Lynx OL173',
 		);
@@ -661,10 +664,18 @@ function composePath(label: string, index?: number, field?: string): string {
 	return field === undefined ? indexed : `${indexed}.${field}`;
 }
 
-function fail(label: string, message: string, index?: number, field?: string): never {
+// Keep every diagnostic-only call argument behind LYNX_PROTOCOL_DEVELOPMENT.
+// A guard in this function cannot suppress JavaScript's eager argument
+// evaluation, which would retain the complete validation prose in production.
+function fail(
+	label: string | false,
+	message: string | false,
+	index?: number,
+	field?: string | false,
+): never {
 	throw new TypeError(
-		typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
-			? `Octane Lynx transport ${composePath(label, index, field)}: ${message}`
+		LYNX_PROTOCOL_DEVELOPMENT
+			? `Octane Lynx transport ${composePath(label as string, index, field as string | undefined)}: ${message}`
 			: 'Octane Lynx OL174',
 	);
 }
@@ -693,7 +704,12 @@ function record(
 	field?: string,
 ): Record<string, unknown> {
 	if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-		return fail(label, 'must be an object.', index, field);
+		return fail(
+			LYNX_PROTOCOL_DEVELOPMENT && label,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must be an object.',
+			index,
+			LYNX_PROTOCOL_DEVELOPMENT && field,
+		);
 	}
 	return value as Record<string, unknown>;
 }
@@ -716,12 +732,21 @@ function exactKeys(
 	let present = 0;
 	for (const key of expected) {
 		if (Object.prototype.hasOwnProperty.call(value, key)) present++;
-		else fail(label, `is missing field ${JSON.stringify(key)}.`, index);
+		else
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && label,
+				LYNX_PROTOCOL_DEVELOPMENT && `is missing field ${JSON.stringify(key)}.`,
+				index,
+			);
 	}
 	if (Object.keys(value).length === present) return;
 	for (const key of Object.keys(value)) {
 		if (!expected.includes(key)) {
-			fail(label, `contains unknown field ${JSON.stringify(key)}.`, index);
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && label,
+				LYNX_PROTOCOL_DEVELOPMENT && `contains unknown field ${JSON.stringify(key)}.`,
+				index,
+			);
 		}
 	}
 }
@@ -733,7 +758,12 @@ function nonEmptyString(
 	field?: string,
 ): asserts value is string {
 	if (typeof value !== 'string' || value.length === 0) {
-		fail(label, 'must be a non-empty string.', index, field);
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && label,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must be a non-empty string.',
+			index,
+			LYNX_PROTOCOL_DEVELOPMENT && field,
+		);
 	}
 }
 
@@ -744,13 +774,21 @@ function positiveInteger(
 	field?: string,
 ): asserts value is number {
 	if (!Number.isSafeInteger(value) || (value as number) <= 0) {
-		fail(label, 'must be a positive safe integer.', index, field);
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && label,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must be a positive safe integer.',
+			index,
+			LYNX_PROTOCOL_DEVELOPMENT && field,
+		);
 	}
 }
 
 function nonNegativeInteger(value: unknown, label: string): asserts value is number {
 	if (!Number.isSafeInteger(value) || (value as number) < 0) {
-		fail(label, 'must be a non-negative safe integer.');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && label,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must be a non-negative safe integer.',
+		);
 	}
 }
 
@@ -773,14 +811,23 @@ function hostParent(value: unknown, base: string, index?: number, field?: string
 	const handle = record(value, label);
 	exactKeys(handle, ['$$kind', 'renderer', 'root', 'id'], label);
 	if (handle.$$kind !== 'octane.universal.portal-target') {
-		fail(`${label}.$$kind`, 'must identify a universal portal target.');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && `${label}.$$kind`,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must identify a universal portal target.',
+		);
 	}
 	if (handle.renderer !== LYNX_TRANSPORT_RENDERER) {
-		fail(`${label}.renderer`, `must be ${JSON.stringify(LYNX_TRANSPORT_RENDERER)}.`);
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && `${label}.renderer`,
+			LYNX_PROTOCOL_DEVELOPMENT && `must be ${JSON.stringify(LYNX_TRANSPORT_RENDERER)}.`,
+		);
 	}
 	positiveInteger(handle.root, `${label}.root`);
 	if (decodeLynxPortalTargetId(handle.id) === null) {
-		fail(`${label}.id`, 'must be an opaque Lynx portal target ID.');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && `${label}.id`,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must be an opaque Lynx portal target ID.',
+		);
 	}
 }
 
@@ -824,12 +871,16 @@ function isWireLeaf(value: unknown): boolean {
 function assertWireValue(value: unknown, label: string, depth = 0): void {
 	if (isWireLeaf(value)) return;
 	if (typeof value !== 'object' || value === null) {
-		fail(label, 'contains a non-serializable value.');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && label,
+			LYNX_PROTOCOL_DEVELOPMENT && 'contains a non-serializable value.',
+		);
 	}
 	if (depth >= LYNX_MAX_WIRE_DEPTH) {
 		fail(
-			label,
-			`nests deeper than ${LYNX_MAX_WIRE_DEPTH} levels, which is either a cycle or a structure the wire cannot carry.`,
+			LYNX_PROTOCOL_DEVELOPMENT && label,
+			LYNX_PROTOCOL_DEVELOPMENT &&
+				`nests deeper than ${LYNX_MAX_WIRE_DEPTH} levels, which is either a cycle or a structure the wire cannot carry.`,
 		);
 	}
 	if (Array.isArray(value)) {
@@ -847,7 +898,10 @@ function assertWireValue(value: unknown, label: string, depth = 0): void {
 	// receive walk skips the probe; the send-side self-check is where a live
 	// worklet capture or snapshot would still smuggle one in.
 	if (LYNX_DEVELOPMENT && Object.getOwnPropertySymbols(object).length > 0) {
-		fail(label, 'contains symbol-keyed fields, which the wire drops silently.');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && label,
+			LYNX_PROTOCOL_DEVELOPMENT && 'contains symbol-keyed fields, which the wire drops silently.',
+		);
 	}
 	for (const name of Object.keys(object)) {
 		const child = object[name];
@@ -860,10 +914,16 @@ function assertIdentity(
 	label: string,
 ): asserts message is Record<string, unknown> & UniversalTransportIdentity {
 	if (message.protocol !== LYNX_TRANSPORT_PROTOCOL_VERSION) {
-		fail(label, `protocol must be ${LYNX_TRANSPORT_PROTOCOL_VERSION}.`);
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && label,
+			LYNX_PROTOCOL_DEVELOPMENT && `protocol must be ${LYNX_TRANSPORT_PROTOCOL_VERSION}.`,
+		);
 	}
 	if (message.renderer !== LYNX_TRANSPORT_RENDERER) {
-		fail(label, `renderer must be ${JSON.stringify(LYNX_TRANSPORT_RENDERER)}.`);
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && label,
+			LYNX_PROTOCOL_DEVELOPMENT && `renderer must be ${JSON.stringify(LYNX_TRANSPORT_RENDERER)}.`,
+		);
 	}
 	positiveInteger(message.root, `${label}.root`);
 	positiveInteger(message.version, `${label}.version`);
@@ -879,7 +939,10 @@ function assertEventListener(value: unknown, label: string): void {
 		listener.priority !== 'continuous' &&
 		listener.priority !== 'default'
 	) {
-		fail(`${label}.priority`, 'must be discrete, continuous, or default.');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && `${label}.priority`,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must be discrete, continuous, or default.',
+		);
 	}
 }
 
@@ -1023,7 +1086,8 @@ interface LynxValidatedTemplateProgram {
  * accessor or a symbol. What remains is the question the schema actually asks.
  */
 function assertTemplateArray(value: unknown, label: string): readonly unknown[] {
-	if (!Array.isArray(value)) fail(label, 'must be an array.');
+	if (!Array.isArray(value))
+		fail(LYNX_PROTOCOL_DEVELOPMENT && label, LYNX_PROTOCOL_DEVELOPMENT && 'must be an array.');
 	return value;
 }
 
@@ -1046,10 +1110,20 @@ function assertTemplateScalarValues(
 	collection = COMMANDS_LABEL,
 ): void {
 	if (!Array.isArray(value)) {
-		fail(collection, 'must be an array.', index, 'values');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && collection,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must be an array.',
+			index,
+			LYNX_PROTOCOL_DEVELOPMENT && 'values',
+		);
 	}
 	if (value.length !== expected) {
-		fail(collection, 'must match the intrinsic program dynamic-value arity.', index, 'values');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && collection,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must match the intrinsic program dynamic-value arity.',
+			index,
+			LYNX_PROTOCOL_DEVELOPMENT && 'values',
+		);
 	}
 	for (let slot = 0; slot < expected; slot++) {
 		const item: unknown = value[slot];
@@ -1059,7 +1133,11 @@ function assertTemplateScalarValues(
 		// by the same validator a `create` command's main-thread prop is walked
 		// by, so the two paths cannot disagree about what a descriptor may hold.
 		if (mainThreadValues?.[slot % arity] !== true) {
-			fail(composePath(collection, index, 'values'), 'must contain only scalar values.', slot);
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && composePath(collection, index, 'values'),
+				LYNX_PROTOCOL_DEVELOPMENT && 'must contain only scalar values.',
+				slot,
+			);
 		}
 		assertWireValue(item, composePath(collection, index, 'values'));
 	}
@@ -1075,10 +1153,20 @@ function assertTemplateCommand(
 	hostParent(command.parent, COMMANDS_LABEL, index, 'parent');
 	nullableHostId(command.before, COMMANDS_LABEL, index, 'before');
 	if (!Array.isArray(command.shape) || command.shape.length === 0) {
-		fail(label, 'must be a non-empty array.', undefined, 'shape');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && label,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must be a non-empty array.',
+			undefined,
+			LYNX_PROTOCOL_DEVELOPMENT && 'shape',
+		);
 	}
 	if (!Array.isArray(command.nodes) || command.nodes.length !== command.shape.length) {
-		fail(label, 'must match the template shape length.', undefined, 'nodes');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && label,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must match the template shape length.',
+			undefined,
+			LYNX_PROTOCOL_DEVELOPMENT && 'nodes',
+		);
 	}
 	const validatedShapes = (state.validatedTemplateShapes ??= new WeakSet<object>());
 	if (!validatedShapes.has(command.shape)) {
@@ -1095,7 +1183,10 @@ function assertTemplateCommand(
 					? shape.parent !== -1
 					: (shape.parent as number) < 0 || (shape.parent as number) >= nodeIndex)
 			) {
-				fail(`${nodeLabel}.parent`, 'must name an earlier node, with -1 only for the root.');
+				fail(
+					LYNX_PROTOCOL_DEVELOPMENT && `${nodeLabel}.parent`,
+					LYNX_PROTOCOL_DEVELOPMENT && 'must name an earlier node, with -1 only for the root.',
+				);
 			}
 		}
 		if (immutableShape) validatedShapes.add(command.shape);
@@ -1108,7 +1199,12 @@ function assertTemplateCommand(
 		exactKeys(node, hasEvents ? TEMPLATE_NODE_EVENT_KEYS : TEMPLATE_NODE_KEYS, nodeBase, nodeIndex);
 		positiveInteger(node.id, nodeBase, nodeIndex, 'id');
 		if (seen.has(node.id as number)) {
-			fail(nodeBase, 'must be unique across template mounts in one batch.', nodeIndex, 'id');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && nodeBase,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be unique across template mounts in one batch.',
+				nodeIndex,
+				LYNX_PROTOCOL_DEVELOPMENT && 'id',
+			);
 		}
 		if (state.templateRangeStarts !== undefined) {
 			for (let range = 0; range < state.templateRangeStarts.length; range++) {
@@ -1116,7 +1212,12 @@ function assertTemplateCommand(
 					(node.id as number) >= state.templateRangeStarts[range]! &&
 					(node.id as number) <= state.templateRangeEnds![range]!
 				) {
-					fail(nodeBase, 'overlaps an intrinsic host range.', nodeIndex, 'id');
+					fail(
+						LYNX_PROTOCOL_DEVELOPMENT && nodeBase,
+						LYNX_PROTOCOL_DEVELOPMENT && 'overlaps an intrinsic host range.',
+						nodeIndex,
+						LYNX_PROTOCOL_DEVELOPMENT && 'id',
+					);
 				}
 			}
 		}
@@ -1124,7 +1225,11 @@ function assertTemplateCommand(
 		assertProps(node.props, nodeBase, nodeIndex, 'props', state);
 		if (!hasEvents) continue;
 		const eventBase = `${nodeBase}[${nodeIndex}].events`;
-		if (!Array.isArray(node.events)) fail(eventBase, 'must be an array.');
+		if (!Array.isArray(node.events))
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && eventBase,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be an array.',
+			);
 		for (let eventIndex = 0; eventIndex < (node.events as unknown[]).length; eventIndex++) {
 			const event = record((node.events as unknown[])[eventIndex], eventBase, eventIndex);
 			exactKeys(event, TEMPLATE_EVENT_KEYS, eventBase, eventIndex);
@@ -1159,7 +1264,11 @@ function assertTemplateProgram(
 	exactKeys(program, TEMPLATE_PROGRAM_KEYS, label);
 	const nodes = assertTemplateArray(program.nodes, `${label}.nodes`);
 	const events = assertTemplateArray(program.events, `${label}.events`);
-	if (nodes.length === 0) fail(`${label}.nodes`, 'must be a non-empty array.');
+	if (nodes.length === 0)
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && `${label}.nodes`,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must be a non-empty array.',
+		);
 	let immutable = Object.isFrozen(program) && Object.isFrozen(nodes) && Object.isFrozen(events);
 	let maxValue = -1;
 	let mainThreadValues: boolean[] | null = null;
@@ -1180,10 +1289,16 @@ function assertTemplateProgram(
 		// declare one as its root — that is what a deferred run under a `<list>`
 		// is — but never nest one, because a cell has exactly one place it can be.
 		if (node.type === 'list') {
-			fail(`${nodeLabel}.type`, 'must not be a native-list host.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${nodeLabel}.type`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must not be a native-list host.',
+			);
 		}
 		if (node.type === 'list-item' && index !== 0) {
-			fail(`${nodeLabel}.type`, 'must not nest a native-list cell.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${nodeLabel}.type`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must not nest a native-list cell.',
+			);
 		}
 		if (
 			!Number.isSafeInteger(node.parent) ||
@@ -1191,17 +1306,26 @@ function assertTemplateProgram(
 				? node.parent !== -1
 				: (node.parent as number) < 0 || (node.parent as number) >= index)
 		) {
-			fail(`${nodeLabel}.parent`, 'must name an earlier node, with -1 only for the root.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${nodeLabel}.parent`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must name an earlier node, with -1 only for the root.',
+			);
 		}
 		assertProps(node.props, `${nodeLabel}.props`, undefined, undefined, state);
 		const props = node.props as Record<string, unknown>;
 		if (immutable && !Object.isFrozen(props)) immutable = false;
 		for (const name of Object.keys(props)) {
 			if (!isWireLeaf(props[name])) {
-				fail(`${nodeLabel}.props.${name}`, 'must be a scalar static host value.');
+				fail(
+					LYNX_PROTOCOL_DEVELOPMENT && `${nodeLabel}.props.${name}`,
+					LYNX_PROTOCOL_DEVELOPMENT && 'must be a scalar static host value.',
+				);
 			}
 			if (name === 'ref' || name.startsWith('main-thread:')) {
-				fail(`${nodeLabel}.props.${name}`, 'is not allowed in an intrinsic host program.');
+				fail(
+					LYNX_PROTOCOL_DEVELOPMENT && `${nodeLabel}.props.${name}`,
+					LYNX_PROTOCOL_DEVELOPMENT && 'is not allowed in an intrinsic host program.',
+				);
 			}
 		}
 		if (!hasBindings) continue;
@@ -1221,10 +1345,16 @@ function assertTemplateProgram(
 				binding.name === 'children' ||
 				names.has(binding.name as string)
 			) {
-				fail(`${bindingLabel}.name`, 'must be a unique ordinary host-prop name.');
+				fail(
+					LYNX_PROTOCOL_DEVELOPMENT && `${bindingLabel}.name`,
+					LYNX_PROTOCOL_DEVELOPMENT && 'must be a unique ordinary host-prop name.',
+				);
 			}
 			if (mainThread && (node.type === '#text' || node.type === 'raw-text')) {
-				fail(`${bindingLabel}.name`, 'must not bind a main-thread prop on raw text.');
+				fail(
+					LYNX_PROTOCOL_DEVELOPMENT && `${bindingLabel}.name`,
+					LYNX_PROTOCOL_DEVELOPMENT && 'must not bind a main-thread prop on raw text.',
+				);
 			}
 			names.add(binding.name as string);
 			nonNegativeInteger(binding.valueIndex, `${bindingLabel}.valueIndex`);
@@ -1235,7 +1365,10 @@ function assertTemplateProgram(
 		}
 	}
 	if (usedValues.size !== maxValue + 1) {
-		fail(`${label}.nodes`, 'must reference a dense dynamic-value range.');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && `${label}.nodes`,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must reference a dense dynamic-value range.',
+		);
 	}
 	const eventNames = new Set<string>();
 	for (let index = 0; index < events.length; index++) {
@@ -1245,7 +1378,10 @@ function assertTemplateProgram(
 		exactKeys(event, TEMPLATE_PROGRAM_EVENT_KEYS, eventLabel);
 		nonNegativeInteger(event.node, `${eventLabel}.node`);
 		if ((event.node as number) >= nodes.length) {
-			fail(`${eventLabel}.node`, 'must name a host inside the intrinsic program.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${eventLabel}.node`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must name a host inside the intrinsic program.',
+			);
 		}
 		nonEmptyString(event.type, `${eventLabel}.type`);
 		if (
@@ -1253,11 +1389,17 @@ function assertTemplateProgram(
 			event.priority !== 'continuous' &&
 			event.priority !== 'default'
 		) {
-			fail(`${eventLabel}.priority`, 'must be discrete, continuous, or default.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${eventLabel}.priority`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be discrete, continuous, or default.',
+			);
 		}
 		const key = `${event.node}:${event.type}`;
 		if (eventNames.has(key)) {
-			fail(eventLabel, 'repeats a native event on the same intrinsic host.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && eventLabel,
+				LYNX_PROTOCOL_DEVELOPMENT && 'repeats a native event on the same intrinsic host.',
+			);
 		}
 		eventNames.add(key);
 	}
@@ -1293,14 +1435,24 @@ function assertTemplateRangeCommand(
 ): void {
 	hostParent(command.parent, COMMANDS_LABEL, index, 'parent');
 	if (command.parent !== null && typeof command.parent !== 'number') {
-		fail(COMMANDS_LABEL, 'must not target a portal.', index, 'parent');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must not target a portal.',
+			index,
+			LYNX_PROTOCOL_DEVELOPMENT && 'parent',
+		);
 	}
 	nullableHostId(command.before, COMMANDS_LABEL, index, 'before');
 	positiveInteger(command.firstId, COMMANDS_LABEL, index, 'firstId');
 	const program = assertTemplateProgram(command.program, index, state);
 	const firstId = command.firstId as number;
 	if (firstId > Number.MAX_SAFE_INTEGER - (program.hosts - 1)) {
-		fail(COMMANDS_LABEL, 'overflows the safe host-ID range.', index, 'firstId');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+			LYNX_PROTOCOL_DEVELOPMENT && 'overflows the safe host-ID range.',
+			index,
+			LYNX_PROTOCOL_DEVELOPMENT && 'firstId',
+		);
 	}
 	const lastId = firstId + (program.hosts - 1);
 	const starts = (state.templateRangeStarts ??= []);
@@ -1308,14 +1460,24 @@ function assertTemplateRangeCommand(
 	if (starts.length !== 0 && firstId <= ends[ends.length - 1]!) {
 		for (let range = 0; range < starts.length; range++) {
 			if (firstId <= ends[range]! && lastId >= starts[range]!) {
-				fail(COMMANDS_LABEL, 'overlaps another intrinsic host range.', index, 'firstId');
+				fail(
+					LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+					LYNX_PROTOCOL_DEVELOPMENT && 'overlaps another intrinsic host range.',
+					index,
+					LYNX_PROTOCOL_DEVELOPMENT && 'firstId',
+				);
 			}
 		}
 	}
 	if (state.templateNodeIds !== undefined) {
 		for (const id of state.templateNodeIds) {
 			if (id >= firstId && id <= lastId) {
-				fail(COMMANDS_LABEL, 'overlaps a previously created template host.', index, 'firstId');
+				fail(
+					LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+					LYNX_PROTOCOL_DEVELOPMENT && 'overlaps a previously created template host.',
+					index,
+					LYNX_PROTOCOL_DEVELOPMENT && 'firstId',
+				);
 			}
 		}
 	}
@@ -1331,17 +1493,22 @@ function assertTemplateRangeCommand(
 	if (program.events === 0) {
 		if (command.firstListenerId !== null) {
 			fail(
-				COMMANDS_LABEL,
-				'must be null when the program has no events.',
+				LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be null when the program has no events.',
 				index,
-				'firstListenerId',
+				LYNX_PROTOCOL_DEVELOPMENT && 'firstListenerId',
 			);
 		}
 	} else {
 		positiveInteger(command.firstListenerId, COMMANDS_LABEL, index, 'firstListenerId');
 		const firstListener = command.firstListenerId as number;
 		if (firstListener > Number.MAX_SAFE_INTEGER - (program.events - 1)) {
-			fail(COMMANDS_LABEL, 'overflows the safe event-listener range.', index, 'firstListenerId');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+				LYNX_PROTOCOL_DEVELOPMENT && 'overflows the safe event-listener range.',
+				index,
+				LYNX_PROTOCOL_DEVELOPMENT && 'firstListenerId',
+			);
 		}
 		const lastListener = firstListener + (program.events - 1);
 		const listenerStarts = (state.listenerRangeStarts ??= []);
@@ -1350,10 +1517,10 @@ function assertTemplateRangeCommand(
 			for (let range = 0; range < listenerStarts.length; range++) {
 				if (firstListener <= listenerEnds[range]! && lastListener >= listenerStarts[range]!) {
 					fail(
-						COMMANDS_LABEL,
-						'overlaps another intrinsic event-listener range.',
+						LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+						LYNX_PROTOCOL_DEVELOPMENT && 'overlaps another intrinsic event-listener range.',
 						index,
-						'firstListenerId',
+						LYNX_PROTOCOL_DEVELOPMENT && 'firstListenerId',
 					);
 				}
 			}
@@ -1374,24 +1541,44 @@ function assertTemplateRangeCommand(
 function assertRunCommandPrefix(command: Record<string, unknown>, index: number): void {
 	hostParent(command.parent, COMMANDS_LABEL, index, 'parent');
 	if (command.parent !== null && typeof command.parent !== 'number') {
-		fail(COMMANDS_LABEL, 'must not target a portal.', index, 'parent');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must not target a portal.',
+			index,
+			LYNX_PROTOCOL_DEVELOPMENT && 'parent',
+		);
 	}
 	nullableHostId(command.before, COMMANDS_LABEL, index, 'before');
 	// Absence is the eager spelling, so the field carries exactly one value. A
 	// second spelling of the same meaning is something two peers can disagree
 	// about, and an explicit `undefined` is one.
 	if (Object.prototype.hasOwnProperty.call(command, 'deferred') && command.deferred !== true) {
-		fail(COMMANDS_LABEL, 'must be true when present.', index, 'deferred');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must be true when present.',
+			index,
+			LYNX_PROTOCOL_DEVELOPMENT && 'deferred',
+		);
 	}
 	if (command.deferred === true) {
 		// A deferred run declares instances the host will build on demand, so it
 		// cannot also be a placement relative to a sibling: the host that owns the
 		// recycling owns the order, and `before` would be a second answer.
 		if (command.parent === null) {
-			fail(COMMANDS_LABEL, 'must name a host parent when the run is deferred.', index, 'parent');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must name a host parent when the run is deferred.',
+				index,
+				LYNX_PROTOCOL_DEVELOPMENT && 'parent',
+			);
 		}
 		if (command.before !== null) {
-			fail(COMMANDS_LABEL, 'must be null when the run is deferred.', index, 'before');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be null when the run is deferred.',
+				index,
+				LYNX_PROTOCOL_DEVELOPMENT && 'before',
+			);
 		}
 	}
 	positiveInteger(command.count, COMMANDS_LABEL, index, 'count');
@@ -1409,12 +1596,22 @@ function assertRunCommandTail(
 	const count = command.count as number;
 	const hostCount = count * program.hosts;
 	if (!Number.isSafeInteger(hostCount)) {
-		fail(COMMANDS_LABEL, 'overflows the intrinsic host count.', index, 'count');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+			LYNX_PROTOCOL_DEVELOPMENT && 'overflows the intrinsic host count.',
+			index,
+			LYNX_PROTOCOL_DEVELOPMENT && 'count',
+		);
 	}
 	const firstId = command.firstId as number;
 	const span = (count - 1) * stride + program.hosts;
 	if (!Number.isSafeInteger(span) || firstId > Number.MAX_SAFE_INTEGER - (span - 1)) {
-		fail(COMMANDS_LABEL, 'overflows the safe host-ID range.', index, 'firstId');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+			LYNX_PROTOCOL_DEVELOPMENT && 'overflows the safe host-ID range.',
+			index,
+			LYNX_PROTOCOL_DEVELOPMENT && 'firstId',
+		);
 	}
 	const lastId = firstId + (span - 1);
 	const starts = (state.templateRangeStarts ??= []);
@@ -1422,7 +1619,12 @@ function assertRunCommandTail(
 	if (starts.length !== 0 && firstId <= ends[ends.length - 1]!) {
 		for (let range = 0; range < starts.length; range++) {
 			if (firstId <= ends[range]! && lastId >= starts[range]!) {
-				fail(COMMANDS_LABEL, 'overlaps another intrinsic host range.', index, 'firstId');
+				fail(
+					LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+					LYNX_PROTOCOL_DEVELOPMENT && 'overlaps another intrinsic host range.',
+					index,
+					LYNX_PROTOCOL_DEVELOPMENT && 'firstId',
+				);
 			}
 		}
 	}
@@ -1430,7 +1632,12 @@ function assertRunCommandTail(
 		for (const id of state.templateNodeIds) {
 			const relative = id - firstId;
 			if (relative >= 0 && relative < span && relative % stride < program.hosts) {
-				fail(COMMANDS_LABEL, 'overlaps a previously created template host.', index, 'firstId');
+				fail(
+					LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+					LYNX_PROTOCOL_DEVELOPMENT && 'overlaps a previously created template host.',
+					index,
+					LYNX_PROTOCOL_DEVELOPMENT && 'firstId',
+				);
 			}
 		}
 	}
@@ -1438,7 +1645,12 @@ function assertRunCommandTail(
 	ends.push(lastId);
 	const valueCount = count * program.values;
 	if (!Number.isSafeInteger(valueCount)) {
-		fail(COMMANDS_LABEL, 'overflows the intrinsic dynamic-value count.', index, 'count');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+			LYNX_PROTOCOL_DEVELOPMENT && 'overflows the intrinsic dynamic-value count.',
+			index,
+			LYNX_PROTOCOL_DEVELOPMENT && 'count',
+		);
 	}
 	assertTemplateScalarValues(
 		command.values,
@@ -1450,10 +1662,10 @@ function assertRunCommandTail(
 	if (program.events === 0) {
 		if (command.firstListenerId !== null) {
 			fail(
-				COMMANDS_LABEL,
-				'must be null when the program has no events.',
+				LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be null when the program has no events.',
 				index,
-				'firstListenerId',
+				LYNX_PROTOCOL_DEVELOPMENT && 'firstListenerId',
 			);
 		}
 		return;
@@ -1461,11 +1673,21 @@ function assertRunCommandTail(
 	positiveInteger(command.firstListenerId, COMMANDS_LABEL, index, 'firstListenerId');
 	const eventCount = count * program.events;
 	if (!Number.isSafeInteger(eventCount)) {
-		fail(COMMANDS_LABEL, 'overflows the intrinsic event-listener count.', index, 'count');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+			LYNX_PROTOCOL_DEVELOPMENT && 'overflows the intrinsic event-listener count.',
+			index,
+			LYNX_PROTOCOL_DEVELOPMENT && 'count',
+		);
 	}
 	const firstListener = command.firstListenerId as number;
 	if (firstListener > Number.MAX_SAFE_INTEGER - (eventCount - 1)) {
-		fail(COMMANDS_LABEL, 'overflows the safe event-listener range.', index, 'firstListenerId');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+			LYNX_PROTOCOL_DEVELOPMENT && 'overflows the safe event-listener range.',
+			index,
+			LYNX_PROTOCOL_DEVELOPMENT && 'firstListenerId',
+		);
 	}
 	const lastListener = firstListener + (eventCount - 1);
 	const listenerStarts = (state.listenerRangeStarts ??= []);
@@ -1474,10 +1696,10 @@ function assertRunCommandTail(
 		for (let range = 0; range < listenerStarts.length; range++) {
 			if (firstListener <= listenerEnds[range]! && lastListener >= listenerStarts[range]!) {
 				fail(
-					COMMANDS_LABEL,
-					'overlaps another intrinsic event-listener range.',
+					LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+					LYNX_PROTOCOL_DEVELOPMENT && 'overlaps another intrinsic event-listener range.',
 					index,
-					'firstListenerId',
+					LYNX_PROTOCOL_DEVELOPMENT && 'firstListenerId',
 				);
 			}
 		}
@@ -1520,23 +1742,48 @@ function assertProgramRunCommand(
 	const stride = command.stride;
 	if (hasStride) positiveInteger(stride, COMMANDS_LABEL, index, 'stride');
 	if (stride !== undefined && command.deferred === true) {
-		fail(COMMANDS_LABEL, 'must be omitted when the addressed run is deferred.', index, 'stride');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must be omitted when the addressed run is deferred.',
+			index,
+			LYNX_PROTOCOL_DEVELOPMENT && 'stride',
+		);
 	}
 	const address = command.address;
 	if (address === null || typeof address !== 'object' || Array.isArray(address)) {
-		fail(COMMANDS_LABEL, 'must be an object.', index, 'address');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must be an object.',
+			index,
+			LYNX_PROTOCOL_DEVELOPMENT && 'address',
+		);
 	}
 	const record = address as Record<string, unknown>;
 	for (const key of Object.keys(record)) {
 		if (key !== 'module' && key !== 'index') {
-			fail(COMMANDS_LABEL, `contains unknown field ${JSON.stringify(key)}.`, index, 'address');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+				LYNX_PROTOCOL_DEVELOPMENT && `contains unknown field ${JSON.stringify(key)}.`,
+				index,
+				LYNX_PROTOCOL_DEVELOPMENT && 'address',
+			);
 		}
 	}
 	if (typeof record.module !== 'string' || record.module === '') {
-		fail(COMMANDS_LABEL, 'must be a non-empty string.', index, 'address.module');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must be a non-empty string.',
+			index,
+			LYNX_PROTOCOL_DEVELOPMENT && 'address.module',
+		);
 	}
 	if (!Number.isSafeInteger(record.index) || (record.index as number) < 0) {
-		fail(COMMANDS_LABEL, 'must be a non-negative integer.', index, 'address.index');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must be a non-negative integer.',
+			index,
+			LYNX_PROTOCOL_DEVELOPMENT && 'address.index',
+		);
 	}
 	// A background self-checking a batch it just built resolves the program it
 	// lowered; a main thread validating an inbound one resolves what its own
@@ -1546,16 +1793,22 @@ function assertProgramRunCommand(
 	);
 	if (resolved === undefined) {
 		fail(
-			COMMANDS_LABEL,
-			`names program ${record.module as string}#${record.index as number}, which this realm ` +
-				'does not hold.',
+			LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+			LYNX_PROTOCOL_DEVELOPMENT &&
+				`names program ${record.module as string}#${record.index as number}, which this realm ` +
+					'does not hold.',
 			index,
-			'address',
+			LYNX_PROTOCOL_DEVELOPMENT && 'address',
 		);
 	}
 	const program = assertTemplateProgram(resolved, index, state);
 	if (stride !== undefined && (stride as number) < program.hosts) {
-		fail(COMMANDS_LABEL, 'must be at least the program host count.', index, 'stride');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must be at least the program host count.',
+			index,
+			LYNX_PROTOCOL_DEVELOPMENT && 'stride',
+		);
 	}
 	assertRunCommandTail(command, index, state, program, stride as number | undefined);
 }
@@ -1563,7 +1816,11 @@ function assertProgramRunCommand(
 /** Fuse the hot range-command object and exact-schema trust checks in one own-key walk. */
 function commandRecord(value: unknown, index: number): Record<string, unknown> {
 	if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-		return fail(COMMANDS_LABEL, 'must be an object.', index);
+		return fail(
+			LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must be an object.',
+			index,
+		);
 	}
 	// The walk that remains is the schema half of what used to be one fused
 	// pass: `op` and whether the key order already matches a template command,
@@ -1606,12 +1863,20 @@ function commandRecord(value: unknown, index: number): Record<string, unknown> {
 	if (schema !== null) {
 		for (const required of schema) {
 			if (!keys.includes(required)) {
-				fail(COMMANDS_LABEL, `is missing field ${JSON.stringify(required)}.`, index);
+				fail(
+					LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+					LYNX_PROTOCOL_DEVELOPMENT && `is missing field ${JSON.stringify(required)}.`,
+					index,
+				);
 			}
 		}
 		for (const key of keys) {
 			if (!schema.includes(key)) {
-				fail(COMMANDS_LABEL, `contains unknown field ${JSON.stringify(key)}.`, index);
+				fail(
+					LYNX_PROTOCOL_DEVELOPMENT && COMMANDS_LABEL,
+					LYNX_PROTOCOL_DEVELOPMENT && `contains unknown field ${JSON.stringify(key)}.`,
+					index,
+				);
 			}
 		}
 	}
@@ -1626,7 +1891,13 @@ function assertCommand(
 	// One call per accepted host node. Every path below is composed lazily.
 	const label = COMMANDS_LABEL;
 	const command = commandRecord(value, index);
-	if (typeof command.op !== 'string') fail(label, 'must be a string.', index, 'op');
+	if (typeof command.op !== 'string')
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && label,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must be a string.',
+			index,
+			LYNX_PROTOCOL_DEVELOPMENT && 'op',
+		);
 	switch (command.op) {
 		case 'mount-template-run':
 			assertTemplateRunCommand(command, index, state);
@@ -1676,12 +1947,22 @@ function assertCommand(
 			return;
 		case 'lifecycle':
 		case 'local-callback':
-			fail(label, `${command.op} is not supported by the Lynx async host.`, index, 'op');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && label,
+				LYNX_PROTOCOL_DEVELOPMENT && `${command.op} is not supported by the Lynx async host.`,
+				index,
+				LYNX_PROTOCOL_DEVELOPMENT && 'op',
+			);
 		case 'visibility':
 			exactKeys(command, VISIBILITY_KEYS, label, index);
 			positiveInteger(command.id, label, index, 'id');
 			if (command.state !== 'hidden' && command.state !== 'visible') {
-				fail(label, 'must be hidden or visible.', index, 'state');
+				fail(
+					LYNX_PROTOCOL_DEVELOPMENT && label,
+					LYNX_PROTOCOL_DEVELOPMENT && 'must be hidden or visible.',
+					index,
+					LYNX_PROTOCOL_DEVELOPMENT && 'state',
+				);
 			}
 			return;
 		case 'remove':
@@ -1705,11 +1986,21 @@ function assertCommand(
 				typeof command.width === 'number' &&
 				command.firstId > Number.MAX_SAFE_INTEGER - (command.count * command.width - 1)
 			) {
-				fail(label, 'exceeds the safe host id range.', index, 'count');
+				fail(
+					LYNX_PROTOCOL_DEVELOPMENT && label,
+					LYNX_PROTOCOL_DEVELOPMENT && 'exceeds the safe host id range.',
+					index,
+					LYNX_PROTOCOL_DEVELOPMENT && 'count',
+				);
 			}
 			return;
 		default:
-			fail(label, `uses unsupported operation ${JSON.stringify(command.op)}.`, index, 'op');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && label,
+				LYNX_PROTOCOL_DEVELOPMENT && `uses unsupported operation ${JSON.stringify(command.op)}.`,
+				index,
+				LYNX_PROTOCOL_DEVELOPMENT && 'op',
+			);
 	}
 }
 
@@ -1735,10 +2026,17 @@ function assertProgramManifest(
 		],
 		label,
 	);
-	if (manifest.op !== 'program-manifest') fail(`${label}.op`, 'must be program-manifest.');
+	if (manifest.op !== 'program-manifest')
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && `${label}.op`,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must be program-manifest.',
+		);
 	hostParent(manifest.parent, label, undefined, 'parent');
 	if (manifest.parent !== null && typeof manifest.parent !== 'number') {
-		fail(`${label}.parent`, 'must not target a portal.');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && `${label}.parent`,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must not target a portal.',
+		);
 	}
 	nullableHostId(manifest.before, label, undefined, 'before');
 	positiveInteger(manifest.firstId, label, undefined, 'firstId');
@@ -1747,28 +2045,49 @@ function assertProgramManifest(
 	const address = record(manifest.address, `${label}.address`);
 	exactKeys(address, ['module', 'index'], `${label}.address`);
 	if (typeof address.module !== 'string' || address.module === '') {
-		fail(`${label}.address.module`, 'must be a non-empty string.');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && `${label}.address.module`,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must be a non-empty string.',
+		);
 	}
 	if (!Number.isSafeInteger(address.index) || (address.index as number) < 0) {
-		fail(`${label}.address.index`, 'must be a non-negative integer.');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && `${label}.address.index`,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must be a non-negative integer.',
+		);
 	}
 	const resolved = state.resolveProgram?.(
 		manifest as unknown as Parameters<LynxProgramWireResolver>[0],
 	);
 	if (resolved === undefined) {
-		fail(label, 'names a program this realm does not hold.', undefined, 'address');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && label,
+			LYNX_PROTOCOL_DEVELOPMENT && 'names a program this realm does not hold.',
+			undefined,
+			LYNX_PROTOCOL_DEVELOPMENT && 'address',
+		);
 	}
 	const program = assertTemplateProgram(resolved, index, state);
 	if ((manifest.stride as number) < program.hosts) {
-		fail(`${label}.stride`, 'must cover the intrinsic program width.');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && `${label}.stride`,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must cover the intrinsic program width.',
+		);
 	}
 	const count = manifest.count as number;
 	const firstId = manifest.firstId as number;
 	const last = firstId + (count - 1) * (manifest.stride as number) + program.hosts - 1;
-	if (!Number.isSafeInteger(last)) fail(`${label}.count`, 'overflows the safe host-ID range.');
+	if (!Number.isSafeInteger(last))
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && `${label}.count`,
+			LYNX_PROTOCOL_DEVELOPMENT && 'overflows the safe host-ID range.',
+		);
 	const valueCount = count * program.values;
 	if (!Number.isSafeInteger(valueCount)) {
-		fail(`${label}.count`, 'overflows the intrinsic dynamic-value count.');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && `${label}.count`,
+			LYNX_PROTOCOL_DEVELOPMENT && 'overflows the intrinsic dynamic-value count.',
+		);
 	}
 	assertTemplateScalarValues(
 		manifest.values,
@@ -1780,13 +2099,19 @@ function assertProgramManifest(
 	);
 	if (program.events === 0) {
 		if (manifest.firstListenerId !== null) {
-			fail(`${label}.firstListenerId`, 'must be null when the program has no events.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.firstListenerId`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be null when the program has no events.',
+			);
 		}
 	} else {
 		positiveInteger(manifest.firstListenerId, label, undefined, 'firstListenerId');
 		const lastListener = (manifest.firstListenerId as number) + count * program.events - 1;
 		if (!Number.isSafeInteger(lastListener)) {
-			fail(`${label}.firstListenerId`, 'overflows the safe listener-ID range.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.firstListenerId`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'overflows the safe listener-ID range.',
+			);
 		}
 	}
 }
@@ -1807,11 +2132,25 @@ function assertBatch(
 		'commit.batch',
 	);
 	if (batch.renderer !== identity.renderer)
-		fail('commit.batch.renderer', 'does not match envelope.');
-	if (batch.version !== identity.version) fail('commit.batch.version', 'does not match envelope.');
-	if (!Array.isArray(batch.commands)) fail('commit.batch.commands', 'must be an array.');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && 'commit.batch.renderer',
+			LYNX_PROTOCOL_DEVELOPMENT && 'does not match envelope.',
+		);
+	if (batch.version !== identity.version)
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && 'commit.batch.version',
+			LYNX_PROTOCOL_DEVELOPMENT && 'does not match envelope.',
+		);
+	if (!Array.isArray(batch.commands))
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && 'commit.batch.commands',
+			LYNX_PROTOCOL_DEVELOPMENT && 'must be an array.',
+		);
 	if (hasPrograms && !Array.isArray(batch.programs)) {
-		fail('commit.batch.programs', 'must be an array.');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && 'commit.batch.programs',
+			LYNX_PROTOCOL_DEVELOPMENT && 'must be an array.',
+		);
 	}
 	// The envelope above is O(1) and stays in both modes: it is what decides
 	// which root a commit belongs to and which version it answers, so skipping
@@ -1836,11 +2175,16 @@ function assertRemoteError(
 	const error = record(value, label);
 	exactKeys(error, ['name', 'message'], label);
 	nonEmptyString(error.name, `${label}.name`);
-	if (typeof error.message !== 'string') fail(`${label}.message`, 'must be a string.');
+	if (typeof error.message !== 'string')
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && `${label}.message`,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must be a string.',
+		);
 }
 
 function assertCallArgs(value: unknown, label: string, traverse: boolean): void {
-	if (!Array.isArray(value)) fail(label, 'must be an array.');
+	if (!Array.isArray(value))
+		fail(LYNX_PROTOCOL_DEVELOPMENT && label, LYNX_PROTOCOL_DEVELOPMENT && 'must be an array.');
 	if (traverse) assertWireValue(value, label);
 }
 
@@ -1908,22 +2252,52 @@ function assertSnapshotIdentity(
 		}
 	}
 	if (value.$$kind !== 'octane.lynx.element') {
-		fail(label, 'does not match the handle envelope.', index, 'snapshot.$$kind');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && label,
+			LYNX_PROTOCOL_DEVELOPMENT && 'does not match the handle envelope.',
+			index,
+			LYNX_PROTOCOL_DEVELOPMENT && 'snapshot.$$kind',
+		);
 	}
 	if (value.renderer !== LYNX_TRANSPORT_RENDERER) {
-		fail(label, 'does not match the handle envelope.', index, 'snapshot.renderer');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && label,
+			LYNX_PROTOCOL_DEVELOPMENT && 'does not match the handle envelope.',
+			index,
+			LYNX_PROTOCOL_DEVELOPMENT && 'snapshot.renderer',
+		);
 	}
 	if (value.root !== identity.root) {
-		fail(label, 'does not match the handle envelope.', index, 'snapshot.root');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && label,
+			LYNX_PROTOCOL_DEVELOPMENT && 'does not match the handle envelope.',
+			index,
+			LYNX_PROTOCOL_DEVELOPMENT && 'snapshot.root',
+		);
 	}
 	if (value.id !== delta.id) {
-		fail(label, 'does not match the handle envelope.', index, 'snapshot.id');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && label,
+			LYNX_PROTOCOL_DEVELOPMENT && 'does not match the handle envelope.',
+			index,
+			LYNX_PROTOCOL_DEVELOPMENT && 'snapshot.id',
+		);
 	}
 	if (value.type !== delta.type) {
-		fail(label, 'does not match the handle envelope.', index, 'snapshot.type');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && label,
+			LYNX_PROTOCOL_DEVELOPMENT && 'does not match the handle envelope.',
+			index,
+			LYNX_PROTOCOL_DEVELOPMENT && 'snapshot.type',
+		);
 	}
 	if (value.generation !== delta.generation) {
-		fail(label, 'does not match the handle envelope.', index, 'snapshot.generation');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && label,
+			LYNX_PROTOCOL_DEVELOPMENT && 'does not match the handle envelope.',
+			index,
+			LYNX_PROTOCOL_DEVELOPMENT && 'snapshot.generation',
+		);
 	}
 }
 
@@ -1953,10 +2327,20 @@ function assertHandleDelta(
 		nonEmptyString(delta.type, label, index, 'type');
 		positiveInteger(delta.generation, label, index, 'generation');
 		if (typeof delta.attached !== 'boolean') {
-			fail(label, 'must be a boolean.', index, 'attached');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && label,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be a boolean.',
+				index,
+				LYNX_PROTOCOL_DEVELOPMENT && 'attached',
+			);
 		}
 		if (typeof delta.listDescendant !== 'boolean') {
-			fail(label, 'must be a boolean.', index, 'listDescendant');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && label,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be a boolean.',
+				index,
+				LYNX_PROTOCOL_DEVELOPMENT && 'listDescendant',
+			);
 		}
 		assertSnapshotIdentity(delta.snapshot, delta, identity, label, index);
 		return;
@@ -1966,7 +2350,12 @@ function assertHandleDelta(
 		positiveInteger(delta.id, label, index, 'id');
 		positiveInteger(delta.generation, label, index, 'generation');
 		if (typeof delta.listDescendant !== 'boolean') {
-			fail(label, 'must be a boolean.', index, 'listDescendant');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && label,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be a boolean.',
+				index,
+				LYNX_PROTOCOL_DEVELOPMENT && 'listDescendant',
+			);
 		}
 		return;
 	}
@@ -1986,30 +2375,55 @@ function assertHandleDelta(
 			typeof delta.hostCount === 'number' &&
 			delta.firstId > Number.MAX_SAFE_INTEGER - (delta.hostCount - 1)
 		) {
-			fail(label, 'exceeds the safe host id range.', index, 'hostCount');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && label,
+				LYNX_PROTOCOL_DEVELOPMENT && 'exceeds the safe host id range.',
+				index,
+				LYNX_PROTOCOL_DEVELOPMENT && 'hostCount',
+			);
 		}
 		return;
 	}
-	fail(label, `uses unsupported operation ${JSON.stringify(delta.op)}.`, index, 'op');
+	fail(
+		LYNX_PROTOCOL_DEVELOPMENT && label,
+		LYNX_PROTOCOL_DEVELOPMENT && `uses unsupported operation ${JSON.stringify(delta.op)}.`,
+		index,
+		LYNX_PROTOCOL_DEVELOPMENT && 'op',
+	);
 }
 
 function assertFirstTreeSnapshot(value: unknown, label: string): void {
 	const snapshot = record(value, label);
 	exactKeys(snapshot, ['format', 'renderer', 'root', 'version', 'plan', 'roots', 'nodes'], label);
-	if (snapshot.format !== 1) fail(`${label}.format`, 'must be 1.');
+	if (snapshot.format !== 1)
+		fail(LYNX_PROTOCOL_DEVELOPMENT && `${label}.format`, LYNX_PROTOCOL_DEVELOPMENT && 'must be 1.');
 	if (snapshot.renderer !== LYNX_TRANSPORT_RENDERER) {
-		fail(`${label}.renderer`, `must be ${JSON.stringify(LYNX_TRANSPORT_RENDERER)}.`);
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && `${label}.renderer`,
+			LYNX_PROTOCOL_DEVELOPMENT && `must be ${JSON.stringify(LYNX_TRANSPORT_RENDERER)}.`,
+		);
 	}
 	positiveInteger(snapshot.root, `${label}.root`);
 	positiveInteger(snapshot.version, `${label}.version`);
 	if (snapshot.plan !== null && (typeof snapshot.plan !== 'string' || snapshot.plan.length === 0)) {
-		fail(`${label}.plan`, 'must be null or a non-empty string.');
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && `${label}.plan`,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must be null or a non-empty string.',
+		);
 	}
-	if (!Array.isArray(snapshot.roots)) fail(`${label}.roots`, 'must be an array.');
+	if (!Array.isArray(snapshot.roots))
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && `${label}.roots`,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must be an array.',
+		);
 	for (let index = 0; index < snapshot.roots.length; index++) {
 		positiveInteger(snapshot.roots[index], `${label}.roots[${index}]`);
 	}
-	if (!Array.isArray(snapshot.nodes)) fail(`${label}.nodes`, 'must be an array.');
+	if (!Array.isArray(snapshot.nodes))
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && `${label}.nodes`,
+			LYNX_PROTOCOL_DEVELOPMENT && 'must be an array.',
+		);
 	for (let index = 0; index < snapshot.nodes.length; index++) {
 		const nodeLabel = `${label}.nodes[${index}]`;
 		const node = record(snapshot.nodes[index], nodeLabel);
@@ -2023,13 +2437,25 @@ function assertFirstTreeSnapshot(value: unknown, label: string): void {
 		nonEmptyString(node.type, `${nodeLabel}.type`);
 		positiveInteger(node.generation, `${nodeLabel}.generation`);
 		nullableHostId(node.parent, `${nodeLabel}.parent`);
-		if (!Array.isArray(node.children)) fail(`${nodeLabel}.children`, 'must be an array.');
+		if (!Array.isArray(node.children))
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${nodeLabel}.children`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be an array.',
+			);
 		for (let child = 0; child < node.children.length; child++) {
 			positiveInteger(node.children[child], `${nodeLabel}.children[${child}]`);
 		}
 		assertProps(node.props, `${nodeLabel}.props`);
-		if (typeof node.visible !== 'boolean') fail(`${nodeLabel}.visible`, 'must be a boolean.');
-		if (!Array.isArray(node.events)) fail(`${nodeLabel}.events`, 'must be an array.');
+		if (typeof node.visible !== 'boolean')
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${nodeLabel}.visible`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be a boolean.',
+			);
+		if (!Array.isArray(node.events))
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${nodeLabel}.events`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be an array.',
+			);
 		for (let eventIndex = 0; eventIndex < node.events.length; eventIndex++) {
 			const eventLabel = `${nodeLabel}.events[${eventIndex}]`;
 			const event = record(node.events[eventIndex], eventLabel);
@@ -2039,7 +2465,10 @@ function assertFirstTreeSnapshot(value: unknown, label: string): void {
 			nonEmptyString(event.type, `${eventLabel}.type`);
 			positiveInteger(event.listener, `${eventLabel}.listener`);
 			if (!['continuous', 'default', 'discrete'].includes(event.priority as string)) {
-				fail(`${eventLabel}.priority`, 'must be discrete, continuous, or default.');
+				fail(
+					LYNX_PROTOCOL_DEVELOPMENT && `${eventLabel}.priority`,
+					LYNX_PROTOCOL_DEVELOPMENT && 'must be discrete, continuous, or default.',
+				);
 			}
 		}
 	}
@@ -2066,15 +2495,22 @@ function assertReady(value: unknown, reply: boolean): LynxMainReadyRequest | Lyn
 		label,
 	);
 	if (message.protocol !== LYNX_TRANSPORT_PROTOCOL_VERSION) {
-		fail(label, `protocol must be ${LYNX_TRANSPORT_PROTOCOL_VERSION}.`);
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && label,
+			LYNX_PROTOCOL_DEVELOPMENT && `protocol must be ${LYNX_TRANSPORT_PROTOCOL_VERSION}.`,
+		);
 	}
 	if (message.renderer !== LYNX_TRANSPORT_RENDERER) {
-		fail(label, `renderer must be ${JSON.stringify(LYNX_TRANSPORT_RENDERER)}.`);
+		fail(
+			LYNX_PROTOCOL_DEVELOPMENT && label,
+			LYNX_PROTOCOL_DEVELOPMENT && `renderer must be ${JSON.stringify(LYNX_TRANSPORT_RENDERER)}.`,
+		);
 	}
 	if (message.type !== (reply ? 'main-ready' : 'main-ready-request')) {
 		fail(
-			`${label}.type`,
-			`must be ${JSON.stringify(reply ? 'main-ready' : 'main-ready-request')}.`,
+			LYNX_PROTOCOL_DEVELOPMENT && `${label}.type`,
+			LYNX_PROTOCOL_DEVELOPMENT &&
+				`must be ${JSON.stringify(reply ? 'main-ready' : 'main-ready-request')}.`,
 		);
 	}
 	if (reply) nonNegativeInteger(message.request, `${label}.request`);
@@ -2086,19 +2522,32 @@ function assertReady(value: unknown, reply: boolean): LynxMainReadyRequest | Lyn
 		// reject a key it has never heard of, so the probe is how a peer says it
 		// can read this one (issue #231).
 		if ((message.request as number) < LYNX_FIRST_TREE_PRESENCE_READY_REQUEST_BASE) {
-			fail(`${label}.firstTreePainted`, 'requires a first-tree-presence readiness request.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.firstTreePainted`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'requires a first-tree-presence readiness request.',
+			);
 		}
-		if (message.firstTreePainted !== 1) fail(`${label}.firstTreePainted`, 'must be 1.');
+		if (message.firstTreePainted !== 1)
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.firstTreePainted`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be 1.',
+			);
 		// Both spellings at once would leave the receiver to decide which is
 		// authoritative about the same page. There is no answer to that question
 		// worth having, so the reply is rejected rather than reconciled.
 		if (hasFirstTree) {
-			fail(`${label}.firstTreePainted`, 'cannot accompany firstTree.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.firstTreePainted`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'cannot accompany firstTree.',
+			);
 		}
 	}
 	if (hasCapabilities) {
 		if ((message.request as number) < LYNX_CAPABILITY_READY_REQUEST_BASE) {
-			fail(`${label}.capabilities`, 'requires a capability-tagged readiness request.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.capabilities`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'requires a capability-tagged readiness request.',
+			);
 		}
 		const capabilities = record(message.capabilities, `${label}.capabilities`);
 		const hasTemplateMount = Object.prototype.hasOwnProperty.call(capabilities, 'templateMount');
@@ -2140,103 +2589,157 @@ function assertReady(value: unknown, reply: boolean): LynxMainReadyRequest | Lyn
 			`${label}.capabilities`,
 		);
 		if (capabilities.compactAck !== 1) {
-			fail(`${label}.capabilities.compactAck`, 'must be 1.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.capabilities.compactAck`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be 1.',
+			);
 		}
 		if (hasTemplateMount && capabilities.templateMount !== 1) {
-			fail(`${label}.capabilities.templateMount`, 'must be 1.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.capabilities.templateMount`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be 1.',
+			);
 		}
 		if (hasTemplateProgram && capabilities.templateProgram !== 1) {
-			fail(`${label}.capabilities.templateProgram`, 'must be 1.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.capabilities.templateProgram`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be 1.',
+			);
 		}
 		if (hasTemplateProgram && !hasTemplateMount) {
-			fail(`${label}.capabilities.templateProgram`, 'requires the templateMount capability.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.capabilities.templateProgram`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'requires the templateMount capability.',
+			);
 		}
 		if (hasLazyPublicInstances && capabilities.lazyPublicInstances !== 1) {
-			fail(`${label}.capabilities.lazyPublicInstances`, 'must be 1.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.capabilities.lazyPublicInstances`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be 1.',
+			);
 		}
 		if (hasLazyPublicInstances && !hasTemplateProgram) {
-			fail(`${label}.capabilities.lazyPublicInstances`, 'requires the templateProgram capability.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.capabilities.lazyPublicInstances`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'requires the templateProgram capability.',
+			);
 		}
 		if (
 			hasLazyPublicInstances &&
 			(message.request as number) < LYNX_LAZY_PUBLIC_INSTANCE_READY_REQUEST_BASE
 		) {
 			fail(
-				`${label}.capabilities.lazyPublicInstances`,
-				'requires a lazy-public-instance readiness request.',
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.capabilities.lazyPublicInstances`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'requires a lazy-public-instance readiness request.',
 			);
 		}
 		if (hasTemplateRuns && capabilities.templateRuns !== 1) {
-			fail(`${label}.capabilities.templateRuns`, 'must be 1.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.capabilities.templateRuns`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be 1.',
+			);
 		}
 		if (hasTemplateRuns && !hasTemplateProgram) {
-			fail(`${label}.capabilities.templateRuns`, 'requires the templateProgram capability.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.capabilities.templateRuns`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'requires the templateProgram capability.',
+			);
 		}
 		if (hasTemplateRuns && (message.request as number) < LYNX_TEMPLATE_RUN_READY_REQUEST_BASE) {
-			fail(`${label}.capabilities.templateRuns`, 'requires a template-run readiness request.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.capabilities.templateRuns`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'requires a template-run readiness request.',
+			);
 		}
 		if (hasDeferredTemplateRuns && capabilities.deferredTemplateRuns !== 1) {
-			fail(`${label}.capabilities.deferredTemplateRuns`, 'must be 1.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.capabilities.deferredTemplateRuns`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be 1.',
+			);
 		}
 		// Deferral is a property of a run, so it cannot be granted to a peer that
 		// does not have runs at all.
 		if (hasDeferredTemplateRuns && !hasTemplateRuns) {
-			fail(`${label}.capabilities.deferredTemplateRuns`, 'requires the templateRuns capability.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.capabilities.deferredTemplateRuns`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'requires the templateRuns capability.',
+			);
 		}
 		if (
 			hasDeferredTemplateRuns &&
 			(message.request as number) < LYNX_DEFERRED_TEMPLATE_RUN_READY_REQUEST_BASE
 		) {
 			fail(
-				`${label}.capabilities.deferredTemplateRuns`,
-				'requires a deferred-template-run readiness request.',
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.capabilities.deferredTemplateRuns`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'requires a deferred-template-run readiness request.',
 			);
 		}
 		if (hasTeardownRuns && capabilities.teardownRuns !== 1) {
-			fail(`${label}.capabilities.teardownRuns`, 'must be 1.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.capabilities.teardownRuns`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be 1.',
+			);
 		}
 		if (hasTeardownRuns && !hasTemplateProgram) {
-			fail(`${label}.capabilities.teardownRuns`, 'requires the templateProgram capability.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.capabilities.teardownRuns`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'requires the templateProgram capability.',
+			);
 		}
 		if (hasTeardownRuns && (message.request as number) < LYNX_TEARDOWN_RUN_READY_REQUEST_BASE) {
-			fail(`${label}.capabilities.teardownRuns`, 'requires a teardown-run readiness request.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.capabilities.teardownRuns`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'requires a teardown-run readiness request.',
+			);
 		}
 		if (hasAddressedProgramRuns && capabilities.addressedProgramRuns !== 1) {
-			fail(`${label}.capabilities.addressedProgramRuns`, 'must be 1.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.capabilities.addressedProgramRuns`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be 1.',
+			);
 		}
 		// An address names one member of a run, so a peer without runs has nothing
 		// to address.
 		if (hasAddressedProgramRuns && !hasTemplateRuns) {
-			fail(`${label}.capabilities.addressedProgramRuns`, 'requires the templateRuns capability.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.capabilities.addressedProgramRuns`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'requires the templateRuns capability.',
+			);
 		}
 		if (
 			hasAddressedProgramRuns &&
 			(message.request as number) < LYNX_ADDRESSED_PROGRAM_RUN_READY_REQUEST_BASE
 		) {
 			fail(
-				`${label}.capabilities.addressedProgramRuns`,
-				'requires an addressed-program-run readiness request.',
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.capabilities.addressedProgramRuns`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'requires an addressed-program-run readiness request.',
 			);
 		}
 		if (hasFirstTreeProgramManifests && capabilities.firstTreeProgramManifests !== 1) {
-			fail(`${label}.capabilities.firstTreeProgramManifests`, 'must be 1.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.capabilities.firstTreeProgramManifests`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be 1.',
+			);
 		}
 		if (hasFirstTreeProgramManifests && !hasAddressedProgramRuns) {
 			fail(
-				`${label}.capabilities.firstTreeProgramManifests`,
-				'requires the addressedProgramRuns capability.',
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.capabilities.firstTreeProgramManifests`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'requires the addressedProgramRuns capability.',
 			);
 		}
 		if (hasFirstTreeProgramManifests && !hasFirstTree && !hasFirstTreePainted) {
-			fail(`${label}.capabilities.firstTreeProgramManifests`, 'requires a painted first tree.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.capabilities.firstTreeProgramManifests`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'requires a painted first tree.',
+			);
 		}
 		if (
 			hasFirstTreeProgramManifests &&
 			(message.request as number) < LYNX_FIRST_TREE_PROGRAM_MANIFEST_READY_REQUEST_BASE
 		) {
 			fail(
-				`${label}.capabilities.firstTreeProgramManifests`,
-				'requires a first-tree-program-manifest readiness request.',
+				LYNX_PROTOCOL_DEVELOPMENT && `${label}.capabilities.firstTreeProgramManifests`,
+				LYNX_PROTOCOL_DEVELOPMENT && 'requires a first-tree-program-manifest readiness request.',
 			);
 		}
 	}
@@ -2288,7 +2791,10 @@ export function validateLynxBackgroundOutboundMessage(
 			'main-call-publication',
 		);
 		if (message.phase !== 'open' && message.phase !== 'close') {
-			fail('main-call-publication.phase', 'must be open or close.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && 'main-call-publication.phase',
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be open or close.',
+			);
 		}
 		return message as unknown as LynxMainCallPublicationMessage;
 	}
@@ -2336,19 +2842,31 @@ export function validateLynxBackgroundOutboundMessage(
 			'commit',
 		);
 		if (hasCompactAck && message.ack !== LYNX_COMPACT_ACKNOWLEDGEMENT) {
-			fail('commit.ack', `must be ${JSON.stringify(LYNX_COMPACT_ACKNOWLEDGEMENT)}.`);
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && 'commit.ack',
+				LYNX_PROTOCOL_DEVELOPMENT && `must be ${JSON.stringify(LYNX_COMPACT_ACKNOWLEDGEMENT)}.`,
+			);
 		}
 		if (hasLazyPublicInstances && message.instances !== LYNX_LAZY_PUBLIC_INSTANCES) {
-			fail('commit.instances', `must be ${JSON.stringify(LYNX_LAZY_PUBLIC_INSTANCES)}.`);
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && 'commit.instances',
+				LYNX_PROTOCOL_DEVELOPMENT && `must be ${JSON.stringify(LYNX_LAZY_PUBLIC_INSTANCES)}.`,
+			);
 		}
 		if (hasLazyPublicInstances && !hasCompactAck) {
-			fail('commit.instances', 'requires a compact acknowledgement.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && 'commit.instances',
+				LYNX_PROTOCOL_DEVELOPMENT && 'requires a compact acknowledgement.',
+			);
 		}
 		if (
 			hasAnnouncedPublicInstances &&
 			(message as { announces?: unknown }).announces !== LYNX_ANNOUNCED_PUBLIC_INSTANCES
 		) {
-			fail('commit.announces', `must be ${JSON.stringify(LYNX_ANNOUNCED_PUBLIC_INSTANCES)}.`);
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && 'commit.announces',
+				LYNX_PROTOCOL_DEVELOPMENT && `must be ${JSON.stringify(LYNX_ANNOUNCED_PUBLIC_INSTANCES)}.`,
+			);
 		}
 		assertBatch(message.batch, message, traverse, resolveProgram);
 		return message as unknown as LynxTransportCommitMessage;
@@ -2365,7 +2883,10 @@ export function validateLynxBackgroundOutboundMessage(
 		exactKeys(message, ['protocol', 'renderer', 'root', 'version', 'type'], 'terminal-dispose');
 		return message as unknown as LynxTerminalDisposeMessage;
 	}
-	return fail('outbound message', `uses unsupported type ${JSON.stringify(message.type)}.`);
+	return fail(
+		LYNX_PROTOCOL_DEVELOPMENT && 'outbound message',
+		LYNX_PROTOCOL_DEVELOPMENT && `uses unsupported type ${JSON.stringify(message.type)}.`,
+	);
 }
 
 export function validateLynxBackgroundInboundMessage(
@@ -2378,27 +2899,42 @@ export function validateLynxBackgroundInboundMessage(
 	if (message.type === 'page-destroy') {
 		exactKeys(message, ['protocol', 'renderer', 'type'], 'page-destroy');
 		if (message.protocol !== LYNX_TRANSPORT_PROTOCOL_VERSION) {
-			fail('page-destroy', `protocol must be ${LYNX_TRANSPORT_PROTOCOL_VERSION}.`);
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && 'page-destroy',
+				LYNX_PROTOCOL_DEVELOPMENT && `protocol must be ${LYNX_TRANSPORT_PROTOCOL_VERSION}.`,
+			);
 		}
 		if (message.renderer !== LYNX_TRANSPORT_RENDERER) {
-			fail('page-destroy', `renderer must be ${JSON.stringify(LYNX_TRANSPORT_RENDERER)}.`);
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && 'page-destroy',
+				LYNX_PROTOCOL_DEVELOPMENT && `renderer must be ${JSON.stringify(LYNX_TRANSPORT_RENDERER)}.`,
+			);
 		}
 		return message as unknown as LynxPageDestroyMessage;
 	}
 	if (message.type === 'page-data') {
 		exactKeys(message, ['protocol', 'renderer', 'type', 'operation', 'data'], 'page-data');
 		if (message.protocol !== LYNX_TRANSPORT_PROTOCOL_VERSION) {
-			fail('page-data', `protocol must be ${LYNX_TRANSPORT_PROTOCOL_VERSION}.`);
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && 'page-data',
+				LYNX_PROTOCOL_DEVELOPMENT && `protocol must be ${LYNX_TRANSPORT_PROTOCOL_VERSION}.`,
+			);
 		}
 		if (message.renderer !== LYNX_TRANSPORT_RENDERER) {
-			fail('page-data', `renderer must be ${JSON.stringify(LYNX_TRANSPORT_RENDERER)}.`);
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && 'page-data',
+				LYNX_PROTOCOL_DEVELOPMENT && `renderer must be ${JSON.stringify(LYNX_TRANSPORT_RENDERER)}.`,
+			);
 		}
 		if (
 			message.operation !== 'replace' &&
 			message.operation !== 'update' &&
 			message.operation !== 'reset'
 		) {
-			fail('page-data.operation', 'must be replace, update, or reset.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && 'page-data.operation',
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be replace, update, or reset.',
+			);
 		}
 		record(message.data, 'page-data.data');
 		if (traverse) assertWireValue(message.data, 'page-data.data');
@@ -2407,10 +2943,16 @@ export function validateLynxBackgroundInboundMessage(
 	if (message.type === 'global-props') {
 		exactKeys(message, ['protocol', 'renderer', 'type', 'patch'], 'global-props');
 		if (message.protocol !== LYNX_TRANSPORT_PROTOCOL_VERSION) {
-			fail('global-props', `protocol must be ${LYNX_TRANSPORT_PROTOCOL_VERSION}.`);
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && 'global-props',
+				LYNX_PROTOCOL_DEVELOPMENT && `protocol must be ${LYNX_TRANSPORT_PROTOCOL_VERSION}.`,
+			);
 		}
 		if (message.renderer !== LYNX_TRANSPORT_RENDERER) {
-			fail('global-props', `renderer must be ${JSON.stringify(LYNX_TRANSPORT_RENDERER)}.`);
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && 'global-props',
+				LYNX_PROTOCOL_DEVELOPMENT && `renderer must be ${JSON.stringify(LYNX_TRANSPORT_RENDERER)}.`,
+			);
 		}
 		record(message.patch, 'global-props.patch');
 		if (traverse) assertWireValue(message.patch, 'global-props.patch');
@@ -2456,14 +2998,24 @@ export function validateLynxBackgroundInboundMessage(
 				'ack',
 			);
 			if (message.encoding !== LYNX_COMPACT_ACKNOWLEDGEMENT) {
-				fail('ack.encoding', `must be ${JSON.stringify(LYNX_COMPACT_ACKNOWLEDGEMENT)}.`);
+				fail(
+					LYNX_PROTOCOL_DEVELOPMENT && 'ack.encoding',
+					LYNX_PROTOCOL_DEVELOPMENT && `must be ${JSON.stringify(LYNX_COMPACT_ACKNOWLEDGEMENT)}.`,
+				);
 			}
 			positiveInteger(message.count, 'ack.count');
 			if ((message.count as number) < LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS) {
-				fail('ack.count', `must be at least ${LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS}.`);
+				fail(
+					LYNX_PROTOCOL_DEVELOPMENT && 'ack.count',
+					LYNX_PROTOCOL_DEVELOPMENT &&
+						`must be at least ${LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS}.`,
+				);
 			}
 			if (hasAdoption && message.adoption !== 'adopted' && message.adoption !== 'repaired') {
-				fail('ack.adoption', 'must be adopted or repaired.');
+				fail(
+					LYNX_PROTOCOL_DEVELOPMENT && 'ack.adoption',
+					LYNX_PROTOCOL_DEVELOPMENT && 'must be adopted or repaired.',
+				);
 			}
 			return message as unknown as LynxCompactTransportAcknowledgement;
 		}
@@ -2476,9 +3028,16 @@ export function validateLynxBackgroundInboundMessage(
 			'ack',
 		);
 		if (hasAdoption && message.adoption !== 'adopted' && message.adoption !== 'repaired') {
-			fail('ack.adoption', 'must be adopted or repaired.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && 'ack.adoption',
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be adopted or repaired.',
+			);
 		}
-		if (!Array.isArray(message.handles)) fail('ack.handles', 'must be an array.');
+		if (!Array.isArray(message.handles))
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && 'ack.handles',
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be an array.',
+			);
 		for (let index = 0; index < message.handles.length; index++) {
 			assertHandleDelta(message.handles[index], index, message);
 		}
@@ -2509,9 +3068,16 @@ export function validateLynxBackgroundInboundMessage(
 			message.priority !== 'continuous' &&
 			message.priority !== 'default'
 		) {
-			fail('event.priority', 'must be discrete, continuous, or default.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && 'event.priority',
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be discrete, continuous, or default.',
+			);
 		}
-		if (!Array.isArray(message.deliveries)) fail('event.deliveries', 'must be an array.');
+		if (!Array.isArray(message.deliveries))
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && 'event.deliveries',
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be an array.',
+			);
 		for (let index = 0; index < message.deliveries.length; index++) {
 			const delivery = record(message.deliveries[index], `event.deliveries[${index}]`);
 			exactKeys(delivery, ['listener', 'payload'], `event.deliveries[${index}]`);
@@ -2527,7 +3093,10 @@ export function validateLynxBackgroundInboundMessage(
 			'host-attachment',
 		);
 		if (!Array.isArray(message.changes)) {
-			fail('host-attachment.changes', 'must be an array.');
+			fail(
+				LYNX_PROTOCOL_DEVELOPMENT && 'host-attachment.changes',
+				LYNX_PROTOCOL_DEVELOPMENT && 'must be an array.',
+			);
 		}
 		const seen = new Set<number>();
 		for (let index = 0; index < message.changes.length; index++) {
@@ -2536,10 +3105,16 @@ export function validateLynxBackgroundInboundMessage(
 			positiveInteger(change.id, `host-attachment.changes[${index}].id`);
 			positiveInteger(change.generation, `host-attachment.changes[${index}].generation`);
 			if (typeof change.attached !== 'boolean') {
-				fail(`host-attachment.changes[${index}].attached`, 'must be a boolean.');
+				fail(
+					LYNX_PROTOCOL_DEVELOPMENT && `host-attachment.changes[${index}].attached`,
+					LYNX_PROTOCOL_DEVELOPMENT && 'must be a boolean.',
+				);
 			}
 			if (seen.has(change.id)) {
-				fail(`host-attachment.changes[${index}].id`, 'must be unique within one batch.');
+				fail(
+					LYNX_PROTOCOL_DEVELOPMENT && `host-attachment.changes[${index}].id`,
+					LYNX_PROTOCOL_DEVELOPMENT && 'must be unique within one batch.',
+				);
 			}
 			seen.add(change.id);
 		}
@@ -2558,7 +3133,10 @@ export function validateLynxBackgroundInboundMessage(
 		assertRemoteError(message.error, 'dispose-retry.error');
 		return message as unknown as LynxDisposeRetryMessage;
 	}
-	return fail('inbound message', `uses unsupported type ${JSON.stringify(message.type)}.`);
+	return fail(
+		LYNX_PROTOCOL_DEVELOPMENT && 'inbound message',
+		LYNX_PROTOCOL_DEVELOPMENT && `uses unsupported type ${JSON.stringify(message.type)}.`,
+	);
 }
 
 export function sameLynxTransportIdentity(

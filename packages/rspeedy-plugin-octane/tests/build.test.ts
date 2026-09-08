@@ -380,6 +380,8 @@ describe('@octanejs/rspeedy-plugin native production entries', () => {
 			expect(mainThread).not.toContain(
 				'first tree can only be captured from a stable accepted root.',
 			);
+			expect(mainThread).toContain('Octane Lynx OL174');
+			expect(mainThread).not.toContain('must match the template shape length.');
 			expect(mainThread).toContain('octane-m7-main-thread-worklet');
 			expect(mainThread).not.toContain('octane-m7-background-function');
 			expect(mainThread).not.toContain(BACKGROUND_ONLY_MARKER);
@@ -387,6 +389,8 @@ describe('@octanejs/rspeedy-plugin native production entries', () => {
 			expect(background).not.toContain('octane-m7-main-thread-worklet');
 			expect(background).toContain('octane-m7-background-function');
 			expect(background).toContain(BACKGROUND_ONLY_MARKER);
+			expect(background).toContain('Octane Lynx OL174');
+			expect(background).not.toContain('must match the template shape length.');
 			expect(mainThread).not.toContain('Secondary bundle');
 			expect(background).not.toContain('Secondary bundle');
 			expect(secondaryMainThread).toContain('Secondary bundle');

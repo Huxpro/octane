@@ -118,7 +118,9 @@ rewriting or weakening the older frozen inventory budgets.
 Focused production-size rounds are indexed in
 [`./.bundle-opt-log/SUMMARY.md`](./.bundle-opt-log/SUMMARY.md). The host-error
 argument slice has a complete controlled ledger at
-[`results/m3-production-host-error-args.md`](results/m3-production-host-error-args.md).
+[`results/m3-production-host-error-args.md`](results/m3-production-host-error-args.md),
+and the shared protocol-error slice is recorded at
+[`results/m3-production-protocol-error-args.md`](results/m3-production-protocol-error-args.md).
 
 It is a control before it is a measurement. A branch on a constant the bundler
 declines to fold ships both cores and still passes every unit test, so the run
