@@ -1,0 +1,577 @@
+{
+  "protocol": "octane-m3-resident-driver-native-ab-v1",
+  "capturedAt": "2026-09-08T15:34:21.507Z",
+  "campaignIdentity": {
+    "campaignId": "octane-m3-driver-6b90e1733bee",
+    "matrixContractSha256": "cd725e5366ae61fb66a20648503ffe77d52ce1c5f2bdbfa10fdc35799d2fec72",
+    "inputReceiptSha256": "6b90e1733bee68b887e44156c85cd02a202887d5de02ffd5b68e06a7a00c7668",
+    "connectorPackageTreesSha256": "aa891c81ffb5d96e353881dcf885009739f1bafe2d2aaa6a26ee2e94aab56199",
+    "connectorPackageTrees": {
+      "protocol": "connector-package-trees-v1",
+      "packages": [
+        {
+          "name": "@byted/agent-lynx",
+          "version": "0.14.12",
+          "available": true,
+          "resolvedPath": "/data00/home/xuan.huang/.local/node-v22.22.2-linux-x64/lib/node_modules/@byted/agent-lynx",
+          "rootSha256": "95966570e831e922ff71053156f6ad7cb951a1134018fd8cccf1c136c0291a6a",
+          "fileCount": 450,
+          "byteCount": 20682682
+        },
+        {
+          "name": "@byted-lynx/devtool-connector",
+          "version": "0.15.5",
+          "available": true,
+          "resolvedPath": "/data00/home/xuan.huang/.local/node-v22.22.2-linux-x64/lib/node_modules/@byted/agent-lynx/node_modules/@byted-lynx/devtool-connector",
+          "rootSha256": "9c6d2e045811565553c2a97c1546cb9906f3afc071a3de6b734b53d763a20900",
+          "fileCount": 86,
+          "byteCount": 1594959
+        },
+        {
+          "name": "@byted-lynx/bdc-client",
+          "version": "0.4.5",
+          "available": true,
+          "resolvedPath": "/data00/home/xuan.huang/.local/node-v22.22.2-linux-x64/lib/node_modules/@byted/agent-lynx/node_modules/@byted-lynx/bdc-client",
+          "rootSha256": "3979846b8e0438bb823c2639be4d358be29184222a644f1d03466e3807358dca",
+          "fileCount": 15,
+          "byteCount": 616839
+        }
+      ],
+      "sha256": "aa891c81ffb5d96e353881dcf885009739f1bafe2d2aaa6a26ee2e94aab56199"
+    },
+    "leaseReceipt": {
+      "protocol": "lynx-sandbox-lease-receipt-v1",
+      "issueId": "Huxpro/octane#290",
+      "expiredAt": 1788884911597,
+      "serialSha256": "f1cdfb45d131d07dd828e5e344737318e0dd7023ccf7d02c3b4ef055eb8438e5",
+      "deviceLeaseId": "18a46d7e5d25"
+    }
+  },
+  "bundles": {
+    "baseline": {
+      "file": "/data00/home/xuan.huang/.codex/tmp/octane-290-ack-baseline/benchmarks/lynx-table/app/dist-mtsprogram-m3driver-base/main.lynx.bundle",
+      "bytes": 579658,
+      "sha256": "cae6d4498ae3ab5437b31cee4ef1b92b1a93f1563d80e28e9d2437d69f1e5433"
+    },
+    "candidate": {
+      "file": "/data00/home/xuan.huang/.codex/worktrees/68ea/octane/benchmarks/lynx-table/app/dist-mtsprogram-m3driver-candidate/main.lynx.bundle",
+      "bytes": 581279,
+      "sha256": "c134bf5d7548fb93b777740e9d8a973a2e2d9039a783bf4b3de5811837f970bf"
+    },
+    "profile": {
+      "file": "/data00/home/xuan.huang/.codex/worktrees/68ea/octane/benchmarks/lynx-table/app/dist-mtsprogram-m3driver-profile-issue278-checked-timed-profile/main.lynx.bundle",
+      "bytes": 640968,
+      "sha256": "ce005c70d5c7cb7a27700235d161936f10a98cb514d44bff5ef86ca0fe821240"
+    }
+  },
+  "method": {
+    "harness": "lynx-native-android-aries_10-10-devtool-direct-recycle5-explorer-6ae29787a216",
+    "workload": "shared create@1000",
+    "boundary": "native-input-handler-to-second-native-frame",
+    "repetitions": 5,
+    "order": [
+      {
+        "repetition": 0,
+        "arm": "baseline"
+      },
+      {
+        "repetition": 0,
+        "arm": "candidate"
+      },
+      {
+        "repetition": 1,
+        "arm": "candidate"
+      },
+      {
+        "repetition": 1,
+        "arm": "baseline"
+      },
+      {
+        "repetition": 2,
+        "arm": "baseline"
+      },
+      {
+        "repetition": 2,
+        "arm": "candidate"
+      },
+      {
+        "repetition": 3,
+        "arm": "candidate"
+      },
+      {
+        "repetition": 3,
+        "arm": "baseline"
+      },
+      {
+        "repetition": 4,
+        "arm": "baseline"
+      },
+      {
+        "repetition": 4,
+        "arm": "candidate"
+      }
+    ],
+    "explorerRecycleEveryPages": 5
+  },
+  "machine": {
+    "id": "lynx-native-android-aries_10-10-devtool-direct-recycle5-explorer-6ae29787a216-18a46d7e5d25-12d89f323e0d",
+    "platform": "android",
+    "osVersion": "10",
+    "cpuModel": "linaro",
+    "cores": 8,
+    "node": null,
+    "deviceModel": "ByteDance aries_10",
+    "app": "LynxExplorer",
+    "appVersion": "1.0",
+    "explorerPackage": {
+      "versionName": "1.0",
+      "versionCode": 1
+    },
+    "explorerArtifact": {
+      "protocol": "pinned-lynx-explorer-apk-v1",
+      "release": "4.1.0",
+      "sourceUrl": "https://github.com/lynx-family/lynx/releases/download/4.1.0/LynxExplorer-noasan-release.apk",
+      "sha256": "6ae29787a2166974c29c2f23d87f3b20a137abcf9a8c17903ad19f3fb7f00cb6",
+      "bytes": 173293606
+    },
+    "debugRouterVersion": "0.0.1",
+    "lynxSdkVersion": "0.0.1",
+    "connectorPackageTrees": {
+      "protocol": "connector-package-trees-v1",
+      "packages": [
+        {
+          "name": "@byted/agent-lynx",
+          "version": "0.14.12",
+          "available": true,
+          "resolvedPath": "/data00/home/xuan.huang/.local/node-v22.22.2-linux-x64/lib/node_modules/@byted/agent-lynx",
+          "rootSha256": "95966570e831e922ff71053156f6ad7cb951a1134018fd8cccf1c136c0291a6a",
+          "fileCount": 450,
+          "byteCount": 20682682
+        },
+        {
+          "name": "@byted-lynx/devtool-connector",
+          "version": "0.15.5",
+          "available": true,
+          "resolvedPath": "/data00/home/xuan.huang/.local/node-v22.22.2-linux-x64/lib/node_modules/@byted/agent-lynx/node_modules/@byted-lynx/devtool-connector",
+          "rootSha256": "9c6d2e045811565553c2a97c1546cb9906f3afc071a3de6b734b53d763a20900",
+          "fileCount": 86,
+          "byteCount": 1594959
+        },
+        {
+          "name": "@byted-lynx/bdc-client",
+          "version": "0.4.5",
+          "available": true,
+          "resolvedPath": "/data00/home/xuan.huang/.local/node-v22.22.2-linux-x64/lib/node_modules/@byted/agent-lynx/node_modules/@byted-lynx/bdc-client",
+          "rootSha256": "3979846b8e0438bb823c2639be4d358be29184222a644f1d03466e3807358dca",
+          "fileCount": 15,
+          "byteCount": 616839
+        }
+      ],
+      "sha256": "aa891c81ffb5d96e353881dcf885009739f1bafe2d2aaa6a26ee2e94aab56199"
+    },
+    "protocol": "native-sandbox-adapter-v3",
+    "defaultTimeoutMs": 30000,
+    "longWorkloadTimeoutMs": 240000,
+    "renderGraceFrames": 2,
+    "debugRouterSettleMs": 100,
+    "explorerRecycleEveryPages": 5,
+    "explorerLaunchSettleMs": 500,
+    "explorerReconnectTimeoutMs": 90000,
+    "clientDiscoveryPollMs": 250,
+    "sessionDiscoveryPollMs": 50,
+    "octaneReadyPollMs": 16,
+    "startupPollMs": 16,
+    "producerProbePollMs": 250,
+    "tapSettleMs": 10,
+    "maxBatteryTemperatureC": 40,
+    "thermalGateTimeoutMs": 300000,
+    "thermalPollMs": 5000,
+    "thermalGateScope": "before-every-bundle-load",
+    "transientAttempts": 3,
+    "leaseCleanupMarginMs": 30000,
+    "leaseStopSafetyOverrideMs": null,
+    "semanticDnfRetries": 0,
+    "retryScope": "transport-only-within-repetition",
+    "deviceClockCalibrationSamples": 7,
+    "explorerLifecycle": "force-stop-at-start-and-recycle-cadence",
+    "octaneTriggerMode": "tap",
+    "devtoolTransport": "direct",
+    "tableProtocol": "lynx-native-bench-v2",
+    "startupProtocol": "lynx-native-startup-v1",
+    "campaignId": "octane-m3-driver-6b90e1733bee",
+    "matrixContractSha256": "cd725e5366ae61fb66a20648503ffe77d52ce1c5f2bdbfa10fdc35799d2fec72",
+    "inputReceiptSha256": "6b90e1733bee68b887e44156c85cd02a202887d5de02ffd5b68e06a7a00c7668",
+    "connectorPackageTreesSha256": "aa891c81ffb5d96e353881dcf885009739f1bafe2d2aaa6a26ee2e94aab56199",
+    "harnessConfigId": "12d89f323e0d",
+    "serialSha256": "f1cdfb45d131d07dd828e5e344737318e0dd7023ccf7d02c3b4ef055eb8438e5",
+    "deviceLeaseId": "18a46d7e5d25",
+    "leaseReceipt": {
+      "protocol": "lynx-sandbox-lease-receipt-v1",
+      "issueId": "Huxpro/octane#290",
+      "expiredAt": 1788884911597,
+      "serialSha256": "f1cdfb45d131d07dd828e5e344737318e0dd7023ccf7d02c3b4ef055eb8438e5",
+      "deviceLeaseId": "18a46d7e5d25"
+    },
+    "deviceCohort": {
+      "protocol": "native-device-cohort-v1",
+      "serialSha256": "f1cdfb45d131d07dd828e5e344737318e0dd7023ccf7d02c3b4ef055eb8438e5",
+      "environment": "lynx-native-android-aries_10-10-devtool-direct-recycle5-explorer-6ae29787a216",
+      "hardware": {
+        "platform": "android",
+        "osVersion": "10",
+        "cpuModel": "linaro",
+        "cores": 8,
+        "deviceModel": "ByteDance aries_10",
+        "app": "LynxExplorer",
+        "appVersion": "1.0",
+        "explorerPackage": {
+          "versionName": "1.0",
+          "versionCode": 1
+        },
+        "explorerArtifact": {
+          "protocol": "pinned-lynx-explorer-apk-v1",
+          "release": "4.1.0",
+          "sourceUrl": "https://github.com/lynx-family/lynx/releases/download/4.1.0/LynxExplorer-noasan-release.apk",
+          "sha256": "6ae29787a2166974c29c2f23d87f3b20a137abcf9a8c17903ad19f3fb7f00cb6",
+          "bytes": 173293606
+        },
+        "debugRouterVersion": "0.0.1",
+        "lynxSdkVersion": "0.0.1"
+      },
+      "campaignId": "octane-m3-driver-6b90e1733bee",
+      "matrixContractSha256": "cd725e5366ae61fb66a20648503ffe77d52ce1c5f2bdbfa10fdc35799d2fec72",
+      "inputReceiptSha256": "6b90e1733bee68b887e44156c85cd02a202887d5de02ffd5b68e06a7a00c7668",
+      "connectorPackageTreesSha256": "aa891c81ffb5d96e353881dcf885009739f1bafe2d2aaa6a26ee2e94aab56199",
+      "harnessConfigId": "12d89f323e0d",
+      "id": "5457eed1ab5de2ff",
+      "sha256": "5457eed1ab5de2ff5429cbd9438c08ba46adf28a4d098b3c44ee1a1356a105ed"
+    },
+    "deviceCohortId": "5457eed1ab5de2ff",
+    "deviceLeaseIdentitySource": "structured-receipt-v1",
+    "deviceClockOffsetMs": -3301.5,
+    "deviceClockCalibrationRttMs": 23,
+    "thermalStart": {
+      "capturedAt": "2026-09-08T15:34:00.530Z",
+      "batteryTemperatureC": 35,
+      "thermalStatus": 0,
+      "temperatures": [
+        {
+          "valueC": 30.8,
+          "type": 3,
+          "name": "test temperature sensor",
+          "status": 0
+        }
+      ]
+    },
+    "servedInputs": [
+      {
+        "entry": "octane-m3-driver-baseline",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "cae6d4498ae3ab5437b31cee4ef1b92b1a93f1563d80e28e9d2437d69f1e5433",
+        "bytes": 579658,
+        "served": 1
+      },
+      {
+        "entry": "octane-m3-driver-candidate",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "c134bf5d7548fb93b777740e9d8a973a2e2d9039a783bf4b3de5811837f970bf",
+        "bytes": 581279,
+        "served": 1
+      },
+      {
+        "entry": "octane-m3-driver-candidate",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "c134bf5d7548fb93b777740e9d8a973a2e2d9039a783bf4b3de5811837f970bf",
+        "bytes": 581279,
+        "served": 1
+      },
+      {
+        "entry": "octane-m3-driver-baseline",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "cae6d4498ae3ab5437b31cee4ef1b92b1a93f1563d80e28e9d2437d69f1e5433",
+        "bytes": 579658,
+        "served": 1
+      },
+      {
+        "entry": "octane-m3-driver-baseline",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "cae6d4498ae3ab5437b31cee4ef1b92b1a93f1563d80e28e9d2437d69f1e5433",
+        "bytes": 579658,
+        "served": 1
+      },
+      {
+        "entry": "octane-m3-driver-candidate",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "c134bf5d7548fb93b777740e9d8a973a2e2d9039a783bf4b3de5811837f970bf",
+        "bytes": 581279,
+        "served": 1
+      },
+      {
+        "entry": "octane-m3-driver-candidate",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "c134bf5d7548fb93b777740e9d8a973a2e2d9039a783bf4b3de5811837f970bf",
+        "bytes": 581279,
+        "served": 1
+      },
+      {
+        "entry": "octane-m3-driver-baseline",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "cae6d4498ae3ab5437b31cee4ef1b92b1a93f1563d80e28e9d2437d69f1e5433",
+        "bytes": 579658,
+        "served": 1
+      },
+      {
+        "entry": "octane-m3-driver-baseline",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "cae6d4498ae3ab5437b31cee4ef1b92b1a93f1563d80e28e9d2437d69f1e5433",
+        "bytes": 579658,
+        "served": 1
+      },
+      {
+        "entry": "octane-m3-driver-candidate",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "c134bf5d7548fb93b777740e9d8a973a2e2d9039a783bf4b3de5811837f970bf",
+        "bytes": 581279,
+        "served": 1
+      }
+    ],
+    "transientRecoveries": [],
+    "thermalGates": [
+      {
+        "entry": "octane-m3-driver-baseline",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-08T15:34:00.655Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-m3-driver-candidate",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-08T15:34:03.770Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-m3-driver-candidate",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-08T15:34:05.674Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-m3-driver-baseline",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-08T15:34:07.418Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-m3-driver-baseline",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-08T15:34:09.257Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-m3-driver-candidate",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-08T15:34:11.067Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-m3-driver-candidate",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-08T15:34:14.072Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-m3-driver-baseline",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-08T15:34:15.825Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-m3-driver-baseline",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-08T15:34:17.640Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-m3-driver-candidate",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-08T15:34:19.653Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      }
+    ],
+    "thermalEnd": {
+      "capturedAt": "2026-09-08T15:34:21.506Z",
+      "batteryTemperatureC": 35,
+      "thermalStatus": 0,
+      "temperatures": [
+        {
+          "valueC": 30.8,
+          "type": 3,
+          "name": "test temperature sensor",
+          "status": 0
+        }
+      ]
+    }
+  },
+  "samples": {
+    "baseline": [1240, 1201, 1276, 1186, 1185],
+    "candidate": [1074, 1189, 1163, 1193, 1095]
+  },
+  "medians": {
+    "baseline": 1201,
+    "candidate": 1163,
+    "ratio": 0.9683597002497918
+  },
+  "profileResult": null,
+  "logs": [
+    {
+      "at": "2026-09-08T15:34:02.375Z",
+      "message": "  [sandbox] octane-m3-driver-baseline rows-0 session=2"
+    },
+    {
+      "at": "2026-09-08T15:34:04.252Z",
+      "message": "  [sandbox] octane-m3-driver-candidate rows-0 session=3"
+    },
+    {
+      "at": "2026-09-08T15:34:06.155Z",
+      "message": "  [sandbox] octane-m3-driver-candidate rows-0 session=4"
+    },
+    {
+      "at": "2026-09-08T15:34:07.902Z",
+      "message": "  [sandbox] octane-m3-driver-baseline rows-0 session=5"
+    },
+    {
+      "at": "2026-09-08T15:34:09.720Z",
+      "message": "  [sandbox] octane-m3-driver-baseline rows-0 session=6"
+    },
+    {
+      "at": "2026-09-08T15:34:12.756Z",
+      "message": "  [sandbox] octane-m3-driver-candidate rows-0 session=2"
+    },
+    {
+      "at": "2026-09-08T15:34:14.552Z",
+      "message": "  [sandbox] octane-m3-driver-candidate rows-0 session=3"
+    },
+    {
+      "at": "2026-09-08T15:34:16.303Z",
+      "message": "  [sandbox] octane-m3-driver-baseline rows-0 session=4"
+    },
+    {
+      "at": "2026-09-08T15:34:18.349Z",
+      "message": "  [sandbox] octane-m3-driver-baseline rows-0 session=5"
+    },
+    {
+      "at": "2026-09-08T15:34:20.143Z",
+      "message": "  [sandbox] octane-m3-driver-candidate rows-0 session=6"
+    }
+  ]
+}

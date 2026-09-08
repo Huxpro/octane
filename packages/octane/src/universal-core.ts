@@ -292,8 +292,11 @@ export interface UniversalProgramCreate {
 	 * `plan.ranges.length` entries in the order the create takes them. `out` is
 	 * the caller's, sized `count * (plan.nodes + plan.ranges.length)`, and holds
 	 * what `count` separate creates would have returned, concatenated — nodes
-	 * then ranges, per instance. Nothing is appended to a parent: the caller
-	 * still attaches each instance's root, exactly as it does per call.
+	 * then ranges, per instance. Each node is published into `out` immediately
+	 * after creation, before later PAPI writes for that instance, so a caller can
+	 * retain and clean the created prefix if one of those writes throws. Nothing
+	 * is appended to a parent: the caller still attaches each instance's root,
+	 * exactly as it does per call.
 	 */
 	readonly run?: (
 		pageId: unknown,

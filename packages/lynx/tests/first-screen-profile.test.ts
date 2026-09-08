@@ -137,6 +137,10 @@ function install(configurePAPI?: (target: Record<string, unknown>) => void): {
 	profile.firstTreeProgramCompactions = 0;
 	profile.firstTreeProgramCompactionFallback = null;
 	profile.handOverMs = 0;
+	profile.programRunDriverRuns = 0;
+	profile.programRunDriverRows = 0;
+	profile.programRunDriverFallbacks = 0;
+	profile.programRunDriverFallback = null;
 	return { profile, dom, main };
 }
 

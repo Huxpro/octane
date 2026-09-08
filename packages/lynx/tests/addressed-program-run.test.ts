@@ -13,20 +13,32 @@
 // The second half is the refusal surface. A positional address says nothing
 // about what it points at, so every way it can fail to name this realm's program
 // has to end in a decline with a diagnostic, never in an approximation.
-import type { UniversalHostBatch, UniversalHostCommand } from 'octane/universal/native';
-import { describe, expect, it } from 'vitest';
+import type {
+	UniversalHostBatch,
+	UniversalHostCommand,
+	UniversalProgramCreate,
+} from 'octane/universal/native';
+import { describe, expect, it, vi } from 'vitest';
 
+vi.hoisted(() => {
+	(globalThis as unknown as Record<string, unknown>).__OCTANE_LYNX_PROFILE__ = true;
+});
+
+import { emitLynxMainThreadProgram } from '../src/compiler/emit-main-thread-program.js';
 import {
 	createLynxHostContainer,
+	disposeLynxHostContainer,
 	prepareLynxHostBatch,
 	resolveLynxHostNativeEvent,
 } from '../src/core/host-driver.js';
 import {
 	registerUniversalProgram,
+	residentRunPlan,
 	residentRunProgram,
 	residentUniversalProgramCount,
 	resolveUniversalProgram,
 } from '../src/core/program-registry.js';
+import { lynxWireProfile } from '../src/core/profiling.js';
 import { validateLynxBackgroundOutboundMessage } from '../src/core/protocol.js';
 import { createFakePAPI, shape, type FakeNode } from './_fixtures/fake-element-papi.js';
 
@@ -121,9 +133,48 @@ function batch(commands: readonly UniversalHostCommand[]): UniversalHostBatch {
 }
 
 function createHost() {
-	const papi = createFakePAPI();
+	const base = createFakePAPI();
+	const papi = {
+		...base,
+		intrinsics: {
+			view: (pageId: number) => base.createElement('view', pageId, ''),
+			text: (pageId: number) => base.createElement('text', pageId, ''),
+			rawText: (value: string) => base.createElement('#text', 0, value),
+		},
+	};
 	const container = createLynxHostContainer(papi, { root: 1 });
 	return { container, papi, page: container.page };
+}
+
+function registerExecutableRow(module: string): { binds: () => number; runs: () => number } {
+	const { source } = emitLynxMainThreadProgram(ROW, { name: 'createAddressedRow' });
+	const emitted = new Function(`return (${source});`)() as (
+		papi: unknown,
+	) => UniversalProgramCreate;
+	let bindCount = 0;
+	let runCount = 0;
+	registerUniversalProgram(module, 0, {
+		kind: 'program',
+		slots: [],
+		nodes: ROW.nodes.length,
+		values: [0, 1, 2],
+		events: ROW.events.map((event, slot) => ({ ...event, slot })),
+		ranges: [],
+		bind(papi) {
+			bindCount++;
+			const create = emitted(papi);
+			const run = create.run!;
+			Object.defineProperty(create, 'run', {
+				value(...args: Parameters<NonNullable<UniversalProgramCreate['run']>>) {
+					runCount++;
+					return run(...args);
+				},
+			});
+			return create;
+		},
+		wire: ROW,
+	});
+	return { binds: () => bindCount, runs: () => runCount };
 }
 
 /** The prelude both arms share: a shell to mount into and an anchor to mount before. */
@@ -184,6 +235,117 @@ describe('mounting a resident program by address (issue #246 E1)', () => {
 		expect(addressed.handleDelta).toEqual(descriptor.handleDelta);
 	});
 
+	it('executes an eligible appended addressed run through its resident driver', () => {
+		const profile = lynxWireProfile();
+		profile.programRunDriverRuns = 0;
+		profile.programRunDriverRows = 0;
+		profile.programRunDriverFallbacks = 0;
+		profile.programRunDriverFallback = null;
+		const module = freshModule();
+		const calls = registerExecutableRow(module);
+		const descriptor = mountRun({
+			op: 'mount-template-run',
+			parent: 1,
+			before: null,
+			program: ROW,
+			firstId: 10,
+			firstListenerId: 700,
+			count: 3,
+			values: VALUES,
+		} as never);
+		const addressed = mountRun({
+			op: 'mount-program-run',
+			parent: 1,
+			before: null,
+			address: { module, index: 0 },
+			firstId: 10,
+			firstListenerId: 700,
+			count: 3,
+			values: VALUES,
+		} as never);
+
+		expect(calls.binds()).toBe(1);
+		expect(calls.runs()).toBe(1);
+		expect(profile.programRunDriverRuns).toBe(1);
+		expect(profile.programRunDriverRows).toBe(3);
+		expect(profile.programRunDriverFallbacks).toBe(0);
+		expect(profile.programRunDriverFallback).toBeNull();
+		expect(addressed.tree).toEqual(descriptor.tree);
+		expect(addressed.compactHostCount).toBe(descriptor.compactHostCount);
+		expect(addressed.handleDelta).toEqual(descriptor.handleDelta);
+		const rows = addressed.page.children[0]!.children;
+		expect(
+			resolveLynxHostNativeEvent(
+				addressed.container,
+				rows[3]!.children[1]!.events.get('catchEvent:tap')!,
+			),
+		).toEqual({ listener: 705, priority: 'discrete' });
+
+		const fallbackModule = freshModule();
+		registerWire(fallbackModule, 0, ROW);
+		mountRun({
+			op: 'mount-program-run',
+			parent: 1,
+			before: null,
+			address: { module: fallbackModule, index: 0 },
+			firstId: 10,
+			firstListenerId: 700,
+			count: 3,
+			values: VALUES,
+		} as never);
+		expect(profile.programRunDriverFallbacks).toBe(1);
+		expect(profile.programRunDriverFallback).toBe(
+			'resident program has no straight-line run driver',
+		);
+	});
+
+	it('retains a faulted resident driver prefix for terminal cleanup', () => {
+		const module = freshModule();
+		registerExecutableRow(module);
+		const base = createFakePAPI();
+		let installedEvent: FakeNode | null = null;
+		const papi = {
+			...base,
+			intrinsics: {
+				view: (pageId: number) => base.createElement('view', pageId, ''),
+				text: (pageId: number) => base.createElement('text', pageId, ''),
+				rawText: (value: string) => base.createElement('#text', 0, value),
+			},
+			setEvent(node: FakeNode, kind: string, name: string, listener: unknown) {
+				base.setEvent(node, kind, name, listener as never);
+				if (listener !== undefined && installedEvent === null) {
+					installedEvent = node;
+					throw new Error('compiled event fault');
+				}
+			},
+		};
+		const container = createLynxHostContainer(papi, { root: 1 });
+		const prepared = prepareLynxHostBatch(
+			container,
+			batch([
+				...PRELUDE,
+				{
+					op: 'mount-program-run',
+					parent: 1,
+					before: null,
+					address: { module, index: 0 },
+					firstId: 10,
+					firstListenerId: 700,
+					count: 3,
+					values: VALUES,
+				} as never,
+			]),
+			{ compact: true, lazyPublicInstances: true },
+		);
+
+		expect(() => prepared.apply()).toThrow(/compiled event fault/);
+		expect(installedEvent).not.toBeNull();
+		expect(installedEvent!.events.size).toBe(1);
+		expect(disposeLynxHostContainer(container)).toMatchObject({ complete: true, errors: [] });
+		expect(installedEvent!.events.size).toBe(0);
+		expect(container.page.children).toEqual([]);
+	});
+
 	it('mounts a strided addressed run without claiming the component IDs between instances', () => {
 		const module = freshModule();
 		registerWire(module, 0, ROW);
@@ -200,9 +362,10 @@ describe('mounting a resident program by address (issue #246 E1)', () => {
 		} as never);
 
 		expect(addressed.compactHostCount).toBe(14);
-		expect(addressed.handleDelta.map((delta) => delta.handle.id)).toEqual([
-			1, 2, 10, 11, 12, 13, 15, 16, 17, 18, 20, 21, 22, 23,
-		]);
+		expect(addressed.handleDelta.every((delta) => 'handle' in delta)).toBe(true);
+		expect(
+			addressed.handleDelta.flatMap((delta) => ('handle' in delta ? [delta.handle.id] : [])),
+		).toEqual([1, 2, 10, 11, 12, 13, 15, 16, 17, 18, 20, 21, 22, 23]);
 		expect(JSON.stringify(addressed.tree)).toContain('row-3');
 		const rows = addressed.page.children[0]!.children;
 		expect(
@@ -271,6 +434,9 @@ describe('mounting a resident program by address (issue #246 E1)', () => {
 		expect(
 			residentRunProgram({ op: 'mount-program-run', address: { module, index: 1 } } as never),
 		).toBe(CELL);
+		expect(
+			residentRunPlan({ op: 'mount-program-run', address: { module, index: 1 } } as never),
+		).toBe(resolveUniversalProgram(module, 1));
 		// A malformed address is a miss, not a throw: the caller owns the decline
 		// and owns the diagnostic that names the build.
 		expect(residentRunProgram({ op: 'mount-program-run', address: null } as never)).toBeUndefined();
