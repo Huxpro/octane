@@ -29,6 +29,7 @@ import {
 import { createLynxDeltaShadow, type LynxPreparedDeltaShadow } from './delta-shadow.js';
 import {
 	applyLynxHostAttachments,
+	hasLynxCompactHandleSegment,
 	invalidateLynxClientContainer,
 	isLynxClientEventTarget,
 	prepareLynxCompactHandleDeltas,
@@ -2121,23 +2122,12 @@ export function createLynxBackgroundTransport(
 								accepted === null &&
 								wireBatch !== preparedBatch &&
 								wireBatch.commands.some((command) => command.op === 'mount-program-run');
-							const count = compactAcknowledgements
-								? countLynxCompactAcknowledgementHosts(preparedBatch, producedRunProgram)
-								: firstTreeProgramCompact
-									? countLynxCompactAcknowledgementHosts(preparedBatch, producedRunProgram, {
-											allowMainThreadState: true,
-										})
-									: null;
-							const compact = count !== null;
-							entry.compactRequested = compact;
-							entry.firstTreeProgramCompactRequested = firstTreeProgramCompact && compact;
-							entry.compactHostCount = count;
 							const incrementalRun =
 								preparedBatch.commands.length === 1 ? preparedBatch.commands[0] : undefined;
-							entry.incrementalCompactRequested =
-								compact &&
+							const incrementalCompactEligible =
 								accepted !== null &&
 								postFirstTreeLazyPublicInstances &&
+								!hasLynxCompactHandleSegment(container) &&
 								(incrementalRun?.op === 'mount-template-run' ||
 									incrementalRun?.op === 'mount-program-run') &&
 								Object.isFrozen(incrementalRun) &&
@@ -2147,6 +2137,19 @@ export function createLynxBackgroundTransport(
 								(incrementalRun.op === 'mount-program-run' ||
 									Object.isFrozen(incrementalRun.program)) &&
 								Object.isFrozen(incrementalRun.values);
+							const count =
+								compactAcknowledgements && (accepted === null || incrementalCompactEligible)
+									? countLynxCompactAcknowledgementHosts(preparedBatch, producedRunProgram)
+									: firstTreeProgramCompact
+										? countLynxCompactAcknowledgementHosts(preparedBatch, producedRunProgram, {
+												allowMainThreadState: true,
+											})
+										: null;
+							const compact = count !== null;
+							entry.compactRequested = compact;
+							entry.firstTreeProgramCompactRequested = firstTreeProgramCompact && compact;
+							entry.compactHostCount = count;
+							entry.incrementalCompactRequested = compact && incrementalCompactEligible;
 							const deferPublicInstances =
 								compact &&
 								deferrablePublicInstances &&

@@ -464,6 +464,11 @@ export function createLynxClientContainer(
 	return container;
 }
 
+/** @internal Read by the transport before offering another compact segment. */
+export function hasLynxCompactHandleSegment(container: LynxClientContainer): boolean {
+	return containerState(container).compactHosts !== null;
+}
+
 /**
  * A Lynx background names every host it will query in the batch that mounts it,
  * whatever the session has negotiated.

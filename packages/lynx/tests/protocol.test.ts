@@ -3062,6 +3062,89 @@ describe('@octanejs/lynx transported protocol', () => {
 		expect(container.getPublicHandle(1)).toBeNull();
 	});
 
+	it('falls back to ordinary handles when a post-first-tree compact segment remains live', async () => {
+		// A compact acknowledgement installs one lazy segment in the client
+		// container. Replacing that live segment would discard every host nobody
+		// has materialized yet, so a later run must fall back even when the peer
+		// granted incremental lazy public instances.
+		const context = new FakeContextProxy();
+		const main = installMainHarness(
+			context,
+			true,
+			{
+				compactAck: 1,
+				templateMount: 1,
+				templateProgram: 1,
+				lazyPublicInstances: 1,
+				templateRuns: 1,
+			},
+			true,
+		);
+		const container = createLynxClientContainer();
+		const transport = createLynxBackgroundTransport(context, container);
+		await transport.ready;
+		const count = LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS;
+		const root = 102;
+
+		const adopting = transport
+			.prepareBatch(
+				container,
+				{ renderer: LYNX_TRANSPORT_RENDERER, version: 1, commands: [] },
+				identity(root, 1),
+			)
+			.apply(() => {});
+		await flushMicrotasks();
+		expect(main.commits[0]).not.toHaveProperty('ack');
+		main.acknowledge(main.commits[0]!, 'complete', 'adopted');
+		await adopting;
+
+		const firstRun = transport
+			.prepareBatch(container, templateProgramRunBatch(count, 2), identity(root, 2))
+			.apply(() => {});
+		await flushMicrotasks();
+		expect(main.commits[1]).toMatchObject({ ack: LYNX_COMPACT_ACKNOWLEDGEMENT });
+		main.acknowledge(main.commits[1]!, 'complete');
+		await firstRun;
+
+		const original = templateProgramRunBatch(count, 3);
+		const run = original.commands[0]!;
+		if (run.op !== 'mount-template-run') throw new Error('Expected a contiguous template run.');
+		const firstId = count + 1;
+		const batch: UniversalHostBatch = {
+			...original,
+			commands: [Object.freeze({ ...run, firstId })],
+		};
+		const nextIdentity = identity(root, 3);
+		const adding = transport.prepareBatch(container, batch, nextIdentity).apply(() => {});
+		await flushMicrotasks();
+		const commit = main.commits[2] as LynxTransportCommitMessage;
+		expect(commit.ack).toBeUndefined();
+		context.sendToBackground({
+			...nextIdentity,
+			type: 'ack',
+			handles: Array.from({ length: count }, (_value, index) => {
+				const id = firstId + index;
+				const type = index % 2 === 0 ? 'view' : '#text';
+				return {
+					op: 'upsert' as const,
+					id,
+					type,
+					generation: 1,
+					attached: true,
+					listDescendant: false,
+					snapshot: handleSnapshot(root, id, type, 1),
+				};
+			}),
+		});
+		context.sendToBackground({ ...nextIdentity, type: 'complete' });
+		await adding;
+		expect(container.getPublicHandle(firstId)?.type).toBe('view');
+		expect(container.getPublicHandle(firstId + count - 1)?.type).toBe('#text');
+		// The first compact segment remains reachable after the fallback.
+		expect(container.getPublicHandle(2)?.active).toBe(true);
+		transport.close();
+	});
+
 	it('keeps compact host events, updates, attachments, destruction, and rollback generation-safe', () => {
 		const count = LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS;
 		const container = createLynxClientContainer();
