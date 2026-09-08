@@ -223,6 +223,8 @@ try {
 			expect(developmentMainThread).toContain(
 				'first tree can only be captured from a stable accepted root.',
 			);
+			expect(developmentMainThread).toContain('must match the template shape length.');
+			expect(developmentBackground).toContain('must match the template shape length.');
 			expect(developmentBackground).toMatch(/pathname=(?:\/|%2F)rsbuild-hmr/);
 			expect(developmentBackground).toContain('hot=true');
 			expect(developmentBackground).toContain('live-reload=true');
