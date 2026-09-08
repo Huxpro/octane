@@ -11,9 +11,11 @@ This port targets the immutable React Three Fiber release `v9.6.1`:
 
 The port advertises the upstream `three >=0.156` range. Its immutable
 differential oracle stays on r172, while separate CI jobs typecheck and run the
-Octane-owned compatibility suite against the minimum r156 pair and the current
-registry release. This prevents either a moving latest dependency or the pinned
-oracle from standing in for the other compatibility claim. `@types/three` is an
+Octane-owned compatibility suite against the minimum r156 pair and the latest
+release line published by both Three and `@types/three`. This prevents either a
+moving latest dependency or the pinned oracle from standing in for the other
+compatibility claim, without making a brief DefinitelyTyped publication lag a
+false incompatibility. `@types/three` is an
 optional peer that TypeScript consumers install from the same Three release line;
 its patch revision may differ from the runtime. Making it optional prevents
 package-manager peer auto-install from silently pairing current declarations with
