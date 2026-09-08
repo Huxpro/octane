@@ -376,6 +376,10 @@ describe('@octanejs/rspeedy-plugin native production entries', () => {
 			expect(background).not.toMatch(/getJSContext/);
 			expect(mainThread).toContain('milestone-five');
 			expect(mainThread).toContain('Native bundle');
+			expect(mainThread).toContain('Octane Lynx OL099');
+			expect(mainThread).not.toContain(
+				'first tree can only be captured from a stable accepted root.',
+			);
 			expect(mainThread).toContain('octane-m7-main-thread-worklet');
 			expect(mainThread).not.toContain('octane-m7-background-function');
 			expect(mainThread).not.toContain(BACKGROUND_ONLY_MARKER);

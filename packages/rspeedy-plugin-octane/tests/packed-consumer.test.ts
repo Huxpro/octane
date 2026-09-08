@@ -220,6 +220,9 @@ try {
 				developmentDecoded['background-thread-script'],
 			);
 			expect(developmentMainThread).toContain('milestone-five');
+			expect(developmentMainThread).toContain(
+				'first tree can only be captured from a stable accepted root.',
+			);
 			expect(developmentBackground).toMatch(/pathname=(?:\/|%2F)rsbuild-hmr/);
 			expect(developmentBackground).toContain('hot=true');
 			expect(developmentBackground).toContain('live-reload=true');
