@@ -1,0 +1,3126 @@
+{
+  "suite": "lynx-production-inventory",
+  "meta": {
+    "date": "2026-09-08T09:30:36.055Z",
+    "source": "Huxpro/octane@47c50db72a5ead917f145af259b2993cc4c97b0f+issue-290-audit",
+    "git": {
+      "commit": "47c50db72a5ead917f145af259b2993cc4c97b0f",
+      "dirty": true,
+      "diffScope": [
+        "benchmarks/lynx-bundle-size/README.md",
+        "benchmarks/lynx-bundle-size/core-switch.mjs",
+        "benchmarks/lynx-bundle-size/inventory.mjs"
+      ],
+      "diffSha256": "637330070584d938ea0a82c2ce28663ffb83e3abc38cfda31ba627f38b31d72f"
+    },
+    "node": "v22.22.2",
+    "platform": "linux 5.15.120.bsk.3-amd64",
+    "fixture": "benchmarks/lynx-table/app, BENCH_AUTOROWS=0",
+    "gzipLevel": 9,
+    "accounting": "Raw artifact ownership is proportional to production reachable-module sizes; gzip ownership is only claimed by the controlled ledger below."
+  },
+  "artifacts": {
+    "web": {
+      "raw": 595680,
+      "gzip": 167785,
+      "brotli": 126361,
+      "sha256": "5bdbd9df2e34d2bc363f3bdd31c051c1f176f9ec0263eec03abb8174521b6649",
+      "inventory": {
+        "method": "final artifact raw bytes distributed by production reachable-module size",
+        "reachableRaw": 4583215,
+        "accountedArtifactRaw": 595680,
+        "coverage": 1,
+        "owners": {
+          "compiler-output-app": {
+            "reachableRaw": 1230536,
+            "modules": 1,
+            "artifactRaw": 159933
+          },
+          "build-wrapper-main": {
+            "reachableRaw": 883469,
+            "modules": 1,
+            "artifactRaw": 114824
+          },
+          "universal-runtime": {
+            "reachableRaw": 527034,
+            "modules": 1,
+            "artifactRaw": 68499
+          },
+          "lynx-runtime-other": {
+            "reachableRaw": 445456,
+            "modules": 43,
+            "artifactRaw": 57896
+          },
+          "host-driver-papi": {
+            "reachableRaw": 442579,
+            "modules": 2,
+            "artifactRaw": 57522
+          },
+          "first-screen-adoption": {
+            "reachableRaw": 339056,
+            "modules": 3,
+            "artifactRaw": 44067
+          },
+          "protocol-transport": {
+            "reachableRaw": 327875,
+            "modules": 7,
+            "artifactRaw": 42614
+          },
+          "public-state-worklets": {
+            "reachableRaw": 210575,
+            "modules": 3,
+            "artifactRaw": 27368
+          },
+          "fixture-app": {
+            "reachableRaw": 121961,
+            "modules": 12,
+            "artifactRaw": 15851
+          },
+          "octane-runtime-other": {
+            "reachableRaw": 51182,
+            "modules": 7,
+            "artifactRaw": 6652
+          },
+          "third-party-runtime": {
+            "reachableRaw": 1950,
+            "modules": 5,
+            "artifactRaw": 253
+          },
+          "generated-wrapper": {
+            "reachableRaw": 1542,
+            "modules": 3,
+            "artifactRaw": 201
+          }
+        },
+        "byThread": {
+          "main": {
+            "reachableRaw": 2107744,
+            "moduleCount": 42,
+            "modules": [
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/app.css",
+                "owner": "fixture-app",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 50,
+                "chunks": []
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/App.lynx.tsrx",
+                "owner": "fixture-app",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 18063,
+                "chunks": []
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/block-program.ts",
+                "owner": "fixture-app",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 15493,
+                "chunks": []
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/data.ts",
+                "owner": "fixture-app",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1870,
+                "chunks": []
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+                "owner": "fixture-app",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 2791,
+                "chunks": []
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+                "owner": "fixture-app",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 38267,
+                "chunks": ["main__octane_main_thread"]
+              },
+              {
+                "identifier": "@/packages/lynx/src/block.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1343,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-core.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 31476,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-program.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1879,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/environment.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 3792,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/first-screen-host.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 700,
+                "chunks": ["main__octane_main_thread"]
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/first-screen.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 25444,
+                "chunks": ["main__octane_main_thread"]
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/host-driver.ts",
+                "owner": "host-driver-papi",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 433057,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/host-props.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 35308,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/lifecycle-data.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 9744,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/list.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 6744,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/main-thread-worklet-feature.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 3796,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/native-events.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 13018,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/nodes-ref.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 28766,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/own-symbols.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 507,
+                "chunks": ["main__octane_main_thread"]
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/papi.ts",
+                "owner": "host-driver-papi",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 9522,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/plain-object.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1238,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/portal.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1939,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/profiling.ts",
+                "owner": "protocol-transport",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 5672,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/program-registry.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 10623,
+                "chunks": ["main__octane_main_thread"]
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/protocol.ts",
+                "owner": "protocol-transport",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 94735,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/renderer-id.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 118,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/transport-codec.ts",
+                "owner": "protocol-transport",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 19642,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/worklets.ts",
+                "owner": "public-state-worklets",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 63465,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/first-screen.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1852,
+                "chunks": ["main__octane_main_thread"]
+              },
+              {
+                "identifier": "@/packages/lynx/src/main-renderer.ts",
+                "owner": "first-screen-adoption",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 93293,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/main-renderer.ts",
+                "owner": "first-screen-adoption",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 94292,
+                "chunks": ["main__octane_main_thread"]
+              },
+              {
+                "identifier": "@/packages/lynx/src/main-thread.ts",
+                "owner": "first-screen-adoption",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 151471,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/resource.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 999,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-entry.js",
+                "owner": "generated-wrapper",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1094,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-entry.js",
+                "owner": "build-wrapper-main",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 883469,
+                "chunks": ["main__octane_main_thread"]
+              },
+              {
+                "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-process-data.js",
+                "owner": "generated-wrapper",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 348,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-ready.js",
+                "owner": "generated-wrapper",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 100,
+                "chunks": ["main__octane_main_thread"]
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_to_primitive.js",
+                "owner": "third-party-runtime",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 511,
+                "chunks": []
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_to_property_key.js",
+                "owner": "third-party-runtime",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 278,
+                "chunks": []
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_to_property_key.js",
+                "owner": "third-party-runtime",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 789,
+                "chunks": ["main__octane_main_thread"]
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_type_of.js",
+                "owner": "third-party-runtime",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 186,
+                "chunks": ["main__octane_main_thread"]
+              }
+            ]
+          },
+          "background": {
+            "reachableRaw": 2474764,
+            "moduleCount": 45,
+            "modules": [
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/app.css",
+                "owner": "fixture-app",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 50,
+                "chunks": []
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/App.lynx.tsrx",
+                "owner": "fixture-app",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 24516,
+                "chunks": []
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/block-program.ts",
+                "owner": "fixture-app",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 15493,
+                "chunks": []
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/data.ts",
+                "owner": "fixture-app",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1870,
+                "chunks": []
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+                "owner": "compiler-output-app",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1230536,
+                "chunks": ["main"]
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+                "owner": "fixture-app",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 2791,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/block.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1343,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/background-lifecycle.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 9568,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-background.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 8895,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-component.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 46715,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-core.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 31476,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-program.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1879,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-root.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 11102,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/client-driver.ts",
+                "owner": "public-state-worklets",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 83645,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/delta-protocol.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 10791,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/delta-shadow.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 15625,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/environment.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 3792,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/host-props.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 35308,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/lifecycle-data.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 9744,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/native-event-receiver.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 6486,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/native-events.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 13018,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/nodes-ref.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 28766,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/own-symbols.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 507,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/plain-object.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1238,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/portal.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1939,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/profiling.ts",
+                "owner": "protocol-transport",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 5672,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/protocol.ts",
+                "owner": "protocol-transport",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 94735,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/renderer-id.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 118,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/run-program.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 4601,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/transport-codec.ts",
+                "owner": "protocol-transport",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 19642,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/transport.ts",
+                "owner": "protocol-transport",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 87777,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/worklets.ts",
+                "owner": "public-state-worklets",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 63465,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/index.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 833,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/renderer.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 3109,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/resource.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 999,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/root.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 18318,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/octane/src/has-own.ts",
+                "owner": "octane-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 57,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/octane/src/renderer-bridge.ts",
+                "owner": "octane-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1672,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/octane/src/shared-value-helpers.ts",
+                "owner": "octane-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 2818,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/octane/src/sub-slot.ts",
+                "owner": "octane-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 2493,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/octane/src/universal-core.ts",
+                "owner": "universal-runtime",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 527034,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/octane/src/universal-kernel.ts",
+                "owner": "octane-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 11403,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/octane/src/universal-native.ts",
+                "owner": "octane-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1424,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/octane/src/universal-template-program.ts",
+                "owner": "octane-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 31315,
+                "chunks": []
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_type_of.js",
+                "owner": "third-party-runtime",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 186,
+                "chunks": []
+              }
+            ]
+          },
+          "shared": {
+            "reachableRaw": 707,
+            "moduleCount": 1,
+            "modules": [
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/app.css",
+                "owner": "fixture-app",
+                "layers": ["octane:background", "octane:main-thread"],
+                "thread": "shared",
+                "size": 707,
+                "chunks": ["main__octane_main_thread", "main"]
+              }
+            ]
+          },
+          "unassigned": {
+            "reachableRaw": 0,
+            "moduleCount": 0,
+            "modules": []
+          }
+        },
+        "modules": [
+          {
+            "identifier": "@/packages/lynx/src/block.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 1343,
+            "chunks": []
+          },
+          {
+            "identifier": "@/benchmarks/lynx-table/app/src/data.ts",
+            "owner": "fixture-app",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 1870,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/transport-codec.ts",
+            "owner": "protocol-transport",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 19642,
+            "chunks": []
+          },
+          {
+            "identifier": "@/benchmarks/lynx-table/app/src/data.ts",
+            "owner": "fixture-app",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 1870,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/first-screen.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 25444,
+            "chunks": ["main__octane_main_thread"]
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/block-program.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 1879,
+            "chunks": []
+          },
+          {
+            "identifier": "node_modules/@swc/helpers/esm/_type_of.js",
+            "owner": "third-party-runtime",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 186,
+            "chunks": ["main__octane_main_thread"]
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/list.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 6744,
+            "chunks": []
+          },
+          {
+            "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+            "owner": "compiler-output-app",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 1230536,
+            "chunks": ["main"]
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/block-background.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 8895,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/delta-protocol.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 10791,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/profiling.ts",
+            "owner": "protocol-transport",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 5672,
+            "chunks": []
+          },
+          {
+            "identifier": "node_modules/@swc/helpers/esm/_to_primitive.js",
+            "owner": "third-party-runtime",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 511,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/octane/src/universal-core.ts",
+            "owner": "universal-runtime",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 527034,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/worklets.ts",
+            "owner": "public-state-worklets",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 63465,
+            "chunks": []
+          },
+          {
+            "identifier": "node_modules/@swc/helpers/esm/_type_of.js",
+            "owner": "third-party-runtime",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 186,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/host-props.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 35308,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/plain-object.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 1238,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/program-registry.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 10623,
+            "chunks": ["main__octane_main_thread"]
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/worklets.ts",
+            "owner": "public-state-worklets",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 63465,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/background-lifecycle.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 9568,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/lifecycle-data.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 9744,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/own-symbols.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 507,
+            "chunks": ["main__octane_main_thread"]
+          },
+          {
+            "identifier": "@/packages/lynx/src/first-screen.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 1852,
+            "chunks": ["main__octane_main_thread"]
+          },
+          {
+            "identifier": "@/packages/lynx/src/index.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 833,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/first-screen-host.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 700,
+            "chunks": ["main__octane_main_thread"]
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/lifecycle-data.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 9744,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/octane/src/universal-native.ts",
+            "owner": "octane-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 1424,
+            "chunks": []
+          },
+          {
+            "identifier": "node_modules/@swc/helpers/esm/_to_property_key.js",
+            "owner": "third-party-runtime",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 278,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/root.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 18318,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/delta-shadow.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 15625,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/main-thread-worklet-feature.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 3796,
+            "chunks": []
+          },
+          {
+            "identifier": "node_modules/@swc/helpers/esm/_to_property_key.js",
+            "owner": "third-party-runtime",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 789,
+            "chunks": ["main__octane_main_thread"]
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/protocol.ts",
+            "owner": "protocol-transport",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 94735,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-entry.js",
+            "owner": "generated-wrapper",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 1094,
+            "chunks": []
+          },
+          {
+            "identifier": "@/benchmarks/lynx-table/app/src/block-program.ts",
+            "owner": "fixture-app",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 15493,
+            "chunks": []
+          },
+          {
+            "identifier": "@/benchmarks/lynx-table/app/src/App.lynx.tsrx",
+            "owner": "fixture-app",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 18063,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/portal.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 1939,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/run-program.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 4601,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/block.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 1343,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/native-event-receiver.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 6486,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/octane/src/shared-value-helpers.ts",
+            "owner": "octane-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 2818,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/client-driver.ts",
+            "owner": "public-state-worklets",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 83645,
+            "chunks": []
+          },
+          {
+            "identifier": "@/benchmarks/lynx-table/app/src/app.css",
+            "owner": "fixture-app",
+            "layers": ["octane:background", "octane:main-thread"],
+            "thread": "shared",
+            "size": 707,
+            "chunks": ["main__octane_main_thread", "main"]
+          },
+          {
+            "identifier": "@/benchmarks/lynx-table/app/src/block-program.ts",
+            "owner": "fixture-app",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 15493,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/renderer.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 3109,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/own-symbols.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 507,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/block-root.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 11102,
+            "chunks": []
+          },
+          {
+            "identifier": "@/benchmarks/lynx-table/app/src/App.lynx.tsrx",
+            "owner": "fixture-app",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 24516,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/octane/src/sub-slot.ts",
+            "owner": "octane-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 2493,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/block-component.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 46715,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/native-events.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 13018,
+            "chunks": []
+          },
+          {
+            "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+            "owner": "fixture-app",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 2791,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/octane/src/renderer-bridge.ts",
+            "owner": "octane-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 1672,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/portal.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 1939,
+            "chunks": []
+          },
+          {
+            "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+            "owner": "fixture-app",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 2791,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/host-driver.ts",
+            "owner": "host-driver-papi",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 433057,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/block-core.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 31476,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/environment.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 3792,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/environment.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 3792,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-entry.js",
+            "owner": "build-wrapper-main",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 883469,
+            "chunks": ["main__octane_main_thread"]
+          },
+          {
+            "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-ready.js",
+            "owner": "generated-wrapper",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 100,
+            "chunks": ["main__octane_main_thread"]
+          },
+          {
+            "identifier": "@/packages/lynx/src/main-renderer.ts",
+            "owner": "first-screen-adoption",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 93293,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/block-program.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 1879,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/block-core.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 31476,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-process-data.js",
+            "owner": "generated-wrapper",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 348,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/resource.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 999,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/octane/src/universal-kernel.ts",
+            "owner": "octane-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 11403,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/main-thread.ts",
+            "owner": "first-screen-adoption",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 151471,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/papi.ts",
+            "owner": "host-driver-papi",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 9522,
+            "chunks": []
+          },
+          {
+            "identifier": "@/benchmarks/lynx-table/app/src/app.css",
+            "owner": "fixture-app",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 50,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/profiling.ts",
+            "owner": "protocol-transport",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 5672,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/octane/src/has-own.ts",
+            "owner": "octane-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 57,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/transport.ts",
+            "owner": "protocol-transport",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 87777,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/main-renderer.ts",
+            "owner": "first-screen-adoption",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 94292,
+            "chunks": ["main__octane_main_thread"]
+          },
+          {
+            "identifier": "@/packages/lynx/src/resource.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 999,
+            "chunks": []
+          },
+          {
+            "identifier": "@/benchmarks/lynx-table/app/src/app.css",
+            "owner": "fixture-app",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 50,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/nodes-ref.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 28766,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/host-props.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 35308,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/native-events.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 13018,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/transport-codec.ts",
+            "owner": "protocol-transport",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 19642,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/protocol.ts",
+            "owner": "protocol-transport",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 94735,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/renderer-id.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 118,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/plain-object.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 1238,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/nodes-ref.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 28766,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/renderer-id.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 118,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/octane/src/universal-template-program.ts",
+            "owner": "octane-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 31315,
+            "chunks": []
+          },
+          {
+            "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+            "owner": "fixture-app",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 38267,
+            "chunks": ["main__octane_main_thread"]
+          }
+        ]
+      }
+    },
+    "lynx": {
+      "raw": 578193,
+      "gzip": 204036,
+      "brotli": 170926,
+      "sha256": "fe6c6c1c937497844ee2e49017973a4c29460717ea38b8728c7250fa4403aeb7",
+      "sections": {
+        "main": {
+          "raw": 275564,
+          "gzip": 80510,
+          "brotli": 67427,
+          "sha256": "28a44fae91d6cb1e37605faeeea99ab1fd995408309e0c75e04e45e34a3593aa"
+        },
+        "background": {
+          "raw": 315925,
+          "gzip": 86979,
+          "brotli": 73477,
+          "sha256": "0b5fc403f110638efe1581569458d89e329d478522ada800b53d8aab9289c927"
+        },
+        "custom": {
+          "engine-version": {
+            "raw": 3,
+            "gzip": 23,
+            "brotli": 7,
+            "sha256": "04125177931fbd4afa4af7296dbdc95e9f209268cb4518f08aa568aa503993a2"
+          },
+          "app-type": {
+            "raw": 4,
+            "gzip": 24,
+            "brotli": 8,
+            "sha256": "8367cd66fdd136bba8ba23f8805bb050dd6289401c8ec3b0be44a3c233eef90d"
+          },
+          "compilerOptions": {
+            "raw": 3,
+            "gzip": 23,
+            "brotli": 7,
+            "sha256": "04125177931fbd4afa4af7296dbdc95e9f209268cb4518f08aa568aa503993a2"
+          },
+          "page-config": {
+            "raw": 340,
+            "gzip": 216,
+            "brotli": 191,
+            "sha256": "f719be6c341fa36eb3f4f89d74ea8b07f1448546f0293110c5eb45942661491d"
+          }
+        }
+      },
+      "inventory": {
+        "method": "final artifact raw bytes distributed by production reachable-module size",
+        "reachableRaw": 4583215,
+        "accountedArtifactRaw": 578193,
+        "coverage": 1,
+        "owners": {
+          "compiler-output-app": {
+            "reachableRaw": 1230536,
+            "modules": 1,
+            "artifactRaw": 155238
+          },
+          "build-wrapper-main": {
+            "reachableRaw": 883469,
+            "modules": 1,
+            "artifactRaw": 111454
+          },
+          "universal-runtime": {
+            "reachableRaw": 527034,
+            "modules": 1,
+            "artifactRaw": 66488
+          },
+          "lynx-runtime-other": {
+            "reachableRaw": 445456,
+            "modules": 43,
+            "artifactRaw": 56196
+          },
+          "host-driver-papi": {
+            "reachableRaw": 442579,
+            "modules": 2,
+            "artifactRaw": 55833
+          },
+          "first-screen-adoption": {
+            "reachableRaw": 339056,
+            "modules": 3,
+            "artifactRaw": 42773
+          },
+          "protocol-transport": {
+            "reachableRaw": 327875,
+            "modules": 7,
+            "artifactRaw": 41363
+          },
+          "public-state-worklets": {
+            "reachableRaw": 210575,
+            "modules": 3,
+            "artifactRaw": 26565
+          },
+          "fixture-app": {
+            "reachableRaw": 121961,
+            "modules": 12,
+            "artifactRaw": 15386
+          },
+          "octane-runtime-other": {
+            "reachableRaw": 51182,
+            "modules": 7,
+            "artifactRaw": 6457
+          },
+          "third-party-runtime": {
+            "reachableRaw": 1950,
+            "modules": 5,
+            "artifactRaw": 246
+          },
+          "generated-wrapper": {
+            "reachableRaw": 1542,
+            "modules": 3,
+            "artifactRaw": 194
+          }
+        },
+        "byThread": {
+          "main": {
+            "reachableRaw": 2107744,
+            "moduleCount": 42,
+            "modules": [
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/app.css",
+                "owner": "fixture-app",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 50,
+                "chunks": []
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/App.lynx.tsrx",
+                "owner": "fixture-app",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 18063,
+                "chunks": []
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/block-program.ts",
+                "owner": "fixture-app",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 15493,
+                "chunks": []
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/data.ts",
+                "owner": "fixture-app",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1870,
+                "chunks": []
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+                "owner": "fixture-app",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 2791,
+                "chunks": []
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+                "owner": "fixture-app",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 38267,
+                "chunks": ["main__octane_main_thread"]
+              },
+              {
+                "identifier": "@/packages/lynx/src/block.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1343,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-core.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 31476,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-program.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1879,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/environment.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 3792,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/first-screen-host.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 700,
+                "chunks": ["main__octane_main_thread"]
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/first-screen.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 25444,
+                "chunks": ["main__octane_main_thread"]
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/host-driver.ts",
+                "owner": "host-driver-papi",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 433057,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/host-props.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 35308,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/lifecycle-data.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 9744,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/list.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 6744,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/main-thread-worklet-feature.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 3796,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/native-events.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 13018,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/nodes-ref.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 28766,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/own-symbols.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 507,
+                "chunks": ["main__octane_main_thread"]
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/papi.ts",
+                "owner": "host-driver-papi",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 9522,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/plain-object.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1238,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/portal.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1939,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/profiling.ts",
+                "owner": "protocol-transport",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 5672,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/program-registry.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 10623,
+                "chunks": ["main__octane_main_thread"]
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/protocol.ts",
+                "owner": "protocol-transport",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 94735,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/renderer-id.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 118,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/transport-codec.ts",
+                "owner": "protocol-transport",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 19642,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/worklets.ts",
+                "owner": "public-state-worklets",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 63465,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/first-screen.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1852,
+                "chunks": ["main__octane_main_thread"]
+              },
+              {
+                "identifier": "@/packages/lynx/src/main-renderer.ts",
+                "owner": "first-screen-adoption",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 93293,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/main-renderer.ts",
+                "owner": "first-screen-adoption",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 94292,
+                "chunks": ["main__octane_main_thread"]
+              },
+              {
+                "identifier": "@/packages/lynx/src/main-thread.ts",
+                "owner": "first-screen-adoption",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 151471,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/resource.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 999,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-entry.js",
+                "owner": "generated-wrapper",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1094,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-entry.js",
+                "owner": "build-wrapper-main",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 883469,
+                "chunks": ["main__octane_main_thread"]
+              },
+              {
+                "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-process-data.js",
+                "owner": "generated-wrapper",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 348,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-ready.js",
+                "owner": "generated-wrapper",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 100,
+                "chunks": ["main__octane_main_thread"]
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_to_primitive.js",
+                "owner": "third-party-runtime",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 511,
+                "chunks": []
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_to_property_key.js",
+                "owner": "third-party-runtime",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 278,
+                "chunks": []
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_to_property_key.js",
+                "owner": "third-party-runtime",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 789,
+                "chunks": ["main__octane_main_thread"]
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_type_of.js",
+                "owner": "third-party-runtime",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 186,
+                "chunks": ["main__octane_main_thread"]
+              }
+            ]
+          },
+          "background": {
+            "reachableRaw": 2474764,
+            "moduleCount": 45,
+            "modules": [
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/app.css",
+                "owner": "fixture-app",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 50,
+                "chunks": []
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/App.lynx.tsrx",
+                "owner": "fixture-app",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 24516,
+                "chunks": []
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/block-program.ts",
+                "owner": "fixture-app",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 15493,
+                "chunks": []
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/data.ts",
+                "owner": "fixture-app",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1870,
+                "chunks": []
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+                "owner": "compiler-output-app",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1230536,
+                "chunks": ["main"]
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+                "owner": "fixture-app",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 2791,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/block.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1343,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/background-lifecycle.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 9568,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-background.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 8895,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-component.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 46715,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-core.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 31476,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-program.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1879,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-root.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 11102,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/client-driver.ts",
+                "owner": "public-state-worklets",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 83645,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/delta-protocol.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 10791,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/delta-shadow.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 15625,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/environment.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 3792,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/host-props.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 35308,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/lifecycle-data.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 9744,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/native-event-receiver.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 6486,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/native-events.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 13018,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/nodes-ref.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 28766,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/own-symbols.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 507,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/plain-object.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1238,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/portal.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1939,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/profiling.ts",
+                "owner": "protocol-transport",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 5672,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/protocol.ts",
+                "owner": "protocol-transport",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 94735,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/renderer-id.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 118,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/run-program.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 4601,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/transport-codec.ts",
+                "owner": "protocol-transport",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 19642,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/transport.ts",
+                "owner": "protocol-transport",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 87777,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/worklets.ts",
+                "owner": "public-state-worklets",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 63465,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/index.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 833,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/renderer.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 3109,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/resource.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 999,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/lynx/src/root.ts",
+                "owner": "lynx-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 18318,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/octane/src/has-own.ts",
+                "owner": "octane-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 57,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/octane/src/renderer-bridge.ts",
+                "owner": "octane-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1672,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/octane/src/shared-value-helpers.ts",
+                "owner": "octane-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 2818,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/octane/src/sub-slot.ts",
+                "owner": "octane-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 2493,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/octane/src/universal-core.ts",
+                "owner": "universal-runtime",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 527034,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/octane/src/universal-kernel.ts",
+                "owner": "octane-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 11403,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/octane/src/universal-native.ts",
+                "owner": "octane-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1424,
+                "chunks": []
+              },
+              {
+                "identifier": "@/packages/octane/src/universal-template-program.ts",
+                "owner": "octane-runtime-other",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 31315,
+                "chunks": []
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_type_of.js",
+                "owner": "third-party-runtime",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 186,
+                "chunks": []
+              }
+            ]
+          },
+          "shared": {
+            "reachableRaw": 707,
+            "moduleCount": 1,
+            "modules": [
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/app.css",
+                "owner": "fixture-app",
+                "layers": ["octane:background", "octane:main-thread"],
+                "thread": "shared",
+                "size": 707,
+                "chunks": ["main__octane_main_thread", "main"]
+              }
+            ]
+          },
+          "unassigned": {
+            "reachableRaw": 0,
+            "moduleCount": 0,
+            "modules": []
+          }
+        },
+        "modules": [
+          {
+            "identifier": "@/packages/lynx/src/block.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 1343,
+            "chunks": []
+          },
+          {
+            "identifier": "@/benchmarks/lynx-table/app/src/data.ts",
+            "owner": "fixture-app",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 1870,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/transport-codec.ts",
+            "owner": "protocol-transport",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 19642,
+            "chunks": []
+          },
+          {
+            "identifier": "@/benchmarks/lynx-table/app/src/data.ts",
+            "owner": "fixture-app",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 1870,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/first-screen.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 25444,
+            "chunks": ["main__octane_main_thread"]
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/block-program.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 1879,
+            "chunks": []
+          },
+          {
+            "identifier": "node_modules/@swc/helpers/esm/_type_of.js",
+            "owner": "third-party-runtime",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 186,
+            "chunks": ["main__octane_main_thread"]
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/list.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 6744,
+            "chunks": []
+          },
+          {
+            "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+            "owner": "compiler-output-app",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 1230536,
+            "chunks": ["main"]
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/block-background.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 8895,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/delta-protocol.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 10791,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/profiling.ts",
+            "owner": "protocol-transport",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 5672,
+            "chunks": []
+          },
+          {
+            "identifier": "node_modules/@swc/helpers/esm/_to_primitive.js",
+            "owner": "third-party-runtime",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 511,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/octane/src/universal-core.ts",
+            "owner": "universal-runtime",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 527034,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/worklets.ts",
+            "owner": "public-state-worklets",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 63465,
+            "chunks": []
+          },
+          {
+            "identifier": "node_modules/@swc/helpers/esm/_type_of.js",
+            "owner": "third-party-runtime",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 186,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/host-props.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 35308,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/plain-object.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 1238,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/program-registry.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 10623,
+            "chunks": ["main__octane_main_thread"]
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/worklets.ts",
+            "owner": "public-state-worklets",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 63465,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/background-lifecycle.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 9568,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/lifecycle-data.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 9744,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/own-symbols.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 507,
+            "chunks": ["main__octane_main_thread"]
+          },
+          {
+            "identifier": "@/packages/lynx/src/first-screen.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 1852,
+            "chunks": ["main__octane_main_thread"]
+          },
+          {
+            "identifier": "@/packages/lynx/src/index.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 833,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/first-screen-host.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 700,
+            "chunks": ["main__octane_main_thread"]
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/lifecycle-data.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 9744,
+            "chunks": []
+          },
+          {
+            "identifier": "node_modules/@swc/helpers/esm/_to_property_key.js",
+            "owner": "third-party-runtime",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 278,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/octane/src/universal-native.ts",
+            "owner": "octane-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 1424,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/root.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 18318,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/delta-shadow.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 15625,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/main-thread-worklet-feature.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 3796,
+            "chunks": []
+          },
+          {
+            "identifier": "node_modules/@swc/helpers/esm/_to_property_key.js",
+            "owner": "third-party-runtime",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 789,
+            "chunks": ["main__octane_main_thread"]
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/protocol.ts",
+            "owner": "protocol-transport",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 94735,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-entry.js",
+            "owner": "generated-wrapper",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 1094,
+            "chunks": []
+          },
+          {
+            "identifier": "@/benchmarks/lynx-table/app/src/block-program.ts",
+            "owner": "fixture-app",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 15493,
+            "chunks": []
+          },
+          {
+            "identifier": "@/benchmarks/lynx-table/app/src/App.lynx.tsrx",
+            "owner": "fixture-app",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 18063,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/portal.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 1939,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/run-program.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 4601,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/block.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 1343,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/native-event-receiver.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 6486,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/octane/src/shared-value-helpers.ts",
+            "owner": "octane-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 2818,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/client-driver.ts",
+            "owner": "public-state-worklets",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 83645,
+            "chunks": []
+          },
+          {
+            "identifier": "@/benchmarks/lynx-table/app/src/app.css",
+            "owner": "fixture-app",
+            "layers": ["octane:background", "octane:main-thread"],
+            "thread": "shared",
+            "size": 707,
+            "chunks": ["main__octane_main_thread", "main"]
+          },
+          {
+            "identifier": "@/benchmarks/lynx-table/app/src/block-program.ts",
+            "owner": "fixture-app",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 15493,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/renderer.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 3109,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/block-root.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 11102,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/own-symbols.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 507,
+            "chunks": []
+          },
+          {
+            "identifier": "@/benchmarks/lynx-table/app/src/App.lynx.tsrx",
+            "owner": "fixture-app",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 24516,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/block-component.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 46715,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/octane/src/sub-slot.ts",
+            "owner": "octane-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 2493,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/native-events.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 13018,
+            "chunks": []
+          },
+          {
+            "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+            "owner": "fixture-app",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 2791,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/octane/src/renderer-bridge.ts",
+            "owner": "octane-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 1672,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/portal.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 1939,
+            "chunks": []
+          },
+          {
+            "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+            "owner": "fixture-app",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 2791,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/host-driver.ts",
+            "owner": "host-driver-papi",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 433057,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/block-core.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 31476,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/environment.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 3792,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/environment.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 3792,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-entry.js",
+            "owner": "build-wrapper-main",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 883469,
+            "chunks": ["main__octane_main_thread"]
+          },
+          {
+            "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-ready.js",
+            "owner": "generated-wrapper",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 100,
+            "chunks": ["main__octane_main_thread"]
+          },
+          {
+            "identifier": "@/packages/lynx/src/main-renderer.ts",
+            "owner": "first-screen-adoption",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 93293,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/block-program.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 1879,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/block-core.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 31476,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-process-data.js",
+            "owner": "generated-wrapper",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 348,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/resource.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 999,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/octane/src/universal-kernel.ts",
+            "owner": "octane-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 11403,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/main-thread.ts",
+            "owner": "first-screen-adoption",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 151471,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/papi.ts",
+            "owner": "host-driver-papi",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 9522,
+            "chunks": []
+          },
+          {
+            "identifier": "@/benchmarks/lynx-table/app/src/app.css",
+            "owner": "fixture-app",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 50,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/profiling.ts",
+            "owner": "protocol-transport",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 5672,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/octane/src/has-own.ts",
+            "owner": "octane-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 57,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/transport.ts",
+            "owner": "protocol-transport",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 87777,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/main-renderer.ts",
+            "owner": "first-screen-adoption",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 94292,
+            "chunks": ["main__octane_main_thread"]
+          },
+          {
+            "identifier": "@/packages/lynx/src/resource.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 999,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/host-props.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 35308,
+            "chunks": []
+          },
+          {
+            "identifier": "@/benchmarks/lynx-table/app/src/app.css",
+            "owner": "fixture-app",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 50,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/nodes-ref.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 28766,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/native-events.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 13018,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/transport-codec.ts",
+            "owner": "protocol-transport",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 19642,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/protocol.ts",
+            "owner": "protocol-transport",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 94735,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/renderer-id.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 118,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/plain-object.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 1238,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/nodes-ref.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 28766,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/lynx/src/core/renderer-id.ts",
+            "owner": "lynx-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 118,
+            "chunks": []
+          },
+          {
+            "identifier": "@/packages/octane/src/universal-template-program.ts",
+            "owner": "octane-runtime-other",
+            "layers": ["octane:background"],
+            "thread": "background",
+            "size": 31315,
+            "chunks": []
+          },
+          {
+            "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+            "owner": "fixture-app",
+            "layers": ["octane:main-thread"],
+            "thread": "main",
+            "size": 38267,
+            "chunks": ["main__octane_main_thread"]
+          }
+        ]
+      }
+    }
+  },
+  "controlledLedger": [
+    {
+      "owner": "#706 compact teardown constants",
+      "status": "pending upstream",
+      "controlledGzipDelta": {
+        "web": "+1.38%",
+        "lynx": "+1.45%"
+      },
+      "decision": "accepted performance-earned size tax"
+    },
+    {
+      "owner": "#707 optional worklet installer",
+      "status": "pending upstream",
+      "controlledGzipDelta": {
+        "previewMain": "76915 -> 75024 (-2.46%)",
+        "ifrMain": "81995 -> 79980 (-2.46%)",
+        "previewComplete": "150079 -> 148183",
+        "ifrComplete": "155075 -> 152968"
+      },
+      "decision": "accepted child; deltas are not additive with rows-0 artifacts"
+    },
+    {
+      "owner": "mainline through dcf94cfc8",
+      "status": "merged baseline",
+      "controlledGzipDelta": {
+        "rows0Web": "132334 -> 136123",
+        "rows0Lynx": "159077 -> 163571",
+        "previewMain": "77286 -> 80507",
+        "ifrMain": "82274 -> 85724"
+      },
+      "decision": "reconciled pre-existing drift from the ffadd397 caps, including the merged dense-clear teardown; excluded from the issue #57 candidate tax"
+    },
+    {
+      "owner": "#57 first-screen template ranges",
+      "status": "pending upstream",
+      "controlledGzipDelta": {
+        "rows0Web": "136123 -> 137369 (+0.92%)",
+        "rows0Lynx": "163571 -> 165395 (+1.12%)",
+        "previewMain": "80507 -> 82070 (+1.94%)",
+        "ifrMain": "85724 -> 87566 (+2.15%)"
+      },
+      "decision": "accepted size tax for 13.2% public and 11.8% all-row 10k FCP improvements; 30k all-row improved 9.3%"
+    }
+  ]
+}

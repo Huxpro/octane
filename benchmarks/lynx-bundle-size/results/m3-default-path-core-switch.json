@@ -1,0 +1,4769 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-08T09:30:25.956Z",
+  "source": {
+    "commit": "47c50db72a5ead917f145af259b2993cc4c97b0f",
+    "dirty": true,
+    "diffScope": [
+      "benchmarks/lynx-bundle-size/README.md",
+      "benchmarks/lynx-bundle-size/core-switch.mjs",
+      "benchmarks/lynx-bundle-size/inventory.mjs"
+    ],
+    "diffSha256": "637330070584d938ea0a82c2ce28663ffb83e3abc38cfda31ba627f38b31d72f"
+  },
+  "toolchain": {
+    "node": "v22.22.2",
+    "platform": "linux 5.15.120.bsk.3-amd64",
+    "targetSdkVersion": "3.9"
+  },
+  "fixture": "benchmarks/lynx-table/app, BENCH_AUTOROWS=0, derived compiler path",
+  "arms": [
+    {
+      "label": "universal",
+      "core": "universal",
+      "backend": "descriptor",
+      "programAddressing": false,
+      "bundle": {
+        "raw": 578193,
+        "gzip": 204032,
+        "brotli": 170455,
+        "sha256": "8e20fd995dab0572044a4a8333454c9e31281cf5d14d8ab6a7cbdee4629e9e7c"
+      },
+      "background": {
+        "raw": 316290,
+        "gzip": 87120,
+        "brotli": 73531,
+        "sha256": "913bb16910612c622f0a46337f37e173ed4c00d90bfcccfc607d2ec82e77d0c0"
+      },
+      "main": {
+        "raw": 259056,
+        "gzip": 117152,
+        "brotli": 96756,
+        "sha256": "112e65515d551b51d4f41573f086ae07c3561671426b79b9af9628add808b912"
+      },
+      "reachable": {
+        "method": "Rspack production compilation modules classified by complete incoming Lynx layers, then chunk ownership",
+        "byThread": {
+          "main": {
+            "reachableRaw": 2107744,
+            "moduleCount": 42,
+            "sha256": "5ce5d5afb42f949aeb32d23519f2cf0583e392238f80612990a613b5ad175e92",
+            "modules": [
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/app.css",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 50,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/App.lynx.tsrx",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 18063,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["App"]
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/block-program.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 15493,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/data.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1870,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["buildData"]
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 2791,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 38267,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/block.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1343,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": false
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-core.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 31476,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": false
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-program.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1879,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": false
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/environment.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 3792,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["LYNX_DEVELOPMENT"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/first-screen-host.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 700,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "currentLynxFirstScreenHost",
+                    "installLynxFirstScreenHost",
+                    "requireLynxFirstScreenHost"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/first-screen.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 25444,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_DENSE_PROGRAM_RANGES",
+                    "LYNX_FIRST_TREE_STATE",
+                    "LynxFirstScreenRefusalError",
+                    "LynxFirstTreeMismatchError",
+                    "createLynxFirstTree",
+                    "lynxFirstTreeProgramIndex",
+                    "programRunEventCount",
+                    "programRunEventToken",
+                    "programRunHostCount",
+                    "programRunHostNode",
+                    "programRunLastId",
+                    "programRunNode",
+                    "programRunPosition",
+                    "releaseLynxFirstTree",
+                    "resolveLynxFirstTreeEvent"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/host-driver.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 433057,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_PAINTED_ELEMENT_CEILING",
+                    "applyLynxFirstScreenDirect",
+                    "captureLynxFirstTree",
+                    "createLynxHostContainer",
+                    "createLynxHostDriver",
+                    "disposeLynxFirstTree",
+                    "disposeLynxHostContainer",
+                    "getLynxHostEventListener",
+                    "getLynxHostHandle",
+                    "getLynxHostPublicState",
+                    "isLynxHostAttached",
+                    "isLynxHostDeclared",
+                    "prepareLynxHostBatch",
+                    "resolveLynxHostNativeEvent"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/host-props.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 35308,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_CSS_SCOPE_PROP",
+                    "classifyLynxHostPropUpdate",
+                    "hasLynxMainThreadProp",
+                    "planLynxHostCreatePatch",
+                    "planLynxHostPropPatch",
+                    "sameLynxUniversalHostPropValue"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/lifecycle-data.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 9744,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "compactLynxLifecycleMessages",
+                    "snapshotLynxLifecycleData"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/list.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 6744,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "createLynxListItemDescriptor",
+                    "lynxListReuseKey",
+                    "planLynxListUpdate"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/main-thread-worklet-feature.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 3796,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "createReplaceableLynxMainThreadWorkletRegistry",
+                    "createUnavailableLynxMainThreadWorkletRegistry",
+                    "subscribeLynxMainThreadWorkletFeature"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/native-events.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 13018,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "decodeLynxNativeEventToken",
+                    "encodeCheckedLynxNativeEventToken",
+                    "encodePrevalidatedLynxNativeEventToken",
+                    "parseLynxMainThreadEventProp",
+                    "parseLynxNativeEventProp",
+                    "snapshotLynxNativeEventPayload"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/nodes-ref.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 28766,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_NODES_REF_ATTRIBUTE",
+                    "createLynxNodesRefSelector"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/own-symbols.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 507,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": ["hasOwnSymbolFields"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/papi.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 9522,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["createLynxElementPAPI"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/plain-object.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1238,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["hasCrossRealmPlainPrototype"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/portal.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1939,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "decodeLynxPortalTargetId",
+                    "isLynxPortalTargetHandle",
+                    "lynxPortalTargetKey"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/profiling.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 5672,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_PROFILE",
+                    "lynxWireProfile",
+                    "markFirstScreenPhase"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/program-registry.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 10623,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "registerUniversalProgram",
+                    "residentRunProgram",
+                    "residentUniversalProgramAddress",
+                    "residentUniversalProgramCount",
+                    "unresolvedProgramAddressMessage"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/protocol.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 94735,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_ADDRESSED_PROGRAM_RUN_READY_REQUEST_BASE",
+                    "LYNX_ANNOUNCED_PUBLIC_INSTANCES",
+                    "LYNX_BACKGROUND_TO_MAIN_EVENT",
+                    "LYNX_CAPABILITY_READY_REQUEST_BASE",
+                    "LYNX_COMPACT_ACKNOWLEDGEMENT",
+                    "LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS",
+                    "LYNX_DEFERRED_TEMPLATE_RUN_READY_REQUEST_BASE",
+                    "LYNX_FIRST_TREE_PRESENCE_READY_REQUEST_BASE",
+                    "LYNX_FIRST_TREE_PROGRAM_MANIFEST_READY_REQUEST_BASE",
+                    "LYNX_LAZY_PUBLIC_INSTANCES",
+                    "LYNX_LAZY_PUBLIC_INSTANCE_READY_REQUEST_BASE",
+                    "LYNX_MAIN_TO_BACKGROUND_EVENT",
+                    "LYNX_READY_ANNOUNCEMENT_REQUEST",
+                    "LYNX_TEARDOWN_RUN_READY_REQUEST_BASE",
+                    "LYNX_TEMPLATE_RUN_READY_REQUEST_BASE",
+                    "LYNX_TRANSPORT_PROTOCOL_VERSION",
+                    "LYNX_TRANSPORT_RENDERER",
+                    "countLynxCompactAcknowledgementHosts",
+                    "resolveLynxValidationMode",
+                    "sameLynxTransportIdentity",
+                    "selfCheckLynxBackgroundInboundMessage",
+                    "validateLynxBackgroundOutboundMessage"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/renderer-id.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 118,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["LYNX_RENDERER_ID"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/transport-codec.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 19642,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_MAX_WIRE_DEPTH",
+                    "acceptLynxTransportFrame",
+                    "createLynxTransportFrameState",
+                    "decodeLynxTransportValue",
+                    "encodeLynxTransportValue",
+                    "frameLynxTransportValue",
+                    "localizeLynxHostValue"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/worklets.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 63465,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "assertLynxWorkletValue",
+                    "getThreadFunctionDescriptor",
+                    "isLynxMainThreadRefDescriptor",
+                    "isLynxMainThreadWorkletDescriptor",
+                    "unwrapThreadFunctionDescriptor"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/first-screen.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1852,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": ["markFirstScreenSyncReady", "root"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/main-renderer.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 93293,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "defineUniversalComponent",
+                    "firstScreenEvent",
+                    "hookSlots",
+                    "renderLynxFirstScreen",
+                    "universalComponent",
+                    "universalFor",
+                    "universalPlan",
+                    "universalProps",
+                    "universalValue",
+                    "useCallback",
+                    "useRef",
+                    "useState"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/main-renderer.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 94292,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "defineUniversalComponent",
+                    "firstScreenEvent",
+                    "hookSlots",
+                    "renderLynxFirstScreen",
+                    "universalComponent",
+                    "universalFor",
+                    "universalPlan",
+                    "universalProps",
+                    "universalValue",
+                    "useCallback",
+                    "useRef",
+                    "useState"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/main-thread.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 151471,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["installLynxMainThread"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/resource.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 999,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["isLynxNativeResource"]
+                }
+              },
+              {
+                "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-entry.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1094,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-entry.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 883469,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-process-data.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 348,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["installMainThreadProcessData"]
+                }
+              },
+              {
+                "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-ready.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 100,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_to_primitive.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 511,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["_"]
+                }
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_to_property_key.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 278,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["_"]
+                }
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_to_property_key.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 789,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": ["_"]
+                }
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_type_of.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 186,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": ["_"]
+                }
+              }
+            ]
+          },
+          "background": {
+            "reachableRaw": 2474764,
+            "moduleCount": 45,
+            "sha256": "e272397997dcdbced137e8844d1a5bd29785d17f89eef558cc29de9c51e8ffe5",
+            "modules": [
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/app.css",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 50,
+                "chunks": [],
+                "usedExports": {
+                  "main": []
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/App.lynx.tsrx",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 24516,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["App"]
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/block-program.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 15493,
+                "chunks": [],
+                "usedExports": {
+                  "main": []
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/data.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1870,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["buildData"]
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 2791,
+                "chunks": [],
+                "usedExports": {
+                  "main": []
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1230536,
+                "chunks": ["main"],
+                "usedExports": {
+                  "main": []
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/block.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1343,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/background-lifecycle.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 9568,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["prepareLynxBackgroundLifecycleReceiver"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-background.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 8895,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["createLynxBlockBackgroundCore"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-component.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 46715,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["lynxBlockProgramForComponent"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-core.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 31476,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["compileLynxBlockTemplate", "createLynxBlockCore"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-program.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1879,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["readLynxBlockProgram"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-root.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 11102,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["createLynxBlockRoot"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/client-driver.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 83645,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "applyLynxHostAttachments",
+                    "createLynxClientContainer",
+                    "createLynxClientDriver",
+                    "getLynxClientWorkletBatchExecutions",
+                    "hasLynxCompactHandleSegment",
+                    "invalidateLynxClientContainer",
+                    "isLynxClientEventTarget",
+                    "lynxClientTemplateRunsNegotiated",
+                    "prepareLynxClientWorkletBatch",
+                    "prepareLynxCompactHandleDeltas",
+                    "prepareLynxHandleDeltas",
+                    "setLynxClientCapabilities",
+                    "setLynxClientProgramManifests"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/delta-protocol.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 10791,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["encodeLynxDeltaMessage", "isLynxDeltaValue"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/delta-shadow.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 15625,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["createLynxDeltaShadow"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/environment.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 3792,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "LYNX_BLOCK_BACKGROUND_CORE",
+                    "LYNX_DEVELOPMENT",
+                    "lynxEnvironmentIsInjected",
+                    "readAmbientQueueMicrotask",
+                    "readLynxCoreInject",
+                    "readLynxEnvironment"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/host-props.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 35308,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["classifyLynxHostPropUpdate", "sameLynxUniversalHostPropValue"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/lifecycle-data.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 9744,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["applyLynxBackgroundLifecycleData", "compactLynxLifecycleMessages"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/native-event-receiver.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 6486,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["installLynxNativeEventReceiver"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/native-events.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 13018,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "decodeLynxNativeEventToken",
+                    "parseLynxMainThreadEventProp",
+                    "parseLynxNativeEventProp",
+                    "snapshotLynxNativeEventPayload"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/nodes-ref.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 28766,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "LYNX_NODES_REF_ATTRIBUTE",
+                    "createLynxNodesRef",
+                    "createLynxNodesRefSelector"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/own-symbols.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 507,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["hasOwnSymbolFields"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/plain-object.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1238,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["hasCrossRealmPlainPrototype"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/portal.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1939,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["decodeLynxPortalTargetId", "encodeLynxPortalTargetId"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/profiling.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 5672,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["LYNX_PROFILE", "lynxWireProfile", "profileOutboundMessage"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/protocol.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 94735,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "LYNX_ANNOUNCED_PUBLIC_INSTANCES",
+                    "LYNX_BACKGROUND_TO_MAIN_EVENT",
+                    "LYNX_COMPACT_ACKNOWLEDGEMENT",
+                    "LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS",
+                    "LYNX_FIRST_TREE_PROGRAM_MANIFEST_READY_REQUEST_BASE",
+                    "LYNX_LAZY_PUBLIC_INSTANCES",
+                    "LYNX_MAIN_TO_BACKGROUND_EVENT",
+                    "LYNX_READY_ANNOUNCEMENT_REQUEST",
+                    "LYNX_TRANSPORT_PROTOCOL_VERSION",
+                    "LYNX_TRANSPORT_RENDERER",
+                    "countLynxCompactAcknowledgementHosts",
+                    "lynxLazyPublicInstancesNegotiated",
+                    "resolveLynxValidationMode",
+                    "sameLynxTransportIdentity",
+                    "selfCheckLynxBackgroundOutboundMessage",
+                    "validateLynxBackgroundInboundMessage",
+                    "validateLynxBackgroundOutboundMessage"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/renderer-id.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 118,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["LYNX_RENDERER_ID"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/run-program.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 4601,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["producedRunProgram", "promoteProducedProgramManifest"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/transport-codec.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 19642,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "LYNX_MAX_WIRE_DEPTH",
+                    "acceptLynxTransportFrame",
+                    "createLynxTransportFrameState",
+                    "decodeLynxTransportValue",
+                    "encodeLynxTransportValue",
+                    "frameLynxTransportValue"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/transport.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 87777,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["createLynxBackgroundTransport"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/worklets.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 63465,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "assertLynxWorkletValue",
+                    "createLynxBackgroundFunctionRegistry",
+                    "getThreadFunctionDescriptor",
+                    "installBackgroundCallBridge",
+                    "isLynxMainThreadRefDescriptor",
+                    "isLynxMainThreadWorkletDescriptor",
+                    "isolateLynxWorkletValue",
+                    "unwrapThreadFunctionDescriptor"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/index.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 833,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/renderer.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 3109,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/resource.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 999,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["isLynxNativeResource"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/root.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 18318,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["root"]
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/has-own.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 57,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["hasOwnProp"]
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/renderer-bridge.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1672,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/shared-value-helpers.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 2818,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/sub-slot.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 2493,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/universal-core.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 527034,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "UNIVERSAL_HOOK_SCOPE_CONTEXT_REFUSED",
+                    "UNIVERSAL_HOOK_SCOPE_EFFECTS_REFUSED",
+                    "UNIVERSAL_TRANSPORT_PROTOCOL_VERSION",
+                    "createUniversalHookScope",
+                    "createUniversalRoot",
+                    "defineUniversalComponent",
+                    "hookSlots",
+                    "recordUniversalProgramCommand",
+                    "universalComponent",
+                    "universalFor",
+                    "universalPlan",
+                    "universalProgramCommandWire",
+                    "universalProps",
+                    "universalValue",
+                    "useCallback",
+                    "useLayoutEffect",
+                    "useRef",
+                    "useState"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/universal-kernel.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 11403,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "createScheduleOwner",
+                    "createUniversalOwnerClaimController",
+                    "createUniversalTransitionController",
+                    "deactivateEffectEventCells",
+                    "depsEqual",
+                    "isThenable",
+                    "runEffectCleanup",
+                    "runEffectCreate"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/universal-native.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1424,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/universal-template-program.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 31315,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "EMPTY_STATIC_HOST_PROPS",
+                    "compiledUniversalTemplateProgram",
+                    "createUniversalHostEncoder",
+                    "hasCrossRealmPlainPrototype",
+                    "prepareUniversalTemplateProgram",
+                    "prepareUniversalTemplateProgramValues",
+                    "universalHostTemplateShape",
+                    "universalTemplateProgramWithoutRanges"
+                  ]
+                }
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_type_of.js",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 186,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["_"]
+                }
+              }
+            ]
+          },
+          "shared": {
+            "reachableRaw": 707,
+            "moduleCount": 1,
+            "sha256": "319ab58935d0b881cfa71915a0ab769ae177daa9559158ec812077b57fb63bd4",
+            "modules": [
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/app.css",
+                "layers": ["octane:background", "octane:main-thread"],
+                "thread": "shared",
+                "size": 707,
+                "chunks": ["main", "main__octane_main_thread"],
+                "usedExports": {
+                  "main": null,
+                  "main__octane_main_thread": null
+                }
+              }
+            ]
+          },
+          "unassigned": {
+            "reachableRaw": 0,
+            "moduleCount": 0,
+            "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "modules": []
+          }
+        }
+      },
+      "program": 0,
+      "backgroundProgram": 0,
+      "probes": {
+        "block": [],
+        "universalRoot": [
+          "Universal roots accept only compiler-defined universal components.",
+          "Duplicate universal list key "
+        ],
+        "universalPlan": ["universalValue expected a universal plan."]
+      }
+    },
+    {
+      "label": "block",
+      "core": "block",
+      "backend": "descriptor",
+      "programAddressing": false,
+      "bundle": {
+        "raw": 459107,
+        "gzip": 173610,
+        "brotli": 144636,
+        "sha256": "8988a57d636d5eb1aaab525fa53053ecfa23a2ca121cb42e2307c3d961605753"
+      },
+      "background": {
+        "raw": 197204,
+        "gzip": 56168,
+        "brotli": 48092,
+        "sha256": "5e475e0c70aa7fa2070f793cb9c6855b7c1801612ebc32114f3793c1663480cc"
+      },
+      "main": {
+        "raw": 259056,
+        "gzip": 117152,
+        "brotli": 96756,
+        "sha256": "112e65515d551b51d4f41573f086ae07c3561671426b79b9af9628add808b912"
+      },
+      "reachable": {
+        "method": "Rspack production compilation modules classified by complete incoming Lynx layers, then chunk ownership",
+        "byThread": {
+          "main": {
+            "reachableRaw": 2107744,
+            "moduleCount": 42,
+            "sha256": "5ce5d5afb42f949aeb32d23519f2cf0583e392238f80612990a613b5ad175e92",
+            "modules": [
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/app.css",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 50,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/App.lynx.tsrx",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 18063,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["App"]
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/block-program.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 15493,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/data.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1870,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["buildData"]
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 2791,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 38267,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/block.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1343,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": false
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-core.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 31476,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": false
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-program.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1879,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": false
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/environment.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 3792,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["LYNX_DEVELOPMENT"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/first-screen-host.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 700,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "currentLynxFirstScreenHost",
+                    "installLynxFirstScreenHost",
+                    "requireLynxFirstScreenHost"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/first-screen.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 25444,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_DENSE_PROGRAM_RANGES",
+                    "LYNX_FIRST_TREE_STATE",
+                    "LynxFirstScreenRefusalError",
+                    "LynxFirstTreeMismatchError",
+                    "createLynxFirstTree",
+                    "lynxFirstTreeProgramIndex",
+                    "programRunEventCount",
+                    "programRunEventToken",
+                    "programRunHostCount",
+                    "programRunHostNode",
+                    "programRunLastId",
+                    "programRunNode",
+                    "programRunPosition",
+                    "releaseLynxFirstTree",
+                    "resolveLynxFirstTreeEvent"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/host-driver.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 433057,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_PAINTED_ELEMENT_CEILING",
+                    "applyLynxFirstScreenDirect",
+                    "captureLynxFirstTree",
+                    "createLynxHostContainer",
+                    "createLynxHostDriver",
+                    "disposeLynxFirstTree",
+                    "disposeLynxHostContainer",
+                    "getLynxHostEventListener",
+                    "getLynxHostHandle",
+                    "getLynxHostPublicState",
+                    "isLynxHostAttached",
+                    "isLynxHostDeclared",
+                    "prepareLynxHostBatch",
+                    "resolveLynxHostNativeEvent"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/host-props.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 35308,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_CSS_SCOPE_PROP",
+                    "classifyLynxHostPropUpdate",
+                    "hasLynxMainThreadProp",
+                    "planLynxHostCreatePatch",
+                    "planLynxHostPropPatch",
+                    "sameLynxUniversalHostPropValue"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/lifecycle-data.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 9744,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "compactLynxLifecycleMessages",
+                    "snapshotLynxLifecycleData"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/list.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 6744,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "createLynxListItemDescriptor",
+                    "lynxListReuseKey",
+                    "planLynxListUpdate"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/main-thread-worklet-feature.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 3796,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "createReplaceableLynxMainThreadWorkletRegistry",
+                    "createUnavailableLynxMainThreadWorkletRegistry",
+                    "subscribeLynxMainThreadWorkletFeature"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/native-events.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 13018,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "decodeLynxNativeEventToken",
+                    "encodeCheckedLynxNativeEventToken",
+                    "encodePrevalidatedLynxNativeEventToken",
+                    "parseLynxMainThreadEventProp",
+                    "parseLynxNativeEventProp",
+                    "snapshotLynxNativeEventPayload"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/nodes-ref.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 28766,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_NODES_REF_ATTRIBUTE",
+                    "createLynxNodesRefSelector"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/own-symbols.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 507,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": ["hasOwnSymbolFields"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/papi.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 9522,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["createLynxElementPAPI"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/plain-object.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1238,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["hasCrossRealmPlainPrototype"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/portal.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1939,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "decodeLynxPortalTargetId",
+                    "isLynxPortalTargetHandle",
+                    "lynxPortalTargetKey"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/profiling.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 5672,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_PROFILE",
+                    "lynxWireProfile",
+                    "markFirstScreenPhase"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/program-registry.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 10623,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "registerUniversalProgram",
+                    "residentRunProgram",
+                    "residentUniversalProgramAddress",
+                    "residentUniversalProgramCount",
+                    "unresolvedProgramAddressMessage"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/protocol.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 94735,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_ADDRESSED_PROGRAM_RUN_READY_REQUEST_BASE",
+                    "LYNX_ANNOUNCED_PUBLIC_INSTANCES",
+                    "LYNX_BACKGROUND_TO_MAIN_EVENT",
+                    "LYNX_CAPABILITY_READY_REQUEST_BASE",
+                    "LYNX_COMPACT_ACKNOWLEDGEMENT",
+                    "LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS",
+                    "LYNX_DEFERRED_TEMPLATE_RUN_READY_REQUEST_BASE",
+                    "LYNX_FIRST_TREE_PRESENCE_READY_REQUEST_BASE",
+                    "LYNX_FIRST_TREE_PROGRAM_MANIFEST_READY_REQUEST_BASE",
+                    "LYNX_LAZY_PUBLIC_INSTANCES",
+                    "LYNX_LAZY_PUBLIC_INSTANCE_READY_REQUEST_BASE",
+                    "LYNX_MAIN_TO_BACKGROUND_EVENT",
+                    "LYNX_READY_ANNOUNCEMENT_REQUEST",
+                    "LYNX_TEARDOWN_RUN_READY_REQUEST_BASE",
+                    "LYNX_TEMPLATE_RUN_READY_REQUEST_BASE",
+                    "LYNX_TRANSPORT_PROTOCOL_VERSION",
+                    "LYNX_TRANSPORT_RENDERER",
+                    "countLynxCompactAcknowledgementHosts",
+                    "resolveLynxValidationMode",
+                    "sameLynxTransportIdentity",
+                    "selfCheckLynxBackgroundInboundMessage",
+                    "validateLynxBackgroundOutboundMessage"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/renderer-id.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 118,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["LYNX_RENDERER_ID"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/transport-codec.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 19642,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_MAX_WIRE_DEPTH",
+                    "acceptLynxTransportFrame",
+                    "createLynxTransportFrameState",
+                    "decodeLynxTransportValue",
+                    "encodeLynxTransportValue",
+                    "frameLynxTransportValue",
+                    "localizeLynxHostValue"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/worklets.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 63465,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "assertLynxWorkletValue",
+                    "getThreadFunctionDescriptor",
+                    "isLynxMainThreadRefDescriptor",
+                    "isLynxMainThreadWorkletDescriptor",
+                    "unwrapThreadFunctionDescriptor"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/first-screen.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1852,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": ["markFirstScreenSyncReady", "root"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/main-renderer.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 93293,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "defineUniversalComponent",
+                    "firstScreenEvent",
+                    "hookSlots",
+                    "renderLynxFirstScreen",
+                    "universalComponent",
+                    "universalFor",
+                    "universalPlan",
+                    "universalProps",
+                    "universalValue",
+                    "useCallback",
+                    "useRef",
+                    "useState"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/main-renderer.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 94292,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "defineUniversalComponent",
+                    "firstScreenEvent",
+                    "hookSlots",
+                    "renderLynxFirstScreen",
+                    "universalComponent",
+                    "universalFor",
+                    "universalPlan",
+                    "universalProps",
+                    "universalValue",
+                    "useCallback",
+                    "useRef",
+                    "useState"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/main-thread.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 151471,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["installLynxMainThread"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/resource.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 999,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["isLynxNativeResource"]
+                }
+              },
+              {
+                "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-entry.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1094,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-entry.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 883469,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-process-data.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 348,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["installMainThreadProcessData"]
+                }
+              },
+              {
+                "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-ready.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 100,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_to_primitive.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 511,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["_"]
+                }
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_to_property_key.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 278,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["_"]
+                }
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_to_property_key.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 789,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": ["_"]
+                }
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_type_of.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 186,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": ["_"]
+                }
+              }
+            ]
+          },
+          "background": {
+            "reachableRaw": 2474764,
+            "moduleCount": 45,
+            "sha256": "e272397997dcdbced137e8844d1a5bd29785d17f89eef558cc29de9c51e8ffe5",
+            "modules": [
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/app.css",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 50,
+                "chunks": [],
+                "usedExports": {
+                  "main": []
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/App.lynx.tsrx",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 24516,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["App"]
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/block-program.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 15493,
+                "chunks": [],
+                "usedExports": {
+                  "main": []
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/data.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1870,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["buildData"]
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 2791,
+                "chunks": [],
+                "usedExports": {
+                  "main": []
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1230536,
+                "chunks": ["main"],
+                "usedExports": {
+                  "main": []
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/block.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1343,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/background-lifecycle.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 9568,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["prepareLynxBackgroundLifecycleReceiver"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-background.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 8895,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["createLynxBlockBackgroundCore"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-component.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 46715,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["lynxBlockProgramForComponent"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-core.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 31476,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["compileLynxBlockTemplate", "createLynxBlockCore"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-program.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1879,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["readLynxBlockProgram"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-root.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 11102,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["createLynxBlockRoot"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/client-driver.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 83645,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "applyLynxHostAttachments",
+                    "createLynxClientContainer",
+                    "createLynxClientDriver",
+                    "getLynxClientWorkletBatchExecutions",
+                    "hasLynxCompactHandleSegment",
+                    "invalidateLynxClientContainer",
+                    "isLynxClientEventTarget",
+                    "lynxClientTemplateRunsNegotiated",
+                    "prepareLynxClientWorkletBatch",
+                    "prepareLynxCompactHandleDeltas",
+                    "prepareLynxHandleDeltas",
+                    "setLynxClientCapabilities",
+                    "setLynxClientProgramManifests"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/delta-protocol.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 10791,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["encodeLynxDeltaMessage", "isLynxDeltaValue"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/delta-shadow.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 15625,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["createLynxDeltaShadow"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/environment.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 3792,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "LYNX_BLOCK_BACKGROUND_CORE",
+                    "LYNX_DEVELOPMENT",
+                    "lynxEnvironmentIsInjected",
+                    "readAmbientQueueMicrotask",
+                    "readLynxCoreInject",
+                    "readLynxEnvironment"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/host-props.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 35308,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["classifyLynxHostPropUpdate", "sameLynxUniversalHostPropValue"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/lifecycle-data.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 9744,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["applyLynxBackgroundLifecycleData", "compactLynxLifecycleMessages"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/native-event-receiver.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 6486,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["installLynxNativeEventReceiver"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/native-events.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 13018,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "decodeLynxNativeEventToken",
+                    "parseLynxMainThreadEventProp",
+                    "parseLynxNativeEventProp",
+                    "snapshotLynxNativeEventPayload"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/nodes-ref.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 28766,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "LYNX_NODES_REF_ATTRIBUTE",
+                    "createLynxNodesRef",
+                    "createLynxNodesRefSelector"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/own-symbols.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 507,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["hasOwnSymbolFields"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/plain-object.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1238,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["hasCrossRealmPlainPrototype"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/portal.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1939,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["decodeLynxPortalTargetId", "encodeLynxPortalTargetId"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/profiling.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 5672,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["LYNX_PROFILE", "lynxWireProfile", "profileOutboundMessage"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/protocol.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 94735,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "LYNX_ANNOUNCED_PUBLIC_INSTANCES",
+                    "LYNX_BACKGROUND_TO_MAIN_EVENT",
+                    "LYNX_COMPACT_ACKNOWLEDGEMENT",
+                    "LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS",
+                    "LYNX_FIRST_TREE_PROGRAM_MANIFEST_READY_REQUEST_BASE",
+                    "LYNX_LAZY_PUBLIC_INSTANCES",
+                    "LYNX_MAIN_TO_BACKGROUND_EVENT",
+                    "LYNX_READY_ANNOUNCEMENT_REQUEST",
+                    "LYNX_TRANSPORT_PROTOCOL_VERSION",
+                    "LYNX_TRANSPORT_RENDERER",
+                    "countLynxCompactAcknowledgementHosts",
+                    "lynxLazyPublicInstancesNegotiated",
+                    "resolveLynxValidationMode",
+                    "sameLynxTransportIdentity",
+                    "selfCheckLynxBackgroundOutboundMessage",
+                    "validateLynxBackgroundInboundMessage",
+                    "validateLynxBackgroundOutboundMessage"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/renderer-id.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 118,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["LYNX_RENDERER_ID"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/run-program.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 4601,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["producedRunProgram", "promoteProducedProgramManifest"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/transport-codec.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 19642,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "LYNX_MAX_WIRE_DEPTH",
+                    "acceptLynxTransportFrame",
+                    "createLynxTransportFrameState",
+                    "decodeLynxTransportValue",
+                    "encodeLynxTransportValue",
+                    "frameLynxTransportValue"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/transport.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 87777,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["createLynxBackgroundTransport"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/worklets.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 63465,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "assertLynxWorkletValue",
+                    "createLynxBackgroundFunctionRegistry",
+                    "getThreadFunctionDescriptor",
+                    "installBackgroundCallBridge",
+                    "isLynxMainThreadRefDescriptor",
+                    "isLynxMainThreadWorkletDescriptor",
+                    "isolateLynxWorkletValue",
+                    "unwrapThreadFunctionDescriptor"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/index.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 833,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/renderer.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 3109,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/resource.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 999,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["isLynxNativeResource"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/root.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 18318,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["root"]
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/has-own.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 57,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["hasOwnProp"]
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/renderer-bridge.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1672,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/shared-value-helpers.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 2818,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/sub-slot.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 2493,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/universal-core.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 527034,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "UNIVERSAL_HOOK_SCOPE_CONTEXT_REFUSED",
+                    "UNIVERSAL_HOOK_SCOPE_EFFECTS_REFUSED",
+                    "UNIVERSAL_TRANSPORT_PROTOCOL_VERSION",
+                    "createUniversalHookScope",
+                    "createUniversalRoot",
+                    "defineUniversalComponent",
+                    "hookSlots",
+                    "recordUniversalProgramCommand",
+                    "universalComponent",
+                    "universalFor",
+                    "universalPlan",
+                    "universalProgramCommandWire",
+                    "universalProps",
+                    "universalValue",
+                    "useCallback",
+                    "useLayoutEffect",
+                    "useRef",
+                    "useState"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/universal-kernel.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 11403,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "createScheduleOwner",
+                    "createUniversalOwnerClaimController",
+                    "createUniversalTransitionController",
+                    "deactivateEffectEventCells",
+                    "depsEqual",
+                    "isThenable",
+                    "runEffectCleanup",
+                    "runEffectCreate"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/universal-native.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1424,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/universal-template-program.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 31315,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "EMPTY_STATIC_HOST_PROPS",
+                    "compiledUniversalTemplateProgram",
+                    "createUniversalHostEncoder",
+                    "hasCrossRealmPlainPrototype",
+                    "prepareUniversalTemplateProgram",
+                    "prepareUniversalTemplateProgramValues",
+                    "universalHostTemplateShape",
+                    "universalTemplateProgramWithoutRanges"
+                  ]
+                }
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_type_of.js",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 186,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["_"]
+                }
+              }
+            ]
+          },
+          "shared": {
+            "reachableRaw": 707,
+            "moduleCount": 1,
+            "sha256": "986c422c829fbab40699cbd23cde271531832e53c92124e30d7a46503b9fb18a",
+            "modules": [
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/app.css",
+                "layers": ["octane:background", "octane:main-thread"],
+                "thread": "shared",
+                "size": 707,
+                "chunks": ["main", "main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": null,
+                  "main": null
+                }
+              }
+            ]
+          },
+          "unassigned": {
+            "reachableRaw": 0,
+            "moduleCount": 0,
+            "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "modules": []
+          }
+        }
+      },
+      "program": 0,
+      "backgroundProgram": 0,
+      "probes": {
+        "block": ["Octane Lynx OL015", "Octane Lynx OL011", "Octane Lynx OL013"],
+        "universalRoot": [],
+        "universalPlan": ["universalValue expected a universal plan."]
+      }
+    },
+    {
+      "label": "block+program-descriptor",
+      "core": "block",
+      "backend": "compiled-program",
+      "programAddressing": false,
+      "bundle": {
+        "raw": 460204,
+        "gzip": 174617,
+        "brotli": 145508,
+        "sha256": "fb8acf3f8616fb36f1d52d834cbb864ad3b045541322a040012cd44ba9d95502"
+      },
+      "background": {
+        "raw": 197204,
+        "gzip": 56168,
+        "brotli": 48092,
+        "sha256": "5e475e0c70aa7fa2070f793cb9c6855b7c1801612ebc32114f3793c1663480cc"
+      },
+      "main": {
+        "raw": 260153,
+        "gzip": 118150,
+        "brotli": 97583,
+        "sha256": "cc226de7892399e24cfd6e3dfda4d5ba0b4ba25cffc5ce92aebfc2633bc5e9a7"
+      },
+      "reachable": {
+        "method": "Rspack production compilation modules classified by complete incoming Lynx layers, then chunk ownership",
+        "byThread": {
+          "main": {
+            "reachableRaw": 2122022,
+            "moduleCount": 42,
+            "sha256": "c105d67c90ae275420a8f5182835b51c4edc775052830b31e0b4050182da2642",
+            "modules": [
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/app.css",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 50,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/App.lynx.tsrx",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 25202,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["App"]
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/block-program.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 15493,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/data.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1870,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["buildData"]
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 2791,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 45406,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/block.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1343,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": false
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-core.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 31476,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": false
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-program.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1879,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": false
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/environment.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 3792,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["LYNX_DEVELOPMENT"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/first-screen-host.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 700,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "currentLynxFirstScreenHost",
+                    "installLynxFirstScreenHost",
+                    "requireLynxFirstScreenHost"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/first-screen.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 25444,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_DENSE_PROGRAM_RANGES",
+                    "LYNX_FIRST_TREE_STATE",
+                    "LynxFirstScreenRefusalError",
+                    "LynxFirstTreeMismatchError",
+                    "createLynxFirstTree",
+                    "lynxFirstTreeProgramIndex",
+                    "programRunEventCount",
+                    "programRunEventToken",
+                    "programRunHostCount",
+                    "programRunHostNode",
+                    "programRunLastId",
+                    "programRunNode",
+                    "programRunPosition",
+                    "releaseLynxFirstTree",
+                    "resolveLynxFirstTreeEvent"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/host-driver.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 433057,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_PAINTED_ELEMENT_CEILING",
+                    "applyLynxFirstScreenDirect",
+                    "captureLynxFirstTree",
+                    "createLynxHostContainer",
+                    "createLynxHostDriver",
+                    "disposeLynxFirstTree",
+                    "disposeLynxHostContainer",
+                    "getLynxHostEventListener",
+                    "getLynxHostHandle",
+                    "getLynxHostPublicState",
+                    "isLynxHostAttached",
+                    "isLynxHostDeclared",
+                    "prepareLynxHostBatch",
+                    "resolveLynxHostNativeEvent"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/host-props.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 35308,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_CSS_SCOPE_PROP",
+                    "classifyLynxHostPropUpdate",
+                    "hasLynxMainThreadProp",
+                    "planLynxHostCreatePatch",
+                    "planLynxHostPropPatch",
+                    "sameLynxUniversalHostPropValue"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/lifecycle-data.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 9744,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "compactLynxLifecycleMessages",
+                    "snapshotLynxLifecycleData"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/list.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 6744,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "createLynxListItemDescriptor",
+                    "lynxListReuseKey",
+                    "planLynxListUpdate"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/main-thread-worklet-feature.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 3796,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "createReplaceableLynxMainThreadWorkletRegistry",
+                    "createUnavailableLynxMainThreadWorkletRegistry",
+                    "subscribeLynxMainThreadWorkletFeature"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/native-events.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 13018,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "decodeLynxNativeEventToken",
+                    "encodeCheckedLynxNativeEventToken",
+                    "encodePrevalidatedLynxNativeEventToken",
+                    "parseLynxMainThreadEventProp",
+                    "parseLynxNativeEventProp",
+                    "snapshotLynxNativeEventPayload"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/nodes-ref.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 28766,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_NODES_REF_ATTRIBUTE",
+                    "createLynxNodesRefSelector"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/own-symbols.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 507,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": ["hasOwnSymbolFields"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/papi.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 9522,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["createLynxElementPAPI"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/plain-object.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1238,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["hasCrossRealmPlainPrototype"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/portal.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1939,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "decodeLynxPortalTargetId",
+                    "isLynxPortalTargetHandle",
+                    "lynxPortalTargetKey"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/profiling.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 5672,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_PROFILE",
+                    "lynxWireProfile",
+                    "markFirstScreenPhase"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/program-registry.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 10623,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "registerUniversalProgram",
+                    "residentRunProgram",
+                    "residentUniversalProgramAddress",
+                    "residentUniversalProgramCount",
+                    "unresolvedProgramAddressMessage"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/protocol.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 94735,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_ADDRESSED_PROGRAM_RUN_READY_REQUEST_BASE",
+                    "LYNX_ANNOUNCED_PUBLIC_INSTANCES",
+                    "LYNX_BACKGROUND_TO_MAIN_EVENT",
+                    "LYNX_CAPABILITY_READY_REQUEST_BASE",
+                    "LYNX_COMPACT_ACKNOWLEDGEMENT",
+                    "LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS",
+                    "LYNX_DEFERRED_TEMPLATE_RUN_READY_REQUEST_BASE",
+                    "LYNX_FIRST_TREE_PRESENCE_READY_REQUEST_BASE",
+                    "LYNX_FIRST_TREE_PROGRAM_MANIFEST_READY_REQUEST_BASE",
+                    "LYNX_LAZY_PUBLIC_INSTANCES",
+                    "LYNX_LAZY_PUBLIC_INSTANCE_READY_REQUEST_BASE",
+                    "LYNX_MAIN_TO_BACKGROUND_EVENT",
+                    "LYNX_READY_ANNOUNCEMENT_REQUEST",
+                    "LYNX_TEARDOWN_RUN_READY_REQUEST_BASE",
+                    "LYNX_TEMPLATE_RUN_READY_REQUEST_BASE",
+                    "LYNX_TRANSPORT_PROTOCOL_VERSION",
+                    "LYNX_TRANSPORT_RENDERER",
+                    "countLynxCompactAcknowledgementHosts",
+                    "resolveLynxValidationMode",
+                    "sameLynxTransportIdentity",
+                    "selfCheckLynxBackgroundInboundMessage",
+                    "validateLynxBackgroundOutboundMessage"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/renderer-id.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 118,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["LYNX_RENDERER_ID"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/transport-codec.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 19642,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_MAX_WIRE_DEPTH",
+                    "acceptLynxTransportFrame",
+                    "createLynxTransportFrameState",
+                    "decodeLynxTransportValue",
+                    "encodeLynxTransportValue",
+                    "frameLynxTransportValue",
+                    "localizeLynxHostValue"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/worklets.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 63465,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "assertLynxWorkletValue",
+                    "getThreadFunctionDescriptor",
+                    "isLynxMainThreadRefDescriptor",
+                    "isLynxMainThreadWorkletDescriptor",
+                    "unwrapThreadFunctionDescriptor"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/first-screen.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1852,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": ["markFirstScreenSyncReady", "root"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/main-renderer.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 93293,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "defineUniversalComponent",
+                    "firstScreenEvent",
+                    "hookSlots",
+                    "renderLynxFirstScreen",
+                    "universalComponent",
+                    "universalFor",
+                    "universalPlan",
+                    "universalProps",
+                    "universalValue",
+                    "useCallback",
+                    "useRef",
+                    "useState"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/main-renderer.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 94292,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "defineUniversalComponent",
+                    "firstScreenEvent",
+                    "hookSlots",
+                    "renderLynxFirstScreen",
+                    "universalComponent",
+                    "universalFor",
+                    "universalPlan",
+                    "universalProps",
+                    "universalValue",
+                    "useCallback",
+                    "useRef",
+                    "useState"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/main-thread.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 151471,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["installLynxMainThread"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/resource.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 999,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["isLynxNativeResource"]
+                }
+              },
+              {
+                "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-entry.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1094,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-entry.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 883469,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-process-data.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 348,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["installMainThreadProcessData"]
+                }
+              },
+              {
+                "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-ready.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 100,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_to_primitive.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 511,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["_"]
+                }
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_to_property_key.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 278,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["_"]
+                }
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_to_property_key.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 789,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": ["_"]
+                }
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_type_of.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 186,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": ["_"]
+                }
+              }
+            ]
+          },
+          "background": {
+            "reachableRaw": 2474764,
+            "moduleCount": 45,
+            "sha256": "e272397997dcdbced137e8844d1a5bd29785d17f89eef558cc29de9c51e8ffe5",
+            "modules": [
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/app.css",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 50,
+                "chunks": [],
+                "usedExports": {
+                  "main": []
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/App.lynx.tsrx",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 24516,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["App"]
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/block-program.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 15493,
+                "chunks": [],
+                "usedExports": {
+                  "main": []
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/data.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1870,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["buildData"]
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 2791,
+                "chunks": [],
+                "usedExports": {
+                  "main": []
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1230536,
+                "chunks": ["main"],
+                "usedExports": {
+                  "main": []
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/block.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1343,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/background-lifecycle.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 9568,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["prepareLynxBackgroundLifecycleReceiver"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-background.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 8895,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["createLynxBlockBackgroundCore"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-component.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 46715,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["lynxBlockProgramForComponent"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-core.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 31476,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["compileLynxBlockTemplate", "createLynxBlockCore"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-program.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1879,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["readLynxBlockProgram"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-root.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 11102,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["createLynxBlockRoot"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/client-driver.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 83645,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "applyLynxHostAttachments",
+                    "createLynxClientContainer",
+                    "createLynxClientDriver",
+                    "getLynxClientWorkletBatchExecutions",
+                    "hasLynxCompactHandleSegment",
+                    "invalidateLynxClientContainer",
+                    "isLynxClientEventTarget",
+                    "lynxClientTemplateRunsNegotiated",
+                    "prepareLynxClientWorkletBatch",
+                    "prepareLynxCompactHandleDeltas",
+                    "prepareLynxHandleDeltas",
+                    "setLynxClientCapabilities",
+                    "setLynxClientProgramManifests"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/delta-protocol.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 10791,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["encodeLynxDeltaMessage", "isLynxDeltaValue"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/delta-shadow.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 15625,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["createLynxDeltaShadow"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/environment.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 3792,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "LYNX_BLOCK_BACKGROUND_CORE",
+                    "LYNX_DEVELOPMENT",
+                    "lynxEnvironmentIsInjected",
+                    "readAmbientQueueMicrotask",
+                    "readLynxCoreInject",
+                    "readLynxEnvironment"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/host-props.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 35308,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["classifyLynxHostPropUpdate", "sameLynxUniversalHostPropValue"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/lifecycle-data.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 9744,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["applyLynxBackgroundLifecycleData", "compactLynxLifecycleMessages"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/native-event-receiver.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 6486,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["installLynxNativeEventReceiver"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/native-events.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 13018,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "decodeLynxNativeEventToken",
+                    "parseLynxMainThreadEventProp",
+                    "parseLynxNativeEventProp",
+                    "snapshotLynxNativeEventPayload"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/nodes-ref.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 28766,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "LYNX_NODES_REF_ATTRIBUTE",
+                    "createLynxNodesRef",
+                    "createLynxNodesRefSelector"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/own-symbols.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 507,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["hasOwnSymbolFields"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/plain-object.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1238,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["hasCrossRealmPlainPrototype"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/portal.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1939,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["decodeLynxPortalTargetId", "encodeLynxPortalTargetId"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/profiling.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 5672,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["LYNX_PROFILE", "lynxWireProfile", "profileOutboundMessage"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/protocol.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 94735,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "LYNX_ANNOUNCED_PUBLIC_INSTANCES",
+                    "LYNX_BACKGROUND_TO_MAIN_EVENT",
+                    "LYNX_COMPACT_ACKNOWLEDGEMENT",
+                    "LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS",
+                    "LYNX_FIRST_TREE_PROGRAM_MANIFEST_READY_REQUEST_BASE",
+                    "LYNX_LAZY_PUBLIC_INSTANCES",
+                    "LYNX_MAIN_TO_BACKGROUND_EVENT",
+                    "LYNX_READY_ANNOUNCEMENT_REQUEST",
+                    "LYNX_TRANSPORT_PROTOCOL_VERSION",
+                    "LYNX_TRANSPORT_RENDERER",
+                    "countLynxCompactAcknowledgementHosts",
+                    "lynxLazyPublicInstancesNegotiated",
+                    "resolveLynxValidationMode",
+                    "sameLynxTransportIdentity",
+                    "selfCheckLynxBackgroundOutboundMessage",
+                    "validateLynxBackgroundInboundMessage",
+                    "validateLynxBackgroundOutboundMessage"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/renderer-id.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 118,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["LYNX_RENDERER_ID"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/run-program.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 4601,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["producedRunProgram", "promoteProducedProgramManifest"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/transport-codec.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 19642,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "LYNX_MAX_WIRE_DEPTH",
+                    "acceptLynxTransportFrame",
+                    "createLynxTransportFrameState",
+                    "decodeLynxTransportValue",
+                    "encodeLynxTransportValue",
+                    "frameLynxTransportValue"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/transport.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 87777,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["createLynxBackgroundTransport"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/worklets.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 63465,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "assertLynxWorkletValue",
+                    "createLynxBackgroundFunctionRegistry",
+                    "getThreadFunctionDescriptor",
+                    "installBackgroundCallBridge",
+                    "isLynxMainThreadRefDescriptor",
+                    "isLynxMainThreadWorkletDescriptor",
+                    "isolateLynxWorkletValue",
+                    "unwrapThreadFunctionDescriptor"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/index.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 833,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/renderer.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 3109,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/resource.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 999,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["isLynxNativeResource"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/root.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 18318,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["root"]
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/has-own.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 57,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["hasOwnProp"]
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/renderer-bridge.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1672,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/shared-value-helpers.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 2818,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/sub-slot.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 2493,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/universal-core.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 527034,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "UNIVERSAL_HOOK_SCOPE_CONTEXT_REFUSED",
+                    "UNIVERSAL_HOOK_SCOPE_EFFECTS_REFUSED",
+                    "UNIVERSAL_TRANSPORT_PROTOCOL_VERSION",
+                    "createUniversalHookScope",
+                    "createUniversalRoot",
+                    "defineUniversalComponent",
+                    "hookSlots",
+                    "recordUniversalProgramCommand",
+                    "universalComponent",
+                    "universalFor",
+                    "universalPlan",
+                    "universalProgramCommandWire",
+                    "universalProps",
+                    "universalValue",
+                    "useCallback",
+                    "useLayoutEffect",
+                    "useRef",
+                    "useState"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/universal-kernel.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 11403,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "createScheduleOwner",
+                    "createUniversalOwnerClaimController",
+                    "createUniversalTransitionController",
+                    "deactivateEffectEventCells",
+                    "depsEqual",
+                    "isThenable",
+                    "runEffectCleanup",
+                    "runEffectCreate"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/universal-native.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1424,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/universal-template-program.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 31315,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "EMPTY_STATIC_HOST_PROPS",
+                    "compiledUniversalTemplateProgram",
+                    "createUniversalHostEncoder",
+                    "hasCrossRealmPlainPrototype",
+                    "prepareUniversalTemplateProgram",
+                    "prepareUniversalTemplateProgramValues",
+                    "universalHostTemplateShape",
+                    "universalTemplateProgramWithoutRanges"
+                  ]
+                }
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_type_of.js",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 186,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["_"]
+                }
+              }
+            ]
+          },
+          "shared": {
+            "reachableRaw": 707,
+            "moduleCount": 1,
+            "sha256": "986c422c829fbab40699cbd23cde271531832e53c92124e30d7a46503b9fb18a",
+            "modules": [
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/app.css",
+                "layers": ["octane:background", "octane:main-thread"],
+                "thread": "shared",
+                "size": 707,
+                "chunks": ["main", "main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": null,
+                  "main": null
+                }
+              }
+            ]
+          },
+          "unassigned": {
+            "reachableRaw": 0,
+            "moduleCount": 0,
+            "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "modules": []
+          }
+        }
+      },
+      "program": 1,
+      "backgroundProgram": 0,
+      "probes": {
+        "block": ["Octane Lynx OL015", "Octane Lynx OL011", "Octane Lynx OL013"],
+        "universalRoot": [],
+        "universalPlan": ["universalValue expected a universal plan."]
+      }
+    },
+    {
+      "label": "block+program",
+      "core": "block",
+      "backend": "compiled-program",
+      "programAddressing": true,
+      "bundle": {
+        "raw": 460620,
+        "gzip": 174756,
+        "brotli": 145507,
+        "sha256": "9070a573b6dda1e686970341fd52e1c2ddf525939b7fbe60b9fed74aaba3cd8a"
+      },
+      "background": {
+        "raw": 197271,
+        "gzip": 56213,
+        "brotli": 48099,
+        "sha256": "e171ee0eda890b8749f1f2a8f8342d26563a648f2621a8ef2ef71f02d0354881"
+      },
+      "main": {
+        "raw": 260502,
+        "gzip": 118268,
+        "brotli": 97495,
+        "sha256": "a52e6cc004f9d8b4021fd7094e6ffe06b4ba1ca7511e3a3e6af569ea2c1950df"
+      },
+      "reachable": {
+        "method": "Rspack production compilation modules classified by complete incoming Lynx layers, then chunk ownership",
+        "byThread": {
+          "main": {
+            "reachableRaw": 2125282,
+            "moduleCount": 42,
+            "sha256": "1915dbca35bd347f837fa42de853d5e8e0afe10736adbb6f72efd57c0c6756ea",
+            "modules": [
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/app.css",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 50,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/App.lynx.tsrx",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 26832,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["App"]
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/block-program.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 15493,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/data.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1870,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["buildData"]
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 2791,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 47036,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/block.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1343,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": false
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-core.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 31476,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": false
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-program.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1879,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": false
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/environment.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 3792,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["LYNX_DEVELOPMENT"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/first-screen-host.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 700,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "currentLynxFirstScreenHost",
+                    "installLynxFirstScreenHost",
+                    "requireLynxFirstScreenHost"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/first-screen.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 25444,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_DENSE_PROGRAM_RANGES",
+                    "LYNX_FIRST_TREE_STATE",
+                    "LynxFirstScreenRefusalError",
+                    "LynxFirstTreeMismatchError",
+                    "createLynxFirstTree",
+                    "lynxFirstTreeProgramIndex",
+                    "programRunEventCount",
+                    "programRunEventToken",
+                    "programRunHostCount",
+                    "programRunHostNode",
+                    "programRunLastId",
+                    "programRunNode",
+                    "programRunPosition",
+                    "releaseLynxFirstTree",
+                    "resolveLynxFirstTreeEvent"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/host-driver.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 433057,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_PAINTED_ELEMENT_CEILING",
+                    "applyLynxFirstScreenDirect",
+                    "captureLynxFirstTree",
+                    "createLynxHostContainer",
+                    "createLynxHostDriver",
+                    "disposeLynxFirstTree",
+                    "disposeLynxHostContainer",
+                    "getLynxHostEventListener",
+                    "getLynxHostHandle",
+                    "getLynxHostPublicState",
+                    "isLynxHostAttached",
+                    "isLynxHostDeclared",
+                    "prepareLynxHostBatch",
+                    "resolveLynxHostNativeEvent"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/host-props.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 35308,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_CSS_SCOPE_PROP",
+                    "classifyLynxHostPropUpdate",
+                    "hasLynxMainThreadProp",
+                    "planLynxHostCreatePatch",
+                    "planLynxHostPropPatch",
+                    "sameLynxUniversalHostPropValue"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/lifecycle-data.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 9744,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "compactLynxLifecycleMessages",
+                    "snapshotLynxLifecycleData"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/list.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 6744,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "createLynxListItemDescriptor",
+                    "lynxListReuseKey",
+                    "planLynxListUpdate"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/main-thread-worklet-feature.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 3796,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "createReplaceableLynxMainThreadWorkletRegistry",
+                    "createUnavailableLynxMainThreadWorkletRegistry",
+                    "subscribeLynxMainThreadWorkletFeature"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/native-events.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 13018,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "decodeLynxNativeEventToken",
+                    "encodeCheckedLynxNativeEventToken",
+                    "encodePrevalidatedLynxNativeEventToken",
+                    "parseLynxMainThreadEventProp",
+                    "parseLynxNativeEventProp",
+                    "snapshotLynxNativeEventPayload"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/nodes-ref.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 28766,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_NODES_REF_ATTRIBUTE",
+                    "createLynxNodesRefSelector"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/own-symbols.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 507,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": ["hasOwnSymbolFields"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/papi.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 9522,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["createLynxElementPAPI"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/plain-object.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1238,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["hasCrossRealmPlainPrototype"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/portal.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1939,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "decodeLynxPortalTargetId",
+                    "isLynxPortalTargetHandle",
+                    "lynxPortalTargetKey"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/profiling.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 5672,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_PROFILE",
+                    "lynxWireProfile",
+                    "markFirstScreenPhase"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/program-registry.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 10623,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "registerUniversalProgram",
+                    "residentRunProgram",
+                    "residentUniversalProgramAddress",
+                    "residentUniversalProgramCount",
+                    "unresolvedProgramAddressMessage"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/protocol.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 94735,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_ADDRESSED_PROGRAM_RUN_READY_REQUEST_BASE",
+                    "LYNX_ANNOUNCED_PUBLIC_INSTANCES",
+                    "LYNX_BACKGROUND_TO_MAIN_EVENT",
+                    "LYNX_CAPABILITY_READY_REQUEST_BASE",
+                    "LYNX_COMPACT_ACKNOWLEDGEMENT",
+                    "LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS",
+                    "LYNX_DEFERRED_TEMPLATE_RUN_READY_REQUEST_BASE",
+                    "LYNX_FIRST_TREE_PRESENCE_READY_REQUEST_BASE",
+                    "LYNX_FIRST_TREE_PROGRAM_MANIFEST_READY_REQUEST_BASE",
+                    "LYNX_LAZY_PUBLIC_INSTANCES",
+                    "LYNX_LAZY_PUBLIC_INSTANCE_READY_REQUEST_BASE",
+                    "LYNX_MAIN_TO_BACKGROUND_EVENT",
+                    "LYNX_READY_ANNOUNCEMENT_REQUEST",
+                    "LYNX_TEARDOWN_RUN_READY_REQUEST_BASE",
+                    "LYNX_TEMPLATE_RUN_READY_REQUEST_BASE",
+                    "LYNX_TRANSPORT_PROTOCOL_VERSION",
+                    "LYNX_TRANSPORT_RENDERER",
+                    "countLynxCompactAcknowledgementHosts",
+                    "resolveLynxValidationMode",
+                    "sameLynxTransportIdentity",
+                    "selfCheckLynxBackgroundInboundMessage",
+                    "validateLynxBackgroundOutboundMessage"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/renderer-id.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 118,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["LYNX_RENDERER_ID"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/transport-codec.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 19642,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "LYNX_MAX_WIRE_DEPTH",
+                    "acceptLynxTransportFrame",
+                    "createLynxTransportFrameState",
+                    "decodeLynxTransportValue",
+                    "encodeLynxTransportValue",
+                    "frameLynxTransportValue",
+                    "localizeLynxHostValue"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/worklets.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 63465,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "assertLynxWorkletValue",
+                    "getThreadFunctionDescriptor",
+                    "isLynxMainThreadRefDescriptor",
+                    "isLynxMainThreadWorkletDescriptor",
+                    "unwrapThreadFunctionDescriptor"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/first-screen.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1852,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": ["markFirstScreenSyncReady", "root"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/main-renderer.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 93293,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "defineUniversalComponent",
+                    "firstScreenEvent",
+                    "hookSlots",
+                    "renderLynxFirstScreen",
+                    "universalComponent",
+                    "universalFor",
+                    "universalPlan",
+                    "universalProps",
+                    "universalValue",
+                    "useCallback",
+                    "useRef",
+                    "useState"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/main-renderer.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 94292,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": [
+                    "defineUniversalComponent",
+                    "firstScreenEvent",
+                    "hookSlots",
+                    "renderLynxFirstScreen",
+                    "universalComponent",
+                    "universalFor",
+                    "universalPlan",
+                    "universalProps",
+                    "universalValue",
+                    "useCallback",
+                    "useRef",
+                    "useState"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/main-thread.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 151471,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["installLynxMainThread"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/resource.ts",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 999,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["isLynxNativeResource"]
+                }
+              },
+              {
+                "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-entry.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 1094,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-entry.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 883469,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-process-data.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 348,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["installMainThreadProcessData"]
+                }
+              },
+              {
+                "identifier": "@/packages/rspeedy-plugin-octane/src/main-thread-ready.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 100,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": []
+                }
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_to_primitive.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 511,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["_"]
+                }
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_to_property_key.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 278,
+                "chunks": [],
+                "usedExports": {
+                  "main__octane_main_thread": ["_"]
+                }
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_to_property_key.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 789,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": ["_"]
+                }
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_type_of.js",
+                "layers": ["octane:main-thread"],
+                "thread": "main",
+                "size": 186,
+                "chunks": ["main__octane_main_thread"],
+                "usedExports": {
+                  "main__octane_main_thread": ["_"]
+                }
+              }
+            ]
+          },
+          "background": {
+            "reachableRaw": 2474950,
+            "moduleCount": 45,
+            "sha256": "7cfa4d4858a8b83d8e0e0b5380c4427ce506ceeff8fdd775297c8fa1fe48e5e6",
+            "modules": [
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/app.css",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 50,
+                "chunks": [],
+                "usedExports": {
+                  "main": []
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/App.lynx.tsrx",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 24609,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["App"]
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/block-program.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 15493,
+                "chunks": [],
+                "usedExports": {
+                  "main": []
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/data.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1870,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["buildData"]
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 2791,
+                "chunks": [],
+                "usedExports": {
+                  "main": []
+                }
+              },
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/index.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1230629,
+                "chunks": ["main"],
+                "usedExports": {
+                  "main": []
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/block.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1343,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/background-lifecycle.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 9568,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["prepareLynxBackgroundLifecycleReceiver"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-background.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 8895,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["createLynxBlockBackgroundCore"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-component.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 46715,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["lynxBlockProgramForComponent"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-core.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 31476,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["compileLynxBlockTemplate", "createLynxBlockCore"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-program.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1879,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["readLynxBlockProgram"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/block-root.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 11102,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["createLynxBlockRoot"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/client-driver.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 83645,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "applyLynxHostAttachments",
+                    "createLynxClientContainer",
+                    "createLynxClientDriver",
+                    "getLynxClientWorkletBatchExecutions",
+                    "hasLynxCompactHandleSegment",
+                    "invalidateLynxClientContainer",
+                    "isLynxClientEventTarget",
+                    "lynxClientTemplateRunsNegotiated",
+                    "prepareLynxClientWorkletBatch",
+                    "prepareLynxCompactHandleDeltas",
+                    "prepareLynxHandleDeltas",
+                    "setLynxClientCapabilities",
+                    "setLynxClientProgramManifests"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/delta-protocol.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 10791,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["encodeLynxDeltaMessage", "isLynxDeltaValue"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/delta-shadow.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 15625,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["createLynxDeltaShadow"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/environment.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 3792,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "LYNX_BLOCK_BACKGROUND_CORE",
+                    "LYNX_DEVELOPMENT",
+                    "lynxEnvironmentIsInjected",
+                    "readAmbientQueueMicrotask",
+                    "readLynxCoreInject",
+                    "readLynxEnvironment"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/host-props.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 35308,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["classifyLynxHostPropUpdate", "sameLynxUniversalHostPropValue"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/lifecycle-data.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 9744,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["applyLynxBackgroundLifecycleData", "compactLynxLifecycleMessages"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/native-event-receiver.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 6486,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["installLynxNativeEventReceiver"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/native-events.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 13018,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "decodeLynxNativeEventToken",
+                    "parseLynxMainThreadEventProp",
+                    "parseLynxNativeEventProp",
+                    "snapshotLynxNativeEventPayload"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/nodes-ref.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 28766,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "LYNX_NODES_REF_ATTRIBUTE",
+                    "createLynxNodesRef",
+                    "createLynxNodesRefSelector"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/own-symbols.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 507,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["hasOwnSymbolFields"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/plain-object.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1238,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["hasCrossRealmPlainPrototype"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/portal.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1939,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["decodeLynxPortalTargetId", "encodeLynxPortalTargetId"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/profiling.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 5672,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["LYNX_PROFILE", "lynxWireProfile", "profileOutboundMessage"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/protocol.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 94735,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "LYNX_ANNOUNCED_PUBLIC_INSTANCES",
+                    "LYNX_BACKGROUND_TO_MAIN_EVENT",
+                    "LYNX_COMPACT_ACKNOWLEDGEMENT",
+                    "LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS",
+                    "LYNX_FIRST_TREE_PROGRAM_MANIFEST_READY_REQUEST_BASE",
+                    "LYNX_LAZY_PUBLIC_INSTANCES",
+                    "LYNX_MAIN_TO_BACKGROUND_EVENT",
+                    "LYNX_READY_ANNOUNCEMENT_REQUEST",
+                    "LYNX_TRANSPORT_PROTOCOL_VERSION",
+                    "LYNX_TRANSPORT_RENDERER",
+                    "countLynxCompactAcknowledgementHosts",
+                    "lynxLazyPublicInstancesNegotiated",
+                    "resolveLynxValidationMode",
+                    "sameLynxTransportIdentity",
+                    "selfCheckLynxBackgroundOutboundMessage",
+                    "validateLynxBackgroundInboundMessage",
+                    "validateLynxBackgroundOutboundMessage"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/renderer-id.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 118,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["LYNX_RENDERER_ID"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/run-program.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 4601,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["producedRunProgram", "promoteProducedProgramManifest"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/transport-codec.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 19642,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "LYNX_MAX_WIRE_DEPTH",
+                    "acceptLynxTransportFrame",
+                    "createLynxTransportFrameState",
+                    "decodeLynxTransportValue",
+                    "encodeLynxTransportValue",
+                    "frameLynxTransportValue"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/transport.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 87777,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["createLynxBackgroundTransport"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/core/worklets.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 63465,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "assertLynxWorkletValue",
+                    "createLynxBackgroundFunctionRegistry",
+                    "getThreadFunctionDescriptor",
+                    "installBackgroundCallBridge",
+                    "isLynxMainThreadRefDescriptor",
+                    "isLynxMainThreadWorkletDescriptor",
+                    "isolateLynxWorkletValue",
+                    "unwrapThreadFunctionDescriptor"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/index.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 833,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/renderer.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 3109,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/resource.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 999,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["isLynxNativeResource"]
+                }
+              },
+              {
+                "identifier": "@/packages/lynx/src/root.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 18318,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["root"]
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/has-own.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 57,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["hasOwnProp"]
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/renderer-bridge.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1672,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/shared-value-helpers.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 2818,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/sub-slot.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 2493,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/universal-core.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 527034,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "UNIVERSAL_HOOK_SCOPE_CONTEXT_REFUSED",
+                    "UNIVERSAL_HOOK_SCOPE_EFFECTS_REFUSED",
+                    "UNIVERSAL_TRANSPORT_PROTOCOL_VERSION",
+                    "createUniversalHookScope",
+                    "createUniversalRoot",
+                    "defineUniversalComponent",
+                    "hookSlots",
+                    "recordUniversalProgramCommand",
+                    "universalComponent",
+                    "universalFor",
+                    "universalPlan",
+                    "universalProgramCommandWire",
+                    "universalProps",
+                    "universalValue",
+                    "useCallback",
+                    "useLayoutEffect",
+                    "useRef",
+                    "useState"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/universal-kernel.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 11403,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "createScheduleOwner",
+                    "createUniversalOwnerClaimController",
+                    "createUniversalTransitionController",
+                    "deactivateEffectEventCells",
+                    "depsEqual",
+                    "isThenable",
+                    "runEffectCleanup",
+                    "runEffectCreate"
+                  ]
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/universal-native.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 1424,
+                "chunks": [],
+                "usedExports": {
+                  "main": false
+                }
+              },
+              {
+                "identifier": "@/packages/octane/src/universal-template-program.ts",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 31315,
+                "chunks": [],
+                "usedExports": {
+                  "main": [
+                    "EMPTY_STATIC_HOST_PROPS",
+                    "compiledUniversalTemplateProgram",
+                    "createUniversalHostEncoder",
+                    "hasCrossRealmPlainPrototype",
+                    "prepareUniversalTemplateProgram",
+                    "prepareUniversalTemplateProgramValues",
+                    "universalHostTemplateShape",
+                    "universalTemplateProgramWithoutRanges"
+                  ]
+                }
+              },
+              {
+                "identifier": "node_modules/@swc/helpers/esm/_type_of.js",
+                "layers": ["octane:background"],
+                "thread": "background",
+                "size": 186,
+                "chunks": [],
+                "usedExports": {
+                  "main": ["_"]
+                }
+              }
+            ]
+          },
+          "shared": {
+            "reachableRaw": 707,
+            "moduleCount": 1,
+            "sha256": "319ab58935d0b881cfa71915a0ab769ae177daa9559158ec812077b57fb63bd4",
+            "modules": [
+              {
+                "identifier": "@/benchmarks/lynx-table/app/src/app.css",
+                "layers": ["octane:background", "octane:main-thread"],
+                "thread": "shared",
+                "size": 707,
+                "chunks": ["main", "main__octane_main_thread"],
+                "usedExports": {
+                  "main": null,
+                  "main__octane_main_thread": null
+                }
+              }
+            ]
+          },
+          "unassigned": {
+            "reachableRaw": 0,
+            "moduleCount": 0,
+            "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "modules": []
+          }
+        }
+      },
+      "program": 1,
+      "backgroundProgram": 0,
+      "probes": {
+        "block": ["Octane Lynx OL015", "Octane Lynx OL011", "Octane Lynx OL013"],
+        "universalRoot": [],
+        "universalPlan": ["universalValue expected a universal plan."]
+      }
+    }
+  ],
+  "controls": {
+    "passed": true,
+    "failures": []
+  }
+}

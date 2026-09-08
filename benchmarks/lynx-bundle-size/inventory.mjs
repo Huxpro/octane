@@ -5,6 +5,7 @@
 // as proportional attribution, not as additive gzip ownership.
 process.env.NODE_ENV = 'production';
 
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -13,6 +14,10 @@ import { pathToFileURL } from 'node:url';
 import { brotliCompressSync, constants as zc, gzipSync } from 'node:zlib';
 
 import { pluginOctane } from '../../packages/rspeedy-plugin-octane/src/index.js';
+import {
+	LYNX_BACKGROUND_LAYER,
+	LYNX_MAIN_THREAD_LAYER,
+} from '../../packages/rspeedy-plugin-octane/src/layers.js';
 
 const ROOT = import.meta.dirname;
 const REPO = path.resolve(ROOT, '../..');
@@ -20,6 +25,12 @@ const ENTRY = path.join(REPO, 'benchmarks/lynx-table/app/src/index.ts');
 const CWD = path.join(REPO, 'packages/rspeedy-plugin-octane/tests/_fixtures/application');
 const MODULES = path.join(REPO, 'packages/rspeedy-plugin-octane/node_modules');
 const BUDGETS = JSON.parse(fs.readFileSync(path.join(ROOT, 'inventory-budgets.json'), 'utf8'));
+const AUDIT_INPUTS = Object.freeze([
+	'benchmarks/lynx-bundle-size/README.md',
+	'benchmarks/lynx-bundle-size/core-switch.mjs',
+	'benchmarks/lynx-bundle-size/inventory.mjs',
+]);
+const AUDIT_BASE = process.env.OCTANE_AUDIT_BASE ?? 'HEAD';
 const captures = new Map();
 
 function packageEntry(packageName) {
@@ -85,11 +96,48 @@ function ownerOf(identifier) {
 
 function portableIdentifier(identifier) {
 	const value = identifier.replaceAll('\\', '/');
-	if (value.startsWith(REPO.replaceAll('\\', '/') + '/')) {
-		return `@/${value.slice(REPO.length + 1)}`;
+	const repo = REPO.replaceAll('\\', '/');
+	if (value.startsWith(`${repo}/`)) {
+		return `@/${value.slice(repo.length + 1)}`;
 	}
 	const nodeModules = value.lastIndexOf('/node_modules/');
-	return nodeModules === -1 ? value : value.slice(nodeModules + 1);
+	if (nodeModules !== -1) return value.slice(nodeModules + 1);
+	for (const anchor of ['/packages/', '/benchmarks/']) {
+		const index = value.lastIndexOf(anchor);
+		if (index !== -1) return `@${value.slice(index)}`;
+	}
+	return value;
+}
+
+function moduleLayers(compilation, module) {
+	const layers = new Set();
+	const visited = new Set();
+	const pending = [module];
+	while (pending.length > 0) {
+		const current = pending.pop();
+		if (!current || visited.has(current)) continue;
+		visited.add(current);
+		if (typeof current.layer === 'string' && current.layer.length > 0) {
+			layers.add(current.layer);
+		}
+		for (const connection of compilation.moduleGraph.getIncomingConnections(current)) {
+			if (connection.originModule) pending.push(connection.originModule);
+		}
+	}
+	return [...layers].sort();
+}
+
+function threadForModule(layers, chunks) {
+	const main =
+		layers.includes(LYNX_MAIN_THREAD_LAYER) ||
+		chunks.some((chunk) => /(?:main-thread|__octane_main_thread)/.test(chunk));
+	const background =
+		layers.includes(LYNX_BACKGROUND_LAYER) ||
+		chunks.some((chunk) => /(?:^|\/)background$/.test(chunk) || chunk === 'main');
+	if (main && background) return 'shared';
+	if (main && !background) return 'main';
+	if (background && !main) return 'background';
+	return 'unassigned';
 }
 
 class CaptureReachableModulesPlugin {
@@ -123,12 +171,15 @@ class CaptureReachableModulesPlugin {
 				const chunks = [...compilation.chunkGraph.getModuleChunksIterable(module)].map(
 					(chunk) => chunk.name ?? String(chunk.id ?? 'unnamed'),
 				);
+				const layers = moduleLayers(compilation, module);
 				let owner = ownerOf(identifier);
 				if (owner === 'fixture-app' && size > 100_000) owner = 'compiler-output-app';
 				if (owner === 'generated-wrapper' && size > 100_000) owner = 'build-wrapper-main';
 				modules.push({
 					identifier: portableIdentifier(identifier),
 					owner,
+					layers,
+					thread: threadForModule(layers, chunks),
 					size,
 					chunks,
 				});
@@ -199,6 +250,21 @@ function moduleInventory(modules, artifactRaw) {
 		accountedArtifactRaw: attributed,
 		coverage: artifactRaw === 0 ? 0 : attributed / artifactRaw,
 		owners: Object.fromEntries(entries),
+		byThread: Object.fromEntries(
+			['main', 'background', 'shared', 'unassigned'].map((thread) => {
+				const selected = modules
+					.filter((module) => module.thread === thread)
+					.toSorted((left, right) => left.identifier.localeCompare(right.identifier));
+				return [
+					thread,
+					{
+						reachableRaw: selected.reduce((sum, module) => sum + module.size, 0),
+						moduleCount: selected.length,
+						modules: selected,
+					},
+				];
+			}),
+		),
 		modules,
 	};
 }
@@ -229,6 +295,11 @@ try {
 				entry: { main: ENTRY },
 				define: {
 					__BENCH_AUTOROWS__: '0',
+					// Inventory the product compiler path only. Leaving these benchmark
+					// selectors unresolved retains the hand-authored Block ceiling arm
+					// beside the application and overstates the shipped default.
+					__BENCH_CORE__: JSON.stringify('universal'),
+					__BENCH_BLOCK_MODE__: JSON.stringify('derived'),
 					__OCTANE_LYNX_PROFILE__: 'false',
 				},
 			},
@@ -263,6 +334,23 @@ try {
 		meta: {
 			date: new Date().toISOString(),
 			source: process.env.OCTANE_INVENTORY_SOURCE ?? 'working-tree',
+			git: {
+				commit: execFileSync('git', ['rev-parse', AUDIT_BASE], {
+					cwd: REPO,
+					encoding: 'utf8',
+				}).trim(),
+				dirty:
+					execFileSync('git', ['status', '--porcelain'], {
+						cwd: REPO,
+						encoding: 'utf8',
+					}).trim().length > 0,
+				diffScope: AUDIT_INPUTS,
+				diffSha256: sha256(
+					execFileSync('git', ['diff', '--binary', AUDIT_BASE, '--', ...AUDIT_INPUTS], {
+						cwd: REPO,
+					}),
+				),
+			},
 			node: process.version,
 			platform: `${os.platform()} ${os.release()}`,
 			fixture: 'benchmarks/lynx-table/app, BENCH_AUTOROWS=0',
