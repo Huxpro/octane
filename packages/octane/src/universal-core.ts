@@ -8609,12 +8609,26 @@ class UniversalRootImpl<Container, PublicInstance>
 	): void {
 		if (attempt.status !== 'aborted' || this.unmounted || this.unmounting) return;
 		// A pre-ACK rejection publishes neither the cloned hook cells nor their
-		// consumed queues. Keep the desired input and raise a fresh urgent pass;
+		// consumed queues. Keep the desired input and ensure an urgent pass exists;
 		// post-ACK errors report a committed status and must never replay. A
 		// transition-only abort may take one harmless urgent pass before its requeued
 		// lane runs, which is preferable to missing coalesced lane-free work.
 		this.retryRenderInput = [component, props];
-		this.schedule();
+		// Updates raised while this batch awaited ACK already own a queued urgent
+		// pass. Its hook queues still include the rejected edits, so that pass will
+		// rebase both generations without a redundant empty transaction afterward.
+		if (this.scheduledUrgent) return;
+		const owner = this.owner;
+		if (owner !== null && owner.component === component) {
+			// The accepted root is still authoritative before ACK. Re-execute that
+			// root so the rejected queues and desired props are rebased, but preserve
+			// ordinary subtree-retention proofs below it. A blanket full-root marker
+			// would unnecessarily discard sparse component-list context indexes on
+			// exactly the recovery pass where ACK backpressure is most expensive.
+			this.scheduleOwned(owner);
+		} else {
+			this.schedule();
+		}
 	}
 
 	private restoreRejectedReplay(
