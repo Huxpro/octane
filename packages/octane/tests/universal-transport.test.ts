@@ -18,6 +18,7 @@ import {
 	createUniversalRoot,
 	defineUniversalComponent,
 	memo,
+	startTransition,
 	type UniversalRoot,
 	universalComponent,
 	universalContext,
@@ -1738,6 +1739,230 @@ describe('transported retained component subtrees', () => {
 
 		await root.unmountAsync();
 		expect(effects).toEqual(['mount', 'cleanup']);
+	});
+
+	it('coalesces sparse context final-state and rejection storms without enumerating rows', async () => {
+		const { container, loopback, root } = transportRoot();
+		const Context = createContext('light');
+		const rows = [
+			{ id: 1, consumes: false },
+			{ id: 2, consumes: true },
+			{ id: 3, consumes: false },
+		] as const;
+		let keyCalls = 0;
+		let bodyCalls = 0;
+		let consumerRenders = 0;
+		let setTheme!: (theme: string) => void;
+		const effects: string[] = [];
+		const Consumer = memo(
+			defineUniversalComponent(RENDERER, () => {
+				consumerRenders++;
+				return universalValue(itemPlan, [
+					universalProps([
+						['set', 'label', 'consumer'],
+						['set', 'theme', useContext(Context)],
+					]),
+				]);
+			}),
+		);
+		const Row = memo(
+			defineUniversalComponent(RENDERER, (props: { row: (typeof rows)[number] }) =>
+				props.row.consumes
+					? universalComponent(RENDERER, Consumer, universalProps([]))
+					: universalValue(itemPlan, [
+							universalProps([
+								['set', 'label', `plain-${props.row.id}`],
+								['set', 'theme', 'none'],
+							]),
+						]),
+			),
+		);
+		const Scene = defineUniversalComponent(RENDERER, () => {
+			const [theme, updateTheme] = useState('light', 'theme');
+			setTheme = updateTheme;
+			useEffect(
+				() => {
+					effects.push('mount');
+					return () => effects.push('cleanup');
+				},
+				[],
+				'stable-effect',
+			);
+			return universalContext(
+				Context,
+				theme,
+				universalFor(
+					rows,
+					(row) => {
+						keyCalls++;
+						return row.id;
+					},
+					(row) => {
+						bodyCalls++;
+						return universalComponent(RENDERER, Row, universalProps([['set', 'row', row]]));
+					},
+					null,
+					false,
+					false,
+					undefined,
+					undefined,
+					undefined,
+					true,
+					undefined,
+					[],
+				),
+			);
+		});
+
+		await root.renderAsync(Scene, undefined);
+		await root.flushTransport();
+		expect(effects).toEqual(['mount']);
+
+		keyCalls = 0;
+		bodyCalls = 0;
+		consumerRenders = 0;
+		let batchOffset = loopback.receivedBatches.length;
+		const heldFinalState = loopback.holdNext();
+		setTheme('final-1');
+		await heldFinalState;
+		for (let tick = 2; tick <= 50; tick++) setTheme(`final-${tick}`);
+		loopback.release();
+		await root.flushTransport();
+
+		expect(container.host.children.map((item) => item.props.theme)).toEqual([
+			'none',
+			'final-50',
+			'none',
+		]);
+		expect([keyCalls, bodyCalls, consumerRenders]).toEqual([0, 0, 2]);
+		const finalStateBatches = loopback.receivedBatches.slice(batchOffset);
+		expect(finalStateBatches).toHaveLength(2);
+		expect(finalStateBatches.map((batch) => batch.commands.length)).toEqual([1, 1]);
+		expect(effects).toEqual(['mount']);
+
+		keyCalls = 0;
+		bodyCalls = 0;
+		consumerRenders = 0;
+		batchOffset = loopback.receivedBatches.length;
+		loopback.rejectNext('isolated sparse context rejection');
+		setTheme('isolated-recovery');
+		await expect(root.flushTransport()).rejects.toThrow('isolated sparse context rejection');
+		expect(container.host.children.map((item) => item.props.theme)).toEqual([
+			'none',
+			'isolated-recovery',
+			'none',
+		]);
+		expect([keyCalls, bodyCalls, consumerRenders]).toEqual([0, 0, 2]);
+		const isolatedRejectionBatches = loopback.receivedBatches.slice(batchOffset);
+		expect(isolatedRejectionBatches).toHaveLength(2);
+		expect(isolatedRejectionBatches.map((batch) => batch.commands.length)).toEqual([1, 1]);
+
+		keyCalls = 0;
+		bodyCalls = 0;
+		consumerRenders = 0;
+		batchOffset = loopback.receivedBatches.length;
+		const heldRejection = loopback.holdNext();
+		loopback.rejectNext('sparse context storm rejection');
+		setTheme('rejected-1');
+		await heldRejection;
+		for (let tick = 2; tick <= 50; tick++) setTheme(`recovered-${tick}`);
+		const flushing = root.flushTransport();
+		loopback.release();
+		await expect(flushing).rejects.toThrow('sparse context storm rejection');
+
+		expect(container.host.children.map((item) => item.props.theme)).toEqual([
+			'none',
+			'recovered-50',
+			'none',
+		]);
+		expect([keyCalls, bodyCalls, consumerRenders]).toEqual([0, 0, 2]);
+		const rejectionBatches = loopback.receivedBatches.slice(batchOffset);
+		expect(rejectionBatches).toHaveLength(2);
+		expect(rejectionBatches.map((batch) => batch.commands.length)).toEqual([1, 1]);
+		expect(effects).toEqual(['mount']);
+
+		await root.unmountAsync();
+		expect(effects).toEqual(['mount', 'cleanup']);
+	});
+
+	it('keeps transition context work on the complete list and restores sparse urgent updates', async () => {
+		const { container, root } = transportRoot();
+		const Context = createContext('light');
+		const rows = [{ id: 1 }, { id: 2 }, { id: 3 }] as const;
+		let keyCalls = 0;
+		let bodyCalls = 0;
+		let consumerRenders = 0;
+		let setTheme!: (theme: string) => void;
+		const Consumer = memo(
+			defineUniversalComponent(RENDERER, () => {
+				consumerRenders++;
+				return universalValue(itemPlan, [
+					universalProps([
+						['set', 'label', 'consumer'],
+						['set', 'theme', useContext(Context)],
+					]),
+				]);
+			}),
+		);
+		const Row = memo(
+			defineUniversalComponent(RENDERER, (props: { row: (typeof rows)[number] }) =>
+				props.row.id === 2
+					? universalComponent(RENDERER, Consumer, universalProps([]))
+					: universalValue(itemPlan, [
+							universalProps([
+								['set', 'label', `plain-${props.row.id}`],
+								['set', 'theme', 'none'],
+							]),
+						]),
+			),
+		);
+		const Scene = defineUniversalComponent(RENDERER, () => {
+			const [theme, updateTheme] = useState('light', 'theme');
+			setTheme = updateTheme;
+			return universalContext(
+				Context,
+				theme,
+				universalFor(
+					rows,
+					(row) => {
+						keyCalls++;
+						return row.id;
+					},
+					(row) => {
+						bodyCalls++;
+						return universalComponent(RENDERER, Row, universalProps([['set', 'row', row]]));
+					},
+					null,
+					false,
+					false,
+					undefined,
+					undefined,
+					undefined,
+					true,
+					undefined,
+					[],
+				),
+			);
+		});
+
+		await root.renderAsync(Scene, undefined);
+		await root.flushTransport();
+		keyCalls = 0;
+		bodyCalls = 0;
+		consumerRenders = 0;
+		startTransition(() => setTheme('transition'));
+		await root.flushTransport();
+		expect(container.host.children[1].props.theme).toBe('transition');
+		expect([keyCalls, bodyCalls, consumerRenders]).toEqual([3, 3, 1]);
+
+		keyCalls = 0;
+		bodyCalls = 0;
+		consumerRenders = 0;
+		setTheme('urgent');
+		await root.flushTransport();
+		expect(container.host.children[1].props.theme).toBe('urgent');
+		expect([keyCalls, bodyCalls, consumerRenders]).toEqual([0, 0, 1]);
+		await root.unmountAsync();
 	});
 
 	it('falls back before transport when a context-indexed row changes host shape', async () => {
