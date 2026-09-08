@@ -27,25 +27,59 @@ function countRowRender(): void {
 }
 
 // -- storms: N sequential state→render→DOM ticks from one click --------------
-// Each tick runs in its own macrotask (MessageChannel avoids the nested
-// setTimeout 4ms clamp) so every mutation goes through a full render cycle
-// instead of batching. Mirrors the Vue and React apps.
+// Each tick runs in its own task so every mutation goes through a full render
+// cycle instead of batching. Lynx for Web provides MessageChannel; the Native
+// background runtime exposes lynx.setTimeout instead. Mirrors Vue and React.
 const STORM_UPDATE_TICKS = 50;
 const STORM_SELECT_TICKS = 30;
 
-const _stormChannel = new MessageChannel();
+const _stormChannel =
+	typeof MessageChannel === 'function' ? new MessageChannel() : null;
 let _stormPending: (() => void) | null = null;
-_stormChannel.port1.onmessage = () => {
-	const cb = _stormPending;
-	_stormPending = null;
-	if (cb) cb();
-};
+if (_stormChannel !== null) {
+	_stormChannel.port1.onmessage = () => {
+		const cb = _stormPending;
+		_stormPending = null;
+		if (cb) cb();
+	};
+}
 function nextMacrotask(cb: () => void) {
+	if (_stormChannel === null) {
+		lynx.setTimeout(cb, 0);
+		return;
+	}
 	_stormPending = cb;
 	_stormChannel.port2.postMessage(0);
 }
 
-function runStorm(ticks: number, step: (t: number) => void) {
+interface StormEvidence {
+	readonly expectedTicks: number;
+	readonly completedTicks: number;
+	readonly renderBarriers: number;
+}
+
+type BenchmarkActionResult = void | StormEvidence | Promise<void | StormEvidence>;
+
+function runStorm(ticks: number, step: (t: number) => void): void | Promise<StormEvidence> {
+	if (_stormChannel === null) {
+		const flush = (globalThis as BenchmarkGlobal).__LYNX_BENCH_FLUSH__;
+		if (flush === undefined) {
+			return Promise.reject(new Error('Octane Native benchmark has no transport flush.'));
+		}
+		return (async () => {
+			let completedTicks = 0;
+			let renderBarriers = 0;
+			for (let tick = 1; tick <= ticks; tick++) {
+				await new Promise<void>((resolve) => lynx.setTimeout(resolve, 0));
+				step(tick);
+				await flush();
+				completedTicks = tick;
+				await nextNativeFrame();
+				renderBarriers++;
+			}
+			return { expectedTicks: ticks, completedTicks, renderBarriers };
+		})();
+	}
 	let t = 0;
 	const tick = () => {
 		t += 1;
@@ -53,6 +87,98 @@ function runStorm(ticks: number, step: (t: number) => void) {
 		if (t < ticks) nextMacrotask(tick);
 	};
 	nextMacrotask(tick);
+}
+
+interface BenchmarkSnapshot {
+	readonly rowCount: number;
+	readonly firstId: number | null;
+	readonly secondId: number | null;
+	readonly thirdId: number | null;
+	readonly row998Id: number | null;
+	readonly firstLabel: string | null;
+	readonly selectedId: number | null;
+}
+
+type BenchmarkGlobal =
+	typeof globalThis & {
+		__LYNX_BENCH_FLUSH__?: () => Promise<void>;
+		__LYNX_BENCH_SNAPSHOT__?: () => BenchmarkSnapshot;
+		__LYNX_BENCH_ERROR__?: string;
+	};
+
+function nextNativeFrame(): Promise<number> {
+	return new Promise((resolve) => lynx.requestAnimationFrame(() => resolve(Date.now())));
+}
+
+function measureNative(name: string, action: () => BenchmarkActionResult): Promise<void> {
+	const benchmark = globalThis as BenchmarkGlobal;
+	const flush = benchmark.__LYNX_BENCH_FLUSH__;
+	if (flush === undefined) {
+		return Promise.reject(new Error('Octane Native benchmark has no transport flush.'));
+	}
+	const preState = benchmark.__LYNX_BENCH_SNAPSHOT__?.();
+	if (preState === undefined) {
+		return Promise.reject(new Error('Octane Native benchmark has no pre-state.'));
+	}
+	const startMs = Date.now();
+	let result: BenchmarkActionResult;
+	try {
+		result = action();
+	} catch (error) {
+		return Promise.reject(error);
+	}
+	return Promise.resolve(result).then(
+		(stormEvidence) => flush().then(() => {
+			const commitAckMs = Date.now();
+			return nextNativeFrame().then(
+				(firstFrameMs) => nextNativeFrame().then((endMs) => {
+					const postState = benchmark.__LYNX_BENCH_SNAPSHOT__?.();
+					if (postState === undefined) {
+						throw new Error('Octane Native benchmark has no post-state.');
+					}
+					console.log(
+						'__NATIVE_BENCH_RESULT__',
+						JSON.stringify({
+							protocol: 'lynx-native-bench-v2',
+							name,
+							source: 'native-tap',
+							boundary: 'native-input-handler-to-second-native-frame',
+							startMs,
+							commitAckMs,
+							firstFrameMs,
+							endMs,
+							latencyMs: endMs - startMs,
+							renderEvidence: { kind: 'native-animation-frame', frames: 2 },
+							transportEvidence: {
+								kind: 'octane-root.flushTransport',
+								acknowledged: true,
+								ackMs: commitAckMs,
+								...(stormEvidence === undefined
+									? null
+									: { tickAcknowledgements: stormEvidence.completedTicks }),
+							},
+							preState,
+							postState,
+							...(stormEvidence === undefined ? null : { stormEvidence }),
+						}),
+					);
+				}),
+			);
+		}),
+	);
+}
+
+function measureNativeTap(name: string, action: () => BenchmarkActionResult): void {
+	if (_stormChannel !== null) {
+		action();
+		return;
+	}
+	void measureNative(name, action).catch((error: unknown) => {
+		const message =
+			error instanceof Error ? error.stack ?? error.message : String(error);
+		(globalThis as BenchmarkGlobal).__LYNX_BENCH_ERROR__ = message;
+		console.log('__NATIVE_BENCH_ERROR__', message);
+	});
 }
 
 interface RowProps {
@@ -68,9 +194,12 @@ function Row(props: RowProps) @{
 		<text class="col-id">{String(props.row.id)}</text>
 		<text
 			class="col-label"
-			bindtap={() => props.onSelect(props.row.id)}
+			bindtap={() => measureNativeTap('select', () => props.onSelect(props.row.id))}
 		>{props.row.label as string}</text>
-		<text class="col-remove" bindtap={() => props.onRemove(props.row.id)}>{'x'}</text>
+		<text
+			class="col-remove"
+			bindtap={() => measureNativeTap('remove', () => props.onRemove(props.row.id))}
+		>{'x'}</text>
 	</view>
 }
 
@@ -138,13 +267,29 @@ export function App() @{
 		setSelected(undefined);
 	}, []);
 
-	// Storm drivers read ids off a ref so the module-scope tick loop never
-	// captures a stale rows binding (same shape as the React app).
+	// Storm drivers and Native post-ACK predicates read refs so async work never
+	// observes the render closure from before the acknowledged commit.
 	const idsRef = useRef<number[]>([]);
 	idsRef.current = rows.map((r) => r.id);
+	const rowsRef = useRef<RowData[]>(rows);
+	rowsRef.current = rows;
+	const selectedRef = useRef<number | undefined>(selected);
+	selectedRef.current = selected;
+	(globalThis as BenchmarkGlobal).__LYNX_BENCH_SNAPSHOT__ = () => {
+		const current = rowsRef.current;
+		return {
+			rowCount: current.length,
+			firstId: current[0]?.id ?? null,
+			secondId: current[1]?.id ?? null,
+			thirdId: current[2]?.id ?? null,
+			row998Id: current[998]?.id ?? null,
+			firstLabel: current[0]?.label ?? null,
+			selectedId: selectedRef.current ?? null,
+		};
+	};
 
 	const stormUpdate = useCallback(() => {
-		runStorm(
+		return runStorm(
 			STORM_UPDATE_TICKS,
 			(t) => setRows(
 				(prev) => prev.map((r, i) => (i % 10 === 0 ? { id: r.id, label: 'bench ' + t } : r)),
@@ -153,7 +298,7 @@ export function App() @{
 	}, []);
 
 	const stormSelect = useCallback(() => {
-		runStorm(STORM_SELECT_TICKS, (t) => {
+		return runStorm(STORM_SELECT_TICKS, (t) => {
 			const ids = idsRef.current;
 			setSelected(t < STORM_SELECT_TICKS ? ids[(t * 97) % ids.length]! : ids[0]!);
 		});
@@ -162,40 +307,40 @@ export function App() @{
 	<view class="page">
 		<text class="title">{'Octane UI Benchmark on Lynx · ready'}</text>
 		<view class="toolbar">
-			<view class="btn" bindtap={run}>
+			<view class="btn" bindtap={() => measureNativeTap('create', run)}>
 				<text class="btn-text">{'Create 1,000 rows'}</text>
 			</view>
-			<view class="btn" bindtap={run3k}>
+			<view class="btn" bindtap={() => measureNativeTap('create', run3k)}>
 				<text class="btn-text">{'Create 3,000 rows'}</text>
 			</view>
-			<view class="btn" bindtap={run5k}>
+			<view class="btn" bindtap={() => measureNativeTap('create', run5k)}>
 				<text class="btn-text">{'Create 5,000 rows'}</text>
 			</view>
-			<view class="btn" bindtap={runLots}>
+			<view class="btn" bindtap={() => measureNativeTap('create', runLots)}>
 				<text class="btn-text">{'Create 10,000 rows'}</text>
 			</view>
-			<view class="btn" bindtap={run20k}>
+			<view class="btn" bindtap={() => measureNativeTap('create', run20k)}>
 				<text class="btn-text">{'Create 20,000 rows'}</text>
 			</view>
-			<view class="btn" bindtap={run30k}>
+			<view class="btn" bindtap={() => measureNativeTap('create', run30k)}>
 				<text class="btn-text">{'Create 30,000 rows'}</text>
 			</view>
-			<view class="btn" bindtap={add}>
+			<view class="btn" bindtap={() => measureNativeTap('append1k', add)}>
 				<text class="btn-text">{'Append 1,000 rows'}</text>
 			</view>
-			<view class="btn" bindtap={update}>
+			<view class="btn" bindtap={() => measureNativeTap('update10th', update)}>
 				<text class="btn-text">{'Update every 10th row'}</text>
 			</view>
-			<view class="btn" bindtap={swapRows}>
+			<view class="btn" bindtap={() => measureNativeTap('swap', swapRows)}>
 				<text class="btn-text">{'Swap Rows'}</text>
 			</view>
-			<view class="btn" bindtap={clear}>
+			<view class="btn" bindtap={() => measureNativeTap('clear', clear)}>
 				<text class="btn-text">{'Clear'}</text>
 			</view>
-			<view class="btn" bindtap={stormUpdate}>
+			<view class="btn" bindtap={() => measureNativeTap('updateStorm', stormUpdate)}>
 				<text class="btn-text">{'Update storm'}</text>
 			</view>
-			<view class="btn" bindtap={stormSelect}>
+			<view class="btn" bindtap={() => measureNativeTap('selectStorm', stormSelect)}>
 				<text class="btn-text">{'Select storm'}</text>
 			</view>
 		</view>
