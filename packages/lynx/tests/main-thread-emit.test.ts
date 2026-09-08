@@ -143,6 +143,30 @@ const LIST: UniversalHostTemplateProgram = {
 	events: [],
 };
 
+/** A native-list row: the generic factory exception admitted by issue #193. */
+const LIST_ITEM: UniversalHostTemplateProgram = {
+	nodes: [
+		{
+			type: 'list-item',
+			parent: -1,
+			props: {
+				class: 'row',
+				'sticky-top': true,
+				'sticky-bottom': false,
+				'full-span': true,
+				'estimated-main-axis-size-px': 92,
+				'reuse-identifier': 'feed-row',
+				recyclable: false,
+				defer: true,
+			},
+			bindings: [{ name: 'item-key', valueIndex: 0 }],
+		},
+		{ type: 'text', parent: 0, props: { class: 'label' } },
+		{ type: '#text', parent: 1, props: {}, bindings: [{ name: 'value', valueIndex: 1 }] },
+	],
+	events: [],
+};
+
 const LIST_SITES: readonly LynxMainThreadProgramRange[] = [{ node: 0 }];
 
 /**
@@ -427,6 +451,56 @@ describe('Lynx main-thread program emission', () => {
 
 	it('agrees on a one-row list, where nothing sits either side of the instance', () => {
 		expect(paintedTree(emitted(rows(1), 1))).toEqual(paintedTree(interpreted(rows(1), 1)));
+	});
+
+	it('paints a native list item and all of its declared scalar attributes', () => {
+		const papi = createHost();
+		const page = papi.createPage('0', 0);
+		const create = instantiate(LIST_ITEM, 'createListItem')(papi);
+		const nodes = create(...([papi.getUniqueId(page), 'item-7', 'Row 7'] as never[]));
+
+		expect(shape(nodes[0] as never)).toEqual({
+			type: 'list-item',
+			classes: 'row',
+			id: null,
+			attributes: {
+				'item-key': 'item-7',
+				'sticky-top': true,
+				'sticky-bottom': false,
+				'full-span': true,
+				'estimated-main-axis-size-px': 92,
+				'reuse-identifier': 'feed-row',
+				recyclable: false,
+				defer: true,
+			},
+			events: [],
+			selector: '',
+			text: '',
+			children: [
+				{
+					type: 'text',
+					classes: 'label',
+					id: null,
+					attributes: {},
+					events: [],
+					selector: '',
+					text: '',
+					children: [
+						{
+							type: 'raw-text',
+							classes: '',
+							id: null,
+							attributes: {},
+							events: [],
+							selector: '',
+							text: 'Row 7',
+							children: [],
+						},
+					],
+				},
+			],
+		});
+		expect(emitLynxMainThreadProgram(LIST_ITEM, { name: 'createListItem' }).denseRun).toBe(true);
 	});
 
 	it('paints no nodes-ref selector, which is the handoff #163 inverts', () => {

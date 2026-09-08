@@ -183,6 +183,14 @@ export interface LynxWireProfile {
 	programRunDriverFallbacks: number;
 	/** Main: why the latest eligible addressed run retained the descriptor interpreter. */
 	programRunDriverFallback: string | null;
+	/** Main: fresh native-list cells painted by resident straight-line drivers. */
+	listProgramCellRuns: number;
+	/** Main: physical hosts painted by resident native-list cell drivers. */
+	listProgramCellHosts: number;
+	/** Main: addressed native-list cells that retained generic materialization. */
+	listProgramCellFallbacks: number;
+	/** Main: why the latest addressed native-list cell retained the generic path. */
+	listProgramCellFallback: string | null;
 }
 
 interface LynxProfileGlobals {
@@ -241,6 +249,10 @@ export function lynxWireProfile(): LynxWireProfile {
 		programRunDriverRows: 0,
 		programRunDriverFallbacks: 0,
 		programRunDriverFallback: null,
+		listProgramCellRuns: 0,
+		listProgramCellHosts: 0,
+		listProgramCellFallbacks: 0,
+		listProgramCellFallback: null,
 	});
 }
 
