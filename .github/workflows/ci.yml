@@ -1114,22 +1114,24 @@ jobs:
           OCTANE_THREE_COMPAT_VERSION="$THREE_VERSION" pnpm --dir packages/three test:compat
 
       # Preserve the matrix's fail-fast: false behavior: a minimum-lane failure
-      # must not hide whether the current release is compatible.
+      # must not hide whether the current jointly published runtime/type line is
+      # compatible. DefinitelyTyped may trail a new Three minor, so resolve its
+      # latest release first and select the newest runtime from that same line.
       - name: Test Three compatibility (current)
         if: ${{ !cancelled() && steps.prepare_three_compat.outcome == 'success' }}
         working-directory: ${{ runner.temp }}/octane-three-compat-current
-        env:
-          THREE_VERSION_SPEC: latest
         run: |
           pnpm install --frozen-lockfile
-          THREE_VERSION="$(pnpm view "three@$THREE_VERSION_SPEC" version)"
-          THREE_RELEASE_LINE="${THREE_VERSION%.*}"
-          pnpm --filter @octanejs/three add --save-dev --lockfile=false "three@$THREE_VERSION" "@types/three@${THREE_RELEASE_LINE}.x"
-          RESOLVED_THREE_VERSION="$(node -e "process.stdout.write(require('./packages/three/node_modules/three/package.json').version)")"
-          TYPES_VERSION="$(node -e "process.stdout.write(require('./packages/three/node_modules/@types/three/package.json').version)")"
+          TYPES_VERSION="$(pnpm view "@types/three@latest" version)"
           TYPES_RELEASE_LINE="${TYPES_VERSION%.*}"
-          echo "three=$RESOLVED_THREE_VERSION @types/three=$TYPES_VERSION"
+          THREE_VERSION="$(pnpm view "three@${TYPES_RELEASE_LINE}.x" version)"
+          THREE_RELEASE_LINE="${THREE_VERSION%.*}"
+          pnpm --filter @octanejs/three add --save-dev --lockfile=false "three@$THREE_VERSION" "@types/three@$TYPES_VERSION"
+          RESOLVED_THREE_VERSION="$(node -e "process.stdout.write(require('./packages/three/node_modules/three/package.json').version)")"
+          RESOLVED_TYPES_VERSION="$(node -e "process.stdout.write(require('./packages/three/node_modules/@types/three/package.json').version)")"
+          echo "three=$RESOLVED_THREE_VERSION @types/three=$RESOLVED_TYPES_VERSION"
           test "$RESOLVED_THREE_VERSION" = "$THREE_VERSION"
+          test "$RESOLVED_TYPES_VERSION" = "$TYPES_VERSION"
           test "$THREE_RELEASE_LINE" = "$TYPES_RELEASE_LINE"
           pnpm exec tsgo --noEmit -p packages/three/tsconfig.json
           pnpm exec tsc --noEmit -p packages/three/typetests/tsconfig.json

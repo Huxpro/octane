@@ -300,10 +300,11 @@ fresh Three root on the client.
 The compatibility baseline is `@react-three/fiber@9.6.1` at commit
 `2a528745e9aa7c9e6cca41e404b59d45cf0d0cc7`, with `three@0.172.0` as the exact
 behavioral and differential oracle. The published peer range is
-`three >=0.156.0`, guarded by minimum-r156 and current-release CI lanes; the
-r172 lane remains immutable so a moving current dependency cannot change the
-parity oracle. TypeScript consumers must install `@types/three` from the same
-Three release line explicitly; its patch revision may differ from the runtime.
+`three >=0.156.0`, guarded by minimum-r156 and latest-jointly-published-release
+CI lanes; the r172 lane remains immutable so a moving current dependency cannot
+change the parity oracle. TypeScript consumers must install `@types/three` from
+the same Three release line explicitly; its patch revision may differ from the
+runtime.
 It is an optional peer so a package manager cannot silently auto-install current
 declarations beside an older supported runtime:
 

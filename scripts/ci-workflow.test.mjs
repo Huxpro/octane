@@ -203,8 +203,9 @@ describe('CI workflow aggregation', () => {
 		);
 		assert.match(
 			compat,
-			/name: Test Three compatibility \(current\)[\s\S]*?working-directory: \$\{\{ runner\.temp \}\}\/octane-three-compat-current[\s\S]*?THREE_VERSION_SPEC: latest/,
+			/name: Test Three compatibility \(current\)[\s\S]*?working-directory: \$\{\{ runner\.temp \}\}\/octane-three-compat-current[\s\S]*?TYPES_VERSION="\$\(pnpm view "@types\/three@latest" version\)"[\s\S]*?THREE_VERSION="\$\(pnpm view "three@\$\{TYPES_RELEASE_LINE\}\.x" version\)"/,
 		);
+		assert.doesNotMatch(compat, /THREE_VERSION_SPEC: latest/);
 		assert.match(
 			compat,
 			/if: \$\{\{ !cancelled\(\) && steps\.prepare_three_compat\.outcome == 'success' \}\}/,
@@ -213,6 +214,10 @@ describe('CI workflow aggregation', () => {
 		assert.equal(
 			[...compat.matchAll(/test "\$RESOLVED_THREE_VERSION" = "\$THREE_VERSION"/g)].length,
 			2,
+		);
+		assert.equal(
+			[...compat.matchAll(/test "\$RESOLVED_TYPES_VERSION" = "\$TYPES_VERSION"/g)].length,
+			1,
 		);
 		assert.equal(
 			[...compat.matchAll(/test "\$THREE_RELEASE_LINE" = "\$TYPES_RELEASE_LINE"/g)].length,
