@@ -356,6 +356,8 @@ interface LynxHostState<Node extends LynxElementRef> {
 	 * and every reader that wants all of them reads both.
 	 */
 	readonly programRuns: LynxProgramRun<Node>[];
+	/** Resident create functions bound once to this container's Element PAPI. */
+	readonly boundPrograms: WeakMap<UniversalProgramPlan, UniversalProgramCreate>;
 	/** Physical nodes still owned by proof-covered runs transferred at adoption. */
 	transferredProgramNodes: number;
 	/**
@@ -925,6 +927,10 @@ interface LynxTemplateRunDeclaration {
 	readonly parent: LynxAttachedHostParent;
 	readonly values: readonly UniversalHostTemplateProgramValue[];
 	readonly firstListenerId: number | null;
+	/** Bound resident driver used only when a deferred list asks for one cell. */
+	readonly compiledRun?: NonNullable<UniversalProgramCreate['run']>;
+	/** The declaration named a resident plan, even when its emitter had no driver. */
+	readonly residentProgram?: true;
 }
 
 /** Hosts in a run, counting every node of every instance. */
@@ -2012,7 +2018,7 @@ function prepareTemplateProgram(value: unknown, label: string): LynxPreparedTemp
 			) {
 				dynamicRoutes[nodeIndex] = 1;
 			} else if (
-				(type === 'view' || type === 'text') &&
+				(type === 'view' || type === 'text' || type === 'list-item') &&
 				Object.keys(props).every((name) => isDenseScalarHostProp(type, name)) &&
 				copied.every((binding) => isDenseScalarHostProp(type, binding.name))
 			) {
@@ -2169,7 +2175,18 @@ function planScalarClassAndIdCreation(props: Readonly<Record<string, unknown>>):
  */
 function isDenseScalarHostProp(type: string, name: string): boolean {
 	if (name === 'class' || name === 'className' || name === 'id') return true;
-	return name === 'text' && type === 'text';
+	if (name === 'text' && type === 'text') return true;
+	return (
+		type === 'list-item' &&
+		(name === 'item-key' ||
+			name === 'sticky-top' ||
+			name === 'sticky-bottom' ||
+			name === 'full-span' ||
+			name === 'estimated-main-axis-size-px' ||
+			name === 'reuse-identifier' ||
+			name === 'recyclable' ||
+			name === 'defer')
+	);
 }
 
 function applyDenseScalarHostProps<Node extends LynxElementRef>(
@@ -2183,6 +2200,14 @@ function applyDenseScalarHostProps<Node extends LynxElementRef>(
 	let id = props.id;
 	let ordinaryClass = props.class;
 	let aliasedClass = props.className;
+	let itemKey = props['item-key'];
+	let stickyTop = props['sticky-top'];
+	let stickyBottom = props['sticky-bottom'];
+	let fullSpan = props['full-span'];
+	let estimatedMainAxisSize = props['estimated-main-axis-size-px'];
+	let reuseIdentifier = props['reuse-identifier'];
+	let recyclable = props.recyclable;
+	let defer = props.defer;
 	// A `text` host carries its own content when the compiler folded a lone
 	// known text child onto it (#242 Cause A), so the carrier element is never
 	// created. Read here rather than through the generic patch path: this is the
@@ -2194,6 +2219,14 @@ function applyDenseScalarHostProps<Node extends LynxElementRef>(
 		const value = values[valueOffset + binding.valueIndex];
 		if (binding.name === 'id') id = value;
 		else if (binding.name === 'text') text = value;
+		else if (binding.name === 'item-key') itemKey = value;
+		else if (binding.name === 'sticky-top') stickyTop = value;
+		else if (binding.name === 'sticky-bottom') stickyBottom = value;
+		else if (binding.name === 'full-span') fullSpan = value;
+		else if (binding.name === 'estimated-main-axis-size-px') estimatedMainAxisSize = value;
+		else if (binding.name === 'reuse-identifier') reuseIdentifier = value;
+		else if (binding.name === 'recyclable') recyclable = value;
+		else if (binding.name === 'defer') defer = value;
 		else if (binding.name === 'className') {
 			aliasedClass = value;
 			hasAliasedClass = true;
@@ -2215,6 +2248,26 @@ function applyDenseScalarHostProps<Node extends LynxElementRef>(
 				? String(candidate)
 				: '';
 	if (classes !== '') papi.setClasses(node, classes);
+	if (itemKey !== null && itemKey !== undefined) papi.setAttribute(node, 'item-key', itemKey);
+	if (stickyTop !== null && stickyTop !== undefined) {
+		papi.setAttribute(node, 'sticky-top', stickyTop);
+	}
+	if (stickyBottom !== null && stickyBottom !== undefined) {
+		papi.setAttribute(node, 'sticky-bottom', stickyBottom);
+	}
+	if (fullSpan !== null && fullSpan !== undefined) {
+		papi.setAttribute(node, 'full-span', fullSpan);
+	}
+	if (estimatedMainAxisSize !== null && estimatedMainAxisSize !== undefined) {
+		papi.setAttribute(node, 'estimated-main-axis-size-px', estimatedMainAxisSize);
+	}
+	if (reuseIdentifier !== null && reuseIdentifier !== undefined) {
+		papi.setAttribute(node, 'reuse-identifier', reuseIdentifier);
+	}
+	if (recyclable !== null && recyclable !== undefined) {
+		papi.setAttribute(node, 'recyclable', recyclable);
+	}
+	if (defer !== null && defer !== undefined) papi.setAttribute(node, 'defer', defer);
 }
 
 /**
@@ -3217,6 +3270,104 @@ function resolveRecord<Node extends LynxElementRef>(
 	return materialized;
 }
 
+/**
+ * Paint one never-observed deferred row through its resident run driver.
+ *
+ * The driver owns element creation, scalar props, events, and the internal
+ * append topology. The list callback still owns logical records, selectors,
+ * physical ownership, and attaching the root to the native list. Once any host
+ * in the row has an ordinary record, accepted updates may have diverged from
+ * the declaration's value table, so the whole row falls back rather than
+ * mixing two sources of truth.
+ */
+function createCompiledListPhysicalTree<Node extends LynxElementRef>(
+	state: LynxHostState<Node>,
+	container: LynxHostContainer<Node>,
+	declared: { readonly run: LynxDeferredTemplateRun; readonly offset: number },
+): LynxPhysicalTree<Node> | undefined {
+	const run = declared.run;
+	const compiled = run.compiledRun;
+	if (compiled === undefined) return undefined;
+	const program = run.program;
+	const width = program.shape.types.length;
+	const row = Math.floor(declared.offset / run.stride);
+	if (declared.offset - row * run.stride !== 0 || row >= run.count) return undefined;
+	const firstId = run.firstId + row * run.stride;
+	for (let node = 0; node < width; node++) {
+		if (state.records.has(firstId + node)) {
+			if (LYNX_PROFILE) {
+				const profile = lynxWireProfile();
+				profile.listProgramCellFallbacks++;
+				profile.listProgramCellFallback = 'materialized record';
+			}
+			return undefined;
+		}
+	}
+
+	const valueStart = row * program.valueCount;
+	const values = run.values.slice(valueStart, valueStart + program.valueCount);
+	const eventCount = program.eventCount;
+	const tokens: LynxNativeEventToken[] = new Array(eventCount);
+	if (eventCount !== 0) {
+		const firstListenerId = run.firstListenerId! + row * eventCount;
+		for (const site of program.eventSites) {
+			tokens[site.index] = encodePrevalidatedLynxNativeEventToken(
+				container.root,
+				firstId + site.node,
+				1,
+				firstListenerId + site.index,
+				site.priority,
+			);
+		}
+	}
+	const nodes: (Node | undefined)[] = new Array(width);
+	try {
+		compiled(container.pageComponentUniqueId, 1, values, tokens, EMPTY_PROGRAM_RANGE_TEXTS, nodes);
+	} finally {
+		// The emitted driver publishes every create before its later PAPI writes.
+		// Retain that prefix and its possible listener tuples on a callback fault so
+		// the container's fail-stop cleanup owns everything native may now hold.
+		for (const node of nodes) if (node !== undefined) state.ownedNodes.add(node);
+		for (const site of program.eventSites) {
+			const node = nodes[site.node];
+			const token = tokens[site.index];
+			if (node !== undefined && token !== undefined) {
+				journalPreparedNativeEvent(state, node, site, token);
+			}
+		}
+	}
+	if (nodes.length !== width || nodes.some((node) => node === undefined)) {
+		throw hostError(`compiled native-list cell painted fewer than its ${width} declared hosts.`);
+	}
+
+	const trees: LynxPhysicalTree<Node>[] = new Array(width);
+	for (let node = 0; node < width; node++) {
+		const id = firstId + node;
+		const record = resolveRecord(state, id)!;
+		const physical = nodes[node]!;
+		record.node = physical;
+		record.selectorInstalled = false;
+		bindNodesRefSelector(state, record);
+		trees[node] = {
+			node: physical,
+			type: record.type,
+			props: record.props,
+			visible: record.visible,
+			logicalId: id,
+			children: [],
+		};
+	}
+	for (let node = 1; node < width; node++) {
+		trees[program.shape.parents[node]!]!.children.push(trees[node]!);
+	}
+	if (LYNX_PROFILE) {
+		const profile = lynxWireProfile();
+		profile.listProgramCellRuns++;
+		profile.listProgramCellHosts += width;
+	}
+	return trees[0]!;
+}
+
 function createPhysicalTree<Node extends LynxElementRef>(
 	state: LynxHostState<Node>,
 	container: LynxHostContainer<Node>,
@@ -3539,7 +3690,23 @@ function materializeListItem<Node extends LynxElementRef>(
 		reuseNotification = cell !== undefined && cell.item.id !== item.id;
 	}
 	if (cell === undefined) {
-		const tree = createPhysicalTree(state, container, item.id);
+		const declared = declaringRun(state.deferredRuns, item.id);
+		let tree =
+			declared === undefined
+				? undefined
+				: createCompiledListPhysicalTree(state, container, declared);
+		if (tree === undefined) {
+			if (
+				LYNX_PROFILE &&
+				declared?.run.residentProgram === true &&
+				declared.run.compiledRun === undefined
+			) {
+				const profile = lynxWireProfile();
+				profile.listProgramCellFallbacks++;
+				profile.listProgramCellFallback = 'resident program has no straight-line run driver';
+			}
+			tree = createPhysicalTree(state, container, item.id);
+		}
 		state.papi.insertBefore(list.node, tree.node, null);
 		const sign = state.papi.getUniqueId(tree.node);
 		if (!Number.isSafeInteger(sign) || sign <= 0 || list.cellsBySign.has(sign)) {
@@ -3899,6 +4066,7 @@ export function createLynxHostContainer<Node extends LynxElementRef>(
 		hasMainThreadProps: false,
 		hasNativeListTopology: false,
 		programRuns: [],
+		boundPrograms: new WeakMap(),
 		transferredProgramNodes: 0,
 		programEventsMaterialized: false,
 		programRunsDisjoint: true,
@@ -4451,6 +4619,56 @@ function programEventBindings(plan: UniversalProgramPlan): readonly LynxNativeEv
 	});
 	PROGRAM_EVENT_BINDINGS.set(plan, bindings);
 	return bindings;
+}
+
+/**
+ * Bind and validate the straight-line driver carried by one addressed run.
+ *
+ * The resident plan and the wire descriptor were matched by the build address,
+ * but the driver consumes positional tables rather than the descriptor itself.
+ * Restating that small executable layout check here protects both consumers:
+ * the eager dense run and a deferred native-list cell. A descriptor command or
+ * a resident plan whose emitter declined simply returns `undefined` and keeps
+ * the existing interpreter path.
+ */
+function bindResidentRunDriver<Node extends LynxElementRef>(
+	state: LynxHostState<Node>,
+	command: { readonly address: LynxProgramAddress },
+	program: LynxPreparedTemplateProgram,
+	label: string,
+): NonNullable<UniversalProgramCreate['run']> | undefined {
+	const resident = residentRunPlan(command);
+	let create = resident === undefined ? undefined : state.boundPrograms.get(resident);
+	if (resident !== undefined && create === undefined) {
+		create = resident.bind(state.papi);
+		if (typeof create === 'function') state.boundPrograms.set(resident, create);
+	}
+	if (create !== undefined && typeof create !== 'function') {
+		throw hostError(`${label} resident program bound to a non-function create.`);
+	}
+	const candidate = create?.run;
+	if (candidate === undefined) return undefined;
+	if (typeof candidate !== 'function') {
+		throw hostError(`${label} resident program carries a non-function run driver.`);
+	}
+	if (
+		resident!.nodes !== program.shape.types.length ||
+		resident!.values.length !== program.valueCount ||
+		resident!.ranges.length !== 0 ||
+		resident!.events.length !== program.eventCount ||
+		resident!.events.some((event, eventIndex) => {
+			const prepared = program.eventSites[eventIndex];
+			return (
+				prepared === undefined ||
+				prepared.node !== event.node ||
+				prepared.type !== event.type ||
+				prepared.priority !== event.priority
+			);
+		})
+	) {
+		throw hostError(`${label} resident executable layout disagrees with its wire program.`);
+	}
+	return candidate;
 }
 
 /**
@@ -8146,6 +8364,10 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 						}
 					}
 				}
+				const compiledRun =
+					command.op === 'mount-program-run'
+						? bindResidentRunDriver(state, command, program, label)
+						: undefined;
 				abandonCompact();
 				if (typeof parent === 'number') captureInitialNode(parent);
 				insertDeferredRun((stagedDeferredRuns ??= []), {
@@ -8162,6 +8384,8 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 						? command.values
 						: Object.freeze(command.values.slice()),
 					firstListenerId: command.firstListenerId,
+					...(compiledRun === undefined ? null : { compiledRun }),
+					...(command.op === 'mount-program-run' ? { residentProgram: true as const } : null),
 					removed: null,
 				});
 				anyDeferredRuns = true;
@@ -8294,37 +8518,7 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 				}
 				let compiledRun: NonNullable<UniversalProgramCreate['run']> | undefined;
 				if (command.op === 'mount-program-run') {
-					const resident = residentRunPlan(command);
-					const create = resident?.bind(state.papi);
-					if (create !== undefined && typeof create !== 'function') {
-						throw hostError(`${label} resident program bound to a non-function create.`);
-					}
-					const candidate = create?.run;
-					if (candidate !== undefined) {
-						if (typeof candidate !== 'function') {
-							throw hostError(`${label} resident program carries a non-function run driver.`);
-						}
-						if (
-							resident!.nodes !== shape.types.length ||
-							resident!.values.length !== program.valueCount ||
-							resident!.ranges.length !== 0 ||
-							resident!.events.length !== program.eventCount ||
-							resident!.events.some((event, eventIndex) => {
-								const prepared = program.eventSites[eventIndex];
-								return (
-									prepared === undefined ||
-									prepared.node !== event.node ||
-									prepared.type !== event.type ||
-									prepared.priority !== event.priority
-								);
-							})
-						) {
-							throw hostError(
-								`${label} resident executable layout disagrees with its wire program.`,
-							);
-						}
-						compiledRun = candidate;
-					}
+					compiledRun = bindResidentRunDriver(state, command, program, label);
 				}
 				let prefix = stagedRecords as Map<number, LynxHostRecord<Node>>;
 				if (incrementalCompactCandidate) {

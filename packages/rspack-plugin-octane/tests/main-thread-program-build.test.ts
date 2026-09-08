@@ -48,6 +48,13 @@ const CARD = `export function Card(props: { tone: string; label: string; onPick:
 }
 `;
 
+const LIST_ROW = `export function ListRow(props: { id: string; label: string }) @{
+	<list-item item-key={props.id} reuse-identifier="feed-row">
+		<text class="label">{props.label as string}</text>
+	</list-item>
+}
+`;
+
 let root: string;
 
 function write(relativePath: string, content: string) {
@@ -165,8 +172,15 @@ describe('a main-thread program backend, through a real Rspack build', () => {
 		write('src/intrinsics.js', RENDERER_STUB);
 		write('src/worklets.js', RENDERER_STUB);
 		write('src/Card.tsrx', CARD);
-		write('src/background.js', `export { Card } from './Card.tsrx';\n`);
-		write('src/main.js', `export { Card } from './Card.tsrx';\n`);
+		write('src/ListRow.tsrx', LIST_ROW);
+		write(
+			'src/background.js',
+			`export { Card } from './Card.tsrx';\nexport { ListRow } from './ListRow.tsrx';\n`,
+		);
+		write(
+			'src/main.js',
+			`export { Card } from './Card.tsrx';\nexport { ListRow } from './ListRow.tsrx';\n`,
+		);
 	});
 
 	afterEach(() => {
@@ -191,6 +205,19 @@ describe('a main-thread program backend, through a real Rspack build', () => {
 		// byte-for-byte rather than probed, because a background chunk that merely
 		// still works is not the claim — #163's is that it does not move at all.
 		expect(withBackend.background).toBe(without.background);
+	}, 60_000);
+
+	it('ships a deferred list-item plan with a straight-line resident driver', async () => {
+		const addressed = await build('list-item', {
+			addressing: true,
+			topLevel: Backend,
+			mainThread: Backend,
+		});
+
+		expect(addressed.main).toContain('papi.createElement("list-item", pageId, \'\')');
+		expect(addressed.main).toContain('.run = function');
+		expect(addressed.main).toContain('"module": "src/ListRow.tsrx"');
+		expect(addressed.background).toContain('"module": "src/ListRow.tsrx"');
 	}, 60_000);
 
 	it('emits nothing for a background layer that is handed a backend anyway', async () => {

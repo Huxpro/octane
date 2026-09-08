@@ -67,12 +67,14 @@
  *     first screen that differs from the one the command path would have
  *     painted is worse than one that was never compiled. So an unbound node is
  *     held to the same scalar set as a bound one.
- *   * **Host types with no intrinsic factory** — `scroll-view`, `image` and
- *     anything else. The interpreter creates those through `createElement`, and
+ *   * **Host types with no proven factory/prop route** — `scroll-view`, `image`
+ *     and anything else. `<list-item>` is the one generic-factory exception: it
+ *     carries the scalar attributes declared by `LynxListItemProps`, and admitting it is what
+ *     lets a deferred native-list row retain this program for per-cell paint.
+ *     The interpreter creates the remaining types through `createElement`, and
  *     so could this; what it could not yet do is *prove* it writes their props
- *     the way `applyProps` would. Widening is mechanical and cheap, because the
- *     differential harness extends to a new host type directly, one type at a
- *     time, with the applier as the oracle.
+ *     the way `applyProps` would. Widening stays one type at a time, with the
+ *     differential harness as the oracle.
  *
  * Refused content is what #163's C3 routes back to the command path; until then
  * a refusal is a build error naming the prop, node or event site.
@@ -92,18 +94,33 @@ import type {
 
 import { parseLynxNativeEventProp } from '../core/native-events.js';
 
-/** Host types this backend can construct, and the intrinsic factory for each. */
-const INTRINSIC_FACTORY: Readonly<Record<string, 'view' | 'text' | 'rawText'>> = Object.freeze({
-	view: 'view',
-	text: 'text',
-	'#text': 'rawText',
-	'raw-text': 'rawText',
-});
+/** Host types this backend can construct, and the factory route for each. */
+const INTRINSIC_FACTORY: Readonly<Record<string, 'view' | 'text' | 'rawText' | 'element'>> =
+	Object.freeze({
+		view: 'view',
+		text: 'text',
+		'#text': 'rawText',
+		'raw-text': 'rawText',
+		'list-item': 'element',
+	});
 
 /** The props `applyDenseScalarHostProps` reads on a `view` or `text`. */
 const SCALAR_HOST_PROPS: readonly string[] = Object.freeze(['class', 'className', 'id']);
 
 const TEXT_SCALAR_HOST_PROPS: readonly string[] = Object.freeze([...SCALAR_HOST_PROPS, 'text']);
+
+/** Scalar attributes declared by the public `LynxListItemProps` contract. */
+const LIST_ITEM_SCALAR_HOST_PROPS: readonly string[] = Object.freeze([
+	...SCALAR_HOST_PROPS,
+	'item-key',
+	'sticky-top',
+	'sticky-bottom',
+	'full-span',
+	'estimated-main-axis-size-px',
+	'reuse-identifier',
+	'recyclable',
+	'defer',
+]);
 
 /**
  * `text` is a fourth scalar, and only on a `text` host.
@@ -115,7 +132,8 @@ const TEXT_SCALAR_HOST_PROPS: readonly string[] = Object.freeze([...SCALAR_HOST_
  * that here rather than widening the scalar set for every type.
  */
 function scalarHostProps(type: string): readonly string[] {
-	return type === 'text' ? TEXT_SCALAR_HOST_PROPS : SCALAR_HOST_PROPS;
+	if (type === 'text') return TEXT_SCALAR_HOST_PROPS;
+	return type === 'list-item' ? LIST_ITEM_SCALAR_HOST_PROPS : SCALAR_HOST_PROPS;
 }
 
 /**
@@ -327,7 +345,7 @@ function dynamicRoute(node: UniversalHostTemplateProgramNode): 0 | 1 | 2 {
 		return 1;
 	}
 	if (
-		(node.type === 'view' || node.type === 'text') &&
+		(node.type === 'view' || node.type === 'text' || node.type === 'list-item') &&
 		names.every((name) => scalarHostProps(node.type).includes(name)) &&
 		bindings.every((binding) => scalarHostProps(node.type).includes(binding.name))
 	) {
@@ -419,18 +437,57 @@ function emitScalarProps(
 		Object.prototype.hasOwnProperty.call(node.props, 'className') ||
 		(node.bindings ?? []).some((binding) => binding.name === 'className');
 	const candidate = scalarSource(node, hasAliasedClass ? 'className' : 'class');
-	if (candidate === undefined) return;
-	if (candidate.kind === 'static') {
-		const classes = coerceClasses(candidate.value);
-		if (classes !== '') lines.push(`\t\tpapi.setClasses(n${index}, ${JSON.stringify(classes)});`);
-		return;
+	if (candidate !== undefined) {
+		if (candidate.kind === 'static') {
+			const classes = coerceClasses(candidate.value);
+			if (classes !== '') {
+				lines.push(`\t\tpapi.setClasses(n${index}, ${JSON.stringify(classes)});`);
+			}
+		} else {
+			const read = candidate.expression;
+			lines.push(
+				`\t\tvar c${index} = typeof ${read} === 'string' ? ${read}` +
+					` : typeof ${read} === 'number' && ${read} ? String(${read}) : '';`,
+			);
+			lines.push(`\t\tif (c${index} !== '') papi.setClasses(n${index}, c${index});`);
+		}
 	}
-	const read = candidate.expression;
-	lines.push(
-		`\t\tvar c${index} = typeof ${read} === 'string' ? ${read}` +
-			` : typeof ${read} === 'number' && ${read} ? String(${read}) : '';`,
-	);
-	lines.push(`\t\tif (c${index} !== '') papi.setClasses(n${index}, c${index});`);
+	if (node.type !== 'list-item') return;
+	const names = [
+		...Object.keys(node.props),
+		...(node.bindings ?? []).map((binding) => binding.name),
+	];
+	const emitted = new Set<string>();
+	for (const name of names) {
+		if (
+			emitted.has(name) ||
+			(name !== 'item-key' &&
+				name !== 'sticky-top' &&
+				name !== 'sticky-bottom' &&
+				name !== 'full-span' &&
+				name !== 'estimated-main-axis-size-px' &&
+				name !== 'reuse-identifier' &&
+				name !== 'recyclable' &&
+				name !== 'defer')
+		) {
+			continue;
+		}
+		emitted.add(name);
+		const attribute = scalarSource(node, name)!;
+		if (attribute.kind === 'static') {
+			if (attribute.value !== null && attribute.value !== undefined) {
+				lines.push(
+					`\t\tpapi.setAttribute(n${index}, ${JSON.stringify(name)}, ${JSON.stringify(attribute.value)});`,
+				);
+			}
+		} else {
+			const read = attribute.expression;
+			lines.push(
+				`\t\tif (${read} !== null && ${read} !== undefined)` +
+					` papi.setAttribute(n${index}, ${JSON.stringify(name)}, ${read});`,
+			);
+		}
+	}
 }
 
 /**
@@ -591,6 +648,11 @@ export function emitLynxMainThreadProgram(
 		}
 		if (factory === 'rawText') {
 			body.push(`\t\tvar n${index} = rawText(${rawTextSource(node, where)});`);
+		} else if (factory === 'element') {
+			body.push(
+				`\t\tvar n${index} = papi.createElement(${JSON.stringify(node.type)}, pageId, '');`,
+			);
+			emitScalarProps(node, index, body);
 		} else {
 			body.push(`\t\tvar n${index} = ${factory}(pageId);`);
 			emitScalarProps(node, index, body);

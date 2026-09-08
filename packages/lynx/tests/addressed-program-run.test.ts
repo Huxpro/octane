@@ -16,6 +16,7 @@
 import type {
 	UniversalHostBatch,
 	UniversalHostCommand,
+	UniversalHostTemplateProgram,
 	UniversalProgramCreate,
 } from 'octane/universal/native';
 import { describe, expect, it, vi } from 'vitest';
@@ -89,6 +90,28 @@ const CELL = {
 	events: [],
 };
 
+/** The deferred native-list shape issue #193 executes once per fresh cell. */
+const LIST_ROW: UniversalHostTemplateProgram = {
+	nodes: [
+		{
+			type: 'list-item',
+			parent: -1,
+			props: {
+				class: 'row',
+				'sticky-top': true,
+				'sticky-bottom': false,
+				'full-span': true,
+				'estimated-main-axis-size-px': 92,
+				'reuse-identifier': 'feed-row',
+			},
+			bindings: [{ name: 'item-key', valueIndex: 0 }],
+		},
+		{ type: 'text', parent: 0, props: { class: 'label' } },
+		{ type: '#text', parent: 1, props: {}, bindings: [{ name: 'value', valueIndex: 1 }] },
+	],
+	events: [{ node: 1, type: 'bindtap', priority: 'default' }],
+};
+
 const VALUES = Object.freeze([
 	'first',
 	'row-1',
@@ -128,12 +151,26 @@ function registerWire(module: string, index: number, wire: unknown): void {
 	} as never);
 }
 
-function batch(commands: readonly UniversalHostCommand[]): UniversalHostBatch {
-	return { renderer: 'lynx', version: 1, commands };
+function batch(commands: readonly UniversalHostCommand[], version = 1): UniversalHostBatch {
+	return { renderer: 'lynx', version, commands };
 }
 
 function createHost() {
 	const base = createFakePAPI();
+	const papi = {
+		...base,
+		intrinsics: {
+			view: (pageId: number) => base.createElement('view', pageId, ''),
+			text: (pageId: number) => base.createElement('text', pageId, ''),
+			rawText: (value: string) => base.createElement('#text', 0, value),
+		},
+	};
+	const container = createLynxHostContainer(papi, { root: 1 });
+	return { container, papi, page: container.page };
+}
+
+function createListHost() {
+	const base = createFakePAPI({ list: true });
 	const papi = {
 		...base,
 		intrinsics: {
@@ -175,6 +212,56 @@ function registerExecutableRow(module: string): { binds: () => number; runs: () 
 		wire: ROW,
 	});
 	return { binds: () => bindCount, runs: () => runCount };
+}
+
+function registerExecutableListRow(module: string): { binds: () => number; runs: () => number } {
+	const { source } = emitLynxMainThreadProgram(LIST_ROW, { name: 'createAddressedListRow' });
+	const emitted = new Function(`return (${source});`)() as (
+		papi: unknown,
+	) => UniversalProgramCreate;
+	let bindCount = 0;
+	let runCount = 0;
+	registerUniversalProgram(module, 0, {
+		kind: 'program',
+		slots: [],
+		nodes: LIST_ROW.nodes.length,
+		values: [0, 1],
+		events: LIST_ROW.events.map((event, slot) => ({ ...event, slot })),
+		ranges: [],
+		bind(papi) {
+			bindCount++;
+			const create = emitted(papi);
+			const run = create.run!;
+			Object.defineProperty(create, 'run', {
+				value(...args: Parameters<NonNullable<UniversalProgramCreate['run']>>) {
+					runCount++;
+					return run(...args);
+				},
+			});
+			return create;
+		},
+		wire: LIST_ROW,
+	});
+	return { binds: () => bindCount, runs: () => runCount };
+}
+
+function deferredListRun(
+	module: string,
+	firstId: number,
+	firstListenerId: number,
+	labels: readonly string[],
+): UniversalHostCommand {
+	return {
+		op: 'mount-program-run',
+		parent: 1,
+		before: null,
+		address: { module, index: 0 },
+		firstId,
+		firstListenerId,
+		count: labels.length,
+		values: Object.freeze(labels.flatMap((label, index) => [`item-${firstId}-${index}`, label])),
+		deferred: true,
+	} as never;
 }
 
 /** The prelude both arms share: a shell to mount into and an anchor to mount before. */
@@ -339,6 +426,149 @@ describe('mounting a resident program by address (issue #246 E1)', () => {
 		);
 
 		expect(() => prepared.apply()).toThrow(/compiled event fault/);
+		expect(installedEvent).not.toBeNull();
+		expect(installedEvent!.events.size).toBe(1);
+		expect(disposeLynxHostContainer(container)).toMatchObject({ complete: true, errors: [] });
+		expect(installedEvent!.events.size).toBe(0);
+		expect(container.page.children).toEqual([]);
+	});
+
+	it('binds once and executes the resident program for each fresh native-list cell', () => {
+		const profile = lynxWireProfile();
+		profile.listProgramCellRuns = 0;
+		profile.listProgramCellHosts = 0;
+		profile.listProgramCellFallbacks = 0;
+		profile.listProgramCellFallback = null;
+		const module = freshModule();
+		const calls = registerExecutableListRow(module);
+		const { container, papi } = createListHost();
+
+		prepareLynxHostBatch(
+			container,
+			batch([
+				{ op: 'create', id: 1, type: 'list', props: { id: 'feed' } },
+				deferredListRun(module, 100, 900, ['Row 0', 'Row 1']),
+				{ op: 'insert', parent: null, id: 1, before: null },
+			] as never),
+		).apply();
+		// A second declaration of the same resident plan is another accepted value
+		// table, not another binding to this container's Element PAPI.
+		prepareLynxHostBatch(
+			container,
+			batch([deferredListRun(module, 200, 950, ['Row 2'])], 2),
+		).apply();
+
+		expect(calls.binds()).toBe(1);
+		expect(calls.runs()).toBe(0);
+		const list = papi.lists[0]!;
+		for (const index of [0, 1, 2]) {
+			expect(
+				list.componentAtIndex(list.node, papi.getUniqueId(list.node), index, index + 10, false),
+			).toBeGreaterThan(0);
+		}
+
+		expect(calls.binds()).toBe(1);
+		expect(calls.runs()).toBe(3);
+		expect(profile.listProgramCellRuns).toBe(3);
+		expect(profile.listProgramCellHosts).toBe(3 * LIST_ROW.nodes.length);
+		expect(profile.listProgramCellFallbacks).toBe(0);
+		expect(profile.listProgramCellFallback).toBeNull();
+		expect(list.node.children.map((node) => node.children[0]!.children[0]!.text)).toEqual([
+			'Row 0',
+			'Row 1',
+			'Row 2',
+		]);
+		expect(list.node.children.map((node) => node.attributes['item-key'])).toEqual([
+			'item-100-0',
+			'item-100-1',
+			'item-200-0',
+		]);
+		expect(list.node.children.map((node) => node.attributes)).toEqual(
+			Array.from({ length: 3 }, (_unused, index) => ({
+				'item-key': index === 2 ? 'item-200-0' : `item-100-${index}`,
+				'sticky-top': true,
+				'sticky-bottom': false,
+				'full-span': true,
+				'estimated-main-axis-size-px': 92,
+				'reuse-identifier': 'feed-row',
+			})),
+		);
+		expect(
+			resolveLynxHostNativeEvent(
+				container,
+				list.node.children[2]!.children[0]!.events.get('bindEvent:tap')!,
+			),
+		).toEqual({ listener: 950, priority: 'default' });
+		expect(disposeLynxHostContainer(container)).toMatchObject({ complete: true, errors: [] });
+	});
+
+	it('falls back for an accepted update instead of repainting stale declaration values', () => {
+		const profile = lynxWireProfile();
+		profile.listProgramCellRuns = 0;
+		profile.listProgramCellHosts = 0;
+		profile.listProgramCellFallbacks = 0;
+		profile.listProgramCellFallback = null;
+		const module = freshModule();
+		const calls = registerExecutableListRow(module);
+		const { container, papi } = createListHost();
+
+		prepareLynxHostBatch(
+			container,
+			batch([
+				{ op: 'create', id: 1, type: 'list', props: { id: 'feed' } },
+				deferredListRun(module, 100, 900, ['Stale']),
+				{ op: 'insert', parent: null, id: 1, before: null },
+			] as never),
+		).apply();
+		prepareLynxHostBatch(
+			container,
+			batch([{ op: 'update', id: 102, props: { value: 'Accepted' } }] as never, 2),
+		).apply();
+
+		const list = papi.lists[0]!;
+		expect(list.componentAtIndex(list.node, papi.getUniqueId(list.node), 0)).toBeGreaterThan(0);
+		expect(list.node.children[0]!.children[0]!.children[0]!.text).toBe('Accepted');
+		expect(calls.binds()).toBe(1);
+		expect(calls.runs()).toBe(0);
+		expect(profile.listProgramCellRuns).toBe(0);
+		expect(profile.listProgramCellFallbacks).toBe(1);
+		expect(profile.listProgramCellFallback).toBe('materialized record');
+		expect(disposeLynxHostContainer(container)).toMatchObject({ complete: true, errors: [] });
+	});
+
+	it('retains a faulted compiled list-cell prefix for terminal cleanup', () => {
+		const module = freshModule();
+		const calls = registerExecutableListRow(module);
+		const base = createFakePAPI({ list: true });
+		let installedEvent: FakeNode | null = null;
+		const papi = {
+			...base,
+			intrinsics: {
+				view: (pageId: number) => base.createElement('view', pageId, ''),
+				text: (pageId: number) => base.createElement('text', pageId, ''),
+				rawText: (value: string) => base.createElement('#text', 0, value),
+			},
+			setEvent(node: FakeNode, kind: string, name: string, listener: unknown) {
+				base.setEvent(node, kind, name, listener as never);
+				if (listener !== undefined && installedEvent === null) {
+					installedEvent = node;
+					throw new Error('compiled list event fault');
+				}
+			},
+		};
+		const container = createLynxHostContainer(papi, { root: 1 });
+		prepareLynxHostBatch(
+			container,
+			batch([
+				{ op: 'create', id: 1, type: 'list', props: { id: 'feed' } },
+				deferredListRun(module, 100, 900, ['Row 0']),
+				{ op: 'insert', parent: null, id: 1, before: null },
+			] as never),
+		).apply();
+
+		const list = base.lists[0]!;
+		expect(list.componentAtIndex(list.node, papi.getUniqueId(list.node), 0)).toBe(-1);
+		expect(calls.runs()).toBe(1);
 		expect(installedEvent).not.toBeNull();
 		expect(installedEvent!.events.size).toBe(1);
 		expect(disposeLynxHostContainer(container)).toMatchObject({ complete: true, errors: [] });
