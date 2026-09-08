@@ -50,8 +50,9 @@ export function producedRunProgram(
 }
 
 /**
- * Turn producer-local first-tree proof into the addressed command the peer can
- * execute if adoption declines.
+ * Turn producer-local initial-batch proof into the addressed command the peer
+ * can execute if adoption declines or no first tree was painted. A deferred
+ * spelling is requested only for one dense native-list cell declaration.
  *
  * The command is a fresh object because `op` is part of both wire validation
  * and dispatch. Preserve the producer's command→program association on that
@@ -66,6 +67,7 @@ export function promoteProducedProgramManifest(
 		readonly stride?: number;
 		readonly firstListenerId: number | null;
 		readonly count: number;
+		readonly deferred?: true;
 	} = manifest,
 ): {
 	readonly command: Extract<UniversalHostCommand, { readonly op: 'mount-program-run' }>;
@@ -73,6 +75,7 @@ export function promoteProducedProgramManifest(
 } | null {
 	const program = universalProgramCommandWire(manifest);
 	if (program === undefined) return null;
+	if (run.deferred === true && (manifest.parent === null || run.stride !== undefined)) return null;
 	const command = Object.freeze({
 		op: 'mount-program-run' as const,
 		parent: manifest.parent,
@@ -83,6 +86,7 @@ export function promoteProducedProgramManifest(
 		firstListenerId: run.firstListenerId,
 		count: run.count,
 		values,
+		...(run.deferred === true ? { deferred: true as const } : null),
 	});
 	recordUniversalProgramCommand(command, program);
 	return Object.freeze({ command, program });

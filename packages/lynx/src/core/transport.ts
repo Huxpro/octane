@@ -116,8 +116,10 @@ interface FirstTreeProgramPromotion {
 }
 
 /**
- * Replace the first background description of a program-painted tree with the
- * resident command its manifest already proves (issue #287, deletion slice).
+ * Replace the first background description with the resident command its
+ * manifest already proves (issue #287, deletion slice). When main painted no
+ * first tree, native-list roots become deferred declarations instead of eager
+ * cell creation.
  *
  * This runs only after the correlated ready reply advertised the proof rung.
  * The in-memory expanded batch remains the acknowledgement/worklet fallback;
@@ -125,7 +127,10 @@ interface FirstTreeProgramPromotion {
  * invariant returns the original batch, so the existing comparator and repair
  * path remain authoritative rather than approximating a compact encoding.
  */
-function compactFirstTreeProgramBatch(batch: UniversalHostBatch): UniversalHostBatch {
+function compactFirstTreeProgramBatch(
+	batch: UniversalHostBatch,
+	deferListItems: boolean,
+): UniversalHostBatch {
 	const manifests = batch.programs;
 	if (manifests === undefined || manifests.length === 0) return batch;
 	const decline = (reason: string): UniversalHostBatch => {
@@ -272,7 +277,11 @@ function compactFirstTreeProgramBatch(batch: UniversalHostBatch): UniversalHostB
 		const values = promotion.values ?? promotion.manifest.values;
 		const promoted = promoteProducedProgramManifest(promotion.manifest, values, {
 			firstId: promotion.firstId,
-			...(promotion.stride === promotion.width ? null : { stride: promotion.stride }),
+			...(deferListItems && promotion.program.nodes[0]?.type === 'list-item'
+				? { deferred: true as const }
+				: promotion.stride === promotion.width
+					? null
+					: { stride: promotion.stride }),
 			firstListenerId: promotion.manifest.firstListenerId,
 			count: instances,
 		});
@@ -522,6 +531,7 @@ export function createLynxBackgroundTransport(
 	let compactAcknowledgements = false;
 	let lazyPublicInstances = false;
 	let firstTreeProgramManifests = false;
+	let initialAddressedProgramManifests = false;
 	let programManifestBatchPrepared = false;
 	let postFirstTreeLazyPublicInstances = false;
 	let deferredFirstTreeCapabilities: LynxMainThreadCapabilities | undefined;
@@ -1159,10 +1169,13 @@ export function createLynxBackgroundTransport(
 		compactAcknowledgements = capabilities?.compactAck === 1;
 		lazyPublicInstances = capabilities?.lazyPublicInstances === 1;
 		firstTreeProgramManifests = message.capabilities?.firstTreeProgramManifests === 1;
+		initialAddressedProgramManifests =
+			!adoptingFirstTree && message.capabilities?.addressedProgramRuns === 1;
 		setLynxClientCapabilities(container, capabilities);
 		setLynxClientProgramManifests(
 			container,
-			adoptingFirstTree && firstTreeProgramManifests && !programManifestBatchPrepared,
+			!programManifestBatchPrepared &&
+				((adoptingFirstTree && firstTreeProgramManifests) || initialAddressedProgramManifests),
 		);
 		readyReceived = true;
 		readyDeferred.resolve(undefined);
@@ -2109,15 +2122,16 @@ export function createLynxBackgroundTransport(
 						() => {
 							if (pending.get(identity.version) !== entry) return;
 							entry.state = 'sent';
-							const wireBatch = firstTreeProgramManifests
-								? compactFirstTreeProgramBatch(preparedBatch)
-								: preparedBatch.programs === undefined
-									? preparedBatch
-									: Object.freeze({
-											renderer: preparedBatch.renderer,
-											version: preparedBatch.version,
-											commands: preparedBatch.commands,
-										});
+							const wireBatch =
+								firstTreeProgramManifests || initialAddressedProgramManifests
+									? compactFirstTreeProgramBatch(preparedBatch, initialAddressedProgramManifests)
+									: preparedBatch.programs === undefined
+										? preparedBatch
+										: Object.freeze({
+												renderer: preparedBatch.renderer,
+												version: preparedBatch.version,
+												commands: preparedBatch.commands,
+											});
 							const firstTreeProgramCompact =
 								accepted === null &&
 								wireBatch !== preparedBatch &&
