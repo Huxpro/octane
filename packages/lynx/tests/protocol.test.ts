@@ -303,6 +303,7 @@ function installMainHarness(
 					}),
 				});
 			} else if (command.op === 'mount-program-run') {
+				if (command.deferred === true) continue;
 				const program = resolveProgram?.(command);
 				if (program === undefined) throw new Error('Main harness cannot resolve addressed run.');
 				let arity = 0;
@@ -3728,6 +3729,140 @@ describe('@octanejs/lynx transported protocol', () => {
 			transport.close();
 		},
 	);
+
+	it('promotes addressed native-list rows when readiness follows their render', async () => {
+		const context = new FakeContextProxy();
+		const program = {
+			nodes: [
+				{
+					type: 'list-item',
+					parent: -1,
+					props: { 'reuse-identifier': 'feed-row' },
+					bindings: [{ name: 'item-key', valueIndex: 0 }],
+				},
+				{
+					type: 'text',
+					parent: 0,
+					props: {},
+					bindings: [{ name: 'text', valueIndex: 1 }],
+				},
+			],
+			events: [],
+		} as const;
+		const resolveProgram: LynxProgramWireResolver = (command) =>
+			command.address.module === 'tests/deferred-list-row.tsrx' && command.address.index === 0
+				? program
+				: undefined;
+		const main = installMainHarness(context, false, undefined, false, resolveProgram);
+		const container = createLynxClientContainer();
+		const transport = createLynxBackgroundTransport(context, container);
+		const driver = createLynxClientDriver(container);
+		const root = createUniversalRoot(container, driver, { transport });
+		transport.bindRoot(root);
+		const rowPlan = universalPlan(
+			LYNX_TRANSPORT_RENDERER,
+			{
+				kind: 'host',
+				type: 'list-item',
+				props: { 'reuse-identifier': 'feed-row' },
+				bindings: [['item-key', 0]],
+				children: [{ kind: 'host', type: 'text', bindings: [['text', 1]] }],
+			},
+			{ module: 'tests/deferred-list-row.tsrx', index: 0, digest: 'list-row-digest' },
+		);
+		const listPlan = universalPlan(LYNX_TRANSPORT_RENDERER, {
+			kind: 'host',
+			type: 'list',
+			children: [{ kind: 'slot', slot: 0 }],
+		});
+		const Row = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			(props: { id: string; value: string }) => universalValue(rowPlan, [props.id, props.value]),
+		);
+		const Scene = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			(props: { values: readonly string[] }) =>
+				universalValue(listPlan, [
+					universalList(props.values, (value) =>
+						universalKey(
+							value,
+							universalComponent(
+								LYNX_TRANSPORT_RENDERER,
+								Row,
+								universalProps([
+									['set', 'id', value],
+									['set', 'value', value],
+								]),
+							),
+						),
+					),
+				]),
+		);
+
+		const values = Array.from({ length: 8 }, (_, index) => `row-${index}`);
+		const applying = root.renderAsync(Scene, { values });
+		await flushMicrotasks();
+		expect(main.commits).toHaveLength(0);
+		const request = context.events
+			.map((event) => unwire(event.data))
+			.find((message): message is LynxMainReadyRequest =>
+				Boolean(
+					message !== null &&
+					typeof message === 'object' &&
+					(message as { type?: unknown }).type === 'main-ready-request',
+				),
+			)!;
+		context.sendToBackground({
+			...request,
+			type: 'main-ready',
+			capabilities: {
+				compactAck: 1,
+				templateMount: 1,
+				templateProgram: 1,
+				templateRuns: 1,
+				deferredTemplateRuns: 1,
+				addressedProgramRuns: 1,
+			},
+		});
+		await flushMicrotasks();
+
+		expect(main.commits).toHaveLength(1);
+		const commit = main.commits[0]!;
+		const runs = commit.batch.commands.filter((command) => command.op === 'mount-program-run');
+		expect(runs).toHaveLength(values.length);
+		for (let index = 0; index < values.length; index++) {
+			expect(runs[index]).toMatchObject({
+				op: 'mount-program-run',
+				parent: 1,
+				before: null,
+				address: { module: 'tests/deferred-list-row.tsrx', index: 0 },
+				firstId: 3 + index * 3,
+				count: 1,
+				values: [values[index], values[index]],
+				deferred: true,
+			});
+			expect(runs[index]).not.toHaveProperty('stride');
+		}
+		expect(
+			commit.batch.commands.filter(
+				(command) => command.op === 'create' && command.type === 'list-item',
+			),
+		).toHaveLength(0);
+		main.acknowledge(commit, 'complete');
+		await applying;
+		expect(container.getPublicHandle(4)).toBeNull();
+		expect(isLynxClientEventTarget(container, commit.root, 4, 1)).toBe(false);
+		expect(driver.capabilities?.programManifests).toBe(false);
+
+		const updating = root.renderAsync(Scene, { values: [...values, 'row-8'] });
+		await flushMicrotasks();
+		expect(main.commits).toHaveLength(2);
+		const update = main.commits[1]!;
+		expect(update.batch.programs).toBeUndefined();
+		main.acknowledge(update, 'complete');
+		await updating;
+		transport.close();
+	});
 
 	it('keeps the complete first-tree description when a program owns main-thread state', async () => {
 		const context = new FakeContextProxy();

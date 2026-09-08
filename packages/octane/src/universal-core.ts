@@ -5300,6 +5300,9 @@ interface PendingUniversalHostProgramManifest {
 function collectUniversalHostTemplateDrafts(
 	root: DraftRecord,
 	shape: readonly UniversalHostTemplateShapeNode[],
+	// A manifest describes the expanded mutation already in this batch; unlike a
+	// template mount it may prove a native-list cell without mounting that cell.
+	allowListItemRoot = false,
 ): readonly DraftRecord[] | null {
 	const output: DraftRecord[] = [];
 	const visit = (draft: DraftRecord, parent: number): boolean => {
@@ -5318,7 +5321,7 @@ function collectUniversalHostTemplateDrafts(
 			expected.type !== host.type ||
 			expected.parent !== parent ||
 			host.type === 'list' ||
-			host.type === 'list-item' ||
+			(host.type === 'list-item' && (!allowListItemRoot || index !== 0)) ||
 			host.ref != null ||
 			host.visibility !== 'visible' ||
 			host.lifecycles.size !== 0 ||
@@ -11581,7 +11584,7 @@ class UniversalRootImpl<Container, PublicInstance>
 			if (programManifestMounts !== null && draft.isNew) {
 				const source = blueprintHost.programManifest;
 				if (source !== undefined) {
-					const drafts = collectUniversalHostTemplateDrafts(draft, source.program.shape);
+					const drafts = collectUniversalHostTemplateDrafts(draft, source.program.shape, true);
 					if (drafts !== null) {
 						programManifestMounts.set(draft.record, { source, drafts });
 					}
@@ -12532,6 +12535,7 @@ class UniversalRootImpl<Container, PublicInstance>
 					continue;
 				}
 				const source = pending.source;
+				const deferredListItem = source.program.shape[0]?.type === 'list-item';
 				const sites = source.prepared.events;
 				let firstListenerId: number | null = null;
 				let listenersComplete = true;
@@ -12557,7 +12561,11 @@ class UniversalRootImpl<Container, PublicInstance>
 					publish();
 					continue;
 				}
+				// Deferred runs are dense declarations. Component owners consume logical
+				// ids between cells, so keep one manifest per cell instead of claiming
+				// those non-host gaps through a strided run.
 				const sameOpen =
+					!deferredListItem &&
 					open !== undefined &&
 					open.source.prepared === source.prepared &&
 					open.source.address.module === source.address.module &&
@@ -12590,6 +12598,7 @@ class UniversalRootImpl<Container, PublicInstance>
 					count: 1,
 					values: [...source.values],
 				};
+				if (deferredListItem) publish();
 			}
 			publish();
 		}
