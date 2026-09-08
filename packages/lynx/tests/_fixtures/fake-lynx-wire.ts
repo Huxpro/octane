@@ -60,7 +60,8 @@ export class FakeContextProxy implements LynxContextProxy {
 
 export interface MainSide {
 	readonly commits: LynxTransportCommitMessage[];
-	acknowledge(commit: LynxTransportCommitMessage): void;
+	acknowledge(commit: LynxTransportCommitMessage, completion?: 'complete' | 'fault'): void;
+	reject(commit: LynxTransportCommitMessage, message: string): void;
 	sendEvent(priority: 'discrete' | 'continuous' | 'default', listeners: readonly number[]): void;
 }
 
@@ -209,7 +210,7 @@ export function installMainSide(context: FakeContextProxy, compact = false): Mai
 	});
 	return {
 		commits,
-		acknowledge(commit) {
+		acknowledge(commit, completion = 'complete') {
 			accepted = commit;
 			const compactHosts =
 				commit.ack === LYNX_COMPACT_ACKNOWLEDGEMENT
@@ -243,12 +244,33 @@ export function installMainSide(context: FakeContextProxy, compact = false): Mai
 			);
 			// The ack publishes handles; `complete` is what says the host actually
 			// applied the frame, and it is what settles the background's commit.
+			context.sendToBackground(
+				completion === 'complete'
+					? {
+							protocol: commit.protocol,
+							renderer: commit.renderer,
+							root: commit.root,
+							version: commit.version,
+							type: 'complete',
+						}
+					: {
+							protocol: commit.protocol,
+							renderer: commit.renderer,
+							root: commit.root,
+							version: commit.version,
+							type: 'fault',
+							error: { name: 'Error', message: 'accepted host fault' },
+						},
+			);
+		},
+		reject(commit, message) {
 			context.sendToBackground({
 				protocol: commit.protocol,
 				renderer: commit.renderer,
 				root: commit.root,
 				version: commit.version,
-				type: 'complete',
+				type: 'reject',
+				error: { name: 'Error', message },
 			});
 		},
 		sendEvent(priority, listeners) {

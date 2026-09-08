@@ -112,6 +112,29 @@ const Card = defineUniversalComponent(
 		]),
 );
 
+function subscribedCard(lifecycle: string[]): LynxComponent<CardProps> {
+	return defineUniversalComponent(
+		LYNX_TRANSPORT_RENDERER,
+		function Subscribed({ label, detail, active, onTap }: CardProps) {
+			useEffect(
+				() => {
+					lifecycle.push(`subscribe:${label}`);
+					return () => lifecycle.push(`unsubscribe:${label}`);
+				},
+				[label],
+				'subscription',
+			);
+			return universalValue(CARD_PLAN, [
+				active ? 'card active' : 'card',
+				label,
+				active ? 'card-meta on' : 'card-meta',
+				onTap,
+				detail,
+			]);
+		},
+	);
+}
+
 const noop = () => undefined;
 
 interface TableRow {
@@ -771,26 +794,7 @@ describe('Lynx compiled component the Block core refuses', () => {
 	it('runs a page passive effect after acknowledgement and cleans it up on change and unmount', async () => {
 		const block = blockColumn();
 		const lifecycle: string[] = [];
-		const Subscribed = defineUniversalComponent(
-			LYNX_TRANSPORT_RENDERER,
-			function Subscribed({ label, detail, active, onTap }: CardProps) {
-				useEffect(
-					() => {
-						lifecycle.push(`subscribe:${label}`);
-						return () => lifecycle.push(`unsubscribe:${label}`);
-					},
-					[label],
-					'subscribe',
-				);
-				return universalValue(CARD_PLAN, [
-					active ? 'card active' : 'card',
-					label,
-					active ? 'card-meta on' : 'card-meta',
-					onTap,
-					detail,
-				]);
-			},
-		);
+		const Subscribed = subscribedCard(lifecycle);
 		const mounting = block.background.renderAsync(Subscribed as never, LADDER[0]!);
 		await flushMicrotasks();
 		expect(block.main.commits).toHaveLength(1);
@@ -807,6 +811,134 @@ describe('Lynx compiled component the Block core refuses', () => {
 		await block.settle(block.background.unmountAsync());
 		await flushMicrotasks();
 		expect(lifecycle.at(-1)).toBe('unsubscribe:beta');
+	});
+
+	it('retries a pre-ACK rejected mount and publishes its passive effect only after acceptance', async () => {
+		const block = blockColumn();
+		const lifecycle: string[] = [];
+		const Subscribed = subscribedCard(lifecycle);
+
+		const rejected = block.background.renderAsync(Subscribed as never, LADDER[0]!);
+		await flushMicrotasks();
+		expect(block.main.commits).toHaveLength(1);
+		block.main.reject(block.main.commits[0]!, 'injected pre-ACK rejection');
+		await expect(rejected).rejects.toThrow('injected pre-ACK rejection');
+		await flushMicrotasks();
+		expect(lifecycle).toEqual([]);
+
+		await block.render(Subscribed as LynxComponent<CardProps>, LADDER[0]!);
+		await flushMicrotasks();
+		expect(block.main.commits).toHaveLength(2);
+		expect(lifecycle).toEqual(['subscribe:alpha']);
+	});
+
+	it('keeps accepted effects and handlers across a rejected update, then publishes one retry', async () => {
+		const block = blockColumn();
+		const lifecycle: string[] = [];
+		const taps: string[] = [];
+		const Subscribed = subscribedCard(lifecycle);
+		const firstProps = { ...LADDER[0]!, onTap: () => taps.push('alpha') };
+		const nextProps = { ...LADDER[1]!, onTap: () => taps.push('beta') };
+
+		const first = block.background.renderAsync(Subscribed as never, firstProps);
+		await flushMicrotasks();
+		block.main.acknowledge(block.main.commits[0]!);
+		await first;
+		await flushMicrotasks();
+		expect(lifecycle).toEqual(['subscribe:alpha']);
+
+		const listener = boundListener([block.main.commits[0]!]);
+		const rejected = block.background.renderAsync(Subscribed as never, nextProps);
+		await flushMicrotasks();
+		// Until main accepts the new frame, the painted tree still belongs to the
+		// previous version and an event from it must see the previous closure.
+		block.background.dispatchTransportEvent({
+			protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
+			renderer: LYNX_TRANSPORT_RENDERER,
+			root: 1,
+			version: block.main.commits[0]!.version,
+			type: 'event',
+			priority: listener.priority,
+			deliveries: [{ listener: listener.listener, payload: null }],
+		} as never);
+		expect(taps).toEqual(['alpha']);
+		block.main.reject(block.main.commits[1]!, 'injected update rejection');
+		await expect(rejected).rejects.toThrow('injected update rejection');
+		await flushMicrotasks();
+		expect(lifecycle).toEqual(['subscribe:alpha']);
+		block.background.dispatchTransportEvent({
+			protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
+			renderer: LYNX_TRANSPORT_RENDERER,
+			root: 1,
+			version: block.main.commits[0]!.version,
+			type: 'event',
+			priority: listener.priority,
+			deliveries: [{ listener: listener.listener, payload: null }],
+		} as never);
+		expect(taps).toEqual(['alpha', 'alpha']);
+
+		const retried = block.background.renderAsync(Subscribed as never, nextProps);
+		await flushMicrotasks();
+		block.main.acknowledge(block.main.commits[2]!);
+		await retried;
+		await flushMicrotasks();
+		expect(lifecycle).toEqual(['subscribe:alpha', 'unsubscribe:alpha', 'subscribe:beta']);
+	});
+
+	it('keeps an ACKed update published when main reports a later host fault', async () => {
+		const block = blockColumn();
+		const lifecycle: string[] = [];
+		const taps: string[] = [];
+		const Subscribed = subscribedCard(lifecycle);
+		const firstProps = { ...LADDER[0]!, onTap: () => taps.push('alpha') };
+		const nextProps = { ...LADDER[1]!, onTap: () => taps.push('beta') };
+
+		await block.render(Subscribed as LynxComponent<CardProps>, firstProps);
+		await flushMicrotasks();
+		const listener = boundListener([block.main.commits[0]!]);
+
+		const faulted = block.background.renderAsync(Subscribed as never, nextProps);
+		await flushMicrotasks();
+		block.main.acknowledge(block.main.commits[1]!, 'fault');
+		await expect(faulted).rejects.toThrow('accepted host fault');
+		await flushMicrotasks();
+		expect(lifecycle).toEqual(['subscribe:alpha', 'unsubscribe:alpha', 'subscribe:beta']);
+
+		block.background.dispatchTransportEvent({
+			protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
+			renderer: LYNX_TRANSPORT_RENDERER,
+			root: 1,
+			version: block.main.commits[1]!.version,
+			type: 'event',
+			priority: listener.priority,
+			deliveries: [{ listener: listener.listener, payload: null }],
+		} as never);
+		expect(taps).toEqual(['beta']);
+	});
+
+	it('restores a keyed range after pre-ACK rejection so its retry matches a fresh render', async () => {
+		const block = blockColumn<TableProps>();
+		const first = block.background.renderAsync(Table as never, table([1, 2, 3]));
+		await flushMicrotasks();
+		block.main.acknowledge(block.main.commits[0]!);
+		await first;
+
+		const next = table([3, 1, 4], 4);
+		const rejected = block.background.renderAsync(Table as never, next);
+		await flushMicrotasks();
+		block.main.reject(block.main.commits[1]!, 'injected range rejection');
+		await expect(rejected).rejects.toThrow('injected range rejection');
+
+		const retried = block.background.renderAsync(Table as never, next);
+		await flushMicrotasks();
+		block.main.acknowledge(block.main.commits[2]!);
+		await retried;
+
+		const fresh = blockColumn<TableProps>();
+		await fresh.render(Table as LynxComponent<TableProps>, next);
+		expect(paint([block.main.commits[0]!, block.main.commits[2]!] as never).tree).toEqual(
+			paint(fresh.main.commits).tree,
+		);
 	});
 
 	it('still refuses a page insertion effect because the Block core has no pre-mutation phase', async () => {

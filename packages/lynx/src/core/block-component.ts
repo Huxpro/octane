@@ -318,6 +318,7 @@ interface RetainedRow {
 }
 
 const EMPTY_RANGES: readonly RangeState[] = Object.freeze([]);
+const EMPTY_RESTORES: readonly (() => void)[] = Object.freeze([]);
 
 /** One range's whole next state, produced before any of it is written. */
 interface RangeRender {
@@ -491,6 +492,8 @@ export function lynxBlockProgramForComponent<Props>(
 	 * never accepted.
 	 */
 	const renderSubject = (context: LynxBlockProgramContext, props: unknown): RenderedPlan => {
+		const previousContext = liveContext;
+		const previousProps = liveProps;
 		liveContext = context;
 		liveProps = props;
 		const cells = (scope ??= createUniversalHookScope({
@@ -508,6 +511,8 @@ export function lynxBlockProgramForComponent<Props>(
 			rendered = cells.render(() => renderPlanValue(subject, props));
 		} catch (error) {
 			cells.abort();
+			liveContext = previousContext;
+			liveProps = previousProps;
 			// The scope refuses capabilities it does not implement with stable
 			// messages; renamed here to the layer the application can see, the
 			// same way a row's HOOKS_WITHOUT_ATTEMPT is renamed in
@@ -523,7 +528,27 @@ export function lynxBlockProgramForComponent<Props>(
 			}
 			throw error;
 		}
+		context.afterAbort(() => {
+			cells.abort();
+			liveContext = previousContext;
+			liveProps = previousProps;
+		});
 		return rendered;
+	};
+
+	const snapshotRangeTemplates = (): readonly (() => void)[] => {
+		let restores: (() => void)[] | null = null;
+		for (const state of ranges) {
+			if (state.plan !== null) continue;
+			const snapshot = {
+				plan: state.plan,
+				compiled: state.compiled,
+				prepared: state.prepared,
+				template: state.template,
+			};
+			(restores ??= []).push(() => Object.assign(state, snapshot));
+		}
+		return restores ?? EMPTY_RESTORES;
 	};
 
 	/**
@@ -966,24 +991,28 @@ export function lynxBlockProgramForComponent<Props>(
 	const applyRange = (context: LynxBlockProgramContext, render: RangeRender): void => {
 		const state = render.state;
 		if (render.sparse !== null) {
-			state.source = render.source;
-			state.keyedSelection = render.keyedSelection;
 			for (const row of render.sparse) {
-				state.retained!.set(row.key, row.retained);
 				const member = context.core.writeKeyedValues(state.site!, row.key, row.retained.values);
 				if (state.prepared!.events.length === 0 || member === undefined) continue;
 				if (row.retained.listeners.includes(null)) context.root.releaseListeners(member);
 				context.root.bindListeners(member, row.retained.listeners);
 			}
+			context.afterCommit(() => {
+				state.source = render.source;
+				state.keyedSelection = render.keyedSelection;
+				for (const row of render.sparse!) state.retained!.set(row.key, row.retained);
+			});
 			return;
 		}
 		// A list that has never had a row has no template to reconcile against,
 		// and nothing mounted to reconcile.
 		if (state.template === null) return;
-		state.source = render.source;
-		state.keyedSelection = render.keyedSelection;
-		state.retained = render.retained;
-		state.keys = render.keys;
+		context.afterCommit(() => {
+			state.source = render.source;
+			state.keyedSelection = render.keyedSelection;
+			state.retained = render.retained;
+			state.keys = render.keys;
+		});
 		if (!render.structural) {
 			// The same keys in the same order: every row is a survivor of itself,
 			// so there is no mount, no removal, and no move for the reconciler to
@@ -1057,6 +1086,10 @@ export function lynxBlockProgramForComponent<Props>(
 	 * state-driven render has no caller to reach it through.
 	 */
 	const renderAgain = (context: LynxBlockProgramContext, props: Props): void => {
+		const restoreRanges = snapshotRangeTemplates();
+		context.afterAbort(() => {
+			for (const restore of restoreRanges) restore();
+		});
 		const rendered = renderSubject(context, props);
 		try {
 			// A block program mounts one template. A component that returns a
@@ -1107,7 +1140,7 @@ export function lynxBlockProgramForComponent<Props>(
 				context.root.bindListeners(block!, listenersFor(rendered.values));
 			}
 			for (const row of rows) applyRange(context, row);
-			scope!.commit();
+			context.afterCommit(() => scope!.commit());
 		} catch (error) {
 			scope?.abort();
 			throw error;
@@ -1116,6 +1149,14 @@ export function lynxBlockProgramForComponent<Props>(
 
 	const program: LynxBlockProgram<Props> = {
 		mount(context, props) {
+			const previous = { plan, compiled, prepared, block, ranges };
+			context.afterAbort(() => {
+				plan = previous.plan;
+				compiled = previous.compiled;
+				prepared = previous.prepared;
+				block = previous.block;
+				ranges = previous.ranges;
+			});
 			const rendered = renderSubject(context, props);
 			try {
 				const root = rendered.plan.root;
@@ -1181,7 +1222,7 @@ export function lynxBlockProgramForComponent<Props>(
 					ranges[index]!.site = context.core.openForSlot(block, ranges[index]!.node);
 					applyRange(context, rows[index]!);
 				}
-				scope!.commit();
+				context.afterCommit(() => scope!.commit());
 			} catch (error) {
 				scope?.abort();
 				throw error;
@@ -1207,16 +1248,18 @@ export function lynxBlockProgramForComponent<Props>(
 			if (block !== null && prepared !== null && prepared.events.length !== 0) {
 				context.root.releaseListeners(block);
 			}
-			block = null;
-			ranges = EMPTY_RANGES;
-			// The cells outlive nothing: a setter captured by a handler this
-			// program bound can still be called after release, and a disposed
-			// scope answers it by doing nothing rather than scheduling a render
-			// against a block that is gone.
-			scope?.dispose();
-			scope = null;
-			liveContext = null;
-			liveProps = undefined;
+			context.afterCommit(() => {
+				block = null;
+				ranges = EMPTY_RANGES;
+				// The cells outlive nothing: a setter captured by a handler this
+				// program bound can still be called after release, and a disposed
+				// scope answers it by doing nothing rather than scheduling a render
+				// against a block that is gone.
+				scope?.dispose();
+				scope = null;
+				liveContext = null;
+				liveProps = undefined;
+			});
 		},
 	};
 	return program;

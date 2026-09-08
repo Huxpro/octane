@@ -43,6 +43,8 @@ export interface LynxBlockProgramContext {
 	 * work before the next render starts.
 	 */
 	afterPassiveCommit(task: () => void): void;
+	/** Restore program-local draft state when the host rejects before acknowledgement. */
+	afterAbort(task: () => void): void;
 	/**
 	 * Run `work`, then commit it, serialized against every other render of this
 	 * root.

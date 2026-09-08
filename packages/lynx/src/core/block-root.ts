@@ -74,6 +74,10 @@ export interface LynxBlockRoot {
 	 * far side's ownership check accepts it.
 	 */
 	readonly transportRoot: number;
+	/** Open the logical/listener journal for one render attempt. */
+	beginAttempt(): void;
+	/** Roll back a pre-acknowledgement attempt. False means it was already accepted. */
+	abortAttempt(): boolean;
 	/**
 	 * Bind this block's event sites, in program order. A `null` entry leaves the
 	 * site unbound, which is how a template with a conditional handler is
@@ -90,7 +94,7 @@ export interface LynxBlockRoot {
 	 * `null` when the core has nothing to say — an update that changed nothing
 	 * sends no frame rather than an empty one the far side must still process.
 	 */
-	commit(): Promise<UniversalHostBatch | null>;
+	commit(onAccept?: () => void): Promise<UniversalHostBatch | null>;
 	/** Highest batch version this root has had acknowledged. */
 	acceptedVersion(): number;
 }
@@ -118,7 +122,32 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 	}
 	const core = options.core ?? createLynxBlockCore();
 	const listeners = new Map<number, BoundListener>();
+	let attemptActive = false;
+	let listenerWrites: Array<number | BoundListener | undefined> | null = null;
 	let acceptedVersion = 0;
+	// Main can still deliver an event for the accepted tree while its next frame
+	// is in flight. Keep that tree's closures live until ACK, then publish the
+	// draft writes in program order so release-then-bind retains its meaning.
+	const writeListener = (id: number, listener: BoundListener | undefined): void => {
+		if (attemptActive) {
+			(listenerWrites ??= []).push(id, listener);
+			return;
+		}
+		if (listener === undefined) listeners.delete(id);
+		else listeners.set(id, listener);
+	};
+	const acceptAttempt = (): void => {
+		attemptActive = false;
+		const writes = listenerWrites;
+		listenerWrites = null;
+		for (let index = 0; index < (writes?.length ?? 0); index += 2) {
+			const id = writes![index] as number;
+			const listener = writes![index + 1] as BoundListener | undefined;
+			if (listener === undefined) listeners.delete(id);
+			else listeners.set(id, listener);
+		}
+		core.acceptAttempt();
+	};
 
 	const listenerId = (block: LynxBlock, site: number): number => {
 		if (block.firstListenerId === null) {
@@ -144,6 +173,22 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 		core,
 		transportRoot,
 
+		beginAttempt() {
+			if (attemptActive) {
+				throw new Error('Octane Lynx block root already has an active render attempt.');
+			}
+			core.beginAttempt();
+			attemptActive = true;
+		},
+
+		abortAttempt() {
+			if (!attemptActive) return false;
+			attemptActive = false;
+			listenerWrites = null;
+			core.abortAttempt();
+			return true;
+		},
+
 		bindListeners(block, bound) {
 			const sites = block.template.program.events;
 			if (bound.length !== sites.length) {
@@ -163,7 +208,8 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 							: 'Octane Lynx OL020',
 					);
 				}
-				listeners.set(listenerId(block, site), { priority: sites[site]!.priority, handler });
+				const id = listenerId(block, site);
+				writeListener(id, { priority: sites[site]!.priority, handler });
 			}
 		},
 
@@ -171,7 +217,8 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 			const sites = block.template.program.events;
 			if (block.firstListenerId === null) return;
 			for (let site = 0; site < sites.length; site++) {
-				listeners.delete(block.firstListenerId + site);
+				const id = block.firstListenerId + site;
+				writeListener(id, undefined);
 			}
 		},
 
@@ -252,9 +299,13 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 			return Object.freeze(results);
 		},
 
-		async commit() {
+		async commit(onAccept) {
 			const batch = core.flush();
-			if (batch === null) return null;
+			if (batch === null) {
+				acceptAttempt();
+				onAccept?.();
+				return null;
+			}
 			// U1 §3: a commit is the unit of structural consistency and it is
 			// indivisible. One flush becomes one frame; the core never emits a
 			// prefix, yields, and emits the rest, because a `move`'s `before`
@@ -262,6 +313,8 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 			const identity = identityFor(batch.version);
 			const prepared = transport.prepareBatch(container, batch, identity);
 			let acknowledged = false;
+			let hasAcceptedError = false;
+			let acceptedError: unknown;
 			await prepared.apply((message: UniversalTransportAcknowledgement) => {
 				if (
 					message.protocol !== UNIVERSAL_TRANSPORT_PROTOCOL_VERSION ||
@@ -291,6 +344,13 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 				}
 				acceptedVersion = batch.version;
 				acknowledged = true;
+				acceptAttempt();
+				try {
+					onAccept?.();
+				} catch (error) {
+					hasAcceptedError = true;
+					acceptedError = error;
+				}
 			});
 			if (!acknowledged) {
 				throw new Error(
@@ -300,6 +360,7 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 				);
 			}
 			prepared.afterAccept?.();
+			if (hasAcceptedError) throw acceptedError;
 			return batch;
 		},
 

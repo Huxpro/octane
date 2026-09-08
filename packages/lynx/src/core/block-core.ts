@@ -277,6 +277,12 @@ export interface LynxBlockCoreOptions {
 }
 
 export interface LynxBlockCore {
+	/** Begin one render attempt whose logical writes publish only after host acceptance. */
+	beginAttempt(): void;
+	/** Publish the active attempt after the host acknowledges its batch. */
+	acceptAttempt(): void;
+	/** Restore the last accepted logical state after a pre-acknowledgement rejection. */
+	abortAttempt(): boolean;
 	/** Mount a template into a range site and return its block. */
 	mount(
 		parent: UniversalHostParent,
@@ -412,6 +418,29 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 	let version = 0;
 	let blockLookups = 0;
 	let commandCount = 0;
+	interface SlotSnapshot {
+		readonly slot: LynxBlockForSlot;
+		readonly items: Map<unknown, LynxBlock>;
+		readonly ordered: readonly LynxBlock[];
+	}
+	type ValueSnapshotPart = LynxBlock | number | UniversalHostTemplateProgramValue;
+	let attemptActive = false;
+	let attemptNextId = 0;
+	let attemptNextListenerId = 0;
+	let attemptSlots: SlotSnapshot[] | null = null;
+	let attemptCapturedSlots: Set<LynxBlockForSlot> | null = null;
+	let attemptValues: ValueSnapshotPart[] | null = null;
+	let attemptCapturedValues: Map<LynxBlock, number | Set<number>> | null = null;
+
+	const captureSlot = (slot: LynxBlockForSlot): void => {
+		if (!attemptActive) return;
+		const captured = (attemptCapturedSlots ??= new Set());
+		if (captured.has(slot)) return;
+		captured.add(slot);
+		const ordered: LynxBlock[] = [];
+		for (let block = slot.head; block !== null; block = block.next) ordered.push(block);
+		(attemptSlots ??= []).push({ slot, items: new Map(slot.items), ordered });
+	};
 
 	const emit = (command: UniversalHostCommand): void => {
 		commands.push(command);
@@ -630,6 +659,21 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		) {
 			return false;
 		}
+		if (attemptActive) {
+			const capturedByBlock = (attemptCapturedValues ??= new Map());
+			const captured = capturedByBlock.get(block);
+			if (captured !== valueIndex && !(captured instanceof Set && captured.has(valueIndex))) {
+				capturedByBlock.set(
+					block,
+					captured === undefined
+						? valueIndex
+						: captured instanceof Set
+							? (captured.add(valueIndex), captured)
+							: new Set([captured, valueIndex]),
+				);
+				(attemptValues ??= []).push(block, valueIndex, block.values[valueIndex]!);
+			}
+		}
 		block.values[valueIndex] = value;
 		const nodeIndex = template.valueNodes[valueIndex]!;
 		// `update` carries the node's complete next props; the applier diffs it
@@ -673,6 +717,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 	): void => {
 		if (slot.size !== 0) fail('fillForSlot requires an empty range site');
 		if (items.length === 0) return;
+		captureSlot(slot);
 		const rows = items.map((item, index) => values(item, index));
 		const keys = items.map((item, index) => key(item, index));
 		// Refused, not mis-rendered: a duplicate key would overwrite its twin in
@@ -690,6 +735,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 
 	const clearForSlot = (slot: LynxBlockForSlot, departed?: (block: LynxBlock) => void): void => {
 		if (slot.size === 0) return;
+		captureSlot(slot);
 		// The range site owns every child of its parent node, which is the
 		// condition `delta-protocol.ts` states for `CLEAR` — but the command
 		// vocabulary has no clear, so this pays `destroyBlock` per member. See
@@ -705,6 +751,47 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 	};
 
 	const core: LynxBlockCore = {
+		beginAttempt() {
+			if (attemptActive) fail('a render attempt is already active');
+			if (commands.length !== 0) fail('a render attempt cannot begin with an unflushed batch');
+			attemptActive = true;
+			attemptNextId = nextId;
+			attemptNextListenerId = nextListenerId;
+		},
+
+		acceptAttempt() {
+			attemptActive = false;
+			attemptSlots = null;
+			attemptCapturedSlots = null;
+			attemptValues = null;
+			attemptCapturedValues = null;
+		},
+
+		abortAttempt() {
+			if (!attemptActive) return false;
+			attemptActive = false;
+			commands = [];
+			pendingUpdates = new Map();
+			nextId = attemptNextId;
+			nextListenerId = attemptNextListenerId;
+			for (let index = (attemptValues?.length ?? 0) - 3; index >= 0; index -= 3) {
+				const block = attemptValues![index] as LynxBlock;
+				const valueIndex = attemptValues![index + 1] as number;
+				block.values[valueIndex] = attemptValues![index + 2] as UniversalHostTemplateProgramValue;
+			}
+			for (let index = (attemptSlots?.length ?? 0) - 1; index >= 0; index--) {
+				const { slot, items, ordered } = attemptSlots![index]!;
+				slot.items.clear();
+				for (const [key, block] of items) slot.items.set(key, block);
+				link(slot, ordered);
+			}
+			attemptSlots = null;
+			attemptCapturedSlots = null;
+			attemptValues = null;
+			attemptCapturedValues = null;
+			return true;
+		},
+
 		mount(parent, before, template, values) {
 			return mountRun(parent, before, template, [values], [undefined])[0]!;
 		},
@@ -727,6 +814,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		clearForSlot,
 
 		reconcileForSlot(slot, template, items, key, values, departed) {
+			captureSlot(slot);
 			const previous = slot.items;
 			if (previous.size === 0) {
 				fillForSlot(slot, template, items, key, values);

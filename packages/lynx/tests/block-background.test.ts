@@ -270,6 +270,69 @@ describe('Lynx block background core', () => {
 		expect(published).toBe(1);
 	});
 
+	it('rolls back a carried program mutation that calls commit outside renderAsync', async () => {
+		const harness = scene();
+		let update: ((label: string) => Promise<unknown>) | null = null;
+		const component = withLynxBlockProgram((() => null) as unknown as LynxComponent<ProgramProps>, {
+			mount(context) {
+				const page = context.core.mount(null, null, PAGE_TEMPLATE, []);
+				const slot = context.core.openForSlot(page, 1);
+				context.core.fillForSlot(
+					slot,
+					ROW_TEMPLATE,
+					['alpha'],
+					() => 1,
+					(label) => ['row', label],
+				);
+				const row = slot.items.get(1)!;
+				update = (label) => {
+					context.core.setSlotValue(row, 1, label);
+					return context.commit();
+				};
+			},
+		});
+		await settle(harness, harness.background.renderAsync(component as never, { labels: [] }));
+
+		const rejected = update!('beta');
+		await flushMicrotasks();
+		expect(harness.main.commits).toHaveLength(2);
+		harness.main.reject(harness.main.commits[1]!, 'injected carried-program rejection');
+		await expect(rejected).rejects.toThrow('injected carried-program rejection');
+
+		const retried = update!('beta');
+		await flushMicrotasks();
+		expect(harness.main.commits).toHaveLength(3);
+		harness.main.acknowledge(harness.main.commits[2]!);
+		await retried;
+		expect(rowLabels(paint([harness.main.commits[0]!, harness.main.commits[2]!] as never))).toEqual(
+			['beta'],
+		);
+	});
+
+	it('keeps a carried program mounted when its unmount frame is rejected', async () => {
+		const harness = scene();
+		const component = withLynxBlockProgram(
+			(() => null) as unknown as LynxComponent<ProgramProps>,
+			tableProgram(),
+		);
+		const props = { labels: ['alpha'] };
+		await settle(harness, harness.background.renderAsync(component as never, props));
+
+		const rejected = harness.background.unmountAsync();
+		await flushMicrotasks();
+		expect(harness.main.commits).toHaveLength(2);
+		harness.main.reject(harness.main.commits[1]!, 'injected unmount rejection');
+		harness.acknowledged++;
+		await expect(rejected).rejects.toThrow('injected unmount rejection');
+
+		// The accepted program and its logical range survived. Rendering the
+		// same props is an empty update rather than a duplicate first mount.
+		await settle(harness, harness.background.renderAsync(component as never, props));
+		expect(harness.main.commits).toHaveLength(2);
+		await settle(harness, harness.background.unmountAsync());
+		expect(harness.main.commits).toHaveLength(3);
+	});
+
 	it('routes a native delivery back to the listener the program bound', async () => {
 		const harness = scene();
 		const { main, background } = harness;
