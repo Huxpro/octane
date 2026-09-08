@@ -531,6 +531,12 @@ export interface UniversalForValue {
 	 * are unchanged; an absent proof always means ordinary range evaluation.
 	 */
 	readonly keyedSelection?: readonly [value: unknown, deps: readonly unknown[], itemProp: string];
+	/**
+	 * Compiler-only proof that a component row receives only the item, index, static
+	 * values, and bare outer captures as props. A renderer may retain the keyed row
+	 * descriptors while the iterable and these captures keep their identity.
+	 */
+	readonly componentRows?: readonly unknown[];
 }
 
 export interface UniversalTryValue {
@@ -1317,6 +1323,9 @@ interface BlueprintRange {
 	// The committed range this marker stands for: the subtree neither re-rendered
 	// nor re-drafted, so reconciliation must adopt the committed records as-is.
 	retained?: LogicalRecord;
+	// A compiler-proven component list whose committed sibling sequence is the
+	// base and whose children contain only context-invalidated rows.
+	sparseComponentList?: CommittedComponentList;
 }
 
 interface BlueprintHost {
@@ -1534,6 +1543,32 @@ interface ComponentMemoHook<P = any> {
 	contextReads: Map<UniversalContext<any>, unknown> | null;
 }
 
+interface CommittedComponentListRow {
+	readonly owner: UniversalOwnerRecord;
+	readonly index: number;
+	contextReads: Map<UniversalContext<any>, unknown> | null;
+}
+
+interface CommittedComponentList {
+	readonly source: Iterable<unknown>;
+	readonly deps: readonly unknown[];
+	readonly contextRows: Map<
+		UniversalContext<any>,
+		Map<UniversalKey, { row: CommittedComponentListRow; value: unknown }>
+	>;
+}
+
+interface DraftComponentList {
+	readonly source: Iterable<unknown>;
+	readonly deps: readonly unknown[];
+	readonly rows: readonly {
+		key: UniversalKey;
+		owner: UniversalOwnerRecord;
+		previous?: CommittedComponentListRow;
+	}[];
+	readonly previous: CommittedComponentList | null;
+}
+
 type UniversalHook =
 	| StateHook<any>
 	| LinkedStateHook<any, any>
@@ -1564,6 +1599,7 @@ interface UniversalOwnerRecord extends KernelCommittedHookOwner<
 	rangeKey: symbol;
 	effectOrder: EffectHook[];
 	children: UniversalOwnerRecord[];
+	componentList: CommittedComponentList | null;
 	// The root's dirty epoch this owner (or a descendant) was last scheduled in.
 	// Comparing against an attempt's consumed epoch answers "does this subtree
 	// carry scheduled work?" in O(1); stale epochs expire without any clearing.
@@ -1617,6 +1653,7 @@ const UNIVERSAL_TREE_LIFECYCLE = 1 << 3;
 const UNIVERSAL_TREE_LOCAL_CALLBACK = 1 << 4;
 const UNIVERSAL_TREE_REF = 1 << 5;
 const UNIVERSAL_TREE_HIDDEN = 1 << 6;
+const SPARSE_COMPONENT_LIST_FALLBACK = Symbol('octane.universal.sparse-component-list-fallback');
 
 interface DraftOwner extends KernelDraftHookOwner<UniversalHook> {
 	record: UniversalOwnerRecord;
@@ -1627,6 +1664,10 @@ interface DraftOwner extends KernelDraftHookOwner<UniversalHook> {
 	clonedHooks: Set<unknown>;
 	seenEffects: EffectHook[];
 	children: DraftOwner[];
+	componentList: DraftComponentList | null;
+	// A sparse component-list attempt drafts only context-invalidated rows. The
+	// committed sibling order remains authoritative if that attempt is accepted.
+	preserveChildren: boolean;
 	// Committed child owners adopted without re-rendering, with the drafted-child
 	// index each was claimed at so commit can rebuild record.children in exact
 	// claim order.
@@ -2290,6 +2331,7 @@ export function universalFor<T>(
 	leafSignature?: string,
 	componentScope = false,
 	keyedSelection?: readonly [value: unknown, deps: readonly unknown[], itemProp: string],
+	componentRows?: readonly unknown[],
 ): UniversalForValue {
 	if (componentScope) {
 		return {
@@ -2302,6 +2344,7 @@ export function universalFor<T>(
 			compact,
 			componentScope: true,
 			...(keyedSelection === undefined ? null : { keyedSelection }),
+			...(componentRows === undefined ? null : { componentRows }),
 		};
 	}
 	if (hostComponent === true) {
@@ -2723,6 +2766,7 @@ function createOwnerRecord(
 		hooks: new Map(),
 		effectOrder: [],
 		children: [],
+		componentList: null,
 		dirtyEpoch: 0,
 		range: null,
 		contextValues: null,
@@ -2753,6 +2797,8 @@ function draftOwner(
 		clonedHooks: new Set(),
 		seenEffects: [],
 		children: [],
+		componentList: null,
+		preserveChildren: false,
 		retainedChildren: null,
 		claimedChildren: new Set(),
 		sequentialClaimCursor: 0,
@@ -2932,6 +2978,105 @@ function ownerMemoSubtreeContextsStable(owner: UniversalOwnerRecord, parent: Dra
 	return true;
 }
 
+function committedMemoContextReads(
+	owner: UniversalOwnerRecord,
+): Map<UniversalContext<any>, unknown> | null | undefined {
+	if (
+		owner.updates.size !== 0 ||
+		owner.effectOrder.length !== 0 ||
+		owner.visibility !== 'visible' ||
+		owner.boundaryThenable !== null ||
+		(owner.isBoundary && owner.hasBoundaryError) ||
+		(owner.component !== null &&
+			universalComponentRevision(owner.component) !== owner.componentRevision)
+	) {
+		return undefined;
+	}
+	let reads: Map<UniversalContext<any>, unknown> | null = null;
+	if (owner.component !== null) {
+		let memo: ComponentMemoHook | null = null;
+		for (const hook of owner.hooks.values()) {
+			if (hook.kind === 'component-memo') {
+				memo = hook;
+				break;
+			}
+		}
+		if (memo === null) {
+			return undefined;
+		}
+		for (const [context, value] of memo.contextReads ?? []) {
+			(reads ??= new Map()).set(context, value);
+		}
+	}
+	for (const child of owner.children) {
+		const childReads = committedMemoContextReads(child);
+		if (childReads === undefined) return undefined;
+		for (const [context, value] of childReads ?? []) {
+			(reads ??= new Map()).set(context, value);
+		}
+	}
+	return reads;
+}
+
+function draftMemoContextReads(
+	owner: DraftOwner,
+): Map<UniversalContext<any>, unknown> | null | undefined {
+	if (
+		owner.seenEffects.length !== 0 ||
+		owner.visibility !== 'visible' ||
+		owner.boundaryThenable !== null ||
+		(owner.isBoundary && owner.hasBoundaryError) ||
+		(owner.record.component !== null &&
+			universalComponentRevision(owner.record.component) !== owner.componentRevision)
+	) {
+		return undefined;
+	}
+	let reads: Map<UniversalContext<any>, unknown> | null = null;
+	if (owner.record.component !== null) {
+		let memo: ComponentMemoHook | null = null;
+		for (const hook of owner.hooks.values()) {
+			if (hook.kind === 'component-memo') {
+				memo = hook;
+				break;
+			}
+		}
+		if (memo === null) return undefined;
+		for (const [context, value] of memo.contextReads ?? []) {
+			(reads ??= new Map()).set(context, value);
+		}
+	}
+	for (const child of owner.children) {
+		const childReads = draftMemoContextReads(child);
+		if (childReads === undefined) return undefined;
+		for (const [context, value] of childReads ?? []) {
+			(reads ??= new Map()).set(context, value);
+		}
+	}
+	return reads;
+}
+
+function visibleChangedAncestorContexts(owner: DraftOwner): Set<UniversalContext<any>> {
+	const changed = new Set<UniversalContext<any>>();
+	for (let current: DraftOwner | null = owner; current !== null; current = current.parent) {
+		const next = current.contextValues;
+		const previous = current.record.mounted ? current.record.contextValues : null;
+		if (next === null && previous === null) continue;
+		for (const context of next?.keys() ?? []) {
+			if (
+				previous === null ||
+				!previous.has(context) ||
+				!Object.is(previous.get(context), next!.get(context))
+			) {
+				changed.add(context);
+			}
+		}
+		for (const context of previous?.keys() ?? []) {
+			if (next === null || !next.has(context)) changed.add(context);
+		}
+	}
+	return changed;
+}
+
 // Whether a committed owner subtree can be adopted without re-rendering: no
 // pending hook updates, no active boundary episode, no retained-hidden
 // content, no warm-plan component, and no HMR revision drift anywhere below.
@@ -2998,6 +3143,8 @@ function executeOwner(
 		if (renderCount > 0) resetDraftChildren(owner);
 		owner.seenEffects = [];
 		owner.children = [];
+		owner.componentList = null;
+		owner.preserveChildren = false;
 		owner.retainedChildren = null;
 		owner.claimedChildren = new Set();
 		owner.sequentialClaimCursor = 0;
@@ -3243,6 +3390,8 @@ function disposeUncommittedDraft(owner: DraftOwner): void {
 function resetDraftChildren(owner: DraftOwner): void {
 	for (const child of owner.children) disposeUncommittedDraft(child);
 	owner.children = [];
+	owner.componentList = null;
+	owner.preserveChildren = false;
 	owner.retainedChildren = null;
 	owner.claimedChildren = new Set();
 	owner.sequentialClaimCursor = 0;
@@ -3256,6 +3405,8 @@ function retainCommittedOwnerTree(owner: DraftOwner): void {
 	owner.contextValues =
 		owner.record.contextValues === null ? null : new Map(owner.record.contextValues);
 	owner.children = [];
+	owner.componentList = null;
+	owner.preserveChildren = false;
 	owner.retainedChildren = null;
 	owner.claimedChildren = new Set(owner.record.children);
 	owner.sequentialClaimCursor = 0;
@@ -3565,6 +3716,171 @@ function materializeRawUniversalListValue(
 	);
 }
 
+function retainCommittedComponentList(
+	parent: DraftOwner,
+	record: UniversalOwnerRecord,
+): BlueprintNode[] {
+	const attempt = currentAttempt();
+	parent.claimedChildren.add(record);
+	(parent.retainedChildren ??= []).push({ record, position: parent.children.length });
+	attempt.retainedCount++;
+	return [
+		{
+			kind: 'range',
+			key: record.range!.key,
+			owner: record,
+			retained: record.range!,
+			children: [],
+		},
+	];
+}
+
+function materializeStableComponentList(
+	list: UniversalForValue,
+	expectedRenderer: string,
+	path: readonly unknown[],
+): BlueprintNode[] {
+	const attempt = currentAttempt();
+	const parent = CURRENT_OWNER!;
+	const listPath = [...path, 'component-for'];
+	const rowPath = [...listPath, 'output'];
+	const candidate = findClaimableChildRecord(parent, null, listPath, null);
+	const committed = candidate?.componentList ?? null;
+	if (
+		candidate !== undefined &&
+		committed !== null &&
+		attempt.retainEligible &&
+		candidate.mounted &&
+		!candidate.disposed &&
+		candidate.dirtyEpoch !== attempt.dirtyEpoch &&
+		candidate.visibility === 'visible' &&
+		parent.visibility === 'visible' &&
+		candidate.range !== null &&
+		candidate.range.owner === candidate &&
+		committed.source === list.items &&
+		depsEqual(committed.deps, list.componentRows!)
+	) {
+		const affected = new Map<UniversalKey, CommittedComponentListRow>();
+		for (const context of visibleChangedAncestorContexts(parent)) {
+			const rows = committed.contextRows.get(context);
+			if (rows === undefined) continue;
+			const value = readOwnerContext(parent, context, false);
+			for (const [rowKey, previous] of rows) {
+				if (!Object.is(previous.value, value)) affected.set(rowKey, previous.row);
+			}
+		}
+		if (affected.size === 0) return retainCommittedComponentList(parent, candidate);
+
+		const rows = [...affected]
+			.map(([rowKey, row]) => ({ key: rowKey, row }))
+			.sort((left, right) => left.row.index - right.row.index);
+		if (
+			rows.every(({ row }) => {
+				const record = row.owner;
+				return (
+					record.component !== null &&
+					record.componentProps !== null &&
+					record.range !== null &&
+					record.range.owner === record &&
+					record.mounted &&
+					!record.disposed &&
+					universalComponentRevision(record.component) === record.componentRevision
+				);
+			})
+		) {
+			const owner = adoptChildOwner(parent, candidate, null, listPath, null);
+			owner.preserveChildren = true;
+			// A suspension cannot replay from this partial owner tree. Mark the
+			// omitted rows exactly like explicit retained component subtrees so the
+			// boundary retry restarts from the complete list.
+			attempt.retainedCount++;
+			const output: BlueprintNode[] = [];
+			for (const { key: rowKey, row } of rows) {
+				const record = row.owner;
+				const component = record.component!;
+				const rowOwner = adoptChildOwner(owner, record, component, rowPath, rowKey);
+				rowOwner.componentRevision = universalComponentRevision(component);
+				const props = { ...record.componentProps };
+				rowOwner.componentProps = props;
+				const nodes = executeOwner(rowOwner, () => {
+					const rendered = component(props, componentContext(expectedRenderer));
+					return materializeValue(rendered, expectedRenderer, null, [...rowPath, 'output']);
+				});
+				output.push(...ownerRange(rowOwner, nodes));
+			}
+			owner.componentList = {
+				source: list.items,
+				deps: list.componentRows!,
+				rows: rows.map(({ key: rowKey, row }) => ({
+					key: rowKey,
+					owner: row.owner,
+					previous: row,
+				})),
+				previous: committed,
+			};
+			return [
+				{
+					kind: 'range',
+					key: owner.record.rangeKey,
+					owner: owner.record,
+					children: output,
+					sparseComponentList: committed,
+				},
+			];
+		}
+	}
+
+	const owner =
+		candidate === undefined
+			? claimChildOwner(parent, null, listPath, null)
+			: adoptChildOwner(parent, candidate, null, listPath, null);
+	const output = executeOwner(owner, () => {
+		const lazyOwnerScope: LazyLeafOwnerScope = {
+			attempt,
+			parent: owner,
+			identityPath: listPath,
+			key: 0,
+			owner: null,
+		};
+		const keys = new Set<UniversalKey>();
+		const nodes: BlueprintNode[] = [];
+		const stagedRows: { key: UniversalKey; owner: UniversalOwnerRecord }[] = [];
+		let index = 0;
+		for (const item of list.items) {
+			const itemIndex = index++;
+			const itemKey = list.key(item, itemIndex);
+			if (keys.has(itemKey)) throw new Error(`Duplicate universal list key ${String(itemKey)}.`);
+			keys.add(itemKey);
+			const rendered = renderLazyLeafItem(lazyOwnerScope, list.render, item, itemIndex, itemKey);
+			const component = rendered as UniversalComponentValue;
+			if (
+				lazyOwnerScope.owner !== null ||
+				component?.$$kind !== UNIVERSAL_COMPONENT_VALUE ||
+				component.renderer !== expectedRenderer ||
+				component.hasKey
+			) {
+				throw new Error('A compiler-certified stable component list produced an invalid row.');
+			}
+			const keyed: UniversalComponentValue = { ...component, key: itemKey, hasKey: true };
+			const rowNodes = materializeComponentValue(keyed, expectedRenderer, rowPath);
+			const rowOwner = rowNodes[0]?.kind === 'range' ? rowNodes[0].owner : undefined;
+			if (rowOwner === undefined) {
+				throw new Error('A compiler-certified stable component list produced an ownerless row.');
+			}
+			stagedRows.push({ key: itemKey, owner: rowOwner });
+			nodes.push(...rowNodes);
+		}
+		owner.componentList = {
+			source: list.items,
+			deps: list.componentRows!,
+			rows: stagedRows,
+			previous: null,
+		};
+		return nodes;
+	});
+	return ownerRange(owner, output);
+}
+
 function materializeValue(
 	value: unknown,
 	expectedRenderer: string,
@@ -3706,6 +4022,13 @@ function materializeValue(
 			list.componentScope === true &&
 			currentAttempt().root.driverCapabilities().templateProgramRuns === true &&
 			CURRENT_OWNER?.visibility === 'visible';
+		if (
+			list.componentScope === true &&
+			list.componentRows !== undefined &&
+			CURRENT_OWNER?.visibility === 'visible'
+		) {
+			return materializeStableComponentList(list, expectedRenderer, path);
+		}
 		if (
 			list.ownerless &&
 			list.compact &&
@@ -5074,6 +5397,84 @@ function logicalTreeFeatures(record: LogicalRecord): number {
 		}
 	});
 	return features;
+}
+
+function addCommittedComponentListContext(
+	list: CommittedComponentList,
+	key: UniversalKey,
+	row: CommittedComponentListRow,
+	context: UniversalContext<any>,
+	value: unknown,
+): void {
+	let rows = list.contextRows.get(context);
+	if (rows === undefined) {
+		rows = new Map();
+		list.contextRows.set(context, rows);
+	}
+	rows.set(key, { row, value });
+}
+
+function publishDraftComponentList(owner: DraftOwner): boolean {
+	const staged = owner.componentList;
+	if (staged === null) return true;
+	if (staged.previous !== null) {
+		const updates: {
+			key: UniversalKey;
+			row: CommittedComponentListRow;
+			reads: Map<UniversalContext<any>, unknown> | null;
+		}[] = [];
+		for (const stagedRow of staged.rows) {
+			const row = stagedRow.previous;
+			const reads = committedMemoContextReads(stagedRow.owner);
+			if (row === undefined || row.owner !== stagedRow.owner || reads === undefined) return false;
+			updates.push({ key: stagedRow.key, row, reads });
+		}
+		for (const update of updates) {
+			for (const context of update.row.contextReads?.keys() ?? []) {
+				const rows = staged.previous.contextRows.get(context);
+				rows?.delete(update.key);
+				if (rows?.size === 0) staged.previous.contextRows.delete(context);
+			}
+			update.row.contextReads = update.reads;
+			for (const [context, value] of update.reads ?? []) {
+				addCommittedComponentListContext(staged.previous, update.key, update.row, context, value);
+			}
+		}
+		owner.record.componentList = staged.previous;
+		return true;
+	}
+
+	if (
+		owner.record.range === null ||
+		logicalTreeFeatures(owner.record.range) !== 0 ||
+		owner.record.children.length !== staged.rows.length
+	) {
+		owner.record.componentList = null;
+		return false;
+	}
+	const list: CommittedComponentList = {
+		source: staged.source,
+		deps: staged.deps,
+		contextRows: new Map(),
+	};
+	for (let index = 0; index < staged.rows.length; index++) {
+		const stagedRow = staged.rows[index];
+		if (owner.record.children[index] !== stagedRow.owner) {
+			owner.record.componentList = null;
+			return false;
+		}
+		const reads = committedMemoContextReads(stagedRow.owner);
+		if (reads === undefined) {
+			owner.record.componentList = null;
+			return false;
+		}
+		const row: CommittedComponentListRow = { owner: stagedRow.owner, index, contextReads: reads };
+		for (const [context, value] of reads ?? []) {
+			addCommittedComponentListContext(list, stagedRow.key, row, context, value);
+		}
+	}
+	owner.record.componentList = list;
+	return true;
 }
 
 function ownerTreeHasWarmPlan(owner: UniversalOwnerRecord): boolean {
@@ -9333,6 +9734,16 @@ class UniversalRootImpl<Container, PublicInstance>
 			// must be disposed just like render-time failures, never left as live
 			// handles to a tree that had no accepted transaction.
 			this.discardDraftOwners(attempt.owners);
+			if (error === SPARSE_COMPONENT_LIST_FALLBACK && allowRetain) {
+				return this.prepareWithReplay(
+					component,
+					props,
+					replayEntries,
+					transitionBatches,
+					transitionRender,
+					false,
+				);
+			}
 			throw error;
 		}
 	}
@@ -9488,6 +9899,348 @@ class UniversalRootImpl<Container, PublicInstance>
 			else expanded.push({ kind: 'range', key: child.key, children: hosts });
 		}
 		if (expanded !== null) node.children = expanded;
+	}
+
+	private tryCreateSparseComponentListTransaction(
+		blueprint: BlueprintRange,
+		attempt: RenderAttempt,
+		component: UniversalComponent<any>,
+		props: any,
+	): UniversalTransactionImpl<Container, PublicInstance> | null {
+		if (
+			this.owner === null ||
+			attempt.owner.record !== this.owner ||
+			this.treeFeatures !== 0 ||
+			attempt.treeFeatures !== 0 ||
+			attempt.scope !== null ||
+			attempt.retryThenables.size !== 0 ||
+			attempt.replayEntries.length !== 0 ||
+			attempt.transitionBatches.size !== 0 ||
+			attempt.transitionRender ||
+			this.bridge !== null
+		) {
+			return null;
+		}
+
+		const hostRecords: LogicalRecord[] = [];
+		const hostBlueprints: BlueprintHost[] = [];
+		const collapsed: {
+			record: LogicalRecord;
+			previous: CommittedCollapsedTemplate;
+			next: BlueprintCollapsedTemplate;
+		}[] = [];
+		const draftByRecord = new Map(attempt.owners.map((draft) => [draft.record, draft]));
+		let sparseCount = 0;
+		const pairNode = (record: LogicalRecord, next: BlueprintNode): boolean => {
+			if (next.kind === 'range' && next.retained !== undefined) {
+				return next.retained === record;
+			}
+			if (!sameRecordShape(record, next) || record.kind === 'portal') return false;
+			if (record.kind === 'range') {
+				if (next.kind !== 'range' || record.owner !== (next.owner ?? null)) return false;
+				if (next.sparseComponentList !== undefined) {
+					const stagedList =
+						record.owner === null ? null : draftByRecord.get(record.owner)?.componentList;
+					if (
+						record.owner?.componentList !== next.sparseComponentList ||
+						record.owner.range !== record ||
+						stagedList?.previous !== next.sparseComponentList ||
+						stagedList.rows.length !== next.children.length
+					) {
+						return false;
+					}
+					sparseCount++;
+					const seen = new Set<LogicalRecord>();
+					for (let index = 0; index < next.children.length; index++) {
+						const child = next.children[index];
+						const rowOwner = child.kind === 'range' ? child.owner : undefined;
+						const stagedRow = stagedList.rows[index];
+						const row = stagedRow?.previous;
+						const rowRange = row?.owner.range;
+						if (
+							row === undefined ||
+							stagedRow.owner !== rowOwner ||
+							row.owner !== rowOwner ||
+							rowRange === null ||
+							rowRange === undefined ||
+							rowRange.parent !== record ||
+							seen.has(rowRange) ||
+							!pairNode(rowRange, child)
+						) {
+							return false;
+						}
+						seen.add(rowRange);
+					}
+					return true;
+				}
+				if (record.children.length !== next.children.length) return false;
+				for (let index = 0; index < record.children.length; index++) {
+					if (!pairNode(record.children[index], next.children[index])) return false;
+				}
+				return true;
+			}
+			if (next.kind !== 'host') return false;
+			if (
+				record.owner !== next.owner ||
+				record.ref != null ||
+				next.ref != null ||
+				record.events.size !== 0 ||
+				next.events.size !== 0 ||
+				record.lifecycles.size !== 0 ||
+				next.lifecycles.size !== 0 ||
+				record.localCallbacks.size !== 0 ||
+				next.localCallbacks.size !== 0 ||
+				record.visibility !== 'visible' ||
+				next.visibility !== 'visible'
+			) {
+				return false;
+			}
+			if (record.collapsedTemplate !== undefined || next.collapsedTemplate !== undefined) {
+				const previous = record.collapsedTemplate;
+				const following = next.collapsedTemplate;
+				if (
+					previous === undefined ||
+					following === undefined ||
+					previous.prepared === undefined ||
+					previous.firstId === undefined ||
+					previous.values === undefined ||
+					following.prepared !== previous.prepared ||
+					following.values === undefined ||
+					previous.events.length !== 0 ||
+					following.prepared.events.length !== 0 ||
+					record.children.length !== 0 ||
+					next.children.length !== 0
+				) {
+					return false;
+				}
+				collapsed.push({ record, previous, next: following });
+				return true;
+			}
+			hostRecords.push(record);
+			hostBlueprints.push(next);
+			if (record.children.length !== next.children.length) return false;
+			for (let index = 0; index < record.children.length; index++) {
+				if (!pairNode(record.children[index], next.children[index])) return false;
+			}
+			return true;
+		};
+		if (!pairNode(this.rootRecord, blueprint) || sparseCount === 0) {
+			return null;
+		}
+
+		const mergeOwnerChildren = (draft: DraftOwner): UniversalOwnerRecord[] | null => {
+			if (draft.preserveChildren) return draft.record.children;
+			if (draft.retainedChildren === null) return draft.children.map((child) => child.record);
+			const merged: UniversalOwnerRecord[] = [];
+			let retainedIndex = 0;
+			for (let index = 0; index <= draft.children.length; index++) {
+				while (
+					retainedIndex < draft.retainedChildren.length &&
+					draft.retainedChildren[retainedIndex].position === index
+				) {
+					merged.push(draft.retainedChildren[retainedIndex++].record);
+				}
+				if (index < draft.children.length) merged.push(draft.children[index].record);
+			}
+			return retainedIndex === draft.retainedChildren.length ? merged : null;
+		};
+		const acceptedChildren = new Map<DraftOwner, UniversalOwnerRecord[]>();
+		for (const draft of attempt.owners) {
+			const record = draft.record;
+			const children = mergeOwnerChildren(draft);
+			if (
+				children === null ||
+				!record.mounted ||
+				record.disposed ||
+				record.visibility !== 'visible' ||
+				draft.visibility !== 'visible' ||
+				record.effectOrder.length !== 0 ||
+				draft.seenEffects.length !== 0 ||
+				record.boundaryThenable !== null ||
+				draft.boundaryThenable !== null ||
+				(record.isBoundary && record.hasBoundaryError) ||
+				(draft.isBoundary && draft.hasBoundaryError)
+			) {
+				return null;
+			}
+			if (!draft.preserveChildren) {
+				if (
+					record.children.length !== children.length ||
+					children.some((child, index) => record.children[index] !== child)
+				) {
+					return null;
+				}
+			}
+			for (const applied of draft.appliedUpdates.values()) {
+				if (applied.lane || applied.queue.batches !== undefined) {
+					return null;
+				}
+			}
+			if (draft.componentList?.previous !== null) {
+				for (const row of draft.children) {
+					if (draftMemoContextReads(row) === undefined) return null;
+				}
+			}
+			acceptedChildren.set(draft, children);
+		}
+
+		const commands: UniversalHostCommand[] = [];
+		const same = this.widenedPropEquality;
+		const stageUpdate = (
+			type: string,
+			id: number,
+			previous: Readonly<Record<string, unknown>>,
+			next: Record<string, unknown>,
+		): void => {
+			const kind = this.driver.updates?.classify(type, previous, next) ?? 'update';
+			if (kind === 'update') {
+				commands.push({ op: 'update', id, props: Object.freeze(next) });
+			} else if (kind === 'recreate') {
+				commands.push({ op: 'recreate', id, type, props: Object.freeze(next) });
+			} else {
+				throw new TypeError(
+					`Universal update classifier returned invalid kind ${JSON.stringify(kind)}.`,
+				);
+			}
+		};
+		for (let index = 0; index < hostRecords.length; index++) {
+			const record = hostRecords[index];
+			const next = hostBlueprints[index];
+			if (!shallowPropsEqual(record.props, next.props, same)) {
+				stageUpdate(next.type, record.id, record.props, next.props);
+			}
+		}
+		for (const update of collapsed) {
+			const program = update.previous.prepared!;
+			const changedNodes = new Set<number>();
+			for (let valueIndex = 0; valueIndex < program.values.length; valueIndex++) {
+				const binding = program.values[valueIndex];
+				const previousValue = update.previous.values![valueIndex];
+				const nextValue = update.next.values![valueIndex];
+				if (
+					Object.is(previousValue, nextValue) ||
+					(same !== null && same(binding.name, previousValue, nextValue))
+				) {
+					continue;
+				}
+				const node = binding.node;
+				if (changedNodes.has(node)) continue;
+				changedNodes.add(node);
+				const previousProps =
+					node === 0
+						? update.record.props
+						: materializePreparedCollapsedHostProps(program, update.previous.values!, node);
+				const nextProps = materializePreparedCollapsedHostProps(program, update.next.values!, node);
+				stageUpdate(
+					program.wire.nodes[node].type,
+					update.previous.firstId! + node,
+					previousProps,
+					nextProps,
+				);
+			}
+		}
+
+		const batch = freezeUniversalHostBatch(this.renderer, this.nextBatchVersion++, commands);
+		const identity = this.transportIdentity(batch.version);
+		const prepareHost = (value: UniversalHostBatch) =>
+			this.driver.prepareBatch(this.container, value, {
+				invokeLocalCallback: (listener, args) => this.invokeLocalCallback(listener, args),
+			});
+		let sync: UniversalPreparedHostBatch | null = null;
+		let async: UniversalAsyncPreparedHostBatch | null = null;
+		if (this.transport?.mode === 'async') {
+			async = this.transport.prepareBatch(this.container, batch, identity);
+		} else {
+			sync =
+				this.transport === null
+					? prepareHost(batch)
+					: this.transport.prepareBatch(this.container, batch, prepareHost);
+		}
+		const prepared = sync ?? async;
+		if (!isValidPreparedHostBatch(prepared)) {
+			throw new TypeError('A universal host driver must return a valid prepared batch token.');
+		}
+		const changedContexts = new Set<UniversalContext<any>>();
+		for (const draft of attempt.owners) {
+			const previous = draft.record.contextValues;
+			if (previous === null || draft.contextValues === null) continue;
+			for (const [context, value] of draft.contextValues) {
+				if (previous.has(context) && !Object.is(previous.get(context), value)) {
+					changedContexts.add(context);
+				}
+			}
+		}
+		return new UniversalTransactionImpl(
+			this,
+			batch,
+			sync === null ? null : () => sync!.apply(),
+			async === null ? null : (acknowledge) => async!.apply(acknowledge),
+			identity,
+			() => {
+				for (let index = 0; index < hostRecords.length; index++) {
+					hostRecords[index].props = hostBlueprints[index].props;
+				}
+				for (const update of collapsed) {
+					update.record.props = materializePreparedCollapsedHostProps(
+						update.previous.prepared!,
+						update.next.values!,
+						0,
+					);
+					(update.previous as { values: readonly UniversalHostTemplateProgramValue[] }).values =
+						update.next.values!;
+				}
+				for (const draft of attempt.owners) {
+					const record = draft.record;
+					record.componentProps = draft.componentProps;
+					record.componentRevision = draft.componentRevision;
+					record.parent = draft.parent?.record ?? null;
+					record.hooks = draft.hooks;
+					record.effectOrder = [];
+					if (!draft.preserveChildren) record.children = acceptedChildren.get(draft)!;
+					record.contextValues = draft.contextValues;
+					record.isBoundary = draft.isBoundary;
+					record.canHandleSuspense = draft.canHandleSuspense;
+					record.boundaryError = draft.boundaryError;
+					record.hasBoundaryError = draft.hasBoundaryError;
+					record.boundaryThenable = draft.boundaryThenable;
+					record.visibility = draft.visibility;
+					record.mounted = true;
+					record.disposed = false;
+					for (const [slot, applied] of draft.appliedUpdates) {
+						const queue = record.updates.get(slot);
+						if (queue !== applied.queue || applied.lane) continue;
+						queue.splice(0, applied.consumed);
+						if (queue.length === 0) record.updates.delete(slot);
+					}
+					for (const hook of record.hooks.values()) {
+						if (hook.kind === 'effect-event') {
+							hook.cell.impl = hook.next;
+							hook.cell.active = true;
+						}
+					}
+				}
+				for (const draft of attempt.owners) {
+					if (!publishDraftComponentList(draft)) draft.record.componentList = null;
+				}
+				this.owner = attempt.owner.record;
+				this.lastComponent = component;
+				this.lastProps = props;
+				this.retryRenderInput = null;
+				this.urgentBoundarySuspension = null;
+				this.bridgeContextReads = attempt.bridgeContextReads;
+				this.nextUniversalId = attempt.nextUniversalId;
+				this.treeFeatures = 0;
+				for (const context of changedContexts) context.$$version++;
+			},
+			() => prepared.afterAccept?.(),
+			noopUniversalCommitTask,
+			noopUniversalCommitTask,
+			noopUniversalCommitTask,
+			null,
+			() => prepared.abort(),
+			() => this.discardDraftOwners(attempt.owners),
+			attempt.transitionBatches,
+		);
 	}
 
 	private tryCreateCompactTemplateUpdateTransaction(
@@ -10095,6 +10848,20 @@ class UniversalRootImpl<Container, PublicInstance>
 		component: UniversalComponent<any>,
 		props: any,
 	): UniversalTransactionImpl<Container, PublicInstance> {
+		const containsSparseComponentList = (node: BlueprintNode): boolean => {
+			if (node.kind === 'range' && node.sparseComponentList !== undefined) return true;
+			return node.children.some(containsSparseComponentList);
+		};
+		if (containsSparseComponentList(blueprint)) {
+			const sparse = this.tryCreateSparseComponentListTransaction(
+				blueprint,
+				attempt,
+				component,
+				props,
+			);
+			if (sparse !== null) return sparse;
+			throw SPARSE_COMPONENT_LIST_FALLBACK;
+		}
 		const compactTemplateUpdate = this.tryCreateCompactTemplateUpdateTransaction(
 			blueprint,
 			attempt,
@@ -12070,6 +12837,7 @@ class UniversalRootImpl<Container, PublicInstance>
 					owner.disposed = true;
 					owner.mounted = false;
 					owner.componentProps = null;
+					owner.componentList = null;
 					owner.range = null;
 					owner.updates.clear();
 				}
@@ -12082,7 +12850,10 @@ class UniversalRootImpl<Container, PublicInstance>
 					}
 					record.hooks = draft.hooks;
 					record.effectOrder = [...draft.seenEffects];
-					if (draft.retainedChildren === null) {
+					if (draft.preserveChildren) {
+						// A sparse component-list commit never changes its keyed row owners.
+						// Only the drafted descendants publish new hooks and host props.
+					} else if (draft.retainedChildren === null) {
 						record.children = draft.children.map((child) => child.record);
 					} else {
 						// Interleave adopted committed children back at the drafted-child
@@ -12156,6 +12927,7 @@ class UniversalRootImpl<Container, PublicInstance>
 						}
 					}
 				}
+				for (const draft of draftOwnersParentFirst) publishDraftComponentList(draft);
 				if (!scoped) this.owner = attempt.owner.record;
 				this.lastComponent = component;
 				this.lastProps = props;

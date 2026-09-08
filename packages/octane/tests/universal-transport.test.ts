@@ -1592,6 +1592,333 @@ describe('transported retained component subtrees', () => {
 		expect(effects).toEqual(['mount:stable', 'cleanup:stable']);
 	});
 
+	it('replays only context-indexed rows of a compiler-certified stable component list', async () => {
+		const { container, loopback, root } = transportRoot();
+		const Context = createContext('light');
+		const rows = [
+			{ id: 1, consumes: false },
+			{ id: 2, consumes: true },
+			{ id: 3, consumes: false },
+		] as const;
+		let keyCalls = 0;
+		let bodyCalls = 0;
+		let rowRenders = 0;
+		let consumerRenders = 0;
+		let setTheme!: (theme: string) => void;
+		const Consumer = memo(
+			defineUniversalComponent(RENDERER, () => {
+				consumerRenders++;
+				return universalValue(itemPlan, [
+					universalProps([
+						['set', 'label', 'consumer'],
+						['set', 'theme', useContext(Context)],
+					]),
+				]);
+			}),
+		);
+		const Row = memo(
+			defineUniversalComponent(RENDERER, (props: { row: (typeof rows)[number] }) => {
+				rowRenders++;
+				return props.row.consumes
+					? universalComponent(RENDERER, Consumer, universalProps([]))
+					: universalValue(itemPlan, [
+							universalProps([
+								['set', 'label', `plain-${props.row.id}`],
+								['set', 'theme', 'none'],
+							]),
+						]);
+			}),
+		);
+		const Scene = defineUniversalComponent(
+			RENDERER,
+			(props: { source: readonly (typeof rows)[number][]; theme?: string }) => {
+				const [theme, updateTheme] = useState('light', 'theme');
+				setTheme = updateTheme;
+				return universalContext(
+					Context,
+					props.theme ?? theme,
+					universalFor(
+						props.source,
+						(row) => {
+							keyCalls++;
+							return row.id;
+						},
+						(row) => {
+							bodyCalls++;
+							return universalComponent(RENDERER, Row, universalProps([['set', 'row', row]]));
+						},
+						null,
+						false,
+						false,
+						undefined,
+						undefined,
+						undefined,
+						true,
+						undefined,
+						[],
+					),
+				);
+			},
+		);
+
+		await root.renderAsync(Scene, { source: rows });
+		await root.flushTransport();
+		expect([keyCalls, bodyCalls, rowRenders, consumerRenders]).toEqual([3, 3, 3, 1]);
+		const [first, second, third] = [...container.host.children];
+		keyCalls = 0;
+		bodyCalls = 0;
+		rowRenders = 0;
+		consumerRenders = 0;
+		setTheme('dark');
+		await root.flushTransport();
+
+		expect([keyCalls, bodyCalls, rowRenders, consumerRenders]).toEqual([0, 0, 0, 1]);
+		expect(container.host.children).toEqual([first, second, third]);
+		expect(container.host.children.map((item) => item.props.theme)).toEqual([
+			'none',
+			'dark',
+			'none',
+		]);
+		expect(loopback.sentBatches.at(-1)?.commands).toHaveLength(1);
+
+		keyCalls = 0;
+		bodyCalls = 0;
+		consumerRenders = 0;
+		loopback.rejectNext('sparse context rollback');
+		await expect(root.renderAsync(Scene, { source: rows, theme: 'blue' })).rejects.toThrow(
+			'sparse context rollback',
+		);
+		expect([keyCalls, bodyCalls, consumerRenders]).toEqual([0, 0, 1]);
+		expect(container.host.children[1].props.theme).toBe('dark');
+
+		keyCalls = 0;
+		bodyCalls = 0;
+		consumerRenders = 0;
+		await root.renderAsync(Scene, { source: rows, theme: 'green' });
+		expect([keyCalls, bodyCalls, consumerRenders]).toEqual([0, 0, 1]);
+		expect(container.host.children[1].props.theme).toBe('green');
+
+		keyCalls = 0;
+		bodyCalls = 0;
+		await root.renderAsync(Scene, { source: [...rows], theme: 'green' });
+		expect([keyCalls, bodyCalls]).toEqual([3, 3]);
+		expect(container.host.children).toEqual([first, second, third]);
+
+		await root.unmountAsync();
+	});
+
+	it('falls back before transport when a context-indexed row changes host shape', async () => {
+		const { container, root } = transportRoot();
+		const Context = createContext('light');
+		const lightPlan = universalPlan(RENDERER, { kind: 'host', type: 'light', propsSlot: 0 });
+		const darkPlan = universalPlan(RENDERER, { kind: 'host', type: 'dark', propsSlot: 0 });
+		const rows = [{ id: 1 }, { id: 2 }] as const;
+		let keyCalls = 0;
+		let bodyCalls = 0;
+		let consumerRenders = 0;
+		const Consumer = memo(
+			defineUniversalComponent(RENDERER, () => {
+				consumerRenders++;
+				const theme = useContext(Context);
+				return universalValue(theme === 'light' ? lightPlan : darkPlan, [universalProps([])]);
+			}),
+		);
+		const Row = memo(
+			defineUniversalComponent(RENDERER, (props: { row: (typeof rows)[number] }) =>
+				props.row.id === 1
+					? universalComponent(RENDERER, Consumer, universalProps([]))
+					: universalValue(itemPlan, [universalProps([['set', 'label', 'plain']])]),
+			),
+		);
+		const Scene = defineUniversalComponent(RENDERER, (props: { theme: string }) =>
+			universalContext(
+				Context,
+				props.theme,
+				universalFor(
+					rows,
+					(row) => {
+						keyCalls++;
+						return row.id;
+					},
+					(row) => {
+						bodyCalls++;
+						return universalComponent(RENDERER, Row, universalProps([['set', 'row', row]]));
+					},
+					null,
+					false,
+					false,
+					undefined,
+					undefined,
+					undefined,
+					true,
+					undefined,
+					[],
+				),
+			),
+		);
+
+		await root.renderAsync(Scene, { theme: 'light' });
+		expect(container.host.children.map((child) => child.type)).toEqual(['light', 'item']);
+		keyCalls = 0;
+		bodyCalls = 0;
+		consumerRenders = 0;
+		await root.renderAsync(Scene, { theme: 'dark' });
+
+		// The sparse attempt discovers the type change without writing. Its cold
+		// retry evaluates the complete list once and commits through the ordinary
+		// keyed reconciler.
+		expect([keyCalls, bodyCalls, consumerRenders]).toEqual([2, 2, 2]);
+		expect(container.host.children.map((child) => child.type)).toEqual(['dark', 'item']);
+		await root.unmountAsync();
+	});
+
+	it('restarts a suspended sparse row from the complete component list', async () => {
+		const { container, root } = transportRoot();
+		const Context = createContext('light');
+		const rows = [{ id: 1 }, { id: 2 }] as const;
+		let keyCalls = 0;
+		let bodyCalls = 0;
+		let pending: Promise<string> | null = null;
+		let resolve!: (value: string) => void;
+		const Consumer = memo(
+			defineUniversalComponent(RENDERER, () => {
+				const theme = useContext(Context);
+				return universalValue(itemPlan, [
+					universalProps([
+						['set', 'label', 'consumer'],
+						['set', 'theme', pending === null ? theme : use(pending)],
+					]),
+				]);
+			}),
+		);
+		const Row = memo(
+			defineUniversalComponent(RENDERER, (props: { row: (typeof rows)[number] }) =>
+				props.row.id === 1
+					? universalComponent(RENDERER, Consumer, universalProps([]))
+					: universalValue(itemPlan, [universalProps([['set', 'label', 'plain']])]),
+			),
+		);
+		const Scene = defineUniversalComponent(RENDERER, (props: { theme: string }) =>
+			universalContext(
+				Context,
+				props.theme,
+				universalFor(
+					rows,
+					(row) => {
+						keyCalls++;
+						return row.id;
+					},
+					(row) => {
+						bodyCalls++;
+						return universalComponent(RENDERER, Row, universalProps([['set', 'row', row]]));
+					},
+					null,
+					false,
+					false,
+					undefined,
+					undefined,
+					undefined,
+					true,
+					undefined,
+					[],
+				),
+			),
+		);
+
+		await root.renderAsync(Scene, { theme: 'light' });
+		keyCalls = 0;
+		bodyCalls = 0;
+		pending = new Promise<string>((done) => {
+			resolve = done;
+		});
+		const suspended = await root.renderAsync(Scene, { theme: 'dark' });
+		expect(suspended.status).toBe('suspended');
+		// The first sparse replay does not enumerate. Suspension discards that
+		// partial owner tree and does not publish it while the thenable is pending.
+		expect([keyCalls, bodyCalls]).toEqual([0, 0]);
+		expect(container.host.children[0].props.theme).toBe('light');
+
+		resolve('loaded');
+		await pending;
+		await Promise.resolve();
+		await Promise.resolve();
+		await root.flushTransport();
+		// No sparse replay state survives suspension, so wake-up resumes from the
+		// complete keyed list and rebuilds a valid descriptor.
+		expect([keyCalls, bodyCalls]).toEqual([2, 2]);
+		expect(container.host.children[0].props.theme).toBe('loaded');
+		await root.unmountAsync();
+	});
+
+	it('keeps effect-owning stable rows on the complete-list fallback', async () => {
+		const { container, root } = transportRoot();
+		const Context = createContext('light');
+		const rows = [{ id: 1 }, { id: 2 }] as const;
+		const effects: string[] = [];
+		let keyCalls = 0;
+		let bodyCalls = 0;
+		const Consumer = memo(
+			defineUniversalComponent(RENDERER, () =>
+				universalValue(itemPlan, [
+					universalProps([
+						['set', 'label', 'consumer'],
+						['set', 'theme', useContext(Context)],
+					]),
+				]),
+			),
+		);
+		const Row = memo(
+			defineUniversalComponent(RENDERER, (props: { row: (typeof rows)[number] }) => {
+				useEffect(() => {
+					effects.push(`mount:${props.row.id}`);
+					return () => effects.push(`cleanup:${props.row.id}`);
+				}, []);
+				return props.row.id === 1
+					? universalComponent(RENDERER, Consumer, universalProps([]))
+					: universalValue(itemPlan, [universalProps([['set', 'label', 'plain']])]);
+			}),
+		);
+		const Scene = defineUniversalComponent(RENDERER, (props: { theme: string }) =>
+			universalContext(
+				Context,
+				props.theme,
+				universalFor(
+					rows,
+					(row) => {
+						keyCalls++;
+						return row.id;
+					},
+					(row) => {
+						bodyCalls++;
+						return universalComponent(RENDERER, Row, universalProps([['set', 'row', row]]));
+					},
+					null,
+					false,
+					false,
+					undefined,
+					undefined,
+					undefined,
+					true,
+					undefined,
+					[],
+				),
+			),
+		);
+
+		await root.renderAsync(Scene, { theme: 'light' });
+		await root.flushTransport();
+		expect(effects).toEqual(['mount:1', 'mount:2']);
+		keyCalls = 0;
+		bodyCalls = 0;
+		await root.renderAsync(Scene, { theme: 'dark' });
+		expect([keyCalls, bodyCalls]).toEqual([2, 2]);
+		expect(container.host.children[0].props.theme).toBe('dark');
+		expect(effects).toEqual(['mount:1', 'mount:2']);
+
+		await root.unmountAsync();
+		expect(effects.slice(2).toSorted()).toEqual(['cleanup:1', 'cleanup:2']);
+	});
+
 	it('reorders retained keyed children without changing their hosts, effects, or listeners', async () => {
 		const { root, Scene, rendered, effects, items, poke } = createScene();
 		await root.renderAsync(Scene, undefined);

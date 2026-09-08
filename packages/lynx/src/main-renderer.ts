@@ -690,6 +690,8 @@ export function universalFor<T>(
 	_leafPlan?: UniversalPlan,
 	_leafSignature?: string,
 	componentScope = false,
+	_keyedSelection?: readonly [value: unknown, deps: readonly unknown[], itemProp: string],
+	_componentRows?: readonly unknown[],
 ): UniversalRenderable {
 	return {
 		$$kind: UNIVERSAL_FOR,

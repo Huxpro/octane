@@ -2052,7 +2052,19 @@ function collectComponentNames(ast) {
 /** Same-module function components whose binding cannot change after setup. */
 function collectImmutableLocalComponents(ast) {
 	const names = new Set();
+	const memoImports = new Set();
 	for (const statement of ast.body ?? []) {
+		if (statement.type === 'ImportDeclaration' && statement.source?.value === 'octane') {
+			for (const specifier of statement.specifiers ?? []) {
+				if (
+					specifier.type === 'ImportSpecifier' &&
+					(specifier.imported?.name ?? specifier.imported?.value) === 'memo' &&
+					specifier.local?.type === 'Identifier'
+				) {
+					memoImports.add(specifier.local.name);
+				}
+			}
+		}
 		const declaration =
 			statement.type === 'ExportNamedDeclaration' || statement.type === 'ExportDefaultDeclaration'
 				? statement.declaration
@@ -2069,6 +2081,36 @@ function collectImmutableLocalComponents(ast) {
 					binding.init?.type === 'FunctionExpression')
 			) {
 				names.add(binding.id.name);
+			}
+		}
+	}
+	// A const wrapper produced by the real Octane `memo` import is as immutable
+	// as the local component it wraps. Resolve this after collecting the whole
+	// module so declaration order does not matter; iterate to admit nested memo
+	// wrappers without admitting arbitrary calls or imported live components.
+	let added = true;
+	while (added) {
+		added = false;
+		for (const statement of ast.body ?? []) {
+			const declaration =
+				statement.type === 'ExportNamedDeclaration' ? statement.declaration : statement;
+			if (declaration?.type !== 'VariableDeclaration' || declaration.kind !== 'const') continue;
+			for (const binding of declaration.declarations ?? []) {
+				const call = binding.init;
+				const wrapped = call?.arguments?.[0];
+				if (
+					binding.id?.type === 'Identifier' &&
+					call?.type === 'CallExpression' &&
+					call.optional !== true &&
+					call.callee?.type === 'Identifier' &&
+					memoImports.has(call.callee.name) &&
+					wrapped?.type === 'Identifier' &&
+					names.has(wrapped.name) &&
+					!names.has(binding.id.name)
+				) {
+					names.add(binding.id.name);
+					added = true;
+				}
 			}
 		}
 	}
@@ -2751,6 +2793,55 @@ function keyedSelectionForComponent(node, component, state, itemBinding, indexBi
 		deps.push(capture.nodes[0]);
 	}
 	return { selected, deps, itemProp };
+}
+
+/**
+ * Prove that a component row can be reconstructed from its committed descriptor
+ * without evaluating the @for key or body again.
+ *
+ * This is deliberately stricter than component-scope lowering: every dynamic
+ * prop must be one direct identifier. The item and index are stable while the
+ * iterable identity is stable; every other identifier becomes an identity dep.
+ * Calls, member reads, and compound expressions stay on the ordinary path so a
+ * getter or authored side effect is never skipped.
+ */
+function stableComponentRowsForComponent(component, state, itemBinding, indexBinding) {
+	if (!state.sparseKeyedSelection || itemBinding.type !== 'Identifier') return null;
+	const componentName = component.openingElement?.name ?? component.name;
+	const trusted = state.immutableLocalComponents;
+	if (componentName?.type !== 'JSXIdentifier' || !trusted.names.has(componentName.name)) {
+		return null;
+	}
+	const componentBinding = trusted.lexical.resolveBinding(
+		trusted.lexical.nodeScopes.get(componentName) ?? trusted.lexical.rootScope,
+		componentName.name,
+	);
+	if (componentBinding?.scope !== trusted.lexical.rootScope) return null;
+
+	const directExpressions = new Set();
+	for (const attribute of component.openingElement?.attributes ?? component.attributes ?? []) {
+		const value = attribute.value;
+		if (value === null || value?.type === 'Literal') continue;
+		if (value?.type !== 'JSXExpressionContainer') return null;
+		const expression = unwrapFirstScreenExpression(value.expression);
+		if (expression?.type !== 'Identifier') return null;
+		directExpressions.add(expression);
+	}
+	const excluded = new Set([itemBinding.name, componentName.name]);
+	if (indexBinding?.type === 'Identifier') excluded.add(indexBinding.name);
+	const deps = [];
+	for (const capture of collectEntryCaptures(component, excluded)) {
+		if (
+			capture.nodes.length === 0 ||
+			capture.nodes.some(
+				(reference) => reference.type !== 'Identifier' || !directExpressions.has(reference),
+			)
+		) {
+			return null;
+		}
+		deps.push(capture.nodes[0]);
+	}
+	return deps;
 }
 
 function allocPlan(state, root, origin = null) {
@@ -3749,6 +3840,10 @@ function compileForAst(node, context, state) {
 		templateComponent === null
 			? null
 			: keyedSelectionForComponent(node, templateComponent, state, itemBinding, indexBinding);
+	const componentRows =
+		templateComponent === null
+			? null
+			: stableComponentRowsForComponent(templateComponent, state, itemBinding, indexBinding);
 	const compactHost =
 		host === null ? null : compileOwnerFreeForHostAst(host, state, itemBinding, indexBinding);
 	const compactComponent =
@@ -3812,6 +3907,17 @@ function compileForAst(node, context, state) {
 						),
 						b.literal(keyedSelection.itemProp),
 					]),
+					templateComponent,
+				),
+			);
+		}
+		if (componentRows !== null) {
+			if (keyedSelection === null) {
+				args.push(inheritGeneratedOrigin(b.unary('void', b.literal(0)), templateComponent));
+			}
+			args.push(
+				inheritGeneratedOrigin(
+					b.array(componentRows.map((dependency) => dynamicExpressionAst(dependency, state))),
 					templateComponent,
 				),
 			);

@@ -337,6 +337,7 @@ describe('component-owned Lynx template rows', () => {
 		});
 
 		expect(args[10]).toBeUndefined();
+		expect(args[11]).toBeUndefined();
 	});
 
 	it('certifies index-dependent props because retained rows carry their committed order', () => {
@@ -391,6 +392,51 @@ export function App({ rows, selected }) @{
 		expect(compileBoundary()).toContain(proof);
 		expect(compileBoundary({ dev: true })).not.toContain(proof);
 		expect(compileBoundary({ autoMemo: false })).not.toContain(proof);
+	});
+
+	it('certifies stable direct-prop component rows for context-indexed replay', () => {
+		const directSource = `
+			import { memo } from 'octane';
+			function Row({ row, depth, onRender }) @{ <view id={row.id} /> }
+			const MemoRow = memo(Row);
+			export function Scene(props) @{
+				const depth = props.depth;
+				const onRender = props.onRender;
+				@for (const row of props.rows; key row.id) {
+					<MemoRow row={row} depth={depth} onRender={onRender} />
+				}
+			}
+		`;
+		for (const renderer of [resolvedLynxRenderer, resolvedLynxMainThreadRenderer]) {
+			const args = compiledUniversalForArguments(directSource, { renderer });
+			expect(args[10]).toMatchObject({ type: 'UnaryExpression', operator: 'void' });
+			expect(args[11]).toMatchObject({
+				type: 'ArrayExpression',
+				elements: [
+					{ type: 'Identifier', name: 'depth' },
+					{ type: 'Identifier', name: 'onRender' },
+				],
+			});
+		}
+	});
+
+	it.each([
+		['a member read', 'depth={props.depth}'],
+		['a getter-capable item read', 'depth={row.depth}'],
+		['a call', 'depth={readDepth()}'],
+		['a compound expression', 'depth={depth + 1}'],
+	])('refuses stable-row replay for %s', (_label, expression) => {
+		const candidate = `
+			function Row({ row, depth }) @{ <view id={row.id} /> }
+			export function Scene(props) @{
+				const depth = props.depth;
+				@for (const row of props.rows; key row.id) {
+					<Row row={row} ${expression} />
+				}
+			}
+		`;
+		const args = compiledUniversalForArguments(candidate, { renderer: resolvedLynxRenderer });
+		expect(args[11]).toBeUndefined();
 	});
 
 	it('does not grant host template programs to the narrow main-thread capability', () => {
