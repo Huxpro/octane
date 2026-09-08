@@ -225,12 +225,8 @@ try {
 			);
 			expect(developmentMainThread).toContain('must match the template shape length.');
 			expect(developmentBackground).toContain('must match the template shape length.');
-			expect(developmentMainThread).toContain(
-				'dataset prop `data-` requires a non-empty key.',
-			);
-			expect(developmentBackground).toContain(
-				'dataset prop `data-` requires a non-empty key.',
-			);
+			expect(developmentMainThread).toContain('dataset prop `data-` requires a non-empty key.');
+			expect(developmentBackground).toContain('dataset prop `data-` requires a non-empty key.');
 			expect(developmentBackground).toMatch(/pathname=(?:\/|%2F)rsbuild-hmr/);
 			expect(developmentBackground).toContain('hot=true');
 			expect(developmentBackground).toContain('live-reload=true');
