@@ -1,0 +1,1914 @@
+{
+  "protocol": "octane-issue288-native-context-analysis-v1",
+  "generatedAt": "2026-09-08T02:56:25.803Z",
+  "quantiles": "nearest-rank over accepted samples; no retries or DNF removed",
+  "touch": {
+    "source": {
+      "path": "benchmarks/lynx-touch-frame/results/issue288-native-context-tap-frame-aries10-sparse-formal.json",
+      "bytes": 51812,
+      "sha256": "379cda720f4ebc1a2718cb868e84075ab8f3093cd94ad92a2c322fee5ae2ffa5"
+    },
+    "meta": {
+      "protocol": "octane-issue288-native-context-window-v1",
+      "issue": "Huxpro/octane#288",
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "mode": "formal",
+      "revisions": {
+        "baseline": "2cca2572ef1f90133f709cb2b6ac0d63b9e5f34b",
+        "candidate": "eb054e91c79ce54d12022b4faad5aa8a0377a04f"
+      },
+      "appSources": {
+        "App.lynx.tsrx": {
+          "path": "benchmarks/lynx-touch-frame/issue288/App.lynx.tsrx",
+          "bytes": 5102,
+          "sha256": "166205b2c5096adfea96a24c00803cf7c6eceb09a2b2c9cef68f5b63fd663bb2"
+        },
+        "index.ts": {
+          "path": "benchmarks/lynx-touch-frame/issue288/index.ts",
+          "bytes": 137,
+          "sha256": "22bcbe52b639287edf757bbb51313444bd935ab71b09093d1792aae9cde30e8b"
+        },
+        "issue288.css": {
+          "path": "benchmarks/lynx-touch-frame/issue288/issue288.css",
+          "bytes": 1011,
+          "sha256": "20b86380ff3a750d1aca2cb4262512c9679d41968bba5bca5ce67efd4b140107"
+        },
+        "lynx.config.mjs": {
+          "path": "benchmarks/lynx-touch-frame/issue288/lynx.config.mjs",
+          "bytes": 2177,
+          "sha256": "61c34c46577cb78a7bf64b9dc8d0a0faf44bde7a5bdbc3c2e75daca42d0e912b"
+        }
+      },
+      "bundles": {
+        "baseline": {
+          "path": "benchmarks/lynx-touch-frame/issue288/dist/baseline-rows1000-shipping/main.lynx.bundle",
+          "bytes": 574096,
+          "sha256": "3b1f2e80cf3924d00d8838523cc5ac4d84df7471edea1b2943568500bde272fe"
+        },
+        "candidate": {
+          "path": "benchmarks/lynx-touch-frame/issue288/dist/candidate-rows1000-shipping/main.lynx.bundle",
+          "bytes": 587937,
+          "sha256": "c0d4dd4dcbfe4c6c5be75a347c79be288ac4b284b2e9a94ef226e5803e1bdcdc"
+        }
+      },
+      "disableBundle": {
+        "path": "benchmarks/lynx-table/app/dist-issue288-native-disable/main.lynx.bundle",
+        "bytes": 583507,
+        "sha256": "d74d7294e529d364cfe4929f9df30d0eb77613d9bb173beea5d18f390d694b70"
+      },
+      "rows": 1000,
+      "depth": 32,
+      "targetAcceptedSamplesPerArm": 16,
+      "order": "eight alternating ABBA/BAAB pairs",
+      "observer": "MTS capture touchstart to first RAF observing changed native computed style",
+      "timingClock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "devTool": "off",
+      "cdpConnections": 0,
+      "coldLaunchPerSample": "fresh Explorer process, DevTool-off preflight bundle, then cold target bundle in the same process",
+      "settleMs": 4000,
+      "adbInput": {
+        "x": 640,
+        "y": 400
+      },
+      "device": {
+        "serial": "aic-i18n-bd-fullport.byteintl.net:45183",
+        "model": "aries_10",
+        "product": "aries",
+        "android": "10",
+        "api": "29",
+        "fingerprint": "aries_10/aries/aries:10/QQ3A.200805.001/1.5.2:userdebug/test-keys"
+      },
+      "thermalStart": {
+        "temperatureDeciC": 350,
+        "thermalStatus": 0
+      },
+      "platformClockCalibration": {
+        "source": "ClockPair.java reflection over android.os.SystemClock",
+        "startPairs": [
+          {
+            "wallBeforeMs": 1788834139894,
+            "uptimeMs": 593964526,
+            "wallAfterMs": 1788834139894
+          },
+          {
+            "wallBeforeMs": 1788834139894,
+            "uptimeMs": 593964526,
+            "wallAfterMs": 1788834139894
+          },
+          {
+            "wallBeforeMs": 1788834139894,
+            "uptimeMs": 593964526,
+            "wallAfterMs": 1788834139894
+          },
+          {
+            "wallBeforeMs": 1788834139894,
+            "uptimeMs": 593964526,
+            "wallAfterMs": 1788834139894
+          },
+          {
+            "wallBeforeMs": 1788834139894,
+            "uptimeMs": 593964526,
+            "wallAfterMs": 1788834139894
+          },
+          {
+            "wallBeforeMs": 1788834139894,
+            "uptimeMs": 593964526,
+            "wallAfterMs": 1788834139894
+          },
+          {
+            "wallBeforeMs": 1788834139894,
+            "uptimeMs": 593964526,
+            "wallAfterMs": 1788834139894
+          },
+          {
+            "wallBeforeMs": 1788834139894,
+            "uptimeMs": 593964526,
+            "wallAfterMs": 1788834139894
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139895,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139895
+          },
+          {
+            "wallBeforeMs": 1788834139896,
+            "uptimeMs": 593964527,
+            "wallAfterMs": 1788834139896
+          },
+          {
+            "wallBeforeMs": 1788834139896,
+            "uptimeMs": 593964528,
+            "wallAfterMs": 1788834139896
+          },
+          {
+            "wallBeforeMs": 1788834139896,
+            "uptimeMs": 593964528,
+            "wallAfterMs": 1788834139896
+          },
+          {
+            "wallBeforeMs": 1788834139896,
+            "uptimeMs": 593964528,
+            "wallAfterMs": 1788834139896
+          },
+          {
+            "wallBeforeMs": 1788834139896,
+            "uptimeMs": 593964528,
+            "wallAfterMs": 1788834139896
+          },
+          {
+            "wallBeforeMs": 1788834139896,
+            "uptimeMs": 593964528,
+            "wallAfterMs": 1788834139896
+          },
+          {
+            "wallBeforeMs": 1788834139896,
+            "uptimeMs": 593964528,
+            "wallAfterMs": 1788834139896
+          },
+          {
+            "wallBeforeMs": 1788834139896,
+            "uptimeMs": 593964528,
+            "wallAfterMs": 1788834139896
+          },
+          {
+            "wallBeforeMs": 1788834139896,
+            "uptimeMs": 593964528,
+            "wallAfterMs": 1788834139896
+          },
+          {
+            "wallBeforeMs": 1788834139896,
+            "uptimeMs": 593964528,
+            "wallAfterMs": 1788834139896
+          },
+          {
+            "wallBeforeMs": 1788834139896,
+            "uptimeMs": 593964528,
+            "wallAfterMs": 1788834139896
+          },
+          {
+            "wallBeforeMs": 1788834139896,
+            "uptimeMs": 593964528,
+            "wallAfterMs": 1788834139896
+          },
+          {
+            "wallBeforeMs": 1788834139896,
+            "uptimeMs": 593964528,
+            "wallAfterMs": 1788834139896
+          },
+          {
+            "wallBeforeMs": 1788834139896,
+            "uptimeMs": 593964528,
+            "wallAfterMs": 1788834139896
+          },
+          {
+            "wallBeforeMs": 1788834139896,
+            "uptimeMs": 593964528,
+            "wallAfterMs": 1788834139896
+          },
+          {
+            "wallBeforeMs": 1788834139896,
+            "uptimeMs": 593964528,
+            "wallAfterMs": 1788834139896
+          },
+          {
+            "wallBeforeMs": 1788834139896,
+            "uptimeMs": 593964528,
+            "wallAfterMs": 1788834139896
+          },
+          {
+            "wallBeforeMs": 1788834139896,
+            "uptimeMs": 593964528,
+            "wallAfterMs": 1788834139896
+          },
+          {
+            "wallBeforeMs": 1788834139896,
+            "uptimeMs": 593964528,
+            "wallAfterMs": 1788834139896
+          },
+          {
+            "wallBeforeMs": 1788834139896,
+            "uptimeMs": 593964528,
+            "wallAfterMs": 1788834139896
+          },
+          {
+            "wallBeforeMs": 1788834139896,
+            "uptimeMs": 593964528,
+            "wallAfterMs": 1788834139896
+          },
+          {
+            "wallBeforeMs": 1788834139896,
+            "uptimeMs": 593964528,
+            "wallAfterMs": 1788834139896
+          },
+          {
+            "wallBeforeMs": 1788834139896,
+            "uptimeMs": 593964528,
+            "wallAfterMs": 1788834139896
+          },
+          {
+            "wallBeforeMs": 1788834139896,
+            "uptimeMs": 593964528,
+            "wallAfterMs": 1788834139896
+          },
+          {
+            "wallBeforeMs": 1788834139896,
+            "uptimeMs": 593964528,
+            "wallAfterMs": 1788834139896
+          },
+          {
+            "wallBeforeMs": 1788834139896,
+            "uptimeMs": 593964528,
+            "wallAfterMs": 1788834139896
+          }
+        ],
+        "startSelected": {
+          "wallBeforeMs": 1788834139894,
+          "uptimeMs": 593964526,
+          "wallAfterMs": 1788834139894,
+          "bracketMs": 0,
+          "bootEpochMs": 1788240175368
+        },
+        "endPairs": [
+          {
+            "wallBeforeMs": 1788834405752,
+            "uptimeMs": 594230384,
+            "wallAfterMs": 1788834405752
+          },
+          {
+            "wallBeforeMs": 1788834405752,
+            "uptimeMs": 594230384,
+            "wallAfterMs": 1788834405752
+          },
+          {
+            "wallBeforeMs": 1788834405752,
+            "uptimeMs": 594230384,
+            "wallAfterMs": 1788834405752
+          },
+          {
+            "wallBeforeMs": 1788834405752,
+            "uptimeMs": 594230384,
+            "wallAfterMs": 1788834405752
+          },
+          {
+            "wallBeforeMs": 1788834405752,
+            "uptimeMs": 594230384,
+            "wallAfterMs": 1788834405752
+          },
+          {
+            "wallBeforeMs": 1788834405752,
+            "uptimeMs": 594230384,
+            "wallAfterMs": 1788834405752
+          },
+          {
+            "wallBeforeMs": 1788834405752,
+            "uptimeMs": 594230384,
+            "wallAfterMs": 1788834405752
+          },
+          {
+            "wallBeforeMs": 1788834405752,
+            "uptimeMs": 594230384,
+            "wallAfterMs": 1788834405752
+          },
+          {
+            "wallBeforeMs": 1788834405752,
+            "uptimeMs": 594230384,
+            "wallAfterMs": 1788834405752
+          },
+          {
+            "wallBeforeMs": 1788834405752,
+            "uptimeMs": 594230384,
+            "wallAfterMs": 1788834405752
+          },
+          {
+            "wallBeforeMs": 1788834405752,
+            "uptimeMs": 594230384,
+            "wallAfterMs": 1788834405752
+          },
+          {
+            "wallBeforeMs": 1788834405752,
+            "uptimeMs": 594230384,
+            "wallAfterMs": 1788834405752
+          },
+          {
+            "wallBeforeMs": 1788834405752,
+            "uptimeMs": 594230384,
+            "wallAfterMs": 1788834405752
+          },
+          {
+            "wallBeforeMs": 1788834405752,
+            "uptimeMs": 594230384,
+            "wallAfterMs": 1788834405752
+          },
+          {
+            "wallBeforeMs": 1788834405752,
+            "uptimeMs": 594230384,
+            "wallAfterMs": 1788834405752
+          },
+          {
+            "wallBeforeMs": 1788834405752,
+            "uptimeMs": 594230384,
+            "wallAfterMs": 1788834405752
+          },
+          {
+            "wallBeforeMs": 1788834405752,
+            "uptimeMs": 594230384,
+            "wallAfterMs": 1788834405752
+          },
+          {
+            "wallBeforeMs": 1788834405752,
+            "uptimeMs": 594230384,
+            "wallAfterMs": 1788834405752
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405753,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405753
+          },
+          {
+            "wallBeforeMs": 1788834405754,
+            "uptimeMs": 594230385,
+            "wallAfterMs": 1788834405754
+          },
+          {
+            "wallBeforeMs": 1788834405754,
+            "uptimeMs": 594230386,
+            "wallAfterMs": 1788834405754
+          },
+          {
+            "wallBeforeMs": 1788834405754,
+            "uptimeMs": 594230386,
+            "wallAfterMs": 1788834405754
+          },
+          {
+            "wallBeforeMs": 1788834405754,
+            "uptimeMs": 594230386,
+            "wallAfterMs": 1788834405754
+          },
+          {
+            "wallBeforeMs": 1788834405754,
+            "uptimeMs": 594230386,
+            "wallAfterMs": 1788834405754
+          },
+          {
+            "wallBeforeMs": 1788834405754,
+            "uptimeMs": 594230386,
+            "wallAfterMs": 1788834405754
+          },
+          {
+            "wallBeforeMs": 1788834405754,
+            "uptimeMs": 594230386,
+            "wallAfterMs": 1788834405754
+          },
+          {
+            "wallBeforeMs": 1788834405754,
+            "uptimeMs": 594230386,
+            "wallAfterMs": 1788834405754
+          },
+          {
+            "wallBeforeMs": 1788834405754,
+            "uptimeMs": 594230386,
+            "wallAfterMs": 1788834405754
+          },
+          {
+            "wallBeforeMs": 1788834405754,
+            "uptimeMs": 594230386,
+            "wallAfterMs": 1788834405754
+          },
+          {
+            "wallBeforeMs": 1788834405754,
+            "uptimeMs": 594230386,
+            "wallAfterMs": 1788834405754
+          },
+          {
+            "wallBeforeMs": 1788834405754,
+            "uptimeMs": 594230386,
+            "wallAfterMs": 1788834405754
+          },
+          {
+            "wallBeforeMs": 1788834405754,
+            "uptimeMs": 594230386,
+            "wallAfterMs": 1788834405754
+          },
+          {
+            "wallBeforeMs": 1788834405754,
+            "uptimeMs": 594230386,
+            "wallAfterMs": 1788834405754
+          },
+          {
+            "wallBeforeMs": 1788834405754,
+            "uptimeMs": 594230386,
+            "wallAfterMs": 1788834405754
+          },
+          {
+            "wallBeforeMs": 1788834405754,
+            "uptimeMs": 594230386,
+            "wallAfterMs": 1788834405754
+          }
+        ],
+        "endSelected": {
+          "wallBeforeMs": 1788834405752,
+          "uptimeMs": 594230384,
+          "wallAfterMs": 1788834405752,
+          "bracketMs": 0,
+          "bootEpochMs": 1788240175368
+        },
+        "driftMs": 0
+      },
+      "thermalEnd": {
+        "temperatureDeciC": 350,
+        "thermalStatus": 0
+      }
+    },
+    "latencyMs": {
+      "byArm": {
+        "baseline": {
+          "n": 16,
+          "min": 302,
+          "p50": 347,
+          "p95": 370,
+          "max": 370,
+          "mean": 342,
+          "raw": [370, 356, 347, 352, 362, 361, 351, 337, 334, 312, 314, 302, 311, 350, 347, 366]
+        },
+        "candidate": {
+          "n": 16,
+          "min": 222,
+          "p50": 290,
+          "p95": 336,
+          "max": 336,
+          "mean": 283.688,
+          "raw": [305, 307, 304, 303, 247, 316, 320, 333, 225, 336, 290, 281, 231, 274, 245, 222]
+        }
+      },
+      "comparison": {
+        "p50ReductionPercent": 16.427,
+        "p95ReductionPercent": 9.189,
+        "meanReductionPercent": 17.05
+      },
+      "pairedGroups": [
+        {
+          "pair": 0,
+          "baseline": 363,
+          "candidate": 306,
+          "candidateOverBaseline": 0.842975,
+          "reductionPercent": 15.702
+        },
+        {
+          "pair": 1,
+          "baseline": 349.5,
+          "candidate": 303.5,
+          "candidateOverBaseline": 0.868383,
+          "reductionPercent": 13.162
+        },
+        {
+          "pair": 2,
+          "baseline": 361.5,
+          "candidate": 281.5,
+          "candidateOverBaseline": 0.7787,
+          "reductionPercent": 22.13
+        },
+        {
+          "pair": 3,
+          "baseline": 344,
+          "candidate": 326.5,
+          "candidateOverBaseline": 0.949128,
+          "reductionPercent": 5.087
+        },
+        {
+          "pair": 4,
+          "baseline": 323,
+          "candidate": 280.5,
+          "candidateOverBaseline": 0.868421,
+          "reductionPercent": 13.158
+        },
+        {
+          "pair": 5,
+          "baseline": 308,
+          "candidate": 285.5,
+          "candidateOverBaseline": 0.926948,
+          "reductionPercent": 7.305
+        },
+        {
+          "pair": 6,
+          "baseline": 330.5,
+          "candidate": 252.5,
+          "candidateOverBaseline": 0.763994,
+          "reductionPercent": 23.601
+        },
+        {
+          "pair": 7,
+          "baseline": 356.5,
+          "candidate": 233.5,
+          "candidateOverBaseline": 0.654979,
+          "reductionPercent": 34.502
+        }
+      ]
+    },
+    "changedFrameCount": {
+      "byArm": {
+        "baseline": {
+          "n": 16,
+          "min": 18,
+          "p50": 21,
+          "p95": 22,
+          "max": 22,
+          "mean": 20.375,
+          "raw": [22, 21, 22, 22, 21, 21, 21, 19, 19, 19, 19, 18, 18, 21, 21, 22]
+        },
+        "candidate": {
+          "n": 16,
+          "min": 13,
+          "p50": 17,
+          "p95": 20,
+          "max": 20,
+          "mean": 16.813,
+          "raw": [19, 19, 18, 19, 14, 19, 19, 20, 13, 20, 17, 16, 14, 15, 14, 13]
+        }
+      },
+      "comparison": {
+        "p50ReductionPercent": 19.048,
+        "p95ReductionPercent": 9.091,
+        "meanReductionPercent": 17.482
+      }
+    }
+  },
+  "cpu": {
+    "source": {
+      "path": "benchmarks/lynx-touch-frame/results/issue288-native-context-cpu-aries10-sparse-formal.json",
+      "bytes": 248142,
+      "sha256": "bfe707c223e7d413be3645297cf13dfdfc6bda37369d4e1caa8b94a8148477d4"
+    },
+    "meta": {
+      "protocol": "octane-issue288-native-context-cpu-window-v1",
+      "issue": "Huxpro/octane#288",
+      "mode": "formal",
+      "windowId": "aries10-cpu-formal-2026-09-08T02-27-04-795Z",
+      "revisions": {
+        "baseline": "2cca2572ef1f90133f709cb2b6ac0d63b9e5f34b",
+        "candidate": "eb054e91c79ce54d12022b4faad5aa8a0377a04f"
+      },
+      "bundles": {
+        "baseline": {
+          "path": "benchmarks/lynx-touch-frame/issue288/dist/baseline-rows1000-cpu/main.lynx.bundle",
+          "bytes": 556739,
+          "sha256": "f192ff4e988f7eeff77fcd6bd7054384fc014629ae72f444497a9b8ba4d0bcc3"
+        },
+        "candidate": {
+          "path": "benchmarks/lynx-touch-frame/issue288/dist/candidate-rows1000-cpu/main.lynx.bundle",
+          "bytes": 570572,
+          "sha256": "9b31a507b8dc51ba0793e1a149979d0917046c407d2f7fd9a742164dc48f973e"
+        }
+      },
+      "disableBundle": {
+        "path": "benchmarks/lynx-table/app/dist-issue288-native-disable/main.lynx.bundle",
+        "bytes": 583507,
+        "sha256": "d74d7294e529d364cfe4929f9df30d0eb77613d9bb173beea5d18f390d694b70"
+      },
+      "rows": 1000,
+      "depth": 32,
+      "iterationsPerWindow": 25,
+      "acceptedWindowsPerArm": 8,
+      "order": "four alternating ABBA/BAAB pairs",
+      "measurement": "Linux /proc task user+system CPU ticks around real native touch windows",
+      "ticksPerSecond": 100,
+      "devTool": "off",
+      "cdpConnections": 0,
+      "settleMs": 4000,
+      "interactionGapMs": 350,
+      "adbInput": {
+        "x": 640,
+        "y": 400
+      },
+      "device": {
+        "serial": "aic-i18n-bd-fullport.byteintl.net:45183",
+        "model": "aries_10",
+        "android": "10",
+        "fingerprint": "aries_10/aries/aries:10/QQ3A.200805.001/1.5.2:userdebug/test-keys"
+      },
+      "thermalStart": {
+        "temperatureDeciC": 350,
+        "thermalStatus": 0
+      },
+      "thermalEnd": {
+        "temperatureDeciC": 350,
+        "thermalStatus": 0
+      }
+    },
+    "lynxJsCpuMsPerInteraction": {
+      "byArm": {
+        "baseline": {
+          "n": 8,
+          "min": 246,
+          "p50": 247.2,
+          "p95": 258.8,
+          "max": 258.8,
+          "mean": 250.45,
+          "raw": [255.2, 252, 246.4, 247.2, 251.6, 246, 258.8, 246.4]
+        },
+        "candidate": {
+          "n": 8,
+          "min": 90.4,
+          "p50": 90.8,
+          "p95": 97.6,
+          "max": 97.6,
+          "mean": 92.55,
+          "raw": [90.4, 97.6, 92, 90.4, 90.4, 97.6, 90.8, 91.2]
+        }
+      },
+      "comparison": {
+        "p50ReductionPercent": 63.269,
+        "p95ReductionPercent": 62.287,
+        "meanReductionPercent": 63.047
+      },
+      "pairedGroups": [
+        {
+          "pair": 0,
+          "baseline": 253.6,
+          "candidate": 94,
+          "candidateOverBaseline": 0.370662,
+          "reductionPercent": 62.934
+        },
+        {
+          "pair": 1,
+          "baseline": 246.8,
+          "candidate": 91.2,
+          "candidateOverBaseline": 0.36953,
+          "reductionPercent": 63.047
+        },
+        {
+          "pair": 2,
+          "baseline": 248.8,
+          "candidate": 94,
+          "candidateOverBaseline": 0.377814,
+          "reductionPercent": 62.219
+        },
+        {
+          "pair": 3,
+          "baseline": 252.6,
+          "candidate": 91,
+          "candidateOverBaseline": 0.360253,
+          "reductionPercent": 63.975
+        }
+      ]
+    },
+    "processCpuMsPerInteraction": {
+      "byArm": {
+        "baseline": {
+          "n": 8,
+          "min": 261.2,
+          "p50": 263.2,
+          "p95": 275.6,
+          "max": 275.6,
+          "mean": 266.25,
+          "raw": [270.4, 269.2, 262.8, 263.2, 266, 261.6, 275.6, 261.2]
+        },
+        "candidate": {
+          "n": 8,
+          "min": 107.6,
+          "p50": 109.2,
+          "p95": 131.2,
+          "max": 131.2,
+          "mean": 113.15,
+          "raw": [109.6, 122, 110, 107.6, 107.6, 131.2, 108, 109.2]
+        }
+      },
+      "comparison": {
+        "p50ReductionPercent": 58.511,
+        "p95ReductionPercent": 52.395,
+        "meanReductionPercent": 57.502
+      }
+    },
+    "mainThreadCpuMsPerInteraction": {
+      "byArm": {
+        "baseline": {
+          "n": 8,
+          "min": 10,
+          "p50": 10.4,
+          "p95": 10.8,
+          "max": 10.8,
+          "mean": 10.45,
+          "raw": [10.8, 10.8, 10.4, 10, 10.4, 10.4, 10.8, 10]
+        },
+        "candidate": {
+          "n": 8,
+          "min": 10.4,
+          "p50": 10.8,
+          "p95": 28.4,
+          "max": 28.4,
+          "mean": 14.35,
+          "raw": [12.8, 19.6, 10.8, 10.8, 10.8, 28.4, 10.4, 11.2]
+        }
+      },
+      "comparison": {
+        "p50ReductionPercent": -3.846,
+        "p95ReductionPercent": -162.963,
+        "meanReductionPercent": -37.321
+      }
+    },
+    "renderThreadCpuMsPerInteraction": {
+      "byArm": {
+        "baseline": {
+          "n": 8,
+          "min": 1.6,
+          "p50": 1.6,
+          "p95": 2.4,
+          "max": 2.4,
+          "mean": 1.85,
+          "raw": [2, 1.6, 1.6, 2, 1.6, 2.4, 1.6, 2]
+        },
+        "candidate": {
+          "n": 8,
+          "min": 1.6,
+          "p50": 2,
+          "p95": 2.4,
+          "max": 2.4,
+          "mean": 2.05,
+          "raw": [2.4, 2, 2.4, 1.6, 1.6, 2.4, 2, 2]
+        }
+      },
+      "comparison": {
+        "p50ReductionPercent": -25,
+        "p95ReductionPercent": 0,
+        "meanReductionPercent": -10.811
+      }
+    }
+  },
+  "memory": {
+    "source": {
+      "path": "benchmarks/lynx-touch-frame/results/issue288-native-context-memory-aries10-sparse-formal.json",
+      "bytes": 59105,
+      "sha256": "47ab2efac09fe5903f51eb41ff0f0a45f36f8603105d0a643734f4b6d37cdeaf"
+    },
+    "meta": {
+      "protocol": "octane-issue288-native-context-memory-v1",
+      "issue": "Huxpro/octane#288",
+      "mode": "formal",
+      "windowId": "aries10-memory-formal-2026-09-08T02-34-02-819Z",
+      "revisions": {
+        "baseline": "2cca2572ef1f90133f709cb2b6ac0d63b9e5f34b",
+        "candidate": "eb054e91c79ce54d12022b4faad5aa8a0377a04f"
+      },
+      "bundles": {
+        "baseline": {
+          "path": "benchmarks/lynx-touch-frame/issue288/dist/baseline-rows1000-shipping/main.lynx.bundle",
+          "bytes": 574096,
+          "sha256": "3b1f2e80cf3924d00d8838523cc5ac4d84df7471edea1b2943568500bde272fe"
+        },
+        "candidate": {
+          "path": "benchmarks/lynx-touch-frame/issue288/dist/candidate-rows1000-shipping/main.lynx.bundle",
+          "bytes": 587937,
+          "sha256": "c0d4dd4dcbfe4c6c5be75a347c79be288ac4b284b2e9a94ef226e5803e1bdcdc"
+        }
+      },
+      "disableBundle": {
+        "path": "benchmarks/lynx-table/app/dist-issue288-native-disable/main.lynx.bundle",
+        "bytes": 583507,
+        "sha256": "d74d7294e529d364cfe4929f9df30d0eb77613d9bb173beea5d18f390d694b70"
+      },
+      "rows": 1000,
+      "depth": 32,
+      "acceptedWindowsPerArm": 8,
+      "order": "four alternating ABBA/BAAB pairs",
+      "measurement": "Android process smaps_rollup, /proc status, and dumpsys meminfo around real native touch windows",
+      "lynxGlobalMemoryApi": "Unavailable on Explorer SDK 0.0.1: Memory.getAllMemoryUsage returned method not implemented",
+      "devTool": "off",
+      "cdpConnections": 0,
+      "freshProcessPerWindow": true,
+      "settleMs": 4000,
+      "iterationsPerWindow": 25,
+      "interactionGapMs": 150,
+      "adbInput": {
+        "x": 640,
+        "y": 400
+      },
+      "device": {
+        "serial": "aic-i18n-bd-fullport.byteintl.net:45183",
+        "model": "aries_10",
+        "android": "10",
+        "fingerprint": "aries_10/aries/aries:10/QQ3A.200805.001/1.5.2:userdebug/test-keys"
+      },
+      "thermalStart": {
+        "temperatureDeciC": 350,
+        "thermalStatus": 0
+      },
+      "thermalEnd": {
+        "temperatureDeciC": 350,
+        "thermalStatus": 0
+      }
+    },
+    "settled": {
+      "pssKb": {
+        "byArm": {
+          "baseline": {
+            "n": 8,
+            "min": 190776,
+            "p50": 194087,
+            "p95": 201253,
+            "max": 201253,
+            "mean": 195070,
+            "raw": [195975, 196368, 201253, 194087, 190776, 199299, 191660, 191142]
+          },
+          "candidate": {
+            "n": 8,
+            "min": 177957,
+            "p50": 183040,
+            "p95": 186293,
+            "max": 186293,
+            "mean": 182676.5,
+            "raw": [184815, 186293, 183040, 184134, 177957, 180742, 184576, 179855]
+          }
+        },
+        "comparison": {
+          "p50ReductionPercent": 5.692,
+          "p95ReductionPercent": 7.433,
+          "meanReductionPercent": 6.353
+        },
+        "pairedGroups": [
+          {
+            "pair": 0,
+            "baseline": 196171.5,
+            "candidate": 185554,
+            "candidateOverBaseline": 0.945876,
+            "reductionPercent": 5.412
+          },
+          {
+            "pair": 1,
+            "baseline": 197670,
+            "candidate": 183587,
+            "candidateOverBaseline": 0.928755,
+            "reductionPercent": 7.125
+          },
+          {
+            "pair": 2,
+            "baseline": 195037.5,
+            "candidate": 179349.5,
+            "candidateOverBaseline": 0.919564,
+            "reductionPercent": 8.044
+          },
+          {
+            "pair": 3,
+            "baseline": 191401,
+            "candidate": 182215.5,
+            "candidateOverBaseline": 0.952009,
+            "reductionPercent": 4.799
+          }
+        ]
+      },
+      "rssKb": {
+        "byArm": {
+          "baseline": {
+            "n": 8,
+            "min": 290648,
+            "p50": 293652,
+            "p95": 301052,
+            "max": 301052,
+            "mean": 295033,
+            "raw": [296124, 296260, 301052, 293652, 291040, 299512, 291976, 290648]
+          },
+          "candidate": {
+            "n": 8,
+            "min": 278276,
+            "p50": 282792,
+            "p95": 286316,
+            "max": 286316,
+            "mean": 282611,
+            "raw": [284632, 286316, 282792, 284012, 278276, 280648, 284316, 279896]
+          }
+        },
+        "comparison": {
+          "p50ReductionPercent": 3.698,
+          "p95ReductionPercent": 4.895,
+          "meanReductionPercent": 4.21
+        },
+        "pairedGroups": [
+          {
+            "pair": 0,
+            "baseline": 296192,
+            "candidate": 285474,
+            "candidateOverBaseline": 0.963814,
+            "reductionPercent": 3.619
+          },
+          {
+            "pair": 1,
+            "baseline": 297352,
+            "candidate": 283402,
+            "candidateOverBaseline": 0.953086,
+            "reductionPercent": 4.691
+          },
+          {
+            "pair": 2,
+            "baseline": 295276,
+            "candidate": 279462,
+            "candidateOverBaseline": 0.946443,
+            "reductionPercent": 5.356
+          },
+          {
+            "pair": 3,
+            "baseline": 291312,
+            "candidate": 282106,
+            "candidateOverBaseline": 0.968398,
+            "reductionPercent": 3.16
+          }
+        ]
+      },
+      "privateKb": {
+        "byArm": {
+          "baseline": {
+            "n": 8,
+            "min": 177124,
+            "p50": 180436,
+            "p95": 187376,
+            "max": 187376,
+            "mean": 181308.5,
+            "raw": [182352, 182412, 187376, 180436, 177124, 185272, 177952, 177544]
+          },
+          "candidate": {
+            "n": 8,
+            "min": 164284,
+            "p50": 169088,
+            "p95": 172252,
+            "max": 172252,
+            "mean": 168819,
+            "raw": [170888, 172252, 169088, 170148, 164284, 167076, 170604, 166212]
+          }
+        },
+        "comparison": {
+          "p50ReductionPercent": 6.289,
+          "p95ReductionPercent": 8.071,
+          "meanReductionPercent": 6.889
+        },
+        "pairedGroups": [
+          {
+            "pair": 0,
+            "baseline": 182382,
+            "candidate": 171570,
+            "candidateOverBaseline": 0.940718,
+            "reductionPercent": 5.928
+          },
+          {
+            "pair": 1,
+            "baseline": 183906,
+            "candidate": 169618,
+            "candidateOverBaseline": 0.922308,
+            "reductionPercent": 7.769
+          },
+          {
+            "pair": 2,
+            "baseline": 181198,
+            "candidate": 165680,
+            "candidateOverBaseline": 0.914359,
+            "reductionPercent": 8.564
+          },
+          {
+            "pair": 3,
+            "baseline": 177748,
+            "candidate": 168408,
+            "candidateOverBaseline": 0.947454,
+            "reductionPercent": 5.255
+          }
+        ]
+      },
+      "nativeHeapAllocKb": {
+        "byArm": {
+          "baseline": {
+            "n": 8,
+            "min": 124365,
+            "p50": 124954,
+            "p95": 129069,
+            "max": 129069,
+            "mean": 125928.5,
+            "raw": [129069, 125703, 125598, 124954, 124365, 128343, 124577, 124819]
+          },
+          "candidate": {
+            "n": 8,
+            "min": 112726,
+            "p50": 113719,
+            "p95": 114847,
+            "max": 114847,
+            "mean": 113621.75,
+            "raw": [113873, 114032, 114100, 113719, 112757, 112920, 114847, 112726]
+          }
+        },
+        "comparison": {
+          "p50ReductionPercent": 8.991,
+          "p95ReductionPercent": 11.019,
+          "meanReductionPercent": 9.773
+        },
+        "pairedGroups": [
+          {
+            "pair": 0,
+            "baseline": 127386,
+            "candidate": 113952.5,
+            "candidateOverBaseline": 0.894545,
+            "reductionPercent": 10.546
+          },
+          {
+            "pair": 1,
+            "baseline": 125276,
+            "candidate": 113909.5,
+            "candidateOverBaseline": 0.909268,
+            "reductionPercent": 9.073
+          },
+          {
+            "pair": 2,
+            "baseline": 126354,
+            "candidate": 112838.5,
+            "candidateOverBaseline": 0.893035,
+            "reductionPercent": 10.697
+          },
+          {
+            "pair": 3,
+            "baseline": 124698,
+            "candidate": 113786.5,
+            "candidateOverBaseline": 0.912497,
+            "reductionPercent": 8.75
+          }
+        ]
+      },
+      "dalvikHeapAllocKb": {
+        "byArm": {
+          "baseline": {
+            "n": 8,
+            "min": 7900,
+            "p50": 7986,
+            "p95": 8343,
+            "max": 8343,
+            "mean": 8080,
+            "raw": [8012, 8227, 8248, 7986, 7962, 8343, 7962, 7900]
+          },
+          "candidate": {
+            "n": 8,
+            "min": 7962,
+            "p50": 8203,
+            "p95": 8268,
+            "max": 8268,
+            "mean": 8141.125,
+            "raw": [8203, 8227, 8249, 8248, 7986, 7962, 8268, 7986]
+          }
+        },
+        "comparison": {
+          "p50ReductionPercent": -2.717,
+          "p95ReductionPercent": 0.899,
+          "meanReductionPercent": -0.756
+        },
+        "pairedGroups": [
+          {
+            "pair": 0,
+            "baseline": 8119.5,
+            "candidate": 8215,
+            "candidateOverBaseline": 1.011762,
+            "reductionPercent": -1.176
+          },
+          {
+            "pair": 1,
+            "baseline": 8117,
+            "candidate": 8248.5,
+            "candidateOverBaseline": 1.016201,
+            "reductionPercent": -1.62
+          },
+          {
+            "pair": 2,
+            "baseline": 8152.5,
+            "candidate": 7974,
+            "candidateOverBaseline": 0.978105,
+            "reductionPercent": 2.19
+          },
+          {
+            "pair": 3,
+            "baseline": 7931,
+            "candidate": 8127,
+            "candidateOverBaseline": 1.024713,
+            "reductionPercent": -2.471
+          }
+        ]
+      }
+    },
+    "postInteraction": {
+      "pssKb": {
+        "byArm": {
+          "baseline": {
+            "n": 8,
+            "min": 176355,
+            "p50": 178742,
+            "p95": 181248,
+            "max": 181248,
+            "mean": 178636.5,
+            "raw": [179048, 178762, 178742, 176355, 176884, 181248, 180232, 177821]
+          },
+          "candidate": {
+            "n": 8,
+            "min": 162648,
+            "p50": 166232,
+            "p95": 168889,
+            "max": 168889,
+            "mean": 166340.625,
+            "raw": [165099, 168255, 162648, 166232, 167510, 168889, 165005, 167087]
+          }
+        },
+        "comparison": {
+          "p50ReductionPercent": 6.999,
+          "p95ReductionPercent": 6.819,
+          "meanReductionPercent": 6.883
+        },
+        "pairedGroups": [
+          {
+            "pair": 0,
+            "baseline": 178905,
+            "candidate": 166677,
+            "candidateOverBaseline": 0.931651,
+            "reductionPercent": 6.835
+          },
+          {
+            "pair": 1,
+            "baseline": 177548.5,
+            "candidate": 164440,
+            "candidateOverBaseline": 0.926169,
+            "reductionPercent": 7.383
+          },
+          {
+            "pair": 2,
+            "baseline": 179066,
+            "candidate": 168199.5,
+            "candidateOverBaseline": 0.939316,
+            "reductionPercent": 6.068
+          },
+          {
+            "pair": 3,
+            "baseline": 179026.5,
+            "candidate": 166046,
+            "candidateOverBaseline": 0.927494,
+            "reductionPercent": 7.251
+          }
+        ]
+      },
+      "rssKb": {
+        "byArm": {
+          "baseline": {
+            "n": 8,
+            "min": 276064,
+            "p50": 278288,
+            "p95": 281460,
+            "max": 281460,
+            "mean": 278722,
+            "raw": [279612, 278388, 278288, 276064, 277576, 281460, 280964, 277424]
+          },
+          "candidate": {
+            "n": 8,
+            "min": 262324,
+            "p50": 265616,
+            "p95": 268640,
+            "max": 268640,
+            "mean": 266135.5,
+            "raw": [264716, 267784, 262324, 265616, 268240, 268640, 264728, 267036]
+          }
+        },
+        "comparison": {
+          "p50ReductionPercent": 4.554,
+          "p95ReductionPercent": 4.555,
+          "meanReductionPercent": 4.516
+        },
+        "pairedGroups": [
+          {
+            "pair": 0,
+            "baseline": 279000,
+            "candidate": 266250,
+            "candidateOverBaseline": 0.954301,
+            "reductionPercent": 4.57
+          },
+          {
+            "pair": 1,
+            "baseline": 277176,
+            "candidate": 263970,
+            "candidateOverBaseline": 0.952355,
+            "reductionPercent": 4.764
+          },
+          {
+            "pair": 2,
+            "baseline": 279518,
+            "candidate": 268440,
+            "candidateOverBaseline": 0.960367,
+            "reductionPercent": 3.963
+          },
+          {
+            "pair": 3,
+            "baseline": 279194,
+            "candidate": 265882,
+            "candidateOverBaseline": 0.95232,
+            "reductionPercent": 4.768
+          }
+        ]
+      },
+      "privateKb": {
+        "byArm": {
+          "baseline": {
+            "n": 8,
+            "min": 162604,
+            "p50": 165052,
+            "p95": 167400,
+            "max": 167400,
+            "mean": 164868.5,
+            "raw": [165256, 165052, 165108, 162604, 163052, 167400, 166356, 164120]
+          },
+          "candidate": {
+            "n": 8,
+            "min": 148896,
+            "p50": 152548,
+            "p95": 155192,
+            "max": 155192,
+            "mean": 152602.5,
+            "raw": [151384, 154508, 148896, 152548, 153672, 155192, 151228, 153392]
+          }
+        },
+        "comparison": {
+          "p50ReductionPercent": 7.576,
+          "p95ReductionPercent": 7.293,
+          "meanReductionPercent": 7.44
+        },
+        "pairedGroups": [
+          {
+            "pair": 0,
+            "baseline": 165154,
+            "candidate": 152946,
+            "candidateOverBaseline": 0.926081,
+            "reductionPercent": 7.392
+          },
+          {
+            "pair": 1,
+            "baseline": 163856,
+            "candidate": 150722,
+            "candidateOverBaseline": 0.919844,
+            "reductionPercent": 8.016
+          },
+          {
+            "pair": 2,
+            "baseline": 165226,
+            "candidate": 154432,
+            "candidateOverBaseline": 0.934671,
+            "reductionPercent": 6.533
+          },
+          {
+            "pair": 3,
+            "baseline": 165238,
+            "candidate": 152310,
+            "candidateOverBaseline": 0.921761,
+            "reductionPercent": 7.824
+          }
+        ]
+      },
+      "nativeHeapAllocKb": {
+        "byArm": {
+          "baseline": {
+            "n": 8,
+            "min": 77141,
+            "p50": 77396,
+            "p95": 77635,
+            "max": 77635,
+            "mean": 77440.875,
+            "raw": [77635, 77300, 77396, 77331, 77141, 77627, 77484, 77613]
+          },
+          "candidate": {
+            "n": 8,
+            "min": 72386,
+            "p50": 72614,
+            "p95": 78676,
+            "max": 78676,
+            "mean": 73353.625,
+            "raw": [72656, 72757, 72386, 72436, 78676, 72567, 72737, 72614]
+          }
+        },
+        "comparison": {
+          "p50ReductionPercent": 6.179,
+          "p95ReductionPercent": -1.341,
+          "meanReductionPercent": 5.278
+        },
+        "pairedGroups": [
+          {
+            "pair": 0,
+            "baseline": 77467.5,
+            "candidate": 72706.5,
+            "candidateOverBaseline": 0.938542,
+            "reductionPercent": 6.146
+          },
+          {
+            "pair": 1,
+            "baseline": 77363.5,
+            "candidate": 72411,
+            "candidateOverBaseline": 0.935984,
+            "reductionPercent": 6.402
+          },
+          {
+            "pair": 2,
+            "baseline": 77384,
+            "candidate": 75621.5,
+            "candidateOverBaseline": 0.977224,
+            "reductionPercent": 2.278
+          },
+          {
+            "pair": 3,
+            "baseline": 77548.5,
+            "candidate": 72675.5,
+            "candidateOverBaseline": 0.937162,
+            "reductionPercent": 6.284
+          }
+        ]
+      },
+      "dalvikHeapAllocKb": {
+        "byArm": {
+          "baseline": {
+            "n": 8,
+            "min": 7178,
+            "p50": 7218,
+            "p95": 7242,
+            "max": 7242,
+            "mean": 7221.125,
+            "raw": [7215, 7218, 7240, 7242, 7218, 7240, 7218, 7178]
+          },
+          "candidate": {
+            "n": 8,
+            "min": 7178,
+            "p50": 7239,
+            "p95": 7243,
+            "max": 7243,
+            "mean": 7227.5,
+            "raw": [7178, 7218, 7240, 7239, 7242, 7218, 7243, 7242]
+          }
+        },
+        "comparison": {
+          "p50ReductionPercent": -0.291,
+          "p95ReductionPercent": -0.014,
+          "meanReductionPercent": -0.088
+        },
+        "pairedGroups": [
+          {
+            "pair": 0,
+            "baseline": 7216.5,
+            "candidate": 7198,
+            "candidateOverBaseline": 0.997436,
+            "reductionPercent": 0.256
+          },
+          {
+            "pair": 1,
+            "baseline": 7241,
+            "candidate": 7239.5,
+            "candidateOverBaseline": 0.999793,
+            "reductionPercent": 0.021
+          },
+          {
+            "pair": 2,
+            "baseline": 7229,
+            "candidate": 7230,
+            "candidateOverBaseline": 1.000138,
+            "reductionPercent": -0.014
+          },
+          {
+            "pair": 3,
+            "baseline": 7198,
+            "candidate": 7242.5,
+            "candidateOverBaseline": 1.006182,
+            "reductionPercent": -0.618
+          }
+        ]
+      }
+    }
+  },
+  "trace": {
+    "baseline": {
+      "trace": {
+        "path": "benchmarks/lynx-touch-frame/results/issue288-native-traces-final/baseline-eb054e91c-paired-rows1000.pftrace",
+        "bytes": 3367525,
+        "sha256": "6c0490efb491587cf00bc98db6d22d6b3d5169172882bd3b2ee5c32998c65f0e"
+      },
+      "queries": {
+        "markers": {
+          "path": "benchmarks/lynx-touch-frame/results/issue288-native-traces-final/baseline-eb054e91c-paired-rows1000-markers.json",
+          "bytes": 14887,
+          "sha256": "687f3158586347a139dd91ff2be39aab6725bb2a342d7af131e9cb28673ee31b"
+        },
+        "longSlices": {
+          "path": "benchmarks/lynx-touch-frame/results/issue288-native-traces-final/baseline-eb054e91c-paired-rows1000-long-slices.json",
+          "bytes": 5192,
+          "sha256": "bd3c2c86edeb43ff5a88e8c747c73ad6d28c498977467b78e48b57dda635dfed"
+        }
+      },
+      "markers": {
+        "input": {
+          "id": "284583",
+          "name": "Issue288::baseline::mts-input",
+          "ts_ms": 1660567141.814985,
+          "dur_ms": 0,
+          "track_name": "m.lynx.explorer"
+        },
+        "fire": {
+          "id": "284586",
+          "name": "TouchEventHandler::FireEvent",
+          "ts_ms": 1660567141.933147,
+          "dur_ms": 0.067865,
+          "track_name": "m.lynx.explorer"
+        },
+        "handler": {
+          "id": "287944",
+          "name": "Issue288::baseline::bts-handler",
+          "ts_ms": 1660567304.805746,
+          "dur_ms": 0,
+          "track_name": "Lynx_JS"
+        },
+        "changed": {
+          "id": "289345",
+          "name": "Issue288::baseline::changed-vsync",
+          "ts_ms": 1660567567.719444,
+          "dur_ms": 0,
+          "track_name": "m.lynx.explorer"
+        }
+      },
+      "segmentsMs": {
+        "inputToHandler": 162.991,
+        "handlerToChangedFrame": 262.914,
+        "inputToChangedFrame": 425.904
+      },
+      "ownerSlices": {
+        "messageLoopFlush": {
+          "id": "287958",
+          "parent_id": null,
+          "name": "MessageLoop::FlushTasks",
+          "ts_ms": 1660567305.200987,
+          "dur_ms": 232.6288,
+          "thread_name": "Lynx_JS",
+          "depth": "0"
+        },
+        "asyncJsTask": {
+          "id": "287959",
+          "parent_id": "287958",
+          "name": "JsTaskAdapter::SetTimeout",
+          "ts_ms": 1660567305.20367,
+          "dur_ms": 231.110146,
+          "thread_name": "Lynx_JS",
+          "depth": "1"
+        },
+        "mainEventDispatch": {
+          "id": "288095",
+          "parent_id": "288093",
+          "name": "EventTarget::DispatchEvent",
+          "ts_ms": 1660567538.171965,
+          "dur_ms": 29.434774,
+          "thread_name": "m.lynx.explorer",
+          "depth": "2"
+        },
+        "lepusEventClosure": {
+          "id": "288096",
+          "parent_id": "288095",
+          "name": "LepusClosureEventListener::Invoke",
+          "ts_ms": 1660567538.212425,
+          "dur_ms": 29.392197,
+          "thread_name": "m.lynx.explorer",
+          "depth": "3"
+        },
+        "fiberFlush": {
+          "id": "288111",
+          "parent_id": "288096",
+          "name": "FiberFlushElementTree",
+          "ts_ms": 1660567560.308851,
+          "dur_ms": 5.831401,
+          "thread_name": "m.lynx.explorer",
+          "depth": "4"
+        }
+      }
+    },
+    "candidate": {
+      "trace": {
+        "path": "benchmarks/lynx-touch-frame/results/issue288-native-traces-final/candidate-eb054e91c-paired-rows1000.pftrace",
+        "bytes": 3309131,
+        "sha256": "e7b9fb2f490434bd4215717be66d728c0c078f2c936815b43f41936cf354a16c"
+      },
+      "queries": {
+        "markers": {
+          "path": "benchmarks/lynx-touch-frame/results/issue288-native-traces-final/candidate-eb054e91c-paired-rows1000-markers.json",
+          "bytes": 14893,
+          "sha256": "f382d269b3872cc990ee23b598c215c2b69f9ee91f6687c8470536f932be7ac5"
+        },
+        "longSlices": {
+          "path": "benchmarks/lynx-touch-frame/results/issue288-native-traces-final/candidate-eb054e91c-paired-rows1000-long-slices.json",
+          "bytes": 4540,
+          "sha256": "7ef65aa5a1455b3212976bb8fdde60fa31bbd3c58ca0e5784c309b16b706c878"
+        }
+      },
+      "markers": {
+        "input": {
+          "id": "283188",
+          "name": "Issue288::candidate::mts-input",
+          "ts_ms": 1660595481.579883,
+          "dur_ms": 0,
+          "track_name": "m.lynx.explorer"
+        },
+        "fire": {
+          "id": "283191",
+          "name": "TouchEventHandler::FireEvent",
+          "ts_ms": 1660595481.696092,
+          "dur_ms": 0.073288,
+          "track_name": "m.lynx.explorer"
+        },
+        "handler": {
+          "id": "286643",
+          "name": "Issue288::candidate::bts-handler",
+          "ts_ms": 1660595678.716809,
+          "dur_ms": 0,
+          "track_name": "Lynx_JS"
+        },
+        "changed": {
+          "id": "288001",
+          "name": "Issue288::candidate::changed-vsync",
+          "ts_ms": 1660595853.109728,
+          "dur_ms": 0,
+          "track_name": "m.lynx.explorer"
+        }
+      },
+      "segmentsMs": {
+        "inputToHandler": 197.137,
+        "handlerToChangedFrame": 174.393,
+        "inputToChangedFrame": 371.53
+      },
+      "ownerSlices": {
+        "messageLoopFlush": {
+          "id": "286657",
+          "parent_id": null,
+          "name": "MessageLoop::FlushTasks",
+          "ts_ms": 1660595679.097798,
+          "dur_ms": 145.07479,
+          "thread_name": "Lynx_JS",
+          "depth": "0"
+        },
+        "asyncJsTask": {
+          "id": "286658",
+          "parent_id": "286657",
+          "name": "JsTaskAdapter::SetTimeout",
+          "ts_ms": 1660595679.100399,
+          "dur_ms": 136.578757,
+          "thread_name": "Lynx_JS",
+          "depth": "1"
+        },
+        "mainEventDispatch": {
+          "id": "286749",
+          "parent_id": "286747",
+          "name": "EventTarget::DispatchEvent",
+          "ts_ms": 1660595824.589917,
+          "dur_ms": 28.393452,
+          "thread_name": "m.lynx.explorer",
+          "depth": "2"
+        },
+        "lepusEventClosure": {
+          "id": "286750",
+          "parent_id": "286749",
+          "name": "LepusClosureEventListener::Invoke",
+          "ts_ms": 1660595824.631796,
+          "dur_ms": 28.34976,
+          "thread_name": "m.lynx.explorer",
+          "depth": "3"
+        },
+        "fiberFlush": {
+          "id": "286766",
+          "parent_id": "286750",
+          "name": "FiberFlushElementTree",
+          "ts_ms": 1660595845.745412,
+          "dur_ms": 5.876948,
+          "thread_name": "m.lynx.explorer",
+          "depth": "4"
+        }
+      }
+    },
+    "comparison": {
+      "inputToHandlerDeltaMs": 34.146,
+      "handlerToChangedFrameReductionPercent": 33.669,
+      "inputToChangedFrameReductionPercent": 12.767,
+      "asyncJsTaskReductionPercent": 40.903
+    }
+  }
+}

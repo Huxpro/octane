@@ -1595,6 +1595,11 @@ describe('transported retained component subtrees', () => {
 	it('replays only context-indexed rows of a compiler-certified stable component list', async () => {
 		const { container, loopback, root } = transportRoot();
 		const Context = createContext('light');
+		const triggerPlan = universalPlan(RENDERER, {
+			kind: 'host',
+			type: 'trigger',
+			propsSlot: 0,
+		});
 		const rows = [
 			{ id: 1, consumes: false },
 			{ id: 2, consumes: true },
@@ -1604,7 +1609,7 @@ describe('transported retained component subtrees', () => {
 		let bodyCalls = 0;
 		let rowRenders = 0;
 		let consumerRenders = 0;
-		let setTheme!: (theme: string) => void;
+		const effects: string[] = [];
 		const Consumer = memo(
 			defineUniversalComponent(RENDERER, () => {
 				consumerRenders++;
@@ -1633,10 +1638,20 @@ describe('transported retained component subtrees', () => {
 			RENDERER,
 			(props: { source: readonly (typeof rows)[number][]; theme?: string }) => {
 				const [theme, updateTheme] = useState('light', 'theme');
-				setTheme = updateTheme;
-				return universalContext(
-					Context,
-					props.theme ?? theme,
+				useEffect(
+					() => {
+						effects.push('mount');
+						return () => effects.push('cleanup');
+					},
+					[],
+					'stable-effect',
+				);
+				return universalContext(Context, props.theme ?? theme, [
+					universalValue(triggerPlan, [
+						universalProps([
+							['set', 'onFire', () => updateTheme(theme === 'light' ? 'dark' : 'light')],
+						]),
+					]),
 					universalFor(
 						props.source,
 						(row) => {
@@ -1657,28 +1672,41 @@ describe('transported retained component subtrees', () => {
 						undefined,
 						[],
 					),
-				);
+				]);
 			},
 		);
 
 		await root.renderAsync(Scene, { source: rows });
 		await root.flushTransport();
 		expect([keyCalls, bodyCalls, rowRenders, consumerRenders]).toEqual([3, 3, 3, 1]);
-		const [first, second, third] = [...container.host.children];
+		expect(effects).toEqual(['mount']);
+		const [trigger, first, second, third] = [...container.host.children];
+		const listener = loopback.listener('fire');
 		keyCalls = 0;
 		bodyCalls = 0;
 		rowRenders = 0;
 		consumerRenders = 0;
-		setTheme('dark');
+		const firstEvent = await loopback.sendEvent([{ listener, payload: undefined }]);
+		expect(firstEvent.error).toBeUndefined();
 		await root.flushTransport();
 
 		expect([keyCalls, bodyCalls, rowRenders, consumerRenders]).toEqual([0, 0, 0, 1]);
-		expect(container.host.children).toEqual([first, second, third]);
-		expect(container.host.children.map((item) => item.props.theme)).toEqual([
+		expect(container.host.children).toEqual([trigger, first, second, third]);
+		expect(container.host.children.slice(1).map((item) => item.props.theme)).toEqual([
 			'none',
 			'dark',
 			'none',
 		]);
+		expect(loopback.sentBatches.at(-1)?.commands).toHaveLength(1);
+
+		keyCalls = 0;
+		bodyCalls = 0;
+		consumerRenders = 0;
+		const secondEvent = await loopback.sendEvent([{ listener, payload: undefined }]);
+		expect(secondEvent.error).toBeUndefined();
+		await root.flushTransport();
+		expect([keyCalls, bodyCalls, consumerRenders]).toEqual([0, 0, 1]);
+		expect(container.host.children[2].props.theme).toBe('light');
 		expect(loopback.sentBatches.at(-1)?.commands).toHaveLength(1);
 
 		keyCalls = 0;
@@ -1689,22 +1717,27 @@ describe('transported retained component subtrees', () => {
 			'sparse context rollback',
 		);
 		expect([keyCalls, bodyCalls, consumerRenders]).toEqual([0, 0, 1]);
-		expect(container.host.children[1].props.theme).toBe('dark');
+		expect(container.host.children[2].props.theme).toBe('light');
+		const eventAfterRejection = await loopback.sendEvent([{ listener, payload: undefined }]);
+		expect(eventAfterRejection.error).toBeUndefined();
+		await root.flushTransport();
+		expect(container.host.children[2].props.theme).toBe('dark');
 
 		keyCalls = 0;
 		bodyCalls = 0;
 		consumerRenders = 0;
 		await root.renderAsync(Scene, { source: rows, theme: 'green' });
 		expect([keyCalls, bodyCalls, consumerRenders]).toEqual([0, 0, 1]);
-		expect(container.host.children[1].props.theme).toBe('green');
+		expect(container.host.children[2].props.theme).toBe('green');
 
 		keyCalls = 0;
 		bodyCalls = 0;
 		await root.renderAsync(Scene, { source: [...rows], theme: 'green' });
 		expect([keyCalls, bodyCalls]).toEqual([3, 3]);
-		expect(container.host.children).toEqual([first, second, third]);
+		expect(container.host.children).toEqual([trigger, first, second, third]);
 
 		await root.unmountAsync();
+		expect(effects).toEqual(['mount', 'cleanup']);
 	});
 
 	it('falls back before transport when a context-indexed row changes host shape', async () => {

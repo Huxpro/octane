@@ -1,0 +1,245 @@
+{
+  "success": true,
+  "parseSucceeded": true,
+  "trace": {
+    "path": "/data00/home/xuan.huang/.codex/worktrees/68ea/octane-issue288-context-descriptor/benchmarks/lynx-touch-frame/results/issue288-native-traces-final/candidate-eb054e91c-paired-rows1000.pftrace",
+    "bytes": 3309131,
+    "sha256": "e7b9fb2f490434bd4215717be66d728c0c078f2c936815b43f41936cf354a16c"
+  },
+  "query": {
+    "source": "file",
+    "text": "WITH bounds AS (\n  SELECT\n    MIN(CASE WHEN name LIKE 'Issue288::%::mts-input' THEN ts END) AS start_ts,\n    MAX(CASE WHEN name LIKE 'Issue288::%::changed-vsync' THEN ts END) AS end_ts\n  FROM slice\n), window_slices AS (\n  SELECT s.*, t.name AS thread_name\n  FROM slice s\n  JOIN thread_track tt ON s.track_id = tt.id\n  JOIN thread t ON tt.utid = t.utid\n  CROSS JOIN bounds b\n  WHERE s.ts >= b.start_ts\n    AND s.ts <= b.end_ts\n    AND t.name IN ('Lynx_JS', 'm.lynx.explorer', 'RenderThread')\n)\nSELECT\n  thread_name,\n  name,\n  COUNT(*) AS count,\n  SUM(dur) / 1e6 AS total_ms,\n  MAX(dur) / 1e6 AS max_ms\nFROM window_slices\nGROUP BY thread_name, name\nHAVING SUM(dur) >= 1e6\nORDER BY total_ms DESC\nLIMIT 250;\n",
+    "sha256": "e9bb493a01477bdd6a4d4c93424132a141bcb0894eeb2b785d399dd39c569820",
+    "filePath": "/data00/home/xuan.huang/.codex/worktrees/68ea/octane-issue288-context-descriptor/benchmarks/lynx-touch-frame/issue288/trace-window-aggregate.sql"
+  },
+  "columns": ["thread_name", "name", "count", "total_ms", "max_ms"],
+  "totalRows": 32,
+  "returnedRows": 32,
+  "truncated": false,
+  "rows": [
+    {
+      "thread_name": "Lynx_JS",
+      "name": "MessageLoop::FlushTasks",
+      "count": "5",
+      "total_ms": 148.154151,
+      "max_ms": 145.07479
+    },
+    {
+      "thread_name": "Lynx_JS",
+      "name": "JsTaskAdapter::SetTimeout",
+      "count": "6",
+      "total_ms": 145.45605,
+      "max_ms": 136.578757
+    },
+    {
+      "thread_name": "m.lynx.explorer",
+      "name": "Choreographer#doFrame",
+      "count": "21",
+      "total_ms": 50.631411,
+      "max_ms": 45.836497
+    },
+    {
+      "thread_name": "m.lynx.explorer",
+      "name": "traversal",
+      "count": "1",
+      "total_ms": 45.732775,
+      "max_ms": 45.732775
+    },
+    {
+      "thread_name": "m.lynx.explorer",
+      "name": "draw",
+      "count": "1",
+      "total_ms": 44.018199,
+      "max_ms": 44.018199
+    },
+    {
+      "thread_name": "m.lynx.explorer",
+      "name": "Record View#draw()",
+      "count": "1",
+      "total_ms": 41.937969,
+      "max_ms": 41.937969
+    },
+    {
+      "thread_name": "m.lynx.explorer",
+      "name": "LynxView.onDraw",
+      "count": "1",
+      "total_ms": 41.847467,
+      "max_ms": 41.847467
+    },
+    {
+      "thread_name": "m.lynx.explorer",
+      "name": "LynxEngine::Invoke::1",
+      "count": "19",
+      "total_ms": 31.878436,
+      "max_ms": 28.446383
+    },
+    {
+      "thread_name": "m.lynx.explorer",
+      "name": "MessageLoop::FlushTasks",
+      "count": "3",
+      "total_ms": 30.450478,
+      "max_ms": 28.455426
+    },
+    {
+      "thread_name": "m.lynx.explorer",
+      "name": "EventTarget::DispatchEvent",
+      "count": "4",
+      "total_ms": 30.23826,
+      "max_ms": 28.393452
+    },
+    {
+      "thread_name": "m.lynx.explorer",
+      "name": "LepusClosureEventListener::Invoke",
+      "count": "4",
+      "total_ms": 30.088189,
+      "max_ms": 28.34976
+    },
+    {
+      "thread_name": "m.lynx.explorer",
+      "name": "LynxFlattenUI.draw.",
+      "count": "2006",
+      "total_ms": 28.023494,
+      "max_ms": 0.162454
+    },
+    {
+      "thread_name": "m.lynx.explorer",
+      "name": "FiberElement::FlushActions",
+      "count": "1038",
+      "total_ms": 23.840097,
+      "max_ms": 3.192845
+    },
+    {
+      "thread_name": "m.lynx.explorer",
+      "name": "text.FlattenUIText.onDraw",
+      "count": "1002",
+      "total_ms": 14.767434,
+      "max_ms": 0.089239
+    },
+    {
+      "thread_name": "m.lynx.explorer",
+      "name": "FiberFlushElementTree",
+      "count": "1",
+      "total_ms": 5.876948,
+      "max_ms": 5.876948
+    },
+    {
+      "thread_name": "m.lynx.explorer",
+      "name": "ElementManager::OnPatchFinishInnerForFiber",
+      "count": "1",
+      "total_ms": 5.865797,
+      "max_ms": 5.865797
+    },
+    {
+      "thread_name": "RenderThread",
+      "name": "DrawFrame",
+      "count": "1",
+      "total_ms": 3.670466,
+      "max_ms": 3.670466
+    },
+    {
+      "thread_name": "m.lynx.explorer",
+      "name": "PageElement::FlushActionsAsRoot",
+      "count": "1",
+      "total_ms": 3.309177,
+      "max_ms": 3.309177
+    },
+    {
+      "thread_name": "m.lynx.explorer",
+      "name": "LayoutContext.Layout",
+      "count": "2",
+      "total_ms": 2.68165,
+      "max_ms": 2.465846
+    },
+    {
+      "thread_name": "m.lynx.explorer",
+      "name": "TemplateAssembler::RequestLayout",
+      "count": "1",
+      "total_ms": 2.505829,
+      "max_ms": 2.505829
+    },
+    {
+      "thread_name": "m.lynx.explorer",
+      "name": "LayoutContext::Invoke::1",
+      "count": "1",
+      "total_ms": 2.501153,
+      "max_ms": 2.501153
+    },
+    {
+      "thread_name": "m.lynx.explorer",
+      "name": "LayoutContext::DispatchLayoutUpdates",
+      "count": "1",
+      "total_ms": 2.483053,
+      "max_ms": 2.483053
+    },
+    {
+      "thread_name": "Lynx_JS",
+      "name": "BTSRuntime::Invoke::1",
+      "count": "4",
+      "total_ms": 2.454433,
+      "max_ms": 1.59904
+    },
+    {
+      "thread_name": "Lynx_JS",
+      "name": "EventTarget::DispatchEvent",
+      "count": "7",
+      "total_ms": 2.398867,
+      "max_ms": 1.459766
+    },
+    {
+      "thread_name": "Lynx_JS",
+      "name": "JSClosureEventListener::Invoke",
+      "count": "6",
+      "total_ms": 1.900711,
+      "max_ms": 1.438212
+    },
+    {
+      "thread_name": "RenderThread",
+      "name": "syncFrameState",
+      "count": "1",
+      "total_ms": 1.898051,
+      "max_ms": 1.898051
+    },
+    {
+      "thread_name": "RenderThread",
+      "name": "prepareTree",
+      "count": "1",
+      "total_ms": 1.887975,
+      "max_ms": 1.887975
+    },
+    {
+      "thread_name": "m.lynx.explorer",
+      "name": "CalculateLayout",
+      "count": "1",
+      "total_ms": 1.703311,
+      "max_ms": 1.703311
+    },
+    {
+      "thread_name": "m.lynx.explorer",
+      "name": "animation",
+      "count": "21",
+      "total_ms": 1.489885,
+      "max_ms": 0.2736
+    },
+    {
+      "thread_name": "m.lynx.explorer",
+      "name": "AnimationFrameTaskHandler::DoFrame",
+      "count": "21",
+      "total_ms": 1.30899,
+      "max_ms": 0.261169
+    },
+    {
+      "thread_name": "m.lynx.explorer",
+      "name": "AnimationFrameTaskHandler::FrameTask::Execute",
+      "count": "21",
+      "total_ms": 1.257681,
+      "max_ms": 0.257001
+    },
+    {
+      "thread_name": "m.lynx.explorer",
+      "name": "layout",
+      "count": "1",
+      "total_ms": 1.028266,
+      "max_ms": 1.028266
+    }
+  ]
+}

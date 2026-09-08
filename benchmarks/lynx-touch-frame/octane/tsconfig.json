@@ -14,5 +14,5 @@
     "types": ["node"],
     "plugins": [{ "name": "@tsrx/typescript-plugin" }]
   },
-  "include": ["../fixtures/*/octane/**/*", "globals.d.ts"]
+  "include": ["../fixtures/*/octane/**/*", "../issue288/**/*", "globals.d.ts"]
 }
