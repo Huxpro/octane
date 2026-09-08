@@ -28,6 +28,7 @@ import {
 	useContext,
 	useEffect,
 	useId,
+	useInsertionEffect,
 	useLayoutEffect,
 	useMemo,
 	useRef,
@@ -291,6 +292,8 @@ describe('universal hook scope', () => {
 		expect(lifecycle).toEqual(['subscribe']);
 
 		scope.dispose();
+		expect(lifecycle).toEqual(['subscribe']);
+		accepted.shift()!();
 		expect(lifecycle).toEqual(['subscribe', 'unsubscribe']);
 	});
 
@@ -324,6 +327,7 @@ describe('universal hook scope', () => {
 		expect(lifecycle).toEqual(['subscribe first', 'unsubscribe first', 'subscribe second']);
 
 		scope.dispose();
+		accepted.shift()!();
 		expect(lifecycle.at(-1)).toBe('unsubscribe second');
 	});
 
@@ -374,6 +378,126 @@ describe('universal hook scope', () => {
 		// Prove the capability is phase-specific rather than a dead option.
 		expect(() => scope.render(() => useLayoutEffect(() => undefined, [], 'layout'))).not.toThrow();
 		scope.abort();
+		scope.dispose();
+	});
+
+	it('keeps passive effects behind their own accepted asynchronous phase', () => {
+		const layout: (() => void)[] = [];
+		const passive: (() => void)[] = [];
+		const lifecycle: string[] = [];
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender() {},
+			scheduleLayoutEffectCommit(task) {
+				layout.push(task);
+			},
+			schedulePassiveEffectCommit(task) {
+				passive.push(task);
+			},
+		});
+		const render = (value: number) => {
+			scope.render(() => {
+				useLayoutEffect(
+					() => {
+						lifecycle.push(`layout:${value}`);
+						return () => lifecycle.push(`layout-cleanup:${value}`);
+					},
+					[value],
+					'layout',
+				);
+				useEffect(
+					() => {
+						lifecycle.push(`passive:${value}`);
+						return () => lifecycle.push(`passive-cleanup:${value}`);
+					},
+					[value],
+					'passive',
+				);
+			});
+			scope.commit();
+		};
+
+		render(0);
+		expect(lifecycle).toEqual([]);
+		layout.shift()!();
+		expect(lifecycle).toEqual(['layout:0']);
+		passive.shift()!();
+		expect(lifecycle).toEqual(['layout:0', 'passive:0']);
+
+		render(1);
+		layout.shift()!();
+		expect(lifecycle).toEqual(['layout:0', 'passive:0', 'layout-cleanup:0', 'layout:1']);
+		passive.shift()!();
+		expect(lifecycle).toEqual([
+			'layout:0',
+			'passive:0',
+			'layout-cleanup:0',
+			'layout:1',
+			'passive-cleanup:0',
+			'passive:1',
+		]);
+
+		scope.dispose();
+		layout.shift()!();
+		passive.shift()!();
+		expect(lifecycle.slice(-2)).toEqual(['layout-cleanup:1', 'passive-cleanup:1']);
+	});
+
+	it('cleans up an effect in its previous phase when a slot changes phase', () => {
+		const layout: (() => void)[] = [];
+		const passive: (() => void)[] = [];
+		const lifecycle: string[] = [];
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender() {},
+			scheduleLayoutEffectCommit: (task) => layout.push(task),
+			schedulePassiveEffectCommit: (task) => passive.push(task),
+		});
+
+		scope.render(() =>
+			useLayoutEffect(
+				() => {
+					lifecycle.push('layout:create');
+					return () => lifecycle.push('layout:cleanup');
+				},
+				[],
+				'effect',
+			),
+		);
+		scope.commit();
+		layout.shift()!();
+
+		scope.render(() =>
+			useEffect(
+				() => {
+					lifecycle.push('passive:create');
+					return () => lifecycle.push('passive:cleanup');
+				},
+				[],
+				'effect',
+			),
+		);
+		scope.commit();
+		layout.shift()!();
+		expect(lifecycle).toEqual(['layout:create', 'layout:cleanup']);
+		passive.shift()!();
+		expect(lifecycle).toEqual(['layout:create', 'layout:cleanup', 'passive:create']);
+
+		scope.dispose();
+		passive.shift()!();
+		expect(lifecycle.at(-1)).toBe('passive:cleanup');
+	});
+
+	it('still refuses insertion effects when both post-mutation phases exist', () => {
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender() {},
+			scheduleLayoutEffectCommit() {},
+			schedulePassiveEffectCommit() {},
+		});
+		expect(() => scope.render(() => useInsertionEffect(() => undefined, [], 'insertion'))).toThrow(
+			/declared an effect/,
+		);
 		scope.dispose();
 	});
 

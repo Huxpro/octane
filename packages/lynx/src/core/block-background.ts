@@ -87,6 +87,8 @@ export interface LynxBackgroundCore {
 export interface LynxBlockBackgroundCoreOptions {
 	readonly container: LynxClientContainer;
 	readonly transport: LynxBackgroundTransport;
+	/** The root's resolved Lynx-safe microtask scheduler. */
+	readonly scheduleMicrotask: (callback: () => void) => void;
 	/** Bring your own core and root id, primarily so a test can pin allocators. */
 	readonly core?: LynxBlockCore;
 	readonly transportRoot?: number;
@@ -147,6 +149,9 @@ export function createLynxBlockBackgroundCore(
 	options: LynxBlockBackgroundCoreOptions,
 ): LynxBackgroundCore {
 	const { container, transport } = options;
+	if (typeof options.scheduleMicrotask !== 'function') {
+		throw new TypeError('Octane Lynx block root requires a microtask scheduler.');
+	}
 	// The negotiation the Block core has to respect, read per mount. A main
 	// thread that painted a first screen keeps template runs dormant until the
 	// background's first batch has adopted or repaired it, so the first commit
@@ -165,10 +170,10 @@ export function createLynxBlockBackgroundCore(
 		core,
 	});
 	let afterCommitTasks: (() => void)[] = [];
-	const commitAccepted = async (): Promise<UniversalHostBatch | null> => {
-		const tasks = afterCommitTasks;
-		afterCommitTasks = [];
-		const batch = await blockRoot.commit();
+	let afterPassiveCommitTasks: (() => void)[] = [];
+	let passiveTasks: (() => void)[] = [];
+	let passiveScheduled = false;
+	const runTasks = (tasks: readonly (() => void)[]): void => {
 		let hasError = false;
 		let firstError: unknown;
 		for (const task of tasks) {
@@ -182,6 +187,34 @@ export function createLynxBlockBackgroundCore(
 			}
 		}
 		if (hasError) throw firstError;
+	};
+	const flushPassiveTasks = (): void => {
+		passiveScheduled = false;
+		if (passiveTasks.length === 0) return;
+		const tasks = passiveTasks;
+		passiveTasks = [];
+		runTasks(tasks);
+	};
+	const enqueuePassiveTasks = (tasks: readonly (() => void)[]): void => {
+		if (tasks.length === 0) return;
+		for (const task of tasks) passiveTasks.push(task);
+		if (passiveScheduled) return;
+		passiveScheduled = true;
+		options.scheduleMicrotask(flushPassiveTasks);
+	};
+	const commitAccepted = async (): Promise<UniversalHostBatch | null> => {
+		const tasks = afterCommitTasks;
+		afterCommitTasks = [];
+		const passive = afterPassiveCommitTasks;
+		afterPassiveCommitTasks = [];
+		const batch = await blockRoot.commit();
+		try {
+			runTasks(tasks);
+		} finally {
+			// Match the universal root: accepted passive work is not stranded by
+			// a layout callback that throws during the same commit.
+			enqueuePassiveTasks(passive);
+		}
 		return batch;
 	};
 	const context: LynxBlockProgramContext = Object.freeze({
@@ -194,6 +227,9 @@ export function createLynxBlockBackgroundCore(
 		afterCommit(task: () => void): void {
 			afterCommitTasks.push(task);
 		},
+		afterPassiveCommit(task: () => void): void {
+			afterPassiveCommitTasks.push(task);
+		},
 		scheduleRender(work: () => void): Promise<void> {
 			// The same queue `renderAsync` takes its turn in, for the same
 			// reason: one render at a time, one commit in flight at a time. A
@@ -201,10 +237,12 @@ export function createLynxBlockBackgroundCore(
 			// overlap a caller's, and both would flush the core.
 			const run = renderQueue.then(async () => {
 				try {
+					flushPassiveTasks();
 					work();
 					await commitAccepted();
 				} catch (error) {
 					afterCommitTasks = [];
+					afterPassiveCommitTasks = [];
 					throw error;
 				}
 			});
@@ -258,6 +296,7 @@ export function createLynxBlockBackgroundCore(
 			const program = programFor(component as unknown as LynxComponent<unknown>);
 			const run = renderQueue.then(async () => {
 				try {
+					flushPassiveTasks();
 					if (mounted === null) {
 						await program.mount(context, props);
 						mounted = program as unknown as LynxBlockProgram<never>;
@@ -280,6 +319,7 @@ export function createLynxBlockBackgroundCore(
 					return committedTransaction(await commitAccepted());
 				} catch (error) {
 					afterCommitTasks = [];
+					afterPassiveCommitTasks = [];
 					throw error;
 				}
 			});
@@ -298,6 +338,7 @@ export function createLynxBlockBackgroundCore(
 
 		async unmountAsync() {
 			await pending;
+			flushPassiveTasks();
 			if (mounted !== null && typeof mounted.unmount === 'function') {
 				await mounted.unmount(context);
 				mounted = null;

@@ -6013,13 +6013,15 @@ function visibleStateValue<T>(record: UniversalOwnerRecord, slot: unknown, fallb
  * that calls them.
  *
  * This is the seam that lets it. The scope owns one component's cells and
- * nothing else: no child owners, no insertion/passive phases, no transitions,
- * no suspended replay. What it hands back is the render/commit/abort protocol the universal
+ * nothing else: no child owners, no insertion phase, no transitions, no
+ * suspended replay. What it hands back is the render/commit/abort protocol the universal
  * root already uses, so a core that adopts it inherits the update-queue
  * semantics instead of restating them — which is the point, because a restated
  * queue is where semantic drift enters. A core may additionally accept layout
- * effects by scheduling their work at its own accepted-commit boundary; the
- * scope still has no passive phase of its own.
+ * effects by scheduling their work at its own accepted-commit boundary. A core
+ * may separately supply a passive scheduler; keeping the two services distinct
+ * preserves the public phase ordering instead of relabeling passive work as
+ * layout work.
  *
  * Nothing in `UniversalRootImpl` becomes reachable from a core that uses this:
  * the owner record's root is a two-member stand-in, and the one call the hook
@@ -6039,6 +6041,12 @@ export interface UniversalHookScopeServices {
 	 * render this scope just committed. Absence keeps every effect refused.
 	 */
 	readonly scheduleLayoutEffectCommit?: (task: () => void) => void;
+	/**
+	 * Publish passive cleanup/create work after host acceptance, asynchronously
+	 * from the layout phase. The adopting core owns flushing it before the next
+	 * render and before disposal.
+	 */
+	readonly schedulePassiveEffectCommit?: (task: () => void) => void;
 }
 
 export interface UniversalHookScope {
@@ -6167,12 +6175,15 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 				// silently never happens, so a setup that declared one on its
 				// settled pass is refused rather than committed. A consumer may
 				// supply exactly the accepted-host boundary layout effects need;
-				// insertion and passive effects still require phases this scope
-				// deliberately does not own.
+				// Each phase needs an explicit accepting-core scheduler. Insertion
+				// remains refused because it precedes host mutation and this scope has
+				// no mutation phase to publish into.
 				if (
 					owner.seenEffects.some(
 						(effect) =>
-							services.scheduleLayoutEffectCommit === undefined || effect.phase !== 'layout',
+							effect.phase === 'insertion' ||
+							(effect.phase === 'layout' && services.scheduleLayoutEffectCommit === undefined) ||
+							(effect.phase === 'passive' && services.schedulePassiveEffectCommit === undefined),
 					)
 				) {
 					throw new Error(UNIVERSAL_HOOK_SCOPE_EFFECTS_REFUSED);
@@ -6194,8 +6205,13 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 			const nextEffects = [...owner.seenEffects];
 			const previousBySlot = new Map(previousEffects.map((effect) => [effect.slot, effect]));
 			const nextBySlot = new Map(nextEffects.map((effect) => [effect.slot, effect]));
-			const cleanupTasks: (() => void)[] = [];
-			const createTasks: (() => void)[] = [];
+			const layoutCleanupTasks: (() => void)[] = [];
+			const layoutCreateTasks: (() => void)[] = [];
+			// The scope used to allocate exactly the two layout task arrays above on
+			// every commit. Keep the passive pair lazy so pages with no passive
+			// lifecycle pay no additional allocation on the Block hot path.
+			let passiveCleanupTasks: (() => void)[] | null = null;
+			let passiveCreateTasks: (() => void)[] | null = null;
 			for (const previous of previousEffects) {
 				const next = nextBySlot.get(previous.slot);
 				if (
@@ -6204,7 +6220,13 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 					!depsEqual(previous.deps, next.deps)
 				) {
 					const cleanup = next?.previous === previous ? next : previous;
-					if (cleanup.mounted) cleanupTasks.push(() => runEffectCleanup(cleanup));
+					if (cleanup.mounted) {
+						if (previous.phase === 'passive') {
+							(passiveCleanupTasks ??= []).push(() => runEffectCleanup(cleanup));
+						} else {
+							layoutCleanupTasks.push(() => runEffectCleanup(cleanup));
+						}
+					}
 				}
 			}
 			for (const next of nextEffects) {
@@ -6215,7 +6237,8 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 					!depsEqual(previous.deps, next.deps) ||
 					!previous.mounted
 				) {
-					createTasks.push(() => {
+					const tasks = next.phase === 'passive' ? (passiveCreateTasks ??= []) : layoutCreateTasks;
+					tasks.push(() => {
 						if (!record.disposed && record.hooks.get(next.slot) === next) runEffectCreate(next);
 					});
 				}
@@ -6235,10 +6258,19 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 				if (queue.length === 0) record.updates.delete(slot);
 			}
 			record.mounted = true;
-			if (cleanupTasks.length !== 0 || createTasks.length !== 0) {
+			if (layoutCleanupTasks.length !== 0 || layoutCreateTasks.length !== 0) {
 				services.scheduleLayoutEffectCommit?.(() =>
-					runCommitTasks([...cleanupTasks, ...createTasks]),
+					runCommitTasks([...layoutCleanupTasks, ...layoutCreateTasks]),
 				);
+			}
+			if (passiveCleanupTasks !== null || passiveCreateTasks !== null) {
+				const tasks =
+					passiveCleanupTasks === null
+						? passiveCreateTasks!
+						: passiveCreateTasks === null
+							? passiveCleanupTasks
+							: [...passiveCleanupTasks, ...passiveCreateTasks];
+				services.schedulePassiveEffectCommit?.(() => runCommitTasks(tasks));
 			}
 		},
 		abort(): void {
@@ -6247,16 +6279,25 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 		dispose(): void {
 			draft = null;
 			record.disposed = true;
+			const layoutTasks: (() => void)[] = [];
+			const passiveTasks: (() => void)[] = [];
 			try {
-				runCommitTasks(
-					record.effectOrder
-						.filter((effect) => effect.mounted)
-						.map((effect) => () => runEffectCleanup(effect)),
-				);
+				for (const effect of record.effectOrder) {
+					if (!effect.mounted) continue;
+					(effect.phase === 'passive' ? passiveTasks : layoutTasks).push(() =>
+						runEffectCleanup(effect),
+					);
+				}
 			} finally {
 				record.effectOrder = [];
 				record.hooks.clear();
 				record.updates.clear();
+			}
+			if (layoutTasks.length !== 0) {
+				services.scheduleLayoutEffectCommit?.(() => runCommitTasks(layoutTasks));
+			}
+			if (passiveTasks.length !== 0) {
+				services.schedulePassiveEffectCommit?.(() => runCommitTasks(passiveTasks));
 			}
 		},
 	};

@@ -309,7 +309,7 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 	const backgroundCore: LynxBackgroundCore = (() => {
 		try {
 			const root = LYNX_BLOCK_BACKGROUND_CORE
-				? createLynxBlockBackgroundCore({ container, transport })
+				? createLynxBlockBackgroundCore({ container, transport, scheduleMicrotask })
 				: createUniversalRoot<LynxClientContainer, LynxPublicHandle>(
 						container,
 						createLynxClientDriver(container),

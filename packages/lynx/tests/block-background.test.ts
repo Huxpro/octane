@@ -106,7 +106,9 @@ function tableProgram(): LynxBlockProgram<ProgramProps> {
 	} as LynxBlockProgram<ProgramProps> & { releases(): number };
 }
 
-function scene() {
+function scene(
+	scheduleMicrotask: (task: () => void) => void = (task) => void Promise.resolve().then(task),
+) {
 	const context = new FakeContextProxy();
 	const main = installMainSide(context);
 	const container = createLynxClientContainer();
@@ -115,6 +117,7 @@ function scene() {
 	const background = createLynxBlockBackgroundCore({
 		container,
 		transport,
+		scheduleMicrotask,
 		core,
 		transportRoot: 1,
 	});
@@ -212,6 +215,38 @@ describe('Lynx block background core', () => {
 		harness.acknowledged++;
 		await rendering;
 		expect(published).toBe(1);
+	});
+
+	it('schedules passive work only after acknowledgement and flushes it before the next render', async () => {
+		const microtasks: (() => void)[] = [];
+		const harness = scene((task) => microtasks.push(task));
+		const lifecycle: string[] = [];
+		const component = withLynxBlockProgram((() => null) as unknown as LynxComponent<ProgramProps>, {
+			mount(context) {
+				context.core.mount(null, null, PAGE_TEMPLATE, []);
+				context.afterPassiveCommit(() => lifecycle.push('passive'));
+			},
+			update() {
+				lifecycle.push('update');
+			},
+		});
+
+		const mounting = harness.background.renderAsync(component as never, { labels: [] });
+		await flushMicrotasks();
+		expect(lifecycle).toEqual([]);
+		expect(microtasks).toEqual([]);
+
+		harness.main.acknowledge(harness.main.commits[0]!);
+		harness.acknowledged++;
+		await mounting;
+		expect(lifecycle).toEqual([]);
+		expect(microtasks).toHaveLength(1);
+
+		await harness.background.renderAsync(component as never, { labels: [] });
+		expect(lifecycle).toEqual(['passive', 'update']);
+		// The already-scheduled callback is now a harmless empty flush.
+		microtasks.shift()!();
+		expect(lifecycle).toEqual(['passive', 'update']);
 	});
 
 	it('discards afterCommit work from a render that throws before commit', async () => {
