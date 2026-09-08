@@ -9910,8 +9910,7 @@ class UniversalRootImpl<Container, PublicInstance>
 		if (
 			this.owner === null ||
 			attempt.owner.record !== this.owner ||
-			this.treeFeatures !== 0 ||
-			attempt.treeFeatures !== 0 ||
+			((this.treeFeatures | attempt.treeFeatures) & ~UNIVERSAL_TREE_EVENT) !== 0 ||
 			attempt.scope !== null ||
 			attempt.retryThenables.size !== 0 ||
 			attempt.replayEntries.length !== 0 ||
@@ -9924,10 +9923,15 @@ class UniversalRootImpl<Container, PublicInstance>
 
 		const hostRecords: LogicalRecord[] = [];
 		const hostBlueprints: BlueprintHost[] = [];
+		const eventHosts: {
+			record: LogicalRecord;
+			events: Map<string, CommittedEvent>;
+		}[] = [];
 		const collapsed: {
 			record: LogicalRecord;
 			previous: CommittedCollapsedTemplate;
 			next: BlueprintCollapsedTemplate;
+			events: readonly CommittedCollapsedTemplateEvent[];
 		}[] = [];
 		const draftByRecord = new Map(attempt.owners.map((draft) => [draft.record, draft]));
 		let sparseCount = 0;
@@ -9984,8 +9988,6 @@ class UniversalRootImpl<Container, PublicInstance>
 				record.owner !== next.owner ||
 				record.ref != null ||
 				next.ref != null ||
-				record.events.size !== 0 ||
-				next.events.size !== 0 ||
 				record.lifecycles.size !== 0 ||
 				next.lifecycles.size !== 0 ||
 				record.localCallbacks.size !== 0 ||
@@ -9994,6 +9996,29 @@ class UniversalRootImpl<Container, PublicInstance>
 				next.visibility !== 'visible'
 			) {
 				return false;
+			}
+			if (record.collapsedTemplate === undefined && next.collapsedTemplate !== undefined) {
+				expandCollapsedTemplateBlueprint(next);
+			}
+			if (record.events.size !== next.events.size) return false;
+			if (next.events.size !== 0) {
+				const events = new Map<string, CommittedEvent>();
+				for (const [type, event] of next.events) {
+					const previous = record.events.get(type);
+					if (
+						previous === undefined ||
+						previous.prop !== event.prop ||
+						previous.type !== event.type ||
+						previous.priority !== event.priority ||
+						previous.owner !== event.owner ||
+						this.handlers.get(previous.listener) !== previous ||
+						!this.publishedListeners.has(previous.listener)
+					) {
+						return false;
+					}
+					events.set(type, { ...event, listener: previous.listener });
+				}
+				eventHosts.push({ record, events });
 			}
 			if (record.collapsedTemplate !== undefined || next.collapsedTemplate !== undefined) {
 				const previous = record.collapsedTemplate;
@@ -10006,14 +10031,36 @@ class UniversalRootImpl<Container, PublicInstance>
 					previous.values === undefined ||
 					following.prepared !== previous.prepared ||
 					following.values === undefined ||
-					previous.events.length !== 0 ||
-					following.prepared.events.length !== 0 ||
+					previous.events.length !== following.prepared.events.length ||
+					(following.prepared.events.length !== 0 && following.captures === undefined) ||
 					record.children.length !== 0 ||
 					next.children.length !== 0
 				) {
 					return false;
 				}
-				collapsed.push({ record, previous, next: following });
+				const events: CommittedCollapsedTemplateEvent[] = [];
+				for (let index = 0; index < following.prepared.events.length; index++) {
+					const site = following.prepared.events[index];
+					const accepted = previous.events[index];
+					const handler = following.captures![site.slot];
+					if (
+						accepted.index !== site.node ||
+						accepted.event.prop !== site.prop ||
+						accepted.event.type !== site.type ||
+						accepted.event.priority !== site.priority ||
+						accepted.event.owner !== next.owner ||
+						typeof handler !== 'function' ||
+						this.handlers.get(accepted.event.listener) !== accepted.event ||
+						!this.publishedListeners.has(accepted.event.listener)
+					) {
+						return false;
+					}
+					events.push({
+						index: site.node,
+						event: { ...accepted.event, handler: handler as (...args: any[]) => any },
+					});
+				}
+				collapsed.push({ record, previous, next: following, events });
 				return true;
 			}
 			hostRecords.push(record);
@@ -10054,8 +10101,17 @@ class UniversalRootImpl<Container, PublicInstance>
 				record.disposed ||
 				record.visibility !== 'visible' ||
 				draft.visibility !== 'visible' ||
-				record.effectOrder.length !== 0 ||
-				draft.seenEffects.length !== 0 ||
+				record.effectOrder.length !== draft.seenEffects.length ||
+				draft.seenEffects.some((next, index) => {
+					const previous = record.effectOrder[index];
+					return (
+						previous === undefined ||
+						next.previous !== previous ||
+						next.phase !== previous.phase ||
+						!previous.mounted ||
+						!depsEqual(previous.deps, next.deps)
+					);
+				}) ||
 				record.boundaryThenable !== null ||
 				draft.boundaryThenable !== null ||
 				(record.isBoundary && record.hasBoundaryError) ||
@@ -10085,29 +10141,33 @@ class UniversalRootImpl<Container, PublicInstance>
 		}
 
 		const commands: UniversalHostCommand[] = [];
+		const recreatedEventRecords = new Set<LogicalRecord>();
 		const same = this.widenedPropEquality;
 		const stageUpdate = (
+			record: LogicalRecord,
 			type: string,
 			id: number,
 			previous: Readonly<Record<string, unknown>>,
 			next: Record<string, unknown>,
-		): void => {
+		): UniversalHostUpdateKind => {
 			const kind = this.driver.updates?.classify(type, previous, next) ?? 'update';
 			if (kind === 'update') {
 				commands.push({ op: 'update', id, props: Object.freeze(next) });
 			} else if (kind === 'recreate') {
+				if (record.events.size !== 0) recreatedEventRecords.add(record);
 				commands.push({ op: 'recreate', id, type, props: Object.freeze(next) });
 			} else {
 				throw new TypeError(
 					`Universal update classifier returned invalid kind ${JSON.stringify(kind)}.`,
 				);
 			}
+			return kind;
 		};
 		for (let index = 0; index < hostRecords.length; index++) {
 			const record = hostRecords[index];
 			const next = hostBlueprints[index];
 			if (!shallowPropsEqual(record.props, next.props, same)) {
-				stageUpdate(next.type, record.id, record.props, next.props);
+				stageUpdate(record, next.type, record.id, record.props, next.props);
 			}
 		}
 		for (const update of collapsed) {
@@ -10131,12 +10191,38 @@ class UniversalRootImpl<Container, PublicInstance>
 						? update.record.props
 						: materializePreparedCollapsedHostProps(program, update.previous.values!, node);
 				const nextProps = materializePreparedCollapsedHostProps(program, update.next.values!, node);
-				stageUpdate(
+				const kind = stageUpdate(
+					update.record,
 					program.wire.nodes[node].type,
 					update.previous.firstId! + node,
 					previousProps,
 					nextProps,
 				);
+				if (kind === 'recreate') {
+					for (const accepted of update.events) {
+						if (accepted.index !== node) continue;
+						commands.push({
+							op: 'event',
+							id: update.previous.firstId! + node,
+							type: accepted.event.type,
+							listener: {
+								id: accepted.event.listener,
+								priority: accepted.event.priority,
+							},
+						});
+					}
+				}
+			}
+		}
+		for (const { record, events } of eventHosts) {
+			if (!recreatedEventRecords.has(record)) continue;
+			for (const [type, event] of events) {
+				commands.push({
+					op: 'event',
+					id: record.id,
+					type,
+					listener: { id: event.listener, priority: event.priority },
+				});
 			}
 		}
 
@@ -10188,6 +10274,15 @@ class UniversalRootImpl<Container, PublicInstance>
 					);
 					(update.previous as { values: readonly UniversalHostTemplateProgramValue[] }).values =
 						update.next.values!;
+					(update.previous as { events: readonly CommittedCollapsedTemplateEvent[] }).events =
+						update.events;
+					for (const accepted of update.events) {
+						this.handlers.set(accepted.event.listener, accepted.event);
+					}
+				}
+				for (const { record, events } of eventHosts) {
+					record.events = events;
+					for (const event of events.values()) this.handlers.set(event.listener, event);
 				}
 				for (const draft of attempt.owners) {
 					const record = draft.record;
@@ -10195,7 +10290,7 @@ class UniversalRootImpl<Container, PublicInstance>
 					record.componentRevision = draft.componentRevision;
 					record.parent = draft.parent?.record ?? null;
 					record.hooks = draft.hooks;
-					record.effectOrder = [];
+					record.effectOrder = [...draft.seenEffects];
 					if (!draft.preserveChildren) record.children = acceptedChildren.get(draft)!;
 					record.contextValues = draft.contextValues;
 					record.isBoundary = draft.isBoundary;
@@ -10229,7 +10324,7 @@ class UniversalRootImpl<Container, PublicInstance>
 				this.urgentBoundarySuspension = null;
 				this.bridgeContextReads = attempt.bridgeContextReads;
 				this.nextUniversalId = attempt.nextUniversalId;
-				this.treeFeatures = 0;
+				this.treeFeatures = attempt.treeFeatures;
 				for (const context of changedContexts) context.$$version++;
 			},
 			() => prepared.afterAccept?.(),

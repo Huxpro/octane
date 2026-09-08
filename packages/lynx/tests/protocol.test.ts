@@ -6,15 +6,20 @@ import {
 	type UniversalSerializableValue,
 	type UniversalTransportCommitMessage,
 	type UniversalTransportIdentity,
+	createContext,
 	createUniversalRoot,
 	defineUniversalComponent,
+	memo,
 	recordUniversalProgramCommand,
 	universalComponent,
+	universalContext,
+	universalFor,
 	universalKey,
 	universalList,
 	universalPlan,
 	universalProps,
 	universalValue,
+	useContext,
 	useLayoutEffect,
 	useState,
 } from 'octane/universal/native';
@@ -4430,6 +4435,165 @@ describe('@octanejs/lynx transported protocol', () => {
 		expect(waitingOutbound).not.toContain('abort');
 		waitingTransport.close();
 		directTransport.close();
+		transport.close();
+	});
+
+	it('stages collapsed-template event closures until a sparse context update is accepted', async () => {
+		const context = new FakeContextProxy();
+		const main = installMainHarness(context, true, {
+			compactAck: 1,
+			templateMount: 1,
+			templateProgram: 1,
+			templateRuns: 1,
+		});
+		const container = createLynxClientContainer();
+		const transport = createLynxBackgroundTransport(context, container);
+		await transport.ready;
+		const root = createUniversalRoot(container, createLynxClientDriver(container), { transport });
+		transport.bindRoot(root);
+		const Tone = createContext('light');
+		const rows: readonly { id: number }[] = Array.from(
+			{ length: LYNX_COMPACT_ACKNOWLEDGEMENT_MIN_HOSTS },
+			(_, index) => ({ id: index + 1 }),
+		);
+		const plainPlan = universalPlan(LYNX_TRANSPORT_RENDERER, {
+			kind: 'host',
+			type: 'view',
+			bindings: [['id', 0]],
+		});
+		const consumerPlan = universalPlan(LYNX_TRANSPORT_RENDERER, {
+			kind: 'host',
+			type: 'view',
+			bindings: [['class', 0]],
+			children: [
+				{
+					kind: 'host',
+					type: 'text',
+					bindings: [
+						['value', 1],
+						['bindtap', 2],
+					],
+				},
+			],
+		});
+		const deliveries: string[] = [];
+		let keyCalls = 0;
+		let bodyCalls = 0;
+		let setTone!: (value: string) => void;
+		const Consumer = memo(
+			defineUniversalComponent(LYNX_TRANSPORT_RENDERER, () => {
+				const tone = useContext(Tone);
+				return universalValue(consumerPlan, [tone, tone, () => deliveries.push(tone)]);
+			}),
+		);
+		const Row = memo(
+			defineUniversalComponent(LYNX_TRANSPORT_RENDERER, (props: { row: (typeof rows)[number] }) =>
+				props.row.id === 2
+					? universalComponent(LYNX_TRANSPORT_RENDERER, Consumer, universalProps([]))
+					: universalValue(plainPlan, [String(props.row.id)]),
+			),
+		);
+		const Scene = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, () => {
+			const [tone, updateTone] = useState('light', 'tone');
+			setTone = updateTone;
+			return universalContext(
+				Tone,
+				tone,
+				universalFor(
+					rows,
+					(row) => {
+						keyCalls++;
+						return row.id;
+					},
+					(row) => {
+						bodyCalls++;
+						return universalComponent(
+							LYNX_TRANSPORT_RENDERER,
+							Row,
+							universalProps([['set', 'row', row]]),
+						);
+					},
+					null,
+					false,
+					false,
+					undefined,
+					undefined,
+					undefined,
+					true,
+					undefined,
+					[],
+				),
+			);
+		});
+
+		const mounting = root.renderAsync(Scene, undefined);
+		await flushMicrotasks();
+		const mount = main.commits[0]!;
+		type TemplateEventCommand = Extract<
+			UniversalHostBatch['commands'][number],
+			{ op: 'mount-template-range' | 'mount-template-run' }
+		>;
+		const templateEvent = mount.batch.commands.find(
+			(command): command is TemplateEventCommand =>
+				(command.op === 'mount-template-range' || command.op === 'mount-template-run') &&
+				command.firstListenerId !== null,
+		);
+		if (templateEvent === undefined || templateEvent.firstListenerId === null) {
+			throw new Error('Missing collapsed-template listener range.');
+		}
+		const listener = templateEvent.firstListenerId;
+		main.acknowledge(mount, 'complete');
+		await mounting;
+		expect([keyCalls, bodyCalls]).toEqual([rows.length, rows.length]);
+
+		keyCalls = 0;
+		bodyCalls = 0;
+		setTone('dark');
+		await flushMicrotasks();
+		const update = main.commits[1]!;
+		expect([keyCalls, bodyCalls]).toEqual([0, 0]);
+		expect(update.batch.commands.filter((command) => command.op === 'update')).toHaveLength(2);
+		context.sendToBackground({
+			...commitIdentity(mount),
+			type: 'event',
+			priority: 'discrete',
+			deliveries: [{ listener, payload: undefined }],
+		});
+		expect(deliveries).toEqual(['light']);
+
+		const updateCommands = update.batch.commands.filter(
+			(command): command is Extract<UniversalHostBatch['commands'][number], { op: 'update' }> =>
+				command.op === 'update',
+		);
+		context.sendToBackground({
+			...commitIdentity(update),
+			type: 'ack',
+			handles: updateCommands.map((command, index) => ({
+				op: 'upsert' as const,
+				id: command.id,
+				type: index === 0 ? 'view' : 'text',
+				generation: 1,
+				attached: true,
+				listDescendant: false,
+					snapshot: handleSnapshot(
+						update.root,
+						command.id,
+						index === 0 ? 'view' : 'text',
+						1,
+						{ props: command.props } as UniversalSerializableValue,
+					),
+			})),
+		});
+		context.sendToBackground({ ...commitIdentity(update), type: 'complete' });
+		await root.flushTransport();
+		context.sendToBackground({
+			...commitIdentity(update),
+			type: 'event',
+			priority: 'discrete',
+			deliveries: [{ listener, payload: undefined }],
+		});
+		expect(deliveries).toEqual(['light', 'dark']);
+
 		transport.close();
 	});
 });
