@@ -39,6 +39,7 @@ import {
 	universalValue,
 	useContext,
 	useEffect,
+	useInsertionEffect,
 	useState,
 	useSyncExternalStore,
 	type UniversalRenderable,
@@ -317,6 +318,7 @@ function blockColumn<Props = CardProps>(core?: LynxBlockCore) {
 	const background = createLynxBlockBackgroundCore({
 		container,
 		transport,
+		scheduleMicrotask: (callback) => void Promise.resolve().then(callback),
 		transportRoot: 1,
 		core,
 	});
@@ -766,16 +768,53 @@ describe('Lynx compiled component the Block core refuses', () => {
 		).rejects.toThrow(/HookedRow.*calls a hook/s);
 	});
 
-	it('refuses a page that declares an effect rather than never running it', async () => {
+	it('runs a page passive effect after acknowledgement and cleans it up on change and unmount', async () => {
 		const block = blockColumn();
-		// The page has hook cells now, so its useEffect reaches the scope rather
-		// than throwing HOOKS_WITHOUT_ATTEMPT — and the scope has no commit
-		// phase to run it. Mounting anyway would be a subscription that silently
-		// never happens, which is the failure this refusal exists to prevent.
+		const lifecycle: string[] = [];
 		const Subscribed = defineUniversalComponent(
 			LYNX_TRANSPORT_RENDERER,
 			function Subscribed({ label, detail, active, onTap }: CardProps) {
-				useEffect(() => undefined, [], 'subscribe');
+				useEffect(
+					() => {
+						lifecycle.push(`subscribe:${label}`);
+						return () => lifecycle.push(`unsubscribe:${label}`);
+					},
+					[label],
+					'subscribe',
+				);
+				return universalValue(CARD_PLAN, [
+					active ? 'card active' : 'card',
+					label,
+					active ? 'card-meta on' : 'card-meta',
+					onTap,
+					detail,
+				]);
+			},
+		);
+		const mounting = block.background.renderAsync(Subscribed as never, LADDER[0]!);
+		await flushMicrotasks();
+		expect(block.main.commits).toHaveLength(1);
+		expect(lifecycle).toEqual([]);
+
+		block.acknowledgePending();
+		await mounting;
+		await flushMicrotasks();
+		expect(lifecycle).toEqual(['subscribe:alpha']);
+
+		await block.render(Subscribed as never, { ...LADDER[0]!, label: 'beta' });
+		expect(lifecycle).toEqual(['subscribe:alpha', 'unsubscribe:alpha', 'subscribe:beta']);
+
+		await block.settle(block.background.unmountAsync());
+		await flushMicrotasks();
+		expect(lifecycle.at(-1)).toBe('unsubscribe:beta');
+	});
+
+	it('still refuses a page insertion effect because the Block core has no pre-mutation phase', async () => {
+		const block = blockColumn();
+		const Inserting = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Inserting({ label, detail, active, onTap }: CardProps) {
+				useInsertionEffect(() => undefined, [], 'insert');
 				return universalValue(CARD_PLAN, [
 					active ? 'card active' : 'card',
 					label,
@@ -786,8 +825,8 @@ describe('Lynx compiled component the Block core refuses', () => {
 			},
 		);
 		await expect(
-			block.settle(block.background.renderAsync(Subscribed as never, LADDER[0]!)),
-		).rejects.toThrow(/Subscribed.*declares an effect/s);
+			block.settle(block.background.renderAsync(Inserting as never, LADDER[0]!)),
+		).rejects.toThrow(/Inserting.*insertion effect/s);
 	});
 
 	it('refuses a page that reads a context rather than answering the default', async () => {

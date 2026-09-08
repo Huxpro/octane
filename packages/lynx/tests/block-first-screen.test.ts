@@ -138,7 +138,11 @@ it('paints through the Block core behind a first screen main already painted', a
 	globalThis.lynxTestingEnv.switchToBackgroundThread();
 	const container = createLynxClientContainer();
 	const transport = createLynxBackgroundTransport(backgroundContext(), container);
-	const background = createLynxBlockBackgroundCore({ container, transport });
+	const background = createLynxBlockBackgroundCore({
+		container,
+		transport,
+		scheduleMicrotask: (callback) => void Promise.resolve().then(callback),
+	});
 	transport.bindRoot(background);
 
 	// Mount is commit 1: it has to adopt or repair main's first screen, so it
@@ -197,7 +201,11 @@ it('acknowledges the second compact-eligible run compactly too (issue #230)', as
 		if (message?.type === 'ack') acknowledgements.push(message);
 	});
 	const transport = createLynxBackgroundTransport(context, container);
-	const background = createLynxBlockBackgroundCore({ container, transport });
+	const background = createLynxBlockBackgroundCore({
+		container,
+		transport,
+		scheduleMicrotask: (callback) => void Promise.resolve().then(callback),
+	});
 	transport.bindRoot(background);
 
 	// The benchmark's `Clear` and `Create` are separate clicks, so they are

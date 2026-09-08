@@ -37,6 +37,13 @@ export interface LynxBlockProgramContext {
 	 */
 	afterCommit(task: () => void): void;
 	/**
+	 * Queue passive lifecycle work after the current commit is acknowledged and
+	 * after its synchronous layout work. The owning background core schedules the
+	 * task on its explicit Lynx microtask scheduler and flushes pending passive
+	 * work before the next render starts.
+	 */
+	afterPassiveCommit(task: () => void): void;
+	/**
 	 * Run `work`, then commit it, serialized against every other render of this
 	 * root.
 	 *

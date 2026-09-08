@@ -46,9 +46,10 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
  * outside the page's scope, and giving each one a scope of its own is giving
  * each one an owner — the per-row cost this core exists to avoid — so whether a
  * row can afford cells is its own question with its own measurement. Page
- * layout effects run after host acknowledgement; insertion/passive effects are
- * refused because their phases do not exist, and context reads are refused
- * because a single scope has no owner chain.
+ * layout effects run after host acknowledgement and passive effects run on the
+ * root's following microtask, before its next render. Insertion effects are
+ * refused because this core has no pre-mutation phase, and context reads are
+ * refused because a single scope has no owner chain.
  *
  * A range nested inside a range is refused too. Its rows would need range state
  * of their own, carried through every reconcile of the outer list, and that is
@@ -80,6 +81,7 @@ import {
 	UNIVERSAL_HOOK_SCOPE_CONTEXT_REFUSED,
 	UNIVERSAL_HOOK_SCOPE_EFFECTS_REFUSED,
 	type UniversalHookScope,
+	useEffect,
 	useLayoutEffect,
 } from 'octane/universal/native';
 import {
@@ -131,9 +133,9 @@ const UNIVERSAL_PROPS: symbol = Symbol.for('octane.universal.props');
 const HOOKS_WITHOUT_ATTEMPT =
 	'Universal hooks may only run while a universal component is rendering.';
 
-/** Why a phase the page scope cannot publish is refused, said once. */
-const EFFECTS_UNSUPPORTED =
-	'its setup declares an effect in the insertion or passive phase, whose commit phase the Block core does not have (issue #135 item 1b).';
+/** Why the one phase the page scope cannot publish is refused, said once. */
+const INSERTION_EFFECTS_UNSUPPORTED =
+	'its setup declares an insertion effect, whose pre-mutation phase the Block core does not have (issue #290).';
 
 /** The two ways out of every refusal below, so they read the same. */
 const REMEDY =
@@ -370,8 +372,9 @@ export function lynxBlockProgramForComponent<Props>(
 	 * The second argument a compiled component is called with.
 	 *
 	 * The page's scope stands up cells and the background core gives layout work
-	 * an accepted-host boundary. It still has neither insertion/passive phases
-	 * nor an owner chain. Passing `undefined` would refuse those capabilities
+	 * an accepted-host boundary and passive work an explicit microtask phase. It
+	 * still has neither insertion effects nor an owner chain. Passing `undefined`
+	 * would refuse those capabilities
 	 * too, with a TypeError naming a property rather than the layer.
 	 */
 	const renderContext: UniversalRenderContext = Object.freeze({
@@ -383,13 +386,13 @@ export function lynxBlockProgramForComponent<Props>(
 			);
 		},
 		insertionEffect(): never {
-			refuse(rendering, EFFECTS_UNSUPPORTED);
+			refuse(rendering, INSERTION_EFFECTS_UNSUPPORTED);
 		},
 		layoutEffect(create: () => void | (() => void), deps?: readonly unknown[]): void {
 			useLayoutEffect(create, deps);
 		},
-		effect(): never {
-			refuse(rendering, EFFECTS_UNSUPPORTED);
+		effect(create: () => void | (() => void), deps?: readonly unknown[]): void {
+			useEffect(create, deps);
 		},
 	});
 	/**
@@ -496,6 +499,9 @@ export function lynxBlockProgramForComponent<Props>(
 			scheduleLayoutEffectCommit(task): void {
 				liveContext!.afterCommit(task);
 			},
+			schedulePassiveEffectCommit(task): void {
+				liveContext!.afterPassiveCommit(task);
+			},
 		}));
 		let rendered: RenderedPlan;
 		try {
@@ -507,7 +513,7 @@ export function lynxBlockProgramForComponent<Props>(
 			// same way a row's HOOKS_WITHOUT_ATTEMPT is renamed in
 			// renderPlanValue.
 			if (error instanceof Error && error.message === UNIVERSAL_HOOK_SCOPE_EFFECTS_REFUSED) {
-				refuse(subject, EFFECTS_UNSUPPORTED);
+				refuse(subject, INSERTION_EFFECTS_UNSUPPORTED);
 			}
 			if (error instanceof Error && error.message === UNIVERSAL_HOOK_SCOPE_CONTEXT_REFUSED) {
 				refuse(
