@@ -4,6 +4,9 @@ Issue: #290
 
 Baseline source: `Huxpro/octane@f3bc8804a8834e6b66aca6a5bddca62c5cfe03b6`
 
+Candidate implementation source:
+`Huxpro/octane@cd39e7f24f36b14d4a9505542cbaf9e76444a429`
+
 Fixture: `benchmarks/lynx-table/app`, `BENCH_AUTOROWS=0`, production Native build
 
 Decision: **accept compile-time removal of production protocol-error arguments**
@@ -22,23 +25,23 @@ baseline and with only this mechanism changed. All receipt controls passed.
 
 | `block+program` boundary | baseline raw / gzip / Brotli | candidate raw / gzip / Brotli | delta |
 | --- | ---: | ---: | ---: |
-| encoded Native bundle | 454,909 / 173,719 / 144,479 | 441,534 / 170,108 / 141,293 | -13,375 / **-3,611** / -3,186 |
+| encoded Native bundle | 454,909 / 173,719 / 144,479 | 441,534 / 170,113 / 141,338 | -13,375 / **-3,606** / -3,141 |
 | decoded main program | 250,716 / 115,855 / 95,364 | 244,923 / 113,849 / 93,820 | -5,793 / **-2,006** / -1,544 |
-| decoded background program | 201,346 / 57,593 / 49,244 | 193,764 / 55,888 / 47,864 | -7,582 / **-1,705** / -1,380 |
+| decoded background program | 201,346 / 57,593 / 49,244 | 193,764 / 55,892 / 47,897 | -7,582 / **-1,701** / -1,347 |
 
-The encoded gzip reduction is 2.079%. The shared protocol becomes smaller in
+The encoded gzip reduction is 2.076%. The shared protocol becomes smaller in
 both programs; neither thread grows, so the result is not a thread transfer.
 The candidate encoded bundle SHA-256 is
-`424ab8ab777003c67b26f762dca837ea3b713ec8bb25f54a098e2a6ab45dca34`;
+`ca64e1b614d5c113a1006a7a3124f222d8a294493b6673ae0927c5bbc1cbb705`;
 the candidate main/background program SHA-256 values are
 `88cd21924c262e0ef39bc5cd76764eba0f43ee2bc20e39202f12d7fafed09692`
 and
-`99e6d4fc8614e80191bb80f8de9213deb88791a35ba4ecf7504bef980e8df7a7`.
+`77d354c829464d8aab87614676aaf68f26508ec1acef7faca0e4682fe9615150`.
 
-The external baseline and working-tree candidate receipts have SHA-256
+The external baseline and exact-clean candidate receipts have SHA-256
 `15dd27869ac9cf25b447c6bcc8309cb88ae52db411daa8e83dc133752e475a32`
 and
-`270f1722d8d5e4eb0308cbfe6a92af07c567b007cba3d463af8403bdf3dc6402`.
+`5d307707b0c647b8905f54020c2f3800c98574d30d85c499284916c52c321529`.
 
 ## Semantic controls
 
@@ -49,6 +52,6 @@ and
   messages; and
 - all core/backend isolation controls pass.
 
-This slice does not satisfy M3 by itself. The resulting 170,108-byte gzip
+This slice does not satisfy M3 by itself. The resulting 170,113-byte gzip
 artifact remains above #290's 81,484.5-byte relative gate, so the product
 default and the issue state remain unchanged.
