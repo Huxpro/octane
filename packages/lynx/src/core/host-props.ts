@@ -123,11 +123,14 @@ const LENGTH_PROPERTY =
 const hasOwn = (value: Readonly<Record<string, unknown>>, name: string): boolean =>
 	Object.prototype.hasOwnProperty.call(value, name);
 
-function propError(message: string): Error {
+// `propError` cannot suppress JavaScript's eager argument evaluation. Each
+// caller guards its diagnostic so production neither constructs nor retains it.
+const LYNX_HOST_PROPS_DEVELOPMENT =
+	typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__;
+
+function propError(message: string | false): Error {
 	return new TypeError(
-		typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
-			? `Octane Lynx host prop: ${message}`
-			: 'Octane Lynx OL100',
+		LYNX_HOST_PROPS_DEVELOPMENT ? `Octane Lynx host prop: ${message}` : 'Octane Lynx OL100',
 	);
 }
 
@@ -169,12 +172,16 @@ export function isSupportedLynxLengthLiteral(value: unknown): boolean {
 function styleName(name: string): string {
 	if (name.startsWith('--')) {
 		if (!/^--[A-Za-z0-9_-]+$/.test(name)) {
-			throw propError(`invalid CSS custom property ${JSON.stringify(name)}.`);
+			throw propError(
+				LYNX_HOST_PROPS_DEVELOPMENT && `invalid CSS custom property ${JSON.stringify(name)}.`,
+			);
 		}
 		return name;
 	}
 	if (!/^-?[A-Za-z_][A-Za-z0-9_-]*$/.test(name)) {
-		throw propError(`invalid inline-style property ${JSON.stringify(name)}.`);
+		throw propError(
+			LYNX_HOST_PROPS_DEVELOPMENT && `invalid inline-style property ${JSON.stringify(name)}.`,
+		);
 	}
 	const hyphenated = name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
 	return hyphenated.startsWith('ms-') ? `-${hyphenated}` : hyphenated;
@@ -184,7 +191,10 @@ function styleValue(name: string, value: unknown): string | null {
 	if (value === null || value === undefined) return null;
 	if (typeof value === 'number') {
 		if (!Number.isFinite(value)) {
-			throw propError(`inline-style property ${JSON.stringify(name)} must be finite.`);
+			throw propError(
+				LYNX_HOST_PROPS_DEVELOPMENT &&
+					`inline-style property ${JSON.stringify(name)} must be finite.`,
+			);
 		}
 		// Pinned Lynx CSSProperties and ReactLynx's dynamic style path both admit
 		// numeric values. Do not guess a unit or rewrite them.
@@ -192,7 +202,8 @@ function styleValue(name: string, value: unknown): string | null {
 	}
 	if (typeof value !== 'string') {
 		throw propError(
-			`inline-style property ${JSON.stringify(name)} must be a string, number, null, or undefined.`,
+			LYNX_HOST_PROPS_DEVELOPMENT &&
+				`inline-style property ${JSON.stringify(name)} must be a string, number, null, or undefined.`,
 		);
 	}
 
@@ -201,7 +212,8 @@ function styleValue(name: string, value: unknown): string | null {
 	const dimension = NUMBER_WITH_OPTIONAL_UNIT.exec(value.trim());
 	if (dimension !== null && LENGTH_PROPERTY.test(name) && !isSupportedLynxLengthLiteral(value)) {
 		throw propError(
-			`inline-style property ${JSON.stringify(name)} uses unsupported Lynx length ${JSON.stringify(value)}.`,
+			LYNX_HOST_PROPS_DEVELOPMENT &&
+				`inline-style property ${JSON.stringify(name)} uses unsupported Lynx length ${JSON.stringify(value)}.`,
 		);
 	}
 	return value;
@@ -216,10 +228,12 @@ export function normalizeLynxInlineStyle(value: unknown): string | undefined {
 	if (value === null || value === undefined) return undefined;
 	if (typeof value === 'string') return value;
 	if (typeof value !== 'object' || Array.isArray(value)) {
-		throw propError('style must be a string, a plain object, null, or undefined.');
+		throw propError(
+			LYNX_HOST_PROPS_DEVELOPMENT && 'style must be a string, a plain object, null, or undefined.',
+		);
 	}
 	if (!hasCrossRealmPlainPrototype(value)) {
-		throw propError('style must be a plain object.');
+		throw propError(LYNX_HOST_PROPS_DEVELOPMENT && 'style must be a plain object.');
 	}
 
 	let result = '';
@@ -237,7 +251,7 @@ export const serializeLynxInlineStyle = normalizeLynxInlineStyle;
 
 function scopeId(value: unknown): number {
 	if (!Number.isSafeInteger(value)) {
-		throw propError('CSS scope cssId must be a safe integer.');
+		throw propError(LYNX_HOST_PROPS_DEVELOPMENT && 'CSS scope cssId must be a safe integer.');
 	}
 	return Object.is(value, -0) ? 0 : (value as number);
 }
@@ -250,21 +264,30 @@ export function decodeLynxCSSScopeMetadata(value: unknown): NormalizedLynxCSSSco
 	if (value === null || value === undefined) return null;
 	if (typeof value === 'number') return Object.freeze({ cssId: scopeId(value) });
 	if (typeof value !== 'object' || Array.isArray(value)) {
-		throw propError('CSS scope metadata must be a number, plain object, null, or undefined.');
+		throw propError(
+			LYNX_HOST_PROPS_DEVELOPMENT &&
+				'CSS scope metadata must be a number, plain object, null, or undefined.',
+		);
 	}
 	if (!hasCrossRealmPlainPrototype(value)) {
-		throw propError('CSS scope metadata must be a plain object.');
+		throw propError(LYNX_HOST_PROPS_DEVELOPMENT && 'CSS scope metadata must be a plain object.');
 	}
 	for (const name of Object.keys(value)) {
 		if (name !== 'cssId' && name !== 'entryName') {
-			throw propError(`CSS scope metadata contains unknown field ${JSON.stringify(name)}.`);
+			throw propError(
+				LYNX_HOST_PROPS_DEVELOPMENT &&
+					`CSS scope metadata contains unknown field ${JSON.stringify(name)}.`,
+			);
 		}
 	}
 	const metadata = value as LynxCSSScopeMetadata;
 	let entryName = metadata.entryName;
 	if (entryName !== undefined) {
 		if (typeof entryName !== 'string' || entryName.length === 0) {
-			throw propError('CSS scope entryName must be a non-empty string when present.');
+			throw propError(
+				LYNX_HOST_PROPS_DEVELOPMENT &&
+					'CSS scope entryName must be a non-empty string when present.',
+			);
 		}
 		if (entryName === LYNX_DEFAULT_ENTRY_NAME) entryName = undefined;
 	}
@@ -281,7 +304,10 @@ export function decodeLynxCSSScopeMetadata(value: unknown): NormalizedLynxCSSSco
 export function decodeLynxAssetSource(value: unknown, name = 'asset source'): string | null {
 	if (value === null || value === undefined) return null;
 	if (typeof value !== 'string') {
-		throw propError(`${name} must be a bundled URL string, data URI, null, or undefined.`);
+		throw propError(
+			LYNX_HOST_PROPS_DEVELOPMENT &&
+				`${name} must be a bundled URL string, data URI, null, or undefined.`,
+		);
 	}
 	return value;
 }
@@ -319,18 +345,23 @@ function decodeMainThreadWorklet(
 			descriptor = unwrapThreadFunctionDescriptor(value);
 		} catch {
 			throw propError(
-				`${JSON.stringify(name)} must be a main-thread worklet descriptor with a non-empty _wkltId.`,
+				LYNX_HOST_PROPS_DEVELOPMENT &&
+					`${JSON.stringify(name)} must be a main-thread worklet descriptor with a non-empty _wkltId.`,
 			);
 		}
 	}
 	assertLynxWorkletValue(descriptor, JSON.stringify(name));
 	if (!isLynxMainThreadWorkletDescriptor(descriptor)) {
 		throw propError(
-			`${JSON.stringify(name)} must be a main-thread worklet descriptor with a non-empty _wkltId.`,
+			LYNX_HOST_PROPS_DEVELOPMENT &&
+				`${JSON.stringify(name)} must be a main-thread worklet descriptor with a non-empty _wkltId.`,
 		);
 	}
 	if (descriptor._owlt !== undefined) {
-		throw propError(`${JSON.stringify(name)} cannot contain a main-local _owlt activation.`);
+		throw propError(
+			LYNX_HOST_PROPS_DEVELOPMENT &&
+				`${JSON.stringify(name)} cannot contain a main-local _owlt activation.`,
+		);
 	}
 	return descriptor;
 }
@@ -340,7 +371,8 @@ function decodeMainThreadRef(value: unknown): LynxMainThreadRefDescriptor | null
 	assertLynxWorkletValue(value, '"main-thread:ref"');
 	if (!isLynxMainThreadRefDescriptor(value)) {
 		throw propError(
-			'"main-thread:ref" must be a main-thread ref descriptor with a non-empty _wvid.',
+			LYNX_HOST_PROPS_DEVELOPMENT &&
+				'"main-thread:ref" must be a main-thread ref descriptor with a non-empty _wvid.',
 		);
 	}
 	return value;
@@ -561,7 +593,10 @@ function normalizeLynxDatasetFromNames(
 	for (const name of names) {
 		if (!name.startsWith('data-')) continue;
 		const key = name.slice(5);
-		if (key.length === 0) throw propError('dataset prop `data-` requires a non-empty key.');
+		if (key.length === 0)
+			throw propError(
+				LYNX_HOST_PROPS_DEVELOPMENT && 'dataset prop `data-` requires a non-empty key.',
+			);
 		const value = props[name];
 		// Pinned ReactLynx preserves an explicit null dataset value. Undefined
 		// (or omission) removes the key from the complete replacement bag.
@@ -633,7 +668,8 @@ function assertNoDirectMainThreadTextProps(
 		directMainThreadTextPropName(previousNames) ?? directMainThreadTextPropName(nextNames);
 	if (directProp !== undefined) {
 		throw propError(
-			`raw-text hosts cannot own direct main-thread prop ${JSON.stringify(directProp)}.`,
+			LYNX_HOST_PROPS_DEVELOPMENT &&
+				`raw-text hosts cannot own direct main-thread prop ${JSON.stringify(directProp)}.`,
 		);
 	}
 }
@@ -765,13 +801,15 @@ function planHostPropPatch(
 	}
 	if (hasOwn(next, LYNX_NODES_REF_ATTRIBUTE)) {
 		throw propError(
-			`${JSON.stringify(LYNX_NODES_REF_ATTRIBUTE)} is reserved for generation-scoped query handles.`,
+			LYNX_HOST_PROPS_DEVELOPMENT &&
+				`${JSON.stringify(LYNX_NODES_REF_ATTRIBUTE)} is reserved for generation-scoped query handles.`,
 		);
 	}
 	for (const name of nextNames) {
 		if (name.includes(':') && classifyLynxHostPropName(name) === 'reserved') {
 			throw propError(
-				`namespaced prop ${JSON.stringify(name)} is not a supported Lynx host capability.`,
+				LYNX_HOST_PROPS_DEVELOPMENT &&
+					`namespaced prop ${JSON.stringify(name)} is not a supported Lynx host capability.`,
 			);
 		}
 	}
@@ -800,7 +838,8 @@ function planHostPropPatch(
 		const ordinaryName = `${binding.prefix}${binding.name}`;
 		if (nextValue !== null && next[ordinaryName] !== null && next[ordinaryName] !== undefined) {
 			throw propError(
-				`${JSON.stringify(name)} conflicts with ${JSON.stringify(ordinaryName)} on the same native event channel.`,
+				LYNX_HOST_PROPS_DEVELOPMENT &&
+					`${JSON.stringify(name)} conflicts with ${JSON.stringify(ordinaryName)} on the same native event channel.`,
 			);
 		}
 		if (!sameStructuredValue(previousValue, nextValue)) {
@@ -889,7 +928,10 @@ function visitDatasetNames(
 ): void {
 	for (const name of names) {
 		if (!name.startsWith('data-')) continue;
-		if (name.length === 5) throw propError('dataset prop `data-` requires a non-empty key.');
+		if (name.length === 5)
+			throw propError(
+				LYNX_HOST_PROPS_DEVELOPMENT && 'dataset prop `data-` requires a non-empty key.',
+			);
 		void props[name];
 	}
 }
@@ -949,13 +991,15 @@ export function classifyLynxHostPropUpdate(
 	}
 	if (hasOwn(next, LYNX_NODES_REF_ATTRIBUTE)) {
 		throw propError(
-			`${JSON.stringify(LYNX_NODES_REF_ATTRIBUTE)} is reserved for generation-scoped query handles.`,
+			LYNX_HOST_PROPS_DEVELOPMENT &&
+				`${JSON.stringify(LYNX_NODES_REF_ATTRIBUTE)} is reserved for generation-scoped query handles.`,
 		);
 	}
 	for (const name of nextNames) {
 		if (name.includes(':') && classifyLynxHostPropName(name) === 'reserved') {
 			throw propError(
-				`namespaced prop ${JSON.stringify(name)} is not a supported Lynx host capability.`,
+				LYNX_HOST_PROPS_DEVELOPMENT &&
+					`namespaced prop ${JSON.stringify(name)} is not a supported Lynx host capability.`,
 			);
 		}
 	}
@@ -966,7 +1010,8 @@ export function classifyLynxHostPropUpdate(
 		const ordinaryName = `${binding.prefix}${binding.name}`;
 		if (nextValue !== null && next[ordinaryName] !== null && next[ordinaryName] !== undefined) {
 			throw propError(
-				`${JSON.stringify(name)} conflicts with ${JSON.stringify(ordinaryName)} on the same native event channel.`,
+				LYNX_HOST_PROPS_DEVELOPMENT &&
+					`${JSON.stringify(name)} conflicts with ${JSON.stringify(ordinaryName)} on the same native event channel.`,
 			);
 		}
 	}
