@@ -1,0 +1,174 @@
+{
+  "success": true,
+  "parseSucceeded": true,
+  "trace": {
+    "path": "/data00/home/xuan.huang/.codex/worktrees/68ea/octane-issue288-context-descriptor/benchmarks/lynx-touch-frame/results/issue288-native-traces-final/baseline-eb054e91c-paired-rows1000.pftrace",
+    "bytes": 3367525,
+    "sha256": "6c0490efb491587cf00bc98db6d22d6b3d5169172882bd3b2ee5c32998c65f0e"
+  },
+  "query": {
+    "source": "file",
+    "text": "WITH bounds AS (\n  SELECT\n    MIN(CASE WHEN name LIKE 'Issue288::%::mts-input' THEN ts END) AS start_ts,\n    MAX(CASE WHEN name LIKE 'Issue288::%::changed-vsync' THEN ts END) AS end_ts\n  FROM slice\n)\nSELECT\n  s.id,\n  s.parent_id,\n  s.name,\n  s.ts / 1e6 AS ts_ms,\n  s.dur / 1e6 AS dur_ms,\n  t.name AS thread_name,\n  s.depth\nFROM slice s\nJOIN thread_track tt ON s.track_id = tt.id\nJOIN thread t ON tt.utid = t.utid\nCROSS JOIN bounds b\nWHERE s.ts >= b.start_ts\n  AND s.ts <= b.end_ts\n  AND s.dur >= 5e6\n  AND t.name IN ('Lynx_JS', 'm.lynx.explorer', 'RenderThread')\nORDER BY s.ts, s.depth;\n",
+    "sha256": "0b3a3c111babf035a9088235dcfd1b28188fef0e68f021ccf95a40b3d8c9c6e8",
+    "filePath": "/data00/home/xuan.huang/.codex/worktrees/68ea/octane-issue288-context-descriptor/benchmarks/lynx-touch-frame/issue288/trace-window-long-slices.sql"
+  },
+  "columns": ["id", "parent_id", "name", "ts_ms", "dur_ms", "thread_name", "depth"],
+  "totalRows": 17,
+  "returnedRows": 17,
+  "truncated": false,
+  "rows": [
+    {
+      "id": "284652",
+      "parent_id": null,
+      "name": "Choreographer#doFrame",
+      "ts_ms": 1660567142.800216,
+      "dur_ms": 36.349145,
+      "thread_name": "m.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "284661",
+      "parent_id": "284652",
+      "name": "traversal",
+      "ts_ms": 1660567142.89606,
+      "dur_ms": 36.247984,
+      "thread_name": "m.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "284694",
+      "parent_id": "284661",
+      "name": "draw",
+      "ts_ms": 1660567143.996163,
+      "dur_ms": 35.145304,
+      "thread_name": "m.lynx.explorer",
+      "depth": "2"
+    },
+    {
+      "id": "284695",
+      "parent_id": "284694",
+      "name": "Record View#draw()",
+      "ts_ms": 1660567144.003859,
+      "dur_ms": 32.070261,
+      "thread_name": "m.lynx.explorer",
+      "depth": "3"
+    },
+    {
+      "id": "284696",
+      "parent_id": "284695",
+      "name": "LynxView.onDraw",
+      "ts_ms": 1660567144.054255,
+      "dur_ms": 31.990581,
+      "thread_name": "m.lynx.explorer",
+      "depth": "4"
+    },
+    {
+      "id": "287958",
+      "parent_id": null,
+      "name": "MessageLoop::FlushTasks",
+      "ts_ms": 1660567305.200987,
+      "dur_ms": 232.6288,
+      "thread_name": "Lynx_JS",
+      "depth": "0"
+    },
+    {
+      "id": "287959",
+      "parent_id": "287958",
+      "name": "JsTaskAdapter::SetTimeout",
+      "ts_ms": 1660567305.20367,
+      "dur_ms": 231.110146,
+      "thread_name": "Lynx_JS",
+      "depth": "1"
+    },
+    {
+      "id": "288092",
+      "parent_id": null,
+      "name": "MessageLoop::FlushTasks",
+      "ts_ms": 1660567538.155539,
+      "dur_ms": 29.483044,
+      "thread_name": "m.lynx.explorer",
+      "depth": "0"
+    },
+    {
+      "id": "288093",
+      "parent_id": "288092",
+      "name": "LynxEngine::Invoke::1",
+      "ts_ms": 1660567538.160905,
+      "dur_ms": 29.474601,
+      "thread_name": "m.lynx.explorer",
+      "depth": "1"
+    },
+    {
+      "id": "288095",
+      "parent_id": "288093",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660567538.171965,
+      "dur_ms": 29.434774,
+      "thread_name": "m.lynx.explorer",
+      "depth": "2"
+    },
+    {
+      "id": "288096",
+      "parent_id": "288095",
+      "name": "LepusClosureEventListener::Invoke",
+      "ts_ms": 1660567538.212425,
+      "dur_ms": 29.392197,
+      "thread_name": "m.lynx.explorer",
+      "depth": "3"
+    },
+    {
+      "id": "288111",
+      "parent_id": "288096",
+      "name": "FiberFlushElementTree",
+      "ts_ms": 1660567560.308851,
+      "dur_ms": 5.831401,
+      "thread_name": "m.lynx.explorer",
+      "depth": "4"
+    },
+    {
+      "id": "288112",
+      "parent_id": "288111",
+      "name": "ElementManager::OnPatchFinishInnerForFiber",
+      "ts_ms": 1660567560.313971,
+      "dur_ms": 5.820226,
+      "thread_name": "m.lynx.explorer",
+      "depth": "5"
+    },
+    {
+      "id": "289325",
+      "parent_id": null,
+      "name": "MessageLoop::FlushTasks",
+      "ts_ms": 1660567567.285073,
+      "dur_ms": 9.335196,
+      "thread_name": "Lynx_JS",
+      "depth": "0"
+    },
+    {
+      "id": "289326",
+      "parent_id": "289325",
+      "name": "BTSRuntime::Invoke::1",
+      "ts_ms": 1660567567.289774,
+      "dur_ms": 9.31589,
+      "thread_name": "Lynx_JS",
+      "depth": "1"
+    },
+    {
+      "id": "289330",
+      "parent_id": "289326",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660567567.426341,
+      "dur_ms": 9.167425,
+      "thread_name": "Lynx_JS",
+      "depth": "2"
+    },
+    {
+      "id": "289331",
+      "parent_id": "289330",
+      "name": "JSClosureEventListener::Invoke",
+      "ts_ms": 1660567567.448306,
+      "dur_ms": 9.142359,
+      "thread_name": "Lynx_JS",
+      "depth": "3"
+    }
+  ]
+}

@@ -1,0 +1,1545 @@
+{
+  "meta": {
+    "protocol": "octane-issue288-native-context-window-v1",
+    "issue": "Huxpro/octane#288",
+    "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+    "mode": "formal",
+    "revisions": {
+      "baseline": "2cca2572ef1f90133f709cb2b6ac0d63b9e5f34b",
+      "candidate": "eb054e91c79ce54d12022b4faad5aa8a0377a04f"
+    },
+    "appSources": {
+      "App.lynx.tsrx": {
+        "path": "benchmarks/lynx-touch-frame/issue288/App.lynx.tsrx",
+        "bytes": 5102,
+        "sha256": "166205b2c5096adfea96a24c00803cf7c6eceb09a2b2c9cef68f5b63fd663bb2"
+      },
+      "index.ts": {
+        "path": "benchmarks/lynx-touch-frame/issue288/index.ts",
+        "bytes": 137,
+        "sha256": "22bcbe52b639287edf757bbb51313444bd935ab71b09093d1792aae9cde30e8b"
+      },
+      "issue288.css": {
+        "path": "benchmarks/lynx-touch-frame/issue288/issue288.css",
+        "bytes": 1011,
+        "sha256": "20b86380ff3a750d1aca2cb4262512c9679d41968bba5bca5ce67efd4b140107"
+      },
+      "lynx.config.mjs": {
+        "path": "benchmarks/lynx-touch-frame/issue288/lynx.config.mjs",
+        "bytes": 2177,
+        "sha256": "61c34c46577cb78a7bf64b9dc8d0a0faf44bde7a5bdbc3c2e75daca42d0e912b"
+      }
+    },
+    "bundles": {
+      "baseline": {
+        "path": "benchmarks/lynx-touch-frame/issue288/dist/baseline-rows1000-shipping/main.lynx.bundle",
+        "bytes": 574096,
+        "sha256": "3b1f2e80cf3924d00d8838523cc5ac4d84df7471edea1b2943568500bde272fe"
+      },
+      "candidate": {
+        "path": "benchmarks/lynx-touch-frame/issue288/dist/candidate-rows1000-shipping/main.lynx.bundle",
+        "bytes": 587937,
+        "sha256": "c0d4dd4dcbfe4c6c5be75a347c79be288ac4b284b2e9a94ef226e5803e1bdcdc"
+      }
+    },
+    "disableBundle": {
+      "path": "benchmarks/lynx-table/app/dist-issue288-native-disable/main.lynx.bundle",
+      "bytes": 583507,
+      "sha256": "d74d7294e529d364cfe4929f9df30d0eb77613d9bb173beea5d18f390d694b70"
+    },
+    "rows": 1000,
+    "depth": 32,
+    "targetAcceptedSamplesPerArm": 16,
+    "order": "eight alternating ABBA/BAAB pairs",
+    "observer": "MTS capture touchstart to first RAF observing changed native computed style",
+    "timingClock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+    "devTool": "off",
+    "cdpConnections": 0,
+    "coldLaunchPerSample": "fresh Explorer process, DevTool-off preflight bundle, then cold target bundle in the same process",
+    "settleMs": 4000,
+    "adbInput": {
+      "x": 640,
+      "y": 400
+    },
+    "device": {
+      "serial": "aic-i18n-bd-fullport.byteintl.net:45183",
+      "model": "aries_10",
+      "product": "aries",
+      "android": "10",
+      "api": "29",
+      "fingerprint": "aries_10/aries/aries:10/QQ3A.200805.001/1.5.2:userdebug/test-keys"
+    },
+    "thermalStart": {
+      "temperatureDeciC": 350,
+      "thermalStatus": 0
+    },
+    "platformClockCalibration": {
+      "source": "ClockPair.java reflection over android.os.SystemClock",
+      "startPairs": [
+        {
+          "wallBeforeMs": 1788834139894,
+          "uptimeMs": 593964526,
+          "wallAfterMs": 1788834139894
+        },
+        {
+          "wallBeforeMs": 1788834139894,
+          "uptimeMs": 593964526,
+          "wallAfterMs": 1788834139894
+        },
+        {
+          "wallBeforeMs": 1788834139894,
+          "uptimeMs": 593964526,
+          "wallAfterMs": 1788834139894
+        },
+        {
+          "wallBeforeMs": 1788834139894,
+          "uptimeMs": 593964526,
+          "wallAfterMs": 1788834139894
+        },
+        {
+          "wallBeforeMs": 1788834139894,
+          "uptimeMs": 593964526,
+          "wallAfterMs": 1788834139894
+        },
+        {
+          "wallBeforeMs": 1788834139894,
+          "uptimeMs": 593964526,
+          "wallAfterMs": 1788834139894
+        },
+        {
+          "wallBeforeMs": 1788834139894,
+          "uptimeMs": 593964526,
+          "wallAfterMs": 1788834139894
+        },
+        {
+          "wallBeforeMs": 1788834139894,
+          "uptimeMs": 593964526,
+          "wallAfterMs": 1788834139894
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139895,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139895
+        },
+        {
+          "wallBeforeMs": 1788834139896,
+          "uptimeMs": 593964527,
+          "wallAfterMs": 1788834139896
+        },
+        {
+          "wallBeforeMs": 1788834139896,
+          "uptimeMs": 593964528,
+          "wallAfterMs": 1788834139896
+        },
+        {
+          "wallBeforeMs": 1788834139896,
+          "uptimeMs": 593964528,
+          "wallAfterMs": 1788834139896
+        },
+        {
+          "wallBeforeMs": 1788834139896,
+          "uptimeMs": 593964528,
+          "wallAfterMs": 1788834139896
+        },
+        {
+          "wallBeforeMs": 1788834139896,
+          "uptimeMs": 593964528,
+          "wallAfterMs": 1788834139896
+        },
+        {
+          "wallBeforeMs": 1788834139896,
+          "uptimeMs": 593964528,
+          "wallAfterMs": 1788834139896
+        },
+        {
+          "wallBeforeMs": 1788834139896,
+          "uptimeMs": 593964528,
+          "wallAfterMs": 1788834139896
+        },
+        {
+          "wallBeforeMs": 1788834139896,
+          "uptimeMs": 593964528,
+          "wallAfterMs": 1788834139896
+        },
+        {
+          "wallBeforeMs": 1788834139896,
+          "uptimeMs": 593964528,
+          "wallAfterMs": 1788834139896
+        },
+        {
+          "wallBeforeMs": 1788834139896,
+          "uptimeMs": 593964528,
+          "wallAfterMs": 1788834139896
+        },
+        {
+          "wallBeforeMs": 1788834139896,
+          "uptimeMs": 593964528,
+          "wallAfterMs": 1788834139896
+        },
+        {
+          "wallBeforeMs": 1788834139896,
+          "uptimeMs": 593964528,
+          "wallAfterMs": 1788834139896
+        },
+        {
+          "wallBeforeMs": 1788834139896,
+          "uptimeMs": 593964528,
+          "wallAfterMs": 1788834139896
+        },
+        {
+          "wallBeforeMs": 1788834139896,
+          "uptimeMs": 593964528,
+          "wallAfterMs": 1788834139896
+        },
+        {
+          "wallBeforeMs": 1788834139896,
+          "uptimeMs": 593964528,
+          "wallAfterMs": 1788834139896
+        },
+        {
+          "wallBeforeMs": 1788834139896,
+          "uptimeMs": 593964528,
+          "wallAfterMs": 1788834139896
+        },
+        {
+          "wallBeforeMs": 1788834139896,
+          "uptimeMs": 593964528,
+          "wallAfterMs": 1788834139896
+        },
+        {
+          "wallBeforeMs": 1788834139896,
+          "uptimeMs": 593964528,
+          "wallAfterMs": 1788834139896
+        },
+        {
+          "wallBeforeMs": 1788834139896,
+          "uptimeMs": 593964528,
+          "wallAfterMs": 1788834139896
+        },
+        {
+          "wallBeforeMs": 1788834139896,
+          "uptimeMs": 593964528,
+          "wallAfterMs": 1788834139896
+        },
+        {
+          "wallBeforeMs": 1788834139896,
+          "uptimeMs": 593964528,
+          "wallAfterMs": 1788834139896
+        },
+        {
+          "wallBeforeMs": 1788834139896,
+          "uptimeMs": 593964528,
+          "wallAfterMs": 1788834139896
+        },
+        {
+          "wallBeforeMs": 1788834139896,
+          "uptimeMs": 593964528,
+          "wallAfterMs": 1788834139896
+        },
+        {
+          "wallBeforeMs": 1788834139896,
+          "uptimeMs": 593964528,
+          "wallAfterMs": 1788834139896
+        },
+        {
+          "wallBeforeMs": 1788834139896,
+          "uptimeMs": 593964528,
+          "wallAfterMs": 1788834139896
+        },
+        {
+          "wallBeforeMs": 1788834139896,
+          "uptimeMs": 593964528,
+          "wallAfterMs": 1788834139896
+        }
+      ],
+      "startSelected": {
+        "wallBeforeMs": 1788834139894,
+        "uptimeMs": 593964526,
+        "wallAfterMs": 1788834139894,
+        "bracketMs": 0,
+        "bootEpochMs": 1788240175368
+      },
+      "endPairs": [
+        {
+          "wallBeforeMs": 1788834405752,
+          "uptimeMs": 594230384,
+          "wallAfterMs": 1788834405752
+        },
+        {
+          "wallBeforeMs": 1788834405752,
+          "uptimeMs": 594230384,
+          "wallAfterMs": 1788834405752
+        },
+        {
+          "wallBeforeMs": 1788834405752,
+          "uptimeMs": 594230384,
+          "wallAfterMs": 1788834405752
+        },
+        {
+          "wallBeforeMs": 1788834405752,
+          "uptimeMs": 594230384,
+          "wallAfterMs": 1788834405752
+        },
+        {
+          "wallBeforeMs": 1788834405752,
+          "uptimeMs": 594230384,
+          "wallAfterMs": 1788834405752
+        },
+        {
+          "wallBeforeMs": 1788834405752,
+          "uptimeMs": 594230384,
+          "wallAfterMs": 1788834405752
+        },
+        {
+          "wallBeforeMs": 1788834405752,
+          "uptimeMs": 594230384,
+          "wallAfterMs": 1788834405752
+        },
+        {
+          "wallBeforeMs": 1788834405752,
+          "uptimeMs": 594230384,
+          "wallAfterMs": 1788834405752
+        },
+        {
+          "wallBeforeMs": 1788834405752,
+          "uptimeMs": 594230384,
+          "wallAfterMs": 1788834405752
+        },
+        {
+          "wallBeforeMs": 1788834405752,
+          "uptimeMs": 594230384,
+          "wallAfterMs": 1788834405752
+        },
+        {
+          "wallBeforeMs": 1788834405752,
+          "uptimeMs": 594230384,
+          "wallAfterMs": 1788834405752
+        },
+        {
+          "wallBeforeMs": 1788834405752,
+          "uptimeMs": 594230384,
+          "wallAfterMs": 1788834405752
+        },
+        {
+          "wallBeforeMs": 1788834405752,
+          "uptimeMs": 594230384,
+          "wallAfterMs": 1788834405752
+        },
+        {
+          "wallBeforeMs": 1788834405752,
+          "uptimeMs": 594230384,
+          "wallAfterMs": 1788834405752
+        },
+        {
+          "wallBeforeMs": 1788834405752,
+          "uptimeMs": 594230384,
+          "wallAfterMs": 1788834405752
+        },
+        {
+          "wallBeforeMs": 1788834405752,
+          "uptimeMs": 594230384,
+          "wallAfterMs": 1788834405752
+        },
+        {
+          "wallBeforeMs": 1788834405752,
+          "uptimeMs": 594230384,
+          "wallAfterMs": 1788834405752
+        },
+        {
+          "wallBeforeMs": 1788834405752,
+          "uptimeMs": 594230384,
+          "wallAfterMs": 1788834405752
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405753,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405753
+        },
+        {
+          "wallBeforeMs": 1788834405754,
+          "uptimeMs": 594230385,
+          "wallAfterMs": 1788834405754
+        },
+        {
+          "wallBeforeMs": 1788834405754,
+          "uptimeMs": 594230386,
+          "wallAfterMs": 1788834405754
+        },
+        {
+          "wallBeforeMs": 1788834405754,
+          "uptimeMs": 594230386,
+          "wallAfterMs": 1788834405754
+        },
+        {
+          "wallBeforeMs": 1788834405754,
+          "uptimeMs": 594230386,
+          "wallAfterMs": 1788834405754
+        },
+        {
+          "wallBeforeMs": 1788834405754,
+          "uptimeMs": 594230386,
+          "wallAfterMs": 1788834405754
+        },
+        {
+          "wallBeforeMs": 1788834405754,
+          "uptimeMs": 594230386,
+          "wallAfterMs": 1788834405754
+        },
+        {
+          "wallBeforeMs": 1788834405754,
+          "uptimeMs": 594230386,
+          "wallAfterMs": 1788834405754
+        },
+        {
+          "wallBeforeMs": 1788834405754,
+          "uptimeMs": 594230386,
+          "wallAfterMs": 1788834405754
+        },
+        {
+          "wallBeforeMs": 1788834405754,
+          "uptimeMs": 594230386,
+          "wallAfterMs": 1788834405754
+        },
+        {
+          "wallBeforeMs": 1788834405754,
+          "uptimeMs": 594230386,
+          "wallAfterMs": 1788834405754
+        },
+        {
+          "wallBeforeMs": 1788834405754,
+          "uptimeMs": 594230386,
+          "wallAfterMs": 1788834405754
+        },
+        {
+          "wallBeforeMs": 1788834405754,
+          "uptimeMs": 594230386,
+          "wallAfterMs": 1788834405754
+        },
+        {
+          "wallBeforeMs": 1788834405754,
+          "uptimeMs": 594230386,
+          "wallAfterMs": 1788834405754
+        },
+        {
+          "wallBeforeMs": 1788834405754,
+          "uptimeMs": 594230386,
+          "wallAfterMs": 1788834405754
+        },
+        {
+          "wallBeforeMs": 1788834405754,
+          "uptimeMs": 594230386,
+          "wallAfterMs": 1788834405754
+        },
+        {
+          "wallBeforeMs": 1788834405754,
+          "uptimeMs": 594230386,
+          "wallAfterMs": 1788834405754
+        }
+      ],
+      "endSelected": {
+        "wallBeforeMs": 1788834405752,
+        "uptimeMs": 594230384,
+        "wallAfterMs": 1788834405752,
+        "bracketMs": 0,
+        "bootEpochMs": 1788240175368
+      },
+      "driftMs": 0
+    },
+    "thermalEnd": {
+      "temperatureDeciC": 350,
+      "thermalStatus": 0
+    }
+  },
+  "samples": [
+    {
+      "sequence": 0,
+      "arm": "baseline",
+      "pair": 0,
+      "position": 0,
+      "direction": "AB",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834148340,
+      "changedVsyncPlatformTimestamp": 593973342,
+      "changedFrameOrdinal": 22,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "3b1f2e80cf3924d00d8838523cc5ac4d84df7471edea1b2943568500bde272fe",
+      "cacheKey": "3b1f2e80cf3924d0-2026-09-08T02-22-23-139Z-0-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 593972972,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 370
+    },
+    {
+      "sequence": 1,
+      "arm": "candidate",
+      "pair": 0,
+      "position": 1,
+      "direction": "AB",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834156856,
+      "changedVsyncPlatformTimestamp": 593981793,
+      "changedFrameOrdinal": 19,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "c0d4dd4dcbfe4c6c5be75a347c79be288ac4b284b2e9a94ef226e5803e1bdcdc",
+      "cacheKey": "c0d4dd4dcbfe4c6c-2026-09-08T02-22-23-139Z-1-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 593981488,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 305
+    },
+    {
+      "sequence": 2,
+      "arm": "candidate",
+      "pair": 0,
+      "position": 2,
+      "direction": "BA",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834164822,
+      "changedVsyncPlatformTimestamp": 593989761,
+      "changedFrameOrdinal": 19,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "c0d4dd4dcbfe4c6c5be75a347c79be288ac4b284b2e9a94ef226e5803e1bdcdc",
+      "cacheKey": "c0d4dd4dcbfe4c6c-2026-09-08T02-22-23-139Z-2-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 593989454,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 307
+    },
+    {
+      "sequence": 3,
+      "arm": "baseline",
+      "pair": 0,
+      "position": 3,
+      "direction": "BA",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834172874,
+      "changedVsyncPlatformTimestamp": 593997862,
+      "changedFrameOrdinal": 21,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "3b1f2e80cf3924d00d8838523cc5ac4d84df7471edea1b2943568500bde272fe",
+      "cacheKey": "3b1f2e80cf3924d0-2026-09-08T02-22-23-139Z-3-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 593997506,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 356
+    },
+    {
+      "sequence": 4,
+      "arm": "candidate",
+      "pair": 1,
+      "position": 0,
+      "direction": "AB",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834181243,
+      "changedVsyncPlatformTimestamp": 594006179,
+      "changedFrameOrdinal": 18,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "c0d4dd4dcbfe4c6c5be75a347c79be288ac4b284b2e9a94ef226e5803e1bdcdc",
+      "cacheKey": "c0d4dd4dcbfe4c6c-2026-09-08T02-22-23-139Z-4-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594005875,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 304
+    },
+    {
+      "sequence": 5,
+      "arm": "baseline",
+      "pair": 1,
+      "position": 1,
+      "direction": "AB",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834189368,
+      "changedVsyncPlatformTimestamp": 594014347,
+      "changedFrameOrdinal": 22,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "3b1f2e80cf3924d00d8838523cc5ac4d84df7471edea1b2943568500bde272fe",
+      "cacheKey": "3b1f2e80cf3924d0-2026-09-08T02-22-23-139Z-5-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594014000,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 347
+    },
+    {
+      "sequence": 6,
+      "arm": "baseline",
+      "pair": 1,
+      "position": 2,
+      "direction": "BA",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834197931,
+      "changedVsyncPlatformTimestamp": 594022915,
+      "changedFrameOrdinal": 22,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "3b1f2e80cf3924d00d8838523cc5ac4d84df7471edea1b2943568500bde272fe",
+      "cacheKey": "3b1f2e80cf3924d0-2026-09-08T02-22-23-139Z-6-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594022563,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 352
+    },
+    {
+      "sequence": 7,
+      "arm": "candidate",
+      "pair": 1,
+      "position": 3,
+      "direction": "BA",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834206414,
+      "changedVsyncPlatformTimestamp": 594031349,
+      "changedFrameOrdinal": 19,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "c0d4dd4dcbfe4c6c5be75a347c79be288ac4b284b2e9a94ef226e5803e1bdcdc",
+      "cacheKey": "c0d4dd4dcbfe4c6c-2026-09-08T02-22-23-139Z-7-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594031046,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 303
+    },
+    {
+      "sequence": 8,
+      "arm": "baseline",
+      "pair": 2,
+      "position": 0,
+      "direction": "AB",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834214539,
+      "changedVsyncPlatformTimestamp": 594039533,
+      "changedFrameOrdinal": 21,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "3b1f2e80cf3924d00d8838523cc5ac4d84df7471edea1b2943568500bde272fe",
+      "cacheKey": "3b1f2e80cf3924d0-2026-09-08T02-22-23-139Z-8-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594039171,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 362
+    },
+    {
+      "sequence": 9,
+      "arm": "candidate",
+      "pair": 2,
+      "position": 1,
+      "direction": "AB",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834223105,
+      "changedVsyncPlatformTimestamp": 594047984,
+      "changedFrameOrdinal": 14,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "c0d4dd4dcbfe4c6c5be75a347c79be288ac4b284b2e9a94ef226e5803e1bdcdc",
+      "cacheKey": "c0d4dd4dcbfe4c6c-2026-09-08T02-22-23-139Z-9-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594047737,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 247
+    },
+    {
+      "sequence": 10,
+      "arm": "candidate",
+      "pair": 2,
+      "position": 2,
+      "direction": "BA",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834231237,
+      "changedVsyncPlatformTimestamp": 594056185,
+      "changedFrameOrdinal": 19,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "c0d4dd4dcbfe4c6c5be75a347c79be288ac4b284b2e9a94ef226e5803e1bdcdc",
+      "cacheKey": "c0d4dd4dcbfe4c6c-2026-09-08T02-22-23-139Z-10-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594055869,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 316
+    },
+    {
+      "sequence": 11,
+      "arm": "baseline",
+      "pair": 2,
+      "position": 3,
+      "direction": "BA",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834239310,
+      "changedVsyncPlatformTimestamp": 594064303,
+      "changedFrameOrdinal": 21,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "3b1f2e80cf3924d00d8838523cc5ac4d84df7471edea1b2943568500bde272fe",
+      "cacheKey": "3b1f2e80cf3924d0-2026-09-08T02-22-23-139Z-11-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594063942,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 361
+    },
+    {
+      "sequence": 12,
+      "arm": "candidate",
+      "pair": 3,
+      "position": 0,
+      "direction": "AB",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834247785,
+      "changedVsyncPlatformTimestamp": 594072737,
+      "changedFrameOrdinal": 19,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "c0d4dd4dcbfe4c6c5be75a347c79be288ac4b284b2e9a94ef226e5803e1bdcdc",
+      "cacheKey": "c0d4dd4dcbfe4c6c-2026-09-08T02-22-23-139Z-12-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594072417,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 320
+    },
+    {
+      "sequence": 13,
+      "arm": "baseline",
+      "pair": 3,
+      "position": 1,
+      "direction": "AB",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834255872,
+      "changedVsyncPlatformTimestamp": 594080855,
+      "changedFrameOrdinal": 21,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "3b1f2e80cf3924d00d8838523cc5ac4d84df7471edea1b2943568500bde272fe",
+      "cacheKey": "3b1f2e80cf3924d0-2026-09-08T02-22-23-139Z-13-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594080504,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 351
+    },
+    {
+      "sequence": 14,
+      "arm": "baseline",
+      "pair": 3,
+      "position": 2,
+      "direction": "BA",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834264320,
+      "changedVsyncPlatformTimestamp": 594089289,
+      "changedFrameOrdinal": 19,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "3b1f2e80cf3924d00d8838523cc5ac4d84df7471edea1b2943568500bde272fe",
+      "cacheKey": "3b1f2e80cf3924d0-2026-09-08T02-22-23-139Z-14-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594088952,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 337
+    },
+    {
+      "sequence": 15,
+      "arm": "candidate",
+      "pair": 3,
+      "position": 3,
+      "direction": "BA",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834272875,
+      "changedVsyncPlatformTimestamp": 594097840,
+      "changedFrameOrdinal": 20,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "c0d4dd4dcbfe4c6c5be75a347c79be288ac4b284b2e9a94ef226e5803e1bdcdc",
+      "cacheKey": "c0d4dd4dcbfe4c6c-2026-09-08T02-22-23-139Z-15-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594097507,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 333
+    },
+    {
+      "sequence": 16,
+      "arm": "baseline",
+      "pair": 4,
+      "position": 0,
+      "direction": "AB",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834281058,
+      "changedVsyncPlatformTimestamp": 594106024,
+      "changedFrameOrdinal": 19,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "3b1f2e80cf3924d00d8838523cc5ac4d84df7471edea1b2943568500bde272fe",
+      "cacheKey": "3b1f2e80cf3924d0-2026-09-08T02-22-23-139Z-16-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594105690,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 334
+    },
+    {
+      "sequence": 17,
+      "arm": "candidate",
+      "pair": 4,
+      "position": 1,
+      "direction": "AB",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834289252,
+      "changedVsyncPlatformTimestamp": 594114109,
+      "changedFrameOrdinal": 13,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "c0d4dd4dcbfe4c6c5be75a347c79be288ac4b284b2e9a94ef226e5803e1bdcdc",
+      "cacheKey": "c0d4dd4dcbfe4c6c-2026-09-08T02-22-23-139Z-17-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594113884,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 225
+    },
+    {
+      "sequence": 18,
+      "arm": "candidate",
+      "pair": 4,
+      "position": 2,
+      "direction": "BA",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834297342,
+      "changedVsyncPlatformTimestamp": 594122310,
+      "changedFrameOrdinal": 20,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "c0d4dd4dcbfe4c6c5be75a347c79be288ac4b284b2e9a94ef226e5803e1bdcdc",
+      "cacheKey": "c0d4dd4dcbfe4c6c-2026-09-08T02-22-23-139Z-18-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594121974,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 336
+    },
+    {
+      "sequence": 19,
+      "arm": "baseline",
+      "pair": 4,
+      "position": 3,
+      "direction": "BA",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834305517,
+      "changedVsyncPlatformTimestamp": 594130461,
+      "changedFrameOrdinal": 19,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "3b1f2e80cf3924d00d8838523cc5ac4d84df7471edea1b2943568500bde272fe",
+      "cacheKey": "3b1f2e80cf3924d0-2026-09-08T02-22-23-139Z-19-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594130149,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 312
+    },
+    {
+      "sequence": 20,
+      "arm": "candidate",
+      "pair": 5,
+      "position": 0,
+      "direction": "AB",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834314173,
+      "changedVsyncPlatformTimestamp": 594139095,
+      "changedFrameOrdinal": 17,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "c0d4dd4dcbfe4c6c5be75a347c79be288ac4b284b2e9a94ef226e5803e1bdcdc",
+      "cacheKey": "c0d4dd4dcbfe4c6c-2026-09-08T02-22-23-139Z-20-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594138805,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 290
+    },
+    {
+      "sequence": 21,
+      "arm": "baseline",
+      "pair": 5,
+      "position": 1,
+      "direction": "AB",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834322283,
+      "changedVsyncPlatformTimestamp": 594147229,
+      "changedFrameOrdinal": 19,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "3b1f2e80cf3924d00d8838523cc5ac4d84df7471edea1b2943568500bde272fe",
+      "cacheKey": "3b1f2e80cf3924d0-2026-09-08T02-22-23-139Z-21-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594146915,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 314
+    },
+    {
+      "sequence": 22,
+      "arm": "baseline",
+      "pair": 5,
+      "position": 2,
+      "direction": "BA",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834330430,
+      "changedVsyncPlatformTimestamp": 594155364,
+      "changedFrameOrdinal": 18,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "3b1f2e80cf3924d00d8838523cc5ac4d84df7471edea1b2943568500bde272fe",
+      "cacheKey": "3b1f2e80cf3924d0-2026-09-08T02-22-23-139Z-22-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594155062,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 302
+    },
+    {
+      "sequence": 23,
+      "arm": "candidate",
+      "pair": 5,
+      "position": 3,
+      "direction": "BA",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834338902,
+      "changedVsyncPlatformTimestamp": 594163815,
+      "changedFrameOrdinal": 16,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "c0d4dd4dcbfe4c6c5be75a347c79be288ac4b284b2e9a94ef226e5803e1bdcdc",
+      "cacheKey": "c0d4dd4dcbfe4c6c-2026-09-08T02-22-23-139Z-23-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594163534,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 281
+    },
+    {
+      "sequence": 24,
+      "arm": "baseline",
+      "pair": 6,
+      "position": 0,
+      "direction": "AB",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834347089,
+      "changedVsyncPlatformTimestamp": 594172032,
+      "changedFrameOrdinal": 18,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "3b1f2e80cf3924d00d8838523cc5ac4d84df7471edea1b2943568500bde272fe",
+      "cacheKey": "3b1f2e80cf3924d0-2026-09-08T02-22-23-139Z-24-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594171721,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 311
+    },
+    {
+      "sequence": 25,
+      "arm": "candidate",
+      "pair": 6,
+      "position": 1,
+      "direction": "AB",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834355220,
+      "changedVsyncPlatformTimestamp": 594180083,
+      "changedFrameOrdinal": 14,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "c0d4dd4dcbfe4c6c5be75a347c79be288ac4b284b2e9a94ef226e5803e1bdcdc",
+      "cacheKey": "c0d4dd4dcbfe4c6c-2026-09-08T02-22-23-139Z-25-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594179852,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 231
+    },
+    {
+      "sequence": 26,
+      "arm": "candidate",
+      "pair": 6,
+      "position": 2,
+      "direction": "BA",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834363311,
+      "changedVsyncPlatformTimestamp": 594188217,
+      "changedFrameOrdinal": 15,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "c0d4dd4dcbfe4c6c5be75a347c79be288ac4b284b2e9a94ef226e5803e1bdcdc",
+      "cacheKey": "c0d4dd4dcbfe4c6c-2026-09-08T02-22-23-139Z-26-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594187943,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 274
+    },
+    {
+      "sequence": 27,
+      "arm": "baseline",
+      "pair": 6,
+      "position": 3,
+      "direction": "BA",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834371453,
+      "changedVsyncPlatformTimestamp": 594196435,
+      "changedFrameOrdinal": 21,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "3b1f2e80cf3924d00d8838523cc5ac4d84df7471edea1b2943568500bde272fe",
+      "cacheKey": "3b1f2e80cf3924d0-2026-09-08T02-22-23-139Z-27-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594196085,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 350
+    },
+    {
+      "sequence": 28,
+      "arm": "candidate",
+      "pair": 7,
+      "position": 0,
+      "direction": "AB",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834380026,
+      "changedVsyncPlatformTimestamp": 594204903,
+      "changedFrameOrdinal": 14,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "c0d4dd4dcbfe4c6c5be75a347c79be288ac4b284b2e9a94ef226e5803e1bdcdc",
+      "cacheKey": "c0d4dd4dcbfe4c6c-2026-09-08T02-22-23-139Z-28-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594204658,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 245
+    },
+    {
+      "sequence": 29,
+      "arm": "baseline",
+      "pair": 7,
+      "position": 1,
+      "direction": "AB",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834388141,
+      "changedVsyncPlatformTimestamp": 594213120,
+      "changedFrameOrdinal": 21,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "3b1f2e80cf3924d00d8838523cc5ac4d84df7471edea1b2943568500bde272fe",
+      "cacheKey": "3b1f2e80cf3924d0-2026-09-08T02-22-23-139Z-29-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594212773,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 347
+    },
+    {
+      "sequence": 30,
+      "arm": "baseline",
+      "pair": 7,
+      "position": 2,
+      "direction": "BA",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834396673,
+      "changedVsyncPlatformTimestamp": 594221671,
+      "changedFrameOrdinal": 22,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "3b1f2e80cf3924d00d8838523cc5ac4d84df7471edea1b2943568500bde272fe",
+      "cacheKey": "3b1f2e80cf3924d0-2026-09-08T02-22-23-139Z-30-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594221305,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 366
+    },
+    {
+      "sequence": 31,
+      "arm": "candidate",
+      "pair": 7,
+      "position": 3,
+      "direction": "BA",
+      "protocol": "octane-issue288-native-context-v1",
+      "rows": 1000,
+      "depth": 32,
+      "inputPlatformTimestamp": 1788834405268,
+      "changedVsyncPlatformTimestamp": 594230122,
+      "changedFrameOrdinal": 13,
+      "before": "rgb(227, 242, 253)",
+      "after": "rgb(38, 50, 56)",
+      "clock": "lynx-event-epoch-ms-to-raf-uptime-ms-with-android-platform-calibration",
+      "observer": "mts-capture-touchstart-raf-predicate",
+      "bundleSha256": "c0d4dd4dcbfe4c6c5be75a347c79be288ac4b284b2e9a94ef226e5803e1bdcdc",
+      "cacheKey": "c0d4dd4dcbfe4c6c-2026-09-08T02-22-23-139Z-31-1",
+      "coldLaunchAttempt": 1,
+      "discardedNoSampleAttempts": 0,
+      "windowId": "aries10-formal-2026-09-08T02-22-23-374Z",
+      "inputUptimePlatformTimestamp": 594229900,
+      "bootEpochCalibrationMs": 1788240175368,
+      "latencyMs": 222
+    }
+  ]
+}

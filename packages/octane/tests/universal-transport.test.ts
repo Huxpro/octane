@@ -1718,6 +1718,10 @@ describe('transported retained component subtrees', () => {
 		);
 		expect([keyCalls, bodyCalls, consumerRenders]).toEqual([0, 0, 1]);
 		expect(container.host.children[2].props.theme).toBe('light');
+		const eventAfterRejection = await loopback.sendEvent([{ listener, payload: undefined }]);
+		expect(eventAfterRejection.error).toBeUndefined();
+		await root.flushTransport();
+		expect(container.host.children[2].props.theme).toBe('dark');
 
 		keyCalls = 0;
 		bodyCalls = 0;

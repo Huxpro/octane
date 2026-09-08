@@ -13,15 +13,20 @@ const files = {
 		['baseline', 'candidate'].map((arm) => [
 			arm,
 			{
+				trace: path.join(
+					resultsRoot,
+					'issue288-native-traces-final',
+					`${arm}-eb054e91c-paired-rows1000.pftrace`,
+				),
 				markers: path.join(
 					resultsRoot,
 					'issue288-native-traces-final',
-					`${arm}-clean-rows1000-markers.json`,
+					`${arm}-eb054e91c-paired-rows1000-markers.json`,
 				),
 				longSlices: path.join(
 					resultsRoot,
 					'issue288-native-traces-final',
-					`${arm}-clean-rows1000-long-slices.json`,
+					`${arm}-eb054e91c-paired-rows1000-long-slices.json`,
 				),
 			},
 		]),
@@ -210,7 +215,7 @@ function analyzeTraceArm(arm) {
 			.filter((row) => row.name === name)
 			.toSorted((left, right) => right.dur_ms - left.dur_ms)[0];
 	return {
-		trace: markerResult.trace,
+		trace: receipt(files.trace[arm].trace),
 		queries: {
 			markers: receipt(markerFile),
 			longSlices: receipt(longSliceFile),

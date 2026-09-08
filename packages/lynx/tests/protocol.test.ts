@@ -4575,13 +4575,9 @@ describe('@octanejs/lynx transported protocol', () => {
 				generation: 1,
 				attached: true,
 				listDescendant: false,
-					snapshot: handleSnapshot(
-						update.root,
-						command.id,
-						index === 0 ? 'view' : 'text',
-						1,
-						{ props: command.props } as UniversalSerializableValue,
-					),
+				snapshot: handleSnapshot(update.root, command.id, index === 0 ? 'view' : 'text', 1, {
+					props: command.props,
+				} as UniversalSerializableValue),
 			})),
 		});
 		context.sendToBackground({ ...commitIdentity(update), type: 'complete' });

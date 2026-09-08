@@ -1,0 +1,574 @@
+{
+  "success": true,
+  "parseSucceeded": true,
+  "trace": {
+    "path": "/data00/home/xuan.huang/.codex/worktrees/68ea/octane-issue288-context-descriptor/benchmarks/lynx-touch-frame/results/issue288-native-traces-final/candidate-eb054e91c-paired-rows1000.pftrace",
+    "bytes": 3309131,
+    "sha256": "e7b9fb2f490434bd4215717be66d728c0c078f2c936815b43f41936cf354a16c"
+  },
+  "query": {
+    "source": "file",
+    "text": "SELECT\n  s.id,\n  s.name,\n  s.ts / 1e6 AS ts_ms,\n  s.dur / 1e6 AS dur_ms,\n  COALESCE(t.name, pt.name, '') AS track_name\nFROM slice s\nLEFT JOIN thread_track tt ON s.track_id = tt.id\nLEFT JOIN thread t ON tt.utid = t.utid\nLEFT JOIN process_track ptrack ON s.track_id = ptrack.id\nLEFT JOIN process pt ON ptrack.upid = pt.upid\nWHERE s.name LIKE 'Issue288::%'\n   OR s.name IN (\n     'TouchEventHandler::HandleTouchEvent',\n     'TouchEventHandler::FireEvent',\n     'EventTarget::DispatchEvent'\n   )\nORDER BY s.ts;\n",
+    "sha256": "7cb085be5d62bbec0406721f03450700836a2e140489744b8cbd87592363c0a6",
+    "filePath": "/data00/home/xuan.huang/.codex/worktrees/68ea/octane-issue288-context-descriptor/benchmarks/lynx-touch-frame/issue288/trace-markers.sql"
+  },
+  "columns": ["id", "name", "ts_ms", "dur_ms", "track_name"],
+  "totalRows": 79,
+  "returnedRows": 79,
+  "truncated": false,
+  "rows": [
+    {
+      "id": "939",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660587636.993974,
+      "dur_ms": 2690.937399,
+      "track_name": "m.lynx.explorer"
+    },
+    {
+      "id": "12446",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660588502.970104,
+      "dur_ms": 0.317375,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "12459",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660588503.293173,
+      "dur_ms": 0.125079,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "12471",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660588503.421895,
+      "dur_ms": 0.080066,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "12489",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660588503.505333,
+      "dur_ms": 0.073723,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "136626",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660590320.057084,
+      "dur_ms": 0.106683,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "136684",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660590328.306307,
+      "dur_ms": 0.058789,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "136720",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660590328.672026,
+      "dur_ms": 0.165481,
+      "track_name": "m.lynx.explorer"
+    },
+    {
+      "id": "140259",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660590397.799788,
+      "dur_ms": 0.832287,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "140286",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660590398.665699,
+      "dur_ms": 0.145789,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "142460",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660591206.723676,
+      "dur_ms": 0.235872,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "142465",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660591206.960188,
+      "dur_ms": 0.070573,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "142476",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660591207.065181,
+      "dur_ms": 0.077448,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "142481",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660591207.143253,
+      "dur_ms": 0.186462,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "142502",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660591301.888032,
+      "dur_ms": 0.217781,
+      "track_name": "m.lynx.explorer"
+    },
+    {
+      "id": "142512",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660591302.170453,
+      "dur_ms": 0.113264,
+      "track_name": "m.lynx.explorer"
+    },
+    {
+      "id": "142521",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660591302.313698,
+      "dur_ms": 0.101506,
+      "track_name": "m.lynx.explorer"
+    },
+    {
+      "id": "142530",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660591302.456229,
+      "dur_ms": 0.105838,
+      "track_name": "m.lynx.explorer"
+    },
+    {
+      "id": "142539",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660591302.589628,
+      "dur_ms": 0.101055,
+      "track_name": "m.lynx.explorer"
+    },
+    {
+      "id": "142548",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660591302.714453,
+      "dur_ms": 0.097313,
+      "track_name": "m.lynx.explorer"
+    },
+    {
+      "id": "142557",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660591302.835602,
+      "dur_ms": 0.103417,
+      "track_name": "m.lynx.explorer"
+    },
+    {
+      "id": "142566",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660591302.961764,
+      "dur_ms": 0.095146,
+      "track_name": "m.lynx.explorer"
+    },
+    {
+      "id": "142575",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660591303.08123,
+      "dur_ms": 0.098199,
+      "track_name": "m.lynx.explorer"
+    },
+    {
+      "id": "142585",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660591303.237989,
+      "dur_ms": 4168.213368,
+      "track_name": "m.lynx.explorer"
+    },
+    {
+      "id": "282867",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595450.866562,
+      "dur_ms": 0.184894,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282870",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595451.052129,
+      "dur_ms": 0.096336,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282876",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595451.162882,
+      "dur_ms": 0.084291,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282879",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595451.247788,
+      "dur_ms": 0.08535,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282886",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595451.364802,
+      "dur_ms": 0.096615,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282889",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595451.462073,
+      "dur_ms": 0.099307,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282895",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595451.574336,
+      "dur_ms": 0.087705,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282898",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595451.662656,
+      "dur_ms": 0.080804,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282904",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595451.754955,
+      "dur_ms": 0.080608,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282907",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595451.836186,
+      "dur_ms": 0.081256,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282913",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595451.93139,
+      "dur_ms": 0.081879,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282916",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595452.013918,
+      "dur_ms": 0.080623,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282922",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595452.106381,
+      "dur_ms": 0.080739,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282925",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595452.187743,
+      "dur_ms": 0.0816,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282931",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595452.281035,
+      "dur_ms": 0.082487,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282934",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595452.364137,
+      "dur_ms": 0.083717,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282940",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595452.458266,
+      "dur_ms": 0.080304,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282943",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595452.539185,
+      "dur_ms": 0.081444,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282949",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595452.63105,
+      "dur_ms": 0.079811,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282952",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595452.711518,
+      "dur_ms": 0.083602,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282958",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595452.814065,
+      "dur_ms": 0.081403,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282961",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595452.896084,
+      "dur_ms": 0.081698,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282967",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595452.988752,
+      "dur_ms": 0.08078,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282970",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595453.070155,
+      "dur_ms": 0.082044,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282976",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595453.163292,
+      "dur_ms": 0.081444,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282979",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595453.245368,
+      "dur_ms": 0.081608,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282985",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595453.337799,
+      "dur_ms": 0.079614,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282988",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595453.418061,
+      "dur_ms": 0.082347,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282994",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595453.510303,
+      "dur_ms": 0.082076,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "282997",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595453.592994,
+      "dur_ms": 0.080632,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "283003",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595453.686311,
+      "dur_ms": 13.412817,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "283007",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595467.099858,
+      "dur_ms": 210.8864,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "283144",
+      "name": "TouchEventHandler::HandleTouchEvent",
+      "ts_ms": 1660595480.27635,
+      "dur_ms": 1.49527,
+      "track_name": "m.lynx.explorer"
+    },
+    {
+      "id": "283188",
+      "name": "Issue288::candidate::mts-input",
+      "ts_ms": 1660595481.579883,
+      "dur_ms": 0,
+      "track_name": "m.lynx.explorer"
+    },
+    {
+      "id": "283191",
+      "name": "TouchEventHandler::FireEvent",
+      "ts_ms": 1660595481.696092,
+      "dur_ms": 0.073288,
+      "track_name": "m.lynx.explorer"
+    },
+    {
+      "id": "283250",
+      "name": "TouchEventHandler::HandleTouchEvent",
+      "ts_ms": 1660595482.545913,
+      "dur_ms": 0.031287,
+      "track_name": "m.lynx.explorer"
+    },
+    {
+      "id": "283272",
+      "name": "TouchEventHandler::HandleTouchEvent",
+      "ts_ms": 1660595482.882381,
+      "dur_ms": 0.028579,
+      "track_name": "m.lynx.explorer"
+    },
+    {
+      "id": "283333",
+      "name": "TouchEventHandler::HandleTouchEvent",
+      "ts_ms": 1660595483.225569,
+      "dur_ms": 0.023647,
+      "track_name": "m.lynx.explorer"
+    },
+    {
+      "id": "286592",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595675.115759,
+      "dur_ms": 0.198638,
+      "track_name": "m.lynx.explorer"
+    },
+    {
+      "id": "286602",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595675.383977,
+      "dur_ms": 1.498847,
+      "track_name": "m.lynx.explorer"
+    },
+    {
+      "id": "286611",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595676.915735,
+      "dur_ms": 0.147323,
+      "track_name": "m.lynx.explorer"
+    },
+    {
+      "id": "286623",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595678.031895,
+      "dur_ms": 0.123651,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "286626",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595678.156498,
+      "dur_ms": 0.144656,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "286633",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595678.314758,
+      "dur_ms": 0.327574,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "286643",
+      "name": "Issue288::candidate::bts-handler",
+      "ts_ms": 1660595678.716809,
+      "dur_ms": 0,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "286646",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595678.815862,
+      "dur_ms": 0.093038,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "286649",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595678.909523,
+      "dur_ms": 0.128041,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "286749",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595824.589917,
+      "dur_ms": 28.393452,
+      "track_name": "m.lynx.explorer"
+    },
+    {
+      "id": "287983",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595852.786307,
+      "dur_ms": 0.122141,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "287986",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595852.90908,
+      "dur_ms": 1.459766,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "288001",
+      "name": "Issue288::candidate::changed-vsync",
+      "ts_ms": 1660595853.109728,
+      "dur_ms": 0,
+      "track_name": "m.lynx.explorer"
+    },
+    {
+      "id": "288046",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595854.407164,
+      "dur_ms": 0.079902,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "288049",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595854.487681,
+      "dur_ms": 0.115856,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "288056",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595854.615976,
+      "dur_ms": 0.105494,
+      "track_name": "Lynx_JS"
+    },
+    {
+      "id": "288069",
+      "name": "EventTarget::DispatchEvent",
+      "ts_ms": 1660595854.732268,
+      "dur_ms": 0.102014,
+      "track_name": "Lynx_JS"
+    }
+  ]
+}
