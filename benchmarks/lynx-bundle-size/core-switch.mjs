@@ -12,27 +12,40 @@
 // The second is #163's main-thread program backend, and it moves the other half
 // of the bundle. Handed one, the compiler lowers each eligible template into a
 // straight-line create function that drives the Element PAPI directly, instead
-// of the description an interpreter walks per node at run time. So there is a
-// third arm: the same block-core build, with a backend.
+// of the description an interpreter walks per node at run time. The production
+// default also enables positional program addressing, which changes background
+// descriptor transport and main-thread registration. Separate descriptor and
+// addressed arms keep those two thread costs distinct from codegen.
 //
 // The two switches are orthogonal, and the file's assertions say so rather than
 // assuming it. Across the *core* switch the main-thread program does not move at
 // all — that is what makes the core a background-only concern. Across the
-// *backend* the main-thread program must move, or the arm is measuring nothing,
-// while the background program must not — that is #163's byte-identity promise.
+// descriptor-mode *backend* the main-thread program must move while the
+// background program does not. Addressing is a separate, explicit BTS delta.
+//
+// The structured receipt additionally keeps the encoded bundle, decoded
+// LepusNG main/background programs, and the Rspack module/used-export inventory
+// for each thread separate. The compilation graph deliberately remains visible
+// even when final tree-shaking removes a closure: it is a source-reachability
+// ledger, not a substitute for the byte identity and final-program controls.
 //
 // What it is not: a performance measurement. Bytes are the whole subject here.
 process.env.NODE_ENV = 'production';
 
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { constants as zc, gzipSync } from 'node:zlib';
+import { brotliCompressSync, constants as zc, gzipSync } from 'node:zlib';
 
 import { pluginOctane } from '../../packages/rspeedy-plugin-octane/src/index.js';
 import { LYNX_TARGET_SDK_VERSION } from '../../packages/rspeedy-plugin-octane/src/application.js';
+import {
+	LYNX_BACKGROUND_LAYER,
+	LYNX_MAIN_THREAD_LAYER,
+} from '../../packages/rspeedy-plugin-octane/src/layers.js';
 import { registerTypeScriptSourceResolution } from './ts-source-resolution.mjs';
 
 // Before the backend is imported, and it has to be a dynamic import for that
@@ -46,8 +59,15 @@ const ROOT = import.meta.dirname;
 const REPO = path.resolve(ROOT, '../..');
 const RSPEEDY_MODULES = path.join(REPO, 'packages/rspeedy-plugin-octane/node_modules');
 const RSPEEDY_CWD = path.join(REPO, 'packages/rspeedy-plugin-octane/tests/_fixtures/application');
+const ENTRY = path.join(REPO, 'benchmarks/lynx-table/app/src/index.ts');
 const ENTRY_NAME = 'main';
 const BUNDLE_NAME = 'main.lynx.bundle';
+const AUDIT_INPUTS = Object.freeze([
+	'benchmarks/lynx-bundle-size/README.md',
+	'benchmarks/lynx-bundle-size/core-switch.mjs',
+	'benchmarks/lynx-bundle-size/inventory.mjs',
+]);
+const AUDIT_BASE = process.env.OCTANE_AUDIT_BASE ?? 'HEAD';
 
 // Strings only one core's source can produce. Each is a diagnostic literal the
 // minifier has to keep, taken from the core it names, so "absent" means the
@@ -118,6 +138,155 @@ const [{ createRspeedy }, tasm] = await Promise.all([
 ]);
 
 const gzipBytes = (buffer) => gzipSync(buffer, { level: zc.Z_BEST_COMPRESSION }).length;
+const brotliBytes = (buffer) =>
+	brotliCompressSync(buffer, {
+		params: { [zc.BROTLI_PARAM_QUALITY]: zc.BROTLI_MAX_QUALITY },
+	}).length;
+const sha256 = (buffer) => createHash('sha256').update(buffer).digest('hex');
+
+function artifactStat(bytes) {
+	return {
+		raw: bytes.length,
+		gzip: gzipBytes(bytes),
+		brotli: brotliBytes(bytes),
+		sha256: sha256(bytes),
+	};
+}
+
+function portableIdentifier(identifier) {
+	const value = identifier.replaceAll('\\', '/');
+	const repo = REPO.replaceAll('\\', '/');
+	if (value.startsWith(`${repo}/`)) return `@/${value.slice(repo.length + 1)}`;
+	const nodeModules = value.lastIndexOf('/node_modules/');
+	if (nodeModules !== -1) return value.slice(nodeModules + 1);
+	for (const anchor of ['/packages/', '/benchmarks/']) {
+		const index = value.lastIndexOf(anchor);
+		if (index !== -1) return `@${value.slice(index)}`;
+	}
+	return value;
+}
+
+function normalizeUsedExports(value) {
+	if (value === true || value === false || value == null) return value;
+	if (typeof value[Symbol.iterator] === 'function') return [...value].map(String).sort();
+	return String(value);
+}
+
+function chunkRuntime(chunk) {
+	if (typeof chunk.runtime === 'string') return chunk.runtime;
+	if (chunk.runtime != null && typeof chunk.runtime[Symbol.iterator] === 'function') {
+		return [...chunk.runtime];
+	}
+	return chunk.name ?? String(chunk.id ?? 'unnamed');
+}
+
+function moduleLayers(compilation, module) {
+	const layers = new Set();
+	const visited = new Set();
+	const pending = [module];
+	while (pending.length > 0) {
+		const current = pending.pop();
+		if (!current || visited.has(current)) continue;
+		visited.add(current);
+		if (typeof current.layer === 'string' && current.layer.length > 0) {
+			layers.add(current.layer);
+		}
+		for (const connection of compilation.moduleGraph.getIncomingConnections(current)) {
+			if (connection.originModule) pending.push(connection.originModule);
+		}
+	}
+	return [...layers].sort();
+}
+
+function threadForModule(layers, chunks) {
+	const main =
+		layers.includes(LYNX_MAIN_THREAD_LAYER) ||
+		chunks.some((chunk) => /(?:main-thread|__octane_main_thread)/.test(chunk));
+	const background =
+		layers.includes(LYNX_BACKGROUND_LAYER) ||
+		chunks.some((chunk) => /(?:^|\/)background$/.test(chunk) || chunk === ENTRY_NAME);
+	if (main && background) return 'shared';
+	if (main && !background) return 'main';
+	if (background && !main) return 'background';
+	return 'unassigned';
+}
+
+class CaptureReachableModulesPlugin {
+	constructor(target) {
+		this.target = target;
+	}
+
+	apply(compiler) {
+		compiler.hooks.done.tap(this.constructor.name, (stats) => {
+			const compilation = stats.compilation;
+			for (const module of compilation.modules) {
+				const size = Number(module.size?.() ?? 0);
+				if (!Number.isFinite(size) || size <= 0) continue;
+				const moduleChunks = [...compilation.chunkGraph.getModuleChunksIterable(module)];
+				const chunks = moduleChunks
+					.map((chunk) => chunk.name ?? String(chunk.id ?? 'unnamed'))
+					.sort();
+				const identifier = module.nameForCondition?.() ?? module.identifier?.() ?? 'unknown';
+				const layers = moduleLayers(compilation, module);
+				const thread = threadForModule(layers, chunks);
+				const runtimes =
+					moduleChunks.length > 0
+						? moduleChunks.map((chunk) => [
+								chunk.name ?? String(chunk.id ?? 'unnamed'),
+								chunkRuntime(chunk),
+							])
+						: thread === 'main'
+							? [['main__octane_main_thread', 'main__octane_main_thread']]
+							: thread === 'background'
+								? [[ENTRY_NAME, ENTRY_NAME]]
+								: [];
+				const usedExports = Object.fromEntries(
+					runtimes.map(([name, runtime]) => [
+						name,
+						normalizeUsedExports(compilation.moduleGraph.getUsedExports(module, runtime)),
+					]),
+				);
+				this.target.push({
+					identifier: portableIdentifier(identifier),
+					layers,
+					thread,
+					size,
+					chunks,
+					usedExports,
+				});
+			}
+		});
+	}
+}
+
+function reachableInventory(modules) {
+	const sorted = modules.toSorted(
+		(left, right) =>
+			left.thread.localeCompare(right.thread) ||
+			left.identifier.localeCompare(right.identifier) ||
+			left.layers.join('\0').localeCompare(right.layers.join('\0')) ||
+			left.size - right.size,
+	);
+	const byThread = Object.fromEntries(
+		['main', 'background', 'shared', 'unassigned'].map((thread) => {
+			const selected = sorted.filter((module) => module.thread === thread);
+			return [
+				thread,
+				{
+					reachableRaw: selected.reduce((sum, module) => sum + module.size, 0),
+					moduleCount: selected.length,
+					sha256: sha256(Buffer.from(JSON.stringify(selected))),
+					modules: selected,
+				},
+			];
+		}),
+	);
+	return {
+		method:
+			'Rspack production compilation modules classified by complete incoming Lynx layers, then chunk ownership',
+		byThread,
+	};
+}
 
 function nativeScriptBytes(script) {
 	if (typeof script === 'string') return Buffer.from(script);
@@ -230,7 +399,8 @@ function decodedScript(decoded, key) {
  * functions. `label` names the arm rather than the core, because two arms now
  * share a core and the reported rows have to be told apart.
  */
-async function buildWithCore(label, core, outputRoot, backend) {
+async function buildWithCore(label, core, outputRoot, { backend, programAddressing } = {}) {
+	const reachableModules = [];
 	const rspeedy = await createRspeedy({
 		cwd: RSPEEDY_CWD,
 		loadEnv: false,
@@ -246,11 +416,25 @@ async function buildWithCore(label, core, outputRoot, backend) {
 				inlineScripts: true,
 				sourceMap: false,
 			},
-			source: { entry: { [ENTRY_NAME]: path.join(ROOT, 'src/entry.ts') } },
+			source: {
+				entry: { [ENTRY_NAME]: ENTRY },
+				define: {
+					__BENCH_AUTOROWS__: '0',
+					__BENCH_CORE__: JSON.stringify(core),
+					// The derived arm runs the same compiler-produced App on both
+					// cores. The hand-authored ceiling program is not part of this
+					// product-default comparison and must fold out.
+					__BENCH_BLOCK_MODE__: JSON.stringify('derived'),
+					__OCTANE_LYNX_PROFILE__: 'false',
+				},
+			},
 			splitChunks: false,
 			tools: {
 				rspack: {
-					plugins: [new PinBuildDigestPlugin()],
+					plugins: [
+						new PinBuildDigestPlugin(),
+						new CaptureReachableModulesPlugin(reachableModules),
+					],
 					resolve: { modules: [RSPEEDY_MODULES, 'node_modules'] },
 				},
 			},
@@ -270,6 +454,7 @@ async function buildWithCore(label, core, outputRoot, backend) {
 					hmr: false,
 					dev: false,
 					...(backend === undefined ? null : { mainThreadProgramBackend: backend }),
+					...(programAddressing === undefined ? null : { programAddressing }),
 				}),
 			],
 		},
@@ -290,20 +475,27 @@ async function buildWithCore(label, core, outputRoot, backend) {
 	if (background.bytes.length === 0) throw new Error(`${label}: background program is empty`);
 	if (main.bytes.length === 0) throw new Error(`${label}: main program is empty`);
 	assertMainDigestPinned(label, main.text);
+	const reachable = reachableInventory(reachableModules);
+	if (
+		reachable.byThread.main.moduleCount === 0 ||
+		reachable.byThread.background.moduleCount === 0
+	) {
+		throw new Error(`${label}: reachable-module capture did not identify both Lynx threads`);
+	}
 	return {
 		label,
 		core,
-		backgroundRaw: background.bytes.length,
-		backgroundGzip: gzipBytes(background.bytes),
-		mainRaw: main.bytes.length,
-		mainGzip: gzipBytes(main.bytes),
-		mainSha: createHash('sha256').update(main.text).digest('hex'),
+		backend: backend === undefined ? 'descriptor' : 'compiled-program',
+		programAddressing: backend === undefined ? false : programAddressing !== false,
+		bundle: artifactStat(bundle),
+		background: artifactStat(background.bytes),
+		main: artifactStat(main.bytes),
+		reachable,
 		// The background program is compared across the backend, not only sized,
 		// so it needs an identity of its own. Unpinned, deliberately: the digest
 		// plugin stamps each chunk from that chunk's own source, so if the
 		// background text really does not move neither does its digest — and a
 		// pin here would hide the case where that stops being true.
-		backgroundSha: createHash('sha256').update(background.text).digest('hex'),
 		// Counted rather than tested for presence. A count says how many programs
 		// the arm compiled, and it is what makes a probe that stops being specific
 		// show up as a number on the arms that should read zero instead of as a
@@ -326,47 +518,79 @@ const outputs = fs.mkdtempSync(path.join(os.tmpdir(), 'octane-core-switch-'));
 try {
 	const universal = await buildWithCore('universal', 'universal', path.join(outputs, 'universal'));
 	const block = await buildWithCore('block', 'block', path.join(outputs, 'block'));
-	// The same core as `block`, so any difference between the two is the
-	// backend's and nothing else's.
+	// Keep descriptor transport to isolate main-thread codegen. The background
+	// program must stay byte-identical to `block` in this arm.
+	const blockProgramDescriptor = await buildWithCore(
+		'block+program-descriptor',
+		'block',
+		path.join(outputs, 'block-program-descriptor'),
+		{ backend: mainThreadProgramBackend, programAddressing: false },
+	);
+	// Omit the addressing option exactly as a product build does. Supplying the
+	// backend enables positional addressing by default.
 	const blockProgram = await buildWithCore(
 		'block+program',
 		'block',
 		path.join(outputs, 'block-program'),
-		mainThreadProgramBackend,
+		{ backend: mainThreadProgramBackend },
 	);
 
-	const rows = [universal, block, blockProgram];
+	const rows = [universal, block, blockProgramDescriptor, blockProgram];
 	const delta = (value) => (value >= 0 ? '+' : '') + value.toLocaleString();
 
-	console.log('\nbackground program, one core per bundle\n');
-	console.log('| arm | raw | gzip | block core | universal root | plan constructors |');
-	console.log('| --- | ---: | ---: | ---: | ---: | ---: |');
+	console.log('\nencoded production bundle\n');
+	console.log('| arm | raw | gzip | brotli | sha256 |');
+	console.log('| --- | ---: | ---: | ---: | --- |');
 	for (const row of rows) {
 		console.log(
-			`| ${row.label} | ${row.backgroundRaw.toLocaleString()} | ${row.backgroundGzip.toLocaleString()} | ` +
+			`| ${row.label} | ${row.bundle.raw.toLocaleString()} | ${row.bundle.gzip.toLocaleString()} | ` +
+				`${row.bundle.brotli.toLocaleString()} | ${row.bundle.sha256.slice(0, 12)} |`,
+		);
+	}
+
+	console.log('\ndecoded background LepusNG program, one core per bundle\n');
+	console.log(
+		'| arm | raw | gzip | brotli | reachable modules/raw | block core | universal root | plan constructors |',
+	);
+	console.log('| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |');
+	for (const row of rows) {
+		const reachable = row.reachable.byThread.background;
+		console.log(
+			`| ${row.label} | ${row.background.raw.toLocaleString()} | ${row.background.gzip.toLocaleString()} | ` +
+				`${row.background.brotli.toLocaleString()} | ${reachable.moduleCount}/${reachable.reachableRaw.toLocaleString()} | ` +
 				`${row.probes.block.length}/${CORE_PROBES.block.length} | ` +
 				`${row.probes.universalRoot.length}/${CORE_PROBES.universalRoot.length} | ` +
 				`${row.probes.universalPlan.length}/${CORE_PROBES.universalPlan.length} |`,
 		);
 	}
 
-	console.log('\nmain-thread program (moved by the backend, not by the core)\n');
-	console.log('| arm | raw | gzip | sha256 | compiled programs |');
-	console.log('| --- | ---: | ---: | --- | ---: |');
+	console.log('\ndecoded main-thread LepusNG program (moved by the backend, not by the core)\n');
+	console.log('| arm | raw | gzip | brotli | reachable modules/raw | sha256 | compiled programs |');
+	console.log('| --- | ---: | ---: | ---: | ---: | --- | ---: |');
 	for (const row of rows) {
+		const reachable = row.reachable.byThread.main;
 		console.log(
-			`| ${row.label} | ${row.mainRaw.toLocaleString()} | ${row.mainGzip.toLocaleString()} | ` +
-				`${row.mainSha.slice(0, 12)} | ${row.program} |`,
+			`| ${row.label} | ${row.main.raw.toLocaleString()} | ${row.main.gzip.toLocaleString()} | ` +
+				`${row.main.brotli.toLocaleString()} | ${reachable.moduleCount}/${reachable.reachableRaw.toLocaleString()} | ` +
+				`${row.main.sha256.slice(0, 12)} | ${row.program} |`,
 		);
 	}
 
 	console.log(
-		`\nbackground delta (block − universal): ${delta(block.backgroundGzip - universal.backgroundGzip)} B gzip, ` +
-			`${delta(block.backgroundRaw - universal.backgroundRaw)} B raw`,
+		`\nbackground delta (block − universal): ${delta(block.background.gzip - universal.background.gzip)} B gzip, ` +
+			`${delta(block.background.brotli - universal.background.brotli)} B brotli, ` +
+			`${delta(block.background.raw - universal.background.raw)} B raw`,
 	);
 	console.log(
-		`main-thread delta (block+program − block): ${delta(blockProgram.mainGzip - block.mainGzip)} B gzip, ` +
-			`${delta(blockProgram.mainRaw - block.mainRaw)} B raw`,
+		`main-thread codegen delta (block+program-descriptor − block): ` +
+			`${delta(blockProgramDescriptor.main.gzip - block.main.gzip)} B gzip, ` +
+			`${delta(blockProgramDescriptor.main.brotli - block.main.brotli)} B brotli, ` +
+			`${delta(blockProgramDescriptor.main.raw - block.main.raw)} B raw`,
+	);
+	console.log(
+		`addressing delta (block+program − block+program-descriptor): ` +
+			`${delta(blockProgram.background.gzip - blockProgramDescriptor.background.gzip)} B background gzip, ` +
+			`${delta(blockProgram.main.gzip - blockProgramDescriptor.main.gzip)} B main gzip`,
 	);
 
 	// The controls. Each one names a way the numbers above could be measuring
@@ -381,7 +605,7 @@ try {
 			`core: 'universal' kept block-core strings: ${universal.probes.block.join(', ')}`,
 		);
 	}
-	for (const row of [block, blockProgram]) {
+	for (const row of [block, blockProgramDescriptor, blockProgram]) {
 		if (row.probes.universalRoot.length !== 0) {
 			failures.push(
 				`${row.label} kept universal-root strings: ${row.probes.universalRoot.join(', ')}`,
@@ -400,23 +624,24 @@ try {
 	}
 
 	// The core switch is background-only: it must not reach the main thread.
-	if (universal.mainSha !== block.mainSha) {
+	if (universal.main.sha256 !== block.main.sha256) {
 		failures.push('the main-thread program is not byte-identical across the core switch');
 	}
 
-	// The backend is the mirror image, and both halves of it are load-bearing.
+	// The descriptor backend isolates codegen, and both halves of its control
+	// are load-bearing.
 	// It must move the main-thread program, because an arm that compiled nothing
 	// would report a flattering zero delta and pass every check above it. And it
 	// must not move the background program, which is #163's promise that the
 	// half of the bundle it does not own does not move underneath it.
-	if (blockProgram.mainSha === block.mainSha) {
+	if (blockProgramDescriptor.main.sha256 === block.main.sha256) {
 		failures.push(
 			'the main-thread program backend changed nothing; the third arm is measuring the second',
 		);
 	}
-	if (blockProgram.program === 0) {
+	if (blockProgramDescriptor.program === 0 || blockProgram.program === 0) {
 		failures.push(
-			`block+program carries no compiled program: nothing in its main-thread chunk contains ` +
+			`a program arm carries no compiled program: nothing in its main-thread chunk contains ` +
 				`'${PROGRAM_PROBE}'. Either the backend compiled nothing, or the probe is stale — ` +
 				`it is the preamble emitMainThreadProgram writes, so reword one and this fails.`,
 		);
@@ -440,10 +665,16 @@ try {
 			);
 		}
 	}
-	if (blockProgram.backgroundSha !== block.backgroundSha) {
+	if (blockProgramDescriptor.background.sha256 !== block.background.sha256) {
+		failures.push('the descriptor-mode main-thread program backend moved the background program');
+	}
+	if (blockProgram.main.sha256 === blockProgramDescriptor.main.sha256) {
 		failures.push(
-			'the main-thread program backend moved the background program, which it must not',
+			'default program addressing did not register addresses in the main-thread program',
 		);
+	}
+	if (blockProgram.background.sha256 === blockProgramDescriptor.background.sha256) {
+		failures.push('default program addressing did not move the background descriptor path');
 	}
 
 	if (failures.length !== 0) {
@@ -452,7 +683,46 @@ try {
 	} else {
 		console.log(
 			'\nOK — each bundle carries exactly one core, the core switch leaves the main-thread\n' +
-				'program byte-identical, and the program backend moves that program and only that program.',
+				'program byte-identical, descriptor-mode isolates codegen, and addressing costs both threads explicitly.',
+		);
+	}
+
+	const payload = {
+		schemaVersion: 1,
+		generatedAt: new Date().toISOString(),
+		source: {
+			commit: execFileSync('git', ['rev-parse', AUDIT_BASE], {
+				cwd: REPO,
+				encoding: 'utf8',
+			}).trim(),
+			dirty:
+				execFileSync('git', ['status', '--porcelain'], {
+					cwd: REPO,
+					encoding: 'utf8',
+				}).trim().length > 0,
+			diffScope: AUDIT_INPUTS,
+			diffSha256: sha256(
+				execFileSync('git', ['diff', '--binary', AUDIT_BASE, '--', ...AUDIT_INPUTS], {
+					cwd: REPO,
+				}),
+			),
+		},
+		toolchain: {
+			node: process.version,
+			platform: `${os.platform()} ${os.release()}`,
+			targetSdkVersion: LYNX_TARGET_SDK_VERSION,
+		},
+		fixture: 'benchmarks/lynx-table/app, BENCH_AUTOROWS=0, derived compiler path',
+		arms: rows,
+		controls: {
+			passed: failures.length === 0,
+			failures,
+		},
+	};
+	if (process.env.OCTANE_CORE_SWITCH_OUTPUT) {
+		fs.writeFileSync(
+			process.env.OCTANE_CORE_SWITCH_OUTPUT,
+			`${JSON.stringify(payload, null, 2)}\n`,
 		);
 	}
 } finally {

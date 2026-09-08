@@ -41,6 +41,14 @@ the production reachable-module owner weights. That proportional raw
 attribution is for prioritization; only an isolated production build delta may
 be described as gzip ownership.
 
+The machine-readable inventory also preserves the complete module list grouped
+by the full set of incoming Lynx layers: main, background, genuinely `shared`,
+and a fail-visible `unassigned` group. This avoids assigning a shared CSS or
+asset module to whichever thread Rspack happened to discover first, and a byte
+reduction cannot be explained by silently moving source reachability to the
+other thread. These are compilation-graph weights; decoded program bytes in the
+same receipt remain the device-evaluated artifact boundary.
+
 `inventory-budgets.json` freezes total, thread-section, and owner-slice raw
 budgets plus total gzip budgets on the issue #57 first-screen template-range
 candidate over exact base `dcf94cfc8`, which includes the merged dense-clear
@@ -73,13 +81,39 @@ The checked execution report is [`results/l5-ceiling.md`](results/l5-ceiling.md)
 
 ## Core switch and main-thread program
 
-`node benchmarks/lynx-bundle-size/core-switch.mjs` builds the same fixture three
-times through the real production pipeline and reports what each half of the
-bundle weighs under the two independent switches that decide it: the background
+`node benchmarks/lynx-bundle-size/core-switch.mjs` builds the exact rows-0 table
+fixture from the cross-framework benchmark four times through the real
+production pipeline and reports what each half of the bundle weighs under the
+switches that decide it: the background
 core (`pluginOctane({ core })`, issue #103 B0) and the main-thread program
 backend (`pluginOctane({ mainThreadProgramBackend })`, issue #163 C1d). The arms
-are `universal`, `block`, and `block+program` — the last sharing a core with the
-second, so anything separating them is the backend's.
+are `universal`, `block`, `block+program-descriptor`, and `block+program`. The
+third disables positional addressing to isolate main-thread codegen; the fourth
+uses the product default, where supplying the backend also replaces background
+descriptors with checked addresses. All Block arms use the
+compiler-derived application path; the hand-authored Block ceiling program is
+excluded from this product-default comparison.
+
+The report has three non-interchangeable byte ledgers: the encoded production
+`.lynx.bundle`, the decoded main/background LepusNG programs actually carried by
+that bundle, and the pre-encoding Rspack reachable-module graph split by Lynx
+layer. Every artifact/program row includes raw, gzip, Brotli, and SHA-256. The
+module ledger records source identifiers, sizes, chunks, and Rspack used exports;
+it intentionally does not turn those source weights into compressed ownership.
+In particular, modules can remain in the compilation graph after final
+tree-shaking has removed their runtime closure, so the decoded-program identity
+and core controls remain the publication boundary.
+
+Set `OCTANE_CORE_SWITCH_OUTPUT=/absolute/path/to/receipt.json` to retain the full
+machine-readable receipt, including the exact source state and complete
+main/background module lists. The output path should stay outside the repository
+for a clean exact-head run.
+
+The M3 product-default audit, comparator gate, and public semantic coverage
+matrix are checked in at
+[`results/m3-default-path-audit.md`](results/m3-default-path-audit.md). Its
+machine-readable receipts use calibration mode to observe current head without
+rewriting or weakening the older frozen inventory budgets.
 
 It is a control before it is a measurement. A branch on a constant the bundler
 declines to fold ships both cores and still passes every unit test, so the run
