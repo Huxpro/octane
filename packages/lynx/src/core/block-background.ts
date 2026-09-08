@@ -171,8 +171,10 @@ export function createLynxBlockBackgroundCore(
 	});
 	let afterCommitTasks: (() => void)[] = [];
 	let afterPassiveCommitTasks: (() => void)[] = [];
+	let afterAbortTasks: (() => void)[] = [];
 	let passiveTasks: (() => void)[] = [];
 	let passiveScheduled = false;
+	let attemptActive = false;
 	const runTasks = (tasks: readonly (() => void)[]): void => {
 		let hasError = false;
 		let firstError: unknown;
@@ -202,20 +204,86 @@ export function createLynxBlockBackgroundCore(
 		passiveScheduled = true;
 		options.scheduleMicrotask(flushPassiveTasks);
 	};
-	const commitAccepted = async (): Promise<UniversalHostBatch | null> => {
-		const tasks = afterCommitTasks;
-		afterCommitTasks = [];
-		const passive = afterPassiveCommitTasks;
-		afterPassiveCommitTasks = [];
-		const batch = await blockRoot.commit();
+	const publishAccepted = (): void => {
+		afterAbortTasks = [];
+		let hasError = false;
+		let firstError: unknown;
 		try {
-			runTasks(tasks);
+			// A scope publication may enqueue its layout phase while this drain is
+			// running. Keep draining until every accepted synchronous task has had
+			// its turn rather than leaving the nested phase for a later render.
+			while (afterCommitTasks.length !== 0) {
+				const tasks = afterCommitTasks;
+				afterCommitTasks = [];
+				try {
+					runTasks(tasks);
+				} catch (error) {
+					if (!hasError) {
+						hasError = true;
+						firstError = error;
+					}
+				}
+			}
 		} finally {
+			const passive = afterPassiveCommitTasks;
+			afterPassiveCommitTasks = [];
 			// Match the universal root: accepted passive work is not stranded by
 			// a layout callback that throws during the same commit.
 			enqueuePassiveTasks(passive);
 		}
-		return batch;
+		if (hasError) throw firstError;
+	};
+	const beginAttempt = (): void => {
+		if (attemptActive) return;
+		blockRoot.beginAttempt();
+		attemptActive = true;
+	};
+	const abortAttempt = (): boolean => {
+		if (!attemptActive) return false;
+		attemptActive = false;
+		if (!blockRoot.abortAttempt()) return false;
+		const tasks = afterAbortTasks;
+		afterAbortTasks = [];
+		afterCommitTasks = [];
+		afterPassiveCommitTasks = [];
+		runTasks(tasks);
+		return true;
+	};
+	const resumeAfterFailure = (error: unknown): never => {
+		let hasAbortError = false;
+		let abortError: unknown;
+		try {
+			abortAttempt();
+		} catch (caught) {
+			hasAbortError = true;
+			abortError = caught;
+		} finally {
+			// Keep one empty draft open after every settlement. Hand-written block
+			// programs mutate the core before calling context.commit(), so opening
+			// only inside renderAsync would leave those public writes unjournaled.
+			beginAttempt();
+		}
+		if (hasAbortError) {
+			throw typeof AggregateError === 'function'
+				? new AggregateError([error, abortError], 'Lynx block render and rollback both failed.')
+				: error;
+		}
+		throw error;
+	};
+	const publishAndContinue = (): void => {
+		// ACK closes the submitted draft synchronously. Open the next one before
+		// lifecycle publication: main may drain a native event before `complete`,
+		// and a hand-written handler is allowed to mutate then call commit().
+		attemptActive = false;
+		beginAttempt();
+		publishAccepted();
+	};
+	const commitAccepted = async (): Promise<UniversalHostBatch | null> => {
+		try {
+			return await blockRoot.commit(publishAndContinue);
+		} catch (error) {
+			return resumeAfterFailure(error);
+		}
 	};
 	const context: LynxBlockProgramContext = Object.freeze({
 		root: blockRoot,
@@ -230,21 +298,23 @@ export function createLynxBlockBackgroundCore(
 		afterPassiveCommit(task: () => void): void {
 			afterPassiveCommitTasks.push(task);
 		},
+		afterAbort(task: () => void): void {
+			afterAbortTasks.push(task);
+		},
 		scheduleRender(work: () => void): Promise<void> {
 			// The same queue `renderAsync` takes its turn in, for the same
 			// reason: one render at a time, one commit in flight at a time. A
 			// program driving its own re-render out of band would otherwise
 			// overlap a caller's, and both would flush the core.
 			const run = renderQueue.then(async () => {
+				beginAttempt();
 				try {
 					flushPassiveTasks();
 					work();
-					await commitAccepted();
 				} catch (error) {
-					afterCommitTasks = [];
-					afterPassiveCommitTasks = [];
-					throw error;
+					return resumeAfterFailure(error);
 				}
+				await commitAccepted();
 			});
 			renderQueue = run.then(
 				() => undefined,
@@ -295,11 +365,14 @@ export function createLynxBlockBackgroundCore(
 		): Promise<UniversalTransaction> {
 			const program = programFor(component as unknown as LynxComponent<unknown>);
 			const run = renderQueue.then(async () => {
+				beginAttempt();
 				try {
 					flushPassiveTasks();
 					if (mounted === null) {
 						await program.mount(context, props);
-						mounted = program as unknown as LynxBlockProgram<never>;
+						afterCommitTasks.unshift(() => {
+							mounted = program as unknown as LynxBlockProgram<never>;
+						});
 					} else if (mounted !== (program as unknown as LynxBlockProgram<never>)) {
 						throw new Error(
 							typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
@@ -316,12 +389,10 @@ export function createLynxBlockBackgroundCore(
 								'A program that accepts new props must implement update().',
 						);
 					}
-					return committedTransaction(await commitAccepted());
 				} catch (error) {
-					afterCommitTasks = [];
-					afterPassiveCommitTasks = [];
-					throw error;
+					return resumeAfterFailure(error);
 				}
+				return committedTransaction(await commitAccepted());
 			});
 			// A rejected render surfaces to its own caller through `run`; it must
 			// not wedge every later render behind the same rejection.
@@ -340,8 +411,14 @@ export function createLynxBlockBackgroundCore(
 			await pending;
 			flushPassiveTasks();
 			if (mounted !== null && typeof mounted.unmount === 'function') {
-				await mounted.unmount(context);
-				mounted = null;
+				try {
+					await mounted.unmount(context);
+					afterCommitTasks.unshift(() => {
+						mounted = null;
+					});
+				} catch (error) {
+					return resumeAfterFailure(error);
+				}
 				await commitAccepted();
 			}
 		},
