@@ -175,6 +175,14 @@ export interface LynxWireProfile {
 	papiRemoveCount: number;
 	/** Main: dense host records released by destroy-run apply. */
 	denseReleaseHostCount: number;
+	/** Main: eligible addressed runs executed by a resident straight-line driver. */
+	programRunDriverRuns: number;
+	/** Main: row instances painted by resident straight-line run drivers. */
+	programRunDriverRows: number;
+	/** Main: eligible addressed runs that retained the descriptor interpreter. */
+	programRunDriverFallbacks: number;
+	/** Main: why the latest eligible addressed run retained the descriptor interpreter. */
+	programRunDriverFallback: string | null;
 }
 
 interface LynxProfileGlobals {
@@ -229,6 +237,10 @@ export function lynxWireProfile(): LynxWireProfile {
 		eventDetachCount: 0,
 		papiRemoveCount: 0,
 		denseReleaseHostCount: 0,
+		programRunDriverRuns: 0,
+		programRunDriverRows: 0,
+		programRunDriverFallbacks: 0,
+		programRunDriverFallback: null,
 	});
 }
 

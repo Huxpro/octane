@@ -727,6 +727,18 @@ export function emitLynxMainThreadProgram(
 		.map((_node, index) => `n${index}`)
 		.concat(ranges.map((_range, index) => (painted.has(index) ? `t${index}` : 'undefined')))
 		.join(', ');
+	// Publish each created host into the caller-owned output table immediately.
+	// A later PAPI write may throw, and an incremental command-path mount needs
+	// every already-created node to remain discoverable for fault cleanup. The
+	// old tail writes exposed nodes only after a whole instance completed. Moving
+	// the same writes beside creation changes no successful-path work and lets a
+	// failed driver retain the prefix it actually made.
+	const driverBody = body.flatMap((line) => {
+		const created = /^\t\tvar n(\d+) =/.exec(line);
+		if (created === null) return [line];
+		const index = Number(created[1]);
+		return [line, `\t\tout[oi${index === 0 ? '' : ` + ${index}`}] = n${index};`];
+	});
 
 	// Constant stride, and that is the whole condition (issue #215 D8). A range
 	// site this emission leaves open is filled by members the renderer
@@ -797,10 +809,11 @@ export function emitLynxMainThreadProgram(
 				...ranges.map(
 					(_range, index) => `\t\t\tvar r${index} = ranges[ri${index === 0 ? '' : ` + ${index}`}];`,
 				),
-				...body.map((line) => `\t${line}`),
-				...returned
-					.split(', ')
-					.map((local, index) => `\t\t\tout[oi${index === 0 ? '' : ` + ${index}`}] = ${local};`),
+				...driverBody.map((line) => `\t${line}`),
+				...ranges.map(
+					(_range, index) =>
+						`\t\t\tout[oi + ${program.nodes.length + index}] = ${painted.has(index) ? `t${index}` : 'undefined'};`,
+				),
 				`\t\t\tvi += ${valueCount}; ei += ${program.events.length}; ri += ${ranges.length}; oi += ${stride};`,
 				`\t\t}`,
 				`\t};`,

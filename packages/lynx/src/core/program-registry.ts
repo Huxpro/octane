@@ -184,6 +184,16 @@ export function resolveUniversalProgram(
 	return RESIDENT_PROGRAMS.get(addressKey(module, index));
 }
 
+/** The executable resident plan named by an addressed run, when this realm holds it. */
+export function residentRunPlan(command: {
+	readonly address: LynxProgramAddress;
+}): UniversalProgramPlan | undefined {
+	const address = command.address;
+	if (address === null || typeof address !== 'object') return undefined;
+	if (typeof address.module !== 'string' || !Number.isSafeInteger(address.index)) return undefined;
+	return resolveUniversalProgram(address.module, address.index);
+}
+
 /**
  * How many programs this realm holds.
  *
@@ -224,10 +234,7 @@ export function residentRunProgram(
 	if (command.op !== 'mount-program-run' && command.op !== 'program-manifest') {
 		return command.program;
 	}
-	const address = command.address;
-	if (address === null || typeof address !== 'object') return undefined;
-	if (typeof address.module !== 'string' || !Number.isSafeInteger(address.index)) return undefined;
-	return resolveUniversalProgram(address.module, address.index)?.wire;
+	return residentRunPlan(command)?.wire;
 }
 
 /**

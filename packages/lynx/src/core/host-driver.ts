@@ -51,6 +51,7 @@ import {
 	type LynxResolvedFirstTreeEvent,
 } from './first-screen.js';
 import {
+	residentRunPlan,
 	residentRunProgram,
 	residentUniversalProgramAddress,
 	residentUniversalProgramCount,
@@ -578,6 +579,10 @@ type LynxApplyOperation<Node extends LynxElementRef> =
 			readonly stride?: number;
 			readonly program?: LynxPreparedTemplateProgram;
 			readonly firstListenerId?: number | null;
+			/** Resident straight-line driver for an eligible addressed run. */
+			readonly compiledRun?: NonNullable<UniversalProgramCreate['run']>;
+			/** The wire was resolved from a resident address, even if it lacks a driver. */
+			readonly residentProgram?: true;
 			readonly lazyPublicInstances?: true;
 			/** Set when an instance of this run carries a main-thread worklet or ref. */
 			readonly mainThreadProps?: true;
@@ -2683,6 +2688,17 @@ function installPreparedNativeEvent<Node extends LynxElementRef>(
 		firstListenerId + site.index,
 		site.priority,
 	);
+	journalPreparedNativeEvent(state, node, site, token);
+	state.papi.setEvent(node, site.binding.type, site.binding.name, token);
+}
+
+/** Retain a prepared native-event tuple for dispatch and terminal cleanup. */
+function journalPreparedNativeEvent<Node extends LynxElementRef>(
+	state: LynxHostState<Node>,
+	node: Node,
+	site: LynxPreparedTemplateProgramEvent,
+	token: LynxNativeEventToken,
+): void {
 	let events = state.nativeEvents.get(node);
 	if (events === undefined) {
 		events = new Map();
@@ -2694,7 +2710,6 @@ function installPreparedNativeEvent<Node extends LynxElementRef>(
 		site.type,
 		Object.freeze({ source: 'background', binding: site.binding, listener: token }),
 	);
-	state.papi.setEvent(node, site.binding.type, site.binding.name, token);
 }
 
 function installMainThreadEvent<Node extends LynxElementRef>(
@@ -8277,6 +8292,40 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 						}
 					}
 				}
+				let compiledRun: NonNullable<UniversalProgramCreate['run']> | undefined;
+				if (command.op === 'mount-program-run') {
+					const resident = residentRunPlan(command);
+					const create = resident?.bind(state.papi);
+					if (create !== undefined && typeof create !== 'function') {
+						throw hostError(`${label} resident program bound to a non-function create.`);
+					}
+					const candidate = create?.run;
+					if (candidate !== undefined) {
+						if (typeof candidate !== 'function') {
+							throw hostError(`${label} resident program carries a non-function run driver.`);
+						}
+						if (
+							resident!.nodes !== shape.types.length ||
+							resident!.values.length !== program.valueCount ||
+							resident!.ranges.length !== 0 ||
+							resident!.events.length !== program.eventCount ||
+							resident!.events.some((event, eventIndex) => {
+								const prepared = program.eventSites[eventIndex];
+								return (
+									prepared === undefined ||
+									prepared.node !== event.node ||
+									prepared.type !== event.type ||
+									prepared.priority !== event.priority
+								);
+							})
+						) {
+							throw hostError(
+								`${label} resident executable layout disagrees with its wire program.`,
+							);
+						}
+						compiledRun = candidate;
+					}
+				}
 				let prefix = stagedRecords as Map<number, LynxHostRecord<Node>>;
 				if (incrementalCompactCandidate) {
 					prefix = new Map(state.records as Map<number, LynxHostRecord<Node>>);
@@ -8315,6 +8364,8 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 					firstId: command.firstId,
 					program,
 					firstListenerId: command.firstListenerId,
+					...(compiledRun === undefined ? null : { compiledRun }),
+					...(command.op === 'mount-program-run' ? { residentProgram: true as const } : null),
 					...(options?.lazyPublicInstances === true
 						? { lazyPublicInstances: true as const }
 						: null),
@@ -9494,6 +9545,92 @@ export function prepareLynxHostBatch<Node extends LynxElementRef>(
 									const append =
 										state.papi.append ??
 										((parent: Node, child: Node) => state.papi.insertBefore(parent, child, null));
+									const compiledRun = operation.compiledRun;
+									if (compiledRun !== undefined) {
+										if (LYNX_PROFILE) {
+											const profile = lynxWireProfile();
+											profile.programRunDriverRuns++;
+											profile.programRunDriverRows += dense.count;
+										}
+										const eventCount = program.eventCount;
+										const tokens: LynxNativeEventToken[] = new Array(dense.count * eventCount);
+										if (eventCount !== 0) {
+											const firstListenerId = dense.firstListenerId!;
+											for (let row = 0; row < dense.count; row++) {
+												const hostFirstId = dense.firstId + row * dense.stride;
+												const listenerFirstId = firstListenerId + row * eventCount;
+												for (const site of program.eventSites) {
+													tokens[row * eventCount + site.index] =
+														encodePrevalidatedLynxNativeEventToken(
+															container.root,
+															hostFirstId + site.node,
+															1,
+															listenerFirstId + site.index,
+															site.priority,
+														);
+												}
+											}
+										}
+										let compiledCreated = 0;
+										try {
+											compiledRun(
+												container.pageComponentUniqueId,
+												dense.count,
+												dense.values,
+												tokens,
+												EMPTY_PROGRAM_RANGE_TEXTS,
+												dense.nodes,
+											);
+										} finally {
+											// The emitted driver publishes each node into `dense.nodes` as
+											// soon as it creates it. Retain that prefix even when a later
+											// prop/event/append PAPI call faults, so terminal cleanup owns
+											// every physical node and listener the failed attempt may hold.
+											for (let offset = 0; offset < dense.nodes.length; offset++) {
+												const node = dense.nodes[offset];
+												if (node === undefined) continue;
+												compiledCreated++;
+												state.ownedNodes.add(node);
+												// `handleDelta` may have materialized a compact logical record
+												// before apply. Keep that observation wired to the driver's
+												// physical table just as the scalar painter does.
+												dense.setNode(offset, node);
+											}
+											for (let row = 0; row < dense.count; row++) {
+												const nodeOffset = row * width;
+												const tokenOffset = row * eventCount;
+												for (const site of program.eventSites) {
+													const node = dense.nodes[nodeOffset + site.node];
+													const token = tokens[tokenOffset + site.index];
+													if (node !== undefined && token !== undefined) {
+														journalPreparedNativeEvent(state, node, site, token);
+													}
+												}
+											}
+										}
+										if (compiledCreated !== dense.nodes.length) {
+											throw hostError(
+												`compiled resident program painted ${compiledCreated} of ${dense.nodes.length} declared hosts.`,
+											);
+										}
+										for (let row = 0; row < dense.count; row++) {
+											const root = dense.nodes[row * width];
+											if (root === undefined) {
+												throw hostError(
+													'compiled resident program painted fewer instances than its run declared.',
+												);
+											}
+											if (dense.parent === null) state.ownedPageRoots.add(root);
+											append(parent, root);
+										}
+										continue;
+									}
+									if (LYNX_PROFILE && operation.residentProgram === true) {
+										const profile = lynxWireProfile();
+										profile.programRunDriverFallbacks++;
+										profile.programRunDriverFallback =
+											'resident program has no straight-line run driver';
+									}
 									const intrinsics = state.papi.intrinsics;
 									const intrinsicFactories =
 										intrinsics === undefined

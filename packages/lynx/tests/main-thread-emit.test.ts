@@ -1114,7 +1114,7 @@ describe('Lynx main-thread program dense run driver', () => {
 		expect(source.trimEnd().endsWith('\t};\n}')).toBe(true);
 	});
 
-	it("runs the create function's own body, one tab in, rather than a second emission of it", () => {
+	it("runs the create function's own body and publishes nodes as they are created", () => {
 		// The whole reason the driver can be trusted to paint what `count` calls
 		// paint. Two codegen paths would have to keep agreeing forever; one body
 		// used twice cannot disagree with itself, and this is the assertion that
@@ -1139,7 +1139,7 @@ describe('Lynx main-thread program dense run driver', () => {
 		expect(returned).toBe('\t\treturn [n0, n1, n2, n3, n4, t0, t1];');
 		const painted = create.slice(0, -1);
 		const inner = driver.filter((line) => line.startsWith('\t\t\t'));
-		// The binding prologue, then the body, then the writes and the strides.
+		// The binding prologue, then the body, then the range writes and strides.
 		const bound = [
 			'\t\t\tvar v0 = values[vi];',
 			'\t\t\tvar e0 = events[ei];',
@@ -1148,22 +1148,54 @@ describe('Lynx main-thread program dense run driver', () => {
 			'\t\t\tvar r1 = ranges[ri + 1];',
 		];
 		expect(inner.slice(0, bound.length)).toEqual(bound);
-		expect(inner.slice(bound.length, bound.length + painted.length)).toEqual(
+		const driven = inner.slice(bound.length, -3);
+		expect(driven.filter((line) => !/^\t\t\tout\[oi(?: \+ \d+)?\] = n\d+;$/.test(line))).toEqual(
 			painted.map((line) => `\t${line}`),
 		);
+		for (let index = 0; index < RANGED_ROW.nodes.length; index++) {
+			const created = driven.findIndex((line) => line.startsWith(`\t\t\tvar n${index} = `));
+			expect(created).toBeGreaterThanOrEqual(0);
+			expect(driven[created + 1]).toBe(
+				`\t\t\tout[oi${index === 0 ? '' : ` + ${index}`}] = n${index};`,
+			);
+		}
 		// Seven positions per instance — five nodes then two painted holes, the
 		// same order and the same length as the array the create function
 		// returns, which is what makes a member addressable by stride.
-		expect(inner.slice(bound.length + painted.length)).toEqual([
-			'\t\t\tout[oi] = n0;',
-			'\t\t\tout[oi + 1] = n1;',
-			'\t\t\tout[oi + 2] = n2;',
-			'\t\t\tout[oi + 3] = n3;',
-			'\t\t\tout[oi + 4] = n4;',
+		expect(inner.slice(-3)).toEqual([
 			'\t\t\tout[oi + 5] = t0;',
 			'\t\t\tout[oi + 6] = t1;',
 			'\t\t\tvi += 1; ei += 2; ri += 2; oi += 7;',
 		]);
+	});
+
+	it('leaves the created prefix in the output table when a later PAPI write throws', () => {
+		const base = createHost();
+		let classes = 0;
+		const papi = {
+			...base,
+			setClasses(node: never, value: string) {
+				base.setClasses(node, value);
+				classes++;
+				if (classes === 2) throw new Error('setClasses fault');
+			},
+		};
+		const create = instantiate(ROW, 'createRow')(papi) as unknown as {
+			run: (
+				pageId: number,
+				count: number,
+				values: readonly unknown[],
+				events: readonly unknown[],
+				ranges: readonly unknown[],
+				out: unknown[],
+			) => void;
+		};
+		const out: unknown[] = new Array(ROW.nodes.length);
+		expect(() => create.run(1, 1, ['row', '1', 'one'], [1, 2], [], out)).toThrow(
+			/setClasses fault/,
+		);
+		expect(out.slice(0, 2).every((node) => node !== undefined)).toBe(true);
+		expect(out.slice(2).every((node) => node === undefined)).toBe(true);
 	});
 
 	it('paints through one driver call what the create function paints in `count` calls', () => {
