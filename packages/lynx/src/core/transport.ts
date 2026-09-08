@@ -371,6 +371,8 @@ interface PreparedTokenState {
 interface PendingCommit {
 	readonly identity: UniversalTransportIdentity;
 	readonly batch: UniversalHostBatch;
+	/** Wire-equivalent declaration semantics used only to validate a full ACK. */
+	acknowledgementBatch: UniversalHostBatch | null;
 	readonly acknowledge: (message: UniversalTransportAcknowledgement) => void;
 	readonly deferred: Deferred<void>;
 	readonly token: PreparedTokenState;
@@ -1225,7 +1227,12 @@ export function createLynxBackgroundTransport(
 					entry.incrementalCompactRequested,
 				);
 			} else {
-				handles = prepareLynxHandleDeltas(container, entry.batch, message.handles, message);
+				handles = prepareLynxHandleDeltas(
+					container,
+					entry.acknowledgementBatch ?? entry.batch,
+					message.handles,
+					message,
+				);
 			}
 			// Applying handle deltas and acceptance callbacks can invoke user code.
 			// Queue any resulting calls until all older pre-acceptance IDs can drain.
@@ -2104,6 +2111,7 @@ export function createLynxBackgroundTransport(
 					const entry: PendingCommit = {
 						identity: frozenIdentity(identity),
 						batch: preparedBatch,
+						acknowledgementBatch: null,
 						acknowledge,
 						deferred: createDeferred<void>(),
 						token,
@@ -2136,6 +2144,19 @@ export function createLynxBackgroundTransport(
 								accepted === null &&
 								wireBatch !== preparedBatch &&
 								wireBatch.commands.some((command) => command.op === 'mount-program-run');
+							// Eager program promotion preserves the prepared batch's handle
+							// semantics. A native-list promotion deliberately does not: it
+							// replaces logical eager hosts with deferred declarations, whose
+							// full acknowledgement publishes no handles. Validate that one
+							// against what main actually accepted so the background records the
+							// same declared ranges instead of demanding phantom upserts.
+							entry.acknowledgementBatch =
+								wireBatch !== preparedBatch &&
+								wireBatch.commands.some(
+									(command) => command.op === 'mount-program-run' && command.deferred === true,
+								)
+									? wireBatch
+									: null;
 							const incrementalRun =
 								preparedBatch.commands.length === 1 ? preparedBatch.commands[0] : undefined;
 							const incrementalCompactEligible =

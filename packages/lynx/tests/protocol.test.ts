@@ -303,6 +303,7 @@ function installMainHarness(
 					}),
 				});
 			} else if (command.op === 'mount-program-run') {
+				if (command.deferred === true) continue;
 				const program = resolveProgram?.(command);
 				if (program === undefined) throw new Error('Main harness cannot resolve addressed run.');
 				let arity = 0;
@@ -3849,6 +3850,8 @@ describe('@octanejs/lynx transported protocol', () => {
 		).toHaveLength(0);
 		main.acknowledge(commit, 'complete');
 		await applying;
+		expect(container.getPublicHandle(4)).toBeNull();
+		expect(isLynxClientEventTarget(container, commit.root, 4, 1)).toBe(false);
 		expect(driver.capabilities?.programManifests).toBe(false);
 
 		const updating = root.renderAsync(Scene, { values: [...values, 'row-8'] });
