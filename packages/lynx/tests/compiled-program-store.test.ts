@@ -95,7 +95,7 @@ function mountRow(
 	page: FakeNode,
 	handle = 1,
 	plan = emittedPlan(papi),
-	before: FakeNode | null = null,
+	before: number | null = null,
 ): void {
 	store.mount({
 		firstHandle: handle,
@@ -558,7 +558,7 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		expect(binds).toBe(1);
 
 		store.begin();
-		mountRow(store, papi, page, 3, plan, page.children[1]!);
+		mountRow(store, papi, page, 3, plan, 2);
 		store.commit();
 		expect(page.children.map((node) => node.id)).toEqual(['row-1', 'row-3', 'row-2']);
 		store.begin();

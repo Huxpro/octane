@@ -107,7 +107,7 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 					before:
 						beforeInstance === END_INSTANCE
 							? null
-							: store.root(instance(beforeInstance, 'an in-range RUN anchor')),
+							: instance(beforeInstance, 'an in-range RUN anchor'),
 					count: runCount,
 					firstHandle,
 					parent: page,
