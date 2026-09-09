@@ -147,6 +147,9 @@ frontier are recorded in
 The build-addressed compact template settlement, rollback contract, and
 validation-label repayment are recorded in
 [`results/m3-compact-template-settlement.md`](results/m3-compact-template-settlement.md).
+The host-free first-screen program ownership transfer, logical event-identity
+preservation, and failed/final frontier controls are recorded in
+[`results/m3-compact-first-screen-adoption.md`](results/m3-compact-first-screen-adoption.md).
 
 ## Core switch and main-thread program
 
