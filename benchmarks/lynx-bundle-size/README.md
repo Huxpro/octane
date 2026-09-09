@@ -141,6 +141,9 @@ updated structure-capable frontier are recorded in
 The producer's compiler range-slot provenance, per-range shadow ordering, and
 updated range-ready frontier are recorded in
 [`results/m3-range-slot-provenance.md`](results/m3-range-slot-provenance.md).
+The compiled Block producer's range-slot handoff and its allocation-repaid
+frontier are recorded in
+[`results/m3-block-range-provenance.md`](results/m3-block-range-provenance.md).
 
 ## Core switch and main-thread program
 
