@@ -18,6 +18,28 @@ function roundTrip(operations: readonly LynxDeltaOperation[]): readonly LynxDelt
 // structure the previous opcode set could not express, which is why they are
 // the contract rather than illustrations.
 describe('@octanejs/lynx delta protocol', () => {
+	it('settles a page-local template id to its build-proven resident address', () => {
+		const templates = [
+			{ id: 1, address: { module: 'src/Row.lynx.tsrx', index: 2 } },
+			{ id: 2, address: { module: 'src/Card.lynx.tsrx', index: 0 } },
+		];
+		const encoded = encodeLynxDeltaMessage([], templates);
+		expect(encoded).toEqual([
+			LYNX_DELTA_PROTOCOL_VERSION,
+			7,
+			3,
+			1,
+			'src/Row.lynx.tsrx',
+			2,
+			7,
+			3,
+			2,
+			'src/Card.lynx.tsrx',
+			0,
+		]);
+		expect(decodeLynxDeltaMessage(encoded)).toMatchObject({ templates, operations: [] });
+	});
+
 	// A template instance's slot index is per-template, so in a 10,000-row list
 	// one slot index names 10,000 distinct anchors. An address that is not
 	// instance-qualified cannot say which one it means.
@@ -226,6 +248,8 @@ describe('@octanejs/lynx delta protocol', () => {
 				[LYNX_DELTA_PROTOCOL_VERSION, 1, 8, 1, 1, 0, 0, 0, 2, 1, 'a', 'b'],
 			],
 			['a VIS with an unknown state', [LYNX_DELTA_PROTOCOL_VERSION, 6, 2, 1, 7]],
+			['a DEFINE with the wrong arity', [LYNX_DELTA_PROTOCOL_VERSION, 7, 2, 1, 'src/X.tsrx']],
+			['a DEFINE with an empty module', [LYNX_DELTA_PROTOCOL_VERSION, 7, 3, 1, '', 0]],
 			[
 				'an instance handle of zero outside an anchor',
 				[LYNX_DELTA_PROTOCOL_VERSION, 2, 3, 0, 0, 'v'],

@@ -4,6 +4,7 @@ import {
 	recordUniversalProgramRangeCommand,
 	universalProgramRangeCommandSlot,
 	type UniversalHostBatch,
+	type UniversalHostCommand,
 	type UniversalHostTemplateProgram,
 } from 'octane/universal/native';
 import { decodeLynxDeltaMessage, type LynxDeltaOperation } from '../src/core/delta-protocol.js';
@@ -27,6 +28,16 @@ const PROGRAM: UniversalHostTemplateProgram = Object.freeze({
 	]),
 	events: Object.freeze([]),
 });
+
+const PROGRAM_ADDRESS = Object.freeze({ module: 'tests/DeltaShadowRow.lynx.tsrx', index: 0 });
+
+function addressedRun(
+	command: Omit<Extract<UniversalHostCommand, { op: 'mount-program-run' }>, 'op' | 'address'>,
+): Extract<UniversalHostCommand, { op: 'mount-program-run' }> {
+	const addressed = { ...command, op: 'mount-program-run' as const, address: PROGRAM_ADDRESS };
+	recordUniversalProgramCommand(addressed, PROGRAM);
+	return addressed;
+}
 
 const batch = (version: number, commands: UniversalHostBatch['commands']): UniversalHostBatch => ({
 	renderer: 'lynx',
@@ -104,16 +115,14 @@ describe('Lynx delta shadow', () => {
 		const applied: AppliedDeltaState = { values: new Map(), order: [] };
 		const commits = [
 			batch(1, [
-				{
-					op: 'mount-template-run',
+				addressedRun({
 					parent: null,
 					before: null,
-					program: PROGRAM,
 					firstId: 10,
 					firstListenerId: null,
 					count: 2,
 					values: ['row', 'A', 'row', 'B'],
-				},
+				}),
 			]),
 			batch(2, [
 				{ op: 'update', id: 11, props: { value: 'A!' } },
@@ -148,7 +157,73 @@ describe('Lynx delta shadow', () => {
 			),
 		).toBeNull();
 		expect(shadow.prepare(batch(3, [{ op: 'destroy', id: 99 }]))).toBeNull();
+		expect(
+			shadow.prepare(
+				batch(4, [
+					{
+						op: 'mount-template-run',
+						parent: null,
+						before: null,
+						program: PROGRAM,
+						firstId: 10,
+						firstListenerId: null,
+						count: 1,
+						values: ['row', 'A'],
+					},
+				]),
+			),
+		).toBeNull();
 		expect(shadow.snapshot()).toEqual(initial);
+	});
+
+	it('defines each resident address once and re-announces it after an aborted preparation', () => {
+		const shadow = createLynxDeltaShadow();
+		const first = shadow.prepare(
+			batch(1, [
+				addressedRun({
+					parent: null,
+					before: null,
+					firstId: 10,
+					firstListenerId: null,
+					count: 1,
+					values: ['row', 'A'],
+				}),
+			]),
+		)!;
+		expect(decodeLynxDeltaMessage(first.encoded).templates).toEqual([
+			{ id: 1, address: PROGRAM_ADDRESS },
+		]);
+
+		const retry = shadow.prepare(
+			batch(1, [
+				addressedRun({
+					parent: null,
+					before: null,
+					firstId: 10,
+					firstListenerId: null,
+					count: 1,
+					values: ['row', 'A'],
+				}),
+			]),
+		)!;
+		expect(decodeLynxDeltaMessage(retry.encoded).templates).toEqual([
+			{ id: 1, address: PROGRAM_ADDRESS },
+		]);
+		retry.commit();
+
+		const next = shadow.prepare(
+			batch(2, [
+				addressedRun({
+					parent: null,
+					before: null,
+					firstId: 20,
+					firstListenerId: null,
+					count: 1,
+					values: ['row', 'B'],
+				}),
+			]),
+		)!;
+		expect(decodeLynxDeltaMessage(next.encoded).templates).toEqual([]);
 	});
 
 	it('declines a value the header-only frame cannot carry', () => {
@@ -159,16 +234,14 @@ describe('Lynx delta shadow', () => {
 		expect(
 			shadow.prepare(
 				batch(1, [
-					{
-						op: 'mount-template-run',
+					addressedRun({
 						parent: null,
 						before: null,
-						program: PROGRAM,
 						firstId: 10,
 						firstListenerId: null,
 						count: 1,
 						values: ['row', { toString: () => 'A' }],
-					},
+					}),
 				]),
 			),
 		).toBeNull();
@@ -178,16 +251,14 @@ describe('Lynx delta shadow', () => {
 		const shadow = createLynxDeltaShadow();
 		const mounted = shadow.prepare(
 			batch(1, [
-				{
-					op: 'mount-template-run',
+				addressedRun({
 					parent: null,
 					before: null,
-					program: PROGRAM,
 					firstId: 10,
 					firstListenerId: null,
 					count: 2,
 					values: ['row', 'A', 'row', 'B'],
-				},
+				}),
 			]),
 		);
 		const run = decodeLynxDeltaMessage(mounted!.encoded).operations[0];
@@ -211,30 +282,26 @@ describe('Lynx delta shadow', () => {
 		const shadow = createLynxDeltaShadow();
 		const parent = shadow.prepare(
 			batch(1, [
-				{
-					op: 'mount-template-run',
+				addressedRun({
 					parent: null,
 					before: null,
-					program: PROGRAM,
 					firstId: 10,
 					firstListenerId: null,
 					count: 1,
 					values: ['parent', 'P'],
-				},
+				}),
 			]),
 		);
 		parent!.commit();
 
-		const nested = {
-			op: 'mount-template-run' as const,
+		const nested = addressedRun({
 			parent: 10,
 			before: null,
-			program: PROGRAM,
 			firstId: 20,
 			firstListenerId: null,
 			count: 2,
 			values: ['child', 'A', 'child', 'B'],
-		};
+		});
 		// A host ID proves only the parent instance and physical node. Without the
 		// plan slot that owns this placement the shadow must not guess a range.
 		expect(shadow.prepare(batch(2, [nested]))).toBeNull();
@@ -248,29 +315,25 @@ describe('Lynx delta shadow', () => {
 		});
 		mounted!.commit();
 
-		const otherRange = {
-			op: 'mount-template-run' as const,
+		const otherRange = addressedRun({
 			parent: 10,
 			before: null,
-			program: PROGRAM,
 			firstId: 30,
 			firstListenerId: null,
 			count: 1,
 			values: ['other', 'C'],
-		};
+		});
 		recordUniversalProgramRangeCommand(otherRange, 9);
 		shadow.prepare(batch(3, [otherRange]))!.commit();
 
-		const inserted = {
-			op: 'mount-template-run' as const,
+		const inserted = addressedRun({
 			parent: 10,
 			before: 20,
-			program: PROGRAM,
 			firstId: 40,
 			firstListenerId: null,
 			count: 1,
 			values: ['child', 'Before A'],
-		};
+		});
 		recordUniversalProgramRangeCommand(inserted, 7);
 		const insertion = shadow.prepare(batch(4, [inserted]));
 		expect(decodeLynxDeltaMessage(insertion!.encoded).operations[0]).toMatchObject({
@@ -323,16 +386,14 @@ describe('Lynx delta shadow', () => {
 		const shadow = createLynxDeltaShadow();
 		const mounted = shadow.prepare(
 			batch(1, [
-				{
-					op: 'mount-template-run',
+				addressedRun({
 					parent: null,
 					before: null,
-					program: PROGRAM,
 					firstId: 10,
 					firstListenerId: null,
 					count: 1,
 					values: ['row', 'A'],
-				},
+				}),
 			]),
 		);
 		mounted!.commit();
