@@ -37,6 +37,9 @@ export interface LynxCompiledProgramFrameAdoption<Node extends LynxElementRef> {
 	readonly stride: number;
 }
 
+export type LynxCompiledProgramFrameAdoptionSource<Node extends LynxElementRef> =
+	() => LynxCompiledProgramFrameAdoption<Node>;
+
 function fail(message: string | false): never {
 	throw new TypeError(
 		LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT
@@ -78,7 +81,7 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 	page: Node,
 	resolve: LynxCompiledProgramResolver,
 	input: unknown,
-	adoptions?: readonly LynxCompiledProgramFrameAdoption<Node>[],
+	adopt?: LynxCompiledProgramFrameAdoptionSource<Node>,
 ): void {
 	if (!Array.isArray(input) || input[0] !== LYNX_DELTA_PROTOCOL_VERSION) {
 		fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'requires a version-2 array envelope');
@@ -86,7 +89,6 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 
 	store.begin();
 	try {
-		let adoptionAt = 0;
 		let cursor = 1;
 		while (cursor < input.length) {
 			const opcode = count(
@@ -158,11 +160,8 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'received the wrong RUN value arity');
 				}
 				const valueOffset = cursor + RUN_HEADER_FIELDS;
-				const adoption = adoptions?.[adoptionAt++];
-				if (
-					adoptions !== undefined &&
-					(adoption === undefined || beforeInstance !== END_INSTANCE)
-				) {
+				const adoption = adopt?.();
+				if (adopt !== undefined && (adoption === undefined || beforeInstance !== END_INSTANCE)) {
 					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'first-screen proof differs');
 				}
 				if (adoption === undefined)
@@ -276,9 +275,6 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 				fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && `does not support opcode ${opcode}`);
 			}
 			cursor = end;
-		}
-		if (adoptions !== undefined && adoptionAt !== adoptions.length) {
-			fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'did not consume every first-screen run');
 		}
 		store.commit();
 	} catch (error) {

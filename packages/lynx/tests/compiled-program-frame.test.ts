@@ -257,14 +257,12 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 			page,
 			(module, index) => (module === address.module && index === address.index ? plan : undefined),
 			frame,
-			[
-				{
-					firstId: 10,
-					firstListenerId: 1_000_000,
-					nodes,
-					stride: 4,
-				},
-			],
+			() => ({
+				firstId: 10,
+				firstListenerId: 1_000_000,
+				nodes,
+				stride: 4,
+			}),
 		);
 		expect(hostWrites).toBe(0);
 		expect(store.size()).toBe(2);
@@ -314,28 +312,29 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 		const resolve = (module: string, index: number) =>
 			module === address.module && index === address.index ? plan : undefined;
 
-		expect(() => applyLynxCompiledProgramFrame(store, page, resolve, frame, [])).toThrow(
-			/first-screen proof/,
-		);
+		expect(() =>
+			applyLynxCompiledProgramFrame(store, page, resolve, frame, () => undefined as never),
+		).toThrow(/first-screen proof/);
 		expect(store.resolve(1)).toBeUndefined();
 		expect(store.size()).toBe(0);
 		expect(page.children).toEqual([nodes[0]]);
 		expect(() =>
-			applyLynxCompiledProgramFrame(store, page, resolve, frame, [
-				{ ...adoption, firstListenerId: 999_999 },
-			]),
+			applyLynxCompiledProgramFrame(store, page, resolve, frame, () => ({
+				...adoption,
+				firstListenerId: 999_999,
+			})),
 		).toThrow(/listener identity/);
 		expect(store.resolve(1)).toBeUndefined();
 		expect(store.size()).toBe(0);
 		expect(page.children).toEqual([nodes[0]]);
 		expect(() =>
-			applyLynxCompiledProgramFrame(store, page, resolve, frame, [adoption, adoption]),
-		).toThrow(/consume every first-screen run/);
+			applyLynxCompiledProgramFrame(store, page, resolve, [...frame, 99, 0], () => adoption),
+		).toThrow(/opcode 99/);
 		expect(store.resolve(1)).toBeUndefined();
 		expect(store.size()).toBe(0);
 		expect(page.children).toEqual([nodes[0]]);
 
-		applyLynxCompiledProgramFrame(store, page, resolve, frame, [adoption]);
+		applyLynxCompiledProgramFrame(store, page, resolve, frame, () => adoption);
 		expect(store.resolve(1)).toBe(plan);
 		expect(store.size()).toBe(1);
 		expect(page.children).toEqual([nodes[0]]);

@@ -127,7 +127,7 @@ const ARMS = {
 \t\tpage,
 \t\t() => undefined,
 \t\toptions,
-\t\toptions.firstScreen === true ? [] : undefined,
+\t\toptions.firstScreen === true ? (options as never) : undefined,
 \t);
 \tstore.dispose();
 \treturn Object.freeze({}) as LynxMainThreadController;`,
@@ -277,7 +277,7 @@ const ARMS = {
 \t\tpage,
 \t\t() => undefined,
 \t\toptions,
-\t\toptions.firstScreen === true ? [] : undefined,
+\t\toptions.firstScreen === true ? (options as never) : undefined,
 \t);
 \tstore.dispose();
 \tif (options.firstScreen === true) {
