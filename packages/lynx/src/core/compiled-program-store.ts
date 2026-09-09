@@ -48,6 +48,8 @@ export interface LynxCompiledProgramMount<Node extends LynxElementRef> {
 	readonly firstHandle: number;
 	readonly parent: Node;
 	readonly plan: UniversalProgramPlan;
+	/** Offset of this run's contiguous value segment inside `values`. */
+	readonly valueOffset?: number;
 	readonly values: readonly unknown[];
 }
 
@@ -57,6 +59,7 @@ export interface LynxCompiledProgramStore<Node extends LynxElementRef = LynxElem
 	rollback(): void;
 	mount(input: LynxCompiledProgramMount<Node>): void;
 	remove(handle: number): void;
+	root(handle: number): Node;
 	set(handle: number, slot: number, value: unknown): boolean;
 	size(): number;
 	dispose(): void;
@@ -248,15 +251,26 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			) {
 				fail('requires a non-empty range- and event-free compiled program');
 			}
-			if (input.values.length !== plan.values.length * input.count) {
+			const valueOffset = input.valueOffset ?? 0;
+			if (!Number.isSafeInteger(valueOffset) || valueOffset < 0) {
+				fail('received an invalid value offset');
+			}
+			const valueCount = plan.values.length * input.count;
+			const valueEnd = valueOffset + valueCount;
+			if (
+				!Number.isSafeInteger(valueEnd) ||
+				valueEnd > input.values.length ||
+				(input.valueOffset === undefined && valueEnd !== input.values.length)
+			) {
 				fail('received the wrong value arity');
 			}
-			for (let index = 0; index < input.values.length; index++) {
-				const slot = index % plan.values.length;
+			for (let index = valueOffset; index < valueEnd; index++) {
+				const slot = (index - valueOffset) % plan.values.length;
 				if (!isSlotValue(plan, slot, input.values[index])) {
 					fail(`received a value outside slot ${slot}'s scalar kind`);
 				}
 			}
+			const values = input.values.slice(valueOffset, valueEnd);
 			const range = ranges.get(input.parent) ?? { head: null, tail: null };
 			let next: number | null = null;
 			if (input.before !== null) {
@@ -282,7 +296,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			}
 			const nodes = new Array<Node>(plan.nodes * input.count);
 			try {
-				create.run(pageId, input.count, input.values, [], [], nodes);
+				create.run(pageId, input.count, values, [], [], nodes);
 				for (let index = 0; index < input.count; index++) {
 					const node = nodes[index * plan.nodes];
 					if (node === null || typeof node !== 'object') fail(`did not publish root ${index}`);
@@ -310,7 +324,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				create,
 				nodes,
 				plan,
-				values: [...input.values],
+				values,
 			};
 			let runPrevious = previous;
 			for (let index = 0; index < input.count; index++) {
@@ -414,6 +428,13 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			instances.delete(handle);
 			roots.delete(root);
 			undo.push(handle, instance, range, parent, before, JournalOpcode.Remove);
+		},
+		root(handle) {
+			requireHealthy();
+			requireHandle(handle);
+			const instance = instances.get(handle);
+			if (instance === undefined) fail(`does not hold instance ${handle}`);
+			return instance.run.nodes[instance.index * instance.run.plan.nodes]!;
 		},
 		size() {
 			return instances.size;

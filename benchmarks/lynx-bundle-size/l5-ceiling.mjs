@@ -24,7 +24,7 @@
 //   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --harness product --output /tmp/l5.json
 //   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --arms baseline,both
 //   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --harness product --arms baseline,receiver
-//   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --harness product --arms baseline,receiver,receiver-papi,receiver-store,receiver-container,receiver-direct,receiver-render,receiver-transport,receiver-worklets,receiver-foundation-lite,receiver-foundation-store,receiver-foundation
+//   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --harness product --arms baseline,receiver,receiver-papi,receiver-store,receiver-frame,receiver-container,receiver-direct,receiver-render,receiver-transport,receiver-worklets,receiver-foundation-lite,receiver-foundation-store,receiver-foundation-frame,receiver-foundation
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -62,6 +62,8 @@ function receiverSlice(label, body, retainedRuntimeExports, prefix = '') {
 
 const COMPILED_PROGRAM_STORE_IMPORT =
 	"import { createLynxCompiledProgramStore } from './core/compiled-program-store.js';\n";
+const COMPILED_PROGRAM_FRAME_IMPORT =
+	"import { applyLynxCompiledProgramFrame } from './core/compiled-program-frame.js';\n";
 
 const ARMS = {
 	baseline: { label: 'baseline (no ablation)', edits: [] },
@@ -114,6 +116,21 @@ const ARMS = {
 			'core/compiled-program-store.ts:createLynxCompiledProgramStore',
 		],
 		COMPILED_PROGRAM_STORE_IMPORT,
+	),
+	'receiver-frame': receiverSlice(
+		'receiver floor + compact compiled-program frame router',
+		`\tconst papi = createLynxElementPAPI<Node>(options.target ?? globalThis);
+\tconst page = papi.createPage(options.componentId ?? '0', options.cssId ?? 0);
+\tconst store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page));
+\tapplyLynxCompiledProgramFrame(store, page, () => undefined, options);
+\tstore.dispose();
+\treturn Object.freeze({}) as LynxMainThreadController;`,
+		[
+			'core/papi.ts:createLynxElementPAPI',
+			'core/compiled-program-store.ts:createLynxCompiledProgramStore',
+			'core/compiled-program-frame.ts:applyLynxCompiledProgramFrame',
+		],
+		COMPILED_PROGRAM_FRAME_IMPORT + COMPILED_PROGRAM_STORE_IMPORT,
 	),
 	'receiver-container': receiverSlice(
 		'receiver floor + general host container',
@@ -243,6 +260,41 @@ const ARMS = {
 			'core/main-thread-worklet-feature.ts:subscribeLynxMainThreadWorkletFeature',
 		],
 		COMPILED_PROGRAM_STORE_IMPORT,
+	),
+	'receiver-foundation-frame': receiverSlice(
+		'receiver floor + reusable non-host foundation + compact program frame router',
+		`\tconst papi = createLynxElementPAPI<Node>(options.target ?? globalThis);
+\tconst page = papi.createPage(options.componentId ?? '0', options.cssId ?? 0);
+\tconst store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page));
+\tapplyLynxCompiledProgramFrame(store, page, () => undefined, options);
+\tstore.dispose();
+\tif (options.firstScreen === true) {
+\t\trenderLynxFirstScreen(
+\t\t\toptions as unknown as UniversalComponent<InstallLynxMainThreadOptions>,
+\t\t\toptions,
+\t\t);
+\t\tdecodeLynxTransportValue(encodeLynxTransportValue(options));
+\t}
+\tconst worklets = createReplaceableLynxMainThreadWorkletRegistry(
+\t\tcreateUnavailableLynxMainThreadWorkletRegistry(),
+\t);
+\tconst unsubscribe = subscribeLynxMainThreadWorkletFeature((feature) => {
+\t\tworklets.replace(feature.createRegistry(options as never));
+\t});
+\tif (options.firstScreen === true) unsubscribe();
+\treturn Object.freeze({}) as LynxMainThreadController;`,
+		[
+			'core/papi.ts:createLynxElementPAPI',
+			'core/compiled-program-store.ts:createLynxCompiledProgramStore',
+			'core/compiled-program-frame.ts:applyLynxCompiledProgramFrame',
+			'main-renderer.ts:renderLynxFirstScreen',
+			'core/transport-codec.ts:encodeLynxTransportValue',
+			'core/transport-codec.ts:decodeLynxTransportValue',
+			'core/main-thread-worklet-feature.ts:createUnavailableLynxMainThreadWorkletRegistry',
+			'core/main-thread-worklet-feature.ts:createReplaceableLynxMainThreadWorkletRegistry',
+			'core/main-thread-worklet-feature.ts:subscribeLynxMainThreadWorkletFeature',
+		],
+		COMPILED_PROGRAM_FRAME_IMPORT + COMPILED_PROGRAM_STORE_IMPORT,
 	),
 	'receiver-foundation': receiverSlice(
 		'receiver floor + reusable foundation with general host container',
