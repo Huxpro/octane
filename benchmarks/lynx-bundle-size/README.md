@@ -115,6 +115,9 @@ and
 [`results/m3-general-main-thread-receiver-ceiling.md`](results/m3-general-main-thread-receiver-ceiling.md).
 The exact existing-boundary replacement budget is recorded in
 [`results/m3-receiver-dependency-frontier.md`](results/m3-receiver-dependency-frontier.md).
+The compiler primitive for the replacement's direct value-slot writes, with a
+byte-identical default-product control, is recorded in
+[`results/m3-compiled-slot-setter.md`](results/m3-compiled-slot-setter.md).
 
 ## Core switch and main-thread program
 
