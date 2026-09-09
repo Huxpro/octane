@@ -306,7 +306,7 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		expect(page.children).toEqual([]);
 	});
 
-	it('rejects detached or identity-divergent first-screen runs before publishing ownership', () => {
+	it('rejects malformed or identity-divergent first-screen runs before publishing ownership', () => {
 		const papi = emittedHost();
 		const page = papi.createPage('0', 0);
 		const plan = emittedEventPlan();
@@ -328,7 +328,6 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 				values,
 			}),
 		).toThrow(/listener identity/);
-		papi.remove(page, nodes[0]!);
 		expect(() =>
 			store.adopt({
 				before: null,
@@ -336,15 +335,16 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 				firstHandle: 2,
 				firstId: 10,
 				firstListenerId: 1_000_000,
-				nodes,
+				nodes: nodes.slice(0, 2),
 				parent: page,
 				plan,
 				stride: 4,
 				values,
 			}),
-		).toThrow(/detached root/);
+		).toThrow(/node arity/);
 		store.rollback();
 		expect(store.size()).toBe(0);
+		expect(page.children).toEqual([nodes[0]]);
 	});
 
 	it('rejects an incoherent event plan before binding its driver or mutating the host', () => {

@@ -17,12 +17,9 @@ type CompiledProgramCreate = UniversalProgramCreate & {
 
 interface CompiledProgramRun<Node extends LynxElementRef> {
 	readonly create: CompiledProgramCreate;
-	/** First-screen host identity, or zero when compact handles own event identity. */
-	readonly firstId: number;
 	readonly listener: number;
 	readonly nodes: readonly Node[];
 	readonly plan: UniversalProgramPlan;
-	readonly stride: number;
 	readonly values: unknown[];
 }
 
@@ -68,6 +65,7 @@ export interface LynxCompiledProgramMount<Node extends LynxElementRef> {
 export interface LynxCompiledProgramAdoption<
 	Node extends LynxElementRef,
 > extends LynxCompiledProgramMount<Node> {
+	readonly before: null;
 	/** Existing first-screen host id of the first program root. */
 	readonly firstId: number;
 	/** Listener identity already installed by the accepted first screen. */
@@ -329,6 +327,8 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		const run = instance.run;
 		const offset = instance.index * run.plan.nodes;
 		const node = rootOf(instance);
+		const firstId = run.values[run.values.length - 2] as number;
+		const stride = run.values[run.values.length - 1] as number;
 		if (visible) papi.setAttribute(node, 'hidden', false);
 		const set = run.create.set!;
 		for (let site = 0; site < run.plan.events.length; site++) {
@@ -340,7 +340,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 					visible
 						? encodePrevalidatedLynxNativeEventToken(
 								root as number,
-								run.firstId === 0 ? handle : run.firstId + instance.index * run.stride + event.node,
+								firstId === 0 ? handle : firstId + instance.index * stride + event.node,
 								1,
 								run.listener + instance.index * run.plan.events.length + site,
 								event.priority,
@@ -422,11 +422,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		adopted?: LynxCompiledProgramAdoption<Node>,
 	): void => {
 		const undo = requireJournal();
-		if (adopted !== undefined && input.before !== null) {
-			fail(
-				LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'can adopt only an appended first-screen run',
-			);
-		}
+		const adoption = adopted !== undefined;
 		requireHandle(input.firstHandle);
 		requireCount(input.count);
 		const finalHandle = input.firstHandle + input.count - 1;
@@ -440,7 +436,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			);
 		}
 		const plan = input.plan;
-		if (plan.kind !== 'program' || plan.nodes <= 0 || plan.ranges.length !== 0) {
+		if (plan.nodes <= 0 || plan.ranges.length !== 0) {
 			fail(
 				LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
 					'requires a non-empty range-free compiled program',
@@ -475,7 +471,6 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			eventCount !== 0 &&
 			(!Number.isSafeInteger(root) ||
 				(root as number) <= 0 ||
-				!Number.isSafeInteger(nextListener) ||
 				nextListener <= 0 ||
 				!Number.isSafeInteger(finalListener))
 		) {
@@ -486,8 +481,6 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		for (let site = 0; site < eventCount; site++) {
 			const event = plan.events[site]!;
 			if (
-				typeof event.type !== 'string' ||
-				!Number.isSafeInteger(event.slot) ||
 				plan.slots[event.slot] !== `e:${event.type}` ||
 				(event.priority !== 'discrete' &&
 					event.priority !== 'continuous' &&
@@ -499,11 +492,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `received an invalid event site ${site}`);
 			}
 		}
-		if (
-			adopted !== undefined &&
-			((eventCount === 0 && adopted.firstListenerId !== null) ||
-				(eventCount !== 0 && adopted.firstListenerId !== nextListener))
-		) {
+		if (adoption && adopted.firstListenerId !== (eventCount === 0 ? null : nextListener)) {
 			fail(
 				LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
 					'first-screen listener identity disagrees with the compact cursor',
@@ -533,32 +522,10 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			creates.set(plan, create);
 		}
 		let nodes: readonly Node[];
-		if (adopted !== undefined) {
+		if (adoption) {
 			nodes = adopted.nodes;
 			if (nodes.length !== plan.nodes * input.count) {
 				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'received the wrong adopted node arity');
-			}
-			const lastId = adopted.firstId + (input.count - 1) * adopted.stride + plan.nodes - 1;
-			if (
-				!Number.isSafeInteger(adopted.firstId) ||
-				adopted.firstId <= 0 ||
-				!Number.isSafeInteger(adopted.stride) ||
-				adopted.stride < plan.nodes ||
-				!Number.isSafeInteger(lastId)
-			) {
-				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'received an invalid first-screen id span');
-			}
-			for (let index = 0; index < nodes.length; index++) {
-				const node = nodes[index];
-				if (node === null || typeof node !== 'object') {
-					fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `cannot adopt missing node ${index}`);
-				}
-				if (index % plan.nodes === 0) {
-					const parent = papi.getParent(node);
-					if (parent === null || !papi.isEqual(parent, input.parent)) {
-						fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `cannot adopt detached root ${index}`);
-					}
-				}
 			}
 		} else {
 			const tokens = new Array<string>(eventCount * input.count);
@@ -607,13 +574,14 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			}
 			nodes = created;
 		}
+		if (eventCount !== 0) {
+			values.push(adoption ? adopted.firstId : 0, adoption ? adopted.stride : 0);
+		}
 		const run: CompiledProgramRun<Node> = {
 			create,
-			firstId: adopted?.firstId ?? 0,
 			listener: nextListener,
 			nodes,
 			plan,
-			stride: adopted?.stride ?? 0,
 			values,
 		};
 		let runPrevious = previous;
@@ -637,7 +605,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			input.firstHandle,
 			input.count,
 			range,
-			adopted === undefined ? JournalOpcode.Mount : JournalOpcode.Adopt,
+			adoption ? JournalOpcode.Adopt : JournalOpcode.Mount,
 		);
 	};
 
