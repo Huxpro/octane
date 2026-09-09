@@ -4,14 +4,14 @@
 - Merged base: `new-lynx@14fe3eb39ea3a18679b3eb32cb1c4379659766c6`
 - Store implementation: `4b9afad92bdcd85bcf0b605bae6dee08d0bda365`
 - O(1) range-order self-review fix: `837abbe0870bda99b90b7fd9cc110b2a504bd551`
-- Exact-clean measurement head: `b790d39cf2e2e786b23cda296705a26333e0d78e`
+- Exact-clean measurement head: `089629fc19ce314c41ad9f2c4a97def28f1e9ee8`
 
 ## Result
 
 The first stateful piece of the replacement receiver fits the dependency
 frontier established by #324. The store plus the complete reusable non-host
-foundation is **80,419 gzip bytes**, or **1.480x** the contemporary 54,323-byte
-comparator median. That leaves **1,065.5 bytes** below the frozen 81,484.5-byte
+foundation is **80,466 gzip bytes**, or **1.481x** the contemporary 54,323-byte
+comparator median. That leaves **1,018.5 bytes** below the frozen 81,484.5-byte
 M3 gate for compact routing and settlement.
 
 This is not a product cutover. The current product does not import the store,
@@ -59,11 +59,11 @@ TMPDIR=/data00/home/xuan.huang/.codex/tmp \
 node benchmarks/lynx-bundle-size/l5-ceiling.mjs \
   --harness product \
   --arms baseline,receiver,receiver-papi,receiver-store,receiver-foundation-lite,receiver-foundation-store \
-  --output /data00/home/xuan.huang/.codex/tmp/m3-compact-store-frontier-b790d39cf.json
+  --output /data00/home/xuan.huang/.codex/tmp/m3-compact-store-frontier-089629fc1.json
 ```
 
 Raw receipt SHA-256:
-`884f4aa4ddd3e7ffef45184b96ab586a18aec5b90c6cbc6fbf969d818f61b570`.
+`7d088e28c38bbf90acafa7e055cf22fd2311c12f00dd1b990926b2d36bf23fec`.
 The receipt records `dirty: false`, Node `v22.22.2`, and all four production
 core/backend controls passing for every arm.
 
@@ -72,12 +72,12 @@ core/backend controls passing for every arm.
 | current product | 418,005 | 160,511 | 134,730 | 106,320 | 53,880 |
 | receiver-free | 223,390 | 70,448 | 60,438 | 15,927 | 53,880 |
 | PAPI/page | 226,919 | 72,013 | 61,714 | 17,488 | 53,880 |
-| PAPI/page + compact store | 232,929 | 74,980 | 64,255 | 20,521 | 53,880 |
+| PAPI/page + compact store | 233,032 | 75,035 | 64,416 | 20,589 | 53,880 |
 | non-host foundation | 238,884 | 77,483 | 66,399 | 23,202 | 53,880 |
-| non-host foundation + compact store | 244,973 | **80,419** | 69,033 | 26,133 | 53,880 |
+| non-host foundation + compact store | 245,076 | **80,466** | 69,105 | 26,185 | 53,880 |
 
-The isolated store costs 2,967 gzip bytes over the PAPI/page arm. Shared
-compression makes the foundation union cost 2,936 bytes over
+The isolated store costs 3,022 gzip bytes over the PAPI/page arm. Shared
+compression makes the foundation union cost 2,983 bytes over
 `receiver-foundation-lite`. Every BTS artifact is byte-identical at SHA-256
 `0868633b429f4cef4a692342b1142a2ce58ec8447e95045554def9a54374bc37`,
 so no receiver cost moved to the background thread.
@@ -92,7 +92,7 @@ The current product identities reproduce #325 exactly:
 
 - generated store integration and injected fault suite: 14/14;
 - emitter + store + signature + diagnostic boundary focused suite: 81/81;
-- full Lynx project: 51 files, 897/897 tests;
+- full Lynx project: 51 files, 899/899 tests;
 - all three `@octanejs/lynx` TypeScript configurations pass;
 - package diagnostic identifiers remain complete and unique through `OL484`;
 - `pnpm sync`, scoped formatting, and diff checks pass.
