@@ -175,10 +175,12 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 					const instance = active.pop() as CompiledProgramInstance<Node>;
 					const handle = active.pop() as number;
 					const root = instance.run.nodes[instance.index * instance.run.plan.nodes]!;
-					papi.insertBefore(parent, root, before);
 					instances.set(handle, instance);
 					roots.set(root, handle);
 					relink(handle, instance, range);
+					// Restore ownership before the host call so a mutate-then-throw
+					// insertion remains reachable by terminal disposal after faulting.
+					papi.insertBefore(parent, root, before);
 				} else {
 					throw new Error('Compiled program journal contains an unknown operation.');
 				}
@@ -385,7 +387,17 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			try {
 				papi.remove(parent, root);
 			} catch (error) {
-				if (!papi.isChild(parent, root)) {
+				let attached: boolean;
+				try {
+					attached = papi.isChild(parent, root);
+				} catch (inspectionError) {
+					faulted = true;
+					throw new AggregateError(
+						[error, inspectionError],
+						'Compiled program remove inspection failed.',
+					);
+				}
+				if (!attached) {
 					try {
 						papi.insertBefore(parent, root, before);
 					} catch (rollbackError) {

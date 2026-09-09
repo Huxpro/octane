@@ -365,6 +365,59 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		expect(page.children).toEqual([]);
 	});
 
+	it('faults but retains disposal ownership when failed remove inspection is unknowable', () => {
+		const base = emittedHost();
+		let failRemove = false;
+		const papi: typeof base = {
+			...base,
+			isChild(parent, child) {
+				if (failRemove) throw new Error('inspection fault');
+				return base.isChild(parent, child);
+			},
+			remove(parent, child) {
+				base.remove(parent, child);
+				if (failRemove) throw new Error('remove fault');
+			},
+		};
+		const page = papi.createPage('0', 0);
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page));
+		mountCommitted(store, papi, page);
+		failRemove = true;
+		store.begin();
+		expect(() => store.remove(1)).toThrow(AggregateError);
+		expect(() => store.set(1, 0, 'blocked')).toThrow(/faulted/);
+		failRemove = false;
+		store.dispose();
+		expect(store.size()).toBe(0);
+		expect(page.children).toEqual([]);
+	});
+
+	it('retains disposal ownership when rollback insertion mutates and then throws', () => {
+		const base = emittedHost();
+		let failInsert = false;
+		const papi: typeof base = {
+			...base,
+			insertBefore(parent, child, before) {
+				base.insertBefore(parent, child, before);
+				if (failInsert) throw new Error('rollback insert fault');
+			},
+		};
+		const page = papi.createPage('0', 0);
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page));
+		mountCommitted(store, papi, page, 1);
+		mountCommitted(store, papi, page, 2);
+		store.begin();
+		store.remove(2);
+		failInsert = true;
+		expect(() => store.rollback()).toThrow(AggregateError);
+		expect(store.size()).toBe(2);
+		expect(page.children.map((node) => node.id)).toEqual(['row-1', 'row-2']);
+		failInsert = false;
+		store.dispose();
+		expect(store.size()).toBe(0);
+		expect(page.children).toEqual([]);
+	});
+
 	it('rolls a whole mixed frame back in reverse host order', () => {
 		const papi = emittedHost();
 		const page = papi.createPage('0', 0);

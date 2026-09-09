@@ -4,14 +4,14 @@
 - Merged base: `new-lynx@14fe3eb39ea3a18679b3eb32cb1c4379659766c6`
 - Store implementation: `4b9afad92bdcd85bcf0b605bae6dee08d0bda365`
 - O(1) range-order self-review fix: `837abbe0870bda99b90b7fd9cc110b2a504bd551`
-- Flat dense-run implementation and exact-clean measurement head: `0feb34b2248dc0c92345903e1b1508ad45779527`
+- Exact-clean measurement head: `b790d39cf2e2e786b23cda296705a26333e0d78e`
 
 ## Result
 
 The first stateful piece of the replacement receiver fits the dependency
 frontier established by #324. The store plus the complete reusable non-host
-foundation is **80,438 gzip bytes**, or **1.481x** the contemporary 54,323-byte
-comparator median. That leaves **1,046.5 bytes** below the frozen 81,484.5-byte
+foundation is **80,419 gzip bytes**, or **1.480x** the contemporary 54,323-byte
+comparator median. That leaves **1,065.5 bytes** below the frozen 81,484.5-byte
 M3 gate for compact routing and settlement.
 
 This is not a product cutover. The current product does not import the store,
@@ -37,7 +37,8 @@ Every host-changing frame is transactional:
   when a host setter mutates and throws, and permanently faults if that rollback
   also fails;
 - REMOVE restores its exact parent/order even when the host removes first and
-  throws afterwards;
+  throws afterwards, and a failed post-error attachment inspection faults
+  permanently without dropping terminal-disposal ownership;
 - a mixed MOUNT/SET/REMOVE frame rolls back in reverse order, including the
   handle allocator, so the background may retry the same frame and handles;
 - disposal rolls back an open frame, removes every retained root, and closes
@@ -58,11 +59,11 @@ TMPDIR=/data00/home/xuan.huang/.codex/tmp \
 node benchmarks/lynx-bundle-size/l5-ceiling.mjs \
   --harness product \
   --arms baseline,receiver,receiver-papi,receiver-store,receiver-foundation-lite,receiver-foundation-store \
-  --output /data00/home/xuan.huang/.codex/tmp/m3-compact-store-frontier-0feb34b22.json
+  --output /data00/home/xuan.huang/.codex/tmp/m3-compact-store-frontier-b790d39cf.json
 ```
 
 Raw receipt SHA-256:
-`c56fcf4a9383cdf5ff50865343768485f4dfa1d968d87e293dd20c3edbf56500`.
+`884f4aa4ddd3e7ffef45184b96ab586a18aec5b90c6cbc6fbf969d818f61b570`.
 The receipt records `dirty: false`, Node `v22.22.2`, and all four production
 core/backend controls passing for every arm.
 
@@ -71,12 +72,12 @@ core/backend controls passing for every arm.
 | current product | 418,005 | 160,511 | 134,730 | 106,320 | 53,880 |
 | receiver-free | 223,390 | 70,448 | 60,438 | 15,927 | 53,880 |
 | PAPI/page | 226,919 | 72,013 | 61,714 | 17,488 | 53,880 |
-| PAPI/page + compact store | 232,996 | 74,987 | 64,360 | 20,537 | 53,880 |
+| PAPI/page + compact store | 232,929 | 74,980 | 64,255 | 20,521 | 53,880 |
 | non-host foundation | 238,884 | 77,483 | 66,399 | 23,202 | 53,880 |
-| non-host foundation + compact store | 245,040 | **80,438** | 69,136 | 26,159 | 53,880 |
+| non-host foundation + compact store | 244,973 | **80,419** | 69,033 | 26,133 | 53,880 |
 
-The isolated store costs 2,974 gzip bytes over the PAPI/page arm. Shared
-compression makes the foundation union cost 2,955 bytes over
+The isolated store costs 2,967 gzip bytes over the PAPI/page arm. Shared
+compression makes the foundation union cost 2,936 bytes over
 `receiver-foundation-lite`. Every BTS artifact is byte-identical at SHA-256
 `0868633b429f4cef4a692342b1142a2ce58ec8447e95045554def9a54374bc37`,
 so no receiver cost moved to the background thread.
@@ -89,8 +90,8 @@ The current product identities reproduce #325 exactly:
 
 ## Verification
 
-- generated store integration and injected fault suite: 12/12;
-- emitter + store + signature + diagnostic boundary focused suite: 79/79;
+- generated store integration and injected fault suite: 14/14;
+- emitter + store + signature + diagnostic boundary focused suite: 81/81;
 - full Lynx project: 51 files, 897/897 tests;
 - all three `@octanejs/lynx` TypeScript configurations pass;
 - package diagnostic identifiers remain complete and unique through `OL484`;
