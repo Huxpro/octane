@@ -1,8 +1,10 @@
+import type { UniversalHostProgramAddress } from 'octane/universal/native';
+
 /**
  * Versioned header for the Lynx slot-delta wire format.
  *
  * Version 2 replaces the draft opcode set after the closure analysis on #61
- * refuted it. Three changes are load-bearing rather than cosmetic:
+ * refuted it. Four changes are load-bearing rather than cosmetic:
  *
  * - Every address is instance-qualified. A slot index is a per-template
  *   property, so a bare slot names one anchor per instance — in a 10,000-row
@@ -13,6 +15,10 @@
  * - `VIS` is added. Activity and retained Suspense are visibility transitions
  *   over instances whose identity does not change, and the draft had no way to
  *   say so.
+ * - `DEFINE` assigns a page-local number to the build-proven `(module, index)`
+ *   of a resident program. The address crosses once, before the first RUN that
+ *   uses it; later frames carry only the number without trusting evaluation or
+ *   discovery order in two isolated module graphs.
  *
  * Values are scalars. That restriction is what makes header-only validation
  * sound: a structured value would have to be walked to be checked, which is the
@@ -27,6 +33,7 @@ const enum LynxDeltaOpcode {
 	Clear = 4,
 	Move = 5,
 	Vis = 6,
+	Define = 7,
 }
 
 const enum LynxVisibilityState {
@@ -104,10 +111,17 @@ export type LynxDeltaOperation =
 
 export interface LynxDeltaMessage {
 	readonly version: typeof LYNX_DELTA_PROTOCOL_VERSION;
+	readonly templates: readonly LynxDeltaTemplate[];
 	readonly operations: readonly LynxDeltaOperation[];
 }
 
 export type LynxEncodedDeltaMessage = readonly unknown[];
+
+/** One build-proven resident address assigned a page-local compact id. */
+export interface LynxDeltaTemplate {
+	readonly id: number;
+	readonly address: UniversalHostProgramAddress;
+}
 
 function fail(message: string): never {
 	throw new TypeError(`Invalid Lynx delta protocol message: ${message}.`);
@@ -181,8 +195,18 @@ function pushFrame(target: unknown[], opcode: LynxDeltaOpcode, payload: readonly
 
 export function encodeLynxDeltaMessage(
 	operations: readonly LynxDeltaOperation[],
+	templates: readonly LynxDeltaTemplate[] = [],
 ): LynxEncodedDeltaMessage {
 	const encoded: unknown[] = [LYNX_DELTA_PROTOCOL_VERSION];
+	for (const template of templates) {
+		const module = template.address.module;
+		if (typeof module !== 'string' || module.length === 0) fail('DEFINE module must be a string');
+		pushFrame(encoded, LynxDeltaOpcode.Define, [
+			requirePositiveCount(template.id, 'DEFINE template id'),
+			module,
+			requireIndex(template.address.index, 'DEFINE program index'),
+		]);
+	}
 	for (const operation of operations) {
 		switch (operation.op) {
 			case 'run': {
@@ -247,16 +271,31 @@ export function decodeLynxDeltaMessage(input: unknown): LynxDeltaMessage {
 	if (!Array.isArray(input)) fail('the envelope must be an array');
 	if (input[0] !== LYNX_DELTA_PROTOCOL_VERSION) fail('the protocol version is unsupported');
 
+	const templates: LynxDeltaTemplate[] = [];
 	const operations: LynxDeltaOperation[] = [];
 	let cursor = 1;
 	while (cursor < input.length) {
 		const opcode = requirePositiveCount(input[cursor++], 'opcode');
-		if (opcode > LynxDeltaOpcode.Vis) fail('opcode is outside the supported range');
+		if (opcode > LynxDeltaOpcode.Define) fail('opcode is outside the supported range');
 		const arity = requireIndex(input[cursor++], 'frame arity');
 		const end = cursor + arity;
 		if (end > input.length) fail('frame arity extends past the message');
 
 		switch (opcode) {
+			case LynxDeltaOpcode.Define: {
+				if (arity !== 3) fail('DEFINE requires exactly three fields');
+				const module = input[cursor + 1];
+				if (typeof module !== 'string' || module.length === 0)
+					fail('DEFINE module must be a string');
+				templates.push({
+					id: requirePositiveCount(input[cursor], 'DEFINE template id'),
+					address: {
+						module,
+						index: requireIndex(input[cursor + 2], 'DEFINE program index'),
+					},
+				});
+				break;
+			}
 			case LynxDeltaOpcode.Run: {
 				if (arity < RUN_HEADER_FIELDS) fail('RUN requires seven header fields');
 				operations.push({
@@ -331,5 +370,5 @@ export function decodeLynxDeltaMessage(input: unknown): LynxDeltaMessage {
 		cursor = end;
 	}
 
-	return { version: LYNX_DELTA_PROTOCOL_VERSION, operations };
+	return { version: LYNX_DELTA_PROTOCOL_VERSION, templates, operations };
 }

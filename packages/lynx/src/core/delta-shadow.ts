@@ -8,6 +8,7 @@ import {
 	encodeLynxDeltaMessage,
 	isLynxDeltaValue,
 	type LynxDeltaOperation,
+	type LynxDeltaTemplate,
 	type LynxDeltaValue,
 	type LynxEncodedDeltaMessage,
 	type LynxSlotAddress,
@@ -64,7 +65,7 @@ export interface LynxDeltaShadow {
 }
 
 interface ShadowState {
-	templates: Map<UniversalHostTemplateProgram, number>;
+	templates: Map<string, number>;
 	nextTemplateId: number;
 	nextInstance: number;
 	instances: Map<number, ShadowInstance>;
@@ -184,9 +185,10 @@ function hostProps(instance: ShadowInstance, nodeIndex: number): Record<string, 
 
 /**
  * Profiling-only bridge from the current command ABI to the future slot-delta
- * ABI. It accepts only batches whose semantics are fully representable, so a
- * miss is evidence for the next compiler/background-core slice, never a lossy
- * fallback.
+ * ABI. It accepts only build-addressed programs whose semantics are fully
+ * representable. A new address receives one page-local id and one DEFINE before
+ * its first RUN; a miss is evidence for the next compiler/background-core
+ * slice, never a lossy fallback.
  */
 export function createLynxDeltaShadow(): LynxDeltaShadow {
 	let state: ShadowState = {
@@ -201,10 +203,12 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 	return {
 		prepare(batch) {
 			const next = cloneState(state);
+			const templates: LynxDeltaTemplate[] = [];
 			const operations: LynxDeltaOperation[] = [];
 			const removedHosts = new Set<number>();
 			for (const command of batch.commands) {
-				if (command.op === 'mount-template-run' || command.op === 'mount-program-run') {
+				if (command.op === 'mount-template-run') return null;
+				if (command.op === 'mount-program-run') {
 					if (command.parent !== null && typeof command.parent !== 'number') return null;
 					// The shadow's whole job is to decline what it cannot express, so an
 					// address it cannot resolve declines rather than throws: this runs
@@ -219,10 +223,12 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 					const parentSite = siteOf(next, command.parent, command);
 					if (parentSite === null) return null;
 					const firstInstance = next.nextInstance;
-					let templateId = next.templates.get(wire);
+					const templateKey = `${command.address.module}\u0000${command.address.index}`;
+					let templateId = next.templates.get(templateKey);
 					if (templateId === undefined) {
 						templateId = next.nextTemplateId++;
-						next.templates.set(wire, templateId);
+						next.templates.set(templateKey, templateId);
+						templates.push({ id: templateId, address: command.address });
 					}
 					const parent = command.parent;
 					let slots = next.order.get(parent);
@@ -246,10 +252,7 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 					}
 					const insertAt = beforeId === null ? order.length : order.indexOf(beforeId);
 					if (insertAt < 0) return null;
-					const instanceStride =
-						command.op === 'mount-program-run'
-							? (command.stride ?? wire.nodes.length)
-							: wire.nodes.length;
+					const instanceStride = command.stride ?? wire.nodes.length;
 					for (let instanceIndex = 0; instanceIndex < command.count; instanceIndex++) {
 						const firstId = command.firstId + instanceIndex * instanceStride;
 						const values = command.values.slice(
@@ -361,7 +364,7 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 				}
 				return null;
 			}
-			const encoded = encodeLynxDeltaMessage(operations);
+			const encoded = encodeLynxDeltaMessage(operations, templates);
 			return {
 				operations,
 				encoded,

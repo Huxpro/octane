@@ -119,6 +119,31 @@ function mountCommitted(
 }
 
 describe('@octanejs/lynx compact compiled-program store', () => {
+	it('publishes resident template ids transactionally and refuses aliasing or gaps', () => {
+		const papi = emittedHost();
+		const page = papi.createPage('0', 0);
+		const plan = emittedPlan(papi);
+		const other = { ...plan };
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page));
+
+		store.begin();
+		expect(store.define(1, plan)).toBe(true);
+		expect(store.resolve(1)).toBe(plan);
+		store.rollback();
+		expect(store.resolve(1)).toBeUndefined();
+
+		store.begin();
+		expect(store.define(1, plan)).toBe(true);
+		store.commit();
+		store.begin();
+		expect(store.define(1, plan)).toBe(false);
+		expect(() => store.define(1, other)).toThrow(/redefine template 1/);
+		expect(() => store.define(3, other)).toThrow(/contiguous template id 2/);
+		store.rollback();
+		expect(store.resolve(1)).toBe(plan);
+		expect(store.resolve(2)).toBeUndefined();
+	});
+
 	it('installs deterministic event tokens and restores listener allocation on rollback', () => {
 		const papi = emittedHost();
 		const page = papi.createPage('0', 0);

@@ -48,6 +48,7 @@ const enum JournalOpcode {
 const MAX_INSTANCE_HANDLE = 2 ** 31 - 1;
 const LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT =
 	typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__;
+const LYNX_COMPILED_PROGRAM_STORE_ERROR = 'Octane Lynx OL484';
 
 export interface LynxCompiledProgramMount<Node extends LynxElementRef> {
 	readonly before: number | null;
@@ -64,6 +65,8 @@ export interface LynxCompiledProgramStore<Node extends LynxElementRef = LynxElem
 	begin(): void;
 	commit(): void;
 	rollback(): void;
+	define(template: number, plan: UniversalProgramPlan): boolean;
+	resolve(template: number): UniversalProgramPlan | undefined;
 	mount(input: LynxCompiledProgramMount<Node>): void;
 	clear(parent: Node): void;
 	move(handle: number, before: number | null): boolean;
@@ -78,7 +81,16 @@ function fail(message: string | false): never {
 	throw new TypeError(
 		LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT
 			? `Octane Lynx compact program store ${message}.`
-			: 'Octane Lynx OL484',
+			: LYNX_COMPILED_PROGRAM_STORE_ERROR,
+	);
+}
+
+function failAggregate(errors: unknown[], message: string | false): never {
+	throw new AggregateError(
+		errors,
+		LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && message
+			? message
+			: LYNX_COMPILED_PROGRAM_STORE_ERROR,
 	);
 }
 
@@ -122,10 +134,11 @@ function cleanupRoot<Node extends LynxElementRef>(
  * This is intentionally not the product receiver yet. It owns the state and
  * fault boundary that receiver will call after a compact frame has resolved a
  * resident program: emitted code creates and updates hosts, while this store
- * alone publishes instance identity, remembers prior slot values for rollback,
- * and restores a remove even when the host mutates before it throws. A frame
- * publishes only at `commit()`; `rollback()` replays every accepted mutation in
- * reverse order so the background can retry the same handles after rejection.
+ * alone publishes template and instance identity, remembers prior slot values
+ * for rollback, and restores a remove even when the host mutates before it
+ * throws. A frame publishes only at `commit()`; `rollback()` replays every
+ * accepted mutation in reverse order and drops its new template suffix so the
+ * background can retry the exact definitions and handles after rejection.
  */
 export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	papi: LynxElementPAPI<Node>,
@@ -134,6 +147,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 ): LynxCompiledProgramStore<Node> {
 	const instances = new Map<number, CompiledProgramInstance<Node>>();
 	const creates = new WeakMap<UniversalProgramPlan, CompiledProgramCreate>();
+	const templates: (UniversalProgramPlan | undefined)[] = [undefined];
 	const ranges = new Map<Node, CompiledProgramRange>();
 	let journal: unknown[] | null = null;
 	let journalFirstHandle = 0;
@@ -142,6 +156,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	// bound handler or not. Its v2 RUN therefore needs no event payload: both
 	// threads advance this cursor over the same resident plan and run count.
 	let journalFirstListener = 0;
+	let journalFirstTemplates = 1;
 	let nextListener = 1;
 	let faulted = false;
 	let closing = false;
@@ -222,7 +237,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 					const handle = active.pop() as number;
 					writeVisibility(handle, instances.get(handle)!, visible);
 				} else {
-					throw new Error('Compiled program journal contains an unknown operation.');
+					fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'journal contains an unknown operation');
 				}
 			} catch (error) {
 				errors.push(error);
@@ -230,9 +245,13 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		}
 		lastHandle = journalFirstHandle;
 		nextListener = journalFirstListener;
+		templates.length = journalFirstTemplates;
 		if (errors.length !== 0) {
 			faulted = true;
-			throw new AggregateError(errors, 'Compiled program frame rollback failed.');
+			failAggregate(
+				errors,
+				LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'Compiled program frame rollback failed.',
+			);
 		}
 	};
 	const unlink = (instance: CompiledProgramInstance<Node>, range: CompiledProgramRange): void => {
@@ -262,23 +281,20 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		const oldBefore = instance.next;
 		const root = rootOf(instance);
 		const anchorInstance = before === null ? undefined : instances.get(before)!;
-		const anchor =
-			anchorInstance === undefined
-				? null
-				: anchorInstance.run.nodes[anchorInstance.index * anchorInstance.run.plan.nodes]!;
+		const anchor = anchorInstance === undefined ? null : rootOf(anchorInstance);
 		try {
 			papi.insertBefore(instance.parent, root, anchor);
 		} catch (error) {
 			try {
 				const previousInstance = oldBefore === null ? undefined : instances.get(oldBefore)!;
-				const previous =
-					previousInstance === undefined
-						? null
-						: previousInstance.run.nodes[previousInstance.index * previousInstance.run.plan.nodes]!;
+				const previous = previousInstance === undefined ? null : rootOf(previousInstance);
 				papi.insertBefore(instance.parent, root, previous);
 			} catch (rollbackError) {
 				faulted = true;
-				throw new AggregateError([error, rollbackError], 'Compiled program move rollback failed.');
+				failAggregate(
+					[error, rollbackError],
+					LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'Compiled program move rollback failed.',
+				);
 			}
 			throw error;
 		}
@@ -294,7 +310,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	): void => {
 		const run = instance.run;
 		const offset = instance.index * run.plan.nodes;
-		const node = run.nodes[offset]!;
+		const node = rootOf(instance);
 		if (visible) papi.setAttribute(node, 'hidden', false);
 		const set = run.create.set!;
 		for (let site = 0; site < run.plan.events.length; site++) {
@@ -333,9 +349,9 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				applyVisibility(handle, instance, previous);
 			} catch (rollbackError) {
 				faulted = true;
-				throw new AggregateError(
+				failAggregate(
 					[error, rollbackError],
-					'Compiled program visibility rollback failed.',
+					LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'Compiled program visibility rollback failed.',
 				);
 			}
 			throw error;
@@ -352,10 +368,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		if (range === undefined)
 			fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'lost the instance range order');
 		const nextInstance = instance.next === null ? undefined : instances.get(instance.next)!;
-		const before =
-			nextInstance === undefined
-				? null
-				: nextInstance.run.nodes[nextInstance.index * nextInstance.run.plan.nodes]!;
+		const before = nextInstance === undefined ? null : rootOf(nextInstance);
 		try {
 			papi.remove(parent, root);
 		} catch (error) {
@@ -364,9 +377,9 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				attached = papi.isChild(parent, root);
 			} catch (inspectionError) {
 				faulted = true;
-				throw new AggregateError(
+				failAggregate(
 					[error, inspectionError],
-					'Compiled program remove inspection failed.',
+					LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'Compiled program remove inspection failed.',
 				);
 			}
 			if (!attached) {
@@ -374,9 +387,9 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 					papi.insertBefore(parent, root, before);
 				} catch (rollbackError) {
 					faulted = true;
-					throw new AggregateError(
+					failAggregate(
 						[error, rollbackError],
-						'Compiled program remove rollback failed.',
+						LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'Compiled program remove rollback failed.',
 					);
 				}
 			}
@@ -395,6 +408,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			journal = [];
 			journalFirstHandle = lastHandle;
 			journalFirstListener = nextListener;
+			journalFirstTemplates = templates.length;
 		},
 		commit() {
 			requireHealthy();
@@ -405,12 +419,28 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		rollback() {
 			rollbackFrame();
 		},
+		define(template, plan) {
+			requireJournal();
+			if (template === templates.length) {
+				templates.push(plan);
+				return true;
+			}
+			if (templates[template] === plan) return false;
+			fail(
+				LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
+					(templates[template] === undefined
+						? `requires contiguous template id ${templates.length}`
+						: `cannot redefine template ${template}`),
+			);
+		},
+		resolve(template) {
+			return templates[template];
+		},
 		clear(parent) {
 			const undo = requireJournal();
-			let range = ranges.get(parent);
-			while (range !== undefined) {
+			const range = ranges.get(parent);
+			while (range !== undefined && range.head !== null) {
 				removeInstance(range.head!, undo);
-				range = ranges.get(parent);
 			}
 		},
 		move(handle, before) {
@@ -566,9 +596,9 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				}
 				if (cleanupErrors.length !== 0) {
 					faulted = true;
-					throw new AggregateError(
+					failAggregate(
 						[error, ...cleanupErrors],
-						'Compiled program mount cleanup failed.',
+						LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'Compiled program mount cleanup failed.',
 					);
 				}
 				throw error;
@@ -632,9 +662,9 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 					}
 				} catch (rollbackError) {
 					faulted = true;
-					throw new AggregateError(
+					failAggregate(
 						[error, rollbackError],
-						'Compiled program slot rollback failed.',
+						LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'Compiled program slot rollback failed.',
 					);
 				}
 				throw error;
@@ -679,8 +709,12 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				}
 			}
 			ranges.clear();
+			templates.length = 1;
 			if (errors.length !== 0)
-				throw new AggregateError(errors, 'Compiled program disposal failed.');
+				failAggregate(
+					errors,
+					LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'Compiled program disposal failed.',
+				);
 		},
 	};
 }

@@ -86,32 +86,79 @@ function setup() {
 	const page = papi.createPage('0', 0);
 	const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page));
 	const plan = emittedPlan();
-	const resolve = (template: number) => (template === 7 ? plan : undefined);
+	store.begin();
+	store.define(1, plan);
+	store.commit();
+	const resolve = () => undefined;
 	return { page, plan, resolve, store };
 }
 
 describe('@octanejs/lynx compact compiled-program frame router', () => {
+	it('rolls back template settlement with a malformed frame and accepts the exact retry', () => {
+		const papi = emittedHost();
+		const page = papi.createPage('0', 0);
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page));
+		const plan = emittedPlan();
+		const address = { module: 'tests/Row.lynx.tsrx', index: 0 };
+		const resolve = (module: string, index: number) =>
+			module === address.module && index === address.index ? plan : undefined;
+		const frame = encodeLynxDeltaMessage(
+			[
+				{
+					op: 'run',
+					templateId: 1,
+					parent: { instance: 1, slot: 0 },
+					before: null,
+					firstInstance: 2,
+					count: 1,
+					values: ['row-2', 'cold', 'label-2'],
+				},
+			],
+			[{ id: 1, address }],
+		);
+		expect(() => applyLynxCompiledProgramFrame(store, page, resolve, [...frame, 99, 0])).toThrow(
+			/opcode 99/,
+		);
+		expect(store.resolve(1)).toBeUndefined();
+		expect(store.size()).toBe(0);
+		expect(page.children).toEqual([]);
+
+		applyLynxCompiledProgramFrame(store, page, resolve, frame);
+		expect(store.resolve(1)).toBe(plan);
+		expect(store.size()).toBe(1);
+		expect(page.children[0]!.id).toBe('row-2');
+	});
+
 	it('streams an eventful RUN without adding event fields to the v2 frame', () => {
 		const papi = emittedHost();
 		const page = papi.createPage('0', 0);
 		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 73);
 		const plan = emittedEventPlan();
-		const frame = encodeLynxDeltaMessage([
-			{
-				op: 'run',
-				templateId: 8,
-				parent: { instance: 1, slot: 0 },
-				before: null,
-				firstInstance: 2,
-				count: 1,
-				values: ['row-2', 'cold', 'label-2'],
-			},
-		]);
+		const address = { module: 'tests/EventRow.lynx.tsrx', index: 0 };
+		const frame = encodeLynxDeltaMessage(
+			[
+				{
+					op: 'run',
+					templateId: 1,
+					parent: { instance: 1, slot: 0 },
+					before: null,
+					firstInstance: 2,
+					count: 1,
+					values: ['row-2', 'cold', 'label-2'],
+				},
+			],
+			[{ id: 1, address }],
+		);
 		expect(frame).toEqual([
 			LYNX_DELTA_PROTOCOL_VERSION,
+			7,
+			3,
+			1,
+			'tests/EventRow.lynx.tsrx',
+			0,
 			1,
 			10,
-			8,
+			1,
 			1,
 			0,
 			0,
@@ -125,7 +172,7 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 		applyLynxCompiledProgramFrame(
 			store,
 			page,
-			(template) => (template === 8 ? plan : undefined),
+			(module, index) => (module === address.module && index === address.index ? plan : undefined),
 			frame,
 		);
 		expect(decodeLynxNativeEventToken(page.children[0]!.events.get('bindEvent:tap'))).toEqual({
@@ -146,7 +193,7 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 			encodeLynxDeltaMessage([
 				{
 					op: 'run',
-					templateId: 7,
+					templateId: 1,
 					parent: { instance: 1, slot: 0 },
 					before: null,
 					firstInstance: 2,
@@ -194,7 +241,7 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 			encodeLynxDeltaMessage([
 				{
 					op: 'run',
-					templateId: 7,
+					templateId: 1,
 					parent: { instance: 1, slot: 0 },
 					before: null,
 					firstInstance: 2,
@@ -210,7 +257,7 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 			encodeLynxDeltaMessage([
 				{
 					op: 'run',
-					templateId: 7,
+					templateId: 1,
 					parent: { instance: 1, slot: 0 },
 					before: { instance: 2, slot: 0 },
 					firstInstance: 3,
@@ -231,7 +278,7 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 			encodeLynxDeltaMessage([
 				{
 					op: 'run',
-					templateId: 7,
+					templateId: 1,
 					parent: { instance: 1, slot: 0 },
 					before: null,
 					firstInstance: 2,
@@ -281,7 +328,7 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 				encodeLynxDeltaMessage([
 					{
 						op: 'run',
-						templateId: 7,
+						templateId: 1,
 						parent: { instance: 1, slot: 0 },
 						before: null,
 						firstInstance: 2,
@@ -304,7 +351,7 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 			encodeLynxDeltaMessage([
 				{
 					op: 'run',
-					templateId: 7,
+					templateId: 1,
 					parent: { instance: 1, slot: 0 },
 					before: null,
 					firstInstance: 2,
@@ -339,7 +386,10 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 		const page = papi.createPage('0', 0);
 		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 73);
 		const plan = emittedEventPlan();
-		const resolve = (template: number) => (template === 8 ? plan : undefined);
+		store.begin();
+		store.define(1, plan);
+		store.commit();
+		const resolve = () => undefined;
 		applyLynxCompiledProgramFrame(
 			store,
 			page,
@@ -347,7 +397,7 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 			encodeLynxDeltaMessage([
 				{
 					op: 'run',
-					templateId: 8,
+					templateId: 1,
 					parent: { instance: 1, slot: 0 },
 					before: null,
 					firstInstance: 2,
@@ -398,7 +448,7 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 			encodeLynxDeltaMessage([
 				{
 					op: 'run',
-					templateId: 7,
+					templateId: 1,
 					parent: { instance: 1, slot: 0 },
 					before: null,
 					firstInstance: 2,
@@ -426,7 +476,7 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 				LYNX_DELTA_PROTOCOL_VERSION,
 				1,
 				10,
-				7,
+				1,
 				1,
 				0,
 				0,
