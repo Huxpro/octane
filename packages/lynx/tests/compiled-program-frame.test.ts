@@ -5,6 +5,7 @@ import { emitLynxMainThreadProgram } from '../src/compiler/emit-main-thread-prog
 import { applyLynxCompiledProgramFrame } from '../src/core/compiled-program-frame.js';
 import { createLynxCompiledProgramStore } from '../src/core/compiled-program-store.js';
 import { encodeLynxDeltaMessage, LYNX_DELTA_PROTOCOL_VERSION } from '../src/core/delta-protocol.js';
+import { decodeLynxNativeEventToken } from '../src/core/native-events.js';
 import type { LynxElementPAPI } from '../src/core/papi.js';
 import { createFakePAPI, type FakeNode, shape } from './_fixtures/fake-element-papi.js';
 
@@ -47,6 +48,26 @@ function emittedPlan(): UniversalProgramPlan {
 	};
 }
 
+function emittedEventPlan(): UniversalProgramPlan {
+	const program: UniversalHostTemplateProgram = {
+		...ROW,
+		events: [{ node: 0, type: 'bindtap', priority: 'discrete' }],
+	};
+	const emission = emitLynxMainThreadProgram(program, {
+		name: 'createCompactFrameEventRow',
+		slotUpdates: true,
+	});
+	return {
+		kind: 'program',
+		slots: ['p:id', 'p:class', 'c', 'e:bindtap'],
+		nodes: program.nodes.length,
+		values: [0, 1, 2],
+		events: program.events.map((event) => ({ ...event, slot: 3 })),
+		ranges: [],
+		bind: new Function(`return (${emission.source});`)() as UniversalProgramPlan['bind'],
+	};
+}
+
 function emittedHost(): LynxElementPAPI<FakeNode> {
 	const base = createFakePAPI();
 	return {
@@ -70,6 +91,36 @@ function setup() {
 }
 
 describe('@octanejs/lynx compact compiled-program frame router', () => {
+	it('streams an eventful RUN without adding event fields to the v2 frame', () => {
+		const papi = emittedHost();
+		const page = papi.createPage('0', 0);
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 73);
+		const plan = emittedEventPlan();
+		applyLynxCompiledProgramFrame(
+			store,
+			page,
+			(template) => (template === 8 ? plan : undefined),
+			encodeLynxDeltaMessage([
+				{
+					op: 'run',
+					templateId: 8,
+					parent: { instance: 1, slot: 0 },
+					before: null,
+					firstInstance: 2,
+					count: 1,
+					values: ['row-2', 'cold', 'label-2'],
+				},
+			]),
+		);
+		expect(decodeLynxNativeEventToken(page.children[0]!.events.get('bindEvent:tap'))).toEqual({
+			root: 73,
+			id: 2,
+			generation: 1,
+			listener: 1,
+			priority: 'discrete',
+		});
+	});
+
 	it('streams dense RUN, SET, and REMOVE frames into the compiled store', () => {
 		const { page, resolve, store } = setup();
 		applyLynxCompiledProgramFrame(

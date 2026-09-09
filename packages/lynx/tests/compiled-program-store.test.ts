@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 
 import { emitLynxMainThreadProgram } from '../src/compiler/emit-main-thread-program.js';
 import { createLynxCompiledProgramStore } from '../src/core/compiled-program-store.js';
+import { decodeLynxNativeEventToken } from '../src/core/native-events.js';
 import type { LynxElementPAPI } from '../src/core/papi.js';
 import { createFakePAPI, type FakeNode, shape } from './_fixtures/fake-element-papi.js';
 
@@ -32,6 +33,11 @@ const ROW: UniversalHostTemplateProgram = {
 	events: [],
 };
 
+const EVENT_ROW: UniversalHostTemplateProgram = {
+	...ROW,
+	events: [{ node: 0, type: 'bindtap', priority: 'discrete' }],
+};
+
 function emittedPlan(papi: LynxElementPAPI<FakeNode>): UniversalProgramPlan {
 	const emission = emitLynxMainThreadProgram(ROW, {
 		name: 'createCompactRow',
@@ -48,6 +54,23 @@ function emittedPlan(papi: LynxElementPAPI<FakeNode>): UniversalProgramPlan {
 		events: [],
 		ranges: [],
 		bind: bind as UniversalProgramPlan['bind'],
+	};
+}
+
+function emittedEventPlan(): UniversalProgramPlan {
+	const emission = emitLynxMainThreadProgram(EVENT_ROW, {
+		name: 'createCompactEventRow',
+		slotUpdates: true,
+	});
+	const bind = new Function(`return (${emission.source});`)() as UniversalProgramPlan['bind'];
+	return {
+		kind: 'program',
+		slots: ['p:id', 'p:class', 'c', 'e:bindtap'],
+		nodes: EVENT_ROW.nodes.length,
+		values: [0, 1, 2],
+		events: EVENT_ROW.events.map((event) => ({ ...event, slot: 3 })),
+		ranges: [],
+		bind,
 	};
 }
 
@@ -96,6 +119,51 @@ function mountCommitted(
 }
 
 describe('@octanejs/lynx compact compiled-program store', () => {
+	it('installs deterministic event tokens and restores listener allocation on rollback', () => {
+		const papi = emittedHost();
+		const page = papi.createPage('0', 0);
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 47);
+		const plan = emittedEventPlan();
+		const values = ['row-7', 'cold', 'seven', 'row-8', 'cold', 'eight'];
+
+		store.begin();
+		store.mount({ firstHandle: 7, count: 2, parent: page, before: null, plan, values });
+		const firstAttempt = page.children.map((node) => node.events.get('bindEvent:tap'));
+		expect(firstAttempt.map(decodeLynxNativeEventToken)).toEqual([
+			{ root: 47, id: 7, generation: 1, listener: 1, priority: 'discrete' },
+			{ root: 47, id: 8, generation: 1, listener: 2, priority: 'discrete' },
+		]);
+		store.rollback();
+		expect(page.children).toEqual([]);
+
+		store.begin();
+		store.mount({ firstHandle: 7, count: 2, parent: page, before: null, plan, values });
+		store.commit();
+		expect(page.children.map((node) => node.events.get('bindEvent:tap'))).toEqual(firstAttempt);
+
+		store.begin();
+		store.remove(7);
+		store.remove(8);
+		store.commit();
+		store.begin();
+		store.mount({
+			firstHandle: 9,
+			count: 1,
+			parent: page,
+			before: null,
+			plan,
+			values: ['row-9', 'cold', 'nine'],
+		});
+		store.commit();
+		expect(decodeLynxNativeEventToken(page.children[0]!.events.get('bindEvent:tap'))).toEqual({
+			root: 47,
+			id: 9,
+			generation: 1,
+			listener: 3,
+			priority: 'discrete',
+		});
+	});
+
 	it('mounts and addresses a dense instance run from one flat output', () => {
 		const papi = emittedHost();
 		const page = papi.createPage('0', 0);
@@ -204,13 +272,10 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 				count: 1,
 				parent: page,
 				before: null,
-				plan: {
-					...plan,
-					events: [{ slot: 0, node: 0, type: 'tap', priority: 'discrete' }],
-				},
+				plan: { ...plan, ranges: [{ slot: 0, node: 0, id: 1 }] },
 				values: ['a', 'b', 'c'],
 			}),
-		).toThrow(/event-free/);
+		).toThrow(/range-free/);
 		expect(page.children).toEqual([]);
 		store.rollback();
 		expect(page.children).toEqual([]);
