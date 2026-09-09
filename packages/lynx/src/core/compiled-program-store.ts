@@ -164,7 +164,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	pageId: unknown,
 	root = pageId,
 	firstListener = 1,
-	seed?: () => LynxCompiledProgramAdoptionSeed<Node>,
+	seeds?: readonly LynxCompiledProgramAdoptionSeed<Node>[],
 ): LynxCompiledProgramStore<Node> {
 	const instances = new Map<number, CompiledProgramInstance<Node>>();
 	const creates = new WeakMap<UniversalProgramPlan, CompiledProgramCreate>();
@@ -177,8 +177,10 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	// bound handler or not. Its v2 RUN therefore needs no event payload: both
 	// threads advance this cursor over the same resident plan and run count.
 	let journalFirstListener = 0;
+	let journalFirstSeed = 0;
 	let journalFirstTemplates = 1;
 	let nextListener = firstListener;
+	let nextSeed = 0;
 	let faulted = false;
 	let closing = false;
 
@@ -265,6 +267,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		}
 		lastHandle = journalFirstHandle;
 		nextListener = journalFirstListener;
+		nextSeed = journalFirstSeed;
 		templates.length = journalFirstTemplates;
 		if (errors.length !== 0) {
 			faulted = true;
@@ -630,6 +633,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			journal = [];
 			journalFirstHandle = lastHandle;
 			journalFirstListener = nextListener;
+			journalFirstSeed = nextSeed;
 			journalFirstTemplates = templates.length;
 		},
 		commit() {
@@ -688,11 +692,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			writeRun(input, input);
 		},
 		mount(input) {
-			const adopted = seed?.();
-			if (seed !== undefined && adopted === undefined) {
-				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'requires a first-screen proof');
-			}
-			writeRun(input, adopted);
+			writeRun(input, seeds?.[nextSeed++]);
 		},
 		set(handle, slot, value) {
 			const undo = requireJournal();

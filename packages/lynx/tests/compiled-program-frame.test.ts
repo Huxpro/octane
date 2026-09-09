@@ -236,18 +236,14 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 		const values = ['row-10', 'cold', 'ten', 'row-14', 'cold', 'fourteen'];
 		const nodes = paintAdoptableRows(papi, page, plan, values, 10, 4, 1_000_000);
 		const tokens = page.children.map((node) => node.events.get('bindEvent:tap'));
-		const store = createLynxCompiledProgramStore(
-			papi,
-			papi.getUniqueId(page),
-			73,
-			1_000_000,
-			() => ({
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 73, 1_000_000, [
+			{
 				firstId: 10,
 				firstListenerId: 1_000_000,
 				nodes,
 				stride: 4,
-			}),
-		);
+			},
+		]);
 		const frame = encodeLynxDeltaMessage(
 			[
 				{
@@ -284,6 +280,24 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 		);
 		expect(page.children[1]!.children[0]!.children[0]!.text).toBe('updated');
 		expect(page.children.map((node) => node.events.get('bindEvent:tap'))).toEqual(tokens);
+
+		applyLynxCompiledProgramFrame(
+			store,
+			page,
+			() => undefined,
+			encodeLynxDeltaMessage([
+				{
+					op: 'run',
+					templateId: 1,
+					parent: { instance: 1, slot: 0 },
+					before: null,
+					firstInstance: 4,
+					count: 1,
+					values: ['row-20', 'warm', 'twenty'],
+				},
+			]),
+		);
+		expect(page.children.map((node) => node.id)).toEqual(['row-10', 'row-14', 'row-20']);
 	});
 
 	it('rolls back a divergent first-screen proof and accepts the exact retry', () => {
@@ -299,13 +313,13 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 			nodes,
 			stride: 4,
 		};
-		let next = adoption;
+		const seeds = [{ ...adoption, firstListenerId: 999_999 }];
 		const store = createLynxCompiledProgramStore(
 			papi,
 			papi.getUniqueId(page),
 			73,
 			1_000_000,
-			() => next,
+			seeds,
 		);
 		const frame = encodeLynxDeltaMessage(
 			[
@@ -324,21 +338,13 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 		const resolve = (module: string, index: number) =>
 			module === address.module && index === address.index ? plan : undefined;
 
-		next = undefined as never;
-		expect(() => applyLynxCompiledProgramFrame(store, page, resolve, frame)).toThrow(
-			/first-screen proof/,
-		);
-		expect(store.resolve(1)).toBeUndefined();
-		expect(store.size()).toBe(0);
-		expect(page.children).toEqual([nodes[0]]);
-		next = { ...adoption, firstListenerId: 999_999 };
 		expect(() => applyLynxCompiledProgramFrame(store, page, resolve, frame)).toThrow(
 			/listener identity/,
 		);
 		expect(store.resolve(1)).toBeUndefined();
 		expect(store.size()).toBe(0);
 		expect(page.children).toEqual([nodes[0]]);
-		next = adoption;
+		seeds[0] = adoption;
 		expect(() => applyLynxCompiledProgramFrame(store, page, resolve, [...frame, 99, 0])).toThrow(
 			/opcode 99/,
 		);
