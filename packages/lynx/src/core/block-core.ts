@@ -33,13 +33,15 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
 
 import { sameLynxUniversalHostPropValue } from './host-props.js';
 import { LYNX_PROFILE } from './profiling.js';
-import type {
-	UniversalHostBatch,
-	UniversalHostCommand,
-	UniversalHostParent,
-	UniversalHostTemplateProgram,
-	UniversalHostTemplateProgramNode,
-	UniversalHostTemplateProgramValue,
+
+import {
+	recordUniversalProgramRangeCommand,
+	type UniversalHostBatch,
+	type UniversalHostCommand,
+	type UniversalHostParent,
+	type UniversalHostTemplateProgram,
+	type UniversalHostTemplateProgramNode,
+	type UniversalHostTemplateProgramValue,
 } from 'octane/universal/native';
 
 /** Renderer tag every Lynx batch carries; the applier rejects anything else. */
@@ -222,6 +224,9 @@ export interface LynxBlockForSlot {
 	size: number;
 }
 
+/** Producer-only compiler provenance; absent from the public range-site shape. */
+type LynxBlockProgramRangeSite = LynxBlockForSlot & { readonly 0: number | undefined };
+
 /**
  * Deterministic accounting for the #103 U0 gate.
  *
@@ -304,8 +309,8 @@ export interface LynxBlockCore {
 		template: LynxBlockTemplate,
 		values: readonly UniversalHostTemplateProgramValue[],
 	): LynxBlock;
-	/** Open a keyed range site rooted at one host node of an existing block. */
-	openForSlot(block: LynxBlock, nodeIndex: number): LynxBlockForSlot;
+	/** Open a keyed range at one host node, optionally retaining its compiler plan slot. */
+	openForSlot(block: LynxBlock, nodeIndex: number, programRangeSlot?: number): LynxBlockForSlot;
 	/**
 	 * Fill an empty range site. The mount-linear fast path `runtime.ts` takes
 	 * when `oldSize === 0`: there is no survivor to match, so there is no diff.
@@ -377,8 +382,9 @@ export interface LynxBlockCore {
 }
 
 /**
- * The longest increasing subsequence of `sequence`, returned as indices into
- * it. Entries equal to `-1` are new members and never join the subsequence.
+ * The longest increasing subsequence of `sequence`, returned in the
+ * predecessor buffer with each stable index marked `-2`. Entries equal to
+ * `-1` are new members and never join it.
  *
  * This is the same choice `runtime.ts` makes and the same one
  * `docs/differences-from-react.md` documents: survivors in the subsequence stay
@@ -387,7 +393,6 @@ export interface LynxBlockCore {
  */
 function longestIncreasingSubsequence(sequence: readonly number[]): number[] {
 	const length = sequence.length;
-	if (length === 0) return [];
 	const predecessors = new Array<number>(length).fill(-1);
 	const tails: number[] = [];
 	for (let index = 0; index < length; index++) {
@@ -404,14 +409,13 @@ function longestIncreasingSubsequence(sequence: readonly number[]): number[] {
 		if (low === tails.length) tails.push(index);
 		else tails[low] = index;
 	}
-	const result: number[] = [];
 	let cursor = tails.length === 0 ? -1 : tails[tails.length - 1]!;
 	while (cursor !== -1) {
-		result.push(cursor);
-		cursor = predecessors[cursor]!;
+		const predecessor = predecessors[cursor]!;
+		predecessors[cursor] = -2;
+		cursor = predecessor;
 	}
-	result.reverse();
-	return result;
+	return predecessors;
 }
 
 export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlockCore {
@@ -487,6 +491,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		template: LynxBlockTemplate,
 		rows: readonly (readonly UniversalHostTemplateProgramValue[])[],
 		keys: readonly unknown[],
+		programRangeSlot?: number,
 	): LynxBlock[] => {
 		const count = rows.length;
 		const firstId = allocate(template, count);
@@ -508,18 +513,20 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			// Frozen, like the program it carries: the incremental compact
 			// acknowledgement the wire offers for a post-first-screen run is only
 			// accepted for a command the producer promised not to mutate.
-			emit(
-				Object.freeze({
-					op: 'mount-template-run' as const,
-					parent,
-					before,
-					program: template.program,
-					firstId,
-					firstListenerId,
-					count,
-					values: Object.freeze(values),
-				}),
-			);
+			const run = Object.freeze({
+				op: 'mount-template-run' as const,
+				parent,
+				before,
+				program: template.program,
+				firstId,
+				firstListenerId,
+				count,
+				values: Object.freeze(values),
+			});
+			if (programRangeSlot != null) {
+				recordUniversalProgramRangeCommand(run, programRangeSlot);
+			}
+			emit(run);
 		} else {
 			mountRunLegacy(parent, before, template, values, firstId, firstListenerId, count);
 		}
@@ -741,13 +748,25 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		// Refused, not mis-rendered: a duplicate key would overwrite its twin in
 		// the key map, leaking a mounted run no later reconcile or clear can
 		// reach. The same stance `runtime.ts` takes for keyed for-blocks.
-		const seen = new Set<unknown>();
-		for (const itemKey of keys) {
-			if (seen.has(itemKey))
-				fail(LYNX_BLOCK_CORE_DEVELOPMENT && `duplicate key ${String(itemKey)} in a keyed range`);
-			seen.add(itemKey);
+		const seen = new Set(keys);
+		if (seen.size !== keys.length) {
+			if (LYNX_BLOCK_CORE_DEVELOPMENT) {
+				seen.clear();
+				for (const itemKey of keys) {
+					if (seen.has(itemKey)) fail(`duplicate key ${String(itemKey)} in a keyed range`);
+					seen.add(itemKey);
+				}
+			}
+			fail(false);
 		}
-		const blocks = mountRun(slot.parent, null, template, rows, keys);
+		const blocks = mountRun(
+			slot.parent,
+			null,
+			template,
+			rows,
+			keys,
+			(slot as LynxBlockProgramRangeSite)[0],
+		);
 		for (const block of blocks) slot.items.set(block.key, block);
 		link(slot, blocks);
 	};
@@ -818,17 +837,18 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			return mountRun(parent, before, template, [values], [undefined])[0]!;
 		},
 
-		openForSlot(block, nodeIndex) {
+		openForSlot(block, nodeIndex, programRangeSlot) {
 			if (nodeIndex < 0 || nodeIndex >= block.template.hostCount) {
 				fail(LYNX_BLOCK_CORE_DEVELOPMENT && `host node ${nodeIndex} is outside this template`);
 			}
 			return {
+				0: programRangeSlot,
 				parent: block.firstId + nodeIndex,
 				items: new Map(),
 				head: null,
 				tail: null,
 				size: 0,
-			};
+			} as LynxBlockProgramRangeSite;
 		},
 
 		fillForSlot,
@@ -860,10 +880,10 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 				}
 			}
 			const sequence: number[] = new Array(items.length);
-			const matched = new Set<LynxBlock>();
 			// Refused, not mis-rendered: with a duplicate key the same survivor
 			// would match twice, its second placement would anchor a move on
-			// itself, and `slot.size` would diverge from the item count.
+			// itself, and `slot.size` would diverge from the item count. After that
+			// check, the same set is the exact desired-key set for the removal pass.
 			const seen = new Set<unknown>();
 			for (let index = 0; index < items.length; index++) {
 				const itemKey = key(items[index]!, index);
@@ -879,20 +899,19 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 				} else {
 					survivors[index] = survivor;
 					sequence[index] = oldOrder.get(survivor)!;
-					matched.add(survivor);
 				}
 			}
 
 			// Removals first: a survivor's `before` anchor must not name a block
 			// that is about to leave.
 			for (const [itemKey, block] of previous) {
-				if (matched.has(block)) continue;
+				if (seen.has(itemKey)) continue;
 				departed?.(block);
 				destroyBlock(slot.parent, block);
 				previous.delete(itemKey);
 			}
 
-			const stable = new Set(longestIncreasingSubsequence(sequence));
+			const stable = longestIncreasingSubsequence(sequence);
 			const ordered: LynxBlock[] = new Array(items.length);
 			// Right to left, so the anchor is always a block already placed.
 			for (let index = items.length - 1; index >= 0; index--) {
@@ -905,6 +924,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 						template,
 						[values(items[index]!, index)],
 						[keys[index]],
+						(slot as LynxBlockProgramRangeSite)[0],
 					)[0]!;
 					previous.set(block.key, block);
 					ordered[index] = block;
@@ -924,8 +944,17 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 				for (let valueIndex = 0; valueIndex < template.valueCount; valueIndex++) {
 					write(survivor, valueIndex, next[valueIndex]);
 				}
-				if (!stable.has(index)) {
-					emit({ op: 'move', parent: slot.parent, id: survivor.firstId, before });
+				if (stable[index] !== -2) {
+					const move: UniversalHostCommand = {
+						op: 'move',
+						parent: slot.parent,
+						id: survivor.firstId,
+						before,
+					};
+					if ((slot as LynxBlockProgramRangeSite)[0] != null) {
+						recordUniversalProgramRangeCommand(move, (slot as LynxBlockProgramRangeSite)[0]!);
+					}
+					emit(move);
 				}
 				ordered[index] = survivor;
 			}
