@@ -2,11 +2,7 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
 
 import type { UniversalProgramCreate, UniversalProgramPlan } from 'octane/universal/native';
 
-import {
-	encodePrevalidatedLynxNativeEventToken,
-	parseLynxNativeEventProp,
-	type LynxNativeEventBinding,
-} from './native-events.js';
+import { encodePrevalidatedLynxNativeEventToken } from './native-events.js';
 import type { LynxElementPAPI, LynxElementRef } from './papi.js';
 
 type CompiledProgramCreate = UniversalProgramCreate & {
@@ -19,16 +15,11 @@ type CompiledProgramCreate = UniversalProgramCreate & {
 	) => boolean;
 };
 
-interface CompiledProgramPrepared {
-	readonly bindings: readonly LynxNativeEventBinding[];
-	readonly create: CompiledProgramCreate;
-}
-
 interface CompiledProgramRun<Node extends LynxElementRef> {
+	readonly create: CompiledProgramCreate;
 	readonly listener: number;
 	readonly nodes: readonly Node[];
 	readonly plan: UniversalProgramPlan;
-	readonly prepared: CompiledProgramPrepared;
 	readonly values: unknown[];
 }
 
@@ -143,7 +134,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	root = pageId,
 ): LynxCompiledProgramStore<Node> {
 	const instances = new Map<number, CompiledProgramInstance<Node>>();
-	const preparedPlans = new WeakMap<UniversalProgramPlan, CompiledProgramPrepared>();
+	const creates = new WeakMap<UniversalProgramPlan, CompiledProgramCreate>();
 	const ranges = new Map<Node, CompiledProgramRange>();
 	let journal: unknown[] | null = null;
 	let journalFirstHandle = 0;
@@ -206,7 +197,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 					const instance = instances.get(handle)!;
 					const run = instance.run;
 					const valueIndex = instance.index * run.plan.values.length + slot;
-					const set = run.prepared.create.set!;
+					const set = run.create.set!;
 					if (!set(run.nodes, slot, previous, instance.index * run.plan.nodes)) {
 						fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `setter refused rollback slot ${slot}`);
 					}
@@ -306,24 +297,27 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		const offset = instance.index * run.plan.nodes;
 		const node = run.nodes[offset]!;
 		if (visible) papi.setAttribute(node, 'hidden', false);
-		const bindings = run.prepared.bindings;
-		for (let site = 0; site < bindings.length; site++) {
+		const set = run.create.set!;
+		for (let site = 0; site < run.plan.events.length; site++) {
 			const event = run.plan.events[site]!;
-			const binding = bindings[site]!;
-			papi.setEvent(
-				run.nodes[offset + event.node]!,
-				binding.type,
-				binding.name,
-				visible
-					? encodePrevalidatedLynxNativeEventToken(
-							root as number,
-							handle,
-							1,
-							run.listener + instance.index * bindings.length + site,
-							event.priority,
-						)
-					: undefined,
-			);
+			if (
+				!set(
+					run.nodes,
+					~site,
+					visible
+						? encodePrevalidatedLynxNativeEventToken(
+								root as number,
+								handle,
+								1,
+								run.listener + instance.index * run.plan.events.length + site,
+								event.priority,
+							)
+						: undefined,
+					offset,
+				)
+			) {
+				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `setter refused event site ${site}`);
+			}
 		}
 		if (!visible) papi.setAttribute(node, 'hidden', true);
 	};
@@ -496,37 +490,21 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 						'event identity exceeds the safe integer range',
 				);
 			}
-			let prepared = preparedPlans.get(plan);
-			if (prepared === undefined) {
-				const bindings = new Array<LynxNativeEventBinding>(eventCount);
-				for (let site = 0; site < eventCount; site++) {
-					const event = plan.events[site]!;
-					const binding = parseLynxNativeEventProp(event.type);
-					if (
-						binding === null ||
-						!Number.isSafeInteger(event.slot) ||
-						plan.slots[event.slot] !== `e:${event.type}` ||
-						(event.priority !== 'discrete' &&
-							event.priority !== 'continuous' &&
-							event.priority !== 'default') ||
-						!Number.isSafeInteger(event.node) ||
-						event.node < 0 ||
-						event.node >= plan.nodes
-					) {
-						fail(
-							LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `received an invalid event site ${site}`,
-						);
-					}
-					bindings[site] = binding;
+			for (let site = 0; site < eventCount; site++) {
+				const event = plan.events[site]!;
+				if (
+					typeof event.type !== 'string' ||
+					!Number.isSafeInteger(event.slot) ||
+					plan.slots[event.slot] !== `e:${event.type}` ||
+					(event.priority !== 'discrete' &&
+						event.priority !== 'continuous' &&
+						event.priority !== 'default') ||
+					!Number.isSafeInteger(event.node) ||
+					event.node < 0 ||
+					event.node >= plan.nodes
+				) {
+					fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `received an invalid event site ${site}`);
 				}
-				const create = plan.bind(papi) as CompiledProgramCreate;
-				if (typeof create.run !== 'function')
-					fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'requires an emitted dense-run driver');
-				if (plan.values.length !== 0 && typeof create.set !== 'function') {
-					fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'requires an emitted value-slot setter');
-				}
-				prepared = { bindings, create };
-				preparedPlans.set(plan, prepared);
 			}
 			const tokens = new Array<string>(eventCount * input.count);
 			for (let row = 0; row < input.count; row++) {
@@ -558,9 +536,19 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				next = input.before;
 			}
 			const previous = next === null ? range.tail : instances.get(next)!.previous;
+			let create = creates.get(plan);
+			if (create === undefined) {
+				create = plan.bind(papi) as CompiledProgramCreate;
+				if (typeof create.run !== 'function')
+					fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'requires an emitted dense-run driver');
+				if ((plan.values.length !== 0 || eventCount !== 0) && typeof create.set !== 'function') {
+					fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'requires an emitted slot setter');
+				}
+				creates.set(plan, create);
+			}
 			const nodes = new Array<Node>(plan.nodes * input.count);
 			try {
-				prepared.create.run(pageId, input.count, values, tokens, [], nodes);
+				create.run(pageId, input.count, values, tokens, [], nodes);
 				const before = next === null ? null : rootOf(instances.get(next)!);
 				for (let index = 0; index < input.count; index++) {
 					const node = nodes[index * plan.nodes];
@@ -587,10 +575,10 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				throw error;
 			}
 			const run: CompiledProgramRun<Node> = {
+				create,
 				listener: nextListener,
 				nodes,
 				plan,
-				prepared,
 				values,
 			};
 			let runPrevious = previous;
@@ -629,7 +617,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			const valueIndex = instance.index * run.plan.values.length + slot;
 			const previous = run.values[valueIndex];
 			if (Object.is(previous, value)) return false;
-			const set = run.prepared.create.set;
+			const set = run.create.set;
 			if (set === undefined)
 				fail(
 					LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'does not have an emitted value-slot setter',
