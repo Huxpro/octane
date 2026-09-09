@@ -392,7 +392,15 @@ function instantiate(
 }
 
 type InstantiatedSlotCreate = ((...args: never[]) => unknown[]) & {
-	set(nodes: readonly unknown[], slot: number, value: unknown): boolean;
+	set(nodes: readonly unknown[], slot: number, value: unknown, offset?: number): boolean;
+	run?: (
+		pageId: unknown,
+		count: number,
+		values: readonly unknown[],
+		events: readonly unknown[],
+		ranges: readonly unknown[],
+		out: unknown[],
+	) => void;
 };
 
 function instantiateSlotCreate(
@@ -1283,6 +1291,19 @@ describe('Lynx compiled value-slot updates', () => {
 		expect(shape(nodes[2] as never)).toEqual(expect.objectContaining({ id: null }));
 		expect(shape(nodes[3] as never)).toEqual(expect.objectContaining({ text: '' }));
 		expect(shape(nodes[5] as never)).toEqual(expect.objectContaining({ text: 'raw after' }));
+	});
+
+	it('updates one instance inside a flat dense-run output without slicing its nodes', () => {
+		const papi = createHost();
+		const page = papi.createPage('0', 0);
+		const create = instantiateSlotCreate(SLOT_UPDATES, 'createOffsetSlotUpdates')(papi);
+		const initial = ['first', 'ignored', 1, 'folded', 'raw'] as const;
+		const nodes: unknown[] = new Array(SLOT_UPDATES.nodes.length * 2);
+		create.run!(papi.getUniqueId(page), 2, [...initial, ...initial], [], [], nodes);
+		const offset = SLOT_UPDATES.nodes.length;
+		expect(create.set(nodes, 0, 'second', offset)).toBe(true);
+		expect(shape(nodes[0] as never)).toEqual(expect.objectContaining({ classes: 'first' }));
+		expect(shape(nodes[offset] as never)).toEqual(expect.objectContaining({ classes: 'second' }));
 	});
 
 	it('clears every compiled native-list scalar attribute through its own slot', () => {

@@ -24,7 +24,7 @@
 //   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --harness product --output /tmp/l5.json
 //   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --arms baseline,both
 //   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --harness product --arms baseline,receiver
-//   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --harness product --arms baseline,receiver,receiver-papi,receiver-container,receiver-direct,receiver-render,receiver-transport,receiver-worklets,receiver-foundation-lite,receiver-foundation
+//   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --harness product --arms baseline,receiver,receiver-papi,receiver-store,receiver-container,receiver-direct,receiver-render,receiver-transport,receiver-worklets,receiver-foundation-lite,receiver-foundation-store,receiver-foundation
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -50,13 +50,18 @@ const TARGET_RATIO = 1.5;
 // specialized product entry replaces the general main-thread receiver whole.
 // Its result is the compressed budget that replacement must fit inside, not a
 // claim that a receiver-free artifact is functional.
-function receiverSlice(label, body, retainedRuntimeExports) {
+function receiverSlice(label, body, retainedRuntimeExports, prefix = '') {
 	return {
 		label,
 		retainedRuntimeExports,
-		edits: [['main-thread-implementation.ts', [['installLynxMainThreadWithValidator', body]]]],
+		edits: [
+			['main-thread-implementation.ts', [['installLynxMainThreadWithValidator', body]], prefix],
+		],
 	};
 }
+
+const COMPILED_PROGRAM_STORE_IMPORT =
+	"import { createLynxCompiledProgramStore } from './core/compiled-program-store.js';\n";
 
 const ARMS = {
 	baseline: { label: 'baseline (no ablation)', edits: [] },
@@ -94,6 +99,21 @@ const ARMS = {
 \tpapi.createPage(options.componentId ?? '0', options.cssId ?? 0);
 \treturn Object.freeze({}) as LynxMainThreadController;`,
 		['core/papi.ts:createLynxElementPAPI', 'LynxElementPAPI:createPage'],
+	),
+	'receiver-store': receiverSlice(
+		'receiver floor + compact compiled-program store',
+		`\tconst papi = createLynxElementPAPI<Node>(options.target ?? globalThis);
+\tconst page = papi.createPage(options.componentId ?? '0', options.cssId ?? 0);
+\tconst store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page));
+\tstore.begin();
+\tstore.commit();
+\tstore.dispose();
+\treturn Object.freeze({}) as LynxMainThreadController;`,
+		[
+			'core/papi.ts:createLynxElementPAPI',
+			'core/compiled-program-store.ts:createLynxCompiledProgramStore',
+		],
+		COMPILED_PROGRAM_STORE_IMPORT,
 	),
 	'receiver-container': receiverSlice(
 		'receiver floor + general host container',
@@ -189,6 +209,41 @@ const ARMS = {
 			'core/main-thread-worklet-feature.ts:subscribeLynxMainThreadWorkletFeature',
 		],
 	),
+	'receiver-foundation-store': receiverSlice(
+		'receiver floor + reusable non-host foundation + compact program store',
+		`\tconst papi = createLynxElementPAPI<Node>(options.target ?? globalThis);
+\tconst page = papi.createPage(options.componentId ?? '0', options.cssId ?? 0);
+\tconst store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page));
+\tstore.begin();
+\tstore.commit();
+\tstore.dispose();
+\tif (options.firstScreen === true) {
+\t\trenderLynxFirstScreen(
+\t\t\toptions as unknown as UniversalComponent<InstallLynxMainThreadOptions>,
+\t\t\toptions,
+\t\t);
+\t\tdecodeLynxTransportValue(encodeLynxTransportValue(options));
+\t}
+\tconst worklets = createReplaceableLynxMainThreadWorkletRegistry(
+\t\tcreateUnavailableLynxMainThreadWorkletRegistry(),
+\t);
+\tconst unsubscribe = subscribeLynxMainThreadWorkletFeature((feature) => {
+\t\tworklets.replace(feature.createRegistry(options as never));
+\t});
+\tif (options.firstScreen === true) unsubscribe();
+\treturn Object.freeze({}) as LynxMainThreadController;`,
+		[
+			'core/papi.ts:createLynxElementPAPI',
+			'core/compiled-program-store.ts:createLynxCompiledProgramStore',
+			'main-renderer.ts:renderLynxFirstScreen',
+			'core/transport-codec.ts:encodeLynxTransportValue',
+			'core/transport-codec.ts:decodeLynxTransportValue',
+			'core/main-thread-worklet-feature.ts:createUnavailableLynxMainThreadWorkletRegistry',
+			'core/main-thread-worklet-feature.ts:createReplaceableLynxMainThreadWorkletRegistry',
+			'core/main-thread-worklet-feature.ts:subscribeLynxMainThreadWorkletFeature',
+		],
+		COMPILED_PROGRAM_STORE_IMPORT,
+	),
 	'receiver-foundation': receiverSlice(
 		'receiver floor + reusable foundation with general host container',
 		`\tconst papi = createLynxElementPAPI<Node>(options.target ?? globalThis);
@@ -256,11 +311,11 @@ function stubFunction(source, name, body) {
 }
 
 function applyArm(arm) {
-	for (const [file, stubs] of ARMS[arm].edits) {
+	for (const [file, stubs, prefix = ''] of ARMS[arm].edits) {
 		const target = path.join(REPO, LYNX_SOURCE, file);
 		let source = fs.readFileSync(target, 'utf8');
 		for (const [name, body] of stubs) source = stubFunction(source, name, body);
-		fs.writeFileSync(target, source);
+		fs.writeFileSync(target, prefix + source);
 	}
 }
 

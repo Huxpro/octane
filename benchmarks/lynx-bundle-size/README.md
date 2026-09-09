@@ -79,7 +79,7 @@ node benchmarks/lynx-bundle-size/l5-ceiling.mjs \
   --output /absolute/path/to/receiver-ceiling.json
 node benchmarks/lynx-bundle-size/l5-ceiling.mjs \
   --harness product \
-  --arms baseline,receiver,receiver-papi,receiver-container,receiver-direct,receiver-render,receiver-transport,receiver-worklets,receiver-foundation-lite,receiver-foundation \
+  --arms baseline,receiver,receiver-papi,receiver-store,receiver-container,receiver-direct,receiver-render,receiver-transport,receiver-worklets,receiver-foundation-lite,receiver-foundation-store,receiver-foundation \
   --output /absolute/path/to/receiver-frontier.json
 ```
 
@@ -101,7 +101,10 @@ The `receiver-*` frontier arms start from the receiver-free ceiling and retain
 one existing product dependency boundary at a time: normalized Element PAPI and
 page creation, the general host container, its direct first-screen applier, the
 compiled first-screen evaluator, paired string transport, or the optional
-worklet seam. They are intentionally nonfunctional linkage probes. Their delta
+worklet seam. `receiver-store` prices the transactional compact program store
+over the PAPI floor, while `receiver-foundation-store` measures its compressed
+union with the complete non-host foundation. They are intentionally
+nonfunctional linkage probes. Their delta
 over `receiver` is the exact production tree-shaken cost of reusing that
 boundary in a replacement; it is not additive across arms and says nothing
 about a newly written implementation with a different closure. The
@@ -118,6 +121,9 @@ The exact existing-boundary replacement budget is recorded in
 The compiler primitive for the replacement's direct value-slot writes, with a
 byte-identical default-product control, is recorded in
 [`results/m3-compiled-slot-setter.md`](results/m3-compiled-slot-setter.md).
+The transactional compact instance state and its exact foundation-union price
+are recorded in
+[`results/m3-compact-program-store.md`](results/m3-compact-program-store.md).
 
 ## Core switch and main-thread program
 

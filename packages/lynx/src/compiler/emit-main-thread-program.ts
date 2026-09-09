@@ -317,7 +317,10 @@ export interface LynxMainThreadProgramEmission {
 	 * The setter is emitted only when its caller explicitly requests one and the
 	 * program has value slots. It addresses the wire program's dense value-slot
 	 * index directly, so a compact receiver needs neither a node/prop descriptor
-	 * nor a run-time inverse-map walk to apply one `SET` frame.
+	 * nor a run-time inverse-map walk to apply one `SET` frame. Its optional node
+	 * offset addresses one instance inside a retained dense-run output without
+	 * allocating a sliced node array per instance; omitted means zero for the
+	 * original single-instance call shape.
 	 */
 	readonly slotUpdates: boolean;
 }
@@ -570,7 +573,7 @@ function emitSlotUpdate(
 	lines: string[],
 ): void {
 	const node = program.nodes[site.node]!;
-	const target = `nodes[${site.node}]`;
+	const target = site.node === 0 ? 'nodes[offset]' : `nodes[offset + ${site.node}]`;
 	if (site.name === 'id') {
 		lines.push(`\t\t\tpapi.setId(${target}, value == null ? null : String(value));`);
 		return;
@@ -620,7 +623,11 @@ function slotSetterLines(
 	program: UniversalHostTemplateProgram,
 	sites: readonly BindingSite[],
 ): readonly string[] {
-	const lines = [`\t${name}.set = function (nodes, slot, value) {`, `\t\tswitch (slot) {`];
+	const lines = [
+		`\t${name}.set = function (nodes, slot, value, offset) {`,
+		`\t\toffset = offset || 0;`,
+		`\t\tswitch (slot) {`,
+	];
 	for (let slot = 0; slot < sites.length; slot++) {
 		lines.push(`\t\t\tcase ${slot}:`);
 		emitSlotUpdate(program, sites[slot]!, lines);
@@ -664,7 +671,9 @@ export function emitLynxMainThreadProgram(
 		 *
 		 * Omitted/false preserves the historical source byte-for-byte. A caller may
 		 * request this only when its receiver validates slot kinds before entering
-		 * generated code; the setter performs no general schema or prop diff.
+		 * generated code; the setter performs no general schema or prop diff. The
+		 * generated setter accepts an optional fourth node-offset argument so one
+		 * flat dense-run output can back every instance without per-instance slices.
 		 */
 		readonly slotUpdates?: boolean;
 		/**
