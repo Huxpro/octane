@@ -373,7 +373,7 @@ import { lynxWireProfile } from './core/profiling.js';
 			);
 		});
 
-		update('packages/lynx/src/main-thread.ts', (source, file) => {
+		update('packages/lynx/src/main-thread-implementation.ts', (source, file) => {
 			let next = replaceOnce(
 				source,
 				'interface LynxMainThreadGlobals {\n',

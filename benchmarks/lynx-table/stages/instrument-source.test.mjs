@@ -19,7 +19,7 @@ const sourceFiles = [
 	'packages/lynx/src/core/own-symbols.ts',
 	'packages/lynx/src/core/transport.ts',
 	'packages/lynx/src/main-renderer.ts',
-	'packages/lynx/src/main-thread.ts',
+	'packages/lynx/src/main-thread-implementation.ts',
 	'packages/octane/src/universal-core.ts',
 ];
 
@@ -43,11 +43,14 @@ test('instruments an isolated Lynx source copy and restores every byte', () => {
 			/bgReplayMs/,
 		);
 		assert.match(
-			fs.readFileSync(path.join(temporary, 'packages/lynx/src/main-thread.ts'), 'utf8'),
+			fs.readFileSync(
+				path.join(temporary, 'packages/lynx/src/main-thread-implementation.ts'),
+				'utf8',
+			),
 			/mtExpandMs/,
 		);
 		const instrumentedMainThread = fs.readFileSync(
-			path.join(temporary, 'packages/lynx/src/main-thread.ts'),
+			path.join(temporary, 'packages/lynx/src/main-thread-implementation.ts'),
 			'utf8',
 		);
 		// Upstream timed the first screen by wrapping `prepareLynxHostBatch` and
