@@ -27,10 +27,55 @@ describe('@octanejs/lynx package boundary', () => {
 			),
 		);
 
-		expect(codes).toHaveLength(485);
+		expect(codes).toHaveLength(489);
 		expect([...codes].sort((left, right) => left - right)).toEqual(
-			Array.from({ length: 485 }, (_, index) => index + 1),
+			Array.from({ length: 489 }, (_, index) => index + 1),
 		);
+	});
+
+	it('folds first-screen renderer diagnostics to stable production identifiers', async () => {
+		const result = await build({
+			stdin: {
+				contents: `
+					import { renderLynxFirstScreen, rendererRegion, universalActivity } from './src/main-renderer.ts';
+					const diagnostics = [];
+					for (const run of [
+						() => rendererRegion(),
+						() => universalActivity('invalid', () => null),
+						() => renderLynxFirstScreen(() => null, {}),
+					]) {
+						try { run(); } catch (error) {
+							diagnostics.push({ name: error.name, message: error.message, code: error.code });
+						}
+					}
+					globalThis.firstScreenDiagnostics = diagnostics;
+				`,
+				resolveDir: packageDirectory,
+				sourcefile: 'lynx-first-screen-production-diagnostics.js',
+			},
+			absWorkingDir: repositoryRoot,
+			bundle: true,
+			define: { __OCTANE_LYNX_DEVELOPMENT__: 'false' },
+			format: 'iife',
+			logLevel: 'silent',
+			minify: true,
+			platform: 'browser',
+			treeShaking: true,
+			write: false,
+		});
+		const context: { firstScreenDiagnostics?: unknown } = {};
+
+		runInNewContext(result.outputFiles[0].text, context);
+
+		expect(context.firstScreenDiagnostics).toEqual([
+			{ name: 'Error', message: 'Octane Lynx OL486', code: undefined },
+			{ name: 'TypeError', message: 'Octane Lynx OL487', code: undefined },
+			{
+				name: 'LynxFirstScreenRefusalError',
+				message: 'Octane Lynx OL488',
+				code: 'OCTANE_LYNX_FIRST_SCREEN_REFUSED',
+			},
+		]);
 	});
 
 	it('preserves built-in worklet registrations when a production consumer imports their setup module', async () => {
