@@ -69,13 +69,24 @@ path still calls stays and is not counted.
 
 ```bash
 node benchmarks/lynx-bundle-size/l5-ceiling.mjs
+node benchmarks/lynx-bundle-size/l5-ceiling.mjs \
+  --harness product \
+  --output /absolute/path/to/l5-product.json
 ```
 
 It is an operator tool and not a CI gate: it rewrites `packages/lynx/src/core`
 so a build can be taken with a target gone, refuses to start unless those sources
-are clean, and restores them in a `finally`. Every arm must reproduce the
-baseline's semantic checksums or the run fails, and the ablated artifacts are
-measurement devices rather than functional runtimes.
+are clean, snapshots their exact bytes, and restores them in a `finally`. Every
+arm must reproduce the baseline's semantic checksums or the run fails, and the
+ablated artifacts are measurement devices rather than functional runtimes.
+
+The `product` harness runs `core-switch.mjs`'s full four-arm isolation controls
+for every ablation and records the current `block+program` complete artifact,
+decoded BTS, and decoded MTS independently, including raw/gzip/Brotli sizes and
+SHA-256 identities. Product-only mode cannot execute the ablated runtime, so its
+receipt says explicitly that the semantic-checksum control did not run; the
+default harness retains that executable checksum control for the historical
+fixtures.
 
 The checked execution report is [`results/l5-ceiling.md`](results/l5-ceiling.md).
 
