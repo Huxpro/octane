@@ -121,14 +121,14 @@ const ARMS = {
 		'receiver floor + compact compiled-program frame router',
 		`\tconst papi = createLynxElementPAPI<Node>(options.target ?? globalThis);
 \tconst page = papi.createPage(options.componentId ?? '0', options.cssId ?? 0);
-\tconst store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page));
-\tapplyLynxCompiledProgramFrame(
-\t\tstore,
-\t\tpage,
-\t\t() => undefined,
-\t\toptions,
+\tconst store = createLynxCompiledProgramStore(
+\t\tpapi,
+\t\tpapi.getUniqueId(page),
+\t\tundefined,
+\t\tundefined,
 \t\toptions.firstScreen === true ? (options as never) : undefined,
 \t);
+\tapplyLynxCompiledProgramFrame(store, page, () => undefined, options);
 \tstore.dispose();
 \treturn Object.freeze({}) as LynxMainThreadController;`,
 		[
@@ -271,14 +271,14 @@ const ARMS = {
 		'receiver floor + reusable non-host foundation + compact program frame router',
 		`\tconst papi = createLynxElementPAPI<Node>(options.target ?? globalThis);
 \tconst page = papi.createPage(options.componentId ?? '0', options.cssId ?? 0);
-\tconst store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page));
-\tapplyLynxCompiledProgramFrame(
-\t\tstore,
-\t\tpage,
-\t\t() => undefined,
-\t\toptions,
+\tconst store = createLynxCompiledProgramStore(
+\t\tpapi,
+\t\tpapi.getUniqueId(page),
+\t\tundefined,
+\t\tundefined,
 \t\toptions.firstScreen === true ? (options as never) : undefined,
 \t);
+\tapplyLynxCompiledProgramFrame(store, page, () => undefined, options);
 \tstore.dispose();
 \tif (options.firstScreen === true) {
 \t\trenderLynxFirstScreen(

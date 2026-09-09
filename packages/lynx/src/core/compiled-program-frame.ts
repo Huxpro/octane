@@ -29,17 +29,6 @@ export type LynxCompiledProgramResolver = (
 	index: number,
 ) => UniversalProgramPlan | undefined;
 
-/** One first-screen run whose build address and painted state were retained locally. */
-export interface LynxCompiledProgramFrameAdoption<Node extends LynxElementRef> {
-	readonly firstId: number;
-	readonly firstListenerId: number | null;
-	readonly nodes: readonly Node[];
-	readonly stride: number;
-}
-
-export type LynxCompiledProgramFrameAdoptionSource<Node extends LynxElementRef> =
-	() => LynxCompiledProgramFrameAdoption<Node>;
-
 function fail(message: string | false): never {
 	throw new TypeError(
 		LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT
@@ -81,7 +70,6 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 	page: Node,
 	resolve: LynxCompiledProgramResolver,
 	input: unknown,
-	adopt?: LynxCompiledProgramFrameAdoptionSource<Node>,
 ): void {
 	if (!Array.isArray(input) || input[0] !== LYNX_DELTA_PROTOCOL_VERSION) {
 		fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'requires a version-2 array envelope');
@@ -159,41 +147,21 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 				if (!Number.isSafeInteger(valueCount) || arity !== RUN_HEADER_FIELDS + valueCount) {
 					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'received the wrong RUN value arity');
 				}
-				const valueOffset = cursor + RUN_HEADER_FIELDS;
-				const adoption = adopt?.();
-				if (adopt !== undefined && (adoption === undefined || beforeInstance !== END_INSTANCE)) {
-					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'first-screen proof differs');
-				}
-				if (adoption === undefined)
-					store.mount({
-						before:
-							beforeInstance === END_INSTANCE
-								? null
-								: instance(
-										beforeInstance,
-										LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'requires an in-range RUN anchor',
-									),
-						count: runCount,
-						firstHandle,
-						parent: page,
-						plan,
-						valueOffset,
-						values: input,
-					});
-				else
-					store.adopt({
-						before: null,
-						count: runCount,
-						firstHandle,
-						firstId: adoption.firstId,
-						firstListenerId: adoption.firstListenerId,
-						nodes: adoption.nodes,
-						parent: page,
-						plan,
-						stride: adoption.stride,
-						valueOffset,
-						values: input,
-					});
+				store.mount({
+					before:
+						beforeInstance === END_INSTANCE
+							? null
+							: instance(
+									beforeInstance,
+									LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'requires an in-range RUN anchor',
+								),
+					count: runCount,
+					firstHandle,
+					parent: page,
+					plan,
+					valueOffset: cursor + RUN_HEADER_FIELDS,
+					values: input,
+				});
 			} else if (opcode === Opcode.Set) {
 				if (arity !== 3)
 					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'SET requires three fields');

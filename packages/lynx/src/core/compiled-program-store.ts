@@ -62,11 +62,7 @@ export interface LynxCompiledProgramMount<Node extends LynxElementRef> {
 	readonly values: readonly unknown[];
 }
 
-export interface LynxCompiledProgramAdoption<
-	Node extends LynxElementRef,
-> extends LynxCompiledProgramMount<Node> {
-	/** Adoption follows the accepted first-screen order, so it is append-only. */
-	readonly before: null;
+export interface LynxCompiledProgramAdoptionSeed<Node extends LynxElementRef> {
 	/** Existing first-screen host id of the first program root. */
 	readonly firstId: number;
 	/** Listener identity already installed by the accepted first screen. */
@@ -75,6 +71,12 @@ export interface LynxCompiledProgramAdoption<
 	readonly nodes: readonly Node[];
 	/** Logical host-id distance between consecutive first-screen instances. */
 	readonly stride: number;
+}
+
+export interface LynxCompiledProgramAdoption<Node extends LynxElementRef>
+	extends LynxCompiledProgramMount<Node>, LynxCompiledProgramAdoptionSeed<Node> {
+	/** Adoption follows the accepted first-screen order, so it is append-only. */
+	readonly before: null;
 }
 
 export interface LynxCompiledProgramStore<Node extends LynxElementRef = LynxElementRef> {
@@ -162,6 +164,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	pageId: unknown,
 	root = pageId,
 	firstListener = 1,
+	seed?: () => LynxCompiledProgramAdoptionSeed<Node>,
 ): LynxCompiledProgramStore<Node> {
 	const instances = new Map<number, CompiledProgramInstance<Node>>();
 	const creates = new WeakMap<UniversalProgramPlan, CompiledProgramCreate>();
@@ -420,10 +423,13 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	};
 	const writeRun = (
 		input: LynxCompiledProgramMount<Node>,
-		adopted?: LynxCompiledProgramAdoption<Node>,
+		adopted?: LynxCompiledProgramAdoptionSeed<Node>,
 	): void => {
 		const undo = requireJournal();
 		const adoption = adopted !== undefined;
+		if (adoption && input.before !== null) {
+			fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'requires append-only first-screen proof');
+		}
 		requireHandle(input.firstHandle);
 		requireCount(input.count);
 		const finalHandle = input.firstHandle + input.count - 1;
@@ -682,7 +688,11 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			writeRun(input, input);
 		},
 		mount(input) {
-			writeRun(input);
+			const adopted = seed?.();
+			if (seed !== undefined && adopted === undefined) {
+				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'requires a first-screen proof');
+			}
+			writeRun(input, adopted);
 		},
 		set(handle, slot, value) {
 			const undo = requireJournal();

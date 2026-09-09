@@ -236,7 +236,18 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 		const values = ['row-10', 'cold', 'ten', 'row-14', 'cold', 'fourteen'];
 		const nodes = paintAdoptableRows(papi, page, plan, values, 10, 4, 1_000_000);
 		const tokens = page.children.map((node) => node.events.get('bindEvent:tap'));
-		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 73, 1_000_000);
+		const store = createLynxCompiledProgramStore(
+			papi,
+			papi.getUniqueId(page),
+			73,
+			1_000_000,
+			() => ({
+				firstId: 10,
+				firstListenerId: 1_000_000,
+				nodes,
+				stride: 4,
+			}),
+		);
 		const frame = encodeLynxDeltaMessage(
 			[
 				{
@@ -257,12 +268,6 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 			page,
 			(module, index) => (module === address.module && index === address.index ? plan : undefined),
 			frame,
-			() => ({
-				firstId: 10,
-				firstListenerId: 1_000_000,
-				nodes,
-				stride: 4,
-			}),
 		);
 		expect(hostWrites).toBe(0);
 		expect(store.size()).toBe(2);
@@ -288,7 +293,20 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 		const address = { module: 'tests/AdoptedRow.lynx.tsrx', index: 0 };
 		const values = ['row-10', 'cold', 'ten'];
 		const nodes = paintAdoptableRows(papi, page, plan, values, 10, 4, 1_000_000);
-		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 73, 1_000_000);
+		const adoption = {
+			firstId: 10,
+			firstListenerId: 1_000_000,
+			nodes,
+			stride: 4,
+		};
+		let next = adoption;
+		const store = createLynxCompiledProgramStore(
+			papi,
+			papi.getUniqueId(page),
+			73,
+			1_000_000,
+			() => next,
+		);
 		const frame = encodeLynxDeltaMessage(
 			[
 				{
@@ -303,38 +321,32 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 			],
 			[{ id: 1, address }],
 		);
-		const adoption = {
-			firstId: 10,
-			firstListenerId: 1_000_000,
-			nodes,
-			stride: 4,
-		} as const;
 		const resolve = (module: string, index: number) =>
 			module === address.module && index === address.index ? plan : undefined;
 
-		expect(() =>
-			applyLynxCompiledProgramFrame(store, page, resolve, frame, () => undefined as never),
-		).toThrow(/first-screen proof/);
+		next = undefined as never;
+		expect(() => applyLynxCompiledProgramFrame(store, page, resolve, frame)).toThrow(
+			/first-screen proof/,
+		);
 		expect(store.resolve(1)).toBeUndefined();
 		expect(store.size()).toBe(0);
 		expect(page.children).toEqual([nodes[0]]);
-		expect(() =>
-			applyLynxCompiledProgramFrame(store, page, resolve, frame, () => ({
-				...adoption,
-				firstListenerId: 999_999,
-			})),
-		).toThrow(/listener identity/);
+		next = { ...adoption, firstListenerId: 999_999 };
+		expect(() => applyLynxCompiledProgramFrame(store, page, resolve, frame)).toThrow(
+			/listener identity/,
+		);
 		expect(store.resolve(1)).toBeUndefined();
 		expect(store.size()).toBe(0);
 		expect(page.children).toEqual([nodes[0]]);
-		expect(() =>
-			applyLynxCompiledProgramFrame(store, page, resolve, [...frame, 99, 0], () => adoption),
-		).toThrow(/opcode 99/);
+		next = adoption;
+		expect(() => applyLynxCompiledProgramFrame(store, page, resolve, [...frame, 99, 0])).toThrow(
+			/opcode 99/,
+		);
 		expect(store.resolve(1)).toBeUndefined();
 		expect(store.size()).toBe(0);
 		expect(page.children).toEqual([nodes[0]]);
 
-		applyLynxCompiledProgramFrame(store, page, resolve, frame, () => adoption);
+		applyLynxCompiledProgramFrame(store, page, resolve, frame);
 		expect(store.resolve(1)).toBe(plan);
 		expect(store.size()).toBe(1);
 		expect(page.children).toEqual([nodes[0]]);
