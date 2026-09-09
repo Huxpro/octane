@@ -11,7 +11,7 @@ const repositoryRoot = resolve(packageDirectory, '../..');
 
 describe('@octanejs/rspeedy-plugin package boundary', () => {
 	it('keeps main-thread installation and readiness around authored production application entries', async () => {
-		const mainThreadEntry = resolve(packageDirectory, 'src/main-thread-entry.js');
+		const mainThreadEntry = resolve(packageDirectory, 'src/main-thread-entry.production.js');
 		const mainThreadReady = resolve(packageDirectory, 'src/main-thread-ready.js');
 		const result = await build({
 			stdin: {
@@ -37,7 +37,8 @@ import ${JSON.stringify(mainThreadReady)};
 					setup(builder) {
 						builder.onResolve(
 							{
-								filter: /^@octanejs\/lynx\/(?:main-thread|first-screen)$|^rspeedy:authored-entry$/,
+								filter:
+									/^@octanejs\/lynx\/(?:main-thread-application|first-screen)$|^rspeedy:authored-entry$/,
 							},
 							({ path }) => ({ path, namespace: 'rspeedy-main-thread-consumer' }),
 						);
@@ -45,8 +46,8 @@ import ${JSON.stringify(mainThreadReady)};
 							{ filter: /.*/, namespace: 'rspeedy-main-thread-consumer' },
 							({ path }) => ({
 								contents:
-									path === '@octanejs/lynx/main-thread'
-										? `export function installLynxMainThread(options) {
+									path === '@octanejs/lynx/main-thread-application'
+										? `export function installLynxApplicationMainThread(options) {
 	globalThis.bootstrap.install(options, globalThis.processData);
 }`
 										: path === '@octanejs/lynx/first-screen'

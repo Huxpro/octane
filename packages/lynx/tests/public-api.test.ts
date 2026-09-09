@@ -32,6 +32,7 @@ describe('@octanejs/lynx Milestone 8 private surface', () => {
 			'./intrinsics',
 			'./intrinsics/jsx-runtime',
 			'./main-thread',
+			'./main-thread-application',
 			'./platform',
 			'./testing',
 		]);

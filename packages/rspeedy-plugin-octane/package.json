@@ -6,6 +6,7 @@
   "type": "module",
   "sideEffects": [
     "./src/main-thread-entry.js",
+    "./src/main-thread-entry.production.js",
     "./src/main-thread-ready.js"
   ],
   "engines": {

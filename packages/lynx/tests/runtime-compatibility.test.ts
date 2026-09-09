@@ -178,6 +178,7 @@ describe('Lynx runtime compatibility evidence', () => {
 				'src/core/transport-codec.ts',
 				'src/core/worklets.ts',
 				'src/main-renderer.ts',
+				'src/main-thread-implementation.ts',
 				'src/main-thread.ts',
 				'src/resource.ts',
 			],

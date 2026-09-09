@@ -356,7 +356,12 @@ export default defineConfig({
 
 `installLynxMainThread()` remains public for isolated receiver tests and the
 explicit one-thread compiler diagnostic mode. It is not a second application
-entry in normal application mode.
+entry in normal application mode. A production two-layer application instead
+uses the private `main-thread-application` bootstrap selected by the Rspeedy
+plugin. Because that one build emits both protocol peers, its main-thread
+receiver keeps the trusted envelope, identity, discriminant, and arity checks
+but omits the recursive command/property walk. Development still selects the
+public checked bootstrap, and `createLynxRoot()` remains checked by default.
 
 Milestone 9 CI covers two exact, atomic source/build lanes. Both use Lynx SDK
 `3.9.0` with target SDK `3.9`, Rspeedy `0.16.0`, Rsbuild `2.1.4`, template

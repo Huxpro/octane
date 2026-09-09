@@ -779,6 +779,12 @@ describe('@octanejs/rspeedy-plugin', () => {
 		expect(development.entries.get('app')?.at(-1)).toEqual(
 			expect.objectContaining({ filename: '.rspeedy/app/background.[fullhash:6].js' }),
 		);
+		expect(
+			(production.entries.get('app__octane_main_thread')?.[0] as { import: string[] }).import[0],
+		).toMatch(/main-thread-entry\.production\.js$/);
+		expect(
+			(development.entries.get('app__octane_main_thread')?.[0] as { import: string[] }).import[0],
+		).toMatch(/main-thread-entry\.js$/);
 	});
 
 	it('preserves JavaScript filename policies for the background layout', () => {
