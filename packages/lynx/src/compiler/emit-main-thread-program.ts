@@ -311,6 +311,15 @@ export interface LynxMainThreadProgramEmission {
 	 * plan is the pair that drifts.
 	 */
 	readonly denseRun: boolean;
+	/**
+	 * Whether the create also carries `<name>.set(nodes, slot, value)`.
+	 *
+	 * The setter is emitted only when its caller explicitly requests one and the
+	 * program has value slots. It addresses the wire program's dense value-slot
+	 * index directly, so a compact receiver needs neither a node/prop descriptor
+	 * nor a run-time inverse-map walk to apply one `SET` frame.
+	 */
+	readonly slotUpdates: boolean;
 }
 
 /** A program this backend declines, naming what it could not emit. */
@@ -513,8 +522,13 @@ function rawTextSource(node: UniversalHostTemplateProgramNode, where: string): s
 }
 
 /** Every value slot the program binds, checked for the density the applier requires. */
-function bindingSlots(program: UniversalHostTemplateProgram): number {
-	const owners: (number | undefined)[] = [];
+interface BindingSite {
+	readonly node: number;
+	readonly name: string;
+}
+
+function bindingSites(program: UniversalHostTemplateProgram): readonly BindingSite[] {
+	const sites: (BindingSite | undefined)[] = [];
 	for (let index = 0; index < program.nodes.length; index++) {
 		const node = program.nodes[index]!;
 		const seen = new Set<string>();
@@ -528,16 +542,92 @@ function bindingSlots(program: UniversalHostTemplateProgram): number {
 					`node ${index} binds ${JSON.stringify(binding.name)} to a value slot that is not an index`,
 				);
 			}
-			if (owners[binding.valueIndex] !== undefined) {
+			if (sites[binding.valueIndex] !== undefined) {
 				refuse(`value slot ${binding.valueIndex} is bound by more than one host node`);
 			}
-			owners[binding.valueIndex] = index;
+			sites[binding.valueIndex] = { node: index, name: binding.name };
 		}
 	}
-	for (let slot = 0; slot < owners.length; slot++) {
-		if (owners[slot] === undefined) refuse(`value slot ${slot} is declared but never bound`);
+	for (let slot = 0; slot < sites.length; slot++) {
+		if (sites[slot] === undefined) refuse(`value slot ${slot} is declared but never bound`);
 	}
-	return owners.length;
+	return sites as readonly BindingSite[];
+}
+
+/**
+ * Emit the one PAPI write a value slot owns after creation.
+ *
+ * This is deliberately narrower than the generic prop patcher. The emitter has
+ * already proved that every binding belongs to the dense scalar route, and a
+ * slot is bound by exactly one host node, so an update needs only the node the
+ * create returned and the new scalar. Clearing is still a write: unlike create,
+ * an empty class, null id, empty folded text, or null list attribute must remove
+ * a value that was painted earlier.
+ */
+function emitSlotUpdate(
+	program: UniversalHostTemplateProgram,
+	site: BindingSite,
+	lines: string[],
+): void {
+	const node = program.nodes[site.node]!;
+	const target = `nodes[${site.node}]`;
+	if (site.name === 'id') {
+		lines.push(`\t\t\tpapi.setId(${target}, value == null ? null : String(value));`);
+		return;
+	}
+	if (site.name === 'class' || site.name === 'className') {
+		const hasAliasedClass =
+			Object.prototype.hasOwnProperty.call(node.props, 'className') ||
+			(node.bindings ?? []).some((binding) => binding.name === 'className');
+		// `className` wins by presence. A separately bound `class` underneath it is
+		// still a real slot — the background owns and compares its value — but the
+		// generic patcher emits no PAPI write for it, so neither may this setter.
+		if (site.name === 'class' && hasAliasedClass) return;
+		lines.push(
+			`\t\t\tpapi.setClasses(${target}, typeof value === 'string' ? value` +
+				` : typeof value === 'number' && value ? String(value) : '');`,
+		);
+		return;
+	}
+	if (node.type === '#text' && site.name === 'value') {
+		// The program's slot-kind table proves this value is a string before the
+		// compact receiver enters generated code, matching `assertTextProps` on the
+		// generic path. The setter therefore owns only the write, not validation.
+		lines.push(`\t\t\tpapi.setAttribute(${target}, 'text', value);`);
+		return;
+	}
+	if (node.type === 'text' && site.name === 'text') {
+		lines.push(
+			`\t\t\tpapi.setAttribute(${target}, 'text', typeof value === 'string' ? value : '');`,
+		);
+		return;
+	}
+	if (node.type === 'list-item' && LIST_ITEM_SCALAR_HOST_PROPS.includes(site.name)) {
+		lines.push(
+			`\t\t\tpapi.setAttribute(${target}, ${JSON.stringify(site.name)}, value == null ? null : value);`,
+		);
+		return;
+	}
+	// Every reachable case was admitted by `dynamicRoute`; keeping this refusal
+	// here makes a later widening update both create and update emission together.
+	refuse(
+		`node ${site.node} (${node.type}) binds ${JSON.stringify(site.name)} without an update route`,
+	);
+}
+
+function slotSetterLines(
+	name: string,
+	program: UniversalHostTemplateProgram,
+	sites: readonly BindingSite[],
+): readonly string[] {
+	const lines = [`\t${name}.set = function (nodes, slot, value) {`, `\t\tswitch (slot) {`];
+	for (let slot = 0; slot < sites.length; slot++) {
+		lines.push(`\t\t\tcase ${slot}:`);
+		emitSlotUpdate(program, sites[slot]!, lines);
+		lines.push(`\t\t\t\treturn true;`);
+	}
+	lines.push(`\t\t}`, `\t\treturn false;`, `\t};`);
+	return lines;
 }
 
 /**
@@ -570,6 +660,14 @@ export function emitLynxMainThreadProgram(
 	options: {
 		readonly name: string;
 		/**
+		 * Also emit a direct value-slot setter on the returned create function.
+		 *
+		 * Omitted/false preserves the historical source byte-for-byte. A caller may
+		 * request this only when its receiver validates slot kinds before entering
+		 * generated code; the setter performs no general schema or prop diff.
+		 */
+		readonly slotUpdates?: boolean;
+		/**
 		 * The holes the program dropped, in the order their values are passed.
 		 *
 		 * Omitted or empty emits exactly what it emitted before this parameter
@@ -591,7 +689,8 @@ export function emitLynxMainThreadProgram(
 	}
 	if (program.nodes.length === 0) refuse('the program has no nodes');
 
-	const valueCount = bindingSlots(program);
+	const sites = bindingSites(program);
+	const valueCount = sites.length;
 	const body: string[] = [];
 
 	for (let index = 0; index < program.nodes.length; index++) {
@@ -827,61 +926,71 @@ export function emitLynxMainThreadProgram(
 	// A program that gets no driver emits exactly the bytes it emitted before
 	// this parameter existed, which is what keeps every record taken against the
 	// old emission comparable to one taken against this.
-	const source = !denseRun
-		? [
-				...preamble,
-				`\treturn function ${options.name}(${params.join(', ')}) {`,
-				...body,
-				`\t\treturn [${returned}];`,
-				`\t};`,
-				`}`,
-			].join('\n')
-		: [
-				...preamble,
-				`\tfunction ${options.name}(${params.join(', ')}) {`,
-				...body,
-				`\t\treturn [${returned}];`,
-				`\t}`,
-				// The same body, run `count` times over member-major tables, with
-				// the create function's parameters bound from them at the top of
-				// each iteration. Bound rather than substituted: the body below is
-				// the body above with one tab in front of it and nothing else
-				// changed, which is what makes "the driver paints what `count`
-				// calls paint" a property of the emission rather than a claim two
-				// codegen paths have to keep agreeing on. `main-thread-emit.test.ts`
-				// asserts that relation directly on the emitted text.
-				//
-				// The cost of binding is one array read per parameter per instance,
-				// against the argument array — one allocation and one push per
-				// parameter — that the caller no longer builds. The nodes go
-				// straight into `out` at this instance's offset instead of into a
-				// returned array, which is the second allocation per instance this
-				// deletes; `out` is one array the caller sizes once.
-				`\t${options.name}.run = function (pageId, count, values, events, ranges, out) {`,
-				`\t\tvar vi = 0, ei = 0, ri = 0, oi = 0;`,
-				`\t\tfor (var i = 0; i < count; i++) {`,
-				...Array.from(
-					{ length: valueCount },
-					(_unused, index) =>
-						`\t\t\tvar v${index} = values[vi${index === 0 ? '' : ` + ${index}`}];`,
-				),
-				...program.events.map(
-					(_site, index) => `\t\t\tvar e${index} = events[ei${index === 0 ? '' : ` + ${index}`}];`,
-				),
-				...ranges.map(
-					(_range, index) => `\t\t\tvar r${index} = ranges[ri${index === 0 ? '' : ` + ${index}`}];`,
-				),
-				...driverBody.map((line) => `\t${line}`),
-				...ranges.map(
-					(_range, index) =>
-						`\t\t\tout[oi + ${program.nodes.length + index}] = ${painted.has(index) ? `t${index}` : 'undefined'};`,
-				),
-				`\t\t\tvi += ${valueCount}; ei += ${program.events.length}; ri += ${ranges.length}; oi += ${stride};`,
-				`\t\t}`,
-				`\t};`,
-				`\treturn ${options.name};`,
-				`}`,
-			].join('\n');
+	const slotUpdates = options.slotUpdates === true && valueCount !== 0;
+	const setter = slotUpdates ? slotSetterLines(options.name, program, sites) : [];
+	const source =
+		!denseRun && !slotUpdates
+			? [
+					...preamble,
+					`\treturn function ${options.name}(${params.join(', ')}) {`,
+					...body,
+					`\t\treturn [${returned}];`,
+					`\t};`,
+					`}`,
+				].join('\n')
+			: [
+					...preamble,
+					`\tfunction ${options.name}(${params.join(', ')}) {`,
+					...body,
+					`\t\treturn [${returned}];`,
+					`\t}`,
+					...(denseRun
+						? [
+								// The same body, run `count` times over member-major tables, with
+								// the create function's parameters bound from them at the top of
+								// each iteration. Bound rather than substituted: the body below is
+								// the body above with one tab in front of it and nothing else
+								// changed, which is what makes "the driver paints what `count`
+								// calls paint" a property of the emission rather than a claim two
+								// codegen paths have to keep agreeing on. `main-thread-emit.test.ts`
+								// asserts that relation directly on the emitted text.
+								//
+								// The cost of binding is one array read per parameter per instance,
+								// against the argument array — one allocation and one push per
+								// parameter — that the caller no longer builds. The nodes go
+								// straight into `out` at this instance's offset instead of into a
+								// returned array, which is the second allocation per instance this
+								// deletes; `out` is one array the caller sizes once.
+								`\t${options.name}.run = function (pageId, count, values, events, ranges, out) {`,
+								`\t\tvar vi = 0, ei = 0, ri = 0, oi = 0;`,
+								`\t\tfor (var i = 0; i < count; i++) {`,
+								...Array.from(
+									{ length: valueCount },
+									(_unused, index) =>
+										`\t\t\tvar v${index} = values[vi${index === 0 ? '' : ` + ${index}`}];`,
+								),
+								...program.events.map(
+									(_site, index) =>
+										`\t\t\tvar e${index} = events[ei${index === 0 ? '' : ` + ${index}`}];`,
+								),
+								...ranges.map(
+									(_range, index) =>
+										`\t\t\tvar r${index} = ranges[ri${index === 0 ? '' : ` + ${index}`}];`,
+								),
+								...driverBody.map((line) => `\t${line}`),
+								...ranges.map(
+									(_range, index) =>
+										`\t\t\tout[oi + ${program.nodes.length + index}] = ${painted.has(index) ? `t${index}` : 'undefined'};`,
+								),
+								`\t\t\tvi += ${valueCount}; ei += ${program.events.length}; ri += ${ranges.length}; oi += ${stride};`,
+								`\t\t}`,
+								`\t};`,
+							]
+						: []),
+					...setter,
+					`\treturn ${options.name};`,
+					`}`,
+				].join('\n');
 
 	return {
 		source,
@@ -890,5 +999,6 @@ export function emitLynxMainThreadProgram(
 		rangeCount: ranges.length,
 		paintsText: ranges.map((_range, index) => painted.has(index)),
 		denseRun,
+		slotUpdates,
 	};
 }

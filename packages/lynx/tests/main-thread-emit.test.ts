@@ -29,6 +29,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type {
+	UniversalHostBatch,
 	UniversalHostTemplateProgram,
 	UniversalHostTemplateProgramValue,
 } from 'octane/universal/native';
@@ -163,6 +164,46 @@ const LIST_ITEM: UniversalHostTemplateProgram = {
 		},
 		{ type: 'text', parent: 0, props: { class: 'label' } },
 		{ type: '#text', parent: 1, props: {}, bindings: [{ name: 'value', valueIndex: 1 }] },
+	],
+	events: [],
+};
+
+/** Every scalar update route the compiled setter owns outside native lists. */
+const SLOT_UPDATES: UniversalHostTemplateProgram = {
+	nodes: [
+		{ type: 'view', parent: -1, props: {}, bindings: [{ name: 'class', valueIndex: 0 }] },
+		{
+			type: 'view',
+			parent: 0,
+			props: { className: 'fixed' },
+			bindings: [{ name: 'class', valueIndex: 1 }],
+		},
+		{ type: 'view', parent: 0, props: {}, bindings: [{ name: 'id', valueIndex: 2 }] },
+		{ type: 'text', parent: 0, props: {}, bindings: [{ name: 'text', valueIndex: 3 }] },
+		{ type: 'text', parent: 0, props: { class: 'carrier' } },
+		{ type: '#text', parent: 4, props: {}, bindings: [{ name: 'value', valueIndex: 4 }] },
+	],
+	events: [],
+};
+
+/** Every public scalar `<list-item>` attribute, all dynamic. */
+const LIST_ITEM_SLOT_UPDATES: UniversalHostTemplateProgram = {
+	nodes: [
+		{
+			type: 'list-item',
+			parent: -1,
+			props: {},
+			bindings: [
+				{ name: 'item-key', valueIndex: 0 },
+				{ name: 'sticky-top', valueIndex: 1 },
+				{ name: 'sticky-bottom', valueIndex: 2 },
+				{ name: 'full-span', valueIndex: 3 },
+				{ name: 'estimated-main-axis-size-px', valueIndex: 4 },
+				{ name: 'reuse-identifier', valueIndex: 5 },
+				{ name: 'recyclable', valueIndex: 6 },
+				{ name: 'defer', valueIndex: 7 },
+			],
+		},
 	],
 	events: [],
 };
@@ -348,6 +389,19 @@ function instantiate(
 ): (papi: unknown) => (...args: never[]) => unknown[] {
 	const { source } = emitLynxMainThreadProgram(program, { name, ranges });
 	return new Function(`return (${source});`)() as never;
+}
+
+type InstantiatedSlotCreate = ((...args: never[]) => unknown[]) & {
+	set(nodes: readonly unknown[], slot: number, value: unknown): boolean;
+};
+
+function instantiateSlotCreate(
+	program: UniversalHostTemplateProgram,
+	name: string,
+): (papi: unknown) => InstantiatedSlotCreate {
+	const emission = emitLynxMainThreadProgram(program, { name, slotUpdates: true });
+	expect(emission.slotUpdates).toBe(true);
+	return new Function(`return (${emission.source});`)() as never;
 }
 
 /**
@@ -1125,6 +1179,144 @@ describe('Lynx main-thread program emission', () => {
 	it('declines a host with no intrinsic element factories rather than painting a partial tree', () => {
 		const create = instantiate(PAGE, 'createPage');
 		expect(() => create({ intrinsics: undefined })).toThrow(/intrinsic element factories/);
+	});
+});
+
+// Issue-#290 M3 — the compact receiver's SET primitive.
+//
+// The Block core has already selected one changed value slot. Expanding that
+// back into a complete prop bag and asking the general host driver to rediscover
+// the same node, prop route, normalization, and diff is the receiver closure the
+// product ceiling rejects. The compiler knows all four answers, so this opt-in
+// emission puts the one PAPI write beside the create program. It remains opt-in
+// until the compact receiver owns validation and lifecycle; the first test pins
+// that an ordinary product build does not pay for an unused primitive.
+describe('Lynx compiled value-slot updates', () => {
+	it('leaves existing program source byte-identical when the setter is not requested', () => {
+		const omitted = emitLynxMainThreadProgram(ROW, { name: 'createRow' });
+		const disabled = emitLynxMainThreadProgram(ROW, {
+			name: 'createRow',
+			slotUpdates: false,
+		});
+		expect(disabled.source).toBe(omitted.source);
+		expect(omitted.slotUpdates).toBe(false);
+		expect(disabled.slotUpdates).toBe(false);
+		// A program with no value slots has nothing to update and emits no empty
+		// switch even when asked.
+		const empty = emitLynxMainThreadProgram(PAGE, {
+			name: 'createPage',
+			slotUpdates: true,
+		});
+		expect(empty.slotUpdates).toBe(false);
+		expect(empty.source).not.toContain('.set = function');
+	});
+
+	it('adds a setter without inventing a dense driver for an open range', () => {
+		const emission = emitLynxMainThreadProgram(RANGED_ROW, {
+			name: 'createRangedSlotUpdates',
+			ranges: [{ node: 0 }, ...RANGED_ROW_SITES],
+			slotUpdates: true,
+		});
+		expect(emission).toMatchObject({ denseRun: false, slotUpdates: true });
+		expect(emission.source).toContain('createRangedSlotUpdates.set = function');
+		expect(emission.source).not.toContain('createRangedSlotUpdates.run = function');
+		const bind = new Function(`return (${emission.source});`)() as (
+			papi: unknown,
+		) => InstantiatedSlotCreate;
+		const create = bind(createHost());
+		expect(create.set).toBeTypeOf('function');
+	});
+
+	it('matches the generic applier for class, alias, id, folded text, and raw text updates', () => {
+		const initial = ['before', 'ignored', 7, 'folded before', 'raw before'] as const;
+		const next = [0, 'still ignored', null, null, 'raw after'] as const;
+
+		const reference = createHost();
+		const container = createLynxHostContainer(reference, { root: 1 });
+		const mount: UniversalHostBatch = {
+			renderer: 'lynx',
+			version: 1,
+			commands: [
+				{
+					op: 'mount-template-run',
+					parent: null,
+					before: null,
+					program: SLOT_UPDATES,
+					firstId: 10,
+					firstListenerId: null,
+					count: 1,
+					values: initial,
+				},
+			],
+		};
+		prepareLynxHostBatch(container, mount).apply();
+		const update: UniversalHostBatch = {
+			renderer: 'lynx',
+			version: 2,
+			commands: [
+				{ op: 'update', id: 10, props: { class: next[0] } },
+				{ op: 'update', id: 11, props: { className: 'fixed', class: next[1] } },
+				{ op: 'update', id: 12, props: { id: next[2] } },
+				{ op: 'update', id: 13, props: { text: next[3] } },
+				{ op: 'update', id: 15, props: { value: next[4] } },
+			],
+		};
+		prepareLynxHostBatch(container, update).apply();
+
+		const candidate = createHost();
+		const page = candidate.createPage('0', 0);
+		const create = instantiateSlotCreate(SLOT_UPDATES, 'createSlotUpdates')(candidate);
+		const nodes = create(...([candidate.getUniqueId(page), ...initial] as unknown as never[]));
+		candidate.insertBefore(page, nodes[0] as never, null);
+		for (let slot = 0; slot < next.length; slot++) {
+			expect(create.set(nodes, slot, next[slot])).toBe(true);
+		}
+		expect(create.set(nodes, next.length, 'outside')).toBe(false);
+
+		expect(paintedTree(shape(candidate.pages[0]!))).toEqual(
+			paintedTree(shape(reference.pages[0]!)),
+		);
+		// Independent observable pins for the cases a tree differential could make
+		// look plausible by normalizing both sides the same wrong way.
+		expect(shape(nodes[0] as never)).toEqual(expect.objectContaining({ classes: '' }));
+		expect(shape(nodes[1] as never)).toEqual(expect.objectContaining({ classes: 'fixed' }));
+		expect(shape(nodes[2] as never)).toEqual(expect.objectContaining({ id: null }));
+		expect(shape(nodes[3] as never)).toEqual(expect.objectContaining({ text: '' }));
+		expect(shape(nodes[5] as never)).toEqual(expect.objectContaining({ text: 'raw after' }));
+	});
+
+	it('clears every compiled native-list scalar attribute through its own slot', () => {
+		const papi = createHost();
+		const page = papi.createPage('0', 0);
+		const create = instantiateSlotCreate(LIST_ITEM_SLOT_UPDATES, 'createListItemSlotUpdates')(papi);
+		const nodes = create(
+			...([
+				papi.getUniqueId(page),
+				'row-1',
+				true,
+				false,
+				true,
+				92,
+				'feed-row',
+				false,
+				true,
+			] as never[]),
+		);
+		for (let slot = 0; slot < 8; slot++) expect(create.set(nodes, slot, null)).toBe(true);
+		expect(shape(nodes[0] as never)).toEqual(
+			expect.objectContaining({
+				attributes: {
+					'item-key': null,
+					'sticky-top': null,
+					'sticky-bottom': null,
+					'full-span': null,
+					'estimated-main-axis-size-px': null,
+					'reuse-identifier': null,
+					recyclable: null,
+					defer: null,
+				},
+			}),
+		);
 	});
 });
 
