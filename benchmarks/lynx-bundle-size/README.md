@@ -125,6 +125,9 @@ byte-identical default-product control, is recorded in
 The transactional compact instance state and its exact foundation-union price
 are recorded in
 [`results/m3-compact-program-store.md`](results/m3-compact-program-store.md).
+The streaming v2 RUN/SET/REMOVE router and its exact foundation-union price are
+recorded in
+[`results/m3-compact-program-frame.md`](results/m3-compact-program-frame.md).
 
 ## Core switch and main-thread program
 
