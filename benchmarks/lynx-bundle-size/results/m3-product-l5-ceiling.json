@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-09T01:38:13.329Z",
+  "source": {
+    "commit": "4e0bc07ed17394c38439649f53a9692e734852a9",
+    "dirty": false,
+    "toolSha256": "c7f64a1d03a196eb8410f622c9b9250e172b81dac20b4116d861acd2e28887bf"
+  },
+  "toolchain": {
+    "node": "v22.22.2",
+    "platform": "linux 5.15.120.bsk.3-amd64"
+  },
+  "harness": "product",
+  "reference": {
+    "medianGzip": 54323,
+    "targetRatio": 1.5,
+    "targetGzip": 81484.5,
+    "source": "benchmarks/lynx-bundle-size/results/m3-default-path-audit.md"
+  },
+  "arms": [
+    {
+      "key": "baseline",
+      "label": "baseline (no ablation)",
+      "ablatedExports": [],
+      "productBundleRaw": 432847,
+      "productBundleGzip": 167252,
+      "productBundleBrotli": 139232,
+      "productBundleSha256": "9359d11a5c4f3fc81ae7acbc5da89bda13af49e1158804ff22e855ecb6c8cb56",
+      "productBackgroundRaw": 187625,
+      "productBackgroundGzip": 53873,
+      "productBackgroundBrotli": 46259,
+      "productBackgroundSha256": "b2737fe05d2f52d3dfe6632a3669d1f1e0052677812e1bac222129992189e022",
+      "productMainRaw": 242375,
+      "productMainGzip": 112998,
+      "productMainBrotli": 92959,
+      "productMainSha256": "dfb37de6a2f52e262f41a0dba1b43db1bb3d28b5b889d05f60fcb4459aad9a17",
+      "productProgramCount": 1,
+      "productBackgroundProgramCount": 0,
+      "productCoreControls": {
+        "passed": true,
+        "failures": []
+      }
+    },
+    {
+      "key": "validator",
+      "label": "recursive validator",
+      "ablatedExports": [
+        "protocol.ts:selfCheckLynxBackgroundInboundMessage",
+        "protocol.ts:validateLynxBackgroundOutboundMessage",
+        "protocol.ts:validateLynxBackgroundInboundMessage"
+      ],
+      "productBundleRaw": 386780,
+      "productBundleGzip": 151447,
+      "productBundleBrotli": 127021,
+      "productBundleSha256": "6bacef35879aeff6ece6a3b683c29e4bec312bd6d5652821da5aac2cbca9fc88",
+      "productBackgroundRaw": 163138,
+      "productBackgroundGzip": 47645,
+      "productBackgroundBrotli": 41240,
+      "productBackgroundSha256": "086cc6ad476c2c94cb7c32f616949908feb09af39173d3f74b1cdb9ffdad5218",
+      "productMainRaw": 220795,
+      "productMainGzip": 103659,
+      "productMainBrotli": 85923,
+      "productMainSha256": "9efb1088d2de3e2fbf422f2ecd82f1c25487ca47d459041f386a4be1817f5493",
+      "productProgramCount": 1,
+      "productBackgroundProgramCount": 0,
+      "productCoreControls": {
+        "passed": true,
+        "failures": []
+      }
+    },
+    {
+      "key": "batch",
+      "label": "plan interpreter + batch pipeline",
+      "ablatedExports": ["host-driver.ts:prepareLynxHostBatch"],
+      "productBundleRaw": 365431,
+      "productBundleGzip": 134982,
+      "productBundleBrotli": 113954,
+      "productBundleSha256": "570f36c335dddf9b63d5441a198cfa940720c30cdd1a2e820a32c4b6fb42fb1d",
+      "productBackgroundRaw": 187625,
+      "productBackgroundGzip": 53873,
+      "productBackgroundBrotli": 46259,
+      "productBackgroundSha256": "b2737fe05d2f52d3dfe6632a3669d1f1e0052677812e1bac222129992189e022",
+      "productMainRaw": 174959,
+      "productMainGzip": 80821,
+      "productMainBrotli": 67387,
+      "productMainSha256": "4c00cdcb3c34d5031ee92de00f64a0c7a105aa323e48d9ba9bcfd8754ff568d6",
+      "productProgramCount": 1,
+      "productBackgroundProgramCount": 0,
+      "productCoreControls": {
+        "passed": true,
+        "failures": []
+      }
+    },
+    {
+      "key": "both",
+      "label": "both",
+      "ablatedExports": [
+        "protocol.ts:selfCheckLynxBackgroundInboundMessage",
+        "protocol.ts:validateLynxBackgroundOutboundMessage",
+        "protocol.ts:validateLynxBackgroundInboundMessage",
+        "host-driver.ts:prepareLynxHostBatch"
+      ],
+      "productBundleRaw": 318833,
+      "productBundleGzip": 118728,
+      "productBundleBrotli": 101614,
+      "productBundleSha256": "fd154c8c41d2b82c4693c7729f5a68eb6eec11db464d55fd768fa941e6606f59",
+      "productBackgroundRaw": 163138,
+      "productBackgroundGzip": 47645,
+      "productBackgroundBrotli": 41240,
+      "productBackgroundSha256": "086cc6ad476c2c94cb7c32f616949908feb09af39173d3f74b1cdb9ffdad5218",
+      "productMainRaw": 152848,
+      "productMainGzip": 71007,
+      "productMainBrotli": 60142,
+      "productMainSha256": "c6c5216a055c891484eed624f14213f3a150991adf61198d751a9a4043bd537a",
+      "productProgramCount": 1,
+      "productBackgroundProgramCount": 0,
+      "productCoreControls": {
+        "passed": true,
+        "failures": []
+      }
+    }
+  ],
+  "controls": {
+    "checksumRan": false,
+    "checksum": null,
+    "checksumFailures": [],
+    "productCoreControlsPassed": true
+  }
+}
