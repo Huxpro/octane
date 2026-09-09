@@ -7,7 +7,10 @@ import { describe, expect, it } from 'vitest';
 
 import { emitLynxMainThreadProgram } from '../src/compiler/emit-main-thread-program.js';
 import { createLynxCompiledProgramStore } from '../src/core/compiled-program-store.js';
-import { decodeLynxNativeEventToken } from '../src/core/native-events.js';
+import {
+	decodeLynxNativeEventToken,
+	encodeLynxNativeEventToken,
+} from '../src/core/native-events.js';
 import type { LynxElementPAPI } from '../src/core/papi.js';
 import { createFakePAPI, type FakeNode, shape } from './_fixtures/fake-element-papi.js';
 
@@ -118,6 +121,35 @@ function mountCommitted(
 	store.commit();
 }
 
+function paintAdoptableRows(
+	papi: LynxElementPAPI<FakeNode>,
+	page: FakeNode,
+	plan: UniversalProgramPlan,
+	values: readonly unknown[],
+	firstId: number,
+	stride: number,
+	firstListenerId: number,
+): FakeNode[] {
+	const count = values.length / plan.values.length;
+	const nodes = new Array<FakeNode>(plan.nodes * count);
+	const events = Array.from({ length: count }, (_, row) =>
+		plan.events.map((event, site) =>
+			encodeLynxNativeEventToken({
+				root: 47,
+				id: firstId + row * stride + event.node,
+				generation: 1,
+				listener: firstListenerId + row * plan.events.length + site,
+				priority: event.priority,
+			}),
+		),
+	).flat();
+	plan.bind(papi).run!(papi.getUniqueId(page), count, values, events, [], nodes);
+	for (let row = 0; row < count; row++) {
+		papi.insertBefore(page, nodes[row * plan.nodes]!, null);
+	}
+	return nodes;
+}
+
 describe('@octanejs/lynx compact compiled-program store', () => {
 	it('publishes resident template ids transactionally and refuses aliasing or gaps', () => {
 		const papi = emittedHost();
@@ -187,6 +219,132 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 			listener: 3,
 			priority: 'discrete',
 		});
+	});
+
+	it('adopts an accepted first-screen run without repainting and preserves its identities', () => {
+		const base = emittedHost();
+		let hostWrites = 0;
+		const papi: typeof base = {
+			...base,
+			insertBefore(parent, child, before) {
+				hostWrites++;
+				base.insertBefore(parent, child, before);
+			},
+			setEvent(node, kind, name, listener) {
+				hostWrites++;
+				base.setEvent(node, kind, name, listener);
+			},
+		};
+		const page = papi.createPage('0', 0);
+		const plan = emittedEventPlan();
+		const values = ['row-10', 'cold', 'ten', 'row-14', 'cold', 'fourteen'];
+		const nodes = paintAdoptableRows(papi, page, plan, values, 10, 4, 1_000_000);
+		const paintedTokens = page.children.map((node) => node.events.get('bindEvent:tap'));
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 47, 1_000_000);
+		hostWrites = 0;
+		store.begin();
+		store.adopt({
+			before: null,
+			count: 2,
+			firstHandle: 2,
+			firstId: 10,
+			firstListenerId: 1_000_000,
+			nodes,
+			parent: page,
+			plan,
+			stride: 4,
+			values,
+		});
+		store.commit();
+		expect(hostWrites).toBe(0);
+		expect(store.size()).toBe(2);
+		expect(page.children.map((node) => node.id)).toEqual(['row-10', 'row-14']);
+
+		store.begin();
+		expect(store.set(3, 2, 'updated')).toBe(true);
+		expect(store.visibility(3, false)).toBe(true);
+		expect(store.visibility(3, true)).toBe(true);
+		store.commit();
+		expect(page.children[1]!.children[0]!.children[0]!.text).toBe('updated');
+		expect(page.children.map((node) => node.events.get('bindEvent:tap'))).toEqual(paintedTokens);
+		expect(paintedTokens.map(decodeLynxNativeEventToken)).toEqual([
+			{ root: 47, id: 10, generation: 1, listener: 1_000_000, priority: 'discrete' },
+			{ root: 47, id: 14, generation: 1, listener: 1_000_001, priority: 'discrete' },
+		]);
+	});
+
+	it('rolls back first-screen ownership without removing the painted tree and retries exactly', () => {
+		const papi = emittedHost();
+		const page = papi.createPage('0', 0);
+		const plan = emittedEventPlan();
+		const values = ['row-10', 'cold', 'ten'];
+		const nodes = paintAdoptableRows(papi, page, plan, values, 10, 4, 1_000_000);
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 47, 1_000_000);
+		const adoption = {
+			before: null,
+			count: 1,
+			firstHandle: 2,
+			firstId: 10,
+			firstListenerId: 1_000_000,
+			nodes,
+			parent: page,
+			plan,
+			stride: 4,
+			values,
+		} as const;
+
+		store.begin();
+		store.adopt(adoption);
+		store.rollback();
+		expect(store.size()).toBe(0);
+		expect(page.children).toEqual([nodes[0]]);
+
+		store.begin();
+		store.adopt(adoption);
+		store.commit();
+		store.dispose();
+		expect(page.children).toEqual([]);
+	});
+
+	it('rejects detached or identity-divergent first-screen runs before publishing ownership', () => {
+		const papi = emittedHost();
+		const page = papi.createPage('0', 0);
+		const plan = emittedEventPlan();
+		const values = ['row-10', 'cold', 'ten'];
+		const nodes = paintAdoptableRows(papi, page, plan, values, 10, 4, 1_000_000);
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 47, 1_000_000);
+		store.begin();
+		expect(() =>
+			store.adopt({
+				before: null,
+				count: 1,
+				firstHandle: 2,
+				firstId: 10,
+				firstListenerId: 999_999,
+				nodes,
+				parent: page,
+				plan,
+				stride: 4,
+				values,
+			}),
+		).toThrow(/listener identity/);
+		papi.remove(page, nodes[0]!);
+		expect(() =>
+			store.adopt({
+				before: null,
+				count: 1,
+				firstHandle: 2,
+				firstId: 10,
+				firstListenerId: 1_000_000,
+				nodes,
+				parent: page,
+				plan,
+				stride: 4,
+				values,
+			}),
+		).toThrow(/detached root/);
+		store.rollback();
+		expect(store.size()).toBe(0);
 	});
 
 	it('rejects an incoherent event plan before binding its driver or mutating the host', () => {
