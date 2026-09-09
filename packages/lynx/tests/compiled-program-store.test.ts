@@ -164,6 +164,37 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		});
 	});
 
+	it('rejects an incoherent event plan before binding its driver or mutating the host', () => {
+		const papi = emittedHost();
+		const page = papi.createPage('0', 0);
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 47);
+		const emitted = emittedEventPlan();
+		let binds = 0;
+		const plan: UniversalProgramPlan = {
+			...emitted,
+			events: [{ ...emitted.events[0]!, slot: 0 }],
+			bind(host) {
+				binds++;
+				return emitted.bind(host);
+			},
+		};
+
+		store.begin();
+		expect(() =>
+			store.mount({
+				firstHandle: 1,
+				count: 1,
+				parent: page,
+				before: null,
+				plan,
+				values: ['row-1', 'cold', 'one'],
+			}),
+		).toThrow(/invalid event site/);
+		expect(binds).toBe(0);
+		expect(page.children).toEqual([]);
+		store.rollback();
+	});
+
 	it('mounts and addresses a dense instance run from one flat output', () => {
 		const papi = emittedHost();
 		const page = papi.createPage('0', 0);

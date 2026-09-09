@@ -104,8 +104,9 @@ compiled first-screen evaluator, paired string transport, or the optional
 worklet seam. `receiver-store` prices the transactional compact program store
 over the PAPI floor, while `receiver-foundation-store` measures its compressed
 union with the complete non-host foundation. The corresponding `*-frame` arms
-add the streaming v2 RUN/SET/REMOVE router and its store closure. They are intentionally
-nonfunctional linkage probes. Their delta
+add the streaming v2 RUN/SET/REMOVE router and its store closure, including
+deterministic native event tokens for eventful resident programs. They are
+intentionally nonfunctional linkage probes. Their delta
 over `receiver` is the exact production tree-shaken cost of reusing that
 boundary in a replacement; it is not additive across arms and says nothing
 about a newly written implementation with a different closure. The
@@ -128,6 +129,9 @@ are recorded in
 The streaming v2 RUN/SET/REMOVE router and its exact foundation-union price are
 recorded in
 [`results/m3-compact-program-frame.md`](results/m3-compact-program-frame.md).
+The event-slot identity contract, production diagnostic repayment, and updated
+event-capable frontier are recorded in
+[`results/m3-compact-program-events.md`](results/m3-compact-program-events.md).
 
 ## Core switch and main-thread program
 

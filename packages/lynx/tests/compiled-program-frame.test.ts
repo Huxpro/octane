@@ -96,21 +96,37 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 		const page = papi.createPage('0', 0);
 		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 73);
 		const plan = emittedEventPlan();
+		const frame = encodeLynxDeltaMessage([
+			{
+				op: 'run',
+				templateId: 8,
+				parent: { instance: 1, slot: 0 },
+				before: null,
+				firstInstance: 2,
+				count: 1,
+				values: ['row-2', 'cold', 'label-2'],
+			},
+		]);
+		expect(frame).toEqual([
+			LYNX_DELTA_PROTOCOL_VERSION,
+			1,
+			10,
+			8,
+			1,
+			0,
+			0,
+			0,
+			2,
+			1,
+			'row-2',
+			'cold',
+			'label-2',
+		]);
 		applyLynxCompiledProgramFrame(
 			store,
 			page,
 			(template) => (template === 8 ? plan : undefined),
-			encodeLynxDeltaMessage([
-				{
-					op: 'run',
-					templateId: 8,
-					parent: { instance: 1, slot: 0 },
-					before: null,
-					firstInstance: 2,
-					count: 1,
-					values: ['row-2', 'cold', 'label-2'],
-				},
-			]),
+			frame,
 		);
 		expect(decodeLynxNativeEventToken(page.children[0]!.events.get('bindEvent:tap'))).toEqual({
 			root: 73,
