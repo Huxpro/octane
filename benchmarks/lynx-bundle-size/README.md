@@ -79,7 +79,7 @@ node benchmarks/lynx-bundle-size/l5-ceiling.mjs \
   --output /absolute/path/to/receiver-ceiling.json
 node benchmarks/lynx-bundle-size/l5-ceiling.mjs \
   --harness product \
-  --arms baseline,receiver,receiver-papi,receiver-store,receiver-container,receiver-direct,receiver-render,receiver-transport,receiver-worklets,receiver-foundation-lite,receiver-foundation-store,receiver-foundation \
+  --arms baseline,receiver,receiver-papi,receiver-store,receiver-frame,receiver-container,receiver-direct,receiver-render,receiver-transport,receiver-worklets,receiver-foundation-lite,receiver-foundation-store,receiver-foundation-frame,receiver-foundation \
   --output /absolute/path/to/receiver-frontier.json
 ```
 
@@ -103,7 +103,8 @@ page creation, the general host container, its direct first-screen applier, the
 compiled first-screen evaluator, paired string transport, or the optional
 worklet seam. `receiver-store` prices the transactional compact program store
 over the PAPI floor, while `receiver-foundation-store` measures its compressed
-union with the complete non-host foundation. They are intentionally
+union with the complete non-host foundation. The corresponding `*-frame` arms
+add the streaming v2 RUN/SET/REMOVE router and its store closure. They are intentionally
 nonfunctional linkage probes. Their delta
 over `receiver` is the exact production tree-shaken cost of reusing that
 boundary in a replacement; it is not additive across arms and says nothing
@@ -124,6 +125,9 @@ byte-identical default-product control, is recorded in
 The transactional compact instance state and its exact foundation-union price
 are recorded in
 [`results/m3-compact-program-store.md`](results/m3-compact-program-store.md).
+The streaming v2 RUN/SET/REMOVE router and its exact foundation-union price are
+recorded in
+[`results/m3-compact-program-frame.md`](results/m3-compact-program-frame.md).
 
 ## Core switch and main-thread program
 
