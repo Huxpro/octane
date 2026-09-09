@@ -236,14 +236,21 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 		const values = ['row-10', 'cold', 'ten', 'row-14', 'cold', 'fourteen'];
 		const nodes = paintAdoptableRows(papi, page, plan, values, 10, 4, 1_000_000);
 		const tokens = page.children.map((node) => node.events.get('bindEvent:tap'));
-		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 73, 1_000_000, [
-			{
-				firstId: 10,
-				firstListenerId: 1_000_000,
-				nodes,
-				stride: 4,
-			},
-		]);
+		const store = createLynxCompiledProgramStore(
+			papi,
+			papi.getUniqueId(page),
+			73,
+			1_000_000,
+			(firstHandle) =>
+				firstHandle === 2
+					? {
+							firstId: 10,
+							firstListenerId: 1_000_000,
+							nodes,
+							stride: 4,
+						}
+					: undefined,
+		);
 		const frame = encodeLynxDeltaMessage(
 			[
 				{
@@ -313,13 +320,13 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 			nodes,
 			stride: 4,
 		};
-		const seeds = [{ ...adoption, firstListenerId: 999_999 }];
+		let seed = { ...adoption, firstListenerId: 999_999 };
 		const store = createLynxCompiledProgramStore(
 			papi,
 			papi.getUniqueId(page),
 			73,
 			1_000_000,
-			seeds,
+			(firstHandle) => (firstHandle === 2 ? seed : undefined),
 		);
 		const frame = encodeLynxDeltaMessage(
 			[
@@ -344,7 +351,7 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 		expect(store.resolve(1)).toBeUndefined();
 		expect(store.size()).toBe(0);
 		expect(page.children).toEqual([nodes[0]]);
-		seeds[0] = adoption;
+		seed = adoption;
 		expect(() => applyLynxCompiledProgramFrame(store, page, resolve, [...frame, 99, 0])).toThrow(
 			/opcode 99/,
 		);

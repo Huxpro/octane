@@ -164,7 +164,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	pageId: unknown,
 	root = pageId,
 	firstListener = 1,
-	seeds?: readonly LynxCompiledProgramAdoptionSeed<Node>[],
+	seed?: (firstHandle: number) => LynxCompiledProgramAdoptionSeed<Node> | undefined,
 ): LynxCompiledProgramStore<Node> {
 	const instances = new Map<number, CompiledProgramInstance<Node>>();
 	const creates = new WeakMap<UniversalProgramPlan, CompiledProgramCreate>();
@@ -179,7 +179,6 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	let journalFirstListener = 0;
 	let journalFirstTemplates = 1;
 	let nextListener = firstListener;
-	let nextSeed = 0;
 	let faulted = false;
 	let closing = false;
 
@@ -215,7 +214,6 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			try {
 				const opcode = active.pop();
 				if (opcode === JournalOpcode.Mount || opcode === JournalOpcode.Adopt) {
-					if (opcode === JournalOpcode.Adopt) nextSeed--;
 					const range = active.pop() as CompiledProgramRange;
 					const count = active.pop() as number;
 					const firstHandle = active.pop() as number;
@@ -690,9 +688,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			writeRun(input, input);
 		},
 		mount(input) {
-			const adopted = seeds?.[nextSeed];
-			writeRun(input, adopted);
-			if (adopted !== undefined) nextSeed++;
+			writeRun(input, seed?.(input.firstHandle));
 		},
 		set(handle, slot, value) {
 			const undo = requireJournal();
