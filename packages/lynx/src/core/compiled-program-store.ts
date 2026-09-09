@@ -6,15 +6,25 @@ import type { LynxElementPAPI, LynxElementRef } from './papi.js';
 
 type CompiledProgramCreate = UniversalProgramCreate & {
 	readonly run: NonNullable<UniversalProgramCreate['run']>;
-	readonly set?: (nodes: readonly unknown[], slot: number, value: unknown) => boolean;
+	readonly set?: (
+		nodes: readonly unknown[],
+		slot: number,
+		value: unknown,
+		offset?: number,
+	) => boolean;
 };
 
-interface CompiledProgramInstance<Node extends LynxElementRef> {
+interface CompiledProgramRun<Node extends LynxElementRef> {
 	readonly create: CompiledProgramCreate;
 	readonly nodes: readonly Node[];
-	readonly parent: Node;
 	readonly plan: UniversalProgramPlan;
 	readonly values: unknown[];
+}
+
+interface CompiledProgramInstance<Node extends LynxElementRef> {
+	readonly index: number;
+	readonly parent: Node;
+	readonly run: CompiledProgramRun<Node>;
 	next: number | null;
 	previous: number | null;
 }
@@ -24,10 +34,19 @@ interface CompiledProgramRange {
 	tail: number | null;
 }
 
+const enum JournalOpcode {
+	Mount = 1,
+	Set = 2,
+	Remove = 3,
+}
+
+const MAX_INSTANCE_HANDLE = 2 ** 31 - 1;
+
 export interface LynxCompiledProgramMount<Node extends LynxElementRef> {
 	readonly before: Node | null;
+	readonly count: number;
 	readonly events?: readonly unknown[];
-	readonly handle: number;
+	readonly firstHandle: number;
 	readonly parent: Node;
 	readonly plan: UniversalProgramPlan;
 	readonly values: readonly unknown[];
@@ -53,12 +72,25 @@ function fail(message: string): never {
 }
 
 function requireHandle(value: number): void {
-	if (!Number.isSafeInteger(value) || value <= 0) fail('requires a positive instance handle');
+	if (!Number.isSafeInteger(value) || value <= 0 || value > MAX_INSTANCE_HANDLE) {
+		fail('requires an in-range positive instance handle');
+	}
+}
+
+function requireCount(value: number): void {
+	if (!Number.isSafeInteger(value) || value <= 0) fail('requires a positive instance count');
 }
 
 function isScalar(value: unknown): boolean {
 	const type = typeof value;
 	return value === null || type === 'string' || type === 'number' || type === 'boolean';
+}
+
+function isSlotValue(plan: UniversalProgramPlan, slot: number, value: unknown): boolean {
+	const kind = plan.slots[plan.values[slot]!];
+	return kind === 'c'
+		? typeof value === 'string'
+		: kind?.startsWith('p:') === true && isScalar(value);
 }
 
 function cleanupRoot<Node extends LynxElementRef>(
@@ -89,7 +121,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	const creates = new WeakMap<UniversalProgramPlan, CompiledProgramCreate>();
 	const roots = new WeakMap<Node, number>();
 	const ranges = new Map<Node, CompiledProgramRange>();
-	let journal: (() => void)[] | null = null;
+	let journal: unknown[] | null = null;
 	let journalFirstHandle = 0;
 	let lastHandle = 0;
 	let faulted = false;
@@ -99,7 +131,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		if (faulted) fail('is faulted after an incomplete host rollback');
 		if (closing) fail('is closing or closed');
 	};
-	const requireJournal = (): (() => void)[] => {
+	const requireJournal = (): unknown[] => {
 		requireHealthy();
 		if (journal === null) fail('requires begin() before host operations');
 		return journal;
@@ -109,9 +141,48 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		const active = journal;
 		journal = null;
 		const errors: unknown[] = [];
-		for (let index = active.length - 1; index >= 0; index--) {
+		while (active.length !== 0) {
 			try {
-				active[index]!();
+				const opcode = active.pop();
+				if (opcode === JournalOpcode.Mount) {
+					const range = active.pop() as CompiledProgramRange;
+					const count = active.pop() as number;
+					const firstHandle = active.pop() as number;
+					for (let index = count - 1; index >= 0; index--) {
+						const handle = firstHandle + index;
+						const instance = instances.get(handle)!;
+						const root = instance.run.nodes[instance.index * instance.run.plan.nodes]!;
+						cleanupRoot(papi, root);
+						unlink(instance, range);
+						instances.delete(handle);
+						roots.delete(root);
+					}
+				} else if (opcode === JournalOpcode.Set) {
+					const previous = active.pop();
+					const slot = active.pop() as number;
+					const handle = active.pop() as number;
+					const instance = instances.get(handle)!;
+					const run = instance.run;
+					const valueIndex = instance.index * run.plan.values.length + slot;
+					const set = run.create.set!;
+					if (!set(run.nodes, slot, previous, instance.index * run.plan.nodes)) {
+						fail(`setter refused rollback slot ${slot}`);
+					}
+					run.values[valueIndex] = previous;
+				} else if (opcode === JournalOpcode.Remove) {
+					const before = active.pop() as Node | null;
+					const parent = active.pop() as Node;
+					const range = active.pop() as CompiledProgramRange;
+					const instance = active.pop() as CompiledProgramInstance<Node>;
+					const handle = active.pop() as number;
+					const root = instance.run.nodes[instance.index * instance.run.plan.nodes]!;
+					papi.insertBefore(parent, root, before);
+					instances.set(handle, instance);
+					roots.set(root, handle);
+					relink(handle, instance, range);
+				} else {
+					throw new Error('Compiled program journal contains an unknown operation.');
+				}
 			} catch (error) {
 				errors.push(error);
 			}
@@ -158,15 +229,31 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		},
 		mount(input) {
 			const undo = requireJournal();
-			requireHandle(input.handle);
-			if (input.handle <= lastHandle) fail(`cannot reuse instance handle ${input.handle}`);
+			requireHandle(input.firstHandle);
+			requireCount(input.count);
+			const finalHandle = input.firstHandle + input.count - 1;
+			if (!Number.isSafeInteger(finalHandle) || finalHandle > MAX_INSTANCE_HANDLE) {
+				fail('instance run exceeds the handle range');
+			}
+			if (input.firstHandle <= lastHandle) {
+				fail(`cannot reuse instance handle ${input.firstHandle}`);
+			}
 			const plan = input.plan;
 			if (plan.kind !== 'program' || plan.nodes <= 0 || plan.ranges.length !== 0) {
 				fail('requires a non-empty range-free compiled program');
 			}
-			if (input.values.length !== plan.values.length) fail('received the wrong value arity');
+			if (input.values.length !== plan.values.length * input.count) {
+				fail('received the wrong value arity');
+			}
+			for (let index = 0; index < input.values.length; index++) {
+				const slot = index % plan.values.length;
+				if (!isSlotValue(plan, slot, input.values[index])) {
+					fail(`received a value outside slot ${slot}'s scalar kind`);
+				}
+			}
 			const events = input.events ?? [];
-			if (events.length !== plan.events.length) fail('received the wrong event arity');
+			if (events.length !== plan.events.length * input.count)
+				fail('received the wrong event arity');
 			const range = ranges.get(input.parent) ?? { head: null, tail: null };
 			let next: number | null = null;
 			if (input.before !== null) {
@@ -190,41 +277,56 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				create = candidate;
 				creates.set(plan, create);
 			}
-			const nodes = new Array<Node>(plan.nodes);
+			const nodes = new Array<Node>(plan.nodes * input.count);
 			try {
-				create.run(pageId, 1, input.values, events, [], nodes);
-				for (let index = 0; index < nodes.length; index++) {
-					const node = nodes[index];
-					if (node === null || typeof node !== 'object') fail(`did not publish node ${index}`);
+				create.run(pageId, input.count, input.values, events, [], nodes);
+				for (let index = 0; index < input.count; index++) {
+					const node = nodes[index * plan.nodes];
+					if (node === null || typeof node !== 'object') fail(`did not publish root ${index}`);
+					papi.insertBefore(input.parent, node, input.before);
 				}
-				papi.insertBefore(input.parent, nodes[0]!, input.before);
 			} catch (error) {
-				try {
-					cleanupRoot(papi, nodes[0]);
-				} catch (cleanupError) {
+				const cleanupErrors: unknown[] = [];
+				for (let index = input.count - 1; index >= 0; index--) {
+					try {
+						cleanupRoot(papi, nodes[index * plan.nodes]);
+					} catch (cleanupError) {
+						cleanupErrors.push(cleanupError);
+					}
+				}
+				if (cleanupErrors.length !== 0) {
 					faulted = true;
-					throw new AggregateError([error, cleanupError], 'Compiled program mount cleanup failed.');
+					throw new AggregateError(
+						[error, ...cleanupErrors],
+						'Compiled program mount cleanup failed.',
+					);
 				}
 				throw error;
 			}
-			instances.set(input.handle, {
+			const run: CompiledProgramRun<Node> = {
 				create,
 				nodes,
-				parent: input.parent,
 				plan,
-				previous,
-				next,
 				values: [...input.values],
-			});
-			lastHandle = input.handle;
-			roots.set(nodes[0]!, input.handle);
-			relink(input.handle, instances.get(input.handle)!, range);
-			undo.push(() => {
-				cleanupRoot(papi, nodes[0]);
-				unlink(instances.get(input.handle)!, range);
-				instances.delete(input.handle);
-				roots.delete(nodes[0]!);
-			});
+			};
+			let runPrevious = previous;
+			for (let index = 0; index < input.count; index++) {
+				const handle = input.firstHandle + index;
+				const nodeOffset = index * plan.nodes;
+				const instance: CompiledProgramInstance<Node> = {
+					index,
+					parent: input.parent,
+					previous: runPrevious,
+					next,
+					run,
+				};
+				instances.set(handle, instance);
+				roots.set(nodes[nodeOffset]!, handle);
+				relink(handle, instance, range);
+				runPrevious = handle;
+			}
+			lastHandle = finalHandle;
+			undo.push(input.firstHandle, input.count, range, JournalOpcode.Mount);
 		},
 		set(handle, slot, value) {
 			const undo = requireJournal();
@@ -232,25 +334,24 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			if (!Number.isSafeInteger(slot) || slot < 0) fail('requires a non-negative value slot');
 			const instance = instances.get(handle);
 			if (instance === undefined) fail(`does not hold instance ${handle}`);
-			if (slot >= instance.plan.values.length) fail(`does not hold value slot ${slot}`);
-			const planSlot = instance.plan.values[slot]!;
-			const kind = instance.plan.slots[planSlot];
-			if (
-				kind === 'c'
-					? typeof value !== 'string'
-					: kind?.startsWith('p:') !== true || !isScalar(value)
-			) {
+			const run = instance.run;
+			if (slot >= run.plan.values.length) fail(`does not hold value slot ${slot}`);
+			if (!isSlotValue(run.plan, slot, value)) {
 				fail(`received a value outside slot ${slot}'s scalar kind`);
 			}
-			const previous = instance.values[slot];
+			const valueIndex = instance.index * run.plan.values.length + slot;
+			const previous = run.values[valueIndex];
 			if (Object.is(previous, value)) return false;
-			const set = instance.create.set;
+			const set = run.create.set;
 			if (set === undefined) fail('does not have an emitted value-slot setter');
+			const nodeOffset = instance.index * run.plan.nodes;
 			try {
-				if (!set(instance.nodes, slot, value)) fail(`setter refused value slot ${slot}`);
+				if (!set(run.nodes, slot, value, nodeOffset)) fail(`setter refused value slot ${slot}`);
 			} catch (error) {
 				try {
-					if (!set(instance.nodes, slot, previous)) fail(`setter refused rollback slot ${slot}`);
+					if (!set(run.nodes, slot, previous, nodeOffset)) {
+						fail(`setter refused rollback slot ${slot}`);
+					}
 				} catch (rollbackError) {
 					faulted = true;
 					throw new AggregateError(
@@ -260,11 +361,8 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				}
 				throw error;
 			}
-			instance.values[slot] = value;
-			undo.push(() => {
-				if (!set(instance.nodes, slot, previous)) fail(`setter refused rollback slot ${slot}`);
-				instance.values[slot] = previous;
-			});
+			run.values[valueIndex] = value;
+			undo.push(handle, slot, previous, JournalOpcode.Set);
 			return true;
 		},
 		remove(handle) {
@@ -272,13 +370,17 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			requireHandle(handle);
 			const instance = instances.get(handle);
 			if (instance === undefined) fail(`does not hold instance ${handle}`);
-			const root = instance.nodes[0]!;
+			const root = instance.run.nodes[instance.index * instance.run.plan.nodes]!;
 			const parent = papi.getParent(root);
 			if (parent === null || !papi.isEqual(parent, instance.parent))
 				fail('found a detached instance');
 			const range = ranges.get(instance.parent);
 			if (range === undefined) fail('lost the instance range order');
-			const before = instance.next === null ? null : instances.get(instance.next)!.nodes[0]!;
+			const nextInstance = instance.next === null ? undefined : instances.get(instance.next)!;
+			const before =
+				nextInstance === undefined
+					? null
+					: nextInstance.run.nodes[nextInstance.index * nextInstance.run.plan.nodes]!;
 			try {
 				papi.remove(parent, root);
 			} catch (error) {
@@ -298,12 +400,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			unlink(instance, range);
 			instances.delete(handle);
 			roots.delete(root);
-			undo.push(() => {
-				papi.insertBefore(parent, root, before);
-				instances.set(handle, instance);
-				roots.set(root, handle);
-				relink(handle, instance, range);
-			});
+			undo.push(handle, instance, range, parent, before, JournalOpcode.Remove);
 		},
 		size() {
 			return instances.size;
@@ -320,9 +417,10 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			}
 			for (const [handle, instance] of instances) {
 				try {
-					cleanupRoot(papi, instance.nodes[0]);
+					const root = instance.run.nodes[instance.index * instance.run.plan.nodes]!;
+					cleanupRoot(papi, root);
 					instances.delete(handle);
-					roots.delete(instance.nodes[0]!);
+					roots.delete(root);
 				} catch (error) {
 					errors.push(error);
 				}

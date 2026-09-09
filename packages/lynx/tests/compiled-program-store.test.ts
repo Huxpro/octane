@@ -1,4 +1,8 @@
-import type { UniversalHostTemplateProgram, UniversalProgramPlan } from 'octane/universal/native';
+import type {
+	UniversalHostTemplateProgram,
+	UniversalProgramCreate,
+	UniversalProgramPlan,
+} from 'octane/universal/native';
 import { describe, expect, it } from 'vitest';
 
 import { emitLynxMainThreadProgram } from '../src/compiler/emit-main-thread-program.js';
@@ -71,7 +75,8 @@ function mountRow(
 	before: FakeNode | null = null,
 ): void {
 	store.mount({
-		handle,
+		firstHandle: handle,
+		count: 1,
 		parent: page,
 		before,
 		plan,
@@ -91,6 +96,45 @@ function mountCommitted(
 }
 
 describe('@octanejs/lynx compact compiled-program store', () => {
+	it('mounts and addresses a dense instance run from one flat output', () => {
+		const papi = emittedHost();
+		const page = papi.createPage('0', 0);
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page));
+		const emitted = emittedPlan(papi);
+		const counts: number[] = [];
+		const plan: UniversalProgramPlan = {
+			...emitted,
+			bind(host) {
+				const create = emitted.bind(host);
+				const run = create.run!;
+				Object.defineProperty(create, 'run', {
+					value(...args: Parameters<NonNullable<UniversalProgramCreate['run']>>) {
+						counts.push(args[1]);
+						run(...args);
+					},
+				});
+				return create;
+			},
+		};
+		store.begin();
+		store.mount({
+			firstHandle: 1,
+			count: 3,
+			parent: page,
+			before: null,
+			plan,
+			values: ['row-1', 'cold', 'label-1', 'row-2', 'cold', 'label-2', 'row-3', 'cold', 'label-3'],
+		});
+		store.commit();
+		expect(counts).toEqual([3]);
+		expect(store.size()).toBe(3);
+		expect(page.children.map((node) => node.id)).toEqual(['row-1', 'row-2', 'row-3']);
+		store.begin();
+		expect(store.set(2, 0, 'selected')).toBe(true);
+		store.commit();
+		expect(page.children.map((node) => node.id)).toEqual(['row-1', 'selected', 'row-3']);
+	});
+
 	it('mounts through the emitted driver and updates generated scalar slots in place', () => {
 		const papi = emittedHost();
 		const page = papi.createPage('0', 0);
@@ -125,11 +169,35 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 
 		store.begin();
 		expect(() =>
-			store.mount({ handle: 0, parent: page, before: null, plan, values: ['a', 'b', 'c'] }),
+			store.mount({
+				firstHandle: 0,
+				count: 1,
+				parent: page,
+				before: null,
+				plan,
+				values: ['a', 'b', 'c'],
+			}),
 		).toThrow(/positive instance handle/);
 		expect(() =>
-			store.mount({ handle: 1, parent: page, before: null, plan, values: ['a'] }),
+			store.mount({
+				firstHandle: 1,
+				count: 1,
+				parent: page,
+				before: null,
+				plan,
+				values: ['a'],
+			}),
 		).toThrow(/value arity/);
+		expect(() =>
+			store.mount({
+				firstHandle: 1,
+				count: 1,
+				parent: page,
+				before: null,
+				plan,
+				values: ['a', 'b', null],
+			}),
+		).toThrow(/scalar kind/);
 		store.rollback();
 		expect(page.children).toEqual([]);
 		mountCommitted(store, papi, page);
