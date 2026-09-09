@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-09T03:43:24.792Z",
+  "source": {
+    "commit": "b5a0149d24adfb35fce992e6feb0f6cf9b9cfa4d",
+    "dirty": false,
+    "toolSha256": "d1a11d8f14362e77fc63f3166c2dee7e7b16054b67d352a81ad22eed5f7c7672"
+  },
+  "toolchain": {
+    "node": "v22.22.2",
+    "platform": "linux 5.15.120.bsk.3-amd64"
+  },
+  "harness": "product",
+  "reference": {
+    "medianGzip": 54323,
+    "targetRatio": 1.5,
+    "targetGzip": 81484.5,
+    "source": "benchmarks/lynx-bundle-size/results/m3-default-path-audit.md"
+  },
+  "arms": [
+    {
+      "key": "baseline",
+      "label": "baseline (no ablation)",
+      "ablatedExports": [],
+      "productBundleRaw": 418005,
+      "productBundleGzip": 160511,
+      "productBundleBrotli": 134730,
+      "productBundleSha256": "536f12776f15acee80e191e9075f64af830cedf606beebbf04c7d41fed5e640e",
+      "productBackgroundRaw": 187742,
+      "productBackgroundGzip": 53880,
+      "productBackgroundBrotli": 46365,
+      "productBackgroundSha256": "0868633b429f4cef4a692342b1142a2ce58ec8447e95045554def9a54374bc37",
+      "productMainRaw": 227416,
+      "productMainGzip": 106320,
+      "productMainBrotli": 87656,
+      "productMainSha256": "4735539a230bdf15a1bfd980499086751a998ab70fa46fe1e3d6253a57427684",
+      "productProgramCount": 1,
+      "productBackgroundProgramCount": 0,
+      "productCoreControls": {
+        "passed": true,
+        "failures": []
+      }
+    },
+    {
+      "key": "receiver",
+      "label": "general main-thread receiver",
+      "ablatedExports": ["main-thread-implementation.ts:installLynxMainThreadWithValidator"],
+      "productBundleRaw": 223390,
+      "productBundleGzip": 70448,
+      "productBundleBrotli": 60438,
+      "productBundleSha256": "bd35a0fe6e76a9e22b581b68e8a87ed7472ba358c65691431a6861ded0707b44",
+      "productBackgroundRaw": 187742,
+      "productBackgroundGzip": 53880,
+      "productBackgroundBrotli": 46365,
+      "productBackgroundSha256": "0868633b429f4cef4a692342b1142a2ce58ec8447e95045554def9a54374bc37",
+      "productMainRaw": 32801,
+      "productMainGzip": 15927,
+      "productMainBrotli": 13815,
+      "productMainSha256": "f238109ff8c66df1b3da87f8d3d2b751f7ee59c51035946b75c1a59302d90f36",
+      "productProgramCount": 1,
+      "productBackgroundProgramCount": 0,
+      "productCoreControls": {
+        "passed": true,
+        "failures": []
+      }
+    }
+  ],
+  "controls": {
+    "checksumRan": false,
+    "checksum": null,
+    "checksumFailures": [],
+    "productCoreControlsPassed": true
+  }
+}
