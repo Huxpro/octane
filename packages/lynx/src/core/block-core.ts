@@ -45,6 +45,12 @@ import type {
 /** Renderer tag every Lynx batch carries; the applier rejects anything else. */
 const LYNX_RENDERER = 'lynx';
 
+// The production refusal is the compact OL015 contract. Guard every call-site
+// argument too, so descriptions and interpolations do not survive merely to be
+// discarded by `fail` after the bundle has already paid for them.
+const LYNX_BLOCK_CORE_DEVELOPMENT =
+	typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__;
+
 /**
  * A compiled template plus the two lookup tables a scoped slot write needs:
  * which host node in the run owns each value slot, and which prop that slot
@@ -71,11 +77,9 @@ export interface LynxBlockTemplate {
 	readonly mainThreadValues: readonly boolean[] | null;
 }
 
-function fail(message: string): never {
+function fail(message: string | false): never {
 	throw new Error(
-		typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
-			? `Octane Lynx block core: ${message}.`
-			: 'Octane Lynx OL015',
+		LYNX_BLOCK_CORE_DEVELOPMENT ? `Octane Lynx block core: ${message}.` : 'Octane Lynx OL015',
 	);
 }
 
@@ -91,7 +95,7 @@ function fail(message: string): never {
  */
 export function compileLynxBlockTemplate(program: UniversalHostTemplateProgram): LynxBlockTemplate {
 	if (!Array.isArray(program.nodes) || program.nodes.length === 0) {
-		fail('a template needs at least one host node');
+		fail(LYNX_BLOCK_CORE_DEVELOPMENT && 'a template needs at least one host node');
 	}
 	// Annotated rather than inferred: `Array.isArray` widens a `readonly T[]` to
 	// `any[]`, which would make every node below implicitly `any`.
@@ -104,7 +108,10 @@ export function compileLynxBlockTemplate(program: UniversalHostTemplateProgram):
 	for (let index = 0; index < source.length; index++) {
 		const node = source[index]!;
 		if (node.type === 'list' || node.type === 'list-item') {
-			fail('native lists are not in the specialized core (issue #103 U2 scope)');
+			fail(
+				LYNX_BLOCK_CORE_DEVELOPMENT &&
+					'native lists are not in the specialized core (issue #103 U2 scope)',
+			);
 		}
 		const props = Object.freeze({ ...node.props });
 		const bindings = node.bindings;
@@ -119,7 +126,10 @@ export function compileLynxBlockTemplate(program: UniversalHostTemplateProgram):
 		if (bindings === undefined) continue;
 		for (const binding of bindings) {
 			if (valueNodes[binding.valueIndex] !== undefined) {
-				fail(`value slot ${binding.valueIndex} is bound by more than one host node`);
+				fail(
+					LYNX_BLOCK_CORE_DEVELOPMENT &&
+						`value slot ${binding.valueIndex} is bound by more than one host node`,
+				);
 			}
 			valueNodes[binding.valueIndex] = index;
 			valueNames[binding.valueIndex] = binding.name;
@@ -128,14 +138,18 @@ export function compileLynxBlockTemplate(program: UniversalHostTemplateProgram):
 				// nor a ref. The applier refuses it too; refusing at compile time
 				// reports the authoring mistake before any instance exists.
 				if (node.type === '#text' || node.type === 'raw-text') {
-					fail(`slot ${binding.valueIndex} binds ${binding.name} on ${node.type}`);
+					fail(
+						LYNX_BLOCK_CORE_DEVELOPMENT &&
+							`slot ${binding.valueIndex} binds ${binding.name} on ${node.type}`,
+					);
 				}
 				(mainThreadValues ??= [])[binding.valueIndex] = true;
 			}
 		}
 	}
 	for (let slot = 0; slot < valueNodes.length; slot++) {
-		if (valueNodes[slot] === undefined) fail(`value slot ${slot} is declared but never bound`);
+		if (valueNodes[slot] === undefined)
+			fail(LYNX_BLOCK_CORE_DEVELOPMENT && `value slot ${slot} is declared but never bound`);
 		if (mainThreadValues !== null) mainThreadValues[slot] ??= false;
 	}
 	// A deeply frozen copy, not the caller's object.
@@ -481,7 +495,10 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		for (let row = 0; row < count; row++) {
 			const source = rows[row]!;
 			if (source.length !== template.valueCount) {
-				fail(`a row supplied ${source.length} values for a ${template.valueCount}-slot template`);
+				fail(
+					LYNX_BLOCK_CORE_DEVELOPMENT &&
+						`a row supplied ${source.length} values for a ${template.valueCount}-slot template`,
+				);
 			}
 			for (let slot = 0; slot < template.valueCount; slot++) {
 				values[row * template.valueCount + slot] = source[slot];
@@ -636,7 +653,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 	): boolean => {
 		const template = block.template;
 		if (valueIndex < 0 || valueIndex >= template.valueCount) {
-			fail(`value slot ${valueIndex} is outside this template`);
+			fail(LYNX_BLOCK_CORE_DEVELOPMENT && `value slot ${valueIndex} is outside this template`);
 		}
 		// An unchanged slot emits nothing. The live value lives here, so deciding
 		// that costs one comparison and never a round trip.
@@ -715,7 +732,8 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		key: (item: Item, index: number) => unknown,
 		values: (item: Item, index: number) => readonly UniversalHostTemplateProgramValue[],
 	): void => {
-		if (slot.size !== 0) fail('fillForSlot requires an empty range site');
+		if (slot.size !== 0)
+			fail(LYNX_BLOCK_CORE_DEVELOPMENT && 'fillForSlot requires an empty range site');
 		if (items.length === 0) return;
 		captureSlot(slot);
 		const rows = items.map((item, index) => values(item, index));
@@ -725,7 +743,8 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		// reach. The same stance `runtime.ts` takes for keyed for-blocks.
 		const seen = new Set<unknown>();
 		for (const itemKey of keys) {
-			if (seen.has(itemKey)) fail(`duplicate key ${String(itemKey)} in a keyed range`);
+			if (seen.has(itemKey))
+				fail(LYNX_BLOCK_CORE_DEVELOPMENT && `duplicate key ${String(itemKey)} in a keyed range`);
 			seen.add(itemKey);
 		}
 		const blocks = mountRun(slot.parent, null, template, rows, keys);
@@ -752,8 +771,11 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 
 	const core: LynxBlockCore = {
 		beginAttempt() {
-			if (attemptActive) fail('a render attempt is already active');
-			if (commands.length !== 0) fail('a render attempt cannot begin with an unflushed batch');
+			if (attemptActive) fail(LYNX_BLOCK_CORE_DEVELOPMENT && 'a render attempt is already active');
+			if (commands.length !== 0)
+				fail(
+					LYNX_BLOCK_CORE_DEVELOPMENT && 'a render attempt cannot begin with an unflushed batch',
+				);
 			attemptActive = true;
 			attemptNextId = nextId;
 			attemptNextListenerId = nextListenerId;
@@ -798,7 +820,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 
 		openForSlot(block, nodeIndex) {
 			if (nodeIndex < 0 || nodeIndex >= block.template.hostCount) {
-				fail(`host node ${nodeIndex} is outside this template`);
+				fail(LYNX_BLOCK_CORE_DEVELOPMENT && `host node ${nodeIndex} is outside this template`);
 			}
 			return {
 				parent: block.firstId + nodeIndex,
@@ -845,7 +867,8 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			const seen = new Set<unknown>();
 			for (let index = 0; index < items.length; index++) {
 				const itemKey = key(items[index]!, index);
-				if (seen.has(itemKey)) fail(`duplicate key ${String(itemKey)} in a keyed range`);
+				if (seen.has(itemKey))
+					fail(LYNX_BLOCK_CORE_DEVELOPMENT && `duplicate key ${String(itemKey)} in a keyed range`);
 				seen.add(itemKey);
 				keys[index] = itemKey;
 				const survivor = previous.get(itemKey);
@@ -893,7 +916,10 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 				// requirement `runtime.ts:17389` states for the DOM host.
 				const next = values(items[index]!, index);
 				if (next.length !== template.valueCount) {
-					fail(`a row supplied ${next.length} values for a ${template.valueCount}-slot template`);
+					fail(
+						LYNX_BLOCK_CORE_DEVELOPMENT &&
+							`a row supplied ${next.length} values for a ${template.valueCount}-slot template`,
+					);
 				}
 				for (let valueIndex = 0; valueIndex < template.valueCount; valueIndex++) {
 					write(survivor, valueIndex, next[valueIndex]);
@@ -912,7 +938,10 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			if (block === undefined) return undefined;
 			const template = block.template;
 			if (values.length !== template.valueCount) {
-				fail(`a row supplied ${values.length} values for a ${template.valueCount}-slot template`);
+				fail(
+					LYNX_BLOCK_CORE_DEVELOPMENT &&
+						`a row supplied ${values.length} values for a ${template.valueCount}-slot template`,
+				);
 			}
 			for (let valueIndex = 0; valueIndex < template.valueCount; valueIndex++) {
 				write(block, valueIndex, values[valueIndex]!);

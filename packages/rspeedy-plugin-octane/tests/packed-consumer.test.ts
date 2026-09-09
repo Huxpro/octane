@@ -257,7 +257,10 @@ try {
 			expect(blockBackground).not.toContain(
 				'its setup reads a context, which needs the owner chain',
 			);
+			expect(blockBackground).toContain('Octane Lynx OL015');
+			expect(blockBackground).not.toContain('a template needs at least one host node');
 			expect(blockMainThread).not.toContain('Octane Lynx OL013');
+			expect(blockMainThread).not.toContain('Octane Lynx OL015');
 
 			execFileSync(
 				process.execPath,
@@ -286,7 +289,9 @@ try {
 			expect(blockDevelopmentBackground).toContain(
 				'its setup reads a context, which needs the owner chain',
 			);
+			expect(blockDevelopmentBackground).toContain('a template needs at least one host node');
 			expect(blockDevelopmentMainThread).not.toContain('Octane Lynx OL013');
+			expect(blockDevelopmentMainThread).not.toContain('Octane Lynx OL015');
 		} finally {
 			rmSync(temporaryRoot, { recursive: true, force: true });
 		}
