@@ -65,6 +65,7 @@ export interface LynxCompiledProgramMount<Node extends LynxElementRef> {
 export interface LynxCompiledProgramAdoption<
 	Node extends LynxElementRef,
 > extends LynxCompiledProgramMount<Node> {
+	/** Adoption follows the accepted first-screen order, so it is append-only. */
 	readonly before: null;
 	/** Existing first-screen host id of the first program root. */
 	readonly firstId: number;
@@ -499,6 +500,10 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		const previous = next === null ? range.tail : instances.get(next)!.previous;
 		let create = creates.get(plan);
 		if (create === undefined) {
+			// The resolver returns the immutable plan whose digest the two build
+			// outputs already compared. Keep compiler-bug diagnostics in development
+			// without re-validating that build-owned table in production; every value
+			// and identity arriving from the other thread remains checked.
 			if (typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__) {
 				for (let site = 0; site < eventCount; site++) {
 					const event = plan.events[site]!;
