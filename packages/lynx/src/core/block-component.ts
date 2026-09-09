@@ -129,6 +129,12 @@ const UNIVERSAL_FOR: symbol = Symbol.for('octane.universal.for');
 const UNIVERSAL_COMPONENT_VALUE: symbol = Symbol.for('octane.universal.component-value');
 const UNIVERSAL_PROPS: symbol = Symbol.for('octane.universal.props');
 
+// Guard the call-site arguments as well as the final message. A production
+// refusal is the compact OL013 contract, so its diagnostic strings must never
+// enter the background-thread bundle merely to be discarded by `refuse`.
+const LYNX_BLOCK_COMPONENT_DEVELOPMENT =
+	typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__;
+
 /** What `universal-core.ts` throws when a hook runs with no render attempt. */
 const HOOKS_WITHOUT_ATTEMPT =
 	'Universal hooks may only run while a universal component is rendering.';
@@ -190,11 +196,11 @@ function componentName(component: LynxComponent<never>): string {
 	return typeof name === 'string' && name.length !== 0 ? name : '(anonymous)';
 }
 
-function refuse(component: LynxComponent<never>, reason: string): never {
+function refuse(component: LynxComponent<never>, reason: string | false): never {
 	throw new Error(
-		(typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
-			? `Octane Lynx cannot lower component ${componentName(component)} onto the Block core: `
-			: 'Octane Lynx OL013') + `${reason} ${REMEDY}`,
+		LYNX_BLOCK_COMPONENT_DEVELOPMENT
+			? `Octane Lynx cannot lower component ${componentName(component)} onto the Block core: ${reason} ${REMEDY}`
+			: 'Octane Lynx OL013',
 	);
 }
 
@@ -383,11 +389,12 @@ export function lynxBlockProgramForComponent<Props>(
 		readContext(): never {
 			refuse(
 				rendering,
-				'its setup reads a context, which needs the owner chain the Block core does not have yet (issue #135 item 1b).',
+				LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+					'its setup reads a context, which needs the owner chain the Block core does not have yet (issue #135 item 1b).',
 			);
 		},
 		insertionEffect(): never {
-			refuse(rendering, INSERTION_EFFECTS_UNSUPPORTED);
+			refuse(rendering, LYNX_BLOCK_COMPONENT_DEVELOPMENT && INSERTION_EFFECTS_UNSUPPORTED);
 		},
 		layoutEffect(create: () => void | (() => void), deps?: readonly unknown[]): void {
 			useLayoutEffect(create, deps);
@@ -445,7 +452,8 @@ export function lynxBlockProgramForComponent<Props>(
 		if (value === null || typeof value !== 'object' || value.$$kind !== UNIVERSAL_VALUE) {
 			refuse(
 				source,
-				'it did not return a compiled template, so there is nothing to lower. Only a component the Octane compiler lowered to a universal plan can become a block program.',
+				LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+					'it did not return a compiled template, so there is nothing to lower. Only a component the Octane compiler lowered to a universal plan can become a block program.',
 			);
 		}
 		return { source, plan: value.plan, values: value.values };
@@ -472,7 +480,8 @@ export function lynxBlockProgramForComponent<Props>(
 			if (error instanceof Error && error.message === HOOKS_WITHOUT_ATTEMPT) {
 				refuse(
 					source,
-					'its setup calls a hook, and a row of a keyed range has no hook cells on the Block core (issue #135 item 1b). The page that contains it does.',
+					LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+						'its setup calls a hook, and a row of a keyed range has no hook cells on the Block core (issue #135 item 1b). The page that contains it does.',
 				);
 			}
 			throw error;
@@ -518,12 +527,13 @@ export function lynxBlockProgramForComponent<Props>(
 			// same way a row's HOOKS_WITHOUT_ATTEMPT is renamed in
 			// renderPlanValue.
 			if (error instanceof Error && error.message === UNIVERSAL_HOOK_SCOPE_EFFECTS_REFUSED) {
-				refuse(subject, INSERTION_EFFECTS_UNSUPPORTED);
+				refuse(subject, LYNX_BLOCK_COMPONENT_DEVELOPMENT && INSERTION_EFFECTS_UNSUPPORTED);
 			}
 			if (error instanceof Error && error.message === UNIVERSAL_HOOK_SCOPE_CONTEXT_REFUSED) {
 				refuse(
 					subject,
-					'its setup reads a context, which needs the owner chain the Block core does not have yet (issue #135 item 1b).',
+					LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+						'its setup reads a context, which needs the owner chain the Block core does not have yet (issue #135 item 1b).',
 				);
 			}
 			throw error;
@@ -640,7 +650,8 @@ export function lynxBlockProgramForComponent<Props>(
 			if (handler !== null && handler !== undefined) {
 				refuse(
 					source,
-					`an event site of its template holds a ${typeof handler} rather than a handler function or an empty conditional hole.`,
+					LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+						`an event site of its template holds a ${typeof handler} rather than a handler function or an empty conditional hole.`,
 				);
 			}
 			if (patched === slotValues) patched = slotValues.slice();
@@ -675,7 +686,8 @@ export function lynxBlockProgramForComponent<Props>(
 		if (values === null) {
 			refuse(
 				subject,
-				'one of its holes does not hold a value this template can carry. A hole that mounted as text and later held a keyed range is the usual reason: a block holds one template for its lifetime.',
+				LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+					'one of its holes does not hold a value this template can carry. A hole that mounted as text and later held a keyed range is the usual reason: a block holds one template for its lifetime.',
 			);
 		}
 		return values;
@@ -724,7 +736,8 @@ export function lynxBlockProgramForComponent<Props>(
 			if (value === null || typeof value !== 'object' || value.$$kind !== UNIVERSAL_VALUE) {
 				refuse(
 					subject,
-					'a row of one of its keyed ranges is not a compiled template. Only a row the Octane compiler lowered to a universal plan, or one authored as a component that returns one, can mount on a range site.',
+					LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+						'a row of one of its keyed ranges is not a compiled template. Only a row the Octane compiler lowered to a universal plan, or one authored as a component that returns one, can mount on a range site.',
 				);
 			}
 			rendered = { source: subject, plan: value.plan, values: value.values };
@@ -734,21 +747,24 @@ export function lynxBlockProgramForComponent<Props>(
 			if (root.kind !== 'host') {
 				refuse(
 					subject,
-					`a row of one of its keyed ranges is rooted at a ${JSON.stringify(root.kind)} node rather than a host element, and a range mounts one host subtree per row.`,
+					LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+						`a row of one of its keyed ranges is rooted at a ${JSON.stringify(root.kind)} node rather than a host element, and a range mounts one host subtree per row.`,
 				);
 			}
 			const program = compiledUniversalTemplateProgram(encoderFor(context), root);
 			if (program === null) {
 				refuse(
 					subject,
-					'a row of one of its keyed ranges is not entirely compile-time host structure, so there is no static template to mount per row.',
+					LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+						'a row of one of its keyed ranges is not entirely compile-time host structure, so there is no static template to mount per row.',
 				);
 			}
 			const wire = prepareUniversalTemplateProgram(encoderFor(context), program);
 			if (wire === null) {
 				refuse(
 					subject,
-					'this renderer cannot carry a static prop or event site of one of its keyed range rows in a template program.',
+					LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+						'this renderer cannot carry a static prop or event site of one of its keyed range rows in a template program.',
 				);
 			}
 			state.plan = rendered.plan;
@@ -758,7 +774,8 @@ export function lynxBlockProgramForComponent<Props>(
 		} else if (rendered.plan !== state.plan) {
 			refuse(
 				subject,
-				'two rows of one keyed range returned different compiled templates, and a range mounts one template for every row.',
+				LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+					'two rows of one keyed range returned different compiled templates, and a range mounts one template for every row.',
 			);
 		}
 		const sites = state.prepared!.events;
@@ -771,7 +788,8 @@ export function lynxBlockProgramForComponent<Props>(
 		if (values === null) {
 			refuse(
 				subject,
-				'a row of one of its keyed ranges holds a value the row template cannot carry — a range nested inside a range is the usual reason, and the Block core has no nested range lowering yet (issue #135 item 1c).',
+				LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+					'a row of one of its keyed ranges holds a value the row template cannot carry — a range nested inside a range is the usual reason, and the Block core has no nested range lowering yet (issue #135 item 1c).',
 			);
 		}
 		return { values, listeners: listenersAt(sites, rendered.values) };
@@ -794,7 +812,8 @@ export function lynxBlockProgramForComponent<Props>(
 		if (list.empty !== null) {
 			refuse(
 				subject,
-				'one of its keyed ranges declares an @empty block, and a range site on the Block core has no empty branch yet.',
+				LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+					'one of its keyed ranges declares an @empty block, and a range site on the Block core has no empty branch yet.',
 			);
 		}
 		const nextSelection = list.keyedSelection ?? null;
@@ -832,7 +851,8 @@ export function lynxBlockProgramForComponent<Props>(
 					if (component === null || component !== prior.component) {
 						refuse(
 							subject,
-							'a compiler-certified keyed selection later produced a different row component.',
+							LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+								'a compiler-certified keyed selection later produced a different row component.',
 						);
 					}
 					if (blockShallowEqual(prior.props, props)) continue;
@@ -1073,7 +1093,8 @@ export function lynxBlockProgramForComponent<Props>(
 			if (!isRangeValue(list)) {
 				refuse(
 					subject,
-					'a hole that mounted a keyed range later held something else, and a block holds one template for its lifetime.',
+					LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+						'a hole that mounted a keyed range later held something else, and a block holds one template for its lifetime.',
 				);
 			}
 			return renderRange(context, range, list);
@@ -1100,7 +1121,8 @@ export function lynxBlockProgramForComponent<Props>(
 			if (rendered.plan !== plan) {
 				refuse(
 					subject,
-					'a later render returned a different compiled template than the one it mounted, and a block holds one template for its lifetime.',
+					LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+						'a later render returned a different compiled template than the one it mounted, and a block holds one template for its lifetime.',
 				);
 			}
 			const values = valuesFor(context, rendered.values);
@@ -1163,14 +1185,16 @@ export function lynxBlockProgramForComponent<Props>(
 				if (root.kind !== 'host') {
 					refuse(
 						subject,
-						`its template is rooted at a ${JSON.stringify(root.kind)} node rather than a host element, and a block mounts one host subtree.`,
+						LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+							`its template is rooted at a ${JSON.stringify(root.kind)} node rather than a host element, and a block mounts one host subtree.`,
 					);
 				}
 				const program = compiledUniversalTemplateProgram(encoderFor(context), root);
 				if (program === null) {
 					refuse(
 						subject,
-						'its template is not entirely compile-time host structure, so there is no static template to mount.',
+						LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+							'its template is not entirely compile-time host structure, so there is no static template to mount.',
 					);
 				}
 				const split = universalTemplateProgramWithoutRanges(program, (slot) =>
@@ -1179,14 +1203,16 @@ export function lynxBlockProgramForComponent<Props>(
 				if (split === null) {
 					refuse(
 						subject,
-						'one of its keyed ranges is not the last child of its host element, and a range appends its rows to that element — so anything authored after it would be painted before every row.',
+						LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+							'one of its keyed ranges is not the last child of its host element, and a range appends its rows to that element — so anything authored after it would be painted before every row.',
 					);
 				}
 				const wire = prepareUniversalTemplateProgram(encoderFor(context), split.compiled);
 				if (wire === null) {
 					refuse(
 						subject,
-						'this renderer cannot carry one of its static props or event sites in a template program.',
+						LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+							'this renderer cannot carry one of its static props or event sites in a template program.',
 					);
 				}
 				plan = rendered.plan;

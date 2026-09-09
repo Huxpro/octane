@@ -87,6 +87,8 @@ describe('@octanejs/rspeedy-plugin packed consumer', () => {
 		const consumerRoot = join(temporaryRoot, 'consumer');
 		const outputRoot = join(consumerRoot, 'dist');
 		const developmentOutputRoot = join(consumerRoot, 'dist-development');
+		const blockOutputRoot = join(consumerRoot, 'dist-block');
+		const blockDevelopmentOutputRoot = join(consumerRoot, 'dist-block-development');
 		try {
 			const archives = packWorkspacePackages(join(temporaryRoot, 'archives'));
 			mkdirSync(consumerRoot, { recursive: true });
@@ -122,6 +124,7 @@ import { pluginOctane } from '@octanejs/rspeedy-plugin';
 
 const mode = process.argv[2] ?? 'production';
 const outputRoot = process.argv[3] ?? ${JSON.stringify(outputRoot)};
+const core = process.argv[4] ?? 'universal';
 const rspeedy = await createRspeedy({
   cwd: ${JSON.stringify(consumerRoot)},
   loadEnv: false,
@@ -139,7 +142,7 @@ const rspeedy = await createRspeedy({
     },
     source: { entry: { main: './src/background.ts' } },
     splitChunks: false,
-    plugins: [pluginOctane({ hmr: mode === 'development', dev: mode === 'development' })],
+    plugins: [pluginOctane({ core, hmr: mode === 'development', dev: mode === 'development' })],
   },
 });
 let result;
@@ -231,6 +234,53 @@ try {
 			expect(developmentBackground).toContain('hot=true');
 			expect(developmentBackground).toContain('live-reload=true');
 			expect(developmentBackground).toContain('protocol=ws');
+
+			execFileSync(process.execPath, ['build.mjs', 'production', blockOutputRoot, 'block'], {
+				cwd: consumerRoot,
+				encoding: 'utf8',
+				stdio: ['ignore', 'pipe', 'pipe'],
+				timeout: 120_000,
+			});
+			const blockBundlePath = join(blockOutputRoot, 'main.lynx.bundle');
+			expect(existsSync(blockBundlePath)).toBe(true);
+			const blockDecoded = await decodeNativeBundle(readFileSync(blockBundlePath));
+			const blockMainThread = nativeScriptText(blockDecoded['main-thread-script']);
+			const blockBackground = nativeScriptText(blockDecoded['background-thread-script']);
+			expect(blockBackground).toContain('Octane Lynx OL013');
+			expect(blockBackground).not.toContain('Attach a block program with withLynxBlockProgram()');
+			expect(blockBackground).not.toContain(
+				'its setup reads a context, which needs the owner chain',
+			);
+			expect(blockMainThread).not.toContain('Octane Lynx OL013');
+
+			execFileSync(
+				process.execPath,
+				['build.mjs', 'development', blockDevelopmentOutputRoot, 'block'],
+				{
+					cwd: consumerRoot,
+					encoding: 'utf8',
+					stdio: ['ignore', 'pipe', 'pipe'],
+					timeout: 120_000,
+				},
+			);
+			const blockDevelopmentBundlePath = join(blockDevelopmentOutputRoot, 'main.lynx.bundle');
+			expect(existsSync(blockDevelopmentBundlePath)).toBe(true);
+			const blockDevelopmentDecoded = await decodeNativeBundle(
+				readFileSync(blockDevelopmentBundlePath),
+			);
+			const blockDevelopmentMainThread = nativeScriptText(
+				blockDevelopmentDecoded['main-thread-script'],
+			);
+			const blockDevelopmentBackground = nativeScriptText(
+				blockDevelopmentDecoded['background-thread-script'],
+			);
+			expect(blockDevelopmentBackground).toContain(
+				'Attach a block program with withLynxBlockProgram()',
+			);
+			expect(blockDevelopmentBackground).toContain(
+				'its setup reads a context, which needs the owner chain',
+			);
+			expect(blockDevelopmentMainThread).not.toContain('Octane Lynx OL013');
 		} finally {
 			rmSync(temporaryRoot, { recursive: true, force: true });
 		}
