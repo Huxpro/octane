@@ -1,9 +1,13 @@
 # M3 general-receiver dependency frontier
 
-Date: 2026-09-09  
-Issue: #290  
-Exact-clean implementation: `636c81f3714e1821c4175891bbb0ddc1971233d8`  
-Checked receipt: [`m3-receiver-dependency-frontier.json`](m3-receiver-dependency-frontier.json)  
+Date: 2026-09-09
+
+Issue: #290
+
+Exact-clean implementation: `636c81f3714e1821c4175891bbb0ddc1971233d8`
+
+Checked receipt: [`m3-receiver-dependency-frontier.json`](m3-receiver-dependency-frontier.json)
+
 Checked receipt SHA-256: `9c6e22f93e900059aef65d1f0556f7a2994d4c9732e89329297800d8cd81eeba`
 
 ## Question
