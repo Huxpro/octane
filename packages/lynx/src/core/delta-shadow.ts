@@ -1,4 +1,8 @@
-import type { UniversalHostBatch, UniversalHostTemplateProgram } from 'octane/universal/native';
+import {
+	universalProgramRangeCommandSlot,
+	type UniversalHostBatch,
+	type UniversalHostTemplateProgram,
+} from 'octane/universal/native';
 import { producedRunProgram } from './run-program.js';
 import {
 	encodeLynxDeltaMessage,
@@ -22,6 +26,7 @@ interface ShadowInstance {
 	readonly templateId: number;
 	readonly program: UniversalHostTemplateProgram;
 	readonly parent: number | null;
+	readonly parentSlot: number;
 	values: unknown[];
 }
 
@@ -36,10 +41,12 @@ export interface LynxDeltaShadowSnapshot {
 		readonly handle: number;
 		readonly templateId: number;
 		readonly parent: number | null;
+		readonly parentSlot: number;
 		readonly values: readonly unknown[];
 	}[];
 	readonly order: readonly {
 		readonly parent: number | null;
+		readonly slot: number;
 		readonly instances: readonly number[];
 	}[];
 }
@@ -62,7 +69,7 @@ interface ShadowState {
 	nextInstance: number;
 	instances: Map<number, ShadowInstance>;
 	hosts: Map<number, ShadowHost>;
-	order: Map<number | null, number[]>;
+	order: Map<number | null, Map<number, number[]>>;
 }
 
 function cloneState(source: ShadowState): ShadowState {
@@ -77,7 +84,12 @@ function cloneState(source: ShadowState): ShadowState {
 			]),
 		),
 		hosts: new Map(source.hosts),
-		order: new Map([...source.order].map(([parent, instances]) => [parent, [...instances]])),
+		order: new Map(
+			[...source.order].map(([parent, slots]) => [
+				parent,
+				new Map([...slots].map(([slot, instances]) => [slot, [...instances]])),
+			]),
+		),
 	};
 }
 
@@ -93,21 +105,27 @@ function snapshotState(state: ShadowState): LynxDeltaShadowSnapshot {
 	return {
 		instances: [...state.instances.values()]
 			.sort((left, right) => left.firstId - right.firstId)
-			.map(({ firstId, handle, templateId, parent, values }) => ({
+			.map(({ firstId, handle, templateId, parent, parentSlot, values }) => ({
 				firstId,
 				handle,
 				templateId,
 				parent,
+				parentSlot,
 				values: [...values],
 			})),
 		order: [...state.order]
 			.sort(([left], [right]) => (left ?? -1) - (right ?? -1))
-			.map(([parent, instances]) => ({
-				parent,
-				// Reported as wire handles: physical order is what a delta applier
-				// reconstructs, and it addresses instances, not command node ids.
-				instances: instances.map((firstId) => state.instances.get(firstId)?.handle ?? -1),
-			})),
+			.flatMap(([parent, slots]) =>
+				[...slots]
+					.sort(([left], [right]) => left - right)
+					.map(([slot, instances]) => ({
+						parent,
+						slot,
+						// Reported as wire handles: physical order is what a delta applier
+						// reconstructs, and it addresses instances, not command node ids.
+						instances: instances.map((firstId) => state.instances.get(firstId)?.handle ?? -1),
+					})),
+			),
 	};
 }
 
@@ -118,27 +136,28 @@ function removeInstance(state: ShadowState, firstId: number): void {
 	for (let index = 0; index < instance.program.nodes.length; index++) {
 		state.hosts.delete(firstId + index);
 	}
-	const order = state.order.get(instance.parent);
+	const order = state.order.get(instance.parent)?.get(instance.parentSlot);
 	if (order !== undefined) order.splice(order.indexOf(firstId), 1);
 }
 
 /**
  * Resolves a command-batch host id to the instance/slot pair the wire needs.
  *
- * The slot is the parent node's index within its own template. That is a stable
- * per-template address of the right cardinality, but it is not yet the
- * compiler's range-site slot: the command ABI records which host a mount landed
- * under, never which hole of that host's template owns the range. Only the
- * instance qualification is claimed here; the final slot numbering arrives with
- * the range-site kinds and is Phase 2's to wire.
+ * A root command targets the distinguished container slot. Every nested command
+ * must carry producer-local provenance from the plan slot that materialized its
+ * physical roots. A parent host's physical node index is not interchangeable
+ * with that compiler slot: one says where the parent lives, the other says which
+ * of its open ranges owns the children.
  */
-function siteOf(state: ShadowState, host: number | null): LynxSlotAddress | null {
+function siteOf(state: ShadowState, host: number | null, command: object): LynxSlotAddress | null {
 	if (host === null) return { instance: ROOT_INSTANCE, slot: 0 };
+	const slot = universalProgramRangeCommandSlot(command);
+	if (slot === undefined || !Number.isSafeInteger(slot) || slot < 0) return null;
 	const entry = state.hosts.get(host);
 	if (entry === undefined) return null;
 	const instance = state.instances.get(entry.firstId);
 	if (instance === undefined) return null;
-	return { instance: instance.handle, slot: entry.nodeIndex };
+	return { instance: instance.handle, slot };
 }
 
 /**
@@ -186,11 +205,7 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 			const removedHosts = new Set<number>();
 			for (const command of batch.commands) {
 				if (command.op === 'mount-template-run' || command.op === 'mount-program-run') {
-					if (
-						command.before !== null ||
-						(command.parent !== null && typeof command.parent !== 'number')
-					)
-						return null;
+					if (command.parent !== null && typeof command.parent !== 'number') return null;
 					// The shadow's whole job is to decline what it cannot express, so an
 					// address it cannot resolve declines rather than throws: this runs
 					// beside the real batch, and a throw here would fail a commit the
@@ -201,7 +216,7 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 					if (stride * command.count !== command.values.length) return null;
 					const runValues = scalarValues(command.values);
 					if (runValues === null) return null;
-					const parentSite = siteOf(next, command.parent);
+					const parentSite = siteOf(next, command.parent, command);
 					if (parentSite === null) return null;
 					const firstInstance = next.nextInstance;
 					let templateId = next.templates.get(wire);
@@ -210,8 +225,27 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 						next.templates.set(wire, templateId);
 					}
 					const parent = command.parent;
-					const order = next.order.get(parent) ?? [];
-					next.order.set(parent, order);
+					let slots = next.order.get(parent);
+					if (slots === undefined) next.order.set(parent, (slots = new Map()));
+					const order = slots.get(parentSite.slot) ?? [];
+					slots.set(parentSite.slot, order);
+					let beforeId: number | null = null;
+					let beforeInstance: ShadowInstance | undefined;
+					if (command.before !== null) {
+						const before = next.hosts.get(command.before);
+						if (before === undefined || before.nodeIndex !== 0) return null;
+						beforeInstance = next.instances.get(before.firstId);
+						if (
+							beforeInstance === undefined ||
+							beforeInstance.parent !== parent ||
+							beforeInstance.parentSlot !== parentSite.slot
+						) {
+							return null;
+						}
+						beforeId = before.firstId;
+					}
+					const insertAt = beforeId === null ? order.length : order.indexOf(beforeId);
+					if (insertAt < 0) return null;
 					const instanceStride =
 						command.op === 'mount-program-run'
 							? (command.stride ?? wire.nodes.length)
@@ -228,18 +262,20 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 							templateId,
 							program: wire,
 							parent,
+							parentSlot: parentSite.slot,
 							values,
 						});
 						for (let nodeIndex = 0; nodeIndex < wire.nodes.length; nodeIndex++) {
 							next.hosts.set(firstId + nodeIndex, { firstId, nodeIndex });
 						}
-						order.push(firstId);
+						order.splice(insertAt + instanceIndex, 0, firstId);
 					}
 					operations.push({
 						op: 'run',
 						templateId,
 						parent: parentSite,
-						before: null,
+						before:
+							beforeInstance === undefined ? null : { instance: beforeInstance.handle, slot: 0 },
 						firstInstance,
 						count: command.count,
 						values: runValues,
@@ -278,12 +314,20 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 					if (host === undefined || (command.before !== null && before === undefined)) return null;
 					if (host.nodeIndex !== 0 || (before != null && before.nodeIndex !== 0)) return null;
 					const instance = next.instances.get(host.firstId)!;
-					if (instance.parent !== command.parent) return null;
-					const moveSite = siteOf(next, command.parent);
+					const moveSite = siteOf(next, command.parent, command);
 					if (moveSite === null) return null;
-					const order = next.order.get(instance.parent)!;
+					if (instance.parent !== command.parent || instance.parentSlot !== moveSite.slot)
+						return null;
+					const order = next.order.get(instance.parent)?.get(instance.parentSlot);
+					if (order === undefined) return null;
 					order.splice(order.indexOf(instance.firstId), 1);
 					const beforeId = before?.firstId ?? null;
+					const anchored = beforeId === null ? undefined : next.instances.get(beforeId);
+					if (
+						anchored !== undefined &&
+						(anchored.parent !== instance.parent || anchored.parentSlot !== instance.parentSlot)
+					)
+						return null;
 					order.splice(
 						beforeId === null ? order.length : order.indexOf(beforeId),
 						0,

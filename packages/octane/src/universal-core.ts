@@ -1320,6 +1320,8 @@ interface BlueprintRange {
 	kind: 'range';
 	key: UniversalKey | null;
 	children: BlueprintNode[];
+	/** Compiler slot retained until a lazily expanded compact list has physical roots. */
+	programRangeSlot?: number;
 	owner?: UniversalOwnerRecord;
 	compactLeafList?: BlueprintCompactLeafList;
 	compactTemplateList?: BlueprintCompactTemplateList;
@@ -1334,6 +1336,8 @@ interface BlueprintRange {
 interface BlueprintHost {
 	kind: 'host';
 	key: UniversalKey | null;
+	/** Compiler slot whose open program range physically owns this host. */
+	programRangeSlot?: number;
 	type: string;
 	props: Record<string, unknown>;
 	ref: unknown;
@@ -1436,6 +1440,9 @@ interface LogicalRecord {
 	children: LogicalRecord[];
 	collapsedTemplate?: CommittedCollapsedTemplate;
 }
+
+/** Accepted placement provenance, paid only by hosts that came from a program range. */
+const LOGICAL_PROGRAM_RANGE_SLOTS = new WeakMap<LogicalRecord, number>();
 
 interface CommittedCollapsedTemplateEvent {
 	readonly index: number;
@@ -2080,6 +2087,18 @@ export function freezeUniversalProgramAddress(
  */
 const COMMAND_PROGRAMS = new WeakMap<object, UniversalHostTemplateProgram>();
 
+/**
+ * The compiler range slot that owns a structural command in this producer.
+ *
+ * This is deliberately parallel to, rather than part of, the command wire. A
+ * receiver already has the resident main-thread plan that validates the slot;
+ * the background delta encoder only needs the exact site while it is looking
+ * at the command object that reconciliation just produced. Keeping the proof
+ * here prevents a physical node index from impersonating a compiler slot and
+ * adds no field to ordinary command serialization.
+ */
+const COMMAND_PROGRAM_RANGE_SLOTS = new WeakMap<object, number>();
+
 /** @internal Bind an addressed command to the program its producer lowered. */
 export function recordUniversalProgramCommand(
 	command: object,
@@ -2093,6 +2112,16 @@ export function universalProgramCommandWire(
 	command: object,
 ): UniversalHostTemplateProgram | undefined {
 	return COMMAND_PROGRAMS.get(command);
+}
+
+/** @internal Bind a structural command to the compiler range slot that owns it. */
+export function recordUniversalProgramRangeCommand(command: object, slot: number): void {
+	COMMAND_PROGRAM_RANGE_SLOTS.set(command, slot);
+}
+
+/** @internal The compiler range slot that owns one producer-local command. */
+export function universalProgramRangeCommandSlot(command: object): number | undefined {
+	return COMMAND_PROGRAM_RANGE_SLOTS.get(command);
 }
 
 export function universalPlan(
@@ -3468,6 +3497,9 @@ function blueprintFromLogical(record: LogicalRecord): BlueprintNode {
 	return {
 		kind: 'host',
 		key: record.key,
+		...(LOGICAL_PROGRAM_RANGE_SLOTS.has(record)
+			? { programRangeSlot: LOGICAL_PROGRAM_RANGE_SLOTS.get(record)! }
+			: null),
 		type: record.type!,
 		props: { ...record.props },
 		ref: record.ref,
@@ -4527,6 +4559,26 @@ function materializeValue(
 	);
 }
 
+/** Mark only the physical roots a plan slot places, stopping at a host boundary. */
+function markProgramRangeRoots(nodes: readonly BlueprintNode[], slot: number): void {
+	for (const node of nodes) {
+		if (node.kind === 'host') {
+			if (
+				node.collapsedTemplate !== undefined ||
+				node.programManifest !== undefined ||
+				node.templatePlan !== undefined
+			) {
+				node.programRangeSlot = slot;
+			}
+		} else if (node.kind === 'range') {
+			node.programRangeSlot = slot;
+			markProgramRangeRoots(node.children, slot);
+		}
+		// A portal's children have a different physical parent and therefore do
+		// not belong to the program range that contains the portal value.
+	}
+}
+
 function materializeNode(
 	node: UniversalPlanNode,
 	values: readonly unknown[],
@@ -4544,8 +4596,18 @@ function materializeNode(
 				: 'A compiled main-thread program plan belongs to the main-thread module of its renderer; the generic universal core cannot interpret one.',
 		);
 	}
-	if (node.kind === 'slot')
-		return materializeValue(values[node.slot], renderer, null, [...path, 'slot', node.slot]);
+	if (node.kind === 'slot') {
+		const children = materializeValue(values[node.slot], renderer, null, [
+			...path,
+			'slot',
+			node.slot,
+		]);
+		const capabilities = currentAttempt().root.driverCapabilities();
+		if (capabilities.templateProgramRuns === true || capabilities.programManifests === true) {
+			markProgramRangeRoots(children, node.slot);
+		}
+		return children;
+	}
 	if (node.kind === 'text') {
 		const value = node.slot === undefined ? (node.value ?? '') : values[node.slot];
 		return materializeValue(value, renderer, null, [...path, 'text']);
@@ -9917,6 +9979,7 @@ class UniversalRootImpl<Container, PublicInstance>
 			const child = node.children[index];
 			const list = child.kind === 'range' ? child.compactLeafList : undefined;
 			const templates = child.kind === 'range' ? child.compactTemplateList : undefined;
+			const programRangeSlot = child.kind === 'range' ? child.programRangeSlot : undefined;
 			if (list === undefined && templates === undefined) {
 				this.expandCompactLeafLists(child);
 				if (expanded !== null) expanded.push(child);
@@ -9936,6 +9999,9 @@ class UniversalRootImpl<Container, PublicInstance>
 						templates.owner,
 					);
 					host.key = templates.keys[templateIndex];
+					if (programRangeSlot !== undefined) {
+						host.programRangeSlot = programRangeSlot;
+					}
 					hosts.push(host);
 				}
 			} else if (list!.host !== null) {
@@ -11563,6 +11629,7 @@ class UniversalRootImpl<Container, PublicInstance>
 		const updates: UniversalHostCommand[] = [];
 		const recreated = new Set<LogicalRecord>();
 		const hostDrafts: DraftRecord[] = [];
+		let nextProgramRangeSlots: Map<LogicalRecord, number | null> | null = null;
 		const collapsedUpdates: {
 			record: LogicalRecord;
 			previous: CommittedCollapsedTemplate;
@@ -11581,6 +11648,15 @@ class UniversalRootImpl<Container, PublicInstance>
 			if (draft.record.kind !== 'host') return;
 			hostDrafts.push(draft);
 			const blueprintHost = draft.blueprint as BlueprintHost;
+			if (
+				blueprintHost.programRangeSlot !== undefined ||
+				LOGICAL_PROGRAM_RANGE_SLOTS.has(draft.record)
+			) {
+				(nextProgramRangeSlots ??= new Map()).set(
+					draft.record,
+					blueprintHost.programRangeSlot ?? null,
+				);
+			}
 			if (programManifestMounts !== null && draft.isNew) {
 				const source = blueprintHost.programManifest;
 				if (source !== undefined) {
@@ -11683,6 +11759,10 @@ class UniversalRootImpl<Container, PublicInstance>
 		const removes: UniversalHostCommand[] = [];
 		const placements: UniversalHostCommand[] = [];
 		const templateRuns: NonNullable<PendingUniversalHostTemplateMount['run']>[] = [];
+		const programRangeSlotOf = (record: LogicalRecord): number | null =>
+			nextProgramRangeSlots?.has(record) === true
+				? nextProgramRangeSlots.get(record)!
+				: (LOGICAL_PROGRAM_RANGE_SLOTS.get(record) ?? null);
 		const placeTemplate = (
 			template: PendingUniversalHostTemplateMount,
 			parent: UniversalHostParent,
@@ -11691,6 +11771,7 @@ class UniversalRootImpl<Container, PublicInstance>
 			const collapsed = template.collapsed;
 			if (collapsed?.prepared !== undefined) {
 				if (this.driver.capabilities?.templateProgramRuns === true) {
+					const programRangeSlot = programRangeSlotOf(template.drafts[0].record);
 					// A run names its program when the build gave the plan an address and
 					// the renderer says it holds one under that name. Both halves are
 					// required: an address with no registry on the other side would mount
@@ -11720,10 +11801,12 @@ class UniversalRootImpl<Container, PublicInstance>
 						address === undefined
 							? previous?.op === 'mount-template-run' &&
 								previous.program === collapsed.prepared.wire &&
+								universalProgramRangeCommandSlot(previous) === (programRangeSlot ?? undefined) &&
 								adjoins(previous)
 							: previous?.op === 'mount-program-run' &&
 								previous.address.module === address.module &&
 								previous.address.index === address.index &&
+								universalProgramRangeCommandSlot(previous) === (programRangeSlot ?? undefined) &&
 								adjoins(previous);
 					if (continues) {
 						const run = previous as NonNullable<PendingUniversalHostTemplateMount['run']>;
@@ -11770,6 +11853,9 @@ class UniversalRootImpl<Container, PublicInstance>
 					// other realm can answer.
 					if (address !== undefined) {
 						recordUniversalProgramCommand(run, collapsed.prepared.wire);
+					}
+					if (programRangeSlot !== null) {
+						recordUniversalProgramRangeCommand(run, programRangeSlot);
 					}
 					template.run = run;
 					template.runIndex = 0;
@@ -11851,15 +11937,21 @@ class UniversalRootImpl<Container, PublicInstance>
 			}
 			if (forceMove) {
 				for (const record of newPhysical) {
-					if (!previousPositions.has(record.id)) {
+					const retained = previousPositions.has(record.id);
+					if (!retained) {
 						placeProgramManifest(record, parentId, endAnchor);
 					}
-					placements.push({
-						op: previousPositions.has(record.id) ? 'move' : 'insert',
+					const placement: UniversalHostCommand = {
+						op: retained ? 'move' : 'insert',
 						parent: parentId,
 						id: record.id,
 						before: endAnchor,
-					});
+					};
+					const slot = programRangeSlotOf(record);
+					if (retained && slot !== null) {
+						recordUniversalProgramRangeCommand(placement, slot);
+					}
+					placements.push(placement);
 				}
 				return;
 			}
@@ -11893,7 +11985,10 @@ class UniversalRootImpl<Container, PublicInstance>
 					if (template !== undefined) placeTemplate(template, parentId, before);
 					else placements.push({ op: 'insert', parent: parentId, id, before });
 				} else {
-					placements.push({ op: 'move', parent: parentId, id, before });
+					const move: UniversalHostCommand = { op: 'move', parent: parentId, id, before };
+					const slot = programRangeSlotOf(record);
+					if (slot !== null) recordUniversalProgramRangeCommand(move, slot);
+					placements.push(move);
 				}
 			}
 		};
@@ -12493,6 +12588,7 @@ class UniversalRootImpl<Container, PublicInstance>
 						readonly source: BlueprintProgramManifest;
 						readonly parent: number | null;
 						readonly before: number | null;
+						readonly programRangeSlot: number | null;
 						readonly firstId: number;
 						readonly firstListenerId: number | null;
 						stride: number;
@@ -12518,6 +12614,9 @@ class UniversalRootImpl<Container, PublicInstance>
 					values: Object.freeze(open.values),
 				});
 				recordUniversalProgramCommand(manifest, open.source.prepared.wire);
+				if (open.programRangeSlot !== null) {
+					recordUniversalProgramRangeCommand(manifest, open.programRangeSlot);
+				}
 				programManifests.push(manifest);
 				open = undefined;
 			};
@@ -12535,6 +12634,7 @@ class UniversalRootImpl<Container, PublicInstance>
 					continue;
 				}
 				const source = pending.source;
+				const programRangeSlot = programRangeSlotOf(record);
 				const deferredListItem = source.program.shape[0]?.type === 'list-item';
 				const sites = source.prepared.events;
 				let firstListenerId: number | null = null;
@@ -12572,6 +12672,7 @@ class UniversalRootImpl<Container, PublicInstance>
 					open.source.address.index === source.address.index &&
 					open.parent === parent &&
 					open.before === before &&
+					open.programRangeSlot === programRangeSlot &&
 					(firstListenerId === null
 						? open.firstListenerId === null
 						: open.firstListenerId !== null &&
@@ -12592,6 +12693,7 @@ class UniversalRootImpl<Container, PublicInstance>
 					source,
 					parent,
 					before,
+					programRangeSlot,
 					firstId: record.id,
 					firstListenerId,
 					stride: 0,
@@ -12804,6 +12906,8 @@ class UniversalRootImpl<Container, PublicInstance>
 				const record = draft.record;
 				const host = draft.blueprint as BlueprintHost;
 				record.type = host.type;
+				if (host.programRangeSlot === undefined) LOGICAL_PROGRAM_RANGE_SLOTS.delete(record);
+				else LOGICAL_PROGRAM_RANGE_SLOTS.set(record, host.programRangeSlot);
 				record.props = host.props;
 				record.ref = host.ref;
 				record.owner = host.owner;

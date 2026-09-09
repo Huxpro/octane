@@ -20,7 +20,9 @@
 
 import {
 	recordUniversalProgramCommand,
+	recordUniversalProgramRangeCommand,
 	universalProgramCommandWire,
+	universalProgramRangeCommandSlot,
 	type UniversalHostCommand,
 	type UniversalHostProgramManifest,
 	type UniversalHostTemplateProgram,
@@ -89,5 +91,7 @@ export function promoteProducedProgramManifest(
 		...(run.deferred === true ? { deferred: true as const } : null),
 	});
 	recordUniversalProgramCommand(command, program);
+	const rangeSlot = universalProgramRangeCommandSlot(manifest);
+	if (rangeSlot !== undefined) recordUniversalProgramRangeCommand(command, rangeSlot);
 	return Object.freeze({ command, program });
 }
