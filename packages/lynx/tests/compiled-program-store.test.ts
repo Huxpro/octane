@@ -595,6 +595,46 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		expect(page.children.map((node) => node.id)).toEqual(['row-2', 'row-1']);
 	});
 
+	it('does not cross to the host for an already-satisfied structure write', () => {
+		const base = emittedHost();
+		let hostCalls = 0;
+		const papi: typeof base = {
+			...base,
+			insertBefore(parent, child, before) {
+				hostCalls++;
+				base.insertBefore(parent, child, before);
+			},
+			setAttribute(node, name, value) {
+				hostCalls++;
+				base.setAttribute(node, name, value);
+			},
+			setEvent(node, kind, name, listener) {
+				hostCalls++;
+				base.setEvent(node, kind, name, listener);
+			},
+		};
+		const page = papi.createPage('0', 0);
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 47);
+		store.begin();
+		store.mount({
+			firstHandle: 1,
+			count: 1,
+			parent: page,
+			before: null,
+			plan: emittedEventPlan(),
+			values: ['row-1', 'cold', 'one'],
+		});
+		store.commit();
+
+		hostCalls = 0;
+		store.begin();
+		expect(store.move(1, null)).toBe(false);
+		expect(store.move(1, 1)).toBe(false);
+		expect(store.visibility(1, true)).toBe(false);
+		store.commit();
+		expect(hostCalls).toBe(0);
+	});
+
 	it('restores event reachability when a visibility write mutates before throwing', () => {
 		const base = emittedHost();
 		let failNext = false;
