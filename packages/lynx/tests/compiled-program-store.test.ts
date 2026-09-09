@@ -67,12 +67,14 @@ function mountRow(
 	papi: LynxElementPAPI<FakeNode>,
 	page: FakeNode,
 	handle = 1,
+	plan = emittedPlan(papi),
+	before: FakeNode | null = null,
 ): void {
 	store.mount({
 		handle,
 		parent: page,
-		before: null,
-		plan: emittedPlan(papi),
+		before,
+		plan,
 		values: [`row-${handle}`, 'cold', `label-${handle}`],
 	});
 }
@@ -303,6 +305,35 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		mountRow(store, papi, page, 3);
 		store.commit();
 		expect(page.children.map((node) => node.id)).toEqual(['row-1', 'row-2', 'row-3']);
+	});
+
+	it('binds each resident plan once and journals O(1) before-anchor links', () => {
+		const papi = emittedHost();
+		const page = papi.createPage('0', 0);
+		const emitted = emittedPlan(papi);
+		let binds = 0;
+		const plan: UniversalProgramPlan = {
+			...emitted,
+			bind(host) {
+				binds++;
+				return emitted.bind(host);
+			},
+		};
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page));
+		store.begin();
+		mountRow(store, papi, page, 1, plan);
+		mountRow(store, papi, page, 2, plan);
+		store.commit();
+		expect(binds).toBe(1);
+
+		store.begin();
+		mountRow(store, papi, page, 3, plan, page.children[1]!);
+		store.commit();
+		expect(page.children.map((node) => node.id)).toEqual(['row-1', 'row-3', 'row-2']);
+		store.begin();
+		store.remove(3);
+		store.rollback();
+		expect(page.children.map((node) => node.id)).toEqual(['row-1', 'row-3', 'row-2']);
 	});
 
 	it('disposes every attached root without leaving retained instances', () => {

@@ -5,6 +5,7 @@ import type { UniversalProgramCreate, UniversalProgramPlan } from 'octane/univer
 import type { LynxElementPAPI, LynxElementRef } from './papi.js';
 
 type CompiledProgramCreate = UniversalProgramCreate & {
+	readonly run: NonNullable<UniversalProgramCreate['run']>;
 	readonly set?: (nodes: readonly unknown[], slot: number, value: unknown) => boolean;
 };
 
@@ -14,6 +15,13 @@ interface CompiledProgramInstance<Node extends LynxElementRef> {
 	readonly parent: Node;
 	readonly plan: UniversalProgramPlan;
 	readonly values: unknown[];
+	next: number | null;
+	previous: number | null;
+}
+
+interface CompiledProgramRange {
+	head: number | null;
+	tail: number | null;
 }
 
 export interface LynxCompiledProgramMount<Node extends LynxElementRef> {
@@ -78,8 +86,9 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	pageId: unknown,
 ): LynxCompiledProgramStore<Node> {
 	const instances = new Map<number, CompiledProgramInstance<Node>>();
+	const creates = new WeakMap<UniversalProgramPlan, CompiledProgramCreate>();
 	const roots = new WeakMap<Node, number>();
-	const order = new Map<Node, number[]>();
+	const ranges = new Map<Node, CompiledProgramRange>();
 	let journal: (() => void)[] | null = null;
 	let journalFirstHandle = 0;
 	let lastHandle = 0;
@@ -113,6 +122,24 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			throw new AggregateError(errors, 'Compiled program frame rollback failed.');
 		}
 	};
+	const unlink = (instance: CompiledProgramInstance<Node>, range: CompiledProgramRange): void => {
+		if (instance.previous === null) range.head = instance.next;
+		else instances.get(instance.previous)!.next = instance.next;
+		if (instance.next === null) range.tail = instance.previous;
+		else instances.get(instance.next)!.previous = instance.previous;
+		if (range.head === null) ranges.delete(instance.parent);
+	};
+	const relink = (
+		handle: number,
+		instance: CompiledProgramInstance<Node>,
+		range: CompiledProgramRange,
+	): void => {
+		if (!ranges.has(instance.parent)) ranges.set(instance.parent, range);
+		if (instance.previous === null) range.head = handle;
+		else instances.get(instance.previous)!.next = handle;
+		if (instance.next === null) range.tail = handle;
+		else instances.get(instance.next)!.previous = handle;
+	};
 
 	return {
 		begin() {
@@ -140,18 +167,28 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			if (input.values.length !== plan.values.length) fail('received the wrong value arity');
 			const events = input.events ?? [];
 			if (events.length !== plan.events.length) fail('received the wrong event arity');
-			const siblings = order.get(input.parent) ?? [];
-			let position = siblings.length;
+			const range = ranges.get(input.parent) ?? { head: null, tail: null };
+			let next: number | null = null;
 			if (input.before !== null) {
 				const beforeHandle = roots.get(input.before);
-				position = beforeHandle === undefined ? -1 : siblings.indexOf(beforeHandle);
-				if (position < 0) fail('received an anchor outside the target range');
+				if (beforeHandle === undefined) fail('received an anchor outside the target range');
+				const anchor = instances.get(beforeHandle);
+				if (anchor === undefined || !papi.isEqual(anchor.parent, input.parent)) {
+					fail('received an anchor outside the target range');
+				}
+				next = beforeHandle;
 			}
+			const previous = next === null ? range.tail : instances.get(next)!.previous;
 
-			const create = plan.bind(papi) as CompiledProgramCreate;
-			if (typeof create.run !== 'function') fail('requires an emitted dense-run driver');
-			if (plan.values.length !== 0 && typeof create.set !== 'function') {
-				fail('requires an emitted value-slot setter');
+			let create = creates.get(plan);
+			if (create === undefined) {
+				const candidate = plan.bind(papi) as CompiledProgramCreate;
+				if (typeof candidate.run !== 'function') fail('requires an emitted dense-run driver');
+				if (plan.values.length !== 0 && typeof candidate.set !== 'function') {
+					fail('requires an emitted value-slot setter');
+				}
+				create = candidate;
+				creates.set(plan, create);
 			}
 			const nodes = new Array<Node>(plan.nodes);
 			try {
@@ -175,19 +212,18 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				nodes,
 				parent: input.parent,
 				plan,
+				previous,
+				next,
 				values: [...input.values],
 			});
 			lastHandle = input.handle;
 			roots.set(nodes[0]!, input.handle);
-			if (!order.has(input.parent)) order.set(input.parent, siblings);
-			siblings.splice(position, 0, input.handle);
+			relink(input.handle, instances.get(input.handle)!, range);
 			undo.push(() => {
 				cleanupRoot(papi, nodes[0]);
+				unlink(instances.get(input.handle)!, range);
 				instances.delete(input.handle);
 				roots.delete(nodes[0]!);
-				const index = siblings.indexOf(input.handle);
-				if (index >= 0) siblings.splice(index, 1);
-				if (siblings.length === 0) order.delete(input.parent);
 			});
 		},
 		set(handle, slot, value) {
@@ -240,11 +276,9 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			const parent = papi.getParent(root);
 			if (parent === null || !papi.isEqual(parent, instance.parent))
 				fail('found a detached instance');
-			const siblings = order.get(instance.parent);
-			const position = siblings?.indexOf(handle) ?? -1;
-			if (siblings === undefined || position < 0) fail('lost the instance range order');
-			const beforeHandle = siblings[position + 1];
-			const before = beforeHandle === undefined ? null : instances.get(beforeHandle)!.nodes[0]!;
+			const range = ranges.get(instance.parent);
+			if (range === undefined) fail('lost the instance range order');
+			const before = instance.next === null ? null : instances.get(instance.next)!.nodes[0]!;
 			try {
 				papi.remove(parent, root);
 			} catch (error) {
@@ -261,17 +295,14 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				}
 				throw error;
 			}
+			unlink(instance, range);
 			instances.delete(handle);
 			roots.delete(root);
-			siblings.splice(position, 1);
-			if (siblings.length === 0) order.delete(instance.parent);
 			undo.push(() => {
 				papi.insertBefore(parent, root, before);
 				instances.set(handle, instance);
 				roots.set(root, handle);
-				const restored = order.get(instance.parent) ?? siblings;
-				if (!order.has(instance.parent)) order.set(instance.parent, restored);
-				restored.splice(position, 0, handle);
+				relink(handle, instance, range);
 			});
 		},
 		size() {
@@ -296,7 +327,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 					errors.push(error);
 				}
 			}
-			order.clear();
+			ranges.clear();
 			if (errors.length !== 0)
 				throw new AggregateError(errors, 'Compiled program disposal failed.');
 		},
