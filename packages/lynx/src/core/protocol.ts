@@ -2116,22 +2116,17 @@ function assertProgramManifest(
 	}
 }
 
-interface LynxProtocolValueDeepValidation {
-	assertWireValue(value: unknown, label: string): void;
-}
-
-interface LynxProtocolOutboundDeepValidation extends LynxProtocolValueDeepValidation {
-	assertBatchContents(
-		batch: UniversalHostBatch,
-		hasPrograms: boolean,
-		resolveProgram: LynxProgramWireResolver | undefined,
-	): void;
-}
+type LynxProtocolValueDeepValidation = (value: unknown, label: string) => void;
+type LynxProtocolBatchDeepValidation = (
+	batch: UniversalHostBatch,
+	hasPrograms: boolean,
+	resolveProgram: LynxProgramWireResolver | undefined,
+) => void;
 
 function assertBatch(
 	value: unknown,
 	identity: UniversalTransportIdentity,
-	deep: LynxProtocolOutboundDeepValidation | null,
+	deep: LynxProtocolBatchDeepValidation | null,
 	resolveProgram: LynxProgramWireResolver | undefined,
 ): asserts value is UniversalHostBatch {
 	const batch = record(value, 'commit.batch');
@@ -2170,7 +2165,7 @@ function assertBatch(
 	// O(commands x props) half, and they are what `trusted` declines. Keep the
 	// recursive implementation behind an injected capability so the standard
 	// paired production entry can make that whole closure unreachable.
-	deep?.assertBatchContents(batch as unknown as UniversalHostBatch, hasPrograms, resolveProgram);
+	deep?.(batch as unknown as UniversalHostBatch, hasPrograms, resolveProgram);
 }
 
 function assertBatchContents(
@@ -2210,7 +2205,7 @@ function assertCallArgs(
 ): void {
 	if (!Array.isArray(value))
 		fail(LYNX_PROTOCOL_DEVELOPMENT && label, LYNX_PROTOCOL_DEVELOPMENT && 'must be an array.');
-	deep?.assertWireValue(value, label);
+	deep?.(value, label);
 }
 
 function assertMainThreadWorklet(
@@ -2226,7 +2221,7 @@ function assertMainThreadWorklet(
 		// The identity a worklet is dispatched by stays checked in both modes;
 		// only its capture graph is the deep walk `trusted` declines.
 		const captures = record(worklet._c, `${label}._c`);
-		deep?.assertWireValue(captures, `${label}._c`);
+		deep?.(captures, `${label}._c`);
 	}
 }
 
@@ -2247,7 +2242,7 @@ function assertBackgroundFunction(
 	if (hasExecution) nonEmptyString(fn._execId, `${label}._execId`);
 	if (hasCaptures) {
 		const captures = record(fn._c, `${label}._c`);
-		deep?.assertWireValue(captures, `${label}._c`);
+		deep?.(captures, `${label}._c`);
 	}
 }
 
@@ -2258,7 +2253,7 @@ function assertCallResult(
 ): void {
 	exactKeys(message, ['protocol', 'renderer', 'root', 'version', 'type', 'call', 'value'], type);
 	positiveInteger(message.call, `${type}.call`);
-	deep?.assertWireValue(message.value, `${type}.value`);
+	deep?.(message.value, `${type}.value`);
 }
 
 function assertCallError(
@@ -2803,24 +2798,16 @@ export function selfCheckLynxBackgroundInboundMessage<Message>(message: Message)
 	return message;
 }
 
-const CHECKED_LYNX_PROTOCOL_VALUE_DEEP_VALIDATION: LynxProtocolValueDeepValidation = Object.freeze({
-	assertWireValue,
-});
-
-const CHECKED_LYNX_PROTOCOL_OUTBOUND_DEEP_VALIDATION: LynxProtocolOutboundDeepValidation =
-	Object.freeze({
-		assertBatchContents,
-		assertWireValue,
-	});
-
 export function validateLynxBackgroundOutboundMessage(
 	value: unknown,
 	mode: LynxValidationMode = 'checked',
 	resolveProgram?: LynxProgramWireResolver,
 ): LynxBackgroundOutboundMessage {
+	const deep = lynxValidationTraverses(mode);
 	return validateLynxBackgroundOutboundMessageWithDeepValidation(
 		value,
-		lynxValidationTraverses(mode) ? CHECKED_LYNX_PROTOCOL_OUTBOUND_DEEP_VALIDATION : null,
+		deep ? assertWireValue : null,
+		deep ? assertBatchContents : null,
 		resolveProgram,
 	);
 }
@@ -2838,12 +2825,13 @@ export function validateLynxPairedProductionBackgroundOutboundMessage(
 	value: unknown,
 	resolveProgram?: LynxProgramWireResolver,
 ): LynxBackgroundOutboundMessage {
-	return validateLynxBackgroundOutboundMessageWithDeepValidation(value, null, resolveProgram);
+	return validateLynxBackgroundOutboundMessageWithDeepValidation(value, null, null, resolveProgram);
 }
 
 function validateLynxBackgroundOutboundMessageWithDeepValidation(
 	value: unknown,
-	deep: LynxProtocolOutboundDeepValidation | null,
+	deepValue: LynxProtocolValueDeepValidation | null,
+	deepBatch: LynxProtocolBatchDeepValidation | null,
 	resolveProgram?: LynxProgramWireResolver,
 ): LynxBackgroundOutboundMessage {
 	const message = record(value, 'outbound message');
@@ -2875,8 +2863,8 @@ function validateLynxBackgroundOutboundMessageWithDeepValidation(
 			'call-main',
 		);
 		positiveInteger(message.call, 'call-main.call');
-		assertMainThreadWorklet(message.worklet, 'call-main.worklet', deep);
-		assertCallArgs(message.args, 'call-main.args', deep);
+		assertMainThreadWorklet(message.worklet, 'call-main.worklet', deepValue);
+		assertCallArgs(message.args, 'call-main.args', deepValue);
 		return message as unknown as LynxCallMainMessage;
 	}
 	if (message.type === 'cancel-main') {
@@ -2885,7 +2873,7 @@ function validateLynxBackgroundOutboundMessageWithDeepValidation(
 		return message as unknown as LynxCancelMainCallMessage;
 	}
 	if (message.type === 'call-background-result') {
-		assertCallResult(message, 'call-background-result', deep);
+		assertCallResult(message, 'call-background-result', deepValue);
 		return message as unknown as LynxCallBackgroundResultMessage;
 	}
 	if (message.type === 'call-background-error') {
@@ -2938,7 +2926,7 @@ function validateLynxBackgroundOutboundMessageWithDeepValidation(
 				LYNX_PROTOCOL_DEVELOPMENT && `must be ${JSON.stringify(LYNX_ANNOUNCED_PUBLIC_INSTANCES)}.`,
 			);
 		}
-		assertBatch(message.batch, message, deep, resolveProgram);
+		assertBatch(message.batch, message, deepBatch, resolveProgram);
 		return message as unknown as LynxTransportCommitMessage;
 	}
 	if (message.type === 'abort') {
@@ -2965,7 +2953,7 @@ export function validateLynxBackgroundInboundMessage(
 ): LynxBackgroundInboundMessage {
 	return validateLynxBackgroundInboundMessageWithDeepValidation(
 		value,
-		lynxValidationTraverses(mode) ? CHECKED_LYNX_PROTOCOL_VALUE_DEEP_VALIDATION : null,
+		lynxValidationTraverses(mode) ? assertWireValue : null,
 	);
 }
 
@@ -3016,7 +3004,7 @@ function validateLynxBackgroundInboundMessageWithDeepValidation(
 			);
 		}
 		record(message.data, 'page-data.data');
-		deep?.assertWireValue(message.data, 'page-data.data');
+		deep?.(message.data, 'page-data.data');
 		return message as unknown as LynxPageDataMessage;
 	}
 	if (message.type === 'global-props') {
@@ -3034,7 +3022,7 @@ function validateLynxBackgroundInboundMessageWithDeepValidation(
 			);
 		}
 		record(message.patch, 'global-props.patch');
-		deep?.assertWireValue(message.patch, 'global-props.patch');
+		deep?.(message.patch, 'global-props.patch');
 		return message as unknown as LynxGlobalPropsMessage;
 	}
 	assertIdentity(message, 'inbound message');
@@ -3161,7 +3149,7 @@ function validateLynxBackgroundInboundMessageWithDeepValidation(
 			const delivery = record(message.deliveries[index], `event.deliveries[${index}]`);
 			exactKeys(delivery, ['listener', 'payload'], `event.deliveries[${index}]`);
 			positiveInteger(delivery.listener, `event.deliveries[${index}].listener`);
-			deep?.assertWireValue(delivery.payload, `event.deliveries[${index}].payload`);
+			deep?.(delivery.payload, `event.deliveries[${index}].payload`);
 		}
 		return message as unknown as UniversalTransportEventMessage;
 	}
