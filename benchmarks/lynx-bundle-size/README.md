@@ -132,6 +132,9 @@ recorded in
 The event-slot identity contract, production diagnostic repayment, and updated
 event-capable frontier are recorded in
 [`results/m3-compact-program-events.md`](results/m3-compact-program-events.md).
+The first-screen evaluator's production diagnostic folding and its exact
+replacement-frontier repayment are recorded in
+[`results/m3-first-screen-diagnostics.md`](results/m3-first-screen-diagnostics.md).
 
 ## Core switch and main-thread program
 
