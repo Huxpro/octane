@@ -23,6 +23,7 @@
 //   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --harness run
 //   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --harness product --output /tmp/l5.json
 //   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --arms baseline,both
+//   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --harness product --arms baseline,receiver
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -31,7 +32,7 @@ import path from 'node:path';
 
 const ROOT = import.meta.dirname;
 const REPO = path.resolve(ROOT, '../..');
-const CORE = 'packages/lynx/src/core';
+const LYNX_SOURCE = 'packages/lynx/src';
 
 // The current six-config ReactLynx/Vue comparison median, carried from
 // `results/m3-default-path-audit.md`. It is a recorded constant, not something
@@ -44,13 +45,17 @@ const TARGET_RATIO = 1.5;
 // removal takes that machinery's whole transitive closure with it. Production
 // tree-shaking computes the closure, which is what makes the number honest:
 // a helper the direct first-screen path still calls stays, and is not counted.
+// `receiver` asks the larger M3 architecture question: what remains when a
+// specialized product entry replaces the general main-thread receiver whole.
+// Its result is the compressed budget that replacement must fit inside, not a
+// claim that a receiver-free artifact is functional.
 const ARMS = {
 	baseline: { label: 'baseline (no ablation)', edits: [] },
 	validator: {
 		label: 'recursive validator',
 		edits: [
 			[
-				'protocol.ts',
+				'core/protocol.ts',
 				[
 					['selfCheckLynxBackgroundInboundMessage', '\treturn message;'],
 					[
@@ -67,7 +72,21 @@ const ARMS = {
 	},
 	batch: {
 		label: 'plan interpreter + batch pipeline',
-		edits: [['host-driver.ts', [['prepareLynxHostBatch', "\tthrow new Error('ablated');"]]]],
+		edits: [['core/host-driver.ts', [['prepareLynxHostBatch', "\tthrow new Error('ablated');"]]]],
+	},
+	receiver: {
+		label: 'general main-thread receiver',
+		edits: [
+			[
+				'main-thread-implementation.ts',
+				[
+					[
+						'installLynxMainThreadWithValidator',
+						'\treturn Object.freeze({}) as LynxMainThreadController;',
+					],
+				],
+			],
+		],
 	},
 	both: { label: 'both', edits: [] },
 };
@@ -104,7 +123,7 @@ function stubFunction(source, name, body) {
 
 function applyArm(arm) {
 	for (const [file, stubs] of ARMS[arm].edits) {
-		const target = path.join(REPO, CORE, file);
+		const target = path.join(REPO, LYNX_SOURCE, file);
 		let source = fs.readFileSync(target, 'utf8');
 		for (const [name, body] of stubs) source = stubFunction(source, name, body);
 		fs.writeFileSync(target, source);
@@ -116,7 +135,7 @@ const originalSources = new Map(
 	Array.from(
 		new Set(
 			Object.values(ARMS).flatMap(({ edits }) =>
-				edits.map(([file]) => path.join(REPO, CORE, file)),
+				edits.map(([file]) => path.join(REPO, LYNX_SOURCE, file)),
 			),
 		),
 		(file) => [file, fs.readFileSync(file)],
@@ -233,8 +252,8 @@ for (const arm of arms) if (!(arm in ARMS)) throw new Error(`unknown arm ${JSON.
 if (!arms.includes('baseline'))
 	throw new Error('the baseline arm is what the others are read against.');
 
-if (git('status', '--porcelain', '--', CORE).trim() !== '') {
-	throw new Error(`${CORE} has uncommitted changes; this tool restores by discarding them.`);
+if (git('status', '--porcelain', '--', LYNX_SOURCE).trim() !== '') {
+	throw new Error(`${LYNX_SOURCE} has uncommitted changes; this tool restores by discarding them.`);
 }
 
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'octane-l5-ceiling-'));
