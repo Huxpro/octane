@@ -39,6 +39,9 @@ const ENTRY_METADATA_KEYS = new Set([
 ]);
 const pluginRequire = createRequire(import.meta.url);
 const mainThreadEntry = fileURLToPath(new URL('./main-thread-entry.js', import.meta.url));
+const mainThreadProductionEntry = fileURLToPath(
+	new URL('./main-thread-entry.production.js', import.meta.url),
+);
 const mainThreadReady = fileURLToPath(new URL('./main-thread-ready.js', import.meta.url));
 const mainThreadCSSHMR = pluginRequire.resolve(
 	'@lynx-js/css-extract-webpack-plugin/runtime/hotModuleReplacement.lepus.cjs',
@@ -368,7 +371,7 @@ export function applyLynxApplication(chain, context, rspeedyConfig, options) {
 			// background graph under the main-thread compiler specialization. The
 			// final module releases manual synchronization only after setup returns.
 			import: [
-				mainThreadEntry,
+				isProd ? mainThreadProductionEntry : mainThreadEntry,
 				...(hmr ? [mainThreadCSSHMR] : []),
 				...configuredEntry.imports,
 				mainThreadReady,

@@ -9,8 +9,8 @@ import { instrumentIssue278NativeSources } from './issue278-native-instrument.mj
 const repositoryRoot = path.resolve(import.meta.dirname, '../../..');
 const files = [
 	'packages/lynx/src/core/transport-codec.ts',
-	'packages/lynx/src/main-thread.ts',
-	'packages/rspeedy-plugin-octane/src/main-thread-entry.js',
+	'packages/lynx/src/main-thread-implementation.ts',
+	'packages/rspeedy-plugin-octane/src/main-thread-entry.production.js',
 ];
 
 function fixture() {
@@ -43,6 +43,8 @@ test('issue #278 instrumentation splits the real codec and restores every source
 		assert.match(mainThread, /issue278CaptureCommitSnapshot/);
 		assert.match(mainThread, /issue278MarkCommitTimeline/);
 		assert.match(mainThread, /completedAtMs/);
+		assert.match(entry, /from '@octanejs\/lynx\/main-thread'/);
+		assert.doesNotMatch(entry, /installLynxApplicationMainThread/);
 		assert.match(entry, /validation: __BENCH_ISSUE278_VALIDATION__/);
 		restore();
 		for (const relative of files) {

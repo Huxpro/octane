@@ -42,7 +42,7 @@ node benchmarks/lynx-bundle-size/l5-ceiling.mjs \
 
 The checked-in raw receipt is
 [`m3-product-l5-ceiling.json`](m3-product-l5-ceiling.json), SHA-256
-`892da042164c9641a0b9d7e84d51945d9b799cc642be655154aa7881d98df9a2`.
+`9b1fc81505be915eec376056198e2586943b51d5938700dd8be755c3d8d4f0e6`.
 It records `dirty: false`, Node 22.22.2, the exact tool hash, every artifact
 hash, and the comparator source. The comparator median and 81,484.5-byte target
 come from [`m3-default-path-audit.md`](m3-default-path-audit.md).

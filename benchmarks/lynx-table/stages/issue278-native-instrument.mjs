@@ -20,11 +20,14 @@ function replaceOnce(source, search, replacement, file) {
 export function instrumentIssue278NativeSources(repositoryRoot, { codec = true } = {}) {
 	const file = path.join(repositoryRoot, 'packages/lynx/src/core/transport-codec.ts');
 	const source = fs.readFileSync(file, 'utf8');
-	const mainThreadFile = path.join(repositoryRoot, 'packages/lynx/src/main-thread.ts');
+	const mainThreadFile = path.join(
+		repositoryRoot,
+		'packages/lynx/src/main-thread-implementation.ts',
+	);
 	const mainThreadSource = fs.readFileSync(mainThreadFile, 'utf8');
 	const mainThreadEntryFile = path.join(
 		repositoryRoot,
-		'packages/rspeedy-plugin-octane/src/main-thread-entry.js',
+		'packages/rspeedy-plugin-octane/src/main-thread-entry.production.js',
 	);
 	const mainThreadEntrySource = fs.readFileSync(mainThreadEntryFile, 'utf8');
 	let instrumented = source;
@@ -245,15 +248,8 @@ function issue278MarkDecoded(commit: boolean): void {
 		if (codec) {
 			mainThreadInstrumented = replaceOnce(
 				mainThreadInstrumented,
-				`type LynxCommitMessage = Extract<
-	ReturnType<typeof validateLynxBackgroundOutboundMessage>,
-	{ type: 'commit' }
->;
-`,
-				`type LynxCommitMessage = Extract<
-	ReturnType<typeof validateLynxBackgroundOutboundMessage>,
-	{ type: 'commit' }
->;
+				"type LynxCommitMessage = Extract<LynxBackgroundOutboundMessage, { type: 'commit' }>;",
+				`type LynxCommitMessage = Extract<LynxBackgroundOutboundMessage, { type: 'commit' }>;
 
 function issue278CopyProfile(
 	raw: Record<string, unknown> | undefined,
@@ -305,10 +301,10 @@ function issue278MarkCommitTimeline(name: string): void {
 			);
 			mainThreadInstrumented = replaceOnce(
 				mainThreadInstrumented,
-				`\t\t\tmessage = validateLynxBackgroundOutboundMessage(data, validation, residentRunProgram);
+				`\t\t\tmessage = validateBackgroundOutbound(data, residentRunProgram);
 \t\t\tif (LYNX_PROFILE) lynxWireProfile().validateMs += performance.now() - startedValidate;
 `,
-				`\t\t\tmessage = validateLynxBackgroundOutboundMessage(data, validation, residentRunProgram);
+				`\t\t\tmessage = validateBackgroundOutbound(data, residentRunProgram);
 \t\t\tif (LYNX_PROFILE) lynxWireProfile().validateMs += performance.now() - startedValidate;
 \t\t\tif (message.type === 'commit') issue278MarkCommitTimeline('validatedAtMs');
 `,
@@ -382,9 +378,15 @@ function issue278MarkCommitTimeline(name: string): void {
 				mainThreadFile,
 			);
 		}
-		const mainThreadEntryInstrumented = replaceOnce(
+		let mainThreadEntryInstrumented = replaceOnce(
 			mainThreadEntrySource,
-			'installLynxMainThread({\n\tfirstScreen: true,\n',
+			"import { installLynxApplicationMainThread } from '@octanejs/lynx/main-thread-application';",
+			"import { installLynxMainThread } from '@octanejs/lynx/main-thread';",
+			mainThreadEntryFile,
+		);
+		mainThreadEntryInstrumented = replaceOnce(
+			mainThreadEntryInstrumented,
+			'installLynxApplicationMainThread({\n\tfirstScreen: true,\n',
 			`installLynxMainThread({
 	firstScreen: true,
 	validation: __BENCH_ISSUE278_VALIDATION__,

@@ -3,8 +3,11 @@
 This private package turns an Octane Lynx application entry into the two
 programs required by a Lynx template:
 
-- the generated main-thread graph installs `installLynxMainThread()` and then
-  evaluates the authored entry with Octane's render-only first-screen runtime;
+- the generated development main-thread graph installs the public checked
+  `installLynxMainThread()` receiver, while a production application selects a
+  paired-build receiver that keeps protocol/renderer/root/version/type/arity
+  checks without retaining the recursive command validator; both then evaluate
+  the authored entry with Octane's render-only first-screen runtime;
   and
 - the same authored entry runs in the background runtime with Octane's full
   Lynx renderer, which adopts or deterministically repairs the first tree.

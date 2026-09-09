@@ -2116,10 +2116,17 @@ function assertProgramManifest(
 	}
 }
 
+type LynxProtocolValueDeepValidation = (value: unknown, label: string) => void;
+type LynxProtocolBatchDeepValidation = (
+	batch: UniversalHostBatch,
+	hasPrograms: boolean,
+	resolveProgram: LynxProgramWireResolver | undefined,
+) => void;
+
 function assertBatch(
 	value: unknown,
 	identity: UniversalTransportIdentity,
-	traverse: boolean,
+	deep: LynxProtocolBatchDeepValidation | null,
 	resolveProgram: LynxProgramWireResolver | undefined,
 ): asserts value is UniversalHostBatch {
 	const batch = record(value, 'commit.batch');
@@ -2155,12 +2162,21 @@ function assertBatch(
 	// The envelope above is O(1) and stays in both modes: it is what decides
 	// which root a commit belongs to and which version it answers, so skipping
 	// it would not be a trust decision but a routing bug. The commands are the
-	// O(commands x props) half, and they are what `trusted` declines.
-	if (!traverse) return;
+	// O(commands x props) half, and they are what `trusted` declines. Keep the
+	// recursive implementation behind an injected capability so the standard
+	// paired production entry can make that whole closure unreachable.
+	deep?.(batch as unknown as UniversalHostBatch, hasPrograms, resolveProgram);
+}
+
+function assertBatchContents(
+	batch: UniversalHostBatch,
+	hasPrograms: boolean,
+	resolveProgram: LynxProgramWireResolver | undefined,
+): void {
 	const validationState: LynxBatchValidationState = { resolveProgram };
 	if (hasPrograms) {
-		for (let index = 0; index < (batch.programs as readonly unknown[]).length; index++) {
-			assertProgramManifest((batch.programs as readonly unknown[])[index], index, validationState);
+		for (let index = 0; index < batch.programs!.length; index++) {
+			assertProgramManifest(batch.programs![index], index, validationState);
 		}
 	}
 	for (let index = 0; index < batch.commands.length; index++) {
@@ -2182,13 +2198,21 @@ function assertRemoteError(
 		);
 }
 
-function assertCallArgs(value: unknown, label: string, traverse: boolean): void {
+function assertCallArgs(
+	value: unknown,
+	label: string,
+	deep: LynxProtocolValueDeepValidation | null,
+): void {
 	if (!Array.isArray(value))
 		fail(LYNX_PROTOCOL_DEVELOPMENT && label, LYNX_PROTOCOL_DEVELOPMENT && 'must be an array.');
-	if (traverse) assertWireValue(value, label);
+	deep?.(value, label);
 }
 
-function assertMainThreadWorklet(value: unknown, label: string, traverse: boolean): void {
+function assertMainThreadWorklet(
+	value: unknown,
+	label: string,
+	deep: LynxProtocolValueDeepValidation | null,
+): void {
 	const worklet = record(value, label);
 	const hasCaptures = Object.prototype.hasOwnProperty.call(worklet, '_c');
 	exactKeys(worklet, hasCaptures ? ['_wkltId', '_c'] : ['_wkltId'], label);
@@ -2197,11 +2221,15 @@ function assertMainThreadWorklet(value: unknown, label: string, traverse: boolea
 		// The identity a worklet is dispatched by stays checked in both modes;
 		// only its capture graph is the deep walk `trusted` declines.
 		const captures = record(worklet._c, `${label}._c`);
-		if (traverse) assertWireValue(captures, `${label}._c`);
+		deep?.(captures, `${label}._c`);
 	}
 }
 
-function assertBackgroundFunction(value: unknown, label: string, traverse: boolean): void {
+function assertBackgroundFunction(
+	value: unknown,
+	label: string,
+	deep: LynxProtocolValueDeepValidation | null,
+): void {
 	const fn = record(value, label);
 	const hasExecution = Object.prototype.hasOwnProperty.call(fn, '_execId');
 	const hasCaptures = Object.prototype.hasOwnProperty.call(fn, '_c');
@@ -2214,18 +2242,18 @@ function assertBackgroundFunction(value: unknown, label: string, traverse: boole
 	if (hasExecution) nonEmptyString(fn._execId, `${label}._execId`);
 	if (hasCaptures) {
 		const captures = record(fn._c, `${label}._c`);
-		if (traverse) assertWireValue(captures, `${label}._c`);
+		deep?.(captures, `${label}._c`);
 	}
 }
 
 function assertCallResult(
 	message: Record<string, unknown>,
 	type: 'call-main-result' | 'call-background-result',
-	traverse: boolean,
+	deep: LynxProtocolValueDeepValidation | null,
 ): void {
 	exactKeys(message, ['protocol', 'renderer', 'root', 'version', 'type', 'call', 'value'], type);
 	positiveInteger(message.call, `${type}.call`);
-	if (traverse) assertWireValue(message.value, `${type}.value`);
+	deep?.(message.value, `${type}.value`);
 }
 
 function assertCallError(
@@ -2775,7 +2803,37 @@ export function validateLynxBackgroundOutboundMessage(
 	mode: LynxValidationMode = 'checked',
 	resolveProgram?: LynxProgramWireResolver,
 ): LynxBackgroundOutboundMessage {
-	const traverse = lynxValidationTraverses(mode);
+	const deep = lynxValidationTraverses(mode);
+	return validateLynxBackgroundOutboundMessageWithDeepValidation(
+		value,
+		deep ? assertWireValue : null,
+		deep ? assertBatchContents : null,
+		resolveProgram,
+	);
+}
+
+/**
+ * Production-only half of the generated paired-application ABI.
+ *
+ * Unlike the public trusted validator this function deliberately has no
+ * development branch. The build plugin selects a different checked entry for
+ * development, so this source may be referenced only by its production entry;
+ * that module boundary is what makes the recursive closure unreachable without
+ * trusting a minifier to reason across exported functions.
+ */
+export function validateLynxPairedProductionBackgroundOutboundMessage(
+	value: unknown,
+	resolveProgram?: LynxProgramWireResolver,
+): LynxBackgroundOutboundMessage {
+	return validateLynxBackgroundOutboundMessageWithDeepValidation(value, null, null, resolveProgram);
+}
+
+function validateLynxBackgroundOutboundMessageWithDeepValidation(
+	value: unknown,
+	deepValue: LynxProtocolValueDeepValidation | null,
+	deepBatch: LynxProtocolBatchDeepValidation | null,
+	resolveProgram?: LynxProgramWireResolver,
+): LynxBackgroundOutboundMessage {
 	const message = record(value, 'outbound message');
 	if (message.type === 'main-ready-request')
 		return assertReady(message, false) as LynxMainReadyRequest;
@@ -2805,8 +2863,8 @@ export function validateLynxBackgroundOutboundMessage(
 			'call-main',
 		);
 		positiveInteger(message.call, 'call-main.call');
-		assertMainThreadWorklet(message.worklet, 'call-main.worklet', traverse);
-		assertCallArgs(message.args, 'call-main.args', traverse);
+		assertMainThreadWorklet(message.worklet, 'call-main.worklet', deepValue);
+		assertCallArgs(message.args, 'call-main.args', deepValue);
 		return message as unknown as LynxCallMainMessage;
 	}
 	if (message.type === 'cancel-main') {
@@ -2815,7 +2873,7 @@ export function validateLynxBackgroundOutboundMessage(
 		return message as unknown as LynxCancelMainCallMessage;
 	}
 	if (message.type === 'call-background-result') {
-		assertCallResult(message, 'call-background-result', traverse);
+		assertCallResult(message, 'call-background-result', deepValue);
 		return message as unknown as LynxCallBackgroundResultMessage;
 	}
 	if (message.type === 'call-background-error') {
@@ -2868,7 +2926,7 @@ export function validateLynxBackgroundOutboundMessage(
 				LYNX_PROTOCOL_DEVELOPMENT && `must be ${JSON.stringify(LYNX_ANNOUNCED_PUBLIC_INSTANCES)}.`,
 			);
 		}
-		assertBatch(message.batch, message, traverse, resolveProgram);
+		assertBatch(message.batch, message, deepBatch, resolveProgram);
 		return message as unknown as LynxTransportCommitMessage;
 	}
 	if (message.type === 'abort') {
@@ -2893,7 +2951,16 @@ export function validateLynxBackgroundInboundMessage(
 	value: unknown,
 	mode: LynxValidationMode = 'checked',
 ): LynxBackgroundInboundMessage {
-	const traverse = lynxValidationTraverses(mode);
+	return validateLynxBackgroundInboundMessageWithDeepValidation(
+		value,
+		lynxValidationTraverses(mode) ? assertWireValue : null,
+	);
+}
+
+function validateLynxBackgroundInboundMessageWithDeepValidation(
+	value: unknown,
+	deep: LynxProtocolValueDeepValidation | null,
+): LynxBackgroundInboundMessage {
 	const message = record(value, 'inbound message');
 	if (message.type === 'main-ready') return assertReady(message, true) as LynxMainReadyReply;
 	if (message.type === 'page-destroy') {
@@ -2937,7 +3004,7 @@ export function validateLynxBackgroundInboundMessage(
 			);
 		}
 		record(message.data, 'page-data.data');
-		if (traverse) assertWireValue(message.data, 'page-data.data');
+		deep?.(message.data, 'page-data.data');
 		return message as unknown as LynxPageDataMessage;
 	}
 	if (message.type === 'global-props') {
@@ -2955,7 +3022,7 @@ export function validateLynxBackgroundInboundMessage(
 			);
 		}
 		record(message.patch, 'global-props.patch');
-		if (traverse) assertWireValue(message.patch, 'global-props.patch');
+		deep?.(message.patch, 'global-props.patch');
 		return message as unknown as LynxGlobalPropsMessage;
 	}
 	assertIdentity(message, 'inbound message');
@@ -2966,8 +3033,8 @@ export function validateLynxBackgroundInboundMessage(
 			'call-background',
 		);
 		positiveInteger(message.call, 'call-background.call');
-		assertBackgroundFunction(message.fn, 'call-background.fn', traverse);
-		assertCallArgs(message.args, 'call-background.args', traverse);
+		assertBackgroundFunction(message.fn, 'call-background.fn', deep);
+		assertCallArgs(message.args, 'call-background.args', deep);
 		return message as unknown as LynxCallBackgroundMessage;
 	}
 	if (message.type === 'cancel-background') {
@@ -2980,7 +3047,7 @@ export function validateLynxBackgroundInboundMessage(
 		return message as unknown as LynxCancelBackgroundCallMessage;
 	}
 	if (message.type === 'call-main-result') {
-		assertCallResult(message, 'call-main-result', traverse);
+		assertCallResult(message, 'call-main-result', deep);
 		return message as unknown as LynxCallMainResultMessage;
 	}
 	if (message.type === 'call-main-error') {
@@ -3082,7 +3149,7 @@ export function validateLynxBackgroundInboundMessage(
 			const delivery = record(message.deliveries[index], `event.deliveries[${index}]`);
 			exactKeys(delivery, ['listener', 'payload'], `event.deliveries[${index}]`);
 			positiveInteger(delivery.listener, `event.deliveries[${index}].listener`);
-			if (traverse) assertWireValue(delivery.payload, `event.deliveries[${index}].payload`);
+			deep?.(delivery.payload, `event.deliveries[${index}].payload`);
 		}
 		return message as unknown as UniversalTransportEventMessage;
 	}

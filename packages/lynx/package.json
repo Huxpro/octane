@@ -50,6 +50,7 @@
     "./intrinsics": "./src/intrinsics.ts",
     "./intrinsics/jsx-runtime": "./src/intrinsics.ts",
     "./main-thread": "./src/main-thread.ts",
+    "./main-thread-application": "./src/main-thread-application.ts",
     "./platform": "./src/platform.ts",
     "./testing": "./src/testing.ts"
   },

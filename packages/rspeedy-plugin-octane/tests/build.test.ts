@@ -419,7 +419,8 @@ describe('@octanejs/rspeedy-plugin native production entries', () => {
 				'/packages/rspeedy-plugin-octane/tests/_fixtures/application/src/background.ts',
 				'/packages/rspeedy-plugin-octane/tests/_fixtures/application/src/App.tsrx',
 				'/packages/lynx/src/root.ts',
-				'/packages/lynx/src/main-thread.ts',
+				'/packages/lynx/src/main-thread-application.ts',
+				'/packages/lynx/src/main-thread-implementation.ts',
 				'/packages/lynx/src/main-worklets.ts',
 				'/packages/lynx/src/core/worklets.ts',
 			]) {
@@ -471,26 +472,31 @@ describe('@octanejs/rspeedy-plugin native production entries', () => {
 			for (const suffix of [
 				'/packages/rspeedy-plugin-octane/tests/_fixtures/application/src/background.ts',
 				'/packages/rspeedy-plugin-octane/tests/_fixtures/application/src/App.tsrx',
-				'/packages/rspeedy-plugin-octane/src/main-thread-entry.js',
+				'/packages/rspeedy-plugin-octane/src/main-thread-entry.production.js',
 				'/packages/rspeedy-plugin-octane/src/main-thread-ready.js',
 				'/packages/lynx/src/first-screen.ts',
 				'/packages/lynx/src/main-renderer.ts',
+				'/packages/lynx/src/main-thread-application.ts',
+				'/packages/lynx/src/main-thread-implementation.ts',
 				'/packages/lynx/src/main-worklets.ts',
 				'/packages/lynx/src/core/worklets.ts',
 			]) {
 				expect(hasSuffix(mainModules, suffix), `missing ${suffix} from main thread`).toBe(true);
 			}
 			for (const suffix of [
-				'/packages/rspeedy-plugin-octane/src/main-thread-entry.js',
+				'/packages/rspeedy-plugin-octane/src/main-thread-entry.production.js',
 				'/packages/rspeedy-plugin-octane/src/main-thread-ready.js',
 				'/packages/lynx/src/first-screen.ts',
 				'/packages/lynx/src/main-renderer.ts',
+				'/packages/lynx/src/main-thread-application.ts',
+				'/packages/lynx/src/main-thread-implementation.ts',
 			]) {
 				expect(hasSuffix(backgroundModules, suffix), `unexpected ${suffix} in background`).toBe(
 					false,
 				);
 			}
 			for (const suffix of [
+				'/packages/lynx/src/main-thread.ts',
 				'/packages/lynx/src/root.ts',
 				'/packages/lynx/src/core/client-driver.ts',
 				'/packages/octane/src/universal-core.ts',
@@ -692,7 +698,11 @@ describe('@octanejs/rspeedy-plugin native production entries', () => {
 			const canonicalModules = moduleIdentifiers.map((identifier) =>
 				identifier.split(/[?!]/, 1)[0].replaceAll('\\', '/'),
 			);
-			for (const suffix of ['/packages/lynx/src/root.ts', '/packages/lynx/src/main-thread.ts']) {
+			for (const suffix of [
+				'/packages/lynx/src/root.ts',
+				'/packages/lynx/src/main-thread-application.ts',
+				'/packages/lynx/src/main-thread-implementation.ts',
+			]) {
 				expect(canonicalModules.some((identifier) => identifier.endsWith(suffix))).toBe(true);
 			}
 			expect(canonicalModules.some((identifier) => FORBIDDEN_MODULE.test(identifier))).toBe(false);

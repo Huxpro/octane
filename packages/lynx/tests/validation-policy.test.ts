@@ -15,6 +15,7 @@ import {
 	LYNX_TRANSPORT_RENDERER,
 	lynxValidationTraverses,
 	validateLynxBackgroundOutboundMessage,
+	validateLynxPairedProductionBackgroundOutboundMessage,
 	type LynxContextProxy,
 	type LynxValidationMode,
 } from '../src/core/protocol.js';
@@ -132,6 +133,23 @@ describe('Lynx validation policy', () => {
 				pattern,
 			);
 		}
+	});
+
+	it('gives the generated production entry a shallow-only validator', () => {
+		const malformedCommand = commitWithBadCommand({ op: 'teleport', id: 1 });
+
+		// The development entry never imports this boundary; it selects the public
+		// checked installer instead. Calling it directly proves that the production
+		// graph has no hidden deep branch which could retain the command validator.
+		expect(validateLynxPairedProductionBackgroundOutboundMessage(malformedCommand)).toBe(
+			malformedCommand,
+		);
+		expect(() =>
+			validateLynxPairedProductionBackgroundOutboundMessage({
+				...malformedCommand,
+				protocol: UNIVERSAL_TRANSPORT_PROTOCOL_VERSION + 1,
+			}),
+		).toThrow(/protocol/);
 	});
 
 	describe('over a real pair of threads', () => {

@@ -448,7 +448,7 @@ function requireFunction<
 			return next.replaceAll('performance.now()', 'Date.now()');
 		});
 
-		updateRepo('packages/lynx/src/main-thread.ts', (source, file) => {
+		updateRepo('packages/lynx/src/main-thread-implementation.ts', (source, file) => {
 			let next = replaceOnce(
 				source,
 				`\tconst reported: Error[] = [];
