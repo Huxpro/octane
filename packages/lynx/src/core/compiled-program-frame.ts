@@ -16,31 +16,34 @@ const END_INSTANCE = 0;
 const ROOT_INSTANCE = 1;
 const MAX_INSTANCE = 2 ** 31 - 1;
 const RUN_HEADER_FIELDS = 7;
+const LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT =
+	typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__;
 
 export type LynxCompiledProgramResolver = (template: number) => UniversalProgramPlan | undefined;
 
-function fail(message: string): never {
+function fail(message: string | false): never {
 	throw new TypeError(
-		typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+		LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT
 			? `Octane Lynx compact program frame ${message}.`
 			: 'Octane Lynx OL485',
 	);
 }
 
 function index(value: unknown, name: string): number {
-	if (!Number.isSafeInteger(value) || (value as number) < 0) fail(`requires ${name}`);
+	if (!Number.isSafeInteger(value) || (value as number) < 0)
+		fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && `requires ${name}`);
 	return value as number;
 }
 
 function count(value: unknown, name: string): number {
 	const result = index(value, name);
-	if (result === 0) fail(`requires ${name}`);
+	if (result === 0) fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && `requires ${name}`);
 	return result;
 }
 
 function instance(value: unknown, name: string): number {
 	const result = count(value, name);
-	if (result > MAX_INSTANCE) fail(`requires ${name}`);
+	if (result > MAX_INSTANCE) fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && `requires ${name}`);
 	return result;
 }
 
@@ -49,7 +52,8 @@ function instance(value: unknown, name: string): number {
  *
  * The router deliberately allocates no operation objects and gives a RUN's
  * value segment to the store by offset, so the retained value table is its only
- * copy. This slice owns root-level, range- and event-free RUN/SET/REMOVE. Every
+ * copy. This slice owns root-level, range-free RUN/SET/REMOVE, including the
+ * deterministic event-token run carried by a resident program. Every
  * other opcode or address rejects transactionally rather than falling through
  * to a command interpreter.
  */
@@ -60,7 +64,7 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 	input: unknown,
 ): void {
 	if (!Array.isArray(input) || input[0] !== LYNX_DELTA_PROTOCOL_VERSION) {
-		fail('requires a version-2 array envelope');
+		fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'requires a version-2 array envelope');
 	}
 
 	store.begin();
@@ -70,24 +74,31 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 			const opcode = count(input[cursor++], 'a positive opcode');
 			const arity = index(input[cursor++], 'a non-negative frame arity');
 			const end = cursor + arity;
-			if (end > input.length) fail('frame arity extends past the envelope');
+			if (end > input.length)
+				fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'frame arity extends past the envelope');
 
 			if (opcode === Opcode.Run) {
-				if (arity < RUN_HEADER_FIELDS) fail('RUN requires seven header fields');
+				if (arity < RUN_HEADER_FIELDS)
+					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'RUN requires seven header fields');
 				const template = index(input[cursor], 'a non-negative RUN template');
 				const plan = resolve(template);
-				if (plan === undefined) fail(`cannot resolve RUN template ${template}`);
+				if (plan === undefined)
+					fail(
+						LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && `cannot resolve RUN template ${template}`,
+					);
 				if (input[cursor + 1] !== ROOT_INSTANCE || input[cursor + 2] !== 0) {
-					fail('supports only the root range site');
+					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'supports only the root range site');
 				}
 				const beforeInstance = index(input[cursor + 3], 'a non-negative RUN anchor');
-				if (input[cursor + 4] !== 0) fail('requires a root RUN anchor');
+				if (input[cursor + 4] !== 0)
+					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'requires a root RUN anchor');
 				const firstHandle = instance(input[cursor + 5], 'an in-range RUN first instance');
-				if (firstHandle === ROOT_INSTANCE) fail('reserves instance 1 for the root');
+				if (firstHandle === ROOT_INSTANCE)
+					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'reserves instance 1 for the root');
 				const runCount = count(input[cursor + 6], 'a positive RUN count');
 				const valueCount = plan.values.length * runCount;
 				if (!Number.isSafeInteger(valueCount) || arity !== RUN_HEADER_FIELDS + valueCount) {
-					fail('received the wrong RUN value arity');
+					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'received the wrong RUN value arity');
 				}
 				store.mount({
 					before:
@@ -102,23 +113,25 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 					values: input,
 				});
 			} else if (opcode === Opcode.Set) {
-				if (arity !== 3) fail('SET requires three fields');
+				if (arity !== 3)
+					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'SET requires three fields');
 				store.set(
 					instance(input[cursor], 'an in-range SET instance'),
 					index(input[cursor + 1], 'a non-negative SET slot'),
 					input[cursor + 2],
 				);
 			} else if (opcode === Opcode.Remove) {
-				if (arity !== 2) fail('REMOVE requires two fields');
+				if (arity !== 2)
+					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'REMOVE requires two fields');
 				const firstHandle = instance(input[cursor], 'an in-range REMOVE first instance');
 				const removeCount = count(input[cursor + 1], 'a positive REMOVE count');
 				const finalHandle = firstHandle + removeCount - 1;
 				if (!Number.isSafeInteger(finalHandle) || finalHandle > MAX_INSTANCE) {
-					fail('REMOVE run exceeds the instance range');
+					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'REMOVE run exceeds the instance range');
 				}
 				for (let handle = firstHandle; handle <= finalHandle; handle++) store.remove(handle);
 			} else {
-				fail(`does not support opcode ${opcode}`);
+				fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && `does not support opcode ${opcode}`);
 			}
 			cursor = end;
 		}
