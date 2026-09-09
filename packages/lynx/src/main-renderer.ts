@@ -62,6 +62,26 @@ const FIRST_SCREEN_EVENT = Symbol.for('octane.lynx.first-screen-event');
 const NO_CHILDREN = Symbol('octane.lynx.first-screen.no-children');
 const NO_KEY = Symbol('octane.lynx.first-screen.no-key');
 const FIRST_SCREEN_WARM_DEPTH_CAP = 64;
+const LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT =
+	typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__;
+
+function rendererError(message: string | false): Error {
+	return new Error(
+		LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT ? (message as string) : 'Octane Lynx OL486',
+	);
+}
+
+function rendererTypeError(message: string | false): TypeError {
+	return new TypeError(
+		LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT ? (message as string) : 'Octane Lynx OL487',
+	);
+}
+
+function rendererRefusal(message: string | false): LynxFirstScreenRefusalError {
+	return new LynxFirstScreenRefusalError(
+		LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT ? (message as string) : 'Octane Lynx OL488',
+	);
+}
 
 const FIRST_SCREEN_LAZY_METADATA = Object.freeze({
 	id: '<lazy>',
@@ -270,7 +290,10 @@ const FIRST_SCREEN_TEMPLATE_PROGRAMS = new WeakMap<
 
 function currentAttempt(): FirstScreenAttempt {
 	if (CURRENT_ATTEMPT === null) {
-		throw new Error('Lynx first-screen hooks may only run while a component is rendering.');
+		throw rendererError(
+			LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+				'Lynx first-screen hooks may only run while a component is rendering.',
+		);
 	}
 	return CURRENT_ATTEMPT;
 }
@@ -300,8 +323,9 @@ function childOwner(
 
 function assertRenderer(renderer: string): void {
 	if (renderer !== 'lynx') {
-		throw new Error(
-			`Lynx first-screen renderer cannot evaluate renderer ${JSON.stringify(renderer)}.`,
+		throw rendererError(
+			LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+				`Lynx first-screen renderer cannot evaluate renderer ${JSON.stringify(renderer)}.`,
 		);
 	}
 }
@@ -309,8 +333,9 @@ function assertRenderer(renderer: string): void {
 function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
 	if (node.kind === 'template') {
 		if (typeof node.create !== 'function' || !Array.isArray(node.slots)) {
-			throw new TypeError(
-				'A universal template plan requires a create function and a slots array.',
+			throw rendererTypeError(
+				LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+					'A universal template plan requires a create function and a slots array.',
 			);
 		}
 		return Object.freeze({
@@ -321,8 +346,9 @@ function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
 	}
 	if (node.kind === 'program') {
 		if (typeof node.bind !== 'function' || !Number.isSafeInteger(node.nodes) || node.nodes < 0) {
-			throw new TypeError(
-				'A compiled main-thread program plan requires a bind function and a node count.',
+			throw rendererTypeError(
+				LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+					'A compiled main-thread program plan requires a bind function and a node count.',
 			);
 		}
 		// A site naming a node the program does not make would be read against the
@@ -346,8 +372,9 @@ function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
 		let previousSiteNode = -1;
 		for (const site of node.events) {
 			if (!Number.isInteger(site.node) || site.node < 0 || site.node >= node.nodes) {
-				throw new TypeError(
-					`A compiled main-thread program binds an event on node ${site.node}, which is not one of its ${node.nodes} nodes.`,
+				throw rendererTypeError(
+					LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+						`A compiled main-thread program binds an event on node ${site.node}, which is not one of its ${node.nodes} nodes.`,
 				);
 			}
 			// Sites in node order is the third guarantee the compiler already
@@ -359,15 +386,17 @@ function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
 			// the launch after the paint; refused here, it fails the build of the
 			// plan instead.
 			if (site.node < previousSiteNode) {
-				throw new TypeError(
-					`A compiled main-thread program declares its event sites out of node order: node ${site.node} after node ${previousSiteNode}.`,
+				throw rendererTypeError(
+					LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+						`A compiled main-thread program declares its event sites out of node order: node ${site.node} after node ${previousSiteNode}.`,
 				);
 			}
 			previousSiteNode = site.node;
 			const key = `${site.node}\u0000${site.type}`;
 			if (bound.has(key)) {
-				throw new TypeError(
-					`A compiled main-thread program binds two events of type ${JSON.stringify(site.type)} on node ${site.node}; a node carries at most one listener per type.`,
+				throw rendererTypeError(
+					LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+						`A compiled main-thread program binds two events of type ${JSON.stringify(site.type)} on node ${site.node}; a node carries at most one listener per type.`,
 				);
 			}
 			bound.add(key);
@@ -384,8 +413,9 @@ function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
 			// this function exists for plans it did not build.
 			const priority: unknown = site.priority;
 			if (priority !== 'discrete' && priority !== 'continuous' && priority !== 'default') {
-				throw new TypeError(
-					`A compiled main-thread program binds an event on node ${site.node} at priority ${JSON.stringify(site.priority)}; a site is discrete, continuous, or default.`,
+				throw rendererTypeError(
+					LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+						`A compiled main-thread program binds an event on node ${site.node} at priority ${JSON.stringify(site.priority)}; a site is discrete, continuous, or default.`,
 				);
 			}
 		}
@@ -396,8 +426,9 @@ function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
 		const positions = node.nodes + node.ranges.length;
 		for (const declared of node.ranges) {
 			if (!Number.isInteger(declared.id) || declared.id < 0 || declared.id >= positions) {
-				throw new TypeError(
-					`A compiled main-thread program declares a keyed range at position ${declared.id}, which is not one of its ${positions} positions.`,
+				throw rendererTypeError(
+					LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+						`A compiled main-thread program declares a keyed range at position ${declared.id}, which is not one of its ${positions} positions.`,
 				);
 			}
 		}
@@ -482,8 +513,9 @@ function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
 	// Every branch above narrowed `node` away, so widening it back is what lets
 	// the refusal name what it refused. Reading the kind on the throw path keeps
 	// it off the freeze walk, which components with children re-enter per render.
-	throw new TypeError(
-		`Unsupported universal plan node kind ${JSON.stringify((node as UniversalPlanNode).kind)}.`,
+	throw rendererTypeError(
+		LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+			`Unsupported universal plan node kind ${JSON.stringify((node as UniversalPlanNode).kind)}.`,
 	);
 }
 
@@ -502,16 +534,27 @@ function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
  */
 function freezeProgramAddress(address: UniversalProgramAddress): UniversalProgramAddress {
 	if (address === null || typeof address !== 'object') {
-		throw new TypeError('A universal program address must be an object.');
+		throw rendererTypeError(
+			LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT && 'A universal program address must be an object.',
+		);
 	}
 	if (typeof address.module !== 'string' || address.module === '') {
-		throw new TypeError('A universal program address requires a non-empty module id.');
+		throw rendererTypeError(
+			LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+				'A universal program address requires a non-empty module id.',
+		);
 	}
 	if (!Number.isSafeInteger(address.index) || address.index < 0) {
-		throw new TypeError('A universal program address requires a non-negative integer index.');
+		throw rendererTypeError(
+			LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+				'A universal program address requires a non-negative integer index.',
+		);
 	}
 	if (typeof address.digest !== 'string' || address.digest === '') {
-		throw new TypeError('A universal program address requires a non-empty digest.');
+		throw rendererTypeError(
+			LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+				'A universal program address requires a non-empty digest.',
+		);
 	}
 	return Object.freeze({ module: address.module, index: address.index, digest: address.digest });
 }
@@ -547,7 +590,9 @@ export function universalValue(
 	key: UniversalKey | null = null,
 ): UniversalRenderable {
 	if ((plan as { $$kind?: unknown }).$$kind !== UNIVERSAL_PLAN) {
-		throw new TypeError('universalValue expected a universal plan.');
+		throw rendererTypeError(
+			LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT && 'universalValue expected a universal plan.',
+		);
 	}
 	return { $$kind: UNIVERSAL_VALUE, plan, values, key } as unknown as UniversalRenderable;
 }
@@ -726,7 +771,10 @@ export function universalActivity(
 	body: () => UniversalRenderable,
 ): UniversalRenderable {
 	if (mode !== 'visible' && mode !== 'hidden') {
-		throw new TypeError(`Universal Activity mode must be "visible" or "hidden".`);
+		throw rendererTypeError(
+			LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+				`Universal Activity mode must be "visible" or "hidden".`,
+		);
 	}
 	return { $$kind: UNIVERSAL_ACTIVITY, mode, body } as never;
 }
@@ -756,8 +804,9 @@ function componentMetadata(component: UniversalComponent<any>): {
 		{ id?: unknown; module?: string } | undefined;
 	if (metadata !== undefined) return metadata;
 	if ((component as any)?.[LAZY_COMPONENT] === true) return FIRST_SCREEN_LAZY_METADATA;
-	throw new LynxFirstScreenRefusalError(
-		'Lynx first-screen rendering requires a compiled Lynx component.',
+	throw rendererRefusal(
+		LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+			'Lynx first-screen rendering requires a compiled Lynx component.',
 	);
 }
 
@@ -769,8 +818,9 @@ export function hmrUniversalComponent<P>(
 	const metadata = (component as unknown as Record<PropertyKey, unknown>)[UNIVERSAL_COMPONENT] as
 		{ id?: unknown; module?: string } | undefined;
 	if (metadata?.id !== renderer) {
-		throw new Error(
-			`Universal HMR renderer mismatch: wrapper ${JSON.stringify(renderer)} cannot own ${JSON.stringify(metadata?.id)}.`,
+		throw rendererError(
+			LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+				`Universal HMR renderer mismatch: wrapper ${JSON.stringify(renderer)} cannot own ${JSON.stringify(metadata?.id)}.`,
 		);
 	}
 	const state: {
@@ -786,8 +836,9 @@ export function hmrUniversalComponent<P>(
 				UNIVERSAL_COMPONENT
 			] as { id?: unknown } | undefined;
 			if (nextMetadata?.id !== renderer) {
-				throw new Error(
-					`Universal HMR renderer mismatch: wrapper ${JSON.stringify(renderer)} cannot accept ${JSON.stringify(nextMetadata?.id)}.`,
+				throw rendererError(
+					LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+						`Universal HMR renderer mismatch: wrapper ${JSON.stringify(renderer)} cannot accept ${JSON.stringify(nextMetadata?.id)}.`,
 				);
 			}
 			state.component = next;
@@ -828,17 +879,19 @@ function resolveFirstScreenLazyModule(module: unknown): UniversalComponent<any> 
 		if (defaultExport !== undefined) component = defaultExport;
 	}
 	if (typeof component !== 'function' || (component as any)[LAZY_COMPONENT] === true) {
-		throw new Error(
-			`Universal lazy expected a component function or module default, got ${
-				(component as any)?.[LAZY_COMPONENT] === true ? 'a lazy component' : typeof component
-			}.`,
+		throw rendererError(
+			LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+				`Universal lazy expected a component function or module default, got ${
+					(component as any)?.[LAZY_COMPONENT] === true ? 'a lazy component' : typeof component
+				}.`,
 		);
 	}
 	const resolved = component as UniversalComponent<any>;
 	const metadata = componentMetadata(resolved);
 	if (metadata.id !== 'lynx') {
-		throw new Error(
-			`Universal lazy for renderer "lynx" cannot render component ${JSON.stringify(metadata.id)}.`,
+		throw rendererError(
+			LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+				`Universal lazy for renderer "lynx" cannot render component ${JSON.stringify(metadata.id)}.`,
 		);
 	}
 	return resolved;
@@ -908,7 +961,10 @@ export function lazy<C extends UniversalComponent<any>>(
 }
 
 export function rendererRegion(): never {
-	throw new Error('Lynx first-screen rendering does not support cross-renderer regions.');
+	throw rendererError(
+		LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+			'Lynx first-screen rendering does not support cross-renderer regions.',
+	);
 }
 
 function componentContext(): UniversalRenderContext {
@@ -1369,8 +1425,9 @@ function hostNode(
 		if (name === 'key' || name === 'ref' || name === 'children') continue;
 		const value = rawProps[name];
 		if (isLynxNativeResource(value)) {
-			throw new TypeError(
-				`Lynx first-screen rendering does not support native resource prop ${JSON.stringify(name)} on <${type}>; native resources are background-only.`,
+			throw rendererTypeError(
+				LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+					`Lynx first-screen rendering does not support native resource prop ${JSON.stringify(name)} on <${type}>; native resources are background-only.`,
 			);
 		}
 		const priority = eventPriority(name);
@@ -1448,8 +1505,9 @@ function renderComponentResult(
 ): FirstScreenComponentResult {
 	const metadata = componentMetadata(component);
 	if (metadata !== FIRST_SCREEN_LAZY_METADATA && metadata.id !== 'lynx') {
-		throw new LynxFirstScreenRefusalError(
-			'Lynx first-screen rendering requires a compiled Lynx component.',
+		throw rendererRefusal(
+			LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+				'Lynx first-screen rendering requires a compiled Lynx component.',
 		);
 	}
 	const owner = childOwner(currentOwner());
@@ -1486,16 +1544,18 @@ const TEMPLATE_ENV = Object.freeze({
 	},
 	p(node: FirstScreenHost, name: string, value: unknown): void {
 		if (isLynxNativeResource(value)) {
-			throw new TypeError(
-				`Lynx first-screen rendering does not support native resource prop ${JSON.stringify(name)} on <${node.type}>; native resources are background-only.`,
+			throw rendererTypeError(
+				LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+					`Lynx first-screen rendering does not support native resource prop ${JSON.stringify(name)} on <${node.type}>; native resources are background-only.`,
 			);
 		}
 		(node.props as Record<string, unknown>)[name] = value;
 	},
 	e(node: FirstScreenHost, name: string, value: unknown): void {
 		if (isLynxNativeResource(value)) {
-			throw new TypeError(
-				`Lynx first-screen rendering does not support native resource prop ${JSON.stringify(name)} on <${node.type}>; native resources are background-only.`,
+			throw rendererTypeError(
+				LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+					`Lynx first-screen rendering does not support native resource prop ${JSON.stringify(name)} on <${node.type}>; native resources are background-only.`,
 			);
 		}
 		if (value !== FIRST_SCREEN_EVENT && typeof value !== 'function') return;
@@ -1776,7 +1836,12 @@ function materialize(value: unknown, key: UniversalKey | null): FirstScreenNode[
 		let index = 0;
 		for (const item of record.items as Iterable<unknown>) {
 			const itemKey = (record.key as (item: unknown, index: number) => UniversalKey)(item, index);
-			if (keys.has(itemKey)) throw new Error(`Duplicate universal child key ${String(itemKey)}.`);
+			if (keys.has(itemKey)) {
+				throw rendererError(
+					LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+						`Duplicate universal child key ${String(itemKey)}.`,
+				);
+			}
 			keys.add(itemKey);
 			const itemValue = (record.render as (item: unknown, index: number) => UniversalRenderable)(
 				item,
@@ -1836,7 +1901,10 @@ function materialize(value: unknown, key: UniversalKey | null): FirstScreenNode[
 		];
 	}
 	if (record?.$$kind === UNIVERSAL_PORTAL) {
-		throw new Error('Lynx first-screen rendering does not support portals.');
+		throw rendererError(
+			LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+				'Lynx first-screen rendering does not support portals.',
+		);
 	}
 	if (Array.isArray(value)) {
 		const output: FirstScreenNode[] = [];
@@ -1846,8 +1914,9 @@ function materialize(value: unknown, key: UniversalKey | null): FirstScreenNode[
 	if (typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint') {
 		return [textNode(String(value))];
 	}
-	throw new TypeError(
-		`Unsupported Lynx first-screen child ${Object.prototype.toString.call(value)}.`,
+	throw rendererTypeError(
+		LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+			`Unsupported Lynx first-screen child ${Object.prototype.toString.call(value)}.`,
 	);
 }
 
@@ -1901,9 +1970,10 @@ function assignProgramIds(node: FirstScreenProgram, attempt: FirstScreenAttempt)
 	// unnumbered — every ID zero, which reads as an unpainted node rather than as
 	// a program whose range table disagrees with its node count.
 	if (hole !== ranges.length || host !== node.plan.nodes) {
-		throw new TypeError(
-			`A compiled main-thread program declares ${node.plan.nodes} nodes and ` +
-				`${ranges.length} ranges, but its range positions do not fit that order.`,
+		throw rendererTypeError(
+			LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+				`A compiled main-thread program declares ${node.plan.nodes} nodes and ` +
+					`${ranges.length} ranges, but its range positions do not fit that order.`,
 		);
 	}
 	node.ids = ids;
@@ -2079,8 +2149,9 @@ function collectNodeFirstScreenEvents(
 			// out loud here, where both counts are in hand, rather than left to
 			// surface as a row whose taps reach another row's handlers.
 			if (bound !== template.program.events.length) {
-				throw new Error(
-					'Lynx first-screen template program and its rendered row disagree on how many listeners the row binds.',
+				throw rendererError(
+					LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+						'Lynx first-screen template program and its rendered row disagree on how many listeners the row binds.',
 				);
 			}
 			template.eventsAt = eventsAt;
@@ -2201,7 +2272,10 @@ function templateCommand(
 	parent: number | null,
 ): UniversalHostCommand {
 	if (template.program.events.length !== 0 && template.firstListenerId === null) {
-		throw new Error('Lynx first-screen template program lost its listener identity range.');
+		throw rendererError(
+			LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+				'Lynx first-screen template program lost its listener identity range.',
+		);
 	}
 	return {
 		op: 'mount-template-range',
@@ -2432,7 +2506,10 @@ export function renderLynxFirstScreen<Props>(
 	props: Props,
 ): LynxFirstScreenRenderResult {
 	if (CURRENT_ATTEMPT !== null)
-		throw new Error('Lynx first-screen roots cannot render reentrantly.');
+		throw rendererError(
+			LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+				'Lynx first-screen roots cannot render reentrantly.',
+		);
 	const rootOwner: FirstScreenOwner = { parent: null, contexts: null, visibility: 'visible' };
 	const attempt: FirstScreenAttempt = {
 		owner: rootOwner,
@@ -2451,8 +2528,9 @@ export function renderLynxFirstScreen<Props>(
 	try {
 		const metadata = componentMetadata(component);
 		if (metadata !== FIRST_SCREEN_LAZY_METADATA && metadata.id !== 'lynx') {
-			throw new LynxFirstScreenRefusalError(
-				'Lynx first-screen root.render() requires a compiled Lynx component.',
+			throw rendererRefusal(
+				LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+					'Lynx first-screen root.render() requires a compiled Lynx component.',
 			);
 		}
 		nodes = materialize(component(props, componentContext()), null);
@@ -2460,7 +2538,9 @@ export function renderLynxFirstScreen<Props>(
 	} catch (error) {
 		if (error instanceof FirstScreenSuspense) {
 			throw new Error(
-				'Lynx first-screen rendering suspended without an authored @pending boundary; the synchronous first-screen pass cannot wait for lazy chunks or other asynchronous work.',
+				LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT
+					? 'Lynx first-screen rendering suspended without an authored @pending boundary; the synchronous first-screen pass cannot wait for lazy chunks or other asynchronous work.'
+					: 'Octane Lynx OL489',
 				{ cause: error.thenable },
 			);
 		}
@@ -2489,8 +2569,9 @@ export function renderLynxFirstScreen<Props>(
 				// declines, and there is no version of it that carries a program —
 				// building one would mean re-describing the subtree the program was
 				// compiled to stop describing.
-				throw new TypeError(
-					'A first screen holding a compiled main-thread program has no command batch; it is painted by the direct applier.',
+				throw rendererTypeError(
+					LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+						'A first screen holding a compiled main-thread program has no command batch; it is painted by the direct applier.',
 				);
 			}
 			return (batch ??= buildFirstScreenBatch(nodes, events));
