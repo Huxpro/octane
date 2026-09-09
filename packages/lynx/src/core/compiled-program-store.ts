@@ -417,8 +417,16 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		instances.delete(handle);
 		undo.push(handle, instance, range, parent, before, JournalOpcode.Remove);
 	};
-	const prepareRun = (input: LynxCompiledProgramMount<Node>) => {
+	const writeRun = (
+		input: LynxCompiledProgramMount<Node>,
+		adopted?: LynxCompiledProgramAdoption<Node>,
+	): void => {
 		const undo = requireJournal();
+		if (adopted !== undefined && input.before !== null) {
+			fail(
+				LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'can adopt only an appended first-screen run',
+			);
+		}
 		requireHandle(input.firstHandle);
 		requireCount(input.count);
 		const finalHandle = input.firstHandle + input.count - 1;
@@ -491,6 +499,16 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `received an invalid event site ${site}`);
 			}
 		}
+		if (
+			adopted !== undefined &&
+			((eventCount === 0 && adopted.firstListenerId !== null) ||
+				(eventCount !== 0 && adopted.firstListenerId !== nextListener))
+		) {
+			fail(
+				LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
+					'first-screen listener identity disagrees with the compact cursor',
+			);
+		}
 		const range = ranges.get(input.parent) ?? { head: null, tail: null };
 		let next: number | null = null;
 		if (input.before !== null) {
@@ -514,43 +532,113 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			}
 			creates.set(plan, create);
 		}
-		return { create, eventCount, finalHandle, finalListener, next, previous, range, undo, values };
-	};
-	const publishRun = (
-		input: LynxCompiledProgramMount<Node>,
-		prepared: ReturnType<typeof prepareRun>,
-		nodes: readonly Node[],
-		opcode: JournalOpcode.Mount | JournalOpcode.Adopt,
-		firstId = 0,
-		stride = 0,
-	): void => {
+		let nodes: readonly Node[];
+		if (adopted !== undefined) {
+			nodes = adopted.nodes;
+			if (nodes.length !== plan.nodes * input.count) {
+				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'received the wrong adopted node arity');
+			}
+			const lastId = adopted.firstId + (input.count - 1) * adopted.stride + plan.nodes - 1;
+			if (
+				!Number.isSafeInteger(adopted.firstId) ||
+				adopted.firstId <= 0 ||
+				!Number.isSafeInteger(adopted.stride) ||
+				adopted.stride < plan.nodes ||
+				!Number.isSafeInteger(lastId)
+			) {
+				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'received an invalid first-screen id span');
+			}
+			for (let index = 0; index < nodes.length; index++) {
+				const node = nodes[index];
+				if (node === null || typeof node !== 'object') {
+					fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `cannot adopt missing node ${index}`);
+				}
+				if (index % plan.nodes === 0) {
+					const parent = papi.getParent(node);
+					if (parent === null || !papi.isEqual(parent, input.parent)) {
+						fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `cannot adopt detached root ${index}`);
+					}
+				}
+			}
+		} else {
+			const tokens = new Array<string>(eventCount * input.count);
+			for (let row = 0; row < input.count; row++) {
+				for (let site = 0; site < eventCount; site++) {
+					const event = plan.events[site]!;
+					// A compact handle is the lifetime identity of the entire fixed-shape
+					// instance. Its event host cannot leave independently, so it is the
+					// stale-event key; the listener id still distinguishes every site.
+					tokens[row * eventCount + site] = encodePrevalidatedLynxNativeEventToken(
+						root as number,
+						input.firstHandle + row,
+						1,
+						nextListener + row * eventCount + site,
+						event.priority,
+					);
+				}
+			}
+			const created = new Array<Node>(plan.nodes * input.count);
+			try {
+				create.run(pageId, input.count, values, tokens, [], created);
+				const before = next === null ? null : rootOf(instances.get(next)!);
+				for (let index = 0; index < input.count; index++) {
+					const node = created[index * plan.nodes];
+					if (node === null || typeof node !== 'object')
+						fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `did not publish root ${index}`);
+					papi.insertBefore(input.parent, node, before);
+				}
+			} catch (error) {
+				const cleanupErrors: unknown[] = [];
+				for (let index = input.count - 1; index >= 0; index--) {
+					try {
+						cleanupRoot(papi, created[index * plan.nodes]);
+					} catch (cleanupError) {
+						cleanupErrors.push(cleanupError);
+					}
+				}
+				if (cleanupErrors.length !== 0) {
+					faulted = true;
+					failAggregate(
+						[error, ...cleanupErrors],
+						LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'Compiled program mount cleanup failed.',
+					);
+				}
+				throw error;
+			}
+			nodes = created;
+		}
 		const run: CompiledProgramRun<Node> = {
-			create: prepared.create,
-			firstId,
+			create,
+			firstId: adopted?.firstId ?? 0,
 			listener: nextListener,
 			nodes,
-			plan: input.plan,
-			stride,
-			values: prepared.values,
+			plan,
+			stride: adopted?.stride ?? 0,
+			values,
 		};
-		let runPrevious = prepared.previous;
+		let runPrevious = previous;
 		for (let index = 0; index < input.count; index++) {
 			const handle = input.firstHandle + index;
 			const instance: CompiledProgramInstance<Node> = {
 				index,
 				parent: input.parent,
 				previous: runPrevious,
-				next: prepared.next,
+				next,
 				run,
 				visible: true,
 			};
 			instances.set(handle, instance);
-			relink(handle, instance, prepared.range);
+			relink(handle, instance, range);
 			runPrevious = handle;
 		}
-		lastHandle = prepared.finalHandle;
-		nextListener = prepared.finalListener;
-		prepared.undo.push(input.firstHandle, input.count, prepared.range, opcode);
+		lastHandle = finalHandle;
+		nextListener = finalListener;
+		undo.push(
+			input.firstHandle,
+			input.count,
+			range,
+			adopted === undefined ? JournalOpcode.Mount : JournalOpcode.Adopt,
+		);
 	};
 
 	return {
@@ -616,96 +704,10 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			return true;
 		},
 		adopt(input) {
-			if (input.before !== null) {
-				fail(
-					LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'can adopt only an appended first-screen run',
-				);
-			}
-			const prepared = prepareRun(input);
-			if (
-				(prepared.eventCount === 0 && input.firstListenerId !== null) ||
-				(prepared.eventCount !== 0 && input.firstListenerId !== nextListener)
-			) {
-				fail(
-					LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
-						'first-screen listener identity disagrees with the compact cursor',
-				);
-			}
-			if (input.nodes.length !== input.plan.nodes * input.count) {
-				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'received the wrong adopted node arity');
-			}
-			const lastId = input.firstId + (input.count - 1) * input.stride + input.plan.nodes - 1;
-			if (
-				!Number.isSafeInteger(input.firstId) ||
-				input.firstId <= 0 ||
-				!Number.isSafeInteger(input.stride) ||
-				input.stride < input.plan.nodes ||
-				!Number.isSafeInteger(lastId)
-			) {
-				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'received an invalid first-screen id span');
-			}
-			for (let index = 0; index < input.nodes.length; index++) {
-				const node = input.nodes[index];
-				if (node === null || typeof node !== 'object') {
-					fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `cannot adopt missing node ${index}`);
-				}
-				if (index % input.plan.nodes === 0) {
-					const parent = papi.getParent(node);
-					if (parent === null || !papi.isEqual(parent, input.parent)) {
-						fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `cannot adopt detached root ${index}`);
-					}
-				}
-			}
-			publishRun(input, prepared, input.nodes, JournalOpcode.Adopt, input.firstId, input.stride);
+			writeRun(input, input);
 		},
 		mount(input) {
-			const prepared = prepareRun(input);
-			const plan = input.plan;
-			const tokens = new Array<string>(prepared.eventCount * input.count);
-			for (let row = 0; row < input.count; row++) {
-				for (let site = 0; site < prepared.eventCount; site++) {
-					const event = plan.events[site]!;
-					// A compact handle is the lifetime identity of the entire fixed-shape
-					// instance. Its event host cannot leave independently, so it is the
-					// stale-event key; the listener id still distinguishes every site.
-					tokens[row * prepared.eventCount + site] = encodePrevalidatedLynxNativeEventToken(
-						root as number,
-						input.firstHandle + row,
-						1,
-						nextListener + row * prepared.eventCount + site,
-						event.priority,
-					);
-				}
-			}
-			const nodes = new Array<Node>(plan.nodes * input.count);
-			try {
-				prepared.create.run(pageId, input.count, prepared.values, tokens, [], nodes);
-				const before = prepared.next === null ? null : rootOf(instances.get(prepared.next)!);
-				for (let index = 0; index < input.count; index++) {
-					const node = nodes[index * plan.nodes];
-					if (node === null || typeof node !== 'object')
-						fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `did not publish root ${index}`);
-					papi.insertBefore(input.parent, node, before);
-				}
-			} catch (error) {
-				const cleanupErrors: unknown[] = [];
-				for (let index = input.count - 1; index >= 0; index--) {
-					try {
-						cleanupRoot(papi, nodes[index * plan.nodes]);
-					} catch (cleanupError) {
-						cleanupErrors.push(cleanupError);
-					}
-				}
-				if (cleanupErrors.length !== 0) {
-					faulted = true;
-					failAggregate(
-						[error, ...cleanupErrors],
-						LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'Compiled program mount cleanup failed.',
-					);
-				}
-				throw error;
-			}
-			publishRun(input, prepared, nodes, JournalOpcode.Mount);
+			writeRun(input);
 		},
 		set(handle, slot, value) {
 			const undo = requireJournal();
