@@ -127,6 +127,8 @@ The background-only Block-component-error slice is recorded at
 [`results/m3-production-block-component-error-args.md`](results/m3-production-block-component-error-args.md).
 The shared worklet-error slice is recorded at
 [`results/m3-production-worklet-error-args.md`](results/m3-production-worklet-error-args.md).
+The background-only Block-core-error slice is recorded at
+[`results/m3-production-block-core-error-args.md`](results/m3-production-block-core-error-args.md).
 
 It is a control before it is a measurement. A branch on a constant the bundler
 declines to fold ships both cores and still passes every unit test, so the run
