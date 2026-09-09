@@ -77,6 +77,10 @@ node benchmarks/lynx-bundle-size/l5-ceiling.mjs \
   --harness product \
   --arms baseline,receiver \
   --output /absolute/path/to/receiver-ceiling.json
+node benchmarks/lynx-bundle-size/l5-ceiling.mjs \
+  --harness product \
+  --arms baseline,receiver,receiver-papi,receiver-container,receiver-direct,receiver-render,receiver-transport,receiver-worklets,receiver-foundation-lite,receiver-foundation \
+  --output /absolute/path/to/receiver-frontier.json
 ```
 
 It is an operator tool and not a CI gate: it rewrites `packages/lynx/src` so a
@@ -92,6 +96,19 @@ SHA-256 identities. Product-only mode cannot execute the ablated runtime, so its
 receipt says explicitly that the semantic-checksum control did not run; the
 default harness retains that executable checksum control for the historical
 fixtures.
+
+The `receiver-*` frontier arms start from the receiver-free ceiling and retain
+one existing product dependency boundary at a time: normalized Element PAPI and
+page creation, the general host container, its direct first-screen applier, the
+compiled first-screen evaluator, paired string transport, or the optional
+worklet seam. They are intentionally nonfunctional linkage probes. Their delta
+over `receiver` is the exact production tree-shaken cost of reusing that
+boundary in a replacement; it is not additive across arms and says nothing
+about a newly written implementation with a different closure. The
+`receiver-foundation-lite` arm measures the union without the general host
+container; `receiver-foundation` adds that container. Both exclude the direct
+applier, so shared code is compressed once rather than added from the individual
+deltas.
 
 The checked execution reports are [`results/l5-ceiling.md`](results/l5-ceiling.md)
 and
