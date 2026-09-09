@@ -61,22 +61,27 @@ The checked execution report is
 
 ## L5 ceiling ablation
 
-`l5-ceiling.mjs` answers a question the budgets cannot: what #58's L5 bullet is
-worth. It rebuilds both fixtures above with the plan interpreter, the batch
-pipeline, and the recursive validator absent — by exported entry, letting
-production tree-shaking compute each closure, so a helper the direct first-screen
-path still calls stays and is not counted.
+`l5-ceiling.mjs` answers questions the budgets cannot: what #58's L5 bullet is
+worth, and what compressed budget remains for a specialized M3 main-thread
+receiver. It rebuilds the production fixture with the plan interpreter, the
+batch pipeline, the recursive validator, or the general receiver absent — by
+exported entry, letting production tree-shaking compute each closure, so a
+helper another path still calls stays and is not counted.
 
 ```bash
 node benchmarks/lynx-bundle-size/l5-ceiling.mjs
 node benchmarks/lynx-bundle-size/l5-ceiling.mjs \
   --harness product \
   --output /absolute/path/to/l5-product.json
+node benchmarks/lynx-bundle-size/l5-ceiling.mjs \
+  --harness product \
+  --arms baseline,receiver \
+  --output /absolute/path/to/receiver-ceiling.json
 ```
 
-It is an operator tool and not a CI gate: it rewrites `packages/lynx/src/core`
-so a build can be taken with a target gone, refuses to start unless those sources
-are clean, snapshots their exact bytes, and restores them in a `finally`. Every
+It is an operator tool and not a CI gate: it rewrites `packages/lynx/src` so a
+build can be taken with a target gone, refuses to start unless those sources are
+clean, snapshots their exact bytes, and restores them in a `finally`. Every
 arm must reproduce the baseline's semantic checksums or the run fails, and the
 ablated artifacts are measurement devices rather than functional runtimes.
 
@@ -88,7 +93,9 @@ receipt says explicitly that the semantic-checksum control did not run; the
 default harness retains that executable checksum control for the historical
 fixtures.
 
-The checked execution report is [`results/l5-ceiling.md`](results/l5-ceiling.md).
+The checked execution reports are [`results/l5-ceiling.md`](results/l5-ceiling.md)
+and
+[`results/m3-general-main-thread-receiver-ceiling.md`](results/m3-general-main-thread-receiver-ceiling.md).
 
 ## Core switch and main-thread program
 
