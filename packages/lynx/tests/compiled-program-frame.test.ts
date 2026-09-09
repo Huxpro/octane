@@ -259,15 +259,10 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 			frame,
 			[
 				{
-					address,
-					count: 2,
 					firstId: 10,
 					firstListenerId: 1_000_000,
 					nodes,
-					plan,
 					stride: 4,
-					values,
-					valuesSelected: true,
 				},
 			],
 		);
@@ -311,62 +306,25 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 			[{ id: 1, address }],
 		);
 		const adoption = {
-			address,
-			count: 1,
 			firstId: 10,
 			firstListenerId: 1_000_000,
 			nodes,
-			plan,
 			stride: 4,
-			values,
-			valuesSelected: true,
 		} as const;
 		const resolve = (module: string, index: number) =>
 			module === address.module && index === address.index ? plan : undefined;
 
-		const alias = { ...address, index: 1 };
-		const aliasedFrame = encodeLynxDeltaMessage(
-			[
-				{
-					op: 'run',
-					templateId: 1,
-					parent: { instance: 1, slot: 0 },
-					before: null,
-					firstInstance: 2,
-					count: 1,
-					values,
-				},
-			],
-			[
-				{ id: 1, address },
-				{ id: 1, address: alias },
-			],
+		expect(() => applyLynxCompiledProgramFrame(store, page, resolve, frame, [])).toThrow(
+			/first-screen proof/,
 		);
-		expect(() =>
-			applyLynxCompiledProgramFrame(
-				store,
-				page,
-				(module) => (module === address.module ? plan : undefined),
-				aliasedFrame,
-				[{ ...adoption, address: alias }],
-			),
-		).toThrow(/first-screen run identity/);
 		expect(store.resolve(1)).toBeUndefined();
 		expect(store.size()).toBe(0);
 		expect(page.children).toEqual([nodes[0]]);
 		expect(() =>
 			applyLynxCompiledProgramFrame(store, page, resolve, frame, [
-				{ ...adoption, address: { ...address, index: 1 } },
+				{ ...adoption, firstListenerId: 999_999 },
 			]),
-		).toThrow(/first-screen run identity/);
-		expect(store.resolve(1)).toBeUndefined();
-		expect(store.size()).toBe(0);
-		expect(page.children).toEqual([nodes[0]]);
-		expect(() =>
-			applyLynxCompiledProgramFrame(store, page, resolve, frame, [
-				{ ...adoption, values: ['row-10', 'stale', 'ten'] },
-			]),
-		).toThrow(/first-screen run value/);
+		).toThrow(/listener identity/);
 		expect(store.resolve(1)).toBeUndefined();
 		expect(store.size()).toBe(0);
 		expect(page.children).toEqual([nodes[0]]);

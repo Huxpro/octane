@@ -1,6 +1,6 @@
 declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
 
-import type { UniversalHostProgramAddress, UniversalProgramPlan } from 'octane/universal/native';
+import type { UniversalProgramPlan } from 'octane/universal/native';
 
 import { LYNX_DELTA_PROTOCOL_VERSION } from './delta-protocol.js';
 import type { LynxCompiledProgramStore } from './compiled-program-store.js';
@@ -31,15 +31,10 @@ export type LynxCompiledProgramResolver = (
 
 /** One first-screen run whose build address and painted state were retained locally. */
 export interface LynxCompiledProgramFrameAdoption<Node extends LynxElementRef> {
-	readonly address: UniversalHostProgramAddress;
-	readonly count: number;
 	readonly firstId: number;
 	readonly firstListenerId: number | null;
 	readonly nodes: readonly Node[];
-	readonly plan: UniversalProgramPlan;
 	readonly stride: number;
-	readonly values: readonly unknown[];
-	readonly valuesSelected: boolean;
 }
 
 function fail(message: string | false): never {
@@ -91,7 +86,6 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 
 	store.begin();
 	try {
-		const adoptionTemplates: unknown[] | null = adoptions === undefined ? null : [];
 		let adoptionAt = 0;
 		let cursor = 1;
 		while (cursor < input.length) {
@@ -127,13 +121,7 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 						LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT &&
 							`cannot resolve DEFINE program ${module}#${programIndex}`,
 					);
-				if (!store.define(template, plan) && adoptionTemplates !== null) {
-					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'first-screen run identity differs');
-				}
-				if (adoptionTemplates !== null) {
-					adoptionTemplates[template * 2] = module;
-					adoptionTemplates[template * 2 + 1] = programIndex;
-				}
+				store.define(template, plan);
 			} else if (opcode === Opcode.Run) {
 				if (arity < RUN_HEADER_FIELDS)
 					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'RUN requires seven header fields');
@@ -171,26 +159,11 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 				}
 				const valueOffset = cursor + RUN_HEADER_FIELDS;
 				const adoption = adoptions?.[adoptionAt++];
-				if (adoptions !== undefined) {
-					if (
-						adoption === undefined ||
-						adoption.plan !== plan ||
-						adoption.count !== runCount ||
-						(adoption.valuesSelected ? adoption.values.length !== valueCount : runCount !== 1) ||
-						adoption.address.module !== adoptionTemplates![template * 2] ||
-						adoption.address.index !== adoptionTemplates![template * 2 + 1] ||
-						beforeInstance !== END_INSTANCE
-					) {
-						fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'first-screen run identity differs');
-					}
-					for (let index = 0; index < valueCount; index++) {
-						const painted = adoption.valuesSelected
-							? adoption.values[index]
-							: adoption.values[plan.values[index % plan.values.length]!];
-						if (!Object.is(painted, input[valueOffset + index])) {
-							fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'first-screen run value differs');
-						}
-					}
+				if (
+					adoptions !== undefined &&
+					(adoption === undefined || beforeInstance !== END_INSTANCE)
+				) {
+					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'first-screen proof differs');
 				}
 				if (adoption === undefined)
 					store.mount({
