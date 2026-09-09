@@ -207,6 +207,10 @@ try {
 			expect(mainThread).toContain('milestone-five');
 			expect(background).toMatch(/getCoreContext/);
 			expect(background).toContain('milestone-five');
+			expect(mainThread).toContain('Octane Lynx OL273');
+			expect(mainThread).not.toContain('main-thread worklet implementation');
+			expect(background).toContain('Octane Lynx OL273');
+			expect(background).not.toContain('main-thread worklet implementation');
 			expect(readdirSync(join(outputRoot, 'static/svg'))).toContain('badge.svg');
 
 			execFileSync(process.execPath, ['build.mjs', 'development', developmentOutputRoot], {
@@ -230,6 +234,8 @@ try {
 			expect(developmentBackground).toContain('must match the template shape length.');
 			expect(developmentMainThread).toContain('dataset prop `data-` requires a non-empty key.');
 			expect(developmentBackground).toContain('dataset prop `data-` requires a non-empty key.');
+			expect(developmentMainThread).toContain('main-thread worklet implementation');
+			expect(developmentBackground).toContain('main-thread worklet implementation');
 			expect(developmentBackground).toMatch(/pathname=(?:\/|%2F)rsbuild-hmr/);
 			expect(developmentBackground).toContain('hot=true');
 			expect(developmentBackground).toContain('live-reload=true');

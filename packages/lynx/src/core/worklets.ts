@@ -97,11 +97,15 @@ const compiledMainDefinitions = new Map<string, LynxCompiledThreadFunctionImplem
 const compiledBackgroundDefinitions = new Map<string, LynxCompiledThreadFunctionImplementation>();
 let nextDefinitionRevision = 1;
 
-function fail(label: string, message: string): never {
+// `fail` is shared by the background and main-thread programs. Guard its
+// call-site arguments too, or production still constructs the detailed labels
+// and messages before reducing them to OL273.
+const LYNX_WORKLETS_DEVELOPMENT =
+	typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__;
+
+function fail(label: string | false, message: string | false): never {
 	throw new TypeError(
-		typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
-			? `Octane Lynx ${label}: ${message}`
-			: 'Octane Lynx OL273',
+		LYNX_WORKLETS_DEVELOPMENT ? `Octane Lynx ${label}: ${message}` : 'Octane Lynx OL273',
 	);
 }
 
@@ -111,13 +115,19 @@ function own(value: object, name: string): boolean {
 
 function assertId(value: unknown, label: string): asserts value is string {
 	if (typeof value !== 'string' || value.length === 0) {
-		fail(label, 'must be a non-empty string.');
+		fail(
+			LYNX_WORKLETS_DEVELOPMENT && label,
+			LYNX_WORKLETS_DEVELOPMENT && 'must be a non-empty string.',
+		);
 	}
 }
 
 function assertPositiveInteger(value: unknown, label: string): asserts value is number {
 	if (!Number.isSafeInteger(value) || (value as number) <= 0) {
-		fail(label, 'must be a positive safe integer.');
+		fail(
+			LYNX_WORKLETS_DEVELOPMENT && label,
+			LYNX_WORKLETS_DEVELOPMENT && 'must be a positive safe integer.',
+		);
 	}
 }
 
@@ -133,34 +143,60 @@ function sourceLabel(source: LynxThreadFunctionSourceLike | undefined): string {
 function assertSource(source: LynxThreadFunctionSourceLike | undefined, label: string): void {
 	if (source === undefined || typeof source === 'string') return;
 	if (source === null || typeof source !== 'object' || Array.isArray(source)) {
-		fail(label, 'must be a string or source location.');
+		fail(
+			LYNX_WORKLETS_DEVELOPMENT && label,
+			LYNX_WORKLETS_DEVELOPMENT && 'must be a string or source location.',
+		);
 	}
 	for (const key of Object.keys(source)) {
 		if (key !== 'file' && key !== 'line' && key !== 'column') {
-			fail(label, `contains unknown field ${JSON.stringify(key)}.`);
+			fail(
+				LYNX_WORKLETS_DEVELOPMENT && label,
+				LYNX_WORKLETS_DEVELOPMENT && `contains unknown field ${JSON.stringify(key)}.`,
+			);
 		}
 	}
 	if (source.file !== undefined && (typeof source.file !== 'string' || source.file.length === 0)) {
-		fail(`${label}.file`, 'must be a non-empty string.');
+		fail(
+			LYNX_WORKLETS_DEVELOPMENT && `${label}.file`,
+			LYNX_WORKLETS_DEVELOPMENT && 'must be a non-empty string.',
+		);
 	}
 	if (source.line !== undefined && (!Number.isSafeInteger(source.line) || source.line <= 0)) {
-		fail(`${label}.line`, 'must be a positive safe integer.');
+		fail(
+			LYNX_WORKLETS_DEVELOPMENT && `${label}.line`,
+			LYNX_WORKLETS_DEVELOPMENT && 'must be a positive safe integer.',
+		);
 	}
 	if (source.column !== undefined && (!Number.isSafeInteger(source.column) || source.column < 0)) {
-		fail(`${label}.column`, 'must be a non-negative safe integer.');
+		fail(
+			LYNX_WORKLETS_DEVELOPMENT && `${label}.column`,
+			LYNX_WORKLETS_DEVELOPMENT && 'must be a non-negative safe integer.',
+		);
 	}
 }
 
 function ownEnumerableDataKeys(value: object, label: string): readonly string[] {
 	if (hasOwnSymbolFields(value)) {
-		fail(label, 'contains symbol fields.');
+		fail(
+			LYNX_WORKLETS_DEVELOPMENT && label,
+			LYNX_WORKLETS_DEVELOPMENT && 'contains symbol fields.',
+		);
 	}
 	const keys = Object.getOwnPropertyNames(value);
 	for (const key of keys) {
 		if (Array.isArray(value) && key === 'length') continue;
 		const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
-		if (!descriptor.enumerable) fail(`${label}.${key}`, 'must be enumerable.');
-		if (!own(descriptor, 'value')) fail(`${label}.${key}`, 'must not be an accessor.');
+		if (!descriptor.enumerable)
+			fail(
+				LYNX_WORKLETS_DEVELOPMENT && `${label}.${key}`,
+				LYNX_WORKLETS_DEVELOPMENT && 'must be enumerable.',
+			);
+		if (!own(descriptor, 'value'))
+			fail(
+				LYNX_WORKLETS_DEVELOPMENT && `${label}.${key}`,
+				LYNX_WORKLETS_DEVELOPMENT && 'must not be an accessor.',
+			);
 	}
 	return keys;
 }
@@ -168,7 +204,11 @@ function ownEnumerableDataKeys(value: object, label: string): readonly string[] 
 function exactKeys(value: object, keys: readonly string[], label: string): void {
 	const actual = ownEnumerableDataKeys(value, label);
 	for (const key of actual) {
-		if (!keys.includes(key)) fail(label, `contains unknown field ${JSON.stringify(key)}.`);
+		if (!keys.includes(key))
+			fail(
+				LYNX_WORKLETS_DEVELOPMENT && label,
+				LYNX_WORKLETS_DEVELOPMENT && `contains unknown field ${JSON.stringify(key)}.`,
+			);
 	}
 }
 
@@ -260,11 +300,20 @@ function cloneValue(value: unknown, label: string, state: CloneState): LynxWorkl
 		return value;
 	}
 	if (typeof value === 'number') {
-		if (!Number.isFinite(value)) fail(label, 'contains a non-finite number.');
+		if (!Number.isFinite(value))
+			fail(
+				LYNX_WORKLETS_DEVELOPMENT && label,
+				LYNX_WORKLETS_DEVELOPMENT && 'contains a non-finite number.',
+			);
 		return value;
 	}
-	if (typeof value !== 'object') fail(label, 'contains a non-clone-safe value.');
-	if (state.active.has(value)) fail(label, 'contains a cycle.');
+	if (typeof value !== 'object')
+		fail(
+			LYNX_WORKLETS_DEVELOPMENT && label,
+			LYNX_WORKLETS_DEVELOPMENT && 'contains a non-clone-safe value.',
+		);
+	if (state.active.has(value))
+		fail(LYNX_WORKLETS_DEVELOPMENT && label, LYNX_WORKLETS_DEVELOPMENT && 'contains a cycle.');
 	const existing = state.clones.get(value);
 	if (existing !== undefined) return existing;
 	if (
@@ -279,7 +328,10 @@ function cloneValue(value: unknown, label: string, state: CloneState): LynxWorkl
 		// not necessarily 'object'; reject only a missing reference.
 		const node = (value as { elementRefptr: unknown }).elementRefptr;
 		if (node === null || node === undefined) {
-			fail(`${label}.elementRefptr`, 'must reference a native element.');
+			fail(
+				LYNX_WORKLETS_DEVELOPMENT && `${label}.elementRefptr`,
+				LYNX_WORKLETS_DEVELOPMENT && 'must reference a native element.',
+			);
 		}
 		const reference = node as LynxWorkletValue;
 		state.clones.set(value, reference);
@@ -291,17 +343,32 @@ function cloneValue(value: unknown, label: string, state: CloneState): LynxWorkl
 		if (Array.isArray(value)) {
 			const keys = ownEnumerableDataKeys(value, label);
 			if (keys.length !== value.length + 1)
-				fail(label, 'must be a dense array without extra fields.');
+				fail(
+					LYNX_WORKLETS_DEVELOPMENT && label,
+					LYNX_WORKLETS_DEVELOPMENT && 'must be a dense array without extra fields.',
+				);
 			const clone: LynxWorkletValue[] = [];
 			state.clones.set(value, clone);
 			for (let index = 0; index < value.length; index++) {
-				if (!own(value, String(index))) fail(`${label}[${index}]`, 'is a sparse array hole.');
+				if (!own(value, String(index)))
+					fail(
+						LYNX_WORKLETS_DEVELOPMENT && `${label}[${index}]`,
+						LYNX_WORKLETS_DEVELOPMENT && 'is a sparse array hole.',
+					);
 				clone.push(cloneValue(value[index], `${label}[${index}]`, state));
 			}
 			return clone;
 		}
-		if (!isPlainRecord(value)) fail(label, 'requires arrays or plain objects.');
-		if (markerCount(value) > 1) fail(label, 'mixes reserved worklet descriptor fields.');
+		if (!isPlainRecord(value))
+			fail(
+				LYNX_WORKLETS_DEVELOPMENT && label,
+				LYNX_WORKLETS_DEVELOPMENT && 'requires arrays or plain objects.',
+			);
+		if (markerCount(value) > 1)
+			fail(
+				LYNX_WORKLETS_DEVELOPMENT && label,
+				LYNX_WORKLETS_DEVELOPMENT && 'mixes reserved worklet descriptor fields.',
+			);
 
 		if (own(value, '_wkltId')) {
 			exactKeys(value, ['_wkltId', '_c', '_owlt'], label);
@@ -315,7 +382,10 @@ function cloneValue(value: unknown, label: string, state: CloneState): LynxWorkl
 			state.clones.set(value, clone);
 			if (own(value, '_c')) {
 				if (value._c === null || typeof value._c !== 'object' || Array.isArray(value._c)) {
-					fail(`${label}._c`, 'must be a plain object.');
+					fail(
+						LYNX_WORKLETS_DEVELOPMENT && `${label}._c`,
+						LYNX_WORKLETS_DEVELOPMENT && 'must be a plain object.',
+					);
 				}
 				clone._c = cloneValue(value._c, `${label}._c`, state) as LynxWorkletRecord;
 			}
@@ -340,7 +410,10 @@ function cloneValue(value: unknown, label: string, state: CloneState): LynxWorkl
 			if (own(value, '_execId')) assertId(value._execId, `${label}._execId`);
 			if (own(value, '_c')) {
 				if (value._c === null || typeof value._c !== 'object' || Array.isArray(value._c)) {
-					fail(`${label}._c`, 'must be a plain object.');
+					fail(
+						LYNX_WORKLETS_DEVELOPMENT && `${label}._c`,
+						LYNX_WORKLETS_DEVELOPMENT && 'must be a plain object.',
+					);
 				}
 			}
 			const clone: LynxBackgroundFunctionDescriptor = {
@@ -476,7 +549,10 @@ export function registerMainThreadWorklet(
 	assertId(id, 'main-thread worklet id');
 	assertSource(source, 'main-thread worklet source');
 	if (implementation !== undefined && typeof implementation !== 'function') {
-		fail('main-thread worklet implementation', 'must be a function.');
+		fail(
+			LYNX_WORKLETS_DEVELOPMENT && 'main-thread worklet implementation',
+			LYNX_WORKLETS_DEVELOPMENT && 'must be a function.',
+		);
 	}
 	if (implementation !== undefined) {
 		const current = mainDefinitions.get(id);
@@ -511,7 +587,10 @@ export function registerBackgroundFunction(
 	assertId(id, 'background function id');
 	assertSource(source, 'background function source');
 	if (implementation !== undefined && typeof implementation !== 'function') {
-		fail('background function implementation', 'must be a function.');
+		fail(
+			LYNX_WORKLETS_DEVELOPMENT && 'background function implementation',
+			LYNX_WORKLETS_DEVELOPMENT && 'must be a function.',
+		);
 	}
 	if (implementation !== undefined) {
 		const current = backgroundDefinitions.get(id);
@@ -1439,7 +1518,10 @@ function capturesRecord(values: readonly unknown[]): LynxWorkletRecord {
 		if (typeof value === 'function') {
 			const state = (value as TaggedThreadFunction)[THREAD_FUNCTION_DESCRIPTOR];
 			if (state === undefined) {
-				fail(`thread function capture[${index}]`, 'contains an unregistered function.');
+				fail(
+					LYNX_WORKLETS_DEVELOPMENT && `thread function capture[${index}]`,
+					LYNX_WORKLETS_DEVELOPMENT && 'contains an unregistered function.',
+				);
 			}
 			return resolveThreadFunctionState(state).descriptor;
 		}
@@ -1470,7 +1552,10 @@ function createThreadDescriptor(
 	if (kind === 'background') {
 		return Object.freeze({ ...registerBackgroundFunction(id), _c: captures });
 	}
-	return fail('thread function kind', 'must be main-thread or background.');
+	return fail(
+		LYNX_WORKLETS_DEVELOPMENT && 'thread function kind',
+		LYNX_WORKLETS_DEVELOPMENT && 'must be main-thread or background.',
+	);
 }
 
 function currentThreadDefinitionRevision(kind: LynxThreadFunctionKind, id: string): number | null {
@@ -1515,12 +1600,19 @@ function resolveThreadFunctionState(state: TaggedThreadFunctionState): {
 		return { captures: state.captures, descriptor: state.descriptor };
 	}
 	if (state.resolving) {
-		fail('thread captures', 'contain a recursive thread-function capture.');
+		fail(
+			LYNX_WORKLETS_DEVELOPMENT && 'thread captures',
+			LYNX_WORKLETS_DEVELOPMENT && 'contain a recursive thread-function capture.',
+		);
 	}
 	state.resolving = true;
 	try {
 		const values = state.readCaptures();
-		if (!Array.isArray(values)) fail('thread captures', 'must be an array.');
+		if (!Array.isArray(values))
+			fail(
+				LYNX_WORKLETS_DEVELOPMENT && 'thread captures',
+				LYNX_WORKLETS_DEVELOPMENT && 'must be an array.',
+			);
 		const captures = sourceAttributedCaptures(values, state.source);
 		const descriptor = createThreadDescriptor(state.kind, state.id, captures);
 		state.captures = captures;
@@ -1538,7 +1630,11 @@ function tagThreadFunction<Fn extends (...args: never[]) => unknown>(
 	const current = (fn as unknown as TaggedThreadFunction)[THREAD_FUNCTION_DESCRIPTOR];
 	if (current !== undefined) {
 		if (current.kind === state.kind && current.id === state.id) return fn;
-		fail('thread function', `is already registered as ${current.kind} function ${current.id}.`);
+		fail(
+			LYNX_WORKLETS_DEVELOPMENT && 'thread function',
+			LYNX_WORKLETS_DEVELOPMENT &&
+				`is already registered as ${current.kind} function ${current.id}.`,
+		);
 	}
 	Object.defineProperty(fn, THREAD_FUNCTION_DESCRIPTOR, {
 		configurable: true,
@@ -1565,7 +1661,11 @@ export function unwrapThreadFunctionDescriptor(
 	value: unknown,
 ): LynxMainThreadWorkletDescriptor | LynxBackgroundFunctionDescriptor {
 	const descriptor = getThreadFunctionDescriptor(value);
-	if (descriptor === null) fail('thread function', 'does not have a compiler descriptor.');
+	if (descriptor === null)
+		fail(
+			LYNX_WORKLETS_DEVELOPMENT && 'thread function',
+			LYNX_WORKLETS_DEVELOPMENT && 'does not have a compiler descriptor.',
+		);
 	return descriptor;
 }
 
@@ -1576,7 +1676,10 @@ export function registerThreadFunction(
 	source?: LynxThreadFunctionSourceLike,
 ): void {
 	if (typeof implementation !== 'function')
-		fail('thread function implementation', 'must be a function.');
+		fail(
+			LYNX_WORKLETS_DEVELOPMENT && 'thread function implementation',
+			LYNX_WORKLETS_DEVELOPMENT && 'must be a function.',
+		);
 	if (kind === 'main-thread') {
 		compiledMainDefinitions.set(id, implementation);
 		registerMainThreadWorklet(
@@ -1602,7 +1705,10 @@ export function registerThreadFunction(
 		);
 		return;
 	}
-	fail('thread function kind', 'must be main-thread or background.');
+	fail(
+		LYNX_WORKLETS_DEVELOPMENT && 'thread function kind',
+		LYNX_WORKLETS_DEVELOPMENT && 'must be main-thread or background.',
+	);
 }
 
 /** Remove one compiler-owned definition when its module leaves the active HMR graph. */
@@ -1615,7 +1721,10 @@ export function unregisterThreadFunction(kind: LynxThreadFunctionKind, id: strin
 		unregisterBackgroundFunction(id);
 		return;
 	}
-	fail('thread function kind', 'must be main-thread or background.');
+	fail(
+		LYNX_WORKLETS_DEVELOPMENT && 'thread function kind',
+		LYNX_WORKLETS_DEVELOPMENT && 'must be main-thread or background.',
+	);
 }
 
 export function bindThreadFunction(
@@ -1624,11 +1733,18 @@ export function bindThreadFunction(
 	readCaptures: () => readonly unknown[],
 	source?: LynxThreadFunctionSourceLike,
 ): TaggedThreadFunction | LynxMainThreadWorkletDescriptor | LynxBackgroundFunctionDescriptor {
-	if (typeof readCaptures !== 'function') fail('thread capture reader', 'must be a function.');
+	if (typeof readCaptures !== 'function')
+		fail(
+			LYNX_WORKLETS_DEVELOPMENT && 'thread capture reader',
+			LYNX_WORKLETS_DEVELOPMENT && 'must be a function.',
+		);
 	assertSource(source, 'thread function source');
 	assertId(id, 'thread function id');
 	if (kind !== 'main-thread' && kind !== 'background') {
-		fail('thread function kind', 'must be main-thread or background.');
+		fail(
+			LYNX_WORKLETS_DEVELOPMENT && 'thread function kind',
+			LYNX_WORKLETS_DEVELOPMENT && 'must be main-thread or background.',
+		);
 	}
 	const bound = function (this: unknown, ...args: unknown[]) {
 		return invokeThreadFunction(bound, this, args);
@@ -1652,12 +1768,23 @@ export function attachThreadFunction<Fn extends (...args: never[]) => unknown>(
 	readCaptures: () => readonly unknown[],
 	source?: LynxThreadFunctionSourceLike,
 ): Fn {
-	if (typeof fn !== 'function') fail('thread function', 'must be a function.');
+	if (typeof fn !== 'function')
+		fail(
+			LYNX_WORKLETS_DEVELOPMENT && 'thread function',
+			LYNX_WORKLETS_DEVELOPMENT && 'must be a function.',
+		);
 	assertSource(source, 'thread function source');
-	if (typeof readCaptures !== 'function') fail('thread capture reader', 'must be a function.');
+	if (typeof readCaptures !== 'function')
+		fail(
+			LYNX_WORKLETS_DEVELOPMENT && 'thread capture reader',
+			LYNX_WORKLETS_DEVELOPMENT && 'must be a function.',
+		);
 	assertId(id, 'thread function id');
 	if (kind !== 'main-thread' && kind !== 'background') {
-		fail('thread function kind', 'must be main-thread or background.');
+		fail(
+			LYNX_WORKLETS_DEVELOPMENT && 'thread function kind',
+			LYNX_WORKLETS_DEVELOPMENT && 'must be main-thread or background.',
+		);
 	}
 	return tagThreadFunction(fn, {
 		kind,
@@ -1749,7 +1876,11 @@ export function invokeThreadFunction(
 	receiver: unknown,
 	args: readonly unknown[],
 ): unknown {
-	if (!Array.isArray(args)) fail('thread function arguments', 'must be an array.');
+	if (!Array.isArray(args))
+		fail(
+			LYNX_WORKLETS_DEVELOPMENT && 'thread function arguments',
+			LYNX_WORKLETS_DEVELOPMENT && 'must be an array.',
+		);
 	if (typeof fn === 'function') {
 		const state = (fn as TaggedThreadFunction)[THREAD_FUNCTION_DESCRIPTOR];
 		if (state === undefined) return fn.apply(receiver, args);
@@ -1773,7 +1904,10 @@ export function invokeThreadFunction(
 		return implementation(values, receiver, args);
 	}
 	if (isLynxMainThreadWorkletDescriptor(fn)) return runLynxMainThreadWorklet(fn, args);
-	fail('thread function', 'is not callable in this runtime.');
+	fail(
+		LYNX_WORKLETS_DEVELOPMENT && 'thread function',
+		LYNX_WORKLETS_DEVELOPMENT && 'is not callable in this runtime.',
+	);
 }
 
 export interface LynxCancelablePromise<T> extends Promise<T> {
