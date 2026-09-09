@@ -1,9 +1,10 @@
 # M3 compact compiled-program store
 
-Issue: #290  
-Merged base: `new-lynx@14fe3eb39ea3a18679b3eb32cb1c4379659766c6`  
-Store implementation: `4b9afad92bdcd85bcf0b605bae6dee08d0bda365`  
-O(1) range-order self-review fix: `837abbe0870bda99b90b7fd9cc110b2a504bd551`
+- Issue: #290
+- Merged base: `new-lynx@14fe3eb39ea3a18679b3eb32cb1c4379659766c6`
+- Store implementation: `4b9afad92bdcd85bcf0b605bae6dee08d0bda365`
+- O(1) range-order self-review fix: `837abbe0870bda99b90b7fd9cc110b2a504bd551`
+- Exact-clean measurement head: `aee527e4b15de7eb9749ca0330ed9a8d9205a5b4`
 
 ## Result
 
@@ -55,12 +56,13 @@ TMPDIR=/data00/home/xuan.huang/.codex/tmp \
 node benchmarks/lynx-bundle-size/l5-ceiling.mjs \
   --harness product \
   --arms baseline,receiver,receiver-papi,receiver-store,receiver-foundation-lite,receiver-foundation-store \
-  --output /data00/home/xuan.huang/.codex/tmp/m3-compact-store-frontier-exact.json
+  --output /data00/home/xuan.huang/.codex/tmp/m3-compact-store-frontier-aee527e4b.json
 ```
 
-The final exact-clean receipt and its SHA-256 are recorded after this report is
-committed. Every preliminary arm reproduced the prior product identities and
-passed all four production core/backend controls.
+Raw receipt SHA-256:
+`9435a61eaa3f4abe1f04d1871045f9dab0d396ffe79b5b76cb9265a22416b243`.
+The receipt records `dirty: false`, Node `v22.22.2`, and all four production
+core/backend controls passing for every arm.
 
 | Arm | Complete raw | Complete gzip | Complete Brotli | MTS gzip | BTS gzip |
 | --- | ---: | ---: | ---: | ---: | ---: |
