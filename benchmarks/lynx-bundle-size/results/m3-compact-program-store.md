@@ -4,14 +4,14 @@
 - Merged base: `new-lynx@14fe3eb39ea3a18679b3eb32cb1c4379659766c6`
 - Store implementation: `4b9afad92bdcd85bcf0b605bae6dee08d0bda365`
 - O(1) range-order self-review fix: `837abbe0870bda99b90b7fd9cc110b2a504bd551`
-- Exact-clean measurement head: `aee527e4b15de7eb9749ca0330ed9a8d9205a5b4`
+- Flat dense-run implementation and exact-clean measurement head: `0feb34b2248dc0c92345903e1b1508ad45779527`
 
 ## Result
 
 The first stateful piece of the replacement receiver fits the dependency
 frontier established by #324. The store plus the complete reusable non-host
-foundation is **79,951 gzip bytes**, or **1.472x** the contemporary 54,323-byte
-comparator median. That leaves **1,533.5 bytes** below the frozen 81,484.5-byte
+foundation is **80,438 gzip bytes**, or **1.481x** the contemporary 54,323-byte
+comparator median. That leaves **1,046.5 bytes** below the frozen 81,484.5-byte
 M3 gate for compact routing and settlement.
 
 This is not a product cutover. The current product does not import the store,
@@ -23,10 +23,12 @@ their size.
 ## Owned semantics
 
 The store consumes the real compiler-emitted dense `.run` driver and the
-explicit `.set(nodes, valueSlot, value)` primitive. It retains only the resident
-plan, created node array, prior scalar values, parent, and O(1) doubly linked
-per-parent instance order. Each resident plan binds the PAPI only once. The
-store does not retain or interpret a host descriptor.
+explicit `.set(nodes, valueSlot, value, nodeOffset?)` primitive. One RUN enters
+the emitted driver once with its real count. It retains one flat node/value
+table per run rather than slicing two arrays per instance, plus the resident
+plan, parent, run index, and O(1) doubly linked per-parent instance order. Each
+resident plan binds the PAPI only once. The store does not retain or interpret
+a host descriptor, and its flat journal allocates no undo closure per update.
 
 Every host-changing frame is transactional:
 
@@ -41,9 +43,9 @@ Every host-changing frame is transactional:
 - disposal rolls back an open frame, removes every retained root, and closes
   the store against later work.
 
-The accepted scope is intentionally narrow: non-empty, range-free programs with
-an emitted dense driver; value slots require the generated setter. MOVE,
-CLEAR, VIS, range-site addressing, event-token routing, first-screen adoption,
+The accepted scope is intentionally narrow: non-empty, range- and event-free
+programs with an emitted dense driver; value slots require the generated
+setter. MOVE, CLEAR, VIS, range-site addressing, event-token routing, first-screen adoption,
 transport dispatch, ACK/reject messages, and the controller/lifecycle shell are
 not claimed by this slice.
 
@@ -56,11 +58,11 @@ TMPDIR=/data00/home/xuan.huang/.codex/tmp \
 node benchmarks/lynx-bundle-size/l5-ceiling.mjs \
   --harness product \
   --arms baseline,receiver,receiver-papi,receiver-store,receiver-foundation-lite,receiver-foundation-store \
-  --output /data00/home/xuan.huang/.codex/tmp/m3-compact-store-frontier-aee527e4b.json
+  --output /data00/home/xuan.huang/.codex/tmp/m3-compact-store-frontier-0feb34b22.json
 ```
 
 Raw receipt SHA-256:
-`9435a61eaa3f4abe1f04d1871045f9dab0d396ffe79b5b76cb9265a22416b243`.
+`c56fcf4a9383cdf5ff50865343768485f4dfa1d968d87e293dd20c3edbf56500`.
 The receipt records `dirty: false`, Node `v22.22.2`, and all four production
 core/backend controls passing for every arm.
 
@@ -69,12 +71,12 @@ core/backend controls passing for every arm.
 | current product | 418,005 | 160,511 | 134,730 | 106,320 | 53,880 |
 | receiver-free | 223,390 | 70,448 | 60,438 | 15,927 | 53,880 |
 | PAPI/page | 226,919 | 72,013 | 61,714 | 17,488 | 53,880 |
-| PAPI/page + compact store | 231,883 | 74,454 | 63,860 | 19,986 | 53,880 |
+| PAPI/page + compact store | 232,996 | 74,987 | 64,360 | 20,537 | 53,880 |
 | non-host foundation | 238,884 | 77,483 | 66,399 | 23,202 | 53,880 |
-| non-host foundation + compact store | 243,919 | **79,951** | 68,699 | 25,661 | 53,880 |
+| non-host foundation + compact store | 245,040 | **80,438** | 69,136 | 26,159 | 53,880 |
 
-The isolated store costs 2,441 gzip bytes over the PAPI/page arm. Shared
-compression makes the foundation union cost 2,468 bytes over
+The isolated store costs 2,974 gzip bytes over the PAPI/page arm. Shared
+compression makes the foundation union cost 2,955 bytes over
 `receiver-foundation-lite`. Every BTS artifact is byte-identical at SHA-256
 `0868633b429f4cef4a692342b1142a2ce58ec8447e95045554def9a54374bc37`,
 so no receiver cost moved to the background thread.
@@ -87,9 +89,9 @@ The current product identities reproduce #325 exactly:
 
 ## Verification
 
-- generated store integration and injected fault suite: 11/11;
-- emitter + store + diagnostic boundary focused suite: 75/75;
-- full Lynx project: 51 files, 895/895 tests;
+- generated store integration and injected fault suite: 12/12;
+- emitter + store + signature + diagnostic boundary focused suite: 79/79;
+- full Lynx project: 51 files, 897/897 tests;
 - all three `@octanejs/lynx` TypeScript configurations pass;
 - package diagnostic identifiers remain complete and unique through `OL484`;
 - `pnpm sync`, scoped formatting, and diff checks pass.

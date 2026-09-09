@@ -161,7 +161,7 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		expect(page.children[0]!.children[0]!.children[0]!.text).toBe('renamed');
 	});
 
-	it('rejects invalid handles, arity, slots, and values before host mutation', () => {
+	it('rejects invalid handles, arity, slots, values, and unsupported sites before mutation', () => {
 		const papi = emittedHost();
 		const page = papi.createPage('0', 0);
 		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page));
@@ -198,6 +198,20 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 				values: ['a', 'b', null],
 			}),
 		).toThrow(/scalar kind/);
+		expect(() =>
+			store.mount({
+				firstHandle: 1,
+				count: 1,
+				parent: page,
+				before: null,
+				plan: {
+					...plan,
+					events: [{ slot: 0, node: 0, type: 'tap', priority: 'discrete' }],
+				},
+				values: ['a', 'b', 'c'],
+			}),
+		).toThrow(/event-free/);
+		expect(page.children).toEqual([]);
 		store.rollback();
 		expect(page.children).toEqual([]);
 		mountCommitted(store, papi, page);

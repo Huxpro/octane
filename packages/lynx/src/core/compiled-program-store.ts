@@ -45,7 +45,6 @@ const MAX_INSTANCE_HANDLE = 2 ** 31 - 1;
 export interface LynxCompiledProgramMount<Node extends LynxElementRef> {
 	readonly before: Node | null;
 	readonly count: number;
-	readonly events?: readonly unknown[];
 	readonly firstHandle: number;
 	readonly parent: Node;
 	readonly plan: UniversalProgramPlan;
@@ -239,8 +238,13 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				fail(`cannot reuse instance handle ${input.firstHandle}`);
 			}
 			const plan = input.plan;
-			if (plan.kind !== 'program' || plan.nodes <= 0 || plan.ranges.length !== 0) {
-				fail('requires a non-empty range-free compiled program');
+			if (
+				plan.kind !== 'program' ||
+				plan.nodes <= 0 ||
+				plan.ranges.length !== 0 ||
+				plan.events.length !== 0
+			) {
+				fail('requires a non-empty range- and event-free compiled program');
 			}
 			if (input.values.length !== plan.values.length * input.count) {
 				fail('received the wrong value arity');
@@ -251,9 +255,6 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 					fail(`received a value outside slot ${slot}'s scalar kind`);
 				}
 			}
-			const events = input.events ?? [];
-			if (events.length !== plan.events.length * input.count)
-				fail('received the wrong event arity');
 			const range = ranges.get(input.parent) ?? { head: null, tail: null };
 			let next: number | null = null;
 			if (input.before !== null) {
@@ -279,7 +280,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			}
 			const nodes = new Array<Node>(plan.nodes * input.count);
 			try {
-				create.run(pageId, input.count, input.values, events, [], nodes);
+				create.run(pageId, input.count, input.values, [], [], nodes);
 				for (let index = 0; index < input.count; index++) {
 					const node = nodes[index * plan.nodes];
 					if (node === null || typeof node !== 'object') fail(`did not publish root ${index}`);
