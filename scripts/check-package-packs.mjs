@@ -1678,8 +1678,14 @@ try {
 	if (matchingModules(/\\/universal-native\\.[jt]s$/).length !== 1) {
 		throw new Error('production graph did not contain exactly one Octane native universal facade');
 	}
-	if (matchingModules(/\\/@octanejs\\/lynx\\/src\\/main-thread\\.[jt]s$/).length !== 1) {
-		throw new Error('production graph did not contain exactly one generated Octane main receiver');
+	if (matchingModules(/\\/@octanejs\\/lynx\\/src\\/main-thread-application\\.[jt]s$/).length !== 1) {
+		throw new Error('production graph did not contain exactly one paired Octane main receiver');
+	}
+	if (matchingModules(/\\/@octanejs\\/lynx\\/src\\/main-thread-implementation\\.[jt]s$/).length !== 1) {
+		throw new Error('production graph did not contain exactly one Octane main implementation');
+	}
+	if (matchingModules(/\\/@octanejs\\/lynx\\/src\\/main-thread\\.[jt]s$/).length !== 0) {
+		throw new Error('production graph unexpectedly contained the public checked main receiver');
 	}
 	const forbiddenModule = new RegExp(
 		${JSON.stringify(NATIVE_GRAPH_FORBIDDEN_MODULE.source)},
