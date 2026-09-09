@@ -24,6 +24,7 @@
 //   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --harness product --output /tmp/l5.json
 //   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --arms baseline,both
 //   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --harness product --arms baseline,receiver
+//   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --harness product --arms baseline,receiver,receiver-papi,receiver-container,receiver-direct,receiver-render,receiver-transport,receiver-worklets,receiver-foundation-lite,receiver-foundation
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -49,6 +50,14 @@ const TARGET_RATIO = 1.5;
 // specialized product entry replaces the general main-thread receiver whole.
 // Its result is the compressed budget that replacement must fit inside, not a
 // claim that a receiver-free artifact is functional.
+function receiverSlice(label, body, retainedRuntimeExports) {
+	return {
+		label,
+		retainedRuntimeExports,
+		edits: [['main-thread-implementation.ts', [['installLynxMainThreadWithValidator', body]]]],
+	};
+}
+
 const ARMS = {
 	baseline: { label: 'baseline (no ablation)', edits: [] },
 	validator: {
@@ -74,20 +83,145 @@ const ARMS = {
 		label: 'plan interpreter + batch pipeline',
 		edits: [['core/host-driver.ts', [['prepareLynxHostBatch', "\tthrow new Error('ablated');"]]]],
 	},
-	receiver: {
-		label: 'general main-thread receiver',
-		edits: [
-			[
-				'main-thread-implementation.ts',
-				[
-					[
-						'installLynxMainThreadWithValidator',
-						'\treturn Object.freeze({}) as LynxMainThreadController;',
-					],
-				],
-			],
+	receiver: receiverSlice(
+		'general main-thread receiver',
+		'\treturn Object.freeze({}) as LynxMainThreadController;',
+		[],
+	),
+	'receiver-papi': receiverSlice(
+		'receiver floor + Element PAPI/page',
+		`\tconst papi = createLynxElementPAPI<Node>(options.target ?? globalThis);
+\tpapi.createPage(options.componentId ?? '0', options.cssId ?? 0);
+\treturn Object.freeze({}) as LynxMainThreadController;`,
+		['core/papi.ts:createLynxElementPAPI', 'LynxElementPAPI:createPage'],
+	),
+	'receiver-container': receiverSlice(
+		'receiver floor + general host container',
+		`\tconst papi = createLynxElementPAPI<Node>(options.target ?? globalThis);
+\tcreateLynxHostContainer(papi, {
+\t\troot: 1,
+\t\tpage: papi.createPage(options.componentId ?? '0', options.cssId ?? 0),
+\t});
+\treturn Object.freeze({}) as LynxMainThreadController;`,
+		['core/papi.ts:createLynxElementPAPI', 'core/host-driver.ts:createLynxHostContainer'],
+	),
+	'receiver-direct': receiverSlice(
+		'receiver floor + general direct first-screen applier',
+		`\tconst papi = createLynxElementPAPI<Node>(options.target ?? globalThis);
+\tconst container = createLynxHostContainer(papi, {
+\t\troot: 1,
+\t\tpage: papi.createPage(options.componentId ?? '0', options.cssId ?? 0),
+\t});
+\tif (options.firstScreen === true) {
+\t\tapplyLynxFirstScreenDirect(container, options as never, options as never);
+\t}
+\treturn Object.freeze({}) as LynxMainThreadController;`,
+		[
+			'core/papi.ts:createLynxElementPAPI',
+			'core/host-driver.ts:createLynxHostContainer',
+			'core/host-driver.ts:applyLynxFirstScreenDirect',
 		],
-	},
+	),
+	'receiver-render': receiverSlice(
+		'receiver floor + compiled first-screen evaluator',
+		`\tif (options.firstScreen === true) {
+\t\trenderLynxFirstScreen(
+\t\t\toptions as unknown as UniversalComponent<InstallLynxMainThreadOptions>,
+\t\t\toptions,
+\t\t);
+\t}
+\treturn Object.freeze({}) as LynxMainThreadController;`,
+		['main-renderer.ts:renderLynxFirstScreen'],
+	),
+	'receiver-transport': receiverSlice(
+		'receiver floor + paired string transport',
+		`\tif (options.firstScreen === true) {
+\t\tdecodeLynxTransportValue(encodeLynxTransportValue(options));
+\t}
+\treturn Object.freeze({}) as LynxMainThreadController;`,
+		[
+			'core/transport-codec.ts:encodeLynxTransportValue',
+			'core/transport-codec.ts:decodeLynxTransportValue',
+		],
+	),
+	'receiver-worklets': receiverSlice(
+		'receiver floor + optional worklet seam',
+		`\tconst worklets = createReplaceableLynxMainThreadWorkletRegistry(
+\t\tcreateUnavailableLynxMainThreadWorkletRegistry(),
+\t);
+\tconst unsubscribe = subscribeLynxMainThreadWorkletFeature((feature) => {
+\t\tworklets.replace(feature.createRegistry(options as never));
+\t});
+\tif (options.firstScreen === true) unsubscribe();
+\treturn Object.freeze({}) as LynxMainThreadController;`,
+		[
+			'core/main-thread-worklet-feature.ts:createUnavailableLynxMainThreadWorkletRegistry',
+			'core/main-thread-worklet-feature.ts:createReplaceableLynxMainThreadWorkletRegistry',
+			'core/main-thread-worklet-feature.ts:subscribeLynxMainThreadWorkletFeature',
+		],
+	),
+	'receiver-foundation-lite': receiverSlice(
+		'receiver floor + reusable non-host foundation',
+		`\tconst papi = createLynxElementPAPI<Node>(options.target ?? globalThis);
+\tpapi.createPage(options.componentId ?? '0', options.cssId ?? 0);
+\tif (options.firstScreen === true) {
+\t\trenderLynxFirstScreen(
+\t\t\toptions as unknown as UniversalComponent<InstallLynxMainThreadOptions>,
+\t\t\toptions,
+\t\t);
+\t\tdecodeLynxTransportValue(encodeLynxTransportValue(options));
+\t}
+\tconst worklets = createReplaceableLynxMainThreadWorkletRegistry(
+\t\tcreateUnavailableLynxMainThreadWorkletRegistry(),
+\t);
+\tconst unsubscribe = subscribeLynxMainThreadWorkletFeature((feature) => {
+\t\tworklets.replace(feature.createRegistry(options as never));
+\t});
+\tif (options.firstScreen === true) unsubscribe();
+\treturn Object.freeze({}) as LynxMainThreadController;`,
+		[
+			'core/papi.ts:createLynxElementPAPI',
+			'main-renderer.ts:renderLynxFirstScreen',
+			'core/transport-codec.ts:encodeLynxTransportValue',
+			'core/transport-codec.ts:decodeLynxTransportValue',
+			'core/main-thread-worklet-feature.ts:createUnavailableLynxMainThreadWorkletRegistry',
+			'core/main-thread-worklet-feature.ts:createReplaceableLynxMainThreadWorkletRegistry',
+			'core/main-thread-worklet-feature.ts:subscribeLynxMainThreadWorkletFeature',
+		],
+	),
+	'receiver-foundation': receiverSlice(
+		'receiver floor + reusable foundation with general host container',
+		`\tconst papi = createLynxElementPAPI<Node>(options.target ?? globalThis);
+\tcreateLynxHostContainer(papi, {
+\t\troot: 1,
+\t\tpage: papi.createPage(options.componentId ?? '0', options.cssId ?? 0),
+\t});
+\tif (options.firstScreen === true) {
+\t\trenderLynxFirstScreen(
+\t\t\toptions as unknown as UniversalComponent<InstallLynxMainThreadOptions>,
+\t\t\toptions,
+\t\t);
+\t\tdecodeLynxTransportValue(encodeLynxTransportValue(options));
+\t}
+\tconst worklets = createReplaceableLynxMainThreadWorkletRegistry(
+\t\tcreateUnavailableLynxMainThreadWorkletRegistry(),
+\t);
+\tconst unsubscribe = subscribeLynxMainThreadWorkletFeature((feature) => {
+\t\tworklets.replace(feature.createRegistry(options as never));
+\t});
+\tif (options.firstScreen === true) unsubscribe();
+\treturn Object.freeze({}) as LynxMainThreadController;`,
+		[
+			'core/papi.ts:createLynxElementPAPI',
+			'core/host-driver.ts:createLynxHostContainer',
+			'main-renderer.ts:renderLynxFirstScreen',
+			'core/transport-codec.ts:encodeLynxTransportValue',
+			'core/transport-codec.ts:decodeLynxTransportValue',
+			'core/main-thread-worklet-feature.ts:createUnavailableLynxMainThreadWorkletRegistry',
+			'core/main-thread-worklet-feature.ts:createReplaceableLynxMainThreadWorkletRegistry',
+			'core/main-thread-worklet-feature.ts:subscribeLynxMainThreadWorkletFeature',
+		],
+	),
 	both: { label: 'both', edits: [] },
 };
 ARMS.both.edits = [...ARMS.validator.edits, ...ARMS.batch.edits];
@@ -281,6 +415,7 @@ try {
 // must still emit the same visible first tree and the same background program
 // semantics as the baseline, or the number below measures the wrong thing.
 const baseline = measured.get('baseline');
+const receiverFloor = measured.get('receiver');
 const checksumFailures = [];
 if (baseline?.checksums !== undefined) {
 	for (const [arm, result] of measured) {
@@ -297,6 +432,24 @@ if (baseline?.checksums !== undefined) {
 		'\nWARNING: semantic-checksum control DID NOT RUN (no checksums in this harness mode);' +
 			'\nan arm that changed the authored application would not have been caught.\n',
 	);
+}
+
+// Every receiver linkage probe edits a main-thread-only exported entry. A BTS
+// change means the build stopped isolating layers, so its apparent replacement
+// cost is invalid rather than merely surprising.
+const receiverIsolationFailures = [];
+if (receiverFloor !== undefined) {
+	for (const [arm, result] of measured) {
+		if (!arm.startsWith('receiver')) continue;
+		if (result.productBackgroundSha256 !== receiverFloor.productBackgroundSha256) {
+			receiverIsolationFailures.push(
+				`${arm}: ${result.productBackgroundSha256} !== ${receiverFloor.productBackgroundSha256}`,
+			);
+		}
+	}
+}
+if (receiverIsolationFailures.length !== 0) {
+	throw new Error(`receiver frontier moved BTS: ${receiverIsolationFailures.join('; ')}`);
 }
 
 const cell = (value) => (value === undefined ? '' : String(value).padStart(11));
@@ -341,7 +494,7 @@ for (const [key, title] of [
 const output = options.get('output') ?? process.env.OCTANE_L5_CEILING_OUTPUT;
 if (output !== undefined) {
 	const receipt = {
-		schemaVersion: 1,
+		schemaVersion: 2,
 		generatedAt: new Date().toISOString(),
 		source: {
 			commit: git('rev-parse', 'HEAD').trim(),
@@ -361,15 +514,29 @@ if (output !== undefined) {
 		arms: Array.from(measured, ([key, result]) => ({
 			key,
 			label: ARMS[key].label,
+			retainedRuntimeExports: ARMS[key].retainedRuntimeExports ?? null,
 			ablatedExports: ARMS[key].edits.flatMap(([file, stubs]) =>
 				stubs.map(([name]) => `${file}:${name}`),
 			),
+			...(key.startsWith('receiver') &&
+			receiverFloor?.productBundleGzip !== undefined &&
+			result.productBundleGzip !== undefined
+				? {
+						productBundleGzipOverReceiverFloor:
+							result.productBundleGzip - receiverFloor.productBundleGzip,
+						productMainGzipOverReceiverFloor:
+							result.productMainGzip - receiverFloor.productMainGzip,
+						productBundleGzipHeadroomToTarget:
+							REFERENCE_MEDIAN_GZIP * TARGET_RATIO - result.productBundleGzip,
+					}
+				: null),
 			...result,
 		})),
 		controls: {
 			checksumRan: baseline?.checksums !== undefined,
 			checksum: baseline?.checksums ?? null,
 			checksumFailures,
+			receiverIsolationFailures,
 			productCoreControlsPassed: ['product', 'full'].includes(harness)
 				? Array.from(measured.values()).every(
 						(result) => result.productCoreControls?.passed === true,
