@@ -2,4 +2,4 @@
 '@octanejs/lynx': patch
 ---
 
-Match compact frame runs to retained first-screen programs before adopting their nodes.
+Let compact stores consume proved first-screen program seeds while decoding ordinary frames.
