@@ -382,6 +382,8 @@ describe('@octanejs/rspeedy-plugin native production entries', () => {
 			);
 			expect(mainThread).toContain('Octane Lynx OL174');
 			expect(mainThread).not.toContain('must match the template shape length.');
+			expect(mainThread).toContain('Octane Lynx OL100');
+			expect(mainThread).not.toContain('dataset prop `data-` requires a non-empty key.');
 			expect(mainThread).toContain('octane-m7-main-thread-worklet');
 			expect(mainThread).not.toContain('octane-m7-background-function');
 			expect(mainThread).not.toContain(BACKGROUND_ONLY_MARKER);
@@ -391,6 +393,8 @@ describe('@octanejs/rspeedy-plugin native production entries', () => {
 			expect(background).toContain(BACKGROUND_ONLY_MARKER);
 			expect(background).toContain('Octane Lynx OL174');
 			expect(background).not.toContain('must match the template shape length.');
+			expect(background).toContain('Octane Lynx OL100');
+			expect(background).not.toContain('dataset prop `data-` requires a non-empty key.');
 			expect(mainThread).not.toContain('Secondary bundle');
 			expect(background).not.toContain('Secondary bundle');
 			expect(secondaryMainThread).toContain('Secondary bundle');
