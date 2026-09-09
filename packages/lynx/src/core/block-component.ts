@@ -1245,7 +1245,8 @@ export function lynxBlockProgramForComponent<Props>(
 					context.root.bindListeners(block, listenersFor(rendered.values));
 				}
 				for (let index = 0; index < ranges.length; index++) {
-					ranges[index]!.site = context.core.openForSlot(block, ranges[index]!.node);
+					const range = ranges[index]!;
+					range.site = context.core.openForSlot(block, range.node, range.slot);
 					applyRange(context, rows[index]!);
 				}
 				context.afterCommit(() => scope!.commit());

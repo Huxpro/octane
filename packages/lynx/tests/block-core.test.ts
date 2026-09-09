@@ -21,7 +21,10 @@ import {
 	type LynxBlockForSlot,
 	type LynxBlockTemplate,
 } from '../src/core/block-core.js';
-import type { UniversalHostCommand } from 'octane/universal/native';
+import {
+	universalProgramRangeCommandSlot,
+	type UniversalHostCommand,
+} from 'octane/universal/native';
 import {
 	createLynxMainThreadWorkletRegistry,
 	registerMainThreadWorklet,
@@ -123,6 +126,72 @@ function scene(list: readonly Row[], selected: number | null): Scene {
 	apply();
 	return { core, slot, papi, tree: () => shape(papi.pages[0]!), apply };
 }
+
+describe('Lynx block core — compiler range provenance', () => {
+	it('does not guess a compiler slot for a hand-written range site', () => {
+		const core = createLynxBlockCore();
+		const page = core.mount(null, null, PAGE_TEMPLATE, []);
+		const slot = core.openForSlot(page, 1);
+		core.fillForSlot(
+			slot,
+			ROW_TEMPLATE,
+			rows(2),
+			(row) => row.id,
+			(row) => rowValues(row, null),
+		);
+		const rangeRun = core
+			.flush()!
+			.commands.find((command) => command.op === 'mount-template-run' && command.parent !== null);
+
+		expect(rangeRun).toBeDefined();
+		expect(universalProgramRangeCommandSlot(rangeRun!)).toBeUndefined();
+	});
+
+	it('retains an explicit sparse slot on mounts and moves across abort and retry', () => {
+		const core = createLynxBlockCore();
+		const page = core.mount(null, null, PAGE_TEMPLATE, []);
+		const slot = core.openForSlot(page, 1, 7);
+		const initial = rows(3);
+		core.fillForSlot(
+			slot,
+			ROW_TEMPLATE,
+			initial,
+			(row) => row.id,
+			(row) => rowValues(row, null),
+		);
+		const mounted = core
+			.flush()!
+			.commands.filter((command) => command.op === 'mount-template-run' && command.parent !== null);
+		expect(mounted.map(universalProgramRangeCommandSlot)).toEqual([7]);
+
+		const reordered = [initial[2]!, initial[0]!, initial[1]!];
+		const reconcile = (): UniversalHostCommand[] => {
+			core.reconcileForSlot(
+				slot,
+				ROW_TEMPLATE,
+				reordered,
+				(row) => row.id,
+				(row) => rowValues(row, null),
+			);
+			return [...core.flush()!.commands];
+		};
+
+		core.beginAttempt();
+		const rejected = reconcile();
+		expect(rejected.filter((command) => command.op === 'move')).not.toHaveLength(0);
+		expect(
+			rejected.filter((command) => command.op === 'move').map(universalProgramRangeCommandSlot),
+		).toEqual([7]);
+		expect(core.abortAttempt()).toBe(true);
+
+		core.beginAttempt();
+		const retried = reconcile();
+		expect(
+			retried.filter((command) => command.op === 'move').map(universalProgramRangeCommandSlot),
+		).toEqual([7]);
+		core.acceptAttempt();
+	});
+});
 
 describe('Lynx block core — equivalence with a fresh mount', () => {
 	it('leaves the tree a scoped selection change produces identical to mounting it selected', () => {
@@ -489,7 +558,7 @@ describe('Lynx block core — refusing corrupt input, reporting departures', () 
 		built.core.reconcileForSlot(
 			built.slot,
 			ROW_TEMPLATE,
-			[],
+			[] as readonly Row[],
 			(row) => row.id,
 			(row) => rowValues(row, null),
 			(block) => departedKeys.push(block.key),

@@ -35,6 +35,7 @@ import {
 	universalComponent,
 	universalFor,
 	universalPlan,
+	universalProgramRangeCommandSlot,
 	universalProps,
 	universalValue,
 	useContext,
@@ -43,6 +44,7 @@ import {
 	useState,
 	useSyncExternalStore,
 	type UniversalRenderable,
+	type UniversalHostCommand,
 } from 'octane/universal/native';
 
 import { createLynxBlockBackgroundCore } from '../src/core/block-background.js';
@@ -1046,6 +1048,35 @@ describe('Lynx compiled component the Block core refuses', () => {
  * `fillForSlot` / `reconcileForSlot` / `clearForSlot`.
  */
 describe('Lynx compiled component with a keyed range on the Block core', () => {
+	it('retains the compiler range slot on structural commands before transport encoding', async () => {
+		const emitted: UniversalHostCommand[] = [];
+		const base = createLynxBlockCore();
+		const observing: LynxBlockCore = {
+			...base,
+			flush() {
+				const batch = base.flush();
+				if (batch !== null) emitted.push(...batch.commands);
+				return batch;
+			},
+		};
+		const block = blockColumn<TableProps>(observing);
+
+		await block.render(Table as LynxComponent<TableProps>, table([1, 2, 3]));
+		const rangeRun = emitted.find(
+			(command) => command.op === 'mount-template-run' && command.parent !== null,
+		);
+		expect(rangeRun).toBeDefined();
+		// TABLE_PLAN's range is compiler slot 0 below physical host node 2. A
+		// producer that guessed from the node address would report the wrong owner.
+		expect(universalProgramRangeCommandSlot(rangeRun!)).toBe(0);
+
+		emitted.length = 0;
+		await block.render(Table as LynxComponent<TableProps>, table([3, 1, 2]));
+		const moves = emitted.filter((command) => command.op === 'move');
+		expect(moves).not.toHaveLength(0);
+		expect(moves.map(universalProgramRangeCommandSlot)).toEqual(moves.map(() => 0));
+	});
+
 	it('paints what the universal core paints, at every step of a structural ladder', async () => {
 		const universal = universalColumn(Table as LynxComponent<TableProps>);
 		const block = blockColumn<TableProps>();
