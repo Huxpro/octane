@@ -121,6 +121,9 @@ The exact existing-boundary replacement budget is recorded in
 The compiler primitive for the replacement's direct value-slot writes, with a
 byte-identical default-product control, is recorded in
 [`results/m3-compiled-slot-setter.md`](results/m3-compiled-slot-setter.md).
+The transactional compact instance state and its exact foundation-union price
+are recorded in
+[`results/m3-compact-program-store.md`](results/m3-compact-program-store.md).
 
 ## Core switch and main-thread program
 
