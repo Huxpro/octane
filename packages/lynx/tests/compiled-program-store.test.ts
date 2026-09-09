@@ -567,6 +567,74 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		expect(page.children.map((node) => node.id)).toEqual(['row-1', 'row-3', 'row-2']);
 	});
 
+	it('restores the old order when a move mutates before throwing', () => {
+		const base = emittedHost();
+		let failNext = false;
+		const papi: typeof base = {
+			...base,
+			insertBefore(parent, child, before) {
+				base.insertBefore(parent, child, before);
+				if (failNext) {
+					failNext = false;
+					throw new Error('move fault');
+				}
+			},
+		};
+		const page = papi.createPage('0', 0);
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page));
+		mountCommitted(store, papi, page, 1);
+		mountCommitted(store, papi, page, 2);
+		failNext = true;
+		store.begin();
+		expect(() => store.move(1, null)).toThrow(/move fault/);
+		store.rollback();
+		expect(page.children.map((node) => node.id)).toEqual(['row-1', 'row-2']);
+		store.begin();
+		expect(store.move(1, null)).toBe(true);
+		store.commit();
+		expect(page.children.map((node) => node.id)).toEqual(['row-2', 'row-1']);
+	});
+
+	it('restores event reachability when a visibility write mutates before throwing', () => {
+		const base = emittedHost();
+		let failNext = false;
+		const papi: typeof base = {
+			...base,
+			setEvent(node, kind, name, listener) {
+				base.setEvent(node, kind, name, listener);
+				if (failNext) {
+					failNext = false;
+					throw new Error('visibility fault');
+				}
+			},
+		};
+		const page = papi.createPage('0', 0);
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 47);
+		store.begin();
+		store.mount({
+			firstHandle: 1,
+			count: 1,
+			parent: page,
+			before: null,
+			plan: emittedEventPlan(),
+			values: ['row-1', 'cold', 'one'],
+		});
+		store.commit();
+		const root = page.children[0]!;
+		const token = root.events.get('bindEvent:tap');
+		failNext = true;
+		store.begin();
+		expect(() => store.visibility(1, false)).toThrow(/visibility fault/);
+		store.rollback();
+		expect(root.attributes.hidden).toBe(false);
+		expect(root.events.get('bindEvent:tap')).toBe(token);
+		store.begin();
+		expect(store.visibility(1, false)).toBe(true);
+		store.commit();
+		expect(root.attributes.hidden).toBe(true);
+		expect(root.events.has('bindEvent:tap')).toBe(false);
+	});
+
 	it('disposes every attached root without leaving retained instances', () => {
 		const papi = emittedHost();
 		const page = papi.createPage('0', 0);

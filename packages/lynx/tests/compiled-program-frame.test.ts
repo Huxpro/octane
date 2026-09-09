@@ -295,17 +295,128 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 		expect(page.children).toEqual([]);
 	});
 
-	it.each([
-		['CLEAR', [LYNX_DELTA_PROTOCOL_VERSION, 4, 2, 1, 0]],
-		['MOVE', [LYNX_DELTA_PROTOCOL_VERSION, 5, 5, 2, 1, 0, 0, 0]],
-		['VIS', [LYNX_DELTA_PROTOCOL_VERSION, 6, 2, 2, 1]],
-	] as const)('hard-rejects unsupported %s frames', (_, frame) => {
+	it('moves and clears the root range transactionally', () => {
 		const { page, resolve, store } = setup();
-		expect(() => applyLynxCompiledProgramFrame(store, page, resolve, frame)).toThrow(
-			/does not support opcode/,
+		applyLynxCompiledProgramFrame(
+			store,
+			page,
+			resolve,
+			encodeLynxDeltaMessage([
+				{
+					op: 'run',
+					templateId: 7,
+					parent: { instance: 1, slot: 0 },
+					before: null,
+					firstInstance: 2,
+					count: 2,
+					values: ['row-2', 'cold', 'two', 'row-3', 'cold', 'three'],
+				},
+			]),
 		);
+		const move = encodeLynxDeltaMessage([
+			{ op: 'move', instance: 2, parent: { instance: 1, slot: 0 }, before: null },
+		]);
+		expect(() => applyLynxCompiledProgramFrame(store, page, resolve, [...move, 99, 0])).toThrow(
+			/opcode 99/,
+		);
+		expect(page.children.map((node) => node.id)).toEqual(['row-2', 'row-3']);
+
+		applyLynxCompiledProgramFrame(store, page, resolve, move);
+		expect(page.children.map((node) => node.id)).toEqual(['row-3', 'row-2']);
+		const clear = encodeLynxDeltaMessage([{ op: 'clear', parent: { instance: 1, slot: 0 } }]);
+		expect(() => applyLynxCompiledProgramFrame(store, page, resolve, [...clear, 99, 0])).toThrow(
+			/opcode 99/,
+		);
+		expect(page.children.map((node) => node.id)).toEqual(['row-3', 'row-2']);
+		expect(store.size()).toBe(2);
+		applyLynxCompiledProgramFrame(store, page, resolve, clear);
+		expect(page.children).toEqual([]);
+		expect(store.size()).toBe(0);
+	});
+
+	it('hides and restores an eventful instance with the original compact token', () => {
+		const papi = emittedHost();
+		const page = papi.createPage('0', 0);
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 73);
+		const plan = emittedEventPlan();
+		const resolve = (template: number) => (template === 8 ? plan : undefined);
+		applyLynxCompiledProgramFrame(
+			store,
+			page,
+			resolve,
+			encodeLynxDeltaMessage([
+				{
+					op: 'run',
+					templateId: 8,
+					parent: { instance: 1, slot: 0 },
+					before: null,
+					firstInstance: 2,
+					count: 1,
+					values: ['row-2', 'cold', 'two'],
+				},
+			]),
+		);
+		const root = page.children[0]!;
+		const token = root.events.get('bindEvent:tap');
+		applyLynxCompiledProgramFrame(
+			store,
+			page,
+			resolve,
+			encodeLynxDeltaMessage([{ op: 'vis', instance: 2, state: 'hidden' }]),
+		);
+		expect(root.attributes.hidden).toBe(true);
+		expect(root.events.has('bindEvent:tap')).toBe(false);
+
+		const visible = encodeLynxDeltaMessage([{ op: 'vis', instance: 2, state: 'visible' }]);
+		expect(() => applyLynxCompiledProgramFrame(store, page, resolve, [...visible, 99, 0])).toThrow(
+			/opcode 99/,
+		);
+		expect(root.attributes.hidden).toBe(true);
+		expect(root.events.has('bindEvent:tap')).toBe(false);
+		applyLynxCompiledProgramFrame(store, page, resolve, visible);
+		expect(root.attributes.hidden).toBe(false);
+		expect(root.events.get('bindEvent:tap')).toBe(token);
+	});
+
+	it.each([
+		['CLEAR', [LYNX_DELTA_PROTOCOL_VERSION, 4, 2, 2, 0]],
+		['MOVE parent', [LYNX_DELTA_PROTOCOL_VERSION, 5, 5, 2, 2, 0, 0, 0]],
+		['MOVE anchor', [LYNX_DELTA_PROTOCOL_VERSION, 5, 5, 2, 1, 0, 0, 1]],
+	] as const)('rejects unsupported non-root %s addresses', (_, frame) => {
+		const { page, resolve, store } = setup();
+		expect(() => applyLynxCompiledProgramFrame(store, page, resolve, frame)).toThrow(/root/);
 		expect(store.size()).toBe(0);
 		expect(page.children).toEqual([]);
+	});
+
+	it('rejects an invalid VIS state without changing the instance', () => {
+		const { page, resolve, store } = setup();
+		applyLynxCompiledProgramFrame(
+			store,
+			page,
+			resolve,
+			encodeLynxDeltaMessage([
+				{
+					op: 'run',
+					templateId: 7,
+					parent: { instance: 1, slot: 0 },
+					before: null,
+					firstInstance: 2,
+					count: 1,
+					values: ['row-2', 'cold', 'two'],
+				},
+			]),
+		);
+		expect(() =>
+			applyLynxCompiledProgramFrame(store, page, resolve, [
+				LYNX_DELTA_PROTOCOL_VERSION,
+				6,
+				2,
+				2,
+				2,
+			]),
+		).toThrow(/hidden or visible/);
+		expect(page.children[0]!.attributes.hidden).toBeUndefined();
 	});
 
 	it('rejects a root sentinel as a live RUN instance', () => {
