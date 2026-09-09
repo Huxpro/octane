@@ -68,7 +68,6 @@ export interface LynxCompiledProgramStore<Node extends LynxElementRef = LynxElem
 	clear(parent: Node): void;
 	move(handle: number, before: number | null): boolean;
 	remove(handle: number): void;
-	root(handle: number): Node;
 	set(handle: number, slot: number, value: unknown): boolean;
 	visibility(handle: number, visible: boolean): boolean;
 	size(): number;
@@ -656,10 +655,6 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		remove(handle) {
 			const undo = requireJournal();
 			removeInstance(handle, undo);
-		},
-		root(handle) {
-			requireHealthy();
-			return rootOf(requireInstance(handle));
 		},
 		size() {
 			return instances.size;
