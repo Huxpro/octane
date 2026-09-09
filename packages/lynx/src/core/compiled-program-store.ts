@@ -478,20 +478,6 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'event identity exceeds the safe integer range',
 			);
 		}
-		for (let site = 0; site < eventCount; site++) {
-			const event = plan.events[site]!;
-			if (
-				plan.slots[event.slot] !== `e:${event.type}` ||
-				(event.priority !== 'discrete' &&
-					event.priority !== 'continuous' &&
-					event.priority !== 'default') ||
-				!Number.isSafeInteger(event.node) ||
-				event.node < 0 ||
-				event.node >= plan.nodes
-			) {
-				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `received an invalid event site ${site}`);
-			}
-		}
 		if (adoption && adopted.firstListenerId !== (eventCount === 0 ? null : nextListener)) {
 			fail(
 				LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
@@ -513,6 +499,22 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		const previous = next === null ? range.tail : instances.get(next)!.previous;
 		let create = creates.get(plan);
 		if (create === undefined) {
+			if (typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__) {
+				for (let site = 0; site < eventCount; site++) {
+					const event = plan.events[site]!;
+					if (
+						plan.slots[event.slot] !== `e:${event.type}` ||
+						(event.priority !== 'discrete' &&
+							event.priority !== 'continuous' &&
+							event.priority !== 'default') ||
+						!Number.isSafeInteger(event.node) ||
+						event.node < 0 ||
+						event.node >= plan.nodes
+					) {
+						fail(`received an invalid event site ${site}`);
+					}
+				}
+			}
 			create = plan.bind(papi) as CompiledProgramCreate;
 			if (typeof create.run !== 'function')
 				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'requires an emitted dense-run driver');
