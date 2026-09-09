@@ -18,6 +18,7 @@ import {
 	universalKey,
 	universalList,
 	universalPlan,
+	universalProgramRangeCommandSlot,
 	universalProps,
 	universalTry,
 	universalValue,
@@ -3673,7 +3674,7 @@ export function App() @{
 
 describe('universal logical topology and transactions', () => {
 	it('retains an addressed program manifest beside an expanded initial batch', () => {
-		const plan = universalPlan(
+		const rowPlan = universalPlan(
 			'object',
 			{
 				kind: 'host',
@@ -3682,8 +3683,22 @@ describe('universal logical topology and transactions', () => {
 			},
 			{ module: 'tests/program-manifest.tsrx', index: 0, digest: 'program-manifest-digest' },
 		);
+		const shelfPlan = universalPlan('object', {
+			kind: 'host',
+			type: 'shelf',
+			children: [{ kind: 'slot', slot: 5 }],
+		});
 		const Scene = defineUniversalComponent('object', (props: { values: readonly string[] }) =>
-			universalList(props.values, (value) => universalKey(value, universalValue(plan, [value]))),
+			universalValue(shelfPlan, [
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				universalList(props.values, (value) =>
+					universalKey(value, universalValue(rowPlan, [value])),
+				),
+			]),
 		);
 		const container = createObjectContainer();
 		const base = createObjectDriver();
@@ -3704,18 +3719,22 @@ describe('universal logical topology and transactions', () => {
 		root.render(Scene, { values: ['a', 'b'] });
 
 		expect(batches).toHaveLength(1);
-		expect(batches[0].commands.filter((command) => command.op === 'create')).toHaveLength(4);
+		expect(batches[0].commands.filter((command) => command.op === 'create')).toHaveLength(5);
 		expect(batches[0].programs).toEqual([
 			expect.objectContaining({
 				op: 'program-manifest',
 				address: { module: 'tests/program-manifest.tsrx', index: 0 },
-				parent: null,
+				parent: expect.any(Number),
 				before: null,
 				count: 2,
 				values: ['a', 'b'],
 			}),
 		]);
-		expect(container.children.map((child) => child.children[0].props.value)).toEqual(['a', 'b']);
+		expect(universalProgramRangeCommandSlot(batches[0].programs[0]!)).toBe(5);
+		expect(container.children[0].children.map((child) => child.children[0].props.value)).toEqual([
+			'a',
+			'b',
+		]);
 		root.unmount();
 	});
 

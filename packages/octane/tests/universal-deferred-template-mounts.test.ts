@@ -20,6 +20,7 @@ import {
 	createObjectDriver,
 	createUniversalRoot,
 	defineUniversalComponent,
+	universalProgramRangeCommandSlot,
 	universalFor,
 	universalPlan,
 	universalValue,
@@ -65,6 +66,17 @@ const framedShelfPlan = universalPlan('object', {
 	children: [
 		{ kind: 'slot', slot: 0 },
 		{ kind: 'host', type: 'shelf', children: [{ kind: 'slot', slot: 1 }] },
+	],
+});
+
+/** Two compiler holes on one physical host, with deliberately sparse slot numbers. */
+const splitShelfPlan = universalPlan('object', {
+	kind: 'host',
+	type: 'shelf',
+	bindings: [['tone', 0]],
+	children: [
+		{ kind: 'slot', slot: 3 },
+		{ kind: 'slot', slot: 7 },
 	],
 });
 
@@ -234,6 +246,35 @@ const TwoParents = defineUniversalComponent(
 		]),
 );
 
+const SplitShelf = defineUniversalComponent('object', () =>
+	universalValue(splitShelfPlan, [
+		'cool',
+		undefined,
+		undefined,
+		universalFor(
+			[{ id: 'a', label: 'Alpha' }],
+			(row) => row.id,
+			(row) => universalValue(cellPlan, [row.id, row.label]),
+			null,
+			false,
+			false,
+			true,
+		),
+		undefined,
+		undefined,
+		undefined,
+		universalFor(
+			[{ id: 'b', label: 'Beta' }],
+			(row) => row.id,
+			(row) => universalValue(cellPlan, [row.id, row.label]),
+			null,
+			false,
+			false,
+			true,
+		),
+	]),
+);
+
 describe('deferred template mounts', () => {
 	it('declares a keyed range under a self-owning parent instead of building it', () => {
 		const container = createObjectContainer();
@@ -253,6 +294,7 @@ describe('deferred template mounts', () => {
 		if (run.op !== 'mount-template-run') throw new Error('Expected an intrinsic run.');
 		expect(run.deferred).toBe(true);
 		expect(run.count).toBe(3);
+		expect(universalProgramRangeCommandSlot(run)).toBe(0);
 		// A declaration is appended or not made at all, so it never names a sibling.
 		expect(run.before).toBeNull();
 		expect(run.values).toEqual(['a', 'Alpha', 'b', 'Beta', 'c', 'Gamma']);
@@ -267,6 +309,49 @@ describe('deferred template mounts', () => {
 		expect(declared[0].count).toBe(3);
 		expect(container.children).toHaveLength(1);
 		expect(container.children[0].type).toBe('shelf');
+		expect(container.children[0].children).toEqual([]);
+		root.unmount();
+	});
+
+	it('keeps same-parent runs separate when different compiler holes own them', () => {
+		const container = createObjectContainer();
+		const { driver } = createDeferringObjectDriver();
+		const root = createUniversalRoot(container, driver);
+		const prepared = root.prepare(SplitShelf, undefined);
+		if (prepared.status !== 'prepared') throw new Error('Expected a prepared transaction.');
+		const runs = runsIn(prepared.batch.commands);
+		expect(runs).toHaveLength(2);
+		expect(runs.map((run) => run.count)).toEqual([1, 1]);
+		expect(runs.map(universalProgramRangeCommandSlot)).toEqual([3, 7]);
+		prepared.commit();
+		expect(container.children[0].props.tone).toBe('cool');
+		root.unmount();
+	});
+
+	it('retains the compiler range slot on later keyed moves and aborted retries', () => {
+		const container = createObjectContainer();
+		const { driver } = createDeferringObjectDriver();
+		const root = createUniversalRoot(container, driver);
+		const initial = [
+			{ id: 'a', label: 'Alpha' },
+			{ id: 'b', label: 'Beta' },
+			{ id: 'c', label: 'Gamma' },
+		];
+		root.render(Shelf, { rows: initial });
+		const reordered = root.prepare(Shelf, { rows: [initial[2], initial[0], initial[1]] });
+		if (reordered.status !== 'prepared') throw new Error('Expected a prepared transaction.');
+		const moves = reordered.batch.commands.filter((command) => command.op === 'move');
+		expect(moves).not.toHaveLength(0);
+		expect(moves.map(universalProgramRangeCommandSlot)).toEqual(moves.map(() => 0));
+		reordered.abort();
+
+		const retry = root.prepare(Shelf, { rows: [initial[2], initial[0], initial[1]] });
+		if (retry.status !== 'prepared') throw new Error('Expected a prepared transaction.');
+		const retriedMoves = retry.batch.commands.filter((command) => command.op === 'move');
+		expect(retriedMoves.map(universalProgramRangeCommandSlot)).toEqual(retriedMoves.map(() => 0));
+		retry.commit();
+		// Deferred rows remain renderer-owned; committing their logical reorder
+		// must not materialize a second physical copy in the object container.
 		expect(container.children[0].children).toEqual([]);
 		root.unmount();
 	});

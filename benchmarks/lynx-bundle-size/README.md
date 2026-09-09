@@ -138,6 +138,9 @@ replacement-frontier repayment are recorded in
 The transactional root MOVE/CLEAR/VIS contract, direct event restoration, and
 updated structure-capable frontier are recorded in
 [`results/m3-compact-program-structure.md`](results/m3-compact-program-structure.md).
+The producer's compiler range-slot provenance, per-range shadow ordering, and
+updated range-ready frontier are recorded in
+[`results/m3-range-slot-provenance.md`](results/m3-range-slot-provenance.md).
 
 ## Core switch and main-thread program
 

@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import type { UniversalHostBatch, UniversalHostTemplateProgram } from 'octane/universal/native';
+import {
+	recordUniversalProgramCommand,
+	recordUniversalProgramRangeCommand,
+	universalProgramRangeCommandSlot,
+	type UniversalHostBatch,
+	type UniversalHostTemplateProgram,
+} from 'octane/universal/native';
 import { decodeLynxDeltaMessage, type LynxDeltaOperation } from '../src/core/delta-protocol.js';
 import { createLynxDeltaShadow, type LynxDeltaShadowSnapshot } from '../src/core/delta-shadow.js';
+import { promoteProducedProgramManifest } from '../src/core/run-program.js';
 
 const PROGRAM: UniversalHostTemplateProgram = Object.freeze({
 	nodes: Object.freeze([
@@ -198,6 +205,118 @@ describe('Lynx delta shadow', () => {
 		// The second instance, not the first: a bare slot index could not say so.
 		const firstHandle = run?.op === 'run' ? run.firstInstance : 0;
 		expect(set?.op === 'set' ? set.instance : null).toBe(firstHandle + 1);
+	});
+
+	it('uses the producing compiler range slot for nested runs and moves', () => {
+		const shadow = createLynxDeltaShadow();
+		const parent = shadow.prepare(
+			batch(1, [
+				{
+					op: 'mount-template-run',
+					parent: null,
+					before: null,
+					program: PROGRAM,
+					firstId: 10,
+					firstListenerId: null,
+					count: 1,
+					values: ['parent', 'P'],
+				},
+			]),
+		);
+		parent!.commit();
+
+		const nested = {
+			op: 'mount-template-run' as const,
+			parent: 10,
+			before: null,
+			program: PROGRAM,
+			firstId: 20,
+			firstListenerId: null,
+			count: 2,
+			values: ['child', 'A', 'child', 'B'],
+		};
+		// A host ID proves only the parent instance and physical node. Without the
+		// plan slot that owns this placement the shadow must not guess a range.
+		expect(shadow.prepare(batch(2, [nested]))).toBeNull();
+		recordUniversalProgramRangeCommand(nested, 7);
+		const mounted = shadow.prepare(batch(2, [nested]));
+		const run = decodeLynxDeltaMessage(mounted!.encoded).operations[0];
+		expect(run).toMatchObject({
+			op: 'run',
+			parent: { instance: 2, slot: 7 },
+			count: 2,
+		});
+		mounted!.commit();
+
+		const otherRange = {
+			op: 'mount-template-run' as const,
+			parent: 10,
+			before: null,
+			program: PROGRAM,
+			firstId: 30,
+			firstListenerId: null,
+			count: 1,
+			values: ['other', 'C'],
+		};
+		recordUniversalProgramRangeCommand(otherRange, 9);
+		shadow.prepare(batch(3, [otherRange]))!.commit();
+
+		const inserted = {
+			op: 'mount-template-run' as const,
+			parent: 10,
+			before: 20,
+			program: PROGRAM,
+			firstId: 40,
+			firstListenerId: null,
+			count: 1,
+			values: ['child', 'Before A'],
+		};
+		recordUniversalProgramRangeCommand(inserted, 7);
+		const insertion = shadow.prepare(batch(4, [inserted]));
+		expect(decodeLynxDeltaMessage(insertion!.encoded).operations[0]).toMatchObject({
+			op: 'run',
+			parent: { instance: 2, slot: 7 },
+			before: { instance: 3, slot: 0 },
+		});
+		insertion!.commit();
+
+		const crossed = { ...inserted, firstId: 50, before: 30 };
+		recordUniversalProgramRangeCommand(crossed, 7);
+		expect(shadow.prepare(batch(5, [crossed]))).toBeNull();
+		expect(shadow.snapshot().order.filter((entry) => entry.parent === 10)).toEqual([
+			{ parent: 10, slot: 7, instances: [6, 3, 4] },
+			{ parent: 10, slot: 9, instances: [5] },
+		]);
+
+		const move = { op: 'move' as const, parent: 10, id: 22, before: 20 };
+		expect(shadow.prepare(batch(6, [move]))).toBeNull();
+		recordUniversalProgramRangeCommand(move, 7);
+		const moved = shadow.prepare(batch(6, [move]));
+		expect(decodeLynxDeltaMessage(moved!.encoded).operations[0]).toMatchObject({
+			op: 'move',
+			instance: 4,
+			parent: { instance: 2, slot: 7 },
+			before: { instance: 3, slot: 0 },
+		});
+	});
+
+	it('preserves range provenance when an expanded first-screen manifest is promoted', () => {
+		const manifest = Object.freeze({
+			op: 'program-manifest' as const,
+			parent: 10,
+			before: null,
+			address: Object.freeze({ module: 'tests/row.tsrx', index: 0 }),
+			firstId: 20,
+			stride: 2,
+			firstListenerId: null,
+			count: 1,
+			values: Object.freeze(['child', 'A']),
+		});
+		recordUniversalProgramCommand(manifest, PROGRAM);
+		recordUniversalProgramRangeCommand(manifest, 7);
+		const promoted = promoteProducedProgramManifest(manifest);
+		expect(promoted).not.toBeNull();
+		expect(universalProgramRangeCommandSlot(promoted!.command)).toBe(7);
 	});
 
 	it('declines a prop change outside the compiler slot table', () => {
