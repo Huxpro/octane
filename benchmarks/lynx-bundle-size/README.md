@@ -113,6 +113,8 @@ deltas.
 The checked execution reports are [`results/l5-ceiling.md`](results/l5-ceiling.md)
 and
 [`results/m3-general-main-thread-receiver-ceiling.md`](results/m3-general-main-thread-receiver-ceiling.md).
+The exact existing-boundary replacement budget is recorded in
+[`results/m3-receiver-dependency-frontier.md`](results/m3-receiver-dependency-frontier.md).
 
 ## Core switch and main-thread program
 
