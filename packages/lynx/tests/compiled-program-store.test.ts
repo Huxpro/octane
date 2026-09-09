@@ -95,7 +95,7 @@ function mountRow(
 	page: FakeNode,
 	handle = 1,
 	plan = emittedPlan(papi),
-	before: FakeNode | null = null,
+	before: number | null = null,
 ): void {
 	store.mount({
 		firstHandle: handle,
@@ -558,13 +558,121 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		expect(binds).toBe(1);
 
 		store.begin();
-		mountRow(store, papi, page, 3, plan, page.children[1]!);
+		mountRow(store, papi, page, 3, plan, 2);
 		store.commit();
 		expect(page.children.map((node) => node.id)).toEqual(['row-1', 'row-3', 'row-2']);
 		store.begin();
 		store.remove(3);
 		store.rollback();
 		expect(page.children.map((node) => node.id)).toEqual(['row-1', 'row-3', 'row-2']);
+	});
+
+	it('restores the old order when a move mutates before throwing', () => {
+		const base = emittedHost();
+		let failNext = false;
+		const papi: typeof base = {
+			...base,
+			insertBefore(parent, child, before) {
+				base.insertBefore(parent, child, before);
+				if (failNext) {
+					failNext = false;
+					throw new Error('move fault');
+				}
+			},
+		};
+		const page = papi.createPage('0', 0);
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page));
+		mountCommitted(store, papi, page, 1);
+		mountCommitted(store, papi, page, 2);
+		failNext = true;
+		store.begin();
+		expect(() => store.move(1, null)).toThrow(/move fault/);
+		store.rollback();
+		expect(page.children.map((node) => node.id)).toEqual(['row-1', 'row-2']);
+		store.begin();
+		expect(store.move(1, null)).toBe(true);
+		store.commit();
+		expect(page.children.map((node) => node.id)).toEqual(['row-2', 'row-1']);
+	});
+
+	it('does not cross to the host for an already-satisfied structure write', () => {
+		const base = emittedHost();
+		let hostCalls = 0;
+		const papi: typeof base = {
+			...base,
+			insertBefore(parent, child, before) {
+				hostCalls++;
+				base.insertBefore(parent, child, before);
+			},
+			setAttribute(node, name, value) {
+				hostCalls++;
+				base.setAttribute(node, name, value);
+			},
+			setEvent(node, kind, name, listener) {
+				hostCalls++;
+				base.setEvent(node, kind, name, listener);
+			},
+		};
+		const page = papi.createPage('0', 0);
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 47);
+		store.begin();
+		store.mount({
+			firstHandle: 1,
+			count: 1,
+			parent: page,
+			before: null,
+			plan: emittedEventPlan(),
+			values: ['row-1', 'cold', 'one'],
+		});
+		store.commit();
+
+		hostCalls = 0;
+		store.begin();
+		expect(store.move(1, null)).toBe(false);
+		expect(store.move(1, 1)).toBe(false);
+		expect(store.visibility(1, true)).toBe(false);
+		store.commit();
+		expect(hostCalls).toBe(0);
+	});
+
+	it('restores event reachability when a visibility write mutates before throwing', () => {
+		const base = emittedHost();
+		let failNext = false;
+		const papi: typeof base = {
+			...base,
+			setEvent(node, kind, name, listener) {
+				base.setEvent(node, kind, name, listener);
+				if (failNext) {
+					failNext = false;
+					throw new Error('visibility fault');
+				}
+			},
+		};
+		const page = papi.createPage('0', 0);
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 47);
+		store.begin();
+		store.mount({
+			firstHandle: 1,
+			count: 1,
+			parent: page,
+			before: null,
+			plan: emittedEventPlan(),
+			values: ['row-1', 'cold', 'one'],
+		});
+		store.commit();
+		const root = page.children[0]!;
+		const token = root.events.get('bindEvent:tap');
+		failNext = true;
+		store.begin();
+		expect(() => store.visibility(1, false)).toThrow(/visibility fault/);
+		store.rollback();
+		expect(root.attributes.hidden).toBe(false);
+		expect(root.events.get('bindEvent:tap')).toBe(token);
+		store.begin();
+		expect(store.visibility(1, false)).toBe(true);
+		store.commit();
+		expect(root.attributes.hidden).toBe(true);
+		expect(root.events.has('bindEvent:tap')).toBe(false);
 	});
 
 	it('disposes every attached root without leaving retained instances', () => {

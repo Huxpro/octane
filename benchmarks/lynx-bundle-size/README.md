@@ -135,6 +135,9 @@ event-capable frontier are recorded in
 The first-screen evaluator's production diagnostic folding and its exact
 replacement-frontier repayment are recorded in
 [`results/m3-first-screen-diagnostics.md`](results/m3-first-screen-diagnostics.md).
+The transactional root MOVE/CLEAR/VIS contract, direct event restoration, and
+updated structure-capable frontier are recorded in
+[`results/m3-compact-program-structure.md`](results/m3-compact-program-structure.md).
 
 ## Core switch and main-thread program
 

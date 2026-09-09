@@ -69,6 +69,12 @@ const PAGE: UniversalHostTemplateProgram = {
 	events: [],
 };
 
+/** No value slots: the compact setter exists only to restore its event. */
+const EVENT_ONLY: UniversalHostTemplateProgram = {
+	nodes: [{ type: 'view', parent: -1, props: { class: 'event-only' } }],
+	events: [{ node: 0, type: 'capture-bindtap', priority: 'discrete' }],
+};
+
 /**
  * `ROW` with both of its text holes reduced out, and where they were.
  *
@@ -1233,6 +1239,20 @@ describe('Lynx compiled value-slot updates', () => {
 		) => InstantiatedSlotCreate;
 		const create = bind(createHost());
 		expect(create.set).toBeTypeOf('function');
+	});
+
+	it('emits direct event writes even when a program has no value slots', () => {
+		const papi = createHost();
+		const page = papi.createPage('0', 0);
+		const create = instantiateSlotCreate(EVENT_ONLY, 'createEventOnlySlotUpdates')(papi);
+		const nodes = create(...([papi.getUniqueId(page), 'before'] as unknown as never[])) as {
+			events: Map<string, unknown>;
+		}[];
+
+		expect([...nodes[0]!.events.entries()]).toEqual([['capture-bind:tap', 'before']]);
+		expect(create.set(nodes, ~0, 'after')).toBe(true);
+		expect([...nodes[0]!.events.entries()]).toEqual([['capture-bind:tap', 'after']]);
+		expect(create.set(nodes, ~1, 'outside')).toBe(false);
 	});
 
 	it('matches the generic applier for class, alias, id, folded text, and raw text updates', () => {

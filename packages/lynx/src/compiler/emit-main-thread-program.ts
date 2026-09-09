@@ -315,12 +315,11 @@ export interface LynxMainThreadProgramEmission {
 	 * Whether the create also carries `<name>.set(nodes, slot, value)`.
 	 *
 	 * The setter is emitted only when its caller explicitly requests one and the
-	 * program has value slots. It addresses the wire program's dense value-slot
-	 * index directly, so a compact receiver needs neither a node/prop descriptor
-	 * nor a run-time inverse-map walk to apply one `SET` frame. Its optional node
-	 * offset addresses one instance inside a retained dense-run output without
-	 * allocating a sliced node array per instance; omitted means zero for the
-	 * original single-instance call shape.
+	 * program has value or event slots. Non-negative slots address the wire
+	 * program's dense value index; negative slots use `~eventIndex` to reinstall
+	 * an emitted event without retaining its parsed PAPI tuple. Its optional node
+	 * offset addresses one instance inside a retained dense-run output without a
+	 * sliced node array per instance; omitted means zero.
 	 */
 	readonly slotUpdates: boolean;
 }
@@ -633,6 +632,16 @@ function slotSetterLines(
 		emitSlotUpdate(program, sites[slot]!, lines);
 		lines.push(`\t\t\t\treturn true;`);
 	}
+	for (let site = 0; site < program.events.length; site++) {
+		const event = program.events[site]!;
+		const binding = parseLynxNativeEventProp(event.type)!;
+		const target = event.node === 0 ? 'nodes[offset]' : `nodes[offset + ${event.node}]`;
+		lines.push(
+			`\t\t\tcase ${~site}:`,
+			`\t\t\t\tpapi.setEvent(${target}, ${JSON.stringify(binding.type)}, ${JSON.stringify(binding.name)}, value);`,
+			`\t\t\t\treturn true;`,
+		);
+	}
 	lines.push(`\t\t}`, `\t\treturn false;`, `\t};`);
 	return lines;
 }
@@ -935,7 +944,8 @@ export function emitLynxMainThreadProgram(
 	// A program that gets no driver emits exactly the bytes it emitted before
 	// this parameter existed, which is what keeps every record taken against the
 	// old emission comparable to one taken against this.
-	const slotUpdates = options.slotUpdates === true && valueCount !== 0;
+	const slotUpdates =
+		options.slotUpdates === true && (valueCount !== 0 || program.events.length !== 0);
 	const setter = slotUpdates ? slotSetterLines(options.name, program, sites) : [];
 	const source =
 		!denseRun && !slotUpdates

@@ -10,6 +10,9 @@ const enum Opcode {
 	Run = 1,
 	Set = 2,
 	Remove = 3,
+	Clear = 4,
+	Move = 5,
+	Visibility = 6,
 }
 
 const END_INSTANCE = 0;
@@ -52,9 +55,9 @@ function instance(value: unknown, name: string): number {
  *
  * The router deliberately allocates no operation objects and gives a RUN's
  * value segment to the store by offset, so the retained value table is its only
- * copy. This slice owns root-level, range-free RUN/SET/REMOVE, including the
- * deterministic event-token run carried by a resident program. Every
- * other opcode or address rejects transactionally rather than falling through
+ * copy. This slice owns root-level, range-free RUN/SET/REMOVE/MOVE/CLEAR/VIS,
+ * including the deterministic event-token run carried by a resident program.
+ * Non-root range addresses reject transactionally rather than falling through
  * to a command interpreter.
  */
 export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
@@ -104,7 +107,7 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 					before:
 						beforeInstance === END_INSTANCE
 							? null
-							: store.root(instance(beforeInstance, 'an in-range RUN anchor')),
+							: instance(beforeInstance, 'an in-range RUN anchor'),
 					count: runCount,
 					firstHandle,
 					parent: page,
@@ -130,6 +133,33 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'REMOVE run exceeds the instance range');
 				}
 				for (let handle = firstHandle; handle <= finalHandle; handle++) store.remove(handle);
+			} else if (opcode === Opcode.Clear) {
+				if (arity !== 2)
+					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'CLEAR requires two fields');
+				if (input[cursor] !== ROOT_INSTANCE || input[cursor + 1] !== 0) {
+					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'supports only the root range site');
+				}
+				store.clear(page);
+			} else if (opcode === Opcode.Move) {
+				if (arity !== 5)
+					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'MOVE requires five fields');
+				const handle = instance(input[cursor], 'an in-range MOVE instance');
+				if (input[cursor + 1] !== ROOT_INSTANCE || input[cursor + 2] !== 0) {
+					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'supports only the root range site');
+				}
+				const before = index(input[cursor + 3], 'a non-negative MOVE anchor');
+				if (input[cursor + 4] !== 0)
+					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'requires a root MOVE anchor');
+				store.move(
+					handle,
+					before === END_INSTANCE ? null : instance(before, 'an in-range MOVE anchor'),
+				);
+			} else if (opcode === Opcode.Visibility) {
+				if (arity !== 2) fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'VIS requires two fields');
+				const visible = index(input[cursor + 1], 'a VIS state');
+				if (visible > 1)
+					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'requires a hidden or visible VIS state');
+				store.visibility(instance(input[cursor], 'an in-range VIS instance'), visible === 1);
 			} else {
 				fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && `does not support opcode ${opcode}`);
 			}
