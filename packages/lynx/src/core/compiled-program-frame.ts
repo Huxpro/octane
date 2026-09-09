@@ -1,6 +1,6 @@
 declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
 
-import type { UniversalProgramPlan } from 'octane/universal/native';
+import type { UniversalHostProgramAddress, UniversalProgramPlan } from 'octane/universal/native';
 
 import { LYNX_DELTA_PROTOCOL_VERSION } from './delta-protocol.js';
 import type { LynxCompiledProgramStore } from './compiled-program-store.js';
@@ -28,6 +28,19 @@ export type LynxCompiledProgramResolver = (
 	module: string,
 	index: number,
 ) => UniversalProgramPlan | undefined;
+
+/** One first-screen run whose build address and painted state were retained locally. */
+export interface LynxCompiledProgramFrameAdoption<Node extends LynxElementRef> {
+	readonly address: UniversalHostProgramAddress;
+	readonly count: number;
+	readonly firstId: number;
+	readonly firstListenerId: number | null;
+	readonly nodes: readonly Node[];
+	readonly plan: UniversalProgramPlan;
+	readonly stride: number;
+	readonly values: readonly unknown[];
+	readonly valuesSelected: boolean;
+}
 
 function fail(message: string | false): never {
 	throw new TypeError(
@@ -70,6 +83,7 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 	page: Node,
 	resolve: LynxCompiledProgramResolver,
 	input: unknown,
+	adoptions?: readonly LynxCompiledProgramFrameAdoption<Node>[],
 ): void {
 	if (!Array.isArray(input) || input[0] !== LYNX_DELTA_PROTOCOL_VERSION) {
 		fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'requires a version-2 array envelope');
@@ -77,6 +91,8 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 
 	store.begin();
 	try {
+		const adoptionTemplates: unknown[] | null = adoptions === undefined ? null : [];
+		let adoptionAt = 0;
 		let cursor = 1;
 		while (cursor < input.length) {
 			const opcode = count(
@@ -111,7 +127,13 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 						LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT &&
 							`cannot resolve DEFINE program ${module}#${programIndex}`,
 					);
-				store.define(template, plan);
+				if (!store.define(template, plan) && adoptionTemplates !== null) {
+					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'first-screen run identity differs');
+				}
+				if (adoptionTemplates !== null) {
+					adoptionTemplates[template * 2] = module;
+					adoptionTemplates[template * 2 + 1] = programIndex;
+				}
 			} else if (opcode === Opcode.Run) {
 				if (arity < RUN_HEADER_FIELDS)
 					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'RUN requires seven header fields');
@@ -147,21 +169,59 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 				if (!Number.isSafeInteger(valueCount) || arity !== RUN_HEADER_FIELDS + valueCount) {
 					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'received the wrong RUN value arity');
 				}
-				store.mount({
-					before:
-						beforeInstance === END_INSTANCE
-							? null
-							: instance(
-									beforeInstance,
-									LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'requires an in-range RUN anchor',
-								),
-					count: runCount,
-					firstHandle,
-					parent: page,
-					plan,
-					valueOffset: cursor + RUN_HEADER_FIELDS,
-					values: input,
-				});
+				const valueOffset = cursor + RUN_HEADER_FIELDS;
+				const adoption = adoptions?.[adoptionAt++];
+				if (adoptions !== undefined) {
+					if (
+						adoption === undefined ||
+						adoption.plan !== plan ||
+						adoption.count !== runCount ||
+						(adoption.valuesSelected ? adoption.values.length !== valueCount : runCount !== 1) ||
+						adoption.address.module !== adoptionTemplates![template * 2] ||
+						adoption.address.index !== adoptionTemplates![template * 2 + 1] ||
+						beforeInstance !== END_INSTANCE
+					) {
+						fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'first-screen run identity differs');
+					}
+					for (let index = 0; index < valueCount; index++) {
+						const painted = adoption.valuesSelected
+							? adoption.values[index]
+							: adoption.values[plan.values[index % plan.values.length]!];
+						if (!Object.is(painted, input[valueOffset + index])) {
+							fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'first-screen run value differs');
+						}
+					}
+				}
+				if (adoption === undefined)
+					store.mount({
+						before:
+							beforeInstance === END_INSTANCE
+								? null
+								: instance(
+										beforeInstance,
+										LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'requires an in-range RUN anchor',
+									),
+						count: runCount,
+						firstHandle,
+						parent: page,
+						plan,
+						valueOffset,
+						values: input,
+					});
+				else
+					store.adopt({
+						before: null,
+						count: runCount,
+						firstHandle,
+						firstId: adoption.firstId,
+						firstListenerId: adoption.firstListenerId,
+						nodes: adoption.nodes,
+						parent: page,
+						plan,
+						stride: adoption.stride,
+						valueOffset,
+						values: input,
+					});
 			} else if (opcode === Opcode.Set) {
 				if (arity !== 3)
 					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'SET requires three fields');
@@ -243,6 +303,9 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 				fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && `does not support opcode ${opcode}`);
 			}
 			cursor = end;
+		}
+		if (adoptions !== undefined && adoptionAt !== adoptions.length) {
+			fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'did not consume every first-screen run');
 		}
 		store.commit();
 	} catch (error) {

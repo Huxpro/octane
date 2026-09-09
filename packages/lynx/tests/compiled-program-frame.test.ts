@@ -5,7 +5,10 @@ import { emitLynxMainThreadProgram } from '../src/compiler/emit-main-thread-prog
 import { applyLynxCompiledProgramFrame } from '../src/core/compiled-program-frame.js';
 import { createLynxCompiledProgramStore } from '../src/core/compiled-program-store.js';
 import { encodeLynxDeltaMessage, LYNX_DELTA_PROTOCOL_VERSION } from '../src/core/delta-protocol.js';
-import { decodeLynxNativeEventToken } from '../src/core/native-events.js';
+import {
+	decodeLynxNativeEventToken,
+	encodeLynxNativeEventToken,
+} from '../src/core/native-events.js';
 import type { LynxElementPAPI } from '../src/core/papi.js';
 import { createFakePAPI, type FakeNode, shape } from './_fixtures/fake-element-papi.js';
 
@@ -79,6 +82,35 @@ function emittedHost(): LynxElementPAPI<FakeNode> {
 		},
 		append: (parent, child) => base.insertBefore(parent, child, null),
 	};
+}
+
+function paintAdoptableRows(
+	papi: LynxElementPAPI<FakeNode>,
+	page: FakeNode,
+	plan: UniversalProgramPlan,
+	values: readonly unknown[],
+	firstId: number,
+	stride: number,
+	firstListenerId: number,
+): FakeNode[] {
+	const count = values.length / plan.values.length;
+	const nodes = new Array<FakeNode>(plan.nodes * count);
+	const events = Array.from({ length: count }, (_, row) =>
+		plan.events.map((event, site) =>
+			encodeLynxNativeEventToken({
+				root: 73,
+				id: firstId + row * stride + event.node,
+				generation: 1,
+				listener: firstListenerId + row * plan.events.length + site,
+				priority: event.priority,
+			}),
+		),
+	).flat();
+	plan.bind(papi).run!(papi.getUniqueId(page), count, values, events, [], nodes);
+	for (let row = 0; row < count; row++) {
+		papi.insertBefore(page, nodes[row * plan.nodes]!, null);
+	}
+	return nodes;
 }
 
 function setup() {
@@ -182,6 +214,173 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 			listener: 1,
 			priority: 'discrete',
 		});
+	});
+
+	it('matches a first-screen run and adopts it without replaying host writes', () => {
+		const base = emittedHost();
+		let hostWrites = 0;
+		const papi: typeof base = {
+			...base,
+			insertBefore(parent, child, before) {
+				hostWrites++;
+				base.insertBefore(parent, child, before);
+			},
+			setEvent(node, kind, name, listener) {
+				hostWrites++;
+				base.setEvent(node, kind, name, listener);
+			},
+		};
+		const page = papi.createPage('0', 0);
+		const plan = emittedEventPlan();
+		const address = { module: 'tests/AdoptedRow.lynx.tsrx', index: 0 };
+		const values = ['row-10', 'cold', 'ten', 'row-14', 'cold', 'fourteen'];
+		const nodes = paintAdoptableRows(papi, page, plan, values, 10, 4, 1_000_000);
+		const tokens = page.children.map((node) => node.events.get('bindEvent:tap'));
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 73, 1_000_000);
+		const frame = encodeLynxDeltaMessage(
+			[
+				{
+					op: 'run',
+					templateId: 1,
+					parent: { instance: 1, slot: 0 },
+					before: null,
+					firstInstance: 2,
+					count: 2,
+					values,
+				},
+			],
+			[{ id: 1, address }],
+		);
+		hostWrites = 0;
+		applyLynxCompiledProgramFrame(
+			store,
+			page,
+			(module, index) => (module === address.module && index === address.index ? plan : undefined),
+			frame,
+			[
+				{
+					address,
+					count: 2,
+					firstId: 10,
+					firstListenerId: 1_000_000,
+					nodes,
+					plan,
+					stride: 4,
+					values,
+					valuesSelected: true,
+				},
+			],
+		);
+		expect(hostWrites).toBe(0);
+		expect(store.size()).toBe(2);
+
+		applyLynxCompiledProgramFrame(
+			store,
+			page,
+			() => undefined,
+			encodeLynxDeltaMessage([
+				{ op: 'set', instance: 3, slot: 2, value: 'updated' },
+				{ op: 'vis', instance: 3, state: 'hidden' },
+				{ op: 'vis', instance: 3, state: 'visible' },
+			]),
+		);
+		expect(page.children[1]!.children[0]!.children[0]!.text).toBe('updated');
+		expect(page.children.map((node) => node.events.get('bindEvent:tap'))).toEqual(tokens);
+	});
+
+	it('rolls back a divergent first-screen proof and accepts the exact retry', () => {
+		const papi = emittedHost();
+		const page = papi.createPage('0', 0);
+		const plan = emittedEventPlan();
+		const address = { module: 'tests/AdoptedRow.lynx.tsrx', index: 0 };
+		const values = ['row-10', 'cold', 'ten'];
+		const nodes = paintAdoptableRows(papi, page, plan, values, 10, 4, 1_000_000);
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 73, 1_000_000);
+		const frame = encodeLynxDeltaMessage(
+			[
+				{
+					op: 'run',
+					templateId: 1,
+					parent: { instance: 1, slot: 0 },
+					before: null,
+					firstInstance: 2,
+					count: 1,
+					values,
+				},
+			],
+			[{ id: 1, address }],
+		);
+		const adoption = {
+			address,
+			count: 1,
+			firstId: 10,
+			firstListenerId: 1_000_000,
+			nodes,
+			plan,
+			stride: 4,
+			values,
+			valuesSelected: true,
+		} as const;
+		const resolve = (module: string, index: number) =>
+			module === address.module && index === address.index ? plan : undefined;
+
+		const alias = { ...address, index: 1 };
+		const aliasedFrame = encodeLynxDeltaMessage(
+			[
+				{
+					op: 'run',
+					templateId: 1,
+					parent: { instance: 1, slot: 0 },
+					before: null,
+					firstInstance: 2,
+					count: 1,
+					values,
+				},
+			],
+			[
+				{ id: 1, address },
+				{ id: 1, address: alias },
+			],
+		);
+		expect(() =>
+			applyLynxCompiledProgramFrame(
+				store,
+				page,
+				(module) => (module === address.module ? plan : undefined),
+				aliasedFrame,
+				[{ ...adoption, address: alias }],
+			),
+		).toThrow(/first-screen run identity/);
+		expect(store.resolve(1)).toBeUndefined();
+		expect(store.size()).toBe(0);
+		expect(page.children).toEqual([nodes[0]]);
+		expect(() =>
+			applyLynxCompiledProgramFrame(store, page, resolve, frame, [
+				{ ...adoption, address: { ...address, index: 1 } },
+			]),
+		).toThrow(/first-screen run identity/);
+		expect(store.resolve(1)).toBeUndefined();
+		expect(store.size()).toBe(0);
+		expect(page.children).toEqual([nodes[0]]);
+		expect(() =>
+			applyLynxCompiledProgramFrame(store, page, resolve, frame, [
+				{ ...adoption, values: ['row-10', 'stale', 'ten'] },
+			]),
+		).toThrow(/first-screen run value/);
+		expect(store.resolve(1)).toBeUndefined();
+		expect(store.size()).toBe(0);
+		expect(page.children).toEqual([nodes[0]]);
+		expect(() =>
+			applyLynxCompiledProgramFrame(store, page, resolve, frame, [adoption, adoption]),
+		).toThrow(/consume every first-screen run/);
+		expect(store.resolve(1)).toBeUndefined();
+		expect(store.size()).toBe(0);
+		expect(page.children).toEqual([nodes[0]]);
+
+		applyLynxCompiledProgramFrame(store, page, resolve, frame, [adoption]);
+		expect(store.resolve(1)).toBe(plan);
+		expect(store.size()).toBe(1);
+		expect(page.children).toEqual([nodes[0]]);
 	});
 
 	it('streams dense RUN, SET, and REMOVE frames into the compiled store', () => {
