@@ -150,6 +150,9 @@ validation-label repayment are recorded in
 The host-free first-screen program ownership transfer, logical event-identity
 preservation, and failed/final frontier controls are recorded in
 [`results/m3-compact-first-screen-adoption.md`](results/m3-compact-first-screen-adoption.md).
+The frame-level build-address/value proof, transactional adoption retry, and
+exact production frontier are recorded in
+[`results/m3-compact-first-screen-frame-match.md`](results/m3-compact-first-screen-frame-match.md).
 
 ## Core switch and main-thread program
 
