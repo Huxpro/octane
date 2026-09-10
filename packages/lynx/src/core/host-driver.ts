@@ -4731,6 +4731,12 @@ function bindResidentRunDriver<Node extends LynxElementRef>(
 	label: string,
 ): NonNullable<UniversalProgramCreate['run']> | undefined {
 	const resident = residentRunPlan(command);
+	// A structural program's generated run has a fixed physical output stride,
+	// but this general receiver's dense store addresses logical host IDs. Members
+	// mounted into an open range make that logical stride variable, so keep this
+	// receiver on the already-prepared descriptor path. The compact store uses
+	// handles plus compiler range slots and may consume the physical driver.
+	if (resident !== undefined && resident.ranges.length !== 0) return undefined;
 	let create = resident === undefined ? undefined : state.boundPrograms.get(resident);
 	if (resident !== undefined && create === undefined) {
 		create = resident.bind(state.papi);
@@ -4751,7 +4757,6 @@ function bindResidentRunDriver<Node extends LynxElementRef>(
 	if (
 		resident!.nodes !== program.shape.types.length ||
 		resident!.values.length !== program.valueCount ||
-		resident!.ranges.length !== 0 ||
 		resident!.events.length !== program.eventCount ||
 		resident!.events.some((event, eventIndex) => {
 			const prepared = program.eventSites[eventIndex];

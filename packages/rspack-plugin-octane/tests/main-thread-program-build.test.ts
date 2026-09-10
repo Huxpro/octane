@@ -32,6 +32,7 @@ export const universalPlan = (_renderer, plan) => plan;
 export const universalValue = (plan) => plan;
 export const universalKey = (_key, value) => value;
 export const universalList = (items) => items;
+export const universalFor = (items, _key, render) => items.map(render);
 export const universalContext = () => ({});
 export const universalPortal = (value) => value;
 export const universalSuspense = (value) => value;
@@ -52,6 +53,17 @@ const LIST_ROW = `export function ListRow(props: { id: string; label: string }) 
 	<list-item item-key={props.id} reuse-identifier="feed-row">
 		<text class="label">{props.label as string}</text>
 	</list-item>
+}
+`;
+
+const STRUCTURAL_LIST = `export function StructuralList(props: { items: readonly { id: number; label: string }[] }) @{
+	<view class="page">
+		<view class="rows">
+			@for (const item of props.items; key item.id) {
+				<view id={String(item.id)}><text>{item.label as string}</text></view>
+			}
+		</view>
+	</view>
 }
 `;
 
@@ -173,13 +185,14 @@ describe('a main-thread program backend, through a real Rspack build', () => {
 		write('src/worklets.js', RENDERER_STUB);
 		write('src/Card.tsrx', CARD);
 		write('src/ListRow.tsrx', LIST_ROW);
+		write('src/StructuralList.tsrx', STRUCTURAL_LIST);
 		write(
 			'src/background.js',
-			`export { Card } from './Card.tsrx';\nexport { ListRow } from './ListRow.tsrx';\n`,
+			`export { Card } from './Card.tsrx';\nexport { ListRow } from './ListRow.tsrx';\nexport { StructuralList } from './StructuralList.tsrx';\n`,
 		);
 		write(
 			'src/main.js',
-			`export { Card } from './Card.tsrx';\nexport { ListRow } from './ListRow.tsrx';\n`,
+			`export { Card } from './Card.tsrx';\nexport { ListRow } from './ListRow.tsrx';\nexport { StructuralList } from './StructuralList.tsrx';\n`,
 		);
 	});
 
@@ -313,5 +326,26 @@ describe('a main-thread program backend, through a real Rspack build', () => {
 		await expect(
 			build('drifted', { addressing: true, topLevel: Backend, mainThread: drifting }),
 		).rejects.toThrow(/disagree about .*src\/Card\.tsrx/);
+	}, 60_000);
+
+	it('fails the build when a structural range topology drifts between layers', async () => {
+		const drifting = {
+			...Backend,
+			deriveLynxMainThreadProgram: (plan: never) => {
+				const derived = Backend.deriveLynxMainThreadProgram(plan);
+				if (derived === null || derived.ranges.length !== 1) return derived;
+				return {
+					...derived,
+					ranges: [{ ...derived.ranges[0]!, node: 0 }],
+				};
+			},
+		};
+		await expect(
+			build('structural-drift', {
+				addressing: true,
+				topLevel: Backend,
+				mainThread: drifting,
+			}),
+		).rejects.toThrow(/disagree about .*src\/StructuralList\.tsrx/);
 	}, 60_000);
 });

@@ -189,20 +189,24 @@ describe('deriving a main-thread program from a plan', () => {
 	it('lowers a plan the way the run-time lowering lowers it', () => {
 		const derived = deriveLynxMainThreadProgram(CARD_PLAN);
 		expect(derived).not.toBeNull();
+		const { addressable, ...lowered } = derived!;
 		// No range holes in this plan, so both arms are told the same thing and
 		// the only variable left is the container the build-time driver lacks.
-		expect(derived).toEqual(throughRuntimeLowering(CARD_PLAN, () => false));
+		expect(addressable).toBe(true);
+		expect(lowered).toEqual(throughRuntimeLowering(CARD_PLAN, () => false));
 	});
 
 	it('reads its keyed range holes off the plan rather than off a value', () => {
 		const derived = deriveLynxMainThreadProgram(TABLE_PLAN);
 		expect(derived).not.toBeNull();
+		const { addressable, ...lowered } = derived!;
 		// Slot 1 is the `kind: 'slot'` hole and slot 0 is the `kind: 'text'` one.
 		// A build that could not tell them apart would either mount the range as
 		// a stray empty text node or drop the caption.
+		expect(addressable).toBe(true);
 		expect(derived!.ranges).toEqual([{ slot: 1, node: 0 }]);
 		expect(derived!.wire.nodes).toHaveLength(3);
-		expect(derived).toEqual(throughRuntimeLowering(TABLE_PLAN, (slot) => slot === 1));
+		expect(lowered).toEqual(throughRuntimeLowering(TABLE_PLAN, (slot) => slot === 1));
 	});
 
 	it('paints what the applier paints, through the emission', () => {

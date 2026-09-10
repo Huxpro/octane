@@ -70,6 +70,19 @@ export function Card(props: { label: string; detail: string; tone: string; ident
 }
 `;
 
+/** A fixed shell whose keyed members remain a structural range. */
+const STRUCTURAL_ADDRESSABLE_CARD = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+export function Card(props: { items: readonly { id: number; label: string }[] }) @{
+	<view class="page">
+		<view class="rows">
+			@for (const item of props.items; key item.id) {
+				<view id={String(item.id)}><text>{item.label as string}</text></view>
+			}
+		</view>
+	</view>
+}
+`;
+
 type CompileShape = {
 	readonly target?: 'lynx' | 'universal';
 	readonly thread?: 'main-thread' | 'background';
@@ -559,6 +572,38 @@ export function Card(props: { row: { id: number; label: string }; isSelected: bo
 		expect(main.roots[0]).toHaveProperty('wire');
 		expect(main.addresses[0]).toMatchObject({ module, index: 0 });
 		expect(background.addresses).toEqual(main.addresses);
+	});
+
+	it('addresses an open structural range and hashes its topology', () => {
+		const module = 'src/StructuralCard.lynx.tsrx';
+		const main = evaluate(compiled(STRUCTURAL_ADDRESSABLE_CARD, { backend: Backend, module }));
+		const background = evaluate(
+			compiled(STRUCTURAL_ADDRESSABLE_CARD, {
+				thread: 'background',
+				backend: Backend,
+				module,
+			}),
+		);
+		const index = main.roots.findIndex((root) => root.ranges?.length === 1);
+		expect(index).toBeGreaterThanOrEqual(0);
+		expect(main.roots[index]).toHaveProperty('wire');
+		expect(main.roots[index].ranges[0]).toMatchObject({ paintsText: false });
+		expect(main.addresses[index]).toMatchObject({ module, index });
+		expect(background.addresses[index]).toEqual(main.addresses[index]);
+
+		const shifted = {
+			...Backend,
+			deriveLynxMainThreadProgram(plan: never) {
+				const derived = Backend.deriveLynxMainThreadProgram(plan);
+				if (derived === null || derived.ranges.length !== 1) return derived;
+				return {
+					...derived,
+					ranges: [{ ...derived.ranges[0]!, node: 0 }],
+				};
+			},
+		};
+		const drifted = evaluate(compiled(STRUCTURAL_ADDRESSABLE_CARD, { backend: shifted, module }));
+		expect(drifted.addresses[index].digest).not.toBe(main.addresses[index].digest);
 	});
 
 	it('keeps a call through a local binding named String range-bearing', () => {

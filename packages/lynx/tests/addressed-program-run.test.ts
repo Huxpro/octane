@@ -112,6 +112,14 @@ const LIST_ROW: UniversalHostTemplateProgram = {
 	events: [{ node: 1, type: 'bindtap', priority: 'default' }],
 };
 
+const STRUCTURAL_SHELL: UniversalHostTemplateProgram = {
+	nodes: [
+		{ type: 'view', parent: -1, props: { class: 'shell' } },
+		{ type: 'view', parent: 0, props: { class: 'rows' } },
+	],
+	events: [],
+};
+
 const VALUES = Object.freeze([
 	'first',
 	'row-1',
@@ -384,6 +392,76 @@ describe('mounting a resident program by address (issue #246 E1)', () => {
 		expect(profile.programRunDriverFallback).toBe(
 			'resident program has no straight-line run driver',
 		);
+	});
+
+	it('keeps structural resident programs on the descriptor path', () => {
+		const module = freshModule();
+		const rowModule = freshModule();
+		let binds = 0;
+		let runs = 0;
+		const { source } = emitLynxMainThreadProgram(STRUCTURAL_SHELL, {
+			name: 'createAddressedStructuralShell',
+			ranges: [{ node: 1 }],
+			structuralRuns: true,
+		});
+		const emitted = new Function(`return (${source});`)() as (
+			papi: unknown,
+		) => UniversalProgramCreate;
+		registerUniversalProgram(module, 0, {
+			kind: 'program',
+			slots: ['r'],
+			nodes: STRUCTURAL_SHELL.nodes.length,
+			values: [],
+			events: [],
+			ranges: [{ slot: 0, node: 1, id: 2, paintsText: false }],
+			bind(papi) {
+				binds++;
+				const create = emitted(papi);
+				const run = create.run!;
+				Object.defineProperty(create, 'run', {
+					value(...args: Parameters<NonNullable<UniversalProgramCreate['run']>>) {
+						runs++;
+						return run(...args);
+					},
+				});
+				return create;
+			},
+			wire: STRUCTURAL_SHELL,
+		});
+		registerWire(rowModule, 0, ROW);
+
+		const { container, page } = createHost();
+		const prepared = prepareLynxHostBatch(
+			container,
+			batch([
+				{
+					op: 'mount-program-run',
+					parent: null,
+					before: null,
+					address: { module, index: 0 },
+					firstId: 10,
+					firstListenerId: null,
+					count: 1,
+					values: [],
+				},
+				{
+					op: 'mount-program-run',
+					parent: 11,
+					before: null,
+					address: { module: rowModule, index: 0 },
+					firstId: 20,
+					firstListenerId: 700,
+					count: 3,
+					values: VALUES,
+				},
+			] as never),
+		);
+		prepared.apply();
+
+		expect(binds).toBe(0);
+		expect(runs).toBe(0);
+		expect(JSON.stringify(shape(page as FakeNode))).toContain('row-3');
+		expect(page.children[0]!.children[0]!.children).toHaveLength(3);
 	});
 
 	it('retains a faulted resident driver prefix for terminal cleanup', () => {

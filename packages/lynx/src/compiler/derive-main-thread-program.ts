@@ -100,6 +100,11 @@ export interface LynxMainThreadDerivation {
 	readonly values: readonly PreparedUniversalTemplateProgramValue[];
 	readonly events: readonly PreparedUniversalTemplateProgramEvent[];
 	readonly ranges: readonly UniversalTemplateProgramRange[];
+	/**
+	 * Whether every remaining range is structural, so the fixed wire and the
+	 * range topology together can name this program across the two build graphs.
+	 */
+	readonly addressable: boolean;
 }
 
 /**
@@ -207,5 +212,10 @@ export function deriveLynxMainThreadProgram(
 		values: prepared.values,
 		events: prepared.events,
 		ranges: reduced.ranges,
+		// The emitter paints a range value only under a text host. Such a range's
+		// runtime value can add a #text node to the background descriptor, so its
+		// fixed wire cannot be addressed. Every other range stays an open structural
+		// hole whose members are mounted separately under the same host node.
+		addressable: reduced.ranges.every((range) => prepared.wire.nodes[range.node]!.type !== 'text'),
 	});
 }
