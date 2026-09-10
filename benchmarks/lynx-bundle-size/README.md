@@ -173,6 +173,9 @@ rollback contract, and exact range-capable frontier are recorded in
 The exact non-additive worklet-seam and first-screen-evaluator cuts over that
 frontier, and the resulting implementation budget decision, are recorded in
 [`results/m3-production-capability-frontier.md`](results/m3-production-capability-frontier.md).
+The real structural physical-run producer, removal of the nested-range test
+shim, and producer-complete budget failure are recorded in
+[`results/m3-structural-run-producer.md`](results/m3-structural-run-producer.md).
 
 ## Core switch and main-thread program
 
