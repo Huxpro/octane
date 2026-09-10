@@ -63,6 +63,7 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 	page: Node,
 	resolve: LynxCompiledProgramResolver,
 	input: unknown,
+	beforeCommit?: () => void,
 ): void {
 	if (!Array.isArray(input) || input[0] !== LYNX_DELTA_PROTOCOL_VERSION) {
 		fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'requires a version-2 array envelope');
@@ -212,6 +213,12 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 			}
 			cursor = end;
 		}
+		// A ContextProxy abort can re-enter while Element PAPI work is in
+		// progress. Give the owning receiver one last boundary before publication:
+		// throwing here rolls the entire frame back through the same journal as a
+		// malformed later opcode, so an aborted attempt never becomes accepted
+		// merely because its host writes were synchronous.
+		beforeCommit?.();
 		store.commit();
 	} catch (error) {
 		try {

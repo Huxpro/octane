@@ -24,7 +24,7 @@
 //   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --harness product --output /tmp/l5.json
 //   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --arms baseline,both
 //   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --harness product --arms baseline,receiver
-//   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --harness product --arms baseline,receiver,receiver-papi,receiver-store,receiver-frame,receiver-container,receiver-direct,receiver-render,receiver-transport,receiver-worklets,receiver-foundation-lite,receiver-foundation-no-worklets,receiver-foundation-no-render,receiver-foundation-store,receiver-foundation-frame,receiver-foundation-frame-no-worklets,receiver-foundation-frame-no-render,receiver-foundation-frame-producer-slots,receiver-foundation-frame-no-worklets-producer-slots,receiver-foundation-frame-no-render-producer-slots,receiver-foundation-frame-producer-complete,receiver-foundation-frame-no-worklets-producer-complete,receiver-foundation-frame-no-render-producer-complete,receiver-foundation
+//   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --harness product --arms baseline,receiver,receiver-papi,receiver-store,receiver-frame,receiver-container,receiver-direct,receiver-render,receiver-transport,receiver-worklets,receiver-foundation-lite,receiver-foundation-no-worklets,receiver-foundation-no-render,receiver-foundation-store,receiver-foundation-frame,receiver-foundation-frame-no-worklets,receiver-foundation-frame-no-render,receiver-foundation-controller,receiver-foundation-frame-producer-slots,receiver-foundation-frame-no-worklets-producer-slots,receiver-foundation-frame-no-render-producer-slots,receiver-foundation-frame-producer-complete,receiver-foundation-frame-no-worklets-producer-complete,receiver-foundation-frame-no-render-producer-complete,receiver-foundation-controller-producer-complete,receiver-foundation
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -64,6 +64,8 @@ const COMPILED_PROGRAM_STORE_IMPORT =
 	"import { createLynxCompiledProgramStore } from './core/compiled-program-store.js';\n";
 const COMPILED_PROGRAM_FRAME_IMPORT =
 	"import { applyLynxCompiledProgramFrame } from './core/compiled-program-frame.js';\n";
+const COMPILED_PROGRAM_CONTROLLER_IMPORT =
+	"import { createLynxCompiledProgramController } from './core/compiled-program-controller.js';\n";
 
 const ARMS = {
 	baseline: { label: 'baseline (no ablation)', edits: [] },
@@ -418,6 +420,39 @@ const ARMS = {
 		],
 		COMPILED_PROGRAM_FRAME_IMPORT + COMPILED_PROGRAM_STORE_IMPORT,
 	),
+	'receiver-foundation-controller': receiverSlice(
+		'receiver floor + non-host foundation + compact ownership controller without evaluator',
+		`\tconst papi = createLynxElementPAPI<Node>(options.target ?? globalThis);
+\tconst page = papi.createPage(options.componentId ?? '0', options.cssId ?? 0);
+\tconst controller = createLynxCompiledProgramController({
+\t\tpage,
+\t\tpapi,
+\t\tresolveProgram: () => undefined,
+\t\trespond: () => {},
+\t});
+\tif (options.firstScreen === true) {
+\t\tdecodeLynxTransportValue(encodeLynxTransportValue(options));
+\t}
+\tconst worklets = createReplaceableLynxMainThreadWorkletRegistry(
+\t\tcreateUnavailableLynxMainThreadWorkletRegistry(),
+\t);
+\tconst unsubscribe = subscribeLynxMainThreadWorkletFeature((feature) => {
+\t\tworklets.replace(feature.createRegistry(options as never));
+\t});
+\tif (options.firstScreen === true) unsubscribe();
+\tcontroller.close();
+\treturn Object.freeze({}) as LynxMainThreadController;`,
+		[
+			'core/papi.ts:createLynxElementPAPI',
+			'core/compiled-program-controller.ts:createLynxCompiledProgramController',
+			'core/transport-codec.ts:encodeLynxTransportValue',
+			'core/transport-codec.ts:decodeLynxTransportValue',
+			'core/main-thread-worklet-feature.ts:createUnavailableLynxMainThreadWorkletRegistry',
+			'core/main-thread-worklet-feature.ts:createReplaceableLynxMainThreadWorkletRegistry',
+			'core/main-thread-worklet-feature.ts:subscribeLynxMainThreadWorkletFeature',
+		],
+		COMPILED_PROGRAM_CONTROLLER_IMPORT,
+	),
 	'receiver-foundation': receiverSlice(
 		'receiver floor + reusable foundation with general host container',
 		`\tconst papi = createLynxElementPAPI<Node>(options.target ?? globalThis);
@@ -481,6 +516,11 @@ ARMS['receiver-foundation-frame-no-worklets-producer-complete'] = {
 ARMS['receiver-foundation-frame-no-render-producer-complete'] = {
 	...ARMS['receiver-foundation-frame-no-render'],
 	label: 'receiver floor + complete producer without evaluator',
+	environment: { OCTANE_CORE_SWITCH_PROGRAM_FEATURES: 'slot-updates,structural-runs' },
+};
+ARMS['receiver-foundation-controller-producer-complete'] = {
+	...ARMS['receiver-foundation-controller'],
+	label: 'receiver ownership controller + complete producer without evaluator',
 	environment: { OCTANE_CORE_SWITCH_PROGRAM_FEATURES: 'slot-updates,structural-runs' },
 };
 ARMS.both.edits = [...ARMS.validator.edits, ...ARMS.batch.edits];

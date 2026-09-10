@@ -99,7 +99,7 @@ node benchmarks/lynx-bundle-size/l5-ceiling.mjs \
   --output /absolute/path/to/receiver-ceiling.json
 node benchmarks/lynx-bundle-size/l5-ceiling.mjs \
   --harness product \
-  --arms baseline,receiver,receiver-papi,receiver-store,receiver-frame,receiver-container,receiver-direct,receiver-render,receiver-transport,receiver-worklets,receiver-foundation-lite,receiver-foundation-no-worklets,receiver-foundation-no-render,receiver-foundation-store,receiver-foundation-frame,receiver-foundation-frame-no-worklets,receiver-foundation-frame-no-render,receiver-foundation-frame-producer-slots,receiver-foundation-frame-no-worklets-producer-slots,receiver-foundation-frame-no-render-producer-slots,receiver-foundation-frame-producer-complete,receiver-foundation-frame-no-worklets-producer-complete,receiver-foundation-frame-no-render-producer-complete,receiver-foundation \
+  --arms baseline,receiver,receiver-papi,receiver-store,receiver-frame,receiver-container,receiver-direct,receiver-render,receiver-transport,receiver-worklets,receiver-foundation-lite,receiver-foundation-no-worklets,receiver-foundation-no-render,receiver-foundation-store,receiver-foundation-frame,receiver-foundation-frame-no-worklets,receiver-foundation-frame-no-render,receiver-foundation-controller,receiver-foundation-frame-producer-slots,receiver-foundation-frame-no-worklets-producer-slots,receiver-foundation-frame-no-render-producer-slots,receiver-foundation-frame-producer-complete,receiver-foundation-frame-no-worklets-producer-complete,receiver-foundation-frame-no-render-producer-complete,receiver-foundation-controller-producer-complete,receiver-foundation \
   --output /absolute/path/to/receiver-frontier.json
 ```
 
