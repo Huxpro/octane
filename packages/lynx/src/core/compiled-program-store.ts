@@ -136,6 +136,11 @@ export interface LynxCompiledProgramAdoption<Node extends LynxElementRef>
 	readonly before: null;
 }
 
+/** Resolve one already-proved first-screen run by the compact handle that will own it. */
+export type LynxCompiledProgramAdoptionSeedResolver<Node extends LynxElementRef> = (
+	firstHandle: number,
+) => LynxCompiledProgramAdoptionSeed<Node> | undefined;
+
 export interface LynxCompiledProgramStore<Node extends LynxElementRef = LynxElementRef> {
 	begin(): void;
 	commit(): void;
@@ -227,7 +232,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	pageId: unknown,
 	root = pageId,
 	firstListener = 1,
-	seed?: (firstHandle: number) => LynxCompiledProgramAdoptionSeed<Node> | undefined,
+	seed?: LynxCompiledProgramAdoptionSeedResolver<Node>,
 ): LynxCompiledProgramStore<Node> {
 	const instances = new Map<number, CompiledProgramInstance<Node>>();
 	const creates = new WeakMap<UniversalProgramPlan, CompiledProgramCreate>();

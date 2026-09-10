@@ -12,6 +12,7 @@ import {
 	type LynxCompiledProgramControllerResponse,
 } from '../src/core/compiled-program-controller.js';
 import { encodeLynxDeltaMessage } from '../src/core/delta-protocol.js';
+import { encodeLynxNativeEventToken } from '../src/core/native-events.js';
 import type { LynxElementPAPI } from '../src/core/papi.js';
 import { createFakePAPI, type FakeNode, shape } from './_fixtures/fake-element-papi.js';
 
@@ -50,6 +51,26 @@ function emittedPlan(): UniversalProgramPlan {
 		nodes: ROW.nodes.length,
 		values: [0, 1, 2],
 		events: [],
+		ranges: [],
+		bind: new Function(`return (${emission.source});`)() as UniversalProgramPlan['bind'],
+	};
+}
+
+function emittedEventPlan(): UniversalProgramPlan {
+	const program: UniversalHostTemplateProgram = {
+		...ROW,
+		events: [{ node: 0, type: 'bindtap', priority: 'discrete' }],
+	};
+	const emission = emitLynxMainThreadProgram(program, {
+		name: 'createControlledAdoptedRow',
+		slotUpdates: true,
+	});
+	return {
+		kind: 'program',
+		slots: ['p:id', 'p:class', 'c', 'e:bindtap'],
+		nodes: program.nodes.length,
+		values: [0, 1, 2],
+		events: program.events.map((event) => ({ ...event, slot: 3 })),
 		ranges: [],
 		bind: new Function(`return (${emission.source});`)() as UniversalProgramPlan['bind'],
 	};
@@ -110,6 +131,57 @@ function setup(
 }
 
 describe('@octanejs/lynx compact compiled-program controller', () => {
+	it('takes ownership of a proved first-screen run without repainting it', () => {
+		const base = emittedHost();
+		let attachments = 0;
+		const papi: typeof base = {
+			...base,
+			insertBefore(parent, child, before) {
+				attachments++;
+				base.insertBefore(parent, child, before);
+			},
+		};
+		const page = papi.createPage('0', 0);
+		const plan = emittedEventPlan();
+		const values = ['row-2', 'cold', 'one'];
+		const nodes = new Array<FakeNode>(plan.nodes);
+		const token = encodeLynxNativeEventToken({
+			root: 73,
+			id: 10,
+			generation: 1,
+			listener: 1_000_000,
+			priority: 'discrete',
+		});
+		plan.bind(papi).run!(papi.getUniqueId(page), 1, values, [token], [], nodes);
+		papi.insertBefore(page, nodes[0]!, null);
+		attachments = 0;
+		const responses: LynxCompiledProgramControllerResponse[] = [];
+		const controller = createLynxCompiledProgramController({
+			page,
+			papi,
+			resolveProgram: (module, index) =>
+				module === ADDRESS.module && index === ADDRESS.index ? plan : undefined,
+			firstListener: 1_000_000,
+			resolveAdoptionSeed: (firstHandle) =>
+				firstHandle === 2
+					? { firstId: 10, firstListenerId: 1_000_000, nodes, stride: 4 }
+					: undefined,
+			respond: (message) => responses.push(message),
+		});
+
+		controller.apply(identity(1), mountFrame());
+
+		expect(attachments).toBe(0);
+		expect(page.children).toEqual([nodes[0]]);
+		expect(page.children[0]!.events.get('bindEvent:tap')).toBe(token);
+		expect(controller.size()).toBe(1);
+		expect(responses.map((message) => message.type)).toEqual(['ack', 'complete']);
+
+		controller.dispose(identity(1));
+		expect(page.children).toEqual([]);
+		expect(responses.at(-1)).toMatchObject({ type: 'dispose-ack' });
+	});
+
 	it('owns one store across accepted RUN and SET settlements', () => {
 		const { controller, page, responses } = setup();
 		controller.apply(identity(1), mountFrame());

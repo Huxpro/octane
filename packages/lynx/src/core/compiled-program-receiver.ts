@@ -2,6 +2,7 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
 
 import { createLynxCompiledProgramController } from './compiled-program-controller.js';
 import type { LynxCompiledProgramResolver } from './compiled-program-frame.js';
+import type { LynxCompiledProgramAdoptionSeedResolver } from './compiled-program-store.js';
 import {
 	decodeLynxCompiledProgramBackgroundMessage,
 	encodeLynxCompiledProgramMainMessage,
@@ -25,6 +26,10 @@ export interface InstallLynxCompiledProgramReceiverOptions<Node extends LynxElem
 	readonly page: Node;
 	readonly papi: LynxElementPAPI<Node>;
 	readonly resolveProgram: LynxCompiledProgramResolver;
+	/** Listener cursor shared with a first screen this receiver may adopt. */
+	readonly firstListener?: number;
+	/** Already-validated first-screen ownership proofs, keyed by compact run handle. */
+	readonly resolveAdoptionSeed?: LynxCompiledProgramAdoptionSeedResolver<Node>;
 	/** Web may mark PageConfig ready at installation; Native waits for `__RenderPage`. */
 	readonly pageReady?: boolean;
 	readonly onDiagnostic?: (error: Error) => void;
@@ -100,6 +105,8 @@ export function installLynxCompiledProgramReceiver<Node extends LynxElementRef>(
 		page: options.page,
 		papi: options.papi,
 		resolveProgram: options.resolveProgram,
+		firstListener: options.firstListener,
+		resolveAdoptionSeed: options.resolveAdoptionSeed,
 		respond: dispatch,
 		onDiagnostic: options.onDiagnostic,
 	});

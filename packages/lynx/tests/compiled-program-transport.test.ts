@@ -147,6 +147,49 @@ function setup(
 }
 
 describe('@octanejs/lynx compact compiled-program transport', () => {
+	it('carries a first-screen ownership proof through the installed receiver', async () => {
+		const base = emittedHost();
+		const page = base.createPage('0', 0);
+		const plan = emittedPlan();
+		const values = ['row-2', 'ready'];
+		const nodes = new Array<FakeNode>(plan.nodes);
+		plan.bind(base).run!(base.getUniqueId(page), 1, values, [], [], nodes);
+		base.insertBefore(page, nodes[0]!, null);
+		let attachments = 0;
+		const papi: typeof base = {
+			...base,
+			insertBefore(parent, child, before) {
+				attachments++;
+				base.insertBefore(parent, child, before);
+			},
+		};
+		const context = new RecordingContext();
+		const receiver = installLynxCompiledProgramReceiver({
+			context,
+			page,
+			papi,
+			resolveProgram: (module, index) =>
+				module === 'tests/WireRow.lynx.tsrx' && index === 0 ? plan : undefined,
+			resolveAdoptionSeed: (firstHandle) =>
+				firstHandle === 2
+					? { firstId: 10, firstListenerId: null, nodes, stride: plan.nodes }
+					: undefined,
+			pageReady: true,
+		});
+		const transport = createLynxCompiledProgramTransport(context);
+		receiver.markProgramsReady();
+		await transport.ready;
+
+		await transport.commit(identity(1), mountFrame(), () => {}).promise;
+
+		expect(attachments).toBe(0);
+		expect(page.children).toEqual([nodes[0]]);
+		await transport.dispose(identity(1));
+		expect(page.children).toEqual([]);
+		transport.close();
+		receiver.close();
+	});
+
 	it('withholds negotiated readiness until programs and PageConfig are both ready', async () => {
 		const { context, page, receiver, transport } = setup();
 		let ready = false;
