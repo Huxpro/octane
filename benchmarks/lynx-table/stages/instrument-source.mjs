@@ -225,9 +225,7 @@ export function createLynxElementPAPI<Node extends LynxElementRef = LynxElementR
 			);
 			next = replaceOnce(
 				next,
-				`\t\tcreatePage(componentId, cssId) {
-\t\t\treturn createPage(componentId, cssId);
-\t\t},
+				`\t\tcreatePage,
 \t\tcreateElement(type, parentComponentUniqueId, textValue) {
 \t\t\tswitch (type) {
 `,
