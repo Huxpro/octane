@@ -3,7 +3,7 @@
 - Issue: #290
 - Merged base: `new-lynx@1d7a49195326922d208e28fb69334fe3bcf890e8`
 - Exact-clean implementation and measurement head:
-  `82d580fd3681fc3fa4408b452cd6459742789ffd`
+  `62a4607e868e84921eeb8d350e393e7f482efebe`
 
 ## Result
 
@@ -16,10 +16,10 @@ native cleanup succeeds. A response failure after acceptance faults the
 controller without rolling already-accepted native state back.
 
 With the complete generated producer and the general first-screen evaluator
-absent, the controller frontier is **81,034 bytes gzip**, or **1.492x** the
-frozen 54,323-byte comparator median. It is **450.5 bytes below** the 81,484.5
-M3 gate. The executable settlement controller adds 3,340 raw / 1,543 gzip /
-1,485 Brotli bytes over the previous bare frame/store frontier.
+absent, the controller frontier is **81,035 bytes gzip**, or **1.492x** the
+frozen 54,323-byte comparator median. It is **449.5 bytes below** the 81,484.5
+M3 gate. The executable settlement controller adds 3,340 raw / 1,544 gzip /
+1,426 Brotli bytes over the previous bare frame/store frontier.
 
 ## Exact production frontier
 
@@ -27,7 +27,7 @@ M3 gate. The executable settlement controller adds 3,340 raw / 1,543 gzip /
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | current product | 417,301 | 160,179 | 134,212 | 105,730 | 54,128 | -78,694.5 |
 | complete producer + bare frame/store, no evaluator | 242,922 | 79,491 | 67,934 | 24,787 | 54,128 | +1,993.5 |
-| complete producer + ownership controller, no evaluator | 246,262 | **81,034** | 69,419 | 26,333 | 54,128 | **+450.5** |
+| complete producer + ownership controller, no evaluator | 246,262 | **81,035** | 69,360 | 26,334 | 54,128 | **+449.5** |
 
 The decoded BTS is byte-identical across all three arms at 188,359 raw /
 54,128 gzip / 46,617 Brotli with SHA-256
@@ -68,7 +68,7 @@ node benchmarks/lynx-bundle-size/l5-ceiling.mjs \
 ```
 
 Exact-clean raw receipt SHA-256:
-`f37a2b0364f5cb9fb044f0e81d49d9c464999ddf33b1f7a4da3b3c351662a8c2`.
+`c6eecbbd3820f423310f08f66d229c1c3e54e53a4ce7008e4f2cdff4afc6080e`.
 The receipt records `dirty: false`, Node v22.22.2, tool SHA-256
 `99a0f81a52f9688ddf6cd80c541a7851e8be6a14006f47cb4697979fc15c1c31`,
 all production controls passing, and an empty receiver-isolation failure list.
