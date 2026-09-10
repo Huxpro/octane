@@ -1,8 +1,4 @@
-import type {
-	UniversalHostTemplateProgram,
-	UniversalProgramCreate,
-	UniversalProgramPlan,
-} from 'octane/universal/native';
+import type { UniversalHostTemplateProgram, UniversalProgramPlan } from 'octane/universal/native';
 import { describe, expect, it } from 'vitest';
 
 import { emitLynxMainThreadProgram } from '../src/compiler/emit-main-thread-program.js';
@@ -87,22 +83,9 @@ function emittedStructuralPlan(): UniversalProgramPlan {
 	const emission = emitLynxMainThreadProgram(program, {
 		name: 'createCompactStructuralShell',
 		ranges: [range],
+		structuralRuns: true,
 	});
-	const emitted = new Function(`return (${emission.source});`)() as UniversalProgramPlan['bind'];
-	const bind: UniversalProgramPlan['bind'] = (host) => {
-		const create = emitted(host) as UniversalProgramCreate & {
-			run?: UniversalProgramCreate['run'];
-		};
-		create.run = (pageId, count, _values, _events, ranges, out) => {
-			for (let instance = 0; instance < count; instance++) {
-				const created = create(pageId, ranges[instance]);
-				for (let index = 0; index < created.length; index++) {
-					out[instance * created.length + index] = created[index];
-				}
-			}
-		};
-		return create;
-	};
+	expect(emission).toMatchObject({ denseRun: false, runDriver: true });
 	return {
 		kind: 'program',
 		slots: [null, null, null, null, null, null, null, 'r'],
@@ -110,7 +93,7 @@ function emittedStructuralPlan(): UniversalProgramPlan {
 		values: [],
 		events: [],
 		ranges: [range],
-		bind,
+		bind: new Function(`return (${emission.source});`)() as UniversalProgramPlan['bind'],
 	};
 }
 

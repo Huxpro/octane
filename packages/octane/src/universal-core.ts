@@ -275,9 +275,12 @@ export interface UniversalProgramEvent {
  * driver that paints many instances of it in one call (issue #215 D8).
  *
  * The create is the ABI every consumer must implement against. The driver is an
- * emission's report about itself — present only where the emitter could keep an
- * instance's ID stride constant — so a consumer tests for it rather than
- * deriving from the plan whether it should be there. Absent, a caller paints
+ * emission's report about itself, so a consumer tests for it rather than
+ * deriving from the plan whether it should be there. Its output stride is
+ * always the fixed `nodes + ranges` create ABI. A renderer that derives logical
+ * host IDs arithmetically must additionally prove those IDs have a constant
+ * stride; a compact consumer whose handles and range slots are independent of
+ * logical IDs does not need that stronger condition. Absent, a caller paints
  * `count` instances with `count` calls and sees exactly the same tree; that is
  * what makes the driver an optimization and not a second ABI.
  */

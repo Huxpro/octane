@@ -24,7 +24,7 @@
 //   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --harness product --output /tmp/l5.json
 //   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --arms baseline,both
 //   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --harness product --arms baseline,receiver
-//   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --harness product --arms baseline,receiver,receiver-papi,receiver-store,receiver-frame,receiver-container,receiver-direct,receiver-render,receiver-transport,receiver-worklets,receiver-foundation-lite,receiver-foundation-no-worklets,receiver-foundation-no-render,receiver-foundation-store,receiver-foundation-frame,receiver-foundation-frame-no-worklets,receiver-foundation-frame-no-render,receiver-foundation-frame-producer-slots,receiver-foundation-frame-no-worklets-producer-slots,receiver-foundation-frame-no-render-producer-slots,receiver-foundation
+//   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --harness product --arms baseline,receiver,receiver-papi,receiver-store,receiver-frame,receiver-container,receiver-direct,receiver-render,receiver-transport,receiver-worklets,receiver-foundation-lite,receiver-foundation-no-worklets,receiver-foundation-no-render,receiver-foundation-store,receiver-foundation-frame,receiver-foundation-frame-no-worklets,receiver-foundation-frame-no-render,receiver-foundation-frame-producer-slots,receiver-foundation-frame-no-worklets-producer-slots,receiver-foundation-frame-no-render-producer-slots,receiver-foundation-frame-producer-complete,receiver-foundation-frame-no-worklets-producer-complete,receiver-foundation-frame-no-render-producer-complete,receiver-foundation
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -467,6 +467,21 @@ ARMS['receiver-foundation-frame-no-render-producer-slots'] = {
 	...ARMS['receiver-foundation-frame-no-render'],
 	label: 'receiver floor + foundation, frame, slot setters, no evaluator',
 	environment: { OCTANE_CORE_SWITCH_PROGRAM_FEATURES: 'slot-updates' },
+};
+ARMS['receiver-foundation-frame-producer-complete'] = {
+	...ARMS['receiver-foundation-frame'],
+	label: 'receiver floor + foundation, frame, slot setters, and structural runs',
+	environment: { OCTANE_CORE_SWITCH_PROGRAM_FEATURES: 'slot-updates,structural-runs' },
+};
+ARMS['receiver-foundation-frame-no-worklets-producer-complete'] = {
+	...ARMS['receiver-foundation-frame-no-worklets'],
+	label: 'receiver floor + complete producer without worklet seam',
+	environment: { OCTANE_CORE_SWITCH_PROGRAM_FEATURES: 'slot-updates,structural-runs' },
+};
+ARMS['receiver-foundation-frame-no-render-producer-complete'] = {
+	...ARMS['receiver-foundation-frame-no-render'],
+	label: 'receiver floor + complete producer without evaluator',
+	environment: { OCTANE_CORE_SWITCH_PROGRAM_FEATURES: 'slot-updates,structural-runs' },
 };
 ARMS.both.edits = [...ARMS.validator.edits, ...ARMS.batch.edits];
 

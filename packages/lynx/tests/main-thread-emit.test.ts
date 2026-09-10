@@ -397,8 +397,7 @@ function instantiate(
 	return new Function(`return (${source});`)() as never;
 }
 
-type InstantiatedSlotCreate = ((...args: never[]) => unknown[]) & {
-	set(nodes: readonly unknown[], slot: number, value: unknown, offset?: number): boolean;
+type InstantiatedRunCreate = ((...args: never[]) => unknown[]) & {
 	run?: (
 		pageId: unknown,
 		count: number,
@@ -407,6 +406,10 @@ type InstantiatedSlotCreate = ((...args: never[]) => unknown[]) & {
 		ranges: readonly unknown[],
 		out: unknown[],
 	) => void;
+};
+
+type InstantiatedSlotCreate = InstantiatedRunCreate & {
+	set(nodes: readonly unknown[], slot: number, value: unknown, offset?: number): boolean;
 };
 
 function instantiateSlotCreate(
@@ -1231,7 +1234,7 @@ describe('Lynx compiled value-slot updates', () => {
 			ranges: [{ node: 0 }, ...RANGED_ROW_SITES],
 			slotUpdates: true,
 		});
-		expect(emission).toMatchObject({ denseRun: false, slotUpdates: true });
+		expect(emission).toMatchObject({ denseRun: false, runDriver: false, slotUpdates: true });
 		expect(emission.source).toContain('createRangedSlotUpdates.set = function');
 		expect(emission.source).not.toContain('createRangedSlotUpdates.run = function');
 		const bind = new Function(`return (${emission.source});`)() as (
@@ -1408,17 +1411,75 @@ describe('Lynx main-thread program dense run driver', () => {
 		).toBe(false);
 	});
 
+	it('emits an explicit physical-stride driver for structural range outputs', () => {
+		const ranges = [{ node: 0 }, ...RANGED_ROW_SITES];
+		const emission = emitLynxMainThreadProgram(RANGED_ROW, {
+			name: 'createStructuralRows',
+			ranges,
+			structuralRuns: true,
+		});
+		expect(emission).toMatchObject({ denseRun: false, runDriver: true });
+		expect(emission.source).toContain('createStructuralRows.run = function');
+
+		const actualPapi = createHost();
+		const actualPage = actualPapi.createPage('0', 0);
+		const actualCreate = new Function(`return (${emission.source});`)()(actualPapi) as
+			InstantiatedRunCreate | undefined;
+		expect(actualCreate?.run).toBeTypeOf('function');
+		const stride = RANGED_ROW.nodes.length + ranges.length;
+		const outputs = new Array<unknown>(stride * 2);
+		actualCreate!.run!(
+			actualPapi.getUniqueId(actualPage),
+			2,
+			['row', 'row danger'],
+			['select-a', 'remove-a', 'select-b', 'remove-b'],
+			[{ member: 'a' }, '7', 'Label A', { member: 'b' }, '8', 'Label B'],
+			outputs,
+		);
+		expect(outputs[5]).toBeUndefined();
+		expect(outputs[13]).toBeUndefined();
+		expect(outputs[6]).toBeDefined();
+		expect(outputs[7]).toBeDefined();
+		expect(outputs[14]).toBeDefined();
+		expect(outputs[15]).toBeDefined();
+		actualPapi.insertBefore(actualPage, outputs[0] as never, null);
+		actualPapi.insertBefore(actualPage, outputs[stride] as never, null);
+
+		const expectedPapi = createHost();
+		const expectedPage = expectedPapi.createPage('0', 0);
+		const expectedCreate = new Function(`return (${emission.source});`)()(expectedPapi) as (
+			...args: never[]
+		) => unknown[];
+		for (const args of [
+			['row', 'select-a', 'remove-a', { member: 'a' }, '7', 'Label A'],
+			['row danger', 'select-b', 'remove-b', { member: 'b' }, '8', 'Label B'],
+		]) {
+			const created = expectedCreate(
+				...([expectedPapi.getUniqueId(expectedPage), ...args] as never[]),
+			);
+			expectedPapi.insertBefore(expectedPage, created[0] as never, null);
+		}
+		expect(paintedTree(shape(actualPage))).toEqual(paintedTree(shape(expectedPage)));
+	});
+
 	it('emits the pre-driver bytes unchanged for a program that gets no driver', () => {
 		// Not a formatting preference: every record the C-train took was measured
 		// against this text, and a program that gains nothing from the driver
 		// must not silently gain different code either.
-		const { source } = emitLynxMainThreadProgram(RANGED_ROW, {
+		const omitted = emitLynxMainThreadProgram(RANGED_ROW, {
 			name: 'createRangedRow',
 			ranges: [{ node: 0 }, ...RANGED_ROW_SITES],
 		});
-		expect(source).toContain('\treturn function createRangedRow(');
-		expect(source).not.toContain('.run = function');
-		expect(source.trimEnd().endsWith('\t};\n}')).toBe(true);
+		const disabled = emitLynxMainThreadProgram(RANGED_ROW, {
+			name: 'createRangedRow',
+			ranges: [{ node: 0 }, ...RANGED_ROW_SITES],
+			structuralRuns: false,
+		});
+		expect(omitted).toMatchObject({ denseRun: false, runDriver: false });
+		expect(disabled.source).toBe(omitted.source);
+		expect(omitted.source).toContain('\treturn function createRangedRow(');
+		expect(omitted.source).not.toContain('.run = function');
+		expect(omitted.source.trimEnd().endsWith('\t};\n}')).toBe(true);
 	});
 
 	it("runs the create function's own body and publishes nodes as they are created", () => {
