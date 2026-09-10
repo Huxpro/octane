@@ -1,4 +1,8 @@
-import type { UniversalHostTemplateProgram, UniversalProgramPlan } from 'octane/universal/native';
+import type {
+	UniversalHostTemplateProgram,
+	UniversalProgramCreate,
+	UniversalProgramPlan,
+} from 'octane/universal/native';
 import { describe, expect, it } from 'vitest';
 
 import { emitLynxMainThreadProgram } from '../src/compiler/emit-main-thread-program.js';
@@ -68,6 +72,45 @@ function emittedEventPlan(): UniversalProgramPlan {
 		events: program.events.map((event) => ({ ...event, slot: 3 })),
 		ranges: [],
 		bind: new Function(`return (${emission.source});`)() as UniversalProgramPlan['bind'],
+	};
+}
+
+function emittedStructuralPlan(): UniversalProgramPlan {
+	const program: UniversalHostTemplateProgram = {
+		nodes: [
+			{ type: 'view', parent: -1, props: { id: 'shell' } },
+			{ type: 'view', parent: 0, props: { id: 'rows' } },
+		],
+		events: [],
+	};
+	const range = { slot: 7, node: 1, id: 2, paintsText: false } as const;
+	const emission = emitLynxMainThreadProgram(program, {
+		name: 'createCompactStructuralShell',
+		ranges: [range],
+	});
+	const emitted = new Function(`return (${emission.source});`)() as UniversalProgramPlan['bind'];
+	const bind: UniversalProgramPlan['bind'] = (host) => {
+		const create = emitted(host) as UniversalProgramCreate & {
+			run?: UniversalProgramCreate['run'];
+		};
+		create.run = (pageId, count, _values, _events, ranges, out) => {
+			for (let instance = 0; instance < count; instance++) {
+				const created = create(pageId, ranges[instance]);
+				for (let index = 0; index < created.length; index++) {
+					out[instance * created.length + index] = created[index];
+				}
+			}
+		};
+		return create;
+	};
+	return {
+		kind: 'program',
+		slots: [null, null, null, null, null, null, null, 'r'],
+		nodes: program.nodes.length,
+		values: [],
+		events: [],
+		ranges: [range],
+		bind,
 	};
 }
 
@@ -562,6 +605,137 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 		expect(store.size()).toBe(0);
 	});
 
+	it('routes nested RUN, MOVE, CLEAR, and disposal through compiler range slots', () => {
+		const base = emittedHost();
+		const removed: string[] = [];
+		const papi: typeof base = {
+			...base,
+			remove(parent, child) {
+				removed.push(child.id ?? '');
+				base.remove(parent, child);
+			},
+		};
+		const page = papi.createPage('0', 0);
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page));
+		const shell = emittedStructuralPlan();
+		const row = emittedPlan();
+		const shellAddress = { module: 'tests/Shell.lynx.tsrx', index: 0 };
+		const rowAddress = { module: 'tests/Row.lynx.tsrx', index: 0 };
+		const resolve = (module: string, index: number) => {
+			if (module === shellAddress.module && index === shellAddress.index) return shell;
+			if (module === rowAddress.module && index === rowAddress.index) return row;
+			return undefined;
+		};
+		applyLynxCompiledProgramFrame(
+			store,
+			page,
+			resolve,
+			encodeLynxDeltaMessage(
+				[
+					{
+						op: 'run',
+						templateId: 1,
+						parent: { instance: 1, slot: 0 },
+						before: null,
+						firstInstance: 2,
+						count: 1,
+						values: [],
+					},
+					{
+						op: 'run',
+						templateId: 2,
+						parent: { instance: 2, slot: 7 },
+						before: null,
+						firstInstance: 3,
+						count: 2,
+						values: ['row-3', 'cold', 'three', 'row-4', 'cold', 'four'],
+					},
+				],
+				[
+					{ id: 1, address: shellAddress },
+					{ id: 2, address: rowAddress },
+				],
+			),
+		);
+		const rows = page.children[0]!.children[0]!;
+		expect(rows.children.map((node) => node.id)).toEqual(['row-3', 'row-4']);
+		expect(store.size()).toBe(3);
+		applyLynxCompiledProgramFrame(
+			store,
+			page,
+			resolve,
+			encodeLynxDeltaMessage([{ op: 'set', instance: 4, slot: 2, value: 'updated four' }]),
+		);
+		expect(rows.children[1]!.children[0]!.children[0]!.text).toBe('updated four');
+
+		expect(() =>
+			applyLynxCompiledProgramFrame(
+				store,
+				page,
+				resolve,
+				encodeLynxDeltaMessage([{ op: 'remove', firstInstance: 2, count: 1 }]),
+			),
+		).toThrow(/range slot 7 owns children/);
+		expect(page.children[0]!.id).toBe('shell');
+
+		const move = encodeLynxDeltaMessage([
+			{
+				op: 'move',
+				instance: 3,
+				parent: { instance: 2, slot: 7 },
+				before: null,
+			},
+		]);
+		expect(() => applyLynxCompiledProgramFrame(store, page, resolve, [...move, 99, 0])).toThrow(
+			/opcode 99/,
+		);
+		expect(rows.children.map((node) => node.id)).toEqual(['row-3', 'row-4']);
+		applyLynxCompiledProgramFrame(store, page, resolve, move);
+		expect(rows.children.map((node) => node.id)).toEqual(['row-4', 'row-3']);
+
+		expect(() =>
+			applyLynxCompiledProgramFrame(
+				store,
+				page,
+				resolve,
+				encodeLynxDeltaMessage([
+					{ op: 'move', instance: 3, parent: { instance: 1, slot: 0 }, before: null },
+				]),
+			),
+		).toThrow(/outside the instance range/);
+		expect(rows.children.map((node) => node.id)).toEqual(['row-4', 'row-3']);
+
+		const clear = encodeLynxDeltaMessage([{ op: 'clear', parent: { instance: 2, slot: 7 } }]);
+		expect(() => applyLynxCompiledProgramFrame(store, page, resolve, [...clear, 99, 0])).toThrow(
+			/opcode 99/,
+		);
+		expect(rows.children.map((node) => node.id)).toEqual(['row-4', 'row-3']);
+		applyLynxCompiledProgramFrame(store, page, resolve, clear);
+		expect(rows.children).toEqual([]);
+		expect(store.size()).toBe(1);
+		applyLynxCompiledProgramFrame(
+			store,
+			page,
+			resolve,
+			encodeLynxDeltaMessage([
+				{
+					op: 'run',
+					templateId: 2,
+					parent: { instance: 2, slot: 7 },
+					before: null,
+					firstInstance: 5,
+					count: 1,
+					values: ['row-5', 'warm', 'five'],
+				},
+			]),
+		);
+		expect(rows.children.map((node) => node.id)).toEqual(['row-5']);
+		removed.length = 0;
+		store.dispose();
+		expect(removed).toEqual(['row-5', 'shell']);
+		expect(page.children).toEqual([]);
+	});
+
 	it('hides and restores an eventful instance with the original compact token', () => {
 		const papi = emittedHost();
 		const page = papi.createPage('0', 0);
@@ -610,12 +784,12 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 	});
 
 	it.each([
-		['CLEAR', [LYNX_DELTA_PROTOCOL_VERSION, 4, 2, 2, 0]],
-		['MOVE parent', [LYNX_DELTA_PROTOCOL_VERSION, 5, 5, 2, 2, 0, 0, 0]],
-		['MOVE anchor', [LYNX_DELTA_PROTOCOL_VERSION, 5, 5, 2, 1, 0, 0, 1]],
-	] as const)('rejects unsupported non-root %s addresses', (_, frame) => {
+		['CLEAR', [LYNX_DELTA_PROTOCOL_VERSION, 4, 2, 2, 0], /instance 2/],
+		['MOVE parent', [LYNX_DELTA_PROTOCOL_VERSION, 5, 5, 2, 2, 0, 0, 0], /instance 2/],
+		['MOVE anchor', [LYNX_DELTA_PROTOCOL_VERSION, 5, 5, 2, 1, 0, 0, 1], /root/],
+	] as const)('rejects unresolved non-root %s addresses', (_, frame, error) => {
 		const { page, resolve, store } = setup();
-		expect(() => applyLynxCompiledProgramFrame(store, page, resolve, frame)).toThrow(/root/);
+		expect(() => applyLynxCompiledProgramFrame(store, page, resolve, frame)).toThrow(error);
 		expect(store.size()).toBe(0);
 		expect(page.children).toEqual([]);
 	});

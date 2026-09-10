@@ -18,8 +18,9 @@ type CompiledProgramCreate = UniversalProgramCreate & {
 interface CompiledProgramRun<Node extends LynxElementRef> {
 	readonly create: CompiledProgramCreate;
 	readonly listener: number;
-	readonly nodes: readonly Node[];
+	readonly nodes: readonly (Node | undefined)[];
 	readonly plan: UniversalProgramPlan;
+	readonly stride: number;
 	readonly values: unknown[];
 }
 
@@ -51,6 +52,62 @@ const LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT =
 	typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__;
 const LYNX_COMPILED_PROGRAM_STORE_ERROR = 'Octane Lynx OL484';
 
+const enum StoreFailure {
+	Handle,
+	Count,
+	Faulted,
+	Closing,
+	Begin,
+	Rollback,
+	Journal,
+	RangeSlot,
+	Detached,
+	RangeOrder,
+	AppendProof,
+	HandleRange,
+	StructuralProgram,
+	ValueOffset,
+	ValueArity,
+	EventRange,
+	ListenerIdentity,
+	RunDriver,
+	SlotSetter,
+	AdoptedArity,
+	NestedFrame,
+	Commit,
+	MoveRange,
+	MoveAnchor,
+	ValueSlot,
+}
+
+const STORE_FAILURES = [
+	'requires an in-range positive instance handle',
+	'requires a positive instance count',
+	'is faulted after an incomplete host rollback',
+	'is closing or closed',
+	'requires begin() before host operations',
+	'cannot roll back without an active frame',
+	'journal contains an unknown operation',
+	'requires a non-negative range slot',
+	'found a detached instance',
+	'lost the instance range order',
+	'requires append-only first-screen proof',
+	'instance run exceeds the handle range',
+	'requires a non-empty compiled program with structural ranges',
+	'received an invalid value offset',
+	'received the wrong value arity',
+	'event identity exceeds the safe integer range',
+	'first-screen listener identity disagrees with the compact cursor',
+	'requires an emitted dense-run driver',
+	'requires an emitted slot setter',
+	'received the wrong adopted node arity',
+	'cannot begin a nested frame',
+	'cannot commit without an active frame',
+	'received a move outside the instance range',
+	'received a move anchor outside the target range',
+	'requires a non-negative value slot',
+] as const;
+
 export interface LynxCompiledProgramMount<Node extends LynxElementRef> {
 	readonly before: number | null;
 	readonly count: number;
@@ -67,8 +124,8 @@ export interface LynxCompiledProgramAdoptionSeed<Node extends LynxElementRef> {
 	readonly firstId: number;
 	/** Listener identity already installed by the accepted first screen. */
 	readonly firstListenerId: number | null;
-	/** Existing program nodes in member-major order; ownership transfers on commit. */
-	readonly nodes: readonly Node[];
+	/** Existing program outputs in member-major order; ownership transfers on commit. */
+	readonly nodes: readonly (Node | undefined)[];
 	/** Logical host-id distance between consecutive first-screen instances. */
 	readonly stride: number;
 }
@@ -87,8 +144,9 @@ export interface LynxCompiledProgramStore<Node extends LynxElementRef = LynxElem
 	resolve(template: number): UniversalProgramPlan | undefined;
 	adopt(input: LynxCompiledProgramAdoption<Node>): void;
 	mount(input: LynxCompiledProgramMount<Node>): void;
+	range(instance: number, slot: number): Node;
 	clear(parent: Node): void;
-	move(handle: number, before: number | null): boolean;
+	move(handle: number, parent: Node, before: number | null): boolean;
 	remove(handle: number): void;
 	set(handle: number, slot: number, value: unknown): boolean;
 	visibility(handle: number, visible: boolean): boolean;
@@ -96,7 +154,13 @@ export interface LynxCompiledProgramStore<Node extends LynxElementRef = LynxElem
 	dispose(): void;
 }
 
-function fail(message: string | false): never {
+function fail(message: string | false | StoreFailure): never {
+	if (
+		(typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__) &&
+		typeof message === 'number'
+	) {
+		message = STORE_FAILURES[message]!;
+	}
 	throw new TypeError(
 		LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT
 			? `Octane Lynx compact program store ${message}.`
@@ -115,15 +179,12 @@ function failAggregate(errors: unknown[], message: string | false): never {
 
 function requireHandle(value: number): void {
 	if (!Number.isSafeInteger(value) || value <= 0 || value > MAX_INSTANCE_HANDLE) {
-		fail(
-			LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'requires an in-range positive instance handle',
-		);
+		fail(StoreFailure.Handle);
 	}
 }
 
 function requireCount(value: number): void {
-	if (!Number.isSafeInteger(value) || value <= 0)
-		fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'requires a positive instance count');
+	if (!Number.isSafeInteger(value) || value <= 0) fail(StoreFailure.Count);
 }
 
 function isScalar(value: unknown): boolean {
@@ -148,11 +209,12 @@ function cleanupRoot<Node extends LynxElementRef>(
 }
 
 /**
- * Retain the minimum state a compiled, range-free main-thread program needs.
+ * Retain the minimum state a compiled main-thread program needs.
  *
  * This is intentionally not the product receiver yet. It owns the state and
  * fault boundary that receiver will call after a compact frame has resolved a
- * resident program: emitted code creates and updates hosts, while this store
+ * resident program: emitted code creates and updates hosts, compiler range
+ * slots resolve nested children without a host-id map, while this store
  * alone publishes template and instance identity, remembers prior slot values
  * for rollback, and restores a remove even when the host mutates before it
  * throws. A frame publishes only at `commit()`; `rollback()` replays every
@@ -183,20 +245,16 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	let closing = false;
 
 	const requireHealthy = (): void => {
-		if (faulted)
-			fail(
-				LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'is faulted after an incomplete host rollback',
-			);
-		if (closing) fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'is closing or closed');
+		if (faulted) fail(StoreFailure.Faulted);
+		if (closing) fail(StoreFailure.Closing);
 	};
 	const requireJournal = (): unknown[] => {
 		requireHealthy();
-		if (journal === null)
-			fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'requires begin() before host operations');
+		if (journal === null) fail(StoreFailure.Begin);
 		return journal;
 	};
 	const rootOf = (instance: CompiledProgramInstance<Node>): Node =>
-		instance.run.nodes[instance.index * instance.run.plan.nodes]!;
+		instance.run.nodes[instance.index * instance.run.stride]!;
 	const requireInstance = (handle: number): CompiledProgramInstance<Node> => {
 		requireHandle(handle);
 		const instance = instances.get(handle);
@@ -204,9 +262,25 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `does not hold instance ${handle}`);
 		return instance;
 	};
+	const rangeOf = (handle: number, slot: number): Node => {
+		if (!Number.isSafeInteger(slot) || slot < 0) fail(StoreFailure.RangeSlot);
+		const instance = requireInstance(handle);
+		const run = instance.run;
+		let node: Node | undefined;
+		for (const range of run.plan.ranges) {
+			if (range.slot !== slot) continue;
+			node = run.nodes[instance.index * run.stride + range.node];
+			break;
+		}
+		if (node === undefined)
+			fail(
+				(typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__) &&
+					`instance ${handle} does not hold range slot ${slot}`,
+			);
+		return node;
+	};
 	const rollbackFrame = (): void => {
-		if (journal === null)
-			fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'cannot roll back without an active frame');
+		if (journal === null) fail(StoreFailure.Rollback);
 		const active = journal;
 		journal = null;
 		const errors: unknown[] = [];
@@ -232,7 +306,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 					const run = instance.run;
 					const valueIndex = instance.index * run.plan.values.length + slot;
 					const set = run.create.set!;
-					if (!set(run.nodes, slot, previous, instance.index * run.plan.nodes)) {
+					if (!set(run.nodes, slot, previous, instance.index * run.stride)) {
 						fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `setter refused rollback slot ${slot}`);
 					}
 					run.values[valueIndex] = previous;
@@ -257,7 +331,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 					const handle = active.pop() as number;
 					writeVisibility(handle, instances.get(handle)!, visible);
 				} else {
-					fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'journal contains an unknown operation');
+					fail(StoreFailure.Journal);
 				}
 			} catch (error) {
 				errors.push(error);
@@ -329,7 +403,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		visible: boolean,
 	): void => {
 		const run = instance.run;
-		const offset = instance.index * run.plan.nodes;
+		const offset = instance.index * run.stride;
 		const node = rootOf(instance);
 		const firstId = run.values[run.values.length - 2] as number;
 		const stride = run.values[run.values.length - 1] as number;
@@ -382,13 +456,21 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	};
 	const removeInstance = (handle: number, undo: unknown[]): void => {
 		const instance = requireInstance(handle);
+		const run = instance.run;
+		for (const site of run.plan.ranges) {
+			const parent = run.nodes[instance.index * run.stride + site.node];
+			if (ranges.has(parent!)) {
+				fail(
+					(typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__) &&
+						`cannot remove instance ${handle} while range slot ${site.slot} owns children`,
+				);
+			}
+		}
 		const root = rootOf(instance);
 		const parent = papi.getParent(root);
-		if (parent === null || !papi.isEqual(parent, instance.parent))
-			fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'found a detached instance');
+		if (parent === null || !papi.isEqual(parent, instance.parent)) fail(StoreFailure.Detached);
 		const range = ranges.get(instance.parent);
-		if (range === undefined)
-			fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'lost the instance range order');
+		if (range === undefined) fail(StoreFailure.RangeOrder);
 		const nextInstance = instance.next === null ? undefined : instances.get(instance.next)!;
 		const before = nextInstance === undefined ? null : rootOf(nextInstance);
 		try {
@@ -428,13 +510,13 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		const undo = requireJournal();
 		const adoption = adopted !== undefined;
 		if (adoption && input.before !== null) {
-			fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'requires append-only first-screen proof');
+			fail(StoreFailure.AppendProof);
 		}
 		requireHandle(input.firstHandle);
 		requireCount(input.count);
 		const finalHandle = input.firstHandle + input.count - 1;
 		if (!Number.isSafeInteger(finalHandle) || finalHandle > MAX_INSTANCE_HANDLE) {
-			fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'instance run exceeds the handle range');
+			fail(StoreFailure.HandleRange);
 		}
 		if (input.firstHandle <= lastHandle) {
 			fail(
@@ -443,15 +525,29 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			);
 		}
 		const plan = input.plan;
-		if (plan.nodes <= 0 || plan.ranges.length !== 0) {
-			fail(
-				LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
-					'requires a non-empty range-free compiled program',
-			);
+		if (typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__) {
+			if (plan.nodes <= 0) fail(StoreFailure.StructuralProgram);
+			const slots = new Set<number>();
+			for (const range of plan.ranges) {
+				if (
+					range.paintsText === true ||
+					!Number.isSafeInteger(range.slot) ||
+					range.slot < 0 ||
+					plan.slots[range.slot] !== 'r' ||
+					!Number.isSafeInteger(range.node) ||
+					range.node < 0 ||
+					range.node >= plan.nodes ||
+					slots.has(range.slot)
+				) {
+					fail(`received an invalid structural range ${range.slot}`);
+				}
+				slots.add(range.slot);
+			}
 		}
+		const nodeStride = plan.nodes + plan.ranges.length;
 		const valueOffset = input.valueOffset ?? 0;
 		if (!Number.isSafeInteger(valueOffset) || valueOffset < 0) {
-			fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'received an invalid value offset');
+			fail(StoreFailure.ValueOffset);
 		}
 		const valueCount = plan.values.length * input.count;
 		const valueEnd = valueOffset + valueCount;
@@ -460,7 +556,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			valueEnd > input.values.length ||
 			(input.valueOffset === undefined && valueEnd !== input.values.length)
 		) {
-			fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'received the wrong value arity');
+			fail(StoreFailure.ValueArity);
 		}
 		for (let index = valueOffset; index < valueEnd; index++) {
 			const slot = (index - valueOffset) % plan.values.length;
@@ -481,15 +577,10 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				nextListener <= 0 ||
 				!Number.isSafeInteger(finalListener))
 		) {
-			fail(
-				LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'event identity exceeds the safe integer range',
-			);
+			fail(StoreFailure.EventRange);
 		}
 		if (adoption && adopted.firstListenerId !== (eventCount === 0 ? null : nextListener)) {
-			fail(
-				LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
-					'first-screen listener identity disagrees with the compact cursor',
-			);
+			fail(StoreFailure.ListenerIdentity);
 		}
 		const range = ranges.get(input.parent) ?? { head: null, tail: null };
 		let next: number | null = null;
@@ -527,18 +618,19 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				}
 			}
 			create = plan.bind(papi) as CompiledProgramCreate;
-			if (typeof create.run !== 'function')
-				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'requires an emitted dense-run driver');
-			if ((plan.values.length !== 0 || eventCount !== 0) && typeof create.set !== 'function') {
-				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'requires an emitted slot setter');
+			if (typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__) {
+				if (typeof create.run !== 'function') fail(StoreFailure.RunDriver);
+				if ((plan.values.length !== 0 || eventCount !== 0) && typeof create.set !== 'function') {
+					fail(StoreFailure.SlotSetter);
+				}
 			}
 			creates.set(plan, create);
 		}
-		let nodes: readonly Node[];
+		let nodes: readonly (Node | undefined)[];
 		if (adoption) {
 			nodes = adopted.nodes;
-			if (nodes.length !== plan.nodes * input.count) {
-				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'received the wrong adopted node arity');
+			if (nodes.length !== nodeStride * input.count) {
+				fail(StoreFailure.AdoptedArity);
 			}
 		} else {
 			const tokens = new Array<string>(eventCount * input.count);
@@ -557,12 +649,12 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 					);
 				}
 			}
-			const created = new Array<Node>(plan.nodes * input.count);
+			const created = new Array<Node | undefined>(nodeStride * input.count);
 			try {
 				create.run(pageId, input.count, values, tokens, [], created);
 				const before = next === null ? null : rootOf(instances.get(next)!);
 				for (let index = 0; index < input.count; index++) {
-					const node = created[index * plan.nodes];
+					const node = created[index * nodeStride];
 					if (node === null || typeof node !== 'object')
 						fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `did not publish root ${index}`);
 					papi.insertBefore(input.parent, node, before);
@@ -571,7 +663,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				const cleanupErrors: unknown[] = [];
 				for (let index = input.count - 1; index >= 0; index--) {
 					try {
-						cleanupRoot(papi, created[index * plan.nodes]);
+						cleanupRoot(papi, created[index * nodeStride]);
 					} catch (cleanupError) {
 						cleanupErrors.push(cleanupError);
 					}
@@ -595,6 +687,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			listener: nextListener,
 			nodes,
 			plan,
+			stride: nodeStride,
 			values,
 		};
 		let runPrevious = previous;
@@ -625,8 +718,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	return {
 		begin() {
 			requireHealthy();
-			if (journal !== null)
-				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'cannot begin a nested frame');
+			if (journal !== null) fail(StoreFailure.NestedFrame);
 			journal = [];
 			journalFirstHandle = lastHandle;
 			journalFirstListener = nextListener;
@@ -634,8 +726,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		},
 		commit() {
 			requireHealthy();
-			if (journal === null)
-				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'cannot commit without an active frame');
+			if (journal === null) fail(StoreFailure.Commit);
 			journal = null;
 		},
 		rollback() {
@@ -665,17 +756,15 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				removeInstance(range.head!, undo);
 			}
 		},
-		move(handle, before) {
+		move(handle, parent, before) {
 			const undo = requireJournal();
 			const instance = requireInstance(handle);
+			if (!papi.isEqual(instance.parent, parent)) fail(StoreFailure.MoveRange);
 			if (before !== null) {
 				requireHandle(before);
 				const anchor = instances.get(before);
 				if (anchor === undefined || !papi.isEqual(anchor.parent, instance.parent)) {
-					fail(
-						LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
-							'received a move anchor outside the target range',
-					);
+					fail(StoreFailure.MoveAnchor);
 				}
 			}
 			if (before === handle || instance.next === before) return false;
@@ -690,10 +779,13 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		mount(input) {
 			writeRun(input, seed?.(input.firstHandle));
 		},
+		range(instance, slot) {
+			requireJournal();
+			return rangeOf(instance, slot);
+		},
 		set(handle, slot, value) {
 			const undo = requireJournal();
-			if (!Number.isSafeInteger(slot) || slot < 0)
-				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'requires a non-negative value slot');
+			if (!Number.isSafeInteger(slot) || slot < 0) fail(StoreFailure.ValueSlot);
 			const instance = requireInstance(handle);
 			const run = instance.run;
 			if (slot >= run.plan.values.length)
@@ -712,7 +804,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				fail(
 					LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'does not have an emitted value-slot setter',
 				);
-			const nodeOffset = instance.index * run.plan.nodes;
+			const nodeOffset = instance.index * run.stride;
 			try {
 				if (!set(run.nodes, slot, value, nodeOffset))
 					fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `setter refused value slot ${slot}`);
@@ -760,7 +852,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 					errors.push(error);
 				}
 			}
-			for (const [handle, instance] of instances) {
+			for (const [handle, instance] of [...instances].reverse()) {
 				try {
 					const root = rootOf(instance);
 					cleanupRoot(papi, root);
