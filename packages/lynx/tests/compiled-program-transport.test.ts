@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 
 import { emitLynxMainThreadProgram } from '../src/compiler/emit-main-thread-program.js';
 import { installLynxCompiledProgramReceiver } from '../src/core/compiled-program-receiver.js';
+import { installLynxCompiledProgramProductReceiver } from '../src/core/compiled-program-product-receiver.js';
 import { createLynxCompiledProgramTransport } from '../src/core/compiled-program-transport.js';
 import {
 	decodeLynxCompiledProgramBackgroundMessage,
@@ -134,9 +135,12 @@ function setup(
 	papi: LynxElementPAPI<FakeNode> = emittedHost(),
 	module = 'tests/WireRow.lynx.tsrx',
 	context = new RecordingContext(),
+	product = false,
 ) {
 	const page = papi.createPage('0', 0);
-	const receiver = installLynxCompiledProgramReceiver({
+	const receiver = (
+		product ? installLynxCompiledProgramProductReceiver : installLynxCompiledProgramReceiver
+	)({
 		context,
 		page,
 		papi,
@@ -327,6 +331,153 @@ describe('@octanejs/lynx compact compiled-program transport', () => {
 				.filter((type) => type === 'dispose'),
 		).toEqual(['dispose', 'dispose']);
 
+		transport.close();
+		receiver.close();
+	});
+});
+
+describe('@octanejs/lynx compact product receiver', () => {
+	it('gates readiness and owns accepted frames through terminal cleanup', async () => {
+		const { context, page, receiver, transport } = setup(
+			emittedHost(),
+			'tests/WireRow.lynx.tsrx',
+			new RecordingContext(),
+			true,
+		);
+		let ready = false;
+		void transport.ready.then(() => {
+			ready = true;
+		});
+		receiver.markProgramsReady();
+		await Promise.resolve();
+		expect(ready).toBe(false);
+		receiver.markPageReady();
+		await transport.ready;
+
+		await transport.commit(identity(1), mountFrame(), () => {}).promise;
+		expect(shape(page)).toMatchObject({
+			children: [
+				{
+					id: 'row-2',
+					children: [{ children: [{ text: 'ready' }] }],
+				},
+			],
+		});
+		expect(
+			context.events
+				.filter((event) => event.type === LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT)
+				.map((event) => decodeLynxCompiledProgramMainMessage(event.data).type),
+		).toEqual(['ready', 'ack', 'complete']);
+
+		await transport.dispose(identity(1), true);
+		expect(page.children).toEqual([]);
+		transport.close();
+		receiver.close();
+	});
+
+	it('rolls back malformed and racing-aborted frames for exact retry', async () => {
+		const context = new HeldBackgroundContext();
+		const { page, receiver, transport } = setup(
+			emittedHost(),
+			'tests/WireRow.lynx.tsrx',
+			context,
+			true,
+		);
+		receiver.markProgramsReady();
+		receiver.markPageReady();
+		await transport.ready;
+
+		await expect(
+			transport.commit(identity(1), [...mountFrame(), 99, 0], () => {}).promise,
+		).rejects.toThrow();
+		expect(page.children).toEqual([]);
+
+		context.hold = true;
+		const attempt = transport.commit(identity(1), mountFrame(), () => {});
+		await Promise.resolve();
+		attempt.abort();
+		context.releaseNewestFirst();
+		await expect(attempt.promise).rejects.toThrow();
+		expect(page.children).toEqual([]);
+
+		context.hold = false;
+		await transport.commit(identity(1), mountFrame(), () => {}).promise;
+		expect(page.children).toHaveLength(1);
+		await transport.dispose(identity(1), true);
+		transport.close();
+		receiver.close();
+	});
+
+	it('retries disposal until native ownership is actually released', async () => {
+		const base = emittedHost();
+		let failRemove = true;
+		const papi: typeof base = {
+			...base,
+			remove(parent, child) {
+				if (failRemove) {
+					failRemove = false;
+					throw new Error('transient cleanup failure');
+				}
+				base.remove(parent, child);
+			},
+		};
+		const { context, page, receiver, transport } = setup(
+			papi,
+			'tests/WireRow.lynx.tsrx',
+			new RecordingContext(),
+			true,
+		);
+		receiver.markProgramsReady();
+		receiver.markPageReady();
+		await transport.ready;
+		await transport.commit(identity(1), mountFrame(), () => {}).promise;
+		await transport.dispose(identity(1), true);
+		expect(page.children).toEqual([]);
+		expect(
+			context.events
+				.filter((event) => event.type === LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT)
+				.map((event) => decodeLynxCompiledProgramBackgroundMessage(event.data).type)
+				.filter((type) => type === 'terminal-dispose'),
+		).toEqual(['terminal-dispose', 'terminal-dispose']);
+		transport.close();
+		receiver.close();
+	});
+
+	it('faults an incomplete rollback and retains its journal for terminal disposal', async () => {
+		const base = emittedHost();
+		let failRollback = true;
+		const papi: typeof base = {
+			...base,
+			remove(parent, child) {
+				if (failRollback) {
+					failRollback = false;
+					throw new Error('rollback cleanup failed');
+				}
+				base.remove(parent, child);
+			},
+		};
+		const { context, page, receiver, transport } = setup(
+			papi,
+			'tests/WireRow.lynx.tsrx',
+			new RecordingContext(),
+			true,
+		);
+		receiver.markProgramsReady();
+		receiver.markPageReady();
+		await transport.ready;
+
+		await expect(
+			transport.commit(identity(1), [...mountFrame(), 99, 0], () => {}).promise,
+		).rejects.toThrow('rollback');
+		expect(page.children).toHaveLength(1);
+		expect(
+			context.events
+				.filter((event) => event.type === LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT)
+				.map((event) => decodeLynxCompiledProgramMainMessage(event.data).type),
+		).toContain('fault');
+
+		await transport.dispose(identity(1), true);
+		expect(page.children).toEqual([]);
 		transport.close();
 		receiver.close();
 	});
