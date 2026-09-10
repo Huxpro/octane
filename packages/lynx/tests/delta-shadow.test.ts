@@ -401,4 +401,46 @@ describe('Lynx delta shadow', () => {
 			shadow.prepare(batch(2, [{ op: 'update', id: 10, props: { class: 'row', id: 'new' } }])),
 		).toBeNull();
 	});
+
+	it('discards a partially written draft without cloning or publishing accepted state', () => {
+		const shadow = createLynxDeltaShadow();
+		shadow
+			.prepare(
+				batch(1, [
+					addressedRun({
+						parent: null,
+						before: null,
+						firstId: 10,
+						firstListenerId: null,
+						count: 2,
+						values: ['row', 'A', 'row', 'B'],
+					}),
+				]),
+			)!
+			.commit();
+		const accepted = shadow.snapshot();
+
+		// The first command writes a slot into the draft. The second is outside
+		// the resident program table and declines the whole batch; neither that
+		// slot write nor its copy-on-write instance may leak into accepted state.
+		expect(
+			shadow.prepare(
+				batch(2, [
+					{ op: 'update', id: 11, props: { value: 'A!' } },
+					{ op: 'update', id: 12, props: { class: 'row', id: 'unsupported' } },
+				]),
+			),
+		).toBeNull();
+		expect(shadow.snapshot()).toEqual(accepted);
+
+		const retry = shadow.prepare(batch(2, [{ op: 'update', id: 11, props: { value: 'A!' } }]));
+		expect(decodeLynxDeltaMessage(retry!.encoded).operations).toEqual([
+			{ op: 'set', instance: 2, slot: 1, value: 'A!' },
+		]);
+		retry!.commit();
+		expect(shadow.snapshot().instances.map((instance) => instance.values)).toEqual([
+			['row', 'A!'],
+			['row', 'B'],
+		]);
+	});
 });
