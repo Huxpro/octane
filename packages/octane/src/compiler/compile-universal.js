@@ -4649,8 +4649,23 @@ function canonicalDigestSource(value) {
  * which a fixed integer recurrence over a canonical string is and a hash of an
  * object's iteration order is not.
  */
-function programDigest(wire) {
-	const source = canonicalDigestSource(wire);
+function programDigest(derived) {
+	let source = canonicalDigestSource(derived.wire);
+	if (derived.ranges.length !== 0) {
+		const order = lynxProgramRangeOrder(derived.wire, derived.ranges);
+		// A structural hole is absent from the wire by definition, so the address
+		// has to cover the topology that tells a compact receiver where its members
+		// belong. Preserve every range-free digest byte-for-byte; only ranged
+		// programs append this second surface in range ABI order, with each entry
+		// carrying its canonical physical pre-order address.
+		source += `\0${canonicalDigestSource(
+			derived.ranges.map((range) => ({
+				slot: range.slot,
+				node: range.node,
+				id: order.get(range),
+			})),
+		)}`;
+	}
 	let high = 0x811c9dc5;
 	let low = 0x9dc5811c;
 	for (let index = 0; index < source.length; index++) {
@@ -4680,10 +4695,10 @@ function programDigest(wire) {
  * main thread's "no program here". So the two threads agree by construction
  * instead of by a rule each implements separately.
  *
- * The digest covers exactly the derived wire, per the §6.1 ruling. Derivation by
- * execution is what makes that complete rather than hopeful: the emission reads
- * nothing outside the surface the derivation produced, so hashing that surface
- * hashes everything the emission depends on.
+ * The digest covers the derived wire and, for a structural program, its open
+ * range topology. Derivation by execution is what makes that complete rather
+ * than hopeful: the emission reads nothing outside the surface the derivation
+ * produced, so hashing that surface hashes everything the emission depends on.
  */
 // The derivation is a full lowering of the plan tree and a pure oracle, and an
 // addressing build asks for the same root twice in one pass — once for the
@@ -4704,10 +4719,12 @@ function deriveMainThreadProgramOnce(state, root) {
  * same runtime decision by lowering that text into its descriptor. Those are
  * equivalent create paths, but they are not the same fixed wire: the resident
  * program omits the range while the background descriptor gains a text node
- * and value slot. An address may therefore name only a range-free program.
+ * and value slot, so that range is not addressable. A structural range stays an
+ * open child hole on both paths; a backend can explicitly report that narrower
+ * case as addressable, with its range topology included in the digest.
  */
 function addressableMainThreadProgram(derived) {
-	return derived !== null && derived.ranges.length === 0;
+	return derived !== null && (derived.ranges.length === 0 || derived.addressable === true);
 }
 
 function universalProgramAddressAst(state, plan, index, origin) {
@@ -4716,7 +4733,7 @@ function universalProgramAddressAst(state, plan, index, origin) {
 	if (!lynxTemplateEligible(plan.root) || plan.root.kind !== 'host') return null;
 	const derived = deriveMainThreadProgramOnce(state, plan.root);
 	if (!addressableMainThreadProgram(derived)) return null;
-	const address = { module: state.programModuleId, index, digest: programDigest(derived.wire) };
+	const address = { module: state.programModuleId, index, digest: programDigest(derived) };
 	// Reported as well as emitted. The digest in the chunk is what a reader can
 	// check; this is what lets the *build* check it, by comparing what the two
 	// layers said about the same module before either chunk is written.

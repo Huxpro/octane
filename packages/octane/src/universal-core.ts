@@ -347,10 +347,11 @@ export interface UniversalProgramPlan {
 	 * the realm that compiled this program.
 	 *
 	 * Present only in an addressing build, and only for a program whose derived
-	 * main-thread form is range-free: a runtime range lets later text change the
-	 * node/value arity the resident copy was compiled with, so a range-bearing
-	 * program is not addressable and its background mounts carry the descriptor
-	 * instead. `bind` above paints the first screen,
+	 * main-thread form has no runtime-painted text range: such a range can change
+	 * the node/value arity the resident copy was compiled with, so its background
+	 * mounts carry the descriptor instead. An open structural range is safe when
+	 * its topology participates in the address digest. `bind` above paints the
+	 * first screen,
 	 * but a run that arrives later over the command path re-enters the ordinary
 	 * descriptor applier, and that applier needs a descriptor. Holding one copy
 	 * here is what lets a command name the program instead of carrying it: both
