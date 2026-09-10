@@ -24,7 +24,7 @@
 //   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --harness product --output /tmp/l5.json
 //   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --arms baseline,both
 //   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --harness product --arms baseline,receiver
-//   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --harness product --arms baseline,receiver,receiver-papi,receiver-store,receiver-frame,receiver-container,receiver-direct,receiver-render,receiver-transport,receiver-worklets,receiver-foundation-lite,receiver-foundation-store,receiver-foundation-frame,receiver-foundation
+//   node benchmarks/lynx-bundle-size/l5-ceiling.mjs --harness product --arms baseline,receiver,receiver-papi,receiver-store,receiver-frame,receiver-container,receiver-direct,receiver-render,receiver-transport,receiver-worklets,receiver-foundation-lite,receiver-foundation-no-worklets,receiver-foundation-no-render,receiver-foundation-store,receiver-foundation-frame,receiver-foundation-frame-no-worklets,receiver-foundation-frame-no-render,receiver-foundation
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -232,6 +232,49 @@ const ARMS = {
 			'core/main-thread-worklet-feature.ts:subscribeLynxMainThreadWorkletFeature',
 		],
 	),
+	'receiver-foundation-no-worklets': receiverSlice(
+		'receiver floor + non-host foundation without worklet seam',
+		`\tconst papi = createLynxElementPAPI<Node>(options.target ?? globalThis);
+\tpapi.createPage(options.componentId ?? '0', options.cssId ?? 0);
+\tif (options.firstScreen === true) {
+\t\trenderLynxFirstScreen(
+\t\t\toptions as unknown as UniversalComponent<InstallLynxMainThreadOptions>,
+\t\t\toptions,
+\t\t);
+\t\tdecodeLynxTransportValue(encodeLynxTransportValue(options));
+\t}
+\treturn Object.freeze({}) as LynxMainThreadController;`,
+		[
+			'core/papi.ts:createLynxElementPAPI',
+			'main-renderer.ts:renderLynxFirstScreen',
+			'core/transport-codec.ts:encodeLynxTransportValue',
+			'core/transport-codec.ts:decodeLynxTransportValue',
+		],
+	),
+	'receiver-foundation-no-render': receiverSlice(
+		'receiver floor + non-host foundation without first-screen evaluator',
+		`\tconst papi = createLynxElementPAPI<Node>(options.target ?? globalThis);
+\tpapi.createPage(options.componentId ?? '0', options.cssId ?? 0);
+\tif (options.firstScreen === true) {
+\t\tdecodeLynxTransportValue(encodeLynxTransportValue(options));
+\t}
+\tconst worklets = createReplaceableLynxMainThreadWorkletRegistry(
+\t\tcreateUnavailableLynxMainThreadWorkletRegistry(),
+\t);
+\tconst unsubscribe = subscribeLynxMainThreadWorkletFeature((feature) => {
+\t\tworklets.replace(feature.createRegistry(options as never));
+\t});
+\tif (options.firstScreen === true) unsubscribe();
+\treturn Object.freeze({}) as LynxMainThreadController;`,
+		[
+			'core/papi.ts:createLynxElementPAPI',
+			'core/transport-codec.ts:encodeLynxTransportValue',
+			'core/transport-codec.ts:decodeLynxTransportValue',
+			'core/main-thread-worklet-feature.ts:createUnavailableLynxMainThreadWorkletRegistry',
+			'core/main-thread-worklet-feature.ts:createReplaceableLynxMainThreadWorkletRegistry',
+			'core/main-thread-worklet-feature.ts:subscribeLynxMainThreadWorkletFeature',
+		],
+	),
 	'receiver-foundation-store': receiverSlice(
 		'receiver floor + reusable non-host foundation + compact program store',
 		`\tconst papi = createLynxElementPAPI<Node>(options.target ?? globalThis);
@@ -300,6 +343,73 @@ const ARMS = {
 			'core/compiled-program-store.ts:createLynxCompiledProgramStore',
 			'core/compiled-program-frame.ts:applyLynxCompiledProgramFrame',
 			'main-renderer.ts:renderLynxFirstScreen',
+			'core/transport-codec.ts:encodeLynxTransportValue',
+			'core/transport-codec.ts:decodeLynxTransportValue',
+			'core/main-thread-worklet-feature.ts:createUnavailableLynxMainThreadWorkletRegistry',
+			'core/main-thread-worklet-feature.ts:createReplaceableLynxMainThreadWorkletRegistry',
+			'core/main-thread-worklet-feature.ts:subscribeLynxMainThreadWorkletFeature',
+		],
+		COMPILED_PROGRAM_FRAME_IMPORT + COMPILED_PROGRAM_STORE_IMPORT,
+	),
+	'receiver-foundation-frame-no-worklets': receiverSlice(
+		'receiver floor + foundation and frame without worklet seam',
+		`\tconst papi = createLynxElementPAPI<Node>(options.target ?? globalThis);
+\tconst page = papi.createPage(options.componentId ?? '0', options.cssId ?? 0);
+\tconst store = createLynxCompiledProgramStore(
+\t\tpapi,
+\t\tpapi.getUniqueId(page),
+\t\tundefined,
+\t\tundefined,
+\t\toptions.firstScreen === true ? (options as never) : undefined,
+\t);
+\tapplyLynxCompiledProgramFrame(store, page, () => undefined, options);
+\tstore.dispose();
+\tif (options.firstScreen === true) {
+\t\trenderLynxFirstScreen(
+\t\t\toptions as unknown as UniversalComponent<InstallLynxMainThreadOptions>,
+\t\t\toptions,
+\t\t);
+\t\tdecodeLynxTransportValue(encodeLynxTransportValue(options));
+\t}
+\treturn Object.freeze({}) as LynxMainThreadController;`,
+		[
+			'core/papi.ts:createLynxElementPAPI',
+			'core/compiled-program-store.ts:createLynxCompiledProgramStore',
+			'core/compiled-program-frame.ts:applyLynxCompiledProgramFrame',
+			'main-renderer.ts:renderLynxFirstScreen',
+			'core/transport-codec.ts:encodeLynxTransportValue',
+			'core/transport-codec.ts:decodeLynxTransportValue',
+		],
+		COMPILED_PROGRAM_FRAME_IMPORT + COMPILED_PROGRAM_STORE_IMPORT,
+	),
+	'receiver-foundation-frame-no-render': receiverSlice(
+		'receiver floor + foundation and frame without first-screen evaluator',
+		`\tconst papi = createLynxElementPAPI<Node>(options.target ?? globalThis);
+\tconst page = papi.createPage(options.componentId ?? '0', options.cssId ?? 0);
+\tconst store = createLynxCompiledProgramStore(
+\t\tpapi,
+\t\tpapi.getUniqueId(page),
+\t\tundefined,
+\t\tundefined,
+\t\toptions.firstScreen === true ? (options as never) : undefined,
+\t);
+\tapplyLynxCompiledProgramFrame(store, page, () => undefined, options);
+\tstore.dispose();
+\tif (options.firstScreen === true) {
+\t\tdecodeLynxTransportValue(encodeLynxTransportValue(options));
+\t}
+\tconst worklets = createReplaceableLynxMainThreadWorkletRegistry(
+\t\tcreateUnavailableLynxMainThreadWorkletRegistry(),
+\t);
+\tconst unsubscribe = subscribeLynxMainThreadWorkletFeature((feature) => {
+\t\tworklets.replace(feature.createRegistry(options as never));
+\t});
+\tif (options.firstScreen === true) unsubscribe();
+\treturn Object.freeze({}) as LynxMainThreadController;`,
+		[
+			'core/papi.ts:createLynxElementPAPI',
+			'core/compiled-program-store.ts:createLynxCompiledProgramStore',
+			'core/compiled-program-frame.ts:applyLynxCompiledProgramFrame',
 			'core/transport-codec.ts:encodeLynxTransportValue',
 			'core/transport-codec.ts:decodeLynxTransportValue',
 			'core/main-thread-worklet-feature.ts:createUnavailableLynxMainThreadWorkletRegistry',
