@@ -27,9 +27,9 @@ describe('@octanejs/lynx package boundary', () => {
 			),
 		);
 
-		expect(codes).toHaveLength(490);
+		expect(codes).toHaveLength(493);
 		expect([...codes].sort((left, right) => left - right)).toEqual(
-			Array.from({ length: 490 }, (_, index) => index + 1),
+			Array.from({ length: 493 }, (_, index) => index + 1),
 		);
 	});
 

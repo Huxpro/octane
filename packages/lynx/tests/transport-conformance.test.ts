@@ -79,18 +79,23 @@ describe('Lynx transport conformance', () => {
 			frameLoops += source.match(/for \(const data of frames\)/g)?.length ?? 0;
 			for (const argument of dispatchEventArguments(source)) {
 				// Only the two transport channels; a host PAPI dispatch is not ours.
-				if (!/LYNX_(?:MAIN_TO_BACKGROUND|BACKGROUND_TO_MAIN)_EVENT/.test(argument)) continue;
+				if (
+					!/LYNX_(?:(?:COMPILED_PROGRAM_)?MAIN_TO_BACKGROUND|(?:COMPILED_PROGRAM_)?BACKGROUND_TO_MAIN)_EVENT/.test(
+						argument,
+					)
+				)
+					continue;
 				sites.push(`${relative(LYNX_SRC, file)}: ${argument.replace(/\s+/g, ' ')}`);
 			}
 		}
-		expect(sites).toHaveLength(4);
-		expect(sites.filter((site) => /, data }$/.test(site))).toHaveLength(3);
+		expect(sites).toHaveLength(6);
+		expect(sites.filter((site) => /, data }$/.test(site))).toHaveLength(5);
 		expect(sites.filter((site) => /data:\s*encodeLynxTransportValue\(/.test(site))).toHaveLength(1);
-		// Three ordinary dispatch paths can carry an arbitrary commit and must
-		// frame. The fourth is the deliberately minimal terminal-dispose retry,
-		// whose fixed-size message remains directly encoded.
-		expect(framed).toBe(3);
-		expect(frameLoops).toBe(3);
+		// Three general and two compact dispatch paths can carry an arbitrary
+		// commit and must frame. The sixth is the deliberately minimal general
+		// terminal-dispose retry, whose fixed-size message remains directly encoded.
+		expect(framed).toBe(5);
+		expect(frameLoops).toBe(5);
 	});
 
 	// The receiving half of the same claim. `event.data` is whatever the other
@@ -113,18 +118,22 @@ describe('Lynx transport conformance', () => {
 				}
 			}
 		}
-		expect(reads).toHaveLength(4);
+		expect(reads).toHaveLength(6);
 		for (const read of reads) {
 			expect(read).toMatch(
 				/(?:acceptLynxTransportFrame|decodeLynxTransportValue|localizeLynxHostValue)\($/,
 			);
 		}
-		// The two transport receive paths first assemble physical frames, then
-		// materialize the complete codec string before schema code can see it.
+		// Every transport receive path first assembles physical frames. The three
+		// general paths then materialize the general codec; the compact pair parses
+		// its internal scalar-array envelope before schema code can see it.
 		const source = sourceFiles(LYNX_SRC)
 			.map((file) => readFileSync(file, 'utf8'))
 			.join('\n');
 		expect(source.match(/decodeLynxTransportValue\(framed\)/g)).toHaveLength(3);
+		expect(
+			source.match(/decodeLynxCompiledProgram(?:Background|Main)Message\(encoded\)/g),
+		).toHaveLength(2);
 	});
 
 	// The dynamic half, under traffic the static half cannot see: what a real

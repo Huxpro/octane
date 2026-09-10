@@ -66,6 +66,8 @@ const COMPILED_PROGRAM_FRAME_IMPORT =
 	"import { applyLynxCompiledProgramFrame } from './core/compiled-program-frame.js';\n";
 const COMPILED_PROGRAM_CONTROLLER_IMPORT =
 	"import { createLynxCompiledProgramController } from './core/compiled-program-controller.js';\n";
+const COMPILED_PROGRAM_RECEIVER_IMPORT =
+	"import { installLynxCompiledProgramReceiver } from './core/compiled-program-receiver.js';\n";
 
 const ARMS = {
 	baseline: { label: 'baseline (no ablation)', edits: [] },
@@ -453,6 +455,25 @@ const ARMS = {
 		],
 		COMPILED_PROGRAM_CONTROLLER_IMPORT,
 	),
+	'receiver-compiled-program': receiverSlice(
+		'paired compact compiled-program receiver',
+		`\tconst papi = createLynxElementPAPI<Node>(options.target ?? globalThis);
+\tconst receiver = installLynxCompiledProgramReceiver({
+\t\tcontext: options.context as LynxContextProxy,
+\t\tpage: papi.createPage(options.componentId ?? '0', options.cssId ?? 0),
+\t\tpapi,
+\t\tresolveProgram: () => undefined,
+\t\tpageReady: true,
+\t});
+\treceiver.markProgramsReady();
+\treceiver.close();
+\treturn Object.freeze({}) as LynxMainThreadController;`,
+		[
+			'core/papi.ts:createLynxElementPAPI',
+			'core/compiled-program-receiver.ts:installLynxCompiledProgramReceiver',
+		],
+		COMPILED_PROGRAM_RECEIVER_IMPORT,
+	),
 	'receiver-foundation': receiverSlice(
 		'receiver floor + reusable foundation with general host container',
 		`\tconst papi = createLynxElementPAPI<Node>(options.target ?? globalThis);
@@ -521,6 +542,11 @@ ARMS['receiver-foundation-frame-no-render-producer-complete'] = {
 ARMS['receiver-foundation-controller-producer-complete'] = {
 	...ARMS['receiver-foundation-controller'],
 	label: 'receiver ownership controller + complete producer without evaluator',
+	environment: { OCTANE_CORE_SWITCH_PROGRAM_FEATURES: 'slot-updates,structural-runs' },
+};
+ARMS['receiver-compiled-program-producer-complete'] = {
+	...ARMS['receiver-compiled-program'],
+	label: 'paired compact receiver + complete producer',
 	environment: { OCTANE_CORE_SWITCH_PROGRAM_FEATURES: 'slot-updates,structural-runs' },
 };
 ARMS.both.edits = [...ARMS.validator.edits, ...ARMS.batch.edits];
