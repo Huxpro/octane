@@ -486,10 +486,10 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 				count: 1,
 				parent: page,
 				before: null,
-				plan: { ...plan, ranges: [{ slot: 0, node: 0, id: 1 }] },
+				plan: { ...plan, ranges: [{ slot: 0, node: 0, id: 1, paintsText: true }] },
 				values: ['a', 'b', 'c'],
 			}),
-		).toThrow(/range-free/);
+		).toThrow(/invalid structural range/);
 		expect(page.children).toEqual([]);
 		store.rollback();
 		expect(page.children).toEqual([]);
@@ -769,11 +769,11 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		mountCommitted(store, papi, page, 2);
 		failNext = true;
 		store.begin();
-		expect(() => store.move(1, null)).toThrow(/move fault/);
+		expect(() => store.move(1, page, null)).toThrow(/move fault/);
 		store.rollback();
 		expect(page.children.map((node) => node.id)).toEqual(['row-1', 'row-2']);
 		store.begin();
-		expect(store.move(1, null)).toBe(true);
+		expect(store.move(1, page, null)).toBe(true);
 		store.commit();
 		expect(page.children.map((node) => node.id)).toEqual(['row-2', 'row-1']);
 	});
@@ -811,8 +811,8 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 
 		hostCalls = 0;
 		store.begin();
-		expect(store.move(1, null)).toBe(false);
-		expect(store.move(1, 1)).toBe(false);
+		expect(store.move(1, page, null)).toBe(false);
+		expect(store.move(1, page, 1)).toBe(false);
 		expect(store.visibility(1, true)).toBe(false);
 		store.commit();
 		expect(hostCalls).toBe(0);
