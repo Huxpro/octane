@@ -14,6 +14,9 @@ after the whole frame commits, rolls malformed or synchronously aborted frames
 back for an exact-identity retry, and withholds disposal acknowledgement until
 native cleanup succeeds. A response failure after acceptance faults the
 controller without rolling already-accepted native state back.
+If rollback itself cannot restore the native tree, the controller emits a
+fault and retains the ownership journal for retryable terminal cleanup rather
+than issuing a reject that would invite an unsafe ordinary retry.
 
 With the complete generated producer and the general first-screen evaluator
 absent, the controller frontier is **81,035 bytes gzip**, or **1.492x** the
@@ -48,6 +51,8 @@ PAPI rather than a DOM or a descriptor mock. It independently observes:
   caught by the new pre-commit boundary before any frame state is published;
 - retryable native disposal, idempotent disposal acknowledgement, and refusal
   to remount a disposed root; and
+- rollback-cleanup failure becoming a fault whose surviving native ownership is
+  removed by terminal-dispose retries; and
 - retained accepted native state when acknowledgement delivery itself throws.
 
 The controller intentionally sits below outer ContextProxy decoding and schema

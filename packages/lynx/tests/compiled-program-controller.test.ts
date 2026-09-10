@@ -236,4 +236,31 @@ describe('@octanejs/lynx compact compiled-program controller', () => {
 		expect(page.children).toHaveLength(1);
 		expect(controller.activeIdentity()).toEqual(identity(1));
 	});
+
+	it('faults instead of inviting retry when frame rollback leaves native ownership', () => {
+		const base = emittedHost();
+		let removeFailures = 2;
+		const papi: typeof base = {
+			...base,
+			remove(parent, child) {
+				if (removeFailures-- > 0) throw new Error('transient rollback cleanup failure');
+				base.remove(parent, child);
+			},
+		};
+		const { controller, page, responses } = setup(papi);
+		controller.apply(identity(1), [...mountFrame(), 99, 0]);
+
+		expect(responses.at(-1)).toMatchObject({ type: 'fault', root: 73, version: 1 });
+		expect(controller.activeIdentity()).toEqual(identity(1));
+		expect(page.children).toHaveLength(1);
+
+		controller.dispose(identity(1), true);
+		expect(responses.at(-1)).toMatchObject({ type: 'dispose-retry' });
+		expect(page.children).toHaveLength(1);
+
+		controller.dispose(identity(1), true);
+		expect(responses.at(-1)).toMatchObject({ type: 'dispose-ack' });
+		expect(controller.activeIdentity()).toBeNull();
+		expect(page.children).toEqual([]);
+	});
 });

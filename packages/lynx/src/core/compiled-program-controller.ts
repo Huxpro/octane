@@ -250,6 +250,22 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 				});
 			} catch (error) {
 				applying = null;
+				if (candidateStore.isFaulted()) {
+					// Rollback itself left native ownership uncertain. Retain the
+					// faulted store so terminal disposal can finish cleanup; a reject
+					// would incorrectly invite an ordinary same-identity retry.
+					store = candidateStore;
+					active = candidate;
+					faulted = true;
+					const normalized = report(
+						error,
+						CONTROLLER_DEVELOPMENT
+							? 'Octane Lynx compact frame rollback was incomplete.'
+							: CONTROLLER_ERROR,
+					);
+					send({ ...candidate, type: 'fault', error: wireError(normalized) });
+					return;
+				}
 				reject(identity, error);
 				return;
 			}
