@@ -73,6 +73,10 @@ class RecordingContext implements LynxContextProxy {
 
 	dispatchEvent(event: LynxContextProxyEvent): void {
 		this.events.push(event);
+		this.deliver(event);
+	}
+
+	protected deliver(event: LynxContextProxyEvent): void {
 		for (const listener of [...(this.listeners.get(event.type) ?? [])]) listener(event);
 	}
 
@@ -84,6 +88,24 @@ class RecordingContext implements LynxContextProxy {
 
 	removeEventListener(type: string, listener: (event: LynxContextProxyEvent) => void): void {
 		this.listeners.get(type)?.delete(listener);
+	}
+}
+
+class HeldBackgroundContext extends RecordingContext {
+	hold = false;
+	private readonly held: LynxContextProxyEvent[] = [];
+
+	override dispatchEvent(event: LynxContextProxyEvent): void {
+		if (!this.hold || event.type !== LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT) {
+			super.dispatchEvent(event);
+			return;
+		}
+		this.events.push(event);
+		this.held.push(event);
+	}
+
+	releaseNewestFirst(): void {
+		for (const event of this.held.splice(0).reverse()) this.deliver(event);
 	}
 }
 
@@ -111,8 +133,8 @@ function mountFrame(module = 'tests/WireRow.lynx.tsrx') {
 function setup(
 	papi: LynxElementPAPI<FakeNode> = emittedHost(),
 	module = 'tests/WireRow.lynx.tsrx',
+	context = new RecordingContext(),
 ) {
-	const context = new RecordingContext();
 	const page = papi.createPage('0', 0);
 	const receiver = installLynxCompiledProgramReceiver({
 		context,
@@ -179,6 +201,29 @@ describe('@octanejs/lynx compact compiled-program transport', () => {
 		).rejects.toThrow('opcode');
 		expect(page.children).toEqual([]);
 
+		await transport.commit(identity(1), mountFrame(), () => {}).promise;
+		expect(page.children).toHaveLength(1);
+		await transport.dispose(identity(1));
+		transport.close();
+		receiver.close();
+	});
+
+	it('carries a racing abort before the frame and preserves exact-identity retry', async () => {
+		const context = new HeldBackgroundContext();
+		const { page, receiver, transport } = setup(emittedHost(), 'tests/WireRow.lynx.tsrx', context);
+		receiver.markProgramsReady();
+		receiver.markPageReady();
+		await transport.ready;
+
+		context.hold = true;
+		const attempt = transport.commit(identity(1), mountFrame(), () => {});
+		await Promise.resolve();
+		attempt.abort();
+		context.releaseNewestFirst();
+		await expect(attempt.promise).rejects.toThrow('aborted before apply');
+		expect(page.children).toEqual([]);
+
+		context.hold = false;
 		await transport.commit(identity(1), mountFrame(), () => {}).promise;
 		expect(page.children).toHaveLength(1);
 		await transport.dispose(identity(1));

@@ -456,7 +456,7 @@ const ARMS = {
 		COMPILED_PROGRAM_CONTROLLER_IMPORT,
 	),
 	'receiver-compiled-program': receiverSlice(
-		'paired compact compiled-program receiver',
+		'compact compiled-program main receiver',
 		`\tconst papi = createLynxElementPAPI<Node>(options.target ?? globalThis);
 \tconst receiver = installLynxCompiledProgramReceiver({
 \t\tcontext: options.context as LynxContextProxy,
@@ -546,7 +546,7 @@ ARMS['receiver-foundation-controller-producer-complete'] = {
 };
 ARMS['receiver-compiled-program-producer-complete'] = {
 	...ARMS['receiver-compiled-program'],
-	label: 'paired compact receiver + complete producer',
+	label: 'compact main receiver + complete producer',
 	environment: { OCTANE_CORE_SWITCH_PROGRAM_FEATURES: 'slot-updates,structural-runs' },
 };
 ARMS.both.edits = [...ARMS.validator.edits, ...ARMS.batch.edits];
