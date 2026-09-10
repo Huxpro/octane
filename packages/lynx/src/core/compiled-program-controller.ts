@@ -15,6 +15,7 @@ import {
 } from './compiled-program-frame.js';
 import {
 	createLynxCompiledProgramStore,
+	type LynxCompiledProgramAdoptionSource,
 	type LynxCompiledProgramStore,
 } from './compiled-program-store.js';
 import type { LynxElementPAPI, LynxElementRef } from './papi.js';
@@ -61,7 +62,7 @@ export interface LynxCompiledProgramController {
 	close(): void;
 }
 
-function normalizedError(value: unknown, fallback: string): Error {
+export function normalizeLynxCompiledProgramError(value: unknown, fallback: string): Error {
 	if (value instanceof Error) return value;
 	return new Error(value === undefined ? fallback : String(value));
 }
@@ -100,6 +101,7 @@ function abortKey(identity: UniversalTransportIdentity): string {
  */
 export function createLynxCompiledProgramController<Node extends LynxElementRef>(
 	options: LynxCompiledProgramControllerOptions<Node>,
+	adoption?: LynxCompiledProgramAdoptionSource<Node>,
 ): LynxCompiledProgramController {
 	const { page, papi, resolveProgram, respond } = options;
 	const reported: Error[] = [];
@@ -113,12 +115,12 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 	let closed = false;
 
 	const report = (value: unknown, fallback = CONTROLLER_ERROR): Error => {
-		const error = normalizedError(value, fallback);
+		const error = normalizeLynxCompiledProgramError(value, fallback);
 		reported.push(error);
 		try {
 			options.onDiagnostic?.(error);
 		} catch (diagnosticError) {
-			reported.push(normalizedError(diagnosticError, CONTROLLER_ERROR));
+			reported.push(normalizeLynxCompiledProgramError(diagnosticError, CONTROLLER_ERROR));
 		}
 		return error;
 	};
@@ -236,7 +238,14 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 			}
 			const candidate = frozenIdentity(identity);
 			const candidateStore =
-				store ?? createLynxCompiledProgramStore(papi, papi.getUniqueId(page), candidate.root);
+				store ??
+				createLynxCompiledProgramStore(
+					papi,
+					papi.getUniqueId(page),
+					candidate.root,
+					adoption?.[0],
+					adoption?.[1],
+				);
 			applying = candidate;
 			try {
 				applyLynxCompiledProgramFrame(candidateStore, page, resolveProgram, frame, () => {
