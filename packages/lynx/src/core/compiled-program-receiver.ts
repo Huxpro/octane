@@ -73,7 +73,6 @@ export function installLynxCompiledProgramReceiver<Node extends LynxElementRef>(
 ): LynxCompiledProgramReceiver {
 	const { context } = options;
 	validateContext(context);
-	const reported: Error[] = [];
 	const inbound = createLynxTransportFrameState();
 	let sequence = 1;
 	let readiness = options.pageReady === true ? 1 : 0;
@@ -83,12 +82,9 @@ export function installLynxCompiledProgramReceiver<Node extends LynxElementRef>(
 
 	const report = (value: unknown, fallback = RECEIVER_ERROR): Error => {
 		const error = normalizedError(value, fallback);
-		reported.push(error);
 		try {
 			options.onDiagnostic?.(error);
-		} catch (diagnosticError) {
-			reported.push(normalizedError(diagnosticError, RECEIVER_ERROR));
-		}
+		} catch {}
 		return error;
 	};
 
@@ -150,22 +146,13 @@ export function installLynxCompiledProgramReceiver<Node extends LynxElementRef>(
 			return;
 		}
 		if (!readySent) {
-			const error = report(
+			report(
 				new Error(
 					RECEIVER_DEVELOPMENT
 						? 'Octane Lynx compact receiver received work before readiness.'
 						: RECEIVER_ERROR,
 				),
 			);
-			try {
-				dispatch({
-					...message,
-					type: 'reject',
-					error: { name: error.name, message: error.message },
-				});
-			} catch (dispatchError) {
-				report(dispatchError);
-			}
 			return;
 		}
 		if (message.type === 'frame') controller.apply(message, message.frame);
