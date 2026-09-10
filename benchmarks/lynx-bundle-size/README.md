@@ -196,6 +196,12 @@ frontier, and the resulting implementation budget decision, are recorded in
 The real structural physical-run producer, removal of the nested-range test
 shim, and producer-complete budget failure are recorded in
 [`results/m3-structural-run-producer.md`](results/m3-structural-run-producer.md).
+The exact frame ownership, response-fault, rollback-fault, and retryable cleanup
+controller is recorded in
+[`results/m3-compact-program-controller.md`](results/m3-compact-program-controller.md).
+The isolated scalar-array ContextProxy channel, dual readiness gate, abort
+ordering, and actual compact main-receiver frontier are recorded in
+[`results/m3-compact-program-wire.md`](results/m3-compact-program-wire.md).
 
 ## Core switch and main-thread program
 
