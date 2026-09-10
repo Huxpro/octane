@@ -770,7 +770,7 @@ export function lynxBlockProgramForComponent<Props>(
 			state.plan = rendered.plan;
 			state.compiled = program;
 			state.prepared = wire;
-			state.template = compileLynxBlockTemplate(wire.wire);
+			state.template = compileLynxBlockTemplate(wire.wire, rendered.plan.address);
 		} else if (rendered.plan !== state.plan) {
 			refuse(
 				subject,
@@ -1234,7 +1234,10 @@ export function lynxBlockProgramForComponent<Props>(
 								source: null,
 								keyedSelection: null,
 							}));
-				const template: LynxBlockTemplate = compileLynxBlockTemplate(wire.wire);
+				const template: LynxBlockTemplate = compileLynxBlockTemplate(
+					wire.wire,
+					rendered.plan.address,
+				);
 				const values = valuesFor(context, rendered.values);
 				const rows = renderRanges(context, rendered.values);
 				// Nothing above this line has written to the core, and nothing below it

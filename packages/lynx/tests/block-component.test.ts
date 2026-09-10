@@ -51,6 +51,7 @@ import { createLynxBlockBackgroundCore } from '../src/core/block-background.js';
 import { createLynxBlockCore, type LynxBlockCore } from '../src/core/block-core.js';
 import { withLynxBlockProgram } from '../src/core/block-program.js';
 import { createLynxClientContainer, createLynxClientDriver } from '../src/core/client-driver.js';
+import { registerUniversalProgram, residentRunProgram } from '../src/core/program-registry.js';
 import {
 	createLynxHostContainer,
 	prepareLynxHostBatch,
@@ -112,6 +113,46 @@ const Card = defineUniversalComponent(
 			onTap,
 			detail,
 		]),
+);
+
+const ADDRESSED_SIMPLE_PLAN = universalPlan(
+	LYNX_TRANSPORT_RENDERER,
+	{
+		kind: 'host',
+		type: 'view',
+		bindings: [['class', 0]],
+		children: [{ kind: 'text', slot: 1 }],
+	},
+	{
+		module: 'tests/AddressedCard.lynx.tsrx',
+		index: 0,
+		digest: '0123456789abcdef',
+	},
+);
+
+registerUniversalProgram('tests/AddressedCard.lynx.tsrx', 0, {
+	kind: 'program',
+	slots: ['p:class', 'c'],
+	nodes: 2,
+	values: [0, 1],
+	events: [],
+	ranges: [],
+	wire: {
+		nodes: [
+			{ type: 'view', parent: -1, props: {}, bindings: [{ name: 'class', valueIndex: 0 }] },
+			{ type: '#text', parent: 0, props: {}, bindings: [{ name: 'value', valueIndex: 1 }] },
+		],
+		events: [],
+	},
+	bind: (() => {
+		throw new Error('The protocol-only fixture must not execute its resident program.');
+	}) as never,
+});
+
+const AddressedCard = defineUniversalComponent(
+	LYNX_TRANSPORT_RENDERER,
+	({ label, active }: CardProps) =>
+		universalValue(ADDRESSED_SIMPLE_PLAN, [active ? 'card active' : 'card', label]),
 );
 
 function subscribedCard(lifecycle: string[]): LynxComponent<CardProps> {
@@ -335,9 +376,12 @@ function universalColumn<Props>(component: LynxComponent<Props>) {
 }
 
 /** The same component through `core: 'block'`, entered exactly as a bundle enters it. */
-function blockColumn<Props = CardProps>(core?: LynxBlockCore) {
+function blockColumn<Props = CardProps>(
+	core?: LynxBlockCore,
+	resolveProgram?: Parameters<typeof installMainSide>[2],
+) {
 	const context = new FakeContextProxy();
-	const main = installMainSide(context);
+	const main = installMainSide(context, false, resolveProgram);
 	const container = createLynxClientContainer();
 	const transport = createLynxBackgroundTransport(context, container);
 	const background = createLynxBlockBackgroundCore({
@@ -396,6 +440,22 @@ const LADDER: readonly CardProps[] = [
 ];
 
 describe('Lynx compiled component on the Block core', () => {
+	it('preserves a build-proven address on the Block run command', async () => {
+		const block = blockColumn(
+			createLynxBlockCore({ templateRuns: () => true }),
+			residentRunProgram,
+		);
+		await block.render(AddressedCard as LynxComponent<CardProps>, LADDER[0]!);
+
+		expect(block.main.commits).toHaveLength(1);
+		expect(block.main.commits[0]!.batch.commands).toEqual([
+			expect.objectContaining({
+				op: 'mount-program-run',
+				address: { module: 'tests/AddressedCard.lynx.tsrx', index: 0 },
+			}),
+		]);
+	});
+
 	it('paints what the universal core paints, at every step of a ladder', async () => {
 		const universal = universalColumn(Card as LynxComponent<CardProps>);
 		const block = blockColumn();

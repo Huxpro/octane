@@ -443,6 +443,15 @@ describe('Lynx block core — allocation-order determinism', () => {
 		).toThrowError(/native lists are not in the specialized core/);
 	});
 
+	it('refuses a malformed resident program address before it reaches the wire', () => {
+		expect(() =>
+			compileLynxBlockTemplate(
+				{ nodes: [{ type: 'view', parent: -1, props: {} }], events: [] },
+				{ module: '', index: -1 },
+			),
+		).toThrowError(/program address requires a module and non-negative index/);
+	});
+
 	it('refuses a value slot two host nodes claim', () => {
 		expect(() =>
 			compileLynxBlockTemplate({

@@ -202,6 +202,9 @@ controller is recorded in
 The isolated scalar-array ContextProxy channel, dual readiness gate, abort
 ordering, and actual compact main-receiver frontier are recorded in
 [`results/m3-compact-program-wire.md`](results/m3-compact-program-wire.md).
+The Block producer's addressed-command handoff and executable transactional
+adapter into that compact channel are recorded in
+[`results/m3-compact-block-transport.md`](results/m3-compact-block-transport.md).
 
 ## Core switch and main-thread program
 
