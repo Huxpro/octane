@@ -153,6 +153,9 @@ preservation, and failed/final frontier controls are recorded in
 The handle-keyed first-screen proof resolver, retry-idempotent adoption, and
 corrected true-linkage production frontier are recorded in
 [`results/m3-compact-first-screen-frame-match.md`](results/m3-compact-first-screen-frame-match.md).
+The direct publication of already-bound Element PAPI methods and its exact
+production repayment are recorded in
+[`results/m3-papi-bound-methods.md`](results/m3-papi-bound-methods.md).
 
 ## Core switch and main-thread program
 

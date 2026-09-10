@@ -274,9 +274,7 @@ export function createLynxElementPAPI<Node extends LynxElementRef = LynxElementR
 			text: createText,
 			rawText: createRawText,
 		}),
-		createPage(componentId, cssId) {
-			return createPage(componentId, cssId);
-		},
+		createPage,
 		createElement(type, parentComponentUniqueId, textValue) {
 			switch (type) {
 				case '#text':
@@ -294,15 +292,9 @@ export function createLynxElementPAPI<Node extends LynxElementRef = LynxElementR
 					return createElement(type, parentComponentUniqueId);
 			}
 		},
-		getUniqueId(node) {
-			return getUniqueId(node);
-		},
-		getParent(node) {
-			return normalizedParent(node);
-		},
-		isEqual(first, second) {
-			return elementsAreEqual(first, second);
-		},
+		getUniqueId,
+		getParent: normalizedParent,
+		isEqual: elementsAreEqual,
 		isChild(parent, child) {
 			const actualParent = normalizedParent(child);
 			return actualParent !== null && elementsAreEqual(actualParent, parent);
@@ -311,39 +303,19 @@ export function createLynxElementPAPI<Node extends LynxElementRef = LynxElementR
 			insertBefore(parent, child, before ?? undefined);
 		},
 		remove,
-		replace(replacement, previous) {
-			replace(replacement, previous);
-		},
-		setClasses(node, value) {
-			setClasses(node, value);
-		},
-		setInlineStyles(node, value) {
-			setInlineStyles(node, value);
-		},
-		setCssId(node, id, entryName) {
-			setCssId(node, id, entryName);
-		},
-		setAttribute(node, name, value) {
-			setAttribute(node, name, value);
-		},
+		replace,
+		setClasses,
+		setInlineStyles,
+		setCssId,
+		setAttribute,
 		setRefSelector(node, value) {
 			setAttribute(node, LYNX_NODES_REF_ATTRIBUTE, value);
 		},
-		setDataset(node, value) {
-			setDataset(node, value);
-		},
-		setEvent(node, kind, name, listener) {
-			addEvent(node, kind, name, listener);
-		},
-		setId(node, id) {
-			// The pinned public declaration and ReactLynx removal path both use
-			// null. Keep the production adapter exact even though the JavaScript
-			// testing environment models this operation as a DOM assignment.
-			setId(node, id);
-		},
-		flush(node, options) {
-			flush(node, options);
-		},
+		setDataset,
+		setEvent: addEvent,
+		// The pinned public declaration and ReactLynx removal path both use null.
+		setId,
+		flush,
 	};
 	return Object.freeze(papi);
 }
