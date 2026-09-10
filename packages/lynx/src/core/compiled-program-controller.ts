@@ -47,8 +47,6 @@ export interface LynxCompiledProgramControllerOptions<Node extends LynxElementRe
 	readonly page: Node;
 	readonly papi: LynxElementPAPI<Node>;
 	readonly resolveProgram: LynxCompiledProgramResolver;
-	/** Listener cursor plus validated first-screen proofs, keyed by compact run handle. */
-	readonly adoption?: LynxCompiledProgramAdoptionSource<Node>;
 	/** Send one already-local response to the paired background transport. */
 	readonly respond: (message: LynxCompiledProgramControllerResponse) => void;
 	readonly onDiagnostic?: (error: Error) => void;
@@ -64,7 +62,7 @@ export interface LynxCompiledProgramController {
 	close(): void;
 }
 
-function normalizedError(value: unknown, fallback: string): Error {
+export function normalizeLynxCompiledProgramError(value: unknown, fallback: string): Error {
 	if (value instanceof Error) return value;
 	return new Error(value === undefined ? fallback : String(value));
 }
@@ -103,6 +101,7 @@ function abortKey(identity: UniversalTransportIdentity): string {
  */
 export function createLynxCompiledProgramController<Node extends LynxElementRef>(
 	options: LynxCompiledProgramControllerOptions<Node>,
+	adoption?: LynxCompiledProgramAdoptionSource<Node>,
 ): LynxCompiledProgramController {
 	const { page, papi, resolveProgram, respond } = options;
 	const reported: Error[] = [];
@@ -116,12 +115,12 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 	let closed = false;
 
 	const report = (value: unknown, fallback = CONTROLLER_ERROR): Error => {
-		const error = normalizedError(value, fallback);
+		const error = normalizeLynxCompiledProgramError(value, fallback);
 		reported.push(error);
 		try {
 			options.onDiagnostic?.(error);
 		} catch (diagnosticError) {
-			reported.push(normalizedError(diagnosticError, CONTROLLER_ERROR));
+			reported.push(normalizeLynxCompiledProgramError(diagnosticError, CONTROLLER_ERROR));
 		}
 		return error;
 	};
@@ -244,8 +243,8 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 					papi,
 					papi.getUniqueId(page),
 					candidate.root,
-					options.adoption?.[0],
-					options.adoption?.[1],
+					adoption?.[0],
+					adoption?.[1],
 				);
 			applying = candidate;
 			try {

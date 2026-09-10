@@ -156,20 +156,22 @@ describe('@octanejs/lynx compact compiled-program controller', () => {
 		papi.insertBefore(page, nodes[0]!, null);
 		attachments = 0;
 		const responses: LynxCompiledProgramControllerResponse[] = [];
-		const controller = createLynxCompiledProgramController({
-			page,
-			papi,
-			resolveProgram: (module, index) =>
-				module === ADDRESS.module && index === ADDRESS.index ? plan : undefined,
-			adoption: [
+		const controller = createLynxCompiledProgramController(
+			{
+				page,
+				papi,
+				resolveProgram: (module, index) =>
+					module === ADDRESS.module && index === ADDRESS.index ? plan : undefined,
+				respond: (message) => responses.push(message),
+			},
+			[
 				1_000_000,
 				(firstHandle) =>
 					firstHandle === 2
 						? { firstId: 10, firstListenerId: 1_000_000, nodes, stride: 4 }
 						: undefined,
 			],
-			respond: (message) => responses.push(message),
-		});
+		);
 
 		controller.apply(identity(1), mountFrame());
 

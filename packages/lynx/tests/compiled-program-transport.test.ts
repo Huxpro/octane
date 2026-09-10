@@ -164,21 +164,23 @@ describe('@octanejs/lynx compact compiled-program transport', () => {
 			},
 		};
 		const context = new RecordingContext();
-		const receiver = installLynxCompiledProgramReceiver({
-			context,
-			page,
-			papi,
-			resolveProgram: (module, index) =>
-				module === 'tests/WireRow.lynx.tsrx' && index === 0 ? plan : undefined,
-			adoption: [
+		const receiver = installLynxCompiledProgramReceiver(
+			{
+				context,
+				page,
+				papi,
+				resolveProgram: (module, index) =>
+					module === 'tests/WireRow.lynx.tsrx' && index === 0 ? plan : undefined,
+				pageReady: true,
+			},
+			[
 				1,
 				(firstHandle) =>
 					firstHandle === 2
 						? { firstId: 10, firstListenerId: null, nodes, stride: plan.nodes }
 						: undefined,
 			],
-			pageReady: true,
-		});
+		);
 		const transport = createLynxCompiledProgramTransport(context);
 		receiver.markProgramsReady();
 		await transport.ready;

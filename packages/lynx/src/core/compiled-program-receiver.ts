@@ -1,6 +1,9 @@
 declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
 
-import { createLynxCompiledProgramController } from './compiled-program-controller.js';
+import {
+	createLynxCompiledProgramController,
+	normalizeLynxCompiledProgramError,
+} from './compiled-program-controller.js';
 import type { LynxCompiledProgramResolver } from './compiled-program-frame.js';
 import type { LynxCompiledProgramAdoptionSource } from './compiled-program-store.js';
 import {
@@ -26,8 +29,6 @@ export interface InstallLynxCompiledProgramReceiverOptions<Node extends LynxElem
 	readonly page: Node;
 	readonly papi: LynxElementPAPI<Node>;
 	readonly resolveProgram: LynxCompiledProgramResolver;
-	/** Listener cursor plus validated first-screen proofs, keyed by compact run handle. */
-	readonly adoption?: LynxCompiledProgramAdoptionSource<Node>;
 	/** Web may mark PageConfig ready at installation; Native waits for `__RenderPage`. */
 	readonly pageReady?: boolean;
 	readonly onDiagnostic?: (error: Error) => void;
@@ -39,10 +40,6 @@ export interface LynxCompiledProgramReceiver {
 	/** Native PageConfig is installed and Element PAPI writes may begin. */
 	markPageReady(): void;
 	close(): void;
-}
-
-function normalizedError(value: unknown, fallback: string): Error {
-	return value instanceof Error ? value : new Error(value === undefined ? fallback : String(value));
 }
 
 function validateContext(context: LynxContextProxy): void {
@@ -73,6 +70,7 @@ function validateContext(context: LynxContextProxy): void {
  */
 export function installLynxCompiledProgramReceiver<Node extends LynxElementRef>(
 	options: InstallLynxCompiledProgramReceiverOptions<Node>,
+	adoption?: LynxCompiledProgramAdoptionSource<Node>,
 ): LynxCompiledProgramReceiver {
 	const { context } = options;
 	validateContext(context);
@@ -80,11 +78,10 @@ export function installLynxCompiledProgramReceiver<Node extends LynxElementRef>(
 	let sequence = 1;
 	let readiness = options.pageReady === true ? 1 : 0;
 	let readyRequest: number | null = null;
-	let readySent = false;
 	let closed = false;
 
 	const report = (value: unknown, fallback = RECEIVER_ERROR): Error => {
-		const error = normalizedError(value, fallback);
+		const error = normalizeLynxCompiledProgramError(value, fallback);
 		try {
 			options.onDiagnostic?.(error);
 		} catch {}
@@ -99,20 +96,22 @@ export function installLynxCompiledProgramReceiver<Node extends LynxElementRef>(
 		}
 	};
 
-	const controller = createLynxCompiledProgramController({
-		page: options.page,
-		papi: options.papi,
-		resolveProgram: options.resolveProgram,
-		adoption: options.adoption,
-		respond: dispatch,
-		onDiagnostic: options.onDiagnostic,
-	});
+	const controller = createLynxCompiledProgramController(
+		{
+			page: options.page,
+			papi: options.papi,
+			resolveProgram: options.resolveProgram,
+			respond: dispatch,
+			onDiagnostic: options.onDiagnostic,
+		},
+		adoption,
+	);
 
 	const publishReady = (): void => {
-		if (closed || readySent || readyRequest === null || readiness !== 3) return;
+		if (closed || readyRequest === null || readiness !== 3) return;
 		try {
 			dispatch({ type: 'ready', request: readyRequest });
-			readySent = true;
+			readiness = 4;
 		} catch (error) {
 			report(
 				error,
@@ -149,7 +148,7 @@ export function installLynxCompiledProgramReceiver<Node extends LynxElementRef>(
 			publishReady();
 			return;
 		}
-		if (!readySent) {
+		if (readiness !== 4) {
 			report(
 				new Error(
 					RECEIVER_DEVELOPMENT
@@ -166,7 +165,7 @@ export function installLynxCompiledProgramReceiver<Node extends LynxElementRef>(
 
 	context.addEventListener(LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT, onMessage);
 	const markReady = (gate: number): void => {
-		if (closed || (readiness & gate) !== 0) return;
+		if (closed || readiness > 3 || (readiness & gate) !== 0) return;
 		readiness |= gate;
 		publishReady();
 	};
