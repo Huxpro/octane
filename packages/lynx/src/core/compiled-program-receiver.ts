@@ -1,9 +1,6 @@
 declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
 
-import {
-	createLynxCompiledProgramController,
-	type LynxCompiledProgramController,
-} from './compiled-program-controller.js';
+import { createLynxCompiledProgramController } from './compiled-program-controller.js';
 import type { LynxCompiledProgramResolver } from './compiled-program-frame.js';
 import {
 	decodeLynxCompiledProgramBackgroundMessage,
@@ -38,9 +35,6 @@ export interface LynxCompiledProgramReceiver {
 	markProgramsReady(): void;
 	/** Native PageConfig is installed and Element PAPI writes may begin. */
 	markPageReady(): void;
-	activeIdentity(): ReturnType<LynxCompiledProgramController['activeIdentity']>;
-	size(): number;
-	diagnostics(): readonly Error[];
 	close(): void;
 }
 
@@ -82,8 +76,7 @@ export function installLynxCompiledProgramReceiver<Node extends LynxElementRef>(
 	const reported: Error[] = [];
 	const inbound = createLynxTransportFrameState();
 	let sequence = 1;
-	let programsReady = false;
-	let pageReady = options.pageReady === true;
+	let readiness = options.pageReady === true ? 1 : 0;
 	let readyRequest: number | null = null;
 	let readySent = false;
 	let closed = false;
@@ -116,7 +109,7 @@ export function installLynxCompiledProgramReceiver<Node extends LynxElementRef>(
 	});
 
 	const publishReady = (): void => {
-		if (closed || readySent || readyRequest === null || !programsReady || !pageReady) return;
+		if (closed || readySent || readyRequest === null || readiness !== 3) return;
 		try {
 			dispatch({ type: 'ready', request: readyRequest });
 			readySent = true;
@@ -181,21 +174,15 @@ export function installLynxCompiledProgramReceiver<Node extends LynxElementRef>(
 	};
 
 	context.addEventListener(LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT, onMessage);
+	const markReady = (gate: number): void => {
+		if (closed || (readiness & gate) !== 0) return;
+		readiness |= gate;
+		publishReady();
+	};
 
 	return Object.freeze({
-		markProgramsReady() {
-			if (closed || programsReady) return;
-			programsReady = true;
-			publishReady();
-		},
-		markPageReady() {
-			if (closed || pageReady) return;
-			pageReady = true;
-			publishReady();
-		},
-		activeIdentity: () => controller.activeIdentity(),
-		size: () => controller.size(),
-		diagnostics: () => Object.freeze([...reported, ...controller.diagnostics()]),
+		markProgramsReady: () => markReady(2),
+		markPageReady: () => markReady(1),
 		close() {
 			if (closed) return;
 			controller.close();
