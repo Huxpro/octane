@@ -79,7 +79,7 @@ node benchmarks/lynx-bundle-size/l5-ceiling.mjs \
   --output /absolute/path/to/receiver-ceiling.json
 node benchmarks/lynx-bundle-size/l5-ceiling.mjs \
   --harness product \
-  --arms baseline,receiver,receiver-papi,receiver-store,receiver-frame,receiver-container,receiver-direct,receiver-render,receiver-transport,receiver-worklets,receiver-foundation-lite,receiver-foundation-no-worklets,receiver-foundation-no-render,receiver-foundation-store,receiver-foundation-frame,receiver-foundation-frame-no-worklets,receiver-foundation-frame-no-render,receiver-foundation-frame-producer-slots,receiver-foundation-frame-no-worklets-producer-slots,receiver-foundation-frame-no-render-producer-slots,receiver-foundation \
+  --arms baseline,receiver,receiver-papi,receiver-store,receiver-frame,receiver-container,receiver-direct,receiver-render,receiver-transport,receiver-worklets,receiver-foundation-lite,receiver-foundation-no-worklets,receiver-foundation-no-render,receiver-foundation-store,receiver-foundation-frame,receiver-foundation-frame-no-worklets,receiver-foundation-frame-no-render,receiver-foundation-frame-producer-slots,receiver-foundation-frame-no-worklets-producer-slots,receiver-foundation-frame-no-render-producer-slots,receiver-foundation-frame-producer-complete,receiver-foundation-frame-no-worklets-producer-complete,receiver-foundation-frame-no-render-producer-complete,receiver-foundation \
   --output /absolute/path/to/receiver-frontier.json
 ```
 
@@ -119,6 +119,9 @@ the feature absent and retains an explicit full-capability path.
 The corresponding `*-producer-slots` arms also make the real compiler emission
 carry the compact SET driver's generated slot setters, preventing a receiver-only
 closure from understating the eventual product cost.
+The `*-producer-complete` arms additionally request physical-stride drivers for
+structural ranges, so the production app carries both generated capabilities the
+compact store requires instead of relying on a test-only run shim.
 `receiver-foundation` adds the general host container. Both exclude the direct
 applier, so shared code is compressed once rather than added from the individual
 deltas.
@@ -170,6 +173,9 @@ rollback contract, and exact range-capable frontier are recorded in
 The exact non-additive worklet-seam and first-screen-evaluator cuts over that
 frontier, and the resulting implementation budget decision, are recorded in
 [`results/m3-production-capability-frontier.md`](results/m3-production-capability-frontier.md).
+The real structural physical-run producer, removal of the nested-range test
+shim, and producer-complete budget failure are recorded in
+[`results/m3-structural-run-producer.md`](results/m3-structural-run-producer.md).
 
 ## Core switch and main-thread program
 

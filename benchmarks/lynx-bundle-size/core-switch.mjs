@@ -62,7 +62,7 @@ const programFeatures = Object.freeze(
 		.sort(),
 );
 for (const feature of programFeatures) {
-	if (feature !== 'slot-updates') {
+	if (feature !== 'slot-updates' && feature !== 'structural-runs') {
 		throw new Error(`unknown main-thread program feature ${JSON.stringify(feature)}`);
 	}
 }
@@ -75,6 +75,7 @@ const mainThreadProgramBackend =
 					return baseMainThreadProgramBackend.emitLynxMainThreadProgram(program, {
 						...options,
 						...(programFeatures.includes('slot-updates') ? { slotUpdates: true } : null),
+						...(programFeatures.includes('structural-runs') ? { structuralRuns: true } : null),
 					});
 				},
 			});

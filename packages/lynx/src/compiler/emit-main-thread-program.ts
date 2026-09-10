@@ -311,6 +311,8 @@ export interface LynxMainThreadProgramEmission {
 	 * plan is the pair that drifts.
 	 */
 	readonly denseRun: boolean;
+	/** Whether the emitted create actually carries a `.run` driver. */
+	readonly runDriver: boolean;
 	/**
 	 * Whether the create also carries `<name>.set(nodes, slot, value)`.
 	 *
@@ -686,6 +688,16 @@ export function emitLynxMainThreadProgram(
 		 */
 		readonly slotUpdates?: boolean;
 		/**
+		 * Emit a physical-output-stride run even when a structural range remains open.
+		 *
+		 * The default preserves the historical logical-ID dense-run rule and its
+		 * source bytes. The compact program store addresses instances and compiler
+		 * range slots independently of logical host IDs, so it may request this form:
+		 * every instance still writes exactly `nodes + ranges.length` output entries,
+		 * with `undefined` at a structural hole that its child runs own.
+		 */
+		readonly structuralRuns?: boolean;
+		/**
 		 * The holes the program dropped, in the order their values are passed.
 		 *
 		 * Omitted or empty emits exactly what it emitted before this parameter
@@ -919,7 +931,8 @@ export function emitLynxMainThreadProgram(
 		return [line, `\t\tout[oi${index === 0 ? '' : ` + ${index}`}] = n${index};`];
 	});
 
-	// Constant stride, and that is the whole condition (issue #215 D8). A range
+	// Constant logical-ID stride, and that is the dense condition (issue #215
+	// D8). A range
 	// site this emission leaves open is filled by members the renderer
 	// materializes, and `assignProgramIds` mints their IDs at the hole's own
 	// position — inside this program's span — so two instances of such a program
@@ -927,6 +940,13 @@ export function emitLynxMainThreadProgram(
 	// by arithmetic. Every site painted, or no sites at all, and an instance is
 	// exactly `nodes + ranges` consecutive IDs however many times it is repeated.
 	const denseRun = ranges.every((_range, index) => painted.has(index));
+	// The compact store does not derive logical host IDs from this table: handles
+	// address instances, and `(instance, compiler range slot)` resolves child
+	// parents. Its required stride is therefore the create ABI's physical output
+	// stride, which is constant even when an open range's members take a variable
+	// number of logical IDs. Keep this explicit so existing callers preserve both
+	// their source bytes and the stronger dense-run meaning by default.
+	const runDriver = denseRun || options.structuralRuns === true;
 	const stride = program.nodes.length + ranges.length;
 
 	const preamble = [
@@ -948,7 +968,7 @@ export function emitLynxMainThreadProgram(
 		options.slotUpdates === true && (valueCount !== 0 || program.events.length !== 0);
 	const setter = slotUpdates ? slotSetterLines(options.name, program, sites) : [];
 	const source =
-		!denseRun && !slotUpdates
+		!runDriver && !slotUpdates
 			? [
 					...preamble,
 					`\treturn function ${options.name}(${params.join(', ')}) {`,
@@ -963,7 +983,7 @@ export function emitLynxMainThreadProgram(
 					...body,
 					`\t\treturn [${returned}];`,
 					`\t}`,
-					...(denseRun
+					...(runDriver
 						? [
 								// The same body, run `count` times over member-major tables, with
 								// the create function's parameters bound from them at the top of
@@ -1018,6 +1038,7 @@ export function emitLynxMainThreadProgram(
 		rangeCount: ranges.length,
 		paintsText: ranges.map((_range, index) => painted.has(index)),
 		denseRun,
+		runDriver,
 		slotUpdates,
 	};
 }
