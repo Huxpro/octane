@@ -151,6 +151,7 @@ export interface LynxCompiledProgramStore<Node extends LynxElementRef = LynxElem
 	set(handle: number, slot: number, value: unknown): boolean;
 	visibility(handle: number, visible: boolean): boolean;
 	size(): number;
+	isFaulted(): boolean;
 	dispose(): void;
 }
 
@@ -841,6 +842,9 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		},
 		size() {
 			return instances.size;
+		},
+		isFaulted() {
+			return faulted;
 		},
 		dispose() {
 			const errors: unknown[] = [];
