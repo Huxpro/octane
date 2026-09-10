@@ -156,6 +156,9 @@ corrected true-linkage production frontier are recorded in
 The direct publication of already-bound Element PAPI methods and its exact
 production repayment are recorded in
 [`results/m3-papi-bound-methods.md`](results/m3-papi-bound-methods.md).
+The compact store/router's compiler-slot lookup, nested topology ownership,
+rollback contract, and exact range-capable frontier are recorded in
+[`results/m3-compact-nested-ranges.md`](results/m3-compact-nested-ranges.md).
 
 ## Core switch and main-thread program
 
