@@ -2,8 +2,10 @@
 
 - Issue: #290
 - Merged base: `new-lynx@c144f4f171e9c449e532c56eeef2e85814e03039`
-- Exact-clean implementation and measurement head:
+- Exact-clean address-propagation measurement head:
   `0b2d6aa1815a2c131d3c9281f6a2d709249484c4`
+- Final adapter fault/reentrancy verification head:
+  `69268819ef575a22df5a6a8442dc3d855bde357f`
 
 ## Result
 
@@ -80,8 +82,8 @@ empty control-failure lists.
 
 - compiler-address propagation crosses the real checked background protocol
   and resident-program resolver;
-- focused Block component and compact-adapter suites pass 55/55 tests;
-- the full Lynx project passes 55 files / 958 tests;
+- focused Block component and compact-adapter suites pass 57/57 tests;
+- the full Lynx project passes 55 files / 960 tests;
 - full repository typecheck and synchronization pass; and
 - OL494 is unique and the production diagnostic sequence remains contiguous.
 
