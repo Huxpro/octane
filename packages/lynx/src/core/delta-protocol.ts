@@ -163,7 +163,7 @@ function requireAddress(value: LynxSlotAddress | undefined, name: string): LynxS
 export function isLynxDeltaValue(value: unknown): value is LynxDeltaValue {
 	if (value === null) return true;
 	const type = typeof value;
-	return type === 'string' || type === 'number' || type === 'boolean';
+	return type === 'string' || type === 'boolean' || (type === 'number' && Number.isFinite(value));
 }
 
 /** The whole of the value check: `isLynxDeltaValue`, spelled as a demand. */
