@@ -79,7 +79,7 @@ node benchmarks/lynx-bundle-size/l5-ceiling.mjs \
   --output /absolute/path/to/receiver-ceiling.json
 node benchmarks/lynx-bundle-size/l5-ceiling.mjs \
   --harness product \
-  --arms baseline,receiver,receiver-papi,receiver-store,receiver-frame,receiver-container,receiver-direct,receiver-render,receiver-transport,receiver-worklets,receiver-foundation-lite,receiver-foundation-no-worklets,receiver-foundation-no-render,receiver-foundation-store,receiver-foundation-frame,receiver-foundation-frame-no-worklets,receiver-foundation-frame-no-render,receiver-foundation \
+  --arms baseline,receiver,receiver-papi,receiver-store,receiver-frame,receiver-container,receiver-direct,receiver-render,receiver-transport,receiver-worklets,receiver-foundation-lite,receiver-foundation-no-worklets,receiver-foundation-no-render,receiver-foundation-store,receiver-foundation-frame,receiver-foundation-frame-no-worklets,receiver-foundation-frame-no-render,receiver-foundation-frame-producer-slots,receiver-foundation-frame-no-worklets-producer-slots,receiver-foundation-frame-no-render-producer-slots,receiver-foundation \
   --output /absolute/path/to/receiver-frontier.json
 ```
 
@@ -116,6 +116,9 @@ compressed union after removing one optional seam, both before and after adding
 the compact frame. These are capability-cut hypotheses, not permission to drop
 an authored feature: a product may use them only after the compiler/build proves
 the feature absent and retains an explicit full-capability path.
+The corresponding `*-producer-slots` arms also make the real compiler emission
+carry the compact SET driver's generated slot setters, preventing a receiver-only
+closure from understating the eventual product cost.
 `receiver-foundation` adds the general host container. Both exclude the direct
 applier, so shared code is compressed once rather than added from the individual
 deltas.

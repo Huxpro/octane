@@ -53,7 +53,31 @@ import { registerTypeScriptSourceResolution } from './ts-source-resolution.mjs';
 // runs. The backend is TypeScript, and `ts-source-resolution.mjs` explains what
 // that costs a plain-`node` harness and what it does not.
 registerTypeScriptSourceResolution();
-const mainThreadProgramBackend = await import('../../packages/lynx/src/compiler/index.js');
+const baseMainThreadProgramBackend = await import('../../packages/lynx/src/compiler/index.js');
+const programFeatures = Object.freeze(
+	(process.env.OCTANE_CORE_SWITCH_PROGRAM_FEATURES ?? '')
+		.split(',')
+		.map((feature) => feature.trim())
+		.filter(Boolean)
+		.sort(),
+);
+for (const feature of programFeatures) {
+	if (feature !== 'slot-updates') {
+		throw new Error(`unknown main-thread program feature ${JSON.stringify(feature)}`);
+	}
+}
+const mainThreadProgramBackend =
+	programFeatures.length === 0
+		? baseMainThreadProgramBackend
+		: Object.freeze({
+				...baseMainThreadProgramBackend,
+				emitLynxMainThreadProgram(program, options) {
+					return baseMainThreadProgramBackend.emitLynxMainThreadProgram(program, {
+						...options,
+						...(programFeatures.includes('slot-updates') ? { slotUpdates: true } : null),
+					});
+				},
+			});
 
 const ROOT = import.meta.dirname;
 const REPO = path.resolve(ROOT, '../..');
@@ -713,6 +737,7 @@ try {
 			targetSdkVersion: LYNX_TARGET_SDK_VERSION,
 		},
 		fixture: 'benchmarks/lynx-table/app, BENCH_AUTOROWS=0, derived compiler path',
+		programFeatures,
 		arms: rows,
 		controls: {
 			passed: failures.length === 0,
