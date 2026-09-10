@@ -23,7 +23,7 @@ const MAX_ABORT_TOMBSTONES = 128;
 const MAX_DISPOSED_ROOT_TOMBSTONES = 128;
 const CONTROLLER_DEVELOPMENT =
 	typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__;
-const CONTROLLER_ERROR = 'Octane Lynx OL489';
+const CONTROLLER_ERROR = 'Octane Lynx OL490';
 
 export interface LynxCompiledProgramDisposeAcknowledgement extends UniversalTransportIdentity {
 	readonly type: 'dispose-ack';
