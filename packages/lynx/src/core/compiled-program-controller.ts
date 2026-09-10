@@ -15,7 +15,7 @@ import {
 } from './compiled-program-frame.js';
 import {
 	createLynxCompiledProgramStore,
-	type LynxCompiledProgramAdoptionSeedResolver,
+	type LynxCompiledProgramAdoptionSource,
 	type LynxCompiledProgramStore,
 } from './compiled-program-store.js';
 import type { LynxElementPAPI, LynxElementRef } from './papi.js';
@@ -47,10 +47,8 @@ export interface LynxCompiledProgramControllerOptions<Node extends LynxElementRe
 	readonly page: Node;
 	readonly papi: LynxElementPAPI<Node>;
 	readonly resolveProgram: LynxCompiledProgramResolver;
-	/** Listener cursor shared with a first screen this controller may adopt. */
-	readonly firstListener?: number;
-	/** Already-validated first-screen ownership proofs, keyed by compact run handle. */
-	readonly resolveAdoptionSeed?: LynxCompiledProgramAdoptionSeedResolver<Node>;
+	/** Listener cursor plus validated first-screen proofs, keyed by compact run handle. */
+	readonly adoption?: LynxCompiledProgramAdoptionSource<Node>;
 	/** Send one already-local response to the paired background transport. */
 	readonly respond: (message: LynxCompiledProgramControllerResponse) => void;
 	readonly onDiagnostic?: (error: Error) => void;
@@ -246,8 +244,8 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 					papi,
 					papi.getUniqueId(page),
 					candidate.root,
-					options.firstListener,
-					options.resolveAdoptionSeed,
+					options.adoption?.[0],
+					options.adoption?.[1],
 				);
 			applying = candidate;
 			try {

@@ -161,11 +161,13 @@ describe('@octanejs/lynx compact compiled-program controller', () => {
 			papi,
 			resolveProgram: (module, index) =>
 				module === ADDRESS.module && index === ADDRESS.index ? plan : undefined,
-			firstListener: 1_000_000,
-			resolveAdoptionSeed: (firstHandle) =>
-				firstHandle === 2
-					? { firstId: 10, firstListenerId: 1_000_000, nodes, stride: 4 }
-					: undefined,
+			adoption: [
+				1_000_000,
+				(firstHandle) =>
+					firstHandle === 2
+						? { firstId: 10, firstListenerId: 1_000_000, nodes, stride: 4 }
+						: undefined,
+			],
 			respond: (message) => responses.push(message),
 		});
 

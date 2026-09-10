@@ -170,10 +170,13 @@ describe('@octanejs/lynx compact compiled-program transport', () => {
 			papi,
 			resolveProgram: (module, index) =>
 				module === 'tests/WireRow.lynx.tsrx' && index === 0 ? plan : undefined,
-			resolveAdoptionSeed: (firstHandle) =>
-				firstHandle === 2
-					? { firstId: 10, firstListenerId: null, nodes, stride: plan.nodes }
-					: undefined,
+			adoption: [
+				1,
+				(firstHandle) =>
+					firstHandle === 2
+						? { firstId: 10, firstListenerId: null, nodes, stride: plan.nodes }
+						: undefined,
+			],
 			pageReady: true,
 		});
 		const transport = createLynxCompiledProgramTransport(context);

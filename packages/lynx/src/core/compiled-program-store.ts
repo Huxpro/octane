@@ -141,6 +141,12 @@ export type LynxCompiledProgramAdoptionSeedResolver<Node extends LynxElementRef>
 	firstHandle: number,
 ) => LynxCompiledProgramAdoptionSeed<Node> | undefined;
 
+/** The listener cursor and proof resolver are one first-screen ownership source. */
+export type LynxCompiledProgramAdoptionSource<Node extends LynxElementRef> = readonly [
+	firstListener: number,
+	resolveSeed: LynxCompiledProgramAdoptionSeedResolver<Node>,
+];
+
 export interface LynxCompiledProgramStore<Node extends LynxElementRef = LynxElementRef> {
 	begin(): void;
 	commit(): void;
