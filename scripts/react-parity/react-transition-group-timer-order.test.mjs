@@ -5,7 +5,24 @@ import test from 'node:test';
 const require = createRequire(import.meta.url);
 const {
 	drainZeroDelayTimers,
+	transitionRerenderMode,
 } = require('../../packages/transition-group/tests/upstream-timer-order.cjs');
+
+test('selects only the upstream timer comparisons that need synchronous rerendering', () => {
+	assert.equal(
+		transitionRerenderMode(
+			'Transition should mount/unmount immediately if not have enter/exit timeout',
+		),
+		'drain-zero',
+	);
+	assert.equal(
+		transitionRerenderMode(
+			'Transition appearing timeout should use appear timeout if appear is set',
+		),
+		'flush-sync',
+	);
+	assert.equal(transitionRerenderMode('Transition entering should fire callbacks'), null);
+});
 
 test('drains a transition zero-delay completion before an earlier guard timer', () => {
 	const events = [];
