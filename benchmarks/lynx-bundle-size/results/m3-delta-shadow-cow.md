@@ -20,8 +20,9 @@ batch into repeated copies of a growing range.
 
 This removes a measured producer-side cost transfer before the frame transport
 is enabled. The current product still constructs this bridge only under
-profiling, so this is not a shipping/default-path or end-to-end performance
-claim.
+profiling, so this is not a default-path CPU or end-to-end performance claim;
+the production graph does retain part of the closure, and its byte tax is
+accounted below.
 
 ## Same-window scaling control
 
@@ -56,8 +57,23 @@ supports the complexity change, not a user-visible latency conclusion.
 The isolated bundled producer closure grows from 35,980 raw / 8,842 gzip /
 7,775 Brotli bytes to 38,073 / 9,285 / 8,187: a measured +2,093 raw / +443 gzip /
 +412 Brotli byte tax. This cost must be included when the production transport
-first retains the producer; it is not hidden behind the current tree-shaken
-profiling-only path.
+first constructs the producer.
+
+The exact product-linkage receipt at documentation head
+`58cd28e876857553173c1f54d92b9528ff2f5904` is
+`/data00/home/xuan.huang/.codex/tmp/m3-delta-shadow-linkage-58cd28e87.json`,
+SHA-256
+`1379720dfcbfec3705d8e4ec92e01f37a34ebcaadf1895ef70ef0d4c893a7fac`.
+Against #340's exact base receipt, the ordinary block+program artifact grows
+165 gzip bytes and decoded BTS grows 154 gzip bytes; decoded MTS stays
+byte-identical. With the complete generated SET/structural-RUN producer, the
+compact frame frontier is 82,779 gzip. Removing the general evaluator reaches
+**79,491 gzip = 1.463x**, leaving **1,993.5 bytes** beneath the frozen
+81,484.5-byte gate after paying this producer tax. Every arm keeps BTS
+byte-identical within the new window at 54,128 gzip.
+
+That product harness reports `checksumRan:false`: it proves linkage and budget
+ownership only, not executable receiver semantics or runtime speed.
 
 ## Verification
 
