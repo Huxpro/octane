@@ -164,6 +164,9 @@ production repayment are recorded in
 The compact store/router's compiler-slot lookup, nested topology ownership,
 rollback contract, and exact range-capable frontier are recorded in
 [`results/m3-compact-nested-ranges.md`](results/m3-compact-nested-ranges.md).
+The exact non-additive worklet-seam and first-screen-evaluator cuts over that
+frontier, and the resulting implementation budget decision, are recorded in
+[`results/m3-production-capability-frontier.md`](results/m3-production-capability-frontier.md).
 
 ## Core switch and main-thread program
 
