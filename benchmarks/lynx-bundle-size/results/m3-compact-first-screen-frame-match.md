@@ -116,7 +116,8 @@ by the store seed resolver, later SET/VIS, logical-ID/compact-handle event
 identity, resolver miss restoring ordinary paint, listener mismatch refusal,
 rollback after a fully adopted run when a later opcode is malformed, and exact
 handle-keyed retry with the same DEFINE and handles. The focused store/router
-suite passes 38/38; final full-project counts are recorded on the PR and issue.
+suite passes 38/38; the full Lynx project passes 52 files / 934 tests, all three
+Lynx TypeScript configurations pass, and the repository-wide typecheck passes.
 
 Shipping-controller proof-source construction and source first-tree ownership
 transfer, nested range application, transport/ACK/fallback/cleanup, external
