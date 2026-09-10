@@ -59,6 +59,26 @@ deltas are not additive.
 The checked execution report is
 [`results/production-inventory.md`](results/production-inventory.md).
 
+## Compact-frame producer scaling
+
+`delta-shadow.mjs` bundles the command-batch to compact-frame producer from two
+exact worktrees and runs fresh Node processes in alternating AB/BA order. It
+measures one accepted scalar SET after committing 1k, 10k, and 50k resident
+rows, retaining every raw sample plus the two bundled producer identities and
+raw/gzip/Brotli sizes.
+
+```bash
+node benchmarks/lynx-bundle-size/delta-shadow.mjs \
+  --baseline /path/to/exact-base-worktree \
+  --candidate /path/to/candidate-worktree \
+  --output /absolute/path/to/delta-shadow.json
+```
+
+This is a producer complexity and isolated-closure control. Until the shipping
+transport retains the bridge, it is not a default-path, native-device, or
+end-to-end runtime claim. The current result is recorded in
+[`results/m3-delta-shadow-cow.md`](results/m3-delta-shadow-cow.md).
+
 ## L5 ceiling ablation
 
 `l5-ceiling.mjs` answers questions the budgets cannot: what #58's L5 bullet is
