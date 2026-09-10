@@ -79,7 +79,7 @@ node benchmarks/lynx-bundle-size/l5-ceiling.mjs \
   --output /absolute/path/to/receiver-ceiling.json
 node benchmarks/lynx-bundle-size/l5-ceiling.mjs \
   --harness product \
-  --arms baseline,receiver,receiver-papi,receiver-store,receiver-frame,receiver-container,receiver-direct,receiver-render,receiver-transport,receiver-worklets,receiver-foundation-lite,receiver-foundation-store,receiver-foundation-frame,receiver-foundation \
+  --arms baseline,receiver,receiver-papi,receiver-store,receiver-frame,receiver-container,receiver-direct,receiver-render,receiver-transport,receiver-worklets,receiver-foundation-lite,receiver-foundation-no-worklets,receiver-foundation-no-render,receiver-foundation-store,receiver-foundation-frame,receiver-foundation-frame-no-worklets,receiver-foundation-frame-no-render,receiver-foundation-frame-producer-slots,receiver-foundation-frame-no-worklets-producer-slots,receiver-foundation-frame-no-render-producer-slots,receiver-foundation \
   --output /absolute/path/to/receiver-frontier.json
 ```
 
@@ -111,7 +111,15 @@ over `receiver` is the exact production tree-shaken cost of reusing that
 boundary in a replacement; it is not additive across arms and says nothing
 about a newly written implementation with a different closure. The
 `receiver-foundation-lite` arm measures the union without the general host
-container; `receiver-foundation` adds that container. Both exclude the direct
+container; its `*-no-worklets` and `*-no-render` variants measure the exact
+compressed union after removing one optional seam, both before and after adding
+the compact frame. These are capability-cut hypotheses, not permission to drop
+an authored feature: a product may use them only after the compiler/build proves
+the feature absent and retains an explicit full-capability path.
+The corresponding `*-producer-slots` arms also make the real compiler emission
+carry the compact SET driver's generated slot setters, preventing a receiver-only
+closure from understating the eventual product cost.
+`receiver-foundation` adds the general host container. Both exclude the direct
 applier, so shared code is compressed once rather than added from the individual
 deltas.
 
@@ -159,6 +167,9 @@ production repayment are recorded in
 The compact store/router's compiler-slot lookup, nested topology ownership,
 rollback contract, and exact range-capable frontier are recorded in
 [`results/m3-compact-nested-ranges.md`](results/m3-compact-nested-ranges.md).
+The exact non-additive worklet-seam and first-screen-evaluator cuts over that
+frontier, and the resulting implementation budget decision, are recorded in
+[`results/m3-production-capability-frontier.md`](results/m3-production-capability-frontier.md).
 
 ## Core switch and main-thread program
 
