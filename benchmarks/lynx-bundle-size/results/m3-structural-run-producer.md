@@ -3,7 +3,7 @@
 - Issue: #290
 - Merged base: `new-lynx@2f07b6fa67b2e7ed9385f7447e0a2e0ca8a12f62`
 - Exact-clean implementation and measurement head:
-  `f0959e0525db23e9cb0eeea0823e179dbd9e8b6b`
+  `d695ca3e16d93ec98179d7ee7437a27cd9f29900`
 
 ## Result
 
@@ -71,7 +71,7 @@ node benchmarks/lynx-bundle-size/l5-ceiling.mjs \
 ```
 
 Exact-clean raw receipt SHA-256:
-`f1511305ae201e9415fb0c263273b5c8d6c4274c1563af8babc19cfa0e6584cf`.
+`e8b328090ae990142775dea147966aef34421b3ed42a114da0ea2f4f52470361`.
 The receipt records `dirty: false`, Node v22.22.2, tool SHA-256
 `4c9a94e487c71219405addd012f89d19e4f23bfc4febaa52d4f3fb9a66f4c14d`,
 the exact feature list per arm, all production controls passing, and empty
