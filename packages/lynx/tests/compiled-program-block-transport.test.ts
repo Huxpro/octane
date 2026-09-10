@@ -239,6 +239,56 @@ describe('Lynx compact compiled-program Block transport', () => {
 		receiver.close();
 	});
 
+	it('publishes the shadow before accepted lifecycle prepares a reentrant commit', async () => {
+		const { page, receiver, transport, core, root } = setup();
+		receiver.markProgramsReady();
+		receiver.markPageReady();
+		await transport.ready;
+
+		root.beginAttempt();
+		const block = core.mount(null, null, compileLynxBlockTemplate(PROGRAM, ADDRESS), [
+			'row',
+			'first',
+		]);
+		let reentrant: Promise<unknown> | null = null;
+		await root.commit(() => {
+			root.beginAttempt();
+			expect(core.setSlotValue(block, 1, 'reentrant')).toBe(true);
+			reentrant = root.commit();
+		});
+		await reentrant;
+
+		expect(root.acceptedVersion()).toBe(2);
+		expect(page.children[0]!.children[0]!.children[0]!.text).toBe('reentrant');
+		await transport.dispose();
+		transport.close();
+		receiver.close();
+	});
+
+	it('terminally disposes accepted main state after local ACK publication faults', async () => {
+		const { page, receiver, container, transport, core } = setup();
+		receiver.markProgramsReady();
+		receiver.markPageReady();
+		await transport.ready;
+
+		core.mount(null, null, compileLynxBlockTemplate(PROGRAM, ADDRESS), ['row', 'accepted']);
+		const batch = core.flush()!;
+		const identity = { protocol: 1 as const, renderer: 'lynx', root: 91, version: 1 };
+		await expect(
+			transport.prepareBatch(container, batch, identity).apply(() => {
+				throw new Error('local ACK publication failed');
+			}),
+		).rejects.toThrow('local ACK publication failed');
+
+		expect(page.children).toHaveLength(1);
+		expect(transport.acceptedIdentity()).toEqual(identity);
+		await transport.dispose();
+		expect(page.children).toEqual([]);
+		expect(transport.ownedRoot()).toBeNull();
+		transport.close();
+		receiver.close();
+	});
+
 	it('refuses an unaddressed Block batch before it crosses ContextProxy', async () => {
 		const { context, receiver, transport, core, root } = setup();
 		receiver.markProgramsReady();

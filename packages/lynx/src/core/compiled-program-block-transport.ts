@@ -207,11 +207,16 @@ export function createLynxCompiledProgramBlockTransport(
 					}
 					commitPending = true;
 					attempt = wire.commit(identity, draft.encoded, (message) => {
-						acknowledge(message);
+						// Main publishes native ownership before it sends ACK. Publish the
+						// matching shadow first too: `acknowledge` runs accepted lifecycle
+						// work synchronously, and that work may prepare the next commit.
+						// If local publication then faults, this identity still names real
+						// main state and must remain available for terminal disposal.
 						draft.commit();
 						accepted = frozenIdentity(identity);
 						state = 'accepted';
 						commitPending = false;
+						acknowledge(message);
 						flushDeferredNativeEvents();
 					});
 					return attempt.promise.catch((error) => {
@@ -287,7 +292,9 @@ export function createLynxCompiledProgramBlockTransport(
 						: BLOCK_TRANSPORT_ERROR,
 				);
 			}
-			await wire.dispose(accepted);
+			// Terminal disposal is also valid for a healthy active root and remains
+			// available after an accepted ACK callback faults the background side.
+			await wire.dispose(accepted, true);
 			accepted = null;
 			ownedRoot = null;
 			dropDeferredNativeEvents();
