@@ -210,6 +210,9 @@ describe('@octanejs/lynx delta protocol', () => {
 			['an array', []],
 			['a function', () => {}],
 			['undefined', undefined],
+			['NaN', Number.NaN],
+			['Infinity', Number.POSITIVE_INFINITY],
+			['negative Infinity', Number.NEGATIVE_INFINITY],
 		] as const)('refuses to encode %s as a slot value', (_label, value) => {
 			expect(() =>
 				encodeLynxDeltaMessage([{ op: 'set', instance: 1, slot: 0, value: value as never }]),
