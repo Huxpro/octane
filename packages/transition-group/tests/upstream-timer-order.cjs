@@ -28,4 +28,14 @@ function drainZeroDelayTimers(run, flush) {
 	}
 }
 
-module.exports = { drainZeroDelayTimers };
+function transitionRerenderMode(testName) {
+	if (testName === 'Transition should mount/unmount immediately if not have enter/exit timeout') {
+		return 'drain-zero';
+	}
+	if (testName === 'Transition appearing timeout should use appear timeout if appear is set') {
+		return 'flush-sync';
+	}
+	return null;
+}
+
+module.exports = { drainZeroDelayTimers, transitionRerenderMode };

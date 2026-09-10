@@ -7,26 +7,26 @@ const testingLibraryRoot = dirname(
 );
 const testingLibrary = require(join(testingLibraryRoot, 'dist/pure.js'));
 const ReactDOM = require('react-dom');
-const { drainZeroDelayTimers } = require('./upstream-timer-order.cjs');
-
-const IMMEDIATE_TRANSITION_TEST =
-	'Transition should mount/unmount immediately if not have enter/exit timeout';
+const { drainZeroDelayTimers, transitionRerenderMode } = require('./upstream-timer-order.cjs');
 
 module.exports = {
 	...testingLibrary,
 	render(element, options) {
 		const result = testingLibrary.render(element, options);
-		if (expect.getState().currentTestName !== IMMEDIATE_TRANSITION_TEST) return result;
-		// The upstream oracle starts a real 10 ms guard before rerendering. Capture
-		// and drain the transition's 0 ms completion inside flushSync so elapsed
-		// renderer time cannot make that earlier guard win on a loaded CI runner.
+		const rerenderMode = transitionRerenderMode(expect.getState().currentTestName);
+		if (rerenderMode === null) return result;
+		// These byte-exact upstream tests compare transition and guard timers but
+		// attach their callback with a rerender. Publish that callback before the
+		// event loop can cross either deadline on a loaded runner. The no-timeout
+		// case additionally drains its captured 0 ms completion before its 10 ms
+		// guard; the appear case retains the upstream 5 ms/15 ms timer ordering.
 		return {
 			...result,
 			rerender(nextElement) {
-				return drainZeroDelayTimers(
-					() => ReactDOM.flushSync(() => result.rerender(nextElement)),
-					(callback) => ReactDOM.flushSync(callback),
-				);
+				const rerender = () => ReactDOM.flushSync(() => result.rerender(nextElement));
+				return rerenderMode === 'drain-zero'
+					? drainZeroDelayTimers(rerender, (callback) => ReactDOM.flushSync(callback))
+					: rerender();
 			},
 		};
 	},
