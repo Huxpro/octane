@@ -35,10 +35,12 @@ import { sameLynxUniversalHostPropValue } from './host-props.js';
 import { LYNX_PROFILE } from './profiling.js';
 
 import {
+	recordUniversalProgramCommand,
 	recordUniversalProgramRangeCommand,
 	type UniversalHostBatch,
 	type UniversalHostCommand,
 	type UniversalHostParent,
+	type UniversalHostProgramAddress,
 	type UniversalHostTemplateProgram,
 	type UniversalHostTemplateProgramNode,
 	type UniversalHostTemplateProgramValue,
@@ -63,6 +65,8 @@ const LYNX_BLOCK_CORE_DEVELOPMENT =
  */
 export interface LynxBlockTemplate {
 	readonly program: UniversalHostTemplateProgram;
+	/** Build-proven resident address; absent keeps the descriptor command. */
+	readonly address?: UniversalHostProgramAddress;
 	readonly hostCount: number;
 	readonly valueCount: number;
 	readonly eventCount: number;
@@ -95,7 +99,21 @@ function fail(message: string | false): never {
  * path, and a value slot bound twice would make "which node owns this slot"
  * ambiguous.
  */
-export function compileLynxBlockTemplate(program: UniversalHostTemplateProgram): LynxBlockTemplate {
+export function compileLynxBlockTemplate(
+	program: UniversalHostTemplateProgram,
+	address?: UniversalHostProgramAddress,
+): LynxBlockTemplate {
+	if (
+		address !== undefined &&
+		(typeof address.module !== 'string' ||
+			address.module === '' ||
+			!Number.isSafeInteger(address.index) ||
+			address.index < 0)
+	) {
+		fail(
+			LYNX_BLOCK_CORE_DEVELOPMENT && 'a program address requires a module and non-negative index',
+		);
+	}
 	if (!Array.isArray(program.nodes) || program.nodes.length === 0) {
 		fail(LYNX_BLOCK_CORE_DEVELOPMENT && 'a template needs at least one host node');
 	}
@@ -171,6 +189,9 @@ export function compileLynxBlockTemplate(program: UniversalHostTemplateProgram):
 	});
 	return Object.freeze({
 		program: frozen,
+		...(address === undefined
+			? null
+			: { address: Object.freeze({ module: address.module, index: address.index }) }),
 		hostCount: nodes.length,
 		valueCount: valueNodes.length,
 		eventCount: frozen.events.length,
@@ -513,16 +534,20 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			// Frozen, like the program it carries: the incremental compact
 			// acknowledgement the wire offers for a post-first-screen run is only
 			// accepted for a command the producer promised not to mutate.
-			const run = Object.freeze({
-				op: 'mount-template-run' as const,
+			const shared = {
 				parent,
 				before,
-				program: template.program,
 				firstId,
 				firstListenerId,
 				count,
 				values: Object.freeze(values),
-			});
+			};
+			const run = Object.freeze(
+				template.address === undefined
+					? { ...shared, op: 'mount-template-run' as const, program: template.program }
+					: { ...shared, op: 'mount-program-run' as const, address: template.address },
+			);
+			if (template.address !== undefined) recordUniversalProgramCommand(run, template.program);
 			if (programRangeSlot != null) {
 				recordUniversalProgramRangeCommand(run, programRangeSlot);
 			}

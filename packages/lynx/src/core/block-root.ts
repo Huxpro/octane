@@ -88,6 +88,8 @@ export interface LynxBlockRoot {
 	releaseListeners(block: LynxBlock): void;
 	/** Inbound delivery path. Satisfies what `transport.bindRoot` requires. */
 	dispatchTransportEvent(message: UniversalTransportEventMessage): readonly unknown[];
+	/** Whether the currently published listener journal owns this native token. */
+	acceptsNativeEvent(listener: number, priority: UniversalEventPriority): boolean;
 	/**
 	 * Send whatever the core has accumulated as one transported commit, and
 	 * resolve once the host has acknowledged it. Resolves immediately with
@@ -297,6 +299,11 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 					: errors[0];
 			}
 			return Object.freeze(results);
+		},
+
+		acceptsNativeEvent(listener, priority) {
+			const bound = listeners.get(listener);
+			return bound !== undefined && bound.priority === priority;
 		},
 
 		async commit(onAccept) {

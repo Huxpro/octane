@@ -25,6 +25,7 @@ import {
 	validateLynxBackgroundOutboundMessage,
 	type LynxContextProxy,
 	type LynxContextProxyEvent,
+	type LynxProgramWireResolver,
 	type LynxPublicHandleDelta,
 	type LynxTransportCommitMessage,
 } from '../../src/core/protocol.js';
@@ -75,7 +76,7 @@ export interface MainSide {
  * than an artifact of this harness, and it is why the compact acknowledgement
  * exists — see the test that negotiates it.
  */
-function installHandleLedger() {
+function installHandleLedger(resolveProgram?: LynxProgramWireResolver) {
 	const generations = new Map<number, number>();
 	const types = new Map<number, string>();
 
@@ -105,13 +106,21 @@ function installHandleLedger() {
 	return function handleDeltas(commit: LynxTransportCommitMessage): LynxPublicHandleDelta[] {
 		const deltas: LynxPublicHandleDelta[] = [];
 		for (const command of commit.batch.commands) {
-			if (command.op === 'mount-template-run') {
-				const length = command.program.nodes.length;
+			if (command.op === 'mount-template-run' || command.op === 'mount-program-run') {
+				const program =
+					command.op === 'mount-template-run' ? command.program : resolveProgram?.(command);
+				if (program === undefined && command.op === 'mount-program-run') {
+					throw new TypeError(
+						`The fake main-thread handle ledger cannot resolve ${command.address.module}#${command.address.index}.`,
+					);
+				}
+				if (program === undefined) throw new TypeError('The embedded run omits its program.');
+				const length = program.nodes.length;
 				for (let instance = 0; instance < command.count; instance++) {
 					const firstId = command.firstId + instance * length;
 					for (let index = 0; index < length; index++) {
 						const id = firstId + index;
-						const type = command.program.nodes[index]!.type;
+						const type = program.nodes[index]!.type;
 						const generation = (generations.get(id) ?? 0) + 1;
 						generations.set(id, generation);
 						types.set(id, type);
@@ -168,17 +177,25 @@ function installHandleLedger() {
 	};
 }
 
-export function installMainSide(context: FakeContextProxy, compact = false): MainSide {
+export function installMainSide(
+	context: FakeContextProxy,
+	compact = false,
+	resolveProgram?: LynxProgramWireResolver,
+): MainSide {
 	const commits: LynxTransportCommitMessage[] = [];
 	let accepted: LynxTransportCommitMessage | null = null;
-	const handleDeltas = installHandleLedger();
+	const handleDeltas = installHandleLedger(resolveProgram);
 	const receive = createUnwireReceiver();
 	context.addEventListener(LYNX_BACKGROUND_TO_MAIN_EVENT, (event) => {
 		// Validating here is not decoration: it is main's own inbound check, so a
 		// frame this core sends has to survive the same parse a real page runs.
 		const received = receive(event.data);
 		if (received === null) return;
-		const message = validateLynxBackgroundOutboundMessage(received.message);
+		const message = validateLynxBackgroundOutboundMessage(
+			received.message,
+			'checked',
+			resolveProgram,
+		);
 		if (message.type === 'main-ready-request') {
 			context.sendToBackground({
 				protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
