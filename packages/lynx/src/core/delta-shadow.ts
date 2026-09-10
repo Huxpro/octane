@@ -65,33 +65,126 @@ export interface LynxDeltaShadow {
 }
 
 interface ShadowState {
-	templates: Map<string, number>;
+	templates: ShadowMap<string, number>;
 	nextTemplateId: number;
 	nextInstance: number;
-	instances: Map<number, ShadowInstance>;
-	hosts: Map<number, ShadowHost>;
-	order: Map<number | null, Map<number, number[]>>;
+	instances: ShadowMap<number, ShadowInstance>;
+	hosts: ShadowMap<number, ShadowHost>;
+	order: ShadowMap<number | null, Map<number, number[]>>;
+	/** Range arrays already detached from the committed map in this draft. */
+	writableOrderSlots: Map<number | null, Set<number>>;
 }
 
-function cloneState(source: ShadowState): ShadowState {
+interface ShadowMap<Key, Value> extends Iterable<readonly [Key, Value]> {
+	get(key: Key): Value | undefined;
+	set(key: Key, value: Value): unknown;
+	delete(key: Key): boolean;
+	values(): IterableIterator<Value>;
+}
+
+/**
+ * Copy-on-write view over one committed map.
+ *
+ * The profiling bridge originally cloned every live template, instance, host,
+ * range order, and value table before encoding even a one-slot SET. At 10k
+ * rows that made a constant-size update O(page size) before it crossed either
+ * thread. A draft records only changed keys; iteration is reserved for
+ * diagnostics/snapshots and the accepted commit applies the small overlay to
+ * the long-lived map in place.
+ */
+class DraftMap<Key, Value> implements ShadowMap<Key, Value> {
+	readonly writes = new Map<Key, Value>();
+	readonly deletions = new Set<Key>();
+
+	constructor(readonly base: Map<Key, Value>) {}
+
+	get(key: Key): Value | undefined {
+		if (this.writes.has(key)) return this.writes.get(key);
+		return this.deletions.has(key) ? undefined : this.base.get(key);
+	}
+
+	set(key: Key, value: Value): this {
+		this.deletions.delete(key);
+		this.writes.set(key, value);
+		return this;
+	}
+
+	delete(key: Key): boolean {
+		const present = this.get(key) !== undefined;
+		this.writes.delete(key);
+		this.deletions.add(key);
+		return present;
+	}
+
+	*[Symbol.iterator](): IterableIterator<readonly [Key, Value]> {
+		for (const entry of this.base) {
+			if (!this.deletions.has(entry[0]) && !this.writes.has(entry[0])) yield entry;
+		}
+		yield* this.writes;
+	}
+
+	*values(): IterableIterator<Value> {
+		for (const [, value] of this) yield value;
+	}
+
+	commit(): void {
+		for (const key of this.deletions) this.base.delete(key);
+		for (const [key, value] of this.writes) this.base.set(key, value);
+	}
+}
+
+function draftState(source: ShadowState): ShadowState {
 	return {
-		templates: new Map(source.templates),
+		templates: new DraftMap(source.templates as Map<string, number>),
 		nextTemplateId: source.nextTemplateId,
 		nextInstance: source.nextInstance,
-		instances: new Map(
-			[...source.instances].map(([id, instance]) => [
-				id,
-				{ ...instance, values: [...instance.values] },
-			]),
-		),
-		hosts: new Map(source.hosts),
-		order: new Map(
-			[...source.order].map(([parent, slots]) => [
-				parent,
-				new Map([...slots].map(([slot, instances]) => [slot, [...instances]])),
-			]),
-		),
+		instances: new DraftMap(source.instances as Map<number, ShadowInstance>),
+		hosts: new DraftMap(source.hosts as Map<number, ShadowHost>),
+		order: new DraftMap(source.order as Map<number | null, Map<number, number[]>>),
+		writableOrderSlots: new Map(),
 	};
+}
+
+function commitDraft(target: ShadowState, draft: ShadowState): void {
+	(draft.templates as DraftMap<string, number>).commit();
+	(draft.instances as DraftMap<number, ShadowInstance>).commit();
+	(draft.hosts as DraftMap<number, ShadowHost>).commit();
+	(draft.order as DraftMap<number | null, Map<number, number[]>>).commit();
+	target.nextTemplateId = draft.nextTemplateId;
+	target.nextInstance = draft.nextInstance;
+}
+
+function writableSlots(state: ShadowState, parent: number | null): Map<number, number[]> {
+	const draft = state.order as DraftMap<number | null, Map<number, number[]>>;
+	if (draft.writes.has(parent)) return draft.writes.get(parent)!;
+	const slots = new Map(state.order.get(parent));
+	state.order.set(parent, slots);
+	return slots;
+}
+
+function writableOrder(state: ShadowState, parent: number | null, slot: number): number[] {
+	const slots = writableSlots(state, parent);
+	let writableSlotsForParent = state.writableOrderSlots.get(parent);
+	if (writableSlotsForParent?.has(slot) === true) return slots.get(slot)!;
+	const order = slots.get(slot);
+	const writable = order === undefined ? [] : [...order];
+	slots.set(slot, writable);
+	if (writableSlotsForParent === undefined) {
+		writableSlotsForParent = new Set();
+		state.writableOrderSlots.set(parent, writableSlotsForParent);
+	}
+	writableSlotsForParent.add(slot);
+	return writable;
+}
+
+function writableInstance(state: ShadowState, firstId: number): ShadowInstance | undefined {
+	const draft = state.instances as DraftMap<number, ShadowInstance>;
+	if (draft.writes.has(firstId)) return draft.writes.get(firstId);
+	const instance = state.instances.get(firstId);
+	if (instance === undefined) return undefined;
+	const writable = { ...instance, values: [...instance.values] };
+	state.instances.set(firstId, writable);
+	return writable;
 }
 
 function valueStride(program: UniversalHostTemplateProgram): number {
@@ -137,8 +230,11 @@ function removeInstance(state: ShadowState, firstId: number): void {
 	for (let index = 0; index < instance.program.nodes.length; index++) {
 		state.hosts.delete(firstId + index);
 	}
-	const order = state.order.get(instance.parent)?.get(instance.parentSlot);
-	if (order !== undefined) order.splice(order.indexOf(firstId), 1);
+	const currentOrder = state.order.get(instance.parent)?.get(instance.parentSlot);
+	if (currentOrder !== undefined) {
+		const order = writableOrder(state, instance.parent, instance.parentSlot);
+		order.splice(order.indexOf(firstId), 1);
+	}
 }
 
 /**
@@ -198,11 +294,12 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 		instances: new Map(),
 		hosts: new Map(),
 		order: new Map(),
+		writableOrderSlots: new Map(),
 	};
 
 	return {
 		prepare(batch) {
-			const next = cloneState(state);
+			const next = draftState(state);
 			const templates: LynxDeltaTemplate[] = [];
 			const operations: LynxDeltaOperation[] = [];
 			const removedHosts = new Set<number>();
@@ -231,10 +328,7 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 						templates.push({ id: templateId, address: command.address });
 					}
 					const parent = command.parent;
-					let slots = next.order.get(parent);
-					if (slots === undefined) next.order.set(parent, (slots = new Map()));
-					const order = slots.get(parentSite.slot) ?? [];
-					slots.set(parentSite.slot, order);
+					const order = writableOrder(next, parent, parentSite.slot);
 					let beforeId: number | null = null;
 					let beforeInstance: ShadowInstance | undefined;
 					if (command.before !== null) {
@@ -287,7 +381,7 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 				}
 				if (command.op === 'update') {
 					const host = next.hosts.get(command.id);
-					const instance = host === undefined ? undefined : next.instances.get(host.firstId);
+					const instance = host === undefined ? undefined : writableInstance(next, host.firstId);
 					if (host === undefined || instance === undefined) return null;
 					const previous = hostProps(instance, host.nodeIndex);
 					const bindings = instance.program.nodes[host.nodeIndex]!.bindings ?? [];
@@ -321,8 +415,8 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 					if (moveSite === null) return null;
 					if (instance.parent !== command.parent || instance.parentSlot !== moveSite.slot)
 						return null;
-					const order = next.order.get(instance.parent)?.get(instance.parentSlot);
-					if (order === undefined) return null;
+					if (next.order.get(instance.parent)?.get(instance.parentSlot) === undefined) return null;
+					const order = writableOrder(next, instance.parent, instance.parentSlot);
 					order.splice(order.indexOf(instance.firstId), 1);
 					const beforeId = before?.firstId ?? null;
 					const anchored = beforeId === null ? undefined : next.instances.get(beforeId);
@@ -369,7 +463,7 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 				operations,
 				encoded,
 				commit() {
-					state = next;
+					commitDraft(state, next);
 				},
 				snapshot: () => snapshotState(next),
 			};
