@@ -335,6 +335,54 @@ export function normalizePluginOptions(value) {
 	return normalizeOptions(value, true);
 }
 
+function sourceSiteValid(site) {
+	return (
+		site !== null &&
+		typeof site === 'object' &&
+		typeof site.name === 'string' &&
+		site.name.length > 0 &&
+		Number.isSafeInteger(site.line) &&
+		site.line >= 0 &&
+		Number.isSafeInteger(site.column) &&
+		site.column >= 0
+	);
+}
+
+const LYNX_BLOCK_OPAQUE_RUNTIME_ACCESS_NAMES = new Set([
+	'commonjs-require',
+	'dynamic-import',
+	'export-all',
+	'import-equals',
+	'namespace-export',
+	'unknown-export',
+]);
+
+function lynxBlockSemanticRequirementsValid(requirements) {
+	return (
+		requirements !== null &&
+		typeof requirements === 'object' &&
+		requirements.version === 1 &&
+		Array.isArray(requirements.runtimeUses) &&
+		requirements.runtimeUses.every(sourceSiteValid) &&
+		Array.isArray(requirements.runtimeExports) &&
+		requirements.runtimeExports.every(sourceSiteValid) &&
+		Array.isArray(requirements.opaqueRuntimeAccesses) &&
+		requirements.opaqueRuntimeAccesses.every(
+			(site) => sourceSiteValid(site) && LYNX_BLOCK_OPAQUE_RUNTIME_ACCESS_NAMES.has(site.name),
+		) &&
+		Array.isArray(requirements.components) &&
+		requirements.components.every(
+			(component) =>
+				sourceSiteValid(component) &&
+				(component.exportKind === null ||
+					component.exportKind === 'named' ||
+					component.exportKind === 'default') &&
+				Array.isArray(component.hooks) &&
+				component.hooks.every(sourceSiteValid),
+		)
+	);
+}
+
 /** Read the serializable metadata attached to an Octane-transformed module. */
 export function getOctaneRspackBuildInfo(module) {
 	const value = module?.buildInfo?.octane;
@@ -371,7 +419,12 @@ export function getOctaneRspackBuildInfo(module) {
 		(value.mainThreadProgramCoverage === undefined ||
 			(value.transformKind === 'compile' &&
 				universalRuntimeValid &&
-				mainThreadProgramCoverageValid))
+				mainThreadProgramCoverageValid)) &&
+		(value.lynxBlockSemanticRequirements === undefined ||
+			(value.transformKind === 'compile' &&
+				universalRuntimeValid &&
+				value.universalRuntime.runtime === 'lynx' &&
+				lynxBlockSemanticRequirementsValid(value.lynxBlockSemanticRequirements)))
 	) {
 		return value;
 	}

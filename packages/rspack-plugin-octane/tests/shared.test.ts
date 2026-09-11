@@ -249,6 +249,21 @@ describe('getOctaneRspackBuildInfo', () => {
 						...value,
 						universalRuntime: { runtime: 'lynx', thread: 'background' },
 						mainThreadProgramCoverage: { total: 3, addressed: 2 },
+						lynxBlockSemanticRequirements: {
+							version: 1,
+							runtimeUses: [{ name: 'useState', line: 2, column: 3 }],
+							runtimeExports: [],
+							opaqueRuntimeAccesses: [],
+							components: [
+								{
+									name: 'App',
+									exportKind: 'named',
+									line: 1,
+									column: 7,
+									hooks: [{ name: 'useState', line: 2, column: 3 }],
+								},
+							],
+						},
 					},
 				},
 			}),
@@ -256,7 +271,72 @@ describe('getOctaneRspackBuildInfo', () => {
 			...value,
 			universalRuntime: { runtime: 'lynx', thread: 'background' },
 			mainThreadProgramCoverage: { total: 3, addressed: 2 },
+			lynxBlockSemanticRequirements: {
+				version: 1,
+				runtimeUses: [{ name: 'useState', line: 2, column: 3 }],
+				runtimeExports: [],
+				opaqueRuntimeAccesses: [],
+				components: [
+					{
+						name: 'App',
+						exportKind: 'named',
+						line: 1,
+						column: 7,
+						hooks: [{ name: 'useState', line: 2, column: 3 }],
+					},
+				],
+			},
 		});
+		for (const lynxBlockSemanticRequirements of [
+			{ version: 2, runtimeUses: [], components: [] },
+			{
+				version: 1,
+				runtimeUses: [{ name: 'useState', line: -1, column: 0 }],
+				runtimeExports: [],
+				opaqueRuntimeAccesses: [],
+				components: [],
+			},
+			{
+				version: 1,
+				runtimeUses: [],
+				runtimeExports: [{ name: 'useState', line: 1.5, column: 0 }],
+				opaqueRuntimeAccesses: [],
+				components: [],
+			},
+			{
+				version: 1,
+				runtimeUses: [],
+				runtimeExports: [],
+				opaqueRuntimeAccesses: [{ name: 'dynamic-import', line: 1, column: -1 }],
+				components: [],
+			},
+			{
+				version: 1,
+				runtimeUses: [],
+				runtimeExports: [],
+				opaqueRuntimeAccesses: [{ name: 'eval', line: 1, column: 0 }],
+				components: [],
+			},
+			{
+				version: 1,
+				runtimeUses: [],
+				runtimeExports: [],
+				opaqueRuntimeAccesses: [],
+				components: [{ name: 'App', exportKind: 'private', line: 1, column: 0, hooks: [] }],
+			},
+		] as const) {
+			expect(
+				getOctaneRspackBuildInfo({
+					buildInfo: {
+						octane: {
+							...value,
+							universalRuntime: { runtime: 'lynx', thread: 'background' },
+							lynxBlockSemanticRequirements,
+						},
+					},
+				}),
+			).toBeNull();
+		}
 		for (const mainThreadProgramCoverage of [
 			{ total: 1, addressed: 2 },
 			{ total: -1, addressed: 0 },
@@ -281,6 +361,22 @@ describe('getOctaneRspackBuildInfo', () => {
 					octane: {
 						...value,
 						mainThreadProgramCoverage: { total: 1, addressed: 1 },
+					},
+				},
+			}),
+		).toBeNull();
+		expect(
+			getOctaneRspackBuildInfo({
+				buildInfo: {
+					octane: {
+						...value,
+						lynxBlockSemanticRequirements: {
+							version: 1,
+							runtimeUses: [],
+							runtimeExports: [],
+							opaqueRuntimeAccesses: [],
+							components: [],
+						},
 					},
 				},
 			}),

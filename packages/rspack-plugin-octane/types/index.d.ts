@@ -250,6 +250,36 @@ export interface OctaneRspackPluginOptions extends OctaneRspackLoaderOptions {
 	transpile?: boolean;
 }
 
+export interface OctaneRspackSourceSite {
+	readonly name: string;
+	readonly line: number;
+	readonly column: number;
+}
+
+export interface OctaneLynxBlockComponentRequirements extends OctaneRspackSourceSite {
+	readonly exportKind: 'named' | 'default' | null;
+	readonly hooks: readonly OctaneRspackSourceSite[];
+}
+
+export interface OctaneLynxOpaqueRuntimeAccess extends OctaneRspackSourceSite {
+	readonly name:
+		| 'commonjs-require'
+		| 'dynamic-import'
+		| 'export-all'
+		| 'import-equals'
+		| 'namespace-export'
+		| 'unknown-export';
+}
+
+export interface OctaneLynxBlockSemanticRequirements {
+	readonly version: 1;
+	readonly runtimeUses: readonly OctaneRspackSourceSite[];
+	readonly runtimeExports: readonly OctaneRspackSourceSite[];
+	/** Runtime access forms whose selected public API cannot be proven statically. */
+	readonly opaqueRuntimeAccesses: readonly OctaneLynxOpaqueRuntimeAccess[];
+	readonly components: readonly OctaneLynxBlockComponentRequirements[];
+}
+
 export interface OctaneRspackBuildInfo {
 	canonicalId: string;
 	transformKind: 'compile' | 'slots' | 'client-only-stub';
@@ -261,6 +291,11 @@ export interface OctaneRspackBuildInfo {
 		readonly total: number;
 		readonly addressed: number;
 	};
+	/**
+	 * Module-local authored facts for a later Block-core graph selector. This is
+	 * not, by itself, a compatibility or selection decision.
+	 */
+	lynxBlockSemanticRequirements?: OctaneLynxBlockSemanticRequirements;
 	/** Stable identity shared by the client compile and its inert server stub. */
 	clientReference?: {
 		readonly id: string;
