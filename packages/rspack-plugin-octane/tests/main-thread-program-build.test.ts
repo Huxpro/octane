@@ -24,7 +24,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import * as Backend from '../../lynx/src/compiler/index.js';
 import { lynxBackgroundRenderer, lynxMainThreadRenderer } from '../../lynx/src/config.runtime.js';
-import { OctaneRspackPlugin } from '../src/index.js';
+import { getOctaneRspackBuildInfo, OctaneRspackPlugin } from '../src/index.js';
 
 /** The renderer members a compiled universal module imports, as inert stubs. */
 const RENDERER_STUB = `export const defineUniversalComponent = (_renderer, component) => component;
@@ -122,7 +122,12 @@ async function runRspack(config: Record<string, unknown>) {
  */
 async function build(
 	name: string,
-	options: { mainThread?: unknown; topLevel?: unknown; addressing?: boolean } = {},
+	options: {
+		mainThread?: unknown;
+		topLevel?: unknown;
+		addressing?: boolean;
+		metadata?: unknown[];
+	} = {},
 ): Promise<{ main: string; background: string }> {
 	const output = join(root, `dist-${name}`);
 	await runRspack({
@@ -158,6 +163,27 @@ async function build(
 					},
 				},
 			}),
+			...(options.metadata === undefined
+				? []
+				: [
+						{
+							apply(compiler: any) {
+								compiler.hooks.compilation.tap('OctaneProgramCoverageProbe', (compilation: any) => {
+									compilation.hooks.finishModules.tap(
+										'OctaneProgramCoverageProbe',
+										(modules: Iterable<unknown>) => {
+											for (const module of modules) {
+												const metadata = getOctaneRspackBuildInfo(module);
+												if (metadata?.mainThreadProgramCoverage !== undefined) {
+													options.metadata!.push(metadata);
+												}
+											}
+										},
+									);
+								});
+							},
+						},
+					]),
 		],
 	});
 	return {
@@ -267,10 +293,12 @@ describe('a main-thread program backend, through a real Rspack build', () => {
 	// runtime can do one map lookup and trust it. These are the two halves of
 	// that: what an agreeing build emits, and what a disagreeing one does.
 	it('names each program in both chunks, with one digest the build can compare', async () => {
+		const metadata: any[] = [];
 		const addressed = await build('addressed', {
 			addressing: true,
 			topLevel: Backend,
 			mainThread: Backend,
+			metadata,
 		});
 		// The wire address is positional — `(module id, plan index)` — and the id
 		// is package-relative with posix separators and no leading `./` (§6.2), so
@@ -289,6 +317,36 @@ describe('a main-thread program backend, through a real Rspack build', () => {
 		// E1 exists to stop sending, shipped twice.
 		expect(addressed.main).toContain('"wire"');
 		expect(addressed.background).not.toContain('"wire"');
+		expect(
+			metadata
+				.map(({ canonicalId, universalRuntime, mainThreadProgramCoverage }) => ({
+					canonicalId,
+					thread: universalRuntime.thread,
+					...mainThreadProgramCoverage,
+				}))
+				.sort((left, right) =>
+					`${left.canonicalId}:${left.thread}`.localeCompare(
+						`${right.canonicalId}:${right.thread}`,
+					),
+				),
+		).toEqual([
+			{ canonicalId: '/src/Card.tsrx', thread: 'background', total: 1, addressed: 1 },
+			{ canonicalId: '/src/Card.tsrx', thread: 'main-thread', total: 1, addressed: 1 },
+			{ canonicalId: '/src/ListRow.tsrx', thread: 'background', total: 1, addressed: 1 },
+			{ canonicalId: '/src/ListRow.tsrx', thread: 'main-thread', total: 1, addressed: 1 },
+			{
+				canonicalId: '/src/StructuralList.tsrx',
+				thread: 'background',
+				total: 2,
+				addressed: 2,
+			},
+			{
+				canonicalId: '/src/StructuralList.tsrx',
+				thread: 'main-thread',
+				total: 2,
+				addressed: 2,
+			},
+		]);
 	}, 60_000);
 
 	it("fails the build when the two layers disagree about a module's programs", async () => {

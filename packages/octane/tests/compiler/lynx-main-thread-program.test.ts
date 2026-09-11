@@ -94,7 +94,14 @@ type CompileShape = {
 	readonly module?: string;
 };
 
-function compileCard(source: string, options: CompileShape = {}): { code: string; map: any } {
+function compileCard(
+	source: string,
+	options: CompileShape = {},
+): {
+	code: string;
+	map: any;
+	mainThreadProgramCoverage?: { total: number; addressed: number };
+} {
 	const { target = 'lynx', thread = 'main-thread', backend, module } = options;
 	return compile(source, '/src/Card.lynx.tsrx', {
 		hmr: false,
@@ -102,7 +109,11 @@ function compileCard(source: string, options: CompileShape = {}): { code: string
 		universalRuntime: { runtime: 'lynx', thread },
 		...(backend === undefined ? null : { mainThreadProgramBackend: backend }),
 		...(module === undefined ? null : { programModuleId: module }),
-	}) as { code: string; map: any };
+	}) as {
+		code: string;
+		map: any;
+		mainThreadProgramCoverage?: { total: number; addressed: number };
+	};
 }
 
 function compiled(source: string, options: CompileShape = {}): string {
@@ -547,6 +558,13 @@ export function Card(props: { row: { id: number; label: string }; isSelected: bo
 		expect(main.roots[0]).not.toHaveProperty('wire');
 		expect(main.addresses).toEqual([undefined]);
 		expect(background.addresses).toEqual([undefined]);
+		expect(
+			compileCard(source, {
+				backend: Backend,
+				module: 'src/Row.lynx.tsrx',
+				thread: 'background',
+			}).mainThreadProgramCoverage,
+		).toEqual({ total: 1, addressed: 0 });
 	});
 
 	it('addresses a real row when intrinsic String and authored casts prove every text scalar', () => {
@@ -572,6 +590,10 @@ export function Card(props: { row: { id: number; label: string }; isSelected: bo
 		expect(main.roots[0]).toHaveProperty('wire');
 		expect(main.addresses[0]).toMatchObject({ module, index: 0 });
 		expect(background.addresses).toEqual(main.addresses);
+		expect(
+			compileCard(ADDRESSABLE_CARD, { backend: Backend, module, thread: 'background' })
+				.mainThreadProgramCoverage,
+		).toEqual({ total: 1, addressed: 1 });
 	});
 
 	it('addresses an open structural range and hashes its topology', () => {

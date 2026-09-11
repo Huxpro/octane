@@ -247,6 +247,49 @@ describe('getOctaneRspackBuildInfo', () => {
 				buildInfo: {
 					octane: {
 						...value,
+						universalRuntime: { runtime: 'lynx', thread: 'background' },
+						mainThreadProgramCoverage: { total: 3, addressed: 2 },
+					},
+				},
+			}),
+		).toEqual({
+			...value,
+			universalRuntime: { runtime: 'lynx', thread: 'background' },
+			mainThreadProgramCoverage: { total: 3, addressed: 2 },
+		});
+		for (const mainThreadProgramCoverage of [
+			{ total: 1, addressed: 2 },
+			{ total: -1, addressed: 0 },
+			{ total: 1.5, addressed: 1 },
+			{ total: 1, addressed: -1 },
+		]) {
+			expect(
+				getOctaneRspackBuildInfo({
+					buildInfo: {
+						octane: {
+							...value,
+							universalRuntime: { runtime: 'lynx', thread: 'background' },
+							mainThreadProgramCoverage,
+						},
+					},
+				}),
+			).toBeNull();
+		}
+		expect(
+			getOctaneRspackBuildInfo({
+				buildInfo: {
+					octane: {
+						...value,
+						mainThreadProgramCoverage: { total: 1, addressed: 1 },
+					},
+				},
+			}),
+		).toBeNull();
+		expect(
+			getOctaneRspackBuildInfo({
+				buildInfo: {
+					octane: {
+						...value,
 						clientReference: {
 							id: 'octane-client-reference-v1:object:/src/App.tsrx',
 							moduleId: '/src/App.tsrx',

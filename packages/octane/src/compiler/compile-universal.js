@@ -5610,5 +5610,17 @@ export function compileUniversal(
 		...result,
 		...(universalRuntime === undefined ? null : { universalRuntime }),
 		...(state.programAddresses === undefined ? null : { programAddresses: state.programAddresses }),
+		// A graph-level selector cannot infer complete resident-program coverage
+		// from the addresses alone: an empty list means either "no plans" or "every
+		// plan declined". Preserve both sides of that proof whenever addressing was
+		// actually requested, so a bundler can fail closed without reparsing source.
+		...(state.programModuleId === undefined || state.mainThreadProgramBackend === undefined
+			? null
+			: {
+					mainThreadProgramCoverage: Object.freeze({
+						total: state.plans.length,
+						addressed: state.programAddresses?.length ?? 0,
+					}),
+				}),
 	};
 }
