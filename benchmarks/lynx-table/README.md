@@ -204,9 +204,15 @@ BENCH_CORE=block node scripts/build-app.mjs               # scoped writes
 BENCH_BLOCK_MODE=reconcile BENCH_CORE=block node scripts/build-app.mjs
 BENCH_BLOCK_MODE=derived BENCH_CORE=block node scripts/build-app.mjs
 BENCH_CORE=automatic node scripts/build-app.mjs           # omit the product core override
-node web/run-web.mjs --cells octane,octane-block,octane-block-reconcile,octane-block-derived \
+node web/run-web.mjs --cells octane,octane-automatic,octane-block,octane-block-reconcile,octane-block-derived \
   --scales 1000,10000 --reps 5
 ```
+
+`octane-automatic` is the #290 product-default arm. The runner builds it with
+the `core` option omitted, serves `app/dist-automatic/main.web.bundle`, and
+prints its same-window ratio against explicit universal `octane`. Under
+`--counter-build` both cells are redirected to their profile-built siblings, so
+their work and wire counts are comparable instead of mixing build modes.
 
 The same application entry, the same page driver, and the same bundle recipe,
 built with `pluginOctane({ core: 'block' })` so the issue-#103 Block core drives

@@ -319,13 +319,26 @@ function expectSame(actual: string, expected: string, label: string): void {
 	);
 }
 
-/** Every op except the ones that spell out a mount, counted over a whole run. */
+/**
+ * Every physical mutation except mount, counted over a whole run.
+ *
+ * `destroy-run` is one background/wire command but the main-thread applier
+ * validates it against accepted records and performs the same root detaches and
+ * child-before-parent destroys as the explicit vocabulary. Expand that one
+ * compact request here so this differential keeps comparing host work rather
+ * than requiring both cores to serialize it the same way.
+ */
 function mutationOps(commits: readonly LynxTransportCommitMessage[]): Record<string, number> {
 	const mount = new Set(['create', 'insert', 'event', 'mount-template-run']);
 	const counts: Record<string, number> = {};
 	for (const commit of commits) {
 		for (const command of commit.batch.commands) {
 			if (mount.has(command.op)) continue;
+			if (command.op === 'destroy-run') {
+				counts.remove = (counts.remove ?? 0) + command.count;
+				counts.destroy = (counts.destroy ?? 0) + command.count * command.width;
+				continue;
+			}
 			counts[command.op] = (counts[command.op] ?? 0) + 1;
 		}
 	}

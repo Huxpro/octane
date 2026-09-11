@@ -168,6 +168,16 @@ function installHandleLedger(resolveProgram?: LynxProgramWireResolver) {
 				deltas.push({ op: 'remove', id: command.id, generation: generations.get(command.id)! });
 				generations.delete(command.id);
 				types.delete(command.id);
+				continue;
+			}
+			if (command.op === 'destroy-run') {
+				const hostCount = command.count * command.width;
+				for (let offset = 0; offset < hostCount; offset++) {
+					const id = command.firstId + offset;
+					deltas.push({ op: 'remove', id, generation: generations.get(id)! });
+					generations.delete(id);
+					types.delete(id);
+				}
 			}
 			// `insert`, `move`, and `remove` change topology, not identity, so the
 			// container derives no transition for them and the acknowledgement

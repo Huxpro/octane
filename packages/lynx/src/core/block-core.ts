@@ -644,15 +644,11 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 	/**
 	 * Tear one block's run down.
 	 *
-	 * This is the one place the command vocabulary is measurably weaker than the
-	 * v2 delta protocol rather than merely more verbose. `destroy` refuses a
-	 * target that is still attached or still owns children, so a run of H hosts
-	 * costs one `remove` plus H `destroy`s in strict child-before-parent order —
-	 * the pre-order node array run backwards. `REMOVE {firstInstance, count}`
-	 * says the same thing in one frame because the run is dense by construction.
-	 * Recorded rather than worked around: it is a reason the delta encoding earns
-	 * its keep beyond compactness, and it is why the counts below report the
-	 * teardown path as O(hosts) honestly instead of claiming O(1).
+	 * A partial keyed removal still uses the explicit vocabulary: `destroy`
+	 * refuses a target that is attached or owns children, so one block of H hosts
+	 * costs one `remove` plus H `destroy`s in strict child-before-parent order.
+	 * Whole-range clear is different: `destroyRange` below can retain the dense
+	 * run proof and emit the existing `destroy-run` command instead.
 	 */
 	const destroyBlock = (parent: UniversalHostParent, block: LynxBlock): void => {
 		emit({ op: 'remove', parent, id: block.firstId });
@@ -665,6 +661,50 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			pendingUpdates.delete(id);
 			emit({ op: 'destroy', id });
 		}
+	};
+
+	/**
+	 * Tear down a complete range without expanding its dense instance runs on
+	 * the background thread or across the wire.
+	 *
+	 * A range can contain several allocation runs after append/remove cycles, or
+	 * even several templates through the public core API. Map insertion order is
+	 * allocation order for every core-owned write, so adjacent blocks with the
+	 * same template and exact next id form one certified run; every other boundary
+	 * starts another command. A reordered physical list does not change that id
+	 * proof — the host validates each instance against accepted state before
+	 * applying the teardown.
+	 */
+	const destroyRange = (slot: LynxBlockForSlot, departed?: (block: LynxBlock) => void): void => {
+		let first: LynxBlock | null = null;
+		let count = 0;
+		const flush = (): void => {
+			if (first === null) return;
+			emit({
+				op: 'destroy-run',
+				parent: slot.parent,
+				firstId: first.firstId,
+				count,
+				width: first.template.hostCount,
+			});
+			first = null;
+			count = 0;
+		};
+		for (const block of slot.items.values()) {
+			departed?.(block);
+			if (
+				first !== null &&
+				block.template === first.template &&
+				block.firstId === first.firstId + count * first.template.hostCount
+			) {
+				count++;
+				continue;
+			}
+			flush();
+			first = block;
+			count = 1;
+		}
+		flush();
 	};
 
 	const link = (slot: LynxBlockForSlot, ordered: readonly LynxBlock[]): void => {
@@ -799,14 +839,10 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 	const clearForSlot = (slot: LynxBlockForSlot, departed?: (block: LynxBlock) => void): void => {
 		if (slot.size === 0) return;
 		captureSlot(slot);
-		// The range site owns every child of its parent node, which is the
-		// condition `delta-protocol.ts` states for `CLEAR` — but the command
-		// vocabulary has no clear, so this pays `destroyBlock` per member. See
-		// its comment: the gap is the protocol's, not this core's.
-		for (const block of slot.items.values()) {
-			departed?.(block);
-			destroyBlock(slot.parent, block);
-		}
+		// The range site owns every child of its parent node, so all members can
+		// retain the dense proof `mountRun` established instead of spelling their
+		// host teardown individually.
+		destroyRange(slot, departed);
 		slot.items.clear();
 		slot.head = null;
 		slot.tail = null;
