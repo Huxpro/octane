@@ -19,7 +19,7 @@ test('selects only the upstream timer comparisons that need synchronous rerender
 		transitionRerenderMode(
 			'Transition appearing timeout should use appear timeout if appear is set',
 		),
-		'flush-sync',
+		'flush-both',
 	);
 	assert.equal(transitionRerenderMode('Transition entering should fire callbacks'), null);
 });
