@@ -33,7 +33,7 @@ function transitionRerenderMode(testName) {
 		return 'drain-zero';
 	}
 	if (testName === 'Transition appearing timeout should use appear timeout if appear is set') {
-		return 'flush-sync';
+		return 'flush-both';
 	}
 	return null;
 }
