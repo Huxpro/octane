@@ -196,6 +196,32 @@ describe('Lynx block background core', () => {
 		expect(rowLabels(paint(main.commits))).toEqual(['a', 'b', 'c']);
 	});
 
+	it('tracks a render on the ES2015 Lynx background Promise surface', async () => {
+		const harness = scene();
+		const component = withLynxBlockProgram(
+			(() => null) as unknown as LynxComponent<ProgramProps>,
+			tableProgram(),
+		);
+		const descriptor = Object.getOwnPropertyDescriptor(Promise, 'allSettled');
+		Object.defineProperty(Promise, 'allSettled', {
+			configurable: true,
+			value: undefined,
+			writable: true,
+		});
+
+		let rendering: Promise<unknown>;
+		try {
+			rendering = harness.background.renderAsync(component as never, { labels: ['native'] });
+		} finally {
+			if (descriptor === undefined) delete (Promise as { allSettled?: unknown }).allSettled;
+			else Object.defineProperty(Promise, 'allSettled', descriptor);
+		}
+
+		await settle(harness, rendering!);
+		await harness.background.flushTransport();
+		expect(rowLabels(paint(harness.main.commits))).toEqual(['native']);
+	});
+
 	it('publishes afterCommit work only after the host acknowledges the frame', async () => {
 		const harness = scene();
 		let published = 0;

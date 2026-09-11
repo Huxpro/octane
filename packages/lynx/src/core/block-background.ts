@@ -350,9 +350,16 @@ export function createLynxBlockBackgroundCore(
 	// transport down underneath it.
 	let pending: Promise<unknown> = Promise.resolve();
 	const track = <T>(work: Promise<T>): Promise<T> => {
-		// allSettled rather than then: a caller that already handled a rejection
-		// must not have it resurface out of an unrelated flushTransport().
-		pending = Promise.allSettled([pending, work]);
+		// Attach the rejection branch now, while preserving `work` for its caller:
+		// a rejection the caller already handled must not resurface out of an
+		// unrelated flushTransport(). Chain the fulfilled tracker behind the
+		// preceding one so a flush still waits for every started commit. Lynx's
+		// background runtime is ES2015 and does not provide Promise.allSettled.
+		const settled = work.then(
+			() => undefined,
+			() => undefined,
+		);
+		pending = pending.then(() => settled);
 		return work;
 	};
 
