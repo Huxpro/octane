@@ -295,6 +295,21 @@ describe('octane Rspack loader', () => {
 			kind: 'compile',
 			universalRuntime: { runtime: 'lynx', thread: 'background' },
 			mainThreadProgramCoverage: { total: 2, addressed: 2 },
+			lynxBlockSemanticRequirements: {
+				version: 1,
+				runtimeUses: [{ name: 'useState', line: 1, column: 2 }],
+				runtimeExports: [],
+				opaqueRuntimeAccesses: [],
+				components: [
+					{
+						name: 'App',
+						exportKind: 'named',
+						line: 1,
+						column: 7,
+						hooks: [{ name: 'useState', line: 1, column: 20 }],
+					},
+				],
+			},
 			dependencies: ['/project/package.json', '/project/src/package.json'],
 			missingDependencies: ['/project/src/missing/package.json'],
 		});
@@ -360,6 +375,21 @@ describe('octane Rspack loader', () => {
 			serverRpc: true,
 			universalRuntime: { runtime: 'lynx', thread: 'background' },
 			mainThreadProgramCoverage: { total: 2, addressed: 2 },
+			lynxBlockSemanticRequirements: {
+				version: 1,
+				runtimeUses: [{ name: 'useState', line: 1, column: 2 }],
+				runtimeExports: [],
+				opaqueRuntimeAccesses: [],
+				components: [
+					{
+						name: 'App',
+						exportKind: 'named',
+						line: 1,
+						column: 7,
+						hooks: [{ name: 'useState', line: 1, column: 20 }],
+					},
+				],
+			},
 		});
 	});
 

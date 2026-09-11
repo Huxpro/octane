@@ -101,6 +101,19 @@ function compileCard(
 	code: string;
 	map: any;
 	mainThreadProgramCoverage?: { total: number; addressed: number };
+	lynxBlockSemanticRequirements?: {
+		version: number;
+		runtimeUses: readonly { name: string; line: number; column: number }[];
+		runtimeExports: readonly { name: string; line: number; column: number }[];
+		opaqueRuntimeAccesses: readonly { name: string; line: number; column: number }[];
+		components: readonly {
+			name: string;
+			exportKind: string | null;
+			line: number;
+			column: number;
+			hooks: readonly { name: string; line: number; column: number }[];
+		}[];
+	};
 } {
 	const { target = 'lynx', thread = 'main-thread', backend, module } = options;
 	return compile(source, '/src/Card.lynx.tsrx', {
@@ -113,6 +126,19 @@ function compileCard(
 		code: string;
 		map: any;
 		mainThreadProgramCoverage?: { total: number; addressed: number };
+		lynxBlockSemanticRequirements?: {
+			version: number;
+			runtimeUses: readonly { name: string; line: number; column: number }[];
+			runtimeExports: readonly { name: string; line: number; column: number }[];
+			opaqueRuntimeAccesses: readonly { name: string; line: number; column: number }[];
+			components: readonly {
+				name: string;
+				exportKind: string | null;
+				line: number;
+				column: number;
+				hooks: readonly { name: string; line: number; column: number }[];
+			}[];
+		};
 	};
 }
 
@@ -516,6 +542,173 @@ export function Card(props: { rows: unknown; label: unknown }) @{
 			},
 		};
 		expect(() => compiled(CARD, { backend: trailing })).toThrowError(/not a single expression/);
+	});
+});
+
+describe('reporting authored Block semantic requirements', () => {
+	it('publishes active runtime references and component hook sites without emitting them', () => {
+		const source = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+import {
+	Activity,
+	createContext,
+	createPortal as portal,
+	lazy,
+	useContext as readContext,
+	useInsertionEffect,
+	useState,
+} from 'octane';
+
+const Theme = createContext('light');
+const keepPortal = portal;
+void keepPortal;
+
+export function Row() @{
+	useInsertionEffect(() => {});
+	<text>row</text>
+}
+
+export function App() @{
+	const [visible] = useState(true);
+	const theme = readContext(Theme);
+	<Activity mode={visible ? 'visible' : 'hidden'}><view><text>{theme as string}</text></view></Activity>
+}
+`;
+		const result = compileCard(source);
+		const requirements = result.lynxBlockSemanticRequirements;
+
+		expect(requirements).toEqual({
+			version: 1,
+			runtimeUses: [
+				{ name: 'Activity', line: 24, column: 2 },
+				{ name: 'createContext', line: 12, column: 14 },
+				{ name: 'createPortal', line: 13, column: 19 },
+				{ name: 'useContext', line: 23, column: 15 },
+				{ name: 'useInsertionEffect', line: 17, column: 1 },
+				{ name: 'useState', line: 22, column: 19 },
+			],
+			runtimeExports: [],
+			opaqueRuntimeAccesses: [],
+			components: [
+				{
+					name: 'Row',
+					exportKind: 'named',
+					line: 16,
+					column: 7,
+					hooks: [{ name: 'useInsertionEffect', line: 17, column: 1 }],
+				},
+				{
+					name: 'App',
+					exportKind: 'named',
+					line: 21,
+					column: 7,
+					hooks: [
+						{ name: 'useState', line: 22, column: 19 },
+						{ name: 'useContext', line: 23, column: 15 },
+					],
+				},
+			],
+		});
+		expect(requirements?.runtimeUses.some(({ name }) => name === 'lazy')).toBe(false);
+		expect(result.code).not.toContain('lynxBlockSemanticRequirements');
+		expect(Object.isFrozen(requirements)).toBe(true);
+		expect(Object.isFrozen(requirements?.runtimeUses)).toBe(true);
+		expect(Object.isFrozen(requirements?.runtimeExports)).toBe(true);
+		expect(Object.isFrozen(requirements?.opaqueRuntimeAccesses)).toBe(true);
+		expect(Object.isFrozen(requirements?.components[0]?.hooks)).toBe(true);
+	});
+
+	it('does not mistake an unused import or a shadowed local for a runtime requirement', () => {
+		const result = compileCard(`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useState } from 'octane';
+
+function invoke(useState: () => unknown) {
+	return useState();
+}
+void invoke;
+
+export function App() @{
+	<view />
+}
+`);
+
+		expect(result.lynxBlockSemanticRequirements?.runtimeUses).toEqual([]);
+		expect(result.lynxBlockSemanticRequirements?.components).toEqual([
+			expect.objectContaining({ name: 'App', hooks: [] }),
+		]);
+	});
+
+	it('keeps runtime requirements from a plain-TypeScript custom-hook module', () => {
+		const result = compile(
+			`import { useContext as readContext } from 'octane';
+export function useTheme(context: unknown) {
+	return readContext(context);
+}
+`,
+			'/src/useTheme.ts',
+			{
+				hmr: false,
+				renderer: { ...lynxMainThreadRenderer, target: 'universal', id: 'lynx' },
+				universalRuntime: { runtime: 'lynx', thread: 'background' },
+			},
+		) as ReturnType<typeof compileCard>;
+
+		expect(result.lynxBlockSemanticRequirements).toEqual({
+			version: 1,
+			runtimeUses: [{ name: 'useContext', line: 3, column: 8 }],
+			runtimeExports: [],
+			opaqueRuntimeAccesses: [],
+			components: [],
+		});
+	});
+
+	it('keeps barrel exports and opaque Octane module access fail-closed', () => {
+		const result = compile(
+			`export { useContext as readContext } from 'octane';
+export type { OctaneNode } from 'octane';
+export * from 'octane';
+const load = () => import('oct\\u0061ne');
+const required = require('octane');
+function shadowed(require: (id: string) => unknown) {
+	return require('octane');
+}
+void load;
+void required;
+void shadowed;
+`,
+			'/src/runtime-barrel.ts',
+			{
+				hmr: false,
+				renderer: { ...lynxMainThreadRenderer, target: 'universal', id: 'lynx' },
+				universalRuntime: { runtime: 'lynx', thread: 'background' },
+			},
+		) as ReturnType<typeof compileCard>;
+
+		expect(result.lynxBlockSemanticRequirements).toEqual({
+			version: 1,
+			runtimeUses: [],
+			runtimeExports: [{ name: 'useContext', line: 1, column: 9 }],
+			opaqueRuntimeAccesses: [
+				{ name: 'commonjs-require', line: 5, column: 17 },
+				{ name: 'dynamic-import', line: 4, column: 19 },
+				{ name: 'export-all', line: 3, column: 0 },
+			],
+			components: [],
+		});
+	});
+
+	it('does not attach a Lynx selection fact to an unpaired universal compile', () => {
+		const result = compile(ADDRESSABLE_CARD, '/src/Card.tsrx', {
+			hmr: false,
+			renderer: { ...lynxMainThreadRenderer, target: 'universal', id: 'lynx' },
+		}) as ReturnType<typeof compileCard>;
+		const paired = compileCard(ADDRESSABLE_CARD, {
+			target: 'universal',
+			thread: 'background',
+		});
+
+		expect(result.lynxBlockSemanticRequirements).toBeUndefined();
+		expect(paired.lynxBlockSemanticRequirements?.version).toBe(1);
+		expect(paired.code).toBe(result.code);
 	});
 });
 

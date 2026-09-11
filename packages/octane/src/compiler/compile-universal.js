@@ -1989,6 +1989,173 @@ function collectAuthoredHookSites(fn, state) {
 	return sites;
 }
 
+/**
+ * Runtime capabilities an authored Lynx module can ask of its background core.
+ *
+ * This is deliberately a source inventory, not an eligibility decision. A
+ * binding may be passed through a custom hook or component before it is called,
+ * so looking only for direct calls would silently miss the exact indirection a
+ * graph-level selector has to fail closed over. Named barrel exports remain
+ * exact requirements, while namespace exports, dynamic imports, and CommonJS
+ * loads stay opaque so a later selector cannot silently accept them. Conversely,
+ * an import with no live reference is absent: importing an optional API must not
+ * force fallback after lexical analysis has proved that binding unused.
+ *
+ * Resolve through the compiler's lexical analysis rather than matching names.
+ * A nested parameter may shadow an imported hook, and an aliased import must
+ * still report the public API it names. The first active authored reference is
+ * enough to diagnose each requirement; component-local call sites remain in
+ * the component hook ledger below.
+ */
+function collectAuthoredRuntimeRequirements(ast, state) {
+	const empty = Object.freeze([]);
+	let potentialModuleAccess = state.runtimeImports.size > 0;
+	if (!potentialModuleAccess) {
+		const seenCandidates = new WeakSet();
+		const findCandidate = (node) => {
+			if (potentialModuleAccess || !node || typeof node !== 'object') return;
+			if (Array.isArray(node)) {
+				for (const child of node) findCandidate(child);
+				return;
+			}
+			if (seenCandidates.has(node)) return;
+			seenCandidates.add(node);
+			if (!isThreadNodeActive(state, node)) return;
+			potentialModuleAccess =
+				node.source?.value === 'octane' ||
+				node.moduleReference?.expression?.value === 'octane' ||
+				(node.type === 'CallExpression' && node.arguments?.[0]?.value === 'octane');
+			if (!potentialModuleAccess) forEachRuntimeAstChild(node, findCandidate);
+		};
+		findCandidate(ast);
+	}
+	if (!potentialModuleAccess) {
+		return Object.freeze({
+			runtimeUses: empty,
+			runtimeExports: empty,
+			opaqueRuntimeAccesses: empty,
+		});
+	}
+	const lexicalAnalysis = createLexicalAnalysis(ast);
+	const uses = new Map();
+	const exports = new Map();
+	const opaque = new Map();
+	const record = (collection, name, node) => {
+		if (collection.has(name)) return;
+		const loc = node?.loc?.start;
+		collection.set(
+			name,
+			Object.freeze({
+				name,
+				line: loc?.line ?? 0,
+				column: loc?.column ?? 0,
+			}),
+		);
+	};
+	const sorted = (collection) =>
+		Object.freeze(
+			[...collection.values()].sort((left, right) =>
+				left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
+			),
+		);
+	const typeOnlyExport = (statement, specifier) => {
+		const statementPrefix = state.source.slice(statement.start ?? 0, statement.source?.start ?? 0);
+		if (/^\s*export\s+type\b/.test(statementPrefix)) return true;
+		const specifierPrefix = state.source.slice(specifier.start ?? 0, specifier.local?.start ?? 0);
+		return /^\s*type\b/.test(specifierPrefix);
+	};
+	const seen = new WeakSet();
+	const visit = (node, parent = null, key = null) => {
+		if (!node || typeof node !== 'object') return;
+		if (Array.isArray(node)) {
+			for (const child of node) visit(child, parent, key);
+			return;
+		}
+		if (seen.has(node)) return;
+		seen.add(node);
+		if (!isThreadNodeActive(state, node)) return;
+		if (
+			node.type === 'TSImportEqualsDeclaration' &&
+			node.moduleReference?.expression?.value === 'octane'
+		) {
+			record(opaque, 'import-equals', node);
+		} else if (node.source?.value === 'octane') {
+			if (node.type === 'ExportNamedDeclaration') {
+				for (const specifier of node.specifiers ?? []) {
+					if (specifier.type === 'ExportNamespaceSpecifier') {
+						record(opaque, 'namespace-export', specifier);
+					} else if (!typeOnlyExport(node, specifier)) {
+						const imported = specifier.local?.name ?? specifier.local?.value;
+						if (typeof imported === 'string') record(exports, imported, specifier.local);
+						else record(opaque, 'unknown-export', specifier);
+					}
+				}
+			} else if (node.type === 'ExportAllDeclaration') {
+				record(opaque, node.exported == null ? 'export-all' : 'namespace-export', node);
+			} else if (node.type === 'ImportExpression') {
+				record(opaque, 'dynamic-import', node);
+			}
+		}
+		if (node.type === 'CallExpression') {
+			const scope = lexicalAnalysis.nodeScopes.get(node) ?? lexicalAnalysis.rootScope;
+			if (lexicalAnalysis.commonJsSource(node, scope)?.value === 'octane') {
+				record(opaque, 'commonjs-require', node);
+			}
+		}
+		if (
+			(node.type === 'Identifier' && isIdentifierReference(node, parent, key, lexicalAnalysis)) ||
+			isJsxBindingReference(node, parent, key)
+		) {
+			const scope = lexicalAnalysis.nodeScopes.get(node) ?? lexicalAnalysis.rootScope;
+			const binding = lexicalAnalysis.resolveBinding(scope, node.name);
+			const imported = state.runtimeImports.get(node.name);
+			if (
+				binding?.importSource?.value === 'octane' &&
+				typeof imported === 'string' &&
+				!uses.has(imported)
+			) {
+				record(uses, imported, node);
+			}
+		}
+		forEachRuntimeAstChild(node, (child, childKey) => visit(child, node, childKey));
+	};
+	visit(ast);
+	return Object.freeze({
+		runtimeUses: sorted(uses),
+		runtimeExports: sorted(exports),
+		opaqueRuntimeAccesses: sorted(opaque),
+	});
+}
+
+/**
+ * Static facts a later application-graph pass needs to judge Block-core scope.
+ *
+ * The report intentionally has no `complete` or `eligible` bit. Resident
+ * programs, component ownership, lifecycle delivery, refs/worklets, and the
+ * Block core's supported API matrix are independent proofs. Treating this
+ * module-local inventory as their conjunction would turn an unknown into a
+ * silent semantic downgrade.
+ */
+function lynxBlockSemanticRequirements(ast, state) {
+	if (state.universalRuntime?.runtime !== 'lynx') return undefined;
+	const runtime = collectAuthoredRuntimeRequirements(ast, state);
+	return Object.freeze({
+		version: 1,
+		...runtime,
+		components: Object.freeze(
+			state.components.map((component) =>
+				Object.freeze({
+					name: component.name,
+					exportKind: component.exportKind ?? null,
+					line: component.line,
+					column: component.column,
+					hooks: Object.freeze(component.hooks.map((hook) => Object.freeze({ ...hook }))),
+				}),
+			),
+		),
+	});
+}
+
 function jsxName(node) {
 	const name = node?.openingElement?.name ?? node?.name;
 	return name?.type === 'JSXIdentifier' ? name.name : null;
@@ -5606,9 +5773,13 @@ export function compileUniversal(
 		],
 	};
 	const result = compileClient(program, metadata);
+	const blockRequirements = lynxBlockSemanticRequirements(ast, state);
 	return {
 		...result,
 		...(universalRuntime === undefined ? null : { universalRuntime }),
+		...(blockRequirements === undefined
+			? null
+			: { lynxBlockSemanticRequirements: blockRequirements }),
 		...(state.programAddresses === undefined ? null : { programAddresses: state.programAddresses }),
 		// A graph-level selector cannot infer complete resident-program coverage
 		// from the addresses alone: an empty list means either "no plans" or "every

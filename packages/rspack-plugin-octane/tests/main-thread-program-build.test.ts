@@ -347,6 +347,40 @@ describe('a main-thread program backend, through a real Rspack build', () => {
 				addressed: 2,
 			},
 		]);
+		expect(
+			metadata.map(({ canonicalId, universalRuntime, lynxBlockSemanticRequirements }) => ({
+				canonicalId,
+				thread: universalRuntime.thread,
+				version: lynxBlockSemanticRequirements.version,
+				runtimeUses: lynxBlockSemanticRequirements.runtimeUses,
+				runtimeExports: lynxBlockSemanticRequirements.runtimeExports,
+				opaqueRuntimeAccesses: lynxBlockSemanticRequirements.opaqueRuntimeAccesses,
+				components: lynxBlockSemanticRequirements.components.map(
+					({ name, hooks }: { name: string; hooks: readonly unknown[] }) => ({ name, hooks }),
+				),
+			})),
+		).toEqual(
+			expect.arrayContaining([
+				{
+					canonicalId: '/src/Card.tsrx',
+					thread: 'background',
+					version: 1,
+					runtimeUses: [],
+					runtimeExports: [],
+					opaqueRuntimeAccesses: [],
+					components: [{ name: 'Card', hooks: [] }],
+				},
+				{
+					canonicalId: '/src/Card.tsrx',
+					thread: 'main-thread',
+					version: 1,
+					runtimeUses: [],
+					runtimeExports: [],
+					opaqueRuntimeAccesses: [],
+					components: [{ name: 'Card', hooks: [] }],
+				},
+			]),
+		);
 	}, 60_000);
 
 	it("fails the build when the two layers disagree about a module's programs", async () => {
