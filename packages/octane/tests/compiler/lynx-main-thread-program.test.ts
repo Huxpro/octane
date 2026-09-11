@@ -520,17 +520,20 @@ export function Card(props: { label: string }) @{
 		expect(evaluate(compiled(AHEAD, { backend: Backend })).roots[0].kind).toBe('template');
 	});
 
-	it('fails the build when the backend refuses a plan it can describe', () => {
+	it('keeps a described plan the emitter refuses on the interpreted encoding', () => {
 		// An inline style is written by the general prop-patch path and by nothing
 		// the emission can call, so emitting the program anyway would paint a first
-		// screen that differs from the one the command path paints. Naming the prop
-		// at build time is the whole point of a refusal being an error.
+		// screen that differs from the one the command path paints. A backend that
+		// is configured by default must ask the exact emitter during derivation and
+		// decline this plan before the compiler assigns it a program, leaving the
+		// existing command path byte-identical rather than failing a normal build.
 		const STYLED = `/** @jsxImportSource @octanejs/lynx/intrinsics */
 export function Card(props: { tone: string; label: string }) @{
 	<view class={props.tone} style="color:red"><text class="l">{props.label as string}</text></view>
 }
 `;
-		expect(() => compiled(STYLED, { backend: Backend })).toThrowError(/"style"/);
+		expect(compiled(STYLED, { backend: Backend })).toBe(compiled(STYLED));
+		expect(evaluate(compiled(STYLED, { backend: Backend })).roots[0].kind).toBe('template');
 	});
 
 	it("copies each site's paint answer from the emission rather than assuming it", () => {
