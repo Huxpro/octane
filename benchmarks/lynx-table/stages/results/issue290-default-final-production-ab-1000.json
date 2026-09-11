@@ -1,0 +1,197 @@
+{
+  "meta": {
+    "date": "2026-09-11T10:28:17.747Z",
+    "node": "v22.22.2",
+    "cpus": 32,
+    "cpuModel": "Intel(R) Xeon(R) Platinum 8336C CPU @ 2.30GHz",
+    "platform": "linux",
+    "release": "5.15.120.bsk.3-amd64",
+    "chromium": "149.0.7827.55",
+    "repetitions": 7,
+    "rows": 1000,
+    "reportable": true,
+    "loadStart": [0.55, 1.25, 1.2],
+    "loadEnd": [0.74, 1.28, 1.21],
+    "protocol": "fresh page per sample; production baseline/candidate order alternates AB/BA; neither cell reads profiler state"
+  },
+  "threshold": {
+    "mode": "all",
+    "fcpOptions": {
+      "rowCount": 1000
+    },
+    "rowCount": 1000
+  },
+  "bundles": {
+    "baseline": {
+      "path": "/data00/home/xuan.huang/.codex/tmp/octane-290-base/benchmarks/lynx-table/app/dist-automatic-rows1000/main.web.bundle",
+      "bytes": 552965,
+      "sha256": "63e0adba33fe2c4a426cc6e7507ddc568b80943ad78ada5d0bc66c8bae348278"
+    },
+    "candidate": {
+      "path": "/data00/home/xuan.huang/.codex/worktrees/68ea/octane/benchmarks/lynx-table/app/dist-automatic-rows1000/main.web.bundle",
+      "bytes": 433485,
+      "sha256": "181fa1ac3e3ae9d7a59bba5f782196d00c8d644105d9049b56bde7e456b1f32f"
+    }
+  },
+  "results": {
+    "baseline": {
+      "fcp": {
+        "median": 150.69999980926514,
+        "min": 148.10000038146973,
+        "max": 181.5,
+        "spread": 33.39999961853027,
+        "n": 7
+      },
+      "settled": {
+        "median": 150.69999980926514,
+        "min": 148.10000038146973,
+        "max": 181.5,
+        "spread": 33.39999961853027,
+        "n": 7
+      }
+    },
+    "candidate": {
+      "fcp": {
+        "median": 151.29999923706055,
+        "min": 146,
+        "max": 189.10000038146973,
+        "spread": 43.10000038146973,
+        "n": 7
+      },
+      "settled": {
+        "median": 151.29999923706055,
+        "min": 146,
+        "max": 189.10000038146973,
+        "spread": 43.10000038146973,
+        "n": 7
+      }
+    },
+    "semantic": {
+      "finalRows": 1000,
+      "finalCount": 2000,
+      "checksum": 1150422098
+    },
+    "ratios": {
+      "fcp": 1.0039814162478753,
+      "settled": 1.0039814162478753
+    }
+  },
+  "samples": {
+    "baseline": [
+      {
+        "fcpMs": 150.69999980926514,
+        "fcpEpochMs": 1789122489214.5,
+        "settledMs": 150.69999980926514,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "checksum": 1150422098
+      },
+      {
+        "fcpMs": 148.89999961853027,
+        "fcpEpochMs": 1789122491088.6,
+        "settledMs": 148.89999961853027,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "checksum": 1150422098
+      },
+      {
+        "fcpMs": 181.5,
+        "fcpEpochMs": 1789122491715.3,
+        "settledMs": 181.5,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "checksum": 1150422098
+      },
+      {
+        "fcpMs": 167.80000019073486,
+        "fcpEpochMs": 1789122493646.7,
+        "settledMs": 167.80000019073486,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "checksum": 1150422098
+      },
+      {
+        "fcpMs": 150.39999961853027,
+        "fcpEpochMs": 1789122494242.0999,
+        "settledMs": 150.39999961853027,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "checksum": 1150422098
+      },
+      {
+        "fcpMs": 148.10000038146973,
+        "fcpEpochMs": 1789122496096.2998,
+        "settledMs": 148.10000038146973,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "checksum": 1150422098
+      },
+      {
+        "fcpMs": 153.4000005722046,
+        "fcpEpochMs": 1789122496691.9001,
+        "settledMs": 153.4000005722046,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "checksum": 1150422098
+      }
+    ],
+    "candidate": [
+      {
+        "fcpMs": 146,
+        "fcpEpochMs": 1789122489816.9,
+        "settledMs": 146,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "checksum": 1150422098
+      },
+      {
+        "fcpMs": 154.69999980926514,
+        "fcpEpochMs": 1789122490450.5,
+        "settledMs": 154.69999980926514,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "checksum": 1150422098
+      },
+      {
+        "fcpMs": 189.10000038146973,
+        "fcpEpochMs": 1789122492358.4001,
+        "settledMs": 189.10000038146973,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "checksum": 1150422098
+      },
+      {
+        "fcpMs": 149.30000019073486,
+        "fcpEpochMs": 1789122492997.9001,
+        "settledMs": 149.30000019073486,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "checksum": 1150422098
+      },
+      {
+        "fcpMs": 147.39999961853027,
+        "fcpEpochMs": 1789122494820.2,
+        "settledMs": 147.39999961853027,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "checksum": 1150422098
+      },
+      {
+        "fcpMs": 155.69999980926514,
+        "fcpEpochMs": 1789122495462.5999,
+        "settledMs": 155.69999980926514,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "checksum": 1150422098
+      },
+      {
+        "fcpMs": 151.29999923706055,
+        "fcpEpochMs": 1789122497276.6,
+        "settledMs": 151.29999923706055,
+        "finalCount": 2000,
+        "finalRows": 1000,
+        "checksum": 1150422098
+      }
+    ]
+  }
+}
