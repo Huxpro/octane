@@ -4,7 +4,9 @@ import {
 	collectLynxBlockFeatureRequirements,
 	collectLynxBlockSemanticRequirements,
 	collectLynxProgramCoverage,
+	evaluateLynxBlockEligibility,
 	LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO,
+	LYNX_BLOCK_SELECTION_ASSET_INFO,
 	LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO,
 	LYNX_PROGRAM_COVERAGE_ASSET_INFO,
 	LynxProgramCoveragePlugin,
@@ -39,6 +41,22 @@ function featureRequirements(
 			captures: string[];
 		}[];
 		mainThreadProps: ReturnType<typeof site>[];
+		templateFeatures: {
+			kind:
+				| 'activity'
+				| 'component'
+				| 'fragment'
+				| 'host-ref'
+				| 'if'
+				| 'native-list'
+				| 'program-root-event'
+				| 'renderable-hole'
+				| 'switch'
+				| 'try';
+			name: string | null;
+			line: number;
+			column: number;
+		}[];
 		keyedRanges: {
 			line: number;
 			column: number;
@@ -53,9 +71,10 @@ function featureRequirements(
 	}> = {},
 ) {
 	return {
-		version: 1,
+		version: 2,
 		threadFunctions: value.threadFunctions ?? [],
 		mainThreadProps: value.mainThreadProps ?? [],
+		templateFeatures: value.templateFeatures ?? [],
 		keyedRanges: value.keyedRanges ?? [],
 	};
 }
@@ -115,6 +134,340 @@ const OPTIONS = {
 	mainThreadEntry: 'app__octane_main_thread',
 	authoredRequests: ['./src/App.tsrx'],
 };
+
+function completeProofs() {
+	const background = moduleWithCoverage('/src/App.tsrx', 'background', 1, 1);
+	const mainThread = moduleWithCoverage('/src/App.tsrx', 'main-thread', 1, 1);
+	background.buildInfo.octane.lynxBlockSemanticRequirements = semanticRequirements({
+		runtimeUses: [
+			site('useEffect', 3, 2),
+			site('useState', 2, 2),
+			site('useSyncExternalStore', 4, 2),
+		],
+		components: [
+			{
+				name: 'App',
+				exportKind: 'default',
+				line: 1,
+				column: 0,
+				hooks: [
+					site('useState', 2, 2),
+					site('useEffect', 3, 2),
+					site('useSyncExternalStore', 4, 2),
+				],
+			},
+		],
+	});
+	mainThread.buildInfo.octane.lynxBlockSemanticRequirements =
+		background.buildInfo.octane.lynxBlockSemanticRequirements;
+	background.buildInfo.octane.lynxBlockFeatureRequirements = featureRequirements({
+		threadFunctions: [
+			{
+				kind: 'background',
+				id: 'tf_row_read',
+				line: 3,
+				column: 2,
+				captures: [],
+			},
+			{
+				kind: 'main-thread',
+				id: 'tf_row_tap',
+				line: 4,
+				column: 2,
+				captures: ['selected'],
+			},
+		],
+		mainThreadProps: [site('main-thread:ref', 6, 4)],
+		keyedRanges: [
+			{
+				line: 7,
+				column: 2,
+				empty: false,
+				nested: false,
+				lastChild: true,
+				row: { kind: 'inline-host', name: 'view' },
+			},
+			{
+				line: 8,
+				column: 2,
+				empty: false,
+				nested: false,
+				lastChild: true,
+				row: { kind: 'local-component', name: 'Row', hooks: [] },
+			},
+		],
+	});
+	mainThread.buildInfo.octane.lynxBlockFeatureRequirements =
+		background.buildInfo.octane.lynxBlockFeatureRequirements;
+	const graph = compilation(background, mainThread);
+	return {
+		programCoverage: collectLynxProgramCoverage(graph, OPTIONS),
+		semanticRequirements: collectLynxBlockSemanticRequirements(graph, OPTIONS),
+		featureRequirements: collectLynxBlockFeatureRequirements(graph, OPTIONS),
+	};
+}
+
+describe('Lynx application Block eligibility', () => {
+	it('accepts only the proven intersection of complete program, semantic, and feature facts', () => {
+		const report = evaluateLynxBlockEligibility(completeProofs());
+
+		expect(report).toEqual({
+			version: 1,
+			matrix: {
+				version: 1,
+				runtimeNames: ['useEffect', 'useState', 'useSyncExternalStore'],
+				threadFunctions: ['background', 'main-thread'],
+				mainThreadProps: true,
+				templateFeatures: [],
+				keyedRanges: {
+					empty: false,
+					nested: false,
+					lastChild: true,
+					rowKinds: ['inline-host', 'local-component'],
+					rowHooks: false,
+				},
+			},
+			eligible: true,
+			reasons: [],
+		});
+		expect(Object.isFrozen(report)).toBe(true);
+		expect(Object.isFrozen(report.matrix.keyedRanges)).toBe(true);
+		expect(Object.isFrozen(report.reasons)).toBe(true);
+	});
+
+	it('fails closed when a proof is incomplete, unpaired, version-skewed, or covers another graph', () => {
+		const proofs = completeProofs();
+		expect(
+			evaluateLynxBlockEligibility({
+				...proofs,
+				programCoverage: {
+					...proofs.programCoverage,
+					complete: false,
+					reasons: [{ code: 'partial-program-coverage', module: '/src/App.tsrx' }],
+				},
+				semanticRequirements: {
+					...proofs.semanticRequirements,
+					paired: false,
+					reasons: [{ code: 'missing-main-thread-semantic-requirements' }],
+				},
+				featureRequirements: {
+					...proofs.featureRequirements,
+					version: 3,
+					modules: [
+						{
+							...proofs.featureRequirements.modules[0]!,
+							module: '/src/Other.tsrx',
+						},
+					],
+				},
+			}),
+		).toMatchObject({
+			eligible: false,
+			reasons: [
+				{
+					code: 'program-coverage-incomplete',
+					reasons: [{ code: 'partial-program-coverage', module: '/src/App.tsrx' }],
+				},
+				{
+					code: 'semantic-requirements-unpaired',
+					reasons: [{ code: 'missing-main-thread-semantic-requirements' }],
+				},
+				{ code: 'unsupported-feature-requirements-version', observed: 3, supported: 2 },
+			],
+		});
+
+		const mismatched = completeProofs();
+		expect(
+			evaluateLynxBlockEligibility({
+				...mismatched,
+				featureRequirements: {
+					...mismatched.featureRequirements,
+					modules: [
+						{
+							...mismatched.featureRequirements.modules[0]!,
+							module: '/src/Other.tsrx',
+						},
+					],
+				},
+			}),
+		).toMatchObject({
+			eligible: false,
+			reasons: [
+				{
+					code: 'proof-module-set-mismatch',
+					programCoverage: ['/src/App.tsrx'],
+					semanticRequirements: ['/src/App.tsrx'],
+					featureRequirements: ['/src/Other.tsrx'],
+				},
+			],
+		});
+	});
+
+	it('retains exact unsupported API, opaque access, template, and keyed-range sites', () => {
+		const proofs = completeProofs();
+		const semanticModule = proofs.semanticRequirements.modules[0]!;
+		const featureModule = proofs.featureRequirements.modules[0]!;
+		const report = evaluateLynxBlockEligibility({
+			...proofs,
+			semanticRequirements: {
+				...proofs.semanticRequirements,
+				modules: [
+					{
+						...semanticModule,
+						background: semanticRequirements({
+							runtimeUses: [site('useContext', 2, 3)],
+							runtimeExports: [site('Suspense', 3, 4)],
+							opaqueRuntimeAccesses: [site('export-all', 4, 5)],
+						}),
+					},
+				],
+			},
+			featureRequirements: {
+				...proofs.featureRequirements,
+				modules: [
+					{
+						...featureModule,
+						background: featureRequirements({
+							templateFeatures: [
+								{ kind: 'component', name: 'Panel', line: 5, column: 2 },
+								{ kind: 'native-list', name: 'list', line: 6, column: 2 },
+								{ kind: 'host-ref', name: 'view', line: 7, column: 2 },
+								{ kind: 'program-root-event', name: 'bindtap', line: 8, column: 2 },
+							],
+							keyedRanges: [
+								{
+									line: 10,
+									column: 2,
+									empty: true,
+									nested: true,
+									lastChild: false,
+									row: {
+										kind: 'local-component',
+										name: 'Row',
+										hooks: [site('useState', 11, 3)],
+									},
+								},
+								{
+									line: 20,
+									column: 2,
+									empty: false,
+									nested: false,
+									lastChild: true,
+									row: { kind: 'external-component', name: 'ExternalRow' },
+								},
+							],
+						}),
+					},
+				],
+			},
+		});
+
+		expect(report).toMatchObject({
+			eligible: false,
+			reasons: [
+				{
+					code: 'unsupported-runtime-use',
+					module: '/src/App.tsrx',
+					thread: 'background',
+					name: 'useContext',
+					line: 2,
+					column: 3,
+				},
+				{
+					code: 'unsupported-runtime-export',
+					module: '/src/App.tsrx',
+					thread: 'background',
+					name: 'Suspense',
+					line: 3,
+					column: 4,
+				},
+				{
+					code: 'opaque-runtime-access',
+					module: '/src/App.tsrx',
+					thread: 'background',
+					name: 'export-all',
+					line: 4,
+					column: 5,
+				},
+				{
+					code: 'keyed-range-empty-branch',
+					module: '/src/App.tsrx',
+					thread: 'background',
+					line: 10,
+					column: 2,
+				},
+				{
+					code: 'keyed-range-nested',
+					module: '/src/App.tsrx',
+					thread: 'background',
+					line: 10,
+					column: 2,
+				},
+				{
+					code: 'keyed-range-not-last-child',
+					module: '/src/App.tsrx',
+					thread: 'background',
+					line: 10,
+					column: 2,
+				},
+				{
+					code: 'keyed-range-row-hooks',
+					module: '/src/App.tsrx',
+					thread: 'background',
+					line: 10,
+					column: 2,
+					row: 'Row',
+					hooks: [site('useState', 11, 3)],
+				},
+				{
+					code: 'unsupported-keyed-range-row',
+					module: '/src/App.tsrx',
+					thread: 'background',
+					line: 20,
+					column: 2,
+					kind: 'external-component',
+					row: 'ExternalRow',
+				},
+				{
+					code: 'unsupported-template-feature',
+					module: '/src/App.tsrx',
+					thread: 'background',
+					kind: 'component',
+					name: 'Panel',
+					line: 5,
+					column: 2,
+				},
+				{
+					code: 'unsupported-template-feature',
+					module: '/src/App.tsrx',
+					thread: 'background',
+					kind: 'native-list',
+					name: 'list',
+					line: 6,
+					column: 2,
+				},
+				{
+					code: 'unsupported-template-feature',
+					module: '/src/App.tsrx',
+					thread: 'background',
+					kind: 'host-ref',
+					name: 'view',
+					line: 7,
+					column: 2,
+				},
+				{
+					code: 'unsupported-template-feature',
+					module: '/src/App.tsrx',
+					thread: 'background',
+					kind: 'program-root-event',
+					name: 'bindtap',
+					line: 8,
+					column: 2,
+				},
+			],
+		});
+	});
+});
 
 describe('Lynx application resident-program coverage', () => {
 	it('reports exact complete coverage across the two authored entry graphs', () => {
@@ -286,8 +639,9 @@ describe('Lynx application resident-program coverage', () => {
 			graphVisits++;
 			return getOutgoingConnections(module);
 		};
+		const mainThreadSource = {};
 		const assets = new Map<string, { source: unknown; info: any }>([
-			['.rspeedy/app/main-thread.js', { source: {}, info: { existing: true } }],
+			['.rspeedy/app/main-thread.js', { source: mainThreadSource, info: { existing: true } }],
 			['other.js', { source: {}, info: {} }],
 		]);
 		graph.entrypoints = new Map([
@@ -357,7 +711,7 @@ describe('Lynx application resident-program coverage', () => {
 				},
 			},
 			[LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO]: {
-				version: 1,
+				version: 2,
 				paired: true,
 				modules: [
 					{
@@ -368,7 +722,14 @@ describe('Lynx application resident-program coverage', () => {
 				],
 				reasons: [],
 			},
+			[LYNX_BLOCK_SELECTION_ASSET_INFO]: {
+				version: 1,
+				matrix: { version: 1 },
+				eligible: true,
+				reasons: [],
+			},
 		});
+		expect(assets.get('.rspeedy/app/main-thread.js')?.source).toBe(mainThreadSource);
 		expect(assets.get('other.js')?.info).toEqual({});
 	});
 });
@@ -388,6 +749,7 @@ describe('Lynx application Block feature requirements', () => {
 				},
 			],
 			mainThreadProps: [site('main-thread:ref', 8, 3)],
+			templateFeatures: [{ kind: 'component', name: 'Panel', line: 8, column: 7 }],
 			keyedRanges: [
 				{
 					line: 9,
@@ -407,7 +769,7 @@ describe('Lynx application Block feature requirements', () => {
 			OPTIONS,
 		);
 		expect(report).toEqual({
-			version: 1,
+			version: 2,
 			paired: true,
 			modules: [
 				{
@@ -419,6 +781,8 @@ describe('Lynx application Block feature requirements', () => {
 			reasons: [],
 		});
 		expect(Object.isFrozen(report)).toBe(true);
+		expect(Object.isFrozen(report.modules[0]?.background.templateFeatures)).toBe(true);
+		expect(Object.isFrozen(report.modules[0]?.background.templateFeatures[0])).toBe(true);
 		expect(Object.isFrozen(report.modules[0]?.background.keyedRanges[0]?.row)).toBe(true);
 	});
 
@@ -449,7 +813,7 @@ describe('Lynx application Block feature requirements', () => {
 			mainThreadProps: [site('main-thread:ref', 2, 3)],
 		});
 		const malformed = moduleWithCoverage('/src/broken.ts', 'main-thread', 0, 0);
-		(malformed.buildInfo.octane.lynxBlockFeatureRequirements as { version: number }).version = 2;
+		(malformed.buildInfo.octane.lynxBlockFeatureRequirements as { version: number }).version = 3;
 		const wrongThread = moduleWithCoverage('/src/wrong-thread.ts', 'background', 0, 0);
 		background.connections.push({ module: backgroundOnly }, { module: conflict });
 		mainThread.connections.push({ module: malformed }, { module: wrongThread });

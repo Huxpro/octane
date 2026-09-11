@@ -15,6 +15,7 @@ import * as lynxMainThreadProgramBackend from '../../lynx/src/compiler/index.js'
 import { pluginOctane } from '../src/index.js';
 import {
 	LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO,
+	LYNX_BLOCK_SELECTION_ASSET_INFO,
 	LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO,
 	LYNX_PROGRAM_COVERAGE_ASSET_INFO,
 } from '../src/program-coverage.js';
@@ -249,8 +250,14 @@ class ProgramCoverageProbePlugin {
 						const program = asset.info[LYNX_PROGRAM_COVERAGE_ASSET_INFO];
 						const semantic = asset.info[LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO];
 						const feature = asset.info[LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO];
-						if (program !== undefined || semantic !== undefined || feature !== undefined) {
-							this.reports.push({ program, semantic, feature });
+						const selection = asset.info[LYNX_BLOCK_SELECTION_ASSET_INFO];
+						if (
+							program !== undefined ||
+							semantic !== undefined ||
+							feature !== undefined ||
+							selection !== undefined
+						) {
+							this.reports.push({ program, semantic, feature, selection });
 						}
 					}
 				},
@@ -273,6 +280,95 @@ function programCoverageProbe(reports: unknown[]) {
 }
 
 describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
+	it('publishes an eligible verdict for a real production Block-compatible graph', async () => {
+		const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-block-eligibility-'));
+		const reports: unknown[] = [];
+		const rspeedy = await createRspeedy({
+			cwd: APPLICATION_FIXTURE,
+			loadEnv: false,
+			environment: ['lynx'],
+			rspeedyConfig: {
+				mode: 'production',
+				environments: { lynx: {} },
+				dev: { hmr: false, liveReload: false },
+				output: {
+					cleanDistPath: true,
+					distPath: { root: join(temporaryRoot, 'dist') },
+					filenameHash: false,
+					sourceMap: false,
+				},
+				source: {
+					entry: { main: './src/block-eligible.ts' },
+				},
+				splitChunks: false,
+				plugins: [
+					pluginOctane({
+						dev: false,
+						hmr: false,
+						mainThreadProgramBackend: lynxMainThreadProgramBackend,
+					}),
+					programCoverageProbe(reports),
+				],
+			},
+		});
+		let result: Awaited<ReturnType<typeof rspeedy.build>> | undefined;
+		try {
+			result = await rspeedy.build();
+			expect(reports).toHaveLength(1);
+			expect(reports[0]).toMatchObject({
+				program: {
+					version: 1,
+					complete: true,
+					pairedPlans: 2,
+					pairedAddressed: 2,
+					reasons: [],
+				},
+				semantic: {
+					version: 1,
+					paired: true,
+					requirements: {
+						background: { runtimeUses: ['useState'] },
+						mainThread: { runtimeUses: ['useState'] },
+					},
+					reasons: [],
+				},
+				feature: {
+					version: 2,
+					paired: true,
+					modules: [
+						{
+							background: {
+								keyedRanges: [
+									expect.objectContaining({
+										empty: false,
+										nested: false,
+										lastChild: true,
+										row: { kind: 'inline-host', name: 'view' },
+									}),
+								],
+							},
+							mainThread: {
+								keyedRanges: [
+									expect.objectContaining({
+										empty: false,
+										nested: false,
+										lastChild: true,
+										row: { kind: 'inline-host', name: 'view' },
+									}),
+								],
+							},
+						},
+					],
+					reasons: [],
+				},
+				selection: { version: 1, eligible: true, reasons: [] },
+			});
+		} finally {
+			await result?.close();
+			rmSync(temporaryRoot, { recursive: true, force: true });
+		}
+	}, 120_000);
+
 	it('aggregates the real two-layer application graph into main-thread asset metadata', async () => {
 		const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-program-coverage-'));
 		const reports: unknown[] = [];
@@ -383,13 +479,13 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 						reasons: [],
 					},
 					feature: {
-						version: 1,
+						version: 2,
 						paired: true,
 						modules: [
 							{
 								module: '/src/App.tsrx',
 								background: expect.objectContaining({
-									version: 1,
+									version: 2,
 									threadFunctions: expect.arrayContaining([
 										expect.objectContaining({ kind: 'background', captures: [] }),
 										expect.objectContaining({
@@ -404,7 +500,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 									keyedRanges: [],
 								}),
 								mainThread: expect.objectContaining({
-									version: 1,
+									version: 2,
 									threadFunctions: expect.arrayContaining([
 										expect.objectContaining({ kind: 'background', captures: [] }),
 										expect.objectContaining({
@@ -421,6 +517,37 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 							},
 						],
 						reasons: [],
+					},
+					selection: {
+						version: 1,
+						matrix: {
+							version: 1,
+							runtimeNames: ['useEffect', 'useState', 'useSyncExternalStore'],
+							threadFunctions: ['background', 'main-thread'],
+							mainThreadProps: true,
+							templateFeatures: [],
+							keyedRanges: {
+								empty: false,
+								nested: false,
+								lastChild: true,
+								rowKinds: ['inline-host', 'local-component'],
+								rowHooks: false,
+							},
+						},
+						eligible: false,
+						reasons: [
+							{
+								code: 'program-coverage-incomplete',
+								reasons: [
+									{
+										code: 'partial-program-coverage',
+										module: '/src/App.tsrx',
+										total: 1,
+										addressed: 0,
+									},
+								],
+							},
+						],
 					},
 				},
 			]);

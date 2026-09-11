@@ -1,6 +1,18 @@
 import { normalizeRendererConfig } from 'octane/compiler/renderers';
 
 const CLIENT_TARGETS = new Set(['web', 'webworker', 'electron-renderer', 'browserslist']);
+const LYNX_BLOCK_TEMPLATE_FEATURE_KINDS = new Set([
+	'activity',
+	'component',
+	'fragment',
+	'host-ref',
+	'if',
+	'native-list',
+	'program-root-event',
+	'renderable-hole',
+	'switch',
+	'try',
+]);
 
 function targetValues(target) {
 	if (Array.isArray(target)) return target.flatMap(targetValues);
@@ -414,7 +426,7 @@ function lynxBlockFeatureRequirementsValid(requirements) {
 	return (
 		requirements !== null &&
 		typeof requirements === 'object' &&
-		requirements.version === 1 &&
+		requirements.version === 2 &&
 		Array.isArray(requirements.threadFunctions) &&
 		requirements.threadFunctions.every(
 			(site) =>
@@ -428,6 +440,19 @@ function lynxBlockFeatureRequirementsValid(requirements) {
 		Array.isArray(requirements.mainThreadProps) &&
 		requirements.mainThreadProps.every(
 			(site) => sourceSiteValid(site) && site.name.startsWith('main-thread:'),
+		) &&
+		Array.isArray(requirements.templateFeatures) &&
+		requirements.templateFeatures.every(
+			(feature) =>
+				sourcePositionValid(feature) &&
+				LYNX_BLOCK_TEMPLATE_FEATURE_KINDS.has(feature.kind) &&
+				(feature.kind === 'component'
+					? feature.name === null || (typeof feature.name === 'string' && feature.name.length > 0)
+					: feature.kind === 'host-ref' || feature.kind === 'program-root-event'
+						? typeof feature.name === 'string' && feature.name.length > 0
+						: feature.kind === 'native-list'
+							? feature.name === 'list' || feature.name === 'list-item'
+							: feature.name === null),
 		) &&
 		Array.isArray(requirements.keyedRanges) &&
 		requirements.keyedRanges.every(

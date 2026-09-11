@@ -394,7 +394,7 @@ describe('lynx-target main-thread worklets, end to end', () => {
 		};
 
 		expect(result.lynxBlockFeatureRequirements).toEqual({
-			version: 1,
+			version: 2,
 			threadFunctions: [
 				{
 					kind: 'main-thread',
@@ -408,6 +408,7 @@ describe('lynx-target main-thread worklets, end to end', () => {
 				{ name: 'main-thread:ref', line: 13, column: 7 },
 				{ name: 'main-thread:bindtap', line: 13, column: 32 },
 			],
+			templateFeatures: [],
 			keyedRanges: [
 				{
 					line: 14,

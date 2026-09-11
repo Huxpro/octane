@@ -2176,10 +2176,8 @@ function meaningfulTemplateNode(node) {
 	return node?.type !== 'JSXText' || normalizeJsxText(node.value ?? '') !== '';
 }
 
-function keyedRangeRowRequirement(node, components) {
-	const body = (node.body?.body ?? []).filter(meaningfulTemplateNode);
-	if (body.length !== 1) return Object.freeze({ kind: 'unknown', name: null });
-	const row = body[0];
+function keyedRangeRowRequirement(row, components) {
+	if (row === null) return Object.freeze({ kind: 'unknown', name: null });
 	if (row.type !== 'JSXElement' && row.type !== 'Element') {
 		return Object.freeze({ kind: 'unknown', name: null });
 	}
@@ -2195,6 +2193,67 @@ function keyedRangeRowRequirement(node, components) {
 	});
 }
 
+function keyedRangeRowNode(node) {
+	const body = (node.body?.body ?? []).filter(meaningfulTemplateNode);
+	return body.length === 1 ? body[0] : null;
+}
+
+function blockTemplateFeature(node, rangeRowNodes) {
+	if (node.type === 'JSXActivityExpression') {
+		return Object.freeze({ kind: 'activity', name: null, ...sourcePosition(node) });
+	}
+	if (node.type === 'JSXFragment' || node.type === 'Fragment') {
+		return Object.freeze({ kind: 'fragment', name: null, ...sourcePosition(node) });
+	}
+	if (node.type === 'JSXIfExpression') {
+		return Object.freeze({ kind: 'if', name: null, ...sourcePosition(node) });
+	}
+	if (node.type === 'JSXSwitchExpression') {
+		return Object.freeze({ kind: 'switch', name: null, ...sourcePosition(node) });
+	}
+	if (node.type === 'JSXTryExpression') {
+		return Object.freeze({ kind: 'try', name: null, ...sourcePosition(node) });
+	}
+	if (node.type !== 'JSXElement' && node.type !== 'Element') return null;
+	const name = jsxName(node);
+	if (name === 'list' || name === 'list-item') {
+		return Object.freeze({ kind: 'native-list', name, ...sourcePosition(node) });
+	}
+	if (isComponentElement(node) && !rangeRowNodes.has(node)) {
+		return Object.freeze({ kind: 'component', name, ...sourcePosition(node) });
+	}
+	return null;
+}
+
+function blockProgramRootEventFeatures(state) {
+	const features = [];
+	for (const plan of state.plans) {
+		if (plan.root.kind !== 'host') continue;
+		// A resident first-screen program may bind its own root event, but a Block
+		// program's root is the node its parent inserts and deliberately refuses
+		// that binding. Read the finished plan so this fact follows the compiler's
+		// actual root after text folding and directive lowering, not JSX ancestry.
+		const bindings = plan.root.bindings ?? [];
+		if (!bindings.some(([name]) => LYNX_EVENT_PROP.test(name))) continue;
+		const attributes = plan.origin?.openingElement?.attributes ?? plan.origin?.attributes ?? [];
+		for (const attribute of attributes) {
+			if (attribute.type === 'JSXSpreadAttribute' || attribute.type === 'SpreadAttribute') continue;
+			const name = hostAttributeName(attribute, state);
+			if (
+				name === null ||
+				!LYNX_EVENT_PROP.test(name) ||
+				!bindings.some(([binding]) => binding === name)
+			) {
+				continue;
+			}
+			features.push(
+				Object.freeze({ kind: 'program-root-event', name, ...sourcePosition(attribute) }),
+			);
+		}
+	}
+	return features;
+}
+
 /**
  * Independent Block feature facts that runtime-use names cannot express.
  *
@@ -2207,8 +2266,10 @@ function lynxBlockFeatureRequirements(ast, state) {
 	if (state.universalRuntime?.runtime !== 'lynx') return undefined;
 	const components = new Map(state.components.map((component) => [component.name, component]));
 	const mainThreadProps = [];
+	const templateFeatures = [];
 	const keyedRanges = [];
 	const rangeAncestors = [];
+	const rangeRowNodes = new WeakSet();
 	const seen = new WeakSet();
 	const visit = (node, parent = null, parentKey = null, parentIndex = -1) => {
 		if (!node || typeof node !== 'object') return;
@@ -2221,6 +2282,16 @@ function lynxBlockFeatureRequirements(ast, state) {
 		if (seen.has(node)) return;
 		seen.add(node);
 		if (!isThreadNodeActive(state, node)) return;
+		if (
+			node.type === 'JSXExpressionContainer' &&
+			parentKey === 'children' &&
+			node.expression?.type !== 'JSXEmptyExpression' &&
+			!isStaticallyPrimitiveTextExpression(node.expression)
+		) {
+			templateFeatures.push(
+				Object.freeze({ kind: 'renderable-hole', name: null, ...sourcePosition(node) }),
+			);
+		}
 		if (node.type === 'JSXAttribute' || node.type === 'Attribute') {
 			const name = hostAttributeName(node, state);
 			if (name?.startsWith('main-thread:')) {
@@ -2229,6 +2300,8 @@ function lynxBlockFeatureRequirements(ast, state) {
 		}
 		let range = null;
 		if (node.type === 'JSXForExpression') {
+			const rowNode = keyedRangeRowNode(node);
+			if (rowNode !== null && typeof rowNode === 'object') rangeRowNodes.add(rowNode);
 			const siblings = parentKey === 'children' ? (parent?.children ?? []) : [];
 			const lastChild =
 				parentIndex >= 0 &&
@@ -2238,12 +2311,31 @@ function lynxBlockFeatureRequirements(ast, state) {
 				empty: node.empty != null,
 				nested: false,
 				lastChild,
-				row: keyedRangeRowRequirement(node, components),
+				row: keyedRangeRowRequirement(rowNode, components),
 			};
 			const parentRange = rangeAncestors[rangeAncestors.length - 1];
 			if (parentRange !== undefined) parentRange.nested = true;
 			keyedRanges.push(range);
 			rangeAncestors.push(range);
+		}
+		const templateFeature = blockTemplateFeature(node, rangeRowNodes);
+		if (templateFeature !== null) templateFeatures.push(templateFeature);
+		if ((node.type === 'JSXElement' || node.type === 'Element') && !isComponentElement(node)) {
+			for (const attribute of node.openingElement?.attributes ?? node.attributes ?? []) {
+				if (
+					attribute.type !== 'JSXSpreadAttribute' &&
+					attribute.type !== 'SpreadAttribute' &&
+					hostAttributeName(attribute, state) === 'ref'
+				) {
+					templateFeatures.push(
+						Object.freeze({
+							kind: 'host-ref',
+							name: jsxName(node),
+							...sourcePosition(attribute),
+						}),
+					);
+				}
+			}
 		}
 		for (const [key, child] of Object.entries(node)) {
 			if (AST_SKIP_KEYS.has(key)) continue;
@@ -2252,13 +2344,21 @@ function lynxBlockFeatureRequirements(ast, state) {
 		if (range !== null) rangeAncestors.pop();
 	};
 	visit(ast);
+	templateFeatures.push(...blockProgramRootEventFeatures(state));
 	mainThreadProps.sort(
 		(left, right) =>
 			left.line - right.line || left.column - right.column || left.name.localeCompare(right.name),
 	);
 	keyedRanges.sort((left, right) => left.line - right.line || left.column - right.column);
+	templateFeatures.sort(
+		(left, right) =>
+			left.line - right.line ||
+			left.column - right.column ||
+			left.kind.localeCompare(right.kind) ||
+			String(left.name).localeCompare(String(right.name)),
+	);
 	return Object.freeze({
-		version: 1,
+		version: 2,
 		threadFunctions: Object.freeze(
 			(state.threadFunctionRequirements ?? []).map((site) =>
 				Object.freeze({
@@ -2271,6 +2371,7 @@ function lynxBlockFeatureRequirements(ast, state) {
 			),
 		),
 		mainThreadProps: Object.freeze(mainThreadProps),
+		templateFeatures: Object.freeze(templateFeatures),
 		keyedRanges: Object.freeze(keyedRanges.map((range) => Object.freeze(range))),
 	});
 }

@@ -312,10 +312,28 @@ export interface OctaneLynxBlockKeyedRangeRequirement {
 	readonly row: OctaneLynxBlockKeyedRowRequirement;
 }
 
+export interface OctaneLynxBlockTemplateFeatureRequirement {
+	readonly kind:
+		| 'activity'
+		| 'component'
+		| 'fragment'
+		| 'host-ref'
+		| 'if'
+		| 'native-list'
+		| 'program-root-event'
+		| 'renderable-hole'
+		| 'switch'
+		| 'try';
+	readonly name: string | null;
+	readonly line: number;
+	readonly column: number;
+}
+
 export interface OctaneLynxBlockFeatureRequirements {
-	readonly version: 1;
+	readonly version: 2;
 	readonly threadFunctions: readonly OctaneLynxBlockThreadFunctionRequirement[];
 	readonly mainThreadProps: readonly OctaneRspackSourceSite[];
+	readonly templateFeatures: readonly OctaneLynxBlockTemplateFeatureRequirement[];
 	readonly keyedRanges: readonly OctaneLynxBlockKeyedRangeRequirement[];
 }
 

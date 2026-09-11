@@ -311,7 +311,7 @@ describe('octane Rspack loader', () => {
 				],
 			},
 			lynxBlockFeatureRequirements: {
-				version: 1,
+				version: 2,
 				threadFunctions: [
 					{
 						kind: 'main-thread',
@@ -322,6 +322,7 @@ describe('octane Rspack loader', () => {
 					},
 				],
 				mainThreadProps: [{ name: 'main-thread:ref', line: 3, column: 4 }],
+				templateFeatures: [],
 				keyedRanges: [],
 			},
 			dependencies: ['/project/package.json', '/project/src/package.json'],
@@ -405,7 +406,7 @@ describe('octane Rspack loader', () => {
 				],
 			},
 			lynxBlockFeatureRequirements: {
-				version: 1,
+				version: 2,
 				threadFunctions: [
 					{
 						kind: 'main-thread',
@@ -416,6 +417,7 @@ describe('octane Rspack loader', () => {
 					},
 				],
 				mainThreadProps: [{ name: 'main-thread:ref', line: 3, column: 4 }],
+				templateFeatures: [],
 				keyedRanges: [],
 			},
 		});

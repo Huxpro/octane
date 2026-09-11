@@ -129,6 +129,29 @@ entry for one thread, but they are not the normal application bundle path:
 pluginOctane({ thread: 'main-thread' });
 ```
 
+### Block eligibility evidence
+
+Application builds attach an `octane:lynx-block-selection` report to the
+generated main-thread asset metadata. Version 1 is eligible only when paired
+background/main-thread resident-program coverage is complete, semantic and
+feature facts cover the same module set, and the graph stays within this
+independently proven Block subset:
+
+- authored Octane runtime uses or named re-exports are limited to `useState`,
+  `useEffect`, and `useSyncExternalStore`; opaque Octane module access is not
+  eligible;
+- background/main-thread functions and `main-thread:*` props are supported;
+- the authored template contains no ordinary component child, fragment,
+  `@if`/`@switch`/`@try`/Activity structure, bare renderable hole, ordinary host
+  ref, native `list`/`list-item` element, or event on a template-program root;
+- keyed ranges have no `@empty` arm or nested range, are the last child of
+  their host, and use an inline host or hookless local component as each row.
+
+The report retains source module, thread, line, and column for unsupported
+facts, as well as the underlying reason from an incomplete proof. It is
+advisory build evidence: it does not change emitted JavaScript, select the
+Block core, or alter the current universal-core default.
+
 ## Compatibility lanes
 
 Milestone 9 covers two exact, indivisible source/build graphs. Registry
