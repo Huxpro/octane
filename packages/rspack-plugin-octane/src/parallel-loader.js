@@ -1,5 +1,6 @@
 import octaneLoader from './loader.js';
 import { CSS_MODULE_BUILD_INFO_KEY, CSS_MODULE_CONTEXT_KEY } from './css-module-data.js';
+import { PROGRAM_ADDRESSES_BUILD_INFO_KEY } from './program-addresses.js';
 
 /**
  * Run the unchanged public Octane loader inside Rspack's worker pool. Rspack
@@ -24,6 +25,7 @@ export default function parallelOctaneLoader(source, sourceMap) {
 			...(metadata ?? {}),
 			__octaneParallelLoader: {
 				buildInfo: module.buildInfo?.octane ?? null,
+				programAddresses: module.buildInfo?.[PROGRAM_ADDRESSES_BUILD_INFO_KEY] ?? null,
 				...(module.buildInfo?.[CSS_MODULE_BUILD_INFO_KEY] === undefined
 					? null
 					: { cssModuleBuildInfo: module.buildInfo[CSS_MODULE_BUILD_INFO_KEY] }),

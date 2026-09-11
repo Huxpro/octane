@@ -6976,6 +6976,9 @@ importers:
       '@jridgewell/remapping':
         specifier: catalog:default
         version: 2.3.5
+      tsx:
+        specifier: ^4.23.1
+        version: 4.23.1
     devDependencies:
       '@rspack/core':
         specifier: catalog:default

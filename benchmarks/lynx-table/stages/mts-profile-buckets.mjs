@@ -61,6 +61,14 @@ export const BUCKETS = Object.freeze([
 		where: 'core/host-driver.ts mountProgram event-site lookup',
 	},
 	{
+		// Addressing adds one weak-map lookup to a resident program mount. It is
+		// framework mount work, not emitted create code; leaving this tiny helper
+		// unnamed lets the caller fallback overstate the emitter instead.
+		bucket: 'program mount',
+		probe: 'return a.get(e)}function l(e)',
+		where: 'core/program-registry.ts residentUniversalProgramAddress',
+	},
+	{
 		bucket: 'applier entry and pre-walk',
 		probe: 'first-screen container is not accepting an initial tree.',
 		where: 'core/host-driver.ts applyLynxFirstScreenDirect',
@@ -111,6 +119,24 @@ export const BUCKETS = Object.freeze([
 		where: 'core/host-driver.ts visit',
 	},
 	{
+		// The selector for a dense program range runs under the visitor. Its
+		// arithmetic entry is unique in the measured bundle and keeps the helper
+		// out of the caller-based emitted-code fallback.
+		bucket: 'applier walk',
+		probe: 'var a=t-r;if(a<2)return null',
+		where: 'core/host-driver.ts denseMemberSpan',
+	},
+	{
+		// A dense component-scoped range enters the other program painter. Its
+		// emitted `run` has no diagnostic, just like the single-instance create,
+		// so this frame also serves as the caller identity used by the fallback
+		// below. It follows the visitor probe because that caller's window reaches
+		// this nested function; reversing them would steal the walk's own frame.
+		bucket: 'program mount',
+		probe: 'var u=r.count;var c=r.programs',
+		where: 'core/host-driver.ts mountDenseSpan',
+	},
+	{
 		bucket: 'host record building',
 		probe: 'octane.lynx.element',
 		where: 'core/host-driver.ts createHandle',
@@ -151,6 +177,33 @@ export const BUCKETS = Object.freeze([
 		bucket: 'host record building',
 		probe: 'Octane Lynx NodesRef ',
 		where: 'core/nodes-ref.ts assertPositiveSafeInteger',
+	},
+	// Not the framework: the profile build's own PAPI timer and the intrinsic
+	// wrappers it injects. They precede the facade probes because a raw-text
+	// wrapper's window reaches the adjacent `createPage` facade; letting that
+	// broader probe run first would price instrument overhead as framework work.
+	{
+		bucket: 'stage instrument',
+		probe: '.papiCreateMs=',
+		where: 'stages/instrument-source.mjs profilePapiCreate',
+	},
+	// The return targets distinguish the three adjacent intrinsic wrappers. A
+	// method-name probe would let the earlier frame borrow the later method's
+	// name because all three sit inside one 160-character run.
+	{
+		bucket: 'stage instrument',
+		probe: 'return i(e)}finally{',
+		where: 'stages/instrument-source.mjs intrinsic view wrapper',
+	},
+	{
+		bucket: 'stage instrument',
+		probe: 'return s(e)}finally{',
+		where: 'stages/instrument-source.mjs intrinsic text wrapper',
+	},
+	{
+		bucket: 'stage instrument',
+		probe: 'return l(e)}finally{',
+		where: 'stages/instrument-source.mjs intrinsic raw-text wrapper',
 	},
 	// The facade `createLynxPapi` returns: one-line wrappers forwarding to the
 	// host functions. Three are sampled. Two of them, `setClasses` and `setEvent`,
@@ -339,6 +392,40 @@ export const BUCKETS = Object.freeze([
 		bucket: 'renderer pre-passes',
 		probe: '.plan.nodes,',
 		where: 'main-renderer.ts collectFirstScreenEvents',
+	},
+	// The program-aware event collector is emitted as two nested functions in
+	// the current production bundle. The outer window reaches the inner entry,
+	// so it has to be claimed first by its own loop; the inner frame is then
+	// identified by the program branch it opens with.
+	{
+		bucket: 'renderer pre-passes',
+		probe: 'for(var l of r)s+=function r(',
+		where: 'main-renderer.ts collectFirstScreenEvents',
+	},
+	{
+		bucket: 'renderer pre-passes',
+		probe: 'var l=0;if("program"===t.kind)',
+		where: 'main-renderer.ts collectNodeFirstScreenEvents',
+	},
+	{
+		bucket: 'renderer pre-passes',
+		probe: 'kind:"range",key:r,id:0,children:e',
+		where: 'main-renderer.ts rangeNode',
+	},
+	{
+		bucket: 'renderer pre-passes',
+		probe: 'Lynx first-screen hooks may only run while a component is rendering.',
+		where: 'main-renderer.ts currentAttempt',
+	},
+	{
+		bucket: 'renderer pre-passes',
+		probe: 'return D().owner',
+		where: 'main-renderer.ts currentOwner',
+	},
+	{
+		bucket: 'renderer pre-passes',
+		probe: 'var n=t.owner;t.owner=',
+		where: 'main-renderer.ts withOwner',
 	},
 	// `TEMPLATE_ENV`'s three child appenders, declared back to back so that each
 	// one's window contains the ones after it. They must therefore be checked in
@@ -569,18 +656,6 @@ export const BUCKETS = Object.freeze([
 		probe: 'is malformed.',
 		where: 'core/native-events.ts decodeLynxNativeEventToken',
 	},
-	// Not the framework: the profile build's own counter, injected by
-	// `stages/instrument-source.mjs` and present in no shipping build. It is
-	// named so that the part of a profile cell's window belonging to the
-	// instrument is a row rather than a share of `unnamed`. The PAPI method
-	// wrappers the same patch installs are not named — they are one-expression
-	// closures with no literal of their own — so this row is a floor on the
-	// instrument's cost, not its total, and the unnamed list shows the rest.
-	{
-		bucket: 'stage instrument',
-		probe: '.papiCreateMs=',
-		where: 'stages/instrument-source.mjs profilePapiCreate',
-	},
 ]);
 
 /**
@@ -681,7 +756,8 @@ export const SITES_BY_BUCKET = Object.freeze(
 );
 
 /**
- * True for the frame that mounts a program, whose unnamed callees are its create.
+ * True for a frame that mounts a program, whose unnamed emitted callee is its
+ * create or dense-run driver.
  *
  * Both entry probes, for the reason above: identifying the mount by only one of
  * them makes the compiled program's own time depend on which shape the minifier
@@ -694,11 +770,21 @@ export const SITES_BY_BUCKET = Object.freeze(
  * `compiled program create`, overstating it by however much the predicate cost;
  * the predicate now carries a probe of its own, so the fallback reaches only
  * frames that really are emitted code.
+ *
+ * A dense component-scoped range reaches `mountDenseSpan` instead. Its direct
+ * emitted callee is `bound.run`; the caller probe is the unique plan-field run
+ * named above, so the same fallback accounts for emitted code on both program
+ * painters without treating arbitrary descendants as program work.
+ *
+ * Asking `probeOf` rather than repeating `includes` is load-bearing: the
+ * visitor's window reaches the nested dense-mount entry, but its earlier
+ * `denseSpan` probe correctly names the visitor. Repeating the later substring
+ * here would call `denseMemberSpan`, another child of the visitor, emitted code.
  */
 export function isProgramMountFrame(text) {
+	const where = probeOf(text)?.where;
 	return (
-		text.includes('first-screen program binds an event on node ') ||
-		text.includes('first-screen program node carries no plan')
+		where === 'core/host-driver.ts mountProgram' || where === 'core/host-driver.ts mountDenseSpan'
 	);
 }
 

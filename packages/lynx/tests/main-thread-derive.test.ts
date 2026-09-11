@@ -21,6 +21,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
 	universalPlan,
+	type UniversalHostCapabilities,
 	type UniversalHostPlan,
 	type UniversalHostTemplateProgram,
 	type UniversalHostTemplateProgramValue,
@@ -30,7 +31,6 @@ import {
 	createUniversalHostEncoder,
 	prepareUniversalTemplateProgram,
 	universalTemplateProgramWithoutRanges,
-	type UniversalHostCapabilities,
 } from 'octane/universal/template-program';
 
 import { compileLynxBlockTemplate, createLynxBlockCore } from '../src/core/block-core.js';
@@ -241,6 +241,29 @@ describe('deriving a main-thread program from a plan', () => {
 			propsSlot: 0,
 		}).root as UniversalHostPlan;
 		expect(deriveLynxMainThreadProgram(SPREAD)).toBeNull();
+	});
+
+	it('declines a described program whose props require the command path', () => {
+		const COMMAND_ONLY_PROP = universalPlan(LYNX_TRANSPORT_RENDERER, {
+			kind: 'host',
+			type: 'view',
+			props: { class: 'root' },
+			children: [
+				{
+					kind: 'host',
+					type: 'text',
+					props: { class: 'label', 'lynx-test-tag': 'demo-label' },
+					children: [{ kind: 'text', value: 'Label' }],
+				},
+			],
+		}).root as UniversalHostPlan;
+
+		// The resident-program lowering can describe this standard Lynx prop, but
+		// the compiled create-function backend has no proved scalar writer for it.
+		// Default compilation must leave the plan on the command path before either
+		// thread gives it a positional address.
+		expect(throughRuntimeLowering(COMMAND_ONLY_PROP, () => false)).not.toBeNull();
+		expect(deriveLynxMainThreadProgram(COMMAND_ONLY_PROP)).toBeNull();
 	});
 
 	it('declines a range that would be the whole program', () => {

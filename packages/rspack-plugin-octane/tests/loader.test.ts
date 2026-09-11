@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fileURLToPath } from 'node:url';
 
 const mocks = vi.hoisted(() => ({
 	canonicalModuleId: vi.fn(),
@@ -18,6 +19,7 @@ import octaneLoader from '../src/loader.js';
 import finalizeOctaneLoader, { pitch as pitchOctaneLoader } from '../src/finalize-loader.js';
 import parallelOctaneLoader from '../src/parallel-loader.js';
 import { CSS_MODULE_CONTEXT_KEY, cssModuleSourceHash } from '../src/css-module-data.js';
+import { PROGRAM_ADDRESSES_BUILD_INFO_KEY } from '../src/program-addresses.js';
 
 interface LoaderResult {
 	error: Error | null;
@@ -484,6 +486,39 @@ describe('octane Rspack loader', () => {
 		);
 	});
 
+	it('loads and verifies a serializable main-thread backend reference', () => {
+		mocks.transform.mockReturnValue(null);
+		const request = fileURLToPath(new URL('../../lynx/src/compiler/index.ts', import.meta.url));
+
+		const loaded = runLoader({
+			options: {
+				mainThreadProgramBackend: {
+					request,
+					signature: 'lynx-main-thread-program/19',
+				},
+			},
+		});
+		expect(loaded.result.error).toBeNull();
+		expect(mocks.createOctaneCompiler).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				mainThreadProgramBackend: expect.objectContaining({
+					signature: 'lynx-main-thread-program/19',
+					deriveLynxMainThreadProgram: expect.any(Function),
+					emitLynxMainThreadProgram: expect.any(Function),
+				}),
+			}),
+		);
+
+		const mismatch = runLoader({
+			options: {
+				mainThreadProgramBackend: { request, signature: 'lynx-main-thread-program/stale' },
+			},
+		});
+		expect(mismatch.result.error).toEqual(
+			expect.objectContaining({ message: expect.stringMatching(/signature.*stale/) }),
+		);
+	});
+
 	it('builds no backend into a compiler when no build configured one', () => {
 		mocks.transform.mockReturnValue(null);
 		runLoader();
@@ -621,6 +656,9 @@ describe('octane Rspack loader', () => {
 		const module = {
 			buildInfo: {
 				octane: { canonicalId: '/stale', transformKind: 'compile', serverRpc: false },
+				[PROGRAM_ADDRESSES_BUILD_INFO_KEY]: [
+					{ module: 'src/Stale.tsrx', index: 0, digest: 'aaaaaaaaaaaaaaaa' },
+				],
 			},
 		};
 		const output = runLoader({
@@ -731,6 +769,7 @@ describe('octane Rspack loader', () => {
 		expect(output.dependencies).toEqual(['/project/package.json']);
 		expect(output.missingDependencies).toEqual(['/project/src/package.json']);
 		expect(output.module.buildInfo).not.toHaveProperty('octane');
+		expect(output.module.buildInfo).not.toHaveProperty(PROGRAM_ADDRESSES_BUILD_INFO_KEY);
 	});
 
 	it('preserves unrelated loader metadata while restoring worker compilation state', () => {
@@ -758,6 +797,28 @@ describe('octane Rspack loader', () => {
 		expect(callback).toHaveBeenCalledWith(null, 'export const rendered = true;', sourceMap, {
 			upstream: { generated: true },
 		});
+	});
+
+	it('cross-checks worker-derived program addresses in the main compilation', () => {
+		const compilation = {};
+		const context = {
+			_compilation: compilation,
+			_module: { buildInfo: {} },
+			addMissingDependency: vi.fn(),
+			callback: vi.fn(),
+		};
+		const metadata = (digest: string) => ({
+			__octaneParallelLoader: {
+				buildInfo: null,
+				programAddresses: [{ module: 'src/App.tsrx', index: 0, digest }],
+				missingDependencies: [],
+			},
+		});
+
+		finalizeOctaneLoader.call(context, 'export {};', undefined, metadata('aaaaaaaaaaaaaaaa'));
+		expect(() =>
+			finalizeOctaneLoader.call(context, 'export {};', undefined, metadata('bbbbbbbbbbbbbbbb')),
+		).toThrow(/disagree about program src\/App\.tsrx#0/);
 	});
 
 	it('reports parallel compilation errors without attaching incomplete module metadata', () => {

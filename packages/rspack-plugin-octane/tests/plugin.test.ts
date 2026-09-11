@@ -162,6 +162,33 @@ describe('OctaneRspackPlugin', () => {
 		]);
 	});
 
+	it('keeps backend references parallel and live backend modules serial', () => {
+		const referenceCompiler = createCompiler('web');
+		applyPlugin(
+			new OctaneRspackPlugin({
+				mainThreadProgramBackend: {
+					request: '@renderer/compiler',
+					signature: 'renderer-program/1',
+				},
+			}),
+			referenceCompiler,
+		);
+		expect(referenceCompiler.options.module.rules[0].use).toHaveLength(2);
+
+		const liveCompiler = createCompiler('web');
+		applyPlugin(
+			new OctaneRspackPlugin({
+				mainThreadProgramBackend: {
+					signature: 'renderer-program/1',
+					deriveLynxMainThreadProgram: () => null,
+					emitLynxMainThreadProgram: () => ({ source: '', valueCount: 0, eventCount: 0 }),
+				},
+			}),
+			liveCompiler,
+		);
+		expect(liveCompiler.options.module.rules[0].use).toHaveLength(1);
+	});
+
 	it('honors explicit client mode and serializable loader options', () => {
 		const existingHostPath = process.execPath;
 		const compiler = createCompiler('node');

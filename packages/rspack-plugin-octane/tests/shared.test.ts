@@ -115,6 +115,18 @@ describe('declarative options', () => {
 		expect(normalizeLoaderOptions({ strong: false })).toEqual({ strong: false });
 	});
 
+	it('copies and freezes serializable main-thread backend references', () => {
+		const reference = { request: '@renderer/compiler', signature: 'renderer-program/7' };
+		const options = normalizePluginOptions({ mainThreadProgramBackend: reference });
+		reference.request = '@renderer/later';
+
+		expect(options.mainThreadProgramBackend).toEqual({
+			request: '@renderer/compiler',
+			signature: 'renderer-program/7',
+		});
+		expect(Object.isFrozen(options.mainThreadProgramBackend)).toBe(true);
+	});
+
 	it('normalizes compile-runtime metadata and a plugin-only runtime request', () => {
 		const universalRuntime = { runtime: 'lynx', thread: 'background' as const };
 		const options = normalizePluginOptions({
@@ -195,7 +207,12 @@ describe('declarative options', () => {
 			/thread/,
 		],
 		[{ runtime: '' }, /runtime/],
-		[{ mainThreadProgramBackend: 'octane/compiler' }, /must be a backend module/],
+		[{ mainThreadProgramBackend: 'octane/compiler' }, /backend module or module reference/],
+		[{ mainThreadProgramBackend: { request: '', signature: 'x' } }, /request/],
+		[
+			{ mainThreadProgramBackend: { request: '@renderer/compiler', signature: 'x', extra: true } },
+			/unknown.*extra/,
+		],
 		[{ mainThreadProgramBackend: { signature: 'x' } }, /deriveLynxMainThreadProgram/],
 		[
 			{

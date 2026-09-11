@@ -31,6 +31,12 @@ const PACKAGES = {
 	'@octanejs/rspack-plugin': resolve(WORKSPACE_ROOT, 'packages/rspack-plugin-octane'),
 	'@octanejs/rspeedy-plugin': resolve(WORKSPACE_ROOT, 'packages/rspeedy-plugin-octane'),
 } as const;
+const PACKAGE_VERSIONS = Object.fromEntries(
+	Object.entries(PACKAGES).map(([name, directory]) => [
+		name,
+		JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8')).version as string,
+	]),
+) as Record<keyof typeof PACKAGES, string>;
 
 function nativeScriptText(script: unknown): string {
 	if (typeof script === 'string') return script;
@@ -70,9 +76,14 @@ function packWorkspacePackages(root: string): Record<keyof typeof PACKAGES, stri
 }
 
 function renderOverrides(archives: Record<keyof typeof PACKAGES, string>): string {
+	// pnpm identifies an overridden local tarball by its `file:` locator rather
+	// than the version inside its manifest, so an exact Octane peer appears
+	// invalid even when the installed archive is exactly 0.1.47. Exempt that one
+	// transport-shaped comparison, then assert the installed manifest version
+	// below; every other runtime and build-tool peer remains strict here.
 	return `overrides:\n${Object.entries(archives)
 		.map(([name, archive]) => `  ${JSON.stringify(name)}: ${JSON.stringify(`file:${archive}`)}`)
-		.join('\n')}\n`;
+		.join('\n')}\npeerDependencyRules:\n  allowAny:\n    - octane\n`;
 }
 
 async function decodeNativeBundle(content: Buffer): Promise<Record<string, unknown>> {
@@ -89,13 +100,11 @@ describe('@octanejs/rspeedy-plugin packed consumer', () => {
 		const developmentOutputRoot = join(consumerRoot, 'dist-development');
 		const blockOutputRoot = join(consumerRoot, 'dist-block');
 		const blockDevelopmentOutputRoot = join(consumerRoot, 'dist-block-development');
+		const eligibleOutputRoot = join(consumerRoot, 'dist-eligible');
 		try {
 			const archives = packWorkspacePackages(join(temporaryRoot, 'archives'));
 			mkdirSync(consumerRoot, { recursive: true });
 			cpSync(join(APPLICATION_FIXTURE, 'src'), join(consumerRoot, 'src'), { recursive: true });
-			const archiveSpecs = Object.fromEntries(
-				Object.entries(archives).map(([name, archive]) => [name, `file:${archive}`]),
-			);
 			writeFileSync(
 				join(consumerRoot, 'package.json'),
 				`${JSON.stringify(
@@ -105,10 +114,10 @@ describe('@octanejs/rspeedy-plugin packed consumer', () => {
 						type: 'module',
 						dependencies: {
 							...LYNX_TOOLCHAIN_LANES.minimum.packages,
-							'@octanejs/lynx': archiveSpecs['@octanejs/lynx'],
-							'@octanejs/rspack-plugin': archiveSpecs['@octanejs/rspack-plugin'],
-							'@octanejs/rspeedy-plugin': archiveSpecs['@octanejs/rspeedy-plugin'],
-							octane: archiveSpecs.octane,
+							'@octanejs/lynx': PACKAGE_VERSIONS['@octanejs/lynx'],
+							'@octanejs/rspack-plugin': PACKAGE_VERSIONS['@octanejs/rspack-plugin'],
+							'@octanejs/rspeedy-plugin': PACKAGE_VERSIONS['@octanejs/rspeedy-plugin'],
+							octane: PACKAGE_VERSIONS.octane,
 						},
 					},
 					null,
@@ -125,6 +134,7 @@ import { pluginOctane } from '@octanejs/rspeedy-plugin';
 const mode = process.argv[2] ?? 'production';
 const outputRoot = process.argv[3] ?? ${JSON.stringify(outputRoot)};
 const core = process.argv[4] ?? 'universal';
+const entry = process.argv[5] ?? './src/background.ts';
 const rspeedy = await createRspeedy({
   cwd: ${JSON.stringify(consumerRoot)},
   loadEnv: false,
@@ -140,7 +150,7 @@ const rspeedy = await createRspeedy({
       filenameHash: false,
       sourceMap: false,
     },
-    source: { entry: { main: './src/background.ts' } },
+    source: { entry: { main: entry } },
     splitChunks: false,
     plugins: [pluginOctane({ core, hmr: mode === 'development', dev: mode === 'development' })],
   },
@@ -177,10 +187,13 @@ try {
 			const consumerRequire = createRequire(join(consumerRoot, 'package.json'));
 			for (const packageName of Object.keys(PACKAGES)) {
 				const installed = realpathSync(consumerRequire.resolve(packageName));
-				expect(
-					existsSync(join(consumerRoot, 'node_modules', ...packageName.split('/'))),
-					`${packageName} should be installed for the consumer`,
-				).toBe(true);
+				const packageRoot = join(consumerRoot, 'node_modules', ...packageName.split('/'));
+				expect(existsSync(packageRoot), `${packageName} should be installed for the consumer`).toBe(
+					true,
+				);
+				expect(JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')).version).toBe(
+					PACKAGE_VERSIONS[packageName as keyof typeof PACKAGES],
+				);
 				expect(
 					isWithin(WORKSPACE_ROOT, installed),
 					`${packageName} must not resolve to source`,
@@ -212,6 +225,26 @@ try {
 			expect(background).toContain('Octane Lynx OL273');
 			expect(background).not.toContain('main-thread worklet implementation');
 			expect(readdirSync(join(outputRoot, 'static/svg'))).toContain('badge.svg');
+
+			execFileSync(
+				process.execPath,
+				['build.mjs', 'production', eligibleOutputRoot, 'universal', './src/block-eligible.ts'],
+				{
+					cwd: consumerRoot,
+					encoding: 'utf8',
+					stdio: ['ignore', 'pipe', 'pipe'],
+					timeout: 120_000,
+				},
+			);
+			const eligibleDecoded = await decodeNativeBundle(
+				readFileSync(join(eligibleOutputRoot, 'main.lynx.bundle')),
+			);
+			const eligibleMainThread = nativeScriptText(eligibleDecoded['main-thread-script']);
+			const eligibleBackground = nativeScriptText(eligibleDecoded['background-thread-script']);
+			// Both layers carry the same positional address only when the installed
+			// default backend derived this real host-only program successfully.
+			expect(eligibleMainThread).toContain('src/BlockEligible.tsrx');
+			expect(eligibleBackground).toContain('src/BlockEligible.tsrx');
 
 			execFileSync(process.execPath, ['build.mjs', 'development', developmentOutputRoot], {
 				cwd: consumerRoot,

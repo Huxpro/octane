@@ -18,9 +18,21 @@ test('accepts a named profile below the unmatched ceiling', () => {
 			0.4,
 		),
 	);
+	assert.doesNotThrow(() =>
+		assertMtsProfileCoverage(
+			{
+				buckets: { 'applier walk': stat(0), 'compiled program create': stat(20) },
+				namedMs: stat(70),
+				unmatchedMs: stat(30),
+				totalMs: stat(100),
+				unmatchedShare: stat(0.3),
+			},
+			0.4,
+		),
+	);
 });
 
-test('rejects a missing critical bucket and excessive unmatched self time', () => {
+test('rejects both missing critical paths and excessive unmatched self time', () => {
 	assert.throws(
 		() =>
 			assertMtsProfileCoverage(
@@ -33,7 +45,7 @@ test('rejects a missing critical bucket and excessive unmatched self time', () =
 				},
 				0.4,
 			),
-		/applier walk/,
+		/applier walk.*compiled program create/,
 	);
 	assert.throws(
 		() =>

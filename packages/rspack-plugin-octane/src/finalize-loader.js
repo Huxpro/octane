@@ -3,6 +3,10 @@ import {
 	CSS_MODULE_BUILD_INFO_KEY,
 	CSS_MODULE_CONTEXT_KEY,
 } from './css-module-data.js';
+import {
+	crossCheckProgramAddresses,
+	PROGRAM_ADDRESSES_BUILD_INFO_KEY,
+} from './program-addresses.js';
 
 /**
  * Rspack does not copy a module's layer or buildInfo into parallel-loader
@@ -15,6 +19,7 @@ export function pitch() {
 	clearCssModuleBuildInfo(this._module);
 	if (this._module?.buildInfo && typeof this._module.buildInfo === 'object') {
 		delete this._module.buildInfo.octane;
+		delete this._module.buildInfo[PROGRAM_ADDRESSES_BUILD_INFO_KEY];
 	}
 }
 
@@ -33,6 +38,7 @@ export default function finalizeOctaneLoader(source, sourceMap, metadata) {
 		}
 		this._module.buildInfo[CSS_MODULE_BUILD_INFO_KEY] = result.cssModuleBuildInfo;
 	}
+	crossCheckProgramAddresses(this._compilation, result?.programAddresses);
 	for (const dependency of result?.missingDependencies ?? []) {
 		this.addMissingDependency(dependency);
 	}

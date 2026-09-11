@@ -85,6 +85,10 @@ import type { UniversalHostCapabilities } from 'octane/universal/native';
 
 import { createLynxClientDriver } from '../core/client-driver.js';
 import { LYNX_TRANSPORT_RENDERER } from '../core/protocol.js';
+import {
+	emitLynxMainThreadProgram,
+	LynxMainThreadEmitRefusal,
+} from './emit-main-thread-program.js';
 
 /**
  * A plan lowered to the program the main-thread emission compiles, plus the two
@@ -207,7 +211,7 @@ export function deriveLynxMainThreadProgram(
 	if (reduced === null) return null;
 	const prepared = prepareUniversalTemplateProgram(encoder, reduced.compiled);
 	if (prepared === null) return null;
-	return Object.freeze({
+	const derived = Object.freeze({
 		wire: prepared.wire,
 		values: prepared.values,
 		events: prepared.events,
@@ -218,4 +222,21 @@ export function deriveLynxMainThreadProgram(
 		// hole whose members are mounted separately under the same host node.
 		addressable: reduced.ranges.every((range) => prepared.wire.nodes[range.node]!.type !== 'text'),
 	});
+	// The runtime lowering is deliberately broader than the compiled-create
+	// backend: it can describe hosts and props that only the command path knows
+	// how to write. A backend configured as the normal build default must decline
+	// those plans here, before either thread assigns a positional address. Probe
+	// with the emitter itself so eligibility cannot drift from what is emitted.
+	// Only its explicit refusal is a conservative fallback; malformed backend
+	// state and ordinary programming errors still fail the build.
+	try {
+		emitLynxMainThreadProgram(derived.wire, {
+			name: 'octaneEligibilityProbe',
+			ranges: derived.ranges,
+		});
+	} catch (error) {
+		if (error instanceof LynxMainThreadEmitRefusal) return null;
+		throw error;
+	}
+	return derived;
 }

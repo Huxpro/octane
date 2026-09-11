@@ -23,19 +23,23 @@ const BLOCK_MODES = new Set(['scoped', 'reconcile', 'derived']);
 // app/src/block-program.ts), and `derived` is the compiled `App` itself, lowered
 // onto the core by the framework (issue-#135 item 1b). The main-thread first
 // screen is the same program in every case; only the background driver changes.
-// BENCH_MTS_PROGRAM=1 hands the compiler issue-#163's main-thread program
-// backend, so the main-thread chunk's eligible templates lower to straight-line
-// create functions driving the Element PAPI instead of the descriptions an
-// interpreter walks per node. The background chunk is untouched by it — that is
-// #163's byte-identity promise, and `benchmarks/lynx-bundle-size/core-switch.mjs`
-// is where it is asserted rather than assumed.
+// Normal dual-thread builds now receive the package's serializable main-thread
+// program backend from pluginOctane itself, so the main-thread chunk's eligible
+// templates lower to straight-line create functions driving the Element PAPI.
+// BENCH_MTS_PROGRAM=1 remains the explicit-source arm used by the historical
+// emitter A/B stages: it loads the checkout's live backend object and gives the
+// result a distinct directory name. The background chunk is untouched by either
+// route — that is #163's byte-identity promise, and
+// `benchmarks/lynx-bundle-size/core-switch.mjs` asserts it rather than assuming
+// it.
 //
 // The backend is TypeScript reaching into the renderer's own run-time lowering,
 // which this plain-JavaScript config cannot import unaided: Node strips types by
 // itself but will not rewrite an authored `./x.js` specifier to the `./x.ts`
 // beside it. `ts-source-resolution.mjs` closes exactly that gap and nothing
-// else. Both imports are dynamic and behind the flag, so a default build neither
-// registers the hook nor loads a byte of the backend.
+// else. Both imports are dynamic and behind the flag, so an unflagged benchmark
+// config does not load a second live backend; it exercises the same serializable
+// default-ref path a normal consumer build does in the loader worker.
 //
 // BENCH_REPO_ROOT is the repository this config was staged out of: the build
 // copies these sources into the Rspeedy plugin's examples directory, so a
