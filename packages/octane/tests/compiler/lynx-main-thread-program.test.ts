@@ -114,6 +114,25 @@ function compileCard(
 			hooks: readonly { name: string; line: number; column: number }[];
 		}[];
 	};
+	lynxBlockFeatureRequirements?: {
+		version: number;
+		threadFunctions: readonly {
+			kind: string;
+			id: string;
+			line: number;
+			column: number;
+			captures: readonly string[];
+		}[];
+		mainThreadProps: readonly { name: string; line: number; column: number }[];
+		keyedRanges: readonly {
+			line: number;
+			column: number;
+			empty: boolean;
+			nested: boolean;
+			lastChild: boolean;
+			row: Readonly<Record<string, unknown>>;
+		}[];
+	};
 } {
 	const { target = 'lynx', thread = 'main-thread', backend, module } = options;
 	return compile(source, '/src/Card.lynx.tsrx', {
@@ -137,6 +156,25 @@ function compileCard(
 				line: number;
 				column: number;
 				hooks: readonly { name: string; line: number; column: number }[];
+			}[];
+		};
+		lynxBlockFeatureRequirements?: {
+			version: number;
+			threadFunctions: readonly {
+				kind: string;
+				id: string;
+				line: number;
+				column: number;
+				captures: readonly string[];
+			}[];
+			mainThreadProps: readonly { name: string; line: number; column: number }[];
+			keyedRanges: readonly {
+				line: number;
+				column: number;
+				empty: boolean;
+				nested: boolean;
+				lastChild: boolean;
+				row: Readonly<Record<string, unknown>>;
 			}[];
 		};
 	};
@@ -707,8 +745,65 @@ void shadowed;
 		});
 
 		expect(result.lynxBlockSemanticRequirements).toBeUndefined();
+		expect(result.lynxBlockFeatureRequirements).toBeUndefined();
 		expect(paired.lynxBlockSemanticRequirements?.version).toBe(1);
+		expect(paired.lynxBlockFeatureRequirements?.version).toBe(1);
 		expect(paired.code).toBe(result.code);
+	});
+});
+
+describe('reporting authored Block feature requirements', () => {
+	it('records nested, non-tail, and hooked keyed rows without judging support', () => {
+		const result = compileCard(`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useState } from 'octane';
+
+function HookedRow() @{
+	const [value] = useState('row');
+	<view><text>{value as string}</text></view>
+}
+
+export function App(props: { groups: readonly { id: number; rows: readonly number[] }[] }) @{
+	<view>
+		@for (const group of props.groups; key group.id) {
+			<view>
+				@for (const row of group.rows; key row) {
+					<HookedRow />
+				}
+			</view>
+		}
+		<text>tail</text>
+	</view>
+}
+`);
+
+		expect(result.lynxBlockFeatureRequirements).toEqual({
+			version: 1,
+			threadFunctions: [],
+			mainThreadProps: [],
+			keyedRanges: [
+				{
+					line: 11,
+					column: 2,
+					empty: false,
+					nested: true,
+					lastChild: false,
+					row: { kind: 'inline-host', name: 'view' },
+				},
+				{
+					line: 13,
+					column: 4,
+					empty: false,
+					nested: false,
+					lastChild: true,
+					row: {
+						kind: 'local-component',
+						name: 'HookedRow',
+						hooks: [{ name: 'useState', line: 5, column: 17 }],
+					},
+				},
+			],
+		});
+		expect(result.code).not.toContain('lynxBlockFeatureRequirements');
 	});
 });
 

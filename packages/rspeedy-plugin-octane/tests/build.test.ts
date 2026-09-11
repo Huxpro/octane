@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 import * as lynxMainThreadProgramBackend from '../../lynx/src/compiler/index.js';
 import { pluginOctane } from '../src/index.js';
 import {
+	LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO,
 	LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO,
 	LYNX_PROGRAM_COVERAGE_ASSET_INFO,
 } from '../src/program-coverage.js';
@@ -247,8 +248,9 @@ class ProgramCoverageProbePlugin {
 					for (const asset of compilation.getAssets()) {
 						const program = asset.info[LYNX_PROGRAM_COVERAGE_ASSET_INFO];
 						const semantic = asset.info[LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO];
-						if (program !== undefined || semantic !== undefined) {
-							this.reports.push({ program, semantic });
+						const feature = asset.info[LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO];
+						if (program !== undefined || semantic !== undefined || feature !== undefined) {
+							this.reports.push({ program, semantic, feature });
 						}
 					}
 				},
@@ -376,6 +378,46 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 										},
 									],
 								},
+							},
+						],
+						reasons: [],
+					},
+					feature: {
+						version: 1,
+						paired: true,
+						modules: [
+							{
+								module: '/src/App.tsrx',
+								background: expect.objectContaining({
+									version: 1,
+									threadFunctions: expect.arrayContaining([
+										expect.objectContaining({ kind: 'background', captures: [] }),
+										expect.objectContaining({
+											kind: 'main-thread',
+											captures: ['readInBackground', 'mainThreadRef'],
+										}),
+									]),
+									mainThreadProps: [
+										expect.objectContaining({ name: 'main-thread:bindlongpress' }),
+										expect.objectContaining({ name: 'main-thread:ref' }),
+									],
+									keyedRanges: [],
+								}),
+								mainThread: expect.objectContaining({
+									version: 1,
+									threadFunctions: expect.arrayContaining([
+										expect.objectContaining({ kind: 'background', captures: [] }),
+										expect.objectContaining({
+											kind: 'main-thread',
+											captures: ['readInBackground', 'mainThreadRef'],
+										}),
+									]),
+									mainThreadProps: [
+										expect.objectContaining({ name: 'main-thread:bindlongpress' }),
+										expect.objectContaining({ name: 'main-thread:ref' }),
+									],
+									keyedRanges: [],
+								}),
 							},
 						],
 						reasons: [],

@@ -5,6 +5,8 @@ export const LYNX_PROGRAM_COVERAGE_VERSION = 1;
 export const LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO =
 	'octane:lynx-block-semantic-requirements';
 export const LYNX_BLOCK_SEMANTIC_REQUIREMENTS_VERSION = 1;
+export const LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO = 'octane:lynx-block-feature-requirements';
+export const LYNX_BLOCK_FEATURE_REQUIREMENTS_VERSION = 1;
 const MAIN_THREAD_ASSET = /main-thread(?:\.[A-Fa-f0-9]+)?\.js$/;
 
 function dependencyRequest(dependency) {
@@ -140,6 +142,42 @@ function cloneSemanticRequirements(requirements) {
 	});
 }
 
+function cloneFeatureRequirements(requirements) {
+	return Object.freeze({
+		version: LYNX_BLOCK_FEATURE_REQUIREMENTS_VERSION,
+		threadFunctions: Object.freeze(
+			requirements.threadFunctions.map((site) =>
+				Object.freeze({
+					kind: site.kind,
+					id: site.id,
+					line: site.line,
+					column: site.column,
+					captures: Object.freeze([...site.captures]),
+				}),
+			),
+		),
+		mainThreadProps: Object.freeze(requirements.mainThreadProps.map(cloneSourceSite)),
+		keyedRanges: Object.freeze(
+			requirements.keyedRanges.map((range) =>
+				Object.freeze({
+					line: range.line,
+					column: range.column,
+					empty: range.empty,
+					nested: range.nested,
+					lastChild: range.lastChild,
+					row: Object.freeze({
+						kind: range.row.kind,
+						name: range.row.name,
+						...(range.row.kind === 'local-component'
+							? { hooks: Object.freeze(range.row.hooks.map(cloneSourceSite)) }
+							: null),
+					}),
+				}),
+			),
+		),
+	});
+}
+
 function layerSemanticRequirements(modules, thread) {
 	const observations = new Map();
 	const unavailable = [];
@@ -195,6 +233,60 @@ function layerSemanticRequirements(modules, thread) {
 		const rightModule = String(right.module);
 		return leftModule < rightModule ? -1 : leftModule > rightModule ? 1 : 0;
 	});
+	return { requirements, conflicts, unavailable };
+}
+
+function layerFeatureRequirements(modules, thread) {
+	const observations = new Map();
+	const unavailable = [];
+	for (const module of modules) {
+		const info = getOctaneRspackBuildInfo(module);
+		if (info === null) {
+			const raw = module?.buildInfo?.octane;
+			if (raw !== undefined) {
+				unavailable.push(
+					Object.freeze({
+						module:
+							raw !== null && typeof raw === 'object' && typeof raw.canonicalId === 'string'
+								? raw.canonicalId
+								: null,
+						invalidMetadata: true,
+					}),
+				);
+			}
+			continue;
+		}
+		if (info.transformKind !== 'compile' || info.universalRuntime?.runtime !== 'lynx') continue;
+		if (info.universalRuntime.thread !== thread) {
+			unavailable.push(
+				Object.freeze({ module: info.canonicalId, observedThread: info.universalRuntime.thread }),
+			);
+			continue;
+		}
+		if (info.lynxBlockFeatureRequirements === undefined) {
+			unavailable.push(Object.freeze({ module: info.canonicalId }));
+			continue;
+		}
+		let moduleObservations = observations.get(info.canonicalId);
+		if (moduleObservations === undefined) {
+			moduleObservations = new Map();
+			observations.set(info.canonicalId, moduleObservations);
+		}
+		const value = cloneFeatureRequirements(info.lynxBlockFeatureRequirements);
+		moduleObservations.set(JSON.stringify(value), value);
+	}
+	const requirements = new Map();
+	const conflicts = [];
+	for (const id of [...observations.keys()].sort()) {
+		const values = [...observations.get(id).entries()]
+			.sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+			.map(([, value]) => value);
+		requirements.set(id, values[0]);
+		if (values.length > 1) {
+			conflicts.push(Object.freeze({ module: id, observations: Object.freeze(values) }));
+		}
+	}
+	unavailable.sort((left, right) => String(left.module).localeCompare(String(right.module)));
 	return { requirements, conflicts, unavailable };
 }
 
@@ -286,6 +378,63 @@ function collectLynxBlockSemanticRequirementsFromEntryModules(entryModules) {
 
 export function collectLynxBlockSemanticRequirements(compilation, options) {
 	return collectLynxBlockSemanticRequirementsFromEntryModules(
+		collectApplicationEntryModules(compilation, options),
+	);
+}
+
+function collectLynxBlockFeatureRequirementsFromEntryModules(entryModules) {
+	const { background, main } = entryModules;
+	const reasons = [];
+	for (const request of background.missing) {
+		reasons.push(reason('missing-background-entry-import', { request }));
+	}
+	for (const request of main.missing) {
+		reasons.push(reason('missing-main-thread-entry-import', { request }));
+	}
+	const backgroundLayer = layerFeatureRequirements(background.modules, 'background');
+	const mainLayer = layerFeatureRequirements(main.modules, 'main-thread');
+	for (const conflict of backgroundLayer.conflicts) {
+		reasons.push(reason('background-feature-requirements-conflict', conflict));
+	}
+	for (const conflict of mainLayer.conflicts) {
+		reasons.push(reason('main-thread-feature-requirements-conflict', conflict));
+	}
+	for (const unavailable of backgroundLayer.unavailable) {
+		reasons.push(reason('background-feature-requirements-unavailable', unavailable));
+	}
+	for (const unavailable of mainLayer.unavailable) {
+		reasons.push(reason('main-thread-feature-requirements-unavailable', unavailable));
+	}
+	const backgroundRequirements = backgroundLayer.requirements;
+	const mainRequirements = mainLayer.requirements;
+	const ids = [...new Set([...backgroundRequirements.keys(), ...mainRequirements.keys()])].sort();
+	const modules = [];
+	for (const id of ids) {
+		const backgroundModule = backgroundRequirements.get(id);
+		const mainModule = mainRequirements.get(id);
+		if (backgroundModule === undefined) {
+			reasons.push(reason('missing-background-feature-requirements', { module: id }));
+			continue;
+		}
+		if (mainModule === undefined) {
+			reasons.push(reason('missing-main-thread-feature-requirements', { module: id }));
+			continue;
+		}
+		modules.push(
+			Object.freeze({ module: id, background: backgroundModule, mainThread: mainModule }),
+		);
+	}
+	if (modules.length === 0) reasons.push(reason('no-paired-feature-modules'));
+	return Object.freeze({
+		version: LYNX_BLOCK_FEATURE_REQUIREMENTS_VERSION,
+		paired: reasons.length === 0,
+		modules: Object.freeze(modules),
+		reasons: Object.freeze(reasons),
+	});
+}
+
+export function collectLynxBlockFeatureRequirements(compilation, options) {
+	return collectLynxBlockFeatureRequirementsFromEntryModules(
 		collectApplicationEntryModules(compilation, options),
 	);
 }
@@ -411,6 +560,7 @@ export class LynxProgramCoveragePlugin {
 		compiler.hooks.thisCompilation.tap(this.constructor.name, (compilation) => {
 			const programReports = new Map();
 			const semanticReports = new Map();
+			const featureReports = new Map();
 			compilation.hooks.finishModules.tap(this.constructor.name, () => {
 				for (const entry of this.entries) {
 					const entryModules = collectApplicationEntryModules(compilation, entry);
@@ -427,6 +577,10 @@ export class LynxProgramCoveragePlugin {
 					semanticReports.set(
 						entry.mainThreadEntry,
 						collectLynxBlockSemanticRequirementsFromEntryModules(entryModules),
+					);
+					featureReports.set(
+						entry.mainThreadEntry,
+						collectLynxBlockFeatureRequirementsFromEntryModules(entryModules),
 					);
 				}
 			});
@@ -447,6 +601,7 @@ export class LynxProgramCoveragePlugin {
 									...asset.info,
 									[LYNX_PROGRAM_COVERAGE_ASSET_INFO]: report,
 									[LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO]: semanticReports.get(entryName),
+									[LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO]: featureReports.get(entryName),
 								});
 							}
 						}

@@ -310,6 +310,20 @@ describe('octane Rspack loader', () => {
 					},
 				],
 			},
+			lynxBlockFeatureRequirements: {
+				version: 1,
+				threadFunctions: [
+					{
+						kind: 'main-thread',
+						id: 'tf_app',
+						line: 2,
+						column: 10,
+						captures: ['value'],
+					},
+				],
+				mainThreadProps: [{ name: 'main-thread:ref', line: 3, column: 4 }],
+				keyedRanges: [],
+			},
 			dependencies: ['/project/package.json', '/project/src/package.json'],
 			missingDependencies: ['/project/src/missing/package.json'],
 		});
@@ -389,6 +403,20 @@ describe('octane Rspack loader', () => {
 						hooks: [{ name: 'useState', line: 1, column: 20 }],
 					},
 				],
+			},
+			lynxBlockFeatureRequirements: {
+				version: 1,
+				threadFunctions: [
+					{
+						kind: 'main-thread',
+						id: 'tf_app',
+						line: 2,
+						column: 10,
+						captures: ['value'],
+					},
+				],
+				mainThreadProps: [{ name: 'main-thread:ref', line: 3, column: 4 }],
+				keyedRanges: [],
 			},
 		});
 	});

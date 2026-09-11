@@ -280,6 +280,45 @@ export interface OctaneLynxBlockSemanticRequirements {
 	readonly components: readonly OctaneLynxBlockComponentRequirements[];
 }
 
+export interface OctaneLynxBlockThreadFunctionRequirement {
+	readonly kind: 'background' | 'main-thread';
+	readonly id: string;
+	readonly line: number;
+	readonly column: number;
+	readonly captures: readonly string[];
+}
+
+export type OctaneLynxBlockKeyedRowRequirement =
+	| {
+			readonly kind: 'local-component';
+			readonly name: string;
+			readonly hooks: readonly OctaneRspackSourceSite[];
+	  }
+	| {
+			readonly kind: 'external-component' | 'inline-host';
+			readonly name: string;
+	  }
+	| {
+			readonly kind: 'dynamic-component' | 'unknown';
+			readonly name: null;
+	  };
+
+export interface OctaneLynxBlockKeyedRangeRequirement {
+	readonly line: number;
+	readonly column: number;
+	readonly empty: boolean;
+	readonly nested: boolean;
+	readonly lastChild: boolean;
+	readonly row: OctaneLynxBlockKeyedRowRequirement;
+}
+
+export interface OctaneLynxBlockFeatureRequirements {
+	readonly version: 1;
+	readonly threadFunctions: readonly OctaneLynxBlockThreadFunctionRequirement[];
+	readonly mainThreadProps: readonly OctaneRspackSourceSite[];
+	readonly keyedRanges: readonly OctaneLynxBlockKeyedRangeRequirement[];
+}
+
 export interface OctaneRspackBuildInfo {
 	canonicalId: string;
 	transformKind: 'compile' | 'slots' | 'client-only-stub';
@@ -296,6 +335,8 @@ export interface OctaneRspackBuildInfo {
 	 * not, by itself, a compatibility or selection decision.
 	 */
 	lynxBlockSemanticRequirements?: OctaneLynxBlockSemanticRequirements;
+	/** Module-local thread/ref/worklet and keyed-row topology facts. */
+	lynxBlockFeatureRequirements?: OctaneLynxBlockFeatureRequirements;
 	/** Stable identity shared by the client compile and its inert server stub. */
 	clientReference?: {
 		readonly id: string;

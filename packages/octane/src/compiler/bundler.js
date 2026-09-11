@@ -1254,6 +1254,9 @@ class OctaneBundlerCompiler {
 				...(out.lynxBlockSemanticRequirements === undefined
 					? null
 					: { lynxBlockSemanticRequirements: out.lynxBlockSemanticRequirements }),
+				...(out.lynxBlockFeatureRequirements === undefined
+					? null
+					: { lynxBlockFeatureRequirements: out.lynxBlockFeatureRequirements }),
 				...(clientReference === null ? null : { clientReference }),
 				...(voidComponentAst === null
 					? null
