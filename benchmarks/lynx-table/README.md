@@ -203,6 +203,7 @@ measuring the same benchmark and no delta between them means anything.
 BENCH_CORE=block node scripts/build-app.mjs               # scoped writes
 BENCH_BLOCK_MODE=reconcile BENCH_CORE=block node scripts/build-app.mjs
 BENCH_BLOCK_MODE=derived BENCH_CORE=block node scripts/build-app.mjs
+BENCH_CORE=automatic node scripts/build-app.mjs           # omit the product core override
 node web/run-web.mjs --cells octane,octane-block,octane-block-reconcile,octane-block-derived \
   --scales 1000,10000 --reps 5
 ```
