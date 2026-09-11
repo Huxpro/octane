@@ -305,7 +305,6 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					pluginOctane({
 						dev: false,
 						hmr: false,
-						mainThreadProgramBackend: lynxMainThreadProgramBackend,
 					}),
 					programCoverageProbe(reports),
 				],

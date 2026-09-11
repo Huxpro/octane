@@ -116,9 +116,7 @@ export interface OctaneUniversalRuntimeOptions {
 
 /**
  * A renderer's build-time backend for compiling a main-thread chunk's template
- * programs, supplied as the live module rather than a request string: the code
- * it holds encodes one renderer's applier semantics and cannot be rebuilt from
- * a name. `signature` names the emitted output's shape, and a build salts its
+ * programs. `signature` names the emitted output's shape, and a build salts its
  * persistent transform cache with it.
  */
 export interface OctaneMainThreadProgramBackend {
@@ -130,12 +128,25 @@ export interface OctaneMainThreadProgramBackend {
 	) => { readonly source: string; readonly valueCount: number; readonly eventCount: number };
 }
 
+/**
+ * Serializable reference to a renderer-owned backend module. The loader reads
+ * the module in its own process, which keeps Rspack worker compilation enabled.
+ * The loaded module must export the same signature and backend functions.
+ */
+export interface OctaneMainThreadProgramBackendReference {
+	readonly request: string;
+	readonly signature: string;
+}
+
+export type OctaneMainThreadProgramBackendOption =
+	OctaneMainThreadProgramBackend | OctaneMainThreadProgramBackendReference;
+
 /** Compiler options selected for modules issued from one Rspack layer. */
 export interface OctaneRspackLoaderLayerSpecializationOptions {
 	renderers?: OctaneRendererConfigOptions | OctaneResolvedRendererConfig;
 	universalRuntime?: OctaneUniversalRuntimeOptions;
 	/** @experimental Compile this layer's eligible templates into main-thread create functions. */
-	mainThreadProgramBackend?: OctaneMainThreadProgramBackend;
+	mainThreadProgramBackend?: OctaneMainThreadProgramBackendOption;
 }
 
 /** Plugin-owned compiler and runtime options selected for one Rspack layer. */
@@ -178,7 +189,7 @@ export interface OctaneRspackLoaderOptions {
 	 * overrides this; without one every layer inherits it, which is safe because
 	 * the compiler emits a program only for a main-thread universal runtime.
 	 */
-	mainThreadProgramBackend?: OctaneMainThreadProgramBackend;
+	mainThreadProgramBackend?: OctaneMainThreadProgramBackendOption;
 	/**
 	 * @experimental Give each compiled main-thread program a positional address —
 	 * its module id and its index in that module's plan order — so a background

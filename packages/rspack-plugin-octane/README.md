@@ -55,6 +55,13 @@ Source maps, module layers, compiler metadata, and watched package manifests
 are preserved in both modes. Worker startup has a fixed cost, so very small
 builds may be faster with `parallel: false`.
 
+Renderer integrations can supply `mainThreadProgramBackend` as either the live
+backend module or a serializable `{ request, signature }` reference. A reference
+is loaded and signature-checked in each loader process, so it preserves worker
+compilation; a live module contains functions and therefore uses the serial
+loader. Positional program digests derived by workers return to the main
+compilation and are cross-checked there before output is accepted.
+
 Set `strong: true` to opt application code into Strong mode's immutable
 render-snapshot and pure-render contract. The compiler rejects detectable state,
 ref, Effect Event, snapshot-mutation, and nondeterministic-render violations;

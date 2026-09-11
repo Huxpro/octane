@@ -104,6 +104,17 @@ rewritten. The compiler selects the render-only main renderer and main-thread
 runtime metadata by Rspack layer; unconfigured layers retain the background
 configuration.
 
+Application builds also load the renderer-owned main-thread program backend by
+default. The backend travels to Rspack workers as a serializable absolute module
+request plus its cache signature; each worker loads and verifies the module, and
+the main compilation cross-checks the positional program digest produced by both
+thread layers. Eligible host-only plans therefore use compiled resident programs
+and addresses without config-file imports. Plans the create-function emitter
+cannot reproduce stay on the command path. Use `programAddressing: false` to
+keep compiled programs while comparing descriptor transport, or
+`mainThreadProgramBackend: false` for a full command-path control. Pass another
+backend explicitly only when developing its renderer/compiler integration.
+
 Compatible Rspack entry metadata is copied to both generated graphs so they see
 the same entry initialization inputs. Development-only CSS HMR setup runs after
 the receiver install and before the authored imports.
@@ -149,8 +160,9 @@ independently proven Block subset:
 
 The report retains source module, thread, line, and column for unsupported
 facts, as well as the underlying reason from an incomplete proof. It is
-advisory build evidence: it does not change emitted JavaScript, select the
-Block core, or alter the current universal-core default.
+advisory build evidence: resident-program compilation may already change the
+eligible main-thread program representation, but this report itself does not
+select the Block core or alter the current universal-core default.
 
 ## Compatibility lanes
 

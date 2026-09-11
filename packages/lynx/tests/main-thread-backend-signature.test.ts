@@ -1,3 +1,5 @@
+/// <reference types="node" />
+
 // Issue-#163 C1d: the backend's build identity cannot go stale silently.
 //
 // A build salts its persistent transform cache with `signature`, so a cache
@@ -41,9 +43,9 @@ function backendDigest(): string {
 
 describe('the main-thread backend signature', () => {
 	it('names the emitter that is actually here', () => {
-		expect(signature).toBe('lynx-main-thread-program/18');
+		expect(signature).toBe('lynx-main-thread-program/19');
 		expect(backendDigest()).toBe(
-			'941fe1f42d8f1c6eeeed0a6a0479b2599bc9145c4c7b632c41a96c8470077c01',
+			'6290741a025c0913f695d0242d534cf0aeff31c9ff40eacc4a748194d242dcca',
 		);
 	});
 

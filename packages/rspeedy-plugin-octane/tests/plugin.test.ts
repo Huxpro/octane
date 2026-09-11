@@ -14,6 +14,7 @@ import { dirname, join } from 'node:path';
 import { mergeRsbuildConfig } from '@rsbuild/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { compile } from 'octane/compiler';
+import { signature as lynxMainThreadProgramBackendSignature } from '../../lynx/src/compiler/index.js';
 
 import {
 	LYNX_BACKGROUND_LAYER,
@@ -405,15 +406,17 @@ describe('@octanejs/rspeedy-plugin', () => {
 			backend,
 		);
 
-		// Nothing is opted in by default: the backend is TypeScript reaching into
-		// the renderer's run-time lowering, and this plugin is JavaScript loaded
-		// by the bundler's Node process. A build that can import it passes it.
+		// A normal application gets the renderer-owned backend as a serializable
+		// module reference, so Rspack can retain worker compilation.
 		const byDefault = compilerOptions(
 			applyPlugin(undefined, 'lynx', {}, { app: ['./src/App.lynx.tsrx'] }),
 		);
-		expect(byDefault.mainThreadProgramBackend).toBeUndefined();
-		expect(byDefault.layerSpecializations?.[LYNX_MAIN_THREAD_LAYER]).not.toHaveProperty(
-			'mainThreadProgramBackend',
+		expect(byDefault.mainThreadProgramBackend).toMatchObject({
+			request: expect.stringMatching(/packages[/\\]lynx[/\\]src[/\\]compiler[/\\]index\.ts$/),
+			signature: lynxMainThreadProgramBackendSignature,
+		});
+		expect(byDefault.layerSpecializations?.[LYNX_MAIN_THREAD_LAYER].mainThreadProgramBackend).toBe(
+			byDefault.mainThreadProgramBackend,
 		);
 	});
 
@@ -449,12 +452,28 @@ describe('@octanejs/rspeedy-plugin', () => {
 			backend,
 		);
 
-		// No backend, nothing to address: the option never appears, so a build
-		// that does not compile programs is byte-for-byte what it was.
+		// The normal application is addressed by default because both layers now
+		// receive the same serializable renderer backend reference.
 		const plain = compilerOptions(
 			applyPlugin(undefined, 'lynx', {}, { app: ['./src/App.lynx.tsrx'] }),
 		);
-		expect(plain).not.toHaveProperty('programAddressing');
+		expect(plain.programAddressing).toBe(true);
+		const commandPath = compilerOptions(
+			applyPlugin(
+				{ mainThreadProgramBackend: false },
+				'lynx',
+				{},
+				{ app: ['./src/App.lynx.tsrx'] },
+			),
+		);
+		expect(commandPath).not.toHaveProperty('mainThreadProgramBackend');
+		expect(commandPath).not.toHaveProperty('programAddressing');
+		expect(commandPath.layerSpecializations?.[LYNX_MAIN_THREAD_LAYER]).not.toHaveProperty(
+			'mainThreadProgramBackend',
+		);
+		expect(() => applyPlugin({ mainThreadProgramBackend: false, programAddressing: true })).toThrow(
+			/programAddressing.*requires a main-thread program backend/,
+		);
 		const coverage = applyPlugin(
 			{ mainThreadProgramBackend: backend },
 			'lynx',
@@ -571,7 +590,7 @@ describe('@octanejs/rspeedy-plugin', () => {
 			'NativeModules',
 		);
 		expect(state.plugins.has('@octanejs/rspeedy-plugin:main-thread-facade')).toBe(true);
-		expect(state.plugins.get('@octanejs/rspeedy-plugin:program-coverage')?.options[1]).toBe(false);
+		expect(state.plugins.get('@octanejs/rspeedy-plugin:program-coverage')?.options[1]).toBe(true);
 		const appRequire = createRequire(join(state.root, 'package.json'));
 		expect(realpathSync(appRequire.resolve('@lynx-js/webpack-dev-transport/client'))).toBe(
 			realpathSync(testRequire.resolve('@lynx-js/webpack-dev-transport/client')),

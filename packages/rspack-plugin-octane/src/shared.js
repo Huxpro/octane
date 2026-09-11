@@ -78,10 +78,12 @@ const LAYER_SPECIALIZATION_KEYS = new Set([
 /**
  * A renderer's build-time main-thread backend, as the build hands it over.
  *
- * It is the live module, not a request string. The code it holds encodes one
- * renderer's own applier semantics, so nothing here can reconstruct it from a
- * name, and resolving one would have to happen in the bundler's Node process
- * against a module the renderer package may not publish in that format.
+ * A caller may pass either the live module or a serializable reference to it.
+ * The latter keeps Rspack worker compilation available: the worker loads the
+ * renderer-owned module itself instead of structured-cloning live functions.
+ * `request` is deliberately paired with the signature rather than accepted as
+ * a bare string, because the persistent cache needs the emitted shape's
+ * identity before a loader runs.
  *
  * `signature` is required because this object reaches the persistent cache salt
  * and a build must not reuse transforms emitted by a different backend. An
@@ -91,11 +93,30 @@ const LAYER_SPECIALIZATION_KEYS = new Set([
 function normalizeMainThreadProgramBackend(value, label) {
 	if (value === undefined) return undefined;
 	if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-		throw new TypeError(`@octanejs/rspack-plugin: \`${label}\` must be a backend module.`);
+		throw new TypeError(
+			`@octanejs/rspack-plugin: \`${label}\` must be a backend module or module reference.`,
+		);
 	}
-	for (const name of ['deriveLynxMainThreadProgram', 'emitLynxMainThreadProgram']) {
-		if (typeof value[name] !== 'function') {
-			throw new TypeError(`@octanejs/rspack-plugin: \`${label}.${name}\` must be a function.`);
+	if ('request' in value) {
+		for (const key of Object.keys(value)) {
+			if (key !== 'request' && key !== 'signature') {
+				throw new TypeError(`@octanejs/rspack-plugin: unknown \`${label}.${key}\` option.`);
+			}
+		}
+		if (
+			typeof value.request !== 'string' ||
+			value.request.trim() !== value.request ||
+			!value.request
+		) {
+			throw new TypeError(
+				`@octanejs/rspack-plugin: \`${label}.request\` must be a non-empty module request string.`,
+			);
+		}
+	} else {
+		for (const name of ['deriveLynxMainThreadProgram', 'emitLynxMainThreadProgram']) {
+			if (typeof value[name] !== 'function') {
+				throw new TypeError(`@octanejs/rspack-plugin: \`${label}.${name}\` must be a function.`);
+			}
 		}
 	}
 	if (
@@ -107,7 +128,9 @@ function normalizeMainThreadProgramBackend(value, label) {
 			`@octanejs/rspack-plugin: \`${label}.signature\` must be a non-empty identity string.`,
 		);
 	}
-	return value;
+	return 'request' in value
+		? Object.freeze({ request: value.request, signature: value.signature })
+		: value;
 }
 
 function normalizeRuntimeRequest(value, label = 'runtime') {

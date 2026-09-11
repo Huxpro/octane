@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
 	lynxRspeedyBackgroundRenderers,
@@ -24,15 +25,20 @@ import { assertLynxToolchain } from './toolchain.js';
 const PLUGIN_NAME = '@octanejs/rspeedy-plugin';
 const MAIN_THREAD_FACADE_PLUGIN = `${PLUGIN_NAME}:main-thread-facade`;
 const LYNX_PACKAGE_ROOT = /^@octanejs\/lynx$/;
+
+// A serializable reference keeps Octane's default Rspack worker path available.
+// The loader verifies this cache identity against the loaded renderer backend,
+// and the backend signature test forces both constants to move together.
+const DEFAULT_MAIN_THREAD_PROGRAM_BACKEND = Object.freeze({
+	request: fileURLToPath(import.meta.resolve('@octanejs/lynx/compiler')),
+	signature: 'lynx-main-thread-program/19',
+});
 /**
  * What the main-thread layer compiles differently from the background one.
  *
- * `mainThreadProgramBackend` is issue #163's addition and is the caller's to
- * supply, not this plugin's to import. The backend is TypeScript that reaches
- * into the renderer's run-time lowering (see `@octanejs/lynx/compiler`), and
- * this module is plain JavaScript loaded by the bundler's Node process, which
- * cannot import it. A build whose config loader handles TypeScript — Rspeedy's
- * own `lynx.config.ts`, or a test — imports it there and passes it in.
+ * The default is the renderer package's own backend. It is a request rather
+ * than an imported TypeScript module so this plain-JavaScript config plugin
+ * remains Node-loadable and worker options remain structured-cloneable.
  */
 function applicationLayerSpecializations(mainThreadProgramBackend) {
 	return Object.freeze({
@@ -101,6 +107,11 @@ function normalizeOptions(value) {
 	const application = options.thread === undefined;
 	const thread = options.thread ?? 'background';
 	const layer = resolveLynxLayer(thread);
+	const mainThreadProgramBackend =
+		options.mainThreadProgramBackend === false
+			? undefined
+			: (options.mainThreadProgramBackend ??
+				(application ? DEFAULT_MAIN_THREAD_PROGRAM_BACKEND : undefined));
 	// Issue #246 §6.3. An address is positional, so it is only sound when one
 	// configuration sees both compiles of a module and can fail the build when
 	// they disagree about its plan order. An isolated `thread` graph is one
@@ -115,14 +126,17 @@ function normalizeOptions(value) {
 				'compiled programs for an address to name.',
 		);
 	}
+	if (application && options.programAddressing === true && mainThreadProgramBackend === undefined) {
+		throw new TypeError(
+			`${PLUGIN_NAME}: \`programAddressing: true\` requires a main-thread program backend.`,
+		);
+	}
 	// On by default for an application build that compiles main-thread programs:
 	// there is a program to address, and both layers of that one build emit the
 	// digest that proves they agree. `false` keeps descriptor mounts, which is
 	// what an A/B measurement and the byte-identity pins need.
 	const programAddressing =
-		application &&
-		options.mainThreadProgramBackend !== undefined &&
-		options.programAddressing !== false;
+		application && mainThreadProgramBackend !== undefined && options.programAddressing !== false;
 	return Object.freeze({
 		...layer,
 		application,
@@ -131,7 +145,7 @@ function normalizeOptions(value) {
 		renderers:
 			thread === 'main-thread' ? lynxRspeedyMainThreadRenderers : lynxRspeedyBackgroundRenderers,
 		...(application
-			? { layerSpecializations: applicationLayerSpecializations(options.mainThreadProgramBackend) }
+			? { layerSpecializations: applicationLayerSpecializations(mainThreadProgramBackend) }
 			: null),
 		...(programAddressing
 			? {
@@ -143,13 +157,16 @@ function normalizeOptions(value) {
 					// the backend even though it emits no program of its own. Safe for
 					// the same reason it always was: the universal compiler emits a
 					// program only for a main-thread universal runtime.
-					mainThreadProgramBackend: options.mainThreadProgramBackend,
+					mainThreadProgramBackend,
 				}
 			: null),
 		// An isolated `thread: 'main-thread'` graph has no layer to specialize, so
 		// the backend is the top-level compiler input there. Both forms reach the
 		// same compile; only the application build has two threads to tell apart.
-		...(!application && thread === 'main-thread' && options.mainThreadProgramBackend !== undefined
+		...(!application &&
+		thread === 'main-thread' &&
+		options.mainThreadProgramBackend !== undefined &&
+		options.mainThreadProgramBackend !== false
 			? { mainThreadProgramBackend: options.mainThreadProgramBackend }
 			: null),
 		...(options.dev === undefined ? null : { dev: options.dev }),

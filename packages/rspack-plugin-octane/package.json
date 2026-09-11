@@ -44,7 +44,8 @@
     "test": "vitest run --config vitest.config.js"
   },
   "dependencies": {
-    "@jridgewell/remapping": "catalog:default"
+    "@jridgewell/remapping": "catalog:default",
+    "tsx": "^4.23.1"
   },
   "peerDependencies": {
     "@rspack/core": "^2.0.0",

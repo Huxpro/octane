@@ -1,5 +1,5 @@
 import type { RsbuildPlugin } from '@rsbuild/core';
-import type { OctaneMainThreadProgramBackend } from '@octanejs/rspack-plugin';
+import type { OctaneMainThreadProgramBackendOption } from '@octanejs/rspack-plugin';
 
 export type OctaneLynxThread = 'background' | 'main-thread';
 
@@ -33,13 +33,12 @@ export interface OctaneRspeedyPluginOptions {
 	 * templates into create functions instead of the descriptions an interpreter
 	 * walks at run time.
 	 *
-	 * Pass `@octanejs/lynx/compiler` here. It is the caller's to import rather
-	 * than this plugin's, because the backend is TypeScript reaching into the
-	 * renderer's own run-time lowering and this plugin is JavaScript loaded by
-	 * the bundler's Node process. A TypeScript-aware config loader — Rspeedy's
-	 * `lynx.config.ts`, or a test — can import it; plain Node cannot.
+	 * The dual-thread application build uses `@octanejs/lynx/compiler` by
+	 * default. Pass another live backend or serializable backend reference only
+	 * for renderer/compiler development. Pass `false` for a controlled command-
+	 * path comparison with no compiled resident programs.
 	 */
-	mainThreadProgramBackend?: OctaneMainThreadProgramBackend;
+	mainThreadProgramBackend?: OctaneMainThreadProgramBackendOption | false;
 	/** Restrict the plugin to named Rspeedy environments. */
 	environments?: string[];
 	/** Override component HMR for the selected graph. */
@@ -62,9 +61,9 @@ export interface OctaneRspeedyPluginOptions {
 	 * workers; set `false` to keep compilation on the main thread, or provide
 	 * `maxWorkers` for a different shared worker-pool limit.
 	 *
-	 * A worker receives its loader options by structured clone, so a build whose
-	 * options carry a function — `mainThreadProgramBackend` is the one that does
-	 * — compiles on the main thread whatever this says. Set it explicitly when
+	 * A worker receives its loader options by structured clone. The default
+	 * backend is a serializable module reference and preserves this path; an
+	 * explicitly supplied live backend compiles on the main thread. Set it explicitly when
 	 * two builds must be compared byte for byte: the worker pool is free to
 	 * reach the minifier with a different module order, and that alone moves the
 	 * short names in the output.

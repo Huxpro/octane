@@ -19,12 +19,18 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import rspack from '@rspack/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import * as Backend from '../../lynx/src/compiler/index.js';
 import { lynxBackgroundRenderer, lynxMainThreadRenderer } from '../../lynx/src/config.runtime.js';
 import { getOctaneRspackBuildInfo, OctaneRspackPlugin } from '../src/index.js';
+
+const BACKEND_REFERENCE = Object.freeze({
+	request: fileURLToPath(new URL('../../lynx/src/compiler/index.ts', import.meta.url)),
+	signature: Backend.signature,
+});
 
 /** The renderer members a compiled universal module imports, as inert stubs. */
 const RENDERER_STUB = `export const defineUniversalComponent = (_renderer, component) => component;
@@ -259,6 +265,21 @@ describe('a main-thread program backend, through a real Rspack build', () => {
 		expect(addressed.background).toContain('"module": "src/ListRow.tsrx"');
 	}, 60_000);
 
+	it('emits the same application code from a backend reference and the live module', async () => {
+		const referenced = await build('referenced', {
+			addressing: true,
+			topLevel: BACKEND_REFERENCE,
+			mainThread: BACKEND_REFERENCE,
+		});
+		const live = await build('live', {
+			addressing: true,
+			topLevel: Backend,
+			mainThread: Backend,
+		});
+
+		expect(referenced).toEqual(live);
+	}, 60_000);
+
 	it('emits nothing for a background layer that is handed a backend anyway', async () => {
 		// The compiler emits a program only for a main-thread universal runtime,
 		// which is what keeps byte-identity from depending on who passed what. A
@@ -283,6 +304,11 @@ describe('a main-thread program backend, through a real Rspack build', () => {
 		await expect(build('incomplete', { mainThread: { signature: 'x' } })).rejects.toThrow(
 			/deriveLynxMainThreadProgram/,
 		);
+		await expect(
+			build('stale-reference', {
+				mainThread: { ...BACKEND_REFERENCE, signature: 'lynx-main-thread-program/stale' },
+			}),
+		).rejects.toThrow(/signature.*stale/);
 	}, 60_000);
 
 	// Issue-#246 E1 — the addressing, through the same real build.
@@ -296,8 +322,8 @@ describe('a main-thread program backend, through a real Rspack build', () => {
 		const metadata: any[] = [];
 		const addressed = await build('addressed', {
 			addressing: true,
-			topLevel: Backend,
-			mainThread: Backend,
+			topLevel: BACKEND_REFERENCE,
+			mainThread: BACKEND_REFERENCE,
 			metadata,
 		});
 		// The wire address is positional — `(module id, plan index)` — and the id

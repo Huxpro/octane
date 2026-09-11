@@ -1,7 +1,9 @@
 import { realpathSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import remapping from '@jridgewell/remapping';
 import { canonicalModuleId, cleanModuleId, createOctaneCompiler } from 'octane/compiler/bundler';
+import { require as requireTypeScript } from 'tsx/cjs/api';
 import {
 	clearCssModuleBuildInfo,
 	CSS_MODULE_CONTEXT_KEY,
@@ -13,6 +15,10 @@ import {
 	normalizeLoaderOptions,
 	selectLayerCompilerOptions,
 } from './shared.js';
+import {
+	crossCheckProgramAddresses,
+	PROGRAM_ADDRESSES_BUILD_INFO_KEY,
+} from './program-addresses.js';
 
 function realRoot(path) {
 	try {
@@ -30,6 +36,7 @@ function realModuleId(id) {
 function clearBuildInfo(module) {
 	if (module?.buildInfo && typeof module.buildInfo === 'object') {
 		delete module.buildInfo.octane;
+		delete module.buildInfo[PROGRAM_ADDRESSES_BUILD_INFO_KEY];
 	}
 }
 
@@ -37,6 +44,50 @@ function setBuildInfo(module, value) {
 	if (!module || typeof module !== 'object') return;
 	if (!module.buildInfo || typeof module.buildInfo !== 'object') module.buildInfo = {};
 	module.buildInfo.octane = value;
+}
+
+function setProgramAddresses(module, value) {
+	if (!module || typeof module !== 'object') return;
+	if (!module.buildInfo || typeof module.buildInfo !== 'object') module.buildInfo = {};
+	module.buildInfo[PROGRAM_ADDRESSES_BUILD_INFO_KEY] = value;
+}
+
+const LOADED_MAIN_THREAD_PROGRAM_BACKENDS = new Map();
+
+/** Load and verify a serializable renderer-backend reference in this loader process. */
+function loadMainThreadProgramBackend(value, root) {
+	if (value === undefined || !('request' in value)) return value;
+	const parentURL = pathToFileURL(resolve(root, '__octane_main_thread_program_backend__.mjs')).href;
+	const cacheKey = `${parentURL}\0${value.request}\0${value.signature}`;
+	const cached = LOADED_MAIN_THREAD_PROGRAM_BACKENDS.get(cacheKey);
+	if (cached !== undefined) return cached;
+	let loaded;
+	try {
+		loaded = requireTypeScript(value.request, parentURL);
+	} catch (error) {
+		throw new Error(
+			`@octanejs/rspack-plugin: could not load main-thread program backend ` +
+				`${JSON.stringify(value.request)}: ${error instanceof Error ? error.message : String(error)}`,
+			{ cause: error },
+		);
+	}
+	for (const name of ['deriveLynxMainThreadProgram', 'emitLynxMainThreadProgram']) {
+		if (typeof loaded?.[name] !== 'function') {
+			throw new TypeError(
+				`@octanejs/rspack-plugin: main-thread program backend ` +
+					`${JSON.stringify(value.request)} must export a ${name} function.`,
+			);
+		}
+	}
+	if (loaded.signature !== value.signature) {
+		throw new Error(
+			`@octanejs/rspack-plugin: main-thread program backend ` +
+				`${JSON.stringify(value.request)} exports signature ${JSON.stringify(loaded.signature)}, ` +
+				`but the configured cache identity is ${JSON.stringify(value.signature)}.`,
+		);
+	}
+	LOADED_MAIN_THREAD_PROGRAM_BACKENDS.set(cacheKey, loaded);
+	return loaded;
 }
 
 function registerDependencies(context, result) {
@@ -83,48 +134,6 @@ async function resolveClientOnlyImports(context, compiler, source, id) {
 }
 
 /**
- * Issue #246 — what each compile of a module said about its own plan order.
- *
- * A program address is positional: `(module id, plan index)`, with a structural
- * digest of the derived wire beside it. The two thread layers compile the same
- * module separately, and both run the same derivation as their eligibility
- * oracle, so they agree by construction — but "by construction" is an argument,
- * and a wrong address does not fail, it paints a plausible wrong tree. The
- * digest is what turns the argument into a check, and this is where the check
- * happens: one build sees both compiles, so it can compare them before either
- * chunk is written.
- *
- * Keyed by compilation so a watch rebuild starts clean; weak so a finished one
- * is collectable. A build that configures a main-thread program backend runs the
- * serial loader (see `plugin.js`), which is why one process-local table sees
- * every layer's compile of a module.
- */
-const COMPILATION_PROGRAM_DIGESTS = new WeakMap();
-
-function crossCheckProgramAddresses(compilation, addresses) {
-	if (compilation === undefined || compilation === null) return;
-	let digests = COMPILATION_PROGRAM_DIGESTS.get(compilation);
-	if (digests === undefined) COMPILATION_PROGRAM_DIGESTS.set(compilation, (digests = new Map()));
-	for (const address of addresses) {
-		const key = `${address.module}#${address.index}`;
-		const seen = digests.get(key);
-		if (seen === undefined) {
-			digests.set(key, address.digest);
-			continue;
-		}
-		if (seen === address.digest) continue;
-		throw new Error(
-			`@octanejs/rspack-plugin: the thread layers of this build disagree about program ` +
-				`${key}. One compiled a program whose wire surface digests to ${seen}, the other ` +
-				`to ${address.digest}. A program address is positional, so a background run naming ` +
-				`this one would mount whatever the main thread compiled in that slot. Addressing ` +
-				`requires both layers to compile the same module graph; a build that specializes ` +
-				`the two differently must set \`programAddressing: false\`.`,
-		);
-	}
-}
-
-/**
  * Rspack's ESM loader entry. A compiler instance is intentionally scoped to
  * one invocation: Rspack owns output caching and invalidates it from the file
  * and missing-file dependencies registered below, while a fresh neutral
@@ -156,6 +165,10 @@ export default function octaneLoader(source, inputSourceMap) {
 			options.layerSpecializations === undefined
 				? options
 				: selectLayerCompilerOptions(options, this._module);
+		const mainThreadProgramBackend = loadMainThreadProgramBackend(
+			compilerOptions.mainThreadProgramBackend,
+			root,
+		);
 		const compiler = createOctaneCompiler({
 			root,
 			profile,
@@ -169,9 +182,7 @@ export default function octaneLoader(source, inputSourceMap) {
 				: { universalRuntime: compilerOptions.universalRuntime }),
 			// Selected by layer, so only the thread whose chunk carries compiled
 			// programs is given one. Every other layer compiles as it always did.
-			...(compilerOptions.mainThreadProgramBackend === undefined
-				? null
-				: { mainThreadProgramBackend: compilerOptions.mainThreadProgramBackend }),
+			...(mainThreadProgramBackend === undefined ? null : { mainThreadProgramBackend }),
 			// Whole-build rather than per layer: the address is positional, so both
 			// compiles have to agree about which plans get one (issue #246).
 			...(compilerOptions.programAddressing === undefined
@@ -211,6 +222,7 @@ export default function octaneLoader(source, inputSourceMap) {
 
 				registerDependencies(this, result);
 				if (result.programAddresses !== undefined) {
+					setProgramAddresses(this._module, result.programAddresses);
 					crossCheckProgramAddresses(this._compilation, result.programAddresses);
 				}
 				finishCssModuleConstants(this, cssModuleConstants, result);
