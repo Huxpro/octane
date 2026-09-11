@@ -182,6 +182,37 @@ describe('@octanejs/lynx compact compiled-program transport', () => {
 	it.each([
 		['controller receiver', false],
 		['product receiver', true],
+	] as const)('retries transient %s page-destroy cleanup', async (_name, product) => {
+		const base = emittedHost();
+		let removals = 0;
+		const papi: typeof base = {
+			...base,
+			remove(parent, child) {
+				removals++;
+				if (removals < 3) throw new Error('transient native destroy cleanup failure');
+				base.remove(parent, child);
+			},
+		};
+		const { page, receiver, transport } = setup(
+			papi,
+			'tests/WireRow.lynx.tsrx',
+			new RecordingContext(),
+			product,
+		);
+		receiver.markProgramsReady();
+		receiver.markPageReady();
+		await transport.ready;
+		await transport.commit(identity(1), mountFrame(), () => {}).promise;
+
+		receiver.destroyPage();
+		await transport.pageDestroyed;
+		expect(removals).toBe(3);
+		expect(page.children).toEqual([]);
+	});
+
+	it.each([
+		['controller receiver', false],
+		['product receiver', true],
 	] as const)(
 		'does not publish accepted state when %s is destroyed during apply',
 		async (_name, product) => {

@@ -22,6 +22,7 @@ import type { LynxElementPAPI, LynxElementRef } from './papi.js';
 
 const MAX_ABORT_TOMBSTONES = 128;
 const MAX_DISPOSED_ROOT_TOMBSTONES = 128;
+const MAX_CLOSE_CLEANUP_ATTEMPTS = 3;
 const CONTROLLER_DEVELOPMENT =
 	typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__;
 const CONTROLLER_ERROR = 'Octane Lynx OL490';
@@ -123,6 +124,16 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 			reported.push(normalizeLynxCompiledProgramError(diagnosticError, CONTROLLER_ERROR));
 		}
 		return error;
+	};
+	const releaseClosedStore = (candidate: LynxCompiledProgramStore<Node>): void => {
+		for (let attempt = 0; attempt < MAX_CLOSE_CLEANUP_ATTEMPTS; attempt++) {
+			try {
+				candidate.dispose();
+				return;
+			} catch (error) {
+				report(error);
+			}
+		}
 	};
 
 	const send = (message: LynxCompiledProgramControllerResponse): boolean => {
@@ -267,11 +278,7 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 			} catch (error) {
 				applying = null;
 				if (closed) {
-					try {
-						candidateStore.dispose();
-					} catch (cleanupError) {
-						report(cleanupError);
-					}
+					releaseClosedStore(candidateStore);
 					store = null;
 					active = null;
 					aborted.clear();
@@ -299,11 +306,7 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 			}
 			applying = null;
 			if (closed) {
-				try {
-					candidateStore.dispose();
-				} catch (error) {
-					report(error);
-				}
+				releaseClosedStore(candidateStore);
 				store = null;
 				active = null;
 				aborted.clear();

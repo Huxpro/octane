@@ -25,6 +25,7 @@ import {
 const DEVELOPMENT =
 	typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__;
 const CODE = 'Octane Lynx OL495';
+const MAX_CLOSE_CLEANUP_ATTEMPTS = 3;
 
 /** Generated-build receiver with framing, settlement, and page ownership in one closure. */
 export function installLynxCompiledProgramProductReceiver<Node extends LynxElementRef>(
@@ -60,6 +61,16 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 			options.onDiagnostic?.(error);
 		} catch {}
 		return error;
+	};
+	const release = (candidate: NonNullable<typeof store>): void => {
+		for (let attempt = 0; attempt < MAX_CLOSE_CLEANUP_ATTEMPTS; attempt++) {
+			try {
+				candidate.dispose();
+				return;
+			} catch (error) {
+				report(error);
+			}
+		}
 	};
 	const send = (message: Parameters<typeof encodeLynxCompiledProgramMainMessage>[0]): boolean => {
 		try {
@@ -198,11 +209,7 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 		} catch (error) {
 			busy = false;
 			if (closed) {
-				try {
-					candidate.dispose();
-				} catch (cleanupError) {
-					report(cleanupError);
-				}
+				release(candidate);
 				store = null;
 				active = null;
 				aborted = null;
@@ -224,11 +231,7 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 		}
 		busy = false;
 		if (closed) {
-			try {
-				candidate.dispose();
-			} catch (error) {
-				report(error);
-			}
+			release(candidate);
 			store = null;
 			active = null;
 			aborted = null;
@@ -253,13 +256,7 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 			if (closed) return;
 			send({ type: 'page-destroy' });
 			closed = true;
-			if (!busy) {
-				try {
-					store?.dispose();
-				} catch (error) {
-					report(error);
-				}
-			}
+			if (!busy && store !== null) release(store);
 			store = null;
 			active = null;
 			aborted = null;

@@ -23,6 +23,7 @@ import {
 const RECEIVER_DEVELOPMENT =
 	typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__;
 const RECEIVER_ERROR = 'Octane Lynx OL492';
+const MAX_CLOSE_CLEANUP_ATTEMPTS = 3;
 
 export interface InstallLynxCompiledProgramReceiverOptions<Node extends LynxElementRef> {
 	readonly context: LynxContextProxy;
@@ -187,15 +188,18 @@ export function installLynxCompiledProgramReceiver<Node extends LynxElementRef>(
 						: RECEIVER_ERROR,
 				);
 			}
-			try {
-				controller.close();
-			} catch (error) {
-				report(
-					error,
-					RECEIVER_DEVELOPMENT
-						? 'Octane Lynx compact receiver page-destroy cleanup failed.'
-						: RECEIVER_ERROR,
-				);
+			for (let attempt = 0; attempt < MAX_CLOSE_CLEANUP_ATTEMPTS; attempt++) {
+				try {
+					controller.close();
+					break;
+				} catch (error) {
+					report(
+						error,
+						RECEIVER_DEVELOPMENT
+							? 'Octane Lynx compact receiver page-destroy cleanup failed.'
+							: RECEIVER_ERROR,
+					);
+				}
 			}
 			closed = true;
 			context.removeEventListener(LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT, onMessage);
