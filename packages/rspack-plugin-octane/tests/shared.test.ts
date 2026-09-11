@@ -265,7 +265,7 @@ describe('getOctaneRspackBuildInfo', () => {
 							],
 						},
 						lynxBlockFeatureRequirements: {
-							version: 1,
+							version: 2,
 							threadFunctions: [
 								{
 									kind: 'main-thread',
@@ -276,6 +276,7 @@ describe('getOctaneRspackBuildInfo', () => {
 								},
 							],
 							mainThreadProps: [{ name: 'main-thread:ref', line: 7, column: 8 }],
+							templateFeatures: [{ kind: 'component', name: 'Panel', line: 8, column: 2 }],
 							keyedRanges: [
 								{
 									line: 10,
@@ -314,7 +315,7 @@ describe('getOctaneRspackBuildInfo', () => {
 				],
 			},
 			lynxBlockFeatureRequirements: {
-				version: 1,
+				version: 2,
 				threadFunctions: [
 					{
 						kind: 'main-thread',
@@ -325,6 +326,7 @@ describe('getOctaneRspackBuildInfo', () => {
 					},
 				],
 				mainThreadProps: [{ name: 'main-thread:ref', line: 7, column: 8 }],
+				templateFeatures: [{ kind: 'component', name: 'Panel', line: 8, column: 2 }],
 				keyedRanges: [
 					{
 						line: 10,
@@ -410,43 +412,76 @@ describe('getOctaneRspackBuildInfo', () => {
 			).toBeNull();
 		}
 		for (const lynxBlockFeatureRequirements of [
-			{ version: 2, threadFunctions: [], mainThreadProps: [], keyedRanges: [] },
 			{
 				version: 1,
+				threadFunctions: [],
+				mainThreadProps: [],
+				templateFeatures: [],
+				keyedRanges: [],
+			},
+			{
+				version: 2,
 				threadFunctions: [{ kind: 'worker', id: 'thread_0', line: 1, column: 0, captures: [] }],
 				mainThreadProps: [],
+				templateFeatures: [],
 				keyedRanges: [],
 			},
 			{
-				version: 1,
+				version: 2,
 				threadFunctions: [{ kind: 'background', id: '', line: 1, column: 0, captures: [] }],
 				mainThreadProps: [],
+				templateFeatures: [],
 				keyedRanges: [],
 			},
 			{
-				version: 1,
+				version: 2,
 				threadFunctions: [
 					{ kind: 'background', id: 'thread_0', line: 1, column: 0, captures: [''] },
 				],
 				mainThreadProps: [],
+				templateFeatures: [],
 				keyedRanges: [],
 			},
 			{
-				version: 1,
+				version: 2,
 				threadFunctions: [],
 				mainThreadProps: [{ name: 'bindtap', line: 1, column: 0 }],
+				templateFeatures: [],
 				keyedRanges: [],
 			},
 			{
-				version: 1,
+				version: 2,
 				threadFunctions: [],
 				mainThreadProps: [{ name: 'main-thread:ref', line: -1, column: 0 }],
+				templateFeatures: [],
 				keyedRanges: [],
 			},
 			{
-				version: 1,
+				version: 2,
 				threadFunctions: [],
 				mainThreadProps: [],
+				templateFeatures: [{ kind: 'portal', name: null, line: 1, column: 0 }],
+				keyedRanges: [],
+			},
+			{
+				version: 2,
+				threadFunctions: [],
+				mainThreadProps: [],
+				templateFeatures: [{ kind: 'if', name: 'condition', line: 1, column: 0 }],
+				keyedRanges: [],
+			},
+			{
+				version: 2,
+				threadFunctions: [],
+				mainThreadProps: [],
+				templateFeatures: [{ kind: 'native-list', name: 'view', line: 1, column: 0 }],
+				keyedRanges: [],
+			},
+			{
+				version: 2,
+				threadFunctions: [],
+				mainThreadProps: [],
+				templateFeatures: [],
 				keyedRanges: [
 					{
 						line: 1,
@@ -459,9 +494,10 @@ describe('getOctaneRspackBuildInfo', () => {
 				],
 			},
 			{
-				version: 1,
+				version: 2,
 				threadFunctions: [],
 				mainThreadProps: [],
+				templateFeatures: [],
 				keyedRanges: [
 					{
 						line: 1,
@@ -502,9 +538,10 @@ describe('getOctaneRspackBuildInfo', () => {
 					octane: {
 						...value,
 						lynxBlockFeatureRequirements: {
-							version: 1,
+							version: 2,
 							threadFunctions: [],
 							mainThreadProps: [],
+							templateFeatures: [],
 							keyedRanges: [],
 						},
 					},

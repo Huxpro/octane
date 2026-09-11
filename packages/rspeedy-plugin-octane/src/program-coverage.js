@@ -6,8 +6,29 @@ export const LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO =
 	'octane:lynx-block-semantic-requirements';
 export const LYNX_BLOCK_SEMANTIC_REQUIREMENTS_VERSION = 1;
 export const LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO = 'octane:lynx-block-feature-requirements';
-export const LYNX_BLOCK_FEATURE_REQUIREMENTS_VERSION = 1;
+export const LYNX_BLOCK_FEATURE_REQUIREMENTS_VERSION = 2;
+export const LYNX_BLOCK_SELECTION_ASSET_INFO = 'octane:lynx-block-selection';
+export const LYNX_BLOCK_SELECTION_VERSION = 1;
+export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 1;
+export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
+	version: LYNX_BLOCK_SUPPORT_MATRIX_VERSION,
+	// Each name has an independent assertion through the Block component path.
+	// Expanding this list is a semantic change, not a discovery heuristic.
+	runtimeNames: Object.freeze(['useEffect', 'useState', 'useSyncExternalStore']),
+	threadFunctions: Object.freeze(['background', 'main-thread']),
+	mainThreadProps: true,
+	templateFeatures: Object.freeze([]),
+	keyedRanges: Object.freeze({
+		empty: false,
+		nested: false,
+		lastChild: true,
+		rowKinds: Object.freeze(['inline-host', 'local-component']),
+		rowHooks: false,
+	}),
+});
 const MAIN_THREAD_ASSET = /main-thread(?:\.[A-Fa-f0-9]+)?\.js$/;
+const LYNX_BLOCK_RUNTIME_NAMES = new Set(LYNX_BLOCK_SUPPORT_MATRIX.runtimeNames);
+const LYNX_BLOCK_RANGE_ROW_KINDS = new Set(LYNX_BLOCK_SUPPORT_MATRIX.keyedRanges.rowKinds);
 
 function dependencyRequest(dependency) {
 	return typeof dependency?.request === 'string' ? dependency.request : null;
@@ -157,6 +178,16 @@ function cloneFeatureRequirements(requirements) {
 			),
 		),
 		mainThreadProps: Object.freeze(requirements.mainThreadProps.map(cloneSourceSite)),
+		templateFeatures: Object.freeze(
+			requirements.templateFeatures.map((feature) =>
+				Object.freeze({
+					kind: feature.kind,
+					name: feature.name,
+					line: feature.line,
+					column: feature.column,
+				}),
+			),
+		),
 		keyedRanges: Object.freeze(
 			requirements.keyedRanges.map((range) =>
 				Object.freeze({
@@ -549,6 +580,187 @@ export function collectLynxProgramCoverage(compilation, options) {
 	);
 }
 
+function proofVersionSupported(report, supported, label, reasons) {
+	if (report?.version === supported) return true;
+	reasons.push(
+		reason(`unsupported-${label}-version`, {
+			observed: report?.version ?? null,
+			supported,
+		}),
+	);
+	return false;
+}
+
+function sameStrings(left, right) {
+	return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function proofModules(report) {
+	return report.modules.map((module) => module.module).sort();
+}
+
+function unsupportedRuntimeReasons(reasons, module, thread, requirements) {
+	for (const site of requirements.runtimeUses) {
+		if (!LYNX_BLOCK_RUNTIME_NAMES.has(site.name)) {
+			reasons.push(reason('unsupported-runtime-use', { module, thread, ...cloneSourceSite(site) }));
+		}
+	}
+	for (const site of requirements.runtimeExports) {
+		if (!LYNX_BLOCK_RUNTIME_NAMES.has(site.name)) {
+			reasons.push(
+				reason('unsupported-runtime-export', { module, thread, ...cloneSourceSite(site) }),
+			);
+		}
+	}
+	for (const site of requirements.opaqueRuntimeAccesses) {
+		reasons.push(reason('opaque-runtime-access', { module, thread, ...cloneSourceSite(site) }));
+	}
+}
+
+function unsupportedFeatureReasons(reasons, module, thread, requirements) {
+	for (const range of requirements.keyedRanges) {
+		const site = { module, thread, line: range.line, column: range.column };
+		if (range.empty) reasons.push(reason('keyed-range-empty-branch', site));
+		if (range.nested) reasons.push(reason('keyed-range-nested', site));
+		if (!range.lastChild) reasons.push(reason('keyed-range-not-last-child', site));
+		if (!LYNX_BLOCK_RANGE_ROW_KINDS.has(range.row.kind)) {
+			reasons.push(
+				reason('unsupported-keyed-range-row', {
+					...site,
+					kind: range.row.kind,
+					row: range.row.name,
+				}),
+			);
+		} else if (range.row.kind === 'local-component' && range.row.hooks.length !== 0) {
+			reasons.push(
+				reason('keyed-range-row-hooks', {
+					...site,
+					row: range.row.name,
+					hooks: Object.freeze(range.row.hooks.map(cloneSourceSite)),
+				}),
+			);
+		}
+	}
+	for (const feature of requirements.templateFeatures) {
+		reasons.push(
+			reason('unsupported-template-feature', {
+				module,
+				thread,
+				kind: feature.kind,
+				name: feature.name,
+				line: feature.line,
+				column: feature.column,
+			}),
+		);
+	}
+}
+
+/**
+ * Evaluate the immutable intersection of the three application-graph proofs.
+ *
+ * This report is deliberately advisory: it does not select a core or affect
+ * emitted JavaScript. The build can therefore publish why Block is or is not
+ * eligible before a later product-cutover slice consumes the same versioned
+ * matrix. Unknown versions, incomplete facts, and graph drift all fail closed.
+ */
+export function evaluateLynxBlockEligibility({
+	programCoverage,
+	semanticRequirements,
+	featureRequirements,
+}) {
+	const reasons = [];
+	let programReady = false;
+	if (
+		proofVersionSupported(
+			programCoverage,
+			LYNX_PROGRAM_COVERAGE_VERSION,
+			'program-coverage',
+			reasons,
+		)
+	) {
+		programReady = programCoverage.complete;
+		if (!programReady) {
+			reasons.push(
+				reason('program-coverage-incomplete', {
+					reasons: Object.freeze([...programCoverage.reasons]),
+				}),
+			);
+		}
+	}
+	let semanticReady = false;
+	if (
+		proofVersionSupported(
+			semanticRequirements,
+			LYNX_BLOCK_SEMANTIC_REQUIREMENTS_VERSION,
+			'semantic-requirements',
+			reasons,
+		)
+	) {
+		semanticReady = semanticRequirements.paired;
+		if (!semanticReady) {
+			reasons.push(
+				reason('semantic-requirements-unpaired', {
+					reasons: Object.freeze([...semanticRequirements.reasons]),
+				}),
+			);
+		}
+	}
+	let featureReady = false;
+	if (
+		proofVersionSupported(
+			featureRequirements,
+			LYNX_BLOCK_FEATURE_REQUIREMENTS_VERSION,
+			'feature-requirements',
+			reasons,
+		)
+	) {
+		featureReady = featureRequirements.paired;
+		if (!featureReady) {
+			reasons.push(
+				reason('feature-requirements-unpaired', {
+					reasons: Object.freeze([...featureRequirements.reasons]),
+				}),
+			);
+		}
+	}
+	if (programReady && semanticReady && featureReady) {
+		const programModules = proofModules(programCoverage);
+		const semanticModules = proofModules(semanticRequirements);
+		const featureModules = proofModules(featureRequirements);
+		if (
+			!sameStrings(programModules, semanticModules) ||
+			!sameStrings(programModules, featureModules)
+		) {
+			reasons.push(
+				reason('proof-module-set-mismatch', {
+					programCoverage: Object.freeze(programModules),
+					semanticRequirements: Object.freeze(semanticModules),
+					featureRequirements: Object.freeze(featureModules),
+				}),
+			);
+		} else {
+			for (const module of [...semanticRequirements.modules].sort((left, right) =>
+				left.module.localeCompare(right.module),
+			)) {
+				unsupportedRuntimeReasons(reasons, module.module, 'background', module.background);
+				unsupportedRuntimeReasons(reasons, module.module, 'main-thread', module.mainThread);
+			}
+			for (const module of [...featureRequirements.modules].sort((left, right) =>
+				left.module.localeCompare(right.module),
+			)) {
+				unsupportedFeatureReasons(reasons, module.module, 'background', module.background);
+				unsupportedFeatureReasons(reasons, module.module, 'main-thread', module.mainThread);
+			}
+		}
+	}
+	return Object.freeze({
+		version: LYNX_BLOCK_SELECTION_VERSION,
+		matrix: LYNX_BLOCK_SUPPORT_MATRIX,
+		eligible: reasons.length === 0,
+		reasons: Object.freeze(reasons),
+	});
+}
+
 /** Attach versioned per-entry coverage evidence without changing emitted JavaScript. */
 export class LynxProgramCoveragePlugin {
 	constructor(entries, enabled) {
@@ -558,29 +770,33 @@ export class LynxProgramCoveragePlugin {
 
 	apply(compiler) {
 		compiler.hooks.thisCompilation.tap(this.constructor.name, (compilation) => {
-			const programReports = new Map();
-			const semanticReports = new Map();
-			const featureReports = new Map();
+			const reports = new Map();
 			compilation.hooks.finishModules.tap(this.constructor.name, () => {
 				for (const entry of this.entries) {
 					const entryModules = collectApplicationEntryModules(compilation, entry);
-					programReports.set(
-						entry.mainThreadEntry,
-						collectLynxProgramCoverageFromEntryModules(
-							{
-								...entry,
-								enabled: this.enabled,
-							},
-							entryModules,
-						),
+					const programCoverage = collectLynxProgramCoverageFromEntryModules(
+						{
+							...entry,
+							enabled: this.enabled,
+						},
+						entryModules,
 					);
-					semanticReports.set(
+					const semanticRequirements =
+						collectLynxBlockSemanticRequirementsFromEntryModules(entryModules);
+					const featureRequirements =
+						collectLynxBlockFeatureRequirementsFromEntryModules(entryModules);
+					reports.set(
 						entry.mainThreadEntry,
-						collectLynxBlockSemanticRequirementsFromEntryModules(entryModules),
-					);
-					featureReports.set(
-						entry.mainThreadEntry,
-						collectLynxBlockFeatureRequirementsFromEntryModules(entryModules),
+						Object.freeze({
+							programCoverage,
+							semanticRequirements,
+							featureRequirements,
+							selection: evaluateLynxBlockEligibility({
+								programCoverage,
+								semanticRequirements,
+								featureRequirements,
+							}),
+						}),
 					);
 				}
 			});
@@ -590,7 +806,7 @@ export class LynxProgramCoveragePlugin {
 					stage: compiler.webpack.Compilation.PROCESS_ASSETS_STAGE_REPORT,
 				},
 				() => {
-					for (const [entryName, report] of programReports) {
+					for (const [entryName, report] of reports) {
 						const entrypoint = compilation.entrypoints.get(entryName);
 						for (const chunk of entrypoint?.chunks ?? []) {
 							for (const filename of chunk.files ?? []) {
@@ -599,9 +815,10 @@ export class LynxProgramCoveragePlugin {
 								if (asset === undefined) continue;
 								compilation.updateAsset(filename, asset.source, {
 									...asset.info,
-									[LYNX_PROGRAM_COVERAGE_ASSET_INFO]: report,
-									[LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO]: semanticReports.get(entryName),
-									[LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO]: featureReports.get(entryName),
+									[LYNX_PROGRAM_COVERAGE_ASSET_INFO]: report.programCoverage,
+									[LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO]: report.semanticRequirements,
+									[LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO]: report.featureRequirements,
+									[LYNX_BLOCK_SELECTION_ASSET_INFO]: report.selection,
 								});
 							}
 						}

@@ -124,6 +124,12 @@ function compileCard(
 			captures: readonly string[];
 		}[];
 		mainThreadProps: readonly { name: string; line: number; column: number }[];
+		templateFeatures: readonly {
+			kind: string;
+			name: string | null;
+			line: number;
+			column: number;
+		}[];
 		keyedRanges: readonly {
 			line: number;
 			column: number;
@@ -168,6 +174,12 @@ function compileCard(
 				captures: readonly string[];
 			}[];
 			mainThreadProps: readonly { name: string; line: number; column: number }[];
+			templateFeatures: readonly {
+				kind: string;
+				name: string | null;
+				line: number;
+				column: number;
+			}[];
 			keyedRanges: readonly {
 				line: number;
 				column: number;
@@ -747,7 +759,7 @@ void shadowed;
 		expect(result.lynxBlockSemanticRequirements).toBeUndefined();
 		expect(result.lynxBlockFeatureRequirements).toBeUndefined();
 		expect(paired.lynxBlockSemanticRequirements?.version).toBe(1);
-		expect(paired.lynxBlockFeatureRequirements?.version).toBe(1);
+		expect(paired.lynxBlockFeatureRequirements?.version).toBe(2);
 		expect(paired.code).toBe(result.code);
 	});
 });
@@ -777,9 +789,10 @@ export function App(props: { groups: readonly { id: number; rows: readonly numbe
 `);
 
 		expect(result.lynxBlockFeatureRequirements).toEqual({
-			version: 1,
+			version: 2,
 			threadFunctions: [],
 			mainThreadProps: [],
+			templateFeatures: [],
 			keyedRanges: [
 				{
 					line: 11,
@@ -804,6 +817,48 @@ export function App(props: { groups: readonly { id: number; rows: readonly numbe
 			],
 		});
 		expect(result.code).not.toContain('lynxBlockFeatureRequirements');
+	});
+
+	it('records template roles that structural program addressing cannot prove safe', () => {
+		const result = compileCard(`/** @jsxImportSource @octanejs/lynx/intrinsics */
+function Panel() @{
+	<view />
+}
+
+export function App(props: { show: boolean; child: unknown }) @{
+	<view>
+		<Panel />
+		<list><list-item /></list>
+		@if (props.show) {
+			<text>shown</text>
+		}
+		<>
+			<text>fragment</text>
+		</>
+		@switch (props.show) {
+			@case true: {
+				<text>yes</text>
+			}
+			@default: {
+				<text>no</text>
+			}
+		}
+		@try { <text>ready</text> } @pending { <text>pending</text> }
+		{props.child}
+	</view>
+}
+`);
+
+		expect(result.lynxBlockFeatureRequirements?.templateFeatures).toEqual([
+			{ kind: 'component', name: 'Panel', line: 8, column: 2 },
+			{ kind: 'native-list', name: 'list', line: 9, column: 2 },
+			{ kind: 'native-list', name: 'list-item', line: 9, column: 8 },
+			{ kind: 'if', name: null, line: 10, column: 2 },
+			{ kind: 'fragment', name: null, line: 13, column: 2 },
+			{ kind: 'switch', name: null, line: 16, column: 2 },
+			{ kind: 'try', name: null, line: 24, column: 2 },
+			{ kind: 'renderable-hole', name: null, line: 25, column: 2 },
+		]);
 	});
 });
 
