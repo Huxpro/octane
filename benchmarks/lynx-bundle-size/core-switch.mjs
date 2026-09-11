@@ -46,6 +46,13 @@ import {
 	LYNX_BACKGROUND_LAYER,
 	LYNX_MAIN_THREAD_LAYER,
 } from '../../packages/rspeedy-plugin-octane/src/layers.js';
+import {
+	LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO,
+	LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO,
+	LYNX_BLOCK_SELECTION_ASSET_INFO,
+	LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO,
+	LYNX_PROGRAM_COVERAGE_ASSET_INFO,
+} from '../../packages/rspeedy-plugin-octane/src/program-coverage.js';
 import { registerTypeScriptSourceResolution } from './ts-source-resolution.mjs';
 
 // Before the backend is imported, and it has to be a dynamic import for that
@@ -88,9 +95,12 @@ const ENTRY = path.join(REPO, 'benchmarks/lynx-table/app/src/index.ts');
 const ENTRY_NAME = 'main';
 const BUNDLE_NAME = 'main.lynx.bundle';
 const AUDIT_INPUTS = Object.freeze([
+	'.changeset/auto-select-lynx-block-core.md',
 	'benchmarks/lynx-bundle-size/README.md',
 	'benchmarks/lynx-bundle-size/core-switch.mjs',
 	'benchmarks/lynx-bundle-size/inventory.mjs',
+	'packages/lynx',
+	'packages/rspeedy-plugin-octane',
 ]);
 const AUDIT_BASE = process.env.OCTANE_AUDIT_BASE ?? 'HEAD';
 
@@ -284,6 +294,50 @@ class CaptureReachableModulesPlugin {
 	}
 }
 
+class CaptureBackgroundCoreSelectionPlugin {
+	constructor(target) {
+		this.target = target;
+	}
+
+	apply(compiler) {
+		const { PROCESS_ASSETS_STAGE_REPORT } = compiler.webpack.Compilation;
+		compiler.hooks.thisCompilation.tap(this.constructor.name, (compilation) => {
+			compilation.hooks.processAssets.tap(
+				{ name: this.constructor.name, stage: PROCESS_ASSETS_STAGE_REPORT + 1 },
+				() => {
+					const proofs = new Map();
+					for (const asset of compilation.getAssets()) {
+						const coreSelection = asset.info[LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO];
+						if (coreSelection === undefined) continue;
+						const proof = {
+							coreSelection,
+							blockSelection: asset.info[LYNX_BLOCK_SELECTION_ASSET_INFO],
+							programCoverage: asset.info[LYNX_PROGRAM_COVERAGE_ASSET_INFO],
+							semanticRequirements: asset.info[LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO],
+							featureRequirements: asset.info[LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO],
+						};
+						proofs.set(JSON.stringify(proof), proof);
+					}
+					this.target.push(...proofs.values());
+				},
+			);
+		});
+	}
+}
+
+function captureBackgroundCoreSelection(target) {
+	return {
+		name: 'octane:core-switch-selection-probe',
+		setup(api) {
+			api.modifyBundlerChain((chain) => {
+				chain
+					.plugin('octane:core-switch-selection-probe')
+					.use(CaptureBackgroundCoreSelectionPlugin, [target]);
+			});
+		},
+	};
+}
+
 function reachableInventory(modules) {
 	const sorted = modules.toSorted(
 		(left, right) =>
@@ -426,6 +480,7 @@ function decodedScript(decoded, key) {
  */
 async function buildWithCore(label, core, outputRoot, { backend, programAddressing } = {}) {
 	const reachableModules = [];
+	const coreSelections = [];
 	const rspeedy = await createRspeedy({
 		cwd: RSPEEDY_CWD,
 		loadEnv: false,
@@ -445,7 +500,7 @@ async function buildWithCore(label, core, outputRoot, { backend, programAddressi
 				entry: { [ENTRY_NAME]: ENTRY },
 				define: {
 					__BENCH_AUTOROWS__: '0',
-					__BENCH_CORE__: JSON.stringify(core),
+					__BENCH_CORE__: JSON.stringify(core ?? 'automatic'),
 					// The derived arm runs the same compiler-produced App on both
 					// cores. The hand-authored ceiling program is not part of this
 					// product-default comparison and must fold out.
@@ -465,7 +520,7 @@ async function buildWithCore(label, core, outputRoot, { backend, programAddressi
 			},
 			plugins: [
 				pluginOctane({
-					core,
+					...(core === undefined ? null : { core }),
 					// Pinned so the arms differ only in what they are measuring. The
 					// first two explicitly disable the now-default backend; the latter
 					// two pass its live module. Keeping every arm serial prevents worker
@@ -477,6 +532,7 @@ async function buildWithCore(label, core, outputRoot, { backend, programAddressi
 					mainThreadProgramBackend: backend ?? false,
 					...(programAddressing === undefined ? null : { programAddressing }),
 				}),
+				captureBackgroundCoreSelection(coreSelections),
 			],
 		},
 	});
@@ -497,6 +553,11 @@ async function buildWithCore(label, core, outputRoot, { backend, programAddressi
 	if (main.bytes.length === 0) throw new Error(`${label}: main program is empty`);
 	assertMainDigestPinned(label, main.text);
 	const reachable = reachableInventory(reachableModules);
+	if (coreSelections.length !== 1) {
+		throw new Error(
+			`${label}: expected one background-core selection decision, received ${coreSelections.length}`,
+		);
+	}
 	if (
 		reachable.byThread.main.moduleCount === 0 ||
 		reachable.byThread.background.moduleCount === 0
@@ -505,7 +566,9 @@ async function buildWithCore(label, core, outputRoot, { backend, programAddressi
 	}
 	return {
 		label,
-		core,
+		core: core ?? 'automatic',
+		coreSelection: coreSelections[0].coreSelection,
+		selectionProof: coreSelections[0],
 		backend: backend === undefined ? 'descriptor' : 'compiled-program',
 		programAddressing: backend === undefined ? false : programAddressing !== false,
 		bundle: artifactStat(bundle),
@@ -555,8 +618,13 @@ try {
 		path.join(outputs, 'block-program'),
 		{ backend: mainThreadProgramBackend },
 	);
+	// This is the actual product default: omit `core`, retain the default
+	// compiler backend, and let positional program addressing default on.
+	const automatic = await buildWithCore('automatic', undefined, path.join(outputs, 'automatic'), {
+		backend: mainThreadProgramBackend,
+	});
 
-	const rows = [universal, block, blockProgramDescriptor, blockProgram];
+	const rows = [universal, block, automatic, blockProgramDescriptor, blockProgram];
 	const delta = (value) => (value >= 0 ? '+' : '') + value.toLocaleString();
 
 	console.log('\nencoded production bundle\n');
@@ -626,7 +694,7 @@ try {
 			`core: 'universal' kept block-core strings: ${universal.probes.block.join(', ')}`,
 		);
 	}
-	for (const row of [block, blockProgramDescriptor, blockProgram]) {
+	for (const row of [block, automatic, blockProgramDescriptor, blockProgram]) {
 		if (row.probes.universalRoot.length !== 0) {
 			failures.push(
 				`${row.label} kept universal-root strings: ${row.probes.universalRoot.join(', ')}`,
@@ -647,6 +715,35 @@ try {
 	// The core switch is background-only: it must not reach the main thread.
 	if (universal.main.sha256 !== block.main.sha256) {
 		failures.push('the main-thread program is not byte-identical across the core switch');
+	}
+	if (
+		automatic.background.sha256 !== blockProgram.background.sha256 ||
+		automatic.main.sha256 !== blockProgram.main.sha256
+	) {
+		failures.push('automatic product defaults are not byte-identical to explicit Block defaults');
+	}
+	if (automatic.bundle.sha256 !== blockProgram.bundle.sha256) {
+		failures.push(
+			'automatic product defaults changed the encoded bundle relative to explicit Block',
+		);
+	}
+	const automaticDecision = automatic.coreSelection;
+	if (
+		automaticDecision.mode !== 'automatic' ||
+		automaticDecision.selected !== 'block' ||
+		automaticDecision.eligible !== true ||
+		automaticDecision.reasons.length !== 0
+	) {
+		failures.push(
+			`automatic core decision did not prove an eligible Block selection: ${JSON.stringify(automatic.selectionProof)}`,
+		);
+	}
+	for (const row of [universal, block]) {
+		if (row.coreSelection.mode !== 'explicit' || row.coreSelection.selected !== row.core) {
+			failures.push(
+				`${row.label} core decision does not preserve its explicit override: ${JSON.stringify(row.coreSelection)}`,
+			);
+		}
 	}
 
 	// The descriptor backend isolates codegen, and both halves of its control
@@ -703,8 +800,8 @@ try {
 		process.exitCode = 1;
 	} else {
 		console.log(
-			'\nOK — each bundle carries exactly one core, the core switch leaves the main-thread\n' +
-				'program byte-identical, descriptor-mode isolates codegen, and addressing costs both threads explicitly.',
+			'\nOK — the eligible production default is byte-identical to explicit Block, each bundle carries\n' +
+				'exactly one core, descriptor-mode isolates codegen, and addressing costs both threads explicitly.',
 		);
 	}
 

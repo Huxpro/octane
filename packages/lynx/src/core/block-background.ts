@@ -6,10 +6,8 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
  *
  * `block-root.ts` proved the core's frames survive the real transport.
  * `block-core.ts` proved the Block model emits a change-proportional update.
- * Neither of them is reachable from an application: `createLynxRoot` builds a
- * universal root, and nothing under `packages/lynx/src` referenced either
- * module. This is the seam that makes the choice real — selected at build time
- * by `@octanejs/rspeedy-plugin`'s `core` option, never per root.
+ * This is the seam that makes the choice real — selected through a build-time
+ * module replacement by `@octanejs/rspeedy-plugin`, never per root.
  *
  * ## What flag-on can and cannot drive today, stated plainly
  *

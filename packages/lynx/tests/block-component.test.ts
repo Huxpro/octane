@@ -38,9 +38,11 @@ import {
 	universalProgramRangeCommandSlot,
 	universalProps,
 	universalValue,
+	useCallback,
 	useContext,
 	useEffect,
 	useInsertionEffect,
+	useRef,
 	useState,
 	useSyncExternalStore,
 	type UniversalRenderable,
@@ -680,6 +682,45 @@ describe('Lynx compiled component with its own state on the Block core', () => {
 		// so the tap it already took survives the prop change.
 		await render('b');
 		expect(paint(block.main.commits).tree).toContain('b-once');
+	});
+
+	it('keeps refs stable and callbacks memoized by their declared dependencies', async () => {
+		const refs: { current: number }[] = [];
+		const callbacks: (() => void)[] = [];
+		const observations: string[] = [];
+		const WithStableCells = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function WithStableCells(props: { readonly label: string }) {
+				const count = useRef(0, 'count');
+				const onTap = useCallback(
+					() => observations.push(`${props.label}:${++count.current}`),
+					[props.label],
+					'onTap',
+				);
+				refs.push(count);
+				callbacks.push(onTap);
+				return universalValue(CARD_PLAN, ['card', props.label, 'card-meta', onTap, 'detail']);
+			},
+		);
+		const block = blockColumn<{ readonly label: string }>();
+
+		await block.render(WithStableCells as LynxComponent<{ readonly label: string }>, {
+			label: 'same',
+		});
+		deliverTo(block, boundListener(block.main.commits));
+		await block.render(WithStableCells as LynxComponent<{ readonly label: string }>, {
+			label: 'same',
+		});
+		expect(refs[1]).toBe(refs[0]);
+		expect(callbacks[1]).toBe(callbacks[0]);
+
+		await block.render(WithStableCells as LynxComponent<{ readonly label: string }>, {
+			label: 'changed',
+		});
+		expect(refs[2]).toBe(refs[0]);
+		expect(callbacks[2]).not.toBe(callbacks[1]);
+		deliverTo(block, boundListener(block.main.commits));
+		expect(observations).toEqual(['same:1', 'changed:2']);
 	});
 
 	it('reads the pending value through the third member of the tuple', async () => {

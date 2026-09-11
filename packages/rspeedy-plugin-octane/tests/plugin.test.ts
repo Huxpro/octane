@@ -489,6 +489,7 @@ describe('@octanejs/rspeedy-plugin', () => {
 				},
 			],
 			true,
+			undefined,
 		]);
 	});
 
@@ -987,18 +988,12 @@ export function App() @{ <view /> }
 		expect(() => pluginOctane({ core: 'blocks' as never })).toThrow(/core.*universal.*block/);
 	});
 
-	it('binds the background core as a build-time define, universal by default', () => {
-		// Issue #103 B0. The bundle carries one core, so the choice has to reach
-		// `@octanejs/lynx` as a constant rather than as a per-root option. The
-		// application graph and an isolated thread graph both carry it: the
-		// isolated graph is how the background bundle is inspected and source
-		// tested, and it would otherwise read as unsubstituted and fall back.
+	it('routes application defaults through graph selection and statically binds isolated cores', () => {
 		const applicationEntries = { app: ['./src/App.lynx.tsrx'] };
-		for (const [options, expected] of [
-			[undefined, 'universal'],
+		for (const [options, configured] of [
+			[undefined, undefined],
 			[{ core: 'universal' as const }, 'universal'],
 			[{ core: 'block' as const }, 'block'],
-			[{ thread: 'background' as const, core: 'block' as const }, 'block'],
 		] as const) {
 			const state = applyPlugin(
 				options as Parameters<typeof pluginOctane>[0],
@@ -1006,15 +1001,31 @@ export function App() @{ <view /> }
 				{},
 				applicationEntries,
 			);
+			expect(state.plugins.has('@octanejs/rspeedy-plugin:background-core')).toBe(false);
+			expect(state.plugins.get('@octanejs/rspeedy-plugin:program-coverage')?.options[2]).toBe(
+				configured,
+			);
+		}
+
+		for (const expected of ['universal', 'block'] as const) {
+			const state = applyPlugin(
+				{ thread: 'background', core: expected },
+				'lynx',
+				{},
+				applicationEntries,
+			);
 			const registered = state.plugins.get('@octanejs/rspeedy-plugin:background-core');
 			expect(registered?.options).toEqual([expected]);
 
-			const defines: Record<string, unknown>[] = [];
+			const replacements: {
+				test: RegExp;
+				apply: (resource: { request: string }) => void;
+			}[] = [];
 			const compiler = {
 				webpack: {
-					DefinePlugin: class {
-						constructor(values: Record<string, unknown>) {
-							defines.push(values);
+					NormalModuleReplacementPlugin: class {
+						constructor(test: RegExp, apply: (resource: { request: string }) => void) {
+							replacements.push({ test, apply });
 						}
 						apply() {}
 					},
@@ -1023,7 +1034,15 @@ export function App() @{ <view /> }
 			new (registered!.implementation as new (core: string) => { apply(c: unknown): void })(
 				expected,
 			).apply(compiler);
-			expect(defines).toEqual([{ __OCTANE_LYNX_BACKGROUND_CORE__: JSON.stringify(expected) }]);
+			expect(replacements).toHaveLength(1);
+			const resource = { request: './core/background-core-selection.js' };
+			expect(replacements[0]!.test.test(resource.request)).toBe(true);
+			replacements[0]!.apply(resource);
+			expect(resource.request).toBe(
+				expected === 'block'
+					? './core/background-core-selection.block.js'
+					: './core/background-core-selection.js',
+			);
 		}
 	});
 

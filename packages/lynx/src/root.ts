@@ -17,6 +17,7 @@ import {
 	type LynxPublicHandle,
 } from './core/client-driver.js';
 import { prepareLynxBackgroundLifecycleReceiver } from './core/background-lifecycle.js';
+import { LYNX_BLOCK_BACKGROUND_CORE } from './core/background-core-selection.js';
 import { installLynxNativeEventReceiver } from './core/native-event-receiver.js';
 import { createLynxBackgroundTransport, type LynxBackgroundTransport } from './core/transport.js';
 import type {
@@ -26,7 +27,6 @@ import type {
 } from './core/protocol.js';
 import type { LynxCreateSelectorQuery } from './core/nodes-ref.js';
 import {
-	LYNX_BLOCK_BACKGROUND_CORE,
 	lynxEnvironmentIsInjected,
 	readAmbientQueueMicrotask,
 	readLynxEnvironment,
@@ -301,11 +301,11 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 			throw error;
 		}
 	})();
-	// The compile-time core switch (issue #103 B0). `LYNX_BLOCK_BACKGROUND_CORE`
-	// folds to a literal from the build plugin's `core` option, so exactly one
-	// arm survives in a production bundle and the other core's whole closure
-	// tree-shakes out. Everything around this — container, worklets, transport,
-	// lifecycle, native events — is shared, because only the core differs.
+	// The compile-time core switch (issue #103 B0). The build plugin resolves the
+	// tiny selection module before optimization, so exactly one arm survives in
+	// a production bundle and the other core's whole closure tree-shakes out.
+	// Everything around this — container, worklets, transport, lifecycle, native
+	// events — is shared, because only the core differs.
 	const backgroundCore: LynxBackgroundCore = (() => {
 		try {
 			const root = LYNX_BLOCK_BACKGROUND_CORE

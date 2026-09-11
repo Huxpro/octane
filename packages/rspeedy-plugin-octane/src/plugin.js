@@ -140,7 +140,9 @@ function normalizeOptions(value) {
 	return Object.freeze({
 		...layer,
 		application,
-		core: options.core ?? 'universal',
+		// Omission is meaningful for an application: the complete production graph
+		// may select Block, while isolated diagnostic graphs stay conservative.
+		core: options.core ?? (application ? undefined : 'universal'),
 		thread,
 		renderers:
 			thread === 'main-thread' ? lynxRspeedyMainThreadRenderers : lynxRspeedyBackgroundRenderers,
@@ -256,13 +258,13 @@ export function pluginOctane(value) {
 				handler(chain, context) {
 					const { environment } = context;
 					if (!appliesToEnvironment(environment)) return;
-					applyLynxBackgroundCore(chain, options.core);
 					applyLynxDiagnosticMode(chain, options.dev ?? context.isDev === true);
 					if (options.application) {
 						const rspeedyConfig =
 							api.useExposed?.(Symbol.for('rspeedy.api'))?.config ?? api.getRsbuildConfig?.() ?? {};
 						applyLynxApplication(chain, context, rspeedyConfig, options);
 					} else {
+						applyLynxBackgroundCore(chain, options.core);
 						applyLynxEntryLayer(chain, options.layer);
 					}
 				},

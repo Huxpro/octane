@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO,
 	collectLynxBlockFeatureRequirements,
 	collectLynxBlockSemanticRequirements,
 	collectLynxProgramCoverage,
@@ -214,8 +215,8 @@ describe('Lynx application Block eligibility', () => {
 		expect(report).toEqual({
 			version: 1,
 			matrix: {
-				version: 1,
-				runtimeNames: ['useEffect', 'useState', 'useSyncExternalStore'],
+				version: 2,
+				runtimeNames: ['useCallback', 'useEffect', 'useRef', 'useState', 'useSyncExternalStore'],
 				threadFunctions: ['background', 'main-thread'],
 				mainThreadProps: true,
 				templateFeatures: [],
@@ -629,7 +630,7 @@ describe('Lynx application resident-program coverage', () => {
 		});
 	});
 
-	it('attaches the immutable report to the matching main-thread entry asset', () => {
+	it('attaches proofs and rebuilds the eligible production root onto Block', async () => {
 		const background = moduleWithCoverage('/src/App.tsrx', 'background', 1, 1);
 		const mainThread = moduleWithCoverage('/src/App.tsrx', 'main-thread', 1, 1);
 		const graph = compilation(background, mainThread) as any;
@@ -650,24 +651,58 @@ describe('Lynx application resident-program coverage', () => {
 				{ chunks: [{ files: new Set(['.rspeedy/app/main-thread.js']) }] },
 			],
 		]);
-		let finishModules!: () => void;
+		let finishMake!: (compilation: unknown) => Promise<void>;
 		let processAssets!: () => void;
 		graph.hooks = {
-			finishModules: { tap: (_name: string, callback: () => void) => (finishModules = callback) },
 			processAssets: {
 				tap: (_options: unknown, callback: () => void) => (processAssets = callback),
 			},
+		};
+		const root = {
+			layer: 'octane:background',
+			nameForCondition: () => '/repo/node_modules/@octanejs/lynx/src/root.ts',
+			connections: [] as { module: unknown }[],
+		};
+		graph.modules = new Set([root]);
+		let replacement!: (resource: { request: string }) => void;
+		let rebuiltRequest: string | undefined;
+		graph.rebuildModule = (_module: unknown, callback: (error: Error | null) => void) => {
+			const resource = { request: './core/background-core-selection.js' };
+			replacement(resource);
+			rebuiltRequest = resource.request;
+			root.connections = [
+				{
+					module: {
+						nameForCondition: () =>
+							'/repo/node_modules/@octanejs/lynx/src/core/background-core-selection.block.ts',
+					},
+				},
+			];
+			callback(null);
 		};
 		graph.getAsset = (filename: string) => assets.get(filename);
 		graph.updateAsset = (filename: string, source: unknown, info: unknown) =>
 			assets.set(filename, { source, info });
 		const compiler = {
+			options: { mode: 'production' },
 			hooks: {
+				finishMake: {
+					tapPromise: (_name: string, callback: (compilation: unknown) => Promise<void>) =>
+						(finishMake = callback),
+				},
 				thisCompilation: {
 					tap: (_name: string, callback: (value: unknown) => void) => callback(graph),
 				},
 			},
-			webpack: { Compilation: { PROCESS_ASSETS_STAGE_REPORT: 1 } },
+			webpack: {
+				Compilation: { PROCESS_ASSETS_STAGE_REPORT: 1 },
+				NormalModuleReplacementPlugin: class {
+					constructor(_test: RegExp, callback: typeof replacement) {
+						replacement = callback;
+					}
+					apply() {}
+				},
+			},
 		};
 
 		new LynxProgramCoveragePlugin(
@@ -680,10 +715,12 @@ describe('Lynx application resident-program coverage', () => {
 			],
 			true,
 		).apply(compiler);
-		finishModules();
+		await finishMake(graph);
 		processAssets();
 
-		expect(graphVisits).toBe(2);
+		// Two complete entry traversals plus one exact background-root edge check.
+		expect(graphVisits).toBe(3);
+		expect(rebuiltRequest).toBe('./core/background-core-selection.block.js');
 		expect(assets.get('.rspeedy/app/main-thread.js')?.info).toMatchObject({
 			existing: true,
 			[LYNX_PROGRAM_COVERAGE_ASSET_INFO]: {
@@ -724,7 +761,14 @@ describe('Lynx application resident-program coverage', () => {
 			},
 			[LYNX_BLOCK_SELECTION_ASSET_INFO]: {
 				version: 1,
-				matrix: { version: 1 },
+				matrix: { version: 2 },
+				eligible: true,
+				reasons: [],
+			},
+			[LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO]: {
+				version: 1,
+				mode: 'automatic',
+				selected: 'block',
 				eligible: true,
 				reasons: [],
 			},

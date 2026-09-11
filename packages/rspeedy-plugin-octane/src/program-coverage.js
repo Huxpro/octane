@@ -1,5 +1,7 @@
 import { getOctaneRspackBuildInfo } from '@octanejs/rspack-plugin';
 
+import { installLynxBackgroundCoreReplacement } from './background-core.js';
+
 export const LYNX_PROGRAM_COVERAGE_ASSET_INFO = 'octane:lynx-program-coverage';
 export const LYNX_PROGRAM_COVERAGE_VERSION = 1;
 export const LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO =
@@ -9,12 +11,20 @@ export const LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO = 'octane:lynx-block-fea
 export const LYNX_BLOCK_FEATURE_REQUIREMENTS_VERSION = 2;
 export const LYNX_BLOCK_SELECTION_ASSET_INFO = 'octane:lynx-block-selection';
 export const LYNX_BLOCK_SELECTION_VERSION = 1;
-export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 1;
+export const LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO = 'octane:lynx-background-core-selection';
+export const LYNX_BACKGROUND_CORE_SELECTION_VERSION = 1;
+export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 2;
 export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 	version: LYNX_BLOCK_SUPPORT_MATRIX_VERSION,
 	// Each name has an independent assertion through the Block component path.
 	// Expanding this list is a semantic change, not a discovery heuristic.
-	runtimeNames: Object.freeze(['useEffect', 'useState', 'useSyncExternalStore']),
+	runtimeNames: Object.freeze([
+		'useCallback',
+		'useEffect',
+		'useRef',
+		'useState',
+		'useSyncExternalStore',
+	]),
 	threadFunctions: Object.freeze(['background', 'main-thread']),
 	mainThreadProps: true,
 	templateFeatures: Object.freeze([]),
@@ -27,6 +37,7 @@ export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 	}),
 });
 const MAIN_THREAD_ASSET = /main-thread(?:\.[A-Fa-f0-9]+)?\.js$/;
+const LYNX_BACKGROUND_LAYER = 'octane:background';
 const LYNX_BLOCK_RUNTIME_NAMES = new Set(LYNX_BLOCK_SUPPORT_MATRIX.runtimeNames);
 const LYNX_BLOCK_RANGE_ROW_KINDS = new Set(LYNX_BLOCK_SUPPORT_MATRIX.keyedRanges.rowKinds);
 
@@ -39,6 +50,63 @@ function activeConnection(connection) {
 		typeof connection?.getActiveState !== 'function' ||
 		connection.getActiveState(undefined) !== false
 	);
+}
+
+function oneShotProduction(compiler) {
+	return (
+		compiler.options.mode === 'production' && compiler.watchMode !== true && !compiler.options.watch
+	);
+}
+
+function moduleResource(module) {
+	const resource = module?.nameForCondition?.();
+	return typeof resource === 'string' ? resource.replaceAll('\\', '/') : null;
+}
+
+function isLynxBackgroundRoot(module) {
+	if (module?.layer !== LYNX_BACKGROUND_LAYER) return false;
+	const resource = moduleResource(module);
+	return (
+		resource !== null &&
+		(resource.endsWith('/packages/lynx/src/root.ts') ||
+			resource.includes('/node_modules/@octanejs/lynx/src/root.ts'))
+	);
+}
+
+function isBackgroundCoreSelection(module, selectedCore) {
+	const resource = moduleResource(module);
+	if (resource === null) return false;
+	return selectedCore === 'block'
+		? resource.endsWith('/background-core-selection.block.ts')
+		: resource.endsWith('/background-core-selection.ts');
+}
+
+function verifyBackgroundCoreSelection(compilation, roots, selectedCore) {
+	for (const root of roots) {
+		const selected = [...compilation.moduleGraph.getOutgoingConnections(root)].some(
+			(connection) =>
+				activeConnection(connection) &&
+				connection.module != null &&
+				isBackgroundCoreSelection(connection.module, selectedCore),
+		);
+		if (!selected) {
+			throw new Error(
+				`@octanejs/rspeedy-plugin: background root did not resolve the selected ${selectedCore} core module.`,
+			);
+		}
+	}
+}
+
+async function rebuildLynxBackgroundRoots(compilation, roots) {
+	const results = await Promise.allSettled(
+		roots.map(
+			(module) =>
+				new Promise((resolve, reject) => {
+					compilation.rebuildModule(module, (error) => (error ? reject(error) : resolve()));
+				}),
+		),
+	);
+	for (const result of results) if (result.status === 'rejected') throw result.reason;
 }
 
 function collectReachableModules(compilation, entryName, authoredRequests) {
@@ -658,10 +726,10 @@ function unsupportedFeatureReasons(reasons, module, thread, requirements) {
 /**
  * Evaluate the immutable intersection of the three application-graph proofs.
  *
- * This report is deliberately advisory: it does not select a core or affect
- * emitted JavaScript. The build can therefore publish why Block is or is not
- * eligible before a later product-cutover slice consumes the same versioned
- * matrix. Unknown versions, incomplete facts, and graph drift all fail closed.
+ * The report itself is a pure, immutable eligibility decision. Application
+ * builds consume it only after every authored entry has been evaluated;
+ * unknown versions, incomplete facts, and graph drift all fail closed before
+ * the static core-selection module can change.
  */
 export function evaluateLynxBlockEligibility({
 	programCoverage,
@@ -761,52 +829,108 @@ export function evaluateLynxBlockEligibility({
 	});
 }
 
-/** Attach versioned per-entry coverage evidence without changing emitted JavaScript. */
+function collectApplicationReports(compilation, entries, enabled) {
+	const reports = new Map();
+	for (const entry of entries) {
+		const entryModules = collectApplicationEntryModules(compilation, entry);
+		const programCoverage = collectLynxProgramCoverageFromEntryModules(
+			{ ...entry, enabled },
+			entryModules,
+		);
+		const semanticRequirements = collectLynxBlockSemanticRequirementsFromEntryModules(entryModules);
+		const featureRequirements = collectLynxBlockFeatureRequirementsFromEntryModules(entryModules);
+		reports.set(
+			entry.mainThreadEntry,
+			Object.freeze({
+				programCoverage,
+				semanticRequirements,
+				featureRequirements,
+				selection: evaluateLynxBlockEligibility({
+					programCoverage,
+					semanticRequirements,
+					featureRequirements,
+				}),
+			}),
+		);
+	}
+	return reports;
+}
+
+function decideBackgroundCore(compiler, entries, reports, configuredCore, backgroundRootAvailable) {
+	const missing = entries
+		.map((entry) => entry.mainThreadEntry)
+		.filter((entryName) => !reports.has(entryName));
+	const ineligible = entries
+		.map((entry) => entry.mainThreadEntry)
+		.filter(
+			(entryName) => reports.has(entryName) && reports.get(entryName).selection.eligible !== true,
+		);
+	const eligible = missing.length === 0 && ineligible.length === 0 && entries.length !== 0;
+	if (configuredCore !== undefined) {
+		return Object.freeze({
+			version: LYNX_BACKGROUND_CORE_SELECTION_VERSION,
+			mode: 'explicit',
+			selected: configuredCore,
+			eligible,
+			reasons: Object.freeze([]),
+		});
+	}
+	const reasons = [];
+	if (!oneShotProduction(compiler)) {
+		reasons.push(reason('automatic-selection-requires-one-shot-production'));
+	}
+	if (!backgroundRootAvailable) reasons.push(reason('background-root-unavailable'));
+	for (const entry of missing) reasons.push(reason('selection-report-missing', { entry }));
+	for (const entry of ineligible) reasons.push(reason('entry-ineligible', { entry }));
+	return Object.freeze({
+		version: LYNX_BACKGROUND_CORE_SELECTION_VERSION,
+		mode: 'automatic',
+		selected: reasons.length === 0 && eligible ? 'block' : 'universal',
+		eligible,
+		reasons: Object.freeze(reasons),
+	});
+}
+
+/** Attach versioned proofs and specialize the one-core production graph. */
 export class LynxProgramCoveragePlugin {
-	constructor(entries, enabled) {
+	constructor(entries, enabled, configuredCore) {
 		this.entries = entries;
 		this.enabled = enabled;
+		this.configuredCore = configuredCore;
 	}
 
 	apply(compiler) {
+		if (typeof compiler.hooks.finishMake?.tapPromise !== 'function') {
+			throw new TypeError(
+				'@octanejs/rspeedy-plugin: automatic background-core selection requires Rspack finishMake.',
+			);
+		}
+		let activeState = null;
+		installLynxBackgroundCoreReplacement(
+			compiler,
+			() => activeState?.decision.selected ?? this.configuredCore ?? 'universal',
+		);
+		const states = new WeakMap();
 		compiler.hooks.thisCompilation.tap(this.constructor.name, (compilation) => {
-			const reports = new Map();
-			compilation.hooks.finishModules.tap(this.constructor.name, () => {
-				for (const entry of this.entries) {
-					const entryModules = collectApplicationEntryModules(compilation, entry);
-					const programCoverage = collectLynxProgramCoverageFromEntryModules(
-						{
-							...entry,
-							enabled: this.enabled,
-						},
-						entryModules,
-					);
-					const semanticRequirements =
-						collectLynxBlockSemanticRequirementsFromEntryModules(entryModules);
-					const featureRequirements =
-						collectLynxBlockFeatureRequirementsFromEntryModules(entryModules);
-					reports.set(
-						entry.mainThreadEntry,
-						Object.freeze({
-							programCoverage,
-							semanticRequirements,
-							featureRequirements,
-							selection: evaluateLynxBlockEligibility({
-								programCoverage,
-								semanticRequirements,
-								featureRequirements,
-							}),
-						}),
-					);
-				}
-			});
+			const state = {
+				reports: new Map(),
+				decision: Object.freeze({
+					version: LYNX_BACKGROUND_CORE_SELECTION_VERSION,
+					mode: this.configuredCore === undefined ? 'automatic' : 'explicit',
+					selected: this.configuredCore ?? 'universal',
+					eligible: false,
+					reasons: Object.freeze([reason('application-graph-not-collected')]),
+				}),
+			};
+			states.set(compilation, state);
+			activeState = state;
 			compilation.hooks.processAssets.tap(
 				{
 					name: this.constructor.name,
 					stage: compiler.webpack.Compilation.PROCESS_ASSETS_STAGE_REPORT,
 				},
 				() => {
-					for (const [entryName, report] of reports) {
+					for (const [entryName, report] of state.reports) {
 						const entrypoint = compilation.entrypoints.get(entryName);
 						for (const chunk of entrypoint?.chunks ?? []) {
 							for (const filename of chunk.files ?? []) {
@@ -819,12 +943,31 @@ export class LynxProgramCoveragePlugin {
 									[LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO]: report.semanticRequirements,
 									[LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO]: report.featureRequirements,
 									[LYNX_BLOCK_SELECTION_ASSET_INFO]: report.selection,
+									[LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO]: state.decision,
 								});
 							}
 						}
 					}
 				},
 			);
+		});
+		compiler.hooks.finishMake.tapPromise(this.constructor.name, async (compilation) => {
+			const state = states.get(compilation);
+			if (state === undefined) return;
+			state.reports = collectApplicationReports(compilation, this.entries, this.enabled);
+			const backgroundRoots = [...compilation.modules].filter(isLynxBackgroundRoot);
+			state.decision = decideBackgroundCore(
+				compiler,
+				this.entries,
+				state.reports,
+				this.configuredCore,
+				backgroundRoots.length !== 0,
+			);
+			activeState = state;
+			if (this.configuredCore === undefined && state.decision.selected === 'block') {
+				await rebuildLynxBackgroundRoots(compilation, backgroundRoots);
+			}
+			verifyBackgroundCoreSelection(compilation, backgroundRoots, state.decision.selected);
 		});
 	}
 }

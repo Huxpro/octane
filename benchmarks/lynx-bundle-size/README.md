@@ -109,7 +109,7 @@ clean, snapshots their exact bytes, and restores them in a `finally`. Every
 arm must reproduce the baseline's semantic checksums or the run fails, and the
 ablated artifacts are measurement devices rather than functional runtimes.
 
-The `product` harness runs `core-switch.mjs`'s full four-arm isolation controls
+The `product` harness runs `core-switch.mjs`'s full five-arm isolation controls
 for every ablation and records the current `block+program` complete artifact,
 decoded BTS, and decoded MTS independently, including raw/gzip/Brotli sizes and
 SHA-256 identities. Product-only mode cannot execute the ablated runtime, so its
@@ -209,15 +209,17 @@ adapter into that compact channel are recorded in
 ## Core switch and main-thread program
 
 `node benchmarks/lynx-bundle-size/core-switch.mjs` builds the exact rows-0 table
-fixture from the cross-framework benchmark four times through the real
+fixture from the cross-framework benchmark five times through the real
 production pipeline and reports what each half of the bundle weighs under the
 switches that decide it: the background
 core (`pluginOctane({ core })`, issue #103 B0) and the main-thread program
 backend (`pluginOctane({ mainThreadProgramBackend })`, issue #163 C1d). The arms
-are `universal`, `block`, `block+program-descriptor`, and `block+program`. The
-third disables positional addressing to isolate main-thread codegen; the fourth
-uses the product default, where supplying the backend also replaces background
-descriptors with checked addresses. All Block arms use the
+are `universal`, `block`, `automatic`, `block+program-descriptor`, and
+`block+program`. The descriptor arm disables positional addressing to isolate
+main-thread codegen; the latter explicit Block arm supplies the default backend
+and checked addresses. `automatic` omits `core` through the same complete stack
+and must be byte-identical to that explicit control while reporting an eligible
+automatic decision. All Block arms use the
 compiler-derived application path; the hand-authored Block ceiling program is
 excluded from this product-default comparison.
 

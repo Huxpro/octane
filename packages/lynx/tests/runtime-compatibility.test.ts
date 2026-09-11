@@ -102,6 +102,7 @@ describe('Lynx runtime compatibility evidence', () => {
 	it('keeps background and main-thread runtime ownership in separate source graphs', () => {
 		expect(runtimeSourceGraph(resolve(LYNX_ROOT, 'src/root.ts'))).toEqual({
 			files: [
+				'src/core/background-core-selection.ts',
 				'src/core/background-lifecycle.ts',
 				// Issue #103 B0: both background cores are in the *source* graph,
 				// because the compile-time switch is a branch in `root.ts` and the

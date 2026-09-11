@@ -506,6 +506,31 @@ const emittedScalars = (values: readonly UniversalHostTemplateProgramValue[]): u
 	throughEmission(SCALARS, 'createScalars', [0], () => values);
 
 describe('Lynx main-thread program emission', () => {
+	it('keeps static-shape emission under a linear per-host source ceiling', () => {
+		const counts = [1, 8, 32, 128, 256];
+		const sizes = counts.map((count) => {
+			const nodes = Array.from({ length: count }, (_, index) => ({
+				type: index % 2 === 0 ? 'view' : 'text',
+				parent: index === 0 ? -1 : 0,
+				props:
+					index % 3 === 0
+						? { class: 'static-node' }
+						: index % 3 === 1
+							? { id: 'static-node' }
+							: { class: 'static-node', id: 'static-node' },
+			}));
+			return emitLynxMainThreadProgram({ nodes, events: [] }, { name: 'createStatic' }).source
+				.length;
+		});
+		const fixedCost = sizes[0]!;
+		for (const [index, count] of counts.entries()) {
+			// This is a source-emission budget, not a runtime speed claim. It catches
+			// accidental whole-prefix duplication while allowing the numeric node IDs
+			// and three distinct static prop shapes to grow normally.
+			expect(sizes[index]).toBeLessThanOrEqual(fixedCost + (count - 1) * 256);
+		}
+	});
+
 	it('paints what the dense template-run applier paints', () => {
 		const list = rows(6);
 		expect(paintedTree(emitted(list, null))).toEqual(paintedTree(interpreted(list, null)));
