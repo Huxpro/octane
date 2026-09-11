@@ -39,6 +39,8 @@ export interface LynxCompiledProgramReceiver {
 	markProgramsReady(): void;
 	/** Native PageConfig is installed and Element PAPI writes may begin. */
 	markPageReady(): void;
+	/** Broadcast native lifetime end before releasing page-local ownership. */
+	destroyPage(): void;
 	close(): void;
 }
 
@@ -173,6 +175,31 @@ export function installLynxCompiledProgramReceiver<Node extends LynxElementRef>(
 	return Object.freeze({
 		markProgramsReady: () => markReady(2),
 		markPageReady: () => markReady(1),
+		destroyPage() {
+			if (closed) return;
+			try {
+				dispatch({ type: 'page-destroy' });
+			} catch (error) {
+				report(
+					error,
+					RECEIVER_DEVELOPMENT
+						? 'Octane Lynx compact receiver could not publish page destroy.'
+						: RECEIVER_ERROR,
+				);
+			}
+			try {
+				controller.close();
+			} catch (error) {
+				report(
+					error,
+					RECEIVER_DEVELOPMENT
+						? 'Octane Lynx compact receiver page-destroy cleanup failed.'
+						: RECEIVER_ERROR,
+				);
+			}
+			closed = true;
+			context.removeEventListener(LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT, onMessage);
+		},
 		close() {
 			if (closed) return;
 			controller.close();

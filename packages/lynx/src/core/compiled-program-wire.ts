@@ -32,6 +32,7 @@ const enum WireOpcode {
 	Fault = 10,
 	DisposeAcknowledgement = 11,
 	DisposeRetry = 12,
+	PageDestroy = 13,
 }
 
 export const LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT =
@@ -47,6 +48,11 @@ export interface LynxCompiledProgramReadyRequest {
 export interface LynxCompiledProgramReadyReply {
 	readonly type: 'ready';
 	readonly request: number;
+}
+
+/** Root-independent native page lifetime teardown broadcast. */
+export interface LynxCompiledProgramPageDestroyMessage {
+	readonly type: 'page-destroy';
 }
 
 export interface LynxCompiledProgramFrameMessage extends UniversalTransportIdentity {
@@ -70,6 +76,7 @@ export type LynxCompiledProgramBackgroundMessage =
 
 export type LynxCompiledProgramMainMessage =
 	| LynxCompiledProgramReadyReply
+	| LynxCompiledProgramPageDestroyMessage
 	| UniversalTransportAcknowledgement
 	| UniversalTransportCompleteMessage
 	| UniversalTransportRejectMessage
@@ -204,6 +211,9 @@ export function encodeLynxCompiledProgramMainMessage(
 			safePositive(message.request, 'ready request'),
 		]);
 	}
+	if (message.type === 'page-destroy') {
+		return JSON.stringify([LYNX_TRANSPORT_PROTOCOL_VERSION, WireOpcode.PageDestroy]);
+	}
 	if (
 		message.protocol !== LYNX_TRANSPORT_PROTOCOL_VERSION ||
 		message.renderer !== LYNX_TRANSPORT_RENDERER
@@ -242,6 +252,10 @@ export function decodeLynxCompiledProgramMainMessage(
 	if (input[1] === WireOpcode.ReadyReply) {
 		if (input.length !== 3) fail('received the wrong ready field count');
 		return Object.freeze({ type: 'ready', request: safePositive(input[2], 'ready request') });
+	}
+	if (input[1] === WireOpcode.PageDestroy) {
+		if (input.length !== 2) fail('received the wrong page-destroy field count');
+		return Object.freeze({ type: 'page-destroy' });
 	}
 	const withError =
 		input[1] === WireOpcode.Reject ||
