@@ -88,14 +88,14 @@ describe('Lynx transport conformance', () => {
 				sites.push(`${relative(LYNX_SRC, file)}: ${argument.replace(/\s+/g, ' ')}`);
 			}
 		}
-		expect(sites).toHaveLength(6);
-		expect(sites.filter((site) => /, data }$/.test(site))).toHaveLength(5);
+		expect(sites).toHaveLength(7);
+		expect(sites.filter((site) => /, data }$/.test(site))).toHaveLength(6);
 		expect(sites.filter((site) => /data:\s*encodeLynxTransportValue\(/.test(site))).toHaveLength(1);
-		// Three general and two compact dispatch paths can carry an arbitrary
-		// commit and must frame. The sixth is the deliberately minimal general
+		// Three general and three compact dispatch paths can carry an arbitrary
+		// commit and must frame. The seventh is the deliberately minimal general
 		// terminal-dispose retry, whose fixed-size message remains directly encoded.
-		expect(framed).toBe(5);
-		expect(frameLoops).toBe(5);
+		expect(framed).toBe(6);
+		expect(frameLoops).toBe(6);
 	});
 
 	// The receiving half of the same claim. `event.data` is whatever the other
@@ -118,14 +118,14 @@ describe('Lynx transport conformance', () => {
 				}
 			}
 		}
-		expect(reads).toHaveLength(6);
+		expect(reads).toHaveLength(7);
 		for (const read of reads) {
 			expect(read).toMatch(
 				/(?:acceptLynxTransportFrame|decodeLynxTransportValue|localizeLynxHostValue)\($/,
 			);
 		}
 		// Every transport receive path first assembles physical frames. The three
-		// general paths then materialize the general codec; the compact pair parses
+		// general paths then materialize the general codec; the compact paths parse
 		// its internal scalar-array envelope before schema code can see it.
 		const source = sourceFiles(LYNX_SRC)
 			.map((file) => readFileSync(file, 'utf8'))
@@ -133,7 +133,7 @@ describe('Lynx transport conformance', () => {
 		expect(source.match(/decodeLynxTransportValue\(framed\)/g)).toHaveLength(3);
 		expect(
 			source.match(/decodeLynxCompiledProgram(?:Background|Main)Message\(encoded\)/g),
-		).toHaveLength(2);
+		).toHaveLength(3);
 	});
 
 	// The dynamic half, under traffic the static half cannot see: what a real
