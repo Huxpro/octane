@@ -70,8 +70,35 @@ const COMPILED_PROGRAM_RECEIVER_IMPORT =
 	"import { installLynxCompiledProgramReceiver } from './core/compiled-program-receiver.js';\n";
 const COMPILED_PROGRAM_PRODUCT_RECEIVER_IMPORT =
 	"import { installLynxCompiledProgramProductReceiver } from './core/compiled-program-product-receiver.js';\n";
+const COMPILED_PROGRAM_APPLICATION_IMPORT =
+	"import { installLynxCompiledProgramApplicationMainThread } from './compiled-program-application.js';\n";
 const COMPILED_PROGRAM_RESOLVER_IMPORT =
 	"import { resolveUniversalProgram } from './core/program-registry.js';\n";
+
+function productApplicationSlice(label, pageReady) {
+	return {
+		label,
+		retainedRuntimeExports: [
+			'compiled-program-application.ts:installLynxCompiledProgramApplicationMainThread',
+		],
+		edits: [
+			[
+				'main-thread-application.ts',
+				[
+					[
+						'installLynxApplicationMainThread',
+						`\tconst receiver = installLynxCompiledProgramApplicationMainThread(${pageReady});
+\treceiver.markProgramsReady();
+\treceiver.close();
+\treturn receiver as unknown as LynxMainThreadController;`,
+					],
+				],
+				COMPILED_PROGRAM_APPLICATION_IMPORT,
+			],
+			['first-screen.ts', [['markFirstScreenSyncReady', '\treturn;']]],
+		],
+	};
+}
 
 const ARMS = {
 	baseline: { label: 'baseline (no ablation)', edits: [] },
@@ -498,6 +525,14 @@ const ARMS = {
 		],
 		COMPILED_PROGRAM_PRODUCT_RECEIVER_IMPORT + COMPILED_PROGRAM_RESOLVER_IMPORT,
 	),
+	'receiver-product-application-web': productApplicationSlice(
+		'generated product application (Web lifecycle)',
+		true,
+	),
+	'receiver-product-application-native': productApplicationSlice(
+		'generated product application (Native lifecycle)',
+		false,
+	),
 	'receiver-foundation': receiverSlice(
 		'receiver floor + reusable foundation with general host container',
 		`\tconst papi = createLynxElementPAPI<Node>(options.target ?? globalThis);
@@ -576,6 +611,16 @@ ARMS['receiver-compiled-program-producer-complete'] = {
 ARMS['receiver-product-program-producer-complete'] = {
 	...ARMS['receiver-product-program'],
 	label: 'combined product receiver + complete producer',
+	environment: { OCTANE_CORE_SWITCH_PROGRAM_FEATURES: 'slot-updates,structural-runs' },
+};
+ARMS['receiver-product-application-web-producer-complete'] = {
+	...ARMS['receiver-product-application-web'],
+	label: 'generated Web product application + complete producer',
+	environment: { OCTANE_CORE_SWITCH_PROGRAM_FEATURES: 'slot-updates,structural-runs' },
+};
+ARMS['receiver-product-application-native-producer-complete'] = {
+	...ARMS['receiver-product-application-native'],
+	label: 'generated Native product application + complete producer',
 	environment: { OCTANE_CORE_SWITCH_PROGRAM_FEATURES: 'slot-updates,structural-runs' },
 };
 ARMS.both.edits = [...ARMS.validator.edits, ...ARMS.batch.edits];
