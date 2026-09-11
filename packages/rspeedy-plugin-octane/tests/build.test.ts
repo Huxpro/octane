@@ -13,7 +13,10 @@ import { describe, expect, it } from 'vitest';
 
 import * as lynxMainThreadProgramBackend from '../../lynx/src/compiler/index.js';
 import { pluginOctane } from '../src/index.js';
-import { LYNX_PROGRAM_COVERAGE_ASSET_INFO } from '../src/program-coverage.js';
+import {
+	LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO,
+	LYNX_PROGRAM_COVERAGE_ASSET_INFO,
+} from '../src/program-coverage.js';
 
 const FIXTURE = resolve(import.meta.dirname, '_fixtures/background');
 const APPLICATION_FIXTURE = resolve(import.meta.dirname, '_fixtures/application');
@@ -242,8 +245,11 @@ class ProgramCoverageProbePlugin {
 				},
 				() => {
 					for (const asset of compilation.getAssets()) {
-						const report = asset.info[LYNX_PROGRAM_COVERAGE_ASSET_INFO];
-						if (report !== undefined) this.reports.push(report);
+						const program = asset.info[LYNX_PROGRAM_COVERAGE_ASSET_INFO];
+						const semantic = asset.info[LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO];
+						if (program !== undefined || semantic !== undefined) {
+							this.reports.push({ program, semantic });
+						}
 					}
 				},
 			);
@@ -299,19 +305,81 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 			result = await rspeedy.build();
 			expect(reports).toEqual([
 				{
-					version: 1,
-					complete: false,
-					pairedPlans: 1,
-					pairedAddressed: 0,
-					modules: [{ module: '/src/App.tsrx', total: 1, addressed: 0 }],
-					reasons: [
-						{
-							code: 'partial-program-coverage',
-							module: '/src/App.tsrx',
-							total: 1,
-							addressed: 0,
+					program: {
+						version: 1,
+						complete: false,
+						pairedPlans: 1,
+						pairedAddressed: 0,
+						modules: [{ module: '/src/App.tsrx', total: 1, addressed: 0 }],
+						reasons: [
+							{
+								code: 'partial-program-coverage',
+								module: '/src/App.tsrx',
+								total: 1,
+								addressed: 0,
+							},
+						],
+					},
+					semantic: {
+						version: 1,
+						paired: true,
+						requirements: {
+							background: {
+								runtimeUses: ['useEffect'],
+								runtimeExports: [],
+								opaqueRuntimeAccesses: [],
+								hooks: ['useEffect', 'useMainThreadRef'],
+							},
+							mainThread: {
+								runtimeUses: ['useEffect'],
+								runtimeExports: [],
+								opaqueRuntimeAccesses: [],
+								hooks: ['useEffect', 'useMainThreadRef'],
+							},
 						},
-					],
+						modules: [
+							{
+								module: '/src/App.tsrx',
+								background: {
+									version: 1,
+									runtimeUses: [{ name: 'useEffect', line: 20, column: 1 }],
+									runtimeExports: [],
+									opaqueRuntimeAccesses: [],
+									components: [
+										{
+											name: 'App',
+											exportKind: 'named',
+											line: 9,
+											column: 7,
+											hooks: [
+												{ name: 'useMainThreadRef', line: 10, column: 23 },
+												{ name: 'useEffect', line: 20, column: 1 },
+											],
+										},
+									],
+								},
+								mainThread: {
+									version: 1,
+									runtimeUses: [{ name: 'useEffect', line: 20, column: 1 }],
+									runtimeExports: [],
+									opaqueRuntimeAccesses: [],
+									components: [
+										{
+											name: 'App',
+											exportKind: 'named',
+											line: 9,
+											column: 7,
+											hooks: [
+												{ name: 'useMainThreadRef', line: 10, column: 23 },
+												{ name: 'useEffect', line: 20, column: 1 },
+											],
+										},
+									],
+								},
+							},
+						],
+						reasons: [],
+					},
 				},
 			]);
 		} finally {
