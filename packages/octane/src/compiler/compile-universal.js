@@ -1363,6 +1363,17 @@ function prepareThreadFunctionAstReplacements(ast, state) {
 		];
 		Object.assign(site, { captures, id, metadata, helperArguments });
 	}
+	state.threadFunctionRequirements = Object.freeze(
+		sites.map((site) =>
+			Object.freeze({
+				kind: site.kind,
+				id: site.id,
+				line: site.metadata.line,
+				column: site.metadata.column,
+				captures: Object.freeze(site.captures.map((capture) => capture.name)),
+			}),
+		),
+	);
 
 	const declarationAttachments = new Map();
 	for (const site of sites) {
@@ -2153,6 +2164,114 @@ function lynxBlockSemanticRequirements(ast, state) {
 				}),
 			),
 		),
+	});
+}
+
+function sourcePosition(node) {
+	const loc = node?.loc?.start;
+	return { line: loc?.line ?? 0, column: loc?.column ?? 0 };
+}
+
+function meaningfulTemplateNode(node) {
+	return node?.type !== 'JSXText' || normalizeJsxText(node.value ?? '') !== '';
+}
+
+function keyedRangeRowRequirement(node, components) {
+	const body = (node.body?.body ?? []).filter(meaningfulTemplateNode);
+	if (body.length !== 1) return Object.freeze({ kind: 'unknown', name: null });
+	const row = body[0];
+	if (row.type !== 'JSXElement' && row.type !== 'Element') {
+		return Object.freeze({ kind: 'unknown', name: null });
+	}
+	const name = jsxName(row);
+	if (name === null) return Object.freeze({ kind: 'dynamic-component', name: null });
+	if (!isComponentElement(row)) return Object.freeze({ kind: 'inline-host', name });
+	const component = components.get(name);
+	if (component === undefined) return Object.freeze({ kind: 'external-component', name });
+	return Object.freeze({
+		kind: 'local-component',
+		name,
+		hooks: Object.freeze(component.hooks.map((hook) => Object.freeze({ ...hook }))),
+	});
+}
+
+/**
+ * Independent Block feature facts that runtime-use names cannot express.
+ *
+ * This deliberately carries no eligibility bit. A main-thread prop is supported
+ * by the Block transport, while an @empty range or hooked row is not; preserving
+ * the authored sites lets the application-graph selector apply that versioned
+ * support matrix without reparsing source or learning from a runtime refusal.
+ */
+function lynxBlockFeatureRequirements(ast, state) {
+	if (state.universalRuntime?.runtime !== 'lynx') return undefined;
+	const components = new Map(state.components.map((component) => [component.name, component]));
+	const mainThreadProps = [];
+	const keyedRanges = [];
+	const rangeAncestors = [];
+	const seen = new WeakSet();
+	const visit = (node, parent = null, parentKey = null, parentIndex = -1) => {
+		if (!node || typeof node !== 'object') return;
+		if (Array.isArray(node)) {
+			for (let index = 0; index < node.length; index++) {
+				visit(node[index], parent, parentKey, index);
+			}
+			return;
+		}
+		if (seen.has(node)) return;
+		seen.add(node);
+		if (!isThreadNodeActive(state, node)) return;
+		if (node.type === 'JSXAttribute' || node.type === 'Attribute') {
+			const name = hostAttributeName(node, state);
+			if (name?.startsWith('main-thread:')) {
+				mainThreadProps.push(Object.freeze({ name, ...sourcePosition(node.name ?? node) }));
+			}
+		}
+		let range = null;
+		if (node.type === 'JSXForExpression') {
+			const siblings = parentKey === 'children' ? (parent?.children ?? []) : [];
+			const lastChild =
+				parentIndex >= 0 &&
+				siblings.slice(parentIndex + 1).every((child) => !meaningfulTemplateNode(child));
+			range = {
+				...sourcePosition(node),
+				empty: node.empty != null,
+				nested: false,
+				lastChild,
+				row: keyedRangeRowRequirement(node, components),
+			};
+			const parentRange = rangeAncestors[rangeAncestors.length - 1];
+			if (parentRange !== undefined) parentRange.nested = true;
+			keyedRanges.push(range);
+			rangeAncestors.push(range);
+		}
+		for (const [key, child] of Object.entries(node)) {
+			if (AST_SKIP_KEYS.has(key)) continue;
+			visit(child, node, key);
+		}
+		if (range !== null) rangeAncestors.pop();
+	};
+	visit(ast);
+	mainThreadProps.sort(
+		(left, right) =>
+			left.line - right.line || left.column - right.column || left.name.localeCompare(right.name),
+	);
+	keyedRanges.sort((left, right) => left.line - right.line || left.column - right.column);
+	return Object.freeze({
+		version: 1,
+		threadFunctions: Object.freeze(
+			(state.threadFunctionRequirements ?? []).map((site) =>
+				Object.freeze({
+					kind: site.kind,
+					id: site.id,
+					line: site.line,
+					column: site.column,
+					captures: Object.freeze([...site.captures]),
+				}),
+			),
+		),
+		mainThreadProps: Object.freeze(mainThreadProps),
+		keyedRanges: Object.freeze(keyedRanges.map((range) => Object.freeze(range))),
 	});
 }
 
@@ -5774,12 +5893,16 @@ export function compileUniversal(
 	};
 	const result = compileClient(program, metadata);
 	const blockRequirements = lynxBlockSemanticRequirements(ast, state);
+	const blockFeatureRequirements = lynxBlockFeatureRequirements(ast, state);
 	return {
 		...result,
 		...(universalRuntime === undefined ? null : { universalRuntime }),
 		...(blockRequirements === undefined
 			? null
 			: { lynxBlockSemanticRequirements: blockRequirements }),
+		...(blockFeatureRequirements === undefined
+			? null
+			: { lynxBlockFeatureRequirements: blockFeatureRequirements }),
 		...(state.programAddresses === undefined ? null : { programAddresses: state.programAddresses }),
 		// A graph-level selector cannot infer complete resident-program coverage
 		// from the addresses alone: an empty list means either "no plans" or "every

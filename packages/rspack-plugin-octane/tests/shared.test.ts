@@ -264,6 +264,33 @@ describe('getOctaneRspackBuildInfo', () => {
 								},
 							],
 						},
+						lynxBlockFeatureRequirements: {
+							version: 1,
+							threadFunctions: [
+								{
+									kind: 'main-thread',
+									id: 'thread_0',
+									line: 4,
+									column: 5,
+									captures: ['count'],
+								},
+							],
+							mainThreadProps: [{ name: 'main-thread:ref', line: 7, column: 8 }],
+							keyedRanges: [
+								{
+									line: 10,
+									column: 3,
+									empty: true,
+									nested: false,
+									lastChild: true,
+									row: {
+										kind: 'local-component',
+										name: 'Row',
+										hooks: [{ name: 'useState', line: 2, column: 3 }],
+									},
+								},
+							],
+						},
 					},
 				},
 			}),
@@ -283,6 +310,33 @@ describe('getOctaneRspackBuildInfo', () => {
 						line: 1,
 						column: 7,
 						hooks: [{ name: 'useState', line: 2, column: 3 }],
+					},
+				],
+			},
+			lynxBlockFeatureRequirements: {
+				version: 1,
+				threadFunctions: [
+					{
+						kind: 'main-thread',
+						id: 'thread_0',
+						line: 4,
+						column: 5,
+						captures: ['count'],
+					},
+				],
+				mainThreadProps: [{ name: 'main-thread:ref', line: 7, column: 8 }],
+				keyedRanges: [
+					{
+						line: 10,
+						column: 3,
+						empty: true,
+						nested: false,
+						lastChild: true,
+						row: {
+							kind: 'local-component',
+							name: 'Row',
+							hooks: [{ name: 'useState', line: 2, column: 3 }],
+						},
 					},
 				],
 			},
@@ -355,12 +409,104 @@ describe('getOctaneRspackBuildInfo', () => {
 				}),
 			).toBeNull();
 		}
+		for (const lynxBlockFeatureRequirements of [
+			{ version: 2, threadFunctions: [], mainThreadProps: [], keyedRanges: [] },
+			{
+				version: 1,
+				threadFunctions: [{ kind: 'worker', id: 'thread_0', line: 1, column: 0, captures: [] }],
+				mainThreadProps: [],
+				keyedRanges: [],
+			},
+			{
+				version: 1,
+				threadFunctions: [{ kind: 'background', id: '', line: 1, column: 0, captures: [] }],
+				mainThreadProps: [],
+				keyedRanges: [],
+			},
+			{
+				version: 1,
+				threadFunctions: [
+					{ kind: 'background', id: 'thread_0', line: 1, column: 0, captures: [''] },
+				],
+				mainThreadProps: [],
+				keyedRanges: [],
+			},
+			{
+				version: 1,
+				threadFunctions: [],
+				mainThreadProps: [{ name: 'bindtap', line: 1, column: 0 }],
+				keyedRanges: [],
+			},
+			{
+				version: 1,
+				threadFunctions: [],
+				mainThreadProps: [{ name: 'main-thread:ref', line: -1, column: 0 }],
+				keyedRanges: [],
+			},
+			{
+				version: 1,
+				threadFunctions: [],
+				mainThreadProps: [],
+				keyedRanges: [
+					{
+						line: 1,
+						column: 0,
+						empty: 'yes',
+						nested: false,
+						lastChild: true,
+						row: { kind: 'inline-host', name: 'view' },
+					},
+				],
+			},
+			{
+				version: 1,
+				threadFunctions: [],
+				mainThreadProps: [],
+				keyedRanges: [
+					{
+						line: 1,
+						column: 0,
+						empty: false,
+						nested: false,
+						lastChild: true,
+						row: { kind: 'local-component', name: 'Row', hooks: 'useState' },
+					},
+				],
+			},
+		] as const) {
+			expect(
+				getOctaneRspackBuildInfo({
+					buildInfo: {
+						octane: {
+							...value,
+							universalRuntime: { runtime: 'lynx', thread: 'background' },
+							lynxBlockFeatureRequirements,
+						},
+					},
+				}),
+			).toBeNull();
+		}
 		expect(
 			getOctaneRspackBuildInfo({
 				buildInfo: {
 					octane: {
 						...value,
 						mainThreadProgramCoverage: { total: 1, addressed: 1 },
+					},
+				},
+			}),
+		).toBeNull();
+		expect(
+			getOctaneRspackBuildInfo({
+				buildInfo: {
+					octane: {
+						...value,
+						lynxBlockFeatureRequirements: {
+							version: 1,
+							threadFunctions: [],
+							mainThreadProps: [],
+							keyedRanges: [],
+						},
 					},
 				},
 			}),

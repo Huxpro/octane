@@ -348,6 +348,17 @@ function sourceSiteValid(site) {
 	);
 }
 
+function sourcePositionValid(site) {
+	return (
+		site !== null &&
+		typeof site === 'object' &&
+		Number.isSafeInteger(site.line) &&
+		site.line >= 0 &&
+		Number.isSafeInteger(site.column) &&
+		site.column >= 0
+	);
+}
+
 const LYNX_BLOCK_OPAQUE_RUNTIME_ACCESS_NAMES = new Set([
 	'commonjs-require',
 	'dynamic-import',
@@ -379,6 +390,53 @@ function lynxBlockSemanticRequirementsValid(requirements) {
 					component.exportKind === 'default') &&
 				Array.isArray(component.hooks) &&
 				component.hooks.every(sourceSiteValid),
+		)
+	);
+}
+
+function lynxBlockKeyedRowRequirementValid(row) {
+	if (row === null || typeof row !== 'object') return false;
+	if (row.kind === 'local-component') {
+		return (
+			typeof row.name === 'string' &&
+			row.name.length > 0 &&
+			Array.isArray(row.hooks) &&
+			row.hooks.every(sourceSiteValid)
+		);
+	}
+	if (row.kind === 'external-component' || row.kind === 'inline-host') {
+		return typeof row.name === 'string' && row.name.length > 0;
+	}
+	return (row.kind === 'dynamic-component' || row.kind === 'unknown') && row.name === null;
+}
+
+function lynxBlockFeatureRequirementsValid(requirements) {
+	return (
+		requirements !== null &&
+		typeof requirements === 'object' &&
+		requirements.version === 1 &&
+		Array.isArray(requirements.threadFunctions) &&
+		requirements.threadFunctions.every(
+			(site) =>
+				sourcePositionValid(site) &&
+				(site.kind === 'background' || site.kind === 'main-thread') &&
+				typeof site.id === 'string' &&
+				site.id.length > 0 &&
+				Array.isArray(site.captures) &&
+				site.captures.every((capture) => typeof capture === 'string' && capture.length > 0),
+		) &&
+		Array.isArray(requirements.mainThreadProps) &&
+		requirements.mainThreadProps.every(
+			(site) => sourceSiteValid(site) && site.name.startsWith('main-thread:'),
+		) &&
+		Array.isArray(requirements.keyedRanges) &&
+		requirements.keyedRanges.every(
+			(range) =>
+				sourcePositionValid(range) &&
+				typeof range.empty === 'boolean' &&
+				typeof range.nested === 'boolean' &&
+				typeof range.lastChild === 'boolean' &&
+				lynxBlockKeyedRowRequirementValid(range.row),
 		)
 	);
 }
@@ -424,7 +482,12 @@ export function getOctaneRspackBuildInfo(module) {
 			(value.transformKind === 'compile' &&
 				universalRuntimeValid &&
 				value.universalRuntime.runtime === 'lynx' &&
-				lynxBlockSemanticRequirementsValid(value.lynxBlockSemanticRequirements)))
+				lynxBlockSemanticRequirementsValid(value.lynxBlockSemanticRequirements))) &&
+		(value.lynxBlockFeatureRequirements === undefined ||
+			(value.transformKind === 'compile' &&
+				universalRuntimeValid &&
+				value.universalRuntime.runtime === 'lynx' &&
+				lynxBlockFeatureRequirementsValid(value.lynxBlockFeatureRequirements)))
 	) {
 		return value;
 	}

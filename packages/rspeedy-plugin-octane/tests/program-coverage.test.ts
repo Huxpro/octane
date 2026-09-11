@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	collectLynxBlockFeatureRequirements,
 	collectLynxBlockSemanticRequirements,
 	collectLynxProgramCoverage,
+	LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO,
 	LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO,
 	LYNX_PROGRAM_COVERAGE_ASSET_INFO,
 	LynxProgramCoveragePlugin,
@@ -20,9 +22,41 @@ function moduleWithCoverage(id: string, thread: Thread, total: number, addressed
 				universalRuntime: { runtime: 'lynx', thread },
 				mainThreadProgramCoverage: { total, addressed },
 				lynxBlockSemanticRequirements: semanticRequirements(),
+				lynxBlockFeatureRequirements: featureRequirements(),
 			},
 		},
 		connections: [] as { module: unknown; getActiveState?: () => boolean }[],
+	};
+}
+
+function featureRequirements(
+	value: Partial<{
+		threadFunctions: {
+			kind: 'background' | 'main-thread';
+			id: string;
+			line: number;
+			column: number;
+			captures: string[];
+		}[];
+		mainThreadProps: ReturnType<typeof site>[];
+		keyedRanges: {
+			line: number;
+			column: number;
+			empty: boolean;
+			nested: boolean;
+			lastChild: boolean;
+			row:
+				| { kind: 'local-component'; name: string; hooks: ReturnType<typeof site>[] }
+				| { kind: 'external-component' | 'inline-host'; name: string }
+				| { kind: 'dynamic-component' | 'unknown'; name: null };
+		}[];
+	}> = {},
+) {
+	return {
+		version: 1,
+		threadFunctions: value.threadFunctions ?? [],
+		mainThreadProps: value.mainThreadProps ?? [],
+		keyedRanges: value.keyedRanges ?? [],
 	};
 }
 
@@ -322,8 +356,139 @@ describe('Lynx application resident-program coverage', () => {
 					},
 				},
 			},
+			[LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO]: {
+				version: 1,
+				paired: true,
+				modules: [
+					{
+						module: '/src/App.tsrx',
+						background: featureRequirements(),
+						mainThread: featureRequirements(),
+					},
+				],
+				reasons: [],
+			},
 		});
 		expect(assets.get('other.js')?.info).toEqual({});
+	});
+});
+
+describe('Lynx application Block feature requirements', () => {
+	it('pairs immutable per-thread topology and thread-function facts without judging support', () => {
+		const background = moduleWithCoverage('/src/App.tsrx', 'background', 1, 1);
+		const mainThread = moduleWithCoverage('/src/App.tsrx', 'main-thread', 1, 1);
+		const facts = featureRequirements({
+			threadFunctions: [
+				{
+					kind: 'main-thread',
+					id: 'tf_panel',
+					line: 4,
+					column: 12,
+					captures: ['boxRef'],
+				},
+			],
+			mainThreadProps: [site('main-thread:ref', 8, 3)],
+			keyedRanges: [
+				{
+					line: 9,
+					column: 2,
+					empty: true,
+					nested: false,
+					lastChild: true,
+					row: { kind: 'local-component', name: 'Row', hooks: [] },
+				},
+			],
+		});
+		background.buildInfo.octane.lynxBlockFeatureRequirements = facts;
+		mainThread.buildInfo.octane.lynxBlockFeatureRequirements = facts;
+
+		const report = collectLynxBlockFeatureRequirements(
+			compilation(background, mainThread),
+			OPTIONS,
+		);
+		expect(report).toEqual({
+			version: 1,
+			paired: true,
+			modules: [
+				{
+					module: '/src/App.tsrx',
+					background: facts,
+					mainThread: facts,
+				},
+			],
+			reasons: [],
+		});
+		expect(Object.isFrozen(report)).toBe(true);
+		expect(Object.isFrozen(report.modules[0]?.background.keyedRanges[0]?.row)).toBe(true);
+	});
+
+	it('fails closed when one reachable layer has no feature ledger', () => {
+		const background = moduleWithCoverage('/src/App.tsrx', 'background', 1, 1);
+		const mainThread = moduleWithCoverage('/src/App.tsrx', 'main-thread', 1, 1);
+		delete (mainThread.buildInfo.octane as { lynxBlockFeatureRequirements?: unknown })
+			.lynxBlockFeatureRequirements;
+
+		expect(
+			collectLynxBlockFeatureRequirements(compilation(background, mainThread), OPTIONS),
+		).toMatchObject({
+			paired: false,
+			reasons: [
+				{ code: 'main-thread-feature-requirements-unavailable', module: '/src/App.tsrx' },
+				{ code: 'missing-main-thread-feature-requirements', module: '/src/App.tsrx' },
+				{ code: 'no-paired-feature-modules' },
+			],
+		});
+	});
+
+	it('retains missing peers, conflicts, malformed metadata, and empty graphs as reasons', () => {
+		const background = moduleWithCoverage('/src/App.tsrx', 'background', 1, 1);
+		const mainThread = moduleWithCoverage('/src/App.tsrx', 'main-thread', 1, 1);
+		const backgroundOnly = moduleWithCoverage('/src/background-only.ts', 'background', 0, 0);
+		const conflict = moduleWithCoverage('/src/App.tsrx', 'background', 1, 1);
+		conflict.buildInfo.octane.lynxBlockFeatureRequirements = featureRequirements({
+			mainThreadProps: [site('main-thread:ref', 2, 3)],
+		});
+		const malformed = moduleWithCoverage('/src/broken.ts', 'main-thread', 0, 0);
+		(malformed.buildInfo.octane.lynxBlockFeatureRequirements as { version: number }).version = 2;
+		const wrongThread = moduleWithCoverage('/src/wrong-thread.ts', 'background', 0, 0);
+		background.connections.push({ module: backgroundOnly }, { module: conflict });
+		mainThread.connections.push({ module: malformed }, { module: wrongThread });
+
+		expect(
+			collectLynxBlockFeatureRequirements(compilation(background, mainThread), OPTIONS),
+		).toMatchObject({
+			paired: false,
+			reasons: [
+				{
+					code: 'background-feature-requirements-conflict',
+					module: '/src/App.tsrx',
+				},
+				{
+					code: 'main-thread-feature-requirements-unavailable',
+					module: '/src/broken.ts',
+					invalidMetadata: true,
+				},
+				{
+					code: 'main-thread-feature-requirements-unavailable',
+					module: '/src/wrong-thread.ts',
+					observedThread: 'background',
+				},
+				{
+					code: 'missing-main-thread-feature-requirements',
+					module: '/src/background-only.ts',
+				},
+			],
+		});
+
+		const empty = compilation(background, mainThread, './missing.ts', './missing.ts');
+		expect(collectLynxBlockFeatureRequirements(empty, OPTIONS)).toMatchObject({
+			paired: false,
+			reasons: [
+				{ code: 'missing-background-entry-import', request: './src/App.tsrx' },
+				{ code: 'missing-main-thread-entry-import', request: './src/App.tsrx' },
+				{ code: 'no-paired-feature-modules' },
+			],
+		});
 	});
 });
 

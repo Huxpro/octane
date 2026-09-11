@@ -59,12 +59,16 @@ export function Scene() @{
 
 type SceneComponent = Parameters<typeof MainRenderer.renderLynxFirstScreen>[0];
 
-function compileAt(source: string, filename: string, target: 'lynx' | 'universal'): string {
+function compileResultAt(source: string, filename: string, target: 'lynx' | 'universal') {
 	return compile(source, filename, {
 		hmr: false,
 		renderer: { ...lynxMainThreadRenderer, target, id: 'lynx' },
 		universalRuntime: { runtime: 'lynx', thread: 'main-thread' },
-	}).code;
+	});
+}
+
+function compileAt(source: string, filename: string, target: 'lynx' | 'universal'): string {
+	return compileResultAt(source, filename, target).code;
 }
 
 function compiled(target: 'lynx' | 'universal'): string {
@@ -331,6 +335,28 @@ export function Panel() @{
 }
 `;
 
+const BLOCK_FEATURE_SOURCE = `import { useMainThreadRef } from '@octanejs/lynx';
+
+function Row({ label }: { label: string }) @{
+	<view><text>{label as string}</text></view>
+}
+
+export function Panel({ rows }: { rows: readonly { id: number; label: string }[] }) @{
+	const boxRef = useMainThreadRef<unknown>(null);
+	const onTap = () => {
+		'main thread';
+		return boxRef.current;
+	};
+	<view main-thread:ref={boxRef} main-thread:bindtap={onTap}>
+		@for (const row of rows; key row.id) {
+			<Row label={row.label} />
+		} @empty {
+			<text>empty</text>
+		}
+	</view>
+}
+`;
+
 interface WorkletCell {
 	readonly tree: unknown;
 	readonly snapshot: unknown;
@@ -358,6 +384,44 @@ function paintWorklet(target: 'lynx' | 'universal', applier: 'direct' | 'staged'
 }
 
 describe('lynx-target main-thread worklets, end to end', () => {
+	it('reports Block feature requirements without treating them as eligibility', () => {
+		const result = compileResultAt(
+			BLOCK_FEATURE_SOURCE,
+			'/src/BlockFeatures.lynx.tsrx',
+			'lynx',
+		) as ReturnType<typeof compile> & {
+			lynxBlockFeatureRequirements?: unknown;
+		};
+
+		expect(result.lynxBlockFeatureRequirements).toEqual({
+			version: 1,
+			threadFunctions: [
+				{
+					kind: 'main-thread',
+					id: expect.stringMatching(/^tf_/),
+					line: 9,
+					column: 15,
+					captures: ['boxRef'],
+				},
+			],
+			mainThreadProps: [
+				{ name: 'main-thread:ref', line: 13, column: 7 },
+				{ name: 'main-thread:bindtap', line: 13, column: 32 },
+			],
+			keyedRanges: [
+				{
+					line: 14,
+					column: 2,
+					empty: true,
+					nested: false,
+					lastChild: true,
+					row: { kind: 'local-component', name: 'Row', hooks: [] },
+				},
+			],
+		});
+		expect(Object.isFrozen(result.lynxBlockFeatureRequirements)).toBe(true);
+	});
+
 	it('lowers a namespaced main-thread prop into the create function', () => {
 		const lynx = compileAt(WORKLET_SOURCE, '/src/Panel.lynx.tsrx', 'lynx');
 		const universal = compileAt(WORKLET_SOURCE, '/src/Panel.lynx.tsrx', 'universal');
