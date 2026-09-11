@@ -11,6 +11,7 @@ import {
 } from '@lynx-js/template-webpack-plugin';
 
 import { LYNX_BACKGROUND_LAYER, LYNX_MAIN_THREAD_LAYER } from './layers.js';
+import { LynxProgramCoveragePlugin } from './program-coverage.js';
 
 const PLUGIN_NAME = '@octanejs/rspeedy-plugin';
 const DEFAULT_BUNDLE_FILENAME = '[name].[platform].bundle';
@@ -351,6 +352,7 @@ export function applyLynxApplication(chain, context, rspeedyConfig, options) {
 	const hmr = isDev && options.hmr !== false && context.environment.config?.dev?.hmr !== false;
 	const liveReload = isDev && context.environment.config?.dev?.liveReload !== false;
 	chain.entryPoints.clear();
+	const programCoverageEntries = [];
 
 	for (const [entryName, entryPoint] of entries) {
 		const configuredEntry = entryConfiguration(entryName, entryPoint.values());
@@ -399,6 +401,11 @@ export function applyLynxApplication(chain, context, rspeedyConfig, options) {
 				layer: LYNX_BACKGROUND_LAYER,
 			});
 		}
+		programCoverageEntries.push({
+			backgroundEntry: entryName,
+			mainThreadEntry: generatedName,
+			authoredRequests: configuredEntry.imports,
+		});
 
 		chain.plugin(`${PLUGIN_NAME}:template:${entryName}`).use(LynxTemplatePlugin, [
 			{
@@ -423,6 +430,9 @@ export function applyLynxApplication(chain, context, rspeedyConfig, options) {
 	chain
 		.plugin(`${PLUGIN_NAME}:first-screen-render`)
 		.use(FirstScreenRenderModePlugin, [kind === 'web' ? 'immediate' : 'engine']);
+	chain
+		.plugin(`${PLUGIN_NAME}:program-coverage`)
+		.use(LynxProgramCoveragePlugin, [programCoverageEntries, options.programAddressing === true]);
 	chain.plugin(`${PLUGIN_NAME}:mark-main-thread`).use(MarkMainThreadAssetPlugin);
 	if (kind === 'lynx') {
 		chain.plugin(`${PLUGIN_NAME}:runtime-wrapper`).use(RuntimeWrapperWebpackPlugin, [

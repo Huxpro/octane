@@ -11,7 +11,9 @@ import {
 import { getOctaneRspackBuildInfo } from '@octanejs/rspack-plugin';
 import { describe, expect, it } from 'vitest';
 
+import * as lynxMainThreadProgramBackend from '../../lynx/src/compiler/index.js';
 import { pluginOctane } from '../src/index.js';
+import { LYNX_PROGRAM_COVERAGE_ASSET_INFO } from '../src/program-coverage.js';
 
 const FIXTURE = resolve(import.meta.dirname, '_fixtures/background');
 const APPLICATION_FIXTURE = resolve(import.meta.dirname, '_fixtures/application');
@@ -227,6 +229,97 @@ function nativeArtifactProbe(styleSheets: string[], debugMetadata: string[]) {
 		},
 	};
 }
+
+class ProgramCoverageProbePlugin {
+	constructor(private readonly reports: unknown[]) {}
+
+	apply(compiler: any): void {
+		compiler.hooks.thisCompilation.tap(this.constructor.name, (compilation: any) => {
+			compilation.hooks.processAssets.tap(
+				{
+					name: this.constructor.name,
+					stage: compiler.webpack.Compilation.PROCESS_ASSETS_STAGE_REPORT + 1,
+				},
+				() => {
+					for (const asset of compilation.getAssets()) {
+						const report = asset.info[LYNX_PROGRAM_COVERAGE_ASSET_INFO];
+						if (report !== undefined) this.reports.push(report);
+					}
+				},
+			);
+		});
+	}
+}
+
+function programCoverageProbe(reports: unknown[]) {
+	return {
+		name: 'octane:lynx-program-coverage-probe',
+		setup(api: any) {
+			api.modifyBundlerChain((chain: any) => {
+				chain
+					.plugin('octane:lynx-program-coverage-probe')
+					.use(ProgramCoverageProbePlugin, [reports]);
+			});
+		},
+	};
+}
+
+describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
+	it('aggregates the real two-layer application graph into main-thread asset metadata', async () => {
+		const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-program-coverage-'));
+		const reports: unknown[] = [];
+		const rspeedy = await createRspeedy({
+			cwd: APPLICATION_FIXTURE,
+			loadEnv: false,
+			environment: ['lynx'],
+			rspeedyConfig: {
+				mode: 'production',
+				environments: { lynx: {} },
+				dev: { hmr: false, liveReload: false },
+				output: {
+					cleanDistPath: true,
+					distPath: { root: join(temporaryRoot, 'dist') },
+					filenameHash: false,
+					sourceMap: false,
+				},
+				source: { entry: { main: './src/background.ts' } },
+				splitChunks: false,
+				plugins: [
+					pluginOctane({
+						dev: false,
+						hmr: false,
+						mainThreadProgramBackend: lynxMainThreadProgramBackend,
+					}),
+					programCoverageProbe(reports),
+				],
+			},
+		});
+		let result: Awaited<ReturnType<typeof rspeedy.build>> | undefined;
+		try {
+			result = await rspeedy.build();
+			expect(reports).toEqual([
+				{
+					version: 1,
+					complete: false,
+					pairedPlans: 1,
+					pairedAddressed: 0,
+					modules: [{ module: '/src/App.tsrx', total: 1, addressed: 0 }],
+					reasons: [
+						{
+							code: 'partial-program-coverage',
+							module: '/src/App.tsrx',
+							total: 1,
+							addressed: 0,
+						},
+					],
+				},
+			]);
+		} finally {
+			await result?.close();
+			rmSync(temporaryRoot, { recursive: true, force: true });
+		}
+	}, 120_000);
+});
 
 describe('@octanejs/rspeedy-plugin native production entries', () => {
 	it.each(BUILD_CASES)(

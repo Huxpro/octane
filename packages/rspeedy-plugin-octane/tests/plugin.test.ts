@@ -455,6 +455,22 @@ describe('@octanejs/rspeedy-plugin', () => {
 			applyPlugin(undefined, 'lynx', {}, { app: ['./src/App.lynx.tsrx'] }),
 		);
 		expect(plain).not.toHaveProperty('programAddressing');
+		const coverage = applyPlugin(
+			{ mainThreadProgramBackend: backend },
+			'lynx',
+			{},
+			{ app: ['./src/App.lynx.tsrx'] },
+		).plugins.get('@octanejs/rspeedy-plugin:program-coverage');
+		expect(coverage?.options).toEqual([
+			[
+				{
+					backgroundEntry: 'app',
+					mainThreadEntry: 'app__octane_main_thread',
+					authoredRequests: ['./src/App.lynx.tsrx'],
+				},
+			],
+			true,
+		]);
 	});
 
 	it('refuses addressing for an isolated thread graph', () => {
@@ -555,6 +571,7 @@ describe('@octanejs/rspeedy-plugin', () => {
 			'NativeModules',
 		);
 		expect(state.plugins.has('@octanejs/rspeedy-plugin:main-thread-facade')).toBe(true);
+		expect(state.plugins.get('@octanejs/rspeedy-plugin:program-coverage')?.options[1]).toBe(false);
 		const appRequire = createRequire(join(state.root, 'package.json'));
 		expect(realpathSync(appRequire.resolve('@lynx-js/webpack-dev-transport/client'))).toBe(
 			realpathSync(testRequire.resolve('@lynx-js/webpack-dev-transport/client')),
