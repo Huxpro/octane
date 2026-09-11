@@ -1,4 +1,9 @@
-const REQUIRED_BUCKETS = ['applier walk'];
+// A first screen has exactly one of these representation costs. The command
+// path walks the interpreted plan; a resident-program build calls emitted
+// create code instead. Requiring either keeps the coverage gate meaningful
+// after the program backend became the normal application default, while still
+// rejecting a profile that names neither critical render path.
+const REQUIRED_BUCKET_GROUPS = [['applier walk', 'compiled program create']];
 
 function medianOf(value, label) {
 	const median = value?.median;
@@ -28,9 +33,17 @@ export function assertMtsProfileCoverage(cell, maxUnmatchedShare) {
 	if (named === 0 || total === 0) {
 		throw new Error('main-thread profile named no framework self time.');
 	}
-	for (const bucket of REQUIRED_BUCKETS) {
-		if (medianOf(cell?.buckets?.[bucket], bucket) === 0) {
-			throw new Error(`main-thread profile bucket ${JSON.stringify(bucket)} named no self time.`);
+	for (const alternatives of REQUIRED_BUCKET_GROUPS) {
+		const hasNamedTime = alternatives.some((bucket) => {
+			const value = cell?.buckets?.[bucket];
+			return value === undefined ? false : medianOf(value, bucket) > 0;
+		});
+		if (!hasNamedTime) {
+			throw new Error(
+				`main-thread profile named no self time in required bucket group ` +
+					alternatives.map((bucket) => JSON.stringify(bucket)).join(' or ') +
+					'.',
+			);
 		}
 	}
 	if (share > maxUnmatchedShare) {

@@ -50,6 +50,19 @@ const MOUNT_PROGRAM_OTHER_END =
 // separate from the two above.
 const MOUNT_RANGES =
 	'(r,t,n)=>{var i=c[r.node];if(void 0===i)throw eZ(`first-screen program appends a keyed range into node ${r.node}, which it did not number.`);';
+// The dense-range painter and its emitted run, copied from the current normal
+// production build. Like the single-instance create, the run has no diagnostic
+// and is named by this direct caller rather than by guessing from app markup.
+const DENSE_MOUNT =
+	'(r,n,a,o)=>{var l,d=r.plan;var u=r.count;var c=r.programs;var v=r.firstId;var p=r.stride;var f=d.events;var h=f.length;var y=d.ranges.length;var m=d.values;var ';
+const DENSE_EMITTED =
+	'(r,i,o,s,l,d){var u=0,c=0,v=0;for(var p=0;p<i;p++){var f=o[u];var h=o[u+1];var y=o[u+2];var m=s[c];var g=s[c+1];var b=t(r);d[v]=b;var w="string"==typeof f?f:"nu';
+const DENSE_MEMBER_SPAN =
+	'(e,r,t){var n;var a=t-r;if(a<2)return null;var i=e[r];if(void 0===i)return null;var o=tH(i);if(void 0===o)return null;var s=o.plan;if(void 0===s)return null;var';
+const CURRENT_VISIT =
+	'r=>{var n=r.denseSpan;if(null!==n)return void((r,n,a,o)=>{var l,d=r.plan;var u=r.count;var c=r.programs;var v=r.firstId;var p=r.stride;var f=d.events;var h=f.le';
+const RESIDENT_ADDRESS =
+	'(e){return a.get(e)}function l(e){var r,t,a=e.address;if(null!==a&&"object"==typeof a&&"string"==typeof a.module&&Number.isSafeInteger(a.index))return r=a.modul';
 // Emitted code: no diagnostic, no stable name, nothing but the app's own markup.
 const EMITTED = 'create:(e,r)=>{let t=e.h("view");e.p(t,"class","page");';
 const APP = '(e,t)=>(0,r.Zz)(z,[(0,r.DT)("lynx",R,(0,r.uc)([["set","row",e]]))]))';
@@ -166,6 +179,62 @@ test('the compiled program is named by its caller, having no literal of its own'
 	assert.ok(![...unmatched.keys()].some((position) => position.endsWith(`:${EMITTED_AT}`)));
 });
 
+test('a dense emitted driver is named by its direct program-mount caller', () => {
+	const mountAt = 100;
+	const emittedAt = 400;
+	const source = line([
+		[mountAt, DENSE_MOUNT],
+		[emittedAt, DENSE_EMITTED],
+	]);
+	const result = foldProfile(
+		{
+			nodes: [
+				{ id: 1, callFrame: frame('', 0), children: [2] },
+				{ id: 2, callFrame: frame(MTS, mountAt), hitCount: 2, children: [3] },
+				{ id: 3, callFrame: frame(MTS, emittedAt), hitCount: 3, children: [] },
+			],
+			samples: [2, 3],
+			timeDeltas: [200, 300],
+		},
+		MTS,
+		(lineNumber, column) => (lineNumber === 1 ? source.slice(column, column + PROBE_WINDOW) : ''),
+	);
+	assert.equal(result.buckets.get('program mount')?.us, 200);
+	assert.equal(result.buckets.get('compiled program create')?.us, 300);
+	assert.equal(result.sites.get(COMPILED_CREATE_SITE)?.us, 300);
+});
+
+test('dense selection and resident lookup are mount work, not emitted code', () => {
+	assert.equal(probeOf(DENSE_MEMBER_SPAN)?.where, 'core/host-driver.ts denseMemberSpan');
+	assert.equal(
+		probeOf(RESIDENT_ADDRESS)?.where,
+		'core/program-registry.ts residentUniversalProgramAddress',
+	);
+	const visitAt = 100;
+	const unnamedChildAt = 400;
+	const unknown = '(e){return e+1}'.padEnd(PROBE_WINDOW, '.');
+	const source = line([
+		[visitAt, CURRENT_VISIT],
+		[unnamedChildAt, unknown],
+	]);
+	const result = foldProfile(
+		{
+			nodes: [
+				{ id: 1, callFrame: frame('', 0), children: [2] },
+				{ id: 2, callFrame: frame(MTS, visitAt), hitCount: 2, children: [3] },
+				{ id: 3, callFrame: frame(MTS, unnamedChildAt), hitCount: 3, children: [] },
+			],
+			samples: [2, 3],
+			timeDeltas: [200, 300],
+		},
+		MTS,
+		(lineNumber, column) => (lineNumber === 1 ? source.slice(column, column + PROBE_WINDOW) : ''),
+	);
+	assert.equal(result.buckets.get('applier walk')?.us, 200);
+	assert.equal(result.unmatched.get(`1:${unnamedChildAt}`)?.us, 300);
+	assert.equal(result.buckets.has('compiled program create'), false);
+});
+
 test('a frame no probe names is reported rather than folded away', () => {
 	const { buckets, unmatched } = foldProfile(profile(), MTS, sourceAt);
 	// Application code called from the page realm: not framework, not emitted by
@@ -269,11 +338,45 @@ const ASSIGN_PROGRAM_IDS =
 	'(r,t){var n=r.plan.ranges;var a=Array(r.plan.nodes);var i=Array(n.length);var o=0;var l=0;var s=0;var d=r.plan.nodes+n.length;for(var c=0;c<d;c++){if(l<n.length';
 const COLLECT_EVENTS =
 	'(r,t,n,a){var i=0;for(var o of r){if("program"===o.kind){for(var l of(i+=o.plan.nodes,o.texts))void 0!==l&&i++;var s=t&&"hidden"!==o.visibility;if(s)for(var d o';
+const COLLECT_EVENTS_OUTER =
+	'(r,t,n,a,i,o){var s=0;for(var l of r)s+=function r(t,n,a,i,o,s){var l=0;if("program"===t.kind){l+=t.plan.nodes;var d=n&&"hidden"!==t.visibility;t.eventsAt=s.len';
+const COLLECT_EVENTS_PROGRAM =
+	'(t,n,a,i,o,s){var l=0;if("program"===t.kind){l+=t.plan.nodes;var d=n&&"hidden"!==t.visibility;t.eventsAt=s.length;var u=t.plan.ranges;var c=0;var v=0;var p=0;va';
+const RANGE_NODE =
+	'(e,r=null,t=!1,n){return c({kind:"range",key:r,id:0,children:e},t?{componentScope:!0}:null,void 0===n?null:{templateProgram:n})}function eh(e,r){var t=et(e);if(';
+const CURRENT_ATTEMPT =
+	'(){if(null===C)throw R("Lynx first-screen hooks may only run while a component is rendering.");return C}function B(){return D().owner}function J(e,r){var t=D();';
+const CURRENT_OWNER =
+	'(){return D().owner}function J(e,r){var t=D();var n=t.owner;t.owner=e;try{return r()}finally{t.owner=n}}function V(e,r=null,t=e.visibility){return{parent:e,cont';
+const WITH_OWNER =
+	'(e,r){var t=D();var n=t.owner;t.owner=e;try{return r()}finally{t.owner=n}}function V(e,r=null,t=e.visibility){return{parent:e,contexts:r,visibility:t}}function ';
 
 test('the three functions one probe used to fold are named apart', () => {
 	assert.equal(probeOf(ASSIGN_IDS)?.where, 'main-renderer.ts assignIds');
 	assert.equal(probeOf(ASSIGN_PROGRAM_IDS)?.where, 'main-renderer.ts assignProgramIds');
 	assert.equal(probeOf(COLLECT_EVENTS)?.where, 'main-renderer.ts collectFirstScreenEvents');
+});
+
+test('the current program event walk and renderer helpers keep their own sites', () => {
+	assert.equal(probeOf(COLLECT_EVENTS_OUTER)?.where, 'main-renderer.ts collectFirstScreenEvents');
+	assert.equal(
+		probeOf(COLLECT_EVENTS_PROGRAM)?.where,
+		'main-renderer.ts collectNodeFirstScreenEvents',
+	);
+	assert.equal(probeOf(RANGE_NODE)?.where, 'main-renderer.ts rangeNode');
+	assert.equal(probeOf(CURRENT_ATTEMPT)?.where, 'main-renderer.ts currentAttempt');
+	assert.equal(probeOf(CURRENT_OWNER)?.where, 'main-renderer.ts currentOwner');
+	assert.equal(probeOf(WITH_OWNER)?.where, 'main-renderer.ts withOwner');
+	for (const text of [
+		COLLECT_EVENTS_OUTER,
+		COLLECT_EVENTS_PROGRAM,
+		RANGE_NODE,
+		CURRENT_ATTEMPT,
+		CURRENT_OWNER,
+		WITH_OWNER,
+	]) {
+		assert.equal(text.length, PROBE_WINDOW);
+	}
 });
 
 test('none of the three probes reaches into either of the others', () => {
@@ -667,6 +770,12 @@ test('the comparator is not the preparation that replays into what it adopted', 
 // shipping build and is not the framework.
 const PROFILE_PAPI_CREATE =
 	'(e){var r;var t=(0,nu.Ym)();t.papiCreateMs=(null!=(r=t.papiCreateMs)?r:0)+performance.now()-e}var nf=new Set;function nh(){throw Error("Octane Lynx received mai';
+const PROFILE_INTRINSIC_VIEW =
+	'(e){var r=performance.now();try{return i(e)}finally{t6(r)}},text(e){var r=performance.now();try{return s(e)}finally{t6(r)}},rawText(e){var r=performance.now();t';
+const PROFILE_INTRINSIC_TEXT =
+	'(e){var r=performance.now();try{return s(e)}finally{t6(r)}},rawText(e){var r=performance.now();try{return l(e)}finally{t6(r)}}}),createPage(e,r){var t=performan';
+const PROFILE_INTRINSIC_RAW_TEXT =
+	'(e){var r=performance.now();try{return l(e)}finally{t6(r)}}}),createPage(e,r){var t=performance.now();try{return n(e,r)}finally{t6(t)}},createElement(e,r,t){var';
 
 test('the instrument’s own counter is a bucket, not a share of the framework', () => {
 	// A profile cell pays for being profiled, and the payment is inside the same
@@ -675,6 +784,24 @@ test('the instrument’s own counter is a bucket, not a share of the framework',
 	// cost the harness added.
 	assert.equal(bucketOf(PROFILE_PAPI_CREATE), 'stage instrument');
 	assert.equal(PROFILE_PAPI_CREATE.length, PROBE_WINDOW);
+});
+
+test('the instrument’s adjacent intrinsic wrappers are named apart', () => {
+	assert.equal(
+		probeOf(PROFILE_INTRINSIC_VIEW)?.where,
+		'stages/instrument-source.mjs intrinsic view wrapper',
+	);
+	assert.equal(
+		probeOf(PROFILE_INTRINSIC_TEXT)?.where,
+		'stages/instrument-source.mjs intrinsic text wrapper',
+	);
+	assert.equal(
+		probeOf(PROFILE_INTRINSIC_RAW_TEXT)?.where,
+		'stages/instrument-source.mjs intrinsic raw-text wrapper',
+	);
+	assert.equal(PROFILE_INTRINSIC_VIEW.length, PROBE_WINDOW);
+	assert.equal(PROFILE_INTRINSIC_TEXT.length, PROBE_WINDOW);
+	assert.equal(PROFILE_INTRINSIC_RAW_TEXT.length, PROBE_WINDOW);
 });
 
 /** The buckets that exist because a profiled run keeps sampling past paint. */
@@ -688,7 +815,6 @@ const ADOPTION_BUCKETS = new Set([
 	'deferred event journal',
 	'program index',
 	'hand-over',
-	'stage instrument',
 ]);
 
 test('the adoption entries are appended, so no paint-window frame can change hands', () => {
