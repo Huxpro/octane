@@ -86,14 +86,13 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 			return false;
 		}
 	};
+	// The compact decoder has already replaced protocol/renderer with this wire's
+	// constants; only the two transmitted identity fields can differ here.
 	const same = (left: UniversalTransportIdentity, right: UniversalTransportIdentity): boolean =>
-		left.root === right.root &&
-		left.renderer === right.renderer &&
-		left.version === right.version &&
-		left.protocol === right.protocol;
+		left.root === right.root && left.version === right.version;
 	const reject = (identity: UniversalTransportIdentity, value: unknown): void => {
 		const error = report(value);
-		send({ ...identity, type: 'reject', error: { name: error.name, message: error.message } });
+		send({ ...identity, type: 'reject', error });
 	};
 	const publishReady = (): void => {
 		if (!closed && readyRequest !== null && readiness === 3) {
@@ -147,7 +146,6 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 				}
 			} else if (
 				message.root !== active.root ||
-				message.renderer !== active.renderer ||
 				(message.type === 'terminal-dispose'
 					? message.version < active.version
 					: message.version !== active.version)
@@ -164,7 +162,7 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 				send({
 					...message,
 					type: 'dispose-retry',
-					error: { name: failure.name, message: failure.message },
+					error: failure,
 				});
 				return;
 			}
@@ -183,9 +181,7 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 			disposed?.root === message.root ||
 			(active === null
 				? message.version !== 1
-				: message.root !== active.root ||
-					message.renderer !== active.renderer ||
-					message.version !== active.version + 1)
+				: message.root !== active.root || message.version !== active.version + 1)
 		) {
 			reject(message, CODE);
 			return;
@@ -224,7 +220,7 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 				send({
 					...message,
 					type: 'fault',
-					error: { name: failure.name, message: failure.message },
+					error: failure,
 				});
 			} else reject(message, error);
 			return;
@@ -242,13 +238,13 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 		if (send({ ...message, type: 'ack' })) send({ ...message, type: 'complete' });
 	};
 
-	context.addEventListener(LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT, onMessage);
 	const mark = (gate: number): void => {
 		if (!closed && readiness <= 3 && (readiness & gate) === 0) {
 			readiness |= gate;
 			publishReady();
 		}
 	};
+	context.addEventListener(LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT, onMessage);
 	return {
 		markProgramsReady: () => mark(2),
 		markPageReady: () => mark(1),

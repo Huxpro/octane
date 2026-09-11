@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import * as firstScreenApi from '../src/first-screen.js';
+import * as compiledProgramApplicationApi from '../src/compiled-program-application.js';
 import * as rootApi from '../src/index.js';
 import * as mainRendererApi from '../src/main-renderer.js';
 import * as mainThreadApi from '../src/main-thread.js';
@@ -33,6 +34,7 @@ describe('@octanejs/lynx Milestone 8 private surface', () => {
 			'./intrinsics/jsx-runtime',
 			'./main-thread',
 			'./main-thread-application',
+			'./main-thread-compiled-program-application',
 			'./platform',
 			'./testing',
 		]);
@@ -82,6 +84,9 @@ describe('@octanejs/lynx Milestone 8 private surface', () => {
 		expect(rootApi.runOnMainThread).toBeTypeOf('function');
 		expect(rootApi.createLynxNativeResource).toBeTypeOf('function');
 		expect(mainThreadApi.installLynxMainThread).toBeTypeOf('function');
+		expect(
+			compiledProgramApplicationApi.installLynxCompiledProgramApplicationMainThread,
+		).toBeTypeOf('function');
 		expect(mainThreadApi).not.toHaveProperty('runOnBackground');
 		expect(platformApi.useInitData).toBeTypeOf('function');
 		expect(platformApi.useGlobalProps).toBeTypeOf('function');
