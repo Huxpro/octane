@@ -22,6 +22,7 @@ import type { LynxElementPAPI, LynxElementRef } from './papi.js';
 
 const MAX_ABORT_TOMBSTONES = 128;
 const MAX_DISPOSED_ROOT_TOMBSTONES = 128;
+const MAX_CLOSE_CLEANUP_ATTEMPTS = 3;
 const CONTROLLER_DEVELOPMENT =
 	typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__;
 const CONTROLLER_ERROR = 'Octane Lynx OL490';
@@ -123,6 +124,16 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 			reported.push(normalizeLynxCompiledProgramError(diagnosticError, CONTROLLER_ERROR));
 		}
 		return error;
+	};
+	const releaseClosedStore = (candidate: LynxCompiledProgramStore<Node>): void => {
+		for (let attempt = 0; attempt < MAX_CLOSE_CLEANUP_ATTEMPTS; attempt++) {
+			try {
+				candidate.dispose();
+				return;
+			} catch (error) {
+				report(error);
+			}
+		}
 	};
 
 	const send = (message: LynxCompiledProgramControllerResponse): boolean => {
@@ -249,6 +260,13 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 			applying = candidate;
 			try {
 				applyLynxCompiledProgramFrame(candidateStore, page, resolveProgram, frame, () => {
+					if (closed) {
+						throw new Error(
+							CONTROLLER_DEVELOPMENT
+								? 'Octane Lynx compact receiver closed during frame apply.'
+								: CONTROLLER_ERROR,
+						);
+					}
 					if (aborted.delete(key)) {
 						throw new Error(
 							CONTROLLER_DEVELOPMENT
@@ -259,6 +277,14 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 				});
 			} catch (error) {
 				applying = null;
+				if (closed) {
+					releaseClosedStore(candidateStore);
+					store = null;
+					active = null;
+					aborted.clear();
+					if (candidateStore.isFaulted()) report(error);
+					return;
+				}
 				if (candidateStore.isFaulted()) {
 					// Rollback itself left native ownership uncertain. Retain the
 					// faulted store so terminal disposal can finish cleanup; a reject
@@ -279,6 +305,13 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 				return;
 			}
 			applying = null;
+			if (closed) {
+				releaseClosedStore(candidateStore);
+				store = null;
+				active = null;
+				aborted.clear();
+				return;
+			}
 			store = candidateStore;
 			active = candidate;
 			if (!send({ ...candidate, type: 'ack' })) return;
@@ -380,9 +413,10 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 
 		close() {
 			if (closed || disposing) return;
+			closed = true;
 			aborted.clear();
+			if (applying !== null) return;
 			if (store === null) {
-				closed = true;
 				return;
 			}
 			disposing = true;
@@ -390,12 +424,12 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 				store.dispose();
 			} catch (error) {
 				disposing = false;
+				closed = false;
 				throw report(error);
 			}
 			disposing = false;
 			store = null;
 			active = null;
-			closed = true;
 		},
 	};
 

@@ -4,6 +4,7 @@ import {
 	type UniversalAsyncCommitTransport,
 	type UniversalAsyncPreparedHostBatch,
 	type UniversalEventPriority,
+	type UniversalHostBatch,
 	type UniversalTransportEventDelivery,
 	type UniversalTransportEventMessage,
 	type UniversalTransportAcknowledgement,
@@ -35,9 +36,14 @@ export interface LynxCompiledProgramBlockTransport extends UniversalAsyncCommitT
 	readonly mode: 'async';
 	readonly ready: Promise<void>;
 	bindRoot(root: LynxBlockRoot): void;
+	bindPageDestroy(handler: () => void | Promise<void>): void;
 	dispatchNativeEventBatch(deliveries: readonly LynxBackgroundNativeEventDelivery[]): void;
 	acceptedIdentity(): UniversalTransportIdentity | null;
 	ownedRoot(): number | null;
+	cancelPendingBeforeReady(reason?: unknown): Promise<boolean>;
+	preparationCount(): number;
+	closedReason(): Error | null;
+	enableLogicalTeardown(): void;
 	dispose(): Promise<void>;
 	diagnostics(): readonly Error[];
 	close(error?: unknown): void;
@@ -45,6 +51,7 @@ export interface LynxCompiledProgramBlockTransport extends UniversalAsyncCommitT
 
 export interface LynxCompiledProgramBlockTransportOptions {
 	readonly onDiagnostic?: (error: Error) => void;
+	readonly isPageDestroyed?: () => boolean;
 }
 
 function normalizedError(value: unknown, fallback = BLOCK_TRANSPORT_ERROR): Error {
@@ -58,6 +65,21 @@ function frozenIdentity(identity: UniversalTransportIdentity): UniversalTranspor
 		root: identity.root,
 		version: identity.version,
 	});
+}
+
+function isLogicalTeardownBatch(batch: UniversalHostBatch): boolean {
+	if (batch.commands.length === 0) return false;
+	for (const command of batch.commands) {
+		if (command.op === 'remove' || command.op === 'destroy') continue;
+		if (
+			(command.op === 'event' || command.op === 'lifecycle' || command.op === 'local-callback') &&
+			command.listener === null
+		) {
+			continue;
+		}
+		return false;
+	}
+	return true;
 }
 
 /**
@@ -78,6 +100,7 @@ export function createLynxCompiledProgramBlockTransport(
 	const reported: Error[] = [];
 	const shadow = createLynxDeltaShadow();
 	const wire = createLynxCompiledProgramTransport(context, {
+		isPageDestroyed: options.isPageDestroyed,
 		onDiagnostic(error) {
 			reported.push(error);
 			try {
@@ -92,6 +115,11 @@ export function createLynxCompiledProgramBlockTransport(
 	let accepted: UniversalTransportIdentity | null = null;
 	let commitPending = false;
 	let closed: Error | null = null;
+	let preparations = 0;
+	let logicalTeardownEnabled = false;
+	let pageDestroyReceived = false;
+	let pageDestroyHandler: (() => void | Promise<void>) | null = null;
+	let pageDestroyHandlerInvoked = false;
 	let deferredNativeEvents: DeferredNativeEventBatch[] = [];
 
 	const report = (value: unknown): Error => {
@@ -150,6 +178,31 @@ export function createLynxCompiledProgramBlockTransport(
 		for (const batch of held) reportStale(batch);
 	};
 
+	const queuePageDestroyHandler = (): void => {
+		if (!pageDestroyReceived || pageDestroyHandler === null || pageDestroyHandlerInvoked) return;
+		pageDestroyHandlerInvoked = true;
+		const handler = pageDestroyHandler;
+		void Promise.resolve()
+			.then(() => handler())
+			.catch((error) => {
+				report(error);
+			});
+	};
+
+	const handlePageDestroy = (): void => {
+		if (pageDestroyReceived) return;
+		pageDestroyReceived = true;
+		logicalTeardownEnabled = true;
+		closed ??= new Error(
+			BLOCK_TRANSPORT_DEVELOPMENT
+				? 'Octane Lynx native page lifetime was destroyed.'
+				: BLOCK_TRANSPORT_ERROR,
+		);
+		commitPending = false;
+		dropDeferredNativeEvents();
+		queuePageDestroyHandler();
+	};
+
 	const transport: LynxCompiledProgramBlockTransport = {
 		mode: 'async',
 		ready: wire.ready,
@@ -160,6 +213,51 @@ export function createLynxCompiledProgramBlockTransport(
 						? 'Octane Lynx compact Block transport received a foreign client container.'
 						: BLOCK_TRANSPORT_ERROR,
 				);
+			}
+			preparations++;
+			if (closed !== null) {
+				if (!logicalTeardownEnabled || !isLogicalTeardownBatch(batch)) throw closed;
+				if (
+					identity.protocol !== LYNX_TRANSPORT_PROTOCOL_VERSION ||
+					identity.renderer !== LYNX_TRANSPORT_RENDERER ||
+					identity.version !== batch.version ||
+					!Number.isSafeInteger(identity.root) ||
+					identity.root <= 0
+				) {
+					throw new Error(
+						BLOCK_TRANSPORT_DEVELOPMENT
+							? 'Octane Lynx compact logical teardown received a foreign identity.'
+							: BLOCK_TRANSPORT_ERROR,
+					);
+				}
+				let state: 'prepared' | 'applied' | 'aborted' = 'prepared';
+				return Object.freeze({
+					apply(acknowledge: (message: UniversalTransportAcknowledgement) => void) {
+						if (state !== 'prepared') {
+							return Promise.reject(
+								new Error(
+									BLOCK_TRANSPORT_DEVELOPMENT
+										? 'Octane Lynx compact logical teardown apply() may only run once.'
+										: BLOCK_TRANSPORT_ERROR,
+								),
+							);
+						}
+						state = 'applied';
+						logicalTeardownEnabled = false;
+						const previousAccepted = accepted;
+						accepted = frozenIdentity(identity);
+						try {
+							acknowledge({ ...identity, type: 'ack' });
+							return Promise.resolve();
+						} catch (error) {
+							accepted = previousAccepted;
+							return Promise.reject(error);
+						}
+					},
+					abort() {
+						if (state === 'prepared') state = 'aborted';
+					},
+				});
 			}
 			if (
 				identity.protocol !== LYNX_TRANSPORT_PROTOCOL_VERSION ||
@@ -172,7 +270,6 @@ export function createLynxCompiledProgramBlockTransport(
 						: BLOCK_TRANSPORT_ERROR,
 				);
 			}
-			if (closed !== null) throw closed;
 			const draft = shadow.prepare(batch);
 			if (draft === null) {
 				throw new Error(
@@ -241,6 +338,24 @@ export function createLynxCompiledProgramBlockTransport(
 			}
 			boundRoot = root;
 		},
+		bindPageDestroy(handler) {
+			if (typeof handler !== 'function') {
+				throw new TypeError(
+					BLOCK_TRANSPORT_DEVELOPMENT
+						? 'Octane Lynx compact page-destroy handler must be a function.'
+						: BLOCK_TRANSPORT_ERROR,
+				);
+			}
+			if (pageDestroyHandler !== null && pageDestroyHandler !== handler) {
+				throw new Error(
+					BLOCK_TRANSPORT_DEVELOPMENT
+						? 'Octane Lynx compact transport already has a page-destroy handler.'
+						: BLOCK_TRANSPORT_ERROR,
+				);
+			}
+			pageDestroyHandler = handler;
+			queuePageDestroyHandler();
+		},
 		dispatchNativeEventBatch(deliveries) {
 			if (deliveries.length === 0) return;
 			if (closed !== null) {
@@ -284,6 +399,26 @@ export function createLynxCompiledProgramBlockTransport(
 		},
 		acceptedIdentity: () => accepted,
 		ownedRoot: () => ownedRoot,
+		async cancelPendingBeforeReady(value?: unknown) {
+			if (closed !== null || accepted !== null || !commitPending) return false;
+			const reason = normalizedError(
+				value,
+				BLOCK_TRANSPORT_DEVELOPMENT
+					? 'Octane Lynx root was unmounted before compact main became ready.'
+					: BLOCK_TRANSPORT_ERROR,
+			);
+			const cancelled = await wire.cancelPendingBeforeReady(reason);
+			if (!cancelled) return false;
+			closed = reason;
+			commitPending = false;
+			dropDeferredNativeEvents();
+			return true;
+		},
+		preparationCount: () => preparations,
+		closedReason: () => closed,
+		enableLogicalTeardown() {
+			logicalTeardownEnabled = true;
+		},
 		async dispose() {
 			if (accepted === null) {
 				throw new Error(
@@ -307,5 +442,6 @@ export function createLynxCompiledProgramBlockTransport(
 			wire.close(closed);
 		},
 	};
+	void wire.pageDestroyed.then(handlePageDestroy);
 	return Object.freeze(transport);
 }

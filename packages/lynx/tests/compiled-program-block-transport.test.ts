@@ -122,6 +122,92 @@ function setup(
 }
 
 describe('Lynx compact compiled-program Block transport', () => {
+	it('cancels an unsent root while compact readiness is pending', async () => {
+		const { receiver, transport, core, root } = setup();
+		root.beginAttempt();
+		core.mount(null, null, compileLynxBlockTemplate(PROGRAM, ADDRESS), ['row', 'pending']);
+		const rendering = root.commit();
+		const reason = new Error('test root ended before compact readiness');
+
+		expect(await transport.cancelPendingBeforeReady(reason)).toBe(true);
+		await expect(rendering).rejects.toBe(reason);
+		expect(transport.preparationCount()).toBe(1);
+		expect(transport.closedReason()).toBe(reason);
+		expect(root.abortAttempt()).toBe(true);
+		receiver.close();
+	});
+
+	it('delivers a pre-ready page tombstone to a handler bound after construction', async () => {
+		const context = new HeldReplyContext();
+		const container = createLynxClientContainer();
+		const reason = { destroyed: true };
+		const transport = createLynxCompiledProgramBlockTransport(context, container, {
+			isPageDestroyed: () => reason.destroyed,
+		});
+		await expect(transport.ready).rejects.toThrow('page lifetime was destroyed');
+
+		let deliveries = 0;
+		transport.bindPageDestroy(() => {
+			deliveries++;
+		});
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(deliveries).toBe(1);
+		expect(transport.closedReason()?.message).toContain('page lifetime was destroyed');
+	});
+
+	it('settles logical teardown locally after native page destroy', async () => {
+		const { context, page, receiver, container, transport, core, root } = setup();
+		receiver.markProgramsReady();
+		receiver.markPageReady();
+		await transport.ready;
+
+		root.beginAttempt();
+		const block = core.mount(null, null, compileLynxBlockTemplate(PROGRAM, ADDRESS), [
+			'row',
+			'child',
+		]);
+		await root.commit();
+		expect(root.acceptedVersion()).toBe(1);
+		expect(page.children).toHaveLength(1);
+
+		let teardownAcknowledged = false;
+		transport.bindPageDestroy(async () => {
+			const batch = {
+				renderer: 'lynx' as const,
+				version: 2,
+				commands: [
+					{ op: 'remove' as const, parent: null, id: block.firstId },
+					{ op: 'destroy' as const, id: block.firstId + 2 },
+					{ op: 'destroy' as const, id: block.firstId + 1 },
+					{ op: 'destroy' as const, id: block.firstId },
+				],
+			};
+			await transport
+				.prepareBatch(container, batch, {
+					protocol: 1,
+					renderer: 'lynx',
+					root: 91,
+					version: 2,
+				})
+				.apply(() => {
+					teardownAcknowledged = true;
+				});
+		});
+		receiver.destroyPage();
+		const crossingsAtDestroy = context.events.length;
+		await Promise.resolve();
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(page.children).toEqual([]);
+		expect(context.events).toHaveLength(crossingsAtDestroy);
+		expect(teardownAcknowledged).toBe(true);
+		expect(transport.acceptedIdentity()?.version).toBe(2);
+		expect(transport.preparationCount()).toBe(2);
+		expect(transport.closedReason()?.message).toContain('page lifetime was destroyed');
+	});
+
 	it('publishes one addressed Block run at ACK and carries sparse updates', async () => {
 		const { context, page, receiver, transport, core, root } = setup();
 		receiver.markProgramsReady();

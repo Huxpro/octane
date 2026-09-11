@@ -82,6 +82,8 @@ function remoteError(input: { readonly name: string; readonly message: string })
 
 export interface LynxCompiledProgramTransportOptions {
 	readonly onDiagnostic?: (error: Error) => void;
+	/** Native-lifetime tombstone for a background realm started after page destroy. */
+	readonly isPageDestroyed?: () => boolean;
 }
 
 export interface LynxCompiledProgramCommitAttempt {
@@ -91,12 +93,15 @@ export interface LynxCompiledProgramCommitAttempt {
 
 export interface LynxCompiledProgramTransport {
 	readonly ready: Promise<void>;
+	/** Settles once main broadcasts that the native page lifetime ended. */
+	readonly pageDestroyed: Promise<void>;
 	commit(
 		identity: UniversalTransportIdentity,
 		frame: readonly unknown[],
 		acknowledge: (message: UniversalTransportAcknowledgement) => void,
 	): LynxCompiledProgramCommitAttempt;
 	dispose(identity: UniversalTransportIdentity, terminal?: boolean): Promise<void>;
+	cancelPendingBeforeReady(reason?: unknown): Promise<boolean>;
 	diagnostics(): readonly Error[];
 	close(error?: unknown): void;
 }
@@ -135,6 +140,7 @@ export function createLynxCompiledProgramTransport(
 	const pending = new Map<number, PendingCommit>();
 	const ready = createDeferred<void>();
 	void ready.promise.catch(() => {});
+	const pageDestroyed = createDeferred<void>();
 	const inbound = createLynxTransportFrameState();
 	let sequence = 1;
 	let root: number | null = null;
@@ -144,6 +150,7 @@ export function createLynxCompiledProgramTransport(
 	let disposeIdentity: UniversalTransportIdentity | null = null;
 	let disposeTerminal = false;
 	let disposeAttempts = 0;
+	let pageDestroyReceived = false;
 
 	const report = (value: unknown, fallback = TRANSPORT_ERROR): Error => {
 		const error = normalizedError(value, fallback);
@@ -178,6 +185,27 @@ export function createLynxCompiledProgramTransport(
 		ready.reject(error);
 		failPending(error);
 		return error;
+	};
+
+	const closeInternal = (value?: unknown): Error => {
+		if (closed !== null) return closed;
+		closed = normalizedError(value, TRANSPORT_ERROR);
+		context.removeEventListener(LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT, onMessage);
+		ready.reject(closed);
+		failPending(closed);
+		disposeDeferred?.reject(closed);
+		return closed;
+	};
+
+	const handlePageDestroy = (): void => {
+		if (pageDestroyReceived) return;
+		pageDestroyReceived = true;
+		closeInternal(
+			new Error(
+				TRANSPORT_DEVELOPMENT ? 'Octane Lynx native page lifetime was destroyed.' : TRANSPORT_ERROR,
+			),
+		);
+		pageDestroyed.resolve(undefined);
 	};
 
 	const sendDispose = (): void => {
@@ -216,6 +244,10 @@ export function createLynxCompiledProgramTransport(
 				return;
 			}
 			ready.resolve(undefined);
+			return;
+		}
+		if (message.type === 'page-destroy') {
+			handlePageDestroy();
 			return;
 		}
 		if (message.type === 'dispose-ack' || message.type === 'dispose-retry') {
@@ -292,14 +324,26 @@ export function createLynxCompiledProgramTransport(
 	};
 
 	context.addEventListener(LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT, onMessage);
+	let destroyedBeforeReady = false;
 	try {
-		dispatch({ type: 'ready', request: readyRequest });
+		destroyedBeforeReady = options.isPageDestroyed?.() === true;
 	} catch (error) {
-		fault(error);
+		const tombstoneError = report(error);
+		closeInternal(tombstoneError);
+		throw tombstoneError;
+	}
+	if (destroyedBeforeReady) handlePageDestroy();
+	else if (closed === null) {
+		try {
+			dispatch({ type: 'ready', request: readyRequest });
+		} catch (error) {
+			fault(error);
+		}
 	}
 
 	const transport: LynxCompiledProgramTransport = {
 		ready: ready.promise,
+		pageDestroyed: pageDestroyed.promise,
 		commit(
 			identity: UniversalTransportIdentity,
 			frame: readonly unknown[],
@@ -399,14 +443,25 @@ export function createLynxCompiledProgramTransport(
 			}
 			return disposeDeferred.promise;
 		},
+		async cancelPendingBeforeReady(value?: unknown) {
+			if (closed !== null || pending.size === 0) return false;
+			const entries = [...pending.values()];
+			if (entries.some((entry) => entry.state !== 'waiting-ready')) return false;
+			const settlements = entries.map((entry) => entry.deferred.promise.then(undefined, () => {}));
+			closeInternal(
+				normalizedError(
+					value,
+					TRANSPORT_DEVELOPMENT
+						? 'Octane Lynx root was unmounted before compact main became ready.'
+						: TRANSPORT_ERROR,
+				),
+			);
+			await Promise.all(settlements);
+			return true;
+		},
 		diagnostics: () => Object.freeze([...reported]),
 		close(value?: unknown) {
-			if (closed !== null) return;
-			closed = normalizedError(value, TRANSPORT_ERROR);
-			context.removeEventListener(LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT, onMessage);
-			ready.reject(closed);
-			failPending(closed);
-			disposeDeferred?.reject(closed);
+			closeInternal(value);
 		},
 	};
 	return Object.freeze(transport);

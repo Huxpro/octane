@@ -151,6 +151,113 @@ function setup(
 }
 
 describe('@octanejs/lynx compact compiled-program transport', () => {
+	it.each([
+		['controller receiver', false],
+		['product receiver', true],
+	] as const)('broadcasts page destroy and releases %s ownership', async (_name, product) => {
+		const { context, page, receiver, transport } = setup(
+			emittedHost(),
+			'tests/WireRow.lynx.tsrx',
+			new RecordingContext(),
+			product,
+		);
+		receiver.markProgramsReady();
+		receiver.markPageReady();
+		await transport.ready;
+		await transport.commit(identity(1), mountFrame(), () => {}).promise;
+
+		receiver.destroyPage();
+		await transport.pageDestroyed;
+		expect(page.children).toEqual([]);
+		expect(
+			context.events
+				.filter((event) => event.type === LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT)
+				.map((event) => decodeLynxCompiledProgramMainMessage(event.data).type),
+		).toEqual(['ready', 'ack', 'complete', 'page-destroy']);
+		await expect(transport.commit(identity(2), mountFrame(), () => {}).promise).rejects.toThrow(
+			'page lifetime was destroyed',
+		);
+	});
+
+	it.each([
+		['controller receiver', false],
+		['product receiver', true],
+	] as const)('retries transient %s page-destroy cleanup', async (_name, product) => {
+		const base = emittedHost();
+		let removals = 0;
+		const papi: typeof base = {
+			...base,
+			remove(parent, child) {
+				removals++;
+				if (removals < 3) throw new Error('transient native destroy cleanup failure');
+				base.remove(parent, child);
+			},
+		};
+		const { page, receiver, transport } = setup(
+			papi,
+			'tests/WireRow.lynx.tsrx',
+			new RecordingContext(),
+			product,
+		);
+		receiver.markProgramsReady();
+		receiver.markPageReady();
+		await transport.ready;
+		await transport.commit(identity(1), mountFrame(), () => {}).promise;
+
+		receiver.destroyPage();
+		await transport.pageDestroyed;
+		expect(removals).toBe(3);
+		expect(page.children).toEqual([]);
+	});
+
+	it.each([
+		['controller receiver', false],
+		['product receiver', true],
+	] as const)(
+		'does not publish accepted state when %s is destroyed during apply',
+		async (_name, product) => {
+			const base = emittedHost();
+			const context = new RecordingContext();
+			const page = base.createPage('0', 0);
+			let receiver!: ReturnType<typeof installLynxCompiledProgramReceiver>;
+			let destroyed = false;
+			const papi: typeof base = {
+				...base,
+				insertBefore(parent, child, before) {
+					base.insertBefore(parent, child, before);
+					if (!destroyed) {
+						destroyed = true;
+						receiver.destroyPage();
+					}
+				},
+			};
+			receiver = (
+				product ? installLynxCompiledProgramProductReceiver : installLynxCompiledProgramReceiver
+			)({
+				context,
+				page,
+				papi,
+				resolveProgram: (name, index) =>
+					name === 'tests/WireRow.lynx.tsrx' && index === 0 ? emittedPlan() : undefined,
+			});
+			const transport = createLynxCompiledProgramTransport(context);
+			receiver.markProgramsReady();
+			receiver.markPageReady();
+			await transport.ready;
+
+			await expect(transport.commit(identity(1), mountFrame(), () => {}).promise).rejects.toThrow(
+				'page lifetime was destroyed',
+			);
+			await transport.pageDestroyed;
+			expect(page.children).toEqual([]);
+			expect(
+				context.events
+					.filter((event) => event.type === LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT)
+					.map((event) => decodeLynxCompiledProgramMainMessage(event.data).type),
+			).toEqual(['ready', 'page-destroy']);
+		},
+	);
+
 	it('carries a first-screen ownership proof through the installed receiver', async () => {
 		const base = emittedHost();
 		const page = base.createPage('0', 0);

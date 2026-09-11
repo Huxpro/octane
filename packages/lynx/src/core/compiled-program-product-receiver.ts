@@ -25,6 +25,7 @@ import {
 const DEVELOPMENT =
 	typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__;
 const CODE = 'Octane Lynx OL495';
+const MAX_CLOSE_CLEANUP_ATTEMPTS = 3;
 
 /** Generated-build receiver with framing, settlement, and page ownership in one closure. */
 export function installLynxCompiledProgramProductReceiver<Node extends LynxElementRef>(
@@ -60,6 +61,16 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 			options.onDiagnostic?.(error);
 		} catch {}
 		return error;
+	};
+	const release = (candidate: NonNullable<typeof store>): void => {
+		for (let attempt = 0; attempt < MAX_CLOSE_CLEANUP_ATTEMPTS; attempt++) {
+			try {
+				candidate.dispose();
+				return;
+			} catch (error) {
+				report(error);
+			}
+		}
 	};
 	const send = (message: Parameters<typeof encodeLynxCompiledProgramMainMessage>[0]): boolean => {
 		try {
@@ -189,6 +200,7 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 		busy = true;
 		try {
 			applyLynxCompiledProgramFrame(candidate, page, options.resolveProgram, message.frame, () => {
+				if (closed) throw new Error(CODE);
 				if (aborted !== null && same(aborted, message)) {
 					aborted = null;
 					throw new Error(CODE);
@@ -196,6 +208,14 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 			});
 		} catch (error) {
 			busy = false;
+			if (closed) {
+				release(candidate);
+				store = null;
+				active = null;
+				aborted = null;
+				if (candidate.isFaulted()) report(error);
+				return;
+			}
 			if (candidate.isFaulted()) {
 				store = candidate;
 				active = message;
@@ -210,6 +230,13 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 			return;
 		}
 		busy = false;
+		if (closed) {
+			release(candidate);
+			store = null;
+			active = null;
+			aborted = null;
+			return;
+		}
 		store = candidate;
 		active = message;
 		if (send({ ...message, type: 'ack' })) send({ ...message, type: 'complete' });
@@ -225,6 +252,16 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 	return {
 		markProgramsReady: () => mark(2),
 		markPageReady: () => mark(1),
+		destroyPage() {
+			if (closed) return;
+			send({ type: 'page-destroy' });
+			closed = true;
+			if (!busy && store !== null) release(store);
+			store = null;
+			active = null;
+			aborted = null;
+			context.removeEventListener(LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT, onMessage);
+		},
 		close() {
 			if (closed || busy) return;
 			store?.dispose();
