@@ -5,15 +5,14 @@ import { hasCrossRealmPlainPrototype } from './plain-object.js';
 import type { UniversalSerializableValue } from 'octane/universal/native';
 import type { Lynx, LynxGlobalEventEmitter } from '../platform.js';
 import {
-	LYNX_TRANSPORT_PROTOCOL_VERSION,
-	LYNX_TRANSPORT_RENDERER,
 	type LynxDataLifecycleMessage,
 	type LynxGlobalPropsMessage,
 	type LynxLifecycleDataRecord,
 	type LynxPageDataMessage,
-} from './protocol.js';
+} from './lifecycle-types.js';
+import { LYNX_TRANSPORT_PROTOCOL_VERSION, LYNX_TRANSPORT_RENDERER } from './transport-identity.js';
 
-export type { LynxLifecycleDataRecord } from './protocol.js';
+export type { LynxLifecycleDataRecord } from './lifecycle-types.js';
 
 interface IndexedLifecycleRecord {
 	readonly index: number;

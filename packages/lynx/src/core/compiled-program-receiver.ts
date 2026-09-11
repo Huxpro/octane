@@ -6,6 +6,7 @@ import {
 } from './compiled-program-controller.js';
 import type { LynxCompiledProgramResolver } from './compiled-program-frame.js';
 import type { LynxCompiledProgramAdoptionSource } from './compiled-program-store.js';
+import type { LynxDataLifecycleMessage } from './lifecycle-types.js';
 import {
 	decodeLynxCompiledProgramBackgroundMessage,
 	encodeLynxCompiledProgramMainMessage,
@@ -30,8 +31,12 @@ export interface InstallLynxCompiledProgramReceiverOptions<Node extends LynxElem
 	readonly page: Node;
 	readonly papi: LynxElementPAPI<Node>;
 	readonly resolveProgram: LynxCompiledProgramResolver;
+	/** Main-painted physical outputs offered only to the first accepted frame. */
+	readonly adoption?: LynxCompiledProgramAdoptionSource<Node>;
 	/** Web may mark PageConfig ready at installation; Native waits for `__RenderPage`. */
 	readonly pageReady?: boolean;
+	/** Called once, after the correlated compact ready reply crossed ContextProxy. */
+	readonly onReady?: () => void;
 	readonly onDiagnostic?: (error: Error) => void;
 }
 
@@ -40,6 +45,8 @@ export interface LynxCompiledProgramReceiver {
 	markProgramsReady(): void;
 	/** Native PageConfig is installed and Element PAPI writes may begin. */
 	markPageReady(): void;
+	/** Publish product-owned lifecycle data after the compact ready handshake. */
+	publishLifecycle(message: LynxDataLifecycleMessage): boolean;
 	/** Broadcast native lifetime end before releasing page-local ownership. */
 	destroyPage(): void;
 	close(): void;
@@ -107,7 +114,7 @@ export function installLynxCompiledProgramReceiver<Node extends LynxElementRef>(
 			respond: dispatch,
 			onDiagnostic: options.onDiagnostic,
 		},
-		adoption,
+		adoption ?? options.adoption,
 	);
 
 	const publishReady = (): void => {
@@ -115,6 +122,7 @@ export function installLynxCompiledProgramReceiver<Node extends LynxElementRef>(
 		try {
 			dispatch({ type: 'ready', request: readyRequest });
 			readiness = 4;
+			options.onReady?.();
 		} catch (error) {
 			report(
 				error,
@@ -176,6 +184,16 @@ export function installLynxCompiledProgramReceiver<Node extends LynxElementRef>(
 	return Object.freeze({
 		markProgramsReady: () => markReady(2),
 		markPageReady: () => markReady(1),
+		publishLifecycle(message: LynxDataLifecycleMessage) {
+			if (closed || readiness !== 4) return false;
+			try {
+				dispatch(message);
+				return true;
+			} catch (error) {
+				report(error);
+				return false;
+			}
+		},
 		destroyPage() {
 			if (closed) return;
 			try {

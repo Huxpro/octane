@@ -16,10 +16,16 @@ import {
 	type LynxClientContainer,
 	type LynxPublicHandle,
 } from './core/client-driver.js';
+import { LYNX_COMPILED_PROGRAM_APPLICATION } from './core/application-selection.js';
 import { prepareLynxBackgroundLifecycleReceiver } from './core/background-lifecycle.js';
+import { applyLynxBackgroundLifecycleData } from './core/lifecycle-data.js';
 import { LYNX_BLOCK_BACKGROUND_CORE } from './core/background-core-selection.js';
 import { installLynxNativeEventReceiver } from './core/native-event-receiver.js';
 import { createLynxBackgroundTransport, type LynxBackgroundTransport } from './core/transport.js';
+import {
+	createLynxCompiledProgramBlockTransport,
+	type LynxCompiledProgramBlockTransport,
+} from './core/compiled-program-block-transport.js';
 import type {
 	LynxContextProxy,
 	LynxMainThreadWorkletWireDescriptor,
@@ -63,9 +69,9 @@ export interface CreateLynxRootOptions {
 	 * Defaults to `checked`. See {@link LynxValidationMode}.
 	 *
 	 * This governs the acknowledgements, native events, and thread-call results
-	 * the main thread sends back. The page-scoped data lifecycle receiver —
-	 * `__RenderPage` and friends, which outlives any one root and carries data
-	 * the app did not author — stays `checked` whatever a root chooses.
+	 * the main thread sends back. The page-scoped data lifecycle path —
+	 * `__RenderPage` and friends, which carries data the app did not author —
+	 * stays checked whether the build selects the general or compact wire.
 	 */
 	readonly validation?: LynxValidationMode;
 }
@@ -79,11 +85,14 @@ export interface LynxRoot {
 }
 
 interface LynxRootState {
-	readonly transport: LynxBackgroundTransport;
+	readonly transport: LynxBackgroundTransport | LynxCompiledProgramBlockTransport;
 	closeWorklets(): void;
 	status: 'active' | 'unmounting' | 'unmounted';
 	unmount: Promise<void> | null;
 }
+
+/** Compact products keep the same native-lifetime tombstone as the general receiver. */
+const compiledProgramDestroyedLifetimes = new WeakSet<object>();
 
 function readBackgroundGlobals(target: object): LynxBackgroundGlobals {
 	if (target === null || typeof target !== 'object') {
@@ -169,12 +178,15 @@ function identityAdvanced(
 	);
 }
 
-/** Create one background-owned root and its isolated async transport state. */
-export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
-	const target = readBackgroundGlobals(options.target ?? defaultBackgroundTarget());
-	const context = resolveContext(target, options.context);
-	const scheduleMicrotask = resolveMicrotaskScheduler(target, options.scheduleMicrotask);
-	const createSelectorQuery = target.lynx?.createSelectorQuery;
+interface LynxGeneralBackgroundResources {
+	readonly worklets: ReturnType<typeof createLynxBackgroundFunctionRegistry>;
+	readonly acceptWorkletBatch: (batch: UniversalHostBatch) => void;
+	readonly rejectWorkletBatch: (batch: UniversalHostBatch) => void;
+	close(): void;
+}
+
+/** General-only callback ownership, omitted entirely from a proved compact product. */
+function createLynxGeneralBackgroundResources(): LynxGeneralBackgroundResources {
 	const worklets = createLynxBackgroundFunctionRegistry();
 	const acceptedWorklets = new Map<number, ReadonlySet<string>>();
 	const acceptedExecutionCounts = new Map<string, number>();
@@ -226,16 +238,8 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 				assign(command.id, undefined);
 			} else if (command.op === 'destroy-run') {
 				// A run retires as one command and ships no per-host `destroy` for the
-				// hosts inside it: the driver derives their teardown from the program
-				// it already holds. Ownership here is still per host, so the release
-				// those absent commands would have driven has to be found another way,
-				// or every callback the row installed outlives the row.
-				//
-				// Walking the id range would put back the per-host loop this command
-				// exists to remove, and at a thousand rows that is the loop that
-				// matters. Worklet owners are usually the thinner side, so the walk
-				// goes whichever way is shorter; deleting the current key mid-iteration
-				// is the one Map mutation the iterator is defined to tolerate.
+				// hosts inside it. Walk whichever side of the sparse ownership relation
+				// is shorter instead of restoring the hot per-host teardown loop.
 				const end = command.firstId + command.count * command.width;
 				if (end - command.firstId <= acceptedWorklets.size) {
 					for (let id = command.firstId; id < end; id++) assign(id, undefined);
@@ -263,64 +267,105 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 			}
 		}
 	};
+	return {
+		worklets,
+		acceptWorkletBatch,
+		rejectWorkletBatch,
+		close() {
+			acceptedWorklets.clear();
+			acceptedExecutionCounts.clear();
+			worklets.close();
+		},
+	};
+}
+
+/** Create one background-owned root and its isolated async transport state. */
+export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
+	const target = readBackgroundGlobals(options.target ?? defaultBackgroundTarget());
+	const context = resolveContext(target, options.context);
+	const scheduleMicrotask = resolveMicrotaskScheduler(target, options.scheduleMicrotask);
+	const general = LYNX_COMPILED_PROGRAM_APPLICATION ? null : createLynxGeneralBackgroundResources();
+	const createSelectorQuery = general === null ? undefined : target.lynx?.createSelectorQuery;
 	const container = createLynxClientContainer({
 		createSelectorQuery:
 			typeof createSelectorQuery === 'function'
 				? () => createSelectorQuery.call(target.lynx)
 				: undefined,
-		worklets,
+		...(general === null ? null : { worklets: general.worklets }),
 	});
-	const lifecycleInstallation = (() => {
+	const lifecycleInstallation = LYNX_COMPILED_PROGRAM_APPLICATION
+		? null
+		: (() => {
+				try {
+					return prepareLynxBackgroundLifecycleReceiver(
+						target.lynx as unknown as Lynx,
+						context,
+						options.onDiagnostic,
+					);
+				} catch (error) {
+					general?.close();
+					throw error;
+				}
+			})();
+	const transport: LynxBackgroundTransport | LynxCompiledProgramBlockTransport = (() => {
 		try {
-			return prepareLynxBackgroundLifecycleReceiver(
-				target.lynx as unknown as Lynx,
-				context,
-				options.onDiagnostic,
-			);
+			return LYNX_COMPILED_PROGRAM_APPLICATION
+				? createLynxCompiledProgramBlockTransport(context, container, {
+						onDiagnostic: options.onDiagnostic,
+						isPageDestroyed: () => compiledProgramDestroyedLifetimes.has(target.lynx as object),
+						onLifecycle(message) {
+							applyLynxBackgroundLifecycleData(target.lynx as unknown as Lynx, message);
+						},
+						onPageDestroy() {
+							compiledProgramDestroyedLifetimes.add(target.lynx as object);
+						},
+					})
+				: createLynxBackgroundTransport(context, container, {
+						onDiagnostic: options.onDiagnostic,
+						validation: options.validation,
+						isPageDestroyed: lifecycleInstallation!.isPageDestroyed,
+						prepareWorkletBatch: (batch) => prepareLynxClientWorkletBatch(container, batch),
+						onWorkletBatchAccepted: general!.acceptWorkletBatch,
+						onWorkletBatchRejected: general!.rejectWorkletBatch,
+						executeBackgroundFunction(fn, args) {
+							return general!.worklets.run(fn as LynxBackgroundFunctionDescriptor, args);
+						},
+					});
 		} catch (error) {
-			worklets.close();
-			throw error;
-		}
-	})();
-	const transport = (() => {
-		try {
-			return createLynxBackgroundTransport(context, container, {
-				onDiagnostic: options.onDiagnostic,
-				validation: options.validation,
-				isPageDestroyed: lifecycleInstallation.isPageDestroyed,
-				prepareWorkletBatch: (batch) => prepareLynxClientWorkletBatch(container, batch),
-				onWorkletBatchAccepted: acceptWorkletBatch,
-				onWorkletBatchRejected: rejectWorkletBatch,
-				executeBackgroundFunction(fn, args) {
-					return worklets.run(fn as LynxBackgroundFunctionDescriptor, args);
-				},
-			});
-		} catch (error) {
-			lifecycleInstallation.rollback();
-			worklets.close();
+			lifecycleInstallation?.rollback();
+			general?.close();
 			throw error;
 		}
 	})();
 	// The compile-time core switch (issue #103 B0). The build plugin resolves the
 	// tiny selection module before optimization, so exactly one arm survives in
 	// a production bundle and the other core's whole closure tree-shakes out.
-	// Everything around this — container, worklets, transport, lifecycle, native
-	// events — is shared, because only the core differs.
+	// The container and native events are shared. A proved compact application
+	// carries lifecycle data on its compact wire and omits the general lifecycle,
+	// worklet registry, and transport with its core.
 	const backgroundCore: LynxBackgroundCore = (() => {
 		try {
-			const root = LYNX_BLOCK_BACKGROUND_CORE
-				? createLynxBlockBackgroundCore({ container, transport, scheduleMicrotask })
-				: createUniversalRoot<LynxClientContainer, LynxPublicHandle>(
-						container,
-						createLynxClientDriver(container),
-						{ scheduleMicrotask, transport },
-					);
-			transport.bindRoot(root);
+			const root =
+				LYNX_COMPILED_PROGRAM_APPLICATION || LYNX_BLOCK_BACKGROUND_CORE
+					? createLynxBlockBackgroundCore({ container, transport, scheduleMicrotask })
+					: createUniversalRoot<LynxClientContainer, LynxPublicHandle>(
+							container,
+							createLynxClientDriver(container),
+							{ scheduleMicrotask, transport },
+						);
+			if (LYNX_COMPILED_PROGRAM_APPLICATION) {
+				const compactRoot = root as LynxBackgroundCore & {
+					acceptsNativeEvent: NonNullable<LynxBackgroundCore['acceptsNativeEvent']>;
+				};
+				(transport as LynxCompiledProgramBlockTransport).bindRoot(compactRoot);
+			} else {
+				(transport as LynxBackgroundTransport).bindRoot(root);
+			}
 			return root;
 		} catch (error) {
-			lifecycleInstallation.rollback();
+			lifecycleInstallation?.rollback();
 			transport.close(error);
-			worklets.close();
+			general?.close();
 			throw error;
 		}
 	})();
@@ -334,25 +379,28 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 		uninstallNativeEvents = null;
 		uninstallCallBridge?.();
 		uninstallCallBridge = null;
-		acceptedWorklets.clear();
-		acceptedExecutionCounts.clear();
-		worklets.close();
+		general?.close();
 	};
 	try {
-		uninstallCallBridge = installBackgroundCallBridge({
-			callMain<Result>(
-				worklet: import('./core/worklets.js').LynxMainThreadWorkletDescriptor,
-				args: readonly LynxWorkletValue[],
-			) {
-				const call = transport.callMain(
-					worklet as LynxMainThreadWorkletWireDescriptor,
-					args as never,
-				);
-				return { promise: call.promise as Promise<Result>, cancel: call.cancel };
-			},
-		});
+		if (LYNX_COMPILED_PROGRAM_APPLICATION) {
+			uninstallCallBridge = null;
+		} else {
+			const generalTransport = transport as LynxBackgroundTransport;
+			uninstallCallBridge = installBackgroundCallBridge({
+				callMain<Result>(
+					worklet: import('./core/worklets.js').LynxMainThreadWorkletDescriptor,
+					args: readonly LynxWorkletValue[],
+				) {
+					const call = generalTransport.callMain(
+						worklet as LynxMainThreadWorkletWireDescriptor,
+						args as never,
+					);
+					return { promise: call.promise as Promise<Result>, cancel: call.cancel };
+				},
+			});
+		}
 	} catch (error) {
-		lifecycleInstallation.rollback();
+		lifecycleInstallation?.rollback();
 		transport.close(error);
 		closeWorklets();
 		throw error;
@@ -379,7 +427,7 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 			scheduleMicrotask,
 		});
 	} catch (error) {
-		lifecycleInstallation.rollback();
+		lifecycleInstallation?.rollback();
 		transport.close(error);
 		closeWorklets();
 		throw error;
@@ -471,7 +519,7 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 					disposeError = error;
 				} finally {
 					transport.close(disposeFailed ? disposeError : unmountFailed ? unmountError : undefined);
-					lifecycleInstallation.release();
+					lifecycleInstallation?.release();
 					state.closeWorklets();
 					state.status = 'unmounted';
 				}
@@ -482,7 +530,7 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 		},
 	};
 	transport.bindPageDestroy(() => facade.unmount());
-	lifecycleInstallation.commit();
+	lifecycleInstallation?.commit();
 	return Object.freeze(facade);
 }
 

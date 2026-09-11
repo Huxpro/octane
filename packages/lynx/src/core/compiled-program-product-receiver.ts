@@ -53,6 +53,7 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 	let busy = false;
 	let faulted = false;
 	let closed = false;
+	let pendingAdoption = options.adoption;
 
 	const report = (value: unknown): Error => {
 		const error =
@@ -96,7 +97,14 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 	};
 	const publishReady = (): void => {
 		if (!closed && readyRequest !== null && readiness === 3) {
-			if (send({ type: 'ready', request: readyRequest })) readiness = 4;
+			if (send({ type: 'ready', request: readyRequest })) {
+				readiness = 4;
+				try {
+					options.onReady?.();
+				} catch (error) {
+					report(error);
+				}
+			}
 		}
 	};
 	const onMessage = (event: LynxContextProxyEvent): void => {
@@ -192,7 +200,14 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 			return;
 		}
 		const candidate =
-			store ?? createLynxCompiledProgramStore(papi, papi.getUniqueId(page), message.root);
+			store ??
+			createLynxCompiledProgramStore(
+				papi,
+				papi.getUniqueId(page),
+				message.root,
+				pendingAdoption?.firstListener,
+				pendingAdoption?.resolveSeed,
+			);
 		busy = true;
 		try {
 			applyLynxCompiledProgramFrame(candidate, page, options.resolveProgram, message.frame, () => {
@@ -201,6 +216,7 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 					aborted = null;
 					throw new Error(CODE);
 				}
+				pendingAdoption?.verify();
 			});
 		} catch (error) {
 			busy = false;
@@ -233,6 +249,8 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 			aborted = null;
 			return;
 		}
+		pendingAdoption?.finish();
+		pendingAdoption = undefined;
 		store = candidate;
 		active = message;
 		if (send({ ...message, type: 'ack' })) send({ ...message, type: 'complete' });
@@ -248,12 +266,15 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 	return {
 		markProgramsReady: () => mark(2),
 		markPageReady: () => mark(1),
+		publishLifecycle: (message) => !closed && readiness === 4 && send(message),
 		destroyPage() {
 			if (closed) return;
 			send({ type: 'page-destroy' });
 			closed = true;
 			if (!busy && store !== null) release(store);
 			store = null;
+			pendingAdoption?.dispose();
+			pendingAdoption = undefined;
 			active = null;
 			aborted = null;
 			context.removeEventListener(LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT, onMessage);
@@ -261,6 +282,8 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 		close() {
 			if (closed || busy) return;
 			store?.dispose();
+			pendingAdoption?.dispose();
+			pendingAdoption = undefined;
 			closed = true;
 			context.removeEventListener(LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT, onMessage);
 		},

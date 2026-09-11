@@ -11,12 +11,9 @@ import {
 	LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT,
 	LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT,
 } from './compiled-program-wire.js';
-import {
-	LYNX_TRANSPORT_PROTOCOL_VERSION,
-	LYNX_TRANSPORT_RENDERER,
-	type LynxContextProxy,
-	type LynxContextProxyEvent,
-} from './protocol.js';
+import type { LynxDataLifecycleMessage } from './lifecycle-types.js';
+import type { LynxContextProxy, LynxContextProxyEvent } from './protocol.js';
+import { LYNX_TRANSPORT_PROTOCOL_VERSION, LYNX_TRANSPORT_RENDERER } from './transport-identity.js';
 import {
 	acceptLynxTransportFrame,
 	createLynxTransportFrameState,
@@ -82,6 +79,10 @@ function remoteError(input: { readonly name: string; readonly message: string })
 
 export interface LynxCompiledProgramTransportOptions {
 	readonly onDiagnostic?: (error: Error) => void;
+	/** Product-owned page/global lifecycle data carried on this same compact wire. */
+	readonly onLifecycle?: (message: LynxDataLifecycleMessage) => void;
+	/** Records the native lifetime tombstone before this transport closes. */
+	readonly onPageDestroy?: () => void;
 	/** Native-lifetime tombstone for a background realm started after page destroy. */
 	readonly isPageDestroyed?: () => boolean;
 }
@@ -200,6 +201,11 @@ export function createLynxCompiledProgramTransport(
 	const handlePageDestroy = (): void => {
 		if (pageDestroyReceived) return;
 		pageDestroyReceived = true;
+		try {
+			options.onPageDestroy?.();
+		} catch (error) {
+			report(error);
+		}
 		closeInternal(
 			new Error(
 				TRANSPORT_DEVELOPMENT ? 'Octane Lynx native page lifetime was destroyed.' : TRANSPORT_ERROR,
@@ -248,6 +254,14 @@ export function createLynxCompiledProgramTransport(
 		}
 		if (message.type === 'page-destroy') {
 			handlePageDestroy();
+			return;
+		}
+		if (message.type === 'page-data' || message.type === 'global-props') {
+			try {
+				options.onLifecycle?.(message);
+			} catch (error) {
+				report(error);
+			}
 			return;
 		}
 		if (message.type === 'dispose-ack' || message.type === 'dispose-retry') {

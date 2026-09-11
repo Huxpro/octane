@@ -38,7 +38,7 @@ import ${JSON.stringify(mainThreadReady)};
 						builder.onResolve(
 							{
 								filter:
-									/^@octanejs\/lynx\/(?:main-thread-application|first-screen)$|^rspeedy:authored-entry$/,
+									/^@octanejs\/lynx\/(?:main-thread-(?:product-)?application|first-screen)$|^rspeedy:authored-entry$/,
 							},
 							({ path }) => ({ path, namespace: 'rspeedy-main-thread-consumer' }),
 						);
@@ -46,15 +46,19 @@ import ${JSON.stringify(mainThreadReady)};
 							{ filter: /.*/, namespace: 'rspeedy-main-thread-consumer' },
 							({ path }) => ({
 								contents:
-									path === '@octanejs/lynx/main-thread-application'
-										? `export function installLynxApplicationMainThread(options) {
+									path === '@octanejs/lynx/main-thread-product-application'
+										? `export function installLynxProductApplicationMainThread(options) {
 	globalThis.bootstrap.install(options, globalThis.processData);
 }`
-										: path === '@octanejs/lynx/first-screen'
-											? `export function markFirstScreenSyncReady() {
+										: path === '@octanejs/lynx/main-thread-application'
+											? `export function installLynxApplicationMainThread(options) {
+	globalThis.bootstrap.install(options, globalThis.processData);
+}`
+											: path === '@octanejs/lynx/first-screen'
+												? `export function markFirstScreenSyncReady() {
 	globalThis.bootstrap.ready();
 }`
-											: 'globalThis.bootstrap.evaluate();',
+												: 'globalThis.bootstrap.evaluate();',
 								loader: 'js',
 							}),
 						);

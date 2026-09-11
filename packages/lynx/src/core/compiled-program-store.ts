@@ -138,14 +138,26 @@ export interface LynxCompiledProgramAdoption<Node extends LynxElementRef>
 
 /** Resolve one already-proved first-screen run by the compact handle that will own it. */
 export type LynxCompiledProgramAdoptionSeedResolver<Node extends LynxElementRef> = (
-	firstHandle: number,
+	input: LynxCompiledProgramMount<Node>,
 ) => LynxCompiledProgramAdoptionSeed<Node> | undefined;
 
-/** The listener cursor and proof resolver are one first-screen ownership source. */
-export type LynxCompiledProgramAdoptionSource<Node extends LynxElementRef> = readonly [
-	firstListener: number,
-	resolveSeed: LynxCompiledProgramAdoptionSeedResolver<Node>,
-];
+/**
+ * Main-painted program ownership offered to the first compact frame.
+ *
+ * `verify` runs inside the frame transaction, before the store commits, so an
+ * incomplete adoption still rolls the frame back. `finish` is the no-throw,
+ * irreversible hand-over boundary after that commit: until then `dispose`
+ * remains the only terminal owner, and a rejected frame may retry the same
+ * handle/proof assignments. Once finished, later mounts return no seed and the
+ * compact store is the sole owner of every transferred node.
+ */
+export interface LynxCompiledProgramAdoptionSource<Node extends LynxElementRef> {
+	readonly firstListener: number;
+	readonly resolveSeed: LynxCompiledProgramAdoptionSeedResolver<Node>;
+	verify(): void;
+	finish(): void;
+	dispose(): void;
+}
 
 export interface LynxCompiledProgramStore<Node extends LynxElementRef = LynxElementRef> {
 	begin(): void;
@@ -789,7 +801,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			writeRun(input, input);
 		},
 		mount(input) {
-			writeRun(input, seed?.(input.firstHandle));
+			writeRun(input, seed?.(input));
 		},
 		range(instance, slot) {
 			requireJournal();

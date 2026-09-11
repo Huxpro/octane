@@ -102,11 +102,12 @@ describe('Lynx runtime compatibility evidence', () => {
 	it('keeps background and main-thread runtime ownership in separate source graphs', () => {
 		expect(runtimeSourceGraph(resolve(LYNX_ROOT, 'src/root.ts'))).toEqual({
 			files: [
+				'src/core/application-selection.ts',
 				'src/core/background-core-selection.ts',
 				'src/core/background-lifecycle.ts',
-				// Issue #103 B0: both background cores are in the *source* graph,
-				// because the compile-time switch is a branch in `root.ts` and the
-				// bundler folds it. Exactly one survives a production build; the
+				// Issue #103 B0 / #291 M4: both background cores and transports are
+				// in the *source* graph behind static selection seams in `root.ts`.
+				// Exactly one pair survives an eligible production build; the
 				// bytes are the claim and `benchmarks/lynx-bundle-size/core-switch.mjs`
 				// is what checks it. What this guard still owns is the thing it
 				// always owned: no main-thread-only module reaches the background.
@@ -116,11 +117,16 @@ describe('Lynx runtime compatibility evidence', () => {
 				'src/core/block-program.ts',
 				'src/core/block-root.ts',
 				'src/core/client-driver.ts',
+				'src/core/compiled-program-block-transport.ts',
+				'src/core/compiled-program-transport.ts',
+				'src/core/compiled-program-wire.ts',
 				'src/core/delta-protocol.ts',
 				'src/core/delta-shadow.ts',
 				'src/core/environment.ts',
+				'src/core/host-prop-value.ts',
 				'src/core/host-props.ts',
 				'src/core/lifecycle-data.ts',
+				'src/core/lifecycle-types.ts',
 				'src/core/native-event-receiver.ts',
 				'src/core/native-events.ts',
 				'src/core/nodes-ref.ts',
@@ -139,6 +145,7 @@ describe('Lynx runtime compatibility evidence', () => {
 				// thread encodes what it sends and decodes what it receives, so
 				// shared ownership of the encoding is the point rather than a leak.
 				'src/core/transport-codec.ts',
+				'src/core/transport-identity.ts',
 				'src/core/transport.ts',
 				'src/core/worklets.ts',
 				'src/resource.ts',
@@ -156,8 +163,10 @@ describe('Lynx runtime compatibility evidence', () => {
 				'src/core/first-screen-host.ts',
 				'src/core/first-screen.ts',
 				'src/core/host-driver.ts',
+				'src/core/host-prop-value.ts',
 				'src/core/host-props.ts',
 				'src/core/lifecycle-data.ts',
+				'src/core/lifecycle-types.ts',
 				'src/core/list.ts',
 				'src/core/main-thread-worklet-feature.ts',
 				'src/core/native-events.ts',
@@ -177,6 +186,7 @@ describe('Lynx runtime compatibility evidence', () => {
 				'src/core/renderer-id.ts',
 				// Issue #156 slice 1: the other half of the shared codec above.
 				'src/core/transport-codec.ts',
+				'src/core/transport-identity.ts',
 				'src/core/worklets.ts',
 				'src/main-renderer.ts',
 				'src/main-thread-implementation.ts',

@@ -164,13 +164,16 @@ describe('@octanejs/lynx compact compiled-program controller', () => {
 					module === ADDRESS.module && index === ADDRESS.index ? plan : undefined,
 				respond: (message) => responses.push(message),
 			},
-			[
-				1_000_000,
-				(firstHandle) =>
+			{
+				firstListener: 1_000_000,
+				resolveSeed: ({ firstHandle }) =>
 					firstHandle === 2
 						? { firstId: 10, firstListenerId: 1_000_000, nodes, stride: 4 }
 						: undefined,
-			],
+				verify() {},
+				finish() {},
+				dispose() {},
+			},
 		);
 
 		controller.apply(identity(1), mountFrame());

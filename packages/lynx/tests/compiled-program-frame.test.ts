@@ -267,7 +267,7 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 			papi.getUniqueId(page),
 			73,
 			1_000_000,
-			(firstHandle) =>
+			({ firstHandle }) =>
 				firstHandle === 2
 					? {
 							firstId: 10,
@@ -352,7 +352,7 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 			papi.getUniqueId(page),
 			73,
 			1_000_000,
-			(firstHandle) => (firstHandle === 2 ? seed : undefined),
+			({ firstHandle }) => (firstHandle === 2 ? seed : undefined),
 		);
 		const frame = encodeLynxDeltaMessage(
 			[

@@ -1,5 +1,5 @@
 /* global __OCTANE_LYNX_FIRST_SCREEN_RENDER__ */
-import { installLynxApplicationMainThread } from '@octanejs/lynx/main-thread-application';
+import { installLynxProductApplicationMainThread } from '@octanejs/lynx/main-thread-product-application';
 
 import { installMainThreadProcessData } from './main-thread-process-data.js';
 
@@ -7,7 +7,7 @@ import { installMainThreadProcessData } from './main-thread-process-data.js';
 // dedicated entry therefore keeps the trusted envelope ABI without retaining
 // the recursive checked validator; development selects main-thread-entry.js.
 installMainThreadProcessData();
-installLynxApplicationMainThread({
+installLynxProductApplicationMainThread({
 	firstScreen: true,
 	firstScreenSync: 'manual',
 	firstScreenRender:

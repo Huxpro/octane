@@ -1,6 +1,7 @@
 import { getOctaneRspackBuildInfo } from '@octanejs/rspack-plugin';
 
 import { installLynxBackgroundCoreReplacement } from './background-core.js';
+import { installLynxApplicationSelectionReplacement } from './application-selection.js';
 
 export const LYNX_PROGRAM_COVERAGE_ASSET_INFO = 'octane:lynx-program-coverage';
 export const LYNX_PROGRAM_COVERAGE_VERSION = 1;
@@ -13,6 +14,8 @@ export const LYNX_BLOCK_SELECTION_ASSET_INFO = 'octane:lynx-block-selection';
 export const LYNX_BLOCK_SELECTION_VERSION = 1;
 export const LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO = 'octane:lynx-background-core-selection';
 export const LYNX_BACKGROUND_CORE_SELECTION_VERSION = 1;
+export const LYNX_APPLICATION_SELECTION_ASSET_INFO = 'octane:lynx-application-selection';
+export const LYNX_APPLICATION_SELECTION_VERSION = 1;
 export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 2;
 export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 	version: LYNX_BLOCK_SUPPORT_MATRIX_VERSION,
@@ -73,6 +76,174 @@ function isLynxBackgroundRoot(module) {
 	);
 }
 
+function isLynxApplicationSelectionOwner(module) {
+	const resource = moduleResource(module);
+	return (
+		resource !== null &&
+		(resource.endsWith('/packages/lynx/src/root.ts') ||
+			resource.includes('/node_modules/@octanejs/lynx/src/root.ts') ||
+			resource.endsWith('/packages/lynx/src/main-renderer-product.ts') ||
+			resource.includes('/node_modules/@octanejs/lynx/src/main-renderer-product.ts') ||
+			resource.endsWith('/packages/lynx/src/main-thread-product-application.ts') ||
+			resource.includes('/node_modules/@octanejs/lynx/src/main-thread-product-application.ts'))
+	);
+}
+
+function isApplicationSelection(module, selected) {
+	const resource = moduleResource(module);
+	if (resource === null) return false;
+	return selected === 'compiled-program'
+		? resource.endsWith('/application-selection.compiled-program.ts') ||
+				resource.endsWith('/main-thread-application-selection.compiled-program.ts') ||
+				resource.endsWith('/first-screen.compiled-program.ts') ||
+				resource.endsWith('/client-driver.compiled-program.ts') ||
+				resource.endsWith('/main-renderer-selection.compiled-program.ts')
+		: resource.endsWith('/application-selection.ts') ||
+				resource.endsWith('/main-thread-application-selection.ts') ||
+				resource.endsWith('/first-screen.ts') ||
+				resource.endsWith('/client-driver.ts') ||
+				resource.endsWith('/main-renderer-selection.ts');
+}
+
+function isLynxFirstScreenFacade(module) {
+	const resource = moduleResource(module);
+	return (
+		resource !== null &&
+		(resource.endsWith('/first-screen.ts') ||
+			resource.endsWith('/first-screen.compiled-program.ts')) &&
+		(resource.includes('/packages/lynx/src/') ||
+			resource.includes('/node_modules/@octanejs/lynx/src/'))
+	);
+}
+
+function importsLynxFirstScreenFacade(compilation, module) {
+	return [...compilation.moduleGraph.getOutgoingConnections(module)].some(
+		(connection) =>
+			activeConnection(connection) &&
+			connection.module != null &&
+			isLynxFirstScreenFacade(connection.module),
+	);
+}
+
+function isLynxClientDriver(module) {
+	const resource = moduleResource(module);
+	return (
+		resource !== null &&
+		(resource.endsWith('/client-driver.ts') ||
+			resource.endsWith('/client-driver.compiled-program.ts')) &&
+		(resource.includes('/packages/lynx/src/core/') ||
+			resource.includes('/node_modules/@octanejs/lynx/src/core/'))
+	);
+}
+
+function importsLynxClientDriver(compilation, module) {
+	return [...compilation.moduleGraph.getOutgoingConnections(module)].some(
+		(connection) =>
+			activeConnection(connection) &&
+			connection.module != null &&
+			isLynxClientDriver(connection.module),
+	);
+}
+
+function collectApplicationSelectionOwners(compilation) {
+	return [...compilation.modules].filter(
+		(module) =>
+			isLynxApplicationSelectionOwner(module) ||
+			importsLynxFirstScreenFacade(compilation, module) ||
+			importsLynxClientDriver(compilation, module),
+	);
+}
+
+function dependencyIds(dependency) {
+	return Array.isArray(dependency?.ids)
+		? dependency.ids.filter((id) => typeof id === 'string')
+		: [];
+}
+
+/**
+ * Prove that the compact product owns only the package singleton root.
+ *
+ * Rspack does not expose used-export state safely during `finishMake`, when
+ * this plugin must make and rebuild the source-selection seam. Its active ESM
+ * dependency edges do retain the exact imported/re-exported identifiers. Walk
+ * those edges through re-export facades and fail closed for an explicit root
+ * factory or an opaque import whose identifier set cannot be proved.
+ */
+function collectExplicitRootReasons(compilation, backgroundRoots) {
+	const reasons = [];
+	const pending = [...backgroundRoots];
+	const seen = new Set();
+	const reported = new Set();
+	const report = (code, module) => {
+		const resource = moduleResource(module);
+		const key = `${code}:${resource ?? '<entry>'}`;
+		if (reported.has(key)) return;
+		reported.add(key);
+		reasons.push(reason(code, { module: resource }));
+	};
+	while (pending.length !== 0) {
+		const target = pending.pop();
+		if (seen.has(target)) continue;
+		seen.add(target);
+		const byOrigin = new Map();
+		for (const connection of compilation.moduleGraph.getIncomingConnections(target)) {
+			if (!activeConnection(connection)) continue;
+			const origin = connection.originModule ?? null;
+			let connections = byOrigin.get(origin);
+			if (connections === undefined) {
+				connections = [];
+				byOrigin.set(origin, connections);
+			}
+			connections.push(connection);
+		}
+		for (const [origin, connections] of byOrigin) {
+			const exports = connections.filter((connection) =>
+				String(connection.dependency?.type ?? '').includes('export import'),
+			);
+			const imports = connections.filter(
+				(connection) =>
+					String(connection.dependency?.type ?? '').includes('import') &&
+					!String(connection.dependency?.type ?? '').includes('export import'),
+			);
+			const ids = connections.flatMap((connection) => dependencyIds(connection.dependency));
+			if (exports.length !== 0 && origin !== null) {
+				if (ids.includes('createLynxRoot') || ids.length === 0) pending.push(origin);
+			}
+			if (imports.length !== 0) {
+				if (ids.includes('createLynxRoot')) {
+					report('explicit-root-requires-general-application', origin);
+				} else if (ids.length === 0) {
+					report('opaque-root-import-requires-general-application', origin);
+				}
+			} else if (exports.length === 0) {
+				report('opaque-root-import-requires-general-application', origin);
+			}
+		}
+	}
+	return reasons;
+}
+
+function verifyApplicationSelection(compilation, owners, selected) {
+	if (selected === 'compiled-program' && owners.length === 0) {
+		throw new Error(
+			'@octanejs/rspeedy-plugin: compiled-program application owners disappeared during specialization.',
+		);
+	}
+	for (const owner of owners) {
+		const resolved = [...compilation.moduleGraph.getOutgoingConnections(owner)].some(
+			(connection) =>
+				activeConnection(connection) &&
+				connection.module != null &&
+				isApplicationSelection(connection.module, selected),
+		);
+		if (!resolved) {
+			throw new Error(
+				`@octanejs/rspeedy-plugin: application owner ${moduleResource(owner) ?? '<unknown>'} did not resolve the selected ${selected} module.`,
+			);
+		}
+	}
+}
+
 function isBackgroundCoreSelection(module, selectedCore) {
 	const resource = moduleResource(module);
 	if (resource === null) return false;
@@ -82,6 +253,11 @@ function isBackgroundCoreSelection(module, selectedCore) {
 }
 
 function verifyBackgroundCoreSelection(compilation, roots, selectedCore) {
+	if (selectedCore === 'block' && roots.length === 0) {
+		throw new Error(
+			'@octanejs/rspeedy-plugin: background root disappeared during Block specialization.',
+		);
+	}
 	for (const root of roots) {
 		const selected = [...compilation.moduleGraph.getOutgoingConnections(root)].some(
 			(connection) =>
@@ -97,17 +273,43 @@ function verifyBackgroundCoreSelection(compilation, roots, selectedCore) {
 	}
 }
 
-async function rebuildLynxBackgroundRoots(compilation, roots) {
-	const results = await Promise.allSettled(
-		roots.map(
-			(module) =>
-				new Promise((resolve, reject) => {
-					compilation.rebuildModule(module, (error) => (error ? reject(error) : resolve()));
-				}),
-		),
-	);
-	for (const result of results) if (result.status === 'rejected') throw result.reason;
+function orderLynxRebuilds(compilation, modules) {
+	const selected = new Set(modules);
+	const visiting = new Set();
+	const visited = new Set();
+	const ordered = [];
+	const visit = (module) => {
+		if (visited.has(module) || visiting.has(module)) return;
+		visiting.add(module);
+		for (const connection of compilation.moduleGraph.getOutgoingConnections(module)) {
+			if (!activeConnection(connection) || !selected.has(connection.module)) continue;
+			visit(connection.module);
+		}
+		visiting.delete(module);
+		visited.add(module);
+		ordered.push(module);
+	};
+	for (const module of [...modules].sort((left, right) =>
+		(moduleResource(left) ?? '').localeCompare(moduleResource(right) ?? ''),
+	)) {
+		visit(module);
+	}
+	return ordered;
 }
+
+async function rebuildLynxBackgroundRoots(compilation, roots) {
+	// Rebuilding an importer may detach the old dependency module. Rspack then
+	// rejects a later rebuild of that stale module (and older versions panic).
+	// Rebuild selected dependencies before their importers, and serialize the
+	// short build-only list so every module is still resident when visited.
+	for (const module of orderLynxRebuilds(compilation, roots)) {
+		await new Promise((resolve, reject) => {
+			compilation.rebuildModule(module, (error) => (error ? reject(error) : resolve()));
+		});
+	}
+}
+
+const rebuildLynxModules = rebuildLynxBackgroundRoots;
 
 function collectReachableModules(compilation, entryName, authoredRequests) {
 	const entry = compilation.entries.get(entryName);
@@ -829,6 +1031,59 @@ export function evaluateLynxBlockEligibility({
 	});
 }
 
+/**
+ * The compact product omits general worklet/ref ownership. Select it only when
+ * the paired compiler facts prove those channels absent in addition to Block
+ * eligibility and complete resident addressing.
+ */
+export function evaluateLynxCompiledProgramEligibility({ blockSelection, featureRequirements }) {
+	const reasons = [];
+	if (blockSelection?.version !== LYNX_BLOCK_SELECTION_VERSION) {
+		reasons.push(reason('unsupported-block-selection-version'));
+	} else if (blockSelection.eligible !== true) {
+		reasons.push(reason('block-selection-ineligible', { reasons: blockSelection.reasons }));
+	}
+	if (featureRequirements?.version !== LYNX_BLOCK_FEATURE_REQUIREMENTS_VERSION) {
+		reasons.push(reason('unsupported-feature-requirements-version'));
+	} else if (featureRequirements.paired !== true) {
+		reasons.push(reason('feature-requirements-unpaired'));
+	} else {
+		for (const module of featureRequirements.modules) {
+			for (const [thread, requirements] of [
+				['background', module.background],
+				['main-thread', module.mainThread],
+			]) {
+				for (const site of requirements.threadFunctions) {
+					reasons.push(
+						reason('thread-function-requires-general-application', {
+							module: module.module,
+							thread,
+							kind: site.kind,
+							id: site.id,
+							line: site.line,
+							column: site.column,
+						}),
+					);
+				}
+				for (const site of requirements.mainThreadProps) {
+					reasons.push(
+						reason('main-thread-prop-requires-general-application', {
+							module: module.module,
+							thread,
+							...cloneSourceSite(site),
+						}),
+					);
+				}
+			}
+		}
+	}
+	return Object.freeze({
+		version: LYNX_APPLICATION_SELECTION_VERSION,
+		eligible: reasons.length === 0,
+		reasons: Object.freeze(reasons),
+	});
+}
+
 function collectApplicationReports(compilation, entries, enabled) {
 	const reports = new Map();
 	for (const entry of entries) {
@@ -839,21 +1094,57 @@ function collectApplicationReports(compilation, entries, enabled) {
 		);
 		const semanticRequirements = collectLynxBlockSemanticRequirementsFromEntryModules(entryModules);
 		const featureRequirements = collectLynxBlockFeatureRequirementsFromEntryModules(entryModules);
+		const selection = evaluateLynxBlockEligibility({
+			programCoverage,
+			semanticRequirements,
+			featureRequirements,
+		});
 		reports.set(
 			entry.mainThreadEntry,
 			Object.freeze({
 				programCoverage,
 				semanticRequirements,
 				featureRequirements,
-				selection: evaluateLynxBlockEligibility({
-					programCoverage,
-					semanticRequirements,
+				selection,
+				compiledProgramSelection: evaluateLynxCompiledProgramEligibility({
+					blockSelection: selection,
 					featureRequirements,
 				}),
 			}),
 		);
 	}
 	return reports;
+}
+
+function decideApplication(
+	compiler,
+	entries,
+	reports,
+	coreDecision,
+	ownersAvailable,
+	explicitRootReasons,
+) {
+	const reasons = [];
+	if (!oneShotProduction(compiler)) {
+		reasons.push(reason('compiled-program-selection-requires-one-shot-production'));
+	}
+	if (coreDecision.selected !== 'block')
+		reasons.push(reason('compiled-program-requires-block-core'));
+	if (!ownersAvailable) reasons.push(reason('application-selection-owner-unavailable'));
+	reasons.push(...explicitRootReasons);
+	for (const entry of entries) {
+		const report = reports.get(entry.mainThreadEntry);
+		if (report === undefined)
+			reasons.push(reason('selection-report-missing', { entry: entry.mainThreadEntry }));
+		else if (report.compiledProgramSelection.eligible !== true) {
+			reasons.push(reason('entry-ineligible', { entry: entry.mainThreadEntry }));
+		}
+	}
+	return Object.freeze({
+		version: LYNX_APPLICATION_SELECTION_VERSION,
+		selected: reasons.length === 0 && entries.length !== 0 ? 'compiled-program' : 'general',
+		reasons: Object.freeze(reasons),
+	});
 }
 
 function decideBackgroundCore(compiler, entries, reports, configuredCore, backgroundRootAvailable) {
@@ -910,6 +1201,10 @@ export class LynxProgramCoveragePlugin {
 			compiler,
 			() => activeState?.decision.selected ?? this.configuredCore ?? 'universal',
 		);
+		installLynxApplicationSelectionReplacement(
+			compiler,
+			() => activeState?.applicationDecision.selected ?? 'general',
+		);
 		const states = new WeakMap();
 		compiler.hooks.thisCompilation.tap(this.constructor.name, (compilation) => {
 			const state = {
@@ -919,6 +1214,11 @@ export class LynxProgramCoveragePlugin {
 					mode: this.configuredCore === undefined ? 'automatic' : 'explicit',
 					selected: this.configuredCore ?? 'universal',
 					eligible: false,
+					reasons: Object.freeze([reason('application-graph-not-collected')]),
+				}),
+				applicationDecision: Object.freeze({
+					version: LYNX_APPLICATION_SELECTION_VERSION,
+					selected: 'general',
 					reasons: Object.freeze([reason('application-graph-not-collected')]),
 				}),
 			};
@@ -944,6 +1244,7 @@ export class LynxProgramCoveragePlugin {
 									[LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO]: report.featureRequirements,
 									[LYNX_BLOCK_SELECTION_ASSET_INFO]: report.selection,
 									[LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO]: state.decision,
+									[LYNX_APPLICATION_SELECTION_ASSET_INFO]: state.applicationDecision,
 								});
 							}
 						}
@@ -956,6 +1257,8 @@ export class LynxProgramCoveragePlugin {
 			if (state === undefined) return;
 			state.reports = collectApplicationReports(compilation, this.entries, this.enabled);
 			const backgroundRoots = [...compilation.modules].filter(isLynxBackgroundRoot);
+			const applicationOwners = collectApplicationSelectionOwners(compilation);
+			const explicitRootReasons = collectExplicitRootReasons(compilation, backgroundRoots);
 			state.decision = decideBackgroundCore(
 				compiler,
 				this.entries,
@@ -963,11 +1266,31 @@ export class LynxProgramCoveragePlugin {
 				this.configuredCore,
 				backgroundRoots.length !== 0,
 			);
+			state.applicationDecision = decideApplication(
+				compiler,
+				this.entries,
+				state.reports,
+				state.decision,
+				applicationOwners.length !== 0,
+				explicitRootReasons,
+			);
 			activeState = state;
+			const rebuild = new Set();
 			if (this.configuredCore === undefined && state.decision.selected === 'block') {
-				await rebuildLynxBackgroundRoots(compilation, backgroundRoots);
+				for (const root of backgroundRoots) rebuild.add(root);
 			}
-			verifyBackgroundCoreSelection(compilation, backgroundRoots, state.decision.selected);
+			if (state.applicationDecision.selected === 'compiled-program') {
+				for (const owner of applicationOwners) rebuild.add(owner);
+			}
+			if (rebuild.size !== 0) await rebuildLynxModules(compilation, [...rebuild]);
+			const selectedBackgroundRoots = [...compilation.modules].filter(isLynxBackgroundRoot);
+			const selectedApplicationOwners = collectApplicationSelectionOwners(compilation);
+			verifyBackgroundCoreSelection(compilation, selectedBackgroundRoots, state.decision.selected);
+			verifyApplicationSelection(
+				compilation,
+				selectedApplicationOwners,
+				state.applicationDecision.selected,
+			);
 		});
 	}
 }

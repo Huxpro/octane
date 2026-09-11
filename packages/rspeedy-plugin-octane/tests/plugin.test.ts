@@ -582,11 +582,13 @@ describe('@octanejs/rspeedy-plugin', () => {
 		expect(applicationCompiler.renderers.registry.lynx.module).toBe('@octanejs/lynx/renderer');
 		const mainSpecialization = applicationCompiler.layerSpecializations?.[LYNX_MAIN_THREAD_LAYER];
 		expect(mainSpecialization).toMatchObject({
-			runtime: '@octanejs/lynx/main-renderer',
+			runtime: '@octanejs/lynx/main-renderer-product',
 			universalRuntime: LYNX_MAIN_THREAD_RUNTIME,
 			renderers: { default: 'lynx' },
 		});
-		expect(mainSpecialization?.renderers.registry.lynx.module).toBe('@octanejs/lynx/main-renderer');
+		expect(mainSpecialization?.renderers.registry.lynx.module).toBe(
+			'@octanejs/lynx/main-renderer-product',
+		);
 		expect(mainSpecialization?.renderers.registry.lynx.validation.forbiddenGlobals).toContain(
 			'NativeModules',
 		);

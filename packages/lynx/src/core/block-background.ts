@@ -50,6 +50,7 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
 
 import type {
 	UniversalComponent,
+	UniversalEventPriority,
 	UniversalHostBatch,
 	UniversalPreparedAttempt,
 	UniversalTransaction,
@@ -65,8 +66,9 @@ import {
 	type LynxBlockProgram,
 	type LynxBlockProgramContext,
 } from './block-program.js';
-import { LYNX_TRANSPORT_RENDERER } from './protocol.js';
+import { LYNX_TRANSPORT_RENDERER } from './transport-identity.js';
 import type { LynxBackgroundTransport } from './transport.js';
+import type { LynxCompiledProgramBlockTransport } from './compiled-program-block-transport.js';
 
 /**
  * The members `root.ts` uses from whichever core the bundle carries.
@@ -80,11 +82,13 @@ export interface LynxBackgroundCore {
 	flushTransport(): Promise<void>;
 	unmountAsync(): Promise<void>;
 	dispatchTransportEvent(message: UniversalTransportEventMessage): readonly unknown[];
+	/** Present on the Block facade selected with the compact native-event transport. */
+	acceptsNativeEvent?(listener: number, priority: UniversalEventPriority): boolean;
 }
 
 export interface LynxBlockBackgroundCoreOptions {
 	readonly container: LynxClientContainer;
-	readonly transport: LynxBackgroundTransport;
+	readonly transport: LynxBackgroundTransport | LynxCompiledProgramBlockTransport;
 	/** The root's resolved Lynx-safe microtask scheduler. */
 	readonly scheduleMicrotask: (callback: () => void) => void;
 	/** Bring your own core and root id, primarily so a test can pin allocators. */
@@ -430,6 +434,10 @@ export function createLynxBlockBackgroundCore(
 
 		dispatchTransportEvent(message: UniversalTransportEventMessage): readonly unknown[] {
 			return blockRoot.dispatchTransportEvent(message);
+		},
+
+		acceptsNativeEvent(listener: number, priority: UniversalEventPriority): boolean {
+			return blockRoot.acceptsNativeEvent(listener, priority);
 		},
 	});
 }

@@ -21,17 +21,29 @@ import {
 	resolveLynxLayer,
 } from './layers.js';
 import { assertLynxToolchain } from './toolchain.js';
+import { selectedLynxApplication } from './application-selection.js';
 
 const PLUGIN_NAME = '@octanejs/rspeedy-plugin';
 const MAIN_THREAD_FACADE_PLUGIN = `${PLUGIN_NAME}:main-thread-facade`;
 const LYNX_PACKAGE_ROOT = /^@octanejs\/lynx$/;
+const PRODUCT_MAIN_THREAD_RUNTIME = '@octanejs/lynx/main-renderer-product';
+const lynxProductMainThreadRenderers = Object.freeze({
+	...lynxRspeedyMainThreadRenderers,
+	registry: Object.freeze({
+		...lynxRspeedyMainThreadRenderers.registry,
+		lynx: Object.freeze({
+			...lynxRspeedyMainThreadRenderers.registry.lynx,
+			module: PRODUCT_MAIN_THREAD_RUNTIME,
+		}),
+	}),
+});
 
 // A serializable reference keeps Octane's default Rspack worker path available.
 // The loader verifies this cache identity against the loaded renderer backend,
 // and the backend signature test forces both constants to move together.
 const DEFAULT_MAIN_THREAD_PROGRAM_BACKEND = Object.freeze({
 	request: fileURLToPath(import.meta.resolve('@octanejs/lynx/compiler')),
-	signature: 'lynx-main-thread-program/19',
+	signature: 'lynx-main-thread-program/20',
 });
 /**
  * What the main-thread layer compiles differently from the background one.
@@ -43,8 +55,8 @@ const DEFAULT_MAIN_THREAD_PROGRAM_BACKEND = Object.freeze({
 function applicationLayerSpecializations(mainThreadProgramBackend) {
 	return Object.freeze({
 		[LYNX_MAIN_THREAD_LAYER]: Object.freeze({
-			renderers: lynxRspeedyMainThreadRenderers,
-			runtime: '@octanejs/lynx/main-renderer',
+			renderers: lynxProductMainThreadRenderers,
+			runtime: PRODUCT_MAIN_THREAD_RUNTIME,
 			universalRuntime: LYNX_MAIN_THREAD_RUNTIME,
 			...(mainThreadProgramBackend === undefined ? null : { mainThreadProgramBackend }),
 		}),
@@ -61,7 +73,10 @@ class LynxMainThreadFacadePlugin {
 		}
 		new NormalModuleReplacementPlugin(LYNX_PACKAGE_ROOT, (resource) => {
 			if (resource.contextInfo?.issuerLayer === LYNX_MAIN_THREAD_LAYER) {
-				resource.request = '@octanejs/lynx/first-screen';
+				resource.request =
+					selectedLynxApplication(compiler) === 'compiled-program'
+						? '@octanejs/lynx/first-screen-compiled-program'
+						: '@octanejs/lynx/first-screen';
 			}
 		}).apply(compiler);
 	}

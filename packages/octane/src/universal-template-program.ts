@@ -799,11 +799,13 @@ export function prepareUniversalTemplateProgramValues(
 		}
 		// A renderer-namespaced binding is authored as whatever the renderer's
 		// encoder understands — for Lynx, the tagged function a worklet compiles to —
-		// so the source is checked for what it must not be rather than for being a
-		// scalar, and the encoded result is what has to be transportable.
-		const namespaced = binding.name.includes(':');
+		// so only the encoded result can be judged for transportability. The same is
+		// true for an ordinary renderer-normalized prop: Lynx class arrays and object
+		// maps, for example, are valid authored values whose codec turns into the
+		// scalar string its program carries. Rejecting the source before consulting
+		// that codec made the program path disagree with the ordinary prop path and
+		// forced a command fallback for values the renderer could encode exactly.
 		if (
-			(!namespaced && !isUniversalHostTemplateProgramValue(source)) ||
 			encoder.classifyLifecycle(binding.name, source) !== null ||
 			encoder.classifyLocalCallback(binding.name, source) !== null
 		) {

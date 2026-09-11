@@ -108,7 +108,7 @@ import {
 	type LynxBlockTemplate,
 } from './block-core.js';
 import type { LynxBlockProgram, LynxBlockProgramContext } from './block-program.js';
-import { LYNX_TRANSPORT_RENDERER } from './protocol.js';
+import { LYNX_TRANSPORT_RENDERER } from './transport-identity.js';
 import type { LynxBlockListener } from './block-root.js';
 
 /**

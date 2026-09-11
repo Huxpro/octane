@@ -114,6 +114,7 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 	let disposing = false;
 	let faulted = false;
 	let closed = false;
+	let pendingAdoption = adoption;
 
 	const report = (value: unknown, fallback = CONTROLLER_ERROR): Error => {
 		const error = normalizeLynxCompiledProgramError(value, fallback);
@@ -254,8 +255,8 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 					papi,
 					papi.getUniqueId(page),
 					candidate.root,
-					adoption?.[0],
-					adoption?.[1],
+					pendingAdoption?.firstListener,
+					pendingAdoption?.resolveSeed,
 				);
 			applying = candidate;
 			try {
@@ -274,6 +275,7 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 								: CONTROLLER_ERROR,
 						);
 					}
+					pendingAdoption?.verify();
 				});
 			} catch (error) {
 				applying = null;
@@ -312,6 +314,8 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 				aborted.clear();
 				return;
 			}
+			pendingAdoption?.finish();
+			pendingAdoption = undefined;
 			store = candidateStore;
 			active = candidate;
 			if (!send({ ...candidate, type: 'ack' })) return;
@@ -417,6 +421,8 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 			aborted.clear();
 			if (applying !== null) return;
 			if (store === null) {
+				pendingAdoption?.dispose();
+				pendingAdoption = undefined;
 				return;
 			}
 			disposing = true;
@@ -430,6 +436,8 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 			disposing = false;
 			store = null;
 			active = null;
+			pendingAdoption?.dispose();
+			pendingAdoption = undefined;
 		},
 	};
 
