@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	collectLynxBlockSemanticRequirements,
 	collectLynxProgramCoverage,
+	LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO,
 	LYNX_PROGRAM_COVERAGE_ASSET_INFO,
 	LynxProgramCoveragePlugin,
 } from '../src/program-coverage.js';
@@ -17,9 +19,37 @@ function moduleWithCoverage(id: string, thread: Thread, total: number, addressed
 				serverRpc: false,
 				universalRuntime: { runtime: 'lynx', thread },
 				mainThreadProgramCoverage: { total, addressed },
+				lynxBlockSemanticRequirements: semanticRequirements(),
 			},
 		},
 		connections: [] as { module: unknown; getActiveState?: () => boolean }[],
+	};
+}
+
+function site(name: string, line = 1, column = 0) {
+	return { name, line, column };
+}
+
+function semanticRequirements(
+	value: Partial<{
+		runtimeUses: ReturnType<typeof site>[];
+		runtimeExports: ReturnType<typeof site>[];
+		opaqueRuntimeAccesses: ReturnType<typeof site>[];
+		components: {
+			name: string;
+			exportKind: 'named' | 'default' | null;
+			line: number;
+			column: number;
+			hooks: ReturnType<typeof site>[];
+		}[];
+	}> = {},
+) {
+	return {
+		version: 1,
+		runtimeUses: value.runtimeUses ?? [],
+		runtimeExports: value.runtimeExports ?? [],
+		opaqueRuntimeAccesses: value.opaqueRuntimeAccesses ?? [],
+		components: value.components ?? [],
 	};
 }
 
@@ -153,6 +183,9 @@ describe('Lynx application resident-program coverage', () => {
 			pairedPlans: 1,
 			pairedAddressed: 1,
 		});
+		expect(
+			collectLynxBlockSemanticRequirements(compilation(background, mainThread), OPTIONS).modules,
+		).toMatchObject([{ module: '/src/App.tsrx' }]);
 	});
 
 	it('fails closed when one layer contains conflicting coverage for a canonical module', () => {
@@ -213,6 +246,12 @@ describe('Lynx application resident-program coverage', () => {
 		const background = moduleWithCoverage('/src/App.tsrx', 'background', 1, 1);
 		const mainThread = moduleWithCoverage('/src/App.tsrx', 'main-thread', 1, 1);
 		const graph = compilation(background, mainThread) as any;
+		let graphVisits = 0;
+		const getOutgoingConnections = graph.moduleGraph.getOutgoingConnections;
+		graph.moduleGraph.getOutgoingConnections = (module: unknown) => {
+			graphVisits++;
+			return getOutgoingConnections(module);
+		};
 		const assets = new Map<string, { source: unknown; info: any }>([
 			['.rspeedy/app/main-thread.js', { source: {}, info: { existing: true } }],
 			['other.js', { source: {}, info: {} }],
@@ -256,6 +295,7 @@ describe('Lynx application resident-program coverage', () => {
 		finishModules();
 		processAssets();
 
+		expect(graphVisits).toBe(2);
 		expect(assets.get('.rspeedy/app/main-thread.js')?.info).toMatchObject({
 			existing: true,
 			[LYNX_PROGRAM_COVERAGE_ASSET_INFO]: {
@@ -264,7 +304,157 @@ describe('Lynx application resident-program coverage', () => {
 				pairedPlans: 1,
 				pairedAddressed: 1,
 			},
+			[LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO]: {
+				version: 1,
+				paired: true,
+				requirements: {
+					background: {
+						runtimeUses: [],
+						runtimeExports: [],
+						opaqueRuntimeAccesses: [],
+						hooks: [],
+					},
+					mainThread: {
+						runtimeUses: [],
+						runtimeExports: [],
+						opaqueRuntimeAccesses: [],
+						hooks: [],
+					},
+				},
+			},
 		});
 		expect(assets.get('other.js')?.info).toEqual({});
+	});
+});
+
+describe('Lynx application Block semantic requirements', () => {
+	it('pairs module facts and publishes deterministic per-thread requirement unions', () => {
+		const background = moduleWithCoverage('/src/App.tsrx', 'background', 1, 1);
+		const mainThread = moduleWithCoverage('/src/App.tsrx', 'main-thread', 1, 1);
+		background.buildInfo.octane.lynxBlockSemanticRequirements = semanticRequirements({
+			runtimeUses: [site('useState', 3, 14)],
+			components: [
+				{
+					name: 'App',
+					exportKind: 'named',
+					line: 2,
+					column: 7,
+					hooks: [site('useState', 3, 14)],
+				},
+			],
+		});
+		mainThread.buildInfo.octane.lynxBlockSemanticRequirements = semanticRequirements({
+			runtimeUses: [site('Activity', 8, 2), site('useState', 3, 14)],
+			components: [
+				{
+					name: 'App',
+					exportKind: 'named',
+					line: 2,
+					column: 7,
+					hooks: [site('useState', 3, 14)],
+				},
+			],
+		});
+		const backgroundChild = moduleWithCoverage('/src/runtime.ts', 'background', 0, 0);
+		const mainThreadChild = moduleWithCoverage('/src/runtime.ts', 'main-thread', 0, 0);
+		backgroundChild.buildInfo.octane.lynxBlockSemanticRequirements = semanticRequirements({
+			runtimeExports: [site('useMemo', 1, 9)],
+			opaqueRuntimeAccesses: [site('dynamic-import', 4, 19)],
+		});
+		mainThreadChild.buildInfo.octane.lynxBlockSemanticRequirements = semanticRequirements({
+			runtimeExports: [site('useMemo', 1, 9)],
+		});
+		background.connections.push({ module: backgroundChild });
+		mainThread.connections.push({ module: mainThreadChild });
+
+		const report = collectLynxBlockSemanticRequirements(
+			compilation(background, mainThread),
+			OPTIONS,
+		);
+		expect(report).toEqual({
+			version: 1,
+			paired: true,
+			requirements: {
+				background: {
+					runtimeUses: ['useState'],
+					runtimeExports: ['useMemo'],
+					opaqueRuntimeAccesses: ['dynamic-import'],
+					hooks: ['useState'],
+				},
+				mainThread: {
+					runtimeUses: ['Activity', 'useState'],
+					runtimeExports: ['useMemo'],
+					opaqueRuntimeAccesses: [],
+					hooks: ['useState'],
+				},
+			},
+			modules: [
+				{
+					module: '/src/App.tsrx',
+					background: background.buildInfo.octane.lynxBlockSemanticRequirements,
+					mainThread: mainThread.buildInfo.octane.lynxBlockSemanticRequirements,
+				},
+				{
+					module: '/src/runtime.ts',
+					background: backgroundChild.buildInfo.octane.lynxBlockSemanticRequirements,
+					mainThread: mainThreadChild.buildInfo.octane.lynxBlockSemanticRequirements,
+				},
+			],
+			reasons: [],
+		});
+		expect(Object.isFrozen(report)).toBe(true);
+		expect(Object.isFrozen(report.requirements.background.runtimeUses)).toBe(true);
+		expect(Object.isFrozen(report.modules[0]?.background.components[0]?.hooks)).toBe(true);
+	});
+
+	it('retains missing peers, conflicts, malformed metadata, and empty graphs as reasons', () => {
+		const background = moduleWithCoverage('/src/App.tsrx', 'background', 1, 1);
+		const mainThread = moduleWithCoverage('/src/App.tsrx', 'main-thread', 1, 1);
+		const backgroundOnly = moduleWithCoverage('/src/background-only.ts', 'background', 0, 0);
+		const conflict = moduleWithCoverage('/src/App.tsrx', 'background', 1, 1);
+		conflict.buildInfo.octane.lynxBlockSemanticRequirements = semanticRequirements({
+			runtimeUses: [site('useContext', 2, 3)],
+		});
+		const malformed = moduleWithCoverage('/src/broken.ts', 'main-thread', 0, 0);
+		(malformed.buildInfo.octane.lynxBlockSemanticRequirements as { version: number }).version = 2;
+		const wrongThread = moduleWithCoverage('/src/wrong-thread.ts', 'background', 0, 0);
+		background.connections.push({ module: backgroundOnly }, { module: conflict });
+		mainThread.connections.push({ module: malformed }, { module: wrongThread });
+
+		expect(
+			collectLynxBlockSemanticRequirements(compilation(background, mainThread), OPTIONS),
+		).toMatchObject({
+			paired: false,
+			reasons: [
+				{
+					code: 'background-semantic-requirements-conflict',
+					module: '/src/App.tsrx',
+				},
+				{
+					code: 'main-thread-semantic-requirements-unavailable',
+					module: '/src/broken.ts',
+					invalidMetadata: true,
+				},
+				{
+					code: 'main-thread-semantic-requirements-unavailable',
+					module: '/src/wrong-thread.ts',
+					observedThread: 'background',
+				},
+				{
+					code: 'missing-main-thread-semantic-requirements',
+					module: '/src/background-only.ts',
+				},
+			],
+		});
+
+		const empty = compilation(background, mainThread, './missing.ts', './missing.ts');
+		expect(collectLynxBlockSemanticRequirements(empty, OPTIONS)).toMatchObject({
+			paired: false,
+			reasons: [
+				{ code: 'missing-background-entry-import', request: './src/App.tsrx' },
+				{ code: 'missing-main-thread-entry-import', request: './src/App.tsrx' },
+				{ code: 'no-paired-semantic-modules' },
+			],
+		});
 	});
 });

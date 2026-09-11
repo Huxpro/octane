@@ -2,6 +2,9 @@ import { getOctaneRspackBuildInfo } from '@octanejs/rspack-plugin';
 
 export const LYNX_PROGRAM_COVERAGE_ASSET_INFO = 'octane:lynx-program-coverage';
 export const LYNX_PROGRAM_COVERAGE_VERSION = 1;
+export const LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO =
+	'octane:lynx-block-semantic-requirements';
+export const LYNX_BLOCK_SEMANTIC_REQUIREMENTS_VERSION = 1;
 const MAIN_THREAD_ASSET = /main-thread(?:\.[A-Fa-f0-9]+)?\.js$/;
 
 function dependencyRequest(dependency) {
@@ -41,6 +44,14 @@ function collectReachableModules(compilation, entryName, authoredRequests) {
 	return {
 		modules,
 		missing: [...authoredRequests].filter((request) => !found.has(request)),
+	};
+}
+
+function collectApplicationEntryModules(compilation, options) {
+	const authoredRequests = new Set(options.authoredRequests);
+	return {
+		background: collectReachableModules(compilation, options.backgroundEntry, authoredRequests),
+		main: collectReachableModules(compilation, options.mainThreadEntry, authoredRequests),
 	};
 }
 
@@ -105,6 +116,180 @@ function reason(code, details = {}) {
 	return Object.freeze({ code, ...details });
 }
 
+function cloneSourceSite(site) {
+	return Object.freeze({ name: site.name, line: site.line, column: site.column });
+}
+
+function cloneSemanticRequirements(requirements) {
+	return Object.freeze({
+		version: LYNX_BLOCK_SEMANTIC_REQUIREMENTS_VERSION,
+		runtimeUses: Object.freeze(requirements.runtimeUses.map(cloneSourceSite)),
+		runtimeExports: Object.freeze(requirements.runtimeExports.map(cloneSourceSite)),
+		opaqueRuntimeAccesses: Object.freeze(requirements.opaqueRuntimeAccesses.map(cloneSourceSite)),
+		components: Object.freeze(
+			requirements.components.map((component) =>
+				Object.freeze({
+					name: component.name,
+					exportKind: component.exportKind,
+					line: component.line,
+					column: component.column,
+					hooks: Object.freeze(component.hooks.map(cloneSourceSite)),
+				}),
+			),
+		),
+	});
+}
+
+function layerSemanticRequirements(modules, thread) {
+	const observations = new Map();
+	const unavailable = [];
+	for (const module of modules) {
+		const info = getOctaneRspackBuildInfo(module);
+		if (info === null) {
+			const raw = module?.buildInfo?.octane;
+			if (raw !== undefined) {
+				unavailable.push(
+					Object.freeze({
+						module:
+							raw !== null && typeof raw === 'object' && typeof raw.canonicalId === 'string'
+								? raw.canonicalId
+								: null,
+						invalidMetadata: true,
+					}),
+				);
+			}
+			continue;
+		}
+		if (info.transformKind !== 'compile' || info.universalRuntime?.runtime !== 'lynx') continue;
+		if (info.universalRuntime.thread !== thread) {
+			unavailable.push(
+				Object.freeze({ module: info.canonicalId, observedThread: info.universalRuntime.thread }),
+			);
+			continue;
+		}
+		if (info.lynxBlockSemanticRequirements === undefined) {
+			unavailable.push(Object.freeze({ module: info.canonicalId }));
+			continue;
+		}
+		let moduleObservations = observations.get(info.canonicalId);
+		if (moduleObservations === undefined) {
+			moduleObservations = new Map();
+			observations.set(info.canonicalId, moduleObservations);
+		}
+		const value = cloneSemanticRequirements(info.lynxBlockSemanticRequirements);
+		moduleObservations.set(JSON.stringify(value), value);
+	}
+	const requirements = new Map();
+	const conflicts = [];
+	for (const id of [...observations.keys()].sort()) {
+		const values = [...observations.get(id).entries()]
+			.sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+			.map(([, value]) => value);
+		requirements.set(id, values[0]);
+		if (values.length > 1) {
+			conflicts.push(Object.freeze({ module: id, observations: Object.freeze(values) }));
+		}
+	}
+	unavailable.sort((left, right) => {
+		const leftModule = String(left.module);
+		const rightModule = String(right.module);
+		return leftModule < rightModule ? -1 : leftModule > rightModule ? 1 : 0;
+	});
+	return { requirements, conflicts, unavailable };
+}
+
+function summarizeSemanticRequirements(modules, thread) {
+	const runtimeUses = new Set();
+	const runtimeExports = new Set();
+	const opaqueRuntimeAccesses = new Set();
+	const hooks = new Set();
+	for (const module of modules) {
+		const requirements = module[thread];
+		for (const site of requirements.runtimeUses) runtimeUses.add(site.name);
+		for (const site of requirements.runtimeExports) runtimeExports.add(site.name);
+		for (const site of requirements.opaqueRuntimeAccesses) opaqueRuntimeAccesses.add(site.name);
+		for (const component of requirements.components) {
+			for (const hook of component.hooks) hooks.add(hook.name);
+		}
+	}
+	return Object.freeze({
+		runtimeUses: Object.freeze([...runtimeUses].sort()),
+		runtimeExports: Object.freeze([...runtimeExports].sort()),
+		opaqueRuntimeAccesses: Object.freeze([...opaqueRuntimeAccesses].sort()),
+		hooks: Object.freeze([...hooks].sort()),
+	});
+}
+
+/**
+ * Pair validated module-local Block requirements across one application entry.
+ *
+ * `paired` proves only that both active Lynx graphs supplied valid facts for
+ * every observed universal module. It is not Block eligibility: the support
+ * matrix and independent lifecycle/ref/worklet proofs consume this report in a
+ * later selector.
+ */
+function collectLynxBlockSemanticRequirementsFromEntryModules(entryModules) {
+	const { background, main } = entryModules;
+	const reasons = [];
+	for (const request of background.missing) {
+		reasons.push(reason('missing-background-entry-import', { request }));
+	}
+	for (const request of main.missing) {
+		reasons.push(reason('missing-main-thread-entry-import', { request }));
+	}
+	const backgroundLayer = layerSemanticRequirements(background.modules, 'background');
+	const mainLayer = layerSemanticRequirements(main.modules, 'main-thread');
+	for (const conflict of backgroundLayer.conflicts) {
+		reasons.push(reason('background-semantic-requirements-conflict', conflict));
+	}
+	for (const conflict of mainLayer.conflicts) {
+		reasons.push(reason('main-thread-semantic-requirements-conflict', conflict));
+	}
+	for (const unavailable of backgroundLayer.unavailable) {
+		reasons.push(reason('background-semantic-requirements-unavailable', unavailable));
+	}
+	for (const unavailable of mainLayer.unavailable) {
+		reasons.push(reason('main-thread-semantic-requirements-unavailable', unavailable));
+	}
+	const backgroundRequirements = backgroundLayer.requirements;
+	const mainRequirements = mainLayer.requirements;
+	const ids = [...new Set([...backgroundRequirements.keys(), ...mainRequirements.keys()])].sort();
+	const modules = [];
+	for (const id of ids) {
+		const backgroundModule = backgroundRequirements.get(id);
+		const mainModule = mainRequirements.get(id);
+		if (backgroundModule === undefined) {
+			reasons.push(reason('missing-background-semantic-requirements', { module: id }));
+			continue;
+		}
+		if (mainModule === undefined) {
+			reasons.push(reason('missing-main-thread-semantic-requirements', { module: id }));
+			continue;
+		}
+		modules.push(
+			Object.freeze({ module: id, background: backgroundModule, mainThread: mainModule }),
+		);
+	}
+	if (modules.length === 0) reasons.push(reason('no-paired-semantic-modules'));
+	const frozenModules = Object.freeze(modules);
+	return Object.freeze({
+		version: LYNX_BLOCK_SEMANTIC_REQUIREMENTS_VERSION,
+		paired: reasons.length === 0,
+		requirements: Object.freeze({
+			background: summarizeSemanticRequirements(frozenModules, 'background'),
+			mainThread: summarizeSemanticRequirements(frozenModules, 'mainThread'),
+		}),
+		modules: frozenModules,
+		reasons: Object.freeze(reasons),
+	});
+}
+
+export function collectLynxBlockSemanticRequirements(compilation, options) {
+	return collectLynxBlockSemanticRequirementsFromEntryModules(
+		collectApplicationEntryModules(compilation, options),
+	);
+}
+
 /**
  * Collect exact paired-layer resident-program coverage for one application entry.
  *
@@ -113,8 +298,7 @@ function reason(code, details = {}) {
  * application capability claim: lifecycle data, worklets, refs, and Block-core
  * semantic coverage are independent gates that a selector must add beside it.
  */
-export function collectLynxProgramCoverage(compilation, options) {
-	const authoredRequests = new Set(options.authoredRequests);
+function collectLynxProgramCoverageFromEntryModules(options, entryModules) {
 	if (!options.enabled) {
 		return Object.freeze({
 			version: LYNX_PROGRAM_COVERAGE_VERSION,
@@ -125,12 +309,7 @@ export function collectLynxProgramCoverage(compilation, options) {
 			reasons: Object.freeze([reason('program-addressing-disabled')]),
 		});
 	}
-	const background = collectReachableModules(
-		compilation,
-		options.backgroundEntry,
-		authoredRequests,
-	);
-	const main = collectReachableModules(compilation, options.mainThreadEntry, authoredRequests);
+	const { background, main } = entryModules;
 	const reasons = [];
 	for (const request of background.missing) {
 		reasons.push(reason('missing-background-entry-import', { request }));
@@ -211,6 +390,16 @@ export function collectLynxProgramCoverage(compilation, options) {
 	});
 }
 
+export function collectLynxProgramCoverage(compilation, options) {
+	if (!options.enabled) {
+		return collectLynxProgramCoverageFromEntryModules(options);
+	}
+	return collectLynxProgramCoverageFromEntryModules(
+		options,
+		collectApplicationEntryModules(compilation, options),
+	);
+}
+
 /** Attach versioned per-entry coverage evidence without changing emitted JavaScript. */
 export class LynxProgramCoveragePlugin {
 	constructor(entries, enabled) {
@@ -220,15 +409,24 @@ export class LynxProgramCoveragePlugin {
 
 	apply(compiler) {
 		compiler.hooks.thisCompilation.tap(this.constructor.name, (compilation) => {
-			const reports = new Map();
+			const programReports = new Map();
+			const semanticReports = new Map();
 			compilation.hooks.finishModules.tap(this.constructor.name, () => {
 				for (const entry of this.entries) {
-					reports.set(
+					const entryModules = collectApplicationEntryModules(compilation, entry);
+					programReports.set(
 						entry.mainThreadEntry,
-						collectLynxProgramCoverage(compilation, {
-							...entry,
-							enabled: this.enabled,
-						}),
+						collectLynxProgramCoverageFromEntryModules(
+							{
+								...entry,
+								enabled: this.enabled,
+							},
+							entryModules,
+						),
+					);
+					semanticReports.set(
+						entry.mainThreadEntry,
+						collectLynxBlockSemanticRequirementsFromEntryModules(entryModules),
 					);
 				}
 			});
@@ -238,7 +436,7 @@ export class LynxProgramCoveragePlugin {
 					stage: compiler.webpack.Compilation.PROCESS_ASSETS_STAGE_REPORT,
 				},
 				() => {
-					for (const [entryName, report] of reports) {
+					for (const [entryName, report] of programReports) {
 						const entrypoint = compilation.entrypoints.get(entryName);
 						for (const chunk of entrypoint?.chunks ?? []) {
 							for (const filename of chunk.files ?? []) {
@@ -248,6 +446,7 @@ export class LynxProgramCoveragePlugin {
 								compilation.updateAsset(filename, asset.source, {
 									...asset.info,
 									[LYNX_PROGRAM_COVERAGE_ASSET_INFO]: report,
+									[LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO]: semanticReports.get(entryName),
 								});
 							}
 						}
