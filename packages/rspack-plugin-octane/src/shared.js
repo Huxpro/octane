@@ -350,6 +350,14 @@ export function getOctaneRspackBuildInfo(module) {
 		typeof value.universalRuntime.runtime === 'string' &&
 		(value.universalRuntime.thread === 'background' ||
 			value.universalRuntime.thread === 'main-thread');
+	const mainThreadProgramCoverageValid =
+		value?.mainThreadProgramCoverage !== null &&
+		typeof value?.mainThreadProgramCoverage === 'object' &&
+		Number.isSafeInteger(value.mainThreadProgramCoverage.total) &&
+		value.mainThreadProgramCoverage.total >= 0 &&
+		Number.isSafeInteger(value.mainThreadProgramCoverage.addressed) &&
+		value.mainThreadProgramCoverage.addressed >= 0 &&
+		value.mainThreadProgramCoverage.addressed <= value.mainThreadProgramCoverage.total;
 	if (
 		value &&
 		typeof value === 'object' &&
@@ -359,7 +367,11 @@ export function getOctaneRspackBuildInfo(module) {
 			value.transformKind === 'client-only-stub') &&
 		typeof value.serverRpc === 'boolean' &&
 		(value.clientReference === undefined || nestedReferenceValid) &&
-		(value.universalRuntime === undefined || universalRuntimeValid)
+		(value.universalRuntime === undefined || universalRuntimeValid) &&
+		(value.mainThreadProgramCoverage === undefined ||
+			(value.transformKind === 'compile' &&
+				universalRuntimeValid &&
+				mainThreadProgramCoverageValid))
 	) {
 		return value;
 	}

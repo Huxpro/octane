@@ -294,6 +294,7 @@ describe('octane Rspack loader', () => {
 			map,
 			kind: 'compile',
 			universalRuntime: { runtime: 'lynx', thread: 'background' },
+			mainThreadProgramCoverage: { total: 2, addressed: 2 },
 			dependencies: ['/project/package.json', '/project/src/package.json'],
 			missingDependencies: ['/project/src/missing/package.json'],
 		});
@@ -358,6 +359,7 @@ describe('octane Rspack loader', () => {
 			transformKind: 'compile',
 			serverRpc: true,
 			universalRuntime: { runtime: 'lynx', thread: 'background' },
+			mainThreadProgramCoverage: { total: 2, addressed: 2 },
 		});
 	});
 

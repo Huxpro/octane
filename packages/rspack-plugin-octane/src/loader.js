@@ -228,6 +228,9 @@ export default function octaneLoader(source, inputSourceMap) {
 					...(result.universalRuntime === undefined
 						? null
 						: { universalRuntime: result.universalRuntime }),
+					...(result.mainThreadProgramCoverage === undefined
+						? null
+						: { mainThreadProgramCoverage: result.mainThreadProgramCoverage }),
 					...(result.clientReference === undefined
 						? null
 						: { clientReference: { ...result.clientReference } }),

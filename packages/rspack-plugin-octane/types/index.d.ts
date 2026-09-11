@@ -256,6 +256,11 @@ export interface OctaneRspackBuildInfo {
 	serverRpc: boolean;
 	/** Universal host runtime/thread identity, when this module was specialized. */
 	universalRuntime?: OctaneUniversalRuntimeOptions;
+	/** Build-time proof of how many universal plans received resident-program addresses. */
+	mainThreadProgramCoverage?: {
+		readonly total: number;
+		readonly addressed: number;
+	};
 	/** Stable identity shared by the client compile and its inert server stub. */
 	clientReference?: {
 		readonly id: string;

@@ -1248,6 +1248,9 @@ class OctaneBundlerCompiler {
 				// module once per thread layer, so an integration that sees both can
 				// prove they agreed about its plan order before either chunk ships.
 				...(out.programAddresses === undefined ? null : { programAddresses: out.programAddresses }),
+				...(out.mainThreadProgramCoverage === undefined
+					? null
+					: { mainThreadProgramCoverage: out.mainThreadProgramCoverage }),
 				...(clientReference === null ? null : { clientReference }),
 				...(voidComponentAst === null
 					? null
