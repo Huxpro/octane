@@ -2225,6 +2225,35 @@ function blockTemplateFeature(node, rangeRowNodes) {
 	return null;
 }
 
+function blockProgramRootEventFeatures(state) {
+	const features = [];
+	for (const plan of state.plans) {
+		if (plan.root.kind !== 'host') continue;
+		// A resident first-screen program may bind its own root event, but a Block
+		// program's root is the node its parent inserts and deliberately refuses
+		// that binding. Read the finished plan so this fact follows the compiler's
+		// actual root after text folding and directive lowering, not JSX ancestry.
+		const bindings = plan.root.bindings ?? [];
+		if (!bindings.some(([name]) => LYNX_EVENT_PROP.test(name))) continue;
+		const attributes = plan.origin?.openingElement?.attributes ?? plan.origin?.attributes ?? [];
+		for (const attribute of attributes) {
+			if (attribute.type === 'JSXSpreadAttribute' || attribute.type === 'SpreadAttribute') continue;
+			const name = hostAttributeName(attribute, state);
+			if (
+				name === null ||
+				!LYNX_EVENT_PROP.test(name) ||
+				!bindings.some(([binding]) => binding === name)
+			) {
+				continue;
+			}
+			features.push(
+				Object.freeze({ kind: 'program-root-event', name, ...sourcePosition(attribute) }),
+			);
+		}
+	}
+	return features;
+}
+
 /**
  * Independent Block feature facts that runtime-use names cannot express.
  *
@@ -2291,6 +2320,23 @@ function lynxBlockFeatureRequirements(ast, state) {
 		}
 		const templateFeature = blockTemplateFeature(node, rangeRowNodes);
 		if (templateFeature !== null) templateFeatures.push(templateFeature);
+		if ((node.type === 'JSXElement' || node.type === 'Element') && !isComponentElement(node)) {
+			for (const attribute of node.openingElement?.attributes ?? node.attributes ?? []) {
+				if (
+					attribute.type !== 'JSXSpreadAttribute' &&
+					attribute.type !== 'SpreadAttribute' &&
+					hostAttributeName(attribute, state) === 'ref'
+				) {
+					templateFeatures.push(
+						Object.freeze({
+							kind: 'host-ref',
+							name: jsxName(node),
+							...sourcePosition(attribute),
+						}),
+					);
+				}
+			}
+		}
 		for (const [key, child] of Object.entries(node)) {
 			if (AST_SKIP_KEYS.has(key)) continue;
 			visit(child, node, key);
@@ -2298,6 +2344,7 @@ function lynxBlockFeatureRequirements(ast, state) {
 		if (range !== null) rangeAncestors.pop();
 	};
 	visit(ast);
+	templateFeatures.push(...blockProgramRootEventFeatures(state));
 	mainThreadProps.sort(
 		(left, right) =>
 			left.line - right.line || left.column - right.column || left.name.localeCompare(right.name),

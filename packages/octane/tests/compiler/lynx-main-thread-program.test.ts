@@ -826,9 +826,9 @@ function Panel() @{
 }
 
 export function App(props: { show: boolean; child: unknown }) @{
-	<view>
+	<view bindtap={() => undefined}>
 		<Panel />
-		<list><list-item /></list>
+		<list ref={() => undefined}><list-item /></list>
 		@if (props.show) {
 			<text>shown</text>
 		}
@@ -850,9 +850,11 @@ export function App(props: { show: boolean; child: unknown }) @{
 `);
 
 		expect(result.lynxBlockFeatureRequirements?.templateFeatures).toEqual([
+			{ kind: 'program-root-event', name: 'bindtap', line: 7, column: 7 },
 			{ kind: 'component', name: 'Panel', line: 8, column: 2 },
 			{ kind: 'native-list', name: 'list', line: 9, column: 2 },
-			{ kind: 'native-list', name: 'list-item', line: 9, column: 8 },
+			{ kind: 'host-ref', name: 'list', line: 9, column: 8 },
+			{ kind: 'native-list', name: 'list-item', line: 9, column: 30 },
 			{ kind: 'if', name: null, line: 10, column: 2 },
 			{ kind: 'fragment', name: null, line: 13, column: 2 },
 			{ kind: 'switch', name: null, line: 16, column: 2 },

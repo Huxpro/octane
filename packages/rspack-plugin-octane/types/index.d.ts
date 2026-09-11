@@ -317,8 +317,10 @@ export interface OctaneLynxBlockTemplateFeatureRequirement {
 		| 'activity'
 		| 'component'
 		| 'fragment'
+		| 'host-ref'
 		| 'if'
 		| 'native-list'
+		| 'program-root-event'
 		| 'renderable-hole'
 		| 'switch'
 		| 'try';

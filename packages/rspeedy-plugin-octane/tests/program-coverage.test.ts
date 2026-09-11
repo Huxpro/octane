@@ -46,8 +46,10 @@ function featureRequirements(
 				| 'activity'
 				| 'component'
 				| 'fragment'
+				| 'host-ref'
 				| 'if'
 				| 'native-list'
+				| 'program-root-event'
 				| 'renderable-hole'
 				| 'switch'
 				| 'try';
@@ -329,6 +331,8 @@ describe('Lynx application Block eligibility', () => {
 							templateFeatures: [
 								{ kind: 'component', name: 'Panel', line: 5, column: 2 },
 								{ kind: 'native-list', name: 'list', line: 6, column: 2 },
+								{ kind: 'host-ref', name: 'view', line: 7, column: 2 },
+								{ kind: 'program-root-event', name: 'bindtap', line: 8, column: 2 },
 							],
 							keyedRanges: [
 								{
@@ -440,6 +444,24 @@ describe('Lynx application Block eligibility', () => {
 					kind: 'native-list',
 					name: 'list',
 					line: 6,
+					column: 2,
+				},
+				{
+					code: 'unsupported-template-feature',
+					module: '/src/App.tsrx',
+					thread: 'background',
+					kind: 'host-ref',
+					name: 'view',
+					line: 7,
+					column: 2,
+				},
+				{
+					code: 'unsupported-template-feature',
+					module: '/src/App.tsrx',
+					thread: 'background',
+					kind: 'program-root-event',
+					name: 'bindtap',
+					line: 8,
 					column: 2,
 				},
 			],

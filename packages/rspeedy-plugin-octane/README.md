@@ -142,8 +142,8 @@ independently proven Block subset:
   eligible;
 - background/main-thread functions and `main-thread:*` props are supported;
 - the authored template contains no ordinary component child, fragment,
-  `@if`/`@switch`/`@try`/Activity structure, bare renderable hole, or native
-  `list`/`list-item` element;
+  `@if`/`@switch`/`@try`/Activity structure, bare renderable hole, ordinary host
+  ref, native `list`/`list-item` element, or event on a template-program root;
 - keyed ranges have no `@empty` arm or nested range, are the last child of
   their host, and use an inline host or hookless local component as each row.
 
