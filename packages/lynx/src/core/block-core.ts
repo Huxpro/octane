@@ -349,7 +349,9 @@ export interface LynxBlockCore {
 	 * Keyed reconcile with an LIS survivor pass, as `runtime.ts` does.
 	 * `departed` is invoked for every block that leaves the range, before its
 	 * run is destroyed — the window in which an owner must release the block's
-	 * listeners and any other per-block resources it holds.
+	 * listeners and any other per-block resources it holds. A compiler owner may
+	 * pass the ascending indices whose row values it recomputed; omitted retains
+	 * the conservative contract and compares every survivor value.
 	 */
 	reconcileForSlot<Item>(
 		slot: LynxBlockForSlot,
@@ -358,6 +360,7 @@ export interface LynxBlockCore {
 		key: (item: Item, index: number) => unknown,
 		values: (item: Item, index: number) => readonly UniversalHostTemplateProgramValue[],
 		departed?: (block: LynxBlock) => void,
+		changedIndices?: readonly number[],
 	): void;
 	/**
 	 * Tear down every member of a range site. `departed` fires per member
@@ -920,7 +923,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 
 		clearForSlot,
 
-		reconcileForSlot(slot, template, items, key, values, departed) {
+		reconcileForSlot(slot, template, items, key, values, departed, changedIndices) {
 			captureSlot(slot);
 			const previous = slot.items;
 			if (previous.size === 0) {
@@ -934,6 +937,15 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 				// there would still leak every listener of the last list it held.
 				clearForSlot(slot, departed);
 				return;
+			}
+			if (LYNX_BLOCK_CORE_DEVELOPMENT && changedIndices !== undefined) {
+				let previous = -1;
+				for (const index of changedIndices) {
+					if (!Number.isSafeInteger(index) || index <= previous || index >= items.length) {
+						fail('changed row indices must be unique, ascending, and inside the next range');
+					}
+					previous = index;
+				}
 			}
 			const keys: unknown[] = new Array(items.length);
 			const survivors: (LynxBlock | null)[] = new Array(items.length);
@@ -979,8 +991,12 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			// the subsequence that decides which instances stay put.
 			const stable = orderedSurvivors ? null : longestIncreasingSubsequence(sequence);
 			const ordered: LynxBlock[] = new Array(items.length);
+			let changedCursor = (changedIndices?.length ?? 0) - 1;
 			// Right to left, so the anchor is always a block already placed.
 			for (let index = items.length - 1; index >= 0; index--) {
+				const valuesChanged =
+					changedIndices === undefined || changedIndices[changedCursor] === index;
+				if (valuesChanged && changedIndices !== undefined) changedCursor--;
 				const before = index + 1 < items.length ? ordered[index + 1]!.firstId : null;
 				const survivor = survivors[index];
 				if (survivor === null) {
@@ -1000,15 +1016,17 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 				// instance carries host-resident state (input value, scroll offset,
 				// selection) that a fresh `RUN` would destroy. This is the same
 				// requirement `runtime.ts:17389` states for the DOM host.
-				const next = values(items[index]!, index);
-				if (next.length !== template.valueCount) {
-					fail(
-						LYNX_BLOCK_CORE_DEVELOPMENT &&
-							`a row supplied ${next.length} values for a ${template.valueCount}-slot template`,
-					);
-				}
-				for (let valueIndex = 0; valueIndex < template.valueCount; valueIndex++) {
-					write(survivor, valueIndex, next[valueIndex]);
+				if (valuesChanged) {
+					const next = values(items[index]!, index);
+					if (next.length !== template.valueCount) {
+						fail(
+							LYNX_BLOCK_CORE_DEVELOPMENT &&
+								`a row supplied ${next.length} values for a ${template.valueCount}-slot template`,
+						);
+					}
+					for (let valueIndex = 0; valueIndex < template.valueCount; valueIndex++) {
+						write(survivor, valueIndex, next[valueIndex]);
+					}
 				}
 				if (stable !== null && stable[index] !== -2) {
 					const move: UniversalHostCommand = {

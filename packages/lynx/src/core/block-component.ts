@@ -1109,6 +1109,11 @@ export function lynxBlockProgramForComponent<Props>(
 			(member) => {
 				context.root.releaseListeners(member);
 			},
+			// `rendered` is appended during the forward item scan, so it is already
+			// the ascending proof the core needs. Survivors absent from it reused
+			// their complete descriptor; comparing every live slot again would only
+			// rediscover the identity the component layer already established.
+			render.rendered,
 		);
 		if (state.prepared!.events.length === 0) return;
 		let index = 0;
