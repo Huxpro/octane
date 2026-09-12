@@ -289,6 +289,7 @@ describe('component-owned Lynx template rows', () => {
 						elements: [{ type: 'Identifier', name: 'onSelect' }],
 					},
 					{ type: 'Literal', value: 'row' },
+					{ type: 'Literal', value: true },
 				],
 			});
 		}
@@ -348,7 +349,10 @@ describe('component-owned Lynx template rows', () => {
 			{ renderer: resolvedLynxRenderer },
 		);
 
-		expect(args[10]).toBeDefined();
+		expect(args[10]).toMatchObject({
+			type: 'ArrayExpression',
+			elements: [{}, {}, {}, { type: 'Literal', value: false }],
+		});
 	});
 
 	it('keeps keyed-selection proofs behind production memoization gates in boundary regions', () => {
@@ -387,7 +391,7 @@ export function App({ rows, selected }) @{
 				rendererRegistry: config.registry,
 				...options,
 			}).code;
-		const proof = "[selected, [], 'row']";
+		const proof = "[selected, [], 'row', true]";
 
 		expect(compileBoundary()).toContain(proof);
 		expect(compileBoundary({ dev: true })).not.toContain(proof);

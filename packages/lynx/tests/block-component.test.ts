@@ -1832,7 +1832,7 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 						undefined,
 						undefined,
 						true,
-						[props.selected, [props.onSelect], 'row'],
+						[props.selected, [props.onSelect], 'row', true],
 					),
 				]);
 			},
@@ -1922,11 +1922,11 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 		const swapped = edited.slice();
 		[swapped[1], swapped[98]] = [swapped[98]!, swapped[1]!];
 		const swappedStep = await step(25, swapped);
-		expect(swappedStep.rangeCalls).toBe(2);
-		// The range descriptors must be rebuilt because their indices moved;
-		// this Row does not receive the index, so its own shallow props still memo.
+		expect(swappedStep.rangeCalls).toBe(0);
+		// The compiler proved this Row does not receive the index, so even the
+		// shifted descriptors survive without rebuilding their identical props.
 		expect(swappedStep.rowCalls).toBe(0);
-		expect(swappedStep.visited).toEqual([99_001, 2_098]);
+		expect(swappedStep.visited).toEqual([]);
 	});
 
 	it('owns one external-store selector and publishes it only after host acknowledgement', async () => {
