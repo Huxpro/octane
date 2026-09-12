@@ -3462,7 +3462,7 @@ function compileRenderableExpressionAst(node, state) {
 		nodes.length === 1 ? nodes[0] : withPlanOrigin({ kind: 'range', children: nodes }, node);
 	const plan = allocPlan(state, root, node);
 	return generatedCall(
-		state.helpers.value,
+		universalValueHelperForPlan(state, root),
 		[generatedIdentifier(plan, node), inheritGeneratedOrigin(b.array(context.values), node)],
 		node,
 	);
@@ -4093,7 +4093,7 @@ function compileBlockValueAst(statements, state, params = [], origin = null) {
 			: withPlanOrigin({ kind: 'range', children: templates }, origin ?? statements?.[0]);
 	const plan = allocPlan(state, root, origin ?? statements?.[0]);
 	const value = generatedCall(
-		state.helpers.value,
+		universalValueHelperForPlan(state, root),
 		[
 			generatedIdentifier(plan, origin ?? statements?.[0]),
 			inheritGeneratedOrigin(b.array(context.values), origin ?? statements?.[0]),
@@ -4650,16 +4650,34 @@ function threadHelperImportPairs(state) {
 function universalHelperImportAsts(state, extraPairs = [], origin = null) {
 	const threadPairs = threadHelperImportPairs(state);
 	const threadModule = state.renderer.threadFunctionsModule ?? state.renderer.module;
+	const compilerPrograms = rendererHasCapability(state, 'compiler-program-ir');
+	const hasCompilerPrograms =
+		compilerPrograms &&
+		state.plans.some((plan) => lynxBlockCompilerProgramEligible(state, plan.root));
+	const hasFallbackPlans =
+		compilerPrograms &&
+		state.plans.some((plan) => !lynxBlockCompilerProgramEligible(state, plan.root));
 	const pairs = [
 		['defineUniversalComponent', state.helpers.component],
-		[
-			rendererHasCapability(state, 'compiler-program-ir') ? 'lynxProgram' : 'universalPlan',
-			state.helpers.plan,
-		],
-		[
-			rendererHasCapability(state, 'compiler-program-ir') ? 'lynxProgramValue' : 'universalValue',
-			state.helpers.value,
-		],
+		...(compilerPrograms
+			? [
+					...(hasCompilerPrograms
+						? [
+								['lynxProgram', state.helpers.plan],
+								['lynxProgramValue', state.helpers.value],
+							]
+						: []),
+					...(hasFallbackPlans
+						? [
+								['universalPlan', state.helpers.fallbackPlan],
+								['universalValue', state.helpers.fallbackValue],
+							]
+						: []),
+				]
+			: [
+					['universalPlan', state.helpers.plan],
+					['universalValue', state.helpers.value],
+				]),
 		['universalComponent', state.helpers.nestedComponent],
 		...(state.helpers.hostComponentLeafPlan === undefined
 			? []
@@ -5148,6 +5166,42 @@ function addressableMainThreadProgram(derived) {
 	return derived !== null && (derived.ranges.length === 0 || derived.addressable === true);
 }
 
+function assertLynxBlockCompilerProgramState(state, origin = null) {
+	if (
+		state.universalRuntime?.runtime !== 'lynx' ||
+		state.universalRuntime.thread !== 'background'
+	) {
+		throw universalError(
+			state.filename,
+			origin,
+			'the compiler-program-ir capability is only valid for a Lynx background runtime.',
+		);
+	}
+	if (state.mainThreadProgramBackend === undefined || state.programModuleId === undefined) {
+		throw universalError(
+			state.filename,
+			origin,
+			'a Block background program requires a paired main-thread backend and module address.',
+		);
+	}
+}
+
+function lynxBlockCompilerProgramEligible(state, root, origin = null) {
+	assertLynxBlockCompilerProgramState(state, origin);
+	return (
+		lynxTemplateEligible(root) &&
+		root.kind === 'host' &&
+		addressableMainThreadProgram(deriveLynxProgramIROnce(state, root))
+	);
+}
+
+function universalValueHelperForPlan(state, root) {
+	return rendererHasCapability(state, 'compiler-program-ir') &&
+		!lynxBlockCompilerProgramEligible(state, root)
+		? state.helpers.fallbackValue
+		: state.helpers.value;
+}
+
 function universalProgramAddressAst(state, plan, index, origin) {
 	const backend = state.mainThreadProgramBackend;
 	if (backend === undefined || state.programModuleId === undefined) return null;
@@ -5299,30 +5353,7 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 }
 
 function lynxBackgroundProgramObjectAst(state, plan, index, origin) {
-	if (
-		state.universalRuntime?.runtime !== 'lynx' ||
-		state.universalRuntime.thread !== 'background'
-	) {
-		throw universalError(
-			state.filename,
-			origin,
-			'the compiler-program-ir capability is only valid for a Lynx background runtime.',
-		);
-	}
-	if (state.mainThreadProgramBackend === undefined || state.programModuleId === undefined) {
-		throw universalError(
-			state.filename,
-			origin,
-			'a Block background program requires a paired main-thread backend and module address.',
-		);
-	}
-	if (!lynxTemplateEligible(plan.root) || plan.root.kind !== 'host') {
-		throw universalError(
-			state.filename,
-			origin,
-			'a Block background program requires addressable shared Lynx IR rooted at a host element.',
-		);
-	}
+	assertLynxBlockCompilerProgramState(state, origin);
 	const derived = deriveLynxProgramIROnce(state, plan.root);
 	if (!addressableMainThreadProgram(derived)) {
 		throw universalError(
@@ -5356,7 +5387,7 @@ function universalPlanDeclarationsAst(state, origin = null) {
 	const compilerPrograms = rendererHasCapability(state, 'compiler-program-ir');
 	return state.plans.map((plan, index) => {
 		const planOrigin = plan.origin ?? origin;
-		if (compilerPrograms) {
+		if (compilerPrograms && lynxBlockCompilerProgramEligible(state, plan.root, planOrigin)) {
 			return generatedConst(
 				plan.name,
 				generatedCall(
@@ -5383,7 +5414,7 @@ function universalPlanDeclarationsAst(state, origin = null) {
 		return generatedConst(
 			plan.name,
 			generatedCall(
-				state.helpers.plan,
+				compilerPrograms ? state.helpers.fallbackPlan : state.helpers.plan,
 				addressAst === null
 					? [b.literal(state.renderer.id), rootAst]
 					: [b.literal(state.renderer.id), rootAst, addressAst],
@@ -5683,6 +5714,10 @@ export function lowerUniversalRendererRegionAst(
 	state.helpers.component = allocName(state, `${prefix}Define`);
 	state.helpers.plan = allocName(state, `${prefix}Plan`);
 	state.helpers.value = allocName(state, `${prefix}Value`);
+	if (rendererHasCapability(state, 'compiler-program-ir')) {
+		state.helpers.fallbackPlan = allocName(state, `${prefix}FallbackPlan`);
+		state.helpers.fallbackValue = allocName(state, `${prefix}FallbackValue`);
+	}
 	state.helpers.nestedComponent = allocName(state, `${prefix}Component`);
 	state.helpers.props = allocName(state, `${prefix}Props`);
 	state.helpers.if = allocName(state, `${prefix}If`);
@@ -6018,6 +6053,10 @@ export function compileUniversal(
 	state.helpers.component = allocName(state, '__octaneDefineUniversalComponent');
 	state.helpers.plan = allocName(state, '__octaneUniversalPlan');
 	state.helpers.value = allocName(state, '__octaneUniversalValue');
+	if (rendererHasCapability(state, 'compiler-program-ir')) {
+		state.helpers.fallbackPlan = allocName(state, '__octaneUniversalFallbackPlan');
+		state.helpers.fallbackValue = allocName(state, '__octaneUniversalFallbackValue');
+	}
 	state.helpers.nestedComponent = allocName(state, '__octaneUniversalComponent');
 	state.helpers.props = allocName(state, '__octaneUniversalProps');
 	state.helpers.if = allocName(state, '__octaneUniversalIf');

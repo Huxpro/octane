@@ -163,6 +163,9 @@ export function createLynxBlockBackgroundCore(
 		options.core ??
 		createLynxBlockCore({
 			templateRuns: () => lynxClientTemplateRunsNegotiated(container),
+			...('blockDeltaProducer' in transport
+				? { deltaProducer: transport.blockDeltaProducer }
+				: null),
 		});
 	const blockRoot = createLynxBlockRoot({
 		container,

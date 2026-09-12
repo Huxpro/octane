@@ -18,7 +18,12 @@ import {
 	type LynxClientContainer,
 } from './client-driver.js';
 import { createLynxCompiledProgramTransport } from './compiled-program-transport.js';
-import { createLynxDeltaShadow } from './delta-shadow.js';
+import {
+	createLynxBlockDeltaProducer,
+	isLynxBlockDeltaTeardown,
+	preparedLynxBlockDeltaBatch,
+	type LynxBlockDeltaProducer,
+} from './block-delta-producer.js';
 import type { LynxBackgroundNativeEventDelivery } from './native-event-receiver.js';
 import type { LynxDataLifecycleMessage } from './lifecycle-types.js';
 import { LYNX_TRANSPORT_PROTOCOL_VERSION, LYNX_TRANSPORT_RENDERER } from './transport-identity.js';
@@ -36,6 +41,7 @@ interface DeferredNativeEventBatch {
 
 export interface LynxCompiledProgramBlockTransport extends UniversalAsyncCommitTransport<LynxClientContainer> {
 	readonly mode: 'async';
+	readonly blockDeltaProducer: LynxBlockDeltaProducer;
 	readonly ready: Promise<void>;
 	bindRoot(root: Pick<LynxBlockRoot, 'acceptsNativeEvent' | 'dispatchTransportEvent'>): void;
 	bindPageDestroy(handler: () => void | Promise<void>): void;
@@ -44,6 +50,7 @@ export interface LynxCompiledProgramBlockTransport extends UniversalAsyncCommitT
 	ownedRoot(): number | null;
 	cancelPendingBeforeReady(reason?: unknown): Promise<boolean>;
 	preparationCount(): number;
+	directPreparationCount(): number;
 	closedReason(): Error | null;
 	enableLogicalTeardown(): void;
 	dispose(): Promise<void>;
@@ -71,7 +78,11 @@ function frozenIdentity(identity: UniversalTransportIdentity): UniversalTranspor
 	});
 }
 
-function isLogicalTeardownBatch(batch: UniversalHostBatch): boolean {
+function isLogicalTeardownBatch(
+	batch: UniversalHostBatch,
+	producer: LynxBlockDeltaProducer,
+): boolean {
+	if (isLynxBlockDeltaTeardown(batch, producer)) return true;
 	if (batch.commands.length === 0) return false;
 	for (const command of batch.commands) {
 		if (command.op === 'remove' || command.op === 'destroy') continue;
@@ -89,12 +100,12 @@ function isLogicalTeardownBatch(batch: UniversalHostBatch): boolean {
 /**
  * Adapt Block command batches to the compact compiled-program wire.
  *
- * The delta shadow is the capability boundary: a batch it cannot represent is
- * refused before any ContextProxy crossing. Its draft publishes only inside the
- * main-thread ACK callback, at the same irreversible point as the Block root's
- * listener journal. Native events may arrive after main installs a token but
- * before that ACK reaches background, so an unknown listener gets one in-flight
- * acknowledgement of grace rather than being run against the old tree or lost.
+ * The paired Block core emits compact deltas directly from compiler-assigned
+ * slots and ranges. A foreign host-command batch is refused before any
+ * ContextProxy crossing. Native events may arrive after main installs a token
+ * but before that ACK reaches background, so an unknown listener gets one
+ * in-flight acknowledgement of grace rather than being run against the old tree
+ * or lost.
  */
 export function createLynxCompiledProgramBlockTransport(
 	context: LynxContextProxy,
@@ -113,7 +124,7 @@ export function createLynxCompiledProgramBlockTransport(
 	});
 	setLynxClientProgramManifests(container, false);
 	const reported: Error[] = [];
-	const shadow = createLynxDeltaShadow();
+	const blockDeltaProducer = createLynxBlockDeltaProducer();
 	const wire = createLynxCompiledProgramTransport(context, {
 		isPageDestroyed: options.isPageDestroyed,
 		onLifecycle: options.onLifecycle,
@@ -133,6 +144,7 @@ export function createLynxCompiledProgramBlockTransport(
 	let commitPending = false;
 	let closed: Error | null = null;
 	let preparations = 0;
+	let directPreparations = 0;
 	let logicalTeardownEnabled = false;
 	let pageDestroyReceived = false;
 	let pageDestroyHandler: (() => void | Promise<void>) | null = null;
@@ -222,6 +234,7 @@ export function createLynxCompiledProgramBlockTransport(
 
 	const transport: LynxCompiledProgramBlockTransport = {
 		mode: 'async',
+		blockDeltaProducer,
 		ready: wire.ready,
 		prepareBatch(target, batch, identity): UniversalAsyncPreparedHostBatch {
 			if (target !== container) {
@@ -233,7 +246,8 @@ export function createLynxCompiledProgramBlockTransport(
 			}
 			preparations++;
 			if (closed !== null) {
-				if (!logicalTeardownEnabled || !isLogicalTeardownBatch(batch)) throw closed;
+				if (!logicalTeardownEnabled || !isLogicalTeardownBatch(batch, blockDeltaProducer))
+					throw closed;
 				if (
 					identity.protocol !== LYNX_TRANSPORT_PROTOCOL_VERSION ||
 					identity.renderer !== LYNX_TRANSPORT_RENDERER ||
@@ -287,18 +301,17 @@ export function createLynxCompiledProgramBlockTransport(
 						: BLOCK_TRANSPORT_ERROR,
 				);
 			}
-			const draft = shadow.prepare(batch);
+			const draft = preparedLynxBlockDeltaBatch(batch, blockDeltaProducer);
 			if (draft === null) {
 				throw new Error(
 					BLOCK_TRANSPORT_DEVELOPMENT
-						? `Octane Lynx compact Block transport requires a fully addressed scalar program batch; received ${batch.commands
-								.map((command) => command.op)
-								.join(', ')}.`
+						? 'Octane Lynx compact Block transport requires a producer-native delta batch.'
 						: BLOCK_TRANSPORT_ERROR,
 				);
 			}
 			let state: 'prepared' | 'applying' | 'accepted' | 'aborted' = 'prepared';
 			let attempt: ReturnType<typeof wire.commit> | null = null;
+			directPreparations++;
 			return Object.freeze({
 				apply(acknowledge: (message: UniversalTransportAcknowledgement) => void) {
 					if (state !== 'prepared') {
@@ -323,12 +336,6 @@ export function createLynxCompiledProgramBlockTransport(
 					}
 					commitPending = true;
 					attempt = wire.commit(identity, draft.encoded, (message) => {
-						// Main publishes native ownership before it sends ACK. Publish the
-						// matching shadow first too: `acknowledge` runs accepted lifecycle
-						// work synchronously, and that work may prepare the next commit.
-						// If local publication then faults, this identity still names real
-						// main state and must remain available for terminal disposal.
-						draft.commit();
 						accepted = frozenIdentity(identity);
 						state = 'accepted';
 						commitPending = false;
@@ -434,6 +441,7 @@ export function createLynxCompiledProgramBlockTransport(
 			return true;
 		},
 		preparationCount: () => preparations,
+		directPreparationCount: () => directPreparations,
 		closedReason: () => closed,
 		enableLogicalTeardown() {
 			logicalTeardownEnabled = true;

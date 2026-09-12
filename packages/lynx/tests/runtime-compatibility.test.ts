@@ -114,6 +114,7 @@ describe('Lynx runtime compatibility evidence', () => {
 				'src/core/block-background.ts',
 				'src/core/block-component.ts',
 				'src/core/block-core.ts',
+				'src/core/block-delta-producer.ts',
 				'src/core/block-program.ts',
 				'src/core/block-root.ts',
 				'src/core/client-driver.ts',

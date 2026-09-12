@@ -431,16 +431,56 @@ export function Card(props: { label: string }) @{
 		expect(hooked.componentMetadata).toEqual([{ module: rendererModule, hookScope: true }]);
 	});
 
-	it('fails closed when a Block background plan has no addressable shared IR', () => {
-		expect(() =>
-			compiled(CARD, {
+	it('keeps an unaddressable Block background plan on the Universal plan path', () => {
+		const code = compiled(CARD, {
+			target: 'universal',
+			thread: 'background',
+			backend: Backend,
+			module: 'src/Card.lynx.tsrx',
+			backgroundProgram: true,
+		});
+		expect(code).toContain('universalPlan as');
+		expect(code).toContain('universalValue as');
+		expect(code).not.toContain('lynxProgram as');
+		expect(code).not.toContain('lynxProgramValue as');
+
+		const { roots, addresses, card } = evaluate(code);
+		expect(roots).toHaveLength(1);
+		expect(addresses).toEqual([undefined]);
+		expect(
+			card({
+				tone: 'card active',
+				ident: 'card-1',
+				label: 'Label',
+				detail: 'Detail',
+				onPick: () => undefined,
+			}),
+		).toMatchObject({ plan: roots[0], values: expect.any(Array) });
+	});
+
+	it('emits program and Universal helpers together for a mixed Block module', () => {
+		const result = compileCard(
+			`${ADDRESSABLE_CARD}
+export function Dynamic(props: { detail: unknown }) @{
+	<view><text>{props.detail}</text></view>
+}
+`,
+			{
 				target: 'universal',
 				thread: 'background',
 				backend: Backend,
 				module: 'src/Card.lynx.tsrx',
 				backgroundProgram: true,
-			}),
-		).toThrowError(/Block background program.*addressable.*Card\.lynx\.tsrx/);
+			},
+		);
+		expect(result.code).toContain('lynxProgram as');
+		expect(result.code).toContain('lynxProgramValue as');
+		expect(result.code).toContain('universalPlan as');
+		expect(result.code).toContain('universalValue as');
+		expect(result.mainThreadProgramCoverage).toEqual({
+			total: 2,
+			addressed: 1,
+		});
 	});
 
 	it('changes nothing unless a backend is supplied', () => {

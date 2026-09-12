@@ -114,9 +114,12 @@ supporting them.
 Automatic production selection is deliberately two-pass: the first-pass
 Universal-shaped output supplies coverage and semantic facts, while a
 module-scoped Rspack compiler specialization rebuilds only a graph already
-proved Block-compatible. Selecting `core: 'block'` is the explicit assertion
-of the same surface, so an unsupported owner is a source-attributed build error
-rather than a Universal runtime fallback.
+proved Block-compatible. An explicit `core: 'block'` bundle may mix the same
+compiler programs with ordinary Universal plans: eligibility is decided for
+each plan from the shared IR, and unsupported plans keep their descriptor
+encoding while still running on the Block component/core path. This preserves
+ordinary application coverage without pretending an unaddressable plan has a
+resident MTS program.
 
 DOM, the generic Universal renderer, and other Universal hosts such as Valdi
 do not enable `compiler-program-ir` and retain their existing output.

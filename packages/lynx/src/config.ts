@@ -242,8 +242,9 @@ export const lynxBackgroundRenderer = {
 /**
  * Background renderer for the independent Block program artifact.
  *
- * This capability is an output contract, not a runtime feature probe: every
- * host plan in the graph must lower to the shared, addressable compiler IR.
+ * This capability asks the compiler to emit shared, addressable IR per eligible
+ * plan. Unsupported plans retain their Universal descriptors so an explicit
+ * Block bundle preserves ordinary application coverage.
  */
 export const lynxBlockBackgroundRenderer = {
 	...lynxBackgroundRenderer,

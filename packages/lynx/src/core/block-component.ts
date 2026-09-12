@@ -1388,11 +1388,7 @@ export function lynxBlockProgramForComponent<Props>(
 		update: renderAgain,
 
 		unmount(context) {
-			// Release, do not tear down: the core has no way to destroy a
-			// root-mounted block, so a range whose rows were destroyed here would
-			// leave the page it hangs from still mounted and half-empty. What the
-			// program owns beyond the wire is the listener table, and every member
-			// of every range holds a run of it.
+			// Snapshot semantic owners before the physical ranges are cleared.
 			const rowScopes: UniversalHookScope[] = [];
 			for (const range of ranges) {
 				if (range.retained === null) continue;
@@ -1402,16 +1398,15 @@ export function lynxBlockProgramForComponent<Props>(
 			}
 
 			for (const range of ranges) {
-				if (range.site === null || range.prepared === null || range.prepared.events.length === 0) {
-					continue;
-				}
-				for (let member = range.site.head; member !== null; member = member.next) {
+				if (range.site === null) continue;
+				context.core.clearForSlot(range.site, (member) => {
 					context.root.releaseListeners(member);
-				}
+				});
 			}
 			if (block !== null && prepared !== null && prepared.events.length !== 0) {
 				context.root.releaseListeners(block);
 			}
+			if (block !== null) context.core.destroyRoot(block);
 			context.afterCommit(() => {
 				for (const rowScope of rowScopes) rowScope.dispose();
 				block = null;

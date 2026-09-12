@@ -11,27 +11,24 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
  * host id and whose `insertBefore` is a `move` command makes the update path
  * change-proportional without a reconciler pass over the tree.
  *
- * ## Why this emits host commands rather than delta frames
+ * ## Two emission backends, one resident applier
  *
- * `UniversalHostBatch` already carries the whole vocabulary the Block model
- * needs: `mount-template-run` is `RUN`, `update` is `SET`, `move` is `MOVE`,
- * `remove`/`destroy` is `REMOVE`, `visibility` is `VIS`. The v2 delta protocol
- * (`delta-protocol.ts`) is a compact *encoding* of that vocabulary, not new
- * applier capability. Emitting commands keeps the applier, the wire, the PAPI
- * layer, and the event journal shared with the universal path — which is the
- * only thing that makes a physical-tree comparison between the two cores mean
- * anything. Fork the applier and byte-equality of the tree proves nothing.
+ * A general transport receives `UniversalHostBatch` commands for compatibility.
+ * A paired compiled-program application supplies `LynxBlockDeltaProducer`, so
+ * compiler-assigned instance, slot, and range identities go straight to compact
+ * RUN/SET/MOVE/REMOVE/CLEAR frames. Both paths still terminate in the same
+ * compiled-program store, generated setters, event journal, and PAPI layer.
  *
- * ## What this slice is not
+ * ## Specialized scope
  *
- * No hooks. The scoped entry points here (`setSlotValue`, `reconcileForSlot`)
- * are what a `useState` setter would call; the hook cells that call them are
- * the next slice. No de-opt regions, Suspense, Activity, portals, or native
- * lists — every one of those is refused explicitly by `compileLynxBlockTemplate`
- * or by the caller, rather than mis-rendered.
+ * Component-local hook scopes sit above these scoped entry points and publish at
+ * the same render-attempt boundary. De-opt regions, Suspense, Activity, portals,
+ * and native lists remain outside this core until their dedicated slices; they
+ * are refused by template compilation or selection rather than mis-rendered.
  */
 
 import { sameLynxUniversalHostPropValue } from './host-props.js';
+import type { LynxBlockDeltaProducer } from './block-delta-producer.js';
 import { LYNX_PROFILE } from './profiling.js';
 
 import {
@@ -222,6 +219,8 @@ export interface LynxBlock {
 	 * without shipping a listener table across the wire.
 	 */
 	readonly firstListenerId: number | null;
+	/** Compact instance identity; absent on the general host-command path. */
+	readonly instance: number | null;
 	readonly values: UniversalHostTemplateProgramValue[];
 	readonly key: unknown;
 	/** Committed position in the survivor list, maintained by `link`. */
@@ -248,7 +247,12 @@ export interface LynxBlockForSlot {
 }
 
 /** Producer-only compiler provenance; absent from the public range-site shape. */
-type LynxBlockProgramRangeSite = LynxBlockForSlot & { readonly 0: number | undefined };
+type LynxBlockProgramRangeSite = LynxBlockForSlot & {
+	/** Compiler range slot on the owning instance. */
+	readonly 0: number | undefined;
+	/** Owning compact instance, or null on the general command path. */
+	readonly 1: number | null;
+};
 
 /**
  * Deterministic accounting for the #103 U0 gate.
@@ -316,6 +320,8 @@ export interface LynxBlockCoreOptions {
 	 * no negotiation to respect.
 	 */
 	readonly templateRuns?: () => boolean;
+	/** Direct compact producer selected only by a paired compiled-program app. */
+	readonly deltaProducer?: LynxBlockDeltaProducer;
 }
 
 export interface LynxBlockCore {
@@ -332,6 +338,8 @@ export interface LynxBlockCore {
 		template: LynxBlockTemplate,
 		values: readonly UniversalHostTemplateProgramValue[],
 	): LynxBlock;
+	/** Destroy a block mounted at the root after its owned ranges are clear. */
+	destroyRoot(block: LynxBlock): void;
 	/** Open a keyed range at one host node, optionally retaining its compiler plan slot. */
 	openForSlot(block: LynxBlock, nodeIndex: number, programRangeSlot?: number): LynxBlockForSlot;
 	/**
@@ -450,6 +458,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 	let nextListenerId = options.firstListenerId ?? 1;
 	const templateRunsAllowed = options.templateRuns ?? (() => true);
 	let commands: UniversalHostCommand[] = [];
+	const deltaProducer = options.deltaProducer ?? null;
 	// Where this frame's live `update` sits, per host id. An `update` carries the
 	// node's complete next props, so a later write to the same host makes the
 	// earlier command dead payload: applying only the last leaves the same tree.
@@ -514,7 +523,8 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		template: LynxBlockTemplate,
 		rows: readonly (readonly UniversalHostTemplateProgramValue[])[],
 		keys: readonly unknown[],
-		programRangeSlot?: number,
+		rangeSite?: LynxBlockProgramRangeSite,
+		beforeBlock?: LynxBlock | null,
 	): LynxBlock[] => {
 		const count = rows.length;
 		const firstId = allocate(template, count);
@@ -532,7 +542,46 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 				values[row * template.valueCount + slot] = source[slot];
 			}
 		}
-		if (templateRunsAllowed()) {
+		let firstInstance: number | null = null;
+		if (deltaProducer !== null) {
+			if (!templateRunsAllowed()) {
+				fail(LYNX_BLOCK_CORE_DEVELOPMENT && 'the direct delta producer requires resident runs');
+			}
+			if (template.address === undefined) {
+				fail(
+					LYNX_BLOCK_CORE_DEVELOPMENT && 'the direct delta producer requires an addressed program',
+				);
+			}
+			const parentSite =
+				parent === null
+					? { instance: 1, slot: 0 }
+					: rangeSite !== undefined &&
+						  rangeSite.parent === parent &&
+						  rangeSite[0] !== undefined &&
+						  rangeSite[1] !== null
+						? { instance: rangeSite[1], slot: rangeSite[0] }
+						: fail(
+								LYNX_BLOCK_CORE_DEVELOPMENT &&
+									'a nested direct RUN requires its owning compiler range site',
+							);
+			if (
+				before !== null &&
+				(beforeBlock === null ||
+					beforeBlock === undefined ||
+					beforeBlock.firstId !== before ||
+					beforeBlock.instance === null)
+			) {
+				fail(LYNX_BLOCK_CORE_DEVELOPMENT && 'a direct RUN anchor requires a retained instance');
+			}
+			firstInstance = deltaProducer.run({
+				address: template.address,
+				parent: parentSite,
+				before: beforeBlock?.instance ?? null,
+				count,
+				values,
+			});
+			commandCount++;
+		} else if (templateRunsAllowed()) {
 			// Frozen, like the program it carries: the incremental compact
 			// acknowledgement the wire offers for a post-first-screen run is only
 			// accepted for a command the producer promised not to mutate.
@@ -550,8 +599,8 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 					: { ...shared, op: 'mount-program-run' as const, address: template.address },
 			);
 			if (template.address !== undefined) recordUniversalProgramCommand(run, template.program);
-			if (programRangeSlot != null) {
-				recordUniversalProgramRangeCommand(run, programRangeSlot);
+			if (rangeSite?.[0] != null) {
+				recordUniversalProgramRangeCommand(run, rangeSite[0]);
 			}
 			emit(run);
 		} else {
@@ -562,6 +611,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			blocks[row] = {
 				template,
 				firstId: firstId + row * template.hostCount,
+				instance: firstInstance === null ? null : firstInstance + row,
 				// The listener run is dense in exactly the way the host run is, so a
 				// block's own base is its row offset into the run's base. This is the
 				// `firstListenerId + rowIndex * eventCount + siteIndex` derivation the
@@ -654,6 +704,14 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 	 * run proof and emit the existing `destroy-run` command instead.
 	 */
 	const destroyBlock = (parent: UniversalHostParent, block: LynxBlock): void => {
+		if (deltaProducer !== null) {
+			if (block.instance === null) {
+				fail(LYNX_BLOCK_CORE_DEVELOPMENT && 'a direct REMOVE requires an instance');
+			}
+			deltaProducer.remove(block.instance, 1);
+			commandCount++;
+			return;
+		}
 		emit({ op: 'remove', parent, id: block.firstId });
 		for (let node = block.template.hostCount - 1; node >= 0; node--) {
 			const id = block.firstId + node;
@@ -679,6 +737,21 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 	 * applying the teardown.
 	 */
 	const destroyRange = (slot: LynxBlockForSlot, departed?: (block: LynxBlock) => void): void => {
+		if (deltaProducer !== null) {
+			const site = slot as LynxBlockProgramRangeSite;
+			if (site[0] === undefined || site[1] === null) {
+				fail(
+					LYNX_BLOCK_CORE_DEVELOPMENT && 'a direct CLEAR requires its owning compiler range site',
+				);
+			}
+			for (const block of slot.items.values()) departed?.(block);
+			deltaProducer.clear({
+				instance: site[1],
+				slot: site[0],
+			});
+			commandCount++;
+			return;
+		}
 		let first: LynxBlock | null = null;
 		let count = 0;
 		const flush = (): void => {
@@ -768,6 +841,16 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			}
 		}
 		block.values[valueIndex] = value;
+		if (deltaProducer !== null) {
+			if (block.instance === null) {
+				fail(
+					LYNX_BLOCK_CORE_DEVELOPMENT &&
+						'a direct SET requires the block compact instance identity',
+				);
+			}
+			if (deltaProducer.set(block.instance, valueIndex, value)) commandCount++;
+			return true;
+		}
 		const nodeIndex = template.valueNodes[valueIndex]!;
 		// `update` carries the node's complete next props; the applier diffs it
 		// against what it holds. Static props are re-sent because they are part of
@@ -834,7 +917,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			template,
 			rows,
 			keys,
-			(slot as LynxBlockProgramRangeSite)[0],
+			slot as LynxBlockProgramRangeSite,
 		);
 		for (const block of blocks) slot.items.set(block.key, block);
 		link(slot, blocks);
@@ -856,16 +939,18 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 	const core: LynxBlockCore = {
 		beginAttempt() {
 			if (attemptActive) fail(LYNX_BLOCK_CORE_DEVELOPMENT && 'a render attempt is already active');
-			if (commands.length !== 0)
+			if (commands.length !== 0 || deltaProducer?.hasPending() === true)
 				fail(
 					LYNX_BLOCK_CORE_DEVELOPMENT && 'a render attempt cannot begin with an unflushed batch',
 				);
+			deltaProducer?.beginAttempt();
 			attemptActive = true;
 			attemptNextId = nextId;
 			attemptNextListenerId = nextListenerId;
 		},
 
 		acceptAttempt() {
+			deltaProducer?.acceptAttempt();
 			attemptActive = false;
 			attemptSlots = null;
 			attemptCapturedSlots = null;
@@ -878,6 +963,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			attemptActive = false;
 			commands = [];
 			pendingUpdates = new Map();
+			deltaProducer?.abortAttempt();
 			nextId = attemptNextId;
 			nextListenerId = attemptNextListenerId;
 			for (let index = (attemptValues?.length ?? 0) - 3; index >= 0; index -= 3) {
@@ -901,6 +987,9 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		mount(parent, before, template, values) {
 			return mountRun(parent, before, template, [values], [undefined])[0]!;
 		},
+		destroyRoot(block) {
+			destroyBlock(null, block);
+		},
 
 		openForSlot(block, nodeIndex, programRangeSlot) {
 			if (nodeIndex < 0 || nodeIndex >= block.template.hostCount) {
@@ -909,6 +998,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			return {
 				0: programRangeSlot,
 				parent: block.firstId + nodeIndex,
+				1: block.instance,
 				items: new Map(),
 				head: null,
 				tail: null,
@@ -981,7 +1071,8 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			const ordered: LynxBlock[] = new Array(items.length);
 			// Right to left, so the anchor is always a block already placed.
 			for (let index = items.length - 1; index >= 0; index--) {
-				const before = index + 1 < items.length ? ordered[index + 1]!.firstId : null;
+				const beforeBlock = index + 1 < items.length ? ordered[index + 1]! : null;
+				const before = beforeBlock?.firstId ?? null;
 				const survivor = survivors[index];
 				if (survivor === null) {
 					const block = mountRun(
@@ -990,7 +1081,8 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 						template,
 						[values(items[index]!, index)],
 						[keys[index]],
-						(slot as LynxBlockProgramRangeSite)[0],
+						slot as LynxBlockProgramRangeSite,
+						beforeBlock,
 					)[0]!;
 					previous.set(block.key, block);
 					ordered[index] = block;
@@ -1011,16 +1103,35 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 					write(survivor, valueIndex, next[valueIndex]);
 				}
 				if (stable !== null && stable[index] !== -2) {
-					const move: UniversalHostCommand = {
-						op: 'move',
-						parent: slot.parent,
-						id: survivor.firstId,
-						before,
-					};
-					if ((slot as LynxBlockProgramRangeSite)[0] != null) {
-						recordUniversalProgramRangeCommand(move, (slot as LynxBlockProgramRangeSite)[0]!);
+					const site = slot as LynxBlockProgramRangeSite;
+					if (deltaProducer !== null) {
+						if (
+							survivor.instance === null ||
+							site[0] === undefined ||
+							site[1] === null ||
+							(beforeBlock !== null && beforeBlock.instance === null)
+						) {
+							fail(
+								LYNX_BLOCK_CORE_DEVELOPMENT &&
+									'a direct MOVE requires retained instance and compiler range identities',
+							);
+						}
+						deltaProducer.move(
+							survivor.instance,
+							{ instance: site[1], slot: site[0] },
+							beforeBlock?.instance ?? null,
+						);
+						commandCount++;
+					} else {
+						const move: UniversalHostCommand = {
+							op: 'move',
+							parent: slot.parent,
+							id: survivor.firstId,
+							before,
+						};
+						if (site[0] != null) recordUniversalProgramRangeCommand(move, site[0]);
+						emit(move);
 					}
-					emit(move);
 				}
 				ordered[index] = survivor;
 			}
@@ -1059,6 +1170,17 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		},
 
 		flush() {
+			if (deltaProducer !== null) {
+				if (commands.length !== 0) {
+					fail(
+						LYNX_BLOCK_CORE_DEVELOPMENT &&
+							'the direct delta path accumulated a general host command',
+					);
+				}
+				const batch = deltaProducer.flush(version + 1);
+				if (batch !== null) version++;
+				return batch;
+			}
 			if (commands.length === 0) return null;
 			// U1 §3: a commit's ops are handed over as one frame. A partial frame
 			// can name a `before` anchor the main thread has not allocated yet,
