@@ -4,7 +4,7 @@ import { BlockEligible } from './BlockEligible.tsrx';
 
 void root.render(BlockEligible, {
 	items: [
-		{ id: 1, label: 'Alpha' },
-		{ id: 2, label: 'Bravo' },
+		{ id: 1, image: 'alpha.png', label: 'Alpha' },
+		{ id: 2, image: 'bravo.png', label: 'Bravo' },
 	],
 });

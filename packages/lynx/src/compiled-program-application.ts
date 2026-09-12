@@ -93,7 +93,8 @@ function booleanOption(options: Record<string, unknown>, name: string): boolean 
  * On Web the generated first-screen facade paints the addressed program tree
  * synchronously and the first Block frame adopts those exact nodes. Native queues the
  * same paint until `PageConfig` publishes page/global data, then transfers ownership
- * after the checked frame agrees with every program/value. Later frames mount normally;
+ * after the checked frame agrees with every program and order; scalar differences are
+ * repaired on those nodes inside the adoption transaction. Later frames mount normally;
  * no second synchronous tree is painted. Lifecycle data remain held until the compact
  * readiness reply proves the background listener exists.
  */

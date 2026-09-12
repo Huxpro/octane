@@ -481,7 +481,11 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 										empty: false,
 										nested: false,
 										lastChild: true,
-										row: { kind: 'inline-host', name: 'view' },
+										row: {
+											kind: 'local-component',
+											name: 'BlockEligibleRow',
+											hooks: [expect.objectContaining({ name: 'useState' })],
+										},
 									}),
 								],
 							},
@@ -491,7 +495,11 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 										empty: false,
 										nested: false,
 										lastChild: true,
-										row: { kind: 'inline-host', name: 'view' },
+										row: {
+											kind: 'local-component',
+											name: 'BlockEligibleRow',
+											hooks: [expect.objectContaining({ name: 'useState' })],
+										},
 									}),
 								],
 							},
@@ -529,9 +537,17 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 				),
 			).toBe(false);
 			for (const module of [
+				'compiled-program-application.ts',
+				'main-thread-product-application.ts',
 				'core/application-selection.compiled-program.ts',
+				'core/block-background.ts',
+				'core/block-component.ts',
 				'core/client-driver.compiled-program.ts',
 				'first-screen.compiled-program.ts',
+				'core/compiled-program-block-transport.ts',
+				'core/compiled-program-first-screen.ts',
+				'core/compiled-program-product-receiver.ts',
+				'core/compiled-program-store.ts',
 				'main-renderer.compiled-program.ts',
 				'core/main-thread-application-selection.compiled-program.ts',
 			]) {
@@ -565,6 +581,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 			expect(backgroundProgram?.code).toContain('lynxProgramValue as');
 			expect(backgroundProgram?.code).not.toContain('universalPlan as');
 			expect(backgroundProgram?.code).not.toContain('universalValue as');
+			expect(backgroundProgram?.code).toContain('"type": "image"');
 			const mainProgram = moduleSources.find(
 				(module) =>
 					module.layer === 'octane:main-thread' &&
@@ -572,6 +589,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 			);
 			expect(mainProgram?.code).toContain('"kind": "program"');
 			expect(mainProgram?.code).toContain('"version": 1');
+			expect(mainProgram?.code).toContain('papi.createElement("image", pageId');
 		} finally {
 			await result?.close();
 			rmSync(temporaryRoot, { recursive: true, force: true });

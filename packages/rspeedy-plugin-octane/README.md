@@ -9,8 +9,10 @@ programs required by a Lynx template:
   checks without retaining the recursive command validator; both then evaluate
   the authored entry with Octane's render-only first-screen runtime;
   and
-- the same authored entry runs in the background runtime with Octane's full
-  Lynx renderer, which adopts or deterministically repairs the first tree.
+- the same authored entry runs in the background runtime with the build-selected
+  Lynx renderer. An eligible one-shot production graph uses the Block core and
+  compact program transport; other graphs retain the Universal core. Either
+  path adopts or deterministically repairs the first tree it owns.
 
 The plugin configures the framework-neutral Lynx template, CSS extraction,
 runtime-wrapper, and native encoding packages and emits one `.lynx.bundle` per
@@ -147,7 +149,7 @@ pluginOctane({ thread: 'main-thread' });
 
 Application builds attach an `octane:lynx-block-selection` report to the
 generated main-thread asset metadata. Selection version 1 with support-matrix
-version 2 is eligible only when paired
+version 3 is eligible only when paired
 background/main-thread resident-program coverage is complete, semantic and
 feature facts cover the same module set, and the graph stays within this
 independently proven Block subset:
@@ -160,7 +162,8 @@ independently proven Block subset:
   `@if`/`@switch`/`@try`/Activity structure, bare renderable hole, ordinary host
   ref, native `list`/`list-item` element, or event on a template-program root;
 - keyed ranges have no `@empty` arm or nested range, are the last child of
-  their host, and use an inline host or hookless local component as each row.
+  their host, and use an inline host or local component as each row. A local row
+  may own the supported hooks above; its scope is retained and disposed by key.
 
 The report retains source module, thread, line, and column for unsupported
 facts, as well as the underlying reason from an incomplete proof. A one-shot
@@ -186,6 +189,53 @@ development/benchmark override. An explicit override is reported as such and
 is not presented as an automatic eligibility decision.
 
 ## Compatibility lanes
+### Ordinary compiled-program receipt
+
+The production fixture
+`tests/_fixtures/application/src/BlockEligible.tsrx` is a normal authored
+application: a stateful page renders a keyed local row component with its own
+`useState`, `view`/`text`/`image` props, and a native `bindtap` handler.
+The real Rspeedy/Rspack production test requires complete paired coverage and
+checks this selected import graph:
+
+```text
+authored entry -> @octanejs/lynx package root
+  -> application-selection.compiled-program
+  -> compiled-program-block-transport -> block-background -> block-component
+
+generated main entry -> main-thread-product-application
+  -> main-thread-application-selection.compiled-program
+  -> compiled-program-application
+     -> first-screen.compiled-program + main-renderer.compiled-program
+     -> compiled-program-product-receiver -> compiled-program-store
+```
+
+It also checks the decoded production artifact uses only the compiled-program
+event channel, that the general event channel is absent, and that both compiled
+layers contain the image program (the main layer emits its direct
+`papi.createElement("image", ...)` body). Automatic development/watch
+selection remains Universal by design; `core: 'block'` is the explicit
+development/benchmark override and is not reported as an automatic product
+decision.
+
+The
+`packages/lynx/tests/compiled-program-product-application.test.ts` suite joins
+those module contracts against the official JavaScript host without replacing
+the compiler output with hand-written plans or frames:
+
+| Phase | Observed contract |
+| --- | --- |
+| IFR | The compiled main renderer synchronously creates `view`, `text`, and `image` nodes and installs native event tokens. |
+| Readiness/adoption | The background compact reply is held; the same painted nodes are adopted, scalar differences are repaired in place, and no command-array adapter is produced. |
+| First interaction | A native tap before ACK is queued, then reaches the correct row closure exactly once; its independent row state updates through a direct slot delta. |
+| Keyed update | `[1,2,3]` becomes `[3,1,4]` through direct set/remove/run/move operations; surviving row identities and row 1 state remain. |
+| Teardown | Root unmount removes the tree and a late native event is inert. |
+
+The adoption store separately proves that scalar repairs roll back to the
+painted values if the enclosing attempt aborts. These are compiler, Rspack
+artifact, and JavaScript-host observations—not Explorer, Android, or iOS
+interaction/performance evidence.
+
 
 Milestone 9 covers two exact, indivisible source/build graphs. Registry
 metadata was checked on 2026-07-23:

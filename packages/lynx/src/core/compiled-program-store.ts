@@ -128,6 +128,13 @@ export interface LynxCompiledProgramAdoptionSeed<Node extends LynxElementRef> {
 	readonly nodes: readonly (Node | undefined)[];
 	/** Logical host-id distance between consecutive first-screen instances. */
 	readonly stride: number;
+	/**
+	 * Values currently painted into `nodes`.
+	 *
+	 * When present, adoption repairs differences to the background run in the
+	 * same transaction; omission means the source already proved an exact match.
+	 */
+	readonly paintedValues?: readonly unknown[];
 }
 
 export interface LynxCompiledProgramAdoption<Node extends LynxElementRef>
@@ -527,6 +534,47 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		instances.delete(handle);
 		undo.push(handle, instance, range, parent, before, JournalOpcode.Remove);
 	};
+	const writeSet = (handle: number, slot: number, value: unknown): boolean => {
+		const undo = requireJournal();
+		if (!Number.isSafeInteger(slot) || slot < 0) fail(StoreFailure.ValueSlot);
+		const instance = requireInstance(handle);
+		const run = instance.run;
+		if (slot >= run.plan.values.length)
+			fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `does not hold value slot ${slot}`);
+		if (!isSlotValue(run.plan, slot, value)) {
+			fail(
+				LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
+					`received a value outside slot ${slot}'s scalar kind`,
+			);
+		}
+		const valueIndex = instance.index * run.plan.values.length + slot;
+		const previous = run.values[valueIndex];
+		if (Object.is(previous, value)) return false;
+		const set = run.create.set;
+		if (set === undefined)
+			fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'does not have an emitted value-slot setter');
+		const nodeOffset = instance.index * run.stride;
+		try {
+			if (!set(run.nodes, slot, value, nodeOffset))
+				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `setter refused value slot ${slot}`);
+		} catch (error) {
+			try {
+				if (!set(run.nodes, slot, previous, nodeOffset)) {
+					fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `setter refused rollback slot ${slot}`);
+				}
+			} catch (rollbackError) {
+				faulted = true;
+				failAggregate(
+					[error, rollbackError],
+					LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'Compiled program slot rollback failed.',
+				);
+			}
+			throw error;
+		}
+		run.values[valueIndex] = value;
+		undo.push(handle, slot, previous, JournalOpcode.Set);
+		return true;
+	};
 	const writeRun = (
 		input: LynxCompiledProgramMount<Node>,
 		adopted?: LynxCompiledProgramAdoptionSeed<Node>,
@@ -591,7 +639,21 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				);
 			}
 		}
-		const values = input.values.slice(valueOffset, valueEnd);
+		const targetValues = input.values.slice(valueOffset, valueEnd);
+		const values =
+			adoption && adopted.paintedValues !== undefined
+				? adopted.paintedValues.slice()
+				: targetValues;
+		if (values.length !== valueCount) fail(StoreFailure.ValueArity);
+		for (let index = 0; index < values.length; index++) {
+			const slot = index % plan.values.length;
+			if (!isSlotValue(plan, slot, values[index])) {
+				fail(
+					LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
+						`received a painted value outside slot ${slot}'s scalar kind`,
+				);
+			}
+		}
 		const eventCount = plan.events.length;
 		const finalListener = nextListener + eventCount * input.count;
 		if (
@@ -737,6 +799,14 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			range,
 			adoption ? JournalOpcode.Adopt : JournalOpcode.Mount,
 		);
+		if (adoption && adopted.paintedValues !== undefined) {
+			for (let index = 0; index < targetValues.length; index++) {
+				if (Object.is(values[index], targetValues[index])) continue;
+				const row = Math.floor(index / plan.values.length);
+				const slot = index % plan.values.length;
+				writeSet(input.firstHandle + row, slot, targetValues[index]);
+			}
+		}
 	};
 
 	return {
@@ -808,47 +878,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			return rangeOf(instance, slot);
 		},
 		set(handle, slot, value) {
-			const undo = requireJournal();
-			if (!Number.isSafeInteger(slot) || slot < 0) fail(StoreFailure.ValueSlot);
-			const instance = requireInstance(handle);
-			const run = instance.run;
-			if (slot >= run.plan.values.length)
-				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `does not hold value slot ${slot}`);
-			if (!isSlotValue(run.plan, slot, value)) {
-				fail(
-					LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
-						`received a value outside slot ${slot}'s scalar kind`,
-				);
-			}
-			const valueIndex = instance.index * run.plan.values.length + slot;
-			const previous = run.values[valueIndex];
-			if (Object.is(previous, value)) return false;
-			const set = run.create.set;
-			if (set === undefined)
-				fail(
-					LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'does not have an emitted value-slot setter',
-				);
-			const nodeOffset = instance.index * run.stride;
-			try {
-				if (!set(run.nodes, slot, value, nodeOffset))
-					fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `setter refused value slot ${slot}`);
-			} catch (error) {
-				try {
-					if (!set(run.nodes, slot, previous, nodeOffset)) {
-						fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `setter refused rollback slot ${slot}`);
-					}
-				} catch (rollbackError) {
-					faulted = true;
-					failAggregate(
-						[error, rollbackError],
-						LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'Compiled program slot rollback failed.',
-					);
-				}
-				throw error;
-			}
-			run.values[valueIndex] = value;
-			undo.push(handle, slot, previous, JournalOpcode.Set);
-			return true;
+			return writeSet(handle, slot, value);
 		},
 		visibility(handle, visible) {
 			const undo = requireJournal();

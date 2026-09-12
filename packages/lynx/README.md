@@ -158,10 +158,14 @@ Production build tests construct and decode `.lynx.bundle` artifacts while
 checking graph ownership, CSS/assets, source/debug information, lazy chunks,
 and the absence of React, Preact, and ReactLynx runtimes. The pinned build emits
 a content-hashed async bundle whose module is specialized into both main and
-background layers. Source and JavaScript-host tests cover synchronous
-first-tree creation, adoption, repair, event handoff, retained boundaries,
-portals, and cleanup. They do not prove native first paint, chunk execution, or
-IFR behavior. Passing an explicit
+background layers. Source and JavaScript-host tests now compile one ordinary
+authored `.lynx.tsrx` application into both resident-program layers and run
+synchronous IFR, adoption on the painted node identities, in-place scalar
+repair, a pre-ACK native event, independent keyed-row state, insert/reorder/remove,
+and unmount through the selected product modules. They also cover retained
+boundaries, portals, and cleanup. This is official JavaScript-host IFR evidence;
+it does not prove native first paint, native interaction, chunk execution,
+layout, allocation, timing, or device behavior. Passing an explicit
 `thread: 'background'` or `thread: 'main-thread'` to the Rspeedy plugin retains
 the earlier isolated compiler-graph diagnostic mode; it is not the production
 application path. Development builds wire the pinned Lynx transport. Compatible

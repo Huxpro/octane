@@ -62,6 +62,7 @@ import type {
 	UniversalForValue,
 	UniversalHostCapabilities,
 	UniversalHostDriver,
+	UniversalHostPropCodecContext,
 	UniversalHostTemplateProgramValue,
 	UniversalPlan,
 	UniversalPlanValue,
@@ -111,6 +112,7 @@ import {
 	type LynxCompilerProgram,
 } from './compiler-program.js';
 import type { LynxBlockProgram, LynxBlockProgramContext } from './block-program.js';
+import { encodeLynxProgramPropValue } from './host-prop-value.js';
 import { LYNX_TRANSPORT_RENDERER } from './transport-identity.js';
 import type { LynxBlockListener } from './block-root.js';
 
@@ -191,6 +193,7 @@ function loweringDriver(
 	container: LynxClientContainer,
 ): UniversalHostDriver<LynxClientContainer, LynxPublicHandle> {
 	const driver = createLynxClientDriver(container);
+	const props = driver.props;
 	return {
 		...driver,
 		// Object.create rather than a spread: the negotiated members are live
@@ -199,6 +202,32 @@ function loweringDriver(
 		capabilities: Object.create(driver.capabilities ?? null, {
 			templateProgramMount: { value: true, enumerable: true },
 		}) as UniversalHostCapabilities,
+		// The ordinary command path may carry serializable renderer values such as
+		// a clsx-style class array and normalize them on the main thread. A block
+		// program has the narrower resident-program ABI instead: every ordinary
+		// binding is a scalar before it reaches `mount-template-run`. Reuse the
+		// renderer codec first (so resources and worklets keep their authority),
+		// then apply the same canonical scalar mapping as the compact client and
+		// compiled main renderer. Without this layer a perfectly ordinary dynamic
+		// class made a keyed component row look like an unsupported nested range.
+		props:
+			props === undefined
+				? undefined
+				: Object.freeze({
+						encode(context: UniversalHostPropCodecContext<LynxClientContainer>) {
+							const result = props.encode(context);
+							return result.kind === 'value'
+								? {
+										kind: 'value' as const,
+										value: encodeLynxProgramPropValue(
+											context.hostType,
+											context.name,
+											result.value,
+										) as never,
+									}
+								: result;
+						},
+					}),
 	};
 }
 

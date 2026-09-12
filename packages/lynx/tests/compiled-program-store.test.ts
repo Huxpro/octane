@@ -273,6 +273,56 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		]);
 	});
 
+	it('repairs painted adoption values in place and rolls those repairs back transactionally', () => {
+		const papi = emittedHost();
+		const page = papi.createPage('0', 0);
+		const plan = emittedEventPlan();
+		const painted = ['painted-10', 'cold', 'painted ten'];
+		const target = ['row-10', 'ready', 'ten'];
+		const nodes = paintAdoptableRows(papi, page, plan, painted, 10, 4, 1_000_000);
+		const root = nodes[0]!;
+		const text = root.children[0]!.children[0]!;
+		const seed = {
+			firstId: 10,
+			firstListenerId: 1_000_000,
+			nodes,
+			stride: 4,
+			paintedValues: painted,
+		} as const;
+		const store = createLynxCompiledProgramStore(
+			papi,
+			papi.getUniqueId(page),
+			47,
+			1_000_000,
+			() => seed,
+		);
+		const mount = () =>
+			store.mount({
+				before: null,
+				count: 1,
+				firstHandle: 2,
+				parent: page,
+				plan,
+				values: target,
+			});
+
+		store.begin();
+		mount();
+		expect(page.children).toEqual([root]);
+		expect([root.id, root.classes, text.text]).toEqual(target);
+		store.rollback();
+		expect(store.size()).toBe(0);
+		expect(page.children).toEqual([root]);
+		expect([root.id, root.classes, text.text]).toEqual(painted);
+
+		store.begin();
+		mount();
+		store.commit();
+		expect(store.size()).toBe(1);
+		expect(page.children).toEqual([root]);
+		expect([root.id, root.classes, text.text]).toEqual(target);
+	});
+
 	it('rolls back first-screen ownership without removing the painted tree and retries exactly', () => {
 		const papi = emittedHost();
 		const page = papi.createPage('0', 0);

@@ -55,7 +55,9 @@
  *   * route 1 — a `#text` whose only prop and only bindings are `value`; its
  *     content is passed to `rawText()` at creation and never written again.
  *   * route 2 — a `view` or `text` whose only props and bindings are `class`,
- *     `className` and `id`, applied by `applyDenseScalarHostProps`.
+ *     `className` and `id`, or the same scalar identity plus the declared
+ *     attributes of an `image` or `list-item`. The common identity is applied
+ *     by `applyDenseScalarHostProps`; declared attributes are direct PAPI writes.
  *
  * Two things the dense path allows are refused here anyway, and both are the
  * first slice's surface rather than the design's:
@@ -67,10 +69,11 @@
  *     first screen that differs from the one the command path would have
  *     painted is worse than one that was never compiled. So an unbound node is
  *     held to the same scalar set as a bound one.
- *   * **Host types with no proven factory/prop route** — `scroll-view`, `image`
- *     and anything else. `<list-item>` is the one generic-factory exception: it
- *     carries the scalar attributes declared by `LynxListItemProps`, and admitting it is what
- *     lets a deferred native-list row retain this program for per-cell paint.
+ *   * **Host types with no proven factory/prop route** — `scroll-view` and
+ *     anything else. `<image>` and `<list-item>` are the two generic-factory
+ *     exceptions: each carries exactly the scalar attributes declared by its
+ *     public prop contract; list-item admission lets a deferred native-list row
+ *     retain this program for per-cell paint.
  *     The interpreter creates the remaining types through `createElement`, and
  *     so could this; what it could not yet do is *prove* it writes their props
  *     the way `applyProps` would. Widening stays one type at a time, with the
@@ -101,6 +104,7 @@ const INTRINSIC_FACTORY: Readonly<Record<string, 'view' | 'text' | 'rawText' | '
 		text: 'text',
 		'#text': 'rawText',
 		'raw-text': 'rawText',
+		image: 'element',
 		'list-item': 'element',
 	});
 
@@ -109,9 +113,26 @@ const SCALAR_HOST_PROPS: readonly string[] = Object.freeze(['class', 'className'
 
 const TEXT_SCALAR_HOST_PROPS: readonly string[] = Object.freeze([...SCALAR_HOST_PROPS, 'text']);
 
-/** Scalar attributes declared by the public `LynxListItemProps` contract. */
-const LIST_ITEM_SCALAR_HOST_PROPS: readonly string[] = Object.freeze([
+/** Scalar attributes declared by the public `LynxImageProps` contract. */
+const IMAGE_ATTRIBUTE_PROPS: readonly string[] = Object.freeze([
+	'src',
+	'mode',
+	'placeholder',
+	'blur-radius',
+	'cap-insets',
+	'cap-insets-scale',
+	'loop-count',
+	'auto-size',
+	'autoplay',
+	'tint-color',
+]);
+const IMAGE_SCALAR_HOST_PROPS: readonly string[] = Object.freeze([
 	...SCALAR_HOST_PROPS,
+	...IMAGE_ATTRIBUTE_PROPS,
+]);
+
+/** Scalar attributes declared by the public `LynxListItemProps` contract. */
+const LIST_ITEM_ATTRIBUTE_PROPS: readonly string[] = Object.freeze([
 	'item-key',
 	'sticky-top',
 	'sticky-bottom',
@@ -120,6 +141,10 @@ const LIST_ITEM_SCALAR_HOST_PROPS: readonly string[] = Object.freeze([
 	'reuse-identifier',
 	'recyclable',
 	'defer',
+]);
+const LIST_ITEM_SCALAR_HOST_PROPS: readonly string[] = Object.freeze([
+	...SCALAR_HOST_PROPS,
+	...LIST_ITEM_ATTRIBUTE_PROPS,
 ]);
 
 /**
@@ -133,6 +158,7 @@ const LIST_ITEM_SCALAR_HOST_PROPS: readonly string[] = Object.freeze([
  */
 function scalarHostProps(type: string): readonly string[] {
 	if (type === 'text') return TEXT_SCALAR_HOST_PROPS;
+	if (type === 'image') return IMAGE_SCALAR_HOST_PROPS;
 	return type === 'list-item' ? LIST_ITEM_SCALAR_HOST_PROPS : SCALAR_HOST_PROPS;
 }
 
@@ -358,7 +384,10 @@ function dynamicRoute(node: UniversalHostTemplateProgramNode): 0 | 1 | 2 {
 		return 1;
 	}
 	if (
-		(node.type === 'view' || node.type === 'text' || node.type === 'list-item') &&
+		(node.type === 'view' ||
+			node.type === 'text' ||
+			node.type === 'image' ||
+			node.type === 'list-item') &&
 		names.every((name) => scalarHostProps(node.type).includes(name)) &&
 		bindings.every((binding) => scalarHostProps(node.type).includes(binding.name))
 	) {
@@ -465,24 +494,20 @@ function emitScalarProps(
 			lines.push(`\t\tif (c${index} !== '') papi.setClasses(n${index}, c${index});`);
 		}
 	}
-	if (node.type !== 'list-item') return;
+	const attributeProps =
+		node.type === 'image'
+			? IMAGE_ATTRIBUTE_PROPS
+			: node.type === 'list-item'
+				? LIST_ITEM_ATTRIBUTE_PROPS
+				: null;
+	if (attributeProps === null) return;
 	const names = [
 		...Object.keys(node.props),
 		...(node.bindings ?? []).map((binding) => binding.name),
 	];
 	const emitted = new Set<string>();
 	for (const name of names) {
-		if (
-			emitted.has(name) ||
-			(name !== 'item-key' &&
-				name !== 'sticky-top' &&
-				name !== 'sticky-bottom' &&
-				name !== 'full-span' &&
-				name !== 'estimated-main-axis-size-px' &&
-				name !== 'reuse-identifier' &&
-				name !== 'recyclable' &&
-				name !== 'defer')
-		) {
+		if (emitted.has(name) || !attributeProps.includes(name)) {
 			continue;
 		}
 		emitted.add(name);
@@ -603,6 +628,12 @@ function emitSlotUpdate(
 	if (node.type === 'text' && site.name === 'text') {
 		lines.push(
 			`\t\t\tpapi.setAttribute(${target}, 'text', typeof value === 'string' ? value : '');`,
+		);
+		return;
+	}
+	if (node.type === 'image' && IMAGE_ATTRIBUTE_PROPS.includes(site.name)) {
+		lines.push(
+			`\t\t\tpapi.setAttribute(${target}, ${JSON.stringify(site.name)}, value == null ? null : value);`,
 		);
 		return;
 	}

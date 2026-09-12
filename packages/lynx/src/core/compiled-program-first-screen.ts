@@ -39,18 +39,6 @@ function fail(message: string): never {
 	throw new TypeError(DEVELOPMENT ? `Octane Lynx compact first screen ${message}.` : CODE);
 }
 
-function sameValues(
-	input: LynxCompiledProgramMount<LynxElementRef>,
-	expected: readonly unknown[],
-): boolean {
-	const offset = input.valueOffset ?? 0;
-	if (expected.length !== input.plan.values.length * input.count) return false;
-	for (let index = 0; index < expected.length; index++) {
-		if (!Object.is(input.values[offset + index], expected[index])) return false;
-	}
-	return true;
-}
-
 /**
  * Paint the proved program-only first screen and offer its physical outputs to
  * the first compact background frame.
@@ -219,8 +207,8 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 			expectedValues.push(...proof.selectedValues);
 			count++;
 		}
-		if (input.before !== null || !sameValues(input, expectedValues)) {
-			fail(`background run ${input.firstHandle} disagrees with painted values or order`);
+		if (input.before !== null) {
+			fail(`background run ${input.firstHandle} disagrees with painted order`);
 		}
 		const first = painted[start]!;
 		const stride = input.count > 1 ? painted[start + 1]!.firstId - first.firstId : first.stride;
@@ -229,6 +217,7 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 			firstListenerId: listener,
 			nodes: Object.freeze(nodes),
 			stride,
+			paintedValues: Object.freeze(expectedValues),
 		});
 		assigned.set(input.firstHandle, seed);
 		return seed;

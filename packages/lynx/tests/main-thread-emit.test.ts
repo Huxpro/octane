@@ -214,6 +214,31 @@ const LIST_ITEM_SLOT_UPDATES: UniversalHostTemplateProgram = {
 	events: [],
 };
 
+/** Every public scalar `<image>` attribute, plus its identity, all dynamic. */
+const IMAGE_SLOT_UPDATES: UniversalHostTemplateProgram = {
+	nodes: [
+		{
+			type: 'image',
+			parent: -1,
+			props: { class: 'avatar' },
+			bindings: [
+				{ name: 'id', valueIndex: 0 },
+				{ name: 'src', valueIndex: 1 },
+				{ name: 'mode', valueIndex: 2 },
+				{ name: 'placeholder', valueIndex: 3 },
+				{ name: 'blur-radius', valueIndex: 4 },
+				{ name: 'cap-insets', valueIndex: 5 },
+				{ name: 'cap-insets-scale', valueIndex: 6 },
+				{ name: 'loop-count', valueIndex: 7 },
+				{ name: 'auto-size', valueIndex: 8 },
+				{ name: 'autoplay', valueIndex: 9 },
+				{ name: 'tint-color', valueIndex: 10 },
+			],
+		},
+	],
+	events: [],
+};
+
 const LIST_SITES: readonly LynxMainThreadProgramRange[] = [{ node: 0 }];
 
 /**
@@ -1339,6 +1364,84 @@ describe('Lynx compiled value-slot updates', () => {
 		expect(shape(nodes[2] as never)).toEqual(expect.objectContaining({ id: null }));
 		expect(shape(nodes[3] as never)).toEqual(expect.objectContaining({ text: '' }));
 		expect(shape(nodes[5] as never)).toEqual(expect.objectContaining({ text: 'raw after' }));
+	});
+
+	it('matches the generic applier for image creation and every direct scalar update', () => {
+		const initial = [
+			'image-1',
+			'one.png',
+			'aspectFill',
+			'placeholder.png',
+			'2px',
+			'1px 2px',
+			2,
+			3,
+			true,
+			false,
+			'#fff',
+		] as const;
+		const next = [null, 'two.png', 'center', null, null, null, null, 1, false, true, null] as const;
+		const names = [
+			'id',
+			'src',
+			'mode',
+			'placeholder',
+			'blur-radius',
+			'cap-insets',
+			'cap-insets-scale',
+			'loop-count',
+			'auto-size',
+			'autoplay',
+			'tint-color',
+		] as const;
+
+		const reference = createHost();
+		const container = createLynxHostContainer(reference, { root: 1 });
+		prepareLynxHostBatch(container, {
+			renderer: 'lynx',
+			version: 1,
+			commands: [
+				{
+					op: 'mount-template-run',
+					parent: null,
+					before: null,
+					program: IMAGE_SLOT_UPDATES,
+					firstId: 10,
+					firstListenerId: null,
+					count: 1,
+					values: initial,
+				},
+			],
+		}).apply();
+		prepareLynxHostBatch(container, {
+			renderer: 'lynx',
+			version: 2,
+			commands: [
+				{
+					op: 'update',
+					id: 10,
+					props: {
+						class: 'avatar',
+						...Object.fromEntries(names.map((name, slot) => [name, next[slot]])),
+					},
+				},
+			],
+		}).apply();
+
+		const candidate = createHost();
+		const page = candidate.createPage('0', 0);
+		const create = instantiateSlotCreate(IMAGE_SLOT_UPDATES, 'createImageSlotUpdates')(candidate);
+		const nodes = create(...([candidate.getUniqueId(page), ...initial] as never[]));
+		candidate.insertBefore(page, nodes[0] as never, null);
+		for (let slot = 0; slot < next.length; slot++) {
+			expect(create.set(nodes, slot, next[slot])).toBe(true);
+		}
+		expect(paintedTree(shape(candidate.pages[0]!))).toEqual(
+			paintedTree(shape(reference.pages[0]!)),
+		);
+		expect(shape(nodes[0] as never)).toEqual(
+			expect.objectContaining({ type: 'image', classes: 'avatar', id: null }),
+		);
 	});
 
 	it('updates one instance inside a flat dense-run output without slicing its nodes', () => {
