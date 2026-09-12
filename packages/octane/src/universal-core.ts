@@ -5925,7 +5925,7 @@ const scheduleOwner = createScheduleOwner<UniversalOwnerRecord>((owner, slot) =>
 			typeof slot === 'symbol' || typeof slot === 'number' ? slot : undefined,
 		);
 	}
-	owner.root.scheduleOwned(owner);
+	owner.root.scheduleOwned(owner, slot);
 });
 
 function currentDraftOwner(): DraftOwner {
@@ -6041,6 +6041,24 @@ function cloneStateHook<T>(owner: DraftOwner, slot: unknown): StateHook<T> | und
 	return hook;
 }
 
+function cloneReducerHook<S, A>(owner: DraftOwner, slot: unknown): ReducerHook<S, A> | undefined {
+	let hook = owner.hooks.get(slot) as ReducerHook<S, A> | undefined;
+	if (hook?.kind !== 'reducer') return undefined;
+	if (!owner.clonedHooks.has(slot)) {
+		hook = { ...hook };
+		owner.hooks.set(slot, hook);
+		owner.clonedHooks.add(slot);
+		hook.value = applyUniversalHookUpdateQueue(
+			owner,
+			slot,
+			'reducer',
+			hook.value,
+			(value, action) => hook!.reducer(value, action as A),
+		);
+	}
+	return hook;
+}
+
 function projectedStateValue<T>(record: UniversalOwnerRecord, slot: unknown, fallback: T): T {
 	const draft = findDraftOwner(record);
 	const draftHook = draft?.hooks.get(slot) as StateHook<T> | undefined;
@@ -6128,7 +6146,7 @@ export interface UniversalHookScopeServices {
 	 * while no render of this scope was in flight. An update raised *during* a
 	 * render settles inside that render, so this is never re-entrant.
 	 */
-	scheduleRender(): void;
+	scheduleRender(slot: unknown): void;
 	/**
 	 * Publish layout-effect cleanup/create work after the host has accepted the
 	 * render this scope just committed. Absence keeps every effect refused.
@@ -6149,6 +6167,17 @@ export interface UniversalHookScope {
 	 * is the output of the last pass rather than the first.
 	 */
 	render<T>(setup: () => T): T;
+	/**
+	 * Apply queued updates for the named state/reducer cells, then run only the
+	 * compiler-proved computation that consumes their stable getters. Returns
+	 * false without opening a transaction when any slot is not independently
+	 * projectable, so the host can fall back to a complete component render.
+	 */
+	renderDirty(
+		slots: readonly unknown[],
+		compute: (sources: readonly (() => unknown)[]) => void,
+	): boolean;
+
 	/** Publish the last render's cells and drop the updates it consumed. */
 	commit(): void;
 	/** Drop the last render's cells, leaving the committed ones in place. */
@@ -6191,8 +6220,8 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 		// transition batches, which would promote through root machinery this
 		// stand-in deliberately does not have.
 		hookScopeStandIn: true,
-		scheduleOwned(): void {
-			services.scheduleRender();
+		scheduleOwned(_owner: UniversalOwnerRecord, slot: unknown): void {
+			services.scheduleRender(slot);
 		},
 	} as unknown as UniversalRootImpl<any, any>;
 	const scopeId = (NEXT_HOOK_SCOPE_ID++).toString(36);
@@ -6289,6 +6318,68 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 				CURRENT_ATTEMPT = null;
 				CURRENT_OWNER = null;
 			}
+		},
+		renderDirty(slots, compute): boolean {
+			if (record.disposed) {
+				throw new Error('Octane universal hook scope: this scope was disposed.');
+			}
+			if (CURRENT_ATTEMPT !== null) {
+				throw new Error('Octane universal hook scope: a render is already in flight.');
+			}
+			const sources: (() => unknown)[] = [];
+			for (const slot of slots) {
+				const hook = record.hooks.get(slot);
+				if (hook?.kind === 'reducer') sources.push(hook.get);
+				else if (hook?.kind === 'state' && !('linked' in hook)) sources.push(hook.get);
+				else return false;
+			}
+			const owner = draftOwner(record, null, HOOK_SCOPE_REPLAY);
+			const attempt: RenderAttempt = {
+				root,
+				hookRoot,
+				owner,
+				scope: null,
+				owners: [owner],
+				treeFeatures: 0,
+				replayEntries: HOOK_SCOPE_REPLAY_ENTRIES,
+				retryThenables: new Set(),
+				nextUniversalId,
+				implicitSlot: 0,
+				transitionBatches: HOOK_SCOPE_BATCHES,
+				transitionRender: false,
+				bridgeContextReads: null,
+				retainEligible: false,
+				retainedCount: 0,
+				dirtyEpoch: 0,
+			};
+			CURRENT_ATTEMPT = attempt;
+			CURRENT_OWNER = owner;
+			const warmPlanCheckpoint = ACTIVE_UNIVERSAL_WARM_PLANS.length;
+			try {
+				for (let pass = 0; ; pass++) {
+					if (pass === 25) throw new Error('Too many universal render-phase updates.');
+					ACTIVE_UNIVERSAL_WARM_PLANS.length = warmPlanCheckpoint;
+					// A proved computation declares no hooks. Preserve the committed
+					// effect set so accepting this partial transaction cannot clean one up.
+					owner.seenEffects = [...record.effectOrder];
+					owner.needsRender = false;
+					owner.implicitSlot = 0;
+					for (const slot of slots) {
+						const hook = owner.hooks.get(slot);
+						if (hook?.kind === 'reducer') cloneReducerHook(owner, slot);
+						else cloneStateHook(owner, slot);
+					}
+					compute(sources);
+					if (!owner.needsRender) break;
+				}
+				draft = owner;
+				nextUniversalId = attempt.nextUniversalId;
+			} finally {
+				ACTIVE_UNIVERSAL_WARM_PLANS.length = warmPlanCheckpoint;
+				CURRENT_ATTEMPT = null;
+				CURRENT_OWNER = null;
+			}
+			return true;
 		},
 		commit(): void {
 			const owner = draft;
@@ -6752,18 +6843,7 @@ export function useReducer<S, A, I = S>(
 		owner.hooks.set(resolved, hook as UniversalHook);
 		owner.clonedHooks.add(resolved);
 	} else {
-		if (!owner.clonedHooks.has(resolved)) {
-			hook = { ...hook };
-			owner.hooks.set(resolved, hook);
-			owner.clonedHooks.add(resolved);
-			hook.value = applyUniversalHookUpdateQueue(
-				owner,
-				resolved,
-				'reducer',
-				hook.value,
-				(value, action) => reducer(value, action as A),
-			);
-		}
+		hook = cloneReducerHook<S, A>(owner, resolved)!;
 		hook.reducer = reducer;
 	}
 	return [hook.value, hook.dispatch, hook.get];
@@ -8894,7 +8974,7 @@ class UniversalRootImpl<Container, PublicInstance>
 		if (this.eventScopeDepth === 0 && UNIVERSAL_SYNC_DEPTH === 0) this.queueScheduledWork();
 	}
 
-	scheduleOwned(owner: UniversalOwnerRecord): void {
+	scheduleOwned(owner: UniversalOwnerRecord, _slot?: unknown): void {
 		if (owner.root !== this || owner.disposed) return;
 		this.scheduledOwners.add(owner);
 		// Stamp the owner and its ancestors so retained-subtree adoption can see

@@ -33,6 +33,7 @@ import {
 	useMemo,
 	useRef,
 	useState,
+	useReducer,
 	useSyncExternalStore,
 } from 'octane/universal/native';
 
@@ -87,6 +88,101 @@ describe('universal hook scope', () => {
 		// rather than folding the increment into it a second time.
 		expect(pass(() => useState(1, 'count')[0])).toBe(2);
 		expect(scheduled).toEqual([1]);
+		scope.dispose();
+	});
+	it('projects named state and reducer queues without rerunning the component', () => {
+		const scheduled: unknown[] = [];
+		const accepted: (() => void)[] = [];
+		const lifecycle: string[] = [];
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender(slot) {
+				scheduled.push(slot);
+			},
+			scheduleLayoutEffectCommit(task) {
+				accepted.push(task);
+			},
+		});
+		let setCount!: (value: number | ((previous: number) => number)) => void;
+		let addTotal!: (value: number) => void;
+
+		scope.render(() => {
+			const [, updateCount] = useState(1, 'count');
+			const [, dispatchTotal] = useReducer(
+				(state: number, value: number) => state + value,
+				10,
+				'total',
+			);
+			useLayoutEffect(
+				() => {
+					lifecycle.push('create');
+					return () => lifecycle.push('cleanup');
+				},
+				[],
+				'effect',
+			);
+			setCount = updateCount;
+			addTotal = dispatchTotal;
+		});
+		scope.commit();
+		accepted.shift()!();
+		expect(lifecycle).toEqual(['create']);
+
+		setCount((previous) => previous + 1);
+		addTotal(2);
+		addTotal(3);
+		expect(scheduled).toEqual(['count', 'total', 'total']);
+
+		let projected: readonly unknown[] = [];
+		expect(
+			scope.renderDirty(['count', 'total'], (sources) => {
+				projected = sources.map((read) => read());
+			}),
+		).toBe(true);
+		expect(projected).toEqual([2, 15]);
+		scope.abort();
+
+		// Abort retains both queues; the retry projects the same values and only
+		// its accepted transaction drains them.
+		expect(
+			scope.renderDirty(['count', 'total'], (sources) => {
+				projected = sources.map((read) => read());
+			}),
+		).toBe(true);
+		expect(projected).toEqual([2, 15]);
+		scope.commit();
+		expect(accepted).toEqual([]);
+		expect(lifecycle).toEqual(['create']);
+
+		const published = scope.render(() => [
+			useState(0, 'count')[0],
+			useReducer((state: number, value: number) => state + value, 0, 'total')[0],
+		]);
+		expect(published).toEqual([2, 15]);
+		scope.abort();
+
+		scope.dispose();
+		accepted.shift()!();
+		expect(lifecycle).toEqual(['create', 'cleanup']);
+	});
+
+	it('refuses an unknown dirty slot before opening a transaction', () => {
+		const { scope, pass } = scopeWithLog();
+		let set!: (value: number) => void;
+		pass(() => {
+			const [, update] = useState(1, 'count');
+			set = update;
+		});
+		set(4);
+
+		let ran = false;
+		expect(
+			scope.renderDirty(['missing'], () => {
+				ran = true;
+			}),
+		).toBe(false);
+		expect(ran).toBe(false);
+		expect(pass(() => useState(0, 'count')[0])).toBe(4);
 		scope.dispose();
 	});
 
