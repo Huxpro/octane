@@ -679,7 +679,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				const before = next === null ? null : rootOf(instances.get(next)!);
 				for (let index = 0; index < input.count; index++) {
 					const node = created[index * nodeStride];
-					if (node === null || typeof node !== 'object')
+					if (node === null || node === undefined)
 						fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `did not publish root ${index}`);
 					papi.insertBefore(input.parent, node, before);
 				}

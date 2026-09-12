@@ -417,6 +417,45 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		expect(page.children.map((node) => node.id)).toEqual(['row-1', 'selected', 'row-3']);
 	});
 
+	it('accepts an opaque non-object Element handle published by a native driver', () => {
+		const base = emittedHost();
+		const page = base.createPage('0', 0);
+		const inserted: unknown[] = [];
+		const papi: typeof base = {
+			...base,
+			insertBefore(_parent, child) {
+				inserted.push(child);
+			},
+		};
+		// Native LepusNG Element references have an engine-owned `typeof` result
+		// rather than JavaScript's "object". A callable is the closest V8-visible
+		// stand-in that still satisfies the public opaque-object TypeScript ABI.
+		const opaqueRoot = (() => {}) as unknown as FakeNode;
+		const create = (() => [opaqueRoot]) as UniversalProgramCreate;
+		Object.defineProperty(create, 'run', {
+			value(...args: Parameters<NonNullable<UniversalProgramCreate['run']>>) {
+				args[5][0] = opaqueRoot;
+			},
+		});
+		const plan: UniversalProgramPlan = {
+			kind: 'program',
+			slots: [],
+			nodes: 1,
+			values: [],
+			events: [],
+			ranges: [],
+			bind: () => create,
+		};
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page));
+
+		store.begin();
+		store.mount({ firstHandle: 1, count: 1, parent: page, before: null, plan, values: [] });
+		store.commit();
+
+		expect(inserted).toEqual([opaqueRoot]);
+		expect(store.size()).toBe(1);
+	});
+
 	it('mounts through the emitted driver and updates generated scalar slots in place', () => {
 		const papi = emittedHost();
 		const page = papi.createPage('0', 0);
