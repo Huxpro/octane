@@ -354,11 +354,27 @@ interface RangeState {
 	keyedSelection: NonNullable<UniversalForValue['keyedSelection']> | null;
 }
 
+/**
+ * The scheduler owned by one stateful keyed row.
+ *
+ * The retained key, not the page, is the semantic owner. `current` is replaced
+ * only after the host accepts a render, so an aborted parent or row attempt
+ * keeps both the committed props and the committed closures available for an
+ * exact retry. A move changes neither this object nor its hook cells.
+ */
+interface ScopedRowState {
+	current: RetainedRow | null;
+	state: RangeState | null;
+	key: unknown;
+	queued: boolean;
+}
+
 /** One row's last render: what produced it, and what it produced. */
 interface RetainedRow {
 	readonly component: LynxComponent<never>;
 	readonly props: unknown;
 	readonly scope: UniversalHookScope | null;
+	readonly scoped: ScopedRowState | null;
 	readonly values: readonly UniversalHostTemplateProgramValue[];
 	readonly listeners: readonly (LynxBlockListener | null)[];
 	/** Last committed list order, used to preserve old/new row evaluation order. */
@@ -760,29 +776,44 @@ export function lynxBlockProgramForComponent<Props>(
 		// the row is called with exactly what was compared.
 		component: LynxComponent<never> | null,
 		props: unknown,
-		previousScope: UniversalHookScope | null,
+		previous: RetainedRow | null,
 	): {
 		readonly scope: UniversalHookScope | null;
+		readonly scoped: ScopedRowState | null;
 		readonly values: readonly UniversalHostTemplateProgramValue[];
 		readonly listeners: readonly (LynxBlockListener | null)[];
 	} => {
 		// Component rows own semantic cells independently of their host blocks.
 		// The key map retains the scope; the host acknowledgement publishes its
 		// draft, while a refused/retried parent attempt rolls it back.
-		let rowScope = previousScope;
+		let rowScope = previous?.scope ?? null;
+		let scoped = previous?.scoped ?? null;
 		let rendered: RenderedPlan;
 		if (component !== null && componentMayNeedHookScope(component)) {
 			const created = rowScope === null;
-			const cells = (rowScope ??= createUniversalHookScope({
-				renderer: LYNX_TRANSPORT_RENDERER,
-				scheduleRender: queueStateRender,
-				scheduleLayoutEffectCommit(task): void {
-					liveContext!.afterCommit(task);
-				},
-				schedulePassiveEffectCommit(task): void {
-					liveContext!.afterPassiveCommit(task);
-				},
-			}));
+			if (created) {
+				let owner: ScopedRowState;
+				rowScope = createUniversalHookScope({
+					renderer: LYNX_TRANSPORT_RENDERER,
+					scheduleRender(): void {
+						queueScopedRowStateRender(owner);
+					},
+					scheduleLayoutEffectCommit(task): void {
+						liveContext!.afterCommit(task);
+					},
+					schedulePassiveEffectCommit(task): void {
+						liveContext!.afterPassiveCommit(task);
+					},
+				});
+				owner = {
+					current: null,
+					state: null,
+					key: undefined,
+					queued: false,
+				};
+				scoped = owner;
+			}
+			const cells = rowScope!;
 			context.afterAbort(() => {
 				cells.abort();
 				if (created) cells.dispose();
@@ -873,10 +904,109 @@ export function lynxBlockProgramForComponent<Props>(
 		}
 		return {
 			scope: component === null ? null : rowScope,
+			scoped: component === null ? null : scoped,
 			values,
 			listeners: listenersAt(sites, rendered.values),
 		};
 	};
+
+	/** Publish the address a row-owned setter may update after host acceptance. */
+	const publishScopedRow = (
+		context: LynxBlockProgramContext,
+		state: RangeState,
+		key: unknown,
+		row: RetainedRow,
+	): void => {
+		const owner = row.scoped;
+		if (owner === null) return;
+		context.afterCommit(() => {
+			owner.current = row;
+			owner.state = state;
+			owner.key = key;
+		});
+	};
+
+	/**
+	 * Re-run only the semantic scope whose cell changed.
+	 *
+	 * The row's committed props are already the input `renderRange` would have
+	 * rebuilt by scanning the parent iterable. Its retained key addresses the
+	 * mounted instance directly, so neither the page setup nor any unrelated row
+	 * body participates. Opaque calls inside this row still execute: the scope is
+	 * the conservative boundary when the compiler cannot prove a smaller pure
+	 * computation.
+	 */
+	function renderScopedRowAgain(context: LynxBlockProgramContext, owner: ScopedRowState): void {
+		const current = owner.current;
+		const state = owner.state;
+		if (current === null || state === null || state.site === null) return;
+		const rendered = renderRow(
+			context,
+			state,
+			undefined,
+			current.component,
+			current.props,
+			current,
+		);
+		const next: RetainedRow = {
+			component: current.component,
+			props: current.props,
+			scope: rendered.scope,
+			scoped: rendered.scoped,
+			values: rendered.values,
+			listeners: rendered.listeners,
+			index: current.index,
+		};
+		const member = context.core.writeKeyedValues(state.site, owner.key, rendered.values);
+		if (member === undefined) {
+			refuse(
+				current.component,
+				LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+					'its retained keyed scope no longer names a mounted row during a local update.',
+			);
+		}
+		if (state.prepared!.events.length !== 0) {
+			if (rendered.listeners.includes(null)) context.root.releaseListeners(member);
+			context.root.bindListeners(member, rendered.listeners);
+		}
+		publishScopedRow(context, state, owner.key, next);
+	}
+
+	/** Queue one row-owned update without promoting it to the page scope. */
+	function queueScopedRowStateRender(owner: ScopedRowState): void {
+		if (owner.queued) return;
+		const context = liveContext;
+		const state = owner.state;
+		if (
+			context === null ||
+			block === null ||
+			owner.current === null ||
+			state === null ||
+			state.site === null
+		) {
+			return;
+		}
+		owner.queued = true;
+		void context
+			.scheduleRender(() => {
+				owner.queued = false;
+				const scheduledState = owner.state;
+				if (
+					block === null ||
+					owner.current === null ||
+					scheduledState === null ||
+					scheduledState.site === null
+				) {
+					return;
+				}
+				renderScopedRowAgain(context, owner);
+			})
+			.catch((error: unknown) => {
+				setTimeout(() => {
+					throw error;
+				}, 0);
+			});
+	}
 
 	/**
 	 * Render every row of one range, without writing anything.
@@ -936,18 +1066,21 @@ export function lynxBlockProgramForComponent<Props>(
 						);
 					}
 					if (blockShallowEqual(prior.props, props)) continue;
-					const row = renderRow(context, state, produced, component, props, prior.scope);
+					const row = renderRow(context, state, produced, component, props, prior);
 					sparse.push({
 						key: itemKey,
 						retained: {
 							component,
 							props,
 							scope: row.scope,
+							scoped: row.scoped,
 							values: row.values,
 							listeners: row.listeners,
 							index: prior.index,
 						},
 					});
+					const retainedRow = sparse[sparse.length - 1]!.retained;
+					publishScopedRow(context, state, itemKey, retainedRow);
 				}
 			}
 			return {
@@ -1056,25 +1189,26 @@ export function lynxBlockProgramForComponent<Props>(
 				produced,
 				component,
 				props,
-				prior?.component === component ? prior.scope : null,
+				prior?.component === component ? prior : null,
 			);
 			if (row.scope !== null) hasScopedRows = true;
 			rows[index] = row.values;
 			handlers[index] = row.listeners;
 			rendered.push(index);
-			retained.set(
-				itemKey,
-				component === null
-					? null
-					: {
-							component,
-							props,
-							scope: row.scope,
-							values: row.values,
-							listeners: row.listeners,
-							index,
-						},
-			);
+			let retainedRow: RetainedRow | null = null;
+			if (component !== null) {
+				retainedRow = {
+					component,
+					props,
+					scoped: row.scoped,
+					scope: row.scope,
+					values: row.values,
+					listeners: row.listeners,
+					index,
+				};
+				publishScopedRow(context, state, itemKey, retainedRow);
+			}
+			retained.set(itemKey, retainedRow);
 		}
 		if (previous !== null) {
 			for (const [key, prior] of previous) {
@@ -1082,7 +1216,14 @@ export function lynxBlockProgramForComponent<Props>(
 				const next = retained.get(key);
 				if (next?.scope === prior.scope) continue;
 				const oldScope = prior.scope;
-				context.afterCommit(() => oldScope.dispose());
+				const oldOwner = prior.scoped;
+				context.afterCommit(() => {
+					if (oldOwner !== null) {
+						oldOwner.current = null;
+						oldOwner.state = null;
+					}
+					oldScope.dispose();
+				});
 			}
 		}
 
@@ -1418,11 +1559,11 @@ export function lynxBlockProgramForComponent<Props>(
 
 		unmount(context) {
 			// Snapshot semantic owners before the physical ranges are cleared.
-			const rowScopes: UniversalHookScope[] = [];
+			const scopedRows: RetainedRow[] = [];
 			for (const range of ranges) {
 				if (range.retained === null) continue;
 				for (const row of range.retained.values()) {
-					if (row?.scope !== null && row?.scope !== undefined) rowScopes.push(row.scope);
+					if (row?.scope !== null && row?.scope !== undefined) scopedRows.push(row);
 				}
 			}
 
@@ -1437,7 +1578,13 @@ export function lynxBlockProgramForComponent<Props>(
 			}
 			if (block !== null) context.core.destroyRoot(block);
 			context.afterCommit(() => {
-				for (const rowScope of rowScopes) rowScope.dispose();
+				for (const row of scopedRows) {
+					if (row.scoped !== null) {
+						row.scoped.current = null;
+						row.scoped.state = null;
+					}
+					row.scope!.dispose();
+				}
 				block = null;
 				ranges = EMPTY_RANGES;
 				// The cells outlive nothing: a setter captured by a handler this

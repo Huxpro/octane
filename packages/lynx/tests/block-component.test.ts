@@ -26,7 +26,7 @@
 // What this does not cover is refused by name rather than half-rendered, and
 // the refusals are asserted here too: insertion/context ownership and nested
 // keyed range sites remain later composition layers.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
 	createContext,
@@ -935,19 +935,26 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		});
 
 		const lifecycle: string[] = [];
+		const observations: string[] = [];
+		const movedObservations: string[] = [];
 		const log = (entry: string): void => void lifecycle.push(entry);
+		const observe = (entry: string): void => void observations.push(entry);
+		const observeMoved = (entry: string): void => void movedObservations.push(entry);
 		const one = { id: 1, label: 'one' };
 		const two = { id: 2, label: 'two' };
 		const block = blockColumn<BlockScopedRowsProps>();
 		const component = BlockScopedRowsFixture as never as LynxComponent<BlockScopedRowsProps>;
-		await block.render(component, { rows: [one, two], log });
+		await block.render(component, { rows: [one, two], log, observe });
 		await flushMicrotasks();
 		expect(lifecycle).toEqual(['effect:one:quiet', 'effect:two:quiet']);
+		expect(observations).toEqual(['page', 'row:1', 'row:2']);
+		observations.length = 0;
 
 		deliverTo(block, rowListener(block.main.commits, 0));
 		await block.settle(Promise.resolve());
 		await flushMicrotasks();
 		expect(paint(block.main.commits).tree).toContain('one-loud');
+		expect(observations).toEqual(['row:1']);
 		expect(lifecycle).toEqual([
 			'effect:one:quiet',
 			'effect:two:quiet',
@@ -955,18 +962,129 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 			'effect:one:loud',
 		]);
 
-		await block.render(component, { rows: [two, one], log });
+		await block.render(component, { rows: [two, one], log, observe: observeMoved });
 		await flushMicrotasks();
 		const reordered = paint(block.main.commits).tree;
 		expect(reordered.indexOf('two-quiet')).toBeLessThan(reordered.indexOf('one-loud'));
 		expect(lifecycle).toHaveLength(4);
 
-		await block.render(component, { rows: [two], log });
+		observations.length = 0;
+		movedObservations.length = 0;
+		deliverTo(block, rowListener(block.main.commits, 1));
+		await block.settle(Promise.resolve());
 		await flushMicrotasks();
-		expect(lifecycle.at(-1)).toBe('cleanup:one:loud');
+		expect(observations).toEqual([]);
+		expect(movedObservations).toEqual(['row:1']);
+		expect(paint(block.main.commits).tree).toContain('one-quiet');
+
+		await block.render(component, { rows: [two], log, observe: observeMoved });
+		await flushMicrotasks();
+		expect(lifecycle.at(-1)).toBe('cleanup:one:quiet');
+
+		await block.render(component, { rows: [two, one], log, observe: observeMoved });
+		await flushMicrotasks();
+		expect(paint(block.main.commits).tree).toContain('one-quiet');
+		expect(lifecycle.at(-1)).toBe('effect:one:quiet');
+
 		await block.settle(block.background.unmountAsync());
 		await flushMicrotasks();
-		expect(lifecycle.at(-1)).toBe('cleanup:two:quiet');
+		expect(lifecycle.slice(-2)).toEqual(['cleanup:two:quiet', 'cleanup:one:quiet']);
+	});
+
+	it('keeps row-state discovery constant as unrelated stateful rows grow', async () => {
+		const component = BlockScopedRowsFixture as never as LynxComponent<BlockScopedRowsProps>;
+		for (const count of [2, 128]) {
+			const observations: string[] = [];
+			const core = createLynxBlockCore();
+			const block = blockColumn<BlockScopedRowsProps>(core);
+			const rows = Array.from({ length: count }, (_, index) => ({
+				id: index + 1,
+				label: `row ${index + 1}`,
+			}));
+			await block.render(component, {
+				rows,
+				log: noop,
+				observe: (entry) => observations.push(entry),
+			});
+			observations.length = 0;
+			const before = core.counters();
+
+			deliverTo(block, rowListener(block.main.commits, 0));
+			await block.settle(Promise.resolve());
+
+			const after = core.counters();
+			expect(observations, `${count} rows`).toEqual(['row:1']);
+			expect(
+				{
+					lookups: after.blockLookups - before.blockLookups,
+					commands: after.commands - before.commands,
+				},
+				`${count} rows`,
+			).toEqual({ lookups: 1, commands: 3 });
+			const tree = paint(block.main.commits).tree;
+			expect(tree).toContain('row #0-loud');
+			expect(tree).toContain('ROW #0:loud');
+			expect(tree).toContain('quiet');
+			await block.settle(block.background.unmountAsync());
+		}
+	});
+
+	it('rolls a rejected row-local frame back and recovers its queued state on retry', async () => {
+		vi.useFakeTimers();
+		try {
+			const lifecycle: string[] = [];
+			const observations: string[] = [];
+			const one = { id: 1, label: 'one' };
+			const props: BlockScopedRowsProps = {
+				rows: [one],
+				log: (entry) => void lifecycle.push(entry),
+				observe: (entry) => void observations.push(entry),
+			};
+			const component = BlockScopedRowsFixture as never as LynxComponent<BlockScopedRowsProps>;
+			const block = blockColumn<BlockScopedRowsProps>();
+
+			const mounting = block.background.renderAsync(component as never, props);
+			await flushMicrotasks();
+			expect(block.main.commits).toHaveLength(1);
+			block.main.acknowledge(block.main.commits[0]!);
+			await mounting;
+			await flushMicrotasks();
+			expect(lifecycle).toEqual(['effect:one:quiet']);
+
+			observations.length = 0;
+			deliverTo(block, rowListener(block.main.commits, 0));
+			await flushMicrotasks();
+			expect(block.main.commits).toHaveLength(2);
+			expect(observations).toEqual(['row:1']);
+			block.main.reject(block.main.commits[1]!, 'injected row-local rejection');
+			await flushMicrotasks();
+			expect(lifecycle).toEqual(['effect:one:quiet']);
+			expect(paint([block.main.commits[0]!]).tree).toContain('one-quiet');
+
+			observations.length = 0;
+			const retried = block.background.renderAsync(component as never, {
+				...props,
+				rows: [{ ...one }],
+			});
+			await flushMicrotasks();
+			expect(block.main.commits).toHaveLength(3);
+			block.main.acknowledge(block.main.commits[2]!);
+			await retried;
+			await flushMicrotasks();
+			expect(observations).toEqual(['page', 'row:1']);
+			expect(paint([block.main.commits[0]!, block.main.commits[2]!]).tree).toContain('one-loud');
+			expect(lifecycle).toEqual(['effect:one:quiet', 'cleanup:one:quiet', 'effect:one:loud']);
+
+			const unmounting = block.background.unmountAsync();
+			await flushMicrotasks();
+			block.main.acknowledge(block.main.commits[3]!);
+			await unmounting;
+			await flushMicrotasks();
+			expect(lifecycle.at(-1)).toBe('cleanup:one:loud');
+		} finally {
+			vi.clearAllTimers();
+			vi.useRealTimers();
+		}
 	});
 
 	it('mounts a compiler-proven hooked row in its own semantic scope', async () => {
@@ -1177,9 +1295,11 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 
 	it('keeps conditional reducer slots and projects queued row actions through the getter', async () => {
 		const totals = ['none', 'once', 'twice', 'thrice'] as const;
+		let passes = 0;
 		const Row = defineUniversalComponent(
 			LYNX_TRANSPORT_RENDERER,
 			function Row(props: { readonly row: TableRow; readonly extra: boolean }) {
+				passes++;
 				let lead = 'skipped';
 				if (props.extra) {
 					const [value] = useState('lead', 'lead');
@@ -1231,9 +1351,11 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		const block = blockColumn<ReducerListProps>();
 
 		await block.render(Listed as never, { rows, extra: true });
+		expect(passes).toBe(1);
 		deliverTo(block, rowListener(block.main.commits, 0));
 		await block.settle(Promise.resolve());
 		expect(paint(block.main.commits).tree).toContain('lead-thrice');
+		expect(passes).toBe(2);
 
 		await block.render(Listed as never, { rows, extra: false });
 		expect(paint(block.main.commits).tree).toContain('skipped-thrice');
