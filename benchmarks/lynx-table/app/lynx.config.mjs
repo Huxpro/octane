@@ -8,6 +8,11 @@ import { pluginOctane } from '@octanejs/rspeedy-plugin';
 // so create cost is measurable without taps (mount-create ladder).
 const autoRows = Number(process.env.BENCH_AUTOROWS ?? '0') || 0;
 const autoSuffix = autoRows > 0 ? `-rows${autoRows}` : '';
+const listRows = Number(process.env.BENCH_LIST_ROWS ?? '0') || 0;
+if (autoRows > 0 && listRows > 0) {
+	throw new TypeError('BENCH_AUTOROWS and BENCH_LIST_ROWS are mutually exclusive.');
+}
+const listSuffix = listRows > 0 ? `-list-rows${listRows}` : '';
 
 // OCTANE_LYNX_PROFILE=1 turns on the wire-cost counters in @octanejs/lynx
 // (globalThis.__OCTANE_LYNX_PROF on both threads). Off by default so the
@@ -117,15 +122,17 @@ export default defineConfig(({ command }) => {
 					programSuffix +
 					tagSuffix +
 					autoSuffix +
+					listSuffix +
 					(profile ? '-profile' : ''),
 			},
 		},
 		source: {
 			entry: {
-				main: './src/index.ts',
+				main: listRows > 0 ? './src/list-index.ts' : './src/index.ts',
 			},
 			define: {
 				__BENCH_AUTOROWS__: JSON.stringify(autoRows),
+				__BENCH_LIST_ROWS__: JSON.stringify(listRows),
 				__OCTANE_LYNX_PROFILE__: JSON.stringify(profile),
 				__BENCH_CORE__: JSON.stringify(core),
 				__BENCH_BLOCK_MODE__: JSON.stringify(blockMode),
