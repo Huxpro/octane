@@ -352,6 +352,7 @@ interface RangeState {
 	/** Iterable identity and compiler proof adopted by the last applied render. */
 	source: Iterable<unknown> | null;
 	keyedSelection: NonNullable<UniversalForValue['keyedSelection']> | null;
+	componentRows: NonNullable<UniversalForValue['componentRows']> | null;
 }
 
 /**
@@ -401,6 +402,7 @@ interface RangeRender {
 	readonly rendered: readonly number[];
 	readonly source: Iterable<unknown>;
 	readonly keyedSelection: NonNullable<UniversalForValue['keyedSelection']> | null;
+	readonly componentRows: NonNullable<UniversalForValue['componentRows']> | null;
 	/** Non-null when a compiler proof reached only the old/new selected keys. */
 	readonly sparse: readonly SparseRangeRow[] | null;
 }
@@ -1029,10 +1031,44 @@ export function lynxBlockProgramForComponent<Props>(
 					'one of its keyed ranges declares an @empty block, and a range site on the Block core has no empty branch yet.',
 			);
 		}
+		const nextComponentRows = list.componentRows ?? null;
+		const previousComponentRows = state.componentRows;
 		const nextSelection = list.keyedSelection ?? null;
 		const previousSelection = state.keyedSelection;
 		const previous = state.retained;
 		const previousKeys = state.keys;
+		// The compiler proved the row descriptor is a function only of the item,
+		// index, static props, and this identity tuple. With the same iterable and
+		// tuple, neither its keys nor its props can have changed, so even asking
+		// the iterable for those answers is redundant. This is stronger than
+		// memoizing row bodies after a scan: no Array.from, key call, props object,
+		// row array, or retained Map is created. A call, member read, getter-capable
+		// expression, or other escape causes the compiler to omit componentRows
+		// and lands below on the complete conservative path.
+		if (
+			nextComponentRows !== null &&
+			previousComponentRows !== null &&
+			state.source === list.items &&
+			previous !== null &&
+			previousKeys !== null &&
+			depsEqual(previousComponentRows, nextComponentRows)
+		) {
+			return {
+				state,
+				items: [],
+				rows: [],
+				handlers: [],
+				keys: previousKeys,
+				retained: previous,
+				hasScopedRows: state.hasScopedRows,
+				structural: false,
+				rendered: [],
+				source: list.items,
+				keyedSelection: nextSelection,
+				componentRows: nextComponentRows,
+				sparse: null,
+			};
+		}
 		if (
 			nextSelection !== null &&
 			!state.hasScopedRows &&
@@ -1095,6 +1131,7 @@ export function lynxBlockProgramForComponent<Props>(
 				rendered: [],
 				source: list.items,
 				keyedSelection: nextSelection,
+				componentRows: nextComponentRows,
 				sparse,
 			};
 		}
@@ -1239,6 +1276,7 @@ export function lynxBlockProgramForComponent<Props>(
 			rendered,
 			source: list.items,
 			keyedSelection: nextSelection,
+			componentRows: nextComponentRows,
 			sparse: null,
 		};
 	};
@@ -1286,6 +1324,7 @@ export function lynxBlockProgramForComponent<Props>(
 			context.afterCommit(() => {
 				state.source = render.source;
 				state.keyedSelection = render.keyedSelection;
+				state.componentRows = render.componentRows;
 				state.hasScopedRows = render.hasScopedRows;
 				for (const row of render.sparse!) state.retained!.set(row.key, row.retained);
 			});
@@ -1311,6 +1350,7 @@ export function lynxBlockProgramForComponent<Props>(
 			}
 			state.source = render.source;
 			state.keyedSelection = render.keyedSelection;
+			state.componentRows = render.componentRows;
 			state.retained = render.retained;
 			state.hasScopedRows = render.hasScopedRows;
 			state.keys = render.keys;
@@ -1529,6 +1569,7 @@ export function lynxBlockProgramForComponent<Props>(
 								keys: null,
 								source: null,
 								keyedSelection: null,
+								componentRows: null,
 							}));
 				const template: LynxBlockTemplate = compileLynxBlockTemplate(
 					wire.wire,

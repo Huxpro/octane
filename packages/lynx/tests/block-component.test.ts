@@ -274,6 +274,29 @@ const TABLE_PLAN = universalPlan(LYNX_TRANSPORT_RENDERER, {
 	],
 });
 
+// The shape a compiled page with one scalar heading and one keyed component
+// range emits. The heading state changes independently of the range, making
+// range discovery itself — not merely its eventual writes — observable.
+const RANGE_DEPENDENCY_PAGE_PLAN = universalPlan(LYNX_TRANSPORT_RENDERER, {
+	kind: 'host',
+	type: 'view',
+	props: { class: 'page' },
+	children: [
+		{
+			kind: 'host',
+			type: 'text',
+			props: { class: 'title' },
+			bindings: [['text', 0]],
+		},
+		{
+			kind: 'host',
+			type: 'view',
+			props: { class: 'rows' },
+			children: [{ kind: 'slot', slot: 1 }],
+		},
+	],
+});
+
 const Table = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function Table(props: TableProps) {
 	return universalValue(TABLE_PLAN, [
 		universalFor(
@@ -1025,6 +1048,146 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 			expect(tree).toContain('row #0-loud');
 			expect(tree).toContain('ROW #0:loud');
 			expect(tree).toContain('quiet');
+			await block.settle(block.background.unmountAsync());
+		}
+	});
+
+	it('skips a compiler-certified stable range when unrelated page state changes', async () => {
+		interface DependencyProps {
+			readonly rows: readonly TableRow[];
+			readonly shared: string;
+			readonly observe: (entry: string) => void;
+		}
+		interface DependencyRowProps {
+			readonly row: TableRow;
+			readonly shared: string;
+			readonly observe: (entry: string) => void;
+		}
+		const rowsFor = (count: number): readonly TableRow[] =>
+			Array.from({ length: count }, (_, index) => ({
+				id: index + 1,
+				label: `row ${index + 1}`,
+			}));
+
+		for (const [count, certified] of [
+			[2, true],
+			[128, true],
+			[4, false],
+		] as const) {
+			const observations: string[] = [];
+			let pageCalls = 0;
+			let keyCalls = 0;
+			let bodyCalls = 0;
+			let rowCalls = 0;
+			let setHeading: ((value: string | ((previous: string) => string)) => void) | undefined;
+			const Row = defineUniversalComponent(
+				LYNX_TRANSPORT_RENDERER,
+				(props: DependencyRowProps) => {
+					rowCalls++;
+					props.observe(`row:${props.row.id}`);
+					return universalValue(ROW_PLAN, [
+						'row',
+						String(props.row.id),
+						noop,
+						`${props.row.label}:${props.shared}`,
+					]);
+				},
+				{ hookScope: false },
+			);
+			const Scene = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, (props: DependencyProps) => {
+				pageCalls++;
+				props.observe('page');
+				const [heading, updateHeading] = useState('ready', 'heading');
+				setHeading = updateHeading;
+				return universalValue(RANGE_DEPENDENCY_PAGE_PLAN, [
+					heading,
+					universalFor(
+						props.rows,
+						(row: TableRow) => {
+							keyCalls++;
+							return row.id;
+						},
+						(row: TableRow) => {
+							bodyCalls++;
+							props.observe(`body:${row.id}`);
+							return universalComponent(
+								LYNX_TRANSPORT_RENDERER,
+								Row,
+								universalProps([
+									['set', 'row', row],
+									['set', 'shared', props.shared],
+									['set', 'observe', props.observe],
+								]),
+							);
+						},
+						null,
+						false,
+						false,
+						undefined,
+						undefined,
+						undefined,
+						true,
+						undefined,
+						certified ? [props.shared, props.observe] : undefined,
+					),
+				]);
+			});
+			const rows = rowsFor(count);
+			const observe = (entry: string): void => void observations.push(entry);
+			const core = createLynxBlockCore();
+			const block = blockColumn<DependencyProps>(core);
+			await block.render(Scene as LynxComponent<DependencyProps>, {
+				rows,
+				shared: 'shared',
+				observe,
+			});
+			observations.length = 0;
+			keyCalls = 0;
+			bodyCalls = 0;
+			rowCalls = 0;
+			const before = core.counters();
+
+			setHeading!('changed');
+			await block.settle(Promise.resolve());
+
+			const after = core.counters();
+			const label = `${count} rows, ${certified ? 'certified' : 'unproved'}`;
+			const discovered = certified ? 0 : count;
+			expect(pageCalls, label).toBe(2);
+			expect({ keyCalls, bodyCalls, rowCalls }, label).toEqual({
+				keyCalls: discovered,
+				bodyCalls: discovered,
+				rowCalls: 0,
+			});
+			expect(observations, label).toEqual([
+				'page',
+				...Array.from({ length: discovered }, (_, index) => `body:${index + 1}`),
+			]);
+			expect(
+				{
+					lookups: after.blockLookups - before.blockLookups,
+					commands: after.commands - before.commands,
+				},
+				label,
+			).toEqual({ lookups: 1, commands: 1 });
+			expect(paint(block.main.commits).tree).toContain('changed');
+			if (certified && count === 2) {
+				observations.length = 0;
+				keyCalls = 0;
+				bodyCalls = 0;
+				rowCalls = 0;
+				await block.render(Scene as LynxComponent<DependencyProps>, {
+					rows,
+					shared: 'next',
+					observe,
+				});
+				expect({ keyCalls, bodyCalls, rowCalls }).toEqual({
+					keyCalls: count,
+					bodyCalls: count,
+					rowCalls: count,
+				});
+				expect(paint(block.main.commits).tree).toContain('row #0:next');
+			}
 			await block.settle(block.background.unmountAsync());
 		}
 	});
