@@ -2780,7 +2780,44 @@ describe('Lynx compiled component with a keyed range the Block core refuses', ()
 		).rejects.toThrow(/nested inside a range/);
 	});
 
-	it('names an @empty branch it has no site for', async () => {
+	it('mounts, updates, removes, and remounts an @empty branch as its own keyed lifetime', async () => {
+		const EMPTY_PLAN = universalPlan(LYNX_TRANSPORT_RENDERER, {
+			kind: 'host',
+			type: 'view',
+			props: { class: 'empty-state' },
+			children: [
+				{
+					kind: 'host',
+					type: 'text',
+					props: { class: 'empty-marker' },
+					children: [{ kind: 'slot', slot: 0 }],
+				},
+				{
+					kind: 'host',
+					type: 'text',
+					props: { class: 'empty-action' },
+					bindings: [['bindtap', 1]],
+					children: [{ kind: 'slot', slot: 2 }],
+				},
+			],
+		});
+		const lifecycle: string[] = [];
+		const Empty = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function Empty() {
+			const [seen, setSeen] = useState(false);
+			useEffect(
+				() => {
+					lifecycle.push('mount');
+					return () => lifecycle.push('cleanup');
+				},
+				[],
+				'empty-lifetime',
+			);
+			return universalValue(EMPTY_PLAN, [
+				'empty',
+				() => setSeen(true),
+				seen ? 'empty seen' : 'nothing here',
+			]);
+		});
 		const Listed = defineUniversalComponent(
 			LYNX_TRANSPORT_RENDERER,
 			function Listed(props: TableProps) {
@@ -2790,15 +2827,45 @@ describe('Lynx compiled component with a keyed range the Block core refuses', ()
 						(item: TableRow) => item.id,
 						(item: TableRow) =>
 							universalValue(ROW_PLAN, ['row', String(item.id), noop, item.label]),
-						() => universalValue(ROW_PLAN, ['row', '0', noop, 'nothing here']),
+						() => universalComponent(LYNX_TRANSPORT_RENDERER, Empty),
 					),
 				]);
 			},
 		);
 		const block = blockColumn<TableProps>();
-		await expect(
-			block.settle(block.background.renderAsync(Listed as never, table([1]))),
-		).rejects.toThrow(/@empty block/);
+
+		const rejected = block.background.renderAsync(Listed as never, table([]));
+		await flushMicrotasks();
+		block.main.reject(block.main.commits[0]!, 'injected empty mount rejection');
+		await expect(rejected).rejects.toThrow('injected empty mount rejection');
+		await flushMicrotasks();
+		expect(lifecycle).toEqual([]);
+		const accepted = () => block.main.commits.slice(1);
+
+		await block.render(Listed as never, table([]));
+		await flushMicrotasks();
+		expect(paint(accepted()).tree).toContain('nothing here');
+		expect(lifecycle).toEqual(['mount']);
+
+		const departed = rowListener(accepted(), 0);
+		deliverTo(block, departed);
+		await block.settle(Promise.resolve());
+		expect(paint(accepted()).tree).toContain('empty seen');
+
+		await block.render(Listed as never, table([1]));
+		await flushMicrotasks();
+		expect(paint(accepted()).tree).not.toContain('empty-state');
+		expect(lifecycle).toEqual(['mount', 'cleanup']);
+		expect(() => deliverTo(block, departed)).toThrow(/listener/i);
+
+		await block.render(Listed as never, table([]));
+		await flushMicrotasks();
+		expect(paint(accepted()).tree).toContain('nothing here');
+		expect(lifecycle).toEqual(['mount', 'cleanup', 'mount']);
+
+		await block.settle(block.background.unmountAsync());
+		await flushMicrotasks();
+		expect(lifecycle).toEqual(['mount', 'cleanup', 'mount', 'cleanup']);
 	});
 
 	it('writes nothing when a later render refuses inside a range', async () => {

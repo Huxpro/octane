@@ -329,12 +329,20 @@ interface RenderedPlan {
 	readonly computations: readonly LynxCompilerProgramComputation[];
 }
 
+interface RangeTemplateState {
+	plan: UniversalPlan | LynxCompilerProgram | null;
+	compiled: CompiledUniversalTemplateProgram | null;
+	prepared: PreparedUniversalTemplateProgram | null;
+	template: LynxBlockTemplate | null;
+}
+
 /**
  * One keyed range hole, and everything derived from the rows that filled it.
  *
- * The row template is derived from the first row that ever exists rather than
- * at mount, because a list that starts empty has no row to derive it from and
- * an application that starts empty is the ordinary case.
+ * Row and @empty templates are derived independently on first use. A transition
+ * between them replaces the internal keyed member, while consecutive renders
+ * of either variant keep one homogeneous template and preserve its semantic
+ * owner.
  */
 interface RangeState {
 	/** The plan slot holding the `universalFor`. */
@@ -342,10 +350,8 @@ interface RangeState {
 	/** The host node in the mounted template whose children the range owns. */
 	readonly node: number;
 	site: LynxBlockForSlot | null;
-	plan: UniversalPlan | LynxCompilerProgram | null;
-	compiled: CompiledUniversalTemplateProgram | null;
-	prepared: PreparedUniversalTemplateProgram | null;
-	template: LynxBlockTemplate | null;
+	readonly rowTemplate: RangeTemplateState;
+	readonly emptyTemplate: RangeTemplateState;
 	/**
 	 * What the last applied render produced, per key, for the rows it can be
 	 * asked about again.
@@ -392,6 +398,7 @@ interface RangeState {
 interface ScopedRowState {
 	current: RetainedRow | null;
 	state: RangeState | null;
+	templateState: RangeTemplateState | null;
 	key: unknown;
 	queued: boolean;
 }
@@ -414,6 +421,8 @@ const EMPTY_COMPUTATIONS: readonly LynxCompilerProgramComputation[] = Object.fre
 type ProgramSiteIndexes = readonly (readonly number[] | undefined)[];
 const EMPTY_SITE_INDEXES: ProgramSiteIndexes = Object.freeze([]);
 const EMPTY_INDEXES: readonly number[] = Object.freeze([]);
+const EMPTY_RANGE_KEY = Object.freeze({});
+const EMPTY_RANGE_ITEMS: readonly unknown[] = Object.freeze([EMPTY_RANGE_KEY]);
 
 function indexProgramSites(sites: readonly { readonly slot: number }[]): ProgramSiteIndexes {
 	if (sites.length === 0) return EMPTY_SITE_INDEXES;
@@ -440,6 +449,7 @@ interface RangeRender {
 	readonly structural: boolean;
 	readonly contextValues: SemanticContexts;
 	/** Indices of the rows this render actually called; the rest were retained. */
+	readonly templateState: RangeTemplateState;
 	readonly rendered: readonly number[];
 	readonly source: Iterable<unknown>;
 	readonly keyedSelection: NonNullable<UniversalForValue['keyedSelection']> | null;
@@ -712,14 +722,16 @@ export function lynxBlockProgramForComponent<Props>(
 	const snapshotRangeTemplates = (): readonly (() => void)[] => {
 		let restores: (() => void)[] | null = null;
 		for (const state of ranges) {
-			if (state.plan !== null) continue;
-			const snapshot = {
-				plan: state.plan,
-				compiled: state.compiled,
-				prepared: state.prepared,
-				template: state.template,
-			};
-			(restores ??= []).push(() => Object.assign(state, snapshot));
+			for (const templateState of [state.rowTemplate, state.emptyTemplate]) {
+				if (templateState.plan !== null) continue;
+				const snapshot = {
+					plan: templateState.plan,
+					compiled: templateState.compiled,
+					prepared: templateState.prepared,
+					template: templateState.template,
+				};
+				(restores ??= []).push(() => Object.assign(templateState, snapshot));
+			}
 		}
 		return restores ?? EMPTY_RESTORES;
 	};
@@ -875,6 +887,7 @@ export function lynxBlockProgramForComponent<Props>(
 	const renderRow = (
 		context: LynxBlockProgramContext,
 		state: RangeState,
+		templateState: RangeTemplateState,
 		produced: unknown,
 		// The component and props `renderRange` already derived from `produced`
 		// for the memo comparison — threaded through rather than re-derived, so
@@ -918,6 +931,7 @@ export function lynxBlockProgramForComponent<Props>(
 					current: null,
 					state: null,
 					key: undefined,
+					templateState: null,
 					queued: false,
 				};
 				scoped = owner;
@@ -960,7 +974,7 @@ export function lynxBlockProgramForComponent<Props>(
 				};
 			}
 		}
-		if (state.plan === null) {
+		if (templateState.plan === null) {
 			if (isLynxCompilerProgram(rendered.plan)) {
 				if (rendered.plan.ranges.length !== 0) {
 					refuse(
@@ -969,10 +983,13 @@ export function lynxBlockProgramForComponent<Props>(
 							'a row compiler program declares a nested range, which the Block core does not lower yet.',
 					);
 				}
-				state.plan = rendered.plan;
-				state.compiled = null;
-				state.prepared = rendered.plan;
-				state.template = compileLynxBlockTemplate(rendered.plan.wire, rendered.plan.address);
+				templateState.plan = rendered.plan;
+				templateState.compiled = null;
+				templateState.prepared = rendered.plan;
+				templateState.template = compileLynxBlockTemplate(
+					rendered.plan.wire,
+					rendered.plan.address,
+				);
 			} else {
 				const root = rendered.plan.root;
 				if (root.kind !== 'host') {
@@ -998,22 +1015,22 @@ export function lynxBlockProgramForComponent<Props>(
 							'this renderer cannot carry a static prop or event site of one of its keyed range rows in a template program.',
 					);
 				}
-				state.plan = rendered.plan;
-				state.compiled = program;
-				state.prepared = wire;
-				state.template = compileLynxBlockTemplate(wire.wire, rendered.plan.address);
+				templateState.plan = rendered.plan;
+				templateState.compiled = program;
+				templateState.prepared = wire;
+				templateState.template = compileLynxBlockTemplate(wire.wire, rendered.plan.address);
 			}
-		} else if (rendered.plan !== state.plan) {
+		} else if (rendered.plan !== templateState.plan) {
 			refuse(
 				subject,
 				LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
 					'two rows of one keyed range returned different compiled templates, and a range mounts one template for every row.',
 			);
 		}
-		const sites = state.prepared!.events;
+		const sites = templateState.prepared!.events;
 		const values = prepareUniversalTemplateProgramValuesFromWire(
 			encoderFor(context),
-			state.prepared!,
+			templateState.prepared!,
 			withHandlerStubs(rendered.source, sites, rendered.values),
 		);
 		if (values === null) {
@@ -1035,6 +1052,7 @@ export function lynxBlockProgramForComponent<Props>(
 	const publishScopedRow = (
 		context: LynxBlockProgramContext,
 		state: RangeState,
+		templateState: RangeTemplateState,
 		key: unknown,
 		row: RetainedRow,
 	): void => {
@@ -1044,6 +1062,7 @@ export function lynxBlockProgramForComponent<Props>(
 			owner.current = row;
 			owner.state = state;
 			owner.key = key;
+			owner.templateState = templateState;
 		});
 	};
 
@@ -1060,10 +1079,12 @@ export function lynxBlockProgramForComponent<Props>(
 	function renderScopedRowAgain(context: LynxBlockProgramContext, owner: ScopedRowState): void {
 		const current = owner.current;
 		const state = owner.state;
-		if (current === null || state === null || state.site === null) return;
+		if (current === null || state === null || state.site === null || owner.templateState === null)
+			return;
 		const rendered = renderRow(
 			context,
 			state,
+			owner.templateState,
 			undefined,
 			current.component,
 			current.props,
@@ -1087,11 +1108,11 @@ export function lynxBlockProgramForComponent<Props>(
 					'its retained keyed scope no longer names a mounted row during a local update.',
 			);
 		}
-		if (state.prepared!.events.length !== 0) {
+		if (owner.templateState.prepared!.events.length !== 0) {
 			if (rendered.listeners.includes(null)) context.root.releaseListeners(member);
 			context.root.bindListeners(member, rendered.listeners);
 		}
-		publishScopedRow(context, state, owner.key, next);
+		publishScopedRow(context, state, owner.templateState, owner.key, next);
 	}
 
 	/** Queue one row-owned update without promoting it to the page scope. */
@@ -1130,6 +1151,29 @@ export function lynxBlockProgramForComponent<Props>(
 			});
 	}
 
+	const disposeDepartedRowScopes = (
+		context: LynxBlockProgramContext,
+		previous: ReadonlyMap<unknown, RetainedRow | null> | null,
+		next: ReadonlyMap<unknown, RetainedRow | null>,
+	): void => {
+		if (previous === null) return;
+		for (const [key, prior] of previous) {
+			if (prior === null || prior.scope === null) continue;
+			const survivor = next.get(key);
+			if (survivor?.scope === prior.scope) continue;
+			const oldScope = prior.scope;
+			const oldOwner = prior.scoped;
+			context.afterCommit(() => {
+				if (oldOwner !== null) {
+					oldOwner.current = null;
+					oldOwner.state = null;
+					oldOwner.templateState = null;
+				}
+				oldScope.dispose();
+			});
+		}
+	};
+
 	/**
 	 * Render every row of one range, without writing anything.
 	 *
@@ -1145,13 +1189,6 @@ export function lynxBlockProgramForComponent<Props>(
 		list: UniversalForValue,
 		contextValues: SemanticContexts,
 	): RangeRender => {
-		if (list.empty !== null) {
-			refuse(
-				subject,
-				LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-					'one of its keyed ranges declares an @empty block, and a range site on the Block core has no empty branch yet.',
-			);
-		}
 		const nextComponentRows = list.componentRows ?? null;
 		const previousComponentRows = state.componentRows;
 		const nextSelection = list.keyedSelection ?? null;
@@ -1159,6 +1196,85 @@ export function lynxBlockProgramForComponent<Props>(
 		const previous = state.retained;
 		const previousKeys = state.keys;
 		const contextsStable = sameSemanticContexts(state.contextValues, contextValues);
+		let materializedItems: unknown[] | null = null;
+		if (list.empty !== null) {
+			materializedItems = Array.from(list.items as Iterable<unknown>);
+			if (materializedItems.length === 0) {
+				const produced = list.empty();
+				const invocation = rowComponentInvocation(produced);
+				const component =
+					(invocation?.component as unknown as LynxComponent<never> | undefined) ?? null;
+				const props = invocation === null ? null : forwardedProps(invocation);
+				const prior = previous?.get(EMPTY_RANGE_KEY) ?? null;
+				let values: readonly UniversalHostTemplateProgramValue[];
+				let listeners: readonly (LynxBlockListener | null)[];
+				let retainedRow: RetainedRow | null;
+				let rendered: readonly number[];
+				if (
+					component !== null &&
+					prior !== null &&
+					contextsStable &&
+					prior.component === component &&
+					blockShallowEqual(prior.props, props)
+				) {
+					values = prior.values;
+					listeners = prior.listeners;
+					retainedRow = prior;
+					rendered = EMPTY_INDEXES;
+				} else {
+					const row = renderRow(
+						context,
+						state,
+						state.emptyTemplate,
+						produced,
+						component,
+						props,
+						prior?.component === component ? prior : null,
+						contextValues,
+					);
+					values = row.values;
+					listeners = row.listeners;
+					rendered = [0];
+					retainedRow =
+						component === null
+							? null
+							: {
+									component,
+									props,
+									scope: row.scope,
+									scoped: row.scoped,
+									values,
+									listeners,
+									index: 0,
+								};
+					if (retainedRow !== null) {
+						publishScopedRow(context, state, state.emptyTemplate, EMPTY_RANGE_KEY, retainedRow);
+					}
+				}
+				const retained = new Map<unknown, RetainedRow | null>([[EMPTY_RANGE_KEY, retainedRow]]);
+				disposeDepartedRowScopes(context, previous, retained);
+				return {
+					state,
+					templateState: state.emptyTemplate,
+					items: EMPTY_RANGE_ITEMS,
+					rows: [values],
+					handlers: [listeners],
+					keys: EMPTY_RANGE_ITEMS,
+					retained,
+					hasScopedRows: retainedRow !== null && retainedRow.scope !== null,
+					structural:
+						previousKeys === null ||
+						previousKeys.length !== 1 ||
+						previousKeys[0] !== EMPTY_RANGE_KEY,
+					contextValues,
+					rendered,
+					source: list.items,
+					keyedSelection: null,
+					componentRows: null,
+					sparse: null,
+				};
+			}
+		}
 		// The compiler proved the row descriptor is a function only of the item,
 		// index, static props, and this identity tuple. With the same iterable and
 		// tuple, neither its keys nor its props can have changed, so even asking
@@ -1178,6 +1294,7 @@ export function lynxBlockProgramForComponent<Props>(
 		) {
 			return {
 				state,
+				templateState: state.rowTemplate,
 				items: [],
 				rows: [],
 				handlers: [],
@@ -1227,7 +1344,16 @@ export function lynxBlockProgramForComponent<Props>(
 						);
 					}
 					if (blockShallowEqual(prior.props, props)) continue;
-					const row = renderRow(context, state, produced, component, props, prior, contextValues);
+					const row = renderRow(
+						context,
+						state,
+						state.rowTemplate,
+						produced,
+						component,
+						props,
+						prior,
+						contextValues,
+					);
 					sparse.push({
 						key: itemKey,
 						retained: {
@@ -1241,11 +1367,12 @@ export function lynxBlockProgramForComponent<Props>(
 						},
 					});
 					const retainedRow = sparse[sparse.length - 1]!.retained;
-					publishScopedRow(context, state, itemKey, retainedRow);
+					publishScopedRow(context, state, state.rowTemplate, itemKey, retainedRow);
 				}
 			}
 			return {
 				state,
+				templateState: state.rowTemplate,
 				items: [],
 				rows: [],
 				handlers: [],
@@ -1262,7 +1389,7 @@ export function lynxBlockProgramForComponent<Props>(
 			};
 		}
 
-		const items = Array.from(list.items as Iterable<unknown>);
+		const items = materializedItems ?? Array.from(list.items as Iterable<unknown>);
 		const rows: (readonly UniversalHostTemplateProgramValue[])[] = new Array(items.length);
 		const handlers: (readonly (LynxBlockListener | null)[])[] = new Array(items.length);
 		const keys: unknown[] = new Array(items.length);
@@ -1351,6 +1478,7 @@ export function lynxBlockProgramForComponent<Props>(
 			const row = renderRow(
 				context,
 				state,
+				state.rowTemplate,
 				produced,
 				component,
 				props,
@@ -1372,29 +1500,15 @@ export function lynxBlockProgramForComponent<Props>(
 					listeners: row.listeners,
 					index,
 				};
-				publishScopedRow(context, state, itemKey, retainedRow);
+				publishScopedRow(context, state, state.rowTemplate, itemKey, retainedRow);
 			}
 			retained.set(itemKey, retainedRow);
 		}
-		if (previous !== null) {
-			for (const [key, prior] of previous) {
-				if (prior === null || prior.scope === null) continue;
-				const next = retained.get(key);
-				if (next?.scope === prior.scope) continue;
-				const oldScope = prior.scope;
-				const oldOwner = prior.scoped;
-				context.afterCommit(() => {
-					if (oldOwner !== null) {
-						oldOwner.current = null;
-						oldOwner.state = null;
-					}
-					oldScope.dispose();
-				});
-			}
-		}
+		disposeDepartedRowScopes(context, previous, retained);
 
 		return {
 			state,
+			templateState: state.rowTemplate,
 			items,
 			rows,
 			handlers,
@@ -1447,7 +1561,7 @@ export function lynxBlockProgramForComponent<Props>(
 		if (render.sparse !== null) {
 			for (const row of render.sparse) {
 				const member = context.core.writeKeyedValues(state.site!, row.key, row.retained.values);
-				if (state.prepared!.events.length === 0 || member === undefined) continue;
+				if (render.templateState.prepared!.events.length === 0 || member === undefined) continue;
 				if (row.retained.listeners.includes(null)) context.root.releaseListeners(member);
 				context.root.bindListeners(member, row.retained.listeners);
 			}
@@ -1463,7 +1577,7 @@ export function lynxBlockProgramForComponent<Props>(
 		}
 		// A list that has never had a row has no template to reconcile against,
 		// and nothing mounted to reconcile.
-		if (state.template === null) return;
+		if (render.templateState.template === null) return;
 		context.afterCommit(() => {
 			// Reused descriptors still describe the same row, but a structural
 			// update may have changed that row's committed order. Stage that order
@@ -1498,7 +1612,7 @@ export function lynxBlockProgramForComponent<Props>(
 			// hand, reached from a component instead: `benchmarks/lynx-table/app/
 			// src/block-program.ts`'s `select` writes the two rows whose class
 			// moved, and so does this, without the page having told it which two.
-			const events = state.prepared!.events.length !== 0;
+			const events = render.templateState.prepared!.events.length !== 0;
 			for (const index of render.rendered) {
 				const member = context.core.writeKeyedValues(
 					state.site!,
@@ -1514,7 +1628,7 @@ export function lynxBlockProgramForComponent<Props>(
 		}
 		context.core.reconcileForSlot(
 			state.site!,
-			state.template,
+			render.templateState.template,
 			render.items,
 			// The keys `renderRange` already derived and duplicate-checked, not
 			// the user's key function again: the reconciler must mount under
@@ -1527,7 +1641,7 @@ export function lynxBlockProgramForComponent<Props>(
 				context.root.releaseListeners(member);
 			},
 		);
-		if (state.prepared!.events.length === 0) return;
+		if (render.templateState.prepared!.events.length === 0) return;
 		let index = 0;
 		for (let member = state.site!.head; member !== null; member = member.next) {
 			const handlers = render.handlers[index++]!;
@@ -1806,10 +1920,18 @@ export function lynxBlockProgramForComponent<Props>(
 								slot: range.slot,
 								node: range.node,
 								site: null,
-								plan: null,
-								compiled: null,
-								prepared: null,
-								template: null,
+								rowTemplate: {
+									plan: null,
+									compiled: null,
+									prepared: null,
+									template: null,
+								},
+								emptyTemplate: {
+									plan: null,
+									compiled: null,
+									prepared: null,
+									template: null,
+								},
 								retained: null,
 								hasScopedRows: false,
 								keys: null,
