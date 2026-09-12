@@ -38,6 +38,9 @@ const testingAliases: readonly [typeof createThreeTestRenderer, typeof createThr
 	create,
 	testing.create,
 ];
+const testRendererCameraConfig: CreateThreeTestRendererOptions = {
+	camera: { position: [1, 2, 3], manual: true },
+};
 const typedFireEvent: FireEvent = fireEvent;
 const intrinsicMesh: IntrinsicMesh = { position: [1, 2, 3] };
 const runtimeMesh: RuntimeMesh = intrinsicMesh;
@@ -50,12 +53,12 @@ void rendererCreate;
 void configuredRenderer;
 void configAliases;
 void testingAliases;
+void testRendererCameraConfig;
 void typedFireEvent;
 void threeRenderer;
 void threeRendererBoundaries;
 void threeRendererRules;
 void intrinsicMeshAgain;
-void (undefined as unknown as CreateThreeTestRendererOptions);
 void (undefined as unknown as MockEventData);
 void (undefined as unknown as MockSyntheticEvent);
 void (undefined as unknown as TestingRenderer);
