@@ -457,8 +457,8 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 				program: {
 					version: 1,
 					complete: true,
-					pairedPlans: 2,
-					pairedAddressed: 2,
+					pairedPlans: 3,
+					pairedAddressed: 3,
 					reasons: [],
 				},
 				semantic: {
@@ -478,7 +478,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 							background: {
 								keyedRanges: [
 									expect.objectContaining({
-										empty: false,
+										empty: true,
 										nested: false,
 										lastChild: true,
 										row: {
@@ -492,7 +492,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 							mainThread: {
 								keyedRanges: [
 									expect.objectContaining({
-										empty: false,
+										empty: true,
 										nested: false,
 										lastChild: true,
 										row: {
@@ -751,7 +751,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					selection: {
 						version: 1,
 						matrix: {
-							version: 3,
+							version: 4,
 							runtimeNames: [
 								'useCallback',
 								'useEffect',
@@ -763,7 +763,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 							mainThreadProps: true,
 							templateFeatures: [],
 							keyedRanges: {
-								empty: false,
+								empty: true,
 								nested: false,
 								lastChild: true,
 								rowKinds: ['inline-host', 'local-component'],

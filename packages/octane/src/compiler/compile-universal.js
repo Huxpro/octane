@@ -2257,10 +2257,9 @@ function blockProgramRootEventFeatures(state) {
 /**
  * Independent Block feature facts that runtime-use names cannot express.
  *
- * This deliberately carries no eligibility bit. A main-thread prop is supported
- * by the Block transport, while an @empty range or hooked row is not; preserving
- * the authored sites lets the application-graph selector apply that versioned
- * support matrix without reparsing source or learning from a runtime refusal.
+ * This deliberately carries no eligibility bit. Preserving every authored site
+ * lets the application-graph selector apply its versioned support matrix without
+ * reparsing source or learning from a runtime refusal.
  */
 function lynxBlockFeatureRequirements(ast, state) {
 	if (state.universalRuntime?.runtime !== 'lynx') return undefined;
@@ -3021,7 +3020,6 @@ function templateProgramForHost(node, state) {
 
 function templateProgramForComponent(node, state) {
 	if (
-		node.empty != null ||
 		(!rendererHasCapability(state, 'template-program-mount') &&
 			!rendererHasCapability(state, COMPONENT_SCOPE_FOR_CAPABILITY)) ||
 		!isOwnerFreeForExpression(node.right) ||
@@ -4567,7 +4565,9 @@ function compileForAst(node, context, state) {
 		);
 	} else if (templateComponent !== null) {
 		args.push(
-			b.literal(null, 'null'),
+			node.empty
+				? compileBlockValueAst(node.empty.body ?? [], state, [], node.empty)
+				: b.literal(null, 'null'),
 			b.literal(false),
 			b.literal(false),
 			inheritGeneratedOrigin(b.unary('void', b.literal(0)), templateComponent),

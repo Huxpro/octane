@@ -1396,6 +1396,49 @@ export function Card(props: { row: { id: number; label: string }; isSelected: bo
 		).toEqual({ total: 1, addressed: 1 });
 	});
 
+	it('keeps a component row resident when the keyed range has an @empty arm', () => {
+		const source = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+interface Item { readonly id: number; readonly label: string }
+
+function Row(props: { readonly item: Item }) @{
+	<view class="row"><text>{props.item.label as string}</text></view>
+}
+
+export function Card(props: { readonly items: readonly Item[] }) @{
+	<view class="rows">
+		@for (const item of props.items; key item.id) {
+			<Row item={item} />
+		} @empty {
+			<view class="empty"><text>none</text></view>
+		}
+	</view>
+}
+`;
+		const module = 'src/EmptyRows.lynx.tsrx';
+		const mainResult = compileCard(source, { backend: Backend, module });
+		const backgroundResult = compileCard(source, {
+			thread: 'background',
+			backend: Backend,
+			module,
+		});
+		const main = evaluate(mainResult.code);
+		const background = evaluate(backgroundResult.code);
+
+		expect(mainResult.mainThreadProgramCoverage).toEqual({ total: 3, addressed: 3 });
+		expect(backgroundResult.mainThreadProgramCoverage).toEqual({ total: 3, addressed: 3 });
+		expect(main.addresses).toHaveLength(3);
+		expect(main.addresses.every((address) => address !== undefined)).toBe(true);
+		expect(background.addresses).toEqual(main.addresses);
+		expect(backgroundResult.lynxBlockFeatureRequirements?.keyedRanges).toEqual([
+			expect.objectContaining({
+				empty: true,
+				nested: false,
+				lastChild: true,
+				row: expect.objectContaining({ kind: 'local-component', name: 'Row' }),
+			}),
+		]);
+	});
+
 	it('addresses an open structural range and hashes its topology', () => {
 		const module = 'src/StructuralCard.lynx.tsrx';
 		const main = evaluate(compiled(STRUCTURAL_ADDRESSABLE_CARD, { backend: Backend, module }));

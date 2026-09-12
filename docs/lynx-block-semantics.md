@@ -37,7 +37,7 @@ must satisfy the runtime invariants below.
 | `useState`, `useRef`, `useCallback`, `useEffect`, and `useSyncExternalStore` | Block selected | Hook cells publish only after host acceptance; layout and passive cleanup are retained. |
 | Last-child keyed `@for` with inline-host or local-component rows | Block selected | Keyed identity, LIS moves, row-local hooks, `@for` component rows, and sparse dirty-row updates are covered. |
 | Context propagation through a keyed move | Block kernel proved | Provider values and `useContext` reach retained row scopes; `useContext` is not yet in the production selector's runtime-name set. |
-| `@for … @empty` | Block kernel proved | Empty is a separate retained lifetime with rollback, effects, events, removal, and remount; the selector still records `keyed-range-empty-branch`. |
+| `@for … @empty` | Block selected | Empty is a separate retained lifetime with rollback, effects, events, removal, remount, paired compiler metadata, and a production dual-graph build. |
 | `@if` and `@switch` | Block kernel proved | A single region retains the selected arm, state, handlers, and cleanup; the selector still reports the authored template feature. |
 | Local component boundaries, component children, and render props | Block kernel proved | Transparent component chains resolve to the eventual host plan and preserve stateful descendants; the selector still reports non-row component sites. |
 | Component-valued host holes | Block kernel proved | Component identity plus an explicit authored key owns the region lifetime; component → empty → component remounts cleanly. |

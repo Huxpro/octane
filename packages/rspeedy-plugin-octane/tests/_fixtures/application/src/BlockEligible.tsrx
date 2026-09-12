@@ -32,6 +32,10 @@ export function BlockEligible(props: {
 		<view class="rows">
 			@for (const item of props.items; key item.id) {
 				<BlockEligibleRow item={item} onSelect={setSelected} />
+			} @empty {
+				<view class="empty">
+					<text>{'No rows: ' + selected as string}</text>
+				</view>
 			}
 		</view>
 	</view>

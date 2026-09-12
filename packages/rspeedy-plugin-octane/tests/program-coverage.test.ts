@@ -186,7 +186,7 @@ function completeProofs() {
 			{
 				line: 7,
 				column: 2,
-				empty: false,
+				empty: true,
 				nested: false,
 				lastChild: true,
 				row: { kind: 'inline-host', name: 'view' },
@@ -218,13 +218,13 @@ describe('Lynx application Block eligibility', () => {
 		expect(report).toEqual({
 			version: 1,
 			matrix: {
-				version: 3,
+				version: 4,
 				runtimeNames: ['useCallback', 'useEffect', 'useRef', 'useState', 'useSyncExternalStore'],
 				threadFunctions: ['background', 'main-thread'],
 				mainThreadProps: true,
 				templateFeatures: [],
 				keyedRanges: {
-					empty: false,
+					empty: true,
 					nested: false,
 					lastChild: true,
 					rowKinds: ['inline-host', 'local-component'],
@@ -392,13 +392,6 @@ describe('Lynx application Block eligibility', () => {
 					name: 'export-all',
 					line: 4,
 					column: 5,
-				},
-				{
-					code: 'keyed-range-empty-branch',
-					module: '/src/App.tsrx',
-					thread: 'background',
-					line: 10,
-					column: 2,
 				},
 				{
 					code: 'keyed-range-nested',
@@ -925,7 +918,7 @@ describe('Lynx application resident-program coverage', () => {
 			},
 			[LYNX_BLOCK_SELECTION_ASSET_INFO]: {
 				version: 1,
-				matrix: { version: 3 },
+				matrix: { version: 4 },
 				eligible: true,
 				reasons: [],
 			},
