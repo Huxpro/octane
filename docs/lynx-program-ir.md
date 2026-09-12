@@ -11,9 +11,14 @@ artifacts from one compiler-owned `LynxProgramIR`:
 - the main-thread (MTS) module owns the resident create function and applies
   create/run/set operations to Lynx native elements.
 
-Neither artifact derives the other's representation at runtime. The normal
-Universal renderer remains available for unsupported graphs; the explicit
-Block renderer fails the build instead of silently embedding a Universal plan.
+Neither artifact derives the other's representation at runtime. An ordinary
+production application first compiles conservatively so the paired graph can
+prove complete Block coverage. The build then rebuilds only the proved
+background source modules with the compiler-program renderer, alongside the
+compact-product core/owner specialization. Unsupported, development,
+and watch graphs retain the Universal renderer. An explicit `core: 'block'`
+selects the same compiler output immediately and fails the build instead of
+silently embedding a Universal plan.
 
 ## Shared IR
 
@@ -104,9 +109,14 @@ scalar/text/property/event slots, and keyed ranges whose row programs have no
 nested ranges. Component boundaries, conditional renderable holes, spreads or
 host operations the Lynx program emitter cannot represent, non-host roots, and
 nested row ranges are owned by later roadmap issues. The Universal preset keeps
-supporting them. Selecting `core: 'block'` is an explicit assertion that the
-application graph is inside the current Block surface, so an unsupported owner
-is a source-attributed build error rather than a Universal runtime fallback.
+supporting them.
+
+Automatic production selection is deliberately two-pass: the first-pass
+Universal-shaped output supplies coverage and semantic facts, while a
+module-scoped Rspack compiler specialization rebuilds only a graph already
+proved Block-compatible. Selecting `core: 'block'` is the explicit assertion
+of the same surface, so an unsupported owner is a source-attributed build error
+rather than a Universal runtime fallback.
 
 DOM, the generic Universal renderer, and other Universal hosts such as Valdi
 do not enable `compiler-program-ir` and retain their existing output.

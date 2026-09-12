@@ -821,7 +821,9 @@ describe('Lynx application resident-program coverage', () => {
 			callback: (resource: { request: string }) => void;
 		}> = [];
 		const rebuiltRequests: string[] = [];
-		graph.rebuildModule = (_module: unknown, callback: (error: Error | null) => void) => {
+		const rebuiltModules: unknown[] = [];
+		graph.rebuildModule = (module: unknown, callback: (error: Error | null) => void) => {
+			rebuiltModules.push(module);
 			const connections = [];
 			for (const request of [
 				'./core/background-core-selection.js',
@@ -882,10 +884,13 @@ describe('Lynx application resident-program coverage', () => {
 		await finishMake(graph);
 		processAssets();
 
-		// Two complete entry traversals, owner discovery/verification, and the
-		// dependency-first rebuild ordering pass each inspect the exact root edge.
-		expect(graphVisits).toBe(5);
+		// The proof passes, compiler-program module selection, owner discovery /
+		// verification, and dependency-first rebuild ordering all inspect the graph.
+		expect(graphVisits).toBe(6);
+		expect(rebuiltModules).toEqual([background, root]);
 		expect(rebuiltRequests).toEqual([
+			'./core/background-core-selection.block.js',
+			'./core/application-selection.compiled-program.js',
 			'./core/background-core-selection.block.js',
 			'./core/application-selection.compiled-program.js',
 		]);

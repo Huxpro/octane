@@ -167,8 +167,11 @@ facts, as well as the underlying reason from an incomplete proof. A one-shot
 production application with no explicit `core` selects Block only when every
 authored entry is eligible. Selection happens after the complete first module
 graph and before optimization: the plugin rebuilds the background root's tiny
-selection dependency, then production tree-shaking emits one core rather than a
-runtime branch containing both. Asset metadata also carries the versioned
+selection dependency and every proved background source module with the
+independent compiler-program renderer. Production output therefore contains
+one core and BTS program definitions derived directly from the same shared IR
+as the resident MTS programs; it does not create Universal plans and lower them
+at runtime. Asset metadata also carries the versioned
 `octane:lynx-background-core-selection` decision.
 
 The plugin verifies the rebuilt background root's exact dependency edge before

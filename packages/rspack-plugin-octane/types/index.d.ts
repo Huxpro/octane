@@ -404,3 +404,15 @@ export declare function inferRspackEnvironment(target: unknown): OctaneRspackEnv
 
 /** Read the serializable metadata emitted by the loader for app-level collectors. */
 export declare function getOctaneRspackBuildInfo(module: unknown): OctaneRspackBuildInfo | null;
+
+/**
+ * Select compiler options for one Rspack NormalModule's next build.
+ * Framework integrations use this after a whole-graph proof and then rebuild
+ * that exact module; unrelated graphs retain the configured compiler options.
+ */
+export declare function setOctaneRspackModuleCompilerOptions(
+	module: object,
+	options: {
+		readonly renderers: OctaneRendererConfigOptions | OctaneResolvedRendererConfig;
+	},
+): void;

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { getOctaneRspackBuildInfo, inferRspackEnvironment } from '../src/index.js';
+import {
+	getOctaneRspackBuildInfo,
+	inferRspackEnvironment,
+	setOctaneRspackModuleCompilerOptions,
+} from '../src/index.js';
+import { getOctaneRspackModuleCompilerOptions } from '../src/compiler-specialization.js';
 import { normalizeLoaderOptions, normalizePluginOptions } from '../src/shared.js';
 
 describe('inferRspackEnvironment', () => {
@@ -267,6 +272,44 @@ describe('declarative options', () => {
 		[{ transform: () => {} }, /unknown option/],
 	] as const)('rejects invalid options %#', (value, message) => {
 		expect(() => normalizePluginOptions(value)).toThrow(message);
+	});
+});
+
+describe('module compiler specialization', () => {
+	it('normalizes a renderer override onto exactly one module', () => {
+		const selected = {};
+		const untouched = {};
+		const renderers = {
+			registry: {
+				lynx: {
+					module: '@octanejs/lynx/renderer',
+					target: 'universal',
+					capabilities: ['compiler-program-ir'],
+				},
+			},
+			default: 'lynx',
+		};
+
+		setOctaneRspackModuleCompilerOptions(selected, { renderers });
+		const options = getOctaneRspackModuleCompilerOptions(selected);
+		expect(options?.renderers.registry.lynx.capabilities).toContain('compiler-program-ir');
+		expect(options?.renderers.signature).toEqual(expect.any(String));
+		expect(Object.isFrozen(options)).toBe(true);
+		expect(getOctaneRspackModuleCompilerOptions(untouched)).toBeUndefined();
+	});
+
+	it.each([
+		[null, { renderers: {} }, /requires a module/],
+		[{}, null, /must be an object/],
+		[{}, {}, /require `renderers`/],
+		[{}, { renderers: {}, runtime: 'other' }, /unknown module compiler option/],
+	] as const)('rejects an invalid specialization %#', (module, options, message) => {
+		expect(() =>
+			setOctaneRspackModuleCompilerOptions(
+				module as object,
+				options as Parameters<typeof setOctaneRspackModuleCompilerOptions>[1],
+			),
+		).toThrow(message);
 	});
 });
 

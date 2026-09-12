@@ -1,4 +1,8 @@
-import { getOctaneRspackBuildInfo } from '@octanejs/rspack-plugin';
+import {
+	getOctaneRspackBuildInfo,
+	setOctaneRspackModuleCompilerOptions,
+} from '@octanejs/rspack-plugin';
+import { lynxBlockRspeedyBackgroundRenderers } from '@octanejs/lynx/config';
 
 import { installLynxBackgroundCoreReplacement } from './background-core.js';
 import { installLynxApplicationSelectionReplacement } from './application-selection.js';
@@ -346,6 +350,20 @@ function collectApplicationEntryModules(compilation, options) {
 		background: collectReachableModules(compilation, options.backgroundEntry, authoredRequests),
 		main: collectReachableModules(compilation, options.mainThreadEntry, authoredRequests),
 	};
+}
+
+/** Background source modules in an already-collected graph that can receive BTS IR. */
+function lynxBackgroundCompilerModules(entryModules) {
+	return Object.freeze(
+		[...entryModules.background.modules].filter((module) => {
+			const info = getOctaneRspackBuildInfo(module);
+			return (
+				info?.transformKind === 'compile' &&
+				info.universalRuntime?.runtime === 'lynx' &&
+				info.universalRuntime.thread === 'background'
+			);
+		}),
+	);
 }
 
 function layerCoverage(modules, thread) {
@@ -1102,6 +1120,7 @@ function collectApplicationReports(compilation, entries, enabled) {
 		reports.set(
 			entry.mainThreadEntry,
 			Object.freeze({
+				backgroundCompilerModules: lynxBackgroundCompilerModules(entryModules),
 				programCoverage,
 				semanticRequirements,
 				featureRequirements,
@@ -1278,6 +1297,19 @@ export class LynxProgramCoveragePlugin {
 			const rebuild = new Set();
 			if (this.configuredCore === undefined && state.decision.selected === 'block') {
 				for (const root of backgroundRoots) rebuild.add(root);
+				// The first pass stays conservative so an ineligible ordinary app can
+				// fall back to Universal. Once the complete paired graph proves Block,
+				// rebuild only its authored background modules with the independent
+				// compiler-program renderer. This is the compiler-output seam; the
+				// compact product selected below remains the transport/owner seam.
+				for (const report of state.reports.values()) {
+					for (const module of report.backgroundCompilerModules) {
+						setOctaneRspackModuleCompilerOptions(module, {
+							renderers: lynxBlockRspeedyBackgroundRenderers,
+						});
+						rebuild.add(module);
+					}
+				}
 			}
 			if (state.applicationDecision.selected === 'compiled-program') {
 				for (const owner of applicationOwners) rebuild.add(owner);

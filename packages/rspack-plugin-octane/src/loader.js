@@ -16,6 +16,10 @@ import {
 	selectLayerCompilerOptions,
 } from './shared.js';
 import {
+	COMPILER_OPTIONS_CONTEXT_KEY,
+	getOctaneRspackModuleCompilerOptions,
+} from './compiler-specialization.js';
+import {
 	crossCheckProgramAddresses,
 	PROGRAM_ADDRESSES_BUILD_INFO_KEY,
 } from './program-addresses.js';
@@ -178,10 +182,16 @@ export default function octaneLoader(source, inputSourceMap) {
 			environment === 'client' &&
 			(options.dev ?? (this.mode === undefined || this.mode !== 'production'));
 		const profile = environment === 'client' && options.profile === true;
-		const compilerOptions =
+		const layerCompilerOptions =
 			options.layerSpecializations === undefined
 				? options
 				: selectLayerCompilerOptions(options, this._module);
+		const moduleCompilerOptions =
+			this[COMPILER_OPTIONS_CONTEXT_KEY] ?? getOctaneRspackModuleCompilerOptions(this._module);
+		const compilerOptions =
+			moduleCompilerOptions === undefined
+				? layerCompilerOptions
+				: { ...layerCompilerOptions, ...moduleCompilerOptions };
 		const mainThreadProgramBackend = loadMainThreadProgramBackend(
 			compilerOptions.mainThreadProgramBackend,
 			root,

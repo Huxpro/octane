@@ -126,6 +126,11 @@ class MetadataProbePlugin {
 		private readonly moduleIdentifiers: string[],
 		private readonly layeredModules: { identifier: string; layer?: string | null }[],
 		private readonly retainedModuleIdentifiers: string[],
+		private readonly moduleSources: {
+			identifier: string;
+			layer?: string | null;
+			code: string;
+		}[] = [],
 	) {}
 
 	apply(compiler: any): void {
@@ -136,6 +141,7 @@ class MetadataProbePlugin {
 						identifier?: () => string;
 						layer?: string | null;
 						nameForCondition?: () => string | null;
+						originalSource?: () => { source?: () => unknown } | null;
 					};
 					const moduleIdentifier = record.identifier?.();
 					if (typeof moduleIdentifier === 'string') {
@@ -143,6 +149,14 @@ class MetadataProbePlugin {
 							identifier: moduleIdentifier,
 							...(record.layer === undefined ? null : { layer: record.layer }),
 						});
+						const source = record.originalSource?.()?.source?.();
+						if (typeof source === 'string' || Buffer.isBuffer(source)) {
+							this.moduleSources.push({
+								identifier: moduleIdentifier,
+								...(record.layer === undefined ? null : { layer: record.layer }),
+								code: source.toString(),
+							});
+						}
 					}
 					for (const identifier of [record.identifier?.(), record.nameForCondition?.()]) {
 						if (typeof identifier === 'string') this.moduleIdentifiers.push(identifier);
@@ -189,6 +203,11 @@ function metadataProbe(
 	moduleIdentifiers: string[],
 	layeredModules: { identifier: string; layer?: string | null }[] = [],
 	retainedModuleIdentifiers: string[] = [],
+	moduleSources: {
+		identifier: string;
+		layer?: string | null;
+		code: string;
+	}[] = [],
 ) {
 	return {
 		name: 'octane:lynx-runtime-graph-probe',
@@ -201,6 +220,7 @@ function metadataProbe(
 						moduleIdentifiers,
 						layeredModules,
 						retainedModuleIdentifiers,
+						moduleSources,
 					]);
 			});
 		},
@@ -396,6 +416,11 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 		const reports: unknown[] = [];
 		const moduleIdentifiers: string[] = [];
 		const retainedModuleIdentifiers: string[] = [];
+		const moduleSources: {
+			identifier: string;
+			layer?: string | null;
+			code: string;
+		}[] = [];
 		const rspeedy = await createRspeedy({
 			cwd: APPLICATION_FIXTURE,
 			loadEnv: false,
@@ -420,7 +445,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 						hmr: false,
 					}),
 					programCoverageProbe(reports),
-					metadataProbe([], moduleIdentifiers, [], retainedModuleIdentifiers),
+					metadataProbe([], moduleIdentifiers, [], retainedModuleIdentifiers, moduleSources),
 				],
 			},
 		});
@@ -531,6 +556,22 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 			expect(product.includes('octane-lynx:compiled-program-main-to-background')).toBe(true);
 			expect(product.includes('octane-lynx:background-to-main')).toBe(false);
 			expect(product.includes('octane-lynx:main-to-background')).toBe(false);
+			const backgroundProgram = moduleSources.find(
+				(module) =>
+					module.layer === 'octane:background' &&
+					module.identifier.replaceAll('\\\\', '/').includes('/src/BlockEligible.tsrx'),
+			);
+			expect(backgroundProgram?.code).toContain('lynxProgram as');
+			expect(backgroundProgram?.code).toContain('lynxProgramValue as');
+			expect(backgroundProgram?.code).not.toContain('universalPlan as');
+			expect(backgroundProgram?.code).not.toContain('universalValue as');
+			const mainProgram = moduleSources.find(
+				(module) =>
+					module.layer === 'octane:main-thread' &&
+					module.identifier.replaceAll('\\\\', '/').includes('/src/BlockEligible.tsrx'),
+			);
+			expect(mainProgram?.code).toContain('"kind": "program"');
+			expect(mainProgram?.code).toContain('"version": 1');
 		} finally {
 			await result?.close();
 			rmSync(temporaryRoot, { recursive: true, force: true });
