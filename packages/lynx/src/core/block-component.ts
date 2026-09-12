@@ -895,9 +895,12 @@ export function lynxBlockProgramForComponent<Props>(
 		// directly, every other capture is named in `deps`, and the final bit says
 		// it cannot observe its index. If those captures and the selection itself
 		// are unchanged, a strict subsequence of the committed item identities is
-		// therefore a deletion-only render: every survivor keeps the same key,
+		// therefore a non-empty deletion-only render: every survivor keeps the same key,
 		// props, values, and listeners. Match against committed descriptors rather
-		// than calling either producer over the entire surviving range again.
+		// than calling either producer over the entire surviving range again. An
+		// empty range deliberately takes the ordinary path below: its fresh empty
+		// Map can replace the committed descriptors after acknowledgement instead
+		// of allocating every old key and deleting them one by one.
 		if (
 			nextSelection !== null &&
 			previousSelection !== null &&
@@ -906,6 +909,7 @@ export function lynxBlockProgramForComponent<Props>(
 			previousSelection[3] === true &&
 			nextSelection[3] === true &&
 			previousSelection[2] === nextSelection[2] &&
+			items.length !== 0 &&
 			items.length < previousKeys.length &&
 			Object.is(previousSelection[0], nextSelection[0]) &&
 			depsEqual(previousSelection[1], nextSelection[1])
