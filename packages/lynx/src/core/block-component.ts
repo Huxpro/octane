@@ -1012,15 +1012,14 @@ export function lynxBlockProgramForComponent<Props>(
 	 * the render produced and differ only in how much they visit to do it,
 	 * which is why deleting the first changes no test — only counts.
 	 *
-	 * Through the reconciler, handlers are rebound over the range in final
-	 * order rather than only for the rows that arrived: a row's handlers close
-	 * over that row's item and this render's props, so a survivor that kept its
-	 * hosts still needs this render's closures. The linked list is already in
-	 * item order once the reconcile returns, so that costs a walk rather than a
-	 * lookup per row. The scoped path rebinds fewer rows because it knows more
-	 * about them: a row it did not call was retained on props this render found
-	 * equal, so the closures already bound reach the same functions and the
-	 * same item that fresh ones would.
+	 * On both paths, only rows this render actually called need their handlers
+	 * rebound. A retained row kept the complete descriptor — values and
+	 * listeners — after its props compared equal, and a move keeps the block's
+	 * listener-id run with its hosts. Rebinding every survivor after a structural
+	 * update would therefore replace a closure with the identical retained
+	 * closure while walking the whole range. Once the reconciler has installed
+	 * the final key map, the changed and newly mounted rows are reached directly
+	 * through the same ascending `rendered` proof used for their values.
 	 *
 	 * On either path, a row that has an empty hole this render is released
 	 * before it is rebound, for the reason `update` releases the block's own:
@@ -1116,9 +1115,9 @@ export function lynxBlockProgramForComponent<Props>(
 			render.rendered,
 		);
 		if (state.prepared!.events.length === 0) return;
-		let index = 0;
-		for (let member = state.site!.head; member !== null; member = member.next) {
-			const handlers = render.handlers[index++]!;
+		for (const index of render.rendered) {
+			const member = state.site!.items.get(render.keys[index])!;
+			const handlers = render.handlers[index]!;
 			if (handlers.includes(null)) context.root.releaseListeners(member);
 			context.root.bindListeners(member, handlers);
 		}
