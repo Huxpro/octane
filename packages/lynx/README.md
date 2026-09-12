@@ -24,6 +24,11 @@ ReactLynx-to-Octane migration:
 - the Milestone 11 pinned macOS Explorer runner, real-wrapper compatibility
   fixes, and qualified native first-paint evidence.
 
+The current Block-core authoring boundary, automatic-selection status, and
+transactional publication rules are documented in
+[`docs/lynx-block-semantics.md`](../../docs/lynx-block-semantics.md). The
+matrix distinguishes focused kernel evidence from production selection.
+
 The package is `0.0.0`, marked `private`, and is not a native renderer release.
 Milestone 9's API/package review keeps the subpaths below unchanged and the
 universal renderer ABI experimental: public stabilization waits for the native

@@ -3,6 +3,10 @@
 Status: implementation contract for issue #373. This is an internal compiler
 and runtime boundary, not a published application API.
 
+The current application-level semantic support matrix lives in
+[`docs/lynx-block-semantics.md`](./lynx-block-semantics.md). This document
+describes the program representation rather than claiming syntax eligibility.
+
 Octane compiles every eligible `.lynx.tsrx` host template into two independent
 artifacts from one compiler-owned `LynxProgramIR`:
 
