@@ -320,7 +320,7 @@ interface RetainedRow {
 	readonly values: readonly UniversalHostTemplateProgramValue[];
 	readonly listeners: readonly (LynxBlockListener | null)[];
 	/** Last committed list order, used to preserve old/new row evaluation order. */
-	readonly index: number;
+	index: number;
 }
 
 const EMPTY_RANGES: readonly RangeState[] = Object.freeze([]);
@@ -963,7 +963,7 @@ export function lynxBlockProgramForComponent<Props>(
 					// functions and the same item as fresh ones would.
 					rows[index] = prior.values;
 					handlers[index] = prior.listeners;
-					retained.set(itemKey, prior.index === index ? prior : { ...prior, index });
+					retained.set(itemKey, prior);
 					continue;
 				}
 			}
@@ -1050,6 +1050,20 @@ export function lynxBlockProgramForComponent<Props>(
 		// and nothing mounted to reconcile.
 		if (state.template === null) return;
 		context.afterCommit(() => {
+			// Reused descriptors still describe the same row, but a structural
+			// update may have changed that row's committed order. Stage that order
+			// on the completed render and publish it only after the core commit: an
+			// eager write here would corrupt the last accepted selection indices if
+			// a later row refused or the transport rejected the frame. Map insertion
+			// order is this render's item order, so this replaces one object copy per
+			// shifted survivor with one allocation-free post-commit walk.
+			if (render.structural) {
+				let index = 0;
+				for (const row of render.retained.values()) {
+					if (row !== null) row.index = index;
+					index++;
+				}
+			}
 			state.source = render.source;
 			state.keyedSelection = render.keyedSelection;
 			state.retained = render.retained;
