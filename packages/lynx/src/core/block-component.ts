@@ -925,15 +925,16 @@ export function lynxBlockProgramForComponent<Props>(
 			if (
 				selectionRowsStable &&
 				prior != null &&
-				prior.index === index &&
+				(nextSelection![3] === true || prior.index === index) &&
 				Object.is((prior.props as Record<string, unknown>)[nextSelection![2]], item) &&
 				Object.is(itemKey, previousSelection![0]) === Object.is(itemKey, nextSelection![0])
 			) {
 				// The compiler proved every capture except the selected key is a
-				// stable direct prop. Same item and index preserve the row-local
-				// props too, and the equality above proves its selected boolean did
-				// not move. Reuse the descriptor instead of rebuilding it merely to
-				// have the shallow comparison reach the same conclusion.
+				// stable direct prop. Same item and either the same index or the
+				// compiler's proof that no prop reads it preserve the row-local props
+				// too, and the equality above proves its selected boolean did not move.
+				// Reuse the descriptor instead of rebuilding it merely to have the
+				// shallow comparison reach the same conclusion.
 				rows[index] = prior.values;
 				handlers[index] = prior.listeners;
 				retained.set(itemKey, prior);

@@ -535,9 +535,16 @@ export interface UniversalForValue {
 	 * Compiler-only proof that one captured value affects a component row only
 	 * through a strict comparison with the row key. Renderers may use this to
 	 * revisit the old/new keyed rows when the iterable and every other capture
-	 * are unchanged; an absent proof always means ordinary range evaluation.
+	 * are unchanged. The optional final bit additionally proves the row receives
+	 * no index-dependent prop, so a renderer may retain it across a move; absent
+	 * metadata always means ordinary range evaluation.
 	 */
-	readonly keyedSelection?: readonly [value: unknown, deps: readonly unknown[], itemProp: string];
+	readonly keyedSelection?: readonly [
+		value: unknown,
+		deps: readonly unknown[],
+		itemProp: string,
+		indexIndependent?: boolean,
+	];
 	/**
 	 * Compiler-only proof that a component row receives only the item, index, static
 	 * values, and bare outer captures as props. A renderer may retain the keyed row
@@ -2366,7 +2373,12 @@ export function universalFor<T>(
 	leafPlan?: UniversalPlan,
 	leafSignature?: string,
 	componentScope = false,
-	keyedSelection?: readonly [value: unknown, deps: readonly unknown[], itemProp: string],
+	keyedSelection?: readonly [
+		value: unknown,
+		deps: readonly unknown[],
+		itemProp: string,
+		indexIndependent?: boolean,
+	],
 	componentRows?: readonly unknown[],
 ): UniversalForValue {
 	if (componentScope) {

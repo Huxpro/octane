@@ -3083,7 +3083,9 @@ function templateProgramForComponent(node, state) {
  * satisfy `templateProgramForComponent`, the key is one direct item property,
  * and every other outer capture must be passed as a bare prop value. Property
  * reads on an outer object could hide a getter or a mutation behind stable
- * identity, so they fail closed. The full range path remains the fallback.
+ * identity, so they fail closed. The proof also records whether the component
+ * props omit the loop index, allowing shifted survivors to keep their row
+ * descriptors. The full range path remains the fallback.
  */
 function keyedSelectionForComponent(node, component, state, itemBinding, indexBinding) {
 	if (!state.sparseKeyedSelection || itemBinding.type !== 'Identifier') return null;
@@ -3144,9 +3146,15 @@ function keyedSelectionForComponent(node, component, state, itemBinding, indexBi
 	if (selected === null) return null;
 
 	const excluded = new Set([itemBinding.name]);
-	if (indexBinding?.type === 'Identifier') excluded.add(indexBinding.name);
 	if (componentName?.type === 'JSXIdentifier') excluded.add(componentName.name);
-	const captures = collectEntryCaptures(component, excluded);
+	const allCaptures = collectEntryCaptures(component, excluded);
+	const indexIndependent =
+		indexBinding?.type !== 'Identifier' ||
+		!allCaptures.some((capture) => capture.source === indexBinding.name);
+	const captures =
+		indexBinding?.type === 'Identifier'
+			? allCaptures.filter((capture) => capture.source !== indexBinding.name)
+			: allCaptures;
 	const selectedCapture = captures.find((capture) => capture.source === selected.name);
 	if (
 		selectedCapture === undefined ||
@@ -3179,7 +3187,7 @@ function keyedSelectionForComponent(node, component, state, itemBinding, indexBi
 		}
 		deps.push(capture.nodes[0]);
 	}
-	return { selected, deps, itemProp };
+	return { selected, deps, itemProp, indexIndependent };
 }
 
 /**
@@ -4293,6 +4301,7 @@ function compileForAst(node, context, state) {
 							keyedSelection.deps.map((dependency) => dynamicExpressionAst(dependency, state)),
 						),
 						b.literal(keyedSelection.itemProp),
+						b.literal(keyedSelection.indexIndependent),
 					]),
 					templateComponent,
 				),
