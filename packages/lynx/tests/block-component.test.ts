@@ -2064,6 +2064,7 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 
 	it('falls back to the whole range when rows or another captured dependency change', async () => {
 		let rangeCalls = 0;
+		let visited: number[] = [];
 		const Row = defineUniversalComponent(
 			LYNX_TRANSPORT_RENDERER,
 			function Row(props: {
@@ -2086,8 +2087,9 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 					universalFor(
 						props.rows,
 						(row: TableRow) => row.id,
-						(row: TableRow) => {
+						(row: TableRow, index: number) => {
 							rangeCalls++;
+							visited.push(row.id * 1000 + index);
 							return universalComponent(
 								LYNX_TRANSPORT_RENDERER,
 								Row,
@@ -2141,12 +2143,45 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 		// selection on that same reordered source must still reach only its two
 		// keys, including the row whose index moved.
 		rangeCalls = 0;
+		visited = [];
 		await block.render(Listed as LynxComponent<TableProps>, {
 			rows: reordered,
 			selected: 5,
 			onSelect: second,
 		});
 		expect(rangeCalls).toBe(2);
+		expect(visited).toEqual([5_000, 2_002]);
+
+		// A rejected structural frame must not publish its tentative order into
+		// the retained records. The accepted tree is still `reordered`, so the
+		// following sparse selection has to receive those committed indices.
+		const rejected = block.background.renderAsync(
+			Listed as never,
+			{
+				rows,
+				selected: 5,
+				onSelect: second,
+			} as never,
+		);
+		await flushMicrotasks();
+		block.main.reject(block.main.commits.at(-1)!, 'injected reordered range rejection');
+		await expect(rejected).rejects.toThrow('injected reordered range rejection');
+
+		rangeCalls = 0;
+		visited = [];
+		const retained = block.background.renderAsync(
+			Listed as never,
+			{
+				rows: reordered,
+				selected: 2,
+				onSelect: second,
+			} as never,
+		);
+		await flushMicrotasks();
+		block.main.acknowledge(block.main.commits.at(-1)!);
+		await retained;
+		expect(rangeCalls).toBe(2);
+		expect(visited).toEqual([5_000, 2_002]);
 	});
 
 	it('paints what the universal core paints while the row objects never change', async () => {
