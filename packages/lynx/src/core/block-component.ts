@@ -336,6 +336,11 @@ interface RangeRender {
 	readonly keys: readonly unknown[];
 	/** What the next render compares against, adopted only once this one applies. */
 	readonly retained: Map<unknown, RetainedRow | null>;
+	/**
+	 * Keys to remove from a reused retained map after acknowledgement. Non-null
+	 * only for the compiler-proven deletion-only shortcut.
+	 */
+	readonly removedRetainedKeys: readonly unknown[] | null;
 	/** Whether any block has to be mounted, removed, or moved. */
 	readonly structural: boolean;
 	/** Indices of the rows this render actually called; the rest were retained. */
@@ -876,6 +881,7 @@ export function lynxBlockProgramForComponent<Props>(
 				handlers: [],
 				keys: previousKeys,
 				retained: previous,
+				removedRetainedKeys: null,
 				structural: false,
 				rendered: [],
 				source: list.items,
@@ -885,6 +891,77 @@ export function lynxBlockProgramForComponent<Props>(
 		}
 
 		const items = Array.from(list.items as Iterable<unknown>);
+		// A production keyed-selection proof says the row receives its item
+		// directly, every other capture is named in `deps`, and the final bit says
+		// it cannot observe its index. If those captures and the selection itself
+		// are unchanged, a strict subsequence of the committed item identities is
+		// therefore a deletion-only render: every survivor keeps the same key,
+		// props, values, and listeners. Match against committed descriptors rather
+		// than calling either producer over the entire surviving range again.
+		if (
+			nextSelection !== null &&
+			previousSelection !== null &&
+			previous !== null &&
+			previousKeys !== null &&
+			previousSelection[3] === true &&
+			nextSelection[3] === true &&
+			previousSelection[2] === nextSelection[2] &&
+			items.length < previousKeys.length &&
+			Object.is(previousSelection[0], nextSelection[0]) &&
+			depsEqual(previousSelection[1], nextSelection[1])
+		) {
+			const rows: (readonly UniversalHostTemplateProgramValue[])[] = new Array(items.length);
+			const handlers: (readonly (LynxBlockListener | null)[])[] = new Array(items.length);
+			const keys: unknown[] = new Array(items.length);
+			const removedRetainedKeys: unknown[] = [];
+			let previousIndex = 0;
+			let reusable = true;
+			for (let index = 0; index < items.length; index++) {
+				let retainedRow: RetainedRow | null | undefined;
+				let itemKey: unknown;
+				while (previousIndex < previousKeys.length) {
+					itemKey = previousKeys[previousIndex++]!;
+					retainedRow = previous.get(itemKey);
+					if (
+						retainedRow != null &&
+						Object.is(
+							(retainedRow.props as Record<string, unknown>)[nextSelection[2]],
+							items[index],
+						)
+					) {
+						break;
+					}
+					removedRetainedKeys.push(itemKey);
+					retainedRow = undefined;
+				}
+				if (retainedRow == null) {
+					reusable = false;
+					break;
+				}
+				keys[index] = itemKey!;
+				rows[index] = retainedRow.values;
+				handlers[index] = retainedRow.listeners;
+			}
+			if (reusable) {
+				while (previousIndex < previousKeys.length) {
+					removedRetainedKeys.push(previousKeys[previousIndex++]!);
+				}
+				return {
+					state,
+					items,
+					rows,
+					handlers,
+					keys,
+					retained: previous,
+					removedRetainedKeys,
+					structural: true,
+					rendered: [],
+					source: list.items,
+					keyedSelection: nextSelection,
+					sparse: null,
+				};
+			}
+		}
 		const rows: (readonly UniversalHostTemplateProgramValue[])[] = new Array(items.length);
 		const handlers: (readonly (LynxBlockListener | null)[])[] = new Array(items.length);
 		const keys: unknown[] = new Array(items.length);
@@ -992,6 +1069,7 @@ export function lynxBlockProgramForComponent<Props>(
 			handlers,
 			keys,
 			retained,
+			removedRetainedKeys: null,
 			structural,
 			rendered,
 			source: list.items,
@@ -1050,6 +1128,9 @@ export function lynxBlockProgramForComponent<Props>(
 		// and nothing mounted to reconcile.
 		if (state.template === null) return;
 		context.afterCommit(() => {
+			if (render.removedRetainedKeys !== null) {
+				for (const key of render.removedRetainedKeys) render.retained.delete(key);
+			}
 			// Reused descriptors still describe the same row, but a structural
 			// update may have changed that row's committed order. Stage that order
 			// on the completed render and publish it only after the core commit: an
