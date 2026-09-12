@@ -1786,6 +1786,7 @@ function stableColumnComponent(): LynxComponent<TableProps> {
 
 describe('Lynx compiled component whose rows outlive the render', () => {
 	it('visits only old and new keys for a compiler-certified selection', async () => {
+		let keyCalls = 0;
 		let rangeCalls = 0;
 		let rowCalls = 0;
 		let visited: number[] = [];
@@ -1811,7 +1812,10 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 				return universalValue(TABLE_PLAN, [
 					universalFor(
 						props.rows,
-						(row: TableRow) => row.id,
+						(row: TableRow) => {
+							keyCalls++;
+							return row.id;
+						},
 						(row: TableRow, index: number) => {
 							rangeCalls++;
 							visited.push(row.id * 1000 + index);
@@ -1927,6 +1931,66 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 		// shifted descriptors survive without rebuilding their identical props.
 		expect(swappedStep.rowCalls).toBe(0);
 		expect(swappedStep.visited).toEqual([]);
+
+		// Deletion-only retention reuses the committed descriptor Map. Rejecting the
+		// structural frame must leave that Map intact: key 50 still has to be
+		// available to the following sparse selection against the accepted source.
+		const rejectedRemoval = swapped.filter((row) => row.id !== 50);
+		const beforeRejectedKeys = keyCalls;
+		const beforeRejectedRange = rangeCalls;
+		const beforeRejectedRows = rowCalls;
+		const rejected = block.background.renderAsync(
+			Listed as never,
+			{ rows: rejectedRemoval, selected: 25, onSelect } as never,
+		);
+		await flushMicrotasks();
+		block.main.reject(block.main.commits.at(-1)!, 'injected deletion-only rejection');
+		await expect(rejected).rejects.toThrow('injected deletion-only rejection');
+		expect(keyCalls).toBe(beforeRejectedKeys);
+		expect(rangeCalls).toBe(beforeRejectedRange);
+		expect(rowCalls).toBe(beforeRejectedRows);
+		const commitStep = async (selected: number | undefined, nextRows: readonly TableRow[]) => {
+			visited = [];
+			const beforeRange = rangeCalls;
+			const beforeRows = rowCalls;
+			const beforeCore = core.counters();
+			const rendering = block.background.renderAsync(
+				Listed as never,
+				{ rows: nextRows, selected, onSelect } as never,
+			);
+			await flushMicrotasks();
+			block.main.acknowledge(block.main.commits.at(-1)!);
+			await rendering;
+			const afterCore = core.counters();
+			return {
+				rangeCalls: rangeCalls - beforeRange,
+				rowCalls: rowCalls - beforeRows,
+				lookups: afterCore.blockLookups - beforeCore.blockLookups,
+				commands: afterCore.commands - beforeCore.commands,
+				visited,
+			};
+		};
+		expect(await commitStep(50, swapped)).toEqual({
+			rangeCalls: 2,
+			rowCalls: 2,
+			lookups: 2,
+			commands: 2,
+			visited: [25_024, 50_049],
+		});
+
+		const beforeRemovalKeys = keyCalls;
+		const removed = swapped.filter((row) => row.id !== 50);
+		expect(await commitStep(50, removed)).toEqual({
+			rangeCalls: 0,
+			rowCalls: 0,
+			lookups: removed.length,
+			commands: 6,
+			visited: [],
+		});
+		// The compiler proved an index-independent component row with stable
+		// captures. A strict item-identity subsequence therefore supplies both the
+		// retained descriptors and their committed keys without either producer.
+		expect(keyCalls - beforeRemovalKeys).toBe(0);
 	});
 
 	it('owns one external-store selector and publishes it only after host acknowledgement', async () => {
