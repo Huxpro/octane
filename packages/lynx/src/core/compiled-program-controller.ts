@@ -130,6 +130,7 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 		for (let attempt = 0; attempt < MAX_CLOSE_CLEANUP_ATTEMPTS; attempt++) {
 			try {
 				candidate.dispose();
+				papi.flush(page);
 				return;
 			} catch (error) {
 				report(error);
@@ -276,9 +277,35 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 						);
 					}
 					pendingAdoption?.verify();
+					// Element PAPI mutations are not visible until the page is flushed.
+					// Keep that publication inside the frame transaction so a failure can
+					// still roll every logical and native write back before rejection.
+					papi.flush(page);
+					if (closed) {
+						throw new Error(
+							CONTROLLER_DEVELOPMENT
+								? 'Octane Lynx compact receiver closed during frame flush.'
+								: CONTROLLER_ERROR,
+						);
+					}
+					if (aborted.delete(key)) {
+						throw new Error(
+							CONTROLLER_DEVELOPMENT
+								? `Octane Lynx compact frame ${identity.version} was aborted during flush.`
+								: CONTROLLER_ERROR,
+						);
+					}
 				});
 			} catch (error) {
 				applying = null;
+				let rollbackFlushError: unknown = null;
+				try {
+					// `applyLynxCompiledProgramFrame` has already replayed its journal.
+					// Publish that cleanup before inviting an exact-identity retry.
+					papi.flush(page);
+				} catch (flushError) {
+					rollbackFlushError = flushError;
+				}
 				if (closed) {
 					releaseClosedStore(candidateStore);
 					store = null;
@@ -287,7 +314,7 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 					if (candidateStore.isFaulted()) report(error);
 					return;
 				}
-				if (candidateStore.isFaulted()) {
+				if (candidateStore.isFaulted() || rollbackFlushError !== null) {
 					// Rollback itself left native ownership uncertain. Retain the
 					// faulted store so terminal disposal can finish cleanup; a reject
 					// would incorrectly invite an ordinary same-identity retry.
@@ -295,7 +322,12 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 					active = candidate;
 					faulted = true;
 					const normalized = report(
-						error,
+						rollbackFlushError === null
+							? error
+							: new AggregateError(
+									[error, rollbackFlushError],
+									'Compact frame rollback flush failed.',
+								),
 						CONTROLLER_DEVELOPMENT
 							? 'Octane Lynx compact frame rollback was incomplete.'
 							: CONTROLLER_ERROR,
@@ -389,6 +421,7 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 			disposing = true;
 			try {
 				store!.dispose();
+				papi.flush(page);
 			} catch (error) {
 				disposing = false;
 				const normalized = report(error);
@@ -428,6 +461,7 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 			disposing = true;
 			try {
 				store.dispose();
+				papi.flush(page);
 			} catch (error) {
 				disposing = false;
 				closed = false;

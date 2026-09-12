@@ -60,7 +60,7 @@ function emittedPlan(): UniversalProgramPlan {
 	};
 }
 
-function emittedHost(): LynxElementPAPI<FakeNode> {
+function emittedHost(): LynxElementPAPI<FakeNode> & { flushes(): number } {
 	const base = createFakePAPI();
 	return {
 		...base,
@@ -157,6 +157,69 @@ function setup(
 }
 
 describe('@octanejs/lynx compact compiled-program transport', () => {
+	it.each([
+		['controller receiver', false],
+		['product receiver', true],
+	] as const)('flushes accepted and disposed host state for %s', async (_name, product) => {
+		const papi = emittedHost();
+		const { page, receiver, transport } = setup(
+			papi,
+			'tests/WireRow.lynx.tsrx',
+			new RecordingContext(),
+			product,
+		);
+		receiver.markProgramsReady();
+		receiver.markPageReady();
+		await transport.ready;
+
+		await transport.commit(identity(1), mountFrame(), () => {}).promise;
+		expect(page.children).toHaveLength(1);
+		expect(papi.flushes()).toBe(1);
+
+		await transport.dispose(identity(1));
+		expect(page.children).toEqual([]);
+		expect(papi.flushes()).toBe(2);
+		transport.close();
+		receiver.close();
+	});
+
+	it.each([
+		['controller receiver', false],
+		['product receiver', true],
+	] as const)('publishes rollback before retry when the %s flush fails', async (_name, product) => {
+		const base = emittedHost();
+		let flushes = 0;
+		const papi: typeof base = {
+			...base,
+			flush(node, options) {
+				flushes++;
+				if (flushes === 1) throw new Error('injected frame flush failure');
+				base.flush(node, options);
+			},
+		};
+		const { page, receiver, transport } = setup(
+			papi,
+			'tests/WireRow.lynx.tsrx',
+			new RecordingContext(),
+			product,
+		);
+		receiver.markProgramsReady();
+		receiver.markPageReady();
+		await transport.ready;
+
+		await expect(transport.commit(identity(1), mountFrame(), () => {}).promise).rejects.toThrow(
+			'injected frame flush failure',
+		);
+		expect(page.children).toEqual([]);
+		expect(flushes).toBe(2);
+
+		await transport.commit(identity(1), mountFrame(), () => {}).promise;
+		expect(page.children).toHaveLength(1);
+		expect(flushes).toBe(3);
+		transport.close();
+		receiver.close();
+	});
+
 	it.each([
 		['controller receiver', false],
 		['product receiver', true],

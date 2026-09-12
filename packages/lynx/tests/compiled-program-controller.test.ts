@@ -263,6 +263,37 @@ describe('@octanejs/lynx compact compiled-program controller', () => {
 		expect(setupResult.page.children).toHaveLength(1);
 	});
 
+	it('observes an abort that re-enters during the publication flush', () => {
+		const base = emittedHost();
+		let controller!: LynxCompiledProgramController;
+		let abortDuringFlush = true;
+		const papi: typeof base = {
+			...base,
+			flush(node, options) {
+				base.flush(node, options);
+				if (abortDuringFlush) {
+					abortDuringFlush = false;
+					controller.abort(identity(1));
+				}
+			},
+		};
+		const setupResult = setup(papi);
+		controller = setupResult.controller;
+
+		controller.apply(identity(1), mountFrame());
+		expect(setupResult.responses.map((message) => message.type)).toEqual(['reject']);
+		expect(controller.activeIdentity()).toBeNull();
+		expect(setupResult.page.children).toEqual([]);
+
+		controller.apply(identity(1), mountFrame());
+		expect(setupResult.responses.map((message) => message.type)).toEqual([
+			'reject',
+			'ack',
+			'complete',
+		]);
+		expect(setupResult.page.children).toHaveLength(1);
+	});
+
 	it('retries incomplete disposal and acknowledges only after native ownership is gone', () => {
 		const base = emittedHost();
 		let failRemove = true;

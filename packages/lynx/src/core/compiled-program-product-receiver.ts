@@ -67,6 +67,7 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 		for (let attempt = 0; attempt < MAX_CLOSE_CLEANUP_ATTEMPTS; attempt++) {
 			try {
 				candidate.dispose();
+				papi.flush(page);
 				return;
 			} catch (error) {
 				report(error);
@@ -163,7 +164,10 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 			}
 			busy = true;
 			try {
-				store?.dispose();
+				if (store !== null) {
+					store.dispose();
+					papi.flush(page);
+				}
 			} catch (error) {
 				busy = false;
 				const failure = report(error);
@@ -217,9 +221,23 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 					throw new Error(CODE);
 				}
 				pendingAdoption?.verify();
+				// ContextProxy delivery does not publish Element PAPI writes. Flush
+				// before committing so a failed publication remains retryable.
+				papi.flush(page);
+				if (closed) throw new Error(CODE);
+				if (aborted !== null && same(aborted, message)) {
+					aborted = null;
+					throw new Error(CODE);
+				}
 			});
 		} catch (error) {
 			busy = false;
+			let rollbackFlushError: unknown = null;
+			try {
+				papi.flush(page);
+			} catch (flushError) {
+				rollbackFlushError = flushError;
+			}
 			if (closed) {
 				release(candidate);
 				store = null;
@@ -228,11 +246,18 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 				if (candidate.isFaulted()) report(error);
 				return;
 			}
-			if (candidate.isFaulted()) {
+			if (candidate.isFaulted() || rollbackFlushError !== null) {
 				store = candidate;
 				active = message;
 				faulted = true;
-				const failure = report(error);
+				const failure = report(
+					rollbackFlushError === null
+						? error
+						: new AggregateError(
+								[error, rollbackFlushError],
+								'Compact frame rollback flush failed.',
+							),
+				);
 				send({
 					...message,
 					type: 'fault',
@@ -281,7 +306,10 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 		},
 		close() {
 			if (closed || busy) return;
-			store?.dispose();
+			if (store !== null) {
+				store.dispose();
+				papi.flush(page);
+			}
 			pendingAdoption?.dispose();
 			pendingAdoption = undefined;
 			closed = true;
