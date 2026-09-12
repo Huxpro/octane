@@ -607,6 +607,25 @@ describe('universal hook scope', () => {
 		scope.dispose();
 	});
 
+	it('reads context through the adopting core service and observes later values', () => {
+		const Theme = createContext('light');
+		let value = 'dark';
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender() {},
+			readContext(context) {
+				return context === Theme ? value : context.defaultValue;
+			},
+		});
+
+		expect(scope.render(() => useContext(Theme))).toBe('dark');
+		scope.commit();
+		value = 'blue';
+		expect(scope.render(() => useContext(Theme))).toBe('blue');
+		scope.abort();
+		scope.dispose();
+	});
+
 	it('keeps useId values distinct across scopes, as roots keep them across roots', () => {
 		const { scope, pass } = scopeWithLog();
 		const other = scopeWithLog();

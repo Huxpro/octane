@@ -33,6 +33,7 @@ import {
 	createUniversalRoot,
 	defineUniversalComponent,
 	universalComponent,
+	universalContext,
 	universalFor,
 	universalPlan,
 	universalProgramRangeCommandSlot,
@@ -1316,6 +1317,91 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		expect(lifecycle.slice(-2)).toEqual(['cleanup:two:quiet', 'cleanup:one:quiet']);
 	});
 
+	it('propagates context updates through keyed moves without resetting row state', async () => {
+		const Theme = createContext('default');
+		const lifecycle: string[] = [];
+		const one = { id: 1, label: 'one' };
+		const two = { id: 2, label: 'two' };
+
+		interface ContextRowProps {
+			readonly row: TableRow;
+		}
+		const ContextRow = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function ContextRow({ row }: ContextRowProps) {
+				const theme = useContext(Theme);
+				const [loud, setLoud] = useState(false);
+				useEffect(
+					() => {
+						lifecycle.push(`effect:${row.id}:${theme}`);
+						return () => lifecycle.push(`cleanup:${row.id}:${theme}`);
+					},
+					[theme],
+					'theme',
+				);
+				return universalValue(ROW_PLAN, [
+					'row',
+					String(row.id),
+					() => setLoud((value) => !value),
+					`${row.label}:${theme}:${loud ? 'loud' : 'quiet'}`,
+				]);
+			},
+		);
+
+		interface ContextPageProps {
+			readonly rows: readonly TableRow[];
+			readonly theme: string;
+		}
+		const ContextPage = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			({ rows, theme }: ContextPageProps) =>
+				universalContext(
+					Theme,
+					theme,
+					universalValue(TABLE_PLAN, [
+						universalFor(
+							rows,
+							(row) => row.id,
+							(row) => universalComponent(LYNX_TRANSPORT_RENDERER, ContextRow, { row }),
+						),
+					]),
+				),
+		);
+
+		const block = blockColumn<ContextPageProps>();
+		await block.render(ContextPage as LynxComponent<ContextPageProps>, {
+			rows: [one, two],
+			theme: 'dark',
+		});
+		await flushMicrotasks();
+		expect(lifecycle).toEqual(['effect:1:dark', 'effect:2:dark']);
+
+		deliverTo(block, rowListener(block.main.commits, 0));
+		await block.settle(Promise.resolve());
+		expect(paint(block.main.commits).tree).toContain('one:dark:loud');
+
+		await block.render(ContextPage as LynxComponent<ContextPageProps>, {
+			rows: [two, one],
+			theme: 'light',
+		});
+		await flushMicrotasks();
+		const moved = paint(block.main.commits).tree;
+		expect(moved.indexOf('two:light:quiet')).toBeLessThan(moved.indexOf('one:light:loud'));
+		expect(lifecycle).toEqual(
+			expect.arrayContaining([
+				'cleanup:1:dark',
+				'cleanup:2:dark',
+				'effect:1:light',
+				'effect:2:light',
+			]),
+		);
+
+		await block.settle(block.background.unmountAsync());
+		await flushMicrotasks();
+		expect(lifecycle.slice(-2)).toEqual(
+			expect.arrayContaining(['cleanup:1:light', 'cleanup:2:light']),
+		);
+	});
 	it('keeps row-state discovery constant as unrelated stateful rows grow', async () => {
 		const component = BlockScopedRowsFixture as never as LynxComponent<BlockScopedRowsProps>;
 		for (const count of [2, 128]) {
@@ -2140,11 +2226,10 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		).rejects.toThrow(/Inserting.*insertion effect/s);
 	});
 
-	it('refuses a page that reads a context rather than answering the default', async () => {
+	it('answers a context default when no provider overrides it', async () => {
 		const block = blockColumn();
 		const Theme = createContext('light');
-		// A scope has no provider chain, so the default is the only value a read
-		// could produce — and under a provider that value is silently wrong.
+		// Block supplies the same default lookup as an ordinary Universal owner chain.
 		const Themed = defineUniversalComponent(
 			LYNX_TRANSPORT_RENDERER,
 			function Themed({ label, detail, active, onTap }: CardProps) {
@@ -2158,9 +2243,8 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 				]);
 			},
 		);
-		await expect(
-			block.settle(block.background.renderAsync(Themed as never, LADDER[0]!)),
-		).rejects.toThrow(/Themed.*reads a context/s);
+		await block.render(Themed as never, LADDER[0]!);
+		expect(paint(block.main.commits).tree).toContain('card light');
 	});
 
 	it('names a template that is not rooted at a host element', async () => {

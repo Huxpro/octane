@@ -59,6 +59,9 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
 
 import type {
 	UniversalComponentValue,
+	UniversalChildrenValue,
+	UniversalContext,
+	UniversalContextValue,
 	UniversalForValue,
 	UniversalHostCapabilities,
 	UniversalHostDriver,
@@ -77,7 +80,6 @@ import type {
 // two record constructors it uses — not the reconciler, not a root.
 import {
 	createUniversalHookScope,
-	UNIVERSAL_HOOK_SCOPE_CONTEXT_REFUSED,
 	UNIVERSAL_HOOK_SCOPE_EFFECTS_REFUSED,
 	type UniversalHookScope,
 	useEffect,
@@ -138,6 +140,8 @@ const UNIVERSAL_FOR: symbol = Symbol.for('octane.universal.for');
 const UNIVERSAL_COMPONENT_VALUE: symbol = Symbol.for('octane.universal.component-value');
 const UNIVERSAL_PROPS: symbol = Symbol.for('octane.universal.props');
 const UNIVERSAL_COMPONENT: symbol = Symbol.for('octane.universal.component');
+const UNIVERSAL_CHILDREN: symbol = Symbol.for('octane.universal.children');
+const UNIVERSAL_CONTEXT: symbol = Symbol.for('octane.universal.context');
 
 // Guard the call-site arguments as well as the final message. A production
 // refusal is the compact OL013 contract, so its diagnostic strings must never
@@ -291,6 +295,20 @@ function depsEqual(previous: readonly unknown[], next: readonly unknown[]): bool
 	}
 	return true;
 }
+type SemanticContexts = ReadonlyMap<UniversalContext<any>, unknown> | null;
+
+function sameSemanticContexts(previous: SemanticContexts, next: SemanticContexts): boolean {
+	if (previous === next) return true;
+	if (previous === null || next === null || previous.size !== next.size) return false;
+	for (const [context, value] of previous) {
+		if (!next.has(context) || !Object.is(next.get(context), value)) return false;
+	}
+	return true;
+}
+
+function readSemanticContext<T>(contexts: SemanticContexts, context: UniversalContext<T>): T {
+	return contexts?.has(context) ? (contexts.get(context) as T) : context.defaultValue;
+}
 
 /** Whether a hole's value is a keyed range rather than something a slot carries. */
 function isRangeValue(value: unknown): value is UniversalForValue {
@@ -303,6 +321,7 @@ function isRangeValue(value: unknown): value is UniversalForValue {
 
 /** One rendered template: the plan it named, and the slot values for it. */
 interface RenderedPlan {
+	readonly contextValues: SemanticContexts;
 	/** The component that returned it, which is who a refusal has to name. */
 	readonly source: LynxComponent<never>;
 	readonly plan: UniversalPlan | LynxCompilerProgram;
@@ -353,6 +372,8 @@ interface RangeState {
 	 * survivor of itself. Recording the sequence is what lets the next render
 	 * find that out for the price of the key comparisons it already makes.
 	 */
+	/** Provider values inherited by every row in the last accepted render. */
+	contextValues: SemanticContexts;
 	keys: readonly unknown[] | null;
 	/** Iterable identity and compiler proof adopted by the last applied render. */
 	source: Iterable<unknown> | null;
@@ -417,6 +438,7 @@ interface RangeRender {
 	readonly hasScopedRows: boolean;
 	/** Whether any block has to be mounted, removed, or moved. */
 	readonly structural: boolean;
+	readonly contextValues: SemanticContexts;
 	/** Indices of the rows this render actually called; the rest were retained. */
 	readonly rendered: readonly number[];
 	readonly source: Iterable<unknown>;
@@ -453,6 +475,16 @@ export function lynxBlockProgramForComponent<Props>(
 	 * the component being called lets one shared render context name any refusal.
 	 */
 	let rendering: LynxComponent<never> = subject;
+	let renderingContexts: SemanticContexts = null;
+	const withSemanticContexts = <T>(contexts: SemanticContexts, run: () => T): T => {
+		const previous = renderingContexts;
+		renderingContexts = contexts;
+		try {
+			return run();
+		} finally {
+			renderingContexts = previous;
+		}
+	};
 	/**
 	 * The second argument a compiled component is called with.
 	 *
@@ -464,12 +496,8 @@ export function lynxBlockProgramForComponent<Props>(
 	 */
 	const renderContext: UniversalRenderContext = Object.freeze({
 		renderer: LYNX_TRANSPORT_RENDERER,
-		readContext(): never {
-			refuse(
-				rendering,
-				LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-					'its setup reads a context, which needs the owner chain the Block core does not have yet (issue #135 item 1b).',
-			);
+		readContext<T>(context: UniversalContext<T>): T {
+			return readSemanticContext(renderingContexts, context);
 		},
 		insertionEffect(): never {
 			refuse(rendering, LYNX_BLOCK_COMPONENT_DEVELOPMENT && INSERTION_EFFECTS_UNSUPPORTED);
@@ -525,16 +553,50 @@ export function lynxBlockProgramForComponent<Props>(
 	let ranges: readonly RangeState[] = EMPTY_RANGES;
 
 	/** Read a compiled component's return value, or say what it returned instead. */
-	const readPlanValue = (source: LynxComponent<never>, produced: unknown): RenderedPlan => {
-		if (isLynxCompilerProgramValue(produced)) {
+	const readPlanValue = (
+		source: LynxComponent<never>,
+		produced: unknown,
+		inheritedContexts: SemanticContexts = renderingContexts,
+	): RenderedPlan => {
+		let output = produced;
+		let contextValues = inheritedContexts;
+		while (output !== null && typeof output === 'object') {
+			const kind = (output as { $$kind?: unknown }).$$kind;
+			if (kind === UNIVERSAL_CONTEXT) {
+				const provider = output as UniversalContextValue;
+				const next = new Map(contextValues ?? []);
+				next.set(provider.context, provider.value);
+				contextValues = next;
+				output = withSemanticContexts(contextValues, () => {
+					const children = provider.children;
+					return typeof children === 'function' ? children() : children;
+				});
+				continue;
+			}
+			if (kind === UNIVERSAL_CHILDREN) {
+				const children = output as UniversalChildrenValue;
+				if (children.renderer !== LYNX_TRANSPORT_RENDERER) {
+					refuse(
+						source,
+						LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+							'a provider returned children owned by a different renderer.',
+					);
+				}
+				output = withSemanticContexts(contextValues, children.render);
+				continue;
+			}
+			break;
+		}
+		if (isLynxCompilerProgramValue(output)) {
 			return {
 				source,
-				plan: produced.program,
-				values: produced.values,
-				computations: produced.computations,
+				plan: output.program,
+				values: output.values,
+				computations: output.computations,
+				contextValues,
 			};
 		}
-		const value = produced as UniversalPlanValue | null;
+		const value = output as UniversalPlanValue | null;
 		if (value === null || typeof value !== 'object' || value.$$kind !== UNIVERSAL_VALUE) {
 			refuse(
 				source,
@@ -542,7 +604,13 @@ export function lynxBlockProgramForComponent<Props>(
 					'it did not return a compiled template, so there is nothing to lower. Only a compiler program or a component lowered to a Universal plan can become a block program.',
 			);
 		}
-		return { source, plan: value.plan, values: value.values, computations: EMPTY_COMPUTATIONS };
+		return {
+			source,
+			plan: value.plan,
+			values: value.values,
+			computations: EMPTY_COMPUTATIONS,
+			contextValues,
+		};
 	};
 
 	/**
@@ -553,27 +621,35 @@ export function lynxBlockProgramForComponent<Props>(
 	 * owner must name the contradictory proof rather than escape as an internal
 	 * controller error.
 	 */
-	const renderPlanValue = (source: LynxComponent<never>, props: unknown): RenderedPlan => {
+	const renderPlanValue = (
+		source: LynxComponent<never>,
+		props: unknown,
+		contexts: SemanticContexts = renderingContexts,
+	): RenderedPlan => {
 		const outer = rendering;
 		rendering = source;
-		let produced: unknown;
 		try {
-			produced = (
-				source as unknown as (props: unknown, context: UniversalRenderContext) => unknown
-			)(props, renderContext);
-		} catch (error) {
-			if (error instanceof Error && error.message === HOOKS_WITHOUT_ATTEMPT) {
-				refuse(
-					source,
-					LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-						'its setup calls a hook after its metadata declared hookScope: false. Recompile the component so its ownership proof matches its setup.',
-				);
-			}
-			throw error;
+			return withSemanticContexts(contexts, () => {
+				let produced: unknown;
+				try {
+					produced = (
+						source as unknown as (props: unknown, context: UniversalRenderContext) => unknown
+					)(props, renderContext);
+				} catch (error) {
+					if (error instanceof Error && error.message === HOOKS_WITHOUT_ATTEMPT) {
+						refuse(
+							source,
+							LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+								'its setup calls a hook after its metadata declared hookScope: false. Recompile the component so its ownership proof matches its setup.',
+						);
+					}
+					throw error;
+				}
+				return readPlanValue(source, produced, contexts);
+			});
 		} finally {
 			rendering = outer;
 		}
-		return readPlanValue(source, produced);
 	};
 
 	/**
@@ -600,6 +676,9 @@ export function lynxBlockProgramForComponent<Props>(
 		const cells = (scope ??= createUniversalHookScope({
 			renderer: LYNX_TRANSPORT_RENDERER,
 			scheduleRender: queueStateRender,
+			readContext(context) {
+				return readSemanticContext(renderingContexts, context);
+			},
 			scheduleLayoutEffectCommit(task): void {
 				liveContext!.afterCommit(task);
 			},
@@ -615,18 +694,10 @@ export function lynxBlockProgramForComponent<Props>(
 			liveContext = previousContext;
 			liveProps = previousProps;
 			// The scope refuses capabilities it does not implement with stable
-			// messages; renamed here to the layer the application can see, the
-			// same way a row's HOOKS_WITHOUT_ATTEMPT is renamed in
-			// renderPlanValue.
+			// messages; rename insertion effects here to the layer the application
+			// can see.
 			if (error instanceof Error && error.message === UNIVERSAL_HOOK_SCOPE_EFFECTS_REFUSED) {
 				refuse(subject, LYNX_BLOCK_COMPONENT_DEVELOPMENT && INSERTION_EFFECTS_UNSUPPORTED);
-			}
-			if (error instanceof Error && error.message === UNIVERSAL_HOOK_SCOPE_CONTEXT_REFUSED) {
-				refuse(
-					subject,
-					LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-						'its setup reads a context, which needs the owner chain the Block core does not have yet (issue #135 item 1b).',
-				);
 			}
 			throw error;
 		}
@@ -811,6 +882,7 @@ export function lynxBlockProgramForComponent<Props>(
 		component: LynxComponent<never> | null,
 		props: unknown,
 		previous: RetainedRow | null,
+		contexts: SemanticContexts,
 	): {
 		readonly scope: UniversalHookScope | null;
 		readonly scoped: ScopedRowState | null;
@@ -832,6 +904,9 @@ export function lynxBlockProgramForComponent<Props>(
 					scheduleRender(): void {
 						queueScopedRowStateRender(owner);
 					},
+					readContext(context) {
+						return readSemanticContext(renderingContexts, context);
+					},
 					scheduleLayoutEffectCommit(task): void {
 						liveContext!.afterCommit(task);
 					},
@@ -852,10 +927,10 @@ export function lynxBlockProgramForComponent<Props>(
 				cells.abort();
 				if (created) cells.dispose();
 			});
-			rendered = cells.render(() => renderPlanValue(component, props));
+			rendered = cells.render(() => renderPlanValue(component, props, contexts));
 			context.afterCommit(() => cells.commit());
 		} else if (component !== null) {
-			rendered = renderPlanValue(component, props);
+			rendered = renderPlanValue(component, props, contexts);
 		} else {
 			// The page did return a compiled template — the row's output is what
 			// did not — so the diagnostic must say which level failed.
@@ -865,6 +940,7 @@ export function lynxBlockProgramForComponent<Props>(
 					plan: produced.program,
 					values: produced.values,
 					computations: produced.computations,
+					contextValues: contexts,
 				};
 			} else {
 				const value = produced as UniversalPlanValue | null;
@@ -880,6 +956,7 @@ export function lynxBlockProgramForComponent<Props>(
 					plan: value.plan,
 					values: value.values,
 					computations: EMPTY_COMPUTATIONS,
+					contextValues: contexts,
 				};
 			}
 		}
@@ -991,6 +1068,7 @@ export function lynxBlockProgramForComponent<Props>(
 			current.component,
 			current.props,
 			current,
+			state.contextValues,
 		);
 		const next: RetainedRow = {
 			component: current.component,
@@ -1065,6 +1143,7 @@ export function lynxBlockProgramForComponent<Props>(
 		context: LynxBlockProgramContext,
 		state: RangeState,
 		list: UniversalForValue,
+		contextValues: SemanticContexts,
 	): RangeRender => {
 		if (list.empty !== null) {
 			refuse(
@@ -1079,6 +1158,7 @@ export function lynxBlockProgramForComponent<Props>(
 		const previousSelection = state.keyedSelection;
 		const previous = state.retained;
 		const previousKeys = state.keys;
+		const contextsStable = sameSemanticContexts(state.contextValues, contextValues);
 		// The compiler proved the row descriptor is a function only of the item,
 		// index, static props, and this identity tuple. With the same iterable and
 		// tuple, neither its keys nor its props can have changed, so even asking
@@ -1088,6 +1168,7 @@ export function lynxBlockProgramForComponent<Props>(
 		// expression, or other escape causes the compiler to omit componentRows
 		// and lands below on the complete conservative path.
 		if (
+			contextsStable &&
 			nextComponentRows !== null &&
 			previousComponentRows !== null &&
 			state.source === list.items &&
@@ -1105,6 +1186,7 @@ export function lynxBlockProgramForComponent<Props>(
 				hasScopedRows: state.hasScopedRows,
 				structural: false,
 				rendered: [],
+				contextValues,
 				source: list.items,
 				keyedSelection: nextSelection,
 				componentRows: nextComponentRows,
@@ -1112,6 +1194,7 @@ export function lynxBlockProgramForComponent<Props>(
 			};
 		}
 		if (
+			contextsStable &&
 			nextSelection !== null &&
 			!state.hasScopedRows &&
 			previousSelection !== null &&
@@ -1144,7 +1227,7 @@ export function lynxBlockProgramForComponent<Props>(
 						);
 					}
 					if (blockShallowEqual(prior.props, props)) continue;
-					const row = renderRow(context, state, produced, component, props, prior);
+					const row = renderRow(context, state, produced, component, props, prior, contextValues);
 					sparse.push({
 						key: itemKey,
 						retained: {
@@ -1175,6 +1258,7 @@ export function lynxBlockProgramForComponent<Props>(
 				keyedSelection: nextSelection,
 				componentRows: nextComponentRows,
 				sparse,
+				contextValues,
 			};
 		}
 
@@ -1184,6 +1268,7 @@ export function lynxBlockProgramForComponent<Props>(
 		const keys: unknown[] = new Array(items.length);
 		const selectionRowsStable =
 			nextSelection !== null &&
+			contextsStable &&
 			previousSelection !== null &&
 			previous !== null &&
 			depsEqual(previousSelection[1], nextSelection[1]);
@@ -1247,6 +1332,7 @@ export function lynxBlockProgramForComponent<Props>(
 			if (component !== null) {
 				if (
 					prior != null &&
+					contextsStable &&
 					prior.component === component &&
 					prior.scope === null &&
 					blockShallowEqual(prior.props, props)
@@ -1269,6 +1355,7 @@ export function lynxBlockProgramForComponent<Props>(
 				component,
 				props,
 				prior?.component === component ? prior : null,
+				contextValues,
 			);
 			if (row.scope !== null) hasScopedRows = true;
 			rows[index] = row.values;
@@ -1320,6 +1407,7 @@ export function lynxBlockProgramForComponent<Props>(
 			keyedSelection: nextSelection,
 			componentRows: nextComponentRows,
 			sparse: null,
+			contextValues,
 		};
 	};
 
@@ -1367,6 +1455,7 @@ export function lynxBlockProgramForComponent<Props>(
 				state.source = render.source;
 				state.keyedSelection = render.keyedSelection;
 				state.componentRows = render.componentRows;
+				state.contextValues = render.contextValues;
 				state.hasScopedRows = render.hasScopedRows;
 				for (const row of render.sparse!) state.retained!.set(row.key, row.retained);
 			});
@@ -1393,6 +1482,7 @@ export function lynxBlockProgramForComponent<Props>(
 			state.source = render.source;
 			state.keyedSelection = render.keyedSelection;
 			state.componentRows = render.componentRows;
+			state.contextValues = render.contextValues;
 			state.retained = render.retained;
 			state.hasScopedRows = render.hasScopedRows;
 			state.keys = render.keys;
@@ -1450,6 +1540,7 @@ export function lynxBlockProgramForComponent<Props>(
 	const renderRanges = (
 		context: LynxBlockProgramContext,
 		slotValues: readonly unknown[],
+		contextValues: SemanticContexts,
 	): readonly RangeRender[] => {
 		if (ranges.length === 0) return EMPTY_RANGE_RENDERS;
 		return ranges.map((range) => {
@@ -1461,7 +1552,7 @@ export function lynxBlockProgramForComponent<Props>(
 						'a hole that mounted a keyed range later held something else, and a block holds one template for its lifetime.',
 				);
 			}
-			return renderRange(context, range, list);
+			return renderRange(context, range, list, contextValues);
 		});
 	};
 
@@ -1593,7 +1684,7 @@ export function lynxBlockProgramForComponent<Props>(
 			// Every row of every range is rendered before the first slot is
 			// written, so a render that refuses anywhere leaves the block exactly as
 			// the last one left it rather than partly moved on.
-			const rows = renderRanges(context, rendered.values);
+			const rows = renderRanges(context, rendered.values, rendered.contextValues);
 			// The live values are the core's, not a copy kept here: a shadow of them
 			// could only ever drift, and comparing against what the block actually
 			// holds is what the core itself compares against.
@@ -1725,6 +1816,7 @@ export function lynxBlockProgramForComponent<Props>(
 								source: null,
 								keyedSelection: null,
 								componentRows: null,
+								contextValues: null,
 							}));
 				valueIndexesBySlot = indexProgramSites(wire.values);
 				eventIndexesBySlot = indexProgramSites(wire.events);
@@ -1733,7 +1825,7 @@ export function lynxBlockProgramForComponent<Props>(
 					rendered.plan.address,
 				);
 				const values = valuesFor(context, rendered.values);
-				const rows = renderRanges(context, rendered.values);
+				const rows = renderRanges(context, rendered.values, rendered.contextValues);
 				// Nothing above this line has written to the core, and nothing below it
 				// refuses. What can still throw below is a duplicate key, which the core
 				// is the authority on and rejects the same way for every caller.

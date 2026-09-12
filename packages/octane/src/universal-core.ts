@@ -6148,6 +6148,11 @@ export interface UniversalHookScopeServices {
 	 */
 	scheduleRender(slot: unknown): void;
 	/**
+	 * Resolve one context read from the adopting core's semantic environment.
+	 * Absence keeps context reads fail-closed.
+	 */
+	readonly readContext?: <T>(context: UniversalContext<T>) => T;
+	/**
 	 * Publish layout-effect cleanup/create work after the host has accepted the
 	 * render this scope just committed. Absence keeps every effect refused.
 	 */
@@ -6230,14 +6235,13 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 		formatId(index: number): string {
 			return `:octane-h${scopeId}-${index.toString(36)}:`;
 		},
-		// A context read reaching the bridge means no provider answered — and a
-		// scope has no provider chain at all, so the default value is the only
-		// answer it could ever give. Silently giving it would make a component
-		// under a provider render the wrong value with no diagnostic, so the
-		// scope refuses instead; a core that wants provider values needs the
-		// owner chain this scope deliberately does not build.
-		readBridgeContext(): never {
-			throw new Error(UNIVERSAL_HOOK_SCOPE_CONTEXT_REFUSED);
+		// The adopting core owns the provider chain. Without an explicit reader,
+		// retain the old fail-closed contract instead of silently serving defaults
+		// to a component that may actually be under a provider.
+		readBridgeContext<T>(context: UniversalContext<T>): T {
+			const read = services.readContext;
+			if (read === undefined) throw new Error(UNIVERSAL_HOOK_SCOPE_CONTEXT_REFUSED);
+			return read(context);
 		},
 	};
 	const record = createOwnerRecord(root, null, null, HOOK_SCOPE_IDENTITY, null);
