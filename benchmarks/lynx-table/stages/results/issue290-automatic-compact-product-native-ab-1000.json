@@ -1,0 +1,4560 @@
+{
+  "protocol": "octane-issue290-automatic-compact-product-native-gate-v1",
+  "status": "complete",
+  "capturedAt": "2026-09-12T12:24:39.801Z",
+  "provenance": {
+    "matrix": {
+      "protocol": "octane-issue290-automatic-compact-product-native-gate-v1",
+      "startupScales": [0, 1000],
+      "tableScale": 1000,
+      "tableCases": ["create", "update10th", "select", "clear"],
+      "repetitions": 5,
+      "order": "AB/BA per metric and repetition"
+    },
+    "bundleReceipt": {
+      "base": {
+        "commit": "22dc9014bc3572c8cc04889a396f6d5428fc96d7",
+        "bundles": {
+          "0": {
+            "bytes": 537378,
+            "sha256": "9b25719df4c9fab9ee18c979f359391b15a87064a446b68223195c2a17274538"
+          },
+          "1000": {
+            "bytes": 537673,
+            "sha256": "b051239bb8febd7a9ff9777a8d0e619032f78b8e8b4b321286b26b713d7a9110"
+          }
+        }
+      },
+      "candidate": {
+        "commit": "25abe4d35e43d694bed1faf1adbf181bc6edd935",
+        "bundles": {
+          "0": {
+            "bytes": 184457,
+            "sha256": "e7fca720ee7225547a070006c2fa40eb0370c2baa4d040d362d16e2fa4e2f8ab"
+          },
+          "1000": {
+            "bytes": 184752,
+            "sha256": "ab1732e414d6719f2daef9d3cc4591cbfb0447bc6891f403f2b19eb3c2dd8cea"
+          }
+        }
+      }
+    },
+    "matrixContractSha256": "7575309eba622ba5953f5420e7f77d233ae115df207d31b90b944cfc1fb4d850",
+    "inputReceiptSha256": "6905a770b55bb7a03d5abd912f5c8e0b9c544089f0787a29e35b5c2425715ef5",
+    "connectorPackageTrees": {
+      "protocol": "connector-package-trees-v1",
+      "packages": [
+        {
+          "name": "@byted/agent-lynx",
+          "version": "0.14.12",
+          "available": true,
+          "resolvedPath": "/data00/home/xuan.huang/.local/node-v22.22.2-linux-x64/lib/node_modules/@byted/agent-lynx",
+          "rootSha256": "95966570e831e922ff71053156f6ad7cb951a1134018fd8cccf1c136c0291a6a",
+          "fileCount": 450,
+          "byteCount": 20682682
+        },
+        {
+          "name": "@byted-lynx/devtool-connector",
+          "version": "0.15.5",
+          "available": true,
+          "resolvedPath": "/data00/home/xuan.huang/.local/node-v22.22.2-linux-x64/lib/node_modules/@byted/agent-lynx/node_modules/@byted-lynx/devtool-connector",
+          "rootSha256": "9c6d2e045811565553c2a97c1546cb9906f3afc071a3de6b734b53d763a20900",
+          "fileCount": 86,
+          "byteCount": 1594959
+        },
+        {
+          "name": "@byted-lynx/bdc-client",
+          "version": "0.4.5",
+          "available": true,
+          "resolvedPath": "/data00/home/xuan.huang/.local/node-v22.22.2-linux-x64/lib/node_modules/@byted/agent-lynx/node_modules/@byted-lynx/bdc-client",
+          "rootSha256": "3979846b8e0438bb823c2639be4d358be29184222a644f1d03466e3807358dca",
+          "fileCount": 15,
+          "byteCount": 616839
+        }
+      ],
+      "sha256": "aa891c81ffb5d96e353881dcf885009739f1bafe2d2aaa6a26ee2e94aab56199"
+    },
+    "leaseReceipt": {
+      "protocol": "lynx-sandbox-lease-receipt-v1",
+      "issueId": "Huxpro/octane#290",
+      "expiredAt": 1789219385659,
+      "serialSha256": "20b6aa19e08f36b693ccaa45aa8c14dd9e0ce84c1487c69c8086eb1f8a8c1300",
+      "deviceLeaseId": "c3b6a3ad0899"
+    }
+  },
+  "machine": {
+    "id": "lynx-native-android-aries_10-10-devtool-direct-recycle5-c3b6a3ad0899-c0b58124d0da",
+    "platform": "android",
+    "osVersion": "10",
+    "cpuModel": "linaro",
+    "cores": 8,
+    "node": null,
+    "deviceModel": "ByteDance aries_10",
+    "app": "LynxExplorer",
+    "appVersion": "1.0",
+    "explorerPackage": {
+      "versionName": "1.0",
+      "versionCode": 1
+    },
+    "explorerArtifact": {
+      "protocol": "sandbox-preinstalled-lynx-explorer-v1"
+    },
+    "debugRouterVersion": "0.0.1",
+    "lynxSdkVersion": "0.0.1",
+    "connectorPackageTrees": {
+      "protocol": "connector-package-trees-v1",
+      "packages": [
+        {
+          "name": "@byted/agent-lynx",
+          "version": "0.14.12",
+          "available": true,
+          "resolvedPath": "/data00/home/xuan.huang/.local/node-v22.22.2-linux-x64/lib/node_modules/@byted/agent-lynx",
+          "rootSha256": "95966570e831e922ff71053156f6ad7cb951a1134018fd8cccf1c136c0291a6a",
+          "fileCount": 450,
+          "byteCount": 20682682
+        },
+        {
+          "name": "@byted-lynx/devtool-connector",
+          "version": "0.15.5",
+          "available": true,
+          "resolvedPath": "/data00/home/xuan.huang/.local/node-v22.22.2-linux-x64/lib/node_modules/@byted/agent-lynx/node_modules/@byted-lynx/devtool-connector",
+          "rootSha256": "9c6d2e045811565553c2a97c1546cb9906f3afc071a3de6b734b53d763a20900",
+          "fileCount": 86,
+          "byteCount": 1594959
+        },
+        {
+          "name": "@byted-lynx/bdc-client",
+          "version": "0.4.5",
+          "available": true,
+          "resolvedPath": "/data00/home/xuan.huang/.local/node-v22.22.2-linux-x64/lib/node_modules/@byted/agent-lynx/node_modules/@byted-lynx/bdc-client",
+          "rootSha256": "3979846b8e0438bb823c2639be4d358be29184222a644f1d03466e3807358dca",
+          "fileCount": 15,
+          "byteCount": 616839
+        }
+      ],
+      "sha256": "aa891c81ffb5d96e353881dcf885009739f1bafe2d2aaa6a26ee2e94aab56199"
+    },
+    "protocol": "native-sandbox-adapter-v3",
+    "defaultTimeoutMs": 30000,
+    "longWorkloadTimeoutMs": 240000,
+    "renderGraceFrames": 2,
+    "debugRouterSettleMs": 100,
+    "explorerRecycleEveryPages": 5,
+    "explorerLaunchSettleMs": 500,
+    "explorerReconnectTimeoutMs": 90000,
+    "clientDiscoveryPollMs": 250,
+    "sessionDiscoveryPollMs": 50,
+    "octaneReadyPollMs": 16,
+    "startupPollMs": 16,
+    "producerProbePollMs": 250,
+    "tapSettleMs": 10,
+    "maxBatteryTemperatureC": 40,
+    "thermalGateTimeoutMs": 300000,
+    "thermalPollMs": 5000,
+    "thermalGateScope": "before-every-bundle-load",
+    "transientAttempts": 3,
+    "leaseCleanupMarginMs": 30000,
+    "leaseStopSafetyOverrideMs": null,
+    "semanticDnfRetries": 0,
+    "retryScope": "transport-only-within-repetition",
+    "deviceClockCalibrationSamples": 7,
+    "explorerLifecycle": "force-stop-at-start-and-recycle-cadence",
+    "octaneTriggerMode": "tap",
+    "devtoolTransport": "direct",
+    "tableProtocol": "lynx-native-bench-v2",
+    "startupProtocol": "lynx-native-startup-v1",
+    "campaignId": "b313fdbc86dd333d",
+    "matrixContractSha256": "7575309eba622ba5953f5420e7f77d233ae115df207d31b90b944cfc1fb4d850",
+    "inputReceiptSha256": "6905a770b55bb7a03d5abd912f5c8e0b9c544089f0787a29e35b5c2425715ef5",
+    "connectorPackageTreesSha256": "aa891c81ffb5d96e353881dcf885009739f1bafe2d2aaa6a26ee2e94aab56199",
+    "harnessConfigId": "c0b58124d0da",
+    "serialSha256": "20b6aa19e08f36b693ccaa45aa8c14dd9e0ce84c1487c69c8086eb1f8a8c1300",
+    "deviceLeaseId": "c3b6a3ad0899",
+    "leaseReceipt": {
+      "protocol": "lynx-sandbox-lease-receipt-v1",
+      "issueId": "Huxpro/octane#290",
+      "expiredAt": 1789219385659,
+      "serialSha256": "20b6aa19e08f36b693ccaa45aa8c14dd9e0ce84c1487c69c8086eb1f8a8c1300",
+      "deviceLeaseId": "c3b6a3ad0899"
+    },
+    "deviceCohort": {
+      "protocol": "native-device-cohort-v1",
+      "serialSha256": "20b6aa19e08f36b693ccaa45aa8c14dd9e0ce84c1487c69c8086eb1f8a8c1300",
+      "environment": "lynx-native-android-aries_10-10-devtool-direct-recycle5",
+      "hardware": {
+        "platform": "android",
+        "osVersion": "10",
+        "cpuModel": "linaro",
+        "cores": 8,
+        "deviceModel": "ByteDance aries_10",
+        "app": "LynxExplorer",
+        "appVersion": "1.0",
+        "explorerPackage": {
+          "versionName": "1.0",
+          "versionCode": 1
+        },
+        "explorerArtifact": {
+          "protocol": "sandbox-preinstalled-lynx-explorer-v1"
+        },
+        "debugRouterVersion": "0.0.1",
+        "lynxSdkVersion": "0.0.1"
+      },
+      "campaignId": "b313fdbc86dd333d",
+      "matrixContractSha256": "7575309eba622ba5953f5420e7f77d233ae115df207d31b90b944cfc1fb4d850",
+      "inputReceiptSha256": "6905a770b55bb7a03d5abd912f5c8e0b9c544089f0787a29e35b5c2425715ef5",
+      "connectorPackageTreesSha256": "aa891c81ffb5d96e353881dcf885009739f1bafe2d2aaa6a26ee2e94aab56199",
+      "harnessConfigId": "c0b58124d0da",
+      "id": "5b45da1d9a5444fc",
+      "sha256": "5b45da1d9a5444fc44a2f66438172b84602c47579d690e020b4c28affd639fda"
+    },
+    "deviceCohortId": "5b45da1d9a5444fc",
+    "deviceLeaseIdentitySource": "structured-receipt-v1",
+    "deviceClockOffsetMs": -1285,
+    "deviceClockCalibrationRttMs": 20,
+    "thermalStart": {
+      "capturedAt": "2026-09-12T12:24:44.114Z",
+      "batteryTemperatureC": 35,
+      "thermalStatus": 0,
+      "temperatures": [
+        {
+          "valueC": 30.8,
+          "type": 3,
+          "name": "test temperature sensor",
+          "status": 0
+        }
+      ]
+    },
+    "servedInputs": [
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "startup",
+        "sha256": "9b25719df4c9fab9ee18c979f359391b15a87064a446b68223195c2a17274538",
+        "bytes": 537378,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "startup",
+        "sha256": "e7fca720ee7225547a070006c2fa40eb0370c2baa4d040d362d16e2fa4e2f8ab",
+        "bytes": 184457,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "startup",
+        "sha256": "e7fca720ee7225547a070006c2fa40eb0370c2baa4d040d362d16e2fa4e2f8ab",
+        "bytes": 184457,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "startup",
+        "sha256": "9b25719df4c9fab9ee18c979f359391b15a87064a446b68223195c2a17274538",
+        "bytes": 537378,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "startup",
+        "sha256": "9b25719df4c9fab9ee18c979f359391b15a87064a446b68223195c2a17274538",
+        "bytes": 537378,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "startup",
+        "sha256": "e7fca720ee7225547a070006c2fa40eb0370c2baa4d040d362d16e2fa4e2f8ab",
+        "bytes": 184457,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "startup",
+        "sha256": "e7fca720ee7225547a070006c2fa40eb0370c2baa4d040d362d16e2fa4e2f8ab",
+        "bytes": 184457,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "startup",
+        "sha256": "9b25719df4c9fab9ee18c979f359391b15a87064a446b68223195c2a17274538",
+        "bytes": 537378,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "startup",
+        "sha256": "9b25719df4c9fab9ee18c979f359391b15a87064a446b68223195c2a17274538",
+        "bytes": 537378,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "startup",
+        "sha256": "e7fca720ee7225547a070006c2fa40eb0370c2baa4d040d362d16e2fa4e2f8ab",
+        "bytes": 184457,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 1000,
+        "suite": "startup",
+        "sha256": "b051239bb8febd7a9ff9777a8d0e619032f78b8e8b4b321286b26b713d7a9110",
+        "bytes": 537673,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 1000,
+        "suite": "startup",
+        "sha256": "ab1732e414d6719f2daef9d3cc4591cbfb0447bc6891f403f2b19eb3c2dd8cea",
+        "bytes": 184752,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 1000,
+        "suite": "startup",
+        "sha256": "ab1732e414d6719f2daef9d3cc4591cbfb0447bc6891f403f2b19eb3c2dd8cea",
+        "bytes": 184752,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 1000,
+        "suite": "startup",
+        "sha256": "b051239bb8febd7a9ff9777a8d0e619032f78b8e8b4b321286b26b713d7a9110",
+        "bytes": 537673,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 1000,
+        "suite": "startup",
+        "sha256": "b051239bb8febd7a9ff9777a8d0e619032f78b8e8b4b321286b26b713d7a9110",
+        "bytes": 537673,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 1000,
+        "suite": "startup",
+        "sha256": "ab1732e414d6719f2daef9d3cc4591cbfb0447bc6891f403f2b19eb3c2dd8cea",
+        "bytes": 184752,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 1000,
+        "suite": "startup",
+        "sha256": "ab1732e414d6719f2daef9d3cc4591cbfb0447bc6891f403f2b19eb3c2dd8cea",
+        "bytes": 184752,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 1000,
+        "suite": "startup",
+        "sha256": "b051239bb8febd7a9ff9777a8d0e619032f78b8e8b4b321286b26b713d7a9110",
+        "bytes": 537673,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 1000,
+        "suite": "startup",
+        "sha256": "b051239bb8febd7a9ff9777a8d0e619032f78b8e8b4b321286b26b713d7a9110",
+        "bytes": 537673,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 1000,
+        "suite": "startup",
+        "sha256": "ab1732e414d6719f2daef9d3cc4591cbfb0447bc6891f403f2b19eb3c2dd8cea",
+        "bytes": 184752,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "9b25719df4c9fab9ee18c979f359391b15a87064a446b68223195c2a17274538",
+        "bytes": 537378,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "e7fca720ee7225547a070006c2fa40eb0370c2baa4d040d362d16e2fa4e2f8ab",
+        "bytes": 184457,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "e7fca720ee7225547a070006c2fa40eb0370c2baa4d040d362d16e2fa4e2f8ab",
+        "bytes": 184457,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "9b25719df4c9fab9ee18c979f359391b15a87064a446b68223195c2a17274538",
+        "bytes": 537378,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "9b25719df4c9fab9ee18c979f359391b15a87064a446b68223195c2a17274538",
+        "bytes": 537378,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "e7fca720ee7225547a070006c2fa40eb0370c2baa4d040d362d16e2fa4e2f8ab",
+        "bytes": 184457,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "e7fca720ee7225547a070006c2fa40eb0370c2baa4d040d362d16e2fa4e2f8ab",
+        "bytes": 184457,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "9b25719df4c9fab9ee18c979f359391b15a87064a446b68223195c2a17274538",
+        "bytes": 537378,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "9b25719df4c9fab9ee18c979f359391b15a87064a446b68223195c2a17274538",
+        "bytes": 537378,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "e7fca720ee7225547a070006c2fa40eb0370c2baa4d040d362d16e2fa4e2f8ab",
+        "bytes": 184457,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "9b25719df4c9fab9ee18c979f359391b15a87064a446b68223195c2a17274538",
+        "bytes": 537378,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "e7fca720ee7225547a070006c2fa40eb0370c2baa4d040d362d16e2fa4e2f8ab",
+        "bytes": 184457,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "e7fca720ee7225547a070006c2fa40eb0370c2baa4d040d362d16e2fa4e2f8ab",
+        "bytes": 184457,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "9b25719df4c9fab9ee18c979f359391b15a87064a446b68223195c2a17274538",
+        "bytes": 537378,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "9b25719df4c9fab9ee18c979f359391b15a87064a446b68223195c2a17274538",
+        "bytes": 537378,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "e7fca720ee7225547a070006c2fa40eb0370c2baa4d040d362d16e2fa4e2f8ab",
+        "bytes": 184457,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "e7fca720ee7225547a070006c2fa40eb0370c2baa4d040d362d16e2fa4e2f8ab",
+        "bytes": 184457,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "9b25719df4c9fab9ee18c979f359391b15a87064a446b68223195c2a17274538",
+        "bytes": 537378,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "9b25719df4c9fab9ee18c979f359391b15a87064a446b68223195c2a17274538",
+        "bytes": 537378,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "e7fca720ee7225547a070006c2fa40eb0370c2baa4d040d362d16e2fa4e2f8ab",
+        "bytes": 184457,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "9b25719df4c9fab9ee18c979f359391b15a87064a446b68223195c2a17274538",
+        "bytes": 537378,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "e7fca720ee7225547a070006c2fa40eb0370c2baa4d040d362d16e2fa4e2f8ab",
+        "bytes": 184457,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "e7fca720ee7225547a070006c2fa40eb0370c2baa4d040d362d16e2fa4e2f8ab",
+        "bytes": 184457,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "9b25719df4c9fab9ee18c979f359391b15a87064a446b68223195c2a17274538",
+        "bytes": 537378,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "9b25719df4c9fab9ee18c979f359391b15a87064a446b68223195c2a17274538",
+        "bytes": 537378,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "e7fca720ee7225547a070006c2fa40eb0370c2baa4d040d362d16e2fa4e2f8ab",
+        "bytes": 184457,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "e7fca720ee7225547a070006c2fa40eb0370c2baa4d040d362d16e2fa4e2f8ab",
+        "bytes": 184457,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "9b25719df4c9fab9ee18c979f359391b15a87064a446b68223195c2a17274538",
+        "bytes": 537378,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "9b25719df4c9fab9ee18c979f359391b15a87064a446b68223195c2a17274538",
+        "bytes": 537378,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "e7fca720ee7225547a070006c2fa40eb0370c2baa4d040d362d16e2fa4e2f8ab",
+        "bytes": 184457,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "9b25719df4c9fab9ee18c979f359391b15a87064a446b68223195c2a17274538",
+        "bytes": 537378,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "e7fca720ee7225547a070006c2fa40eb0370c2baa4d040d362d16e2fa4e2f8ab",
+        "bytes": 184457,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "e7fca720ee7225547a070006c2fa40eb0370c2baa4d040d362d16e2fa4e2f8ab",
+        "bytes": 184457,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "9b25719df4c9fab9ee18c979f359391b15a87064a446b68223195c2a17274538",
+        "bytes": 537378,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "9b25719df4c9fab9ee18c979f359391b15a87064a446b68223195c2a17274538",
+        "bytes": 537378,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "e7fca720ee7225547a070006c2fa40eb0370c2baa4d040d362d16e2fa4e2f8ab",
+        "bytes": 184457,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "e7fca720ee7225547a070006c2fa40eb0370c2baa4d040d362d16e2fa4e2f8ab",
+        "bytes": 184457,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "9b25719df4c9fab9ee18c979f359391b15a87064a446b68223195c2a17274538",
+        "bytes": 537378,
+        "served": 1
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "9b25719df4c9fab9ee18c979f359391b15a87064a446b68223195c2a17274538",
+        "bytes": 537378,
+        "served": 1
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "sha256": "e7fca720ee7225547a070006c2fa40eb0370c2baa4d040d362d16e2fa4e2f8ab",
+        "bytes": 184457,
+        "served": 1
+      }
+    ],
+    "transientRecoveries": [],
+    "thermalGates": [
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "startup",
+        "capturedAt": "2026-09-12T12:24:44.224Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "startup",
+        "capturedAt": "2026-09-12T12:24:44.682Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "startup",
+        "capturedAt": "2026-09-12T12:24:45.224Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "startup",
+        "capturedAt": "2026-09-12T12:24:45.744Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "startup",
+        "capturedAt": "2026-09-12T12:24:46.260Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "startup",
+        "capturedAt": "2026-09-12T12:24:46.779Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "startup",
+        "capturedAt": "2026-09-12T12:24:48.561Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "startup",
+        "capturedAt": "2026-09-12T12:24:49.080Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "startup",
+        "capturedAt": "2026-09-12T12:24:49.596Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "startup",
+        "capturedAt": "2026-09-12T12:24:50.112Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 1000,
+        "suite": "startup",
+        "capturedAt": "2026-09-12T12:24:50.626Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 1000,
+        "suite": "startup",
+        "capturedAt": "2026-09-12T12:24:53.215Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 1000,
+        "suite": "startup",
+        "capturedAt": "2026-09-12T12:24:54.608Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 1000,
+        "suite": "startup",
+        "capturedAt": "2026-09-12T12:24:55.760Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 1000,
+        "suite": "startup",
+        "capturedAt": "2026-09-12T12:24:57.087Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 1000,
+        "suite": "startup",
+        "capturedAt": "2026-09-12T12:24:58.595Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 1000,
+        "suite": "startup",
+        "capturedAt": "2026-09-12T12:25:01.032Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 1000,
+        "suite": "startup",
+        "capturedAt": "2026-09-12T12:25:02.186Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 1000,
+        "suite": "startup",
+        "capturedAt": "2026-09-12T12:25:03.505Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 1000,
+        "suite": "startup",
+        "capturedAt": "2026-09-12T12:25:05.018Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:25:06.265Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:25:09.265Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:25:10.797Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:25:12.114Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:25:13.829Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:25:15.512Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:25:18.680Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:25:19.997Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:25:21.717Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:25:23.432Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:25:24.933Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:25:28.233Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:25:30.023Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:25:31.450Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:25:33.415Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:25:35.299Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:25:38.214Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:25:39.656Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:25:41.684Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:25:43.551Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:25:45.304Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:25:48.584Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:25:50.412Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:25:51.862Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:25:53.802Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:25:55.669Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:25:58.663Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:26:00.214Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:26:02.237Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:26:04.154Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:26:05.973Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:26:09.225Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:26:10.837Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:26:12.313Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:26:14.212Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:26:15.940Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:26:18.965Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:26:20.423Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-357-universal-control",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:26:22.294Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      {
+        "entry": "octane-360-compact-product-corrected",
+        "rows": 0,
+        "suite": "table",
+        "capturedAt": "2026-09-12T12:26:23.986Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      }
+    ]
+  },
+  "startup": [
+    {
+      "arm": "base",
+      "rows": 0,
+      "ordinal": 0,
+      "capturedAt": "2026-09-12T12:24:44.635Z",
+      "commitAckMs": 207,
+      "secondFrameMs": 225,
+      "detail": {
+        "kind": "octane-commit-fallback",
+        "openTime": 1789215882940,
+        "timingInfo": null,
+        "startup": {
+          "protocol": "lynx-native-startup-v1",
+          "moduleStartMs": 1789215883128,
+          "commitAckMs": 1789215883147,
+          "firstFrameMs": 1789215883149,
+          "secondFrameMs": 1789215883165,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.render",
+            "acknowledged": true,
+            "ackMs": 1789215883147
+          },
+          "postState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          }
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "rows": 0,
+      "ordinal": 0,
+      "capturedAt": "2026-09-12T12:24:45.176Z",
+      "commitAckMs": 133,
+      "secondFrameMs": 151,
+      "detail": {
+        "kind": "octane-commit-fallback",
+        "openTime": 1789215883498,
+        "timingInfo": null,
+        "startup": {
+          "protocol": "lynx-native-startup-v1",
+          "moduleStartMs": 1789215883622,
+          "commitAckMs": 1789215883631,
+          "firstFrameMs": 1789215883632,
+          "secondFrameMs": 1789215883649,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.render",
+            "acknowledged": true,
+            "ackMs": 1789215883631
+          },
+          "postState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          }
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "rows": 0,
+      "ordinal": 1,
+      "capturedAt": "2026-09-12T12:24:45.695Z",
+      "commitAckMs": 119,
+      "secondFrameMs": 143,
+      "detail": {
+        "kind": "octane-commit-fallback",
+        "openTime": 1789215884039,
+        "timingInfo": null,
+        "startup": {
+          "protocol": "lynx-native-startup-v1",
+          "moduleStartMs": 1789215884150,
+          "commitAckMs": 1789215884158,
+          "firstFrameMs": 1789215884165,
+          "secondFrameMs": 1789215884182,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.render",
+            "acknowledged": true,
+            "ackMs": 1789215884158
+          },
+          "postState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          }
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "rows": 0,
+      "ordinal": 1,
+      "capturedAt": "2026-09-12T12:24:46.210Z",
+      "commitAckMs": 159,
+      "secondFrameMs": 189,
+      "detail": {
+        "kind": "octane-commit-fallback",
+        "openTime": 1789215884560,
+        "timingInfo": null,
+        "startup": {
+          "protocol": "lynx-native-startup-v1",
+          "moduleStartMs": 1789215884701,
+          "commitAckMs": 1789215884719,
+          "firstFrameMs": 1789215884732,
+          "secondFrameMs": 1789215884749,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.render",
+            "acknowledged": true,
+            "ackMs": 1789215884719
+          },
+          "postState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          }
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "rows": 0,
+      "ordinal": 2,
+      "capturedAt": "2026-09-12T12:24:46.731Z",
+      "commitAckMs": 167,
+      "secondFrameMs": 189,
+      "detail": {
+        "kind": "octane-commit-fallback",
+        "openTime": 1789215885076,
+        "timingInfo": null,
+        "startup": {
+          "protocol": "lynx-native-startup-v1",
+          "moduleStartMs": 1789215885225,
+          "commitAckMs": 1789215885243,
+          "firstFrameMs": 1789215885249,
+          "secondFrameMs": 1789215885265,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.render",
+            "acknowledged": true,
+            "ackMs": 1789215885243
+          },
+          "postState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          }
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "rows": 0,
+      "ordinal": 2,
+      "capturedAt": "2026-09-12T12:24:48.515Z",
+      "commitAckMs": 91,
+      "secondFrameMs": 113,
+      "detail": {
+        "kind": "octane-commit-fallback",
+        "openTime": 1789215886869,
+        "timingInfo": null,
+        "startup": {
+          "protocol": "lynx-native-startup-v1",
+          "moduleStartMs": 1789215886952,
+          "commitAckMs": 1789215886960,
+          "firstFrameMs": 1789215886966,
+          "secondFrameMs": 1789215886982,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.render",
+            "acknowledged": true,
+            "ackMs": 1789215886960
+          },
+          "postState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          }
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "rows": 0,
+      "ordinal": 3,
+      "capturedAt": "2026-09-12T12:24:49.034Z",
+      "commitAckMs": 115,
+      "secondFrameMs": 139,
+      "detail": {
+        "kind": "octane-commit-fallback",
+        "openTime": 1789215887377,
+        "timingInfo": null,
+        "startup": {
+          "protocol": "lynx-native-startup-v1",
+          "moduleStartMs": 1789215887484,
+          "commitAckMs": 1789215887492,
+          "firstFrameMs": 1789215887499,
+          "secondFrameMs": 1789215887516,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.render",
+            "acknowledged": true,
+            "ackMs": 1789215887492
+          },
+          "postState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          }
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "rows": 0,
+      "ordinal": 3,
+      "capturedAt": "2026-09-12T12:24:49.546Z",
+      "commitAckMs": 156,
+      "secondFrameMs": 185,
+      "detail": {
+        "kind": "octane-commit-fallback",
+        "openTime": 1789215887897,
+        "timingInfo": null,
+        "startup": {
+          "protocol": "lynx-native-startup-v1",
+          "moduleStartMs": 1789215888034,
+          "commitAckMs": 1789215888053,
+          "firstFrameMs": 1789215888066,
+          "secondFrameMs": 1789215888082,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.render",
+            "acknowledged": true,
+            "ackMs": 1789215888053
+          },
+          "postState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          }
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "rows": 0,
+      "ordinal": 4,
+      "capturedAt": "2026-09-12T12:24:50.063Z",
+      "commitAckMs": 155,
+      "secondFrameMs": 187,
+      "detail": {
+        "kind": "octane-commit-fallback",
+        "openTime": 1789215888412,
+        "timingInfo": null,
+        "startup": {
+          "protocol": "lynx-native-startup-v1",
+          "moduleStartMs": 1789215888549,
+          "commitAckMs": 1789215888567,
+          "firstFrameMs": 1789215888582,
+          "secondFrameMs": 1789215888599,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.render",
+            "acknowledged": true,
+            "ackMs": 1789215888567
+          },
+          "postState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          }
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "rows": 0,
+      "ordinal": 4,
+      "capturedAt": "2026-09-12T12:24:50.578Z",
+      "commitAckMs": 101,
+      "secondFrameMs": 122,
+      "detail": {
+        "kind": "octane-commit-fallback",
+        "openTime": 1789215888927,
+        "timingInfo": null,
+        "startup": {
+          "protocol": "lynx-native-startup-v1",
+          "moduleStartMs": 1789215889020,
+          "commitAckMs": 1789215889028,
+          "firstFrameMs": 1789215889033,
+          "secondFrameMs": 1789215889049,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.render",
+            "acknowledged": true,
+            "ackMs": 1789215889028
+          },
+          "postState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          }
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "rows": 1000,
+      "ordinal": 0,
+      "capturedAt": "2026-09-12T12:24:53.166Z",
+      "commitAckMs": 1187,
+      "secondFrameMs": 1208,
+      "detail": {
+        "kind": "octane-commit-fallback",
+        "openTime": 1789215890658,
+        "timingInfo": null,
+        "startup": {
+          "protocol": "lynx-native-startup-v1",
+          "moduleStartMs": 1789215890809,
+          "commitAckMs": 1789215891845,
+          "firstFrameMs": 1789215891850,
+          "secondFrameMs": 1789215891866,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.render",
+            "acknowledged": true,
+            "ackMs": 1789215891845
+          },
+          "postState": {
+            "rowCount": 1000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "pretty red table",
+            "selectedId": null
+          }
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "rows": 1000,
+      "ordinal": 0,
+      "capturedAt": "2026-09-12T12:24:54.558Z",
+      "commitAckMs": 1186,
+      "secondFrameMs": 1218,
+      "detail": {
+        "kind": "octane-commit-fallback",
+        "openTime": 1789215892032,
+        "timingInfo": null,
+        "startup": {
+          "protocol": "lynx-native-startup-v1",
+          "moduleStartMs": 1789215892139,
+          "commitAckMs": 1789215893218,
+          "firstFrameMs": 1789215893233,
+          "secondFrameMs": 1789215893250,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.render",
+            "acknowledged": true,
+            "ackMs": 1789215893218
+          },
+          "postState": {
+            "rowCount": 1000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "pretty red table",
+            "selectedId": null
+          }
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "rows": 1000,
+      "ordinal": 1,
+      "capturedAt": "2026-09-12T12:24:55.713Z",
+      "commitAckMs": 966,
+      "secondFrameMs": 994,
+      "detail": {
+        "kind": "octane-commit-fallback",
+        "openTime": 1789215893423,
+        "timingInfo": null,
+        "startup": {
+          "protocol": "lynx-native-startup-v1",
+          "moduleStartMs": 1789215893528,
+          "commitAckMs": 1789215894389,
+          "firstFrameMs": 1789215894400,
+          "secondFrameMs": 1789215894417,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.render",
+            "acknowledged": true,
+            "ackMs": 1789215894389
+          },
+          "postState": {
+            "rowCount": 1000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "pretty red table",
+            "selectedId": null
+          }
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "rows": 1000,
+      "ordinal": 1,
+      "capturedAt": "2026-09-12T12:24:57.037Z",
+      "commitAckMs": 1132,
+      "secondFrameMs": 1156,
+      "detail": {
+        "kind": "octane-commit-fallback",
+        "openTime": 1789215894577,
+        "timingInfo": null,
+        "startup": {
+          "protocol": "lynx-native-startup-v1",
+          "moduleStartMs": 1789215894725,
+          "commitAckMs": 1789215895709,
+          "firstFrameMs": 1789215895717,
+          "secondFrameMs": 1789215895733,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.render",
+            "acknowledged": true,
+            "ackMs": 1789215895709
+          },
+          "postState": {
+            "rowCount": 1000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "pretty red table",
+            "selectedId": null
+          }
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "rows": 1000,
+      "ordinal": 2,
+      "capturedAt": "2026-09-12T12:24:58.546Z",
+      "commitAckMs": 1314,
+      "secondFrameMs": 1346,
+      "detail": {
+        "kind": "octane-commit-fallback",
+        "openTime": 1789215895904,
+        "timingInfo": null,
+        "startup": {
+          "protocol": "lynx-native-startup-v1",
+          "moduleStartMs": 1789215896039,
+          "commitAckMs": 1789215897218,
+          "firstFrameMs": 1789215897234,
+          "secondFrameMs": 1789215897250,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.render",
+            "acknowledged": true,
+            "ackMs": 1789215897218
+          },
+          "postState": {
+            "rowCount": 1000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "pretty red table",
+            "selectedId": null
+          }
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "rows": 1000,
+      "ordinal": 2,
+      "capturedAt": "2026-09-12T12:25:00.983Z",
+      "commitAckMs": 1011,
+      "secondFrameMs": 1033,
+      "detail": {
+        "kind": "octane-commit-fallback",
+        "openTime": 1789215898651,
+        "timingInfo": null,
+        "startup": {
+          "protocol": "lynx-native-startup-v1",
+          "moduleStartMs": 1789215898766,
+          "commitAckMs": 1789215899662,
+          "firstFrameMs": 1789215899667,
+          "secondFrameMs": 1789215899684,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.render",
+            "acknowledged": true,
+            "ackMs": 1789215899662
+          },
+          "postState": {
+            "rowCount": 1000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "pretty red table",
+            "selectedId": null
+          }
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "rows": 1000,
+      "ordinal": 3,
+      "capturedAt": "2026-09-12T12:25:02.137Z",
+      "commitAckMs": 950,
+      "secondFrameMs": 986,
+      "detail": {
+        "kind": "octane-commit-fallback",
+        "openTime": 1789215899848,
+        "timingInfo": null,
+        "startup": {
+          "protocol": "lynx-native-startup-v1",
+          "moduleStartMs": 1789215899954,
+          "commitAckMs": 1789215900798,
+          "firstFrameMs": 1789215900817,
+          "secondFrameMs": 1789215900834,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.render",
+            "acknowledged": true,
+            "ackMs": 1789215900798
+          },
+          "postState": {
+            "rowCount": 1000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "pretty red table",
+            "selectedId": null
+          }
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "rows": 1000,
+      "ordinal": 3,
+      "capturedAt": "2026-09-12T12:25:03.458Z",
+      "commitAckMs": 1130,
+      "secondFrameMs": 1149,
+      "detail": {
+        "kind": "octane-commit-fallback",
+        "openTime": 1789215901002,
+        "timingInfo": null,
+        "startup": {
+          "protocol": "lynx-native-startup-v1",
+          "moduleStartMs": 1789215901139,
+          "commitAckMs": 1789215902132,
+          "firstFrameMs": 1789215902134,
+          "secondFrameMs": 1789215902151,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.render",
+            "acknowledged": true,
+            "ackMs": 1789215902132
+          },
+          "postState": {
+            "rowCount": 1000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "pretty red table",
+            "selectedId": null
+          }
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "rows": 1000,
+      "ordinal": 4,
+      "capturedAt": "2026-09-12T12:25:04.970Z",
+      "commitAckMs": 1328,
+      "secondFrameMs": 1346,
+      "detail": {
+        "kind": "octane-commit-fallback",
+        "openTime": 1789215902322,
+        "timingInfo": null,
+        "startup": {
+          "protocol": "lynx-native-startup-v1",
+          "moduleStartMs": 1789215902491,
+          "commitAckMs": 1789215903650,
+          "firstFrameMs": 1789215903651,
+          "secondFrameMs": 1789215903668,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.render",
+            "acknowledged": true,
+            "ackMs": 1789215903650
+          },
+          "postState": {
+            "rowCount": 1000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "pretty red table",
+            "selectedId": null
+          }
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "rows": 1000,
+      "ordinal": 4,
+      "capturedAt": "2026-09-12T12:25:06.217Z",
+      "commitAckMs": 1065,
+      "secondFrameMs": 1084,
+      "detail": {
+        "kind": "octane-commit-fallback",
+        "openTime": 1789215903834,
+        "timingInfo": null,
+        "startup": {
+          "protocol": "lynx-native-startup-v1",
+          "moduleStartMs": 1789215903937,
+          "commitAckMs": 1789215904899,
+          "firstFrameMs": 1789215904901,
+          "secondFrameMs": 1789215904918,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.render",
+            "acknowledged": true,
+            "ackMs": 1789215904899
+          },
+          "postState": {
+            "rowCount": 1000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "pretty red table",
+            "selectedId": null
+          }
+        }
+      }
+    }
+  ],
+  "table": [
+    {
+      "arm": "base",
+      "case": "create",
+      "scale": 1000,
+      "ordinal": 0,
+      "capturedAt": "2026-09-12T12:25:09.215Z",
+      "latencyMs": 1111,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "create",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215906807,
+        "commitAckMs": 1789215907893,
+        "firstFrameMs": 1789215907901,
+        "endMs": 1789215907918,
+        "latencyMs": 1111,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215907893
+        },
+        "preState": {
+          "rowCount": 0,
+          "firstId": null,
+          "secondId": null,
+          "thirdId": null,
+          "row998Id": null,
+          "firstLabel": null,
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "unsightly green desk",
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "case": "create",
+      "scale": 1000,
+      "ordinal": 0,
+      "capturedAt": "2026-09-12T12:25:10.748Z",
+      "latencyMs": 927,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "create",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215908525,
+        "commitAckMs": 1789215909429,
+        "firstFrameMs": 1789215909435,
+        "endMs": 1789215909452,
+        "latencyMs": 927,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215909429
+        },
+        "preState": {
+          "rowCount": 0,
+          "firstId": null,
+          "secondId": null,
+          "thirdId": null,
+          "row998Id": null,
+          "firstLabel": null,
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "small red cookie",
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "case": "create",
+      "scale": 1000,
+      "ordinal": 1,
+      "capturedAt": "2026-09-12T12:25:12.049Z",
+      "latencyMs": 759,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "create",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215909993,
+        "commitAckMs": 1789215910721,
+        "firstFrameMs": 1789215910735,
+        "endMs": 1789215910752,
+        "latencyMs": 759,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215910721
+        },
+        "preState": {
+          "rowCount": 0,
+          "firstId": null,
+          "secondId": null,
+          "thirdId": null,
+          "row998Id": null,
+          "firstLabel": null,
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "cheap white table",
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "case": "create",
+      "scale": 1000,
+      "ordinal": 1,
+      "capturedAt": "2026-09-12T12:25:13.782Z",
+      "latencyMs": 1108,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "create",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215911377,
+        "commitAckMs": 1789215912468,
+        "firstFrameMs": 1789215912469,
+        "endMs": 1789215912485,
+        "latencyMs": 1108,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215912468
+        },
+        "preState": {
+          "rowCount": 0,
+          "firstId": null,
+          "secondId": null,
+          "thirdId": null,
+          "row998Id": null,
+          "firstLabel": null,
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "clean green cookie",
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "case": "create",
+      "scale": 1000,
+      "ordinal": 2,
+      "capturedAt": "2026-09-12T12:25:15.465Z",
+      "latencyMs": 1142,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "create",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215913027,
+        "commitAckMs": 1789215914147,
+        "firstFrameMs": 1789215914152,
+        "endMs": 1789215914169,
+        "latencyMs": 1142,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215914147
+        },
+        "preState": {
+          "rowCount": 0,
+          "firstId": null,
+          "secondId": null,
+          "thirdId": null,
+          "row998Id": null,
+          "firstLabel": null,
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "elegant green sandwich",
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "case": "create",
+      "scale": 1000,
+      "ordinal": 2,
+      "capturedAt": "2026-09-12T12:25:18.632Z",
+      "latencyMs": 814,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "create",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215916522,
+        "commitAckMs": 1789215917317,
+        "firstFrameMs": 1789215917319,
+        "endMs": 1789215917336,
+        "latencyMs": 814,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215917317
+        },
+        "preState": {
+          "rowCount": 0,
+          "firstId": null,
+          "secondId": null,
+          "thirdId": null,
+          "row998Id": null,
+          "firstLabel": null,
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "long purple burger",
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "case": "create",
+      "scale": 1000,
+      "ordinal": 3,
+      "capturedAt": "2026-09-12T12:25:19.949Z",
+      "latencyMs": 780,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "create",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215917873,
+        "commitAckMs": 1789215918628,
+        "firstFrameMs": 1789215918636,
+        "endMs": 1789215918653,
+        "latencyMs": 780,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215918628
+        },
+        "preState": {
+          "rowCount": 0,
+          "firstId": null,
+          "secondId": null,
+          "thirdId": null,
+          "row998Id": null,
+          "firstLabel": null,
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "unsightly yellow chair",
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "case": "create",
+      "scale": 1000,
+      "ordinal": 3,
+      "capturedAt": "2026-09-12T12:25:21.667Z",
+      "latencyMs": 1118,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "create",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215919252,
+        "commitAckMs": 1789215920347,
+        "firstFrameMs": 1789215920353,
+        "endMs": 1789215920370,
+        "latencyMs": 1118,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215920347
+        },
+        "preState": {
+          "rowCount": 0,
+          "firstId": null,
+          "secondId": null,
+          "thirdId": null,
+          "row998Id": null,
+          "firstLabel": null,
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "helpful pink pony",
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "case": "create",
+      "scale": 1000,
+      "ordinal": 4,
+      "capturedAt": "2026-09-12T12:25:23.384Z",
+      "latencyMs": 1173,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "create",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215920913,
+        "commitAckMs": 1789215922057,
+        "firstFrameMs": 1789215922070,
+        "endMs": 1789215922086,
+        "latencyMs": 1173,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215922057
+        },
+        "preState": {
+          "rowCount": 0,
+          "firstId": null,
+          "secondId": null,
+          "thirdId": null,
+          "row998Id": null,
+          "firstLabel": null,
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "expensive brown chair",
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "case": "create",
+      "scale": 1000,
+      "ordinal": 4,
+      "capturedAt": "2026-09-12T12:25:24.885Z",
+      "latencyMs": 909,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "create",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215922678,
+        "commitAckMs": 1789215923564,
+        "firstFrameMs": 1789215923570,
+        "endMs": 1789215923587,
+        "latencyMs": 909,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215923564
+        },
+        "preState": {
+          "rowCount": 0,
+          "firstId": null,
+          "secondId": null,
+          "thirdId": null,
+          "row998Id": null,
+          "firstLabel": null,
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "odd purple pizza",
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "case": "update10th",
+      "scale": 1000,
+      "ordinal": 0,
+      "capturedAt": "2026-09-12T12:25:28.184Z",
+      "latencyMs": 155,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "update10th",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215926732,
+        "commitAckMs": 1789215926864,
+        "firstFrameMs": 1789215926870,
+        "endMs": 1789215926887,
+        "latencyMs": 155,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215926864
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "large black sandwich",
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "large black sandwich !!!",
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "case": "update10th",
+      "scale": 1000,
+      "ordinal": 0,
+      "capturedAt": "2026-09-12T12:25:29.971Z",
+      "latencyMs": 78,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "update10th",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215928593,
+        "commitAckMs": 1789215928638,
+        "firstFrameMs": 1789215928654,
+        "endMs": 1789215928671,
+        "latencyMs": 78,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215928638
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "fancy brown car",
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "fancy brown car !!!",
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "case": "update10th",
+      "scale": 1000,
+      "ordinal": 1,
+      "capturedAt": "2026-09-12T12:25:31.401Z",
+      "latencyMs": 65,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "update10th",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215930022,
+        "commitAckMs": 1789215930060,
+        "firstFrameMs": 1789215930071,
+        "endMs": 1789215930087,
+        "latencyMs": 65,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215930060
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "angry brown keyboard",
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "angry brown keyboard !!!",
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "case": "update10th",
+      "scale": 1000,
+      "ordinal": 1,
+      "capturedAt": "2026-09-12T12:25:33.368Z",
+      "latencyMs": 162,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "update10th",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215931909,
+        "commitAckMs": 1789215932042,
+        "firstFrameMs": 1789215932054,
+        "endMs": 1789215932071,
+        "latencyMs": 162,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215932042
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "tall yellow pizza",
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "tall yellow pizza !!!",
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "case": "update10th",
+      "scale": 1000,
+      "ordinal": 2,
+      "capturedAt": "2026-09-12T12:25:35.251Z",
+      "latencyMs": 161,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "update10th",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215933793,
+        "commitAckMs": 1789215933921,
+        "firstFrameMs": 1789215933938,
+        "endMs": 1789215933954,
+        "latencyMs": 161,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215933921
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "big black keyboard",
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "big black keyboard !!!",
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "case": "update10th",
+      "scale": 1000,
+      "ordinal": 2,
+      "capturedAt": "2026-09-12T12:25:38.166Z",
+      "latencyMs": 61,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "update10th",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215936794,
+        "commitAckMs": 1789215936833,
+        "firstFrameMs": 1789215936838,
+        "endMs": 1789215936855,
+        "latencyMs": 61,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215936833
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "helpful white desk",
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "helpful white desk !!!",
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "case": "update10th",
+      "scale": 1000,
+      "ordinal": 3,
+      "capturedAt": "2026-09-12T12:25:39.607Z",
+      "latencyMs": 57,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "update10th",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215938231,
+        "commitAckMs": 1789215938270,
+        "firstFrameMs": 1789215938272,
+        "endMs": 1789215938288,
+        "latencyMs": 57,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215938270
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "adorable blue burger",
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "adorable blue burger !!!",
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "case": "update10th",
+      "scale": 1000,
+      "ordinal": 3,
+      "capturedAt": "2026-09-12T12:25:41.635Z",
+      "latencyMs": 158,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "update10th",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215940181,
+        "commitAckMs": 1789215940310,
+        "firstFrameMs": 1789215940322,
+        "endMs": 1789215940339,
+        "latencyMs": 158,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215940310
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "crazy red mouse",
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "crazy red mouse !!!",
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "case": "update10th",
+      "scale": 1000,
+      "ordinal": 4,
+      "capturedAt": "2026-09-12T12:25:43.502Z",
+      "latencyMs": 158,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "update10th",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215942047,
+        "commitAckMs": 1789215942185,
+        "firstFrameMs": 1789215942189,
+        "endMs": 1789215942205,
+        "latencyMs": 158,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215942185
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "adorable purple car",
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "adorable purple car !!!",
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "case": "update10th",
+      "scale": 1000,
+      "ordinal": 4,
+      "capturedAt": "2026-09-12T12:25:45.256Z",
+      "latencyMs": 58,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "update10th",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215943881,
+        "commitAckMs": 1789215943921,
+        "firstFrameMs": 1789215943922,
+        "endMs": 1789215943939,
+        "latencyMs": 58,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215943921
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "angry blue desk",
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "angry blue desk !!!",
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "case": "select",
+      "scale": 1000,
+      "ordinal": 0,
+      "capturedAt": "2026-09-12T12:25:48.536Z",
+      "latencyMs": 78,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "select",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215947161,
+        "commitAckMs": 1789215947221,
+        "firstFrameMs": 1789215947223,
+        "endMs": 1789215947239,
+        "latencyMs": 78,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215947221
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "helpful purple mouse",
+          "selectedId": 6
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "helpful purple mouse",
+          "selectedId": 2
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "case": "select",
+      "scale": 1000,
+      "ordinal": 0,
+      "capturedAt": "2026-09-12T12:25:50.364Z",
+      "latencyMs": 31,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "select",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215949009,
+        "commitAckMs": 1789215949012,
+        "firstFrameMs": 1789215949023,
+        "endMs": 1789215949040,
+        "latencyMs": 31,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215949012
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "expensive orange sandwich",
+          "selectedId": 6
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "expensive orange sandwich",
+          "selectedId": 2
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "case": "select",
+      "scale": 1000,
+      "ordinal": 1,
+      "capturedAt": "2026-09-12T12:25:51.814Z",
+      "latencyMs": 31,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "select",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215950459,
+        "commitAckMs": 1789215950463,
+        "firstFrameMs": 1789215950473,
+        "endMs": 1789215950490,
+        "latencyMs": 31,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215950463
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "mushy brown house",
+          "selectedId": 6
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "mushy brown house",
+          "selectedId": 2
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "case": "select",
+      "scale": 1000,
+      "ordinal": 1,
+      "capturedAt": "2026-09-12T12:25:53.753Z",
+      "latencyMs": 79,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "select",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215952378,
+        "commitAckMs": 1789215952439,
+        "firstFrameMs": 1789215952440,
+        "endMs": 1789215952457,
+        "latencyMs": 79,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215952439
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "adorable white desk",
+          "selectedId": 6
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "adorable white desk",
+          "selectedId": 2
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "case": "select",
+      "scale": 1000,
+      "ordinal": 2,
+      "capturedAt": "2026-09-12T12:25:55.620Z",
+      "latencyMs": 78,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "select",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215954245,
+        "commitAckMs": 1789215954306,
+        "firstFrameMs": 1789215954307,
+        "endMs": 1789215954323,
+        "latencyMs": 78,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215954306
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "easy blue sandwich",
+          "selectedId": 6
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "easy blue sandwich",
+          "selectedId": 2
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "case": "select",
+      "scale": 1000,
+      "ordinal": 2,
+      "capturedAt": "2026-09-12T12:25:58.614Z",
+      "latencyMs": 22,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "select",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215957269,
+        "commitAckMs": 1789215957273,
+        "firstFrameMs": 1789215957274,
+        "endMs": 1789215957291,
+        "latencyMs": 22,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215957273
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "pretty black desk",
+          "selectedId": 6
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "pretty black desk",
+          "selectedId": 2
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "case": "select",
+      "scale": 1000,
+      "ordinal": 3,
+      "capturedAt": "2026-09-12T12:26:00.164Z",
+      "latencyMs": 22,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "select",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215958819,
+        "commitAckMs": 1789215958823,
+        "firstFrameMs": 1789215958824,
+        "endMs": 1789215958841,
+        "latencyMs": 22,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215958823
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "long red car",
+          "selectedId": 6
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "long red car",
+          "selectedId": 2
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "case": "select",
+      "scale": 1000,
+      "ordinal": 3,
+      "capturedAt": "2026-09-12T12:26:02.188Z",
+      "latencyMs": 93,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "select",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215960798,
+        "commitAckMs": 1789215960860,
+        "firstFrameMs": 1789215960874,
+        "endMs": 1789215960891,
+        "latencyMs": 93,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215960860
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "helpful blue mouse",
+          "selectedId": 6
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "helpful blue mouse",
+          "selectedId": 2
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "case": "select",
+      "scale": 1000,
+      "ordinal": 4,
+      "capturedAt": "2026-09-12T12:26:04.105Z",
+      "latencyMs": 88,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "select",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215962720,
+        "commitAckMs": 1789215962784,
+        "firstFrameMs": 1789215962791,
+        "endMs": 1789215962808,
+        "latencyMs": 88,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215962784
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "pretty blue desk",
+          "selectedId": 6
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "pretty blue desk",
+          "selectedId": 2
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "case": "select",
+      "scale": 1000,
+      "ordinal": 4,
+      "capturedAt": "2026-09-12T12:26:05.924Z",
+      "latencyMs": 29,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "select",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215964579,
+        "commitAckMs": 1789215964583,
+        "firstFrameMs": 1789215964591,
+        "endMs": 1789215964608,
+        "latencyMs": 29,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215964583
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "large purple pizza",
+          "selectedId": 6
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "large purple pizza",
+          "selectedId": 2
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "case": "clear",
+      "scale": 1000,
+      "ordinal": 0,
+      "capturedAt": "2026-09-12T12:26:09.177Z",
+      "latencyMs": 105,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "clear",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215967770,
+        "commitAckMs": 1789215967848,
+        "firstFrameMs": 1789215967858,
+        "endMs": 1789215967875,
+        "latencyMs": 105,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215967848
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "important red pizza",
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 0,
+          "firstId": null,
+          "secondId": null,
+          "thirdId": null,
+          "row998Id": null,
+          "firstLabel": null,
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "case": "clear",
+      "scale": 1000,
+      "ordinal": 0,
+      "capturedAt": "2026-09-12T12:26:10.789Z",
+      "latencyMs": 128,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "clear",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215969364,
+        "commitAckMs": 1789215969460,
+        "firstFrameMs": 1789215969475,
+        "endMs": 1789215969492,
+        "latencyMs": 128,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215969460
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "large pink burger",
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 0,
+          "firstId": null,
+          "secondId": null,
+          "thirdId": null,
+          "row998Id": null,
+          "firstLabel": null,
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "case": "clear",
+      "scale": 1000,
+      "ordinal": 1,
+      "capturedAt": "2026-09-12T12:26:12.265Z",
+      "latencyMs": 76,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "clear",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215970849,
+        "commitAckMs": 1789215970908,
+        "firstFrameMs": 1789215970909,
+        "endMs": 1789215970925,
+        "latencyMs": 76,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215970908
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "tall white cookie",
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 0,
+          "firstId": null,
+          "secondId": null,
+          "thirdId": null,
+          "row998Id": null,
+          "firstLabel": null,
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "case": "clear",
+      "scale": 1000,
+      "ordinal": 1,
+      "capturedAt": "2026-09-12T12:26:14.164Z",
+      "latencyMs": 95,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "clear",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215972747,
+        "commitAckMs": 1789215972821,
+        "firstFrameMs": 1789215972826,
+        "endMs": 1789215972842,
+        "latencyMs": 95,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215972821
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "handsome brown burger",
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 0,
+          "firstId": null,
+          "secondId": null,
+          "thirdId": null,
+          "row998Id": null,
+          "firstLabel": null,
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "case": "clear",
+      "scale": 1000,
+      "ordinal": 2,
+      "capturedAt": "2026-09-12T12:26:15.892Z",
+      "latencyMs": 111,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "clear",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215974482,
+        "commitAckMs": 1789215974563,
+        "firstFrameMs": 1789215974576,
+        "endMs": 1789215974593,
+        "latencyMs": 111,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215974563
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "expensive brown cookie",
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 0,
+          "firstId": null,
+          "secondId": null,
+          "thirdId": null,
+          "row998Id": null,
+          "firstLabel": null,
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "case": "clear",
+      "scale": 1000,
+      "ordinal": 2,
+      "capturedAt": "2026-09-12T12:26:18.918Z",
+      "latencyMs": 92,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "clear",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215977518,
+        "commitAckMs": 1789215977580,
+        "firstFrameMs": 1789215977593,
+        "endMs": 1789215977610,
+        "latencyMs": 92,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215977580
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "elegant green bbq",
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 0,
+          "firstId": null,
+          "secondId": null,
+          "thirdId": null,
+          "row998Id": null,
+          "firstLabel": null,
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "case": "clear",
+      "scale": 1000,
+      "ordinal": 3,
+      "capturedAt": "2026-09-12T12:26:20.375Z",
+      "latencyMs": 77,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "clear",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215978983,
+        "commitAckMs": 1789215979043,
+        "firstFrameMs": 1789215979043,
+        "endMs": 1789215979060,
+        "latencyMs": 77,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215979043
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "handsome blue pony",
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 0,
+          "firstId": null,
+          "secondId": null,
+          "thirdId": null,
+          "row998Id": null,
+          "firstLabel": null,
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "case": "clear",
+      "scale": 1000,
+      "ordinal": 3,
+      "capturedAt": "2026-09-12T12:26:22.246Z",
+      "latencyMs": 110,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "clear",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215980833,
+        "commitAckMs": 1789215980920,
+        "firstFrameMs": 1789215980927,
+        "endMs": 1789215980943,
+        "latencyMs": 110,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215980920
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "inexpensive orange bbq",
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 0,
+          "firstId": null,
+          "secondId": null,
+          "thirdId": null,
+          "row998Id": null,
+          "firstLabel": null,
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "base",
+      "case": "clear",
+      "scale": 1000,
+      "ordinal": 4,
+      "capturedAt": "2026-09-12T12:26:23.935Z",
+      "latencyMs": 94,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "clear",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215982533,
+        "commitAckMs": 1789215982606,
+        "firstFrameMs": 1789215982610,
+        "endMs": 1789215982627,
+        "latencyMs": 94,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215982606
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "cheap purple keyboard",
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 0,
+          "firstId": null,
+          "secondId": null,
+          "thirdId": null,
+          "row998Id": null,
+          "firstLabel": null,
+          "selectedId": null
+        }
+      }
+    },
+    {
+      "arm": "candidate",
+      "case": "clear",
+      "scale": 1000,
+      "ordinal": 4,
+      "capturedAt": "2026-09-12T12:26:25.576Z",
+      "latencyMs": 78,
+      "boundary": "native-input-handler-to-second-native-frame",
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "clear",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789215984149,
+        "commitAckMs": 1789215984207,
+        "firstFrameMs": 1789215984210,
+        "endMs": 1789215984227,
+        "latencyMs": 78,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789215984207
+        },
+        "preState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "short pink chair",
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 0,
+          "firstId": null,
+          "secondId": null,
+          "thirdId": null,
+          "row998Id": null,
+          "firstLabel": null,
+          "selectedId": null
+        }
+      }
+    }
+  ],
+  "failures": [],
+  "logs": [
+    {
+      "at": "2026-09-12T12:24:44.634Z",
+      "message": "  [sandbox] octane-357-universal-control rows-0 session=2"
+    },
+    {
+      "at": "2026-09-12T12:24:45.176Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-0 session=3"
+    },
+    {
+      "at": "2026-09-12T12:24:45.694Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-0 session=4"
+    },
+    {
+      "at": "2026-09-12T12:24:46.210Z",
+      "message": "  [sandbox] octane-357-universal-control rows-0 session=5"
+    },
+    {
+      "at": "2026-09-12T12:24:46.730Z",
+      "message": "  [sandbox] octane-357-universal-control rows-0 session=6"
+    },
+    {
+      "at": "2026-09-12T12:24:48.515Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-0 session=2"
+    },
+    {
+      "at": "2026-09-12T12:24:49.034Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-0 session=3"
+    },
+    {
+      "at": "2026-09-12T12:24:49.546Z",
+      "message": "  [sandbox] octane-357-universal-control rows-0 session=4"
+    },
+    {
+      "at": "2026-09-12T12:24:50.063Z",
+      "message": "  [sandbox] octane-357-universal-control rows-0 session=5"
+    },
+    {
+      "at": "2026-09-12T12:24:50.578Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-0 session=6"
+    },
+    {
+      "at": "2026-09-12T12:24:52.372Z",
+      "message": "  [sandbox] octane-357-universal-control rows-1000 session=2"
+    },
+    {
+      "at": "2026-09-12T12:24:53.679Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-1000 session=3"
+    },
+    {
+      "at": "2026-09-12T12:24:55.074Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-1000 session=4"
+    },
+    {
+      "at": "2026-09-12T12:24:56.294Z",
+      "message": "  [sandbox] octane-357-universal-control rows-1000 session=5"
+    },
+    {
+      "at": "2026-09-12T12:24:57.638Z",
+      "message": "  [sandbox] octane-357-universal-control rows-1000 session=6"
+    },
+    {
+      "at": "2026-09-12T12:25:00.286Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-1000 session=2"
+    },
+    {
+      "at": "2026-09-12T12:25:01.503Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-1000 session=3"
+    },
+    {
+      "at": "2026-09-12T12:25:02.789Z",
+      "message": "  [sandbox] octane-357-universal-control rows-1000 session=4"
+    },
+    {
+      "at": "2026-09-12T12:25:03.964Z",
+      "message": "  [sandbox] octane-357-universal-control rows-1000 session=5"
+    },
+    {
+      "at": "2026-09-12T12:25:05.478Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-1000 session=6"
+    },
+    {
+      "at": "2026-09-12T12:25:08.014Z",
+      "message": "  [sandbox] octane-357-universal-control rows-0 session=2"
+    },
+    {
+      "at": "2026-09-12T12:25:09.736Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-0 session=3"
+    },
+    {
+      "at": "2026-09-12T12:25:11.269Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-0 session=4"
+    },
+    {
+      "at": "2026-09-12T12:25:12.586Z",
+      "message": "  [sandbox] octane-357-universal-control rows-0 session=5"
+    },
+    {
+      "at": "2026-09-12T12:25:14.304Z",
+      "message": "  [sandbox] octane-357-universal-control rows-0 session=6"
+    },
+    {
+      "at": "2026-09-12T12:25:17.727Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-0 session=2"
+    },
+    {
+      "at": "2026-09-12T12:25:19.150Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-0 session=3"
+    },
+    {
+      "at": "2026-09-12T12:25:20.464Z",
+      "message": "  [sandbox] octane-357-universal-control rows-0 session=4"
+    },
+    {
+      "at": "2026-09-12T12:25:22.190Z",
+      "message": "  [sandbox] octane-357-universal-control rows-0 session=5"
+    },
+    {
+      "at": "2026-09-12T12:25:23.888Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-0 session=6"
+    },
+    {
+      "at": "2026-09-12T12:25:26.688Z",
+      "message": "  [sandbox] octane-357-universal-control rows-0 session=2"
+    },
+    {
+      "at": "2026-09-12T12:25:28.702Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-0 session=3"
+    },
+    {
+      "at": "2026-09-12T12:25:30.485Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-0 session=4"
+    },
+    {
+      "at": "2026-09-12T12:25:31.917Z",
+      "message": "  [sandbox] octane-357-universal-control rows-0 session=5"
+    },
+    {
+      "at": "2026-09-12T12:25:33.887Z",
+      "message": "  [sandbox] octane-357-universal-control rows-0 session=6"
+    },
+    {
+      "at": "2026-09-12T12:25:37.019Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-0 session=2"
+    },
+    {
+      "at": "2026-09-12T12:25:38.689Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-0 session=3"
+    },
+    {
+      "at": "2026-09-12T12:25:40.133Z",
+      "message": "  [sandbox] octane-357-universal-control rows-0 session=4"
+    },
+    {
+      "at": "2026-09-12T12:25:42.152Z",
+      "message": "  [sandbox] octane-357-universal-control rows-0 session=5"
+    },
+    {
+      "at": "2026-09-12T12:25:44.023Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-0 session=6"
+    },
+    {
+      "at": "2026-09-12T12:25:47.007Z",
+      "message": "  [sandbox] octane-357-universal-control rows-0 session=2"
+    },
+    {
+      "at": "2026-09-12T12:25:49.051Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-0 session=3"
+    },
+    {
+      "at": "2026-09-12T12:25:50.885Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-0 session=4"
+    },
+    {
+      "at": "2026-09-12T12:25:52.335Z",
+      "message": "  [sandbox] octane-357-universal-control rows-0 session=5"
+    },
+    {
+      "at": "2026-09-12T12:25:54.269Z",
+      "message": "  [sandbox] octane-357-universal-control rows-0 session=6"
+    },
+    {
+      "at": "2026-09-12T12:25:57.425Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-0 session=2"
+    },
+    {
+      "at": "2026-09-12T12:25:59.137Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-0 session=3"
+    },
+    {
+      "at": "2026-09-12T12:26:00.687Z",
+      "message": "  [sandbox] octane-357-universal-control rows-0 session=4"
+    },
+    {
+      "at": "2026-09-12T12:26:02.709Z",
+      "message": "  [sandbox] octane-357-universal-control rows-0 session=5"
+    },
+    {
+      "at": "2026-09-12T12:26:04.616Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-0 session=6"
+    },
+    {
+      "at": "2026-09-12T12:26:07.714Z",
+      "message": "  [sandbox] octane-357-universal-control rows-0 session=2"
+    },
+    {
+      "at": "2026-09-12T12:26:09.695Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-0 session=3"
+    },
+    {
+      "at": "2026-09-12T12:26:11.304Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-0 session=4"
+    },
+    {
+      "at": "2026-09-12T12:26:12.786Z",
+      "message": "  [sandbox] octane-357-universal-control rows-0 session=5"
+    },
+    {
+      "at": "2026-09-12T12:26:14.674Z",
+      "message": "  [sandbox] octane-357-universal-control rows-0 session=6"
+    },
+    {
+      "at": "2026-09-12T12:26:17.726Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-0 session=2"
+    },
+    {
+      "at": "2026-09-12T12:26:19.436Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-0 session=3"
+    },
+    {
+      "at": "2026-09-12T12:26:20.878Z",
+      "message": "  [sandbox] octane-357-universal-control rows-0 session=4"
+    },
+    {
+      "at": "2026-09-12T12:26:22.764Z",
+      "message": "  [sandbox] octane-357-universal-control rows-0 session=5"
+    },
+    {
+      "at": "2026-09-12T12:26:24.444Z",
+      "message": "  [sandbox] octane-360-compact-product-corrected rows-0 session=6"
+    }
+  ]
+}
