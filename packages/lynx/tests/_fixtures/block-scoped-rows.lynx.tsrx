@@ -130,3 +130,23 @@ export function BlockCompositionFixture(props: BlockCompositionProps) @{
 		</view>
 	</view>
 }
+
+export interface BlockDynamicComponentProps {
+	readonly identity: string;
+	readonly label: string;
+}
+
+function BlockDynamicRegionRow(props: { readonly label: string }) @{
+	const [tone, setTone] = useState('quiet');
+	<view class={['row', tone]}>
+		<text class="col-label" bindtap={() => setTone(tone === 'quiet' ? 'loud' : 'quiet')}>
+			{props.label + ':' + tone}
+		</text>
+	</view>
+}
+
+export function BlockDynamicComponentFixture(props: BlockDynamicComponentProps) @{
+	<view class="shell">
+		<BlockDynamicRegionRow key={props.identity} label={props.label} />
+	</view>
+}

@@ -342,8 +342,18 @@ function isBranchValue(value: unknown): value is UniversalBranchValue {
 	return kind === UNIVERSAL_IF || kind === UNIVERSAL_SWITCH;
 }
 
-function isDynamicRegionValue(value: unknown): value is UniversalForValue | UniversalBranchValue {
-	return isRangeValue(value) || isBranchValue(value);
+function isComponentRegionValue(value: unknown): value is UniversalComponentValue {
+	return (
+		value !== null &&
+		typeof value === 'object' &&
+		(value as { $$kind?: unknown }).$$kind === UNIVERSAL_COMPONENT_VALUE
+	);
+}
+
+function isDynamicRegionValue(
+	value: unknown,
+): value is UniversalForValue | UniversalBranchValue | UniversalComponentValue {
+	return isRangeValue(value) || isBranchValue(value) || isComponentRegionValue(value);
 }
 
 function selectedBranch(
@@ -382,6 +392,9 @@ interface RangeTemplateState {
 interface RangeBranchState {
 	readonly key: object;
 	readonly template: RangeTemplateState;
+	readonly component?: LynxComponent<never>;
+	readonly hasKey?: boolean;
+	readonly authoredKey?: unknown;
 }
 
 function createRangeTemplateState(): RangeTemplateState {
@@ -1622,7 +1635,7 @@ export function lynxBlockProgramForComponent<Props>(
 	const renderBranchRange = (
 		context: LynxBlockProgramContext,
 		state: RangeState,
-		branch: UniversalBranchValue,
+		branch: UniversalBranchValue | UniversalComponentValue | null,
 		contextValues: SemanticContexts,
 	): RangeRender => {
 		const branches = state.branchTemplates;
@@ -1630,7 +1643,7 @@ export function lynxBlockProgramForComponent<Props>(
 			refuse(
 				subject,
 				LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-					'a keyed list hole later held a conditional region, and a block holds one structural region kind for its lifetime.',
+					'a keyed list hole later held a single dynamic region, and a block holds one structural region kind for its lifetime.',
 			);
 		}
 		const previous = state.retained;
@@ -1656,7 +1669,27 @@ export function lynxBlockProgramForComponent<Props>(
 				sparse: null,
 			};
 		};
-		const selected = selectedBranch(branch);
+		const componentRegion = branch !== null && isComponentRegionValue(branch) ? branch : null;
+		let selected: readonly [identity: unknown, render: () => unknown] | null;
+		if (componentRegion === null) {
+			selected = branch === null ? null : selectedBranch(branch as UniversalBranchValue);
+		} else {
+			let identity: unknown = componentRegion.hasKey ? null : componentRegion.component;
+			if (componentRegion.hasKey) {
+				for (const [candidateIdentity, candidate] of branches) {
+					if (
+						candidate.component === componentRegion.component &&
+						candidate.hasKey === true &&
+						Object.is(candidate.authoredKey, componentRegion.key)
+					) {
+						identity = candidateIdentity;
+						break;
+					}
+				}
+			}
+			if (identity === null) identity = Object.freeze({});
+			selected = [identity, () => componentRegion];
+		}
 		if (selected === null) return renderNothing();
 		const produced = withSemanticContexts(contextValues, selected[1]);
 		if (produced === null || produced === undefined || typeof produced === 'boolean') {
@@ -1667,6 +1700,14 @@ export function lynxBlockProgramForComponent<Props>(
 			branchState = {
 				key: Object.freeze({}),
 				template: createRangeTemplateState(),
+				...(componentRegion === null
+					? null
+					: { component: componentRegion.component as LynxComponent<never> }),
+				...(componentRegion?.hasKey === true
+					? { hasKey: true, authoredKey: componentRegion.key }
+					: componentRegion === null
+						? null
+						: { hasKey: false }),
 			};
 			branches.set(selected[0], branchState);
 		}
@@ -1899,6 +1940,15 @@ export function lynxBlockProgramForComponent<Props>(
 			}
 			if (isBranchValue(value)) {
 				return renderBranchRange(context, range, value, contextValues);
+			}
+			if (isComponentRegionValue(value)) {
+				return renderBranchRange(context, range, value, contextValues);
+			}
+			if (
+				(value === null || value === undefined || typeof value === 'boolean') &&
+				range.branchTemplates !== null
+			) {
+				return renderBranchRange(context, range, null, contextValues);
 			}
 			refuse(
 				subject,
@@ -2160,7 +2210,11 @@ export function lynxBlockProgramForComponent<Props>(
 								site: null,
 								rowTemplate: createRangeTemplateState(),
 								emptyTemplate: createRangeTemplateState(),
-								branchTemplates: isBranchValue(rendered.values[range.slot]) ? new Map() : null,
+								branchTemplates:
+									isBranchValue(rendered.values[range.slot]) ||
+									isComponentRegionValue(rendered.values[range.slot])
+										? new Map()
+										: null,
 								retained: null,
 								hasScopedRows: false,
 								keys: null,

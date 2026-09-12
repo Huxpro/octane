@@ -79,6 +79,8 @@ import { createLynxBackgroundTransport } from '../src/core/transport.js';
 import type { LynxComponent } from '../src/intrinsics.js';
 import { createFakePAPI } from './_fixtures/fake-element-papi.js';
 import {
+	BlockDynamicComponentFixture,
+	type BlockDynamicComponentProps,
 	BlockCompositionFixture,
 	type BlockCompositionProps,
 	BlockScopedRow,
@@ -2880,6 +2882,122 @@ describe('Lynx compiled component with a keyed range on the Block core', () => {
 		expect(paint(block.main.commits).tree).toContain('b:two:quiet');
 	});
 
+	it('mounts a component-valued dynamic region and keys its stateful lifetime', async () => {
+		const SHELL_PLAN = universalPlan(LYNX_TRANSPORT_RENDERER, {
+			kind: 'host',
+			type: 'view',
+			props: { class: 'shell' },
+			children: [{ kind: 'slot', slot: 0 }],
+		});
+		interface RegionProps {
+			readonly identity: string;
+			readonly label: string;
+			readonly show: boolean;
+		}
+		const RegionRow = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function RegionRow(props: { readonly label: string }) {
+				const [tone, setTone] = useState('quiet', 'tone');
+				return universalValue(ROW_PLAN, [
+					`row ${tone}`,
+					'region',
+					() => setTone(tone === 'quiet' ? 'loud' : 'quiet'),
+					`${props.label}:${tone}`,
+				]);
+			},
+		);
+		const Scene = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Scene(props: RegionProps) {
+				return universalValue(SHELL_PLAN, [
+					props.show
+						? universalComponent(
+								LYNX_TRANSPORT_RENDERER,
+								RegionRow,
+								universalProps([['set', 'label', props.label]]),
+								props.identity,
+							)
+						: null,
+				]);
+			},
+		);
+		const block = blockColumn<RegionProps>();
+		const listener = (): LynxResolvedNativeEvent => {
+			const papi = createFakePAPI();
+			const host = createLynxHostContainer(papi, { root: 1 });
+			for (const commit of block.main.commits) prepareLynxHostBatch(host, commit.batch).apply();
+			const label = papi.pages[0]!.children[0]!.children[0]!.children[1]!;
+			return resolveLynxHostNativeEvent(host, [...label.events.values()][0])!;
+		};
+
+		await block.render(Scene as LynxComponent<RegionProps>, {
+			identity: 'stable',
+			label: 'first',
+			show: true,
+		});
+		expect(paint(block.main.commits).tree).toContain('first:quiet');
+
+		deliverTo(block, listener());
+		await flushMicrotasks();
+		expect(paint(block.main.commits).tree).toContain('first:loud');
+
+		await block.render(Scene as LynxComponent<RegionProps>, {
+			identity: 'stable',
+			label: 'second',
+			show: true,
+		});
+		expect(paint(block.main.commits).tree).toContain('second:loud');
+
+		await block.render(Scene as LynxComponent<RegionProps>, {
+			identity: 'replacement',
+			label: 'third',
+			show: true,
+		});
+		expect(paint(block.main.commits).tree).toContain('third:quiet');
+		await block.render(Scene as LynxComponent<RegionProps>, {
+			identity: 'replacement',
+			label: 'hidden',
+			show: false,
+		});
+		expect(paint(block.main.commits).tree).not.toContain('third:quiet');
+
+		await block.render(Scene as LynxComponent<RegionProps>, {
+			identity: 'replacement',
+			label: 'fourth',
+			show: true,
+		});
+		expect(paint(block.main.commits).tree).toContain('fourth:quiet');
+	});
+	it('adopts an authored .tsrx component-valued dynamic region', async () => {
+		const block = blockColumn<BlockDynamicComponentProps>();
+		const listener = (): LynxResolvedNativeEvent => {
+			const papi = createFakePAPI();
+			const host = createLynxHostContainer(papi, { root: 1 });
+			for (const commit of block.main.commits) prepareLynxHostBatch(host, commit.batch).apply();
+			const label = papi.pages[0]!.children[0]!.children[0]!.children[0]!;
+			return resolveLynxHostNativeEvent(host, [...label.events.values()][0])!;
+		};
+
+		await block.render(BlockDynamicComponentFixture as LynxComponent<BlockDynamicComponentProps>, {
+			identity: 'stable',
+			label: 'first',
+		});
+		deliverTo(block, listener());
+		await flushMicrotasks();
+		expect(paint(block.main.commits).tree).toContain('first:loud');
+
+		await block.render(BlockDynamicComponentFixture as LynxComponent<BlockDynamicComponentProps>, {
+			identity: 'stable',
+			label: 'second',
+		});
+		expect(paint(block.main.commits).tree).toContain('second:loud');
+
+		await block.render(BlockDynamicComponentFixture as LynxComponent<BlockDynamicComponentProps>, {
+			identity: 'replacement',
+			label: 'third',
+		});
+		expect(paint(block.main.commits).tree).toContain('third:quiet');
+	});
 	it('keeps a static sibling authored before the range ahead of every row', async () => {
 		// A range appends its rows to its host element, so the rule it has to obey
 		// is that it is that element's *last* child — not its only one. A sibling
