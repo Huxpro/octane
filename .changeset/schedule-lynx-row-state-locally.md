@@ -1,4 +1,5 @@
 ---
+'octane': patch
 '@octanejs/lynx': patch
 ---
 
@@ -15,3 +16,8 @@ page-state updates project only their queued hook cells, run each affected group
 once, and write the resulting bindings through one retained-block visit without
 executing the component setup; incomplete or structural proofs fall back to the
 full component transaction.
+Eligible ordinary compiled components now emit these dependency groups
+automatically for state, reducer, derived, conditional, nested scalar, event,
+and structural outputs. Dirty scalar updates encode and write only affected
+bindings and listener sites; unrelated program slots and rows no longer add
+wire-value cloning, validation, or lookup work.

@@ -89,6 +89,8 @@ import {
 	prepareUniversalTemplateProgram,
 	prepareUniversalTemplateProgramValuesFromWire,
 	universalTemplateProgramWithoutRanges,
+	prepareUniversalTemplateProgramValueFromWire,
+	UNIVERSAL_TEMPLATE_PROGRAM_VALUE_REFUSED,
 	type CompiledUniversalTemplateProgram,
 	type PreparedUniversalTemplateProgram,
 	type PreparedUniversalTemplateProgramEvent,
@@ -111,6 +113,7 @@ import {
 	isLynxCompilerProgramValue,
 	type LynxCompilerProgram,
 	type LynxCompilerProgramComputation,
+	type LynxCompilerProgramScalarComputation,
 } from './compiler-program.js';
 import type { LynxBlockProgram, LynxBlockProgramContext } from './block-program.js';
 import { encodeLynxProgramPropValue } from './host-prop-value.js';
@@ -387,7 +390,19 @@ interface RetainedRow {
 const EMPTY_RANGES: readonly RangeState[] = Object.freeze([]);
 const EMPTY_RESTORES: readonly (() => void)[] = Object.freeze([]);
 const EMPTY_COMPUTATIONS: readonly LynxCompilerProgramComputation[] = Object.freeze([]);
-const EMPTY_VALUES: readonly unknown[] = Object.freeze([]);
+type ProgramSiteIndexes = readonly (readonly number[] | undefined)[];
+const EMPTY_SITE_INDEXES: ProgramSiteIndexes = Object.freeze([]);
+const EMPTY_INDEXES: readonly number[] = Object.freeze([]);
+
+function indexProgramSites(sites: readonly { readonly slot: number }[]): ProgramSiteIndexes {
+	if (sites.length === 0) return EMPTY_SITE_INDEXES;
+	const indexed: number[][] = [];
+	for (let index = 0; index < sites.length; index++) {
+		const slot = sites[index]!.slot;
+		(indexed[slot] ??= []).push(index);
+	}
+	return indexed;
+}
 
 /** One range's whole next state, produced before any of it is written. */
 interface RangeRender {
@@ -497,7 +512,6 @@ export function lynxBlockProgramForComponent<Props>(
 	 * a second render of every row in it.
 	 */
 	let dirtySlots: Set<unknown> | null = null;
-	let liveValues: readonly unknown[] = EMPTY_VALUES;
 	let liveComputations: readonly LynxCompilerProgramComputation[] = EMPTY_COMPUTATIONS;
 	let renderQueued = false;
 
@@ -506,6 +520,8 @@ export function lynxBlockProgramForComponent<Props>(
 	let compiled: CompiledUniversalTemplateProgram | null = null;
 	let prepared: PreparedUniversalTemplateProgram | null = null;
 	let block: LynxBlock | null = null;
+	let valueIndexesBySlot: ProgramSiteIndexes = EMPTY_SITE_INDEXES;
+	let eventIndexesBySlot: ProgramSiteIndexes = EMPTY_SITE_INDEXES;
 	let ranges: readonly RangeState[] = EMPTY_RANGES;
 
 	/** Read a compiled component's return value, or say what it returned instead. */
@@ -1462,17 +1478,15 @@ export function lynxBlockProgramForComponent<Props>(
 		if (cells === null || liveComputations.length === 0 || prepared === null || block === null) {
 			return false;
 		}
-		const result: { values?: unknown[]; touched?: Set<number> } = {};
+		const result: { outputs?: Map<number, unknown> } = {};
 		try {
 			const supported = cells.renderDirty(slots, (sources) => {
 				const dirtySources = new Set(sources);
 				const covered = new Set<() => unknown>();
-				const selected: LynxCompilerProgramComputation[] = [];
+				const selected: LynxCompilerProgramScalarComputation[] = [];
 				for (const computation of liveComputations) {
 					if (!computation.sources.some((source) => dirtySources.has(source))) continue;
-					if (computation.slots.some((slot) => ranges.some((range) => range.slot === slot))) {
-						return;
-					}
+					if (computation.kind === 'structural') return;
 					selected.push(computation);
 					for (const source of computation.sources) {
 						if (dirtySources.has(source)) covered.add(source);
@@ -1480,8 +1494,7 @@ export function lynxBlockProgramForComponent<Props>(
 				}
 				if (sources.some((source) => !covered.has(source))) return;
 
-				const values = liveValues.slice();
-				const outputSlots = new Set<number>();
+				const outputSlots = new Map<number, unknown>();
 				for (const computation of selected) {
 					const outputs = computation.run();
 					if (!Array.isArray(outputs) || outputs.length !== computation.slots.length) {
@@ -1500,30 +1513,51 @@ export function lynxBlockProgramForComponent<Props>(
 									'two compiler dirty computations wrote the same value slot.',
 							);
 						}
-						outputSlots.add(slot);
-						values[slot] = outputs[index];
+						outputSlots.set(slot, outputs[index]);
 					}
 				}
-				result.values = values;
-				result.touched = outputSlots;
+				result.outputs = outputSlots;
 			});
-			const nextValues = result.values;
-			const touched = result.touched;
-			if (!supported || nextValues === undefined || touched === undefined) {
+			const outputs = result.outputs;
+			if (!supported || outputs === undefined) {
 				cells.abort();
 				return false;
 			}
 			context.afterAbort(() => cells.abort());
-			const wireValues = valuesFor(context, nextValues);
-			context.core.writeValues(block, wireValues);
-			if (prepared.events.some((site) => touched!.has(site.slot))) {
-				context.root.releaseListeners(block);
-				context.root.bindListeners(block, listenersFor(nextValues));
+			for (const [slot, output] of outputs) {
+				for (const valueIndex of valueIndexesBySlot[slot] ?? EMPTY_INDEXES) {
+					const binding = prepared.values[valueIndex]!;
+					const value = prepareUniversalTemplateProgramValueFromWire(
+						encoderFor(context),
+						prepared,
+						binding,
+						output,
+					);
+					if (value === UNIVERSAL_TEMPLATE_PROGRAM_VALUE_REFUSED) {
+						refuse(
+							subject,
+							LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+								'one of its dirty scalar values does not fit the compiled template binding.',
+						);
+					}
+					context.core.setSlotValue(block, valueIndex, value);
+				}
+				for (const eventIndex of eventIndexesBySlot[slot] ?? EMPTY_INDEXES) {
+					if (output !== null && output !== undefined && typeof output !== 'function') {
+						refuse(
+							subject,
+							LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+								'an event dirty computation returned neither a handler nor an empty conditional hole.',
+						);
+					}
+					context.root.setListener(
+						block,
+						eventIndex,
+						typeof output === 'function' ? (output as LynxBlockListener) : null,
+					);
+				}
 			}
-			context.afterCommit(() => {
-				cells.commit();
-				liveValues = nextValues!;
-			});
+			context.afterCommit(() => cells.commit());
 			return true;
 		} catch (error) {
 			cells.abort();
@@ -1594,7 +1628,6 @@ export function lynxBlockProgramForComponent<Props>(
 			for (const row of rows) applyRange(context, row);
 			context.afterCommit(() => {
 				scope?.commit();
-				liveValues = rendered.values;
 				liveComputations = rendered.computations;
 			});
 		} catch (error) {
@@ -1605,13 +1638,23 @@ export function lynxBlockProgramForComponent<Props>(
 
 	const program: LynxBlockProgram<Props> = {
 		mount(context, props) {
-			const previous = { plan, compiled, prepared, block, ranges };
+			const previous = {
+				plan,
+				compiled,
+				prepared,
+				valueIndexesBySlot,
+				eventIndexesBySlot,
+				block,
+				ranges,
+			};
 			context.afterAbort(() => {
 				plan = previous.plan;
 				compiled = previous.compiled;
 				prepared = previous.prepared;
 				block = previous.block;
 				ranges = previous.ranges;
+				valueIndexesBySlot = previous.valueIndexesBySlot;
+				eventIndexesBySlot = previous.eventIndexesBySlot;
 			});
 			const rendered = renderSubject(context, props);
 			try {
@@ -1683,6 +1726,8 @@ export function lynxBlockProgramForComponent<Props>(
 								keyedSelection: null,
 								componentRows: null,
 							}));
+				valueIndexesBySlot = indexProgramSites(wire.values);
+				eventIndexesBySlot = indexProgramSites(wire.events);
 				const template: LynxBlockTemplate = compileLynxBlockTemplate(
 					wire.wire,
 					rendered.plan.address,
@@ -1703,7 +1748,6 @@ export function lynxBlockProgramForComponent<Props>(
 				}
 				context.afterCommit(() => {
 					scope?.commit();
-					liveValues = rendered.values;
 					liveComputations = rendered.computations;
 				});
 			} catch (error) {
@@ -1745,7 +1789,8 @@ export function lynxBlockProgramForComponent<Props>(
 				block = null;
 				ranges = EMPTY_RANGES;
 				dirtySlots = null;
-				liveValues = EMPTY_VALUES;
+				valueIndexesBySlot = EMPTY_SITE_INDEXES;
+				eventIndexesBySlot = EMPTY_SITE_INDEXES;
 				liveComputations = EMPTY_COMPUTATIONS;
 				// The cells outlive nothing: a setter captured by a handler this
 				// program bound can still be called after release, and a disposed

@@ -3455,17 +3455,300 @@ function contextProviderExpressionAst(node, state) {
 	return null;
 }
 
-function compileRenderableExpressionAst(node, state) {
+const DIRTY_EXPRESSION_WRAPPERS = new Set([
+	'TSAsExpression',
+	'TSTypeAssertion',
+	'TSNonNullExpression',
+	'TSSatisfiesExpression',
+	'ParenthesizedExpression',
+	'ChainExpression',
+]);
+
+function dirtyPureExpression(node) {
+	if (!node || typeof node !== 'object') return false;
+	if (node.type === 'Literal' || node.type === 'Identifier') return true;
+	if (DIRTY_EXPRESSION_WRAPPERS.has(node.type)) return dirtyPureExpression(node.expression);
+	if (node.type === 'FunctionExpression' || node.type === 'ArrowFunctionExpression') {
+		// Creating a closure is pure. Its body runs later, but its captures still
+		// participate in dependency grouping through collectEntryCaptures.
+		return true;
+	}
+	if (node.type === 'TemplateLiteral') {
+		return (node.expressions ?? []).every(dirtyPureExpression);
+	}
+	if (node.type === 'UnaryExpression') return dirtyPureExpression(node.argument);
+	if (node.type === 'BinaryExpression' || node.type === 'LogicalExpression') {
+		return dirtyPureExpression(node.left) && dirtyPureExpression(node.right);
+	}
+	if (node.type === 'ConditionalExpression') {
+		return (
+			dirtyPureExpression(node.test) &&
+			dirtyPureExpression(node.consequent) &&
+			dirtyPureExpression(node.alternate)
+		);
+	}
+	if (node.type === 'SequenceExpression') {
+		return (node.expressions ?? []).every(dirtyPureExpression);
+	}
+	if (node.type === 'ArrayExpression') {
+		return (node.elements ?? []).every(
+			(element) =>
+				element === null || (element.type !== 'SpreadElement' && dirtyPureExpression(element)),
+		);
+	}
+	if (node.type === 'ObjectExpression') {
+		return (node.properties ?? []).every((property) => {
+			if (property.type !== 'Property' || property.kind !== 'init' || property.method === true) {
+				return false;
+			}
+			return (
+				(!property.computed || dirtyPureExpression(property.key)) &&
+				dirtyPureExpression(property.value)
+			);
+		});
+	}
+	return false;
+}
+
+function dirtyExpressionReferences(expression) {
+	return collectEntryCaptures(expression, new Set()).map((capture) => capture.source);
+}
+
+function typeOnlySetupStatement(statement) {
+	return (
+		statement.type === 'TSInterfaceDeclaration' ||
+		statement.type === 'TSTypeAliasDeclaration' ||
+		statement.type === 'TSDeclareFunction' ||
+		statement.declare === true
+	);
+}
+
+/**
+ * Prove the setup slice a dirty computation may replay without the component.
+ * Calls, member reads, mutable declarations, control flow, and non-state hooks
+ * all decline. The proof is intentionally smaller than JavaScript purity.
+ */
+function dirtyComponentCandidate(render, hooks, state) {
+	if (
+		render.render === null ||
+		state.hmr ||
+		state.profile ||
+		!rendererHasCapability(state, 'compiler-program-ir')
+	) {
+		return null;
+	}
+	const sources = [];
+	const derived = [];
+	const replacements = [];
+	for (const statement of render.setup ?? []) {
+		if (typeOnlySetupStatement(statement)) continue;
+		if (
+			statement.type !== 'VariableDeclaration' ||
+			statement.kind !== 'const' ||
+			statement.declarations?.length !== 1
+		) {
+			return null;
+		}
+		const declaration = statement.declarations[0];
+		const value = unwrapFirstScreenExpression(declaration.init);
+		const hookName =
+			value?.type === 'CallExpression' && value.callee?.type === 'Identifier'
+				? state.runtimeImports.get(value.callee.name)
+				: null;
+		if (hookName === 'useState' || hookName === 'useReducer') {
+			const pattern = declaration.id;
+			const elements = pattern?.type === 'ArrayPattern' ? (pattern.elements ?? []) : [];
+			if (
+				pattern?.type !== 'ArrayPattern' ||
+				elements[0]?.type !== 'Identifier' ||
+				elements.slice(3).some((element) => element !== null) ||
+				elements.some((element) => element?.type === 'RestElement') ||
+				(elements[2] !== null && elements[2] !== undefined && elements[2].type !== 'Identifier')
+			) {
+				return null;
+			}
+			const getter =
+				elements[2]?.name ??
+				allocName(state, `${state.planPrefix || '__octane'}Get${sources.length}`);
+			if (elements[2] == null) {
+				const nextElements = [
+					elements[0],
+					elements[1] ?? null,
+					generatedIdentifier(getter, pattern),
+				];
+				replacements.push([
+					pattern,
+					inheritGeneratedOrigin({ ...pattern, elements: nextElements }, pattern),
+				]);
+			}
+			sources.push({ value: elements[0].name, getter, hook: hookName, origin: declaration });
+			continue;
+		}
+		if (
+			declaration.id?.type !== 'Identifier' ||
+			declaration.init == null ||
+			!dirtyPureExpression(declaration.init)
+		) {
+			return null;
+		}
+		derived.push({
+			name: declaration.id.name,
+			statement,
+			refs: dirtyExpressionReferences(declaration.init),
+			deps: null,
+		});
+	}
+	if (
+		sources.length === 0 ||
+		hooks.length !== sources.length ||
+		hooks.some((hook, index) => hook.name !== sources[index].hook)
+	) {
+		return null;
+	}
+
+	const allDerivedNames = new Set(derived.map((entry) => entry.name));
+	const bindingDeps = new Map();
+	for (let index = 0; index < sources.length; index++) {
+		bindingDeps.set(sources[index].value, new Set([index]));
+	}
+	for (const entry of derived) {
+		if (bindingDeps.has(entry.name)) return null;
+		const deps = new Set();
+		for (const ref of entry.refs) {
+			if (allDerivedNames.has(ref) && !bindingDeps.has(ref)) return null;
+			for (const dep of bindingDeps.get(ref) ?? []) deps.add(dep);
+		}
+		entry.deps = deps;
+		bindingDeps.set(entry.name, deps);
+	}
+	return { sources, derived, bindingDeps, replacements };
+}
+
+function dirtyComputationArrayAst(candidate, values, root, state, origin) {
+	if (candidate === null || !lynxBlockCompilerProgramEligible(state, root, origin)) return null;
+	const structuralSlots = new Set(
+		deriveLynxProgramIROnce(state, root).ranges.map((range) => range.slot),
+	);
+	const groups = new Map();
+	for (let slot = 0; slot < values.length; slot++) {
+		const expression = values[slot];
+		const refs = dirtyExpressionReferences(expression);
+		const deps = new Set();
+		for (const ref of refs) {
+			for (const dep of candidate.bindingDeps.get(ref) ?? []) deps.add(dep);
+		}
+		if (deps.size === 0) continue;
+		const kind = structuralSlots.has(slot) ? 'structural' : 'scalar';
+		if (kind === 'scalar' && !dirtyPureExpression(expression)) return null;
+		const ordered = [...deps].sort((left, right) => left - right);
+		const key = `${kind}:${ordered.join(',')}`;
+		const group = groups.get(key) ?? {
+			kind,
+			deps: ordered,
+			slots: [],
+			values: kind === 'scalar' ? [] : null,
+			refs: kind === 'scalar' ? [] : null,
+		};
+		group.slots.push(slot);
+		if (kind === 'scalar') {
+			group.values.push(expression);
+			group.refs.push(...refs);
+		}
+		groups.set(key, group);
+	}
+	if (groups.size === 0) return null;
+	const derivedByName = new Map(candidate.derived.map((entry) => [entry.name, entry]));
+	const descriptors = [];
+	for (const group of groups.values()) {
+		let run = null;
+		if (group.kind === 'scalar') {
+			const required = new Set();
+			const visit = (name) => {
+				const entry = derivedByName.get(name);
+				if (entry === undefined || required.has(name)) return;
+				required.add(name);
+				for (const ref of entry.refs) visit(ref);
+			};
+			for (const ref of group.refs) visit(ref);
+			const body = [];
+			for (const dep of group.deps) {
+				const source = candidate.sources[dep];
+				body.push(
+					generatedConst(
+						source.value,
+						generatedCall(generatedIdentifier(source.getter, source.origin), [], source.origin),
+						source.origin,
+					),
+				);
+			}
+			for (const entry of candidate.derived) {
+				if (required.has(entry.name))
+					body.push(clone_ast_node(rewriteSourceAst(entry.statement, state)));
+			}
+			body.push(
+				inheritGeneratedOrigin(
+					b.return(b.array(group.values.map((value) => clone_ast_node(value)))),
+					origin,
+				),
+			);
+			run = b.prop(
+				'init',
+				b.literal('run', '"run"'),
+				generatedArrow([], inheritGeneratedOrigin(b.block(body), origin), origin),
+			);
+		}
+		descriptors.push(
+			inheritGeneratedOrigin(
+				b.object([
+					b.prop('init', b.literal('kind', '"kind"'), jsonValueToAst(group.kind, origin)),
+					b.prop(
+						'init',
+						b.literal('purity', '"purity"'),
+						jsonValueToAst(group.kind === 'scalar' ? 'pure' : 'unknown', origin),
+					),
+					b.prop(
+						'init',
+						b.literal('escape', '"escape"'),
+						b.literal('component-render', '"component-render"'),
+					),
+					b.prop(
+						'init',
+						b.literal('sources', '"sources"'),
+						b.array(
+							group.deps.map((dep) => generatedIdentifier(candidate.sources[dep].getter, origin)),
+						),
+					),
+					b.prop(
+						'init',
+						b.literal('slots', '"slots"'),
+						b.array(group.slots.map((slot) => b.literal(slot))),
+					),
+					...(run === null ? [] : [run]),
+				]),
+				origin,
+			),
+		);
+	}
+	state.astNodeReplacements ??= new WeakMap();
+	for (const [pattern, replacement] of candidate.replacements) {
+		state.astNodeReplacements.set(pattern, replacement);
+	}
+	return inheritGeneratedOrigin(b.array(descriptors), origin);
+}
+
+function compileRenderableExpressionAst(node, state, dirtyCandidate = null) {
 	const context = { values: [] };
 	const nodes = compileChildAst(node, context, state);
 	const root =
 		nodes.length === 1 ? nodes[0] : withPlanOrigin({ kind: 'range', children: nodes }, node);
 	const plan = allocPlan(state, root, node);
-	return generatedCall(
-		universalValueHelperForPlan(state, root),
-		[generatedIdentifier(plan, node), inheritGeneratedOrigin(b.array(context.values), node)],
-		node,
-	);
+	const computations = dirtyComputationArrayAst(dirtyCandidate, context.values, root, state, node);
+	const args = [
+		generatedIdentifier(plan, node),
+		inheritGeneratedOrigin(b.array(context.values), node),
+	];
+	if (computations !== null) args.push(computations);
+	return generatedCall(universalValueHelperForPlan(state, root), args, node);
 }
 
 function rewriteSourceAst(node, state) {
@@ -4530,15 +4813,15 @@ function emitComponentAst(shape, state) {
 	for (const parameter of fn.params ?? []) {
 		assertNoResidualTemplate(parameter, state, 'component parameters');
 	}
+	const dirtyCandidate = dirtyComponentCandidate(render, hooks, state);
+	const compiledRender =
+		render.render === null
+			? null
+			: compileRenderableExpressionAst(render.render, state, dirtyCandidate);
 	const setup = rewriteSetupStatementsAst(render.setup, state);
 	const body = [...setup];
-	if (render.render !== null) {
-		body.push(
-			inheritGeneratedOrigin(
-				b.return(compileRenderableExpressionAst(render.render, state)),
-				render.render,
-			),
-		);
+	if (compiledRender !== null) {
+		body.push(inheritGeneratedOrigin(b.return(compiledRender), render.render));
 	} else if (render.expression !== undefined) {
 		body.push(
 			inheritGeneratedOrigin(

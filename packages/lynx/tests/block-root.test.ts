@@ -322,6 +322,33 @@ describe('Lynx block root — inbound event delivery', () => {
 		]);
 	});
 
+	it('journals a single-site listener replacement across abort and accept', async () => {
+		const { main, root, core, slot } = scene();
+		const taps: string[] = [];
+		core.fillForSlot(
+			slot,
+			ROW_TEMPLATE,
+			rows(1),
+			(row) => row.id,
+			(row) => rowValues(row, null),
+		);
+		const only = slot.items.get(1)!;
+		root.bindListeners(only, [() => taps.push('committed'), null]);
+		await commitAndAck(root, main);
+
+		root.beginAttempt();
+		root.setListener(only, 0, () => taps.push('aborted'));
+		expect(root.abortAttempt()).toBe(true);
+		main.sendEvent('discrete', [only.firstListenerId!]);
+		expect(taps).toEqual(['committed']);
+
+		root.beginAttempt();
+		root.setListener(only, 0, () => taps.push('accepted'));
+		expect(await commitAndAck(root, main)).toBeNull();
+		main.sendEvent('discrete', [only.firstListenerId!]);
+		expect(taps).toEqual(['committed', 'accepted']);
+	});
+
 	it('reaches the second event site of the same row, not the first', async () => {
 		const { main, root, core, slot } = scene();
 		const taps: string[] = [];

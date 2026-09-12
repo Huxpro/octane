@@ -297,6 +297,24 @@ const RANGE_DEPENDENCY_PAGE_PLAN = universalPlan(LYNX_TRANSPORT_RENDERER, {
 	],
 });
 
+const RANGE_DEPENDENCY_PAGE_PROGRAM = lynxProgram(LYNX_TRANSPORT_RENDERER, {
+	...deriveLynxProgramIR(RANGE_DEPENDENCY_PAGE_PLAN.root as never)!,
+	address: {
+		module: 'tests/RangeDependencyPage.lynx.tsrx',
+		index: 0,
+		digest: 'range-dependency-page',
+	},
+});
+
+const TABLE_COMPILER_PROGRAM = lynxProgram(LYNX_TRANSPORT_RENDERER, {
+	...deriveLynxProgramIR(TABLE_PLAN.root as never)!,
+	address: {
+		module: 'tests/StructuralTable.lynx.tsrx',
+		index: 0,
+		digest: 'structural-table',
+	},
+});
+
 const Table = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function Table(props: TableProps) {
 	return universalValue(TABLE_PLAN, [
 		universalFor(
@@ -509,6 +527,47 @@ describe('Lynx compiled component on the Block core', () => {
 				},
 			} as never),
 		).toThrow(/expected ABI version 1, received 2/);
+	});
+	it('validates scalar replay and structural invalidation as distinct descriptors', () => {
+		expect(() =>
+			lynxProgramValue(CARD_COMPILER_PROGRAM, CARD_PROGRAM_IR.values, [
+				{
+					kind: 'scalar',
+					purity: 'pure',
+					escape: 'component-render',
+					sources: [noop],
+					slots: [0],
+				} as never,
+			]),
+		).toThrow(/scalar run function/);
+
+		expect(() =>
+			lynxProgramValue(CARD_COMPILER_PROGRAM, CARD_PROGRAM_IR.values, [
+				{
+					kind: 'structural',
+					purity: 'unknown',
+					escape: 'component-render',
+					sources: [noop],
+					slots: [0],
+				},
+			] as never),
+		).toThrow(/valid kind\/purity\/escape metadata/);
+
+		expect(() =>
+			lynxProgramValue(
+				TABLE_COMPILER_PROGRAM,
+				[undefined],
+				[
+					{
+						kind: 'structural',
+						purity: 'unknown',
+						escape: 'component-render',
+						sources: [noop],
+						slots: [0],
+					},
+				],
+			),
+		).not.toThrow();
 	});
 	it('preserves a build-proven address on the Block run command', async () => {
 		const block = blockColumn(
@@ -776,6 +835,9 @@ describe('Lynx compiled component with its own state on the Block core', () => {
 					[
 						{
 							sources: [getCount],
+							kind: 'scalar',
+							purity: 'pure',
+							escape: 'component-render',
 							slots: [0, 1, 2],
 							run() {
 								computationRuns++;
@@ -809,7 +871,7 @@ describe('Lynx compiled component with its own state on the Block core', () => {
 		expect({
 			lookups: after.blockLookups - before.blockLookups,
 			commands: after.commands - before.commands,
-		}).toEqual({ lookups: 1, commands: 3 });
+		}).toEqual({ lookups: 3, commands: 3 });
 
 		// A caller-driven render refreshes the computation closure's props. Its
 		// next state-only update still bypasses the component setup.
@@ -820,6 +882,177 @@ describe('Lynx compiled component with its own state on the Block core', () => {
 		expect(componentRuns).toBe(2);
 		expect(computationRuns).toBe(2);
 		expect(paint(block.main.commits).tree).toContain('b-many');
+	});
+
+	it('rebinds a dirty event slot without retaining its stale closure', async () => {
+		let componentRuns = 0;
+		let computationRuns = 0;
+		let setLabel: ((value: string) => void) | undefined;
+		const observations: string[] = [];
+		const Direct = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function Direct() {
+			componentRuns++;
+			const [label, updateLabel, getLabel] = useState('old', 'label');
+			setLabel = updateLabel;
+			return lynxProgramValue(
+				CARD_COMPILER_PROGRAM,
+				['card', label, 'card-meta', () => observations.push(label), 'detail'],
+				[
+					{
+						kind: 'scalar',
+						purity: 'pure',
+						escape: 'component-render',
+						sources: [getLabel],
+						slots: [1, 3],
+						run() {
+							computationRuns++;
+							const next = getLabel();
+							return [next, () => observations.push(next)];
+						},
+					},
+				],
+			) as never;
+		});
+		const core = createLynxBlockCore({ templateRuns: () => false });
+		const block = blockColumn<Record<string, never>>(core);
+
+		await block.render(Direct as LynxComponent<Record<string, never>>, {});
+		const listener = boundListener(block.main.commits);
+		deliverTo(block, listener);
+		expect(observations).toEqual(['old']);
+
+		const before = core.counters();
+		setLabel!('new');
+		await block.settle(Promise.resolve());
+		const after = core.counters();
+		deliverTo(block, listener);
+
+		expect(componentRuns).toBe(1);
+		expect(computationRuns).toBe(1);
+		expect(observations).toEqual(['old', 'new']);
+		expect({
+			lookups: after.blockLookups - before.blockLookups,
+			commands: after.commands - before.commands,
+		}).toEqual({ lookups: 1, commands: 1 });
+	});
+
+	it('keeps compiler scalar updates independent of unrelated keyed row count', async () => {
+		for (const count of [2, 128]) {
+			let componentRuns = 0;
+			let computationRuns = 0;
+			let keyCalls = 0;
+			let bodyCalls = 0;
+			let setHeading: ((value: string) => void) | undefined;
+			const rows = Array.from({ length: count }, (_, index) => ({
+				id: index + 1,
+				label: `row ${index + 1}`,
+			}));
+			const Scene = defineUniversalComponent(
+				LYNX_TRANSPORT_RENDERER,
+				function Scene(props: { readonly rows: readonly TableRow[] }) {
+					componentRuns++;
+					const [heading, updateHeading, getHeading] = useState('ready', 'heading');
+					setHeading = updateHeading;
+					return lynxProgramValue(
+						RANGE_DEPENDENCY_PAGE_PROGRAM,
+						[
+							heading,
+							universalFor(
+								props.rows,
+								(row: TableRow) => {
+									keyCalls++;
+									return row.id;
+								},
+								(row: TableRow) => {
+									bodyCalls++;
+									return universalValue(ROW_PLAN, ['row', String(row.id), noop, row.label]);
+								},
+							),
+						],
+						[
+							{
+								kind: 'scalar',
+								purity: 'pure',
+								escape: 'component-render',
+								sources: [getHeading],
+								slots: [0],
+								run() {
+									computationRuns++;
+									return [getHeading()];
+								},
+							},
+						],
+					) as never;
+				},
+			);
+			const core = createLynxBlockCore({ templateRuns: () => false });
+			const block = blockColumn<{ readonly rows: readonly TableRow[] }>(core);
+
+			await block.render(Scene as LynxComponent<{ readonly rows: readonly TableRow[] }>, { rows });
+			keyCalls = 0;
+			bodyCalls = 0;
+			const before = core.counters();
+			setHeading!('changed');
+			await block.settle(Promise.resolve());
+			const after = core.counters();
+
+			expect(componentRuns, `${count} rows`).toBe(1);
+			expect(computationRuns, `${count} rows`).toBe(1);
+			expect({ keyCalls, bodyCalls }, `${count} rows`).toEqual({ keyCalls: 0, bodyCalls: 0 });
+			expect(
+				{
+					lookups: after.blockLookups - before.blockLookups,
+					commands: after.commands - before.commands,
+				},
+				`${count} rows`,
+			).toEqual({ lookups: 1, commands: 1 });
+			expect(paint(block.main.commits).tree).toContain('changed');
+			await block.settle(block.background.unmountAsync());
+		}
+	});
+
+	it('reruns the owning component for a structural dependency without replaying it', async () => {
+		let componentRuns = 0;
+		let setRows: ((value: readonly TableRow[]) => void) | undefined;
+		const one = { id: 1, label: 'row 1' };
+		const two = { id: 2, label: 'row 2' };
+		const Scene = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function Scene() {
+			componentRuns++;
+			const [rows, updateRows, getRows] = useState<readonly TableRow[]>([one], 'rows');
+			setRows = updateRows;
+			return lynxProgramValue(
+				TABLE_COMPILER_PROGRAM,
+				[
+					universalFor(
+						rows,
+						(row: TableRow) => row.id,
+						(row: TableRow) => universalValue(ROW_PLAN, ['row', String(row.id), noop, row.label]),
+					),
+				],
+				[
+					{
+						kind: 'structural',
+						purity: 'unknown',
+						escape: 'component-render',
+						sources: [getRows],
+						slots: [0],
+					},
+				],
+			) as never;
+		});
+		const block = blockColumn(createLynxBlockCore({ templateRuns: () => false }));
+
+		await block.render(Scene as LynxComponent<Record<string, never>>, {});
+		expect(componentRuns).toBe(1);
+		expect(
+			JSON.parse(paint(block.main.commits).tree).children[0].children[1].children,
+		).toHaveLength(1);
+		setRows!([one, two]);
+		await block.settle(Promise.resolve());
+
+		expect(componentRuns).toBe(2);
+		expect(
+			JSON.parse(paint(block.main.commits).tree).children[0].children[1].children,
+		).toHaveLength(2);
 	});
 
 	it('keeps the cell across a re-render driven by new props', async () => {

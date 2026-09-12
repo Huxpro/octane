@@ -83,6 +83,8 @@ export interface LynxBlockRoot {
 	 * expressed without a second template.
 	 */
 	bindListeners(block: LynxBlock, listeners: readonly (LynxBlockListener | null)[]): void;
+	/** Replace or clear one known event site without visiting its siblings. */
+	setListener(block: LynxBlock, site: number, listener: LynxBlockListener | null): void;
 	/** Drop every listener this block owns. Call before its run is destroyed. */
 	releaseListeners(block: LynxBlock): void;
 	/** Inbound delivery path. Satisfies what `transport.bindRoot` requires. */
@@ -201,17 +203,32 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 			}
 			for (let site = 0; site < sites.length; site++) {
 				const handler = bound[site];
-				if (handler === null || handler === undefined) continue;
-				if (typeof handler !== 'function') {
-					throw new TypeError(
-						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
-							? 'Octane Lynx block root listeners must be functions.'
-							: 'Octane Lynx OL020',
-					);
-				}
-				const id = listenerId(block, site);
-				writeListener(id, { priority: sites[site]!.priority, handler });
+				if (handler !== null && handler !== undefined) root.setListener(block, site, handler);
 			}
+		},
+
+		setListener(block, site, handler) {
+			const sites = block.template.program.events;
+			if (!Number.isSafeInteger(site) || site < 0 || site >= sites.length) {
+				throw new RangeError(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? `Octane Lynx block root event site ${String(site)} is outside this template.`
+						: 'Octane Lynx OL019',
+				);
+			}
+			const id = listenerId(block, site);
+			if (handler === null || handler === undefined) {
+				writeListener(id, undefined);
+				return;
+			}
+			if (typeof handler !== 'function') {
+				throw new TypeError(
+					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+						? 'Octane Lynx block root listeners must be functions.'
+						: 'Octane Lynx OL020',
+				);
+			}
+			writeListener(id, { priority: sites[site]!.priority, handler });
 		},
 
 		releaseListeners(block) {

@@ -777,6 +777,40 @@ export function prepareUniversalTemplateProgram(
  * event slot is checked for holding a function. An instance that fails either
  * declines the program and renders the ordinary way.
  */
+/** Sentinel returned when one authored value cannot occupy its prepared wire binding. */
+export const UNIVERSAL_TEMPLATE_PROGRAM_VALUE_REFUSED: unique symbol = Symbol(
+	'octane.universal.template-program.value-refused',
+);
+
+/** Encode one known prepared binding without visiting unrelated plan or wire slots. */
+export function prepareUniversalTemplateProgramValueFromWire(
+	encoder: UniversalHostEncoder,
+	prepared: PreparedUniversalTemplateProgram,
+	binding: PreparedUniversalTemplateProgramValue,
+	source: unknown,
+): UniversalHostTemplateProgramValue | typeof UNIVERSAL_TEMPLATE_PROGRAM_VALUE_REFUSED {
+	if (binding.text) {
+		return typeof source === 'string' || typeof source === 'number' || typeof source === 'bigint'
+			? String(source)
+			: UNIVERSAL_TEMPLATE_PROGRAM_VALUE_REFUSED;
+	}
+	// Renderer-namespaced values, lifecycle callbacks, and normalized props use
+	// the identical checks as the whole-program path below. Keeping this primitive
+	// here lets sparse runtimes avoid recreating that policy.
+	if (
+		encoder.classifyLifecycle(binding.name, source) !== null ||
+		encoder.classifyLocalCallback(binding.name, source) !== null
+	) {
+		return UNIVERSAL_TEMPLATE_PROGRAM_VALUE_REFUSED;
+	}
+	const host = prepared.wire.nodes[binding.node];
+	if (host === undefined) return UNIVERSAL_TEMPLATE_PROGRAM_VALUE_REFUSED;
+	const encoded = encoder.encodeHostProp(host.type, binding.name, source);
+	return isUniversalHostTemplateProgramSlotValue(binding.name, encoded)
+		? (encoded as UniversalHostTemplateProgramValue)
+		: UNIVERSAL_TEMPLATE_PROGRAM_VALUE_REFUSED;
+}
+
 /**
  * Normalize values when the compiler already emitted the prepared wire/maps.
  *
@@ -794,33 +828,14 @@ export function prepareUniversalTemplateProgramValuesFromWire(
 	const values: UniversalHostTemplateProgramValue[] = new Array(prepared.values.length);
 	for (let index = 0; index < prepared.values.length; index++) {
 		const binding = prepared.values[index]!;
-		const source = slotValues[binding.slot];
-		if (binding.text) {
-			if (typeof source !== 'string' && typeof source !== 'number' && typeof source !== 'bigint') {
-				return null;
-			}
-			values[index] = String(source);
-			continue;
-		}
-		// A renderer-namespaced binding is authored as whatever the renderer's
-		// encoder understands — for Lynx, the tagged function a worklet compiles to —
-		// so only the encoded result can be judged for transportability. The same is
-		// true for an ordinary renderer-normalized prop: Lynx class arrays and object
-		// maps, for example, are valid authored values whose codec turns into the
-		// scalar string its program carries. Rejecting the source before consulting
-		// that codec made the program path disagree with the ordinary prop path and
-		// forced a command fallback for values the renderer could encode exactly.
-		if (
-			encoder.classifyLifecycle(binding.name, source) !== null ||
-			encoder.classifyLocalCallback(binding.name, source) !== null
-		) {
-			return null;
-		}
-		const host = prepared.wire.nodes[binding.node];
-		if (host === undefined) return null;
-		const encoded = encoder.encodeHostProp(host.type, binding.name, source);
-		if (!isUniversalHostTemplateProgramSlotValue(binding.name, encoded)) return null;
-		values[index] = encoded as UniversalHostTemplateProgramValue;
+		const value = prepareUniversalTemplateProgramValueFromWire(
+			encoder,
+			prepared,
+			binding,
+			slotValues[binding.slot],
+		);
+		if (value === UNIVERSAL_TEMPLATE_PROGRAM_VALUE_REFUSED) return null;
+		values[index] = value;
 	}
 	return Object.freeze(values);
 }
