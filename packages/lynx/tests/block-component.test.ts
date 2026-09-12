@@ -2244,6 +2244,82 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 		expect(taps).toEqual([4, 1]);
 	});
 
+	it('keeps retained listeners through structural changes and binds only changed rows', async () => {
+		interface EventRow {
+			readonly id: number;
+			readonly label: string;
+			readonly onTap: () => void;
+		}
+		const Row = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function EventRowComponent(props: { readonly row: EventRow }) {
+				return universalValue(ROW_PLAN, [
+					'row',
+					String(props.row.id),
+					props.row.onTap,
+					props.row.label,
+				]);
+			},
+		);
+		const Listed = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function EventRows(props: { readonly rows: readonly EventRow[] }) {
+				return universalValue(TABLE_PLAN, [
+					universalFor(
+						props.rows,
+						(row: EventRow) => row.id,
+						(row: EventRow) =>
+							universalComponent(
+								LYNX_TRANSPORT_RENDERER,
+								Row,
+								universalProps([['set', 'row', row]]),
+							),
+					),
+				]);
+			},
+		);
+		const taps: string[] = [];
+		const one: EventRow = { id: 1, label: 'one', onTap: () => taps.push('first one') };
+		const two: EventRow = { id: 2, label: 'two', onTap: () => taps.push('first two') };
+		const three: EventRow = { id: 3, label: 'three', onTap: () => taps.push('first three') };
+		const block = blockColumn<{ readonly rows: readonly EventRow[] }>();
+		await block.render(Listed as LynxComponent<{ readonly rows: readonly EventRow[] }>, {
+			rows: [one, two, three],
+		});
+		const [oneListener, twoListener, threeListener] = [0, 1, 2].map((index) =>
+			rowListener(block.main.commits, index),
+		);
+
+		const changedTwo: EventRow = {
+			id: 2,
+			label: 'two changed',
+			onTap: () => taps.push('second two'),
+		};
+		const four: EventRow = { id: 4, label: 'four', onTap: () => taps.push('new four') };
+		await block.render(Listed as LynxComponent<{ readonly rows: readonly EventRow[] }>, {
+			rows: [three, one, changedTwo, four],
+		});
+
+		// Moves retain each block's listener run. Rows three and one kept their
+		// complete descriptors, row two kept its host but published its new
+		// closure, and the inserted row received its first listener binding.
+		expect(rowListener(block.main.commits, 0).listener).toBe(threeListener!.listener);
+		expect(rowListener(block.main.commits, 1).listener).toBe(oneListener!.listener);
+		expect(rowListener(block.main.commits, 2).listener).toBe(twoListener!.listener);
+		deliverTo(block, threeListener!);
+		deliverTo(block, oneListener!);
+		deliverTo(block, twoListener!);
+		deliverTo(block, rowListener(block.main.commits, 3));
+		expect(taps).toEqual(['first three', 'first one', 'second two', 'new four']);
+
+		await block.render(Listed as LynxComponent<{ readonly rows: readonly EventRow[] }>, {
+			rows: [three, changedTwo, four],
+		});
+		expect(() => deliverTo(block, oneListener!)).toThrow(/listener/i);
+		deliverTo(block, threeListener!);
+		expect(taps.at(-1)).toBe('first three');
+	});
+
 	it('gives a re-rendered row this render’s handler rather than the one it kept', async () => {
 		// The other half: a row the render *did* call must stop reaching the
 		// closure it had, because that one closes over the previous props.
