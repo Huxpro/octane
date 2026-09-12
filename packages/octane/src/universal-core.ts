@@ -91,6 +91,8 @@ export interface UniversalContext<T> {
 export interface UniversalRendererMetadata {
 	readonly id: string;
 	readonly module?: string;
+	/** Compiler proof that this component needs semantic hook ownership. */
+	readonly hookScope?: boolean;
 	readonly target: 'universal';
 }
 
@@ -2529,7 +2531,7 @@ function rendererRegionOwnerBridge(value: unknown): UniversalRendererRegionOwner
 export function defineUniversalComponent<P>(
 	renderer: string,
 	render: (props: P, context: UniversalRenderContext) => UniversalRenderable,
-	metadata?: { module?: string },
+	metadata?: { module?: string; hookScope?: boolean },
 ): UniversalComponent<P> {
 	assertRendererId(renderer, 'defineUniversalComponent renderer');
 	if (typeof render !== 'function')
@@ -2537,7 +2539,12 @@ export function defineUniversalComponent<P>(
 	Object.defineProperty(render, UNIVERSAL_COMPONENT, {
 		configurable: false,
 		enumerable: false,
-		value: Object.freeze({ id: renderer, module: metadata?.module, target: 'universal' }),
+		value: Object.freeze({
+			id: renderer,
+			module: metadata?.module,
+			...(typeof metadata?.hookScope === 'boolean' ? { hookScope: metadata.hookScope } : null),
+			target: 'universal',
+		}),
 	});
 	return render as UniversalComponent<P>;
 }
@@ -2712,7 +2719,7 @@ export function hmrUniversalComponent<P>(
 			if (owner !== null) owners.add(owner.record);
 			return meta.component(props, context);
 		},
-		{ module: metadata.module },
+		{ module: metadata.module, hookScope: true },
 	) as UniversalHmrComponent<P>;
 	Object.defineProperties(wrapper, {
 		[UNIVERSAL_HMR]: { value: meta },

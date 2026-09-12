@@ -25,13 +25,12 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
  * runs its setup, lowers the plan it returns to a template program, and makes
  * its slot values the block's values. A keyed range in that plan is lifted out
  * of the template and becomes a range site on the host node that held it, so a
- * list is reconciled by the core rather than repainted. The page's setup runs
- * inside a hook scope of the universal core's own cells (item 1b), so a page
- * that holds state — and a tap that writes it — is an ordinary program here. A
- * hooked *row* is still refused there by name, because a bundle that silently
- * rendered nothing would be far worse than one that says which piece it lacks.
- * Deriving is what makes a number from this core a framework measurement rather
- * than a floor, for the shapes it reaches.
+ * list is reconciled by the core rather than repainted. Stateful pages and
+ * keyed rows get independent scopes backed by the universal hook kernel;
+ * compiler-proven stateless components allocate none. Those scopes publish or
+ * abort at this root's host acknowledgement boundary without creating Universal
+ * host records. Deriving is what makes a number from this core a framework
+ * measurement rather than a floor, for the shapes it reaches.
  *
  * Either way a single application entry — `root.render(App)` — is driven by the
  * universal core with the flag off and by the Block core with the flag on,

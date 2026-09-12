@@ -218,7 +218,7 @@ describe('Lynx application Block eligibility', () => {
 		expect(report).toEqual({
 			version: 1,
 			matrix: {
-				version: 2,
+				version: 3,
 				runtimeNames: ['useCallback', 'useEffect', 'useRef', 'useState', 'useSyncExternalStore'],
 				threadFunctions: ['background', 'main-thread'],
 				mainThreadProps: true,
@@ -228,7 +228,7 @@ describe('Lynx application Block eligibility', () => {
 					nested: false,
 					lastChild: true,
 					rowKinds: ['inline-host', 'local-component'],
-					rowHooks: false,
+					rowHooks: true,
 				},
 			},
 			eligible: true,
@@ -413,15 +413,6 @@ describe('Lynx application Block eligibility', () => {
 					thread: 'background',
 					line: 10,
 					column: 2,
-				},
-				{
-					code: 'keyed-range-row-hooks',
-					module: '/src/App.tsrx',
-					thread: 'background',
-					line: 10,
-					column: 2,
-					row: 'Row',
-					hooks: [site('useState', 11, 3)],
 				},
 				{
 					code: 'unsupported-keyed-range-row',
@@ -934,7 +925,7 @@ describe('Lynx application resident-program coverage', () => {
 			},
 			[LYNX_BLOCK_SELECTION_ASSET_INFO]: {
 				version: 1,
-				matrix: { version: 2 },
+				matrix: { version: 3 },
 				eligible: true,
 				reasons: [],
 			},

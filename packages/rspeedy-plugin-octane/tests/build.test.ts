@@ -733,7 +733,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					selection: {
 						version: 1,
 						matrix: {
-							version: 2,
+							version: 3,
 							runtimeNames: [
 								'useCallback',
 								'useEffect',
@@ -749,7 +749,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 								nested: false,
 								lastChild: true,
 								rowKinds: ['inline-host', 'local-component'],
-								rowHooks: false,
+								rowHooks: true,
 							},
 						},
 						eligible: false,

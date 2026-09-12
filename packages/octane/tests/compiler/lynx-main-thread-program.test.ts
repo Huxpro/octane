@@ -251,6 +251,7 @@ interface EvaluatedModule {
 	readonly roots: readonly any[];
 	/** The address each of those plans was declared with, `undefined` for none. */
 	readonly addresses: readonly any[];
+	readonly componentMetadata: readonly unknown[];
 	/** The module's `Card`, which returns its plan and that plan's value array. */
 	readonly card: (props: unknown) => {
 		readonly plan?: unknown;
@@ -272,6 +273,7 @@ interface EvaluatedModule {
 function evaluate(code: string): EvaluatedModule {
 	const roots: any[] = [];
 	const addresses: any[] = [];
+	const componentMetadata: unknown[] = [];
 	const renderer = {
 		universalPlan: (_renderer: string, root: unknown, address?: unknown) => {
 			roots.push(root);
@@ -285,8 +287,12 @@ function evaluate(code: string): EvaluatedModule {
 			return program;
 		},
 		lynxProgramValue: (program: unknown, values: readonly unknown[]) => ({ program, values }),
-		defineUniversalComponent: (_renderer: string, render: unknown) => render,
+		defineUniversalComponent: (_renderer: string, render: unknown, metadata: unknown) => {
+			componentMetadata.push(metadata);
+			return render;
+		},
 		firstScreenEvent: Symbol('firstScreenEvent'),
+		hookSlots: () => 0,
 	};
 	const rewritten = code
 		.replace(
@@ -296,7 +302,7 @@ function evaluate(code: string): EvaluatedModule {
 		)
 		.replace('export const Card =', 'const Card =');
 	const card = new Function('__renderer', `${rewritten}\nreturn Card;`)(renderer);
-	return { roots, addresses, card: card as EvaluatedModule['card'] };
+	return { roots, addresses, componentMetadata, card: card as EvaluatedModule['card'] };
 }
 
 /** The fake host with the intrinsic factories a real PAPI always publishes. */
@@ -400,6 +406,29 @@ describe('emitting a compiled create function from the lynx main-thread compile'
 			'Label',
 			'Detail',
 		]);
+	});
+
+	it('emits an explicit hook-scope proof for stateless and custom-hook components', () => {
+		const rendererModule = '@octanejs/lynx/main-renderer';
+		const stateless = evaluate(compiled(ADDRESSABLE_CARD));
+		expect(stateless.componentMetadata).toEqual([{ module: rendererModule, hookScope: false }]);
+
+		const hooked = evaluate(
+			compiled(
+				`/** @jsxImportSource @octanejs/lynx/intrinsics */
+function useTone(value: string): string {
+	return value;
+}
+
+export function Card(props: { label: string }) @{
+	const tone = useTone(props.label);
+	<view><text>{tone as string}</text></view>
+}
+`,
+				{},
+			),
+		);
+		expect(hooked.componentMetadata).toEqual([{ module: rendererModule, hookScope: true }]);
 	});
 
 	it('fails closed when a Block background plan has no addressable shared IR', () => {

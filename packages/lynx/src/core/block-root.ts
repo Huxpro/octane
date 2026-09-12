@@ -20,10 +20,9 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
  *
  * It is the commit and event half of a root: it owns a `LynxBlockCore`, turns
  * one flush into one transported commit, and routes an inbound native delivery
- * back to the handler the mount registered. It is **not** `LynxRoot`: there is
- * no `render(component, props)`, because there are no hook cells yet and
- * therefore no program for a component to be. The caller drives the core
- * directly, which is exactly what a compiled block program would do.
+ * back to the handler the mount registered. It is **not** the public `LynxRoot`:
+ * a compiled block program drives it, and that program owns semantic hook scopes
+ * independently of this root's template and physical host records.
  *
  * ## The transport root id is borrowed, not minted
  *

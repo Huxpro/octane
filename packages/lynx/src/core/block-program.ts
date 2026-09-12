@@ -8,10 +8,9 @@
  * marker. Everything the context names is a type-only import, so the flag-off
  * bundle carries this file's two functions and nothing else.
  *
- * The program shape is what a compiler lowering will emit once the Block core
- * has hook cells (#103 U2's missing component layer). Until then a hand-written
- * program is the only producer, and a hand-written program is an architecture
- * floor rather than a framework measurement — see `block-background.ts`.
+ * The compiler lowering emits this program shape. Semantic cells belong to the
+ * component scopes the program retains, while template instances and physical
+ * hosts remain core-owned — see `block-component.ts` and `block-background.ts`.
  */
 
 import type { UniversalHostBatch } from 'octane/universal/native';

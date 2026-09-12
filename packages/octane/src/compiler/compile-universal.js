@@ -4519,12 +4519,13 @@ function emitComponentAst(shape, state) {
 	let name = shape.name ?? fn.id?.name;
 	if (!name) name = allocName(state, '__octaneUniversalDefault');
 	const loc = fn.loc?.start;
+	const hooks = collectAuthoredHookSites(fn, state);
 	state.components.push({
 		name,
 		exportKind,
 		line: loc?.line ?? 0,
 		column: loc?.column ?? 0,
-		hooks: collectAuthoredHookSites(fn, state),
+		hooks,
 	});
 	for (const parameter of fn.params ?? []) {
 		assertNoResidualTemplate(parameter, state, 'component parameters');
@@ -4564,7 +4565,7 @@ function emitComponentAst(shape, state) {
 		[
 			b.literal(state.renderer.id),
 			componentFunction,
-			jsonValueToAst({ module: state.renderer.module }, fn),
+			jsonValueToAst({ module: state.renderer.module, hookScope: hooks.length !== 0 }, fn),
 		],
 		fn,
 	);
@@ -5826,12 +5827,13 @@ export function lowerUniversalRendererRegionAst(
 		b.function(generatedIdentifier(componentName, origin), [entryProps], b.block(componentBody)),
 		origin,
 	);
+	const hooks = collectAuthoredHookSites({ body: regionExpression }, state);
 	let componentValue = generatedCall(
 		state.helpers.component,
 		[
 			b.literal(renderer.id),
 			componentFunction,
-			jsonValueToAst({ module: renderer.module }, origin),
+			jsonValueToAst({ module: renderer.module, hookScope: hooks.length !== 0 }, origin),
 		],
 		origin,
 	);
@@ -5840,7 +5842,7 @@ export function lowerUniversalRendererRegionAst(
 		exportKind: 'named',
 		line: origin?.loc?.start?.line ?? 0,
 		column: origin?.loc?.start?.column ?? 0,
-		hooks: collectAuthoredHookSites({ body: regionExpression }, state),
+		hooks,
 	});
 	if (state.hmr) {
 		componentValue = generatedCall(

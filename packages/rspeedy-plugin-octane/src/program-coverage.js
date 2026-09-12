@@ -20,7 +20,7 @@ export const LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO = 'octane:lynx-background
 export const LYNX_BACKGROUND_CORE_SELECTION_VERSION = 1;
 export const LYNX_APPLICATION_SELECTION_ASSET_INFO = 'octane:lynx-application-selection';
 export const LYNX_APPLICATION_SELECTION_VERSION = 1;
-export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 2;
+export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 3;
 export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 	version: LYNX_BLOCK_SUPPORT_MATRIX_VERSION,
 	// Each name has an independent assertion through the Block component path.
@@ -40,7 +40,7 @@ export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 		nested: false,
 		lastChild: true,
 		rowKinds: Object.freeze(['inline-host', 'local-component']),
-		rowHooks: false,
+		rowHooks: true,
 	}),
 });
 const MAIN_THREAD_ASSET = /main-thread(?:\.[A-Fa-f0-9]+)?\.js$/;
@@ -917,14 +917,6 @@ function unsupportedFeatureReasons(reasons, module, thread, requirements) {
 					...site,
 					kind: range.row.kind,
 					row: range.row.name,
-				}),
-			);
-		} else if (range.row.kind === 'local-component' && range.row.hooks.length !== 0) {
-			reasons.push(
-				reason('keyed-range-row-hooks', {
-					...site,
-					row: range.row.name,
-					hooks: Object.freeze(range.row.hooks.map(cloneSourceSite)),
 				}),
 			);
 		}

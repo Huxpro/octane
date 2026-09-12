@@ -795,13 +795,18 @@ export function universalActivity(
 export function defineUniversalComponent<P>(
 	renderer: string,
 	render: (props: P, context: UniversalRenderContext) => UniversalRenderable,
-	metadata?: { module?: string },
+	metadata?: { module?: string; hookScope?: boolean },
 ): UniversalComponent<P> {
 	assertRenderer(renderer);
 	Object.defineProperty(render, UNIVERSAL_COMPONENT, {
 		configurable: false,
 		enumerable: false,
-		value: Object.freeze({ id: renderer, module: metadata?.module, target: 'universal' }),
+		value: Object.freeze({
+			id: renderer,
+			module: metadata?.module,
+			...(typeof metadata?.hookScope === 'boolean' ? { hookScope: metadata.hookScope } : null),
+			target: 'universal',
+		}),
 	});
 	return render as UniversalComponent<P>;
 }
@@ -862,7 +867,7 @@ export function hmrUniversalComponent<P>(
 	const wrapper = defineUniversalComponent<P>(
 		renderer,
 		(props, context) => state.component(props, context),
-		{ module: metadata.module },
+		{ module: metadata.module, hookScope: true },
 	);
 	Object.defineProperty(wrapper, UNIVERSAL_HMR, { value: state });
 	if ((component as any).__warm !== undefined) (wrapper as any).__warm = (component as any).__warm;

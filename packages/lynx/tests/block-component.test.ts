@@ -24,8 +24,8 @@
 // events over the same nodes in the same order.
 //
 // What this does not cover is refused by name rather than half-rendered, and
-// the refusals are asserted here too: a hooked setup and a keyed range site are
-// the two seams item 1b leaves open.
+// the refusals are asserted here too: insertion/context ownership and nested
+// keyed range sites remain later composition layers.
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -41,6 +41,9 @@ import {
 	useCallback,
 	useContext,
 	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useReducer,
 	useInsertionEffect,
 	useRef,
 	useState,
@@ -70,6 +73,11 @@ import {
 import { createLynxBackgroundTransport } from '../src/core/transport.js';
 import type { LynxComponent } from '../src/intrinsics.js';
 import { createFakePAPI } from './_fixtures/fake-element-papi.js';
+import {
+	BlockScopedRow,
+	BlockScopedRowsFixture,
+	type BlockScopedRowsProps,
+} from './_fixtures/block-scoped-rows.lynx.tsrx';
 import { FakeContextProxy, flushMicrotasks, installMainSide } from './_fixtures/fake-lynx-wire.js';
 import { paint } from './_fixtures/painted-commits.js';
 
@@ -911,8 +919,57 @@ describe('Lynx compiled component with its own state on the Block core', () => {
 	});
 });
 
-describe('Lynx compiled component the Block core refuses', () => {
-	it('names the missing row-cell layer rather than half-rendering a hooked row', async () => {
+describe('Lynx compiled component Block semantic boundaries', () => {
+	it('runs ordinary compiled keyed row hooks with inferred and explicit dependencies', async () => {
+		const metadata = Symbol.for('octane.universal.component');
+		// This Vitest project compiles with HMR. Its wrapper must stay conservative
+		// because a hot replacement may add hooks; the hmr:false compiler test pins
+		// the production page's hookScope:false proof.
+		expect(
+			(BlockScopedRowsFixture as never as Record<PropertyKey, unknown>)[metadata],
+		).toMatchObject({
+			hookScope: true,
+		});
+		expect((BlockScopedRow as never as Record<PropertyKey, unknown>)[metadata]).toMatchObject({
+			hookScope: true,
+		});
+
+		const lifecycle: string[] = [];
+		const log = (entry: string): void => void lifecycle.push(entry);
+		const one = { id: 1, label: 'one' };
+		const two = { id: 2, label: 'two' };
+		const block = blockColumn<BlockScopedRowsProps>();
+		const component = BlockScopedRowsFixture as never as LynxComponent<BlockScopedRowsProps>;
+		await block.render(component, { rows: [one, two], log });
+		await flushMicrotasks();
+		expect(lifecycle).toEqual(['effect:one:quiet', 'effect:two:quiet']);
+
+		deliverTo(block, rowListener(block.main.commits, 0));
+		await block.settle(Promise.resolve());
+		await flushMicrotasks();
+		expect(paint(block.main.commits).tree).toContain('one-loud');
+		expect(lifecycle).toEqual([
+			'effect:one:quiet',
+			'effect:two:quiet',
+			'cleanup:one:quiet',
+			'effect:one:loud',
+		]);
+
+		await block.render(component, { rows: [two, one], log });
+		await flushMicrotasks();
+		const reordered = paint(block.main.commits).tree;
+		expect(reordered.indexOf('two-quiet')).toBeLessThan(reordered.indexOf('one-loud'));
+		expect(lifecycle).toHaveLength(4);
+
+		await block.render(component, { rows: [two], log });
+		await flushMicrotasks();
+		expect(lifecycle.at(-1)).toBe('cleanup:one:loud');
+		await block.settle(block.background.unmountAsync());
+		await flushMicrotasks();
+		expect(lifecycle.at(-1)).toBe('cleanup:two:quiet');
+	});
+
+	it('mounts a compiler-proven hooked row in its own semantic scope', async () => {
 		const block = blockColumn<TableProps>();
 		const HookedRow = defineUniversalComponent(
 			LYNX_TRANSPORT_RENDERER,
@@ -920,6 +977,7 @@ describe('Lynx compiled component the Block core refuses', () => {
 				const [label] = useState(props.row.label);
 				return universalValue(ROW_PLAN, ['row', String(props.row.id), noop, label]);
 			},
+			{ hookScope: true },
 		);
 		const Listed = defineUniversalComponent(
 			LYNX_TRANSPORT_RENDERER,
@@ -937,15 +995,392 @@ describe('Lynx compiled component the Block core refuses', () => {
 					),
 				]);
 			},
+			{ hookScope: false },
 		);
 
-		// The page's own cells exist now; a row's do not, and the refusal names
-		// the row rather than the page that contains it.
+		await block.render(Listed as LynxComponent<TableProps>, table([1], undefined, noop));
+		expect(paint(block.main.commits).tree).toContain('row #0');
+	});
+
+	it('fails closed when compiler metadata falsely proves a hooked row stateless', async () => {
+		const Contradiction = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Contradiction(props: { readonly row: TableRow }) {
+				const [label] = useState(props.row.label);
+				return universalValue(ROW_PLAN, ['row', String(props.row.id), noop, label]);
+			},
+			{ hookScope: false },
+		);
+		const Listed = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Listed(props: TableProps) {
+				return universalValue(TABLE_PLAN, [
+					universalFor(
+						props.rows,
+						(row: TableRow) => row.id,
+						(row: TableRow) =>
+							universalComponent(
+								LYNX_TRANSPORT_RENDERER,
+								Contradiction,
+								universalProps([['set', 'row', row]]),
+							),
+					),
+				]);
+			},
+			{ hookScope: false },
+		);
+		const block = blockColumn<TableProps>();
+
 		await expect(
-			block.settle(
-				block.background.renderAsync(Listed as never, table([1], undefined, noop) as never),
-			),
-		).rejects.toThrow(/HookedRow.*calls a hook/s);
+			block.render(Listed as LynxComponent<TableProps>, table([1], undefined, noop)),
+		).rejects.toThrow(/Contradiction.*hookScope: false/s);
+		expect(block.main.commits).toHaveLength(0);
+	});
+
+	it('retains keyed row state and identities through reorder, then disposes a departed key', async () => {
+		const lifecycle: string[] = [];
+		const setters = new Map<number, (value: string) => void>();
+		const refs = new Map<number, { current: number }>();
+		const callbacks = new Map<number, () => void>();
+		const memos = new Map<number, { readonly id: number }>();
+		const Row = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Row(props: { readonly row: TableRow }) {
+				const [tone, setTone] = useState('quiet', 'tone');
+				const renders = useRef(0, 'renders');
+				const onTap = useCallback(() => setTone('loud'), [], 'onTap');
+				const memo = useMemo(() => ({ id: props.row.id }), [props.row.id], 'memo');
+				renders.current++;
+				setters.set(props.row.id, setTone);
+				refs.set(props.row.id, renders);
+				callbacks.set(props.row.id, onTap);
+				memos.set(props.row.id, memo);
+				useEffect(
+					() => {
+						lifecycle.push(`mount:${props.row.label}`);
+						return () => lifecycle.push(`cleanup:${props.row.label}`);
+					},
+					[props.row.id],
+					'lifecycle',
+				);
+				return universalValue(ROW_PLAN, [
+					'row',
+					String(props.row.id),
+					onTap,
+					`${props.row.label}-${tone}`,
+				]);
+			},
+			{ hookScope: true },
+		);
+		const Listed = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Listed(props: { readonly rows: readonly TableRow[] }) {
+				return universalValue(TABLE_PLAN, [
+					universalFor(
+						props.rows,
+						(row: TableRow) => row.id,
+						(row: TableRow) =>
+							universalComponent(
+								LYNX_TRANSPORT_RENDERER,
+								Row,
+								universalProps([['set', 'row', row]]),
+							),
+					),
+				]);
+			},
+			{ hookScope: false },
+		);
+		const one = { id: 1, label: 'one' };
+		const two = { id: 2, label: 'two' };
+		const block = blockColumn<{ readonly rows: readonly TableRow[] }>();
+
+		await block.render(Listed as never, { rows: [one, two] });
+		await flushMicrotasks();
+		expect(lifecycle).toEqual(['mount:one', 'mount:two']);
+		const oneRef = refs.get(1);
+		const oneCallback = callbacks.get(1);
+		const oneMemo = memos.get(1);
+		const staleSetter = setters.get(1)!;
+
+		deliverTo(block, rowListener(block.main.commits, 0));
+		await block.settle(Promise.resolve());
+		expect(paint(block.main.commits).tree).toContain('one-loud');
+		expect(paint(block.main.commits).tree).toContain('two-quiet');
+
+		await block.render(Listed as never, { rows: [two, one] });
+		await flushMicrotasks();
+		const reordered = paint(block.main.commits).tree;
+		expect(reordered.indexOf('two-quiet')).toBeLessThan(reordered.indexOf('one-loud'));
+		expect(refs.get(1)).toBe(oneRef);
+		expect(callbacks.get(1)).toBe(oneCallback);
+		expect(memos.get(1)).toBe(oneMemo);
+		expect(lifecycle).toEqual(['mount:one', 'mount:two']);
+
+		await block.render(Listed as never, { rows: [two] });
+		await flushMicrotasks();
+		expect(lifecycle).toEqual(['mount:one', 'mount:two', 'cleanup:one']);
+		const committed = block.main.commits.length;
+		staleSetter('stale');
+		await flushMicrotasks();
+		block.acknowledgePending();
+		await flushMicrotasks();
+		expect(block.main.commits).toHaveLength(committed);
+		expect(paint(block.main.commits).tree).toContain('two-quiet');
+
+		await block.settle(block.background.unmountAsync());
+		await flushMicrotasks();
+		expect(lifecycle).toEqual(['mount:one', 'mount:two', 'cleanup:one', 'cleanup:two']);
+	});
+
+	it('settles a keyed row render-phase update before publishing its host values', async () => {
+		let passes = 0;
+		const Row = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Row(props: { readonly row: TableRow }) {
+				const [ready, setReady] = useState(false, 'ready');
+				passes++;
+				if (!ready) setReady(true);
+				return universalValue(ROW_PLAN, [
+					'row',
+					String(props.row.id),
+					noop,
+					ready ? 'settled' : 'draft',
+				]);
+			},
+			{ hookScope: true },
+		);
+		const Listed = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Listed(props: { readonly rows: readonly TableRow[] }) {
+				return universalValue(TABLE_PLAN, [
+					universalFor(
+						props.rows,
+						(row: TableRow) => row.id,
+						(row: TableRow) =>
+							universalComponent(
+								LYNX_TRANSPORT_RENDERER,
+								Row,
+								universalProps([['set', 'row', row]]),
+							),
+					),
+				]);
+			},
+			{ hookScope: false },
+		);
+		const block = blockColumn<{ readonly rows: readonly TableRow[] }>();
+
+		await block.render(Listed as never, { rows: [{ id: 1, label: 'one' }] });
+		expect(passes).toBe(2);
+		expect(paint(block.main.commits).tree).toContain('settled');
+		expect(paint(block.main.commits).tree).not.toContain('draft');
+	});
+
+	it('keeps conditional reducer slots and projects queued row actions through the getter', async () => {
+		const totals = ['none', 'once', 'twice', 'thrice'] as const;
+		const Row = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Row(props: { readonly row: TableRow; readonly extra: boolean }) {
+				let lead = 'skipped';
+				if (props.extra) {
+					const [value] = useState('lead', 'lead');
+					lead = value;
+				}
+				const [total, dispatch, getTotal] = useReducer(
+					(value: number, amount: number) => value + amount,
+					0,
+					'total',
+				);
+				return universalValue(ROW_PLAN, [
+					'row',
+					String(props.row.id),
+					() => {
+						dispatch(1);
+						dispatch(getTotal() + 1);
+					},
+					`${lead}-${totals[total] ?? 'many'}`,
+				]);
+			},
+			{ hookScope: true },
+		);
+		interface ReducerListProps {
+			readonly rows: readonly TableRow[];
+			readonly extra: boolean;
+		}
+		const Listed = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Listed(props: ReducerListProps) {
+				return universalValue(TABLE_PLAN, [
+					universalFor(
+						props.rows,
+						(row: TableRow) => row.id,
+						(row: TableRow) =>
+							universalComponent(
+								LYNX_TRANSPORT_RENDERER,
+								Row,
+								universalProps([
+									['set', 'row', row],
+									['set', 'extra', props.extra],
+								]),
+							),
+					),
+				]);
+			},
+			{ hookScope: false },
+		);
+		const rows = [{ id: 1, label: 'one' }];
+		const block = blockColumn<ReducerListProps>();
+
+		await block.render(Listed as never, { rows, extra: true });
+		deliverTo(block, rowListener(block.main.commits, 0));
+		await block.settle(Promise.resolve());
+		expect(paint(block.main.commits).tree).toContain('lead-thrice');
+
+		await block.render(Listed as never, { rows, extra: false });
+		expect(paint(block.main.commits).tree).toContain('skipped-thrice');
+		await block.render(Listed as never, { rows, extra: true });
+		expect(paint(block.main.commits).tree).toContain('lead-thrice');
+	});
+
+	it('publishes keyed row layout and passive phases only after host acknowledgement', async () => {
+		const lifecycle: string[] = [];
+		interface EffectListProps {
+			readonly rows: readonly TableRow[];
+			readonly label: string;
+		}
+		const Row = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Row(props: { readonly row: TableRow; readonly label: string }) {
+				useLayoutEffect(
+					() => {
+						lifecycle.push(`layout:${props.label}`);
+						return () => lifecycle.push(`layout-cleanup:${props.label}`);
+					},
+					[props.label],
+					'layout',
+				);
+				useEffect(
+					() => {
+						lifecycle.push(`passive:${props.label}`);
+						return () => lifecycle.push(`passive-cleanup:${props.label}`);
+					},
+					[props.label],
+					'passive',
+				);
+				return universalValue(ROW_PLAN, ['row', String(props.row.id), noop, props.label]);
+			},
+			{ hookScope: true },
+		);
+		const Listed = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Listed(props: EffectListProps) {
+				return universalValue(TABLE_PLAN, [
+					universalFor(
+						props.rows,
+						(row: TableRow) => row.id,
+						(row: TableRow) =>
+							universalComponent(
+								LYNX_TRANSPORT_RENDERER,
+								Row,
+								universalProps([
+									['set', 'row', row],
+									['set', 'label', props.label],
+								]),
+							),
+					),
+				]);
+			},
+			{ hookScope: false },
+		);
+		const rows = [{ id: 1, label: 'one' }];
+		const block = blockColumn<EffectListProps>();
+
+		const mounting = block.background.renderAsync(Listed as never, {
+			rows,
+			label: 'alpha',
+		});
+		await flushMicrotasks();
+		expect(lifecycle).toEqual([]);
+		block.acknowledgePending();
+		await mounting;
+		await flushMicrotasks();
+		expect(lifecycle).toEqual(['layout:alpha', 'passive:alpha']);
+
+		const updating = block.background.renderAsync(Listed as never, {
+			rows,
+			label: 'beta',
+		});
+		await flushMicrotasks();
+		expect(lifecycle).toEqual(['layout:alpha', 'passive:alpha']);
+		block.acknowledgePending();
+		await updating;
+		await flushMicrotasks();
+		expect(lifecycle).toEqual([
+			'layout:alpha',
+			'passive:alpha',
+			'layout-cleanup:alpha',
+			'layout:beta',
+			'passive-cleanup:alpha',
+			'passive:beta',
+		]);
+
+		await block.settle(block.background.unmountAsync());
+		await flushMicrotasks();
+		expect(lifecycle.slice(-2)).toEqual(['layout-cleanup:beta', 'passive-cleanup:beta']);
+	});
+	it('aborts keyed row drafts thrown as errors or thenables and preserves committed state for retry', async () => {
+		interface RetryProps {
+			readonly rows: readonly TableRow[];
+			readonly failure: unknown;
+		}
+		const Row = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Row(props: { readonly row: TableRow; readonly failure: unknown }) {
+				const [tone, setTone] = useState('quiet', 'tone');
+				if (props.failure !== null) throw props.failure;
+				return universalValue(ROW_PLAN, [
+					'row',
+					String(props.row.id),
+					() => setTone('loud'),
+					`${props.row.label}-${tone}`,
+				]);
+			},
+			{ hookScope: true },
+		);
+		const Listed = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Listed(props: RetryProps) {
+				return universalValue(TABLE_PLAN, [
+					universalFor(
+						props.rows,
+						(row: TableRow) => row.id,
+						(row: TableRow) =>
+							universalComponent(
+								LYNX_TRANSPORT_RENDERER,
+								Row,
+								universalProps([
+									['set', 'row', row],
+									['set', 'failure', props.failure],
+								]),
+							),
+					),
+				]);
+			},
+			{ hookScope: false },
+		);
+		const rows = [{ id: 1, label: 'one' }];
+		const block = blockColumn<RetryProps>();
+		await block.render(Listed as never, { rows, failure: null });
+		deliverTo(block, rowListener(block.main.commits, 0));
+		await block.settle(Promise.resolve());
+		expect(paint(block.main.commits).tree).toContain('one-loud');
+
+		for (const failure of [new Error('row fault'), Promise.resolve('ready')]) {
+			await expect(
+				block.settle(block.background.renderAsync(Listed as never, { rows, failure } as never)),
+			).rejects.toBe(failure);
+			await block.render(Listed as never, { rows, failure: null });
+			expect(paint(block.main.commits).tree).toContain('one-loud');
+		}
 	});
 
 	it('runs a page passive effect after acknowledgement and cleans it up on change and unmount', async () => {
@@ -1813,6 +2248,7 @@ function stableColumnComponent(): LynxComponent<TableProps> {
 				props.row.label,
 			]);
 		},
+		{ hookScope: false },
 	);
 	const Listed = defineUniversalComponent(
 		LYNX_TRANSPORT_RENDERER,
@@ -1858,6 +2294,7 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 					props.row.label,
 				]);
 			},
+			{ hookScope: false },
 		);
 		const Listed = defineUniversalComponent(
 			LYNX_TRANSPORT_RENDERER,
@@ -2018,6 +2455,7 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 					props.row.label,
 				]);
 			},
+			{ hookScope: false },
 		);
 		interface StoreTableProps {
 			readonly rows: readonly TableRow[];
@@ -2133,6 +2571,7 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 					props.row.label,
 				]);
 			},
+			{ hookScope: false },
 		);
 		const Listed = defineUniversalComponent(
 			LYNX_TRANSPORT_RENDERER,

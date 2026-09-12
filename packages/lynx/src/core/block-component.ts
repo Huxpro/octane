@@ -18,11 +18,12 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
  * asked of the same driver, which is what keeps the two cores from drifting
  * apart on what a component means.
  *
- * The page's setup runs inside a `createUniversalHookScope` (item 1b), so a
- * page that holds state is a program like any other, and a setter it hands to a
- * tap repaints it: the scope schedules, this module re-renders and commits. The
- * cells are the universal core's own, not a second implementation of them — a
- * restated update queue is where two cores drift.
+ * A stateful page or keyed row runs inside its own `createUniversalHookScope`.
+ * A setter schedules this program, which publishes the corresponding cells only
+ * after the host accepts the frame. Keyed row scopes live in the retained key
+ * map, so reorder preserves them and deletion disposes them. Compiler metadata
+ * proves which components have no hooks, and those components render directly
+ * without allocating a semantic scope.
  *
  * ## A keyed range is a hole the template must not describe (item 1c)
  *
@@ -42,11 +43,8 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
  *
  * ## What this deliberately does not cover, and why the refusals are loud
  *
- * A **row** component that calls a hook is still refused by name. Rows render
- * outside the page's scope, and giving each one a scope of its own is giving
- * each one an owner — the per-row cost this core exists to avoid — so whether a
- * row can afford cells is its own question with its own measurement. Page
- * layout effects run after host acknowledgement and passive effects run on the
+ * Page and row layout effects run after host acknowledgement; passive effects
+ * run on the
  * root's following microtask, before its next render. Insertion effects are
  * refused because this core has no pre-mutation phase, and context reads are
  * refused because a single scope has no owner chain.
@@ -133,6 +131,7 @@ const UNIVERSAL_VALUE: symbol = Symbol.for('octane.universal.value');
 const UNIVERSAL_FOR: symbol = Symbol.for('octane.universal.for');
 const UNIVERSAL_COMPONENT_VALUE: symbol = Symbol.for('octane.universal.component-value');
 const UNIVERSAL_PROPS: symbol = Symbol.for('octane.universal.props');
+const UNIVERSAL_COMPONENT: symbol = Symbol.for('octane.universal.component');
 
 // Guard the call-site arguments as well as the final message. A production
 // refusal is the compact OL013 contract, so its diagnostic strings must never
@@ -147,6 +146,13 @@ const HOOKS_WITHOUT_ATTEMPT =
 /** Why the one phase the page scope cannot publish is refused, said once. */
 const INSERTION_EFFECTS_UNSUPPORTED =
 	'its setup declares an insertion effect, whose pre-mutation phase the Block core does not have (issue #290).';
+/** Compiler proof that a component needs semantic hook ownership. */
+function componentMayNeedHookScope(component: LynxComponent<never>): boolean {
+	const metadata = (component as unknown as Record<PropertyKey, unknown>)[UNIVERSAL_COMPONENT] as
+		{ hookScope?: unknown } | undefined;
+	// Old compiler output and hand-authored components retain the safe path.
+	return metadata?.hookScope !== false;
+}
 
 /** The two ways out of every refusal below, so they read the same. */
 const REMEDY =
@@ -304,6 +310,7 @@ interface RangeState {
 	 * dropped.
 	 */
 	retained: Map<unknown, RetainedRow | null> | null;
+	hasScopedRows: boolean;
 	/**
 	 * The key sequence the last applied render left in the range.
 	 *
@@ -322,6 +329,7 @@ interface RangeState {
 interface RetainedRow {
 	readonly component: LynxComponent<never>;
 	readonly props: unknown;
+	readonly scope: UniversalHookScope | null;
 	readonly values: readonly UniversalHostTemplateProgramValue[];
 	readonly listeners: readonly (LynxBlockListener | null)[];
 	/** Last committed list order, used to preserve old/new row evaluation order. */
@@ -341,6 +349,7 @@ interface RangeRender {
 	readonly keys: readonly unknown[];
 	/** What the next render compares against, adopted only once this one applies. */
 	readonly retained: Map<unknown, RetainedRow | null>;
+	readonly hasScopedRows: boolean;
 	/** Whether any block has to be mounted, removed, or moved. */
 	readonly structural: boolean;
 	/** Indices of the rows this render actually called; the rest were retained. */
@@ -374,10 +383,8 @@ export function lynxBlockProgramForComponent<Props>(
 	/**
 	 * Which component the refusals below are about.
 	 *
-	 * A range whose rows are `<Row />` calls a second component per row, and a
-	 * hook in *that* setup is the row's problem, not the page's — the page has
-	 * cells now and the row does not. Tracking the
-	 * component being called is what lets one shared render context name it.
+	 * A range whose rows are `<Row />` calls a second component per row. Tracking
+	 * the component being called lets one shared render context name any refusal.
 	 */
 	let rendering: LynxComponent<never> = subject;
 	/**
@@ -409,13 +416,9 @@ export function lynxBlockProgramForComponent<Props>(
 		},
 	});
 	/**
-	 * The page component's hook cells.
-	 *
-	 * One scope, for the subject only. A row component still gets none: a
-	 * per-row scope is a per-row owner, which is the cost this core exists to
-	 * avoid paying, and whether a row can afford one is its own measurement. So
-	 * a hooked row keeps refusing by name — see `renderPlanValue`, which now
-	 * only ever catches a row.
+	 * The page component's hook cells. Keyed row scopes live on `RetainedRow`
+	 * instead: semantic ownership follows the key without creating Universal host
+	 * records. Either stays null when compiler metadata proves there are no hooks.
 	 */
 	let scope: UniversalHookScope | null = null;
 	/**
@@ -470,11 +473,10 @@ export function lynxBlockProgramForComponent<Props>(
 	/**
 	 * Call a component and read the plan value it returned.
 	 *
-	 * The page reaches this inside its hook scope, which is why the catch below
-	 * now only ever fires for a **row**: rows render after the page's scope has
-	 * closed, so a hooked one throws out of the claim controller. Reported as
-	 * the missing layer rather than as an internal error naming a module the
-	 * application never mentioned.
+	 * Stateful pages and rows reach this inside their own scope. The catch is a
+	 * fail-closed guard for a false stateless proof: executing a hook without an
+	 * owner must name the contradictory proof rather than escape as an internal
+	 * controller error.
 	 */
 	const renderPlanValue = (source: LynxComponent<never>, props: unknown): RenderedPlan => {
 		const outer = rendering;
@@ -489,7 +491,7 @@ export function lynxBlockProgramForComponent<Props>(
 				refuse(
 					source,
 					LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-						'its setup calls a hook, and a row of a keyed range has no hook cells on the Block core (issue #135 item 1b). The page that contains it does.',
+						'its setup calls a hook after its metadata declared hookScope: false. Recompile the component so its ownership proof matches its setup.',
 				);
 			}
 			throw error;
@@ -513,6 +515,13 @@ export function lynxBlockProgramForComponent<Props>(
 		const previousProps = liveProps;
 		liveContext = context;
 		liveProps = props;
+		if (!componentMayNeedHookScope(subject)) {
+			context.afterAbort(() => {
+				liveContext = previousContext;
+				liveProps = previousProps;
+			});
+			return renderPlanValue(subject, props);
+		}
 		const cells = (scope ??= createUniversalHookScope({
 			renderer: LYNX_TRANSPORT_RENDERER,
 			scheduleRender: queueStateRender,
@@ -722,19 +731,36 @@ export function lynxBlockProgramForComponent<Props>(
 		// the row is called with exactly what was compared.
 		component: LynxComponent<never> | null,
 		props: unknown,
+		previousScope: UniversalHookScope | null,
 	): {
+		readonly scope: UniversalHookScope | null;
 		readonly values: readonly UniversalHostTemplateProgramValue[];
 		readonly listeners: readonly (LynxBlockListener | null)[];
 	} => {
-		// A row authored as `<Row … />` is a component invocation rather than a
-		// template: the plan is inside the component, so it is called for. Its
-		// own hooks are the layer item 1b leaves open, and a row that needs one
-		// refuses by its own name — which is also what makes the memo in
-		// `renderRange` sound rather than merely likely. A row with no hook
-		// cells, no context, and no effects is a function of the props it is
-		// handed, so props that compare equal produce what they produced.
+		// Component rows own semantic cells independently of their host blocks.
+		// The key map retains the scope; the host acknowledgement publishes its
+		// draft, while a refused/retried parent attempt rolls it back.
+		let rowScope = previousScope;
 		let rendered: RenderedPlan;
-		if (component !== null) {
+		if (component !== null && componentMayNeedHookScope(component)) {
+			const created = rowScope === null;
+			const cells = (rowScope ??= createUniversalHookScope({
+				renderer: LYNX_TRANSPORT_RENDERER,
+				scheduleRender: queueStateRender,
+				scheduleLayoutEffectCommit(task): void {
+					liveContext!.afterCommit(task);
+				},
+				schedulePassiveEffectCommit(task): void {
+					liveContext!.afterPassiveCommit(task);
+				},
+			}));
+			context.afterAbort(() => {
+				cells.abort();
+				if (created) cells.dispose();
+			});
+			rendered = cells.render(() => renderPlanValue(component, props));
+			context.afterCommit(() => cells.commit());
+		} else if (component !== null) {
 			rendered = renderPlanValue(component, props);
 		} else {
 			// The page did return a compiled template — the row's output is what
@@ -816,7 +842,11 @@ export function lynxBlockProgramForComponent<Props>(
 					'a row of one of its keyed ranges holds a value the row template cannot carry — a range nested inside a range is the usual reason, and the Block core has no nested range lowering yet (issue #135 item 1c).',
 			);
 		}
-		return { values, listeners: listenersAt(sites, rendered.values) };
+		return {
+			scope: component === null ? null : rowScope,
+			values,
+			listeners: listenersAt(sites, rendered.values),
+		};
 	};
 
 	/**
@@ -846,6 +876,7 @@ export function lynxBlockProgramForComponent<Props>(
 		const previousKeys = state.keys;
 		if (
 			nextSelection !== null &&
+			!state.hasScopedRows &&
 			previousSelection !== null &&
 			state.source === list.items &&
 			previous !== null &&
@@ -864,14 +895,10 @@ export function lynxBlockProgramForComponent<Props>(
 				for (const { key: itemKey, prior } of candidates) {
 					const item = (prior.props as Record<string, unknown>)[nextSelection[2]];
 					const produced = list.render(item, prior.index);
+					const invocation = rowComponentInvocation(produced);
 					const component =
-						produced !== null &&
-						typeof produced === 'object' &&
-						(produced as { $$kind?: unknown }).$$kind === UNIVERSAL_COMPONENT_VALUE
-							? ((produced as UniversalComponentValue).component as unknown as LynxComponent<never>)
-							: null;
-					const props =
-						component === null ? null : forwardedProps(produced as UniversalComponentValue);
+						(invocation?.component as unknown as LynxComponent<never> | undefined) ?? null;
+					const props = invocation === null ? null : forwardedProps(invocation);
 					if (component === null || component !== prior.component) {
 						refuse(
 							subject,
@@ -880,12 +907,13 @@ export function lynxBlockProgramForComponent<Props>(
 						);
 					}
 					if (blockShallowEqual(prior.props, props)) continue;
-					const row = renderRow(context, state, produced, component, props);
+					const row = renderRow(context, state, produced, component, props, prior.scope);
 					sparse.push({
 						key: itemKey,
 						retained: {
 							component,
 							props,
+							scope: row.scope,
 							values: row.values,
 							listeners: row.listeners,
 							index: prior.index,
@@ -900,6 +928,7 @@ export function lynxBlockProgramForComponent<Props>(
 				handlers: [],
 				keys: previousKeys,
 				retained: previous,
+				hasScopedRows: false,
 				structural: false,
 				rendered: [],
 				source: list.items,
@@ -922,6 +951,7 @@ export function lynxBlockProgramForComponent<Props>(
 		// for a memo it can never take.
 		const retained = new Map<unknown, RetainedRow | null>();
 		const rendered: number[] = [];
+		let hasScopedRows = false;
 		// A first render, or one whose key list is a different length, has moved
 		// something by definition; below, a key that differs at its own position
 		// settles it for the rest.
@@ -949,6 +979,7 @@ export function lynxBlockProgramForComponent<Props>(
 			if (
 				selectionRowsStable &&
 				prior != null &&
+				prior.scope === null &&
 				(nextSelection![3] === true || prior.index === index) &&
 				Object.is((prior.props as Record<string, unknown>)[nextSelection![2]], item) &&
 				Object.is(itemKey, previousSelection![0]) === Object.is(itemKey, nextSelection![0])
@@ -968,17 +999,15 @@ export function lynxBlockProgramForComponent<Props>(
 			// Lifted out of `renderRow` for exactly that reason: a row is skippable
 			// only if what it would be called with can be compared first.
 			const produced = list.render(item, index);
+			const invocation = rowComponentInvocation(produced);
 			const component =
-				produced !== null &&
-				typeof produced === 'object' &&
-				(produced as { $$kind?: unknown }).$$kind === UNIVERSAL_COMPONENT_VALUE
-					? ((produced as UniversalComponentValue).component as unknown as LynxComponent<never>)
-					: null;
-			const props = component === null ? null : forwardedProps(produced as UniversalComponentValue);
+				(invocation?.component as unknown as LynxComponent<never> | undefined) ?? null;
+			const props = invocation === null ? null : forwardedProps(invocation);
 			if (component !== null) {
 				if (
 					prior != null &&
 					prior.component === component &&
+					prior.scope === null &&
 					blockShallowEqual(prior.props, props)
 				) {
 					// Same component, same props: the body is a function of its props,
@@ -992,7 +1021,15 @@ export function lynxBlockProgramForComponent<Props>(
 					continue;
 				}
 			}
-			const row = renderRow(context, state, produced, component, props);
+			const row = renderRow(
+				context,
+				state,
+				produced,
+				component,
+				props,
+				prior?.component === component ? prior.scope : null,
+			);
+			if (row.scope !== null) hasScopedRows = true;
 			rows[index] = row.values;
 			handlers[index] = row.listeners;
 			rendered.push(index);
@@ -1003,12 +1040,23 @@ export function lynxBlockProgramForComponent<Props>(
 					: {
 							component,
 							props,
+							scope: row.scope,
 							values: row.values,
 							listeners: row.listeners,
 							index,
 						},
 			);
 		}
+		if (previous !== null) {
+			for (const [key, prior] of previous) {
+				if (prior === null || prior.scope === null) continue;
+				const next = retained.get(key);
+				if (next?.scope === prior.scope) continue;
+				const oldScope = prior.scope;
+				context.afterCommit(() => oldScope.dispose());
+			}
+		}
+
 		return {
 			state,
 			items,
@@ -1016,6 +1064,7 @@ export function lynxBlockProgramForComponent<Props>(
 			handlers,
 			keys,
 			retained,
+			hasScopedRows,
 			structural,
 			rendered,
 			source: list.items,
@@ -1067,6 +1116,7 @@ export function lynxBlockProgramForComponent<Props>(
 			context.afterCommit(() => {
 				state.source = render.source;
 				state.keyedSelection = render.keyedSelection;
+				state.hasScopedRows = render.hasScopedRows;
 				for (const row of render.sparse!) state.retained!.set(row.key, row.retained);
 			});
 			return;
@@ -1092,6 +1142,7 @@ export function lynxBlockProgramForComponent<Props>(
 			state.source = render.source;
 			state.keyedSelection = render.keyedSelection;
 			state.retained = render.retained;
+			state.hasScopedRows = render.hasScopedRows;
 			state.keys = render.keys;
 		});
 		if (!render.structural) {
@@ -1223,7 +1274,7 @@ export function lynxBlockProgramForComponent<Props>(
 				context.root.bindListeners(block!, listenersFor(rendered.values));
 			}
 			for (const row of rows) applyRange(context, row);
-			context.afterCommit(() => scope!.commit());
+			context.afterCommit(() => scope?.commit());
 		} catch (error) {
 			scope?.abort();
 			throw error;
@@ -1304,6 +1355,7 @@ export function lynxBlockProgramForComponent<Props>(
 								prepared: null,
 								template: null,
 								retained: null,
+								hasScopedRows: false,
 								keys: null,
 								source: null,
 								keyedSelection: null,
@@ -1326,7 +1378,7 @@ export function lynxBlockProgramForComponent<Props>(
 					range.site = context.core.openForSlot(block, range.node, range.slot);
 					applyRange(context, rows[index]!);
 				}
-				context.afterCommit(() => scope!.commit());
+				context.afterCommit(() => scope?.commit());
 			} catch (error) {
 				scope?.abort();
 				throw error;
@@ -1341,6 +1393,14 @@ export function lynxBlockProgramForComponent<Props>(
 			// leave the page it hangs from still mounted and half-empty. What the
 			// program owns beyond the wire is the listener table, and every member
 			// of every range holds a run of it.
+			const rowScopes: UniversalHookScope[] = [];
+			for (const range of ranges) {
+				if (range.retained === null) continue;
+				for (const row of range.retained.values()) {
+					if (row?.scope !== null && row?.scope !== undefined) rowScopes.push(row.scope);
+				}
+			}
+
 			for (const range of ranges) {
 				if (range.site === null || range.prepared === null || range.prepared.events.length === 0) {
 					continue;
@@ -1353,6 +1413,7 @@ export function lynxBlockProgramForComponent<Props>(
 				context.root.releaseListeners(block);
 			}
 			context.afterCommit(() => {
+				for (const rowScope of rowScopes) rowScope.dispose();
 				block = null;
 				ranges = EMPTY_RANGES;
 				// The cells outlive nothing: a setter captured by a handler this
@@ -1367,6 +1428,32 @@ export function lynxBlockProgramForComponent<Props>(
 		},
 	};
 	return program;
+}
+
+/** A direct row invocation, or the transparent one-slot boundary HMR emits. */
+function rowComponentInvocation(produced: unknown): UniversalComponentValue | null {
+	if (
+		produced !== null &&
+		typeof produced === 'object' &&
+		(produced as { $$kind?: unknown }).$$kind === UNIVERSAL_COMPONENT_VALUE
+	) {
+		return produced as UniversalComponentValue;
+	}
+	const wrapper = produced as UniversalPlanValue | null;
+	if (
+		wrapper === null ||
+		typeof wrapper !== 'object' ||
+		wrapper.$$kind !== UNIVERSAL_VALUE ||
+		wrapper.plan.root.kind !== 'slot'
+	) {
+		return null;
+	}
+	const nested = wrapper.values[wrapper.plan.root.slot];
+	return nested !== null &&
+		typeof nested === 'object' &&
+		(nested as { $$kind?: unknown }).$$kind === UNIVERSAL_COMPONENT_VALUE
+		? (nested as UniversalComponentValue)
+		: null;
 }
 
 /**
