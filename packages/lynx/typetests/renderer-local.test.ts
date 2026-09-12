@@ -34,6 +34,14 @@ type Equal<Left, Right> =
 
 type RendererElements = RendererJSX.IntrinsicElements;
 type _ElementIsUniversalRenderable = Assert<Equal<RendererJSX.Element, UniversalRenderable>>;
+type CompiledContextProvider = (
+	props: { value: string; children?: unknown },
+	scope: object,
+	extra?: unknown,
+) => void;
+type _CompiledContextProviderIsRendererElement = Assert<
+	Equal<CompiledContextProvider extends RendererJSX.ElementType ? true : false, true>
+>;
 type _HasPage = Assert<Equal<'page' extends keyof RendererElements ? true : false, true>>;
 type _HasView = Assert<Equal<'view' extends keyof RendererElements ? true : false, true>>;
 type _HasText = Assert<Equal<'text' extends keyof RendererElements ? true : false, true>>;

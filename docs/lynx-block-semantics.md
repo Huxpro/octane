@@ -36,7 +36,7 @@ must satisfy the runtime invariants below.
 | Dynamic scalar props, classes, text, and event slots | Block selected | Slot values and listener tables update addressed program instances directly. |
 | `useState`, `useRef`, `useCallback`, `useEffect`, and `useSyncExternalStore` | Block selected | Hook cells publish only after host acceptance; layout and passive cleanup are retained. |
 | Last-child keyed `@for` with inline-host or local-component rows | Block selected | Keyed identity, LIS moves, row-local hooks, `@for` component rows, and sparse dirty-row updates are covered. |
-| Context propagation through a keyed move | Block kernel proved | Provider values and `useContext` reach retained row scopes; `useContext` is not yet in the production selector's runtime-name set. |
+| Context propagation through a keyed move | Block selected | Compiler-recognized Providers stay transparent to host topology; `createContext` and `useContext` are admitted by the production selector, with authored dual-backend state/identity coverage and a paired compiled-program build. |
 | `@for … @empty` | Block selected | Empty is a separate retained lifetime with rollback, effects, events, removal, remount, paired compiler metadata, and a production dual-graph build. |
 | `@if` and `@switch` | Block selected | A compiler-addressable region retains the selected arm, state, handlers, and cleanup; paired metadata and the production build cover both directives. |
 | Local component boundaries, component children, and render props | Block kernel proved | Transparent component chains resolve to the eventual host plan and preserve stateful descendants; the selector still reports non-row component sites. |
@@ -52,6 +52,19 @@ must satisfy the runtime invariants below.
 | Insertion effects | Rejected by Block | The Block transaction has no pre-mutation publication phase. |
 | A row whose root is non-host, has a root event, or is not compile-time host structure | Rejected by Block | The row program cannot currently name the parent-inserted root and its own root event independently. |
 | Unknown compiler/runtime proof version or graph mismatch | Whole-entry Universal compatibility | The selector fails closed and records structured reasons in the build asset. |
+
+## Context boundary cost
+
+A compiler-recognized `.Provider` is a semantic boundary, not a generic
+component feature. Each evaluated Provider copies the current context map once
+to add or replace its value; all consumers below it read that map, so there is
+no map allocation per consumer. The compact main-thread renderer materializes
+one range boundary around the Provider's children for stable ownership, but it
+creates no Universal host or owner records and executes no interpreted
+Universal plan. The Block background carries the same context map alongside the
+rendered resident program and into retained keyed row scopes. The paired
+production build asserts that this shape still selects the compact
+compiled-program product.
 
 ## Transactional publication rules
 

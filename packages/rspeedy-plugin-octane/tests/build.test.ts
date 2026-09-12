@@ -465,8 +465,8 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					version: 1,
 					paired: true,
 					requirements: {
-						background: { runtimeUses: ['useState'] },
-						mainThread: { runtimeUses: ['useState'] },
+						background: { runtimeUses: ['createContext', 'useContext', 'useState'] },
+						mainThread: { runtimeUses: ['createContext', 'useContext', 'useState'] },
 					},
 					reasons: [],
 				},
@@ -488,7 +488,10 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 										row: {
 											kind: 'local-component',
 											name: 'BlockEligibleRow',
-											hooks: [expect.objectContaining({ name: 'useState' })],
+											hooks: [
+												expect.objectContaining({ name: 'useState' }),
+												expect.objectContaining({ name: 'useContext' }),
+											],
 										},
 									}),
 								],
@@ -506,7 +509,10 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 										row: {
 											kind: 'local-component',
 											name: 'BlockEligibleRow',
-											hooks: [expect.objectContaining({ name: 'useState' })],
+											hooks: [
+												expect.objectContaining({ name: 'useState' }),
+												expect.objectContaining({ name: 'useContext' }),
+											],
 										},
 									}),
 								],
@@ -759,9 +765,11 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					selection: {
 						version: 1,
 						matrix: {
-							version: 5,
+							version: 6,
 							runtimeNames: [
+								'createContext',
 								'useCallback',
+								'useContext',
 								'useEffect',
 								'useRef',
 								'useState',

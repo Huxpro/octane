@@ -144,7 +144,9 @@ function completeProofs() {
 	const mainThread = moduleWithCoverage('/src/App.tsrx', 'main-thread', 1, 1);
 	background.buildInfo.octane.lynxBlockSemanticRequirements = semanticRequirements({
 		runtimeUses: [
+			site('createContext', 1, 2),
 			site('useEffect', 3, 2),
+			site('useContext', 2, 3),
 			site('useState', 2, 2),
 			site('useSyncExternalStore', 4, 2),
 		],
@@ -155,6 +157,7 @@ function completeProofs() {
 				line: 1,
 				column: 0,
 				hooks: [
+					site('useContext', 2, 3),
 					site('useState', 2, 2),
 					site('useEffect', 3, 2),
 					site('useSyncExternalStore', 4, 2),
@@ -222,8 +225,16 @@ describe('Lynx application Block eligibility', () => {
 		expect(report).toEqual({
 			version: 1,
 			matrix: {
-				version: 5,
-				runtimeNames: ['useCallback', 'useEffect', 'useRef', 'useState', 'useSyncExternalStore'],
+				version: 6,
+				runtimeNames: [
+					'createContext',
+					'useCallback',
+					'useContext',
+					'useEffect',
+					'useRef',
+					'useState',
+					'useSyncExternalStore',
+				],
 				threadFunctions: ['background', 'main-thread'],
 				mainThreadProps: true,
 				templateFeatures: ['if', 'switch'],
@@ -323,7 +334,7 @@ describe('Lynx application Block eligibility', () => {
 					{
 						...semanticModule,
 						background: semanticRequirements({
-							runtimeUses: [site('useContext', 2, 3)],
+							runtimeUses: [site('useReducer', 2, 3)],
 							runtimeExports: [site('Suspense', 3, 4)],
 							opaqueRuntimeAccesses: [site('export-all', 4, 5)],
 						}),
@@ -377,7 +388,7 @@ describe('Lynx application Block eligibility', () => {
 					code: 'unsupported-runtime-use',
 					module: '/src/App.tsrx',
 					thread: 'background',
-					name: 'useContext',
+					name: 'useReducer',
 					line: 2,
 					column: 3,
 				},
@@ -922,7 +933,7 @@ describe('Lynx application resident-program coverage', () => {
 			},
 			[LYNX_BLOCK_SELECTION_ASSET_INFO]: {
 				version: 1,
-				matrix: { version: 5 },
+				matrix: { version: 6 },
 				eligible: true,
 				reasons: [],
 			},

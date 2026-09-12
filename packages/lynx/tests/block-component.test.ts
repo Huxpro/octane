@@ -79,6 +79,8 @@ import { createLynxBackgroundTransport } from '../src/core/transport.js';
 import type { LynxComponent } from '../src/intrinsics.js';
 import { createFakePAPI } from './_fixtures/fake-element-papi.js';
 import {
+	BlockContextFixture,
+	type BlockContextProps,
 	BlockDynamicComponentFixture,
 	type BlockDynamicComponentProps,
 	BlockCompositionFixture,
@@ -1399,6 +1401,61 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		await flushMicrotasks();
 		const moved = paint(block.main.commits).tree;
 		expect(moved.indexOf('two:light:quiet')).toBeLessThan(moved.indexOf('one:light:loud'));
+		expect(lifecycle).toEqual(
+			expect.arrayContaining([
+				'cleanup:1:dark',
+				'cleanup:2:dark',
+				'effect:1:light',
+				'effect:2:light',
+			]),
+		);
+
+		await block.settle(block.background.unmountAsync());
+		await flushMicrotasks();
+		expect(lifecycle.slice(-2)).toEqual(
+			expect.arrayContaining(['cleanup:1:light', 'cleanup:2:light']),
+		);
+	});
+	it('adopts authored .tsrx context across keyed moves with dual-backend parity', async () => {
+		const lifecycle: string[] = [];
+		const one = { id: 1, label: 'one' };
+		const two = { id: 2, label: 'two' };
+		const component = BlockContextFixture as never as LynxComponent<BlockContextProps>;
+		const universal = universalColumn(component);
+		const block = blockColumn<BlockContextProps>();
+		const props = (
+			rows: BlockContextProps['rows'],
+			theme: string,
+			log: (entry: string) => void,
+		): BlockContextProps => ({ rows, theme, log });
+
+		await universal.render(props([one, two], 'dark', noop));
+		await block.render(
+			component,
+			props([one, two], 'dark', (entry) => lifecycle.push(entry)),
+		);
+		await flushMicrotasks();
+		expect(paint(block.main.commits).tree).toBe(paint(universal.main.commits).tree);
+		expect(lifecycle).toEqual(['effect:1:dark', 'effect:2:dark']);
+
+		deliverTo(block, rowListener(block.main.commits, 0));
+		await block.settle(Promise.resolve());
+		expect(paint(block.main.commits).tree).toContain('one:dark:loud');
+
+		await universal.render(props([two, one], 'light', noop));
+		await block.render(
+			component,
+			props([two, one], 'light', (entry) => lifecycle.push(entry)),
+		);
+		await flushMicrotasks();
+		const universalMoved = paint(universal.main.commits).tree;
+		const blockMoved = paint(block.main.commits).tree;
+		expect(universalMoved.indexOf('two:light:quiet')).toBeLessThan(
+			universalMoved.indexOf('one:light:quiet'),
+		);
+		expect(blockMoved.indexOf('two:light:quiet')).toBeLessThan(
+			blockMoved.indexOf('one:light:loud'),
+		);
 		expect(lifecycle).toEqual(
 			expect.arrayContaining([
 				'cleanup:1:dark',

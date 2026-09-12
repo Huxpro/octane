@@ -17,12 +17,16 @@ import {
 	setLynxClientCapabilities,
 } from '../src/core/client-driver.compiled-program.js';
 import {
+	createContext,
 	defineUniversalComponent,
 	renderLynxFirstScreen,
+	universalComponent,
+	universalContext,
 	universalIf,
 	universalPlan,
 	universalSwitch,
 	universalValue,
+	useContext,
 } from '../src/main-renderer.compiled-program.js';
 
 const WIRE: UniversalHostTemplateProgram = {
@@ -103,6 +107,49 @@ describe('@octanejs/lynx compact compiled-program renderer', () => {
 		expect(fallback.nodes.map((node) => node.children[0]?.selectedValues)).toEqual([
 			['else', 'else', 'else'],
 			['default', 'default', 'default'],
+		]);
+	});
+
+	it('scopes nested providers and restores defaults without a retained owner graph', () => {
+		const Theme = createContext('default');
+		const plan = universalPlan('lynx', PLAN);
+		const Consumer = defineUniversalComponent('lynx', (_props: {}, context) => {
+			const label = `${useContext(Theme)}:${context.readContext(Theme)}`;
+			return universalValue(plan, [label, label, label]);
+		});
+		const child = () => universalComponent('lynx', Consumer, {});
+		const App = defineUniversalComponent('lynx', (props: { outer: string; inner: string }) =>
+			universalContext(Theme, props.outer, () => [
+				child(),
+				universalContext(Theme, props.inner, child),
+				child(),
+			]),
+		);
+
+		const result = renderLynxFirstScreen(App, { outer: 'outer', inner: 'inner' });
+		const outer = result.nodes[0]!;
+		expect(outer.kind).toBe('range');
+		expect(outer.children[0]?.children[0]?.selectedValues).toEqual([
+			'outer:outer',
+			'outer:outer',
+			'outer:outer',
+		]);
+		expect(outer.children[1]?.children[0]?.children[0]?.selectedValues).toEqual([
+			'inner:inner',
+			'inner:inner',
+			'inner:inner',
+		]);
+		expect(outer.children[2]?.children[0]?.selectedValues).toEqual([
+			'outer:outer',
+			'outer:outer',
+			'outer:outer',
+		]);
+
+		const defaultResult = renderLynxFirstScreen(Consumer, {});
+		expect(defaultResult.nodes[0]?.selectedValues).toEqual([
+			'default:default',
+			'default:default',
+			'default:default',
 		]);
 	});
 

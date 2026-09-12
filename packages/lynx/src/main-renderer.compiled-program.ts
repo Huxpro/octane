@@ -2,6 +2,7 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
 
 import type {
 	UniversalComponent,
+	UniversalContext,
 	UniversalEventListenerDescriptor,
 	UniversalKey,
 	UniversalProgramAddress,
@@ -18,10 +19,13 @@ const UNIVERSAL_PLAN = Symbol.for('octane.universal.plan');
 const UNIVERSAL_VALUE = Symbol.for('octane.universal.value');
 const UNIVERSAL_COMPONENT = Symbol.for('octane.universal.component');
 const UNIVERSAL_COMPONENT_VALUE = Symbol.for('octane.universal.component-value');
+const UNIVERSAL_CHILDREN = Symbol.for('octane.universal.children');
 const UNIVERSAL_PROPS = Symbol.for('octane.universal.props');
 const UNIVERSAL_IF = Symbol.for('octane.universal.if');
 const UNIVERSAL_SWITCH = Symbol.for('octane.universal.switch');
 const UNIVERSAL_FOR = Symbol.for('octane.universal.for');
+const UNIVERSAL_CONTEXT = Symbol.for('octane.universal.context');
+const CONTEXT_TAG = Symbol.for('octane.context');
 const FIRST_SCREEN_EVENT = Symbol.for('octane.lynx.first-screen-event');
 const NO_CHILDREN = Symbol('octane.lynx.compiled-program.no-children');
 const NO_KEY = Symbol('octane.lynx.compiled-program.no-key');
@@ -51,6 +55,11 @@ interface ComponentValue {
 	readonly key: unknown;
 	readonly hasKey: boolean;
 }
+interface ChildrenValue {
+	readonly $$kind: symbol;
+	readonly renderer: string;
+	readonly render: () => UniversalRenderable;
+}
 
 interface IfValue {
 	readonly $$kind: symbol;
@@ -73,6 +82,22 @@ interface ForValue {
 	readonly render: (item: unknown, index: number) => UniversalRenderable;
 	readonly empty: (() => UniversalRenderable) | null;
 }
+interface ContextValue {
+	readonly $$kind: symbol;
+	readonly context: UniversalContext<any>;
+	readonly value: unknown;
+	readonly children: UniversalRenderable | (() => UniversalRenderable);
+}
+
+export interface NativeUniversalContext<T> extends UniversalContext<T> {
+	(props: {
+		value: T;
+		children?: UniversalRenderable | (() => UniversalRenderable);
+	}): UniversalRenderable;
+	readonly Provider: NativeUniversalContext<T>;
+}
+
+type CompactContexts = ReadonlyMap<UniversalContext<any>, unknown> | null;
 
 interface CompactProgramNode {
 	kind: 'program';
@@ -248,6 +273,13 @@ export function universalComponent(
 		hasKey: key !== NO_KEY || normalized.hasKey,
 	} as unknown as UniversalRenderable;
 }
+export function universalChildren(
+	renderer: string,
+	render: () => UniversalRenderable,
+): UniversalRenderable {
+	assertRenderer(renderer);
+	return { $$kind: UNIVERSAL_CHILDREN, renderer, render } as unknown as UniversalRenderable;
+}
 
 export function universalIf(
 	condition: unknown,
@@ -283,6 +315,27 @@ export function universalFor<T>(
 ): UniversalRenderable {
 	return { $$kind: UNIVERSAL_FOR, items, key, render, empty } as unknown as UniversalRenderable;
 }
+export function universalContext<T>(
+	context: UniversalContext<T>,
+	value: T,
+	children: UniversalRenderable | (() => UniversalRenderable),
+): UniversalRenderable {
+	return { $$kind: UNIVERSAL_CONTEXT, context, value, children } as unknown as UniversalRenderable;
+}
+
+export function createContext<T>(defaultValue: T): NativeUniversalContext<T> {
+	const context = ((props: {
+		value: T;
+		children?: UniversalRenderable | (() => UniversalRenderable);
+	}) => universalContext(context, props.value, props.children)) as NativeUniversalContext<T>;
+	Object.defineProperties(context, {
+		$$kind: { value: CONTEXT_TAG, enumerable: true },
+		defaultValue: { value: defaultValue, enumerable: true },
+		Provider: { value: context, enumerable: true },
+		$$version: { value: 0, enumerable: true, writable: true },
+	});
+	return context;
+}
 
 export function defineUniversalComponent<P>(
 	renderer: string,
@@ -302,13 +355,26 @@ export function defineUniversalComponent<P>(
 }
 
 export const firstScreenEvent = FIRST_SCREEN_EVENT;
+function readContext<T>(context: UniversalContext<T>): T {
+	return renderingContexts?.has(context)
+		? (renderingContexts.get(context) as T)
+		: context.defaultValue;
+}
+
+function withContexts<T>(contexts: CompactContexts, run: () => T): T {
+	const previous = renderingContexts;
+	renderingContexts = contexts;
+	try {
+		return run();
+	} finally {
+		renderingContexts = previous;
+	}
+}
 
 function componentContext(): UniversalRenderContext {
 	return {
 		renderer: 'lynx',
-		readContext() {
-			return fail('received context after capability proof');
-		},
+		readContext,
 		insertionEffect() {},
 		layoutEffect() {},
 		effect() {},
@@ -424,6 +490,11 @@ function materialize(value: unknown): CompactNode[] {
 	if (record?.$$kind === UNIVERSAL_COMPONENT_VALUE) {
 		return [renderComponent(value as unknown as ComponentValue)];
 	}
+	if (record?.$$kind === UNIVERSAL_CHILDREN) {
+		const children = value as unknown as ChildrenValue;
+		assertRenderer(children.renderer);
+		return materialize(children.render());
+	}
 	if (record?.$$kind === UNIVERSAL_IF) {
 		const branch = value as unknown as IfValue;
 		const body = branch.condition ? branch.then : branch.else;
@@ -453,6 +524,19 @@ function materialize(value: unknown): CompactNode[] {
 		}
 		if (index === 0 && loop.empty !== null) return [range(materialize(loop.empty()))];
 		return output;
+	}
+	if (record?.$$kind === UNIVERSAL_CONTEXT) {
+		const provider = value as unknown as ContextValue;
+		const contexts = new Map(renderingContexts ?? []);
+		contexts.set(provider.context, provider.value);
+		return [
+			range(
+				withContexts(contexts, () => {
+					const children = provider.children;
+					return materialize(typeof children === 'function' ? children() : children);
+				}),
+			),
+		];
 	}
 	if (Array.isArray(value)) {
 		const output: CompactNode[] = [];
@@ -554,6 +638,7 @@ function collectEvents(
 }
 
 let rendering = false;
+let renderingContexts: CompactContexts = null;
 let nextHookSlot = 0;
 const NOOP_UPDATE = () => {};
 
@@ -570,6 +655,7 @@ export function renderLynxFirstScreen<Props>(
 	try {
 		nodes = materialize(component(props, componentContext()));
 	} finally {
+		renderingContexts = null;
 		rendering = false;
 	}
 	const ids = { id: 1 };
@@ -639,6 +725,10 @@ export function useRef<T>(initial: T, _slot?: unknown): { current: T } {
 
 export function useEffect(): void {
 	requireRender();
+}
+export function useContext<T>(context: UniversalContext<T>): T {
+	requireRender();
+	return readContext(context);
 }
 
 export function useSyncExternalStore<T>(

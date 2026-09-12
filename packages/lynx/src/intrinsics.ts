@@ -295,6 +295,11 @@ export type LynxElements = LynxIntrinsicElements & LynxCustomIntrinsicElements;
 
 /** Renderer-local JSX namespace; no global or React JSX namespace is augmented. */
 export namespace JSX {
+	export type ElementType =
+		// Authored Octane components keep their pre-lowering void return type. The
+		// compiler replaces that body with a renderer value; props remain checked
+		// against the component's actual first parameter.
+		keyof IntrinsicElements | ((...args: any[]) => UniversalRenderable | void);
 	export type Element = UniversalRenderable;
 	export interface IntrinsicElements extends LynxIntrinsicElements, LynxCustomIntrinsicElements {}
 }

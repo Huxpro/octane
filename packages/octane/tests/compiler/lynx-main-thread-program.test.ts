@@ -1439,6 +1439,59 @@ export function Card(props: { readonly items: readonly Item[] }) @{
 		]);
 	});
 
+	it('keeps a Provider-rooted keyed program fully addressed and dirty-grouped', () => {
+		const source = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { createContext, useContext, useState } from 'octane';
+
+const Theme = createContext('default');
+interface Item { readonly id: number; readonly label: string }
+
+function Row(props: { readonly item: Item }) @{
+	const theme = useContext(Theme);
+	<view class={theme}><text>{props.item.label as string}</text></view>
+}
+
+export function Card(props: { readonly items: readonly Item[]; readonly theme: string }) @{
+	const [theme] = useState(props.theme);
+	<Theme.Provider value={theme}>
+		<view class={theme}>
+			@for (const item of props.items; key item.id) {
+				<Row item={item} />
+			}
+		</view>
+	</Theme.Provider>
+}
+`;
+		const module = 'src/ContextRows.lynx.tsrx';
+		const mainResult = compileCard(source, { backend: Backend, module });
+		const backgroundResult = compileCard(source, {
+			target: 'universal',
+			thread: 'background',
+			backend: Backend,
+			module,
+			backgroundProgram: true,
+		});
+
+		expect(mainResult.mainThreadProgramCoverage).toEqual({ total: 2, addressed: 2 });
+		expect(backgroundResult.mainThreadProgramCoverage).toEqual({ total: 2, addressed: 2 });
+		expect(backgroundResult.code).toContain('component-render');
+		expect(backgroundResult.code).not.toContain('universalPlan as');
+		expect(backgroundResult.code).not.toContain('universalValue as');
+		expect(backgroundResult.lynxBlockFeatureRequirements?.templateFeatures).toEqual([]);
+		expect(
+			backgroundResult.lynxBlockSemanticRequirements?.runtimeUses.map((site) => site.name),
+		).toEqual(['createContext', 'useContext', 'useState']);
+		expect(backgroundResult.lynxBlockFeatureRequirements?.keyedRanges).toEqual([
+			expect.objectContaining({
+				row: expect.objectContaining({
+					kind: 'local-component',
+					name: 'Row',
+					hooks: [expect.objectContaining({ name: 'useContext' })],
+				}),
+			}),
+		]);
+	});
+
 	it('addresses an open structural range and hashes its topology', () => {
 		const module = 'src/StructuralCard.lynx.tsrx';
 		const main = evaluate(compiled(STRUCTURAL_ADDRESSABLE_CARD, { backend: Backend, module }));

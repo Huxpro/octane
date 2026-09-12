@@ -2198,7 +2198,7 @@ function keyedRangeRowNode(node) {
 	return body.length === 1 ? body[0] : null;
 }
 
-function blockTemplateFeature(node, rangeRowNodes) {
+function blockTemplateFeature(node, rangeRowNodes, state) {
 	if (node.type === 'JSXActivityExpression') {
 		return Object.freeze({ kind: 'activity', name: null, ...sourcePosition(node) });
 	}
@@ -2219,7 +2219,11 @@ function blockTemplateFeature(node, rangeRowNodes) {
 	if (name === 'list' || name === 'list-item') {
 		return Object.freeze({ kind: 'native-list', name, ...sourcePosition(node) });
 	}
-	if (isComponentElement(node) && !rangeRowNodes.has(node)) {
+	if (
+		isComponentElement(node) &&
+		!rangeRowNodes.has(node) &&
+		contextProviderExpressionAst(node, state) === null
+	) {
 		return Object.freeze({ kind: 'component', name, ...sourcePosition(node) });
 	}
 	return null;
@@ -2317,7 +2321,7 @@ function lynxBlockFeatureRequirements(ast, state) {
 			keyedRanges.push(range);
 			rangeAncestors.push(range);
 		}
-		const templateFeature = blockTemplateFeature(node, rangeRowNodes);
+		const templateFeature = blockTemplateFeature(node, rangeRowNodes, state);
 		if (templateFeature !== null) templateFeatures.push(templateFeature);
 		if ((node.type === 'JSXElement' || node.type === 'Element') && !isComponentElement(node)) {
 			for (const attribute of node.openingElement?.attributes ?? node.attributes ?? []) {
@@ -3735,6 +3739,8 @@ function dirtyComputationArrayAst(candidate, values, root, state, origin) {
 }
 
 function compileRenderableExpressionAst(node, state, dirtyCandidate = null) {
+	const provider = compileContextProviderValueAst(node, state, dirtyCandidate);
+	if (provider !== null) return provider;
 	const context = { values: [] };
 	const nodes = compileChildAst(node, context, state);
 	const root =
@@ -4270,9 +4276,53 @@ function compileActivityElementAst(node, context, state) {
 	return addDynamicAst(context, generatedCall(state.helpers.activity, [mode, body], node));
 }
 
-function compileComponentElementAst(node, context, state) {
-	const component = jsxNameExpressionAst(node, state);
+function compileContextProviderValueAst(node, state, dirtyCandidate = null) {
 	const providerContext = contextProviderExpressionAst(node, state);
+	if (providerContext === null) return null;
+	const childNodes = node.children ?? [];
+	const meaningfulChildren = childNodes.filter(
+		(child) => child.type !== 'JSXText' || normalizeJsxText(child.value) !== '',
+	);
+	let childrenExpression = null;
+	if (
+		meaningfulChildren.length === 1 &&
+		meaningfulChildren[0].type === 'JSXExpressionContainer' &&
+		meaningfulChildren[0].expression?.type !== 'JSXEmptyExpression'
+	) {
+		childrenExpression = dynamicExpressionAst(meaningfulChildren[0].expression, state);
+	} else if (meaningfulChildren.length > 0) {
+		const body = compileBlockValueAst(childNodes, state, [], node, dirtyCandidate);
+		childrenExpression = generatedCall(
+			state.helpers.children,
+			[b.literal(state.renderer.id), body],
+			node,
+		);
+	}
+	const attributes = node.openingElement?.attributes ?? node.attributes ?? [];
+	const propsObject = compilePlainPropsObjectAst(attributes, state, node);
+	const propsName = generatedIdentifier('__octaneContextProps', node);
+	const selectedChildren =
+		childrenExpression ?? inheritGeneratedOrigin(b.member(propsName, 'children'), node);
+	const callback = generatedArrow(
+		[propsName],
+		generatedCall(
+			state.helpers.context,
+			[
+				providerContext,
+				inheritGeneratedOrigin(b.member(generatedIdentifier(propsName.name, node), 'value'), node),
+				selectedChildren,
+			],
+			node,
+		),
+		node,
+	);
+	return generatedCall(callback, [propsObject], node);
+}
+
+function compileComponentElementAst(node, context, state) {
+	const provider = compileContextProviderValueAst(node, state);
+	if (provider !== null) return addDynamicAst(context, provider);
+	const component = jsxNameExpressionAst(node, state);
 	const childNodes = node.children ?? [];
 	const meaningfulChildren = childNodes.filter(
 		(child) => child.type !== 'JSXText' || normalizeJsxText(child.value) !== '',
@@ -4296,29 +4346,6 @@ function compileComponentElementAst(node, context, state) {
 		);
 	}
 	const attributes = node.openingElement?.attributes ?? node.attributes ?? [];
-	if (providerContext !== null) {
-		const propsObject = compilePlainPropsObjectAst(attributes, state, node);
-		const propsName = generatedIdentifier('__octaneContextProps', node);
-		const selectedChildren =
-			childrenExpression ?? inheritGeneratedOrigin(b.member(propsName, 'children'), node);
-		const callback = generatedArrow(
-			[propsName],
-			generatedCall(
-				state.helpers.context,
-				[
-					providerContext,
-					inheritGeneratedOrigin(
-						b.member(generatedIdentifier(propsName.name, node), 'value'),
-						node,
-					),
-					selectedChildren,
-				],
-				node,
-			),
-			node,
-		);
-		return addDynamicAst(context, generatedCall(callback, [propsObject], node));
-	}
 	const props = compilePropsAst(attributes, childrenExpression, state, node);
 	return addDynamicAst(
 		context,
@@ -4346,7 +4373,13 @@ function rewriteSetupStatementsAst(statements, state) {
 	return [...hoisted, ...body];
 }
 
-function compileBlockValueAst(statements, state, params = [], origin = null) {
+function compileBlockValueAst(
+	statements,
+	state,
+	params = [],
+	origin = null,
+	dirtyCandidate = null,
+) {
 	const context = { values: [] };
 	const templates = [];
 	const setup = [];
@@ -4373,12 +4406,21 @@ function compileBlockValueAst(statements, state, params = [], origin = null) {
 			? templates[0]
 			: withPlanOrigin({ kind: 'range', children: templates }, origin ?? statements?.[0]);
 	const plan = allocPlan(state, root, origin ?? statements?.[0]);
+	const args = [
+		generatedIdentifier(plan, origin ?? statements?.[0]),
+		inheritGeneratedOrigin(b.array(context.values), origin ?? statements?.[0]),
+	];
+	const computations = dirtyComputationArrayAst(
+		dirtyCandidate,
+		context.values,
+		root,
+		state,
+		origin ?? statements?.[0],
+	);
+	if (computations !== null) args.push(computations);
 	const value = generatedCall(
 		universalValueHelperForPlan(state, root),
-		[
-			generatedIdentifier(plan, origin ?? statements?.[0]),
-			inheritGeneratedOrigin(b.array(context.values), origin ?? statements?.[0]),
-		],
+		args,
 		origin ?? statements?.[0],
 	);
 	const block = inheritGeneratedOrigin(

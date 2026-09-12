@@ -1,4 +1,11 @@
-import { type OctaneNode, useCallback, useEffect, useState } from 'octane';
+import {
+	createContext,
+	type OctaneNode,
+	useCallback,
+	useContext,
+	useEffect,
+	useState,
+} from 'octane';
 
 export interface BlockScopedRowValue {
 	readonly id: number;
@@ -49,6 +56,52 @@ export function BlockScopedRowsFixture(props: BlockScopedRowsProps) @{
 		</view>
 	</view>
 }
+
+const BlockTheme = createContext('default');
+
+export interface BlockContextProps {
+	readonly rows: readonly BlockScopedRowValue[];
+	readonly theme: string;
+	readonly log: (entry: string) => void;
+}
+
+function BlockContextRow(props: {
+	readonly row: BlockScopedRowValue;
+	readonly log: (entry: string) => void;
+}) @{
+	const theme = useContext(BlockTheme);
+	const [tone, setTone] = useState('quiet');
+	const row = props.row;
+	const log = props.log;
+	useEffect(() => {
+		log('effect:' + row.id + ':' + theme);
+		return () => log('cleanup:' + row.id + ':' + theme);
+	}, [theme]);
+
+	<view class={['context-row', theme, tone]}>
+		<text class="col-id">{String(row.id)}</text>
+		<text
+			class="col-label"
+			bindtap={() => setTone((value) => (value === 'quiet' ? 'loud' : 'quiet'))}
+		>
+			{row.label + ':' + theme + ':' + tone}
+		</text>
+	</view>
+}
+
+export function BlockContextFixture(props: BlockContextProps) @{
+	<BlockTheme.Provider value={props.theme}>
+		<view class="page">
+			<text class="title">context</text>
+			<view class="rows">
+				@for (const row of props.rows; key row.id) {
+					<BlockContextRow row={row} log={props.log} />
+				}
+			</view>
+		</view>
+	</BlockTheme.Provider>
+}
+
 export interface BlockConditionalProps {
 	readonly show: boolean;
 	readonly label: string;
