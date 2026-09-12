@@ -4,6 +4,7 @@ const CLIENT_TARGETS = new Set(['web', 'webworker', 'electron-renderer', 'browse
 const LYNX_BLOCK_TEMPLATE_FEATURE_KINDS = new Set([
 	'activity',
 	'component',
+	'local-component',
 	'fragment',
 	'host-ref',
 	'if',
@@ -486,13 +487,15 @@ function lynxBlockFeatureRequirementsValid(requirements) {
 			(feature) =>
 				sourcePositionValid(feature) &&
 				LYNX_BLOCK_TEMPLATE_FEATURE_KINDS.has(feature.kind) &&
-				(feature.kind === 'component'
-					? feature.name === null || (typeof feature.name === 'string' && feature.name.length > 0)
-					: feature.kind === 'host-ref' || feature.kind === 'program-root-event'
-						? typeof feature.name === 'string' && feature.name.length > 0
-						: feature.kind === 'native-list'
-							? feature.name === 'list' || feature.name === 'list-item'
-							: feature.name === null),
+				(feature.kind === 'local-component'
+					? typeof feature.name === 'string' && feature.name.length > 0
+					: feature.kind === 'component'
+						? feature.name === null || (typeof feature.name === 'string' && feature.name.length > 0)
+						: feature.kind === 'host-ref' || feature.kind === 'program-root-event'
+							? typeof feature.name === 'string' && feature.name.length > 0
+							: feature.kind === 'native-list'
+								? feature.name === 'list' || feature.name === 'list-item'
+								: feature.name === null),
 		) &&
 		Array.isArray(requirements.keyedRanges) &&
 		requirements.keyedRanges.every(

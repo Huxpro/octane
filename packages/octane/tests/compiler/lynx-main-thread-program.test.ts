@@ -1306,7 +1306,7 @@ export function App(props: { show: boolean; child: unknown }) @{
 
 		expect(result.lynxBlockFeatureRequirements?.templateFeatures).toEqual([
 			{ kind: 'program-root-event', name: 'bindtap', line: 7, column: 7 },
-			{ kind: 'component', name: 'Panel', line: 8, column: 2 },
+			{ kind: 'local-component', name: 'Panel', line: 8, column: 2 },
 			{ kind: 'native-list', name: 'list', line: 9, column: 2 },
 			{ kind: 'host-ref', name: 'list', line: 9, column: 8 },
 			{ kind: 'native-list', name: 'list-item', line: 9, column: 30 },
@@ -1315,6 +1315,36 @@ export function App(props: { show: boolean; child: unknown }) @{
 			{ kind: 'switch', name: null, line: 16, column: 2 },
 			{ kind: 'try', name: null, line: 24, column: 2 },
 			{ kind: 'renderable-hole', name: null, line: 25, column: 2 },
+		]);
+	});
+
+	it('proves only immutable module-root component bindings', () => {
+		const result = compileCard(`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import External from './External.tsrx';
+
+function Local() @{
+	<view />
+}
+
+function Shadowed(props: { Local: () => unknown }) @{
+	const Local = props.Local;
+	<Local />
+}
+
+export function App() @{
+	<view>
+		<Local />
+		<Shadowed Local={Local} />
+		<External />
+	</view>
+}
+`);
+
+		expect(result.lynxBlockFeatureRequirements?.templateFeatures).toEqual([
+			{ kind: 'component', name: 'Local', line: 10, column: 1 },
+			{ kind: 'local-component', name: 'Local', line: 15, column: 2 },
+			{ kind: 'local-component', name: 'Shadowed', line: 16, column: 2 },
+			{ kind: 'component', name: 'External', line: 17, column: 2 },
 		]);
 	});
 });
@@ -1446,6 +1476,10 @@ import { createContext, useContext, useState } from 'octane';
 const Theme = createContext('default');
 interface Item { readonly id: number; readonly label: string }
 
+function Frame(props: { readonly children?: unknown }) {
+	return props.children;
+}
+
 function Row(props: { readonly item: Item }) @{
 	const theme = useContext(Theme);
 	<view class={theme}><text>{props.item.label as string}</text></view>
@@ -1454,11 +1488,13 @@ function Row(props: { readonly item: Item }) @{
 export function Card(props: { readonly items: readonly Item[]; readonly theme: string }) @{
 	const [theme] = useState(props.theme);
 	<Theme.Provider value={theme}>
-		<view class={theme}>
-			@for (const item of props.items; key item.id) {
-				<Row item={item} />
-			}
-		</view>
+		<Frame>
+			<view class={theme}>
+				@for (const item of props.items; key item.id) {
+					<Row item={item} />
+				}
+			</view>
+		</Frame>
 	</Theme.Provider>
 }
 `;
@@ -1474,10 +1510,12 @@ export function Card(props: { readonly items: readonly Item[]; readonly theme: s
 
 		expect(mainResult.mainThreadProgramCoverage).toEqual({ total: 2, addressed: 2 });
 		expect(backgroundResult.mainThreadProgramCoverage).toEqual({ total: 2, addressed: 2 });
-		expect(backgroundResult.code).toContain('component-render');
+		expect(backgroundResult.code).toContain('universalComponent as');
 		expect(backgroundResult.code).not.toContain('universalPlan as');
 		expect(backgroundResult.code).not.toContain('universalValue as');
-		expect(backgroundResult.lynxBlockFeatureRequirements?.templateFeatures).toEqual([]);
+		expect(backgroundResult.lynxBlockFeatureRequirements?.templateFeatures).toEqual([
+			expect.objectContaining({ kind: 'local-component', name: 'Frame' }),
+		]);
 		expect(
 			backgroundResult.lynxBlockSemanticRequirements?.runtimeUses.map((site) => site.name),
 		).toEqual(['createContext', 'useContext', 'useState']);

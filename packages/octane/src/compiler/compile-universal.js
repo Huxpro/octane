@@ -2198,6 +2198,19 @@ function keyedRangeRowNode(node) {
 	return body.length === 1 ? body[0] : null;
 }
 
+function immutableLocalComponentName(node, state) {
+	const componentName = node.openingElement?.name ?? node.name;
+	const trusted = state.immutableLocalComponents;
+	if (componentName?.type !== 'JSXIdentifier' || !trusted.names.has(componentName.name)) {
+		return null;
+	}
+	const componentBinding = trusted.lexical.resolveBinding(
+		trusted.lexical.nodeScopes.get(componentName) ?? trusted.lexical.rootScope,
+		componentName.name,
+	);
+	return componentBinding?.scope === trusted.lexical.rootScope ? componentName.name : null;
+}
+
 function blockTemplateFeature(node, rangeRowNodes, state) {
 	if (node.type === 'JSXActivityExpression') {
 		return Object.freeze({ kind: 'activity', name: null, ...sourcePosition(node) });
@@ -2224,7 +2237,11 @@ function blockTemplateFeature(node, rangeRowNodes, state) {
 		!rangeRowNodes.has(node) &&
 		contextProviderExpressionAst(node, state) === null
 	) {
-		return Object.freeze({ kind: 'component', name, ...sourcePosition(node) });
+		return Object.freeze({
+			kind: immutableLocalComponentName(node, state) === null ? 'component' : 'local-component',
+			name,
+			...sourcePosition(node),
+		});
 	}
 	return null;
 }
@@ -3741,6 +3758,9 @@ function dirtyComputationArrayAst(candidate, values, root, state, origin) {
 function compileRenderableExpressionAst(node, state, dirtyCandidate = null) {
 	const provider = compileContextProviderValueAst(node, state, dirtyCandidate);
 	if (provider !== null) return provider;
+	if ((node.type === 'JSXElement' || node.type === 'Element') && isComponentElement(node)) {
+		return compileComponentValueAst(node, state);
+	}
 	const context = { values: [] };
 	const nodes = compileChildAst(node, context, state);
 	const root =
@@ -4290,6 +4310,12 @@ function compileContextProviderValueAst(node, state, dirtyCandidate = null) {
 		meaningfulChildren[0].expression?.type !== 'JSXEmptyExpression'
 	) {
 		childrenExpression = dynamicExpressionAst(meaningfulChildren[0].expression, state);
+	} else if (meaningfulChildren.length === 1 && isComponentElement(meaningfulChildren[0])) {
+		childrenExpression = compileRenderableExpressionAst(
+			meaningfulChildren[0],
+			state,
+			dirtyCandidate,
+		);
 	} else if (meaningfulChildren.length > 0) {
 		const body = compileBlockValueAst(childNodes, state, [], node, dirtyCandidate);
 		childrenExpression = generatedCall(
@@ -4319,9 +4345,7 @@ function compileContextProviderValueAst(node, state, dirtyCandidate = null) {
 	return generatedCall(callback, [propsObject], node);
 }
 
-function compileComponentElementAst(node, context, state) {
-	const provider = compileContextProviderValueAst(node, state);
-	if (provider !== null) return addDynamicAst(context, provider);
+function compileComponentValueAst(node, state) {
 	const component = jsxNameExpressionAst(node, state);
 	const childNodes = node.children ?? [];
 	const meaningfulChildren = childNodes.filter(
@@ -4347,14 +4371,17 @@ function compileComponentElementAst(node, context, state) {
 	}
 	const attributes = node.openingElement?.attributes ?? node.attributes ?? [];
 	const props = compilePropsAst(attributes, childrenExpression, state, node);
-	return addDynamicAst(
-		context,
-		generatedCall(
-			state.helpers.nestedComponent,
-			[b.literal(state.renderer.id), component, props],
-			node,
-		),
+	return generatedCall(
+		state.helpers.nestedComponent,
+		[b.literal(state.renderer.id), component, props],
+		node,
 	);
+}
+
+function compileComponentElementAst(node, context, state) {
+	const provider = compileContextProviderValueAst(node, state);
+	if (provider !== null) return addDynamicAst(context, provider);
+	return addDynamicAst(context, compileComponentValueAst(node, state));
 }
 
 function rewriteSetupStatementsAst(statements, state) {

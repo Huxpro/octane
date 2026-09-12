@@ -368,7 +368,10 @@ describe('getOctaneRspackBuildInfo', () => {
 								},
 							],
 							mainThreadProps: [{ name: 'main-thread:ref', line: 7, column: 8 }],
-							templateFeatures: [{ kind: 'component', name: 'Panel', line: 8, column: 2 }],
+							templateFeatures: [
+								{ kind: 'component', name: 'Panel', line: 8, column: 2 },
+								{ kind: 'local-component', name: 'Frame', line: 9, column: 2 },
+							],
 							keyedRanges: [
 								{
 									line: 10,
@@ -418,7 +421,10 @@ describe('getOctaneRspackBuildInfo', () => {
 					},
 				],
 				mainThreadProps: [{ name: 'main-thread:ref', line: 7, column: 8 }],
-				templateFeatures: [{ kind: 'component', name: 'Panel', line: 8, column: 2 }],
+				templateFeatures: [
+					{ kind: 'component', name: 'Panel', line: 8, column: 2 },
+					{ kind: 'local-component', name: 'Frame', line: 9, column: 2 },
+				],
 				keyedRanges: [
 					{
 						line: 10,
@@ -553,6 +559,13 @@ describe('getOctaneRspackBuildInfo', () => {
 				threadFunctions: [],
 				mainThreadProps: [],
 				templateFeatures: [{ kind: 'portal', name: null, line: 1, column: 0 }],
+				keyedRanges: [],
+			},
+			{
+				version: 2,
+				threadFunctions: [],
+				mainThreadProps: [],
+				templateFeatures: [{ kind: 'local-component', name: null, line: 1, column: 0 }],
 				keyedRanges: [],
 			},
 			{

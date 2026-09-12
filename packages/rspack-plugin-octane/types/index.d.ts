@@ -342,6 +342,7 @@ export interface OctaneLynxBlockTemplateFeatureRequirement {
 	readonly kind:
 		| 'activity'
 		| 'component'
+		| 'local-component'
 		| 'fragment'
 		| 'host-ref'
 		| 'if'
