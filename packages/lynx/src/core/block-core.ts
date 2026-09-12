@@ -393,6 +393,8 @@ export interface LynxBlockCore {
 		key: unknown,
 		values: readonly UniversalHostTemplateProgramValue[],
 	): LynxBlock | undefined;
+	/** Every slot of one retained block, in one logical visit. */
+	writeValues(block: LynxBlock, values: readonly UniversalHostTemplateProgramValue[]): void;
 	/** The scoped write. One key lookup, one command, independent of list size. */
 	setKeyedSlotValue(
 		slot: LynxBlockForSlot,
@@ -884,6 +886,22 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		return true;
 	};
 
+	const writeBlockValues = (
+		block: LynxBlock,
+		values: readonly UniversalHostTemplateProgramValue[],
+	): void => {
+		const template = block.template;
+		if (values.length !== template.valueCount) {
+			fail(
+				LYNX_BLOCK_CORE_DEVELOPMENT &&
+					`a block supplied ${values.length} values for a ${template.valueCount}-slot template`,
+			);
+		}
+		for (let valueIndex = 0; valueIndex < template.valueCount; valueIndex++) {
+			write(block, valueIndex, values[valueIndex]!);
+		}
+	};
+
 	const fillForSlot = <Item>(
 		slot: LynxBlockForSlot,
 		template: LynxBlockTemplate,
@@ -1138,20 +1156,16 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			link(slot, ordered);
 		},
 
+		writeValues(block, values) {
+			blockLookups++;
+			writeBlockValues(block, values);
+		},
+
 		writeKeyedValues(slot, key, values) {
 			blockLookups++;
 			const block = slot.items.get(key);
 			if (block === undefined) return undefined;
-			const template = block.template;
-			if (values.length !== template.valueCount) {
-				fail(
-					LYNX_BLOCK_CORE_DEVELOPMENT &&
-						`a row supplied ${values.length} values for a ${template.valueCount}-slot template`,
-				);
-			}
-			for (let valueIndex = 0; valueIndex < template.valueCount; valueIndex++) {
-				write(block, valueIndex, values[valueIndex]!);
-			}
+			writeBlockValues(block, values);
 			return block;
 		},
 

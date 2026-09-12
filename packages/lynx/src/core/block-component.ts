@@ -110,6 +110,7 @@ import {
 	isLynxCompilerProgram,
 	isLynxCompilerProgramValue,
 	type LynxCompilerProgram,
+	type LynxCompilerProgramComputation,
 } from './compiler-program.js';
 import type { LynxBlockProgram, LynxBlockProgramContext } from './block-program.js';
 import { encodeLynxProgramPropValue } from './host-prop-value.js';
@@ -303,6 +304,7 @@ interface RenderedPlan {
 	readonly source: LynxComponent<never>;
 	readonly plan: UniversalPlan | LynxCompilerProgram;
 	readonly values: readonly unknown[];
+	readonly computations: readonly LynxCompilerProgramComputation[];
 }
 
 /**
@@ -384,6 +386,8 @@ interface RetainedRow {
 
 const EMPTY_RANGES: readonly RangeState[] = Object.freeze([]);
 const EMPTY_RESTORES: readonly (() => void)[] = Object.freeze([]);
+const EMPTY_COMPUTATIONS: readonly LynxCompilerProgramComputation[] = Object.freeze([]);
+const EMPTY_VALUES: readonly unknown[] = Object.freeze([]);
 
 /** One range's whole next state, produced before any of it is written. */
 interface RangeRender {
@@ -492,6 +496,9 @@ export function lynxBlockProgramForComponent<Props>(
 	 * lowering, and a second slot compare — and, for a page with a keyed range,
 	 * a second render of every row in it.
 	 */
+	let dirtySlots: Set<unknown> | null = null;
+	let liveValues: readonly unknown[] = EMPTY_VALUES;
+	let liveComputations: readonly LynxCompilerProgramComputation[] = EMPTY_COMPUTATIONS;
 	let renderQueued = false;
 
 	let encoder: UniversalHostEncoder | null = null;
@@ -504,7 +511,12 @@ export function lynxBlockProgramForComponent<Props>(
 	/** Read a compiled component's return value, or say what it returned instead. */
 	const readPlanValue = (source: LynxComponent<never>, produced: unknown): RenderedPlan => {
 		if (isLynxCompilerProgramValue(produced)) {
-			return { source, plan: produced.program, values: produced.values };
+			return {
+				source,
+				plan: produced.program,
+				values: produced.values,
+				computations: produced.computations,
+			};
 		}
 		const value = produced as UniversalPlanValue | null;
 		if (value === null || typeof value !== 'object' || value.$$kind !== UNIVERSAL_VALUE) {
@@ -514,7 +526,7 @@ export function lynxBlockProgramForComponent<Props>(
 					'it did not return a compiled template, so there is nothing to lower. Only a compiler program or a component lowered to a Universal plan can become a block program.',
 			);
 		}
-		return { source, plan: value.plan, values: value.values };
+		return { source, plan: value.plan, values: value.values, computations: EMPTY_COMPUTATIONS };
 	};
 
 	/**
@@ -640,21 +652,25 @@ export function lynxBlockProgramForComponent<Props>(
 	 *   render *starts*, so every write that lands while this one waits for its
 	 *   turn folds into it.
 	 */
-	function queueStateRender(): void {
-		if (renderQueued) return;
+	function queueStateRender(slot: unknown): void {
 		const context = liveContext;
 		// Unmounted, so there is nothing left to write the new values to.
 		if (context === null || block === null) return;
+		(dirtySlots ??= new Set()).add(slot);
+		if (renderQueued) return;
 		renderQueued = true;
 		void context
 			.scheduleRender(() => {
 				renderQueued = false;
+				const scheduled = dirtySlots;
+				dirtySlots = null;
 				// Unmounted while this waited its turn. The core's queue makes
 				// that narrow — `unmountAsync` waits for work a program started
 				// — but a program that has been torn down must not write, and
 				// the check is cheaper than the invariant.
 				if (block === null) return;
-				renderAgain(context, liveProps as Props);
+				if (scheduled === null || !renderDirtyComputations(context, [...scheduled]))
+					renderAgain(context, liveProps as Props);
 			})
 			.catch((error: unknown) => {
 				// Nowhere to return this to: the tap that wrote the cell returned
@@ -828,7 +844,12 @@ export function lynxBlockProgramForComponent<Props>(
 			// The page did return a compiled template — the row's output is what
 			// did not — so the diagnostic must say which level failed.
 			if (isLynxCompilerProgramValue(produced)) {
-				rendered = { source: subject, plan: produced.program, values: produced.values };
+				rendered = {
+					source: subject,
+					plan: produced.program,
+					values: produced.values,
+					computations: produced.computations,
+				};
 			} else {
 				const value = produced as UniversalPlanValue | null;
 				if (value === null || typeof value !== 'object' || value.$$kind !== UNIVERSAL_VALUE) {
@@ -838,7 +859,12 @@ export function lynxBlockProgramForComponent<Props>(
 							'a row of one of its keyed ranges is not a compiled template. Only a compiler program, Universal plan, or component returning one can mount on a range site.',
 					);
 				}
-				rendered = { source: subject, plan: value.plan, values: value.values };
+				rendered = {
+					source: subject,
+					plan: value.plan,
+					values: value.values,
+					computations: EMPTY_COMPUTATIONS,
+				};
 			}
 		}
 		if (state.plan === null) {
@@ -1424,6 +1450,88 @@ export function lynxBlockProgramForComponent<Props>(
 	};
 
 	/**
+	 * Consume queued hook updates through compiler-proved pure computations.
+	 * Every dirty getter must be covered, and range outputs still take the full
+	 * component path; either condition failing leaves the hook queues untouched.
+	 */
+	const renderDirtyComputations = (
+		context: LynxBlockProgramContext,
+		slots: readonly unknown[],
+	): boolean => {
+		const cells = scope;
+		if (cells === null || liveComputations.length === 0 || prepared === null || block === null) {
+			return false;
+		}
+		const result: { values?: unknown[]; touched?: Set<number> } = {};
+		try {
+			const supported = cells.renderDirty(slots, (sources) => {
+				const dirtySources = new Set(sources);
+				const covered = new Set<() => unknown>();
+				const selected: LynxCompilerProgramComputation[] = [];
+				for (const computation of liveComputations) {
+					if (!computation.sources.some((source) => dirtySources.has(source))) continue;
+					if (computation.slots.some((slot) => ranges.some((range) => range.slot === slot))) {
+						return;
+					}
+					selected.push(computation);
+					for (const source of computation.sources) {
+						if (dirtySources.has(source)) covered.add(source);
+					}
+				}
+				if (sources.some((source) => !covered.has(source))) return;
+
+				const values = liveValues.slice();
+				const outputSlots = new Set<number>();
+				for (const computation of selected) {
+					const outputs = computation.run();
+					if (!Array.isArray(outputs) || outputs.length !== computation.slots.length) {
+						refuse(
+							subject,
+							LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+								'a compiler dirty computation returned a different number of values than slots.',
+						);
+					}
+					for (let index = 0; index < computation.slots.length; index++) {
+						const slot = computation.slots[index]!;
+						if (outputSlots.has(slot)) {
+							refuse(
+								subject,
+								LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+									'two compiler dirty computations wrote the same value slot.',
+							);
+						}
+						outputSlots.add(slot);
+						values[slot] = outputs[index];
+					}
+				}
+				result.values = values;
+				result.touched = outputSlots;
+			});
+			const nextValues = result.values;
+			const touched = result.touched;
+			if (!supported || nextValues === undefined || touched === undefined) {
+				cells.abort();
+				return false;
+			}
+			context.afterAbort(() => cells.abort());
+			const wireValues = valuesFor(context, nextValues);
+			context.core.writeValues(block, wireValues);
+			if (prepared.events.some((site) => touched!.has(site.slot))) {
+				context.root.releaseListeners(block);
+				context.root.bindListeners(block, listenersFor(nextValues));
+			}
+			context.afterCommit(() => {
+				cells.commit();
+				liveValues = nextValues!;
+			});
+			return true;
+		} catch (error) {
+			cells.abort();
+			throw error;
+		}
+	};
+
+	/**
 	 * One later render of the page, whether its props changed or one of its
 	 * own cells did. Named rather than inlined on the program because a
 	 * state-driven render has no caller to reach it through.
@@ -1484,7 +1592,11 @@ export function lynxBlockProgramForComponent<Props>(
 				context.root.bindListeners(block!, listenersFor(rendered.values));
 			}
 			for (const row of rows) applyRange(context, row);
-			context.afterCommit(() => scope?.commit());
+			context.afterCommit(() => {
+				scope?.commit();
+				liveValues = rendered.values;
+				liveComputations = rendered.computations;
+			});
 		} catch (error) {
 			scope?.abort();
 			throw error;
@@ -1589,7 +1701,11 @@ export function lynxBlockProgramForComponent<Props>(
 					range.site = context.core.openForSlot(block, range.node, range.slot);
 					applyRange(context, rows[index]!);
 				}
-				context.afterCommit(() => scope?.commit());
+				context.afterCommit(() => {
+					scope?.commit();
+					liveValues = rendered.values;
+					liveComputations = rendered.computations;
+				});
 			} catch (error) {
 				scope?.abort();
 				throw error;
@@ -1628,6 +1744,9 @@ export function lynxBlockProgramForComponent<Props>(
 				}
 				block = null;
 				ranges = EMPTY_RANGES;
+				dirtySlots = null;
+				liveValues = EMPTY_VALUES;
+				liveComputations = EMPTY_COMPUTATIONS;
 				// The cells outlive nothing: a setter captured by a handler this
 				// program bound can still be called after release, and a disposed
 				// scope answers it by doing nothing rather than scheduling a render

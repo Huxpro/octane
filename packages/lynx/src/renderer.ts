@@ -21,6 +21,7 @@ export {
 	LYNX_COMPILER_PROGRAM_VERSION,
 	type LynxCompilerProgram,
 	type LynxCompilerProgramDefinition,
+	type LynxCompilerProgramComputation,
 	type LynxCompilerProgramValue,
 } from './core/compiler-program.js';
 

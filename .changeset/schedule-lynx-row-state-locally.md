@@ -10,3 +10,8 @@ retries, removals, and reinsertion. When a page does render, compiler-certified
 stable component ranges now skip iterable enumeration, key evaluation, row-prop
 allocation, and retained-map rebuilding while their source and dependency tuple
 remain identical; unproved expressions retain complete conservative discovery.
+Compiler program values may now carry pure hook dependency groups. Covered
+page-state updates project only their queued hook cells, run each affected group
+once, and write the resulting bindings through one retained-block visit without
+executing the component setup; incomplete or structural proofs fall back to the
+full component transaction.

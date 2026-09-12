@@ -38,10 +38,21 @@ export interface LynxCompilerProgram extends LynxCompilerProgramDefinition {
 	readonly renderer: string;
 }
 
+/** One pure component computation attached to a compiler program instance. */
+export interface LynxCompilerProgramComputation {
+	/** Stable hook getters whose values can invalidate this computation. */
+	readonly sources: readonly (() => unknown)[];
+	/** Plan slots returned by `run`, in the same order. */
+	readonly slots: readonly number[];
+	/** Recompute only the authored values for `slots`. */
+	readonly run: () => readonly unknown[];
+}
+
 export interface LynxCompilerProgramValue {
 	readonly $$kind: symbol;
 	readonly program: LynxCompilerProgram;
 	readonly values: readonly unknown[];
+	readonly computations: readonly LynxCompilerProgramComputation[];
 }
 
 const DEVELOPMENT =
@@ -122,10 +133,35 @@ export function lynxProgram(
 export function lynxProgramValue(
 	program: LynxCompilerProgram,
 	values: readonly unknown[] = [],
+	computations: readonly LynxCompilerProgramComputation[] = [],
 ): LynxCompilerProgramValue {
 	if (!isLynxCompilerProgram(program)) fail('lynxProgramValue expected a compiler program');
 	if (!Array.isArray(values)) fail('lynxProgramValue expected an array of slot values');
-	return { $$kind: LYNX_COMPILER_PROGRAM_VALUE, program, values };
+	if (!Array.isArray(computations)) fail('lynxProgramValue expected an array of computations');
+	if (DEVELOPMENT) {
+		for (const computation of computations) {
+			if (
+				computation === null ||
+				typeof computation !== 'object' ||
+				!Array.isArray(computation.sources) ||
+				computation.sources.length === 0 ||
+				computation.sources.some((source: unknown) => typeof source !== 'function') ||
+				!Array.isArray(computation.slots) ||
+				computation.slots.length === 0 ||
+				computation.slots.some(
+					(slot: unknown) =>
+						typeof slot !== 'number' ||
+						!Number.isSafeInteger(slot) ||
+						slot < 0 ||
+						slot >= values.length,
+				) ||
+				typeof computation.run !== 'function'
+			) {
+				fail('each computation requires source getters, value slots, and a run function');
+			}
+		}
+	}
+	return { $$kind: LYNX_COMPILER_PROGRAM_VALUE, program, values, computations };
 }
 
 export function isLynxCompilerProgram(value: unknown): value is LynxCompilerProgram {

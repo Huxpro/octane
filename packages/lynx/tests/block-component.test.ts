@@ -752,6 +752,75 @@ describe('Lynx compiled component with its own state on the Block core', () => {
 		await block.settle(Promise.resolve());
 		expect(paint(block.main.commits).tree).toContain('n-twice');
 	});
+	it('runs only compiler dependency groups for a covered state update', async () => {
+		let componentRuns = 0;
+		let computationRuns = 0;
+		const Direct = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Direct(props: { readonly base: string }) {
+				componentRuns++;
+				const [count, setCount, getCount] = useState(0, 'count');
+				const label = `${props.base}-${TALLY[count] ?? 'many'}`;
+				return lynxProgramValue(
+					CARD_COMPILER_PROGRAM,
+					[
+						count === 0 ? 'card' : 'card active',
+						label,
+						count === 0 ? 'card-meta' : 'card-meta on',
+						() => {
+							setCount(getCount() + 1);
+							setCount(getCount() + 1);
+						},
+						'detail',
+					],
+					[
+						{
+							sources: [getCount],
+							slots: [0, 1, 2],
+							run() {
+								computationRuns++;
+								const next = getCount();
+								return [
+									next === 0 ? 'card' : 'card active',
+									`${props.base}-${TALLY[next] ?? 'many'}`,
+									next === 0 ? 'card-meta' : 'card-meta on',
+								];
+							},
+						},
+					],
+				) as never;
+			},
+		);
+		const core = createLynxBlockCore({ templateRuns: () => false });
+		const block = blockColumn<{ readonly base: string }>(core);
+
+		await block.render(Direct as LynxComponent<{ readonly base: string }>, { base: 'n' });
+		expect(componentRuns).toBe(1);
+		expect(computationRuns).toBe(0);
+		const before = core.counters();
+
+		deliverTo(block, boundListener(block.main.commits));
+		await block.settle(Promise.resolve());
+
+		const after = core.counters();
+		expect(componentRuns).toBe(1);
+		expect(computationRuns).toBe(1);
+		expect(paint(block.main.commits).tree).toContain('n-twice');
+		expect({
+			lookups: after.blockLookups - before.blockLookups,
+			commands: after.commands - before.commands,
+		}).toEqual({ lookups: 1, commands: 3 });
+
+		// A caller-driven render refreshes the computation closure's props. Its
+		// next state-only update still bypasses the component setup.
+		await block.render(Direct as LynxComponent<{ readonly base: string }>, { base: 'b' });
+		expect(componentRuns).toBe(2);
+		deliverTo(block, boundListener(block.main.commits));
+		await block.settle(Promise.resolve());
+		expect(componentRuns).toBe(2);
+		expect(computationRuns).toBe(2);
+		expect(paint(block.main.commits).tree).toContain('b-many');
+	});
 
 	it('keeps the cell across a re-render driven by new props', async () => {
 		const block = blockColumn<{ readonly base: string }>();
