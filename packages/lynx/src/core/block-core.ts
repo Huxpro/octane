@@ -224,7 +224,7 @@ export interface LynxBlock {
 	readonly firstListenerId: number | null;
 	readonly values: UniversalHostTemplateProgramValue[];
 	readonly key: unknown;
-	/** Committed position in the survivor list, maintained by `link`. */
+	/** Monotonic committed-order token, refreshed by `link`; deletions may leave gaps. */
 	index: number;
 	/** Survivor list, as in `runtime.ts` — the LIS operates over this order. */
 	prev: LynxBlock | null;
@@ -368,6 +368,16 @@ export interface LynxBlockCore {
 	 */
 	clearForSlot(slot: LynxBlockForSlot, departed?: (block: LynxBlock) => void): void;
 	/**
+	 * Remove compiler-proven departed keys without rediscovering every survivor.
+	 * During a render attempt the host commands are emitted immediately, while
+	 * logical membership is published only when that attempt is accepted.
+	 */
+	removeKeysForSlot(
+		slot: LynxBlockForSlot,
+		keys: readonly unknown[],
+		departed?: (block: LynxBlock) => void,
+	): void;
+	/**
 	 * Every slot of one row of a range, by key, in one visit.
 	 *
 	 * `setKeyedSlotValue` is the primitive for a caller that knows which slot
@@ -475,6 +485,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 	let attemptCapturedSlots: Set<LynxBlockForSlot> | null = null;
 	let attemptValues: ValueSnapshotPart[] | null = null;
 	let attemptCapturedValues: Map<LynxBlock, number | Set<number>> | null = null;
+	let attemptAccepts: (() => void)[] | null = null;
 
 	const captureSlot = (slot: LynxBlockForSlot): void => {
 		if (!attemptActive) return;
@@ -856,6 +867,58 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		slot.size = 0;
 	};
 
+	/**
+	 * Apply a proven deletion in O(number of departed blocks).
+	 *
+	 * The ordinary reconciler must snapshot and rediscover the whole range because
+	 * an arbitrary next item list may insert, move, or duplicate members. A
+	 * compiler owner that already proved a strict survivor subsequence has none of
+	 * those questions left. Its only draft work is the departed blocks themselves.
+	 * Keep the logical links and Map committed until ACK, so a rejected transport
+	 * drops this closure instead of paying an O(range size) rollback snapshot.
+	 */
+	const removeKeysForSlot = (
+		slot: LynxBlockForSlot,
+		keys: readonly unknown[],
+		departed?: (block: LynxBlock) => void,
+	): void => {
+		if (keys.length === 0) return;
+		const blocks: LynxBlock[] = new Array(keys.length);
+		const seen = new Set<LynxBlock>();
+		for (let index = 0; index < keys.length; index++) {
+			const block = slot.items.get(keys[index]);
+			blockLookups++;
+			if (block === undefined || seen.has(block)) {
+				fail(
+					LYNX_BLOCK_CORE_DEVELOPMENT &&
+						'a proven keyed deletion must name distinct members of the committed range',
+				);
+			}
+			seen.add(block);
+			blocks[index] = block;
+		}
+		for (const block of blocks) {
+			departed?.(block);
+			destroyBlock(slot.parent, block);
+		}
+		const publish = (): void => {
+			for (const block of blocks) {
+				const previous = block.prev;
+				const next = block.next;
+				if (previous === null) slot.head = next;
+				else previous.next = next;
+				if (next === null) slot.tail = previous;
+				else next.prev = previous;
+				slot.items.delete(block.key);
+				block.prev = null;
+				block.next = null;
+				slot.size--;
+			}
+		};
+		if (attemptActive) (attemptAccepts ??= []).push(publish);
+		else publish();
+	};
+
 	const core: LynxBlockCore = {
 		beginAttempt() {
 			if (attemptActive) fail(LYNX_BLOCK_CORE_DEVELOPMENT && 'a render attempt is already active');
@@ -870,10 +933,13 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 
 		acceptAttempt() {
 			attemptActive = false;
+			const accepts = attemptAccepts;
+			attemptAccepts = null;
 			attemptSlots = null;
 			attemptCapturedSlots = null;
 			attemptValues = null;
 			attemptCapturedValues = null;
+			for (const accept of accepts ?? []) accept();
 		},
 
 		abortAttempt() {
@@ -898,6 +964,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			attemptCapturedSlots = null;
 			attemptValues = null;
 			attemptCapturedValues = null;
+			attemptAccepts = null;
 			return true;
 		},
 
@@ -922,6 +989,8 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		fillForSlot,
 
 		clearForSlot,
+
+		removeKeysForSlot,
 
 		reconcileForSlot(slot, template, items, key, values, departed, changedIndices) {
 			captureSlot(slot);

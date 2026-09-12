@@ -1179,6 +1179,12 @@ export function lynxBlockProgramForComponent<Props>(
 			}
 			return;
 		}
+		if (render.removedRetainedKeys !== null) {
+			context.core.removeKeysForSlot(state.site!, render.removedRetainedKeys, (member) => {
+				context.root.releaseListeners(member);
+			});
+			return;
+		}
 		context.core.reconcileForSlot(
 			state.site!,
 			state.template,
