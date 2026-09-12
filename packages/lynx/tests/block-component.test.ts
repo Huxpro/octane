@@ -1983,7 +1983,7 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 		expect(await commitStep(50, removed)).toEqual({
 			rangeCalls: 0,
 			rowCalls: 0,
-			lookups: removed.length,
+			lookups: 1,
 			commands: 6,
 			visited: [],
 		});
