@@ -49,3 +49,42 @@ export function BlockScopedRowsFixture(props: BlockScopedRowsProps) @{
 		</view>
 	</view>
 }
+export interface BlockConditionalProps {
+	readonly show: boolean;
+	readonly label: string;
+	readonly log: (entry: string) => void;
+}
+
+function BlockConditionalRow(props: {
+	readonly label: string;
+	readonly log: (entry: string) => void;
+}) @{
+	const [tone, setTone] = useState('quiet');
+	const label = props.label;
+	const log = props.log;
+	const onTap = useCallback(() => setTone((value) => (value === 'quiet' ? 'loud' : 'quiet')), []);
+	useEffect(() => {
+		log('mount:' + label);
+		return () => log('cleanup:' + label);
+	}, []);
+
+	<view class={['branch-row', tone]}>
+		<text class="col-id">{label}</text>
+		<text class="col-label" bindtap={onTap}>{label + ':' + tone}</text>
+	</view>
+}
+
+export function BlockConditionalFixture(props: BlockConditionalProps) @{
+	<view class="page">
+		<text class="title">condition</text>
+		<view class="rows">
+			@if (props.show) {
+				<BlockConditionalRow label={props.label} log={props.log} />
+			} @else {
+				<view class="alternate">
+					<text>{'hidden:' + props.label}</text>
+				</view>
+			}
+		</view>
+	</view>
+}

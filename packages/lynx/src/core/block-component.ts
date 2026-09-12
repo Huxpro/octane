@@ -18,36 +18,34 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
  * asked of the same driver, which is what keeps the two cores from drifting
  * apart on what a component means.
  *
- * A stateful page or keyed row runs inside its own `createUniversalHookScope`.
- * A setter schedules this program, which publishes the corresponding cells only
- * after the host accepts the frame. Keyed row scopes live in the retained key
- * map, so reorder preserves them and deletion disposes them. Compiler metadata
- * proves which components have no hooks, and those components render directly
- * without allocating a semantic scope.
+ * A stateful page, keyed row, or dynamic branch runs inside its own
+ * `createUniversalHookScope`. A setter publishes its cells only after the host
+ * accepts the frame. Child scopes live in the retained key map, so moves
+ * preserve them and deletion disposes them. Compiler metadata proves which
+ * components have no hooks, and those components render directly without
+ * allocating a semantic scope.
  *
- * ## A keyed range is a hole the template must not describe (item 1c)
+ * ## A structural region is a hole the template must not describe (item 1c)
  *
- * A renderable hole is one plan node whatever it holds, so `@for` arrives as
- * the same `#text` child as `{row.label}` and only the value tells them apart.
- * A keyed range is not a text node with list-shaped content: it is real
- * children of the hole's *parent*, which is exactly what `openForSlot` opens
- * and what `fillForSlot`/`reconcileForSlot` maintain. So the range holes are
- * split out of the program before it is prepared
- * (`universalTemplateProgramWithoutRanges`), each becomes a range site on the
- * host node that held it, and every row lowers through the same plan → wire
+ * A renderable hole is one plan node whatever it holds, so `@for`, `@if`, and
+ * `@switch` arrive as the same `#text` child as `{row.label}`; only the value
+ * tells them apart. Their output is real children of the hole's *parent*,
+ * maintained through the keyed range primitive. Structural holes are split out
+ * of the program before it is prepared
+ * (`universalTemplateProgramWithoutRanges`), each becomes a region site on the
+ * host node that held it, and every output lowers through the same plan → wire
  * path as the component itself.
  *
- * Rows are rendered before anything is written. A row the lowering cannot
- * describe therefore refuses with the range as it was, rather than leaving a
+ * Rows and branches are rendered before anything is written. Output the
+ * lowering cannot describe therefore refuses with the region as it was, not a
  * half-reconciled list on the wire.
  *
  * ## What this deliberately does not cover, and why the refusals are loud
  *
- * Page and row layout effects run after host acknowledgement; passive effects
- * run on the
- * root's following microtask, before its next render. Insertion effects are
- * refused because this core has no pre-mutation phase, and context reads are
- * refused because a single scope has no owner chain.
+ * Page and child layout effects run after host acknowledgement; passive effects
+ * run on the root's following microtask, before its next render. Insertion
+ * effects are refused because this core has no pre-mutation phase. Context
+ * values follow providers into retained keyed and branch scopes.
  *
  * A range nested inside a range is refused too. Its rows would need range state
  * of their own, carried through every reconcile of the outer list, and that is
@@ -62,12 +60,14 @@ import type {
 	UniversalChildrenValue,
 	UniversalContext,
 	UniversalContextValue,
+	UniversalIfValue,
 	UniversalForValue,
 	UniversalHostCapabilities,
 	UniversalHostDriver,
 	UniversalHostPropCodecContext,
 	UniversalHostTemplateProgramValue,
 	UniversalPlan,
+	UniversalSwitchValue,
 	UniversalPlanValue,
 	UniversalPropsValue,
 	UniversalRenderContext,
@@ -144,8 +144,13 @@ const UNIVERSAL_CHILDREN: symbol = Symbol.for('octane.universal.children');
 const UNIVERSAL_CONTEXT: symbol = Symbol.for('octane.universal.context');
 
 // Guard the call-site arguments as well as the final message. A production
+const UNIVERSAL_IF: symbol = Symbol.for('octane.universal.if');
+const UNIVERSAL_SWITCH: symbol = Symbol.for('octane.universal.switch');
 // refusal is the compact OL013 contract, so its diagnostic strings must never
 // enter the background-thread bundle merely to be discarded by `refuse`.
+const IF_THEN_BRANCH = Object.freeze({});
+const IF_ELSE_BRANCH = Object.freeze({});
+const SWITCH_DEFAULT_BRANCH = Object.freeze({});
 const LYNX_BLOCK_COMPONENT_DEVELOPMENT =
 	typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__;
 
@@ -318,6 +323,31 @@ function isRangeValue(value: unknown): value is UniversalForValue {
 		(value as { $$kind?: unknown }).$$kind === UNIVERSAL_FOR
 	);
 }
+function isBranchValue(value: unknown): value is UniversalBranchValue {
+	if (value === null || typeof value !== 'object') return false;
+	const kind = (value as { $$kind?: unknown }).$$kind;
+	return kind === UNIVERSAL_IF || kind === UNIVERSAL_SWITCH;
+}
+
+function isDynamicRegionValue(value: unknown): value is UniversalForValue | UniversalBranchValue {
+	return isRangeValue(value) || isBranchValue(value);
+}
+
+function selectedBranch(
+	value: UniversalBranchValue,
+): readonly [identity: unknown, render: () => unknown] | null {
+	if ((value as UniversalIfValue).$$kind === UNIVERSAL_IF) {
+		const branch = value as UniversalIfValue;
+		const render = branch.condition ? branch.then : branch.else;
+		return render === null ? null : [branch.condition ? IF_THEN_BRANCH : IF_ELSE_BRANCH, render];
+	}
+	const branch = value as UniversalSwitchValue;
+	for (let index = 0; index < branch.cases.length; index++) {
+		const candidate = branch.cases[index]!;
+		if (candidate[0] === branch.value) return [index, candidate[1]];
+	}
+	return branch.default === null ? null : [SWITCH_DEFAULT_BRANCH, branch.default];
+}
 
 /** One rendered template: the plan it named, and the slot values for it. */
 interface RenderedPlan {
@@ -336,6 +366,16 @@ interface RangeTemplateState {
 	template: LynxBlockTemplate | null;
 }
 
+interface RangeBranchState {
+	readonly key: object;
+	readonly template: RangeTemplateState;
+}
+
+function createRangeTemplateState(): RangeTemplateState {
+	return { plan: null, compiled: null, prepared: null, template: null };
+}
+
+type UniversalBranchValue = UniversalIfValue | UniversalSwitchValue;
 /**
  * One keyed range hole, and everything derived from the rows that filled it.
  *
@@ -352,6 +392,7 @@ interface RangeState {
 	site: LynxBlockForSlot | null;
 	readonly rowTemplate: RangeTemplateState;
 	readonly emptyTemplate: RangeTemplateState;
+	readonly branchTemplates: Map<unknown, RangeBranchState> | null;
 	/**
 	 * What the last applied render produced, per key, for the rows it can be
 	 * asked about again.
@@ -421,6 +462,10 @@ const EMPTY_COMPUTATIONS: readonly LynxCompilerProgramComputation[] = Object.fre
 type ProgramSiteIndexes = readonly (readonly number[] | undefined)[];
 const EMPTY_SITE_INDEXES: ProgramSiteIndexes = Object.freeze([]);
 const EMPTY_INDEXES: readonly number[] = Object.freeze([]);
+const EMPTY_PROGRAM_ROWS: readonly (readonly UniversalHostTemplateProgramValue[])[] = Object.freeze(
+	[],
+);
+const EMPTY_HANDLER_ROWS: readonly (readonly (LynxBlockListener | null)[])[] = Object.freeze([]);
 const EMPTY_RANGE_KEY = Object.freeze({});
 const EMPTY_RANGE_ITEMS: readonly unknown[] = Object.freeze([EMPTY_RANGE_KEY]);
 
@@ -449,7 +494,7 @@ interface RangeRender {
 	readonly structural: boolean;
 	readonly contextValues: SemanticContexts;
 	/** Indices of the rows this render actually called; the rest were retained. */
-	readonly templateState: RangeTemplateState;
+	readonly templateState: RangeTemplateState | null;
 	readonly rendered: readonly number[];
 	readonly source: Iterable<unknown>;
 	readonly keyedSelection: NonNullable<UniversalForValue['keyedSelection']> | null;
@@ -721,17 +766,29 @@ export function lynxBlockProgramForComponent<Props>(
 
 	const snapshotRangeTemplates = (): readonly (() => void)[] => {
 		let restores: (() => void)[] | null = null;
+		const snapshotTemplate = (templateState: RangeTemplateState): void => {
+			if (templateState.plan !== null) return;
+			const snapshot = {
+				plan: templateState.plan,
+				compiled: templateState.compiled,
+				prepared: templateState.prepared,
+				template: templateState.template,
+			};
+			(restores ??= []).push(() => Object.assign(templateState, snapshot));
+		};
 		for (const state of ranges) {
-			for (const templateState of [state.rowTemplate, state.emptyTemplate]) {
-				if (templateState.plan !== null) continue;
-				const snapshot = {
-					plan: templateState.plan,
-					compiled: templateState.compiled,
-					prepared: templateState.prepared,
-					template: templateState.template,
-				};
-				(restores ??= []).push(() => Object.assign(templateState, snapshot));
-			}
+			snapshotTemplate(state.rowTemplate);
+			snapshotTemplate(state.emptyTemplate);
+			const branches = state.branchTemplates;
+			if (branches === null) continue;
+			const acceptedBranchCount = branches.size;
+			(restores ??= []).push(() => {
+				let index = 0;
+				for (const key of branches.keys()) {
+					if (index++ >= acceptedBranchCount) branches.delete(key);
+				}
+			});
+			for (const branch of branches.values()) snapshotTemplate(branch.template);
 		}
 		return restores ?? EMPTY_RESTORES;
 	};
@@ -1524,6 +1581,129 @@ export function lynxBlockProgramForComponent<Props>(
 			contextValues,
 		};
 	};
+	const renderBranchRange = (
+		context: LynxBlockProgramContext,
+		state: RangeState,
+		branch: UniversalBranchValue,
+		contextValues: SemanticContexts,
+	): RangeRender => {
+		const branches = state.branchTemplates;
+		if (branches === null) {
+			refuse(
+				subject,
+				LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+					'a keyed list hole later held a conditional region, and a block holds one structural region kind for its lifetime.',
+			);
+		}
+		const previous = state.retained;
+		const previousKeys = state.keys;
+		const renderNothing = (): RangeRender => {
+			const retained = new Map<unknown, RetainedRow | null>();
+			disposeDepartedRowScopes(context, previous, retained);
+			return {
+				state,
+				templateState: null,
+				items: EMPTY_INDEXES,
+				rows: EMPTY_PROGRAM_ROWS,
+				handlers: EMPTY_HANDLER_ROWS,
+				keys: EMPTY_INDEXES,
+				retained,
+				hasScopedRows: false,
+				structural: previousKeys !== null && previousKeys.length !== 0,
+				contextValues,
+				rendered: EMPTY_INDEXES,
+				source: EMPTY_INDEXES,
+				keyedSelection: null,
+				componentRows: null,
+				sparse: null,
+			};
+		};
+		const selected = selectedBranch(branch);
+		if (selected === null) return renderNothing();
+		const produced = withSemanticContexts(contextValues, selected[1]);
+		if (produced === null || produced === undefined || typeof produced === 'boolean') {
+			return renderNothing();
+		}
+		let branchState = branches.get(selected[0]);
+		if (branchState === undefined) {
+			branchState = {
+				key: Object.freeze({}),
+				template: createRangeTemplateState(),
+			};
+			branches.set(selected[0], branchState);
+		}
+		const invocation = rowComponentInvocation(produced);
+		const component =
+			(invocation?.component as unknown as LynxComponent<never> | undefined) ?? null;
+		const props = invocation === null ? null : forwardedProps(invocation);
+		const prior = previous?.get(branchState.key) ?? null;
+		const contextsStable = sameSemanticContexts(state.contextValues, contextValues);
+		let values: readonly UniversalHostTemplateProgramValue[];
+		let listeners: readonly (LynxBlockListener | null)[];
+		let retainedRow: RetainedRow | null;
+		let rendered: readonly number[];
+		if (
+			component !== null &&
+			prior !== null &&
+			contextsStable &&
+			prior.component === component &&
+			blockShallowEqual(prior.props, props)
+		) {
+			values = prior.values;
+			listeners = prior.listeners;
+			retainedRow = prior;
+			rendered = EMPTY_INDEXES;
+		} else {
+			const row = renderRow(
+				context,
+				state,
+				branchState.template,
+				produced,
+				component,
+				props,
+				prior?.component === component ? prior : null,
+				contextValues,
+			);
+			values = row.values;
+			listeners = row.listeners;
+			rendered = [0];
+			retainedRow =
+				component === null
+					? null
+					: {
+							component,
+							props,
+							scope: row.scope,
+							scoped: row.scoped,
+							values,
+							listeners,
+							index: 0,
+						};
+			if (retainedRow !== null) {
+				publishScopedRow(context, state, branchState.template, branchState.key, retainedRow);
+			}
+		}
+		const retained = new Map<unknown, RetainedRow | null>([[branchState.key, retainedRow]]);
+		disposeDepartedRowScopes(context, previous, retained);
+		return {
+			state,
+			templateState: branchState.template,
+			items: [produced],
+			rows: [values],
+			handlers: [listeners],
+			keys: [branchState.key],
+			retained,
+			hasScopedRows: retainedRow !== null && retainedRow.scope !== null,
+			structural:
+				previousKeys === null || previousKeys.length !== 1 || previousKeys[0] !== branchState.key,
+			contextValues,
+			rendered,
+			source: EMPTY_INDEXES,
+			keyedSelection: null,
+			componentRows: null,
+			sparse: null,
+		};
+	};
 
 	/**
 	 * Bring one range site level with the render above.
@@ -1558,10 +1738,17 @@ export function lynxBlockProgramForComponent<Props>(
 	 */
 	const applyRange = (context: LynxBlockProgramContext, render: RangeRender): void => {
 		const state = render.state;
+		const templateState = render.templateState;
 		if (render.sparse !== null) {
+			if (templateState === null) {
+				refuse(
+					subject,
+					LYNX_BLOCK_COMPONENT_DEVELOPMENT && 'a sparse keyed update lost its row template.',
+				);
+			}
 			for (const row of render.sparse) {
 				const member = context.core.writeKeyedValues(state.site!, row.key, row.retained.values);
-				if (render.templateState.prepared!.events.length === 0 || member === undefined) continue;
+				if (templateState.prepared!.events.length === 0 || member === undefined) continue;
 				if (row.retained.listeners.includes(null)) context.root.releaseListeners(member);
 				context.root.bindListeners(member, row.retained.listeners);
 			}
@@ -1575,9 +1762,6 @@ export function lynxBlockProgramForComponent<Props>(
 			});
 			return;
 		}
-		// A list that has never had a row has no template to reconcile against,
-		// and nothing mounted to reconcile.
-		if (render.templateState.template === null) return;
 		context.afterCommit(() => {
 			// Reused descriptors still describe the same row, but a structural
 			// update may have changed that row's committed order. Stage that order
@@ -1601,6 +1785,12 @@ export function lynxBlockProgramForComponent<Props>(
 			state.hasScopedRows = render.hasScopedRows;
 			state.keys = render.keys;
 		});
+		if (templateState === null || templateState.template === null) {
+			context.core.clearForSlot(state.site!, (member) => {
+				context.root.releaseListeners(member);
+			});
+			return;
+		}
 		if (!render.structural) {
 			// The same keys in the same order: every row is a survivor of itself,
 			// so there is no mount, no removal, and no move for the reconciler to
@@ -1612,7 +1802,7 @@ export function lynxBlockProgramForComponent<Props>(
 			// hand, reached from a component instead: `benchmarks/lynx-table/app/
 			// src/block-program.ts`'s `select` writes the two rows whose class
 			// moved, and so does this, without the page having told it which two.
-			const events = render.templateState.prepared!.events.length !== 0;
+			const events = templateState.prepared!.events.length !== 0;
 			for (const index of render.rendered) {
 				const member = context.core.writeKeyedValues(
 					state.site!,
@@ -1628,7 +1818,7 @@ export function lynxBlockProgramForComponent<Props>(
 		}
 		context.core.reconcileForSlot(
 			state.site!,
-			render.templateState.template,
+			templateState.template,
 			render.items,
 			// The keys `renderRange` already derived and duplicate-checked, not
 			// the user's key function again: the reconciler must mount under
@@ -1641,7 +1831,7 @@ export function lynxBlockProgramForComponent<Props>(
 				context.root.releaseListeners(member);
 			},
 		);
-		if (render.templateState.prepared!.events.length === 0) return;
+		if (templateState.prepared!.events.length === 0) return;
 		let index = 0;
 		for (let member = state.site!.head; member !== null; member = member.next) {
 			const handlers = render.handlers[index++]!;
@@ -1658,15 +1848,25 @@ export function lynxBlockProgramForComponent<Props>(
 	): readonly RangeRender[] => {
 		if (ranges.length === 0) return EMPTY_RANGE_RENDERS;
 		return ranges.map((range) => {
-			const list = slotValues[range.slot];
-			if (!isRangeValue(list)) {
-				refuse(
-					subject,
-					LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-						'a hole that mounted a keyed range later held something else, and a block holds one template for its lifetime.',
-				);
+			const value = slotValues[range.slot];
+			if (isRangeValue(value)) {
+				if (range.branchTemplates !== null) {
+					refuse(
+						subject,
+						LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+							'a conditional region later held a keyed list, and a block holds one structural region kind for its lifetime.',
+					);
+				}
+				return renderRange(context, range, value, contextValues);
 			}
-			return renderRange(context, range, list, contextValues);
+			if (isBranchValue(value)) {
+				return renderBranchRange(context, range, value, contextValues);
+			}
+			refuse(
+				subject,
+				LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+					'a structural hole later held a non-structural value, and a block holds one region kind for its lifetime.',
+			);
 		});
 	};
 
@@ -1887,13 +2087,13 @@ export function lynxBlockProgramForComponent<Props>(
 						);
 					}
 					const split = universalTemplateProgramWithoutRanges(runtimeProgram, (slot) =>
-						isRangeValue(rendered.values[slot]),
+						isDynamicRegionValue(rendered.values[slot]),
 					);
 					if (split === null) {
 						refuse(
 							subject,
 							LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-								'one of its keyed ranges is not the last child of its host element, and a range appends its rows to that element — so anything authored after it would be painted before every row.',
+								'one of its dynamic regions is not the last child of its host element, and a region appends its output to that element — so anything authored after it would be painted before the region.',
 						);
 					}
 					const preparedProgram = prepareUniversalTemplateProgram(
@@ -1920,18 +2120,9 @@ export function lynxBlockProgramForComponent<Props>(
 								slot: range.slot,
 								node: range.node,
 								site: null,
-								rowTemplate: {
-									plan: null,
-									compiled: null,
-									prepared: null,
-									template: null,
-								},
-								emptyTemplate: {
-									plan: null,
-									compiled: null,
-									prepared: null,
-									template: null,
-								},
+								rowTemplate: createRangeTemplateState(),
+								emptyTemplate: createRangeTemplateState(),
+								branchTemplates: isBranchValue(rendered.values[range.slot]) ? new Map() : null,
 								retained: null,
 								hasScopedRows: false,
 								keys: null,

@@ -24,8 +24,8 @@
 // events over the same nodes in the same order.
 //
 // What this does not cover is refused by name rather than half-rendered, and
-// the refusals are asserted here too: insertion/context ownership and nested
-// keyed range sites remain later composition layers.
+// the refusals are asserted here too: insertion-effect timing and nested keyed
+// range sites remain later composition layers.
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -36,9 +36,11 @@ import {
 	universalContext,
 	universalFor,
 	universalPlan,
+	universalIf,
 	universalProgramRangeCommandSlot,
 	universalProps,
 	universalValue,
+	universalSwitch,
 	useCallback,
 	useContext,
 	useEffect,
@@ -76,6 +78,8 @@ import type { LynxComponent } from '../src/intrinsics.js';
 import { createFakePAPI } from './_fixtures/fake-element-papi.js';
 import {
 	BlockScopedRow,
+	BlockConditionalFixture,
+	type BlockConditionalProps,
 	BlockScopedRowsFixture,
 	type BlockScopedRowsProps,
 } from './_fixtures/block-scoped-rows.lynx.tsrx';
@@ -1402,6 +1406,175 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 			expect.arrayContaining(['cleanup:1:light', 'cleanup:2:light']),
 		);
 	});
+	it('replaces @if and @switch branches with isolated state, effects, and listeners', async () => {
+		const ALTERNATE_PLAN = universalPlan(LYNX_TRANSPORT_RENDERER, {
+			kind: 'host',
+			type: 'view',
+			props: { class: 'alternate' },
+			children: [
+				{
+					kind: 'host',
+					type: 'text',
+					props: { class: 'alternate-label' },
+					children: [{ kind: 'slot', slot: 0 }],
+				},
+			],
+		});
+		const lifecycle: string[] = [];
+
+		interface BranchProps {
+			readonly label: string;
+		}
+		const Visible = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Visible({ label }: BranchProps) {
+				const [loud, setLoud] = useState(false);
+				useEffect(
+					() => {
+						lifecycle.push(`mount:${label}`);
+						return () => lifecycle.push(`cleanup:${label}`);
+					},
+					[],
+					'branch-lifetime',
+				);
+				return universalValue(ROW_PLAN, [
+					'branch',
+					label,
+					() => setLoud((value) => !value),
+					`${label}:${loud ? 'loud' : 'quiet'}`,
+				]);
+			},
+		);
+
+		interface BranchPageProps {
+			readonly mode: 'then' | 'else' | 'none' | 'case' | 'default';
+			readonly label: string;
+		}
+		const BranchPage = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function BranchPage({ mode, label }: BranchPageProps) {
+				const region =
+					mode === 'then' || mode === 'else' || mode === 'none'
+						? universalIf(
+								mode === 'then',
+								() =>
+									universalComponent(LYNX_TRANSPORT_RENDERER, Visible, {
+										label,
+									}),
+								mode === 'none' ? null : () => universalValue(ALTERNATE_PLAN, ['alternate']),
+							)
+						: universalSwitch(
+								mode === 'case' ? 'known' : 'missing',
+								[
+									[
+										'known',
+										() =>
+											universalComponent(LYNX_TRANSPORT_RENDERER, Visible, {
+												label,
+											}),
+									],
+								],
+								() => universalValue(ALTERNATE_PLAN, ['default']),
+							);
+				return universalValue(TABLE_PLAN, [region]);
+			},
+		);
+
+		const block = blockColumn<BranchPageProps>();
+		await block.render(BranchPage as never, { mode: 'then', label: 'alpha' });
+		await flushMicrotasks();
+		expect(lifecycle).toEqual(['mount:alpha']);
+		const departed = rowListener(block.main.commits, 0);
+		deliverTo(block, departed);
+		await block.settle(Promise.resolve());
+		expect(paint(block.main.commits).tree).toContain('alpha:loud');
+
+		await block.render(BranchPage as never, { mode: 'then', label: 'beta' });
+		await flushMicrotasks();
+		expect(paint(block.main.commits).tree).toContain('beta:loud');
+		expect(lifecycle).toEqual(['mount:alpha']);
+
+		await block.render(BranchPage as never, { mode: 'else', label: 'beta' });
+		await flushMicrotasks();
+		expect(paint(block.main.commits).tree).toContain('alternate');
+		expect(lifecycle).toEqual(['mount:alpha', 'cleanup:alpha']);
+		expect(() => deliverTo(block, departed)).toThrow(/listener/i);
+
+		await block.render(BranchPage as never, { mode: 'none', label: 'beta' });
+		expect(paint(block.main.commits).tree).not.toContain('alternate');
+
+		await block.render(BranchPage as never, { mode: 'case', label: 'gamma' });
+		await flushMicrotasks();
+		expect(paint(block.main.commits).tree).toContain('gamma:quiet');
+		expect(lifecycle).toEqual(['mount:alpha', 'cleanup:alpha', 'mount:gamma']);
+
+		await block.render(BranchPage as never, { mode: 'default', label: 'gamma' });
+		await flushMicrotasks();
+		expect(paint(block.main.commits).tree).toContain('default');
+		expect(lifecycle).toEqual(['mount:alpha', 'cleanup:alpha', 'mount:gamma', 'cleanup:gamma']);
+
+		await block.settle(block.background.unmountAsync());
+	});
+	it('adopts an authored .tsrx @if branch without resetting its surviving component', async () => {
+		const lifecycle: string[] = [];
+		const block = blockColumn<BlockConditionalProps>();
+		const component = BlockConditionalFixture as never as LynxComponent<BlockConditionalProps>;
+
+		const initial: BlockConditionalProps = {
+			show: true,
+			label: 'alpha',
+			log: (entry) => lifecycle.push(entry),
+		};
+		const rejected = block.background.renderAsync(component, initial);
+		await flushMicrotasks();
+		block.main.reject(block.main.commits[0]!, 'injected conditional mount rejection');
+		await expect(rejected).rejects.toThrow('injected conditional mount rejection');
+		await flushMicrotasks();
+		expect(lifecycle).toEqual([]);
+		const accepted = () => block.main.commits.slice(1);
+		await block.render(component, initial);
+		await flushMicrotasks();
+		expect(paint(accepted()).tree).toContain('alpha:quiet');
+		expect(lifecycle).toEqual(['mount:alpha']);
+
+		const departed = rowListener(accepted(), 0);
+		deliverTo(block, departed);
+		await block.settle(Promise.resolve());
+		expect(paint(accepted()).tree).toContain('alpha:loud');
+
+		await block.render(component, {
+			show: true,
+			label: 'beta',
+			log: (entry) => lifecycle.push(entry),
+		});
+		await flushMicrotasks();
+		expect(paint(accepted()).tree).toContain('beta:loud');
+		expect(lifecycle).toEqual(['mount:alpha']);
+
+		await block.render(component, {
+			show: false,
+			label: 'beta',
+			log: (entry) => lifecycle.push(entry),
+		});
+		await flushMicrotasks();
+		expect(paint(accepted()).tree).toContain('hidden:beta');
+		expect(lifecycle).toEqual(['mount:alpha', 'cleanup:alpha']);
+		expect(() => deliverTo(block, departed)).toThrow(/listener/i);
+
+		await block.render(component, {
+			show: true,
+			label: 'gamma',
+			log: (entry) => lifecycle.push(entry),
+		});
+		await flushMicrotasks();
+		expect(paint(accepted()).tree).toContain('gamma:quiet');
+		expect(lifecycle).toEqual(['mount:alpha', 'cleanup:alpha', 'mount:gamma']);
+
+		await block.settle(block.background.unmountAsync());
+		await flushMicrotasks();
+		expect(lifecycle).toEqual(['mount:alpha', 'cleanup:alpha', 'mount:gamma', 'cleanup:gamma']);
+	});
+
 	it('keeps row-state discovery constant as unrelated stateful rows grow', async () => {
 		const component = BlockScopedRowsFixture as never as LynxComponent<BlockScopedRowsProps>;
 		for (const count of [2, 128]) {
@@ -2943,7 +3116,7 @@ describe('Lynx compiled component with a keyed range the Block core refuses', ()
 		await block.render(Listed as LynxComponent<TableProps>, table([1]));
 		await expect(
 			block.settle(block.background.renderAsync(Listed as never, table([1], 1))),
-		).rejects.toThrow(/mounted a keyed range later held something else/);
+		).rejects.toThrow(/structural hole later held a non-structural value/);
 	});
 });
 
