@@ -6,10 +6,8 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
  *
  * `block-root.ts` proved the core's frames survive the real transport.
  * `block-core.ts` proved the Block model emits a change-proportional update.
- * Neither of them is reachable from an application: `createLynxRoot` builds a
- * universal root, and nothing under `packages/lynx/src` referenced either
- * module. This is the seam that makes the choice real — selected at build time
- * by `@octanejs/rspeedy-plugin`'s `core` option, never per root.
+ * This is the seam that makes the choice real — selected through a build-time
+ * module replacement by `@octanejs/rspeedy-plugin`, never per root.
  *
  * ## What flag-on can and cannot drive today, stated plainly
  *
@@ -52,6 +50,7 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
 
 import type {
 	UniversalComponent,
+	UniversalEventPriority,
 	UniversalHostBatch,
 	UniversalPreparedAttempt,
 	UniversalTransaction,
@@ -67,8 +66,9 @@ import {
 	type LynxBlockProgram,
 	type LynxBlockProgramContext,
 } from './block-program.js';
-import { LYNX_TRANSPORT_RENDERER } from './protocol.js';
+import { LYNX_TRANSPORT_RENDERER } from './transport-identity.js';
 import type { LynxBackgroundTransport } from './transport.js';
+import type { LynxCompiledProgramBlockTransport } from './compiled-program-block-transport.js';
 
 /**
  * The members `root.ts` uses from whichever core the bundle carries.
@@ -82,11 +82,13 @@ export interface LynxBackgroundCore {
 	flushTransport(): Promise<void>;
 	unmountAsync(): Promise<void>;
 	dispatchTransportEvent(message: UniversalTransportEventMessage): readonly unknown[];
+	/** Present on the Block facade selected with the compact native-event transport. */
+	acceptsNativeEvent?(listener: number, priority: UniversalEventPriority): boolean;
 }
 
 export interface LynxBlockBackgroundCoreOptions {
 	readonly container: LynxClientContainer;
-	readonly transport: LynxBackgroundTransport;
+	readonly transport: LynxBackgroundTransport | LynxCompiledProgramBlockTransport;
 	/** The root's resolved Lynx-safe microtask scheduler. */
 	readonly scheduleMicrotask: (callback: () => void) => void;
 	/** Bring your own core and root id, primarily so a test can pin allocators. */
@@ -352,9 +354,16 @@ export function createLynxBlockBackgroundCore(
 	// transport down underneath it.
 	let pending: Promise<unknown> = Promise.resolve();
 	const track = <T>(work: Promise<T>): Promise<T> => {
-		// allSettled rather than then: a caller that already handled a rejection
-		// must not have it resurface out of an unrelated flushTransport().
-		pending = Promise.allSettled([pending, work]);
+		// Attach the rejection branch now, while preserving `work` for its caller:
+		// a rejection the caller already handled must not resurface out of an
+		// unrelated flushTransport(). Chain the fulfilled tracker behind the
+		// preceding one so a flush still waits for every started commit. Lynx's
+		// background runtime is ES2015 and does not provide Promise.allSettled.
+		const settled = work.then(
+			() => undefined,
+			() => undefined,
+		);
+		pending = pending.then(() => settled);
 		return work;
 	};
 
@@ -425,6 +434,10 @@ export function createLynxBlockBackgroundCore(
 
 		dispatchTransportEvent(message: UniversalTransportEventMessage): readonly unknown[] {
 			return blockRoot.dispatchTransportEvent(message);
+		},
+
+		acceptsNativeEvent(listener: number, priority: UniversalEventPriority): boolean {
+			return blockRoot.acceptsNativeEvent(listener, priority);
 		},
 	});
 }

@@ -15,8 +15,11 @@ import {
 	type LynxMainThreadRefDescriptor,
 	type LynxMainThreadWorkletDescriptor,
 } from './worklets.js';
+import { normalizeLynxClass } from './host-prop-value.js';
 
 export type { LynxMainThreadRefDescriptor, LynxMainThreadWorkletDescriptor } from './worklets.js';
+export { normalizeLynxClass } from './host-prop-value.js';
+export type { LynxClassValue } from './host-prop-value.js';
 
 /**
  * Compiler-owned prop carrying the CSS scope selected for one Lynx host node.
@@ -39,15 +42,6 @@ export const LYNX_LENGTH_UNITS = Object.freeze([
 	'vw',
 	'%',
 ] as const);
-
-export type LynxClassValue =
-	| string
-	| number
-	| boolean
-	| null
-	| undefined
-	| readonly LynxClassValue[]
-	| { readonly [name: string]: unknown };
 
 export interface LynxCSSScopeMetadata {
 	readonly cssId?: number;
@@ -132,33 +126,6 @@ function propError(message: string | false): Error {
 	return new TypeError(
 		LYNX_HOST_PROPS_DEVELOPMENT ? `Octane Lynx host prop: ${message}` : 'Octane Lynx OL100',
 	);
-}
-
-/** Octane's clsx-style class composition without importing the DOM runtime. */
-export function normalizeLynxClass(value: LynxClassValue | unknown): string {
-	if (typeof value === 'string') return value;
-	if (typeof value !== 'object') {
-		return typeof value === 'number' && value ? String(value) : '';
-	}
-	if (value === null) return '';
-
-	let result = '';
-	if (Array.isArray(value)) {
-		for (let index = 0; index < value.length; index++) {
-			const item = value[index];
-			if (!item) continue;
-			const normalized = normalizeLynxClass(item);
-			if (normalized) result = result ? `${result} ${normalized}` : normalized;
-		}
-		return result;
-	}
-
-	for (const name of Object.keys(value)) {
-		if ((value as Record<string, unknown>)[name]) {
-			result = result ? `${result} ${name}` : name;
-		}
-	}
-	return result;
 }
 
 /** True for one literal Lynx `<length>` token; `calc()`/`var()` are not literals. */

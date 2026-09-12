@@ -45,6 +45,7 @@ test('issue #278 instrumentation splits the real codec and restores every source
 		assert.match(mainThread, /completedAtMs/);
 		assert.match(entry, /from '@octanejs\/lynx\/main-thread'/);
 		assert.doesNotMatch(entry, /installLynxApplicationMainThread/);
+		assert.doesNotMatch(entry, /installLynxProductApplicationMainThread/);
 		assert.match(entry, /validation: __BENCH_ISSUE278_VALIDATION__/);
 		restore();
 		for (const relative of files) {

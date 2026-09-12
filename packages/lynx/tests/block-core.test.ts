@@ -100,6 +100,7 @@ interface Scene {
 	readonly core: LynxBlockCore;
 	readonly slot: LynxBlockForSlot;
 	readonly papi: ReturnType<typeof createFakePAPI>;
+	readonly container: ReturnType<typeof createLynxHostContainer<FakeNode>>;
 	apply(): void;
 	tree(): unknown;
 }
@@ -124,7 +125,7 @@ function scene(list: readonly Row[], selected: number | null): Scene {
 		prepareLynxHostBatch(container, batch).apply();
 	};
 	apply();
-	return { core, slot, papi, tree: () => shape(papi.pages[0]!), apply };
+	return { core, slot, papi, container, tree: () => shape(papi.pages[0]!), apply };
 }
 
 describe('Lynx block core — compiler range provenance', () => {
@@ -403,21 +404,78 @@ describe('Lynx block core — change-proportionality', () => {
 		}
 	});
 
-	// The teardown path is where the command vocabulary is genuinely weaker than
-	// the v2 delta protocol, and the count says so rather than hiding it: each
-	// departing row costs one `remove` plus one `destroy` per host in its run,
-	// where `REMOVE {firstInstance, count}` would cost one frame for all of them.
-	it('reports the teardown cost the command vocabulary actually charges', () => {
+	it('clears a complete dense range with one run command', () => {
 		const built = scene(rows(4), null);
 		built.core.resetCounters();
 		built.core.clearForSlot(built.slot);
-		expect(built.core.counters()).toEqual({
-			blockLookups: 0,
-			commands: 4 * (1 + ROW_TEMPLATE.hostCount),
-		});
+		expect(built.core.counters()).toEqual({ blockLookups: 0, commands: 1 });
 		// Counting a teardown the applier would reject proves nothing, so the
 		// frame is applied and the range site checked empty.
 		built.apply();
+		expect(built.papi.pages[0]!.children[0]!.children[0]!.children).toEqual([]);
+	});
+
+	it('coalesces adjacent allocations when clearing after an append', () => {
+		const built = scene(rows(2), null);
+		built.core.reconcileForSlot(
+			built.slot,
+			ROW_TEMPLATE,
+			rows(3),
+			(row) => row.id,
+			(row) => rowValues(row, null),
+		);
+		built.apply();
+		built.core.resetCounters();
+
+		built.core.clearForSlot(built.slot);
+		const batch = built.core.flush()!;
+		expect(batch.commands).toEqual([
+			{
+				op: 'destroy-run',
+				parent: built.slot.parent,
+				firstId: 3,
+				count: 3,
+				width: ROW_TEMPLATE.hostCount,
+			},
+		]);
+		expect(built.core.counters()).toEqual({ blockLookups: 0, commands: 1 });
+		prepareLynxHostBatch(built.container, batch).apply();
+		expect(built.papi.pages[0]!.children[0]!.children[0]!.children).toEqual([]);
+	});
+
+	it('keeps allocation holes as separate accepted teardown runs', () => {
+		const built = scene(rows(4), null);
+		const next = [rows(1)[0]!, ...rows(2, 2), rows(1, 4)[0]!];
+		built.core.reconcileForSlot(
+			built.slot,
+			ROW_TEMPLATE,
+			next,
+			(row) => row.id,
+			(row) => rowValues(row, null),
+		);
+		built.apply();
+		built.core.resetCounters();
+
+		built.core.clearForSlot(built.slot);
+		const batch = built.core.flush()!;
+		expect(batch.commands).toEqual([
+			{
+				op: 'destroy-run',
+				parent: built.slot.parent,
+				firstId: 3,
+				count: 1,
+				width: ROW_TEMPLATE.hostCount,
+			},
+			{
+				op: 'destroy-run',
+				parent: built.slot.parent,
+				firstId: 17,
+				count: 3,
+				width: ROW_TEMPLATE.hostCount,
+			},
+		]);
+		expect(built.core.counters()).toEqual({ blockLookups: 0, commands: 2 });
+		prepareLynxHostBatch(built.container, batch).apply();
 		expect(built.papi.pages[0]!.children[0]!.children[0]!.children).toEqual([]);
 	});
 });

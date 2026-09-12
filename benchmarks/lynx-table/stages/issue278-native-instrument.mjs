@@ -380,13 +380,13 @@ function issue278MarkCommitTimeline(name: string): void {
 		}
 		let mainThreadEntryInstrumented = replaceOnce(
 			mainThreadEntrySource,
-			"import { installLynxApplicationMainThread } from '@octanejs/lynx/main-thread-application';",
+			"import { installLynxProductApplicationMainThread } from '@octanejs/lynx/main-thread-product-application';",
 			"import { installLynxMainThread } from '@octanejs/lynx/main-thread';",
 			mainThreadEntryFile,
 		);
 		mainThreadEntryInstrumented = replaceOnce(
 			mainThreadEntryInstrumented,
-			'installLynxApplicationMainThread({\n\tfirstScreen: true,\n',
+			'installLynxProductApplicationMainThread({\n\tfirstScreen: true,\n',
 			`installLynxMainThread({
 	firstScreen: true,
 	validation: __BENCH_ISSUE278_VALIDATION__,

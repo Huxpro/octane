@@ -9,6 +9,7 @@
 //   OCTANE_LYNX_PROFILE=1 node scripts/build-app.mjs   # wire-counter build
 //   BENCH_AUTOROWS=1000 node scripts/build-app.mjs     # pre-populated table
 //   BENCH_CORE=block node scripts/build-app.mjs        # issue-#103 Block core
+//   BENCH_CORE=automatic node scripts/build-app.mjs    # omit the product core override
 //   BENCH_CORE=block BENCH_BLOCK_MODE=derived node scripts/build-app.mjs
 //                                                     # …driven by the compiled app
 //   BENCH_MTS_PROGRAM=1 node scripts/build-app.mjs    # issue-#163 main-thread programs
@@ -38,7 +39,7 @@ const STAGE_NAME = 'lynx-table-bench';
 const BLOCK_MODES = new Set(['scoped', 'reconcile', 'derived']);
 
 /**
- * @param {{silent?: boolean, core?: 'universal'|'block', blockMode?: 'scoped'|'reconcile'|'derived', mtsProgram?: boolean}} [options]
+ * @param {{silent?: boolean, core?: 'universal'|'block'|'automatic', blockMode?: 'scoped'|'reconcile'|'derived', mtsProgram?: boolean}} [options]
  * @returns {string} the staged dist directory
  */
 /**
@@ -289,7 +290,13 @@ export function buildTableApp({
 	// suffix has to be spelled the same here and in app/lynx.config.mjs, which
 	// derives its own dist path from the same two variables.
 	const coreSuffix =
-		core === 'block' ? (blockMode === 'scoped' ? '-block' : `-block-${blockMode}`) : '';
+		core === 'block'
+			? blockMode === 'scoped'
+				? '-block'
+				: `-block-${blockMode}`
+			: core === 'automatic'
+				? '-automatic'
+				: '';
 	// Issue-#163 C1d/C4b: the main-thread program backend is the other build-time
 	// switch, and it is orthogonal to the core — it moves the main-thread chunk
 	// and leaves the background one byte-identical. A second suffix rather than a
@@ -305,8 +312,11 @@ export function buildTableApp({
 	// the same source.
 	const distTag = tagFrom(process.env.BENCH_DIST_TAG);
 	const label =
-		(core === 'block' ? `octane table app (${core}/${blockMode})` : 'octane table app') +
-		(mtsProgram ? ' +mts-program' : '');
+		(core === 'block'
+			? `octane table app (${core}/${blockMode})`
+			: core === 'automatic'
+				? 'octane table app (automatic product core)'
+				: 'octane table app') + (mtsProgram ? ' +mts-program' : '');
 	if (!silent) console.log(`[lynx-table] building ${label} (production)…`);
 	try {
 		execFileSync('npx', ['rspeedy', 'build', '--root', `examples/${STAGE_NAME}`], {
@@ -352,8 +362,9 @@ export function buildTableApp({
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
+	const requestedCore = process.env.BENCH_CORE;
 	buildTableApp({
-		core: process.env.BENCH_CORE === 'block' ? 'block' : 'universal',
+		core: requestedCore === 'block' || requestedCore === 'automatic' ? requestedCore : 'universal',
 		blockMode: BLOCK_MODES.has(process.env.BENCH_BLOCK_MODE)
 			? /** @type {'scoped'|'reconcile'|'derived'} */ (process.env.BENCH_BLOCK_MODE)
 			: 'scoped',

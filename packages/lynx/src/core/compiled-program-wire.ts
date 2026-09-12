@@ -10,10 +10,17 @@ import type {
 } from 'octane/universal/native';
 
 import type {
+	LynxDataLifecycleMessage,
+	LynxGlobalPropsMessage,
+	LynxLifecycleDataRecord,
+	LynxPageDataMessage,
+} from './lifecycle-types.js';
+import type {
 	LynxCompiledProgramDisposeAcknowledgement,
 	LynxCompiledProgramDisposeRetry,
 } from './compiled-program-controller.js';
-import { LYNX_TRANSPORT_PROTOCOL_VERSION, LYNX_TRANSPORT_RENDERER } from './protocol.js';
+import { LYNX_TRANSPORT_PROTOCOL_VERSION, LYNX_TRANSPORT_RENDERER } from './transport-identity.js';
+import { decodeLynxTransportValue, encodeLynxTransportValue } from './transport-codec.js';
 
 const WIRE_DEVELOPMENT =
 	typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__;
@@ -33,6 +40,10 @@ const enum WireOpcode {
 	DisposeAcknowledgement = 11,
 	DisposeRetry = 12,
 	PageDestroy = 13,
+	PageReplace = 14,
+	PageUpdate = 15,
+	PageReset = 16,
+	GlobalProps = 17,
 }
 
 export const LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT =
@@ -77,6 +88,7 @@ export type LynxCompiledProgramBackgroundMessage =
 export type LynxCompiledProgramMainMessage =
 	| LynxCompiledProgramReadyReply
 	| LynxCompiledProgramPageDestroyMessage
+	| LynxDataLifecycleMessage
 	| UniversalTransportAcknowledgement
 	| UniversalTransportCompleteMessage
 	| UniversalTransportRejectMessage
@@ -123,6 +135,16 @@ function error(input: unknown[], at: number): UniversalTransportError {
 		fail('received an invalid error');
 	}
 	return Object.freeze({ name, message });
+}
+
+function lifecycleRecord(input: unknown[], name: string): LynxLifecycleDataRecord {
+	if (input.length !== 3) fail(`received the wrong ${name} field count`);
+	if (typeof input[2] !== 'string') fail(`received invalid ${name} encoding`);
+	const value = decodeLynxTransportValue(input[2]);
+	if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+		fail(`received invalid ${name} data`);
+	}
+	return value as LynxLifecycleDataRecord;
 }
 
 /**
@@ -214,6 +236,34 @@ export function encodeLynxCompiledProgramMainMessage(
 	if (message.type === 'page-destroy') {
 		return JSON.stringify([LYNX_TRANSPORT_PROTOCOL_VERSION, WireOpcode.PageDestroy]);
 	}
+	if (message.type === 'page-data' || message.type === 'global-props') {
+		if (
+			message.protocol !== LYNX_TRANSPORT_PROTOCOL_VERSION ||
+			message.renderer !== LYNX_TRANSPORT_RENDERER
+		) {
+			fail('received a foreign lifecycle identity');
+		}
+		if (message.type === 'global-props') {
+			return JSON.stringify([
+				LYNX_TRANSPORT_PROTOCOL_VERSION,
+				WireOpcode.GlobalProps,
+				encodeLynxTransportValue(message.patch),
+			]);
+		}
+		const opcode =
+			message.operation === 'replace'
+				? WireOpcode.PageReplace
+				: message.operation === 'update'
+					? WireOpcode.PageUpdate
+					: message.operation === 'reset'
+						? WireOpcode.PageReset
+						: fail('received an invalid page-data operation');
+		return JSON.stringify([
+			LYNX_TRANSPORT_PROTOCOL_VERSION,
+			opcode,
+			encodeLynxTransportValue(message.data),
+		]);
+	}
 	if (
 		message.protocol !== LYNX_TRANSPORT_PROTOCOL_VERSION ||
 		message.renderer !== LYNX_TRANSPORT_RENDERER
@@ -256,6 +306,34 @@ export function decodeLynxCompiledProgramMainMessage(
 	if (input[1] === WireOpcode.PageDestroy) {
 		if (input.length !== 2) fail('received the wrong page-destroy field count');
 		return Object.freeze({ type: 'page-destroy' });
+	}
+	if (input[1] === WireOpcode.GlobalProps) {
+		const patch = lifecycleRecord(input, 'global-props');
+		return Object.freeze({
+			protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
+			renderer: LYNX_TRANSPORT_RENDERER,
+			type: 'global-props',
+			patch,
+		}) as LynxGlobalPropsMessage;
+	}
+	if (
+		input[1] === WireOpcode.PageReplace ||
+		input[1] === WireOpcode.PageUpdate ||
+		input[1] === WireOpcode.PageReset
+	) {
+		const data = lifecycleRecord(input, 'page-data');
+		return Object.freeze({
+			protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
+			renderer: LYNX_TRANSPORT_RENDERER,
+			type: 'page-data',
+			operation:
+				input[1] === WireOpcode.PageReplace
+					? 'replace'
+					: input[1] === WireOpcode.PageUpdate
+						? 'update'
+						: 'reset',
+			data,
+		}) as LynxPageDataMessage;
 	}
 	const withError =
 		input[1] === WireOpcode.Reject ||

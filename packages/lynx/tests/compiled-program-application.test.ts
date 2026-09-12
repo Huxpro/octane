@@ -11,10 +11,21 @@ import { installLynxCompiledProgramApplicationMainThread } from '../src/compiled
 import { emitLynxMainThreadProgram } from '../src/compiler/emit-main-thread-program.js';
 import { createLynxCompiledProgramTransport } from '../src/core/compiled-program-transport.js';
 import { encodeLynxDeltaMessage } from '../src/core/delta-protocol.js';
+import type { LynxDataLifecycleMessage } from '../src/core/lifecycle-types.js';
 import { registerUniversalProgram } from '../src/core/program-registry.js';
 import type { LynxContextProxy, LynxContextProxyEvent } from '../src/core/protocol.js';
+import {
+	markFirstScreenSyncReady,
+	root as firstScreenRoot,
+} from '../src/first-screen.compiled-program.js';
+import {
+	defineUniversalComponent,
+	universalPlan,
+	universalValue,
+} from '../src/main-renderer-product.js';
 
 const MODULE = 'tests/CompiledProgramApplication.lynx.tsrx';
+const ADOPTION_MODULE = 'tests/CompiledProgramApplicationAdoption.lynx.tsrx';
 const ROW: UniversalHostTemplateProgram = {
 	nodes: [
 		{
@@ -46,6 +57,7 @@ function emittedPlan(): UniversalProgramPlan {
 		values: [0, 1],
 		events: [],
 		ranges: [],
+		wire: ROW,
 		bind: new Function(`return (${emission.source});`)() as UniversalProgramPlan['bind'],
 	};
 }
@@ -54,7 +66,7 @@ function identity(version: number): UniversalTransportIdentity {
 	return { protocol: 1, renderer: 'lynx', root: 97, version };
 }
 
-function mountFrame(): readonly unknown[] {
+function mountFrame(module = MODULE): readonly unknown[] {
 	return encodeLynxDeltaMessage(
 		[
 			{
@@ -67,7 +79,24 @@ function mountFrame(): readonly unknown[] {
 				values: ['compact-row', 'ready'],
 			},
 		],
-		[{ id: 1, address: { module: MODULE, index: 0 } }],
+		[{ id: 1, address: { module, index: 0 } }],
+	);
+}
+
+function appendFrame(firstInstance: number, id: string, text: string): readonly unknown[] {
+	return encodeLynxDeltaMessage(
+		[
+			{
+				op: 'run',
+				templateId: 1,
+				parent: { instance: 1, slot: 0 },
+				before: null,
+				firstInstance,
+				count: 1,
+				values: [id, text],
+			},
+		],
+		[],
 	);
 }
 
@@ -148,7 +177,10 @@ describe.sequential('@octanejs/lynx compiled-program application bootstrap', () 
 		application.markProgramsReady();
 
 		env.switchToBackgroundThread();
-		const transport = createLynxCompiledProgramTransport(lynx.getCoreContext());
+		const lifecycle: LynxDataLifecycleMessage[] = [];
+		const transport = createLynxCompiledProgramTransport(lynx.getCoreContext(), {
+			onLifecycle: (message) => lifecycle.push(message),
+		});
 		let ready = false;
 		void transport.ready.then(() => {
 			ready = true;
@@ -156,8 +188,35 @@ describe.sequential('@octanejs/lynx compiled-program application bootstrap', () 
 		await Promise.resolve();
 		expect(ready).toBe(false);
 
-		engine.dispatchEvent({ type: '__RenderPage', data: [{}, {}] });
+		engine.dispatchEvent({ type: '__RenderPage', data: [{ boot: 'ready' }, {}] });
 		await transport.ready;
+		engine.dispatchEvent({
+			type: '__UpdatePage',
+			data: [{ next: 1 }, { resetPageData: false }],
+		});
+		engine.dispatchEvent({ type: '__UpdateGlobalProps', data: [{ locale: 'en' }] });
+		expect(lifecycle).toEqual([
+			{
+				protocol: 1,
+				renderer: 'lynx',
+				type: 'page-data',
+				operation: 'replace',
+				data: { boot: 'ready' },
+			},
+			{
+				protocol: 1,
+				renderer: 'lynx',
+				type: 'page-data',
+				operation: 'update',
+				data: { next: 1 },
+			},
+			{
+				protocol: 1,
+				renderer: 'lynx',
+				type: 'global-props',
+				patch: { locale: 'en' },
+			},
+		]);
 		await transport.commit(identity(1), mountFrame(), () => {}).promise;
 		expect(dom!.window.document.querySelector('#compact-row')?.textContent).toBe('ready');
 
@@ -165,7 +224,9 @@ describe.sequential('@octanejs/lynx compiled-program application bootstrap', () 
 		await transport.pageDestroyed;
 		expect(dom!.window.document.querySelector('#compact-row')).toBeNull();
 		expect(engine.listeners.get('__RenderPage')?.size ?? 0).toBe(0);
-		expect(engine.removalAttempts).toBe(3);
+		// Two injected failures, followed by one successful removal for each of
+		// the three engine lifecycle listeners.
+		expect(engine.removalAttempts).toBe(5);
 		application.close();
 	});
 
@@ -189,6 +250,43 @@ describe.sequential('@octanejs/lynx compiled-program application bootstrap', () 
 		env.switchToBackgroundThread();
 		const transport = createLynxCompiledProgramTransport(lynx.getCoreContext());
 		await transport.ready;
+		transport.close();
+		application.close();
+	});
+
+	it('hands the painted Web first screen over once and mounts later runs normally', async () => {
+		const env = installEnvironment();
+		env.switchToMainThread();
+		const plan = universalPlan('lynx', emittedPlan(), {
+			module: ADOPTION_MODULE,
+			index: 0,
+			digest: 'compiled-program-application-test',
+		});
+		const App = defineUniversalComponent('lynx', () =>
+			universalValue(plan, ['compact-row', 'ready']),
+		);
+		const application = installLynxCompiledProgramApplicationMainThread({
+			firstScreen: true,
+			pageReady: true,
+		});
+		firstScreenRoot.render(App);
+		markFirstScreenSyncReady();
+
+		env.switchToBackgroundThread();
+		const lynx = (
+			globalThis as typeof globalThis & {
+				lynx: { getCoreContext(): LynxContextProxy };
+			}
+		).lynx;
+		const transport = createLynxCompiledProgramTransport(lynx.getCoreContext());
+		await transport.ready;
+		await transport.commit(identity(1), mountFrame(ADOPTION_MODULE), () => {}).promise;
+		expect(dom!.window.document.querySelectorAll('#compact-row')).toHaveLength(1);
+
+		await transport.commit(identity(2), appendFrame(3, 'later-row', 'later'), () => {}).promise;
+		expect(dom!.window.document.querySelector('#later-row')?.textContent).toBe('later');
+
+		await transport.dispose(identity(2), true);
 		transport.close();
 		application.close();
 	});

@@ -233,6 +233,8 @@ export function deriveLynxMainThreadProgram(
 		emitLynxMainThreadProgram(derived.wire, {
 			name: 'octaneEligibilityProbe',
 			ranges: derived.ranges,
+			slotUpdates: true,
+			structuralRuns: true,
 		});
 	} catch (error) {
 		if (error instanceof LynxMainThreadEmitRefusal) return null;

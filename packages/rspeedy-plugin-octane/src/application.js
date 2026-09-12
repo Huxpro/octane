@@ -10,6 +10,7 @@ import {
 	WebEncodePlugin,
 } from '@lynx-js/template-webpack-plugin';
 
+import { installLynxBackgroundCoreReplacement } from './background-core.js';
 import { LYNX_BACKGROUND_LAYER, LYNX_MAIN_THREAD_LAYER } from './layers.js';
 import { LynxProgramCoveragePlugin } from './program-coverage.js';
 
@@ -23,9 +24,6 @@ const MAIN_THREAD_ASSET = /main-thread(?:\.[A-Fa-f0-9]+)?\.js$/;
 // Build-time constant the generated main-thread entry reads to pick its
 // first-screen render mode per platform. See FirstScreenRenderModePlugin.
 const FIRST_SCREEN_RENDER_DEFINE = '__OCTANE_LYNX_FIRST_SCREEN_RENDER__';
-// Build-time constant `@octanejs/lynx` reads to bind its background core. See
-// BackgroundCorePlugin and packages/lynx/src/core/environment.ts.
-const BACKGROUND_CORE_DEFINE = '__OCTANE_LYNX_BACKGROUND_CORE__';
 // Build-time branch used by @octanejs/lynx to keep descriptive diagnostics in
 // development while shipping compact, stable error identifiers in production.
 const DIAGNOSTIC_MODE_DEFINE = '__OCTANE_LYNX_DEVELOPMENT__';
@@ -111,8 +109,7 @@ class FirstScreenRenderModePlugin {
 }
 
 /**
- * Inject the selected background core as a build-time constant `@octanejs/lynx`
- * reads at module scope.
+ * Resolve the selected background-core module before optimization.
  *
  * The switch is compile-time rather than a per-root runtime option so a bundle
  * carries exactly one core: the branch folds to a literal, the unselected core
@@ -126,13 +123,7 @@ class BackgroundCorePlugin {
 	}
 
 	apply(compiler) {
-		const DefinePlugin = compiler.webpack?.DefinePlugin;
-		if (typeof DefinePlugin !== 'function') {
-			throw new TypeError(
-				`${PLUGIN_NAME}: this Rspack compiler does not expose webpack.DefinePlugin.`,
-			);
-		}
-		new DefinePlugin({ [BACKGROUND_CORE_DEFINE]: JSON.stringify(this.core) }).apply(compiler);
+		installLynxBackgroundCoreReplacement(compiler, () => this.core);
 	}
 }
 
@@ -141,8 +132,8 @@ class BackgroundCorePlugin {
  *
  * Applied for every graph the plugin owns, not only the application graph: an
  * isolated `thread` compile is how the background bundle is inspected and
- * source-tested, and it would otherwise read as an undefined constant and fall
- * back rather than carry the configured core.
+ * source-tested, and it has no paired application proof from which to derive a
+ * choice. Application builds install their proof-aware replacement below.
  */
 export function applyLynxBackgroundCore(chain, core) {
 	chain.plugin(`${PLUGIN_NAME}:background-core`).use(BackgroundCorePlugin, [core]);
@@ -432,7 +423,11 @@ export function applyLynxApplication(chain, context, rspeedyConfig, options) {
 		.use(FirstScreenRenderModePlugin, [kind === 'web' ? 'immediate' : 'engine']);
 	chain
 		.plugin(`${PLUGIN_NAME}:program-coverage`)
-		.use(LynxProgramCoveragePlugin, [programCoverageEntries, options.programAddressing === true]);
+		.use(LynxProgramCoveragePlugin, [
+			programCoverageEntries,
+			options.programAddressing === true,
+			options.core,
+		]);
 	chain.plugin(`${PLUGIN_NAME}:mark-main-thread`).use(MarkMainThreadAssetPlugin);
 	if (kind === 'lynx') {
 		chain.plugin(`${PLUGIN_NAME}:runtime-wrapper`).use(RuntimeWrapperWebpackPlugin, [

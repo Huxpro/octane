@@ -67,7 +67,7 @@ describe('Lynx transport conformance', () => {
 
 	// The static half. A runtime probe only proves what it executed, and the
 	// claim being made is about every path, so the send sites are counted and
-	// read directly. Adding a fifth one, or dropping the encode from an existing
+	// read directly. Adding another one, or dropping the encode from an existing
 	// one, is what this notices.
 	it('encodes at every send site and frames every general dispatch', () => {
 		const sites: string[] = [];
@@ -92,7 +92,7 @@ describe('Lynx transport conformance', () => {
 		expect(sites.filter((site) => /, data }$/.test(site))).toHaveLength(6);
 		expect(sites.filter((site) => /data:\s*encodeLynxTransportValue\(/.test(site))).toHaveLength(1);
 		// Three general and three compact dispatch paths can carry an arbitrary
-		// commit and must frame. The seventh is the deliberately minimal general
+		// commit or lifecycle message and must frame. The seventh is the deliberately minimal general
 		// terminal-dispose retry, whose fixed-size message remains directly encoded.
 		expect(framed).toBe(6);
 		expect(frameLoops).toBe(6);
@@ -118,7 +118,7 @@ describe('Lynx transport conformance', () => {
 				}
 			}
 		}
-		expect(reads).toHaveLength(7);
+		expect(reads).toHaveLength(8);
 		for (const read of reads) {
 			expect(read).toMatch(
 				/(?:acceptLynxTransportFrame|decodeLynxTransportValue|localizeLynxHostValue)\($/,
@@ -126,7 +126,8 @@ describe('Lynx transport conformance', () => {
 		}
 		// Every transport receive path first assembles physical frames. The three
 		// general paths then materialize the general codec; the compact paths parse
-		// its internal scalar-array envelope before schema code can see it.
+		// its internal scalar-array envelope before schema code can see it. The two
+		// engine lifecycle receivers localize their host-backed values directly.
 		const source = sourceFiles(LYNX_SRC)
 			.map((file) => readFileSync(file, 'utf8'))
 			.join('\n');

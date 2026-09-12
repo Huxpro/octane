@@ -101,6 +101,7 @@ describe('@octanejs/rspeedy-plugin packed consumer', () => {
 		const blockOutputRoot = join(consumerRoot, 'dist-block');
 		const blockDevelopmentOutputRoot = join(consumerRoot, 'dist-block-development');
 		const eligibleOutputRoot = join(consumerRoot, 'dist-eligible');
+		const eligibleUniversalOutputRoot = join(consumerRoot, 'dist-eligible-universal');
 		try {
 			const archives = packWorkspacePackages(join(temporaryRoot, 'archives'));
 			mkdirSync(consumerRoot, { recursive: true });
@@ -133,7 +134,8 @@ import { pluginOctane } from '@octanejs/rspeedy-plugin';
 
 const mode = process.argv[2] ?? 'production';
 const outputRoot = process.argv[3] ?? ${JSON.stringify(outputRoot)};
-const core = process.argv[4] ?? 'universal';
+const coreArgument = process.argv[4];
+const core = coreArgument === undefined || coreArgument === 'auto' ? undefined : coreArgument;
 const entry = process.argv[5] ?? './src/background.ts';
 const rspeedy = await createRspeedy({
   cwd: ${JSON.stringify(consumerRoot)},
@@ -152,7 +154,13 @@ const rspeedy = await createRspeedy({
     },
     source: { entry: { main: entry } },
     splitChunks: false,
-    plugins: [pluginOctane({ core, hmr: mode === 'development', dev: mode === 'development' })],
+    plugins: [
+      pluginOctane({
+        ...(core === undefined ? {} : { core }),
+        hmr: mode === 'development',
+        dev: mode === 'development',
+      }),
+    ],
   },
 });
 let result;
@@ -224,11 +232,12 @@ try {
 			expect(mainThread).not.toContain('main-thread worklet implementation');
 			expect(background).toContain('Octane Lynx OL273');
 			expect(background).not.toContain('main-thread worklet implementation');
+			expect(background).not.toContain('Octane Lynx OL013');
 			expect(readdirSync(join(outputRoot, 'static/svg'))).toContain('badge.svg');
 
 			execFileSync(
 				process.execPath,
-				['build.mjs', 'production', eligibleOutputRoot, 'universal', './src/block-eligible.ts'],
+				['build.mjs', 'production', eligibleOutputRoot, 'auto', './src/block-eligible.ts'],
 				{
 					cwd: consumerRoot,
 					encoding: 'utf8',
@@ -245,6 +254,36 @@ try {
 			// default backend derived this real host-only program successfully.
 			expect(eligibleMainThread).toContain('src/BlockEligible.tsrx');
 			expect(eligibleBackground).toContain('src/BlockEligible.tsrx');
+			expect(eligibleBackground).toContain('Octane Lynx OL013');
+
+			execFileSync(
+				process.execPath,
+				[
+					'build.mjs',
+					'production',
+					eligibleUniversalOutputRoot,
+					'universal',
+					'./src/block-eligible.ts',
+				],
+				{
+					cwd: consumerRoot,
+					encoding: 'utf8',
+					stdio: ['ignore', 'pipe', 'pipe'],
+					timeout: 120_000,
+				},
+			);
+			const eligibleUniversalDecoded = await decodeNativeBundle(
+				readFileSync(join(eligibleUniversalOutputRoot, 'main.lynx.bundle')),
+			);
+			const eligibleUniversalMainThread = nativeScriptText(
+				eligibleUniversalDecoded['main-thread-script'],
+			);
+			const eligibleUniversalBackground = nativeScriptText(
+				eligibleUniversalDecoded['background-thread-script'],
+			);
+			expect(eligibleUniversalMainThread).toContain('src/BlockEligible.tsrx');
+			expect(eligibleUniversalBackground).toContain('src/BlockEligible.tsrx');
+			expect(eligibleUniversalBackground).not.toContain('Octane Lynx OL013');
 
 			execFileSync(process.execPath, ['build.mjs', 'development', developmentOutputRoot], {
 				cwd: consumerRoot,

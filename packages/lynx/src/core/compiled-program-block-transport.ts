@@ -12,15 +12,17 @@ import {
 } from 'octane/universal/native';
 
 import type { LynxBlockRoot } from './block-root.js';
-import type { LynxClientContainer } from './client-driver.js';
+import {
+	setLynxClientCapabilities,
+	setLynxClientProgramManifests,
+	type LynxClientContainer,
+} from './client-driver.js';
 import { createLynxCompiledProgramTransport } from './compiled-program-transport.js';
 import { createLynxDeltaShadow } from './delta-shadow.js';
 import type { LynxBackgroundNativeEventDelivery } from './native-event-receiver.js';
-import {
-	LYNX_TRANSPORT_PROTOCOL_VERSION,
-	LYNX_TRANSPORT_RENDERER,
-	type LynxContextProxy,
-} from './protocol.js';
+import type { LynxDataLifecycleMessage } from './lifecycle-types.js';
+import { LYNX_TRANSPORT_PROTOCOL_VERSION, LYNX_TRANSPORT_RENDERER } from './transport-identity.js';
+import type { LynxContextProxy } from './protocol.js';
 
 const BLOCK_TRANSPORT_DEVELOPMENT =
 	typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__;
@@ -35,7 +37,7 @@ interface DeferredNativeEventBatch {
 export interface LynxCompiledProgramBlockTransport extends UniversalAsyncCommitTransport<LynxClientContainer> {
 	readonly mode: 'async';
 	readonly ready: Promise<void>;
-	bindRoot(root: LynxBlockRoot): void;
+	bindRoot(root: Pick<LynxBlockRoot, 'acceptsNativeEvent' | 'dispatchTransportEvent'>): void;
 	bindPageDestroy(handler: () => void | Promise<void>): void;
 	dispatchNativeEventBatch(deliveries: readonly LynxBackgroundNativeEventDelivery[]): void;
 	acceptedIdentity(): UniversalTransportIdentity | null;
@@ -52,6 +54,8 @@ export interface LynxCompiledProgramBlockTransport extends UniversalAsyncCommitT
 export interface LynxCompiledProgramBlockTransportOptions {
 	readonly onDiagnostic?: (error: Error) => void;
 	readonly isPageDestroyed?: () => boolean;
+	readonly onLifecycle?: (message: LynxDataLifecycleMessage) => void;
+	readonly onPageDestroy?: () => void;
 }
 
 function normalizedError(value: unknown, fallback = BLOCK_TRANSPORT_ERROR): Error {
@@ -97,10 +101,23 @@ export function createLynxCompiledProgramBlockTransport(
 	container: LynxClientContainer,
 	options: LynxCompiledProgramBlockTransportOptions = {},
 ): LynxCompiledProgramBlockTransport {
+	// This transport is itself the paired capability proof: unlike the general
+	// handshake there is no legacy first-tree frame to carry, so the first Block
+	// render must emit its addressed run rather than expanding it to host commands.
+	setLynxClientCapabilities(container, {
+		compactAck: 1,
+		templateMount: 1,
+		templateProgram: 1,
+		templateRuns: 1,
+		addressedProgramRuns: 1,
+	});
+	setLynxClientProgramManifests(container, false);
 	const reported: Error[] = [];
 	const shadow = createLynxDeltaShadow();
 	const wire = createLynxCompiledProgramTransport(context, {
 		isPageDestroyed: options.isPageDestroyed,
+		onLifecycle: options.onLifecycle,
+		onPageDestroy: options.onPageDestroy,
 		onDiagnostic(error) {
 			reported.push(error);
 			try {
@@ -110,7 +127,7 @@ export function createLynxCompiledProgramBlockTransport(
 			}
 		},
 	});
-	let boundRoot: LynxBlockRoot | null = null;
+	let boundRoot: Pick<LynxBlockRoot, 'acceptsNativeEvent' | 'dispatchTransportEvent'> | null = null;
 	let ownedRoot: number | null = null;
 	let accepted: UniversalTransportIdentity | null = null;
 	let commitPending = false;
@@ -274,7 +291,9 @@ export function createLynxCompiledProgramBlockTransport(
 			if (draft === null) {
 				throw new Error(
 					BLOCK_TRANSPORT_DEVELOPMENT
-						? 'Octane Lynx compact Block transport requires a fully addressed scalar program batch.'
+						? `Octane Lynx compact Block transport requires a fully addressed scalar program batch; received ${batch.commands
+								.map((command) => command.op)
+								.join(', ')}.`
 						: BLOCK_TRANSPORT_ERROR,
 				);
 			}

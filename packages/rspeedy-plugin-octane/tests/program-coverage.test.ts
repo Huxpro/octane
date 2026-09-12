@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	LYNX_APPLICATION_SELECTION_ASSET_INFO,
+	LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO,
 	collectLynxBlockFeatureRequirements,
 	collectLynxBlockSemanticRequirements,
 	collectLynxProgramCoverage,
 	evaluateLynxBlockEligibility,
+	evaluateLynxCompiledProgramEligibility,
 	LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO,
 	LYNX_BLOCK_SELECTION_ASSET_INFO,
 	LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO,
@@ -122,6 +125,7 @@ function compilation(
 			getConnection: (entryDependency: { module: unknown }) => ({
 				module: entryDependency.module,
 			}),
+			getIncomingConnections: () => [],
 			getOutgoingConnections: (module: { connections?: readonly unknown[] }) =>
 				module.connections ?? [],
 		},
@@ -214,8 +218,8 @@ describe('Lynx application Block eligibility', () => {
 		expect(report).toEqual({
 			version: 1,
 			matrix: {
-				version: 1,
-				runtimeNames: ['useEffect', 'useState', 'useSyncExternalStore'],
+				version: 2,
+				runtimeNames: ['useCallback', 'useEffect', 'useRef', 'useState', 'useSyncExternalStore'],
 				threadFunctions: ['background', 'main-thread'],
 				mainThreadProps: true,
 				templateFeatures: [],
@@ -469,6 +473,155 @@ describe('Lynx application Block eligibility', () => {
 	});
 });
 
+describe('Lynx compiled-program application eligibility', () => {
+	function compactFeatureRequirements() {
+		const proofs = completeProofs();
+		return {
+			proofs,
+			featureRequirements: {
+				...proofs.featureRequirements,
+				modules: proofs.featureRequirements.modules.map((module) => ({
+					...module,
+					background: featureRequirements(),
+					mainThread: featureRequirements(),
+				})),
+			},
+		};
+	}
+
+	it('accepts an eligible Block graph only when compact-application channels are absent', () => {
+		const { proofs, featureRequirements } = compactFeatureRequirements();
+		const blockSelection = evaluateLynxBlockEligibility({ ...proofs, featureRequirements });
+
+		expect(blockSelection.eligible).toBe(true);
+		const report = evaluateLynxCompiledProgramEligibility({
+			blockSelection,
+			featureRequirements,
+		});
+		expect(report).toEqual({ version: 1, eligible: true, reasons: [] });
+		expect(Object.isFrozen(report)).toBe(true);
+		expect(Object.isFrozen(report.reasons)).toBe(true);
+	});
+
+	it('retains exact thread-function and main-thread-prop sites that require the general application', () => {
+		const { proofs, featureRequirements: compactRequirements } = compactFeatureRequirements();
+		const featureModule = compactRequirements.modules[0]!;
+		const requirements = {
+			...compactRequirements,
+			modules: [
+				{
+					...featureModule,
+					background: featureRequirements({
+						threadFunctions: [
+							{
+								kind: 'background' as const,
+								id: 'tf_background_read',
+								line: 11,
+								column: 3,
+								captures: [],
+							},
+						],
+						mainThreadProps: [site('main-thread:background-ref', 12, 4)],
+					}),
+					mainThread: featureRequirements({
+						threadFunctions: [
+							{
+								kind: 'main-thread' as const,
+								id: 'tf_main_tap',
+								line: 21,
+								column: 5,
+								captures: ['selected'],
+							},
+						],
+						mainThreadProps: [site('main-thread:main-ref', 22, 6)],
+					}),
+				},
+			],
+		};
+		const blockSelection = evaluateLynxBlockEligibility({
+			...proofs,
+			featureRequirements: requirements,
+		});
+
+		expect(blockSelection.eligible).toBe(true);
+		expect(
+			evaluateLynxCompiledProgramEligibility({
+				blockSelection,
+				featureRequirements: requirements,
+			}),
+		).toMatchObject({
+			eligible: false,
+			reasons: [
+				{
+					code: 'thread-function-requires-general-application',
+					module: '/src/App.tsrx',
+					thread: 'background',
+					kind: 'background',
+					id: 'tf_background_read',
+					line: 11,
+					column: 3,
+				},
+				{
+					code: 'main-thread-prop-requires-general-application',
+					module: '/src/App.tsrx',
+					thread: 'background',
+					name: 'main-thread:background-ref',
+					line: 12,
+					column: 4,
+				},
+				{
+					code: 'thread-function-requires-general-application',
+					module: '/src/App.tsrx',
+					thread: 'main-thread',
+					kind: 'main-thread',
+					id: 'tf_main_tap',
+					line: 21,
+					column: 5,
+				},
+				{
+					code: 'main-thread-prop-requires-general-application',
+					module: '/src/App.tsrx',
+					thread: 'main-thread',
+					name: 'main-thread:main-ref',
+					line: 22,
+					column: 6,
+				},
+			],
+		});
+	});
+
+	it('fails closed for selection or feature proof skew and unpaired facts', () => {
+		const { proofs, featureRequirements } = compactFeatureRequirements();
+		const blockSelection = evaluateLynxBlockEligibility({ ...proofs, featureRequirements });
+		const blockReasons = [{ code: 'program-coverage-incomplete' }];
+
+		expect(
+			evaluateLynxCompiledProgramEligibility({
+				blockSelection: { ...blockSelection, eligible: false, reasons: blockReasons },
+				featureRequirements: { ...featureRequirements, paired: false },
+			}),
+		).toMatchObject({
+			eligible: false,
+			reasons: [
+				{ code: 'block-selection-ineligible', reasons: blockReasons },
+				{ code: 'feature-requirements-unpaired' },
+			],
+		});
+		expect(
+			evaluateLynxCompiledProgramEligibility({
+				blockSelection: { ...blockSelection, version: 2 },
+				featureRequirements: { ...featureRequirements, version: 3 },
+			}),
+		).toMatchObject({
+			eligible: false,
+			reasons: [
+				{ code: 'unsupported-block-selection-version' },
+				{ code: 'unsupported-feature-requirements-version' },
+			],
+		});
+	});
+});
+
 describe('Lynx application resident-program coverage', () => {
 	it('reports exact complete coverage across the two authored entry graphs', () => {
 		const background = moduleWithCoverage('/src/App.tsrx', 'background', 1, 1);
@@ -629,7 +782,7 @@ describe('Lynx application resident-program coverage', () => {
 		});
 	});
 
-	it('attaches the immutable report to the matching main-thread entry asset', () => {
+	it('attaches proofs and rebuilds the eligible production root onto Block', async () => {
 		const background = moduleWithCoverage('/src/App.tsrx', 'background', 1, 1);
 		const mainThread = moduleWithCoverage('/src/App.tsrx', 'main-thread', 1, 1);
 		const graph = compilation(background, mainThread) as any;
@@ -650,24 +803,70 @@ describe('Lynx application resident-program coverage', () => {
 				{ chunks: [{ files: new Set(['.rspeedy/app/main-thread.js']) }] },
 			],
 		]);
-		let finishModules!: () => void;
+		let finishMake!: (compilation: unknown) => Promise<void>;
 		let processAssets!: () => void;
 		graph.hooks = {
-			finishModules: { tap: (_name: string, callback: () => void) => (finishModules = callback) },
 			processAssets: {
 				tap: (_options: unknown, callback: () => void) => (processAssets = callback),
 			},
+		};
+		const root = {
+			layer: 'octane:background',
+			nameForCondition: () => '/repo/node_modules/@octanejs/lynx/src/root.ts',
+			connections: [] as { module: unknown }[],
+		};
+		graph.modules = new Set([root]);
+		const replacements: Array<{
+			test: RegExp;
+			callback: (resource: { request: string }) => void;
+		}> = [];
+		const rebuiltRequests: string[] = [];
+		graph.rebuildModule = (_module: unknown, callback: (error: Error | null) => void) => {
+			const connections = [];
+			for (const request of [
+				'./core/background-core-selection.js',
+				'./core/application-selection.js',
+			]) {
+				const resource = { request };
+				for (const replacement of replacements) {
+					if (replacement.test.test(resource.request)) replacement.callback(resource);
+				}
+				rebuiltRequests.push(resource.request);
+				connections.push({
+					module: {
+						nameForCondition: () =>
+							resource.request.endsWith('background-core-selection.block.js')
+								? '/repo/node_modules/@octanejs/lynx/src/core/background-core-selection.block.ts'
+								: '/repo/node_modules/@octanejs/lynx/src/core/application-selection.compiled-program.ts',
+					},
+				});
+			}
+			root.connections = connections;
+			callback(null);
 		};
 		graph.getAsset = (filename: string) => assets.get(filename);
 		graph.updateAsset = (filename: string, source: unknown, info: unknown) =>
 			assets.set(filename, { source, info });
 		const compiler = {
+			options: { mode: 'production' },
 			hooks: {
+				finishMake: {
+					tapPromise: (_name: string, callback: (compilation: unknown) => Promise<void>) =>
+						(finishMake = callback),
+				},
 				thisCompilation: {
 					tap: (_name: string, callback: (value: unknown) => void) => callback(graph),
 				},
 			},
-			webpack: { Compilation: { PROCESS_ASSETS_STAGE_REPORT: 1 } },
+			webpack: {
+				Compilation: { PROCESS_ASSETS_STAGE_REPORT: 1 },
+				NormalModuleReplacementPlugin: class {
+					constructor(test: RegExp, callback: (resource: { request: string }) => void) {
+						replacements.push({ test, callback });
+					}
+					apply() {}
+				},
+			},
 		};
 
 		new LynxProgramCoveragePlugin(
@@ -680,10 +879,16 @@ describe('Lynx application resident-program coverage', () => {
 			],
 			true,
 		).apply(compiler);
-		finishModules();
+		await finishMake(graph);
 		processAssets();
 
-		expect(graphVisits).toBe(2);
+		// Two complete entry traversals, owner discovery/verification, and the
+		// dependency-first rebuild ordering pass each inspect the exact root edge.
+		expect(graphVisits).toBe(5);
+		expect(rebuiltRequests).toEqual([
+			'./core/background-core-selection.block.js',
+			'./core/application-selection.compiled-program.js',
+		]);
 		expect(assets.get('.rspeedy/app/main-thread.js')?.info).toMatchObject({
 			existing: true,
 			[LYNX_PROGRAM_COVERAGE_ASSET_INFO]: {
@@ -724,7 +929,19 @@ describe('Lynx application resident-program coverage', () => {
 			},
 			[LYNX_BLOCK_SELECTION_ASSET_INFO]: {
 				version: 1,
-				matrix: { version: 1 },
+				matrix: { version: 2 },
+				eligible: true,
+				reasons: [],
+			},
+			[LYNX_APPLICATION_SELECTION_ASSET_INFO]: {
+				version: 1,
+				selected: 'compiled-program',
+				reasons: [],
+			},
+			[LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO]: {
+				version: 1,
+				mode: 'automatic',
+				selected: 'block',
 				eligible: true,
 				reasons: [],
 			},

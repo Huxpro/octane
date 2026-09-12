@@ -22,10 +22,12 @@ export interface OctaneRspeedyPluginOptions {
 	 */
 	thread?: OctaneLynxThread;
 	/**
-	 * Select the background core (issue #103). `universal` — the default — keeps
-	 * today's shared universal core driving background commits. `block` selects
-	 * the Lynx-specialized Block core. The main-thread first-screen path is the
-	 * same either way; only the background driver changes.
+	 * Pin the background core (issue #103). When omitted, a one-shot production
+	 * application selects the Lynx-specialized Block core only after every entry's
+	 * paired resident-program, semantic, and feature proofs pass; all other builds
+	 * fail closed to `universal`. Set `universal` as an explicit opt-out or `block`
+	 * as an explicit development/benchmark override. The main-thread first-screen
+	 * path is the same either way; only the background driver changes.
 	 */
 	core?: OctaneLynxBackgroundCore;
 	/**

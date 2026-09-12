@@ -77,12 +77,21 @@ if (distTag !== '' && !/^[a-z0-9][a-z0-9-]*$/.test(distTag)) {
 }
 const tagSuffix = distTag === '' ? '' : `-${distTag}`;
 
-const core = process.env.BENCH_CORE === 'block' ? 'block' : 'universal';
+const core =
+	process.env.BENCH_CORE === 'block' || process.env.BENCH_CORE === 'automatic'
+		? process.env.BENCH_CORE
+		: 'universal';
 const blockMode = BLOCK_MODES.has(process.env.BENCH_BLOCK_MODE)
 	? process.env.BENCH_BLOCK_MODE
 	: 'scoped';
 const coreSuffix =
-	core === 'block' ? (blockMode === 'scoped' ? '-block' : `-block-${blockMode}`) : '';
+	core === 'block'
+		? blockMode === 'scoped'
+			? '-block'
+			: `-block-${blockMode}`
+		: core === 'automatic'
+			? '-automatic'
+			: '';
 
 export default defineConfig(({ command }) => {
 	// BENCH_DEV=1 keeps development diagnostics (transport self-checks, error
@@ -125,7 +134,7 @@ export default defineConfig(({ command }) => {
 		splitChunks: false,
 		plugins: [
 			pluginOctane({
-				core,
+				...(core === 'automatic' ? null : { core }),
 				// The CPU-attribution build is production-minified but retains the
 				// descriptive diagnostics its probe table uses as stable source anchors.
 				// It is a profile-only build; shipping cells keep this false.

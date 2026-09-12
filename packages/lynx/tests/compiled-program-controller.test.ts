@@ -164,13 +164,16 @@ describe('@octanejs/lynx compact compiled-program controller', () => {
 					module === ADDRESS.module && index === ADDRESS.index ? plan : undefined,
 				respond: (message) => responses.push(message),
 			},
-			[
-				1_000_000,
-				(firstHandle) =>
+			{
+				firstListener: 1_000_000,
+				resolveSeed: ({ firstHandle }) =>
 					firstHandle === 2
 						? { firstId: 10, firstListenerId: 1_000_000, nodes, stride: 4 }
 						: undefined,
-			],
+				verify() {},
+				finish() {},
+				dispose() {},
+			},
 		);
 
 		controller.apply(identity(1), mountFrame());
@@ -247,6 +250,37 @@ describe('@octanejs/lynx compact compiled-program controller', () => {
 		controller = setupResult.controller;
 		controller.apply(identity(1), mountFrame());
 
+		expect(setupResult.responses.map((message) => message.type)).toEqual(['reject']);
+		expect(controller.activeIdentity()).toBeNull();
+		expect(setupResult.page.children).toEqual([]);
+
+		controller.apply(identity(1), mountFrame());
+		expect(setupResult.responses.map((message) => message.type)).toEqual([
+			'reject',
+			'ack',
+			'complete',
+		]);
+		expect(setupResult.page.children).toHaveLength(1);
+	});
+
+	it('observes an abort that re-enters during the publication flush', () => {
+		const base = emittedHost();
+		let controller!: LynxCompiledProgramController;
+		let abortDuringFlush = true;
+		const papi: typeof base = {
+			...base,
+			flush(node, options) {
+				base.flush(node, options);
+				if (abortDuringFlush) {
+					abortDuringFlush = false;
+					controller.abort(identity(1));
+				}
+			},
+		};
+		const setupResult = setup(papi);
+		controller = setupResult.controller;
+
+		controller.apply(identity(1), mountFrame());
 		expect(setupResult.responses.map((message) => message.type)).toEqual(['reject']);
 		expect(controller.activeIdentity()).toBeNull();
 		expect(setupResult.page.children).toEqual([]);

@@ -45,7 +45,7 @@ import {
 	type UniversalTransportEventMessage,
 	type UniversalTransportIdentity,
 } from 'octane/universal/native';
-import { LYNX_TRANSPORT_RENDERER } from './protocol.js';
+import { LYNX_TRANSPORT_RENDERER } from './transport-identity.js';
 import type { LynxClientContainer } from './client-driver.js';
 import { createLynxBlockCore, type LynxBlock, type LynxBlockCore } from './block-core.js';
 

@@ -140,17 +140,18 @@ entry for one thread, but they are not the normal application bundle path:
 pluginOctane({ thread: 'main-thread' });
 ```
 
-### Block eligibility evidence
+### Static Block selection
 
 Application builds attach an `octane:lynx-block-selection` report to the
-generated main-thread asset metadata. Version 1 is eligible only when paired
+generated main-thread asset metadata. Selection version 1 with support-matrix
+version 2 is eligible only when paired
 background/main-thread resident-program coverage is complete, semantic and
 feature facts cover the same module set, and the graph stays within this
 independently proven Block subset:
 
-- authored Octane runtime uses or named re-exports are limited to `useState`,
-  `useEffect`, and `useSyncExternalStore`; opaque Octane module access is not
-  eligible;
+- authored Octane runtime uses or named re-exports are limited to `useCallback`,
+  `useEffect`, `useRef`, `useState`, and `useSyncExternalStore`; opaque Octane
+  module access is not eligible;
 - background/main-thread functions and `main-thread:*` props are supported;
 - the authored template contains no ordinary component child, fragment,
   `@if`/`@switch`/`@try`/Activity structure, bare renderable hole, ordinary host
@@ -159,10 +160,24 @@ independently proven Block subset:
   their host, and use an inline host or hookless local component as each row.
 
 The report retains source module, thread, line, and column for unsupported
-facts, as well as the underlying reason from an incomplete proof. It is
-advisory build evidence: resident-program compilation may already change the
-eligible main-thread program representation, but this report itself does not
-select the Block core or alter the current universal-core default.
+facts, as well as the underlying reason from an incomplete proof. A one-shot
+production application with no explicit `core` selects Block only when every
+authored entry is eligible. Selection happens after the complete first module
+graph and before optimization: the plugin rebuilds the background root's tiny
+selection dependency, then production tree-shaking emits one core rather than a
+runtime branch containing both. Asset metadata also carries the versioned
+`octane:lynx-background-core-selection` decision.
+
+The plugin verifies the rebuilt background root's exact dependency edge before
+publishing that decision. A replacement or rebuild that does not resolve the
+selected module fails the build instead of emitting metadata that claims a core
+the artifact does not contain.
+
+Any incomplete/unsupported entry, a non-production or watch build, or an
+unavailable application root keeps the universal module. `core: 'universal'`
+is the explicit product opt-out; `core: 'block'` retains the existing explicit
+development/benchmark override. An explicit override is reported as such and
+is not presented as an automatic eligibility decision.
 
 ## Compatibility lanes
 

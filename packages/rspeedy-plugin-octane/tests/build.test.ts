@@ -14,6 +14,8 @@ import { describe, expect, it } from 'vitest';
 import * as lynxMainThreadProgramBackend from '../../lynx/src/compiler/index.js';
 import { pluginOctane } from '../src/index.js';
 import {
+	LYNX_APPLICATION_SELECTION_ASSET_INFO,
+	LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO,
 	LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO,
 	LYNX_BLOCK_SELECTION_ASSET_INFO,
 	LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO,
@@ -155,16 +157,26 @@ class MetadataProbePlugin {
 					stage: compiler.webpack.Compilation.PROCESS_ASSETS_STAGE_REPORT,
 				},
 				() => {
-					for (const module of compilation.modules as Iterable<{
+					const seen = new Set<unknown>();
+					const visit = (module: {
 						identifier?: () => string;
-					}>) {
+						modules?: Iterable<unknown>;
+						rootModule?: unknown;
+					}) => {
+						if (seen.has(module)) return;
+						seen.add(module);
+						const identifier = module.identifier?.();
+						if (typeof identifier === 'string') this.retainedModuleIdentifiers.push(identifier);
+						for (const child of module.modules ?? []) visit(child as typeof module);
+						if (module.rootModule != null) visit(module.rootModule as typeof module);
+					};
+					for (const module of compilation.modules as Iterable<Parameters<typeof visit>[0]>) {
 						if (
 							compilation.chunkGraph.getModuleChunksIterable(module)[Symbol.iterator]().next().done
 						) {
 							continue;
 						}
-						const identifier = module.identifier?.();
-						if (typeof identifier === 'string') this.retainedModuleIdentifiers.push(identifier);
+						visit(module);
 					}
 				},
 			);
@@ -251,13 +263,17 @@ class ProgramCoverageProbePlugin {
 						const semantic = asset.info[LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO];
 						const feature = asset.info[LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO];
 						const selection = asset.info[LYNX_BLOCK_SELECTION_ASSET_INFO];
+						const core = asset.info[LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO];
+						const application = asset.info[LYNX_APPLICATION_SELECTION_ASSET_INFO];
 						if (
 							program !== undefined ||
 							semantic !== undefined ||
 							feature !== undefined ||
-							selection !== undefined
+							selection !== undefined ||
+							core !== undefined ||
+							application !== undefined
 						) {
-							this.reports.push({ program, semantic, feature, selection });
+							this.reports.push({ program, semantic, feature, selection, core, application });
 						}
 					}
 				},
@@ -279,10 +295,107 @@ function programCoverageProbe(reports: unknown[]) {
 	};
 }
 
+async function collectCoreSelections(
+	mode: 'development' | 'production',
+	entry: Record<string, string>,
+	field: 'application' | 'core' = 'core',
+): Promise<unknown[]> {
+	const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-core-selection-'));
+	const reports: unknown[] = [];
+	const rspeedy = await createRspeedy({
+		cwd: APPLICATION_FIXTURE,
+		loadEnv: false,
+		environment: ['lynx'],
+		rspeedyConfig: {
+			mode,
+			environments: { lynx: {} },
+			dev: { hmr: false, liveReload: false },
+			output: {
+				cleanDistPath: true,
+				distPath: { root: join(temporaryRoot, 'dist') },
+				filenameHash: false,
+				sourceMap: false,
+			},
+			source: { entry },
+			splitChunks: false,
+			plugins: [
+				pluginOctane({ dev: mode === 'development', hmr: false }),
+				programCoverageProbe(reports),
+			],
+		},
+	});
+	let result: Awaited<ReturnType<typeof rspeedy.build>> | undefined;
+	try {
+		result = await rspeedy.build();
+		return reports.map((report) => (report as Record<typeof field, unknown>)[field]);
+	} finally {
+		await result?.close();
+		rmSync(temporaryRoot, { recursive: true, force: true });
+	}
+}
+
 describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
+	it('keeps an eligible development graph on universal with a diagnostic reason', async () => {
+		expect(await collectCoreSelections('development', { main: './src/block-eligible.ts' })).toEqual(
+			[
+				{
+					version: 1,
+					mode: 'automatic',
+					selected: 'universal',
+					eligible: true,
+					reasons: [{ code: 'automatic-selection-requires-one-shot-production' }],
+				},
+			],
+		);
+	}, 120_000);
+
+	it('fails the whole production choice closed when any authored entry is ineligible', async () => {
+		const selections = await collectCoreSelections('production', {
+			eligible: './src/block-eligible.ts',
+			incompatible: './src/background.ts',
+		});
+		expect(selections).toHaveLength(2);
+		for (const selection of selections) {
+			expect(selection).toEqual({
+				version: 1,
+				mode: 'automatic',
+				selected: 'universal',
+				eligible: false,
+				reasons: [{ code: 'entry-ineligible', entry: 'incompatible__octane_main_thread' }],
+			});
+		}
+	}, 120_000);
+
+	it('keeps explicit roots on the general application while retaining the proven Block core', async () => {
+		const entry = { main: './src/block-eligible-explicit-root.ts' };
+		expect(await collectCoreSelections('production', entry)).toEqual([
+			{
+				version: 1,
+				mode: 'automatic',
+				selected: 'block',
+				eligible: true,
+				reasons: [],
+			},
+		]);
+		expect(await collectCoreSelections('production', entry, 'application')).toEqual([
+			{
+				version: 1,
+				selected: 'general',
+				reasons: [
+					{
+						code: 'explicit-root-requires-general-application',
+						module: expect.stringMatching(/block-eligible-explicit-root\.ts$/),
+					},
+				],
+			},
+		]);
+	}, 120_000);
+
 	it('publishes an eligible verdict for a real production Block-compatible graph', async () => {
 		const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-block-eligibility-'));
 		const reports: unknown[] = [];
+		const moduleIdentifiers: string[] = [];
+		const retainedModuleIdentifiers: string[] = [];
 		const rspeedy = await createRspeedy({
 			cwd: APPLICATION_FIXTURE,
 			loadEnv: false,
@@ -307,6 +420,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 						hmr: false,
 					}),
 					programCoverageProbe(reports),
+					metadataProbe([], moduleIdentifiers, [], retainedModuleIdentifiers),
 				],
 			},
 		});
@@ -361,7 +475,62 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					reasons: [],
 				},
 				selection: { version: 1, eligible: true, reasons: [] },
+				core: {
+					version: 1,
+					mode: 'automatic',
+					selected: 'block',
+					eligible: true,
+					reasons: [],
+				},
+				application: { version: 1, selected: 'compiled-program', reasons: [] },
 			});
+			const retained = retainedModuleIdentifiers.map((identifier) =>
+				identifier
+					.split('!')
+					.at(-1)!
+					.replace(/\|octane:(?:background|main-thread).*$/, '')
+					.split('?', 1)[0]
+					.replaceAll('\\', '/'),
+			);
+			expect(
+				retained.some((identifier) =>
+					identifier.endsWith('/packages/lynx/src/core/background-core-selection.block.ts'),
+				),
+				retained.join('\n'),
+			).toBe(true);
+			expect(
+				retained.some((identifier) =>
+					identifier.endsWith('/packages/lynx/src/core/background-core-selection.ts'),
+				),
+			).toBe(false);
+			for (const module of [
+				'core/application-selection.compiled-program.ts',
+				'core/client-driver.compiled-program.ts',
+				'first-screen.compiled-program.ts',
+				'main-renderer.compiled-program.ts',
+				'core/main-thread-application-selection.compiled-program.ts',
+			]) {
+				expect(
+					retained.some((identifier) => identifier.endsWith(`/packages/lynx/src/${module}`)),
+					retained.join('\n'),
+				).toBe(true);
+			}
+			for (const module of [
+				'core/application-selection.ts',
+				'core/client-driver.ts',
+				'main-renderer.ts',
+				'core/main-thread-application-selection.ts',
+			]) {
+				expect(
+					retained.some((identifier) => identifier.endsWith(`/packages/lynx/src/${module}`)),
+					`${module}\n${retained.join('\n')}`,
+				).toBe(false);
+			}
+			const product = readFileSync(join(temporaryRoot, 'dist/main.lynx.bundle'));
+			expect(product.includes('octane-lynx:compiled-program-background-to-main')).toBe(true);
+			expect(product.includes('octane-lynx:compiled-program-main-to-background')).toBe(true);
+			expect(product.includes('octane-lynx:background-to-main')).toBe(false);
+			expect(product.includes('octane-lynx:main-to-background')).toBe(false);
 		} finally {
 			await result?.close();
 			rmSync(temporaryRoot, { recursive: true, force: true });
@@ -371,6 +540,8 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 	it('aggregates the real two-layer application graph into main-thread asset metadata', async () => {
 		const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-program-coverage-'));
 		const reports: unknown[] = [];
+		const moduleIdentifiers: string[] = [];
+		const retainedModuleIdentifiers: string[] = [];
 		const rspeedy = await createRspeedy({
 			cwd: APPLICATION_FIXTURE,
 			loadEnv: false,
@@ -394,6 +565,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 						mainThreadProgramBackend: lynxMainThreadProgramBackend,
 					}),
 					programCoverageProbe(reports),
+					metadataProbe([], moduleIdentifiers, [], retainedModuleIdentifiers),
 				],
 			},
 		});
@@ -520,8 +692,14 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					selection: {
 						version: 1,
 						matrix: {
-							version: 1,
-							runtimeNames: ['useEffect', 'useState', 'useSyncExternalStore'],
+							version: 2,
+							runtimeNames: [
+								'useCallback',
+								'useEffect',
+								'useRef',
+								'useState',
+								'useSyncExternalStore',
+							],
 							threadFunctions: ['background', 'main-thread'],
 							mainThreadProps: true,
 							templateFeatures: [],
@@ -548,8 +726,42 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 							},
 						],
 					},
+					core: {
+						version: 1,
+						mode: 'automatic',
+						selected: 'universal',
+						eligible: false,
+						reasons: [{ code: 'entry-ineligible', entry: 'main__octane_main_thread' }],
+					},
+					application: {
+						version: 1,
+						selected: 'general',
+						reasons: [
+							{ code: 'compiled-program-requires-block-core' },
+							{ code: 'entry-ineligible', entry: 'main__octane_main_thread' },
+						],
+					},
 				},
 			]);
+			const retained = retainedModuleIdentifiers.map((identifier) =>
+				identifier
+					.split('!')
+					.at(-1)!
+					.replace(/\|octane:(?:background|main-thread).*$/, '')
+					.split('?', 1)[0]
+					.replaceAll('\\', '/'),
+			);
+			expect(
+				retained.some((identifier) =>
+					identifier.endsWith('/packages/lynx/src/core/background-core-selection.ts'),
+				),
+				retained.join('\n'),
+			).toBe(true);
+			expect(
+				retained.some((identifier) =>
+					identifier.endsWith('/packages/lynx/src/core/background-core-selection.block.ts'),
+				),
+			).toBe(false);
 		} finally {
 			await result?.close();
 			rmSync(temporaryRoot, { recursive: true, force: true });
@@ -903,6 +1115,7 @@ describe('@octanejs/rspeedy-plugin native production entries', () => {
 		const moduleIdentifiers: string[] = [];
 		const layeredModules: { identifier: string; layer?: string | null }[] = [];
 		const debugMetadata: string[] = [];
+		const reports: unknown[] = [];
 		const rspeedy = await createRspeedy({
 			cwd: APPLICATION_FIXTURE,
 			loadEnv: false,
@@ -921,6 +1134,7 @@ describe('@octanejs/rspeedy-plugin native production entries', () => {
 				splitChunks: false,
 				plugins: [
 					pluginOctane({ hmr: false, dev: false }),
+					programCoverageProbe(reports),
 					metadataProbe([], moduleIdentifiers, layeredModules),
 					nativeArtifactProbe([], debugMetadata),
 				],
@@ -934,6 +1148,15 @@ describe('@octanejs/rspeedy-plugin native production entries', () => {
 			const background = nativeScriptText(decoded['background-thread-script']);
 			expect(mainThread).toContain('octane-m8-lazy-pending');
 			expect(background).toContain('octane-m8-lazy-pending');
+			expect(background).not.toContain('Octane Lynx OL013');
+			expect(reports).toHaveLength(1);
+			expect((reports[0] as { core: unknown }).core).toEqual({
+				version: 1,
+				mode: 'automatic',
+				selected: 'universal',
+				eligible: false,
+				reasons: [{ code: 'entry-ineligible', entry: 'main__octane_main_thread' }],
+			});
 
 			const lazyBundlePath = outputFiles(outputRoot).find((filename) =>
 				/[\\/]async[\\/]src[\\/]LazyCard\.tsrx\.[A-Fa-f0-9]+\.bundle$/.test(filename),

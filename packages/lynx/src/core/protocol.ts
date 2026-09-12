@@ -3,7 +3,6 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
 import { LYNX_DEVELOPMENT } from './environment.js';
 
 import type {
-	UNIVERSAL_TRANSPORT_PROTOCOL_VERSION,
 	UniversalHostBatch,
 	UniversalHostCommand,
 	UniversalHostProgramManifest,
@@ -22,15 +21,27 @@ import type {
 import type { LynxFirstTreeSnapshot } from './first-screen.js';
 import { LYNX_MAX_WIRE_DEPTH } from './transport-codec.js';
 import { decodeLynxPortalTargetId } from './portal.js';
-import { LYNX_RENDERER_ID } from './renderer-id.js';
+import type {
+	LynxDataLifecycleMessage,
+	LynxGlobalPropsMessage,
+	LynxLifecycleDataRecord,
+	LynxPageDataMessage,
+	LynxPageDestroyMessage,
+} from './lifecycle-types.js';
+import { LYNX_TRANSPORT_PROTOCOL_VERSION, LYNX_TRANSPORT_RENDERER } from './transport-identity.js';
+
+export type {
+	LynxDataLifecycleMessage,
+	LynxGlobalPropsMessage,
+	LynxLifecycleDataRecord,
+	LynxPageDataMessage,
+	LynxPageDataOperation,
+	LynxPageDestroyMessage,
+} from './lifecycle-types.js';
+export { LYNX_TRANSPORT_PROTOCOL_VERSION, LYNX_TRANSPORT_RENDERER } from './transport-identity.js';
 
 const LYNX_PROTOCOL_DEVELOPMENT =
 	typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__;
-
-/** Kept local to the main-thread protocol graph; the type pins it to the core ABI. */
-export const LYNX_TRANSPORT_PROTOCOL_VERSION: typeof UNIVERSAL_TRANSPORT_PROTOCOL_VERSION = 1;
-
-export const LYNX_TRANSPORT_RENDERER: typeof LYNX_RENDERER_ID = LYNX_RENDERER_ID;
 
 /**
  * How this realm turns an addressed run into the program it names (issue #246).
@@ -283,37 +294,6 @@ export interface LynxTransportCommitMessage extends UniversalTransportCommitMess
 	 */
 	readonly announces?: typeof LYNX_ANNOUNCED_PUBLIC_INSTANCES;
 }
-
-/** Root-independent native page lifetime teardown broadcast to the background runtime. */
-export interface LynxPageDestroyMessage {
-	readonly protocol: typeof LYNX_TRANSPORT_PROTOCOL_VERSION;
-	readonly renderer: typeof LYNX_TRANSPORT_RENDERER;
-	readonly type: 'page-destroy';
-}
-
-export type LynxPageDataOperation = 'replace' | 'update' | 'reset';
-
-/** Immutable, structured-clone-safe record carried by the page data lifecycle. */
-export type LynxLifecycleDataRecord = Readonly<Record<string, UniversalSerializableValue>>;
-
-/** Root-independent page data delivered from the public engine lifecycle. */
-export interface LynxPageDataMessage {
-	readonly protocol: typeof LYNX_TRANSPORT_PROTOCOL_VERSION;
-	readonly renderer: typeof LYNX_TRANSPORT_RENDERER;
-	readonly type: 'page-data';
-	readonly operation: LynxPageDataOperation;
-	readonly data: LynxLifecycleDataRecord;
-}
-
-/** Root-independent global-props patch delivered from the public engine lifecycle. */
-export interface LynxGlobalPropsMessage {
-	readonly protocol: typeof LYNX_TRANSPORT_PROTOCOL_VERSION;
-	readonly renderer: typeof LYNX_TRANSPORT_RENDERER;
-	readonly type: 'global-props';
-	readonly patch: LynxLifecycleDataRecord;
-}
-
-export type LynxDataLifecycleMessage = LynxPageDataMessage | LynxGlobalPropsMessage;
 
 export interface LynxPublicHandleUpsert {
 	readonly op: 'upsert';

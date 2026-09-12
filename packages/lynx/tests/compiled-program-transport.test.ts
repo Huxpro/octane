@@ -8,7 +8,12 @@ import { describe, expect, it } from 'vitest';
 import { emitLynxMainThreadProgram } from '../src/compiler/emit-main-thread-program.js';
 import { installLynxCompiledProgramReceiver } from '../src/core/compiled-program-receiver.js';
 import { installLynxCompiledProgramProductReceiver } from '../src/core/compiled-program-product-receiver.js';
-import { createLynxCompiledProgramTransport } from '../src/core/compiled-program-transport.js';
+import {
+	createLynxCompiledProgramTransport,
+	type LynxCompiledProgramTransportOptions,
+} from '../src/core/compiled-program-transport.js';
+import type { LynxDataLifecycleMessage } from '../src/core/lifecycle-types.js';
+import type { LynxLifecycleDataRecord } from '../src/core/lifecycle-types.js';
 import {
 	decodeLynxCompiledProgramBackgroundMessage,
 	decodeLynxCompiledProgramMainMessage,
@@ -55,7 +60,7 @@ function emittedPlan(): UniversalProgramPlan {
 	};
 }
 
-function emittedHost(): LynxElementPAPI<FakeNode> {
+function emittedHost(): LynxElementPAPI<FakeNode> & { flushes(): number } {
 	const base = createFakePAPI();
 	return {
 		...base,
@@ -136,6 +141,7 @@ function setup(
 	module = 'tests/WireRow.lynx.tsrx',
 	context = new RecordingContext(),
 	product = false,
+	transportOptions: LynxCompiledProgramTransportOptions = {},
 ) {
 	const page = papi.createPage('0', 0);
 	const receiver = (
@@ -146,7 +152,7 @@ function setup(
 		papi,
 		resolveProgram: (name, index) => (name === module && index === 0 ? emittedPlan() : undefined),
 	});
-	const transport = createLynxCompiledProgramTransport(context);
+	const transport = createLynxCompiledProgramTransport(context, transportOptions);
 	return { context, page, receiver, transport };
 }
 
@@ -154,12 +160,161 @@ describe('@octanejs/lynx compact compiled-program transport', () => {
 	it.each([
 		['controller receiver', false],
 		['product receiver', true],
+	] as const)('flushes accepted and disposed host state for %s', async (_name, product) => {
+		const papi = emittedHost();
+		const { page, receiver, transport } = setup(
+			papi,
+			'tests/WireRow.lynx.tsrx',
+			new RecordingContext(),
+			product,
+		);
+		receiver.markProgramsReady();
+		receiver.markPageReady();
+		await transport.ready;
+
+		await transport.commit(identity(1), mountFrame(), () => {}).promise;
+		expect(page.children).toHaveLength(1);
+		expect(papi.flushes()).toBe(1);
+
+		await transport.dispose(identity(1));
+		expect(page.children).toEqual([]);
+		expect(papi.flushes()).toBe(2);
+		transport.close();
+		receiver.close();
+	});
+
+	it.each([
+		['controller receiver', false],
+		['product receiver', true],
+	] as const)('publishes rollback before retry when the %s flush fails', async (_name, product) => {
+		const base = emittedHost();
+		let flushes = 0;
+		const papi: typeof base = {
+			...base,
+			flush(node, options) {
+				flushes++;
+				if (flushes === 1) throw new Error('injected frame flush failure');
+				base.flush(node, options);
+			},
+		};
+		const { page, receiver, transport } = setup(
+			papi,
+			'tests/WireRow.lynx.tsrx',
+			new RecordingContext(),
+			product,
+		);
+		receiver.markProgramsReady();
+		receiver.markPageReady();
+		await transport.ready;
+
+		await expect(transport.commit(identity(1), mountFrame(), () => {}).promise).rejects.toThrow(
+			'injected frame flush failure',
+		);
+		expect(page.children).toEqual([]);
+		expect(flushes).toBe(2);
+
+		await transport.commit(identity(1), mountFrame(), () => {}).promise;
+		expect(page.children).toHaveLength(1);
+		expect(flushes).toBe(3);
+		transport.close();
+		receiver.close();
+	});
+
+	it.each([
+		['controller receiver', false],
+		['product receiver', true],
+	] as const)('carries lifecycle data on the same compact wire for %s', async (_name, product) => {
+		const lifecycle: LynxDataLifecycleMessage[] = [];
+		const pageData = { nested: { ready: true }, missing: undefined } as Record<string, unknown>;
+		Object.defineProperty(pageData, '__proto__', {
+			enumerable: true,
+			value: { safe: true },
+		});
+		const { context, receiver, transport } = setup(
+			emittedHost(),
+			'tests/WireRow.lynx.tsrx',
+			new RecordingContext(),
+			product,
+			{ onLifecycle: (message) => lifecycle.push(message) },
+		);
+		receiver.markProgramsReady();
+		receiver.markPageReady();
+		await transport.ready;
+
+		expect(
+			receiver.publishLifecycle({
+				protocol: 1,
+				renderer: 'lynx',
+				type: 'page-data',
+				operation: 'replace',
+				data: pageData as LynxLifecycleDataRecord,
+			}),
+		).toBe(true);
+		expect(
+			receiver.publishLifecycle({
+				protocol: 1,
+				renderer: 'lynx',
+				type: 'global-props',
+				patch: { locale: 'en' },
+			}),
+		).toBe(true);
+		expect(lifecycle).toHaveLength(2);
+		expect(lifecycle[0]).toMatchObject({
+			protocol: 1,
+			renderer: 'lynx',
+			type: 'page-data',
+			operation: 'replace',
+			data: { nested: { ready: true } },
+		});
+		if (lifecycle[0]?.type !== 'page-data') throw new Error('expected page data');
+		expect(Object.hasOwn(lifecycle[0].data, 'missing')).toBe(true);
+		expect(lifecycle[0].data.missing).toBeUndefined();
+		expect(Object.getOwnPropertyDescriptor(lifecycle[0].data, '__proto__')?.value).toEqual({
+			safe: true,
+		});
+		expect(lifecycle[1]).toEqual({
+			protocol: 1,
+			renderer: 'lynx',
+			type: 'global-props',
+			patch: { locale: 'en' },
+		});
+		expect(
+			context.events
+				.filter((event) => event.type === LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT)
+				.map((event) => decodeLynxCompiledProgramMainMessage(event.data).type),
+		).toEqual(['ready', 'page-data', 'global-props']);
+		transport.close();
+		receiver.close();
+	});
+
+	it('fails closed from a retained native-lifetime tombstone before readiness', async () => {
+		const context = new RecordingContext();
+		let pageDestroyNotifications = 0;
+		const transport = createLynxCompiledProgramTransport(context, {
+			isPageDestroyed: () => true,
+			onPageDestroy: () => pageDestroyNotifications++,
+		});
+		await transport.pageDestroyed;
+		await expect(transport.ready).rejects.toThrow('page lifetime was destroyed');
+		expect(pageDestroyNotifications).toBe(1);
+		expect(
+			context.events.filter(
+				(event) => event.type === LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT,
+			),
+		).toEqual([]);
+	});
+
+	it.each([
+		['controller receiver', false],
+		['product receiver', true],
 	] as const)('broadcasts page destroy and releases %s ownership', async (_name, product) => {
+		let pageDestroyNotifications = 0;
 		const { context, page, receiver, transport } = setup(
 			emittedHost(),
 			'tests/WireRow.lynx.tsrx',
 			new RecordingContext(),
 			product,
+			{ onPageDestroy: () => pageDestroyNotifications++ },
 		);
 		receiver.markProgramsReady();
 		receiver.markPageReady();
@@ -168,6 +323,7 @@ describe('@octanejs/lynx compact compiled-program transport', () => {
 
 		receiver.destroyPage();
 		await transport.pageDestroyed;
+		expect(pageDestroyNotifications).toBe(1);
 		expect(page.children).toEqual([]);
 		expect(
 			context.events
@@ -275,23 +431,24 @@ describe('@octanejs/lynx compact compiled-program transport', () => {
 			},
 		};
 		const context = new RecordingContext();
-		const receiver = installLynxCompiledProgramReceiver(
-			{
-				context,
-				page,
-				papi,
-				resolveProgram: (module, index) =>
-					module === 'tests/WireRow.lynx.tsrx' && index === 0 ? plan : undefined,
-				pageReady: true,
-			},
-			[
-				1,
-				(firstHandle) =>
+		const receiver = installLynxCompiledProgramReceiver({
+			context,
+			page,
+			papi,
+			resolveProgram: (module, index) =>
+				module === 'tests/WireRow.lynx.tsrx' && index === 0 ? plan : undefined,
+			pageReady: true,
+			adoption: {
+				firstListener: 1,
+				resolveSeed: ({ firstHandle }) =>
 					firstHandle === 2
 						? { firstId: 10, firstListenerId: null, nodes, stride: plan.nodes }
 						: undefined,
-			],
-		);
+				verify() {},
+				finish() {},
+				dispose() {},
+			},
+		});
 		const transport = createLynxCompiledProgramTransport(context);
 		receiver.markProgramsReady();
 		await transport.ready;

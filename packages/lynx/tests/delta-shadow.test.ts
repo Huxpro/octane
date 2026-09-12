@@ -176,6 +176,64 @@ describe('Lynx delta shadow', () => {
 		expect(shadow.snapshot()).toEqual(initial);
 	});
 
+	it('collapses a proved destroy-run even after physical reordering', () => {
+		const shadow = createLynxDeltaShadow();
+		const applied: AppliedDeltaState = { values: new Map(), order: [] };
+		const mounted = shadow.prepare(
+			batch(1, [
+				addressedRun({
+					parent: null,
+					before: null,
+					firstId: 10,
+					firstListenerId: null,
+					count: 3,
+					values: ['row', 'A', 'row', 'B', 'row', 'C'],
+				}),
+			]),
+		)!;
+		applyDelta(applied, decodeLynxDeltaMessage(mounted.encoded).operations);
+		mounted.commit();
+		const moved = shadow.prepare(batch(2, [{ op: 'move', parent: null, id: 14, before: 10 }]))!;
+		applyDelta(applied, decodeLynxDeltaMessage(moved.encoded).operations);
+		moved.commit();
+
+		const destroyed = shadow.prepare(
+			batch(3, [{ op: 'destroy-run', parent: null, firstId: 10, count: 3, width: 2 }]),
+		)!;
+		expect(decodeLynxDeltaMessage(destroyed.encoded).operations).toEqual([
+			{ op: 'remove', firstInstance: 2, count: 3 },
+		]);
+		applyDelta(applied, decodeLynxDeltaMessage(destroyed.encoded).operations);
+		destroyed.commit();
+		expect(shadowProjection(shadow.snapshot())).toEqual(projection(applied));
+		expect(shadow.snapshot().instances).toEqual([]);
+	});
+
+	it('declines a destroy-run whose dense proof does not match accepted instances', () => {
+		const shadow = createLynxDeltaShadow();
+		shadow
+			.prepare(
+				batch(1, [
+					addressedRun({
+						parent: null,
+						before: null,
+						firstId: 10,
+						firstListenerId: null,
+						count: 2,
+						values: ['row', 'A', 'row', 'B'],
+					}),
+				]),
+			)!
+			.commit();
+		const accepted = shadow.snapshot();
+		expect(
+			shadow.prepare(
+				batch(2, [{ op: 'destroy-run', parent: null, firstId: 10, count: 2, width: 3 }]),
+			),
+		).toBeNull();
+		expect(shadow.snapshot()).toEqual(accepted);
+	});
+
 	it('defines each resident address once and re-announces it after an aborted preparation', () => {
 		const shadow = createLynxDeltaShadow();
 		const first = shadow.prepare(

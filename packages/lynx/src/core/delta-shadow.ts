@@ -453,6 +453,47 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 					removeInstance(next, host.firstId);
 					continue;
 				}
+				if (command.op === 'destroy-run') {
+					if (
+						(command.parent !== null && typeof command.parent !== 'number') ||
+						!Number.isSafeInteger(command.firstId) ||
+						!Number.isSafeInteger(command.count) ||
+						!Number.isSafeInteger(command.width) ||
+						command.firstId <= 0 ||
+						command.count <= 0 ||
+						command.width <= 0
+					) {
+						return null;
+					}
+					const finalId = command.firstId + (command.count - 1) * command.width;
+					if (!Number.isSafeInteger(finalId)) return null;
+					const first = next.instances.get(command.firstId);
+					if (
+						first === undefined ||
+						first.parent !== command.parent ||
+						first.program.nodes.length !== command.width
+					) {
+						return null;
+					}
+					for (let offset = 0; offset < command.count; offset++) {
+						const instance = next.instances.get(command.firstId + offset * command.width);
+						if (
+							instance === undefined ||
+							instance.handle !== first.handle + offset ||
+							instance.parent !== first.parent ||
+							instance.parentSlot !== first.parentSlot ||
+							instance.templateId !== first.templateId ||
+							instance.program !== first.program
+						) {
+							return null;
+						}
+					}
+					operations.push({ op: 'remove', firstInstance: first.handle, count: command.count });
+					for (let offset = 0; offset < command.count; offset++) {
+						removeInstance(next, command.firstId + offset * command.width);
+					}
+					continue;
+				}
 				if (command.op === 'destroy' && removedHosts.has(command.id)) {
 					continue;
 				}

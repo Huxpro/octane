@@ -2,10 +2,10 @@
 // where the universal core stands.
 //
 // Two things are under test and they fail differently. The first is the switch
-// itself — `@octanejs/rspeedy-plugin` substitutes `__OCTANE_LYNX_BACKGROUND_CORE__`
+// itself — `@octanejs/rspeedy-plugin` statically replaces the selection module
 // and `createLynxRoot` binds one core for the life of the bundle — so it is
-// exercised the way a bundle exercises it: define the constant, re-evaluate the
-// module graph, and build a real root. The second is what that core does, which
+// exercised by replacing that exact module and building a real root. The second
+// is what that core does, which
 // runs over the same `createLynxBackgroundTransport` a production root builds,
 // as `block-root.test.ts` does, so a frame that would fault a real page faults
 // here.
@@ -194,6 +194,32 @@ describe('Lynx block background core', () => {
 
 		expect((attempt as { status: string }).status).toBe('committed');
 		expect(rowLabels(paint(main.commits))).toEqual(['a', 'b', 'c']);
+	});
+
+	it('tracks a render on the ES2015 Lynx background Promise surface', async () => {
+		const harness = scene();
+		const component = withLynxBlockProgram(
+			(() => null) as unknown as LynxComponent<ProgramProps>,
+			tableProgram(),
+		);
+		const descriptor = Object.getOwnPropertyDescriptor(Promise, 'allSettled');
+		Object.defineProperty(Promise, 'allSettled', {
+			configurable: true,
+			value: undefined,
+			writable: true,
+		});
+
+		let rendering: Promise<unknown>;
+		try {
+			rendering = harness.background.renderAsync(component as never, { labels: ['native'] });
+		} finally {
+			if (descriptor === undefined) delete (Promise as { allSettled?: unknown }).allSettled;
+			else Object.defineProperty(Promise, 'allSettled', descriptor);
+		}
+
+		await settle(harness, rendering!);
+		await harness.background.flushTransport();
+		expect(rowLabels(paint(harness.main.commits))).toEqual(['native']);
 	});
 
 	it('publishes afterCommit work only after the host acknowledges the frame', async () => {
@@ -431,32 +457,28 @@ describe('Lynx block background core', () => {
 });
 
 describe('Lynx background core switch', () => {
-	const globals = globalThis as unknown as Record<string, unknown>;
-
 	beforeEach(() => {
 		vi.resetModules();
 	});
 
 	afterEach(() => {
-		delete globals.__OCTANE_LYNX_BACKGROUND_CORE__;
+		vi.doUnmock('../src/core/background-core-selection.js');
 		vi.resetModules();
 	});
 
-	it('reads universal when the build plugin substituted nothing', async () => {
-		const environment = await import('../src/core/environment.js');
-		expect(environment.LYNX_BLOCK_BACKGROUND_CORE).toBe(false);
-	});
-
-	it('reads block only for the exact substituted value', async () => {
-		globals.__OCTANE_LYNX_BACKGROUND_CORE__ = 'universal';
-		expect((await import('../src/core/environment.js')).LYNX_BLOCK_BACKGROUND_CORE).toBe(false);
-		vi.resetModules();
-		globals.__OCTANE_LYNX_BACKGROUND_CORE__ = 'block';
-		expect((await import('../src/core/environment.js')).LYNX_BLOCK_BACKGROUND_CORE).toBe(true);
+	it('keeps source consumers universal and exposes a literal Block replacement', async () => {
+		expect(
+			(await import('../src/core/background-core-selection.js')).LYNX_BLOCK_BACKGROUND_CORE,
+		).toBe(false);
+		expect(
+			(await import('../src/core/background-core-selection.block.js')).LYNX_BLOCK_BACKGROUND_CORE,
+		).toBe(true);
 	});
 
 	it('binds the block core into a real root when the bundle selects it', async () => {
-		globals.__OCTANE_LYNX_BACKGROUND_CORE__ = 'block';
+		vi.doMock('../src/core/background-core-selection.js', () => ({
+			LYNX_BLOCK_BACKGROUND_CORE: true,
+		}));
 		const { createLynxRoot } = await import('../src/root.js');
 		const context = new FakeContextProxy();
 		installMainSide(context);

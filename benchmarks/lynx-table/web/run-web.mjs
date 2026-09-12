@@ -102,6 +102,16 @@ const ALL_CELLS = [
 		core: 'block',
 		blockMode: 'derived',
 	},
+	// Issue-#290: the product-default arm omits the plugin's `core` override.
+	// Unlike the explicit Block ceilings above, this cell proves both that the
+	// fail-closed selector chose Block for this eligible application and that the
+	// selected production path survives the shared end-to-end workload.
+	{
+		id: 'octane-automatic',
+		bundle: path.join(root, 'app/dist-automatic/main.web.bundle'),
+		core: 'automatic',
+		compare: 'octane',
+	},
 	// Issue-#163 C4b: the same application entry, the same core, and the same
 	// page driver, built with the main-thread program backend so the first screen
 	// is straight-line compiled code driving the Element PAPI instead of a
@@ -631,6 +641,8 @@ async function main() {
 			if (!wanted.has(cell.id)) continue;
 			if (cell.core === 'block') {
 				buildTableApp({ core: 'block', blockMode: cell.blockMode ?? 'scoped' });
+			} else if (cell.core === 'automatic') {
+				buildTableApp({ core: 'automatic' });
 			} else if (cell.mtsProgram) {
 				buildTableApp({ mtsProgram: true });
 			}

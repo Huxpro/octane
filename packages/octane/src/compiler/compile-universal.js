@@ -5146,6 +5146,8 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 	const emission = backend.emitLynxMainThreadProgram(derived.wire, {
 		name,
 		ranges: derived.ranges,
+		slotUpdates: true,
+		structuralRuns: true,
 	});
 	// The create function takes its values, listeners and range sites
 	// positionally, so the maps below are the only thing that says which plan
