@@ -113,10 +113,27 @@ function normalizeMainThreadProgramBackend(value, label) {
 			);
 		}
 	} else {
-		for (const name of ['deriveLynxMainThreadProgram', 'emitLynxMainThreadProgram']) {
-			if (typeof value[name] !== 'function') {
-				throw new TypeError(`@octanejs/rspack-plugin: \`${label}.${name}\` must be a function.`);
-			}
+		if (
+			value.deriveLynxProgramIR !== undefined &&
+			typeof value.deriveLynxProgramIR !== 'function'
+		) {
+			throw new TypeError(
+				`@octanejs/rspack-plugin: \`${label}.deriveLynxProgramIR\` must be a function.`,
+			);
+		}
+		if (
+			typeof value.deriveLynxProgramIR !== 'function' &&
+			typeof value.deriveLynxMainThreadProgram !== 'function'
+		) {
+			throw new TypeError(
+				`@octanejs/rspack-plugin: \`${label}\` must expose a deriveLynxProgramIR ` +
+					`function (or the legacy deriveLynxMainThreadProgram function).`,
+			);
+		}
+		if (typeof value.emitLynxMainThreadProgram !== 'function') {
+			throw new TypeError(
+				`@octanejs/rspack-plugin: \`${label}.emitLynxMainThreadProgram\` must be a function.`,
+			);
 		}
 	}
 	if (

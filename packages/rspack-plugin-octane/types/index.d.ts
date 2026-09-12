@@ -119,14 +119,29 @@ export interface OctaneUniversalRuntimeOptions {
  * programs. `signature` names the emitted output's shape, and a build salts its
  * persistent transform cache with it.
  */
-export interface OctaneMainThreadProgramBackend {
+interface OctaneMainThreadProgramBackendBase {
 	readonly signature: string;
-	readonly deriveLynxMainThreadProgram: (planRoot: unknown) => unknown;
 	readonly emitLynxMainThreadProgram: (
 		program: unknown,
 		options: { readonly name: string },
 	) => { readonly source: string; readonly valueCount: number; readonly eventCount: number };
 }
+
+/**
+ * New backends derive the versioned, thread-neutral Lynx program IR. The legacy
+ * main-thread-named hook remains accepted while renderer integrations migrate.
+ */
+export type OctaneMainThreadProgramBackend = OctaneMainThreadProgramBackendBase &
+	(
+		| {
+				readonly deriveLynxProgramIR: (planRoot: unknown) => unknown;
+				readonly deriveLynxMainThreadProgram?: (planRoot: unknown) => unknown;
+		  }
+		| {
+				readonly deriveLynxProgramIR?: never;
+				readonly deriveLynxMainThreadProgram: (planRoot: unknown) => unknown;
+		  }
+	);
 
 /**
  * Serializable reference to a renderer-owned backend module. The loader reads

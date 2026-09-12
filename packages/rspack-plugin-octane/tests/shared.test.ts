@@ -115,6 +115,27 @@ describe('declarative options', () => {
 		expect(normalizeLoaderOptions({ strong: false })).toEqual({ strong: false });
 	});
 
+	it('accepts the shared IR hook and the legacy derivation hook for live backends', () => {
+		const emitLynxMainThreadProgram = () => ({ source: '', valueCount: 0, eventCount: 0 });
+		const shared = {
+			signature: 'renderer-program/8',
+			deriveLynxProgramIR: () => null,
+			emitLynxMainThreadProgram,
+		};
+		const legacy = {
+			signature: 'renderer-program/7',
+			deriveLynxMainThreadProgram: () => null,
+			emitLynxMainThreadProgram,
+		};
+
+		expect(normalizePluginOptions({ mainThreadProgramBackend: shared })).toEqual({
+			mainThreadProgramBackend: shared,
+		});
+		expect(normalizePluginOptions({ mainThreadProgramBackend: legacy })).toEqual({
+			mainThreadProgramBackend: legacy,
+		});
+	});
+
 	it('copies and freezes serializable main-thread backend references', () => {
 		const reference = { request: '@renderer/compiler', signature: 'renderer-program/7' };
 		const options = normalizePluginOptions({ mainThreadProgramBackend: reference });
@@ -213,7 +234,18 @@ describe('declarative options', () => {
 			{ mainThreadProgramBackend: { request: '@renderer/compiler', signature: 'x', extra: true } },
 			/unknown.*extra/,
 		],
-		[{ mainThreadProgramBackend: { signature: 'x' } }, /deriveLynxMainThreadProgram/],
+		[{ mainThreadProgramBackend: { signature: 'x' } }, /deriveLynxProgramIR/],
+		[
+			{
+				mainThreadProgramBackend: {
+					signature: 'x',
+					deriveLynxProgramIR: true,
+					deriveLynxMainThreadProgram: () => null,
+					emitLynxMainThreadProgram: () => ({}),
+				},
+			},
+			/deriveLynxProgramIR.*function/,
+		],
 		[
 			{
 				mainThreadProgramBackend: {

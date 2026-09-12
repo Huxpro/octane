@@ -503,6 +503,7 @@ describe('octane Rspack loader', () => {
 			expect.objectContaining({
 				mainThreadProgramBackend: expect.objectContaining({
 					signature: 'lynx-main-thread-program/20',
+					deriveLynxProgramIR: expect.any(Function),
 					deriveLynxMainThreadProgram: expect.any(Function),
 					emitLynxMainThreadProgram: expect.any(Function),
 				}),

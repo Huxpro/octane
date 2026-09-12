@@ -320,7 +320,7 @@ function throughCompiledProgram(root: any, values: readonly unknown[]): unknown 
 
 /** The same instance, painted by the dense applier from the same plan. */
 function throughApplier(planRoot: unknown, values: readonly unknown[]): unknown {
-	const derived = Backend.deriveLynxMainThreadProgram(planRoot as never)!;
+	const derived = Backend.deriveLynxProgramIR(planRoot as never)!;
 	const papi = createHost();
 	const container = createLynxHostContainer(papi, { root: 1 });
 	const core = createLynxBlockCore();
@@ -565,13 +565,62 @@ export function Card(props: { rows: unknown; label: unknown }) @{
 		]);
 	});
 
+	it('prefers the shared IR hook when a backend also exposes the legacy hook', () => {
+		const backend = {
+			...Backend,
+			deriveLynxMainThreadProgram() {
+				throw new Error('the legacy derivation must not run');
+			},
+		};
+		expect(evaluate(compiled(CARD, { backend })).roots[0].kind).toBe('program');
+	});
+
+	it('rejects a shared IR version mismatch before emitting either layer', () => {
+		const stale = {
+			...Backend,
+			deriveLynxProgramIR(plan: never) {
+				const ir = Backend.deriveLynxProgramIR(plan);
+				return ir === null ? null : { ...ir, version: 2 };
+			},
+		};
+		expect(() => compiled(CARD, { backend: stale })).toThrowError(
+			/expected program IR version 1, but the configured backend derived version 2/,
+		);
+		expect(() =>
+			compiled(CARD, {
+				backend: stale,
+				thread: 'background',
+				module: 'src/Card.lynx.tsrx',
+			}),
+		).toThrowError(/expected program IR version 1, but the configured backend derived version 2/);
+	});
+
+	it('rejects a malformed shared IR hook instead of silently using the legacy hook', () => {
+		const malformed = {
+			deriveLynxProgramIR: true,
+			deriveLynxMainThreadProgram: Backend.deriveLynxMainThreadProgram,
+			emitLynxMainThreadProgram: Backend.emitLynxMainThreadProgram,
+		};
+		expect(() => compiled(CARD, { backend: malformed })).toThrowError(
+			/deriveLynxProgramIR must be a function/,
+		);
+	});
+
+	it('keeps the legacy derivation hook as a compatibility fallback', () => {
+		const legacy = {
+			deriveLynxMainThreadProgram: Backend.deriveLynxMainThreadProgram,
+			emitLynxMainThreadProgram: Backend.emitLynxMainThreadProgram,
+		};
+		expect(evaluate(compiled(CARD, { backend: legacy })).roots[0].kind).toBe('program');
+	});
+
 	it('fails the build when a backend contradicts itself about its own arity', () => {
 		// The two halves of a backend can be versioned apart, and a create function
 		// taking fewer parameters than its map declares would read its values from
 		// shifted positions — a first screen that is wrong rather than absent. The
 		// compiler takes the source on trust and the counts on evidence.
 		const lying = {
-			deriveLynxMainThreadProgram: Backend.deriveLynxMainThreadProgram,
+			deriveLynxProgramIR: Backend.deriveLynxProgramIR,
 			emitLynxMainThreadProgram: (program: never, options: { readonly name: string }) => ({
 				...Backend.emitLynxMainThreadProgram(program, options),
 				valueCount: 99,
@@ -588,7 +637,7 @@ export function Card(props: { rows: unknown; label: unknown }) @{
 		// truncate the backend's output — a shorter create function instead of a
 		// build error naming the backend.
 		const trailing = {
-			deriveLynxMainThreadProgram: Backend.deriveLynxMainThreadProgram,
+			deriveLynxProgramIR: Backend.deriveLynxProgramIR,
 			emitLynxMainThreadProgram: (program: never, options: { readonly name: string }) => {
 				const emission = Backend.emitLynxMainThreadProgram(program, options);
 				return { ...emission, source: `${emission.source}); (0` };
@@ -963,8 +1012,8 @@ export function Card(props: { row: { id: number; label: string }; isSelected: bo
 
 		const shifted = {
 			...Backend,
-			deriveLynxMainThreadProgram(plan: never) {
-				const derived = Backend.deriveLynxMainThreadProgram(plan);
+			deriveLynxProgramIR(plan: never) {
+				const derived = Backend.deriveLynxProgramIR(plan);
 				if (derived === null || derived.ranges.length !== 1) return derived;
 				return {
 					...derived,
@@ -1042,7 +1091,7 @@ export function Card(props: { row: { id: number; label: string }; render: (id: n
 		expect(mainThread.addresses[0].index).toBe(0);
 		// The whole point: the two compiles independently produced the same name
 		// for the same plan. They agree by construction rather than by luck —
-		// both run `deriveLynxMainThreadProgram` as a pure oracle over the same
+		// both run `deriveLynxProgramIR` as a pure oracle over the same
 		// plan root, and the digest covers exactly the surface it produced.
 		expect(background.addresses).toEqual(mainThread.addresses);
 		expect(mainThread.addresses[0].digest).toMatch(/^[0-9a-f]{16}$/);

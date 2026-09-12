@@ -71,13 +71,30 @@ function loadMainThreadProgramBackend(value, root) {
 			{ cause: error },
 		);
 	}
-	for (const name of ['deriveLynxMainThreadProgram', 'emitLynxMainThreadProgram']) {
-		if (typeof loaded?.[name] !== 'function') {
-			throw new TypeError(
-				`@octanejs/rspack-plugin: main-thread program backend ` +
-					`${JSON.stringify(value.request)} must export a ${name} function.`,
-			);
-		}
+	if (
+		loaded?.deriveLynxProgramIR !== undefined &&
+		typeof loaded.deriveLynxProgramIR !== 'function'
+	) {
+		throw new TypeError(
+			`@octanejs/rspack-plugin: main-thread program backend ${JSON.stringify(value.request)} ` +
+				'must export deriveLynxProgramIR as a function when provided.',
+		);
+	}
+	if (
+		typeof loaded?.deriveLynxProgramIR !== 'function' &&
+		typeof loaded?.deriveLynxMainThreadProgram !== 'function'
+	) {
+		throw new TypeError(
+			`@octanejs/rspack-plugin: main-thread program backend ` +
+				`${JSON.stringify(value.request)} must export a deriveLynxProgramIR function ` +
+				`(or the legacy deriveLynxMainThreadProgram function).`,
+		);
+	}
+	if (typeof loaded?.emitLynxMainThreadProgram !== 'function') {
+		throw new TypeError(
+			`@octanejs/rspack-plugin: main-thread program backend ` +
+				`${JSON.stringify(value.request)} must export an emitLynxMainThreadProgram function.`,
+		);
 	}
 	if (loaded.signature !== value.signature) {
 		throw new Error(

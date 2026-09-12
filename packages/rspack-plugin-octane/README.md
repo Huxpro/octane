@@ -61,6 +61,11 @@ is loaded and signature-checked in each loader process, so it preserves worker
 compilation; a live module contains functions and therefore uses the serial
 loader. Positional program digests derived by workers return to the main
 compilation and are cross-checked there before output is accepted.
+New live backends expose `deriveLynxProgramIR`; Octane requires its successful
+result to use the supported IR version before either thread emits or addresses
+it. The original `deriveLynxMainThreadProgram` hook remains a compatibility
+fallback for experimental integrations, but the renderer-owned default derives
+the shared IR for both compiles.
 
 Set `strong: true` to opt application code into Strong mode's immutable
 render-snapshot and pure-render contract. The compiler rejects detectable state,

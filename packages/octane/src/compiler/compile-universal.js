@@ -5086,9 +5086,8 @@ function programDigest(derived) {
  *
  * The background is `target: 'universal'` and emits an ordinary host plan, so it
  * never builds a program and cannot decide eligibility from what it emitted. It
- * runs the derivation purely as an oracle: `deriveLynxMainThreadProgram` is a
- * pure build-time lowering with no side effects, and its `null` is exactly the
- * main thread's "no program here". So the two threads agree by construction
+ * runs the shared IR derivation purely as an oracle. Its `null` is exactly the
+ * main thread's "no program here", so the two threads agree by construction
  * instead of by a rule each implements separately.
  *
  * The digest covers the derived wire and, for a structural program, its open
@@ -5099,10 +5098,28 @@ function programDigest(derived) {
 // The derivation is a full lowering of the plan tree and a pure oracle, and an
 // addressing build asks for the same root twice in one pass — once for the
 // address digest, once for the emission. One derivation per root per compile.
-function deriveMainThreadProgramOnce(state, root) {
-	const cache = (state.derivedMainThreadPrograms ??= new Map());
+const LYNX_PROGRAM_IR_VERSION = 1;
+
+function deriveLynxProgramIROnce(state, root) {
+	const cache = (state.derivedLynxProgramIRs ??= new Map());
 	if (cache.has(root)) return cache.get(root);
-	const derived = state.mainThreadProgramBackend.deriveLynxMainThreadProgram(root) ?? null;
+	const backend = state.mainThreadProgramBackend;
+	const deriveIR = backend.deriveLynxProgramIR;
+	const hasSharedIR = typeof deriveIR === 'function';
+	if (!hasSharedIR && deriveIR !== undefined) {
+		throw new TypeError(
+			'Octane Lynx compiler backend deriveLynxProgramIR must be a function when provided.',
+		);
+	}
+	const derived = hasSharedIR
+		? (backend.deriveLynxProgramIR(root) ?? null)
+		: (backend.deriveLynxMainThreadProgram(root) ?? null);
+	if (hasSharedIR && derived !== null && derived.version !== LYNX_PROGRAM_IR_VERSION) {
+		throw new Error(
+			`Octane Lynx compiler expected program IR version ${LYNX_PROGRAM_IR_VERSION}, ` +
+				`but the configured backend derived version ${String(derived.version)}.`,
+		);
+	}
 	cache.set(root, derived);
 	return derived;
 }
@@ -5127,7 +5144,7 @@ function universalProgramAddressAst(state, plan, index, origin) {
 	const backend = state.mainThreadProgramBackend;
 	if (backend === undefined || state.programModuleId === undefined) return null;
 	if (!lynxTemplateEligible(plan.root) || plan.root.kind !== 'host') return null;
-	const derived = deriveMainThreadProgramOnce(state, plan.root);
+	const derived = deriveLynxProgramIROnce(state, plan.root);
 	if (!addressableMainThreadProgram(derived)) return null;
 	const address = { module: state.programModuleId, index, digest: programDigest(derived) };
 	// Reported as well as emitted. The digest in the chunk is what a reader can
@@ -5141,7 +5158,7 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 	const backend = state.mainThreadProgramBackend;
 	if (backend === undefined) return null;
 	if (state.universalRuntime?.thread !== 'main-thread') return null;
-	const derived = deriveMainThreadProgramOnce(state, plan.root);
+	const derived = deriveLynxProgramIROnce(state, plan.root);
 	if (derived === null) return null;
 	// Not `plan.name`: the module already binds that, and the emission's name
 	// becomes a named function expression whose binding would shadow it.

@@ -1,7 +1,7 @@
-// Issue-#163 C1b: deriving a main-thread program from a plan at build time.
+// Issue #373: deriving the shared Lynx program IR from a plan at build time.
 //
-// `deriveLynxMainThreadProgram` does not implement the lowering — it calls the
-// same `octane/universal/template-program` functions that `block-component.ts`
+// `deriveLynxProgramIR` delegates to the same
+// `octane/universal/template-program` functions that `block-component.ts`
 // calls at run time, through the same renderer driver, on the same plan object
 // the compiler already holds. So the test that matters is not "does it lower
 // correctly" but the two questions the caller answers rather than the lowering:
@@ -37,7 +37,12 @@ import { compileLynxBlockTemplate, createLynxBlockCore } from '../src/core/block
 import { createLynxClientContainer, createLynxClientDriver } from '../src/core/client-driver.js';
 import { createLynxHostContainer, prepareLynxHostBatch } from '../src/core/host-driver.js';
 import { LYNX_TRANSPORT_RENDERER } from '../src/core/protocol.js';
-import { deriveLynxMainThreadProgram, emitLynxMainThreadProgram } from '../src/compiler/index.js';
+import {
+	deriveLynxMainThreadProgram,
+	deriveLynxProgramIR,
+	emitLynxMainThreadProgram,
+	LYNX_PROGRAM_IR_VERSION,
+} from '../src/compiler/index.js';
 
 import { createFakePAPI, shape, withoutAllocatorIdentity } from './_fixtures/fake-element-papi.js';
 
@@ -185,24 +190,37 @@ function throughEmission(
 	return shape(papi.pages[0]!);
 }
 
-describe('deriving a main-thread program from a plan', () => {
+describe('deriving the shared Lynx program IR from a plan', () => {
+	it('versions and freezes the thread-neutral compiler boundary', () => {
+		const ir = deriveLynxProgramIR(CARD_PLAN);
+		expect(ir).not.toBeNull();
+		expect(LYNX_PROGRAM_IR_VERSION).toBe(1);
+		expect(ir!.version).toBe(LYNX_PROGRAM_IR_VERSION);
+		expect(Object.isFrozen(ir)).toBe(true);
+		const { version, ...derived } = ir!;
+		expect(version).toBe(1);
+		expect(derived).toEqual(deriveLynxMainThreadProgram(CARD_PLAN));
+	});
+
 	it('lowers a plan the way the run-time lowering lowers it', () => {
-		const derived = deriveLynxMainThreadProgram(CARD_PLAN);
+		const derived = deriveLynxProgramIR(CARD_PLAN);
 		expect(derived).not.toBeNull();
-		const { addressable, ...lowered } = derived!;
+		const { version, addressable, ...lowered } = derived!;
 		// No range holes in this plan, so both arms are told the same thing and
 		// the only variable left is the container the build-time driver lacks.
+		expect(version).toBe(1);
 		expect(addressable).toBe(true);
 		expect(lowered).toEqual(throughRuntimeLowering(CARD_PLAN, () => false));
 	});
 
 	it('reads its keyed range holes off the plan rather than off a value', () => {
-		const derived = deriveLynxMainThreadProgram(TABLE_PLAN);
+		const derived = deriveLynxProgramIR(TABLE_PLAN);
 		expect(derived).not.toBeNull();
-		const { addressable, ...lowered } = derived!;
+		const { version, addressable, ...lowered } = derived!;
 		// Slot 1 is the `kind: 'slot'` hole and slot 0 is the `kind: 'text'` one.
 		// A build that could not tell them apart would either mount the range as
 		// a stray empty text node or drop the caption.
+		expect(version).toBe(1);
 		expect(addressable).toBe(true);
 		expect(derived!.ranges).toEqual([{ slot: 1, node: 0 }]);
 		expect(derived!.wire.nodes).toHaveLength(3);
@@ -210,7 +228,7 @@ describe('deriving a main-thread program from a plan', () => {
 	});
 
 	it('paints what the applier paints, through the emission', () => {
-		const derived = deriveLynxMainThreadProgram(CARD_PLAN);
+		const derived = deriveLynxProgramIR(CARD_PLAN);
 		const program = derived!.wire;
 		// The plan's slots in wire order: `values` says which plan slot each `v`
 		// reads, and `events` the same for each `e`. Reading them rather than
@@ -240,7 +258,7 @@ describe('deriving a main-thread program from a plan', () => {
 			type: 'view',
 			propsSlot: 0,
 		}).root as UniversalHostPlan;
-		expect(deriveLynxMainThreadProgram(SPREAD)).toBeNull();
+		expect(deriveLynxProgramIR(SPREAD)).toBeNull();
 	});
 
 	it('declines a described program whose props require the command path', () => {
@@ -263,7 +281,7 @@ describe('deriving a main-thread program from a plan', () => {
 		// Default compilation must leave the plan on the command path before either
 		// thread gives it a positional address.
 		expect(throughRuntimeLowering(COMMAND_ONLY_PROP, () => false)).not.toBeNull();
-		expect(deriveLynxMainThreadProgram(COMMAND_ONLY_PROP)).toBeNull();
+		expect(deriveLynxProgramIR(COMMAND_ONLY_PROP)).toBeNull();
 	});
 
 	it('declines a range that would be the whole program', () => {
@@ -272,6 +290,6 @@ describe('deriving a main-thread program from a plan', () => {
 			kind: 'slot',
 			slot: 0,
 		}).root as UniversalHostPlan;
-		expect(deriveLynxMainThreadProgram(BARE)).toBeNull();
+		expect(deriveLynxProgramIR(BARE)).toBeNull();
 	});
 });

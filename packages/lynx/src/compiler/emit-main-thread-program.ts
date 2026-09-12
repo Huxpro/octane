@@ -848,7 +848,7 @@ export function emitLynxMainThreadProgram(
 	// A range site's value is the one thing a build cannot know and a run cannot
 	// avoid knowing, so the decision is emitted rather than made.
 	//
-	// `deriveLynxMainThreadProgram` answers "every renderable hole is a keyed
+	// `deriveLynxProgramIR` answers "every renderable hole is a keyed
 	// range", because a plan the compiler produced lowers a `@for`, a component
 	// and a `{row.label as string}` to the same `kind: 'slot'` node. The
 	// run-time lowering answers the same question by looking at the value, and

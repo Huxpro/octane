@@ -109,7 +109,10 @@ default. The backend travels to Rspack workers as a serializable absolute module
 request plus its cache signature; each worker loads and verifies the module, and
 the main compilation cross-checks the positional program digest produced by both
 thread layers. Eligible host-only plans therefore use compiled resident programs
-and addresses without config-file imports. Plans the create-function emitter
+and addresses from one versioned, compiler-owned Lynx IR: the background compile
+uses it for eligibility and addressing, while the main-thread compile also emits
+the resident create function from it. No config-file import is needed. Plans the
+create-function emitter
 cannot reproduce stay on the command path. Use `programAddressing: false` to
 keep compiled programs while comparing descriptor transport, or
 `mainThreadProgramBackend: false` for a full command-path control. Pass another
