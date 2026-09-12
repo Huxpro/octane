@@ -252,6 +252,31 @@ describe('Lynx block core — equivalence with a fresh mount', () => {
 		);
 	});
 
+	it('evaluates only compiler-proven changed survivor rows during a structural reconcile', () => {
+		const list = rows(5);
+		const next = [list[0]!, { ...list[2]!, label: 'changed' }, list[3]!, list[4]!];
+		const evaluated: number[] = [];
+		const incremental = scene(list, null);
+		incremental.core.reconcileForSlot(
+			incremental.slot,
+			ROW_TEMPLATE,
+			next,
+			(row) => row.id,
+			(row, index) => {
+				evaluated.push(index);
+				return rowValues(row, null);
+			},
+			undefined,
+			[1],
+		);
+		incremental.apply();
+
+		expect(evaluated).toEqual([1]);
+		expect(withoutAllocatorIdentity(incremental.tree())).toEqual(
+			withoutAllocatorIdentity(scene(next, null).tree()),
+		);
+	});
+
 	it('reuses the survivor host across a reorder rather than recreating it', () => {
 		const list = rows(4);
 		const built = scene(list, null);
