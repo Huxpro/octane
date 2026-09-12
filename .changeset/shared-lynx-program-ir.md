@@ -6,7 +6,9 @@
 ---
 
 Derive eligible Lynx host programs through one versioned compiler IR shared by
-the background and main-thread compiles. Reject unsupported IR versions before
-emission or addressing, keep the original main-thread-named derivation hook as
-a compatibility fallback, and propagate the new backend identity through
+the background and main-thread compiles. Emit an independent Block background
+artifact that carries compiler wire and site maps instead of a Universal plan,
+consume it directly in the Block core, and reject unsupported graphs or ABI
+versions before mounting. Keep the original main-thread-named derivation hook
+as a compatibility fallback and propagate the new backend identity through
 Rspack workers and default Rspeedy application builds.

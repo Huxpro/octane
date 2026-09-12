@@ -6,9 +6,9 @@
  * same lowered surface. Keeping that surface versioned here, outside either
  * thread runtime, gives the compiler a boundary it can reject when a renderer
  * backend and compiler are out of step. The main-thread emitter consumes
- * `wire`; the background compile currently consumes the same IR as its pure
- * addressing oracle. Later background serialization can grow from this
- * contract without introducing a second lowering.
+ * `wire`; the background compile serializes that wire and its maps into the
+ * Block program artifact. Neither output reconstructs the other's program at
+ * runtime.
  */
 
 import type { UniversalHostTemplateProgram } from 'octane/universal/native';
@@ -26,7 +26,8 @@ export const LYNX_PROGRAM_IR_VERSION = 1 as const;
  *
  * `values` and `events` map plan slots to the resident create function's
  * positional parameters. `ranges` names structural holes the background
- * runtime owns instead of painting into the fixed wire.
+ * runtime owns instead of painting into the fixed wire. `addressable` is the
+ * shared fail-closed eligibility answer for the independently built outputs.
  */
 export interface LynxProgramIR {
 	readonly version: typeof LYNX_PROGRAM_IR_VERSION;

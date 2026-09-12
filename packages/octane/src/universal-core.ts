@@ -313,6 +313,8 @@ export interface UniversalProgramCreate {
 
 export interface UniversalProgramPlan {
 	readonly kind: 'program';
+	/** Compiler-emitted program ABI; absent only on legacy hand-written programs. */
+	readonly version?: number;
 	/** Per-value-slot kind table; `null` for a slot no node writes. */
 	readonly slots: readonly (UniversalSlotKind | null)[];
 	/** How many hosts the program creates. */

@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+	lynxBlockRspeedyBackgroundRenderers,
 	lynxRspeedyBackgroundRenderers,
 	lynxRspeedyMainThreadRenderers,
 } from '@octanejs/lynx/config';
@@ -43,7 +44,7 @@ const lynxProductMainThreadRenderers = Object.freeze({
 // and the backend signature test forces both constants to move together.
 const DEFAULT_MAIN_THREAD_PROGRAM_BACKEND = Object.freeze({
 	request: fileURLToPath(import.meta.resolve('@octanejs/lynx/compiler')),
-	signature: 'lynx-main-thread-program/20',
+	signature: 'lynx-main-thread-program/21',
 });
 /**
  * What the main-thread layer compiles differently from the background one.
@@ -160,7 +161,11 @@ function normalizeOptions(value) {
 		core: options.core ?? (application ? undefined : 'universal'),
 		thread,
 		renderers:
-			thread === 'main-thread' ? lynxRspeedyMainThreadRenderers : lynxRspeedyBackgroundRenderers,
+			thread === 'main-thread'
+				? lynxRspeedyMainThreadRenderers
+				: programAddressing && options.core === 'block'
+					? lynxBlockRspeedyBackgroundRenderers
+					: lynxRspeedyBackgroundRenderers,
 		...(application
 			? { layerSpecializations: applicationLayerSpecializations(mainThreadProgramBackend) }
 			: null),

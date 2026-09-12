@@ -48,6 +48,8 @@ import {
 	type UniversalRenderable,
 	type UniversalHostCommand,
 } from 'octane/universal/native';
+import { deriveLynxProgramIR } from '../src/compiler/index.js';
+import { lynxProgram, lynxProgramValue } from '../src/core/compiler-program.js';
 
 import { createLynxBlockBackgroundCore } from '../src/core/block-background.js';
 import { createLynxBlockCore, type LynxBlockCore } from '../src/core/block-core.js';
@@ -115,6 +117,28 @@ const Card = defineUniversalComponent(
 			onTap,
 			detail,
 		]),
+);
+
+const CARD_PROGRAM_IR = deriveLynxProgramIR(CARD_PLAN.root as never)!;
+const CARD_COMPILER_PROGRAM = lynxProgram(LYNX_TRANSPORT_RENDERER, {
+	...CARD_PROGRAM_IR,
+	address: {
+		module: 'tests/CompilerCard.lynx.tsrx',
+		index: 0,
+		digest: 'fedcba9876543210',
+	},
+});
+
+const CompilerCard = defineUniversalComponent(
+	LYNX_TRANSPORT_RENDERER,
+	({ label, detail, active, onTap }: CardProps) =>
+		lynxProgramValue(CARD_COMPILER_PROGRAM, [
+			active ? 'card active' : 'card',
+			label,
+			active ? 'card-meta on' : 'card-meta',
+			onTap,
+			detail,
+		]) as never,
 );
 
 const ADDRESSED_SIMPLE_PLAN = universalPlan(
@@ -442,6 +466,19 @@ const LADDER: readonly CardProps[] = [
 ];
 
 describe('Lynx compiled component on the Block core', () => {
+	it('rejects a mismatched background program ABI before mounting', () => {
+		expect(() =>
+			lynxProgram(LYNX_TRANSPORT_RENDERER, {
+				...CARD_PROGRAM_IR,
+				version: 2,
+				address: {
+					module: 'tests/MismatchedCard.lynx.tsrx',
+					index: 0,
+					digest: '0123456789abcdef',
+				},
+			} as never),
+		).toThrow(/expected ABI version 1, received 2/);
+	});
 	it('preserves a build-proven address on the Block run command', async () => {
 		const block = blockColumn(
 			createLynxBlockCore({ templateRuns: () => true }),
@@ -456,6 +493,23 @@ describe('Lynx compiled component on the Block core', () => {
 				address: { module: 'tests/AddressedCard.lynx.tsrx', index: 0 },
 			}),
 		]);
+	});
+
+	it('consumes the compiler-owned wire directly and preserves update semantics', async () => {
+		const universal = universalColumn(Card as LynxComponent<CardProps>);
+		const block = blockColumn();
+
+		for (const [step, props] of LADDER.entries()) {
+			await universal.render(props);
+			await block.render(CompilerCard as LynxComponent<CardProps>, props);
+
+			const left = paint(universal.main.commits);
+			const right = paint(block.main.commits);
+			expect(right.tree, `tree after step ${step}`).toBe(left.tree);
+			expect(right.handles, `handles after step ${step}`).toBe(left.handles);
+			expect(right.events, `events after step ${step}`).toBe(left.events);
+		}
+		expect(paint(block.main.commits).tree).toContain('gamma');
 	});
 
 	it('paints what the universal core paints, at every step of a ladder', async () => {

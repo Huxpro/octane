@@ -4651,8 +4651,14 @@ function universalHelperImportAsts(state, extraPairs = [], origin = null) {
 	const threadModule = state.renderer.threadFunctionsModule ?? state.renderer.module;
 	const pairs = [
 		['defineUniversalComponent', state.helpers.component],
-		['universalPlan', state.helpers.plan],
-		['universalValue', state.helpers.value],
+		[
+			rendererHasCapability(state, 'compiler-program-ir') ? 'lynxProgram' : 'universalPlan',
+			state.helpers.plan,
+		],
+		[
+			rendererHasCapability(state, 'compiler-program-ir') ? 'lynxProgramValue' : 'universalValue',
+			state.helpers.value,
+		],
 		['universalComponent', state.helpers.nestedComponent],
 		...(state.helpers.hostComponentLeafPlan === undefined
 			? []
@@ -5084,10 +5090,11 @@ function programDigest(derived) {
  * to ask the same question, of the same plan root, through the same derivation,
  * rather than to have each infer it from its own emission.
  *
- * The background is `target: 'universal'` and emits an ordinary host plan, so it
- * never builds a program and cannot decide eligibility from what it emitted. It
- * runs the shared IR derivation purely as an oracle. Its `null` is exactly the
- * main thread's "no program here", so the two threads agree by construction
+ * The normal background target emits an ordinary host plan and consumes this
+ * derivation only as an addressing oracle. The explicit Block program target
+ * serializes the same derived wire and maps instead. In both cases, its
+ * `null` is exactly the main thread's "no program here", so the two threads
+ * agree by construction
  * instead of by a rule each implements separately.
  *
  * The digest covers the derived wire and, for a structural program, its open
@@ -5197,6 +5204,7 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 	return inheritGeneratedOrigin(
 		b.object([
 			b.prop('init', b.literal('kind', '"kind"'), b.literal('program', '"program"')),
+			b.prop('init', b.literal('version', '"version"'), b.literal(LYNX_PROGRAM_IR_VERSION)),
 			// The keyed slot map is the contract #163 keeps, so the compiled object
 			// carries the same one the interpreted object does. It is per program and
 			// fixed size — the update path's dispatch table, not a per-node
@@ -5289,9 +5297,78 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 	);
 }
 
+function lynxBackgroundProgramObjectAst(state, plan, index, origin) {
+	if (
+		state.universalRuntime?.runtime !== 'lynx' ||
+		state.universalRuntime.thread !== 'background'
+	) {
+		throw universalError(
+			state.filename,
+			origin,
+			'the compiler-program-ir capability is only valid for a Lynx background runtime.',
+		);
+	}
+	if (state.mainThreadProgramBackend === undefined || state.programModuleId === undefined) {
+		throw universalError(
+			state.filename,
+			origin,
+			'a Block background program requires a paired main-thread backend and module address.',
+		);
+	}
+	if (!lynxTemplateEligible(plan.root) || plan.root.kind !== 'host') {
+		throw universalError(
+			state.filename,
+			origin,
+			'a Block background program requires addressable shared Lynx IR rooted at a host element.',
+		);
+	}
+	const derived = deriveLynxProgramIROnce(state, plan.root);
+	if (!addressableMainThreadProgram(derived)) {
+		throw universalError(
+			state.filename,
+			origin,
+			'a Block background program requires addressable shared Lynx IR; this plan needs the Universal core.',
+		);
+	}
+	const address = universalProgramAddressAst(state, plan, index, origin);
+	if (address === null) {
+		throw universalError(
+			state.filename,
+			origin,
+			'a Block background program could not allocate its paired program address.',
+		);
+	}
+	return inheritGeneratedOrigin(
+		b.object([
+			b.prop('init', b.literal('version', '"version"'), b.literal(LYNX_PROGRAM_IR_VERSION)),
+			b.prop('init', b.literal('address', '"address"'), address),
+			b.prop('init', b.literal('wire', '"wire"'), jsonValueToAst(derived.wire, origin)),
+			b.prop('init', b.literal('values', '"values"'), jsonValueToAst(derived.values, origin)),
+			b.prop('init', b.literal('events', '"events"'), jsonValueToAst(derived.events, origin)),
+			b.prop('init', b.literal('ranges', '"ranges"'), jsonValueToAst(derived.ranges, origin)),
+		]),
+		origin,
+	);
+}
+
 function universalPlanDeclarationsAst(state, origin = null) {
+	const compilerPrograms = rendererHasCapability(state, 'compiler-program-ir');
 	return state.plans.map((plan, index) => {
 		const planOrigin = plan.origin ?? origin;
+		if (compilerPrograms) {
+			return generatedConst(
+				plan.name,
+				generatedCall(
+					state.helpers.plan,
+					[
+						b.literal(state.renderer.id),
+						lynxBackgroundProgramObjectAst(state, plan, index, planOrigin),
+					],
+					planOrigin,
+				),
+				planOrigin,
+			);
+		}
 		const rootAst =
 			state.lynxTemplates && lynxTemplateEligible(plan.root) && plan.root.kind === 'host'
 				? (lynxMainThreadProgramObjectAst(state, plan, planOrigin) ??

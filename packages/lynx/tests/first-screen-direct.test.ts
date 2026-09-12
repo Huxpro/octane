@@ -1013,6 +1013,16 @@ describe('direct first-screen applier, compiled main-thread programs', () => {
 		expect(papi.pages[0]!.children).toHaveLength(0);
 	});
 
+	it('rejects a compiler-emitted program with a mismatched ABI before it registers or runs', () => {
+		expect(() =>
+			universalPlan('lynx', fakeProgram({ version: 2 } as never), {
+				module: 'tests/stale-program.tsrx',
+				index: 0,
+				digest: 'stale',
+			}),
+		).toThrow(/expected program ABI version 1, received 2/);
+	});
+
 	it('refuses a program whose event site names no Lynx event prop', () => {
 		// The plan is the event table the mount journals from (issue #215 D3), so
 		// what a site's type has to name is a real Element PAPI tuple. The

@@ -186,6 +186,7 @@ interface CompilerRendererOptions {
 	registry: {
 		lynx: {
 			module: string;
+			capabilities?: readonly string[];
 			validation: {
 				forbiddenGlobals: readonly string[];
 				forbiddenImports: readonly string[];
@@ -1046,6 +1047,26 @@ export function App() @{ <view /> }
 					: './core/background-core-selection.js',
 			);
 		}
+	});
+
+	it('selects the compiler-program background renderer only for addressed core:block applications', () => {
+		const entries = { app: ['./src/App.lynx.tsrx'] };
+		const universal = compilerOptions(applyPlugin({ core: 'universal' }, 'lynx', {}, entries));
+		const block = compilerOptions(applyPlugin({ core: 'block' }, 'lynx', {}, entries));
+		const isolated = compilerOptions(
+			applyPlugin({ thread: 'background', core: 'block' }, 'lynx', {}, entries),
+		);
+		const unaddressed = compilerOptions(
+			applyPlugin({ core: 'block', programAddressing: false }, 'lynx', {}, entries),
+		);
+
+		expect(universal.renderers.registry.lynx.capabilities).not.toContain('compiler-program-ir');
+		expect(block.renderers.registry.lynx.capabilities).toContain('compiler-program-ir');
+		expect(isolated.renderers.registry.lynx.capabilities).not.toContain('compiler-program-ir');
+		expect(unaddressed.renderers.registry.lynx.capabilities).not.toContain('compiler-program-ir');
+		expect(block.layerSpecializations?.[LYNX_MAIN_THREAD_LAYER]?.renderers).toBe(
+			universal.layerSpecializations?.[LYNX_MAIN_THREAD_LAYER]?.renderers,
+		);
 	});
 
 	it('binds production diagnostics to compact identifiers in every graph', () => {

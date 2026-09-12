@@ -3,6 +3,8 @@ import { normalizeRendererConfig } from 'octane/compiler/renderers';
 import * as authoringConfig from '../src/config.js';
 import * as runtimeConfig from '../src/config.runtime.js';
 import {
+	lynxBlockBackgroundRenderer,
+	lynxBlockRspeedyBackgroundRenderers,
 	lynxRenderers,
 	lynxRspeedyBackgroundRenderers,
 	lynxRspeedyMainThreadRenderers,
@@ -15,6 +17,9 @@ describe('@octanejs/lynx renderer preset', () => {
 			'LYNX_RENDERER_ID',
 			'lynxBackgroundRenderer',
 			'lynxBackgroundRendererRegistry',
+			'lynxBlockBackgroundRenderer',
+			'lynxBlockBackgroundRendererRegistry',
+			'lynxBlockRspeedyBackgroundRenderers',
 			'lynxMainThreadRenderer',
 			'lynxMainThreadRendererRegistry',
 			'lynxRenderer',
@@ -85,6 +90,16 @@ describe('@octanejs/lynx renderer preset', () => {
 			forbiddenGlobals: expect.not.arrayContaining(['NativeModules']),
 			forbiddenImports: expect.not.arrayContaining(['@octanejs/lynx/platform']),
 		});
+	});
+
+	it('activates compiler-program IR only in the explicit Block background preset', () => {
+		expect(
+			normalizeRendererConfig(lynxBlockRspeedyBackgroundRenderers).registry.lynx.capabilities,
+		).toContain('compiler-program-ir');
+		expect(lynxBlockBackgroundRenderer.module).toBe('@octanejs/lynx/renderer');
+		expect(
+			normalizeRendererConfig(lynxRspeedyBackgroundRenderers).registry.lynx.capabilities,
+		).not.toContain('compiler-program-ir');
 	});
 
 	it('marks Native Modules and platform imports as main-thread violations', () => {

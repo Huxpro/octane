@@ -88,7 +88,7 @@ import {
 	compiledUniversalTemplateProgram,
 	createUniversalHostEncoder,
 	prepareUniversalTemplateProgram,
-	prepareUniversalTemplateProgramValues,
+	prepareUniversalTemplateProgramValuesFromWire,
 	universalTemplateProgramWithoutRanges,
 	type CompiledUniversalTemplateProgram,
 	type PreparedUniversalTemplateProgram,
@@ -107,6 +107,11 @@ import {
 	type LynxBlockForSlot,
 	type LynxBlockTemplate,
 } from './block-core.js';
+import {
+	isLynxCompilerProgram,
+	isLynxCompilerProgramValue,
+	type LynxCompilerProgram,
+} from './compiler-program.js';
 import type { LynxBlockProgram, LynxBlockProgramContext } from './block-program.js';
 import { LYNX_TRANSPORT_RENDERER } from './transport-identity.js';
 import type { LynxBlockListener } from './block-root.js';
@@ -261,7 +266,7 @@ function isRangeValue(value: unknown): value is UniversalForValue {
 interface RenderedPlan {
 	/** The component that returned it, which is who a refusal has to name. */
 	readonly source: LynxComponent<never>;
-	readonly plan: UniversalPlan;
+	readonly plan: UniversalPlan | LynxCompilerProgram;
 	readonly values: readonly unknown[];
 }
 
@@ -278,7 +283,7 @@ interface RangeState {
 	/** The host node in the mounted template whose children the range owns. */
 	readonly node: number;
 	site: LynxBlockForSlot | null;
-	plan: UniversalPlan | null;
+	plan: UniversalPlan | LynxCompilerProgram | null;
 	compiled: CompiledUniversalTemplateProgram | null;
 	prepared: PreparedUniversalTemplateProgram | null;
 	template: LynxBlockTemplate | null;
@@ -440,7 +445,7 @@ export function lynxBlockProgramForComponent<Props>(
 	let renderQueued = false;
 
 	let encoder: UniversalHostEncoder | null = null;
-	let plan: UniversalPlan | null = null;
+	let plan: UniversalPlan | LynxCompilerProgram | null = null;
 	let compiled: CompiledUniversalTemplateProgram | null = null;
 	let prepared: PreparedUniversalTemplateProgram | null = null;
 	let block: LynxBlock | null = null;
@@ -448,12 +453,15 @@ export function lynxBlockProgramForComponent<Props>(
 
 	/** Read a compiled component's return value, or say what it returned instead. */
 	const readPlanValue = (source: LynxComponent<never>, produced: unknown): RenderedPlan => {
+		if (isLynxCompilerProgramValue(produced)) {
+			return { source, plan: produced.program, values: produced.values };
+		}
 		const value = produced as UniversalPlanValue | null;
 		if (value === null || typeof value !== 'object' || value.$$kind !== UNIVERSAL_VALUE) {
 			refuse(
 				source,
 				LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-					'it did not return a compiled template, so there is nothing to lower. Only a component the Octane compiler lowered to a universal plan can become a block program.',
+					'it did not return a compiled template, so there is nothing to lower. Only a compiler program or a component lowered to a Universal plan can become a block program.',
 			);
 		}
 		return { source, plan: value.plan, values: value.values };
@@ -677,9 +685,8 @@ export function lynxBlockProgramForComponent<Props>(
 		context: LynxBlockProgramContext,
 		slotValues: readonly unknown[],
 	): readonly UniversalHostTemplateProgramValue[] => {
-		const values = prepareUniversalTemplateProgramValues(
+		const values = prepareUniversalTemplateProgramValuesFromWire(
 			encoderFor(context),
-			compiled!,
 			prepared!,
 			withHandlerStubs(subject, prepared!.events, slotValues),
 		);
@@ -732,45 +739,63 @@ export function lynxBlockProgramForComponent<Props>(
 		} else {
 			// The page did return a compiled template — the row's output is what
 			// did not — so the diagnostic must say which level failed.
-			const value = produced as UniversalPlanValue | null;
-			if (value === null || typeof value !== 'object' || value.$$kind !== UNIVERSAL_VALUE) {
-				refuse(
-					subject,
-					LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-						'a row of one of its keyed ranges is not a compiled template. Only a row the Octane compiler lowered to a universal plan, or one authored as a component that returns one, can mount on a range site.',
-				);
+			if (isLynxCompilerProgramValue(produced)) {
+				rendered = { source: subject, plan: produced.program, values: produced.values };
+			} else {
+				const value = produced as UniversalPlanValue | null;
+				if (value === null || typeof value !== 'object' || value.$$kind !== UNIVERSAL_VALUE) {
+					refuse(
+						subject,
+						LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+							'a row of one of its keyed ranges is not a compiled template. Only a compiler program, Universal plan, or component returning one can mount on a range site.',
+					);
+				}
+				rendered = { source: subject, plan: value.plan, values: value.values };
 			}
-			rendered = { source: subject, plan: value.plan, values: value.values };
 		}
 		if (state.plan === null) {
-			const root = rendered.plan.root;
-			if (root.kind !== 'host') {
-				refuse(
-					subject,
-					LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-						`a row of one of its keyed ranges is rooted at a ${JSON.stringify(root.kind)} node rather than a host element, and a range mounts one host subtree per row.`,
-				);
+			if (isLynxCompilerProgram(rendered.plan)) {
+				if (rendered.plan.ranges.length !== 0) {
+					refuse(
+						subject,
+						LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+							'a row compiler program declares a nested range, which the Block core does not lower yet.',
+					);
+				}
+				state.plan = rendered.plan;
+				state.compiled = null;
+				state.prepared = rendered.plan;
+				state.template = compileLynxBlockTemplate(rendered.plan.wire, rendered.plan.address);
+			} else {
+				const root = rendered.plan.root;
+				if (root.kind !== 'host') {
+					refuse(
+						subject,
+						LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+							`a row of one of its keyed ranges is rooted at a ${JSON.stringify(root.kind)} node rather than a host element, and a range mounts one host subtree per row.`,
+					);
+				}
+				const program = compiledUniversalTemplateProgram(encoderFor(context), root);
+				if (program === null) {
+					refuse(
+						subject,
+						LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+							'a row of one of its keyed ranges is not entirely compile-time host structure, so there is no static template to mount per row.',
+					);
+				}
+				const wire = prepareUniversalTemplateProgram(encoderFor(context), program);
+				if (wire === null) {
+					refuse(
+						subject,
+						LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+							'this renderer cannot carry a static prop or event site of one of its keyed range rows in a template program.',
+					);
+				}
+				state.plan = rendered.plan;
+				state.compiled = program;
+				state.prepared = wire;
+				state.template = compileLynxBlockTemplate(wire.wire, rendered.plan.address);
 			}
-			const program = compiledUniversalTemplateProgram(encoderFor(context), root);
-			if (program === null) {
-				refuse(
-					subject,
-					LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-						'a row of one of its keyed ranges is not entirely compile-time host structure, so there is no static template to mount per row.',
-				);
-			}
-			const wire = prepareUniversalTemplateProgram(encoderFor(context), program);
-			if (wire === null) {
-				refuse(
-					subject,
-					LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-						'this renderer cannot carry a static prop or event site of one of its keyed range rows in a template program.',
-				);
-			}
-			state.plan = rendered.plan;
-			state.compiled = program;
-			state.prepared = wire;
-			state.template = compileLynxBlockTemplate(wire.wire, rendered.plan.address);
 		} else if (rendered.plan !== state.plan) {
 			refuse(
 				subject,
@@ -779,9 +804,8 @@ export function lynxBlockProgramForComponent<Props>(
 			);
 		}
 		const sites = state.prepared!.events;
-		const values = prepareUniversalTemplateProgramValues(
+		const values = prepareUniversalTemplateProgramValuesFromWire(
 			encoderFor(context),
-			state.compiled!,
 			state.prepared!,
 			withHandlerStubs(rendered.source, sites, rendered.values),
 		);
@@ -1218,47 +1242,60 @@ export function lynxBlockProgramForComponent<Props>(
 			});
 			const rendered = renderSubject(context, props);
 			try {
-				const root = rendered.plan.root;
-				if (root.kind !== 'host') {
-					refuse(
-						subject,
-						LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-							`its template is rooted at a ${JSON.stringify(root.kind)} node rather than a host element, and a block mounts one host subtree.`,
+				let wire: PreparedUniversalTemplateProgram;
+				let declaredRanges: readonly { readonly slot: number; readonly node: number }[];
+				if (isLynxCompilerProgram(rendered.plan)) {
+					wire = rendered.plan;
+					declaredRanges = rendered.plan.ranges;
+					compiled = null;
+				} else {
+					const root = rendered.plan.root;
+					if (root.kind !== 'host') {
+						refuse(
+							subject,
+							LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+								`its template is rooted at a ${JSON.stringify(root.kind)} node rather than a host element, and a block mounts one host subtree.`,
+						);
+					}
+					const runtimeProgram = compiledUniversalTemplateProgram(encoderFor(context), root);
+					if (runtimeProgram === null) {
+						refuse(
+							subject,
+							LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+								'its template is not entirely compile-time host structure, so there is no static template to mount.',
+						);
+					}
+					const split = universalTemplateProgramWithoutRanges(runtimeProgram, (slot) =>
+						isRangeValue(rendered.values[slot]),
 					);
-				}
-				const program = compiledUniversalTemplateProgram(encoderFor(context), root);
-				if (program === null) {
-					refuse(
-						subject,
-						LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-							'its template is not entirely compile-time host structure, so there is no static template to mount.',
+					if (split === null) {
+						refuse(
+							subject,
+							LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+								'one of its keyed ranges is not the last child of its host element, and a range appends its rows to that element — so anything authored after it would be painted before every row.',
+						);
+					}
+					const preparedProgram = prepareUniversalTemplateProgram(
+						encoderFor(context),
+						split.compiled,
 					);
-				}
-				const split = universalTemplateProgramWithoutRanges(program, (slot) =>
-					isRangeValue(rendered.values[slot]),
-				);
-				if (split === null) {
-					refuse(
-						subject,
-						LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-							'one of its keyed ranges is not the last child of its host element, and a range appends its rows to that element — so anything authored after it would be painted before every row.',
-					);
-				}
-				const wire = prepareUniversalTemplateProgram(encoderFor(context), split.compiled);
-				if (wire === null) {
-					refuse(
-						subject,
-						LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-							'this renderer cannot carry one of its static props or event sites in a template program.',
-					);
+					if (preparedProgram === null) {
+						refuse(
+							subject,
+							LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+								'this renderer cannot carry one of its static props or event sites in a template program.',
+						);
+					}
+					wire = preparedProgram;
+					declaredRanges = split.ranges;
+					compiled = split.compiled;
 				}
 				plan = rendered.plan;
-				compiled = split.compiled;
 				prepared = wire;
 				ranges =
-					split.ranges.length === 0
+					declaredRanges.length === 0
 						? EMPTY_RANGES
-						: split.ranges.map((range) => ({
+						: declaredRanges.map((range) => ({
 								slot: range.slot,
 								node: range.node,
 								site: null,

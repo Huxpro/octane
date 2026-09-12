@@ -777,9 +777,14 @@ export function prepareUniversalTemplateProgram(
  * event slot is checked for holding a function. An instance that fails either
  * declines the program and renders the ordinary way.
  */
-export function prepareUniversalTemplateProgramValues(
+/**
+ * Normalize values when the compiler already emitted the prepared wire/maps.
+ *
+ * This is the same per-render validation as the plan-backed entry below, but
+ * reads the host type from the wire instead of from a runtime plan shape.
+ */
+export function prepareUniversalTemplateProgramValuesFromWire(
 	encoder: UniversalHostEncoder,
-	compiled: CompiledUniversalTemplateProgram,
 	prepared: PreparedUniversalTemplateProgram,
 	slotValues: readonly unknown[],
 ): readonly UniversalHostTemplateProgramValue[] | null {
@@ -811,13 +816,21 @@ export function prepareUniversalTemplateProgramValues(
 		) {
 			return null;
 		}
-		const encoded = encoder.encodeHostProp(
-			compiled.shape[binding.node]!.type,
-			binding.name,
-			source,
-		);
+		const host = prepared.wire.nodes[binding.node];
+		if (host === undefined) return null;
+		const encoded = encoder.encodeHostProp(host.type, binding.name, source);
 		if (!isUniversalHostTemplateProgramSlotValue(binding.name, encoded)) return null;
 		values[index] = encoded as UniversalHostTemplateProgramValue;
 	}
 	return Object.freeze(values);
+}
+
+export function prepareUniversalTemplateProgramValues(
+	encoder: UniversalHostEncoder,
+	compiled: CompiledUniversalTemplateProgram,
+	prepared: PreparedUniversalTemplateProgram,
+	slotValues: readonly unknown[],
+): readonly UniversalHostTemplateProgramValue[] | null {
+	if (compiled.shape.length !== prepared.wire.nodes.length) return null;
+	return prepareUniversalTemplateProgramValuesFromWire(encoder, prepared, slotValues);
 }

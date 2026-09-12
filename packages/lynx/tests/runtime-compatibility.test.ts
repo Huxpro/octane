@@ -117,6 +117,7 @@ describe('Lynx runtime compatibility evidence', () => {
 				'src/core/block-program.ts',
 				'src/core/block-root.ts',
 				'src/core/client-driver.ts',
+				'src/core/compiler-program.ts',
 				'src/core/compiled-program-block-transport.ts',
 				'src/core/compiled-program-transport.ts',
 				'src/core/compiled-program-wire.ts',
@@ -134,6 +135,7 @@ describe('Lynx runtime compatibility evidence', () => {
 				'src/core/plain-object.ts',
 				'src/core/portal.ts',
 				'src/core/profiling.ts',
+				'src/core/program-abi.ts',
 				'src/core/protocol.ts',
 				'src/core/renderer-id.ts',
 				// Issue #246 E1: both threads ask what program an addressed run names,
@@ -176,6 +178,7 @@ describe('Lynx runtime compatibility evidence', () => {
 				'src/core/plain-object.ts',
 				'src/core/portal.ts',
 				'src/core/profiling.ts',
+				'src/core/program-abi.ts',
 				// Issue #246 E1: the main thread's resident compiled programs, and the
 				// only thing that can turn an address back into the plan it names. It
 				// imports no runtime value from the core — the `packages: []` below is

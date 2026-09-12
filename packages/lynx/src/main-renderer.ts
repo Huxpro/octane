@@ -33,6 +33,7 @@ import type {
 } from 'octane/universal/native';
 import { LynxFirstScreenRefusalError, LYNX_FIRST_SCREEN_REFUSED } from './core/first-screen.js';
 import { registerUniversalProgram } from './core/program-registry.js';
+import { LYNX_PROGRAM_ABI_VERSION } from './core/program-abi.js';
 import { hasOwnSymbolFields } from './core/own-symbols.js';
 import { isLynxNativeResource } from './resource.js';
 
@@ -345,6 +346,12 @@ function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
 		});
 	}
 	if (node.kind === 'program') {
+		if (node.version !== undefined && node.version !== LYNX_PROGRAM_ABI_VERSION) {
+			throw rendererTypeError(
+				LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+					`A compiled main-thread program expected program ABI version ${LYNX_PROGRAM_ABI_VERSION}, received ${String(node.version)}.`,
+			);
+		}
 		if (typeof node.bind !== 'function' || !Number.isSafeInteger(node.nodes) || node.nodes < 0) {
 			throw rendererTypeError(
 				LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
@@ -435,6 +442,7 @@ function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
 		return Object.freeze({
 			kind: 'program',
 			slots: Object.freeze([...node.slots]),
+			...(node.version === undefined ? null : { version: LYNX_PROGRAM_ABI_VERSION }),
 			nodes: node.nodes,
 			values: Object.freeze([...node.values]),
 			events: Object.freeze(node.events.map((event) => Object.freeze({ ...event }))),

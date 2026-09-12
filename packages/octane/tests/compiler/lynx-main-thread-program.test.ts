@@ -87,6 +87,8 @@ type CompileShape = {
 	readonly target?: 'lynx' | 'universal';
 	readonly thread?: 'main-thread' | 'background';
 	readonly backend?: unknown;
+	/** Emit the compiler-owned background program consumed by the Block core. */
+	readonly backgroundProgram?: boolean;
 	/**
 	 * The package-relative module id an addressing build assigns (issue #246
 	 * §6.2). Its presence is what turns the addressing on, in both compiles.
@@ -140,10 +142,20 @@ function compileCard(
 		}[];
 	};
 } {
-	const { target = 'lynx', thread = 'main-thread', backend, module } = options;
+	const { target = 'lynx', thread = 'main-thread', backend, module, backgroundProgram } = options;
 	return compile(source, '/src/Card.lynx.tsrx', {
 		hmr: false,
-		renderer: { ...lynxMainThreadRenderer, target, id: 'lynx' },
+		renderer: {
+			...lynxMainThreadRenderer,
+			target,
+			id: 'lynx',
+			...(backgroundProgram
+				? {
+						module: '@octanejs/lynx/renderer',
+						capabilities: [...lynxMainThreadRenderer.capabilities, 'compiler-program-ir'],
+					}
+				: null),
+		},
 		universalRuntime: { runtime: 'lynx', thread },
 		...(backend === undefined ? null : { mainThreadProgramBackend: backend }),
 		...(module === undefined ? null : { programModuleId: module }),
@@ -240,7 +252,11 @@ interface EvaluatedModule {
 	/** The address each of those plans was declared with, `undefined` for none. */
 	readonly addresses: readonly any[];
 	/** The module's `Card`, which returns its plan and that plan's value array. */
-	readonly card: (props: unknown) => { readonly values: readonly unknown[] };
+	readonly card: (props: unknown) => {
+		readonly plan?: unknown;
+		readonly program?: unknown;
+		readonly values: readonly unknown[];
+	};
 }
 
 /**
@@ -263,12 +279,18 @@ function evaluate(code: string): EvaluatedModule {
 			return root;
 		},
 		universalValue: (plan: unknown, values: readonly unknown[]) => ({ plan, values }),
+		lynxProgram: (_renderer: string, program: any) => {
+			roots.push(program);
+			addresses.push(program.address);
+			return program;
+		},
+		lynxProgramValue: (program: unknown, values: readonly unknown[]) => ({ program, values }),
 		defineUniversalComponent: (_renderer: string, render: unknown) => render,
 		firstScreenEvent: Symbol('firstScreenEvent'),
 	};
 	const rewritten = code
 		.replace(
-			/import\s*\{([\s\S]*?)\}\s*from\s*["']@octanejs\/lynx\/main-renderer["'];/g,
+			/import\s*\{([\s\S]*?)\}\s*from\s*["']@octanejs\/lynx\/(?:main-)?renderer["'];/g,
 			(_match, specifiers: string) =>
 				`const {${specifiers.replace(/\s+as\s+/g, ': ')}} = __renderer;`,
 		)
@@ -334,8 +356,64 @@ function throughApplier(planRoot: unknown, values: readonly unknown[]): unknown 
 	if (batch !== null) prepareLynxHostBatch(container, batch).apply();
 	return shape(papi.pages[0]!);
 }
-
 describe('emitting a compiled create function from the lynx main-thread compile', () => {
+	it('emits an independent versioned background program for the Block core', () => {
+		const code = compiled(ADDRESSABLE_CARD, {
+			target: 'universal',
+			thread: 'background',
+			backend: Backend,
+			module: 'src/Card.lynx.tsrx',
+			backgroundProgram: true,
+		});
+		expect(code).toContain('lynxProgram as');
+		expect(code).toContain('lynxProgramValue as');
+		expect(code).not.toContain('universalPlan as');
+		expect(code).not.toContain('universalValue as');
+
+		const { roots, addresses, card } = evaluate(code);
+		expect(roots).toHaveLength(1);
+		expect(roots[0]).toMatchObject({
+			version: 1,
+			address: {
+				module: 'src/Card.lynx.tsrx',
+				index: 0,
+				digest: expect.stringMatching(/^[0-9a-f]{16}$/),
+			},
+			wire: { nodes: expect.any(Array), events: expect.any(Array) },
+			values: expect.any(Array),
+			events: expect.any(Array),
+			ranges: [],
+		});
+		expect(addresses).toEqual([roots[0].address]);
+		const value = card({
+			tone: 'card active',
+			ident: 'card-1',
+			label: 'Label',
+			detail: 'Detail',
+			onPick: () => undefined,
+		});
+		expect(value.program).toBe(roots[0]);
+		expect(value.values).toEqual([
+			'card active',
+			'card-1',
+			expect.any(Function),
+			'Label',
+			'Detail',
+		]);
+	});
+
+	it('fails closed when a Block background plan has no addressable shared IR', () => {
+		expect(() =>
+			compiled(CARD, {
+				target: 'universal',
+				thread: 'background',
+				backend: Backend,
+				module: 'src/Card.lynx.tsrx',
+				backgroundProgram: true,
+			}),
+		).toThrowError(/Block background program.*addressable.*Card\.lynx\.tsrx/);
+	});
+
 	it('changes nothing unless a backend is supplied', () => {
 		expect(compiled(CARD, { backend: Backend })).not.toBe(compiled(CARD));
 		// The plan the module declares is the same plan either way; only its
@@ -371,6 +449,7 @@ describe('emitting a compiled create function from the lynx main-thread compile'
 		expect(code).not.toContain('"create"');
 		const [root] = evaluate(code).roots;
 		expect(root.kind).toBe('program');
+		expect(root.version).toBe(1);
 		expect(typeof root.bind).toBe('function');
 		// The keyed slot map survives unchanged: it is the contract, not the
 		// description. `p:text` is the proved-scalar hole folded onto its `<text>`
@@ -1107,6 +1186,7 @@ export function Card(props: { row: { id: number; label: string }; render: (id: n
 			'ranges',
 			'slots',
 			'values',
+			'version',
 			'wire',
 		]);
 		expect(Object.keys(background.roots[0]).sort()).toEqual(['create', 'kind', 'slots']);
