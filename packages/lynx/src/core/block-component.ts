@@ -888,6 +888,11 @@ export function lynxBlockProgramForComponent<Props>(
 		const rows: (readonly UniversalHostTemplateProgramValue[])[] = new Array(items.length);
 		const handlers: (readonly (LynxBlockListener | null)[])[] = new Array(items.length);
 		const keys: unknown[] = new Array(items.length);
+		const selectionRowsStable =
+			nextSelection !== null &&
+			previousSelection !== null &&
+			previous !== null &&
+			depsEqual(previousSelection[1], nextSelection[1]);
 		// Every key, so the duplicate check below covers the whole range; a value
 		// only where one can be reused, so an inline row body costs no allocation
 		// for a memo it can never take.
@@ -916,6 +921,24 @@ export function lynxBlockProgramForComponent<Props>(
 			}
 			keys[index] = itemKey;
 			if (!structural && !Object.is(previousKeys![index], itemKey)) structural = true;
+			const prior = previous?.get(itemKey);
+			if (
+				selectionRowsStable &&
+				prior != null &&
+				prior.index === index &&
+				Object.is((prior.props as Record<string, unknown>)[nextSelection![2]], item) &&
+				Object.is(itemKey, previousSelection![0]) === Object.is(itemKey, nextSelection![0])
+			) {
+				// The compiler proved every capture except the selected key is a
+				// stable direct prop. Same item and index preserve the row-local
+				// props too, and the equality above proves its selected boolean did
+				// not move. Reuse the descriptor instead of rebuilding it merely to
+				// have the shallow comparison reach the same conclusion.
+				rows[index] = prior.values;
+				handlers[index] = prior.listeners;
+				retained.set(itemKey, prior);
+				continue;
+			}
 			// The `@for` body, which builds the row's props but does not call it.
 			// Lifted out of `renderRow` for exactly that reason: a row is skippable
 			// only if what it would be called with can be compared first.
@@ -928,7 +951,6 @@ export function lynxBlockProgramForComponent<Props>(
 					: null;
 			const props = component === null ? null : forwardedProps(produced as UniversalComponentValue);
 			if (component !== null) {
-				const prior = previous?.get(itemKey);
 				if (
 					prior != null &&
 					prior.component === component &&
