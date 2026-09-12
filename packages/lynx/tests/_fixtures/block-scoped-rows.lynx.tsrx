@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'octane';
+import { type OctaneNode, useCallback, useEffect, useState } from 'octane';
 
 export interface BlockScopedRowValue {
 	readonly id: number;
@@ -84,6 +84,48 @@ export function BlockConditionalFixture(props: BlockConditionalProps) @{
 				<view class="alternate">
 					<text>{'hidden:' + props.label}</text>
 				</view>
+			}
+		</view>
+	</view>
+}
+
+export interface BlockCompositionProps {
+	readonly rows: readonly BlockScopedRowValue[];
+	readonly prefix: string;
+}
+
+function BlockRenderLeaf(props: {
+	readonly row: BlockScopedRowValue;
+	readonly render: (row: BlockScopedRowValue, tone: string, onTap: () => void) => OctaneNode;
+}) {
+	const [tone, setTone] = useState('quiet');
+	return props.render(
+		props.row,
+		tone,
+		() => setTone((value) => (value === 'quiet' ? 'loud' : 'quiet')),
+	);
+}
+
+function BlockChildrenFrame(props: { readonly children?: OctaneNode }) {
+	return props.children ?? null;
+}
+
+export function BlockCompositionFixture(props: BlockCompositionProps) @{
+	<view class="page">
+		<text class="title">composition</text>
+		<view class="rows">
+			@for (const row of props.rows; key row.id) {
+				<BlockChildrenFrame>
+					<BlockRenderLeaf
+						row={row}
+						render={(value, tone, onTap) => <view class="row">
+							<text class="col-id">{String(value.id)}</text>
+							<text class="col-label" bindtap={onTap}>
+								{props.prefix + ':' + value.label + ':' + tone}
+							</text>
+						</view>}
+					/>
+				</BlockChildrenFrame>
 			}
 		</view>
 	</view>

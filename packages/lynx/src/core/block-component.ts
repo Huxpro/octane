@@ -169,6 +169,19 @@ function componentMayNeedHookScope(component: LynxComponent<never>): boolean {
 	return metadata?.hookScope !== false;
 }
 
+/**
+ * A transparent component can own no hooks itself while its children or render
+ * prop resolves to a hooked descendant. The compiler represents authored JSX
+ * children with an own `children` prop, so keep one semantic scope around that
+ * chain without charging ordinary leaf rows for it.
+ */
+function componentPropsMayNeedHookScope(props: unknown): boolean {
+	return (
+		props !== null &&
+		typeof props === 'object' &&
+		Object.prototype.hasOwnProperty.call(props, 'children')
+	);
+}
 /** The two ways out of every refusal below, so they read the same. */
 const REMEDY =
 	'Attach a block program with withLynxBlockProgram(), or build with core: "universal".';
@@ -640,6 +653,28 @@ export function lynxBlockProgramForComponent<Props>(
 				output = withSemanticContexts(contextValues, children.render);
 				continue;
 			}
+			if (kind === UNIVERSAL_VALUE) {
+				const wrapper = output as UniversalPlanValue;
+				if (wrapper.plan.root.kind === 'slot') {
+					output = wrapper.values[wrapper.plan.root.slot];
+					continue;
+				}
+			}
+			if (kind === UNIVERSAL_COMPONENT_VALUE) {
+				const child = output as UniversalComponentValue;
+				if (child.renderer !== LYNX_TRANSPORT_RENDERER) {
+					refuse(
+						source,
+						LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+							'a component child belongs to a different renderer.',
+					);
+				}
+				return renderPlanValue(
+					child.component as unknown as LynxComponent<never>,
+					forwardedProps(child),
+					contextValues,
+				);
+			}
 			break;
 		}
 		if (isLynxCompilerProgramValue(output)) {
@@ -721,7 +756,7 @@ export function lynxBlockProgramForComponent<Props>(
 		const previousProps = liveProps;
 		liveContext = context;
 		liveProps = props;
-		if (!componentMayNeedHookScope(subject)) {
+		if (!componentMayNeedHookScope(subject) && !componentPropsMayNeedHookScope(props)) {
 			context.afterAbort(() => {
 				liveContext = previousContext;
 				liveProps = previousProps;
@@ -965,7 +1000,10 @@ export function lynxBlockProgramForComponent<Props>(
 		let rowScope = previous?.scope ?? null;
 		let scoped = previous?.scoped ?? null;
 		let rendered: RenderedPlan;
-		if (component !== null && componentMayNeedHookScope(component)) {
+		if (
+			component !== null &&
+			(componentMayNeedHookScope(component) || componentPropsMayNeedHookScope(props))
+		) {
 			const created = rowScope === null;
 			if (created) {
 				let owner: ScopedRowState;

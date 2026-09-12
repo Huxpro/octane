@@ -32,6 +32,8 @@ import {
 	createContext,
 	createUniversalRoot,
 	defineUniversalComponent,
+	memo,
+	universalChildren,
 	universalComponent,
 	universalContext,
 	universalFor,
@@ -77,6 +79,8 @@ import { createLynxBackgroundTransport } from '../src/core/transport.js';
 import type { LynxComponent } from '../src/intrinsics.js';
 import { createFakePAPI } from './_fixtures/fake-element-papi.js';
 import {
+	BlockCompositionFixture,
+	type BlockCompositionProps,
 	BlockScopedRow,
 	BlockConditionalFixture,
 	type BlockConditionalProps,
@@ -2697,6 +2701,183 @@ describe('Lynx compiled component with a keyed range on the Block core', () => {
 		);
 		deliverTo(block, rowListener(block.main.commits, 0));
 		expect(taps).toEqual([7]);
+	});
+	it('honors a memo comparator for a stateful row without swallowing its local updates', async () => {
+		interface MemoRowProps {
+			readonly row: TableRow;
+			readonly revision: number;
+		}
+		let renders = 0;
+		let comparisons = 0;
+		const MemoRow = memo(
+			defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function MemoRow(props: MemoRowProps) {
+				const [tone, setTone] = useState('quiet', 'tone');
+				renders++;
+				return universalValue(ROW_PLAN, [
+					`row ${tone}`,
+					String(props.row.id),
+					() => setTone(tone === 'quiet' ? 'loud' : 'quiet'),
+					`${props.row.label}:${tone}`,
+				]);
+			}),
+			(previous, next) => {
+				comparisons++;
+				return previous.revision === next.revision;
+			},
+		);
+		const Listed = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Listed(props: { readonly row: TableRow; readonly revision: number }) {
+				return universalValue(TABLE_PLAN, [
+					universalFor(
+						[props.row],
+						(row: TableRow) => row.id,
+						(row: TableRow) =>
+							universalComponent(
+								LYNX_TRANSPORT_RENDERER,
+								MemoRow,
+								universalProps([
+									['set', 'row', row],
+									['set', 'revision', props.revision],
+								]),
+							),
+					),
+				]);
+			},
+		);
+		const block = blockColumn<{ readonly row: TableRow; readonly revision: number }>();
+
+		await block.render(Listed as never, {
+			row: { id: 1, label: 'first' },
+			revision: 0,
+		});
+		expect(renders).toBe(1);
+		expect(comparisons).toBe(0);
+		expect(paint(block.main.commits).tree).toContain('first:quiet');
+
+		await block.render(Listed as never, {
+			row: { id: 1, label: 'ignored' },
+			revision: 0,
+		});
+		expect(renders).toBe(1);
+		expect(comparisons).toBe(1);
+		expect(paint(block.main.commits).tree).toContain('first:quiet');
+
+		deliverTo(block, rowListener(block.main.commits, 0));
+		await flushMicrotasks();
+		expect(renders).toBe(2);
+		expect(comparisons).toBe(1);
+		expect(paint(block.main.commits).tree).toContain('ignored:loud');
+
+		await block.render(Listed as never, {
+			row: { id: 1, label: 'accepted' },
+			revision: 1,
+		});
+		expect(renders).toBe(3);
+		expect(comparisons).toBe(2);
+		expect(paint(block.main.commits).tree).toContain('accepted:loud');
+	});
+
+	it('composes component children and render props through a keyed row', async () => {
+		interface ComposedRowProps {
+			readonly row: TableRow;
+			readonly render: (label: string) => UniversalRenderable;
+		}
+		let frameRenders = 0;
+		let leafRenders = 0;
+		const Leaf = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Leaf(props: ComposedRowProps) {
+				leafRenders++;
+				return props.render(props.row.label);
+			},
+			{ hookScope: false },
+		);
+		const Frame = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Frame(props: { readonly children: UniversalRenderable }) {
+				frameRenders++;
+				return props.children;
+			},
+			{ hookScope: false },
+		);
+		const Listed = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Listed(props: TableProps) {
+				return universalValue(TABLE_PLAN, [
+					universalFor(
+						props.rows,
+						(row: TableRow) => row.id,
+						(row: TableRow) =>
+							universalComponent(
+								LYNX_TRANSPORT_RENDERER,
+								Frame,
+								universalProps(
+									[],
+									universalChildren(LYNX_TRANSPORT_RENDERER, () =>
+										universalComponent(
+											LYNX_TRANSPORT_RENDERER,
+											Leaf,
+											universalProps([
+												['set', 'row', row],
+												[
+													'set',
+													'render',
+													(label: string) =>
+														universalValue(ROW_PLAN, [
+															'row',
+															String(row.id),
+															noop,
+															`slot:${label}`,
+														]),
+												],
+											]),
+										),
+									),
+								),
+							),
+					),
+				]);
+			},
+		);
+		const block = blockColumn<TableProps>();
+
+		await block.render(Listed as LynxComponent<TableProps>, table([1, 2]));
+		expect(paint(block.main.commits).tree).toContain('slot:row #0');
+		expect(paint(block.main.commits).tree).toContain('slot:row #1');
+		expect(frameRenders).toBe(2);
+		expect(leafRenders).toBe(2);
+
+		await block.render(Listed as LynxComponent<TableProps>, table([2, 1, 3]));
+		expect(paint(block.main.commits).tree).toContain('slot:row #2');
+		expect(frameRenders).toBe(5);
+		expect(leafRenders).toBe(5);
+	});
+	it('adopts authored .tsrx component children and render props inside keyed rows', async () => {
+		const block = blockColumn<BlockCompositionProps>();
+		const props = (ids: readonly number[], prefix: string): BlockCompositionProps => ({
+			rows: ids.map((id) => ({ id, label: ['', 'one', 'two', 'three'][id]! })),
+			prefix,
+		});
+
+		await block.render(
+			BlockCompositionFixture as LynxComponent<BlockCompositionProps>,
+			props([1, 2], 'a'),
+		);
+		expect(paint(block.main.commits).tree).toContain('a:one:quiet');
+		expect(paint(block.main.commits).tree).toContain('a:two:quiet');
+
+		deliverTo(block, rowListener(block.main.commits, 0));
+		await flushMicrotasks();
+		expect(paint(block.main.commits).tree).toContain('a:one:loud');
+
+		await block.render(
+			BlockCompositionFixture as LynxComponent<BlockCompositionProps>,
+			props([2, 1, 3], 'b'),
+		);
+		expect(paint(block.main.commits).tree).toContain('b:three:quiet');
+		expect(paint(block.main.commits).tree).toContain('b:one:loud');
+		expect(paint(block.main.commits).tree).toContain('b:two:quiet');
 	});
 
 	it('keeps a static sibling authored before the range ahead of every row', async () => {
