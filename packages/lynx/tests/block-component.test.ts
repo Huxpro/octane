@@ -1991,6 +1991,19 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 		// captures. A strict item-identity subsequence therefore supplies both the
 		// retained descriptors and their committed keys without either producer.
 		expect(keyCalls - beforeRemovalKeys).toBe(0);
+
+		const beforeClearKeys = keyCalls;
+		expect(await commitStep(50, [])).toEqual({
+			rangeCalls: 0,
+			rowCalls: 0,
+			lookups: 0,
+			commands: 2,
+			visited: [],
+		});
+		// Emptying a compiler-certified range takes the ordinary empty-render path:
+		// it publishes a fresh descriptor Map after acknowledgement without asking
+		// either producer to describe rows that no longer exist.
+		expect(keyCalls - beforeClearKeys).toBe(0);
 	});
 
 	it('owns one external-store selector and publishes it only after host acknowledgement', async () => {
