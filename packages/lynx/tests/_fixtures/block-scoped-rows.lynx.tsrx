@@ -1,6 +1,7 @@
 import {
 	createContext,
 	type OctaneNode,
+	memo,
 	useCallback,
 	useContext,
 	useEffect,
@@ -65,29 +66,34 @@ export interface BlockContextProps {
 	readonly log: (entry: string) => void;
 }
 
-function BlockContextRow(props: {
-	readonly row: BlockScopedRowValue;
-	readonly log: (entry: string) => void;
-}) @{
-	const theme = useContext(BlockTheme);
-	const [tone, setTone] = useState('quiet');
-	const row = props.row;
-	const log = props.log;
-	useEffect(() => {
-		log('effect:' + row.id + ':' + theme);
-		return () => log('cleanup:' + row.id + ':' + theme);
-	}, [theme]);
+const BlockContextRow = memo(
+	function BlockContextRow(props: {
+		readonly row: BlockScopedRowValue;
+		readonly log: (entry: string) => void;
+	}) @{
+		const theme = useContext(BlockTheme);
+		const [tone, setTone] = useState('quiet');
+		const row = props.row;
+		const log = props.log;
+		useEffect(() => {
+			log('effect:' + row.id + ':' + theme);
+			return () => log('cleanup:' + row.id + ':' + theme);
+		}, [theme]);
 
-	<view class={['context-row', theme, tone]}>
-		<text class="col-id">{String(row.id)}</text>
-		<text
-			class="col-label"
-			bindtap={() => setTone((value) => (value === 'quiet' ? 'loud' : 'quiet'))}
-		>
-			{row.label + ':' + theme + ':' + tone}
-		</text>
-	</view>
-}
+		<view class={['context-row', theme, tone]}>
+			<text class="col-id">{String(row.id)}</text>
+			<text
+				class="col-label"
+				bindtap={() => setTone((value) => (value === 'quiet' ? 'loud' : 'quiet'))}
+			>
+				{row.label + ':' + theme + ':' + tone}
+			</text>
+		</view>
+	},
+	(previous, next) => {
+		return previous.row.id === next.row.id;
+	},
+);
 
 export function BlockContextFixture(props: BlockContextProps) @{
 	<BlockTheme.Provider value={props.theme}>

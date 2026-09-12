@@ -41,7 +41,7 @@ must satisfy the runtime invariants below.
 | `@if` and `@switch` | Block selected | A compiler-addressable region retains the selected arm, state, handlers, and cleanup; paired metadata and the production build cover both directives. |
 | Local component boundaries, component children, and render props | Block kernel proved | Transparent component chains resolve to the eventual host plan and preserve stateful descendants; the selector still reports non-row component sites. |
 | Component-valued host holes | Block kernel proved | Component identity plus an explicit authored key owns the region lifetime; component → empty → component remounts cleanly. |
-| `memo()` | Block kernel proved | Prop comparisons may skip parent updates, while a local state write still renders with the latest accepted props; the selector has not admitted the runtime export. |
+| `memo()` | Block selected | Stateful keyed rows honor custom prop comparators without swallowing local updates; context reads pierce the memo bailout, the compact first screen treats the wrapper as identity, and the production selector admits the runtime export. |
 | Compiler-proved dirty hook slots and binding groups | Block selected | Owner-local invalidation reaches only dependent computations and program slots; structural changes retain the full reconcile path. |
 | Main-thread props and thread functions | General Block application only | The Block transport can carry them, but the compact compiled-program product fails closed and keeps the general application product. |
 | Ordered host spreads with unknown property names | Whole-entry Universal compatibility | `UniversalHostPlan.propsSlot` has no resident Block prop-name table. Static named props remain Block-native. |

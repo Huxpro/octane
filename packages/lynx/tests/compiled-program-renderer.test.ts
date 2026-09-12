@@ -19,6 +19,7 @@ import {
 import {
 	createContext,
 	defineUniversalComponent,
+	memo,
 	renderLynxFirstScreen,
 	universalComponent,
 	universalContext,
@@ -151,6 +152,30 @@ describe('@octanejs/lynx compact compiled-program renderer', () => {
 			'default:default',
 			'default:default',
 		]);
+	});
+	it('treats memo as an ownership-free first-render wrapper', () => {
+		const plan = universalPlan('lynx', PLAN);
+		let comparisons = 0;
+		const Row = memo(
+			defineUniversalComponent('lynx', (props: { label: string }) =>
+				universalValue(plan, [props.label, props.label, props.label]),
+			),
+			() => {
+				comparisons++;
+				return true;
+			},
+		);
+		const App = defineUniversalComponent('lynx', () =>
+			universalComponent('lynx', Row, { label: 'memoized' }),
+		);
+
+		const result = renderLynxFirstScreen(App, {});
+		expect(result.nodes[0]?.children[0]?.selectedValues).toEqual([
+			'memoized',
+			'memoized',
+			'memoized',
+		]);
+		expect(comparisons).toBe(0);
 	});
 
 	it('gives the background program the same normalized scalar values', () => {

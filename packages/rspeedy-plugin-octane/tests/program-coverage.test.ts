@@ -145,6 +145,7 @@ function completeProofs() {
 	background.buildInfo.octane.lynxBlockSemanticRequirements = semanticRequirements({
 		runtimeUses: [
 			site('createContext', 1, 2),
+			site('memo', 1, 3),
 			site('useEffect', 3, 2),
 			site('useContext', 2, 3),
 			site('useState', 2, 2),
@@ -225,9 +226,10 @@ describe('Lynx application Block eligibility', () => {
 		expect(report).toEqual({
 			version: 1,
 			matrix: {
-				version: 6,
+				version: 7,
 				runtimeNames: [
 					'createContext',
+					'memo',
 					'useCallback',
 					'useContext',
 					'useEffect',
@@ -933,7 +935,7 @@ describe('Lynx application resident-program coverage', () => {
 			},
 			[LYNX_BLOCK_SELECTION_ASSET_INFO]: {
 				version: 1,
-				matrix: { version: 6 },
+				matrix: { version: 7 },
 				eligible: true,
 				reasons: [],
 			},

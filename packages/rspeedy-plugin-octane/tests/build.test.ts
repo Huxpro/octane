@@ -465,8 +465,8 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					version: 1,
 					paired: true,
 					requirements: {
-						background: { runtimeUses: ['createContext', 'useContext', 'useState'] },
-						mainThread: { runtimeUses: ['createContext', 'useContext', 'useState'] },
+						background: { runtimeUses: ['createContext', 'memo', 'useContext', 'useState'] },
+						mainThread: { runtimeUses: ['createContext', 'memo', 'useContext', 'useState'] },
 					},
 					reasons: [],
 				},
@@ -765,9 +765,10 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					selection: {
 						version: 1,
 						matrix: {
-							version: 6,
+							version: 7,
 							runtimeNames: [
 								'createContext',
+								'memo',
 								'useCallback',
 								'useContext',
 								'useEffect',

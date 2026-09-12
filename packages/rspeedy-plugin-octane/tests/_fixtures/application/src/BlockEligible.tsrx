@@ -1,5 +1,5 @@
 /** @jsxImportSource @octanejs/lynx/intrinsics */
-import { createContext, useContext, useState } from 'octane';
+import { createContext, memo, useContext, useState } from 'octane';
 
 const BlockTheme = createContext('default');
 
@@ -9,7 +9,7 @@ interface BlockEligibleItem {
 	readonly label: string;
 }
 
-function BlockEligibleRow(props: {
+const BlockEligibleRow = memo(function BlockEligibleRow(props: {
 	readonly item: BlockEligibleItem;
 	readonly onSelect: (label: string) => void;
 }) @{
@@ -24,7 +24,7 @@ function BlockEligibleRow(props: {
 		<image id={'image-' + item.id} src={item.image} mode="aspectFill" />
 		<text bindtap={onTap}>{item.label + ':' + taps as string}</text>
 	</view>
-}
+});
 
 export function BlockEligible(props: {
 	items: readonly BlockEligibleItem[];

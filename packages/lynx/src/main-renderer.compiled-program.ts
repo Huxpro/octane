@@ -315,6 +315,16 @@ export function universalFor<T>(
 ): UniversalRenderable {
 	return { $$kind: UNIVERSAL_FOR, items, key, render, empty } as unknown as UniversalRenderable;
 }
+
+export function memo<P>(
+	component: UniversalComponent<P>,
+	_compare?: (previous: Readonly<P>, next: Readonly<P>) => boolean,
+): UniversalComponent<P> {
+	// This product renders only the first tree, so there is no previous owner or
+	// props pair against which a memo comparator could run.
+	return component;
+}
+
 export function universalContext<T>(
 	context: UniversalContext<T>,
 	value: T,

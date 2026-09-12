@@ -1442,6 +1442,19 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		await block.settle(Promise.resolve());
 		expect(paint(block.main.commits).tree).toContain('one:dark:loud');
 
+		const ignoredOne = { id: 1, label: 'ignored one' };
+		const ignoredTwo = { id: 2, label: 'ignored two' };
+		await universal.render(props([ignoredOne, ignoredTwo], 'dark', noop));
+		await block.render(
+			component,
+			props([ignoredOne, ignoredTwo], 'dark', (entry) => lifecycle.push(entry)),
+		);
+		await flushMicrotasks();
+		expect(paint(universal.main.commits).tree).not.toContain('ignored');
+		expect(paint(block.main.commits).tree).not.toContain('ignored');
+		expect(paint(block.main.commits).tree).toContain('one:dark:loud');
+		expect(lifecycle).toEqual(['effect:1:dark', 'effect:2:dark']);
+
 		await universal.render(props([two, one], 'light', noop));
 		await block.render(
 			component,
