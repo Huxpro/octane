@@ -224,6 +224,8 @@ export interface LynxBlock {
 	readonly firstListenerId: number | null;
 	readonly values: UniversalHostTemplateProgramValue[];
 	readonly key: unknown;
+	/** Committed position in the survivor list, maintained by `link`. */
+	index: number;
 	/** Survivor list, as in `runtime.ts` — the LIS operates over this order. */
 	prev: LynxBlock | null;
 	next: LynxBlock | null;
@@ -568,6 +570,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 					firstListenerId === null ? null : firstListenerId + row * template.eventCount,
 				values: [...rows[row]!],
 				key: keys[row],
+				index: row,
 				prev: null,
 				next: null,
 			};
@@ -712,6 +715,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		slot.tail = ordered.length === 0 ? null : ordered[ordered.length - 1]!;
 		for (let index = 0; index < ordered.length; index++) {
 			const block = ordered[index]!;
+			block.index = index;
 			block.prev = index === 0 ? null : ordered[index - 1]!;
 			block.next = index === ordered.length - 1 ? null : ordered[index + 1]!;
 		}
@@ -933,14 +937,9 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			}
 			const keys: unknown[] = new Array(items.length);
 			const survivors: (LynxBlock | null)[] = new Array(items.length);
-			const oldOrder = new Map<LynxBlock, number>();
-			{
-				let position = 0;
-				for (let cursor = slot.head; cursor !== null; cursor = cursor.next) {
-					oldOrder.set(cursor, position++);
-				}
-			}
 			const sequence: number[] = new Array(items.length);
+			let orderedSurvivors = true;
+			let lastSurvivorIndex = -1;
 			// Refused, not mis-rendered: with a duplicate key the same survivor
 			// would match twice, its second placement would anchor a move on
 			// itself, and `slot.size` would diverge from the item count. After that
@@ -959,7 +958,10 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 					sequence[index] = -1;
 				} else {
 					survivors[index] = survivor;
-					sequence[index] = oldOrder.get(survivor)!;
+					const previousIndex = survivor.index;
+					sequence[index] = previousIndex;
+					if (previousIndex < lastSurvivorIndex) orderedSurvivors = false;
+					else lastSurvivorIndex = previousIndex;
 				}
 			}
 
@@ -972,7 +974,10 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 				previous.delete(itemKey);
 			}
 
-			const stable = longestIncreasingSubsequence(sequence);
+			// Insertions and removals preserve survivor order. Their right-to-left
+			// mounts need no LIS and no survivor moves; only a real reorder pays for
+			// the subsequence that decides which instances stay put.
+			const stable = orderedSurvivors ? null : longestIncreasingSubsequence(sequence);
 			const ordered: LynxBlock[] = new Array(items.length);
 			// Right to left, so the anchor is always a block already placed.
 			for (let index = items.length - 1; index >= 0; index--) {
@@ -1005,7 +1010,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 				for (let valueIndex = 0; valueIndex < template.valueCount; valueIndex++) {
 					write(survivor, valueIndex, next[valueIndex]);
 				}
-				if (stable[index] !== -2) {
+				if (stable !== null && stable[index] !== -2) {
 					const move: UniversalHostCommand = {
 						op: 'move',
 						parent: slot.parent,

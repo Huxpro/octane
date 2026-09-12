@@ -220,7 +220,9 @@ describe('Lynx block core — equivalence with a fresh mount', () => {
 			(row) => row.id,
 			(row) => rowValues(row, null),
 		);
-		incremental.apply();
+		const batch = incremental.core.flush()!;
+		expect(batch.commands.filter((command) => command.op === 'move')).not.toHaveLength(0);
+		prepareLynxHostBatch(incremental.container, batch).apply();
 
 		const direct = scene(reordered, null);
 		expect(withoutAllocatorIdentity(incremental.tree())).toEqual(
@@ -228,7 +230,7 @@ describe('Lynx block core — equivalence with a fresh mount', () => {
 		);
 	});
 
-	it('leaves the tree an insert-and-remove reconcile produces identical to mounting the result', () => {
+	it('preserves survivor order across insertions and removals without moving a survivor', () => {
 		const list = rows(5);
 		const next = [list[0]!, { id: 99, label: 'inserted' }, list[2]!, list[4]!];
 
@@ -240,7 +242,9 @@ describe('Lynx block core — equivalence with a fresh mount', () => {
 			(row) => row.id,
 			(row) => rowValues(row, null),
 		);
-		incremental.apply();
+		const batch = incremental.core.flush()!;
+		expect(batch.commands.filter((command) => command.op === 'move')).toEqual([]);
+		prepareLynxHostBatch(incremental.container, batch).apply();
 
 		const direct = scene(next, null);
 		expect(withoutAllocatorIdentity(incremental.tree())).toEqual(
