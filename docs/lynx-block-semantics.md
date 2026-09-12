@@ -38,7 +38,7 @@ must satisfy the runtime invariants below.
 | Last-child keyed `@for` with inline-host or local-component rows | Block selected | Keyed identity, LIS moves, row-local hooks, `@for` component rows, and sparse dirty-row updates are covered. |
 | Context propagation through a keyed move | Block kernel proved | Provider values and `useContext` reach retained row scopes; `useContext` is not yet in the production selector's runtime-name set. |
 | `@for … @empty` | Block selected | Empty is a separate retained lifetime with rollback, effects, events, removal, remount, paired compiler metadata, and a production dual-graph build. |
-| `@if` and `@switch` | Block kernel proved | A single region retains the selected arm, state, handlers, and cleanup; the selector still reports the authored template feature. |
+| `@if` and `@switch` | Block selected | A compiler-addressable region retains the selected arm, state, handlers, and cleanup; paired metadata and the production build cover both directives. |
 | Local component boundaries, component children, and render props | Block kernel proved | Transparent component chains resolve to the eventual host plan and preserve stateful descendants; the selector still reports non-row component sites. |
 | Component-valued host holes | Block kernel proved | Component identity plus an explicit authored key owns the region lifetime; component → empty → component remounts cleanly. |
 | `memo()` | Block kernel proved | Prop comparisons may skip parent updates, while a local state write still renders with the latest accepted props; the selector has not admitted the runtime export. |

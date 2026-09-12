@@ -457,8 +457,8 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 				program: {
 					version: 1,
 					complete: true,
-					pairedPlans: 3,
-					pairedAddressed: 3,
+					pairedPlans: 7,
+					pairedAddressed: 7,
 					reasons: [],
 				},
 				semantic: {
@@ -476,6 +476,10 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					modules: [
 						{
 							background: {
+								templateFeatures: [
+									expect.objectContaining({ kind: 'if' }),
+									expect.objectContaining({ kind: 'switch' }),
+								],
 								keyedRanges: [
 									expect.objectContaining({
 										empty: true,
@@ -490,6 +494,10 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 								],
 							},
 							mainThread: {
+								templateFeatures: [
+									expect.objectContaining({ kind: 'if' }),
+									expect.objectContaining({ kind: 'switch' }),
+								],
 								keyedRanges: [
 									expect.objectContaining({
 										empty: true,
@@ -751,7 +759,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					selection: {
 						version: 1,
 						matrix: {
-							version: 4,
+							version: 5,
 							runtimeNames: [
 								'useCallback',
 								'useEffect',
@@ -761,7 +769,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 							],
 							threadFunctions: ['background', 'main-thread'],
 							mainThreadProps: true,
-							templateFeatures: [],
+							templateFeatures: ['if', 'switch'],
 							keyedRanges: {
 								empty: true,
 								nested: false,

@@ -20,7 +20,7 @@ export const LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO = 'octane:lynx-background
 export const LYNX_BACKGROUND_CORE_SELECTION_VERSION = 1;
 export const LYNX_APPLICATION_SELECTION_ASSET_INFO = 'octane:lynx-application-selection';
 export const LYNX_APPLICATION_SELECTION_VERSION = 1;
-export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 4;
+export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 5;
 export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 	version: LYNX_BLOCK_SUPPORT_MATRIX_VERSION,
 	// Each name has an independent assertion through the Block component path.
@@ -34,7 +34,7 @@ export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 	]),
 	threadFunctions: Object.freeze(['background', 'main-thread']),
 	mainThreadProps: true,
-	templateFeatures: Object.freeze([]),
+	templateFeatures: Object.freeze(['if', 'switch']),
 	keyedRanges: Object.freeze({
 		empty: true,
 		nested: false,
@@ -47,6 +47,7 @@ const MAIN_THREAD_ASSET = /main-thread(?:\.[A-Fa-f0-9]+)?\.js$/;
 const LYNX_BACKGROUND_LAYER = 'octane:background';
 const LYNX_BLOCK_RUNTIME_NAMES = new Set(LYNX_BLOCK_SUPPORT_MATRIX.runtimeNames);
 const LYNX_BLOCK_RANGE_ROW_KINDS = new Set(LYNX_BLOCK_SUPPORT_MATRIX.keyedRanges.rowKinds);
+const LYNX_BLOCK_TEMPLATE_FEATURES = new Set(LYNX_BLOCK_SUPPORT_MATRIX.templateFeatures);
 
 function dependencyRequest(dependency) {
 	return typeof dependency?.request === 'string' ? dependency.request : null;
@@ -923,6 +924,7 @@ function unsupportedFeatureReasons(reasons, module, thread, requirements) {
 		}
 	}
 	for (const feature of requirements.templateFeatures) {
+		if (LYNX_BLOCK_TEMPLATE_FEATURES.has(feature.kind)) continue;
 		reasons.push(
 			reason('unsupported-template-feature', {
 				module,

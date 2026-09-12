@@ -19,7 +19,9 @@ import {
 import {
 	defineUniversalComponent,
 	renderLynxFirstScreen,
+	universalIf,
 	universalPlan,
+	universalSwitch,
 	universalValue,
 } from '../src/main-renderer.compiled-program.js';
 
@@ -71,6 +73,37 @@ describe('@octanejs/lynx compact compiled-program renderer', () => {
 		expect(node.kind).toBe('program');
 		expect(node.values).toEqual([authoredClass, 42, authoredText]);
 		expect(node.selectedValues).toEqual(['row active', '42', '']);
+	});
+
+	it('materializes only the selected if and switch branches as stable ranges', () => {
+		const plan = universalPlan('lynx', PLAN);
+		const program = (label: string) => universalValue(plan, [label, label, label]);
+		const executions: string[] = [];
+		const branch = (label: string) => () => {
+			executions.push(label);
+			return program(label);
+		};
+		const App = defineUniversalComponent('lynx', (props: { show: boolean; mode: string }) => [
+			universalIf(props.show, branch('then'), branch('else')),
+			universalSwitch(props.mode, [['case', branch('case')]], branch('default')),
+		]);
+
+		const selected = renderLynxFirstScreen(App, { show: true, mode: 'case' });
+		expect(executions).toEqual(['then', 'case']);
+		expect(selected.nodes.map((node) => node.kind)).toEqual(['range', 'range']);
+		expect(selected.nodes.map((node) => node.children[0]?.selectedValues)).toEqual([
+			['then', 'then', 'then'],
+			['case', 'case', 'case'],
+		]);
+
+		executions.length = 0;
+		const fallback = renderLynxFirstScreen(App, { show: false, mode: 'other' });
+		expect(executions).toEqual(['else', 'default']);
+		expect(fallback.nodes.map((node) => node.kind)).toEqual(['range', 'range']);
+		expect(fallback.nodes.map((node) => node.children[0]?.selectedValues)).toEqual([
+			['else', 'else', 'else'],
+			['default', 'default', 'default'],
+		]);
 	});
 
 	it('gives the background program the same normalized scalar values', () => {

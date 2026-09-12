@@ -38,5 +38,30 @@ export function BlockEligible(props: {
 				</view>
 			}
 		</view>
+		<view class="if-region">
+			@if (selected === 'none') {
+				<view class="if-idle">
+					<text>idle</text>
+				</view>
+			} @else {
+				<view class="if-selected">
+					<text>{selected as string}</text>
+				</view>
+			}
+		</view>
+		<view class="switch-region">
+			@switch (selected) {
+				@case 'none': {
+					<view class="switch-idle">
+						<text>none</text>
+					</view>
+				}
+				@default: {
+					<view class="switch-selected">
+						<text>{selected as string}</text>
+					</view>
+				}
+			}
+		</view>
 	</view>
 }

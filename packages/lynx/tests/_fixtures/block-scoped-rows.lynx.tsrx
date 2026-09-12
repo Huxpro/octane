@@ -150,3 +150,27 @@ export function BlockDynamicComponentFixture(props: BlockDynamicComponentProps) 
 		<BlockDynamicRegionRow key={props.identity} label={props.label} />
 	</view>
 }
+
+export interface BlockSwitchProps {
+	readonly mode: 'case' | 'default';
+	readonly label: string;
+	readonly log: (entry: string) => void;
+}
+
+export function BlockSwitchFixture(props: BlockSwitchProps) @{
+	<view class="page">
+		<text class="title">switch</text>
+		<view class="rows">
+			@switch (props.mode) {
+				@case 'case': {
+					<BlockConditionalRow label={props.label} log={props.log} />
+				}
+				@default: {
+					<view class="alternate">
+						<text>{'default:' + props.label}</text>
+					</view>
+				}
+			}
+		</view>
+	</view>
+}

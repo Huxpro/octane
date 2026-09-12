@@ -19,6 +19,8 @@ const UNIVERSAL_VALUE = Symbol.for('octane.universal.value');
 const UNIVERSAL_COMPONENT = Symbol.for('octane.universal.component');
 const UNIVERSAL_COMPONENT_VALUE = Symbol.for('octane.universal.component-value');
 const UNIVERSAL_PROPS = Symbol.for('octane.universal.props');
+const UNIVERSAL_IF = Symbol.for('octane.universal.if');
+const UNIVERSAL_SWITCH = Symbol.for('octane.universal.switch');
 const UNIVERSAL_FOR = Symbol.for('octane.universal.for');
 const FIRST_SCREEN_EVENT = Symbol.for('octane.lynx.first-screen-event');
 const NO_CHILDREN = Symbol('octane.lynx.compiled-program.no-children');
@@ -48,6 +50,20 @@ interface ComponentValue {
 	readonly props: PropsValue;
 	readonly key: unknown;
 	readonly hasKey: boolean;
+}
+
+interface IfValue {
+	readonly $$kind: symbol;
+	readonly condition: boolean;
+	readonly then: () => UniversalRenderable;
+	readonly else: (() => UniversalRenderable) | null;
+}
+
+interface SwitchValue {
+	readonly $$kind: symbol;
+	readonly value: unknown;
+	readonly cases: readonly (readonly [unknown, () => UniversalRenderable])[];
+	readonly default: (() => UniversalRenderable) | null;
 }
 
 interface ForValue {
@@ -233,6 +249,32 @@ export function universalComponent(
 	} as unknown as UniversalRenderable;
 }
 
+export function universalIf(
+	condition: unknown,
+	then: () => UniversalRenderable,
+	otherwise: (() => UniversalRenderable) | null = null,
+): UniversalRenderable {
+	return {
+		$$kind: UNIVERSAL_IF,
+		condition: !!condition,
+		then,
+		else: otherwise,
+	} as unknown as UniversalRenderable;
+}
+
+export function universalSwitch(
+	value: unknown,
+	cases: readonly (readonly [unknown, () => UniversalRenderable])[],
+	defaultValue: (() => UniversalRenderable) | null = null,
+): UniversalRenderable {
+	return {
+		$$kind: UNIVERSAL_SWITCH,
+		value,
+		cases,
+		default: defaultValue,
+	} as unknown as UniversalRenderable;
+}
+
 export function universalFor<T>(
 	items: Iterable<T>,
 	key: (item: T, index: number) => UniversalKey,
@@ -381,6 +423,22 @@ function materialize(value: unknown): CompactNode[] {
 	if (record?.$$kind === UNIVERSAL_VALUE) return [program(value as unknown as PlanValue)];
 	if (record?.$$kind === UNIVERSAL_COMPONENT_VALUE) {
 		return [renderComponent(value as unknown as ComponentValue)];
+	}
+	if (record?.$$kind === UNIVERSAL_IF) {
+		const branch = value as unknown as IfValue;
+		const body = branch.condition ? branch.then : branch.else;
+		return body === null ? [] : [range(materialize(body()))];
+	}
+	if (record?.$$kind === UNIVERSAL_SWITCH) {
+		const branch = value as unknown as SwitchValue;
+		let selected = branch.default;
+		for (const entry of branch.cases) {
+			if (entry[0] === branch.value) {
+				selected = entry[1];
+				break;
+			}
+		}
+		return selected === null ? [] : [range(materialize(selected()))];
 	}
 	if (record?.$$kind === UNIVERSAL_FOR) {
 		const loop = value as unknown as ForValue;

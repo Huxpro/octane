@@ -182,6 +182,10 @@ function completeProofs() {
 			},
 		],
 		mainThreadProps: [site('main-thread:ref', 6, 4)],
+		templateFeatures: [
+			{ kind: 'if', name: null, line: 5, column: 2 },
+			{ kind: 'switch', name: null, line: 6, column: 2 },
+		],
 		keyedRanges: [
 			{
 				line: 7,
@@ -218,11 +222,11 @@ describe('Lynx application Block eligibility', () => {
 		expect(report).toEqual({
 			version: 1,
 			matrix: {
-				version: 4,
+				version: 5,
 				runtimeNames: ['useCallback', 'useEffect', 'useRef', 'useState', 'useSyncExternalStore'],
 				threadFunctions: ['background', 'main-thread'],
 				mainThreadProps: true,
-				templateFeatures: [],
+				templateFeatures: ['if', 'switch'],
 				keyedRanges: {
 					empty: true,
 					nested: false,
@@ -918,7 +922,7 @@ describe('Lynx application resident-program coverage', () => {
 			},
 			[LYNX_BLOCK_SELECTION_ASSET_INFO]: {
 				version: 1,
-				matrix: { version: 4 },
+				matrix: { version: 5 },
 				eligible: true,
 				reasons: [],
 			},

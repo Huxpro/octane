@@ -86,6 +86,8 @@ import {
 	BlockScopedRow,
 	BlockConditionalFixture,
 	type BlockConditionalProps,
+	BlockSwitchFixture,
+	type BlockSwitchProps,
 	BlockScopedRowsFixture,
 	type BlockScopedRowsProps,
 } from './_fixtures/block-scoped-rows.lynx.tsrx';
@@ -1579,6 +1581,62 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		await block.settle(block.background.unmountAsync());
 		await flushMicrotasks();
 		expect(lifecycle).toEqual(['mount:alpha', 'cleanup:alpha', 'mount:gamma', 'cleanup:gamma']);
+	});
+	it('adopts an authored .tsrx @switch branch with isolated retry and state', async () => {
+		const lifecycle: string[] = [];
+		const component = BlockSwitchFixture as never as LynxComponent<BlockSwitchProps>;
+		const block = blockColumn<BlockSwitchProps>();
+		const universal = universalColumn(component);
+		const props = (mode: BlockSwitchProps['mode'], label: string): BlockSwitchProps => ({
+			mode,
+			label,
+			log: (entry) => lifecycle.push(entry),
+		});
+
+		const initial = props('case', 'alpha');
+		const rejected = block.background.renderAsync(component, initial);
+		await flushMicrotasks();
+		block.main.reject(block.main.commits[0]!, 'injected switch mount rejection');
+		await expect(rejected).rejects.toThrow('injected switch mount rejection');
+		await flushMicrotasks();
+		expect(lifecycle).toEqual([]);
+
+		const accepted = () => block.main.commits.slice(1);
+		await universal.render({ ...initial, log: noop });
+		await block.render(component, initial);
+		await flushMicrotasks();
+		expect(paint(accepted()).tree).toBe(paint(universal.main.commits).tree);
+		expect(lifecycle).toEqual(['mount:alpha']);
+
+		const departed = rowListener(accepted(), 0);
+		deliverTo(block, departed);
+		await block.settle(Promise.resolve());
+		expect(paint(accepted()).tree).toContain('alpha:loud');
+
+		await block.render(component, props('case', 'beta'));
+		await flushMicrotasks();
+		expect(paint(accepted()).tree).toContain('beta:loud');
+		expect(lifecycle).toEqual(['mount:alpha']);
+
+		const fallback = props('default', 'beta');
+		await universal.render({ ...fallback, log: noop });
+		await block.render(component, fallback);
+		await flushMicrotasks();
+		expect(paint(accepted()).tree).toBe(paint(universal.main.commits).tree);
+		expect(lifecycle).toEqual(['mount:alpha', 'cleanup:alpha']);
+		expect(() => deliverTo(block, departed)).toThrow(/listener/i);
+
+		const remount = props('case', 'gamma');
+		await universal.render({ ...remount, log: noop });
+		await block.render(component, remount);
+		await flushMicrotasks();
+		expect(paint(accepted()).tree).toBe(paint(universal.main.commits).tree);
+		expect(paint(accepted()).tree).toContain('gamma:quiet');
+		expect(lifecycle).toEqual(['mount:alpha', 'cleanup:alpha', 'mount:gamma']);
+
+		await block.settle(block.background.unmountAsync());
+		await flushMicrotasks();
+		expect(lifecycle.at(-1)).toBe('cleanup:gamma');
 	});
 
 	it('keeps row-state discovery constant as unrelated stateful rows grow', async () => {
