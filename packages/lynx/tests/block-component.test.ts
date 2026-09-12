@@ -1850,12 +1850,16 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 			onSelect,
 		});
 
-		const step = async (selected: number | undefined) => {
+		const step = async (selected: number | undefined, nextRows = rows) => {
 			visited = [];
 			const beforeRange = rangeCalls;
 			const beforeRows = rowCalls;
 			const beforeCore = core.counters();
-			await block.render(Listed as LynxComponent<TableProps>, { rows, selected, onSelect });
+			await block.render(Listed as LynxComponent<TableProps>, {
+				rows: nextRows,
+				selected,
+				onSelect,
+			});
 			const afterCore = core.counters();
 			return {
 				rangeCalls: rangeCalls - beforeRange,
@@ -1896,6 +1900,33 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 			commands: 0,
 			visited: [],
 		});
+		// A new collection identity alone does not invalidate a compiler-proven
+		// row. The changed-item rung then proves the shortcut still reaches the
+		// one row whose direct item prop actually changed.
+		expect(await step(25, rows.slice())).toEqual({
+			rangeCalls: 0,
+			rowCalls: 0,
+			lookups: 0,
+			commands: 0,
+			visited: [],
+		});
+		const edited = rows.slice();
+		edited[9] = { ...edited[9]!, label: 'row 10 edited' };
+		expect(await step(25, edited)).toEqual({
+			rangeCalls: 1,
+			rowCalls: 1,
+			lookups: 1,
+			commands: 1,
+			visited: [10_009],
+		});
+		const swapped = edited.slice();
+		[swapped[1], swapped[98]] = [swapped[98]!, swapped[1]!];
+		const swappedStep = await step(25, swapped);
+		expect(swappedStep.rangeCalls).toBe(2);
+		// The range descriptors must be rebuilt because their indices moved;
+		// this Row does not receive the index, so its own shallow props still memo.
+		expect(swappedStep.rowCalls).toBe(0);
+		expect(swappedStep.visited).toEqual([99_001, 2_098]);
 	});
 
 	it('owns one external-store selector and publishes it only after host acknowledgement', async () => {
