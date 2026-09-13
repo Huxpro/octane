@@ -48,6 +48,8 @@ import { LYNX_TRANSPORT_RENDERER } from './transport-identity.js';
 import type { LynxClientContainer } from './client-driver.js';
 import { createLynxBlockCore, type LynxBlock, type LynxBlockCore } from './block-core.js';
 
+const LYNX_BLOCK_ROOT_EVENT_SITE_ERROR = 'Octane Lynx OL019';
+
 /** One native handler bound to one event site of one block. */
 export type LynxBlockListener = (payload: unknown) => unknown;
 
@@ -198,7 +200,7 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 				throw new Error(
 					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
 						? `Octane Lynx block root expected ${sites.length} listeners for this template, received ${bound.length}.`
-						: 'Octane Lynx OL019',
+						: LYNX_BLOCK_ROOT_EVENT_SITE_ERROR,
 				);
 			}
 			for (let site = 0; site < sites.length; site++) {
@@ -213,7 +215,7 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 				throw new RangeError(
 					typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
 						? `Octane Lynx block root event site ${String(site)} is outside this template.`
-						: 'Octane Lynx OL019',
+						: LYNX_BLOCK_ROOT_EVENT_SITE_ERROR,
 				);
 			}
 			const id = listenerId(block, site);
