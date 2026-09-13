@@ -44,7 +44,18 @@ const enum WireOpcode {
 	PageUpdate = 15,
 	PageReset = 16,
 	GlobalProps = 17,
+	Accepted = 18,
 }
+
+/**
+ * Readiness requests at or above this rung opt into one-message successful
+ * settlement on the isolated compiled-program wire.
+ *
+ * The request remains an opaque correlation identity to older peers: an old
+ * main realm echoes it and continues to send `ack` then `complete`, while a new
+ * main realm answers a lower request with that same legacy pair.
+ */
+export const LYNX_COMPILED_PROGRAM_ACCEPTED_READY_REQUEST_BASE = 2 ** 40;
 
 export const LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT =
 	'octane-lynx:compiled-program-background-to-main';
@@ -79,6 +90,11 @@ export interface LynxCompiledProgramDisposeMessage extends UniversalTransportIde
 	readonly type: 'dispose' | 'terminal-dispose';
 }
 
+/** Successful acknowledgement and completion collapsed into one crossing. */
+export interface LynxCompiledProgramAcceptedMessage extends UniversalTransportIdentity {
+	readonly type: 'accepted';
+}
+
 export type LynxCompiledProgramBackgroundMessage =
 	| LynxCompiledProgramReadyRequest
 	| LynxCompiledProgramFrameMessage
@@ -89,6 +105,7 @@ export type LynxCompiledProgramMainMessage =
 	| LynxCompiledProgramReadyReply
 	| LynxCompiledProgramPageDestroyMessage
 	| LynxDataLifecycleMessage
+	| LynxCompiledProgramAcceptedMessage
 	| UniversalTransportAcknowledgement
 	| UniversalTransportCompleteMessage
 	| UniversalTransportRejectMessage
@@ -271,17 +288,19 @@ export function encodeLynxCompiledProgramMainMessage(
 		fail('received a foreign identity');
 	}
 	const opcode =
-		message.type === 'ack'
-			? WireOpcode.Acknowledgement
-			: message.type === 'complete'
-				? WireOpcode.Complete
-				: message.type === 'reject'
-					? WireOpcode.Reject
-					: message.type === 'fault'
-						? WireOpcode.Fault
-						: message.type === 'dispose-ack'
-							? WireOpcode.DisposeAcknowledgement
-							: WireOpcode.DisposeRetry;
+		message.type === 'accepted'
+			? WireOpcode.Accepted
+			: message.type === 'ack'
+				? WireOpcode.Acknowledgement
+				: message.type === 'complete'
+					? WireOpcode.Complete
+					: message.type === 'reject'
+						? WireOpcode.Reject
+						: message.type === 'fault'
+							? WireOpcode.Fault
+							: message.type === 'dispose-ack'
+								? WireOpcode.DisposeAcknowledgement
+								: WireOpcode.DisposeRetry;
 	const output: unknown[] = [
 		LYNX_TRANSPORT_PROTOCOL_VERSION,
 		opcode,
@@ -340,6 +359,7 @@ export function decodeLynxCompiledProgramMainMessage(
 		input[1] === WireOpcode.Fault ||
 		input[1] === WireOpcode.DisposeRetry;
 	const route = identity(input, withError ? 6 : 4);
+	if (input[1] === WireOpcode.Accepted) return Object.freeze({ ...route, type: 'accepted' });
 	if (input[1] === WireOpcode.Acknowledgement) return Object.freeze({ ...route, type: 'ack' });
 	if (input[1] === WireOpcode.Complete) return Object.freeze({ ...route, type: 'complete' });
 	if (input[1] === WireOpcode.DisposeAcknowledgement) {

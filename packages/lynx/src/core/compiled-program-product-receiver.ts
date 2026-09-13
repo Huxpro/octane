@@ -6,6 +6,7 @@ import { applyLynxCompiledProgramFrame } from './compiled-program-frame.js';
 import {
 	decodeLynxCompiledProgramBackgroundMessage,
 	encodeLynxCompiledProgramMainMessage,
+	LYNX_COMPILED_PROGRAM_ACCEPTED_READY_REQUEST_BASE,
 	LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT,
 	LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT,
 } from './compiled-program-wire.js';
@@ -46,6 +47,7 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 	let sequence = 1;
 	let readiness = options.pageReady === true ? 1 : 0;
 	let readyRequest: number | null = null;
+	let combinedSettlement = false;
 	let store = null as ReturnType<typeof createLynxCompiledProgramStore<Node>> | null;
 	let active: UniversalTransportIdentity | null = null;
 	let aborted: UniversalTransportIdentity | null = null;
@@ -123,6 +125,7 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 			if (readyRequest !== null && readyRequest !== message.request) report(CODE);
 			else {
 				readyRequest = message.request;
+				combinedSettlement = message.request >= LYNX_COMPILED_PROGRAM_ACCEPTED_READY_REQUEST_BASE;
 				publishReady();
 			}
 			return;
@@ -278,7 +281,8 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 		pendingAdoption = undefined;
 		store = candidate;
 		active = message;
-		if (send({ ...message, type: 'ack' })) send({ ...message, type: 'complete' });
+		if (combinedSettlement) send({ ...message, type: 'accepted' });
+		else if (send({ ...message, type: 'ack' })) send({ ...message, type: 'complete' });
 	};
 
 	const mark = (gate: number): void => {

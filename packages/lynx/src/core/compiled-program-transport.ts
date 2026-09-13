@@ -8,6 +8,7 @@ import type {
 import {
 	decodeLynxCompiledProgramMainMessage,
 	encodeLynxCompiledProgramBackgroundMessage,
+	LYNX_COMPILED_PROGRAM_ACCEPTED_READY_REQUEST_BASE,
 	LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT,
 	LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT,
 } from './compiled-program-wire.js';
@@ -129,7 +130,7 @@ export function createLynxCompiledProgramTransport(
 	options: LynxCompiledProgramTransportOptions = {},
 ): LynxCompiledProgramTransport {
 	validateContext(context);
-	const readyRequest = NEXT_READY_REQUEST++;
+	const readyRequest = LYNX_COMPILED_PROGRAM_ACCEPTED_READY_REQUEST_BASE + NEXT_READY_REQUEST++;
 	if (!Number.isSafeInteger(readyRequest)) {
 		throw new Error(
 			TRANSPORT_DEVELOPMENT
@@ -316,6 +317,28 @@ export function createLynxCompiledProgramTransport(
 			} catch (error) {
 				entry.deferred.reject(fault(error));
 			}
+			return;
+		}
+		if (message.type === 'accepted') {
+			if (entry.state !== 'sent') {
+				fault(
+					new Error(
+						TRANSPORT_DEVELOPMENT
+							? 'Octane Lynx compact transport received an out-of-order acceptance.'
+							: TRANSPORT_ERROR,
+					),
+				);
+				return;
+			}
+			try {
+				entry.acknowledge(Object.freeze({ ...message, type: 'ack' }));
+				entry.state = 'acknowledged';
+			} catch (error) {
+				entry.deferred.reject(fault(error));
+				return;
+			}
+			pending.delete(message.version);
+			entry.deferred.resolve(undefined);
 			return;
 		}
 		pending.delete(message.version);

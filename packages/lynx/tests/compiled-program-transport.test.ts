@@ -17,12 +17,15 @@ import type { LynxLifecycleDataRecord } from '../src/core/lifecycle-types.js';
 import {
 	decodeLynxCompiledProgramBackgroundMessage,
 	decodeLynxCompiledProgramMainMessage,
+	encodeLynxCompiledProgramBackgroundMessage,
+	LYNX_COMPILED_PROGRAM_ACCEPTED_READY_REQUEST_BASE,
 	LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT,
 	LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT,
 } from '../src/core/compiled-program-wire.js';
 import { encodeLynxDeltaMessage } from '../src/core/delta-protocol.js';
 import type { LynxElementPAPI } from '../src/core/papi.js';
 import type { LynxContextProxy, LynxContextProxyEvent } from '../src/core/protocol.js';
+import { frameLynxTransportValue } from '../src/core/transport-codec.js';
 import { createFakePAPI, type FakeNode, shape } from './_fixtures/fake-element-papi.js';
 
 const ROW: UniversalHostTemplateProgram = {
@@ -329,7 +332,11 @@ describe('@octanejs/lynx compact compiled-program transport', () => {
 			context.events
 				.filter((event) => event.type === LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT)
 				.map((event) => decodeLynxCompiledProgramMainMessage(event.data).type),
-		).toEqual(['ready', 'ack', 'complete', 'page-destroy']);
+		).toEqual(
+			product
+				? ['ready', 'accepted', 'page-destroy']
+				: ['ready', 'ack', 'complete', 'page-destroy'],
+		);
 		await expect(transport.commit(identity(2), mountFrame(), () => {}).promise).rejects.toThrow(
 			'page lifetime was destroyed',
 		);
@@ -618,7 +625,15 @@ describe('@octanejs/lynx compact product receiver', () => {
 		receiver.markPageReady();
 		await transport.ready;
 
-		await transport.commit(identity(1), mountFrame(), () => {}).promise;
+		const settlementOrder: string[] = [];
+		const attempt = transport.commit(identity(1), mountFrame(), (message) => {
+			expect(message).toEqual({ ...identity(1), type: 'ack' });
+			settlementOrder.push('acknowledged');
+		});
+		void attempt.promise.then(() => settlementOrder.push('completed'));
+		await attempt.promise;
+		await Promise.resolve();
+		expect(settlementOrder).toEqual(['acknowledged', 'completed']);
 		expect(shape(page)).toMatchObject({
 			children: [
 				{
@@ -631,12 +646,86 @@ describe('@octanejs/lynx compact product receiver', () => {
 			context.events
 				.filter((event) => event.type === LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT)
 				.map((event) => decodeLynxCompiledProgramMainMessage(event.data).type),
-		).toEqual(['ready', 'ack', 'complete']);
+		).toEqual(['ready', 'accepted']);
 
 		await transport.dispose(identity(1), true);
 		expect(page.children).toEqual([]);
 		transport.close();
 		receiver.close();
+	});
+
+	it('falls back to ack and complete for an older background peer', () => {
+		const context = new RecordingContext();
+		const papi = emittedHost();
+		const page = papi.createPage('0', 0);
+		const receiver = installLynxCompiledProgramProductReceiver({
+			context,
+			page,
+			papi,
+			resolveProgram: (name, index) =>
+				name === 'tests/WireRow.lynx.tsrx' && index === 0 ? emittedPlan() : undefined,
+		});
+		const send = (
+			message: Parameters<typeof encodeLynxCompiledProgramBackgroundMessage>[0],
+			sequence: number,
+		): void => {
+			const encoded = encodeLynxCompiledProgramBackgroundMessage(message);
+			for (const data of frameLynxTransportValue(encoded, sequence)) {
+				context.dispatchEvent({
+					type: LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT,
+					data,
+				});
+			}
+		};
+
+		receiver.markProgramsReady();
+		receiver.markPageReady();
+		send({ type: 'ready', request: 1 }, 1);
+		send({ ...identity(1), type: 'frame', frame: mountFrame() }, 2);
+
+		expect(page.children).toHaveLength(1);
+		expect(
+			context.events
+				.filter((event) => event.type === LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT)
+				.map((event) => decodeLynxCompiledProgramMainMessage(event.data).type),
+		).toEqual(['ready', 'ack', 'complete']);
+		receiver.close();
+	});
+
+	it("keeps accepting an older main peer's two-message settlement", async () => {
+		const { context, receiver, transport } = setup();
+		receiver.markProgramsReady();
+		receiver.markPageReady();
+		await transport.ready;
+
+		const readyRequest = context.events
+			.filter((event) => event.type === LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT)
+			.map((event) => decodeLynxCompiledProgramBackgroundMessage(event.data))
+			.find((message) => message.type === 'ready');
+		expect(readyRequest?.type).toBe('ready');
+		if (readyRequest?.type !== 'ready') throw new Error('expected a readiness request');
+		expect(readyRequest.request).toBeGreaterThanOrEqual(
+			LYNX_COMPILED_PROGRAM_ACCEPTED_READY_REQUEST_BASE,
+		);
+
+		await transport.commit(identity(1), mountFrame(), () => {}).promise;
+		expect(
+			context.events
+				.filter((event) => event.type === LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT)
+				.map((event) => decodeLynxCompiledProgramMainMessage(event.data).type),
+		).toEqual(['ready', 'ack', 'complete']);
+		transport.close();
+		receiver.close();
+	});
+
+	it('validates the accepted settlement envelope', () => {
+		expect(decodeLynxCompiledProgramMainMessage(JSON.stringify([1, 18, 91, 1]))).toEqual({
+			...identity(1),
+			type: 'accepted',
+		});
+		expect(() => decodeLynxCompiledProgramMainMessage(JSON.stringify([1, 18, 91]))).toThrow(
+			'wrong field count',
+		);
 	});
 
 	it('rolls back malformed and racing-aborted frames for exact retry', async () => {
