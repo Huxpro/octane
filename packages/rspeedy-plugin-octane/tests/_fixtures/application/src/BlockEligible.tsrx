@@ -36,6 +36,15 @@ function BlockRenderFrame(props: { readonly render: () => OctaneNode }): Univers
 	return props.render() as UniversalRenderable;
 }
 
+function BlockSelection(props: {
+	readonly key?: unknown;
+	readonly label: string;
+}) @{
+	<view class="selection">
+		<text>{'Active: ' + props.label}</text>
+	</view>
+}
+
 function BlockShell(props: {
 	readonly items: readonly BlockEligibleItem[];
 	readonly selected: string;
@@ -80,6 +89,9 @@ function BlockShell(props: {
 		<view class="render-prop">
 			<text>{'Rendered: ' + props.selected as string}</text>
 		</view>
+		{props.selected === 'none'
+			? null
+			: <BlockSelection key={props.selected} label={props.selected} />}
 	</view>
 }
 

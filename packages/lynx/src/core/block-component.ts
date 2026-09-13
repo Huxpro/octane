@@ -392,6 +392,7 @@ interface RangeTemplateState {
 interface RangeBranchState {
 	readonly key: object;
 	readonly template: RangeTemplateState;
+	readonly branchIdentity?: unknown;
 	readonly component?: LynxComponent<never>;
 	readonly hasKey?: boolean;
 	readonly authoredKey?: unknown;
@@ -1695,26 +1696,47 @@ export function lynxBlockProgramForComponent<Props>(
 		if (produced === null || produced === undefined || typeof produced === 'boolean') {
 			return renderNothing();
 		}
+		const invocation = rowComponentInvocation(produced);
+		const component =
+			(invocation?.component as unknown as LynxComponent<never> | undefined) ?? null;
+		const props = invocation === null ? null : forwardedProps(invocation);
+		const branchIdentity = selected[0];
+		// A component produced by @if/universalIf must retain the authored component
+		// key as well as the selected arm. Keying only by the arm would preserve hook
+		// state across `<Row key={next} />`; keying only by the component would merge
+		// two different arms. Reuse an identity record only when all three facts
+		// agree, and let a replacement receive a fresh range member below.
+		if (componentRegion === null && invocation !== null) {
+			let identity: unknown = null;
+			for (const [candidateIdentity, candidate] of branches) {
+				if (
+					candidate.branchIdentity === branchIdentity &&
+					candidate.component === component &&
+					candidate.hasKey === invocation.hasKey &&
+					(!invocation.hasKey || Object.is(candidate.authoredKey, invocation.key))
+				) {
+					identity = candidateIdentity;
+					break;
+				}
+			}
+			if (identity === null) identity = Object.freeze({});
+			selected = [identity, selected[1]];
+		}
 		let branchState = branches.get(selected[0]);
 		if (branchState === undefined) {
 			branchState = {
 				key: Object.freeze({}),
 				template: createRangeTemplateState(),
-				...(componentRegion === null
-					? null
-					: { component: componentRegion.component as LynxComponent<never> }),
-				...(componentRegion?.hasKey === true
-					? { hasKey: true, authoredKey: componentRegion.key }
-					: componentRegion === null
+				...(componentRegion === null && invocation !== null ? { branchIdentity } : null),
+				...(component === null ? null : { component }),
+				...(invocation?.hasKey === true
+					? { hasKey: true, authoredKey: invocation.key }
+					: invocation === null
 						? null
 						: { hasKey: false }),
 			};
 			branches.set(selected[0], branchState);
 		}
-		const invocation = rowComponentInvocation(produced);
-		const component =
-			(invocation?.component as unknown as LynxComponent<never> | undefined) ?? null;
-		const props = invocation === null ? null : forwardedProps(invocation);
 		const prior = previous?.get(branchState.key) ?? null;
 		const contextsStable = sameSemanticContexts(state.contextValues, contextValues);
 		let values: readonly UniversalHostTemplateProgramValue[];

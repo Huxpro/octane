@@ -193,6 +193,7 @@ export function BlockCompositionFixture(props: BlockCompositionProps) @{
 export interface BlockDynamicComponentProps {
 	readonly identity: string;
 	readonly label: string;
+	readonly show: boolean;
 }
 
 function BlockDynamicRegionRow(props: { readonly label: string }) @{
@@ -206,7 +207,7 @@ function BlockDynamicRegionRow(props: { readonly label: string }) @{
 
 export function BlockDynamicComponentFixture(props: BlockDynamicComponentProps) @{
 	<view class="shell">
-		<BlockDynamicRegionRow key={props.identity} label={props.label} />
+		{props.show ? <BlockDynamicRegionRow key={props.identity} label={props.label} /> : null}
 	</view>
 }
 

@@ -2211,6 +2211,42 @@ function immutableLocalComponentName(node, state) {
 	return componentBinding?.scope === trusted.lexical.rootScope ? componentName.name : null;
 }
 
+function componentHoleLeaf(node, state) {
+	const value = unwrapFirstScreenExpression(node);
+	if (
+		(value?.type === 'JSXElement' || value?.type === 'Element') &&
+		isComponentElement(value) &&
+		immutableLocalComponentName(value, state) !== null
+	) {
+		return { kind: 'component', node: value };
+	}
+	if (
+		(value?.type === 'Literal' && (value.value === null || typeof value.value === 'boolean')) ||
+		(value?.type === 'UnaryExpression' && value.operator === 'void')
+	) {
+		return { kind: 'empty', node: value };
+	}
+	return null;
+}
+
+/** A host child expression whose complete value set is local components or empty. */
+function componentHoleProof(node, state) {
+	const value = unwrapFirstScreenExpression(node);
+	const leaf = componentHoleLeaf(value, state);
+	if (leaf?.kind === 'component') return { kind: 'component', value: leaf };
+	if (value?.type !== 'ConditionalExpression') return null;
+	const consequent = componentHoleLeaf(value.consequent, state);
+	const alternate = componentHoleLeaf(value.alternate, state);
+	if (
+		consequent === null ||
+		alternate === null ||
+		(consequent.kind !== 'component' && alternate.kind !== 'component')
+	) {
+		return null;
+	}
+	return { kind: 'conditional', node: value, consequent, alternate };
+}
+
 function blockTemplateFeature(node, rangeRowNodes, state) {
 	if (node.type === 'JSXActivityExpression') {
 		return Object.freeze({ kind: 'activity', name: null, ...sourcePosition(node) });
@@ -2338,8 +2374,13 @@ function lynxBlockFeatureRequirements(ast, state) {
 			node.expression?.type !== 'JSXEmptyExpression' &&
 			!isStaticallyPrimitiveTextExpression(node.expression)
 		) {
+			const componentHole = componentHoleProof(node.expression, state);
 			templateFeatures.push(
-				Object.freeze({ kind: 'renderable-hole', name: null, ...sourcePosition(node) }),
+				Object.freeze({
+					kind: componentHole === null ? 'renderable-hole' : 'component-hole',
+					name: null,
+					...sourcePosition(node),
+				}),
 			);
 		}
 		if (node.type === 'JSXAttribute' || node.type === 'Attribute') {
@@ -4801,6 +4842,39 @@ function compileChildAst(node, context, state) {
 			state.renderer.text === 'host'
 		) {
 			return [withPlanOrigin({ kind: 'text', value: node.expression.value }, node)];
+		}
+		const componentHole = componentHoleProof(node.expression, state);
+		if (componentHole?.kind === 'component') {
+			return [addDynamicAst(context, compileComponentValueAst(componentHole.value.node, state))];
+		}
+		if (componentHole?.kind === 'conditional') {
+			assertNoResidualTemplate(componentHole.node.test, state, 'a component-hole condition');
+			const compileLeaf = (leaf) =>
+				leaf.kind === 'component'
+					? compileComponentValueAst(leaf.node, state)
+					: dynamicExpressionAst(leaf.node, state);
+			return [
+				addDynamicAst(
+					context,
+					generatedCall(
+						state.helpers.if,
+						[
+							dynamicExpressionAst(componentHole.node.test, state),
+							generatedArrow(
+								[],
+								compileLeaf(componentHole.consequent),
+								componentHole.consequent.node,
+							),
+							generatedArrow(
+								[],
+								compileLeaf(componentHole.alternate),
+								componentHole.alternate.node,
+							),
+						],
+						componentHole.node,
+					),
+				),
+			];
 		}
 		return [addDynamicAst(context, dynamicExpressionAst(node.expression, state))];
 	}

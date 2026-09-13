@@ -3098,6 +3098,9 @@ describe('Lynx compiled component with a keyed range on the Block core', () => {
 	});
 	it('adopts an authored .tsrx component-valued dynamic region', async () => {
 		const block = blockColumn<BlockDynamicComponentProps>();
+		const component =
+			BlockDynamicComponentFixture as unknown as LynxComponent<BlockDynamicComponentProps>;
+
 		const listener = (): LynxResolvedNativeEvent => {
 			const papi = createFakePAPI();
 			const host = createLynxHostContainer(papi, { root: 1 });
@@ -3106,25 +3109,49 @@ describe('Lynx compiled component with a keyed range on the Block core', () => {
 			return resolveLynxHostNativeEvent(host, [...label.events.values()][0])!;
 		};
 
-		await block.render(BlockDynamicComponentFixture as LynxComponent<BlockDynamicComponentProps>, {
+		await block.render(component, {
+			identity: 'stable',
+			label: 'initially hidden',
+			show: false,
+		});
+		expect(paint(block.main.commits).tree).not.toContain('initially hidden');
+
+		await block.render(component, {
 			identity: 'stable',
 			label: 'first',
+			show: true,
 		});
 		deliverTo(block, listener());
 		await flushMicrotasks();
 		expect(paint(block.main.commits).tree).toContain('first:loud');
 
-		await block.render(BlockDynamicComponentFixture as LynxComponent<BlockDynamicComponentProps>, {
+		await block.render(component, {
 			identity: 'stable',
 			label: 'second',
+			show: true,
 		});
 		expect(paint(block.main.commits).tree).toContain('second:loud');
 
-		await block.render(BlockDynamicComponentFixture as LynxComponent<BlockDynamicComponentProps>, {
+		await block.render(component, {
 			identity: 'replacement',
 			label: 'third',
+			show: true,
 		});
 		expect(paint(block.main.commits).tree).toContain('third:quiet');
+
+		await block.render(component, {
+			identity: 'replacement',
+			label: 'hidden',
+			show: false,
+		});
+		expect(paint(block.main.commits).tree).not.toContain('third:quiet');
+
+		await block.render(component, {
+			identity: 'replacement',
+			label: 'fourth',
+			show: true,
+		});
+		expect(paint(block.main.commits).tree).toContain('fourth:quiet');
 	});
 	it('keeps a static sibling authored before the range ahead of every row', async () => {
 		// A range appends its rows to its host element, so the rule it has to obey

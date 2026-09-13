@@ -48,6 +48,7 @@ function featureRequirements(
 			kind:
 				| 'activity'
 				| 'component'
+				| 'component-hole'
 				| 'local-component'
 				| 'fragment'
 				| 'host-ref'
@@ -189,6 +190,7 @@ function completeProofs() {
 		],
 		mainThreadProps: [site('main-thread:ref', 6, 4)],
 		templateFeatures: [
+			{ kind: 'component-hole', name: null, line: 5, column: 1 },
 			{ kind: 'if', name: null, line: 5, column: 2 },
 			{ kind: 'inline-render-prop', name: 'render', line: 5, column: 3 },
 			{ kind: 'local-component', name: 'Frame', line: 5, column: 3 },
@@ -230,7 +232,7 @@ describe('Lynx application Block eligibility', () => {
 		expect(report).toEqual({
 			version: 1,
 			matrix: {
-				version: 9,
+				version: 10,
 				runtimeNames: [
 					'createContext',
 					'memo',
@@ -243,7 +245,13 @@ describe('Lynx application Block eligibility', () => {
 				],
 				threadFunctions: ['background', 'main-thread'],
 				mainThreadProps: true,
-				templateFeatures: ['if', 'inline-render-prop', 'local-component', 'switch'],
+				templateFeatures: [
+					'component-hole',
+					'if',
+					'inline-render-prop',
+					'local-component',
+					'switch',
+				],
 				keyedRanges: {
 					empty: true,
 					nested: false,
@@ -939,7 +947,7 @@ describe('Lynx application resident-program coverage', () => {
 			},
 			[LYNX_BLOCK_SELECTION_ASSET_INFO]: {
 				version: 1,
-				matrix: { version: 9 },
+				matrix: { version: 10 },
 				eligible: true,
 				reasons: [],
 			},

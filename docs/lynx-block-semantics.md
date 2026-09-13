@@ -40,7 +40,7 @@ must satisfy the runtime invariants below.
 | `@for … @empty` | Block selected | Empty is a separate retained lifetime with rollback, effects, events, removal, remount, paired compiler metadata, and a production dual-graph build. |
 | `@if` and `@switch` | Block selected | A compiler-addressable region retains the selected arm, state, handlers, and cleanup; paired metadata and the production build cover both directives. |
 | Immutable same-module component boundaries, component children, and inline render props | Block selected | The compiler proves the referenced binding is an immutable module-root function (including proven `memo` wrappers), records template-returning function props independently, and keeps sole component children as descriptors instead of unaddressable host holes. Authored state/reorder coverage and the paired production build cover the chain; imported, dynamic, reassigned, or shadowed component bindings stay on Universal. |
-| Component-valued host holes | Block kernel proved | Component identity plus an explicit authored key owns the region lifetime; component → empty → component remounts cleanly. |
+| Compiler-proved component-valued host holes | Block selected | An expression-wrapped immutable local component, or a conditional whose two outcomes are such a component and an explicit empty value, becomes a typed structural region. The region may start empty; same component/key updates retain state, while key replacement or component → empty → component transitions remount cleanly. Imported components, arbitrary values, arrays, and mixed primitive shapes remain generic renderable holes and keep the whole entry on Universal. |
 | `memo()` | Block selected | Stateful keyed rows honor custom prop comparators without swallowing local updates; context reads pierce the memo bailout, the compact first screen treats the wrapper as identity, and the production selector admits the runtime export. |
 | Compiler-proved dirty hook slots and binding groups | Block selected | Owner-local invalidation reaches only dependent computations and program slots; structural changes retain the full reconcile path. |
 | Main-thread props and thread functions | General Block application only | The Block transport can carry them, but the compact compiled-program product fails closed and keeps the general application product. |
@@ -65,6 +65,19 @@ Universal plan. The Block background carries the same context map alongside the
 rendered resident program and into retained keyed row scopes. The paired
 production build asserts that this shape still selects the compact
 compiled-program product.
+
+## Component-hole cost
+
+A proven nullable component expression allocates one `universalIf` descriptor per
+parent render so the structural kind survives even when the initial value is
+empty. The Block owner retains one range record, one template record per observed
+branch/component/key identity, and at most one live component hook scope at the
+site. A stable identity performs one branch selection, an identity lookup, and a
+shallow props comparison before reusing the resident template and state; it does
+not allocate Universal host records or execute an interpreted Universal host
+plan. Removing or replacing the identity disposes the active scope before the
+new identity is published. The program-address completeness gate still rejects
+a non-tail dynamic range until the compiler can emit its static insertion anchor.
 
 ## Transactional publication rules
 

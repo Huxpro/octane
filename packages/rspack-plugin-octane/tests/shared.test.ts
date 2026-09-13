@@ -370,6 +370,7 @@ describe('getOctaneRspackBuildInfo', () => {
 							mainThreadProps: [{ name: 'main-thread:ref', line: 7, column: 8 }],
 							templateFeatures: [
 								{ kind: 'component', name: 'Panel', line: 8, column: 2 },
+								{ kind: 'component-hole', name: null, line: 8, column: 9 },
 								{ kind: 'local-component', name: 'Frame', line: 9, column: 2 },
 								{ kind: 'inline-render-prop', name: 'render', line: 9, column: 8 },
 							],
@@ -424,6 +425,7 @@ describe('getOctaneRspackBuildInfo', () => {
 				mainThreadProps: [{ name: 'main-thread:ref', line: 7, column: 8 }],
 				templateFeatures: [
 					{ kind: 'component', name: 'Panel', line: 8, column: 2 },
+					{ kind: 'component-hole', name: null, line: 8, column: 9 },
 					{ kind: 'local-component', name: 'Frame', line: 9, column: 2 },
 					{ kind: 'inline-render-prop', name: 'render', line: 9, column: 8 },
 				],

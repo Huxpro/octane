@@ -4,6 +4,7 @@ const CLIENT_TARGETS = new Set(['web', 'webworker', 'electron-renderer', 'browse
 const LYNX_BLOCK_TEMPLATE_FEATURE_KINDS = new Set([
 	'activity',
 	'component',
+	'component-hole',
 	'inline-render-prop',
 	'local-component',
 	'fragment',

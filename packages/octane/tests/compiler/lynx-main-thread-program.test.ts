@@ -1382,6 +1382,40 @@ export function App() @{
 		expect(background.mainThreadProgramCoverage).toEqual({ total: 1, addressed: 1 });
 		expect(background.code).not.toContain('universalPlan as');
 	});
+
+	it('proves only local-component-or-empty host holes and preserves their structural kind', () => {
+		const source = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useState } from 'octane';
+function Region(props: { identity: string; label: string }) @{
+	const [tone] = useState('quiet');
+	<view><text>{props.label + ':' + tone}</text></view>
+}
+
+export function App(props: { show: boolean; identity: string; label: string }) @{
+	<view>
+		{props.show ? <Region key={props.identity} label={props.label} /> : null}
+	</view>
+}
+`;
+		const module = 'src/ComponentHole.lynx.tsrx';
+		const result = compileCard(source, { backend: Backend, module });
+		const background = compileCard(source, {
+			target: 'universal',
+			thread: 'background',
+			backend: Backend,
+			module,
+			backgroundProgram: true,
+		});
+
+		expect(result.lynxBlockFeatureRequirements?.templateFeatures).toEqual([
+			{ kind: 'component-hole', name: null, line: 10, column: 2 },
+			{ kind: 'local-component', name: 'Region', line: 10, column: 16 },
+		]);
+		expect(result.mainThreadProgramCoverage).toEqual({ total: 2, addressed: 2 });
+		expect(background.mainThreadProgramCoverage).toEqual({ total: 2, addressed: 2 });
+		expect(result.code).toContain('universalIf as');
+		expect(background.code).not.toContain('universalPlan as');
+	});
 });
 
 // Issue-#246 E1 — how a background-originated mount names a resident program.

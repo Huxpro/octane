@@ -457,8 +457,8 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 				program: {
 					version: 1,
 					complete: true,
-					pairedPlans: 7,
-					pairedAddressed: 7,
+					pairedPlans: 8,
+					pairedAddressed: 8,
 					reasons: [],
 				},
 				semantic: {
@@ -479,6 +479,8 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 								templateFeatures: [
 									expect.objectContaining({ kind: 'if' }),
 									expect.objectContaining({ kind: 'switch' }),
+									expect.objectContaining({ kind: 'component-hole' }),
+									expect.objectContaining({ kind: 'local-component', name: 'BlockSelection' }),
 									expect.objectContaining({ kind: 'local-component', name: 'BlockFrame' }),
 									expect.objectContaining({ kind: 'local-component', name: 'BlockRenderFrame' }),
 									expect.objectContaining({ kind: 'inline-render-prop', name: 'render' }),
@@ -504,6 +506,8 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 								templateFeatures: [
 									expect.objectContaining({ kind: 'if' }),
 									expect.objectContaining({ kind: 'switch' }),
+									expect.objectContaining({ kind: 'component-hole' }),
+									expect.objectContaining({ kind: 'local-component', name: 'BlockSelection' }),
 									expect.objectContaining({ kind: 'local-component', name: 'BlockFrame' }),
 									expect.objectContaining({ kind: 'local-component', name: 'BlockRenderFrame' }),
 									expect.objectContaining({ kind: 'inline-render-prop', name: 'render' }),
@@ -773,7 +777,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					selection: {
 						version: 1,
 						matrix: {
-							version: 9,
+							version: 10,
 							runtimeNames: [
 								'createContext',
 								'memo',
@@ -786,7 +790,13 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 							],
 							threadFunctions: ['background', 'main-thread'],
 							mainThreadProps: true,
-							templateFeatures: ['if', 'inline-render-prop', 'local-component', 'switch'],
+							templateFeatures: [
+								'component-hole',
+								'if',
+								'inline-render-prop',
+								'local-component',
+								'switch',
+							],
 							keyedRanges: {
 								empty: true,
 								nested: false,
