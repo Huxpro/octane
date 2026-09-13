@@ -234,6 +234,45 @@ describe('Lynx delta shadow', () => {
 		expect(shadow.snapshot()).toEqual(accepted);
 	});
 
+	it('compacts a partial reordered destroy-run without leaking an aborted draft', () => {
+		const shadow = createLynxDeltaShadow();
+		shadow
+			.prepare(
+				batch(1, [
+					addressedRun({
+						parent: null,
+						before: null,
+						firstId: 10,
+						firstListenerId: null,
+						count: 5,
+						values: ['row', 'A', 'row', 'B', 'row', 'C', 'row', 'D', 'row', 'E'],
+					}),
+				]),
+			)!
+			.commit();
+		shadow.prepare(batch(2, [{ op: 'move', parent: null, id: 18, before: 10 }]))!.commit();
+		const accepted = shadow.snapshot();
+
+		const aborted = shadow.prepare(
+			batch(3, [
+				{ op: 'destroy-run', parent: null, firstId: 12, count: 3, width: 2 },
+				{ op: 'update', id: 12, props: { class: 'removed', value: 'B' } },
+			]),
+		);
+		expect(aborted).toBeNull();
+		expect(shadow.snapshot()).toEqual(accepted);
+
+		const removed = shadow.prepare(
+			batch(3, [{ op: 'destroy-run', parent: null, firstId: 12, count: 3, width: 2 }]),
+		)!;
+		expect(decodeLynxDeltaMessage(removed.encoded).operations).toEqual([
+			{ op: 'remove', firstInstance: 3, count: 3 },
+		]);
+		removed.commit();
+		expect(shadow.snapshot().instances.map(({ firstId }) => firstId)).toEqual([10, 18]);
+		expect(shadow.snapshot().order).toEqual([{ parent: null, slot: 0, instances: [6, 2] }]);
+	});
+
 	it('defines each resident address once and re-announces it after an aborted preparation', () => {
 		const shadow = createLynxDeltaShadow();
 		const first = shadow.prepare(

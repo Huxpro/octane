@@ -238,6 +238,47 @@ function removeInstance(state: ShadowState, firstId: number): void {
 }
 
 /**
+ * Removes an already-validated arithmetic instance run while compacting its
+ * sibling order once. Calling removeInstance for every member repeatedly
+ * searched and spliced the same array, turning a full clear into quadratic
+ * bookkeeping even though destroy-run validation has already proved every id.
+ */
+function removeInstanceRun(
+	state: ShadowState,
+	firstId: number,
+	count: number,
+	width: number,
+	parent: number | null,
+	parentSlot: number,
+): boolean {
+	for (let offset = 0; offset < count; offset++) {
+		const instanceFirstId = firstId + offset * width;
+		state.instances.delete(instanceFirstId);
+		for (let nodeIndex = 0; nodeIndex < width; nodeIndex++) {
+			state.hosts.delete(instanceFirstId + nodeIndex);
+		}
+	}
+
+	const currentOrder = state.order.get(parent)?.get(parentSlot);
+	if (currentOrder === undefined) return false;
+	const order = writableOrder(state, parent, parentSlot);
+	const finalId = firstId + (count - 1) * width;
+	let write = 0;
+	let removed = 0;
+	for (let read = 0; read < order.length; read++) {
+		const candidate = order[read]!;
+		const delta = candidate - firstId;
+		if (candidate <= finalId && delta >= 0 && delta % width === 0) {
+			removed++;
+			continue;
+		}
+		order[write++] = candidate;
+	}
+	order.length = write;
+	return removed === count;
+}
+
+/**
  * Resolves a command-batch host id to the instance/slot pair the wire needs.
  *
  * A root command targets the distinguished container slot. Every nested command
@@ -489,9 +530,17 @@ export function createLynxDeltaShadow(): LynxDeltaShadow {
 						}
 					}
 					operations.push({ op: 'remove', firstInstance: first.handle, count: command.count });
-					for (let offset = 0; offset < command.count; offset++) {
-						removeInstance(next, command.firstId + offset * command.width);
-					}
+					if (
+						!removeInstanceRun(
+							next,
+							command.firstId,
+							command.count,
+							command.width,
+							first.parent,
+							first.parentSlot,
+						)
+					)
+						return null;
 					continue;
 				}
 				if (command.op === 'destroy' && removedHosts.has(command.id)) {
