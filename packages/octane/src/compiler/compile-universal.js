@@ -5219,8 +5219,9 @@ const LYNX_EVENT_PROP = /^(?:capture-bind|capture-catch|global-bind|bind|catch)[
  * A plan is lowered to a create function only when every node is compile-time
  * host structure: host/text/slot nodes, no props program (`propsSlot`), no
  * component/if/switch/range nodes, and no prop that the record path would
- * filter (`key`/`ref`/`children`) or classify by value (a static prop with an
- * event-shaped name). Anything else keeps the interpreted plan encoding, so
+ * filter (`key`/`children`) or classify by value (a static prop with an
+ * event-shaped name). Authored host refs are extracted into resource IR and
+ * omitted from the physical wire; only a static non-null ref is ineligible. Anything else keeps the interpreted plan encoding, so
  * mixed modules stay correct while the hot host templates go straight-line.
  */
 function lynxTemplateEligible(node) {
@@ -5229,11 +5230,15 @@ function lynxTemplateEligible(node) {
 	if (node.kind !== 'host') return false;
 	if (node.propsSlot !== undefined) return false;
 	for (const name of Object.keys(node.props || {})) {
-		if (name === 'key' || name === 'ref' || name === 'children') return false;
+		if (name === 'ref') {
+			if (node.props[name] !== null && node.props[name] !== undefined) return false;
+			continue;
+		}
+		if (name === 'key' || name === 'children') return false;
 		if (LYNX_EVENT_PROP.test(name)) return false;
 	}
 	for (const binding of node.bindings || []) {
-		if (binding[0] === 'key' || binding[0] === 'ref' || binding[0] === 'children') return false;
+		if (binding[0] === 'key' || binding[0] === 'children') return false;
 	}
 	return (node.children || []).every(lynxTemplateEligible);
 }
@@ -5556,6 +5561,11 @@ function programDigest(derived) {
 			})),
 		)}`;
 	}
+	// Ref values stay background-local, but their resident-node and slot topology
+	// is a cross-realm ABI and must invalidate an address that was built without it.
+	if (derived.refs !== undefined && derived.refs.length !== 0) {
+		source += '\0' + canonicalDigestSource(derived.refs);
+	}
 	let high = 0x811c9dc5;
 	let low = 0x9dc5811c;
 	for (let index = 0; index < source.length; index++) {
@@ -5585,8 +5595,8 @@ function programDigest(derived) {
  * agree by construction
  * instead of by a rule each implements separately.
  *
- * The digest covers the derived wire and, for a structural program, its open
- * range topology. Derivation by execution is what makes that complete rather
+ * The digest covers the derived wire, structural range topology, and host-ref
+ * resource topology. Derivation by execution is what makes that complete rather
  * than hopeful: the emission reads nothing outside the surface the derivation
  * produced, so hashing that surface hashes everything the emission depends on.
  */
@@ -5791,6 +5801,18 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 					origin,
 				),
 			),
+			...(derived.refs === undefined
+				? []
+				: [
+						b.prop(
+							'init',
+							b.literal('refs', '"refs"'),
+							jsonValueToAst(
+								derived.refs.map((ref) => ref.node),
+								origin,
+							),
+						),
+					]),
 			// The descriptor the background would otherwise have sent with every
 			// mount, resident here instead (issue #246 E1).
 			//
@@ -5848,6 +5870,9 @@ function lynxBackgroundProgramObjectAst(state, plan, index, origin) {
 			b.prop('init', b.literal('values', '"values"'), jsonValueToAst(derived.values, origin)),
 			b.prop('init', b.literal('events', '"events"'), jsonValueToAst(derived.events, origin)),
 			b.prop('init', b.literal('ranges', '"ranges"'), jsonValueToAst(derived.ranges, origin)),
+			...(derived.refs === undefined
+				? []
+				: [b.prop('init', b.literal('refs', '"refs"'), jsonValueToAst(derived.refs, origin))]),
 		]),
 		origin,
 	);

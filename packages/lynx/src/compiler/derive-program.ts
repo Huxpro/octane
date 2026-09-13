@@ -72,6 +72,7 @@
 
 import type {
 	UniversalHostPlan,
+	UniversalPlanNode,
 	UniversalHostTemplateProgram,
 	UniversalHostTemplateCapability,
 	UniversalTemplateHostPlacement,
@@ -188,6 +189,77 @@ const COMPILED_TEMPLATE_HOSTS: UniversalHostTemplateCapability = Object.freeze({
 
 const EVERY_SLOT_HOLE_IS_A_RANGE = (): boolean => true;
 
+interface HostRefReduction {
+	readonly plan: UniversalHostPlan;
+	readonly refs: readonly { readonly node: number; readonly slot: number }[];
+}
+
+/**
+ * Remove authored host refs from the physical wire while retaining their stable
+ * resident-node and plan-slot addresses. The rewrite is copy-on-write: parser-
+ * adopted plan objects remain untouched, including under deep-freeze tests.
+ */
+function universalHostPlanWithoutRefs(plan: UniversalHostPlan): HostRefReduction | null {
+	let nextNode = 0;
+	const refs: { readonly node: number; readonly slot: number }[] = [];
+	const visit = (node: UniversalPlanNode): UniversalPlanNode | null => {
+		if (node.kind === 'slot') return node;
+		if (node.kind === 'text') {
+			nextNode++;
+			return node;
+		}
+		if (node.kind !== 'host') return node;
+		const residentNode = nextNode++;
+		let changed = false;
+		let props = node.props;
+		if (props !== undefined && Object.prototype.hasOwnProperty.call(props, 'ref')) {
+			if (props.ref !== null && props.ref !== undefined) return null;
+			const { ref: _ref, ...rest } = props;
+			props = rest;
+			changed = true;
+		}
+		let bindings = node.bindings;
+		if (bindings !== undefined) {
+			let refSlot: number | null = null;
+			const retained = [];
+			for (const binding of bindings) {
+				if (binding[0] !== 'ref') {
+					retained.push(binding);
+					continue;
+				}
+				if (refSlot !== null || !Number.isSafeInteger(binding[1]) || binding[1] < 0) return null;
+				refSlot = binding[1];
+			}
+			if (refSlot !== null) {
+				refs.push(Object.freeze({ node: residentNode, slot: refSlot }));
+				bindings = retained.length === 0 ? undefined : retained;
+				changed = true;
+			}
+		}
+		let children = node.children;
+		if (children !== undefined) {
+			let rewritten: UniversalPlanNode[] | null = null;
+			for (let index = 0; index < children.length; index++) {
+				const child = visit(children[index]!);
+				if (child === null) return null;
+				if (rewritten !== null) rewritten.push(child);
+				else if (child !== children[index]) {
+					rewritten = children.slice(0, index) as UniversalPlanNode[];
+					rewritten.push(child);
+				}
+			}
+			if (rewritten !== null) {
+				children = rewritten;
+				changed = true;
+			}
+		}
+		return changed ? { ...node, props, bindings, children } : node;
+	};
+	const reduced = visit(plan);
+	if (reduced === null || reduced.kind !== 'host') return null;
+	return { plan: reduced, refs: Object.freeze(refs) };
+}
+
 /**
  * Lower one plan into the shared compiler program IR, or `null` when this
  * renderer cannot describe it as a program. The background compile consumes
@@ -203,7 +275,9 @@ const EVERY_SLOT_HOLE_IS_A_RANGE = (): boolean => true;
  */
 export function deriveLynxProgramIR(plan: UniversalHostPlan): LynxProgramIR | null {
 	const encoder = buildTimeEncoder();
-	const compiled = compiledUniversalTemplateProgram(encoder, plan);
+	const refReduction = universalHostPlanWithoutRefs(plan);
+	if (refReduction === null) return null;
+	const compiled = compiledUniversalTemplateProgram(encoder, refReduction.plan);
 	if (compiled === null) return null;
 	const reduced = universalTemplateProgramWithoutRanges(compiled, EVERY_SLOT_HOLE_IS_A_RANGE);
 	if (reduced === null) return null;
@@ -216,6 +290,7 @@ export function deriveLynxProgramIR(plan: UniversalHostPlan): LynxProgramIR | nu
 		values: prepared.values,
 		events: prepared.events,
 		ranges: reduced.ranges,
+		...(refReduction.refs.length === 0 ? null : { refs: refReduction.refs }),
 		// The emitter paints a range value only under a text host. Such a range's
 		// runtime value can add a #text node to the background descriptor, so its
 		// fixed wire cannot be addressed. Every other range stays an open structural

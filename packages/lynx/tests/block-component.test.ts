@@ -543,6 +543,33 @@ describe('Lynx compiled component on the Block core', () => {
 			} as never),
 		).toThrow(/expected ABI version 1, received 2/);
 	});
+	it('validates and deeply freezes compiler-owned host-ref sites', () => {
+		const program = lynxProgram(LYNX_TRANSPORT_RENDERER, {
+			...CARD_PROGRAM_IR,
+			address: CARD_COMPILER_PROGRAM.address,
+			refs: [{ node: 0, slot: 0 }],
+		});
+		expect(program.refs).toEqual([{ node: 0, slot: 0 }]);
+		expect(Object.isFrozen(program.refs)).toBe(true);
+		expect(Object.isFrozen(program.refs![0])).toBe(true);
+
+		expect(() =>
+			lynxProgram(LYNX_TRANSPORT_RENDERER, {
+				...CARD_PROGRAM_IR,
+				address: CARD_COMPILER_PROGRAM.address,
+				refs: [{ node: CARD_PROGRAM_IR.wire.nodes.length, slot: 0 }],
+			}),
+		).toThrow(/invalid host-ref site/);
+		expect(() =>
+			lynxProgram(LYNX_TRANSPORT_RENDERER, {
+				...CARD_PROGRAM_IR,
+				address: CARD_COMPILER_PROGRAM.address,
+				refs: [{ node: 0, slot: -1 }],
+			}),
+		).toThrow(/invalid host-ref site/);
+		expect(() => lynxProgramValue(program, [])).toThrow(/host-ref slot/);
+	});
+
 	it('validates scalar replay and structural invalidation as distinct descriptors', () => {
 		expect(() =>
 			lynxProgramValue(CARD_COMPILER_PROGRAM, CARD_PROGRAM_IR.values, [

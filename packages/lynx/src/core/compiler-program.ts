@@ -31,6 +31,8 @@ export interface LynxCompilerProgramDefinition {
 	readonly values: readonly PreparedUniversalTemplateProgramValue[];
 	readonly events: readonly PreparedUniversalTemplateProgramEvent[];
 	readonly ranges: readonly UniversalTemplateProgramRange[];
+	/** Authored host refs, omitted for the capability-free ABI. */
+	readonly refs?: readonly { readonly node: number; readonly slot: number }[];
 }
 
 export interface LynxCompilerProgram extends LynxCompilerProgramDefinition {
@@ -132,6 +134,22 @@ export function lynxProgram(
 	) {
 		fail('definition requires value, event, and range maps');
 	}
+	if (
+		definition.refs !== undefined &&
+		(!Array.isArray(definition.refs) ||
+			definition.refs.some(
+				(ref) =>
+					ref === null ||
+					typeof ref !== 'object' ||
+					!Number.isSafeInteger(ref.node) ||
+					ref.node < 0 ||
+					ref.node >= definition.wire.nodes.length ||
+					!Number.isSafeInteger(ref.slot) ||
+					ref.slot < 0,
+			))
+	) {
+		fail('definition contains an invalid host-ref site');
+	}
 	const program = {
 		$$kind: LYNX_COMPILER_PROGRAM,
 		renderer,
@@ -141,6 +159,7 @@ export function lynxProgram(
 		values: definition.values,
 		events: definition.events,
 		ranges: definition.ranges,
+		...(definition.refs === undefined ? null : { refs: definition.refs }),
 	} satisfies LynxCompilerProgram;
 	deepFreeze(program);
 	return program;
@@ -155,6 +174,9 @@ export function lynxProgramValue(
 	if (!isLynxCompilerProgram(program)) fail('lynxProgramValue expected a compiler program');
 	if (!Array.isArray(values)) fail('lynxProgramValue expected an array of slot values');
 	if (!Array.isArray(computations)) fail('lynxProgramValue expected an array of computations');
+	if (program.refs?.some((ref) => ref.slot >= values.length)) {
+		fail('lynxProgramValue received a host-ref slot outside its value array');
+	}
 	if (DEVELOPMENT) {
 		const rangeSlots = new Set(program.ranges.map((range) => range.slot));
 		for (const computation of computations) {

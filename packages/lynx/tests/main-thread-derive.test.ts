@@ -229,6 +229,37 @@ describe('deriving the shared Lynx program IR from a plan', () => {
 		expect(lowered).toEqual(throughRuntimeLowering(CARD_PLAN, () => false));
 	});
 
+	it('extracts host refs into stable resident-node addresses without mutating the plan', () => {
+		const plan = universalPlan(LYNX_TRANSPORT_RENDERER, {
+			kind: 'host',
+			type: 'view',
+			bindings: [['ref', 0]],
+			children: [
+				{ kind: 'host', type: 'text', children: [{ kind: 'text', slot: 1 }] },
+				{ kind: 'host', type: 'view', bindings: [['ref', 2]] },
+			],
+		}).root as UniversalHostPlan;
+		const originalBindings = plan.bindings;
+		const nestedBindings = (plan.children![1] as UniversalHostPlan).bindings;
+
+		const derived = deriveLynxProgramIR(plan);
+
+		expect(derived).not.toBeNull();
+		expect(derived!.refs).toEqual([
+			{ node: 0, slot: 0 },
+			{ node: 3, slot: 2 },
+		]);
+		expect(Object.isFrozen(derived!.refs)).toBe(true);
+		expect(Object.isFrozen(derived!.refs![0])).toBe(true);
+		expect(derived!.wire.nodes[0]!.bindings).toBeUndefined();
+		expect(derived!.wire.nodes[3]!.bindings).toBeUndefined();
+		expect(derived!.values.map((site) => site.slot)).toEqual([1]);
+		expect(plan.bindings).toBe(originalBindings);
+		expect(plan.bindings).toEqual([['ref', 0]]);
+		expect((plan.children![1] as UniversalHostPlan).bindings).toBe(nestedBindings);
+		expect((plan.children![1] as UniversalHostPlan).bindings).toEqual([['ref', 2]]);
+	});
+
 	it('reads its keyed range holes off the plan rather than off a value', () => {
 		const derived = deriveLynxProgramIR(TABLE_PLAN);
 		expect(derived).not.toBeNull();

@@ -431,6 +431,39 @@ describe('emitting a compiled create function from the lynx main-thread compile'
 		]);
 	});
 
+	it('emits host refs as resource IR without putting them in the physical wire', () => {
+		const source = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+export function Card(props: { label: string; capture: (value: unknown) => void }) @{
+	<view ref={props.capture}>
+		<text>{props.label as string}</text>
+	</view>
+}
+`;
+		const module = 'src/RefCard.lynx.tsrx';
+		const main = evaluate(compiled(source, { backend: Backend, module }));
+		const background = evaluate(
+			compiled(source, {
+				target: 'universal',
+				thread: 'background',
+				backend: Backend,
+				module,
+				backgroundProgram: true,
+			}),
+		);
+
+		expect(main.roots[0].refs).toEqual([0]);
+		expect(background.roots[0].refs).toEqual([{ node: 0, slot: 0 }]);
+		expect(background.roots[0].values.map((site: { slot: number }) => site.slot)).toEqual([1]);
+		expect(background.roots[0].wire.nodes[0].bindings).toBeUndefined();
+		expect(main.addresses).toEqual(background.addresses);
+
+		const withoutRef = evaluate(
+			compiled(source.replace(' ref={props.capture}', ''), { backend: Backend, module }),
+		);
+		expect(withoutRef.roots[0]).not.toHaveProperty('refs');
+		expect(withoutRef.addresses[0].digest).not.toBe(main.addresses[0].digest);
+	});
+
 	it('emits replayable state computations for pure dynamic bindings', () => {
 		const code = compiled(
 			`/** @jsxImportSource @octanejs/lynx/intrinsics */

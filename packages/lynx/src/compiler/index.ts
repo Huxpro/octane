@@ -21,7 +21,7 @@ export {
 	type LynxMainThreadDerivation,
 } from './derive-main-thread-program.js';
 export { deriveLynxProgramIR } from './derive-program.js';
-export { LYNX_PROGRAM_IR_VERSION, type LynxProgramIR } from './ir.js';
+export { LYNX_PROGRAM_IR_VERSION, type LynxProgramIR, type LynxProgramRef } from './ir.js';
 export {
 	emitLynxMainThreadProgram,
 	LynxMainThreadEmitRefusal,
@@ -43,4 +43,4 @@ export {
  * rather than a comment. Over-invalidating a cache is the safe direction; a
  * comment-only edit bumping it costs one cold build and nothing else.
  */
-export const signature = 'lynx-main-thread-program/24';
+export const signature = 'lynx-main-thread-program/25';

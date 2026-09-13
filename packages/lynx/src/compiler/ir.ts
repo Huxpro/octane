@@ -29,12 +29,20 @@ export const LYNX_PROGRAM_IR_VERSION = 1 as const;
  * runtime owns instead of painting into the fixed wire. `addressable` is the
  * shared fail-closed eligibility answer for the independently built outputs.
  */
+export interface LynxProgramRef {
+	/** Resident host-node index whose authored `ref` value lives in `slot`. */
+	readonly node: number;
+	readonly slot: number;
+}
+
 export interface LynxProgramIR {
 	readonly version: typeof LYNX_PROGRAM_IR_VERSION;
 	readonly wire: UniversalHostTemplateProgram;
 	readonly values: readonly PreparedUniversalTemplateProgramValue[];
 	readonly events: readonly PreparedUniversalTemplateProgramEvent[];
 	readonly ranges: readonly UniversalTemplateProgramRange[];
+	/** Authored host refs, omitted so ref-free programs preserve their emitted shape. */
+	readonly refs?: readonly LynxProgramRef[];
 	/**
 	 * Whether every remaining range is structural, so the fixed wire and the
 	 * range topology together can name this program across the two build graphs.
