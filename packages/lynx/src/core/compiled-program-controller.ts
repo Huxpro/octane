@@ -154,6 +154,13 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 		}
 	};
 
+	const onStoreCallbackFault = (value: unknown): void => {
+		if (closed || faulted) return;
+		faulted = true;
+		const error = report(value);
+		if (active !== null) send({ ...active, type: 'fault', error: wireError(error) });
+	};
+
 	const reject = (identity: UniversalTransportIdentity, value: unknown): void => {
 		const error = report(
 			value,
@@ -258,6 +265,7 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 					candidate.root,
 					pendingAdoption?.firstListener,
 					pendingAdoption?.resolveSeed,
+					onStoreCallbackFault,
 				);
 			applying = candidate;
 			try {

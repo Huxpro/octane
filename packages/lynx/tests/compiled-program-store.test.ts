@@ -41,6 +41,28 @@ const EVENT_ROW: UniversalHostTemplateProgram = {
 	events: [{ node: 0, type: 'bindtap', priority: 'discrete' }],
 };
 
+const LIST_SHELL: UniversalHostTemplateProgram = {
+	nodes: [
+		{ type: 'view', parent: -1, props: { class: 'page' } },
+		{ type: 'list', parent: 0, props: { id: 'feed', 'list-type': 'single' } },
+	],
+	events: [],
+};
+
+const LIST_EVENT_ROW: UniversalHostTemplateProgram = {
+	nodes: [
+		{
+			type: 'list-item',
+			parent: -1,
+			props: { 'reuse-identifier': 'feed-row' },
+			bindings: [{ name: 'item-key', valueIndex: 0 }],
+		},
+		{ type: 'text', parent: 0, props: {} },
+		{ type: '#text', parent: 1, props: {}, bindings: [{ name: 'value', valueIndex: 1 }] },
+	],
+	events: [{ node: 0, type: 'bindtap', priority: 'discrete' }],
+};
+
 function emittedPlan(papi: LynxElementPAPI<FakeNode>): UniversalProgramPlan {
 	const emission = emitLynxMainThreadProgram(ROW, {
 		name: 'createCompactRow',
@@ -77,10 +99,36 @@ function emittedEventPlan(): UniversalProgramPlan {
 	};
 }
 
-function emittedHost(): LynxElementPAPI<FakeNode> & {
+function emittedListPlan(
+	program: UniversalHostTemplateProgram,
+	slots: UniversalProgramPlan['slots'],
+	values: UniversalProgramPlan['values'],
+	ranges: UniversalProgramPlan['ranges'] = [],
+): UniversalProgramPlan {
+	const emission = emitLynxMainThreadProgram(program, {
+		name: program === LIST_SHELL ? 'createCompactList' : 'createCompactListRow',
+		slotUpdates: true,
+		structuralRuns: true,
+		ranges: ranges.map((range) => ({ node: range.node, before: range.before })),
+	});
+	const bind = new Function('return (' + emission.source + ');')() as UniversalProgramPlan['bind'];
+	return {
+		kind: 'program',
+		slots,
+		nodes: program.nodes.length,
+		values,
+		events: program.events.map((event, index) => ({ ...event, slot: values.length + index })),
+		ranges,
+		bind,
+		wire: program,
+	};
+}
+
+function emittedHost(list = false): LynxElementPAPI<FakeNode> & {
 	readonly pages: FakeNode[];
+	readonly lists: ReturnType<typeof createFakePAPI>['lists'];
 } {
-	const base = createFakePAPI();
+	const base = createFakePAPI({ list });
 	return {
 		...base,
 		intrinsics: {
@@ -958,5 +1006,208 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		expect(store.size()).toBe(0);
 		expect(page.children).toEqual([]);
 		expect(() => store.begin()).toThrow(/closing or closed/);
+	});
+	it('declares native-list rows lazily, rebinds one physical cell, and rejects stale callbacks', () => {
+		const papi = emittedHost(true);
+		const page = papi.createPage('0', 0);
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 47);
+		const shell = emittedListPlan(LIST_SHELL, ['r'], [], [{ slot: 0, node: 1, id: 1 }]);
+		const row = emittedListPlan(LIST_EVENT_ROW, ['p:item-key', 'c', 'e:bindtap'], [0, 1]);
+
+		store.begin();
+		store.mount({
+			firstHandle: 2,
+			count: 1,
+			parent: page,
+			before: null,
+			plan: shell,
+			values: [],
+		});
+		const listNode = store.range(2, 0);
+		store.mount({
+			firstHandle: 3,
+			count: 3,
+			parent: listNode,
+			before: null,
+			plan: row,
+			values: ['item-0', 'Row 0', 'item-1', 'Row 1', 'item-2', 'Row 2'],
+		});
+		store.commit();
+
+		const nativeList = papi.lists[0]!;
+		expect(nativeList.node.children).toEqual([]);
+		expect(nativeList.node.attributes['update-list-info']).toMatchObject({
+			insertAction: [
+				{ position: 0, 'item-key': 'item-0' },
+				{ position: 1, 'item-key': 'item-1' },
+				{ position: 2, 'item-key': 'item-2' },
+			],
+		});
+
+		const firstSign = nativeList.componentAtIndex(nativeList.node, nativeList.node.uid, 0, 11);
+		const cell = nativeList.node.children[0]!;
+		expect(cell.children[0]!.children[0]!.text).toBe('Row 0');
+		nativeList.enqueueComponent(nativeList.node, nativeList.node.uid, firstSign);
+		const secondSign = nativeList.componentAtIndex(nativeList.node, nativeList.node.uid, 1, 12);
+		expect(secondSign).toBe(firstSign);
+		expect(nativeList.node.children[0]).toBe(cell);
+		expect(cell.children[0]!.children[0]!.text).toBe('Row 1');
+		expect(decodeLynxNativeEventToken(cell.events.get('bindEvent:tap'))).toMatchObject({
+			root: 47,
+			id: 4,
+			listener: 2,
+		});
+
+		store.begin();
+		expect(store.set(4, 1, 'Row 1 updated')).toBe(true);
+		expect(store.move(4, listNode, 3)).toBe(true);
+		store.commit();
+		expect(cell.children[0]!.children[0]!.text).toBe('Row 1 updated');
+
+		store.begin();
+		store.remove(4);
+		store.commit();
+		expect(nativeList.node.children).toEqual([]);
+		const replacementSign = nativeList.componentAtIndex(nativeList.node, nativeList.node.uid, 0);
+		expect(replacementSign).not.toBe(firstSign);
+		const replacement = nativeList.node.children[0]!;
+		expect(replacement.children[0]!.children[0]!.text).toBe('Row 0');
+		nativeList.enqueueComponent(nativeList.node, nativeList.node.uid, firstSign);
+		expect(nativeList.node.children[0]).toBe(replacement);
+
+		store.begin();
+		store.clear(listNode);
+		store.commit();
+		expect(store.size()).toBe(1);
+		expect(nativeList.node.children).toEqual([]);
+		expect(nativeList.componentAtIndex(nativeList.node, nativeList.node.uid, 0)).toBe(-1);
+
+		store.dispose();
+		expect(nativeList.componentAtIndex(nativeList.node, nativeList.node.uid, 0)).toBe(-1);
+	});
+	it('prepares native-list publication before flush and reverses a rejected frame', () => {
+		const papi = emittedHost(true);
+		const page = papi.createPage('0', 0);
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 47);
+		const shell = emittedListPlan(LIST_SHELL, ['r'], [], [{ slot: 0, node: 1, id: 1 }]);
+		const row = emittedListPlan(LIST_EVENT_ROW, ['p:item-key', 'c', 'e:bindtap'], [0, 1]);
+		store.begin();
+		store.mount({
+			firstHandle: 2,
+			count: 1,
+			parent: page,
+			before: null,
+			plan: shell,
+			values: [],
+		});
+		const listNode = store.range(2, 0);
+		store.commit();
+
+		const mount = () =>
+			store.mount({
+				firstHandle: 3,
+				count: 1,
+				parent: listNode,
+				before: null,
+				plan: row,
+				values: ['item-0', 'Row 0'],
+			});
+		store.begin();
+		mount();
+		store.prepareCommit();
+		expect(listNode.attributes['update-list-info']).toMatchObject({
+			insertAction: [{ position: 0, 'item-key': 'item-0' }],
+		});
+		store.rollback();
+		expect(listNode.attributes['update-list-info']).toMatchObject({ removeAction: [0] });
+		expect(store.isFaulted()).toBe(false);
+
+		store.begin();
+		mount();
+		store.commit();
+		expect(papi.lists[0]!.componentAtIndex(listNode, listNode.uid, 0)).toBeGreaterThan(0);
+	});
+
+	it('faults an unknowable list publication and reports an accepted callback failure', () => {
+		const base = emittedHost(true);
+		let failPublication = true;
+		const papi: typeof base = {
+			...base,
+			setAttribute(node, name, value) {
+				base.setAttribute(node, name, value);
+				if (name === 'update-list-info' && failPublication) {
+					failPublication = false;
+					throw new Error('list publication fault');
+				}
+			},
+		};
+		const page = papi.createPage('0', 0);
+		const reported: unknown[] = [];
+		const store = createLynxCompiledProgramStore(
+			papi,
+			papi.getUniqueId(page),
+			47,
+			1,
+			undefined,
+			(error) => reported.push(error),
+		);
+		const shell = emittedListPlan(LIST_SHELL, ['r'], [], [{ slot: 0, node: 1, id: 1 }]);
+		const row = emittedListPlan(LIST_EVENT_ROW, ['p:item-key', 'c', 'e:bindtap'], [0, 1]);
+		store.begin();
+		store.mount({
+			firstHandle: 2,
+			count: 1,
+			parent: page,
+			before: null,
+			plan: shell,
+			values: [],
+		});
+		const listNode = store.range(2, 0);
+		store.commit();
+		store.begin();
+		store.mount({
+			firstHandle: 3,
+			count: 1,
+			parent: listNode,
+			before: null,
+			plan: row,
+			values: ['item-0', 'Row 0'],
+		});
+		expect(() => store.commit()).toThrow('list publication fault');
+		store.rollback();
+		expect(store.isFaulted()).toBe(true);
+
+		store.dispose();
+		const cleanPage = base.createPage('1', 0);
+		const callbackStore = createLynxCompiledProgramStore(
+			base,
+			base.getUniqueId(cleanPage),
+			48,
+			1,
+			undefined,
+			(error) => reported.push(error),
+		);
+		callbackStore.begin();
+		callbackStore.mount({
+			firstHandle: 2,
+			count: 1,
+			parent: cleanPage,
+			before: null,
+			plan: shell,
+			values: [],
+		});
+		const cleanList = callbackStore.range(2, 0);
+		callbackStore.mount({
+			firstHandle: 3,
+			count: 1,
+			parent: cleanList,
+			before: null,
+			plan: row,
+			values: ['item-0', 'Row 0'],
+		});
+		callbackStore.commit();
+		expect(base.lists.at(-1)!.componentAtIndex(cleanList, cleanList.uid, 99)).toBe(-1);
+		expect(callbackStore.isFaulted()).toBe(true);
+		expect(reported.at(-1)).toBeInstanceOf(TypeError);
 	});
 });

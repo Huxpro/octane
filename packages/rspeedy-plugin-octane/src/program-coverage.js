@@ -20,7 +20,7 @@ export const LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO = 'octane:lynx-background
 export const LYNX_BACKGROUND_CORE_SELECTION_VERSION = 1;
 export const LYNX_APPLICATION_SELECTION_ASSET_INFO = 'octane:lynx-application-selection';
 export const LYNX_APPLICATION_SELECTION_VERSION = 1;
-export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 11;
+export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 12;
 export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 	version: LYNX_BLOCK_SUPPORT_MATRIX_VERSION,
 	// Each name has an independent assertion through the Block component path.
@@ -42,6 +42,7 @@ export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 		'if',
 		'inline-render-prop',
 		'local-component',
+		'native-list',
 		'switch',
 	]),
 	keyedRanges: Object.freeze({

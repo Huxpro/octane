@@ -230,6 +230,9 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 			}
 			cursor = end;
 		}
+		// Native-list metadata must be staged before the page flush so the flush
+		// publishes the same candidate whose logical frame is being accepted.
+		store.prepareCommit();
 		// A ContextProxy abort can re-enter while Element PAPI work is in
 		// progress. Give the owning receiver one last boundary before publication:
 		// throwing here rolls the entire frame back through the same journal as a

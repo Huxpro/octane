@@ -233,6 +233,17 @@ the compiler output with hand-written plans or frames:
 | Keyed update | `[1,2,3]` becomes `[3,1,4]` through direct set/remove/run/move operations; surviving row identities and row 1 state remain. |
 | Teardown | Root unmount removes the tree and a late native event is inert. |
 
+The compact store, transport, and native-list integration suites separately
+prove that a paired fixed-shape `list-item` program is declared logically,
+materialized only through Lynx list callbacks, recycled with scalar and event
+identity rebound, and removed with late enqueue callbacks inert. List deltas
+are prepared before the accepting page flush, and asynchronous callback
+failures cross the compact fault wire. Native-list first-screen paint is
+deliberately deferred to the first compact frame; this is an explicit
+limitation rather than a generic host mirror or a silent Universal fallback.
+Rows containing nested structural ranges remain ineligible until compact cells
+can retain that nested ownership.
+
 The adoption store separately proves that scalar repairs roll back to the
 painted values if the enclosing attempt aborts. These are compiler, Rspack
 artifact, and JavaScript-host observations—not Explorer, Android, or iOS

@@ -2,10 +2,13 @@ import type {
 	UniversalHostBatch,
 	UniversalHostCommand,
 	UniversalHostTemplateProgram,
+	UniversalProgramPlan,
 } from 'octane/universal/native';
 import { installLynxTestingEnv, uninstallLynxTestingEnv } from '@lynx-js/testing-environment';
 import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
+import { emitLynxMainThreadProgram } from '../src/compiler/emit-main-thread-program.js';
+import { createLynxCompiledProgramStore } from '../src/core/compiled-program-store.js';
 import {
 	captureLynxFirstTree,
 	createLynxHostContainer,
@@ -100,6 +103,107 @@ function removeListItem(index: number): UniversalHostCommand[] {
 }
 
 describe('Lynx native list recycling', () => {
+	it('runs the compact program store through Lynx native list callbacks', () => {
+		const dom = new JSDOM();
+		installLynxTestingEnv(globalThis, { window: dom.window as never });
+		const environment = globalThis.lynxTestingEnv;
+		environment.clearGlobal();
+		environment.switchToMainThread();
+		try {
+			const papi = createLynxElementPAPI(globalThis);
+			const page = papi.createPage('0', 0);
+			const shellWire: UniversalHostTemplateProgram = {
+				nodes: [
+					{ type: 'view', parent: -1, props: {} },
+					{ type: 'list', parent: 0, props: { id: 'compact-feed' } },
+				],
+				events: [],
+			};
+			const rowWire: UniversalHostTemplateProgram = {
+				nodes: [
+					{
+						type: 'list-item',
+						parent: -1,
+						props: { 'reuse-identifier': 'compact-row' },
+						bindings: [{ name: 'item-key', valueIndex: 0 }],
+					},
+					{ type: 'text', parent: 0, props: {} },
+					{
+						type: '#text',
+						parent: 1,
+						props: {},
+						bindings: [{ name: 'value', valueIndex: 1 }],
+					},
+				],
+				events: [],
+			};
+			const plan = (
+				wire: UniversalHostTemplateProgram,
+				slots: UniversalProgramPlan['slots'],
+				values: UniversalProgramPlan['values'],
+				ranges: UniversalProgramPlan['ranges'] = [],
+			): UniversalProgramPlan => {
+				const emission = emitLynxMainThreadProgram(wire, {
+					name: wire === shellWire ? 'createNativeCompactList' : 'createNativeCompactRow',
+					slotUpdates: true,
+					structuralRuns: true,
+					ranges: ranges.map((range) => ({ node: range.node, before: range.before })),
+				});
+				return {
+					kind: 'program',
+					slots,
+					nodes: wire.nodes.length,
+					values,
+					events: [],
+					ranges,
+					bind: new Function('return (' + emission.source + ');')() as UniversalProgramPlan['bind'],
+					wire,
+				};
+			};
+			const shell = plan(shellWire, ['r'], [], [{ slot: 0, node: 1, id: 1 }]);
+			const row = plan(rowWire, ['p:item-key', 'c'], [0, 1]);
+			const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 72);
+			store.begin();
+			store.mount({
+				firstHandle: 2,
+				count: 1,
+				parent: page,
+				before: null,
+				plan: shell,
+				values: [],
+			});
+			const listNode = store.range(2, 0);
+			store.mount({
+				firstHandle: 3,
+				count: 2,
+				parent: listNode,
+				before: null,
+				plan: row,
+				values: ['item-0', 'Row 0', 'item-1', 'Row 1'],
+			});
+			store.commit();
+			papi.flush(page);
+
+			const list = (page as unknown as Element).querySelector('#compact-feed')!;
+			expect(list.children).toHaveLength(0);
+			expect(JSON.parse(list.getAttribute('update-list-info')!)[0].insertAction).toHaveLength(2);
+			const firstSign = globalThis.elementTree.enterListItemAtIndex(list as never, 0);
+			const cell = list.firstElementChild!;
+			expect(cell.textContent).toBe('Row 0');
+			globalThis.elementTree.leaveListItem(list as never, firstSign);
+			expect(globalThis.elementTree.enterListItemAtIndex(list as never, 1)).toBe(firstSign);
+			expect(list.firstElementChild).toBe(cell);
+			expect(cell.textContent).toBe('Row 1');
+
+			store.dispose();
+			papi.flush(page);
+			expect((page as unknown as Element).children).toHaveLength(0);
+		} finally {
+			environment.clearGlobal();
+			uninstallLynxTestingEnv(globalThis);
+			dom.window.close();
+		}
+	});
 	it('uses the exact two-function list API published by Lynx 3.9', () => {
 		const dom = new JSDOM();
 		installLynxTestingEnv(globalThis, { window: dom.window as never });

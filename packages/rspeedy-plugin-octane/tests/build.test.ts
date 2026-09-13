@@ -777,7 +777,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					selection: {
 						version: 1,
 						matrix: {
-							version: 11,
+							version: 12,
 							runtimeNames: [
 								'createContext',
 								'memo',
@@ -795,6 +795,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 								'if',
 								'inline-render-prop',
 								'local-component',
+								'native-list',
 								'switch',
 							],
 							keyedRanges: {

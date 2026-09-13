@@ -145,6 +145,7 @@ export function createLynxCompiledProgramTransport(
 	const inbound = createLynxTransportFrameState();
 	let sequence = 1;
 	let root: number | null = null;
+	let accepted: UniversalTransportIdentity | null = null;
 	let faulted: Error | null = null;
 	let closed: Error | null = null;
 	let disposeDeferred: Deferred<void> | null = null;
@@ -289,6 +290,16 @@ export function createLynxCompiledProgramTransport(
 			return;
 		}
 		const entry = pending.get(message.version);
+		if (
+			entry === undefined &&
+			message.type === 'fault' &&
+			accepted !== null &&
+			message.root === accepted.root &&
+			message.version === accepted.version
+		) {
+			fault(remoteError(message.error));
+			return;
+		}
 		if (entry === undefined || message.root !== entry.identity.root) {
 			report(
 				new Error(
@@ -330,7 +341,10 @@ export function createLynxCompiledProgramTransport(
 						),
 					),
 				);
-			} else entry.deferred.resolve(undefined);
+			} else {
+				accepted = entry.identity;
+				entry.deferred.resolve(undefined);
+			}
 			return;
 		}
 		const error = remoteError(message.error);

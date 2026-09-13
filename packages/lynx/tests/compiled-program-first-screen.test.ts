@@ -20,6 +20,7 @@ function emittedPlan(
 		events: [],
 		ranges,
 		bind: new Function(`return (${emission.source});`)() as UniversalProgramPlan['bind'],
+		wire: program,
 	};
 }
 
@@ -87,5 +88,49 @@ describe('compiled-program first-screen painter', () => {
 		expect(page.children[0]!.children.map((child) => child.classes)).toEqual(['row', 'footer']);
 		adoption.dispose();
 		expect(page.children).toEqual([]);
+	});
+	it('defers a native-list first screen without creating a generic host or requiring adoption', () => {
+		const list = emittedPlan(
+			{ nodes: [{ type: 'list', parent: -1, props: { 'list-type': 'single' } }], events: [] },
+			'createDeferredFirstScreenList',
+		);
+		const result: LynxFirstScreenRenderResult = {
+			batch: undefined as never,
+			envelope: { renderer: 'lynx', version: 1, events: [] },
+			hostCount: 1,
+			logicalCount: 1,
+			programs: 1,
+			nodes: [
+				{
+					kind: 'program',
+					id: 1,
+					plan: list,
+					values: [],
+					ids: [1],
+					spans: [],
+					texts: [],
+					rangeIds: [],
+					children: [],
+				},
+			],
+		};
+		const papi = createFakePAPI();
+		const page = papi.createPage('0', 0);
+		const adoption = paintLynxCompiledProgramFirstScreen(result, papi, page);
+		expect(adoption.firstScreen).toBe('deferred-native-list');
+		expect(page.children).toEqual([]);
+		expect(
+			adoption.resolveSeed({
+				firstHandle: 2,
+				count: 1,
+				parent: page,
+				before: null,
+				plan: list,
+				values: [],
+			}),
+		).toBeUndefined();
+		expect(() => adoption.verify()).not.toThrow();
+		adoption.finish();
+		adoption.dispose();
 	});
 });

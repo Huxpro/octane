@@ -521,13 +521,19 @@ describe('Lynx block core — allocation-order determinism', () => {
 		expect(first.tree()).toEqual(second.tree());
 	});
 
-	it('refuses a template the specialized path cannot own', () => {
-		expect(() =>
-			compileLynxBlockTemplate({
-				nodes: [{ type: 'list', parent: -1, props: {} }],
-				events: [],
-			}),
-		).toThrowError(/native lists are not in the specialized core/);
+	it('admits native-list templates while retaining compiler slot identity', () => {
+		const template = compileLynxBlockTemplate({
+			nodes: [
+				{ type: 'list', parent: -1, props: {}, bindings: [{ name: 'span-count', valueIndex: 0 }] },
+			],
+			events: [],
+		});
+		expect(template).toMatchObject({
+			hostCount: 1,
+			valueCount: 1,
+			valueNodes: [0],
+			valueNames: ['span-count'],
+		});
 	});
 
 	it('refuses a malformed resident program address before it reaches the wire', () => {

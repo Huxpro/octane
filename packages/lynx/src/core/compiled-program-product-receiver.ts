@@ -108,6 +108,13 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 			}
 		}
 	};
+	const onStoreCallbackFault = (value: unknown): void => {
+		if (closed || faulted) return;
+		faulted = true;
+		const error = report(value);
+		if (active !== null) send({ ...active, type: 'fault', error });
+	};
+
 	const onMessage = (event: LynxContextProxyEvent): void => {
 		if (closed) return;
 		let message;
@@ -211,6 +218,7 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 				message.root,
 				pendingAdoption?.firstListener,
 				pendingAdoption?.resolveSeed,
+				onStoreCallbackFault,
 			);
 		busy = true;
 		try {

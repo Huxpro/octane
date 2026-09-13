@@ -1026,7 +1026,7 @@ describe('Lynx main-thread program emission', () => {
 			],
 			[
 				'a host type with no intrinsic factory',
-				{ nodes: [{ type: 'list', parent: -1, props: {} }], events: [] },
+				{ nodes: [{ type: 'input', parent: -1, props: {} }], events: [] },
 				/host type this backend cannot construct/,
 			],
 			[

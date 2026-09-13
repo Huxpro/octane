@@ -321,6 +321,15 @@ describe('deriving the shared Lynx program IR from a plan', () => {
 		}).root as UniversalHostPlan;
 		expect(deriveLynxProgramIR(SIBLINGS)).toBeNull();
 	});
+	it('declines a native-list row with a structural range until cells can retain nested ownership', () => {
+		const RANGED_LIST_ROW = universalPlan(LYNX_TRANSPORT_RENDERER, {
+			kind: 'host',
+			type: 'list-item',
+			props: { 'item-key': 'row-1' },
+			children: [{ kind: 'slot', slot: 0 }],
+		}).root as UniversalHostPlan;
+		expect(deriveLynxProgramIR(RANGED_LIST_ROW)).toBeNull();
+	});
 	it('declines a range that would be the whole program', () => {
 		// Nothing would be left to insert and nothing to hold the rows.
 		const BARE = universalPlan(LYNX_TRANSPORT_RENDERER, {

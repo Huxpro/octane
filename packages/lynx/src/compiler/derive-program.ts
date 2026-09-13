@@ -70,7 +70,12 @@
  * row actually shows arrives through the range protocol.
  */
 
-import type { UniversalHostPlan } from 'octane/universal/native';
+import type {
+	UniversalHostPlan,
+	UniversalHostTemplateProgram,
+	UniversalHostTemplateCapability,
+	UniversalTemplateHostPlacement,
+} from 'octane/universal/native';
 import {
 	compiledUniversalTemplateProgram,
 	createUniversalHostEncoder,
@@ -107,6 +112,7 @@ function buildTimeLoweringDriver(): ReturnType<typeof createLynxClientDriver> {
 	const driver = createLynxClientDriver();
 	return {
 		...driver,
+		templates: COMPILED_TEMPLATE_HOSTS,
 		// Object.create rather than a spread, matching `loweringDriver`: the
 		// negotiated members are live getters and snapshotting them would answer a
 		// later question with a build-time value. Here they would all snapshot to
@@ -165,6 +171,21 @@ function buildTimeEncoder(): UniversalHostEncoder {
  * A declined plan is a first screen on the command path, which is what #163's
  * C3 is for.
  */
+const COMPILED_TEMPLATE_HOSTS: UniversalHostTemplateCapability = Object.freeze({
+	placement(type: string): UniversalTemplateHostPlacement {
+		return type === 'list-item' ? 'root' : 'any';
+	},
+	defer(parentType: string, program: UniversalHostTemplateProgram): boolean {
+		if (parentType !== 'list') return false;
+		for (const node of program.nodes) {
+			for (const binding of node.bindings ?? []) {
+				if (binding.name.startsWith('main-thread:')) return false;
+			}
+		}
+		return true;
+	},
+});
+
 const EVERY_SLOT_HOLE_IS_A_RANGE = (): boolean => true;
 
 /**
@@ -188,6 +209,7 @@ export function deriveLynxProgramIR(plan: UniversalHostPlan): LynxProgramIR | nu
 	if (reduced === null) return null;
 	const prepared = prepareUniversalTemplateProgram(encoder, reduced.compiled);
 	if (prepared === null) return null;
+	if (prepared.wire.nodes[0]?.type === 'list-item' && reduced.ranges.length !== 0) return null;
 	const derived = Object.freeze({
 		version: LYNX_PROGRAM_IR_VERSION,
 		wire: prepared.wire,

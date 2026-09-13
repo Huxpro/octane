@@ -39,6 +39,31 @@ function fail(message: string): never {
 	throw new TypeError(DEVELOPMENT ? `Octane Lynx compact first screen ${message}.` : CODE);
 }
 
+function containsNativeList(nodes: readonly CompiledFirstScreenResultNode[]): boolean {
+	for (const node of nodes) {
+		if (node.plan?.wire?.nodes.some((host) => host.type === 'list' || host.type === 'list-item')) {
+			return true;
+		}
+		if (containsNativeList(node.children)) return true;
+	}
+	return false;
+}
+
+function deferredNativeListFirstScreen<
+	Node extends LynxElementRef,
+>(): LynxCompiledProgramAdoptionSource<Node> {
+	return Object.freeze({
+		firstListener: FIRST_LISTENER,
+		firstScreen: 'deferred-native-list' as const,
+		resolveSeed() {
+			return undefined;
+		},
+		verify() {},
+		finish() {},
+		dispose() {},
+	});
+}
+
 /**
  * Paint the proved program-only first screen and offer its physical outputs to
  * the first compact background frame.
@@ -54,6 +79,9 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 	papi: LynxElementPAPI<Node>,
 	page: Node,
 ): LynxCompiledProgramAdoptionSource<Node> {
+	if (containsNativeList(result.nodes as readonly CompiledFirstScreenResultNode[])) {
+		return deferredNativeListFirstScreen();
+	}
 	const pageId = papi.getUniqueId(page);
 	const bound = new WeakMap<UniversalProgramPlan, ReturnType<UniversalProgramPlan['bind']>>();
 	const painted: PaintedRun<Node>[] = [];
@@ -229,6 +257,7 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 	};
 
 	return {
+		firstScreen: 'painted',
 		firstListener: FIRST_LISTENER,
 		resolveSeed,
 		verify() {

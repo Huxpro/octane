@@ -309,10 +309,16 @@ ReactLynx's `defer={{ unmountRecycled: true }}` object form. Recycling clears
 physical refs without unmounting the logical Octane subtree, so component
 state and effects survive until the logical item is removed.
 
-Native list hosts and materializations are excluded from first-tree capture, so
-initial trees containing a native list have no Milestone 6 adoption claim.
-Boolean `defer` still has only the Milestone 4 metadata behavior; no eager-main
-versus deferred-background semantics are claimed without native evidence.
+Native list hosts and materializations remain excluded from first-tree capture.
+For the selected compiled-program product, that boundary is explicit: the IFR
+source is tagged `deferred-native-list`, paints no generic list host, and waits
+for the first compact frame to create the native list plus its logical row
+descriptors. Native callbacks then materialize only demanded fixed-shape
+`list-item` rows, using the native reuse-identifier partition, further separated by resident plan identity. A row
+with a nested structural range fails paired program coverage and keeps the whole
+entry on Universal. Boolean `defer` still has only the Milestone 4 metadata
+behavior; no eager-main versus deferred-background semantics are claimed
+without native device evidence.
 
 `reuse-identifier` accepts strings. Omitting it or passing an empty string uses
 the default native reuse pool; logical identity still comes from the mandatory

@@ -154,7 +154,7 @@ const CONTINUOUS_EVENTS = new Set(['layoutchange', 'scroll', 'touchmove', 'wheel
 const EMPTY_TEMPLATE_BINDINGS: readonly UniversalHostTemplateProgramBinding[] = Object.freeze([]);
 const TEMPLATE_HOSTS: UniversalHostTemplateCapability = Object.freeze({
 	placement(type: string): UniversalTemplateHostPlacement {
-		if (type === 'list') return 'none';
+		if (type === 'list') return 'any';
 		return type === 'list-item' ? 'root' : 'any';
 	},
 	defer(parentType: string, program: UniversalHostTemplateProgram): boolean {

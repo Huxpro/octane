@@ -1,7 +1,7 @@
 # Lynx Block semantic support
 
-Status: implementation contract for roadmap issue #378. This document describes
-the current repository state; it is not a claim that issue #378 or the Lynx
+Status: implementation contract for roadmap issues #378 and #379. This document describes
+the current repository state; it is not a claim that either child issue or the Lynx
 roadmap is complete.
 
 ## Reading the matrix
@@ -43,10 +43,11 @@ must satisfy the runtime invariants below.
 | Compiler-proved component-valued host holes | Block selected | An expression-wrapped immutable local component, or a conditional whose two outcomes are such a component and an explicit empty value, becomes a typed structural region. The region may start empty; same component/key updates retain state, while key replacement or component → empty → component transitions remount cleanly. Imported components, arbitrary values, arrays, and mixed primitive shapes remain generic renderable holes and keep the whole entry on Universal. |
 | `memo()` | Block selected | Stateful keyed rows honor custom prop comparators without swallowing local updates; context reads pierce the memo bailout, the compact first screen treats the wrapper as identity, and the production selector admits the runtime export. |
 | Compiler-proved dirty hook slots and binding groups | Block selected | Owner-local invalidation reaches only dependent computations and program slots; structural changes retain the full reconcile path. |
+| Fixed-shape keyed `list-item` rows under native `list` | Block selected | The compact store retains logical rows, publishes `update-list-info` before the accepting flush, materializes only requested cells, rebinds scalar/event identity across the established reuse pools, rejects stale enqueue callbacks, and reports accepted async callback faults. Native-list IFR is explicitly deferred to the first compact frame; it neither paints generic list hosts nor switches to Universal. Rows with nested structural ranges still fail closed. |
 | Main-thread props and thread functions | General Block application only | The Block transport can carry them, but the compact compiled-program product fails closed and keeps the general application product. |
 | Ordered host spreads with unknown property names | Whole-entry Universal compatibility | `UniversalHostPlan.propsSlot` has no resident Block prop-name table. Static named props remain Block-native. |
 | Generic renderable holes (primitive/array/fragment shape changes) | Whole-entry Universal compatibility | The compiler cannot yet prove a stable structural region kind, and Block does not infer one from the first value. |
-| Host refs, native `list`, Activity/visibility, `@try`/Suspense, and portals | Whole-entry Universal compatibility | These retain the existing Universal lifecycle until separate Block transaction and identity proofs land. |
+| Host refs, Activity/visibility, `@try`/Suspense, and portals | Whole-entry Universal compatibility | These retain the existing Universal lifecycle until separate Block transaction and identity proofs land. |
 | Nested keyed ranges | Rejected by Block | An inner range needs retained state scoped to each outer key; the current core diagnoses the nesting before publication. |
 | Multiple independently owned keyed ranges under one host | Rejected by Block | Static siblings are supported, but two dynamic sibling ranges still need distinct resident range identities instead of the shared physical-parent key. |
 | Insertion effects | Rejected by Block | The Block transaction has no pre-mutation publication phase. |

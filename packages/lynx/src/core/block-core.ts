@@ -22,9 +22,9 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
  * ## Specialized scope
  *
  * Component-local hook scopes sit above these scoped entry points and publish at
- * the same render-attempt boundary. De-opt regions, Suspense, Activity, portals,
- * and native lists remain outside this core until their dedicated slices; they
- * are refused by template compilation or selection rather than mis-rendered.
+ * the same render-attempt boundary. Native lists reuse these instance and range
+ * identities while the main-thread store alone materializes physical cells. De-opt
+ * regions, Suspense, Activity, and portals remain selected out until their slices.
  */
 
 import { sameLynxUniversalHostPropValue } from './host-props.js';
@@ -91,10 +91,10 @@ function fail(message: string | false): never {
  *
  * The program's own invariants (pre-order nodes, `parent === -1` at the root,
  * parents strictly earlier, `#text` only under `text`) are the applier's and
- * are re-checked there. What this adds is the value-slot inverse map, and the
- * refusals this slice owes: a native list is not adoptable by the specialized
- * path, and a value slot bound twice would make "which node owns this slot"
- * ambiguous.
+ * are re-checked there. What this adds is the value-slot inverse map. The
+ * refusals this slice owes are value-shape constraints. Native-list ownership is
+ * selected by the compiled-program store, while a value slot bound twice would
+ * make "which node owns this slot" ambiguous.
  */
 export function compileLynxBlockTemplate(
 	program: UniversalHostTemplateProgram,
@@ -124,12 +124,6 @@ export function compileLynxBlockTemplate(
 	const nodes: UniversalHostTemplateProgramNode[] = new Array(source.length);
 	for (let index = 0; index < source.length; index++) {
 		const node = source[index]!;
-		if (node.type === 'list' || node.type === 'list-item') {
-			fail(
-				LYNX_BLOCK_CORE_DEVELOPMENT &&
-					'native lists are not in the specialized core (issue #103 U2 scope)',
-			);
-		}
 		const props = Object.freeze({ ...node.props });
 		const bindings = node.bindings;
 		staticProps[index] = props;

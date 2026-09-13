@@ -105,6 +105,7 @@ const INTRINSIC_FACTORY: Readonly<Record<string, 'view' | 'text' | 'rawText' | '
 		'#text': 'rawText',
 		'raw-text': 'rawText',
 		image: 'element',
+		list: 'element',
 		'list-item': 'element',
 	});
 
@@ -129,6 +130,32 @@ const IMAGE_ATTRIBUTE_PROPS: readonly string[] = Object.freeze([
 const IMAGE_SCALAR_HOST_PROPS: readonly string[] = Object.freeze([
 	...SCALAR_HOST_PROPS,
 	...IMAGE_ATTRIBUTE_PROPS,
+]);
+
+/** Scalar attributes declared by the public `LynxListProps` contract. */
+const LIST_ATTRIBUTE_PROPS: readonly string[] = Object.freeze([
+	'scroll-orientation',
+	'span-count',
+	'list-type',
+	'enable-scroll',
+	'enable-nested-scroll',
+	'sticky',
+	'sticky-offset',
+	'bounces',
+	'initial-scroll-index',
+	'need-visible-item-info',
+	'lower-threshold-item-count',
+	'upper-threshold-item-count',
+	'scroll-event-throttle',
+	'preload-buffer-count',
+	'experimental-search-ref-anchor-strategy',
+	'scroll-bar-enable',
+	'need-layout-complete-info',
+	'layout-id',
+]);
+const LIST_SCALAR_HOST_PROPS: readonly string[] = Object.freeze([
+	...SCALAR_HOST_PROPS,
+	...LIST_ATTRIBUTE_PROPS,
 ]);
 
 /** Scalar attributes declared by the public `LynxListItemProps` contract. */
@@ -159,6 +186,7 @@ const LIST_ITEM_SCALAR_HOST_PROPS: readonly string[] = Object.freeze([
 function scalarHostProps(type: string): readonly string[] {
 	if (type === 'text') return TEXT_SCALAR_HOST_PROPS;
 	if (type === 'image') return IMAGE_SCALAR_HOST_PROPS;
+	if (type === 'list') return LIST_SCALAR_HOST_PROPS;
 	return type === 'list-item' ? LIST_ITEM_SCALAR_HOST_PROPS : SCALAR_HOST_PROPS;
 }
 
@@ -389,6 +417,7 @@ function dynamicRoute(node: UniversalHostTemplateProgramNode): 0 | 1 | 2 {
 		(node.type === 'view' ||
 			node.type === 'text' ||
 			node.type === 'image' ||
+			node.type === 'list' ||
 			node.type === 'list-item') &&
 		names.every((name) => scalarHostProps(node.type).includes(name)) &&
 		bindings.every((binding) => scalarHostProps(node.type).includes(binding.name))
@@ -499,9 +528,11 @@ function emitScalarProps(
 	const attributeProps =
 		node.type === 'image'
 			? IMAGE_ATTRIBUTE_PROPS
-			: node.type === 'list-item'
-				? LIST_ITEM_ATTRIBUTE_PROPS
-				: null;
+			: node.type === 'list'
+				? LIST_ATTRIBUTE_PROPS
+				: node.type === 'list-item'
+					? LIST_ITEM_ATTRIBUTE_PROPS
+					: null;
 	if (attributeProps === null) return;
 	const names = [
 		...Object.keys(node.props),
@@ -634,6 +665,12 @@ function emitSlotUpdate(
 		return;
 	}
 	if (node.type === 'image' && IMAGE_ATTRIBUTE_PROPS.includes(site.name)) {
+		lines.push(
+			`\t\t\tpapi.setAttribute(${target}, ${JSON.stringify(site.name)}, value == null ? null : value);`,
+		);
+		return;
+	}
+	if (node.type === 'list' && LIST_ATTRIBUTE_PROPS.includes(site.name)) {
 		lines.push(
 			`\t\t\tpapi.setAttribute(${target}, ${JSON.stringify(site.name)}, value == null ? null : value);`,
 		);
