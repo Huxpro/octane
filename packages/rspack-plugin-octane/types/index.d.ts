@@ -346,6 +346,7 @@ export interface OctaneLynxBlockTemplateFeatureRequirement {
 		| 'fragment'
 		| 'host-ref'
 		| 'if'
+		| 'inline-render-prop'
 		| 'native-list'
 		| 'program-root-event'
 		| 'renderable-hole'

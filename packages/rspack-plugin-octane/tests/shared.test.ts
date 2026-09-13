@@ -371,6 +371,7 @@ describe('getOctaneRspackBuildInfo', () => {
 							templateFeatures: [
 								{ kind: 'component', name: 'Panel', line: 8, column: 2 },
 								{ kind: 'local-component', name: 'Frame', line: 9, column: 2 },
+								{ kind: 'inline-render-prop', name: 'render', line: 9, column: 8 },
 							],
 							keyedRanges: [
 								{
@@ -424,6 +425,7 @@ describe('getOctaneRspackBuildInfo', () => {
 				templateFeatures: [
 					{ kind: 'component', name: 'Panel', line: 8, column: 2 },
 					{ kind: 'local-component', name: 'Frame', line: 9, column: 2 },
+					{ kind: 'inline-render-prop', name: 'render', line: 9, column: 8 },
 				],
 				keyedRanges: [
 					{

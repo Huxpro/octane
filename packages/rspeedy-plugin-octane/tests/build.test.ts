@@ -477,9 +477,12 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 						{
 							background: {
 								templateFeatures: [
-									expect.objectContaining({ kind: 'local-component', name: 'BlockFrame' }),
 									expect.objectContaining({ kind: 'if' }),
 									expect.objectContaining({ kind: 'switch' }),
+									expect.objectContaining({ kind: 'local-component', name: 'BlockFrame' }),
+									expect.objectContaining({ kind: 'local-component', name: 'BlockRenderFrame' }),
+									expect.objectContaining({ kind: 'inline-render-prop', name: 'render' }),
+									expect.objectContaining({ kind: 'local-component', name: 'BlockShell' }),
 								],
 								keyedRanges: [
 									expect.objectContaining({
@@ -499,9 +502,12 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 							},
 							mainThread: {
 								templateFeatures: [
-									expect.objectContaining({ kind: 'local-component', name: 'BlockFrame' }),
 									expect.objectContaining({ kind: 'if' }),
 									expect.objectContaining({ kind: 'switch' }),
+									expect.objectContaining({ kind: 'local-component', name: 'BlockFrame' }),
+									expect.objectContaining({ kind: 'local-component', name: 'BlockRenderFrame' }),
+									expect.objectContaining({ kind: 'inline-render-prop', name: 'render' }),
+									expect.objectContaining({ kind: 'local-component', name: 'BlockShell' }),
 								],
 								keyedRanges: [
 									expect.objectContaining({
@@ -767,7 +773,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					selection: {
 						version: 1,
 						matrix: {
-							version: 8,
+							version: 9,
 							runtimeNames: [
 								'createContext',
 								'memo',
@@ -780,7 +786,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 							],
 							threadFunctions: ['background', 'main-thread'],
 							mainThreadProps: true,
-							templateFeatures: ['if', 'local-component', 'switch'],
+							templateFeatures: ['if', 'inline-render-prop', 'local-component', 'switch'],
 							keyedRanges: {
 								empty: true,
 								nested: false,

@@ -52,6 +52,7 @@ function featureRequirements(
 				| 'fragment'
 				| 'host-ref'
 				| 'if'
+				| 'inline-render-prop'
 				| 'native-list'
 				| 'program-root-event'
 				| 'renderable-hole'
@@ -189,6 +190,7 @@ function completeProofs() {
 		mainThreadProps: [site('main-thread:ref', 6, 4)],
 		templateFeatures: [
 			{ kind: 'if', name: null, line: 5, column: 2 },
+			{ kind: 'inline-render-prop', name: 'render', line: 5, column: 3 },
 			{ kind: 'local-component', name: 'Frame', line: 5, column: 3 },
 			{ kind: 'switch', name: null, line: 6, column: 2 },
 		],
@@ -228,7 +230,7 @@ describe('Lynx application Block eligibility', () => {
 		expect(report).toEqual({
 			version: 1,
 			matrix: {
-				version: 8,
+				version: 9,
 				runtimeNames: [
 					'createContext',
 					'memo',
@@ -241,7 +243,7 @@ describe('Lynx application Block eligibility', () => {
 				],
 				threadFunctions: ['background', 'main-thread'],
 				mainThreadProps: true,
-				templateFeatures: ['if', 'local-component', 'switch'],
+				templateFeatures: ['if', 'inline-render-prop', 'local-component', 'switch'],
 				keyedRanges: {
 					empty: true,
 					nested: false,
@@ -937,7 +939,7 @@ describe('Lynx application resident-program coverage', () => {
 			},
 			[LYNX_BLOCK_SELECTION_ASSET_INFO]: {
 				version: 1,
-				matrix: { version: 8 },
+				matrix: { version: 9 },
 				eligible: true,
 				reasons: [],
 			},

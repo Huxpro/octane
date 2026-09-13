@@ -2246,6 +2246,36 @@ function blockTemplateFeature(node, rangeRowNodes, state) {
 	return null;
 }
 
+function blockInlineRenderPropFeatures(node, state) {
+	if (
+		(node.type !== 'JSXElement' && node.type !== 'Element') ||
+		!isComponentElement(node) ||
+		contextProviderExpressionAst(node, state) !== null
+	) {
+		return null;
+	}
+	const features = [];
+	for (const attribute of node.openingElement?.attributes ?? node.attributes ?? []) {
+		if (attribute.type === 'JSXSpreadAttribute' || attribute.type === 'SpreadAttribute') continue;
+		const expression = unwrapFirstScreenExpression(attribute.value?.expression);
+		if (
+			(expression?.type !== 'ArrowFunctionExpression' &&
+				expression?.type !== 'FunctionExpression') ||
+			(!isTemplateNode(expression.body) && !hasOwnTemplateReturn(expression))
+		) {
+			continue;
+		}
+		features.push(
+			Object.freeze({
+				kind: 'inline-render-prop',
+				name: attributeName(attribute),
+				...sourcePosition(attribute),
+			}),
+		);
+	}
+	return features.length === 0 ? null : features;
+}
+
 function blockProgramRootEventFeatures(state) {
 	const features = [];
 	for (const plan of state.plans) {
@@ -2340,6 +2370,8 @@ function lynxBlockFeatureRequirements(ast, state) {
 		}
 		const templateFeature = blockTemplateFeature(node, rangeRowNodes, state);
 		if (templateFeature !== null) templateFeatures.push(templateFeature);
+		const inlineRenderProps = blockInlineRenderPropFeatures(node, state);
+		if (inlineRenderProps !== null) templateFeatures.push(...inlineRenderProps);
 		if ((node.type === 'JSXElement' || node.type === 'Element') && !isComponentElement(node)) {
 			for (const attribute of node.openingElement?.attributes ?? node.attributes ?? []) {
 				if (
@@ -4361,6 +4393,8 @@ function compileComponentValueAst(node, state) {
 		// This is required for function-as-child APIs and scalar consumers. Nested
 		// JSX inside the expression is still lowered by dynamicExpressionAst.
 		childrenExpression = dynamicExpressionAst(meaningfulChildren[0].expression, state);
+	} else if (meaningfulChildren.length === 1 && isComponentElement(meaningfulChildren[0])) {
+		childrenExpression = compileRenderableExpressionAst(meaningfulChildren[0], state);
 	} else if (meaningfulChildren.length > 0) {
 		const body = compileBlockValueAst(childNodes, state, [], node);
 		childrenExpression = generatedCall(

@@ -32,6 +32,57 @@ function BlockFrame(props: { readonly children?: OctaneNode }): UniversalRendera
 	return props.children as UniversalRenderable;
 }
 
+function BlockRenderFrame(props: { readonly render: () => OctaneNode }): UniversalRenderable {
+	return props.render() as UniversalRenderable;
+}
+
+function BlockShell(props: {
+	readonly items: readonly BlockEligibleItem[];
+	readonly selected: string;
+	readonly onSelect: (label: string) => void;
+}) @{
+	<view id="block-eligible-shell">
+		<text>{'Selected: ' + props.selected}</text>
+		<view class="rows">
+			@for (const item of props.items; key item.id) {
+				<BlockEligibleRow item={item} onSelect={props.onSelect} />
+			} @empty {
+				<view class="empty">
+					<text>{'No rows: ' + props.selected as string}</text>
+				</view>
+			}
+		</view>
+		<view class="if-region">
+			@if (props.selected === 'none') {
+				<view class="if-idle">
+					<text>idle</text>
+				</view>
+			} @else {
+				<view class="if-selected">
+					<text>{props.selected as string}</text>
+				</view>
+			}
+		</view>
+		<view class="switch-region">
+			@switch (props.selected) {
+				@case 'none': {
+					<view class="switch-idle">
+						<text>none</text>
+					</view>
+				}
+				@default: {
+					<view class="switch-selected">
+						<text>{props.selected as string}</text>
+					</view>
+				}
+			}
+		</view>
+		<view class="render-prop">
+			<text>{'Rendered: ' + props.selected as string}</text>
+		</view>
+	</view>
+}
+
 export function BlockEligible(props: {
 	items: readonly BlockEligibleItem[];
 	theme: string;
@@ -39,43 +90,9 @@ export function BlockEligible(props: {
 	const [selected, setSelected] = useState('none');
 	<BlockTheme.Provider value={props.theme}>
 		<BlockFrame>
-			<view id="block-eligible-shell">
-				<text>{'Selected: ' + selected}</text>
-				<view class="rows">
-					@for (const item of props.items; key item.id) {
-						<BlockEligibleRow item={item} onSelect={setSelected} />
-					} @empty {
-						<view class="empty">
-							<text>{'No rows: ' + selected as string}</text>
-						</view>
-					}
-				</view>
-				<view class="if-region">
-					@if (selected === 'none') {
-						<view class="if-idle">
-							<text>idle</text>
-						</view>
-					} @else {
-						<view class="if-selected">
-							<text>{selected as string}</text>
-						</view>
-					}
-				</view>
-				<view class="switch-region">
-					@switch (selected) {
-						@case 'none': {
-							<view class="switch-idle">
-								<text>none</text>
-							</view>
-						}
-						@default: {
-							<view class="switch-selected">
-								<text>{selected as string}</text>
-							</view>
-						}
-					}
-				</view>
-			</view>
+			<BlockRenderFrame
+				render={() => <BlockShell items={props.items} selected={selected} onSelect={setSelected} />}
+			/>
 		</BlockFrame>
 	</BlockTheme.Provider>
 }

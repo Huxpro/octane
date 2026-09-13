@@ -4,6 +4,7 @@ const CLIENT_TARGETS = new Set(['web', 'webworker', 'electron-renderer', 'browse
 const LYNX_BLOCK_TEMPLATE_FEATURE_KINDS = new Set([
 	'activity',
 	'component',
+	'inline-render-prop',
 	'local-component',
 	'fragment',
 	'host-ref',
@@ -487,7 +488,7 @@ function lynxBlockFeatureRequirementsValid(requirements) {
 			(feature) =>
 				sourcePositionValid(feature) &&
 				LYNX_BLOCK_TEMPLATE_FEATURE_KINDS.has(feature.kind) &&
-				(feature.kind === 'local-component'
+				(feature.kind === 'local-component' || feature.kind === 'inline-render-prop'
 					? typeof feature.name === 'string' && feature.name.length > 0
 					: feature.kind === 'component'
 						? feature.name === null || (typeof feature.name === 'string' && feature.name.length > 0)

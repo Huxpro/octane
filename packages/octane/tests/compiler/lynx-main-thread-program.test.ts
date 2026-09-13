@@ -1347,6 +1347,41 @@ export function App() @{
 			{ kind: 'component', name: 'External', line: 17, column: 2 },
 		]);
 	});
+
+	it('records inline template-returning component props independently', () => {
+		const source = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useState } from 'octane';
+function Frame(props: { render: () => unknown; onValue: () => number }) {
+	props.onValue();
+	return props.render();
+}
+
+export function App() @{
+	const [label] = useState('rendered');
+	<Frame
+		render={() => <view><text>{label as string}</text></view>}
+		onValue={() => 1}
+	/>
+}
+`;
+		const module = 'src/InlineRenderProp.lynx.tsrx';
+		const result = compileCard(source, { backend: Backend, module });
+		const background = compileCard(source, {
+			target: 'universal',
+			thread: 'background',
+			backend: Backend,
+			module,
+			backgroundProgram: true,
+		});
+
+		expect(result.lynxBlockFeatureRequirements?.templateFeatures).toEqual([
+			{ kind: 'local-component', name: 'Frame', line: 10, column: 1 },
+			{ kind: 'inline-render-prop', name: 'render', line: 11, column: 2 },
+		]);
+		expect(result.mainThreadProgramCoverage).toEqual({ total: 1, addressed: 1 });
+		expect(background.mainThreadProgramCoverage).toEqual({ total: 1, addressed: 1 });
+		expect(background.code).not.toContain('universalPlan as');
+	});
 });
 
 // Issue-#246 E1 — how a background-originated mount names a resident program.
