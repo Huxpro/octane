@@ -3831,7 +3831,11 @@ function dirtyComputationArrayAst(candidate, values, root, state, origin) {
 function compileRenderableExpressionAst(node, state, dirtyCandidate = null) {
 	const provider = compileContextProviderValueAst(node, state, dirtyCandidate);
 	if (provider !== null) return provider;
-	if ((node.type === 'JSXElement' || node.type === 'Element') && isComponentElement(node)) {
+	if (
+		(node.type === 'JSXElement' || node.type === 'Element') &&
+		isComponentElement(node) &&
+		jsxName(node) !== 'Activity'
+	) {
 		return compileComponentValueAst(node, state);
 	}
 	const context = { values: [] };
