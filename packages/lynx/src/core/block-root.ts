@@ -54,6 +54,7 @@ import {
 } from './client-driver.js';
 import type { LynxHostAttachmentChange } from './protocol.js';
 import { createLynxBlockCore, type LynxBlock, type LynxBlockCore } from './block-core.js';
+import { LYNX_PROFILE, lynxWireProfile } from './profiling.js';
 
 const LYNX_BLOCK_ROOT_EVENT_SITE_ERROR = 'Octane Lynx OL019';
 
@@ -111,9 +112,13 @@ export interface LynxBlockRoot {
 	 * resolve once the host has acknowledged it. The acceptance callback publishes
 	 * semantic state first, then invokes `publishRefs` before scheduling layout
 	 * work. Ignoring `publishRefs` is safe: the root invokes it as a fallback.
-	 * Resolves immediately with `null` when no host frame is required.
+	 * Resolves immediately with `null` when no host frame is required. `onFrame`
+	 * runs only after a non-empty core batch exists, before transport preparation.
 	 */
-	commit(onAccept?: (publishRefs: () => void) => void): Promise<UniversalHostBatch | null>;
+	commit(
+		onAccept?: (publishRefs: () => void) => void,
+		onFrame?: () => void,
+	): Promise<UniversalHostBatch | null>;
 	/** Highest batch version this root has had acknowledged. */
 	acceptedVersion(): number;
 }
@@ -541,16 +546,18 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 			return bound !== undefined && bound.priority === priority;
 		},
 
-		async commit(onAccept) {
+		async commit(onAccept, onFrame) {
 			const batch = core.flush();
 			if (batch === null) {
 				finishAccepted(onAccept);
 				return null;
 			}
+			onFrame?.();
 			// U1 §3: a commit is the unit of structural consistency and it is
 			// indivisible. One flush becomes one frame; the core never emits a
 			// prefix, yields, and emits the rest, because a `move`'s `before`
 			// anchor could then name an id the host has not been told to create.
+			if (LYNX_PROFILE) lynxWireProfile().blockAckRoundTrips++;
 			const identity = identityFor(batch.version);
 			const prepared = transport.prepareBatch(container, batch, identity);
 			let acknowledged = false;

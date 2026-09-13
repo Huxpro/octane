@@ -28,6 +28,10 @@
 // range sites remain later composition layers.
 import { describe, expect, it, vi } from 'vitest';
 
+vi.hoisted(() => {
+	(globalThis as unknown as Record<string, unknown>).__OCTANE_LYNX_PROFILE__ = true;
+});
+
 import {
 	createContext,
 	createUniversalRoot,
@@ -64,6 +68,7 @@ import { createLynxBlockCore, type LynxBlockCore } from '../src/core/block-core.
 import { withLynxBlockProgram } from '../src/core/block-program.js';
 import { createLynxClientContainer, createLynxClientDriver } from '../src/core/client-driver.js';
 import { registerUniversalProgram, residentRunProgram } from '../src/core/program-registry.js';
+import { lynxWireProfile } from '../src/core/profiling.js';
 import {
 	createLynxHostContainer,
 	prepareLynxHostBatch,
@@ -149,6 +154,36 @@ const CARD_COMPILER_PROGRAM = lynxProgram(LYNX_TRANSPORT_RENDERER, {
 		module: 'tests/CompilerCard.lynx.tsrx',
 		index: 0,
 		digest: 'fedcba9876543210',
+	},
+});
+
+const CONTINUOUS_CARD_PLAN = universalPlan(LYNX_TRANSPORT_RENDERER, {
+	kind: 'host',
+	type: 'view',
+	bindings: [['class', 0]],
+	children: [
+		{
+			kind: 'host',
+			type: 'text',
+			props: { class: 'card-label' },
+			bindings: [['bindscroll', 3]],
+			children: [{ kind: 'text', slot: 1 }],
+		},
+		{
+			kind: 'host',
+			type: 'view',
+			bindings: [['class', 2]],
+			children: [{ kind: 'host', type: 'text', props: {}, children: [{ kind: 'text', slot: 4 }] }],
+		},
+	],
+});
+const CONTINUOUS_CARD_PROGRAM_IR = deriveLynxProgramIR(CONTINUOUS_CARD_PLAN.root as never)!;
+const CONTINUOUS_CARD_COMPILER_PROGRAM = lynxProgram(LYNX_TRANSPORT_RENDERER, {
+	...CONTINUOUS_CARD_PROGRAM_IR,
+	address: {
+		module: 'tests/ContinuousCompilerCard.lynx.tsrx',
+		index: 0,
+		digest: '0123456789fedcba',
 	},
 });
 
@@ -425,6 +460,7 @@ function rowListener(
 function deliverTo(
 	block: { readonly main: { readonly commits: readonly LynxTransportCommitMessage[] } },
 	listener: LynxResolvedNativeEvent,
+	version = block.main.commits.at(-1)!.version,
 ): unknown {
 	return (block as ReturnType<typeof blockColumn>).background.dispatchTransportEvent({
 		protocol: LYNX_TRANSPORT_PROTOCOL_VERSION,
@@ -432,7 +468,7 @@ function deliverTo(
 		root: 1,
 		// A delivery names the batch it was painted against, so a stale event is
 		// refused rather than run against post-commit state.
-		version: block.main.commits.at(-1)!.version,
+		version,
 		type: 'event',
 		priority: listener.priority,
 		deliveries: [{ listener: listener.listener, payload: null }],
@@ -925,6 +961,214 @@ describe('Lynx compiled component with its own state on the Block core', () => {
 		expect(computationRuns).toBe(2);
 		expect(paint(block.main.commits).tree).toContain('b-many');
 	});
+
+	it('prepares and refreshes continuous-input work while the previous frame awaits acknowledgement', async () => {
+		let computationRuns = 0;
+		const Direct = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function Direct() {
+			const [count, updateCount, getCount] = useState(0, 'count');
+			return lynxProgramValue(
+				CONTINUOUS_CARD_COMPILER_PROGRAM,
+				[
+					'card',
+					TALLY[count] ?? 'many',
+					'card-meta',
+					() => updateCount((previous) => previous + 1),
+					'detail',
+				],
+				[
+					{
+						kind: 'scalar',
+						purity: 'pure',
+						escape: 'component-render',
+						sources: [getCount],
+						slots: [1],
+						run() {
+							computationRuns++;
+							return [TALLY[getCount()] ?? 'many'];
+						},
+					},
+				],
+			) as never;
+		});
+		const block = blockColumn<Record<string, never>>(
+			createLynxBlockCore({ templateRuns: () => false }),
+		);
+		await block.render(Direct as LynxComponent<Record<string, never>>, {});
+		const profileBefore = { ...lynxWireProfile() };
+		const acceptedVersion = block.main.commits[0]!.version;
+		const scroll = boundListener(block.main.commits);
+		expect(scroll.priority).toBe('continuous');
+
+		deliverTo(block, scroll, acceptedVersion);
+		await flushMicrotasks();
+		expect(block.main.commits).toHaveLength(2);
+		expect(computationRuns).toBe(1);
+
+		deliverTo(block, scroll, acceptedVersion);
+		const pending = block.background.flushTransport();
+		await flushMicrotasks();
+		// Calculation advanced, but no speculative host frame or publication escaped.
+		expect(computationRuns).toBe(2);
+		expect(block.main.commits).toHaveLength(2);
+
+		deliverTo(block, scroll, acceptedVersion);
+		await flushMicrotasks();
+		expect(computationRuns).toBe(3);
+		expect(block.main.commits).toHaveLength(2);
+
+		block.acknowledgePending();
+		for (let guard = 0; guard < 5 && block.main.commits.length < 3; guard++)
+			await flushMicrotasks();
+		expect(block.main.commits).toHaveLength(3);
+		expect(computationRuns).toBe(3);
+		block.acknowledgePending();
+		await pending;
+		expect(paint(block.main.commits).tree).toContain('thrice');
+		const profileAfter = lynxWireProfile();
+		expect({
+			merges: profileAfter.blockRenderMerges - profileBefore.blockRenderMerges,
+			preparations: profileAfter.blockRenderPrepares - profileBefore.blockRenderPrepares,
+			preparationsWhileAck:
+				profileAfter.blockRenderPreparesWhileAck - profileBefore.blockRenderPreparesWhileAck,
+			roundTrips: profileAfter.blockAckRoundTrips - profileBefore.blockAckRoundTrips,
+		}).toEqual({
+			merges: 1,
+			preparations: 2,
+			preparationsWhileAck: 2,
+			roundTrips: 2,
+		});
+		expect(profileAfter.blockRenderQueueMaxDepth).toBeGreaterThanOrEqual(1);
+	});
+
+	it('drains a prepared scalar draft before teardown requested during acknowledgement', async () => {
+		let computationRuns = 0;
+		let setCount!: (value: number | ((previous: number) => number)) => void;
+		const Direct = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function Direct() {
+			const [count, updateCount, getCount] = useState(0, 'count');
+			setCount = updateCount;
+			return lynxProgramValue(
+				CARD_COMPILER_PROGRAM,
+				['card', TALLY[count] ?? 'many', 'card-meta', noop, 'detail'],
+				[
+					{
+						kind: 'scalar',
+						purity: 'pure',
+						escape: 'component-render',
+						sources: [getCount],
+						slots: [1],
+						run() {
+							computationRuns++;
+							return [TALLY[getCount()] ?? 'many'];
+						},
+					},
+				],
+			) as never;
+		});
+		const block = blockColumn<Record<string, never>>(
+			createLynxBlockCore({ templateRuns: () => false }),
+		);
+		await block.render(Direct as LynxComponent<Record<string, never>>, {});
+
+		setCount((previous) => previous + 1);
+		await flushMicrotasks();
+		expect(block.main.commits).toHaveLength(2);
+
+		setCount((previous) => previous + 1);
+		const unmounting = block.background.unmountAsync();
+		await flushMicrotasks();
+		expect(computationRuns).toBe(2);
+		expect(block.main.commits).toHaveLength(2);
+
+		block.acknowledgePending();
+		for (let guard = 0; guard < 5 && block.main.commits.length < 3; guard++) {
+			await flushMicrotasks();
+		}
+		expect(block.main.commits).toHaveLength(3);
+		expect(computationRuns).toBe(2);
+		expect(paint(block.main.commits).tree).toContain('twice');
+
+		block.acknowledgePending();
+		for (let guard = 0; guard < 5 && block.main.commits.length < 4; guard++) {
+			await flushMicrotasks();
+		}
+		expect(block.main.commits).toHaveLength(4);
+		block.acknowledgePending();
+		await unmounting;
+
+		setCount((previous) => previous + 1);
+		await flushMicrotasks();
+		expect(block.main.commits).toHaveLength(4);
+		expect(computationRuns).toBe(2);
+	});
+
+	it.each([
+		['rejects before acceptance', 'reject', 'a-once', 1],
+		['faults after acceptance', 'fault', 'b-once', 2],
+	] as const)(
+		'rebases a prepared draft when an older props frame %s',
+		async (_label, outcome, expected, expectedComputations) => {
+			let computationRuns = 0;
+			let setCount!: (value: number | ((previous: number) => number)) => void;
+			const Direct = defineUniversalComponent(
+				LYNX_TRANSPORT_RENDERER,
+				function Direct(props: { readonly base: string }) {
+					const [count, updateCount, getCount] = useState(0, 'count');
+					setCount = updateCount;
+					return lynxProgramValue(
+						CARD_COMPILER_PROGRAM,
+						['card', props.base + '-' + (TALLY[count] || 'many'), 'card-meta', noop, 'detail'],
+						[
+							{
+								kind: 'scalar',
+								purity: 'pure',
+								escape: 'component-render',
+								sources: [getCount],
+								slots: [1],
+								run() {
+									computationRuns++;
+									return [props.base + '-' + (TALLY[getCount()] || 'many')];
+								},
+							},
+						],
+					) as never;
+				},
+			);
+			const block = blockColumn<{ readonly base: string }>(
+				createLynxBlockCore({ templateRuns: () => false }),
+			);
+			await block.render(Direct as LynxComponent<{ readonly base: string }>, { base: 'a' });
+
+			const updating = block.background.renderAsync(Direct as never, { base: 'b' });
+			updating.catch(() => undefined);
+			await flushMicrotasks();
+			expect(block.main.commits).toHaveLength(2);
+			setCount((previous) => previous + 1);
+			const pending = block.background.flushTransport();
+			await flushMicrotasks();
+			expect(computationRuns).toBe(1);
+			expect(block.main.commits).toHaveLength(2);
+
+			if (outcome === 'reject') {
+				block.main.reject(block.main.commits[1]!, 'injected props rejection');
+				await expect(updating).rejects.toThrow('injected props rejection');
+			} else {
+				block.main.acknowledge(block.main.commits[1]!, 'fault');
+				await expect(updating).rejects.toThrow('accepted host fault');
+			}
+			for (let guard = 0; guard < 5 && block.main.commits.length < 3; guard++) {
+				await flushMicrotasks();
+			}
+			expect(block.main.commits).toHaveLength(3);
+			expect(computationRuns).toBe(expectedComputations);
+			block.main.acknowledge(block.main.commits[2]!);
+			await pending;
+			const accepted =
+				outcome === 'reject'
+					? [block.main.commits[0]!, block.main.commits[2]!]
+					: block.main.commits;
+			expect(paint(accepted).tree).toContain(expected);
+		},
+	);
 
 	it('rebinds a dirty event slot without retaining its stale closure', async () => {
 		let componentRuns = 0;

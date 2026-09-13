@@ -299,6 +299,29 @@ try {
 			updateStormItemRenders: result.updateStorm.itemRenders,
 			selectStormBytes: result.selectStorm.bytes,
 			selectStormItemRenders: result.selectStorm.itemRenders,
+			ackPipeline: Object.fromEntries(
+				Object.entries({
+					create: result.create,
+					update10th: result.update10th,
+					select: result.select,
+					swap: result.swap,
+					updateStorm: result.updateStorm,
+					selectStorm: result.selectStorm,
+					clear: result.clear,
+					recreate: result.recreate,
+				}).map(([name, counters]) => [
+					name,
+					{
+						queueMaxDepth: counters.blockRenderQueueMaxDepth,
+						merges: counters.blockRenderMerges,
+						preparations: counters.blockRenderPrepares,
+						preparationsWhileAck: counters.blockRenderPreparesWhileAck,
+						roundTrips: counters.blockAckRoundTrips,
+						messagesToMain: counters.wireToMainMessages,
+						messagesToBackground: counters.wireToBackgroundMessages,
+					},
+				]),
+			),
 			swap: {
 				commands: result.swap.commands,
 				commandOps: result.swap.commandOps,

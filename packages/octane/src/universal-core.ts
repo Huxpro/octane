@@ -6186,6 +6186,16 @@ export interface UniversalHookScope {
 		slots: readonly unknown[],
 		compute: (sources: readonly (() => unknown)[]) => void,
 	): boolean;
+	/**
+	 * Project a compiler-proved dirty render without replacing an older draft
+	 * that is waiting for host acknowledgement. The returned transaction can be
+	 * published after that older draft settles, or discarded when newer input
+	 * supersedes it.
+	 */
+	prepareDirty(
+		slots: readonly unknown[],
+		compute: (sources: readonly (() => unknown)[]) => void,
+	): UniversalHookScopePrepared | null;
 
 	/** Publish the last render's cells and drop the updates it consumed. */
 	commit(): void;
@@ -6193,6 +6203,12 @@ export interface UniversalHookScope {
 	abort(): void;
 	/** Release the cells. A setter that fires afterwards is ignored. */
 	dispose(): void;
+}
+
+/** One detached hook-scope draft, owned by an accepting host transaction. */
+export interface UniversalHookScopePrepared {
+	commit(): void;
+	abort(): void;
 }
 
 const HOOK_SCOPE_IDENTITY: readonly unknown[] = Object.freeze([]);
@@ -6251,7 +6267,8 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 	const record = createOwnerRecord(root, null, null, HOOK_SCOPE_IDENTITY, null);
 	let draft: DraftOwner | null = null;
 	let nextUniversalId = 0;
-	return {
+	const queueHeads = new WeakMap<UniversalHookUpdateQueue, number>();
+	const scope: UniversalHookScope = {
 		render<T>(setup: () => T): T {
 			if (record.disposed) {
 				throw new Error('Octane universal hook scope: this scope was disposed.');
@@ -6389,6 +6406,40 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 			}
 			return true;
 		},
+		prepareDirty(slots, compute): UniversalHookScopePrepared | null {
+			const previous = draft;
+			if (!scope.renderDirty(slots, compute)) return null;
+			const prepared = draft!;
+			draft = previous;
+			const ends = new Map<unknown, readonly [UniversalHookUpdateQueue, number]>();
+			for (const [slot, applied] of prepared.appliedUpdates) {
+				if (!applied.lane) {
+					ends.set(slot, [applied.queue, (queueHeads.get(applied.queue) ?? 0) + applied.consumed]);
+				}
+			}
+			let settled = false;
+			return Object.freeze({
+				commit(): void {
+					if (settled) return;
+					if (draft !== null) {
+						throw new Error('Octane universal hook scope: an older draft is still in flight.');
+					}
+					settled = true;
+					for (const [slot, [queue, end]] of ends) {
+						const applied = prepared.appliedUpdates.get(slot)!;
+						prepared.appliedUpdates.set(slot, {
+							...applied,
+							consumed: Math.max(0, end - (queueHeads.get(queue) ?? 0)),
+						});
+					}
+					draft = prepared;
+					scope.commit();
+				},
+				abort(): void {
+					settled = true;
+				},
+			});
+		},
 		commit(): void {
 			const owner = draft;
 			if (owner === null) return;
@@ -6447,6 +6498,7 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 				const queue = record.updates.get(slot);
 				if (queue !== applied.queue || applied.lane) continue;
 				queue.splice(0, applied.consumed);
+				queueHeads.set(queue, (queueHeads.get(queue) ?? 0) + applied.consumed);
 				if (queue.length === 0) record.updates.delete(slot);
 			}
 			record.mounted = true;
@@ -6493,6 +6545,7 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 			}
 		},
 	};
+	return scope;
 }
 
 export function useState<T>(

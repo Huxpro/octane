@@ -69,6 +69,7 @@ import {
 import { LYNX_TRANSPORT_RENDERER } from './transport-identity.js';
 import type { LynxBackgroundTransport } from './transport.js';
 import type { LynxCompiledProgramBlockTransport } from './compiled-program-block-transport.js';
+import { LYNX_PROFILE, lynxWireProfile } from './profiling.js';
 
 /**
  * The members `root.ts` uses from whichever core the bundle carries.
@@ -182,6 +183,8 @@ export function createLynxBlockBackgroundCore(
 	let passiveTasks: (() => void)[] = [];
 	let passiveScheduled = false;
 	let attemptActive = false;
+	let commitsInFlight = 0;
+	let renderQueueDepth = 0;
 	const runTasks = (tasks: readonly (() => void)[]): void => {
 		let hasError = false;
 		let firstError: unknown;
@@ -287,10 +290,16 @@ export function createLynxBlockBackgroundCore(
 		publishAccepted();
 	};
 	const commitAccepted = async (): Promise<UniversalHostBatch | null> => {
+		let frameInFlight = false;
 		try {
-			return await blockRoot.commit(publishAndContinue);
+			return await blockRoot.commit(publishAndContinue, () => {
+				frameInFlight = true;
+				commitsInFlight++;
+			});
 		} catch (error) {
 			return resumeAfterFailure(error);
+		} finally {
+			if (frameInFlight) commitsInFlight--;
 		}
 	};
 	const context: LynxBlockProgramContext = Object.freeze({
@@ -309,12 +318,34 @@ export function createLynxBlockBackgroundCore(
 		afterAbort(task: () => void): void {
 			afterAbortTasks.push(task);
 		},
+		schedulePreparation(work: (backpressured: boolean) => void): void {
+			options.scheduleMicrotask(() => {
+				const backpressured = commitsInFlight !== 0;
+				if (LYNX_PROFILE && backpressured) {
+					const profile = lynxWireProfile();
+					profile.blockRenderPrepares++;
+					profile.blockRenderPreparesWhileAck++;
+				}
+				work(backpressured);
+			});
+		},
+		noteRenderMerge(): void {
+			if (LYNX_PROFILE) lynxWireProfile().blockRenderMerges++;
+		},
 		scheduleRender(work: () => void): Promise<void> {
+			renderQueueDepth++;
+			if (LYNX_PROFILE) {
+				const profile = lynxWireProfile();
+				if (renderQueueDepth > profile.blockRenderQueueMaxDepth) {
+					profile.blockRenderQueueMaxDepth = renderQueueDepth;
+				}
+			}
 			// The same queue `renderAsync` takes its turn in, for the same
 			// reason: one render at a time, one commit in flight at a time. A
 			// program driving its own re-render out of band would otherwise
 			// overlap a caller's, and both would flush the core.
 			const run = renderQueue.then(async () => {
+				renderQueueDepth--;
 				beginAttempt();
 				try {
 					flushPassiveTasks();

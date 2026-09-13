@@ -53,9 +53,11 @@ function nextMacrotask(cb: () => void) {
 }
 
 interface StormEvidence {
+	readonly commit: 'every-tick';
 	readonly expectedTicks: number;
 	readonly completedTicks: number;
 	readonly renderBarriers: number;
+	readonly firstFeedbackMs: number | null;
 }
 
 type BenchmarkActionResult = void | StormEvidence | Promise<void | StormEvidence>;
@@ -69,15 +71,23 @@ function runStorm(ticks: number, step: (t: number) => void): void | Promise<Stor
 		return (async () => {
 			let completedTicks = 0;
 			let renderBarriers = 0;
+			let firstFeedbackMs: number | null = null;
 			for (let tick = 1; tick <= ticks; tick++) {
 				await new Promise<void>((resolve) => lynx.setTimeout(resolve, 0));
 				step(tick);
 				await flush();
 				completedTicks = tick;
-				await nextNativeFrame();
+				const frameMs = await nextNativeFrame();
+				firstFeedbackMs ??= frameMs;
 				renderBarriers++;
 			}
-			return { expectedTicks: ticks, completedTicks, renderBarriers };
+			return {
+				commit: 'every-tick',
+				expectedTicks: ticks,
+				completedTicks,
+				renderBarriers,
+				firstFeedbackMs,
+			};
 		})();
 	}
 	let t = 0;
@@ -99,12 +109,38 @@ interface BenchmarkSnapshot {
 	readonly selectedId: number | null;
 }
 
+interface AckPipelineSnapshot {
+	readonly queueMaxDepth: number;
+	readonly merges: number;
+	readonly preparations: number;
+	readonly preparationsWhileAck: number;
+	readonly roundTrips: number;
+}
+
 type BenchmarkGlobal =
 	typeof globalThis & {
 		__LYNX_BENCH_FLUSH__?: () => Promise<void>;
 		__LYNX_BENCH_SNAPSHOT__?: () => BenchmarkSnapshot;
 		__LYNX_BENCH_ERROR__?: string;
+		__OCTANE_LYNX_PROF?: {
+			readonly blockRenderQueueMaxDepth?: number;
+			readonly blockRenderMerges?: number;
+			readonly blockRenderPrepares?: number;
+			readonly blockRenderPreparesWhileAck?: number;
+			readonly blockAckRoundTrips?: number;
+		};
 	};
+
+function ackPipelineSnapshot(): AckPipelineSnapshot {
+	const profile = (globalThis as BenchmarkGlobal).__OCTANE_LYNX_PROF;
+	return {
+		queueMaxDepth: profile?.blockRenderQueueMaxDepth ?? 0,
+		merges: profile?.blockRenderMerges ?? 0,
+		preparations: profile?.blockRenderPrepares ?? 0,
+		preparationsWhileAck: profile?.blockRenderPreparesWhileAck ?? 0,
+		roundTrips: profile?.blockAckRoundTrips ?? 0,
+	};
+}
 
 function nextNativeFrame(): Promise<number> {
 	return new Promise((resolve) => lynx.requestAnimationFrame(() => resolve(Date.now())));
@@ -120,6 +156,7 @@ function measureNative(name: string, action: () => BenchmarkActionResult): Promi
 	if (preState === undefined) {
 		return Promise.reject(new Error('Octane Native benchmark has no pre-state.'));
 	}
+	const pipelineBefore = ackPipelineSnapshot();
 	const startMs = Date.now();
 	let result: BenchmarkActionResult;
 	try {
@@ -136,6 +173,7 @@ function measureNative(name: string, action: () => BenchmarkActionResult): Promi
 					if (postState === undefined) {
 						throw new Error('Octane Native benchmark has no post-state.');
 					}
+					const pipelineAfter = ackPipelineSnapshot();
 					console.log(
 						'__NATIVE_BENCH_RESULT__',
 						JSON.stringify({
@@ -157,9 +195,25 @@ function measureNative(name: string, action: () => BenchmarkActionResult): Promi
 									? null
 									: { tickAcknowledgements: stormEvidence.completedTicks }),
 							},
+							ackPipelineEvidence: {
+								queueMaxDepthBefore: pipelineBefore.queueMaxDepth,
+								queueMaxDepthAfter: pipelineAfter.queueMaxDepth,
+								merges: pipelineAfter.merges - pipelineBefore.merges,
+								preparations: pipelineAfter.preparations - pipelineBefore.preparations,
+								preparationsWhileAck: pipelineAfter.preparationsWhileAck -
+									pipelineBefore.preparationsWhileAck,
+								roundTrips: pipelineAfter.roundTrips - pipelineBefore.roundTrips,
+							},
 							preState,
 							postState,
-							...(stormEvidence === undefined ? null : { stormEvidence }),
+							...(stormEvidence === undefined
+								? null
+								: {
+										stormEvidence,
+										firstFeedbackLatencyMs: stormEvidence.firstFeedbackMs === null
+											? null
+											: stormEvidence.firstFeedbackMs - startMs,
+									}),
 						}),
 					);
 				}),

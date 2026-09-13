@@ -1,8 +1,8 @@
 # Lynx Block semantic support
 
-Status: implementation contract for roadmap issues #378 and #379. This document describes
-the current repository state; it is not a claim that either child issue or the Lynx
-roadmap is complete.
+Status: implementation contract for roadmap issues #378, #379, and #380. This document
+describes the current repository state; it is not a claim that every child issue or the
+Lynx roadmap is complete.
 
 ## Reading the matrix
 
@@ -90,6 +90,44 @@ previous accepted state. Layout work publishes only after acknowledgement, and
 passive work follows on the root's next microtask. Removing a retained keyed or
 branch owner disposes its scope exactly once. These rules apply equally to an
 initial mount, an event-driven update, and a parent render.
+
+## ACK pipeline state machine
+
+The Block background owns three versions but permits only one physical frame in
+flight. The accepted version is the only state visible to events, refs, effects,
+and native callbacks. A sent version owns the core, listener, ref, resource, and
+hook journals waiting for its matching ACK. One bounded logical draft may be
+prepared beside it; newer state notifications replace that draft instead of
+adding an unbounded queue.
+
+Only compiler-proved pure scalar dirty computations may run before the sent
+version settles. When no non-empty frame occupies the commit lane, the queued
+render computes directly and allocates no detached draft. A prepared hook draft
+and its output values are detached, but they do
+not write a host slot, send a message, publish a listener/ref, or run lifecycle
+work. Structural regions, caller-driven prop renders, scoped row renders, and
+unknown computations retain the serialized path. If an accepted render changes
+the computation closure before the logical draft can apply, the draft is
+discarded and recomputed from the new accepted state.
+
+The linearization points are:
+
+1. prepareBatch fixes the sent frame and increments the non-empty round-trip
+   count; no later logical draft can mutate it.
+2. A matching ACK publishes hook/listener/ref ownership and layout work in
+   program order. A pre-ACK reject publishes none of them.
+3. complete settles the physical operation. A fault after ACK reports failure
+   but cannot roll accepted logical state back.
+4. Only after settlement may the latest prepared draft write the next host
+   attempt. Duplicate, stale, or foreign ACKs remain protocol errors, and
+   teardown waits for both the sent frame and the bounded logical draft.
+
+Profile builds expose blockRenderQueueMaxDepth, blockRenderMerges,
+blockRenderPrepares, blockRenderPreparesWhileAck, and blockAckRoundTrips. The
+Lynx benchmark reports those beside commit/message counts. Native storm receipts
+also declare the every-tick commit contract and record the first visible native
+frame separately from final completion; fewer commits alone are not accepted as
+an interaction improvement.
 
 A new semantic row is promoted from **Block kernel proved** to **Block selected**
 only with all of the following:

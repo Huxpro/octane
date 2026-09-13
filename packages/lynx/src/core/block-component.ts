@@ -82,6 +82,7 @@ import {
 	createUniversalHookScope,
 	UNIVERSAL_HOOK_SCOPE_EFFECTS_REFUSED,
 	type UniversalHookScope,
+	type UniversalHookScopePrepared,
 	useEffect,
 	useLayoutEffect,
 } from 'octane/universal/native';
@@ -634,7 +635,17 @@ export function lynxBlockProgramForComponent<Props>(
 	 */
 	let dirtySlots: Set<unknown> | null = null;
 	let liveComputations: readonly LynxCompilerProgramComputation[] = EMPTY_COMPUTATIONS;
+	let liveComputationGeneration = 0;
 	let renderQueued = false;
+	let dirtyGeneration = 0;
+	let preparationScheduled = false;
+	let preparedDirty: {
+		readonly generation: number;
+		readonly computationGeneration: number;
+		readonly outputs: ReadonlyMap<number, unknown>;
+		readonly transaction: UniversalHookScopePrepared;
+	} | null = null;
+	let preparationError: unknown = null;
 
 	let encoder: UniversalHostEncoder | null = null;
 	let plan: UniversalPlan | LynxCompilerProgram | null = null;
@@ -868,32 +879,75 @@ export function lynxBlockProgramForComponent<Props>(
 	 *   render *starts*, so every write that lands while this one waits for its
 	 *   turn folds into it.
 	 */
+	const scheduleDirtyPreparation = (context: LynxBlockProgramContext): void => {
+		if (preparationScheduled) return;
+		preparationScheduled = true;
+		context.schedulePreparation((backpressured) => {
+			preparationScheduled = false;
+			// Without a sent frame, the queued render owns the next turn and computes
+			// directly; do not allocate a detached draft merely to hand it right back.
+			if (!backpressured || !renderQueued || block === null || dirtySlots === null) return;
+			const generation = dirtyGeneration;
+			try {
+				const next = prepareDirtyComputations(generation, [...dirtySlots]);
+				preparedDirty?.transaction.abort();
+				preparedDirty = next;
+				preparationError = null;
+			} catch (error) {
+				preparedDirty?.transaction.abort();
+				preparedDirty = null;
+				preparationError = error;
+			}
+			if (dirtyGeneration !== generation) scheduleDirtyPreparation(context);
+		});
+	};
+
 	function queueStateRender(slot: unknown): void {
 		const context = liveContext;
-		// Unmounted, so there is nothing left to write the new values to.
 		if (context === null || block === null) return;
 		(dirtySlots ??= new Set()).add(slot);
-		if (renderQueued) return;
+		dirtyGeneration++;
+		if (renderQueued) {
+			context.noteRenderMerge();
+			scheduleDirtyPreparation(context);
+			return;
+		}
 		renderQueued = true;
+		scheduleDirtyPreparation(context);
 		void context
 			.scheduleRender(() => {
 				renderQueued = false;
 				const scheduled = dirtySlots;
 				dirtySlots = null;
-				// Unmounted while this waited its turn. The core's queue makes
-				// that narrow — `unmountAsync` waits for work a program started
-				// — but a program that has been torn down must not write, and
-				// the check is cheaper than the invariant.
-				if (block === null) return;
-				if (scheduled === null || !renderDirtyComputations(context, [...scheduled]))
+				const generation = dirtyGeneration;
+				const candidate = preparedDirty;
+				preparedDirty = null;
+				const error = preparationError;
+				preparationError = null;
+				if (block === null) {
+					candidate?.transaction.abort();
+					return;
+				}
+				if (error !== null) {
+					candidate?.transaction.abort();
+					throw error;
+				}
+				if (
+					candidate !== null &&
+					candidate.generation === generation &&
+					candidate.computationGeneration === liveComputationGeneration
+				) {
+					context.afterAbort(() => candidate.transaction.abort());
+					context.afterCommit(() => candidate.transaction.commit());
+					applyDirtyOutputs(context, candidate.outputs);
+					return;
+				}
+				candidate?.transaction.abort();
+				if (scheduled === null || !renderDirtyComputations(context, [...scheduled])) {
 					renderAgain(context, liveProps as Props);
+				}
 			})
 			.catch((error: unknown) => {
-				// Nowhere to return this to: the tap that wrote the cell returned
-				// long ago, and the render it asked for is the whole frame.
-				// Rethrown from a timer so it reaches the runtime's error
-				// reporting instead of dying as a rejection the render queue
-				// already marked handled.
 				setTimeout(() => {
 					throw error;
 				}, 0);
@@ -2140,11 +2194,89 @@ export function lynxBlockProgramForComponent<Props>(
 		});
 	};
 
-	/**
-	 * Consume queued hook updates through compiler-proved pure computations.
-	 * Every dirty getter must be covered, and range outputs still take the full
-	 * component path; either condition failing leaves the hook queues untouched.
-	 */
+	/** Select compiler-proved scalar outputs for the dirty getter set. */
+	const selectDirtyOutputs = (
+		sources: readonly (() => unknown)[],
+	): Map<number, unknown> | undefined => {
+		const dirtySources = new Set(sources);
+		const covered = new Set<() => unknown>();
+		const selected: LynxCompilerProgramScalarComputation[] = [];
+		for (const computation of liveComputations) {
+			if (!computation.sources.some((source) => dirtySources.has(source))) continue;
+			if (computation.kind === 'structural') return undefined;
+			selected.push(computation);
+			for (const source of computation.sources) {
+				if (dirtySources.has(source)) covered.add(source);
+			}
+		}
+		if (sources.some((source) => !covered.has(source))) return undefined;
+
+		const outputs = new Map<number, unknown>();
+		for (const computation of selected) {
+			const values = computation.run();
+			if (!Array.isArray(values) || values.length !== computation.slots.length) {
+				refuse(
+					subject,
+					LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+						'a compiler dirty computation returned a different number of values than slots.',
+				);
+			}
+			for (let index = 0; index < computation.slots.length; index++) {
+				const slot = computation.slots[index]!;
+				if (outputs.has(slot)) {
+					refuse(
+						subject,
+						LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+							'two compiler dirty computations wrote the same value slot.',
+					);
+				}
+				outputs.set(slot, values[index]);
+			}
+		}
+		return outputs;
+	};
+
+	/** Apply already-computed scalar outputs inside the next host attempt. */
+	const applyDirtyOutputs = (
+		context: LynxBlockProgramContext,
+		outputs: ReadonlyMap<number, unknown>,
+	): void => {
+		for (const [slot, output] of outputs) {
+			for (const valueIndex of valueIndexesBySlot[slot] ?? EMPTY_INDEXES) {
+				const binding = prepared!.values[valueIndex]!;
+				const value = prepareUniversalTemplateProgramValueFromWire(
+					encoderFor(context),
+					prepared!,
+					binding,
+					output,
+				);
+				if (value === UNIVERSAL_TEMPLATE_PROGRAM_VALUE_REFUSED) {
+					refuse(
+						subject,
+						LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+							'one of its dirty scalar values does not fit the compiled template binding.',
+					);
+				}
+				context.core.setSlotValue(block!, valueIndex, value);
+			}
+			for (const eventIndex of eventIndexesBySlot[slot] ?? EMPTY_INDEXES) {
+				if (output !== null && output !== undefined && typeof output !== 'function') {
+					refuse(
+						subject,
+						LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+							'an event dirty computation returned neither a handler nor an empty conditional hole.',
+					);
+				}
+				context.root.setListener(
+					block!,
+					eventIndex,
+					typeof output === 'function' ? (output as LynxBlockListener) : null,
+				);
+			}
+		}
+	};
+
+	/** Consume and apply one ordinary dirty transaction. */
 	const renderDirtyComputations = (
 		context: LynxBlockProgramContext,
 		slots: readonly unknown[],
@@ -2153,91 +2285,40 @@ export function lynxBlockProgramForComponent<Props>(
 		if (cells === null || liveComputations.length === 0 || prepared === null || block === null) {
 			return false;
 		}
-		const result: { outputs?: Map<number, unknown> } = {};
+		let outputs: Map<number, unknown> | undefined;
 		try {
 			const supported = cells.renderDirty(slots, (sources) => {
-				const dirtySources = new Set(sources);
-				const covered = new Set<() => unknown>();
-				const selected: LynxCompilerProgramScalarComputation[] = [];
-				for (const computation of liveComputations) {
-					if (!computation.sources.some((source) => dirtySources.has(source))) continue;
-					if (computation.kind === 'structural') return;
-					selected.push(computation);
-					for (const source of computation.sources) {
-						if (dirtySources.has(source)) covered.add(source);
-					}
-				}
-				if (sources.some((source) => !covered.has(source))) return;
-
-				const outputSlots = new Map<number, unknown>();
-				for (const computation of selected) {
-					const outputs = computation.run();
-					if (!Array.isArray(outputs) || outputs.length !== computation.slots.length) {
-						refuse(
-							subject,
-							LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-								'a compiler dirty computation returned a different number of values than slots.',
-						);
-					}
-					for (let index = 0; index < computation.slots.length; index++) {
-						const slot = computation.slots[index]!;
-						if (outputSlots.has(slot)) {
-							refuse(
-								subject,
-								LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-									'two compiler dirty computations wrote the same value slot.',
-							);
-						}
-						outputSlots.set(slot, outputs[index]);
-					}
-				}
-				result.outputs = outputSlots;
+				outputs = selectDirtyOutputs(sources);
 			});
-			const outputs = result.outputs;
 			if (!supported || outputs === undefined) {
 				cells.abort();
 				return false;
 			}
 			context.afterAbort(() => cells.abort());
-			for (const [slot, output] of outputs) {
-				for (const valueIndex of valueIndexesBySlot[slot] ?? EMPTY_INDEXES) {
-					const binding = prepared.values[valueIndex]!;
-					const value = prepareUniversalTemplateProgramValueFromWire(
-						encoderFor(context),
-						prepared,
-						binding,
-						output,
-					);
-					if (value === UNIVERSAL_TEMPLATE_PROGRAM_VALUE_REFUSED) {
-						refuse(
-							subject,
-							LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-								'one of its dirty scalar values does not fit the compiled template binding.',
-						);
-					}
-					context.core.setSlotValue(block, valueIndex, value);
-				}
-				for (const eventIndex of eventIndexesBySlot[slot] ?? EMPTY_INDEXES) {
-					if (output !== null && output !== undefined && typeof output !== 'function') {
-						refuse(
-							subject,
-							LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-								'an event dirty computation returned neither a handler nor an empty conditional hole.',
-						);
-					}
-					context.root.setListener(
-						block,
-						eventIndex,
-						typeof output === 'function' ? (output as LynxBlockListener) : null,
-					);
-				}
-			}
+			applyDirtyOutputs(context, outputs);
 			context.afterCommit(() => cells.commit());
 			return true;
 		} catch (error) {
 			cells.abort();
 			throw error;
 		}
+	};
+
+	/** Compute a scalar hook draft while an older physical frame awaits ACK. */
+	const prepareDirtyComputations = (generation: number, slots: readonly unknown[]) => {
+		const cells = scope;
+		if (cells === null || liveComputations.length === 0 || prepared === null || block === null) {
+			return null;
+		}
+		let outputs: Map<number, unknown> | undefined;
+		const transaction = cells.prepareDirty(slots, (sources) => {
+			outputs = selectDirtyOutputs(sources);
+		});
+		if (transaction === null || outputs === undefined) {
+			transaction?.abort();
+			return null;
+		}
+		return { generation, computationGeneration: liveComputationGeneration, outputs, transaction };
 	};
 
 	/**
@@ -2310,6 +2391,7 @@ export function lynxBlockProgramForComponent<Props>(
 			context.afterCommit(() => {
 				scope?.commit();
 				liveComputations = rendered.computations;
+				liveComputationGeneration++;
 			});
 		} catch (error) {
 			scope?.abort();
@@ -2448,6 +2530,7 @@ export function lynxBlockProgramForComponent<Props>(
 				context.afterCommit(() => {
 					scope?.commit();
 					liveComputations = rendered.computations;
+					liveComputationGeneration++;
 				});
 			} catch (error) {
 				scope?.abort();

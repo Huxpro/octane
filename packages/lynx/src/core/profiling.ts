@@ -75,6 +75,16 @@ export interface LynxWireProfile {
 	applyMs: number;
 	/** Main: acknowledgement handle computation + dispatch time. */
 	ackMs: number;
+	/** Block: highest queued state-render depth, whether immediately runnable or backpressured. */
+	blockRenderQueueMaxDepth: number;
+	/** Block: newer notifications folded into the one bounded pending render. */
+	blockRenderMerges: number;
+	/** Block: compiler-proved scalar preparations executed off the ACK queue. */
+	blockRenderPrepares: number;
+	/** Block: preparations that overlapped an unacknowledged host frame. */
+	blockRenderPreparesWhileAck: number;
+	/** Block: non-empty host round trips started, including rejected attempts. */
+	blockAckRoundTrips: number;
 	/** Profiling-only shadow commits fully expressible by the typed delta ABI. */
 	deltaCommits: number;
 	/** Profiling-only shadow commits that still require the command ABI. */
@@ -213,6 +223,11 @@ export function lynxWireProfile(): LynxWireProfile {
 		prepareMs: 0,
 		applyMs: 0,
 		ackMs: 0,
+		blockRenderQueueMaxDepth: 0,
+		blockRenderMerges: 0,
+		blockRenderPrepares: 0,
+		blockRenderPreparesWhileAck: 0,
+		blockAckRoundTrips: 0,
 		deltaCommits: 0,
 		deltaMisses: 0,
 		deltaOps: 0,

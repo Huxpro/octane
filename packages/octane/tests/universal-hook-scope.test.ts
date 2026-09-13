@@ -166,6 +166,48 @@ describe('universal hook scope', () => {
 		expect(lifecycle).toEqual(['create', 'cleanup']);
 	});
 
+	it('detaches a projected draft while an older host transaction is in flight', () => {
+		const { scope, pass } = scopeWithLog();
+		let set!: (value: number | ((previous: number) => number)) => void;
+		pass(() => {
+			const [, update] = useState(0, 'count');
+			set = update;
+		});
+
+		set((previous) => previous + 1);
+		let first = -1;
+		expect(
+			scope.renderDirty(['count'], (sources) => {
+				first = sources[0]!() as number;
+			}),
+		).toBe(true);
+
+		set((previous) => previous + 1);
+		let projected = -1;
+		const prepared = scope.prepareDirty(['count'], (sources) => {
+			projected = sources[0]!() as number;
+		});
+		expect(first).toBe(1);
+		expect(projected).toBe(2);
+
+		// This arrived after the detached boundary. Neither accepted transaction
+		// may consume it, even though both projected through the same queue object.
+		set((previous) => previous + 1);
+		scope.commit();
+		prepared!.commit();
+
+		let remaining = -1;
+		expect(
+			scope.renderDirty(['count'], (sources) => {
+				remaining = sources[0]!() as number;
+			}),
+		).toBe(true);
+		expect(remaining).toBe(3);
+		scope.commit();
+		expect(pass(() => useState(0, 'count')[0])).toBe(3);
+		scope.dispose();
+	});
+
 	it('refuses an unknown dirty slot before opening a transaction', () => {
 		const { scope, pass } = scopeWithLog();
 		let set!: (value: number) => void;

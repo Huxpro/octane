@@ -275,6 +275,38 @@ describe('Lynx block background core', () => {
 		expect(lifecycle).toEqual(['passive', 'update']);
 	});
 
+	it('orders an accepted layout update behind its publishing commit', async () => {
+		const harness = scene();
+		const lifecycle: string[] = [];
+		const component = withLynxBlockProgram((() => null) as unknown as LynxComponent<ProgramProps>, {
+			mount(context) {
+				const page = context.core.mount(null, null, PAGE_TEMPLATE, []);
+				const slot = context.core.openForSlot(page, 1);
+				context.core.fillForSlot(
+					slot,
+					ROW_TEMPLATE,
+					['alpha'],
+					() => 1,
+					(label) => ['row', label],
+				);
+				const row = slot.items.get(1)!;
+				context.afterCommit(() => {
+					lifecycle.push('layout');
+					void context.scheduleRender(() => {
+						lifecycle.push('render');
+						context.core.setSlotValue(row, 1, 'beta');
+					});
+				});
+			},
+		});
+
+		await settle(harness, harness.background.renderAsync(component as never, { labels: [] }));
+		await settle(harness, harness.background.flushTransport());
+
+		expect(lifecycle).toEqual(['layout', 'render']);
+		expect(rowLabels(paint(harness.main.commits))).toEqual(['beta']);
+	});
+
 	it('discards afterCommit work from a render that throws before commit', async () => {
 		const harness = scene();
 		let fail = true;
