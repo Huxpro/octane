@@ -76,10 +76,11 @@ function emittedStructuralPlan(): UniversalProgramPlan {
 		nodes: [
 			{ type: 'view', parent: -1, props: { id: 'shell' } },
 			{ type: 'view', parent: 0, props: { id: 'rows' } },
+			{ type: 'text', parent: 1, props: { id: 'footer' } },
 		],
 		events: [],
 	};
-	const range = { slot: 7, node: 1, id: 2, paintsText: false } as const;
+	const range = { slot: 7, node: 1, before: 2, id: 2, paintsText: false } as const;
 	const emission = emitLynxMainThreadProgram(program, {
 		name: 'createCompactStructuralShell',
 		ranges: [range],
@@ -628,7 +629,7 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 						op: 'run',
 						templateId: 2,
 						parent: { instance: 2, slot: 7 },
-						before: null,
+						before: { instance: 2, slot: 2 },
 						firstInstance: 3,
 						count: 2,
 						values: ['row-3', 'cold', 'three', 'row-4', 'cold', 'four'],
@@ -641,7 +642,7 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 			),
 		);
 		const rows = page.children[0]!.children[0]!;
-		expect(rows.children.map((node) => node.id)).toEqual(['row-3', 'row-4']);
+		expect(rows.children.map((node) => node.id)).toEqual(['row-3', 'row-4', 'footer']);
 		expect(store.size()).toBe(3);
 		applyLynxCompiledProgramFrame(
 			store,
@@ -666,15 +667,15 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 				op: 'move',
 				instance: 3,
 				parent: { instance: 2, slot: 7 },
-				before: null,
+				before: { instance: 2, slot: 2 },
 			},
 		]);
 		expect(() => applyLynxCompiledProgramFrame(store, page, resolve, [...move, 99, 0])).toThrow(
 			/opcode 99/,
 		);
-		expect(rows.children.map((node) => node.id)).toEqual(['row-3', 'row-4']);
+		expect(rows.children.map((node) => node.id)).toEqual(['row-3', 'row-4', 'footer']);
 		applyLynxCompiledProgramFrame(store, page, resolve, move);
-		expect(rows.children.map((node) => node.id)).toEqual(['row-4', 'row-3']);
+		expect(rows.children.map((node) => node.id)).toEqual(['row-4', 'row-3', 'footer']);
 
 		expect(() =>
 			applyLynxCompiledProgramFrame(
@@ -686,15 +687,15 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 				]),
 			),
 		).toThrow(/outside the instance range/);
-		expect(rows.children.map((node) => node.id)).toEqual(['row-4', 'row-3']);
+		expect(rows.children.map((node) => node.id)).toEqual(['row-4', 'row-3', 'footer']);
 
 		const clear = encodeLynxDeltaMessage([{ op: 'clear', parent: { instance: 2, slot: 7 } }]);
 		expect(() => applyLynxCompiledProgramFrame(store, page, resolve, [...clear, 99, 0])).toThrow(
 			/opcode 99/,
 		);
-		expect(rows.children.map((node) => node.id)).toEqual(['row-4', 'row-3']);
+		expect(rows.children.map((node) => node.id)).toEqual(['row-4', 'row-3', 'footer']);
 		applyLynxCompiledProgramFrame(store, page, resolve, clear);
-		expect(rows.children).toEqual([]);
+		expect(rows.children.map((node) => node.id)).toEqual(['footer']);
 		expect(store.size()).toBe(1);
 		applyLynxCompiledProgramFrame(
 			store,
@@ -705,14 +706,14 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 					op: 'run',
 					templateId: 2,
 					parent: { instance: 2, slot: 7 },
-					before: null,
+					before: { instance: 2, slot: 2 },
 					firstInstance: 5,
 					count: 1,
 					values: ['row-5', 'warm', 'five'],
 				},
 			]),
 		);
-		expect(rows.children.map((node) => node.id)).toEqual(['row-5']);
+		expect(rows.children.map((node) => node.id)).toEqual(['row-5', 'footer']);
 		removed.length = 0;
 		store.dispose();
 		expect(removed).toEqual(['row-5', 'shell']);
@@ -769,7 +770,7 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 	it.each([
 		['CLEAR', [LYNX_DELTA_PROTOCOL_VERSION, 4, 2, 2, 0], /instance 2/],
 		['MOVE parent', [LYNX_DELTA_PROTOCOL_VERSION, 5, 5, 2, 2, 0, 0, 0], /instance 2/],
-		['MOVE anchor', [LYNX_DELTA_PROTOCOL_VERSION, 5, 5, 2, 1, 0, 0, 1], /root/],
+		['MOVE anchor', [LYNX_DELTA_PROTOCOL_VERSION, 5, 5, 2, 1, 0, 0, 1], /END anchor/],
 	] as const)('rejects unresolved non-root %s addresses', (_, frame, error) => {
 		const { page, resolve, store } = setup();
 		expect(() => applyLynxCompiledProgramFrame(store, page, resolve, frame)).toThrow(error);

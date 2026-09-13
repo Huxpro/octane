@@ -89,6 +89,22 @@ const TABLE_PLAN = universalPlan(LYNX_TRANSPORT_RENDERER, {
 	],
 }).root as UniversalHostPlan;
 
+/** A keyed range followed by a retained static sibling in the same host. */
+const NON_TAIL_TABLE_PLAN = universalPlan(LYNX_TRANSPORT_RENDERER, {
+	kind: 'host',
+	type: 'view',
+	props: { class: 'table' },
+	children: [
+		{ kind: 'slot', slot: 0 },
+		{
+			kind: 'host',
+			type: 'text',
+			props: { class: 'footer' },
+			children: [{ kind: 'text', value: 'tail' }],
+		},
+	],
+}).root as UniversalHostPlan;
+
 /**
  * The lowering as `block-component.ts` asks for it: a live client container,
  * with the one negotiated capability the lowering insists on forced true.
@@ -222,9 +238,19 @@ describe('deriving the shared Lynx program IR from a plan', () => {
 		// a stray empty text node or drop the caption.
 		expect(version).toBe(1);
 		expect(addressable).toBe(true);
-		expect(derived!.ranges).toEqual([{ slot: 1, node: 0 }]);
+		expect(derived!.ranges).toEqual([{ slot: 1, node: 0, before: null }]);
 		expect(derived!.wire.nodes).toHaveLength(3);
 		expect(lowered).toEqual(throughRuntimeLowering(TABLE_PLAN, (slot) => slot === 1));
+	});
+
+	it('records the next retained sibling for a non-tail keyed range', () => {
+		const derived = deriveLynxProgramIR(NON_TAIL_TABLE_PLAN);
+		expect(derived).not.toBeNull();
+		const { version, addressable, ...lowered } = derived!;
+		expect(version).toBe(1);
+		expect(addressable).toBe(true);
+		expect(derived!.ranges).toEqual([{ slot: 0, node: 0, before: 1 }]);
+		expect(lowered).toEqual(throughRuntimeLowering(NON_TAIL_TABLE_PLAN, (slot) => slot === 0));
 	});
 
 	it('paints what the applier paints, through the emission', () => {
@@ -284,6 +310,17 @@ describe('deriving the shared Lynx program IR from a plan', () => {
 		expect(deriveLynxProgramIR(COMMAND_ONLY_PROP)).toBeNull();
 	});
 
+	it('declines two independently owned ranges under one host', () => {
+		const SIBLINGS = universalPlan(LYNX_TRANSPORT_RENDERER, {
+			kind: 'host',
+			type: 'view',
+			children: [
+				{ kind: 'slot', slot: 0 },
+				{ kind: 'slot', slot: 1 },
+			],
+		}).root as UniversalHostPlan;
+		expect(deriveLynxProgramIR(SIBLINGS)).toBeNull();
+	});
 	it('declines a range that would be the whole program', () => {
 		// Nothing would be left to insert and nothing to hold the rows.
 		const BARE = universalPlan(LYNX_TRANSPORT_RENDERER, {

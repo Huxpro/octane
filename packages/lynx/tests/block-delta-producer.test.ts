@@ -86,7 +86,7 @@ describe('Lynx Block direct delta producer', () => {
 		expect(first).toBe(2);
 		expect(producer.set(2, 2, 'warming')).toBe(true);
 		expect(producer.set(2, 2, 'hot')).toBe(false);
-		producer.move(2, { instance: 1, slot: 0 }, 3);
+		producer.move(2, { instance: 1, slot: 0 }, { instance: 3, slot: 0 });
 		expect(producer.set(3, 1, 'gone')).toBe(true);
 		producer.remove(3, 1);
 		producer.visibility(2, false);
@@ -121,6 +121,39 @@ describe('Lynx Block direct delta producer', () => {
 			templates: frame.templates,
 			operations: frame.operations,
 		});
+		producer.acceptAttempt();
+	});
+
+	it('preserves a retained static-node anchor for RUN and MOVE', () => {
+		const producer = createLynxBlockDeltaProducer();
+		producer.beginAttempt();
+		producer.run({
+			address: ADDRESS,
+			parent: { instance: 2, slot: 7 },
+			before: { instance: 2, slot: 8 },
+			count: 1,
+			values: ['row', 'a', 'cold'],
+		});
+		producer.move(2, { instance: 2, slot: 7 }, { instance: 2, slot: 8 });
+		const frame = frameOf(producer.flush(1)!);
+		expect(frame.operations).toEqual([
+			{
+				op: 'run',
+				templateId: 1,
+				parent: { instance: 2, slot: 7 },
+				before: { instance: 2, slot: 8 },
+				firstInstance: 2,
+				count: 1,
+				values: ['row', 'a', 'cold'],
+			},
+			{
+				op: 'move',
+				instance: 2,
+				parent: { instance: 2, slot: 7 },
+				before: { instance: 2, slot: 8 },
+			},
+		]);
+		expect(decodeLynxDeltaMessage(frame.encoded).operations).toEqual(frame.operations);
 		producer.acceptAttempt();
 	});
 

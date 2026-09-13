@@ -267,6 +267,8 @@ const EMISSION_LOCAL = /^[nvecrt]\d+$/;
  */
 export interface LynxMainThreadProgramRange {
 	readonly node: number;
+	/** Omitted by legacy hand-written plans; equivalent to a tail range. */
+	readonly before?: number | null;
 }
 
 export interface LynxMainThreadProgramEmission {
@@ -892,11 +894,8 @@ export function emitLynxMainThreadProgram(
 	// other value is left exactly where it is today — a hole the renderer fills
 	// by key.
 	//
-	// Emitted after the appends, because a range hole is its host's last child
-	// by construction: `universalTemplateProgramWithoutRanges` declines a program
-	// where a dropped hole is not the last entry naming its parent, so appending
-	// behind everything the node loop just placed *is* the position the command
-	// path would have given it.
+	// Emitted after the static subtree is assembled. A non-tail text hole inserts
+	// before its compiler-selected static sibling; a tail hole keeps the append.
 	//
 	// The created node is returned, in a trailing slot of its own, and a hole
 	// this emission leaves open returns `undefined` there. That is not
@@ -911,14 +910,25 @@ export function emitLynxMainThreadProgram(
 	const ranged = new Set<number>();
 	const painted = new Set<number>();
 	for (let index = 0; index < ranges.length; index++) {
-		const node = ranges[index]!.node;
+		const range = ranges[index]!;
+		const node = range.node;
+		const before = range.before ?? null;
 		if (!Number.isSafeInteger(node) || node < 0 || node >= program.nodes.length) {
 			refuse(`a keyed range names node ${node}, which the program does not have`);
 		}
-		// The reduction cannot produce two on one host — only one child can be
-		// the last one — so a program that says otherwise was not reduced from a
-		// shape, and appending both would put them in an order neither arm chose.
+		// The reduction cannot produce two independently owned ranges on one host,
+		// because the resident store still identifies a range by its physical parent.
+		// A program that says otherwise was not produced by the supported reducer.
 		if (ranged.has(node)) refuse(`node ${node} holds more than one keyed range`);
+		if (
+			before !== null &&
+			(!Number.isSafeInteger(before) ||
+				before < 0 ||
+				before >= program.nodes.length ||
+				program.nodes[before]!.parent !== node)
+		) {
+			refuse(`keyed range ${index} names a static anchor outside node ${node}`);
+		}
 		ranged.add(node);
 		const host = program.nodes[node]!.type;
 		if (host === '#text' || host === 'raw-text') {
@@ -933,7 +943,9 @@ export function emitLynxMainThreadProgram(
 		painted.add(index);
 		body.push(`\t\tvar t${index};`);
 		body.push(
-			`\t\tif (typeof r${index} === 'string') { t${index} = rawText(r${index}); append(n${node}, t${index}); }`,
+			before === null
+				? `\t\tif (typeof r${index} === 'string') { t${index} = rawText(r${index}); append(n${node}, t${index}); }`
+				: `\t\tif (typeof r${index} === 'string') { t${index} = rawText(r${index}); papi.insertBefore(n${node}, t${index}, n${before}); }`,
 		);
 	}
 

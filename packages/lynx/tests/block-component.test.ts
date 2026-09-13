@@ -1664,7 +1664,7 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		});
 
 		const initial = props('case', 'alpha');
-		const rejected = block.background.renderAsync(component, initial);
+		const rejected = block.background.renderAsync(component as never, initial);
 		await flushMicrotasks();
 		block.main.reject(block.main.commits[0]!, 'injected switch mount rejection');
 		await expect(rejected).rejects.toThrow('injected switch mount rejection');
@@ -3275,10 +3275,7 @@ describe('Lynx compiled component with a keyed range the Block core refuses', ()
 			]);
 		});
 
-	it('names a range that is not the last child of its host element', async () => {
-		// A range appends its rows to the element that holds it, so a sibling
-		// authored after it would be painted before every row it was written
-		// after. Refused rather than silently reordered.
+	it('keeps a non-tail range ahead of its static sibling across reconciliation', async () => {
 		const Listed = listing(
 			listedPlan([
 				{ kind: 'slot', slot: 0 },
@@ -3286,11 +3283,24 @@ describe('Lynx compiled component with a keyed range the Block core refuses', ()
 			]),
 			(id) => universalValue(ROW_PLAN, ['row', String(id), noop, `row ${id}`]),
 		);
-
+		const classes = (commits: readonly LynxTransportCommitMessage[]): string[] => {
+			const papi = createFakePAPI();
+			const host = createLynxHostContainer(papi, { root: 1 });
+			for (const commit of commits) prepareLynxHostBatch(host, commit.batch).apply();
+			return papi.pages[0]!.children[0]!.children.map((child) => child.classes);
+		};
+		const universal = universalColumn(Listed as LynxComponent<TableProps>);
 		const block = blockColumn<TableProps>();
-		await expect(
-			block.settle(block.background.renderAsync(Listed as never, table([1]))),
-		).rejects.toThrow(/Listed.*last child of its host element/s);
+		for (const [props, expected] of [
+			[table([1, 2]), ['row', 'row', 'footer']],
+			[table([2, 3, 1]), ['row', 'row', 'row', 'footer']],
+			[table([]), ['footer']],
+		] as const) {
+			await universal.render(props);
+			await block.render(Listed as LynxComponent<TableProps>, props);
+			expect(classes(block.main.commits)).toEqual(expected);
+			expect(paint(block.main.commits).tree).toBe(paint(universal.main.commits).tree);
+		}
 	});
 
 	it('names a row that is not a compiled template', async () => {

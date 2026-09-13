@@ -553,6 +553,8 @@ export function compiledUniversalTemplateProgram(
 export interface UniversalTemplateProgramRange {
 	readonly slot: number;
 	readonly node: number;
+	/** Reduced-program child inserted after this range, or null at the parent's tail. */
+	readonly before: number | null;
 }
 
 /** A program with its range holes removed, and where they were. */
@@ -577,10 +579,11 @@ const EMPTY_TEMPLATE_PROGRAM_RANGES: readonly UniversalTemplateProgramRange[] =
  * its holes those are, because only the caller has the values, which is why
  * `isRange` is asked rather than assumed.
  *
- * Returns `null` when a range hole is not the last child of its host node. That
- * is not a shape this refuses on principle: a range appends its members to its
- * parent, so a *later* static sibling would end up ahead of every row it was
- * authored after. An earlier sibling is fine and stays.
+ * A non-tail range names its next surviving static sibling as `before`, in the
+ * reduced program's node space. The host can therefore insert the range without
+ * rediscovering topology at run time. More than one range under one parent is
+ * still declined: independent sibling ranges need independent resident range
+ * identities, not merely the shared physical parent this reducer can name.
  *
  * Not memoized. The result depends on the caller's values as well as the plan,
  * and its consumer derives it once per mounted program, so a cache here would
@@ -606,10 +609,22 @@ export function universalTemplateProgramWithoutRanges(
 		count++;
 	}
 	if (count === 0) return { compiled, ranges: EMPTY_TEMPLATE_PROGRAM_RANGES };
-	// One pass rather than a scan per hole: a node's last child is simply the
-	// last entry naming it, because the shape is pre-order.
-	const lastChild = new Map<number, number>();
-	for (let index = 0; index < shape.length; index++) lastChild.set(shape[index]!.parent, index);
+	const rangeParents = new Set<number>();
+	for (let index = 0; index < shape.length; index++) {
+		if (!dropped[index]) continue;
+		const parent = shape[index]!.parent;
+		if (rangeParents.has(parent)) return null;
+		rangeParents.add(parent);
+	}
+	// Backwards over the pre-order gives every dropped leaf its next surviving
+	// direct sibling in O(nodes), including a run of adjacent dropped holes.
+	const nextChild = new Map<number, number>();
+	const before: (number | null)[] = new Array(shape.length).fill(null);
+	for (let index = shape.length - 1; index >= 0; index--) {
+		const parent = shape[index]!.parent;
+		if (dropped[index]) before[index] = nextChild.get(parent) ?? null;
+		else nextChild.set(parent, index);
+	}
 	const remap: number[] = new Array(shape.length);
 	let next = 0;
 	for (let index = 0; index < shape.length; index++) {
@@ -618,7 +633,6 @@ export function universalTemplateProgramWithoutRanges(
 			continue;
 		}
 		remap[index] = -1;
-		if (lastChild.get(shape[index]!.parent) !== index) return null;
 	}
 	const nextShape: UniversalHostTemplateShapeNode[] = [];
 	const nextPlans: (UniversalHostPlan | UniversalTextPlan | UniversalSlotPlan)[] = [];
@@ -632,6 +646,7 @@ export function universalTemplateProgramWithoutRanges(
 			ranges.push(
 				Object.freeze({
 					slot: (compiled.plans[index] as UniversalSlotPlan).slot,
+					before: before[index] === null ? null : remap[before[index]!]!,
 					node: remap[node.parent]!,
 				}),
 			);

@@ -490,7 +490,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 									expect.objectContaining({
 										empty: true,
 										nested: false,
-										lastChild: true,
+										lastChild: false,
 										row: {
 											kind: 'local-component',
 											name: 'BlockEligibleRow',
@@ -517,7 +517,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 									expect.objectContaining({
 										empty: true,
 										nested: false,
-										lastChild: true,
+										lastChild: false,
 										row: {
 											kind: 'local-component',
 											name: 'BlockEligibleRow',
@@ -777,7 +777,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					selection: {
 						version: 1,
 						matrix: {
-							version: 10,
+							version: 11,
 							runtimeNames: [
 								'createContext',
 								'memo',
@@ -801,6 +801,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 								empty: true,
 								nested: false,
 								lastChild: true,
+								nonTail: true,
 								rowKinds: ['inline-host', 'local-component'],
 								rowHooks: true,
 							},

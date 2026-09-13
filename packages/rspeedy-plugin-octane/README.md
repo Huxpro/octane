@@ -149,21 +149,23 @@ pluginOctane({ thread: 'main-thread' });
 
 Application builds attach an `octane:lynx-block-selection` report to the
 generated main-thread asset metadata. Selection version 1 with support-matrix
-version 3 is eligible only when paired
+version 11 is eligible only when paired
 background/main-thread resident-program coverage is complete, semantic and
 feature facts cover the same module set, and the graph stays within this
 independently proven Block subset:
 
-- authored Octane runtime uses or named re-exports are limited to `useCallback`,
-  `useEffect`, `useRef`, `useState`, and `useSyncExternalStore`; opaque Octane
-  module access is not eligible;
+- authored Octane runtime uses or named re-exports are limited to `createContext`,
+  `memo`, `useCallback`, `useContext`, `useEffect`, `useRef`, `useState`, and
+  `useSyncExternalStore`; opaque Octane module access is not eligible;
 - background/main-thread functions and `main-thread:*` props are supported;
-- the authored template contains no ordinary component child, fragment,
-  `@if`/`@switch`/`@try`/Activity structure, bare renderable hole, ordinary host
-  ref, native `list`/`list-item` element, or event on a template-program root;
-- keyed ranges have no `@empty` arm or nested range, are the last child of
-  their host, and use an inline host or local component as each row. A local row
-  may own the supported hooks above; its scope is retained and disposed by key.
+- the authored template may use compiler-proved local component boundaries,
+  inline render props, component holes, `@if`, and `@switch`; fragments, `@try`,
+  Activity, generic renderable holes, ordinary host refs, native
+  `list`/`list-item`, and template-root events are not eligible;
+- keyed ranges may have an `@empty` arm and one retained static sibling after
+  them, but not a nested or second sibling range under the same host. Rows use
+  an inline host or local component and may own the supported hooks above;
+  their scopes are retained and disposed by key.
 
 The report retains source module, thread, line, and column for unsupported
 facts, as well as the underlying reason from an incomplete proof. A one-shot

@@ -35,7 +35,7 @@ must satisfy the runtime invariants below.
 | Static `view` / `text` host topology | Block selected | Resident create programs share compiler-owned addresses across both graphs. |
 | Dynamic scalar props, classes, text, and event slots | Block selected | Slot values and listener tables update addressed program instances directly. |
 | `useState`, `useRef`, `useCallback`, `useEffect`, and `useSyncExternalStore` | Block selected | Hook cells publish only after host acceptance; layout and passive cleanup are retained. |
-| Last-child keyed `@for` with inline-host or local-component rows | Block selected | Keyed identity, LIS moves, row-local hooks, `@for` component rows, and sparse dirty-row updates are covered. |
+| Keyed `@for` with inline-host or local-component rows, including a retained static sibling after the range | Block selected | The compiler emits the next static child as an `(instance, slot)` anchor; first-screen paint, RUN, MOVE, CLEAR, rollback, keyed identity, and sparse updates preserve authored order. |
 | Context propagation through a keyed move | Block selected | Compiler-recognized Providers stay transparent to host topology; `createContext` and `useContext` are admitted by the production selector, with authored dual-backend state/identity coverage and a paired compiled-program build. |
 | `@for … @empty` | Block selected | Empty is a separate retained lifetime with rollback, effects, events, removal, remount, paired compiler metadata, and a production dual-graph build. |
 | `@if` and `@switch` | Block selected | A compiler-addressable region retains the selected arm, state, handlers, and cleanup; paired metadata and the production build cover both directives. |
@@ -48,7 +48,7 @@ must satisfy the runtime invariants below.
 | Generic renderable holes (primitive/array/fragment shape changes) | Whole-entry Universal compatibility | The compiler cannot yet prove a stable structural region kind, and Block does not infer one from the first value. |
 | Host refs, native `list`, Activity/visibility, `@try`/Suspense, and portals | Whole-entry Universal compatibility | These retain the existing Universal lifecycle until separate Block transaction and identity proofs land. |
 | Nested keyed ranges | Rejected by Block | An inner range needs retained state scoped to each outer key; the current core diagnoses the nesting before publication. |
-| A keyed range followed by a dynamic/static sibling | Rejected by Block | Correct insertion requires a compiler-emitted static `(instance, slot)` anchor. Delta protocol v2 reserves the address shape, but the producer has no `a` slot yet. |
+| Multiple independently owned keyed ranges under one host | Rejected by Block | Static siblings are supported, but two dynamic sibling ranges still need distinct resident range identities instead of the shared physical-parent key. |
 | Insertion effects | Rejected by Block | The Block transaction has no pre-mutation publication phase. |
 | A row whose root is non-host, has a root event, or is not compile-time host structure | Rejected by Block | The row program cannot currently name the parent-inserted root and its own root event independently. |
 | Unknown compiler/runtime proof version or graph mismatch | Whole-entry Universal compatibility | The selector fails closed and records structured reasons in the build asset. |
@@ -76,8 +76,10 @@ site. A stable identity performs one branch selection, an identity lookup, and a
 shallow props comparison before reusing the resident template and state; it does
 not allocate Universal host records or execute an interpreted Universal host
 plan. Removing or replacing the identity disposes the active scope before the
-new identity is published. The program-address completeness gate still rejects
-a non-tail dynamic range until the compiler can emit its static insertion anchor.
+new identity is published. A non-tail structural range carries its
+compiler-selected static sibling through the program digest, first-screen plan,
+compact delta frame, and resident range store.
+and resident range store.
 
 ## Transactional publication rules
 

@@ -31,6 +31,7 @@ import {
 import {
 	createFakePAPI,
 	shape,
+	type FakeNode,
 	withoutAllocatorIdentity,
 } from '../../../lynx/tests/_fixtures/fake-element-papi.js';
 
@@ -805,7 +806,7 @@ export function Dynamic(props: { detail: unknown }) @{
 		// thing the node list cannot say because the program dropped it. Counting
 		// the program's four nodes and its one range: view(0), card-label(1),
 		// card-body(2), the `d` text(3), its range(4).
-		expect(root.ranges).toEqual([{ slot: 4, node: 3, id: 4, paintsText: true }]);
+		expect(root.ranges).toEqual([{ slot: 4, node: 3, before: null, id: 4, paintsText: true }]);
 		// The count the create function makes, which is what a consumer claiming
 		// first-screen IDs needs and all it needs: the nodes come back from `bind`
 		// in this order, so nothing walks anything to pair them up.
@@ -847,7 +848,7 @@ export function Card(props: { label: unknown }) @{
 		// that paints it when the value turns out to be a string. It is true here
 		// because the hole's host is a `text`; a hole under a `view` is the
 		// ordinary keyed list at every value and would read `false`.
-		expect(root.ranges).toEqual([{ slot: 0, node: 2, id: 3, paintsText: true }]);
+		expect(root.ranges).toEqual([{ slot: 0, node: 2, before: null, id: 3, paintsText: true }]);
 		const papi = createHost();
 		createLynxHostContainer(papi, { root: 1 });
 		const page = papi.pages[0]!;
@@ -908,19 +909,31 @@ export function Card(props: { label: unknown }) @{
 		expect(withBackend.code.split('\n').length).toBeGreaterThan(compiled(CARD).split('\n').length);
 	});
 
-	it('leaves a plan the backend declines on the interpreted encoding', () => {
-		// A renderable hole that is not its parent's last child cannot be lifted out
-		// as a range without moving the siblings after it, so the backend declines
-		// the whole plan and the compile keeps the encoding it had before the
-		// backend existed. "Not describable as a program" is the ordinary answer for
-		// most plans, so it has to be silent rather than fatal.
+	it('emits a program for a range followed by a static sibling', () => {
 		const AHEAD = `/** @jsxImportSource @octanejs/lynx/intrinsics */
 export function Card(props: { label: string }) @{
 	<text class="l">{props.label as string}{'tail'}</text>
 }
 `;
-		expect(compiled(AHEAD, { backend: Backend })).toBe(compiled(AHEAD));
-		expect(evaluate(compiled(AHEAD, { backend: Backend })).roots[0].kind).toBe('template');
+		const evaluated = evaluate(compiled(AHEAD, { backend: Backend }));
+		const [root] = evaluated.roots;
+		expect(root.kind).toBe('program');
+		expect(root.ranges).toEqual([
+			expect.objectContaining({ slot: 0, node: 0, before: 1, paintsText: true }),
+		]);
+
+		const value = evaluated.card({ label: 'Live' });
+		const papi = createHost();
+		createLynxHostContainer(papi, { root: 1 });
+		const page = papi.pages[0]!;
+		const args = [
+			...root.values.map((slot: number) => value.values[slot]),
+			...root.events.map(() => () => undefined),
+			...root.ranges.map((range: { slot: number }) => value.values[range.slot]),
+		];
+		const nodes = root.bind(papi)(page.id, ...args) as readonly FakeNode[];
+		papi.insertBefore(page, nodes[0]!, null);
+		expect(nodes[0]!.children.map((child) => child.text)).toEqual(['Live', 'tail']);
 	});
 
 	it('keeps a described plan the emitter refuses on the interpreted encoding', () => {
@@ -963,8 +976,8 @@ export function Card(props: { rows: unknown; label: unknown }) @{
 		const [root] = evaluate(compiled(BOTH, { backend: Backend })).roots;
 		expect(root.kind).toBe('program');
 		expect(root.ranges).toEqual([
-			{ slot: 0, node: 1, id: 2, paintsText: true },
-			{ slot: 1, node: 2, id: 4, paintsText: false },
+			{ slot: 0, node: 1, before: null, id: 2, paintsText: true },
+			{ slot: 1, node: 2, before: null, id: 4, paintsText: false },
 		]);
 	});
 

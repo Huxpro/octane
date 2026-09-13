@@ -115,10 +115,8 @@ const RANGED_ROW_SITES: readonly LynxMainThreadProgramRange[] = [{ node: 1 }, { 
  *
  * The row cannot see *where* a compiled text is appended: every one of its
  * hosts holds the hole and nothing else, so any placement paints the same tree.
- * A hole is its host's last child by construction — the reduction declines a
- * program where a dropped hole is not the last entry naming its parent — and
- * the only way to break that is to append it before the node loop has placed
- * the siblings, which needs a host with one.
+ * A tail hole still appends after the node loop has assembled the static subtree.
+ * A non-tail hole uses the compiler-emitted sibling anchor pinned below.
  */
 const LINE: UniversalHostTemplateProgram = {
 	nodes: [
@@ -143,6 +141,28 @@ const RANGED_LINE: UniversalHostTemplateProgram = {
 };
 
 const RANGED_LINE_SITES: readonly LynxMainThreadProgramRange[] = [{ node: 1 }];
+
+/** A text hole followed by a retained raw-text sibling under the same host. */
+const NON_TAIL_LINE: UniversalHostTemplateProgram = {
+	nodes: [
+		{ type: 'view', parent: -1, props: { class: 'wrap' } },
+		{ type: 'text', parent: 0, props: { class: 'line' } },
+		{ type: '#text', parent: 1, props: {}, bindings: [{ name: 'value', valueIndex: 0 }] },
+		{ type: '#text', parent: 1, props: { value: ' tail' } },
+	],
+	events: [],
+};
+
+const RANGED_NON_TAIL_LINE: UniversalHostTemplateProgram = {
+	nodes: [
+		{ type: 'view', parent: -1, props: { class: 'wrap' } },
+		{ type: 'text', parent: 0, props: { class: 'line' } },
+		{ type: '#text', parent: 1, props: { value: ' tail' } },
+	],
+	events: [],
+};
+
+const RANGED_NON_TAIL_LINE_SITES: readonly LynxMainThreadProgramRange[] = [{ node: 1, before: 2 }];
 
 /** A keyed list: the range site an application actually has most of. */
 const LIST: UniversalHostTemplateProgram = {
@@ -840,11 +860,9 @@ describe('Lynx main-thread program emission', () => {
 		});
 
 		it('appends the text behind everything its host already holds', () => {
-			// A range hole is its host's last child by construction, so the compiled
-			// text has to land after the static sibling the node loop placed and
-			// after the whole subtree that loop built. `LINE` carries both, and it
-			// is the only fixture here that can tell a late append from an early
-			// one.
+			// This fixture uses a tail range, so its compiled text lands after the
+			// static sibling the node loop already placed. The adjacent non-tail
+			// fixture distinguishes that append from anchored insertion.
 			const interpretedLine = throughApplier(
 				LINE,
 				['tail'],
@@ -857,6 +875,23 @@ describe('Lynx main-thread program emission', () => {
 				['tail'],
 				(item) => [item],
 				RANGED_LINE_SITES,
+			);
+			expect(paintedTree(emittedLine)).toEqual(paintedTree(interpretedLine));
+		});
+
+		it('inserts compiled text before a retained static sibling', () => {
+			const interpretedLine = throughApplier(
+				NON_TAIL_LINE,
+				['Live'],
+				() => 1,
+				(item) => [item],
+			);
+			const emittedLine = throughEmission(
+				RANGED_NON_TAIL_LINE,
+				'createNonTailLine',
+				['Live'],
+				(item) => [item],
+				RANGED_NON_TAIL_LINE_SITES,
 			);
 			expect(paintedTree(emittedLine)).toEqual(paintedTree(interpretedLine));
 		});
@@ -1173,6 +1208,12 @@ describe('Lynx main-thread program emission', () => {
 				RANGED_ROW,
 				[{ node: 1 }, { node: 1 }],
 				/more than one keyed range/,
+			],
+			[
+				'a keyed range whose anchor is not its parent’s child',
+				RANGED_ROW,
+				[{ node: 1, before: 2 }],
+				/outside node 1/,
 			],
 			[
 				'a keyed range on raw text, which holds no children at all',

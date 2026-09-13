@@ -416,6 +416,8 @@ interface RangeState {
 	readonly slot: number;
 	/** The host node in the mounted template whose children the range owns. */
 	readonly node: number;
+	/** The next static child in the parent, or null at the range tail. */
+	readonly before: number | null;
 	site: LynxBlockForSlot | null;
 	readonly rowTemplate: RangeTemplateState;
 	readonly emptyTemplate: RangeTemplateState;
@@ -2174,7 +2176,11 @@ export function lynxBlockProgramForComponent<Props>(
 			const rendered = renderSubject(context, props);
 			try {
 				let wire: PreparedUniversalTemplateProgram;
-				let declaredRanges: readonly { readonly slot: number; readonly node: number }[];
+				let declaredRanges: readonly {
+					readonly slot: number;
+					readonly node: number;
+					readonly before?: number | null;
+				}[];
 				if (isLynxCompilerProgram(rendered.plan)) {
 					wire = rendered.plan;
 					declaredRanges = rendered.plan.ranges;
@@ -2203,7 +2209,7 @@ export function lynxBlockProgramForComponent<Props>(
 						refuse(
 							subject,
 							LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-								'one of its dynamic regions is not the last child of its host element, and a region appends its output to that element — so anything authored after it would be painted before the region.',
+								'its dynamic regions require more than one independently owned range under the same host element, which the resident store cannot identify separately yet.',
 						);
 					}
 					const preparedProgram = prepareUniversalTemplateProgram(
@@ -2229,6 +2235,7 @@ export function lynxBlockProgramForComponent<Props>(
 						: declaredRanges.map((range) => ({
 								slot: range.slot,
 								node: range.node,
+								before: range.before ?? null,
 								site: null,
 								rowTemplate: createRangeTemplateState(),
 								emptyTemplate: createRangeTemplateState(),
@@ -2262,7 +2269,7 @@ export function lynxBlockProgramForComponent<Props>(
 				}
 				for (let index = 0; index < ranges.length; index++) {
 					const range = ranges[index]!;
-					range.site = context.core.openForSlot(block, range.node, range.slot);
+					range.site = context.core.openForSlot(block, range.node, range.slot, range.before);
 					applyRange(context, rows[index]!);
 				}
 				context.afterCommit(() => {

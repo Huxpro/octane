@@ -252,6 +252,10 @@ type LynxBlockProgramRangeSite = LynxBlockForSlot & {
 	readonly 0: number | undefined;
 	/** Owning compact instance, or null on the general command path. */
 	readonly 1: number | null;
+	/** Compiler node of the next static sibling, or null at the range tail. */
+	readonly 2: number | null;
+	/** Physical host id of that static sibling on the command path. */
+	readonly 3: number | null;
 };
 
 /**
@@ -341,7 +345,12 @@ export interface LynxBlockCore {
 	/** Destroy a block mounted at the root after its owned ranges are clear. */
 	destroyRoot(block: LynxBlock): void;
 	/** Open a keyed range at one host node, optionally retaining its compiler plan slot. */
-	openForSlot(block: LynxBlock, nodeIndex: number, programRangeSlot?: number): LynxBlockForSlot;
+	openForSlot(
+		block: LynxBlock,
+		nodeIndex: number,
+		programRangeSlot?: number,
+		beforeNodeIndex?: number | null,
+	): LynxBlockForSlot;
 	/**
 	 * Fill an empty range site. The mount-linear fast path `runtime.ts` takes
 	 * when `oldSize === 0`: there is no survivor to match, so there is no diff.
@@ -566,19 +575,25 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 								LYNX_BLOCK_CORE_DEVELOPMENT &&
 									'a nested direct RUN requires its owning compiler range site',
 							);
-			if (
-				before !== null &&
-				(beforeBlock === null ||
-					beforeBlock === undefined ||
-					beforeBlock.firstId !== before ||
-					beforeBlock.instance === null)
-			) {
-				fail(LYNX_BLOCK_CORE_DEVELOPMENT && 'a direct RUN anchor requires a retained instance');
-			}
+			const beforeSite =
+				beforeBlock !== null && beforeBlock !== undefined
+					? beforeBlock.firstId === before && beforeBlock.instance !== null
+						? { instance: beforeBlock.instance, slot: 0 }
+						: fail(LYNX_BLOCK_CORE_DEVELOPMENT && 'a direct RUN dynamic anchor is not retained')
+					: rangeSite !== undefined && rangeSite[3] === before && rangeSite[2] !== null
+						? rangeSite[1] === null
+							? fail(
+									LYNX_BLOCK_CORE_DEVELOPMENT &&
+										'a direct RUN static anchor requires an owning instance',
+								)
+							: { instance: rangeSite[1], slot: rangeSite[2] }
+						: before === null
+							? null
+							: fail(LYNX_BLOCK_CORE_DEVELOPMENT && 'a direct RUN anchor is not retained');
 			firstInstance = deltaProducer.run({
 				address: template.address,
 				parent: parentSite,
-				before: beforeBlock?.instance ?? null,
+				before: beforeSite,
 				count,
 				values,
 			});
@@ -931,7 +946,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		}
 		const blocks = mountRun(
 			slot.parent,
-			null,
+			(slot as LynxBlockProgramRangeSite)[3],
 			template,
 			rows,
 			keys,
@@ -1009,14 +1024,28 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			destroyBlock(null, block);
 		},
 
-		openForSlot(block, nodeIndex, programRangeSlot) {
+		openForSlot(block, nodeIndex, programRangeSlot, beforeNodeIndex = null) {
 			if (nodeIndex < 0 || nodeIndex >= block.template.hostCount) {
 				fail(LYNX_BLOCK_CORE_DEVELOPMENT && `host node ${nodeIndex} is outside this template`);
+			}
+			if (
+				beforeNodeIndex !== null &&
+				(!Number.isSafeInteger(beforeNodeIndex) ||
+					beforeNodeIndex < 0 ||
+					beforeNodeIndex >= block.template.hostCount ||
+					block.template.program.nodes[beforeNodeIndex]!.parent !== nodeIndex)
+			) {
+				fail(
+					LYNX_BLOCK_CORE_DEVELOPMENT &&
+						`static anchor node ${String(beforeNodeIndex)} is not a child of host node ${nodeIndex}`,
+				);
 			}
 			return {
 				0: programRangeSlot,
 				parent: block.firstId + nodeIndex,
 				1: block.instance,
+				2: beforeNodeIndex,
+				3: beforeNodeIndex === null ? null : block.firstId + beforeNodeIndex,
 				items: new Map(),
 				head: null,
 				tail: null,
@@ -1090,7 +1119,8 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			// Right to left, so the anchor is always a block already placed.
 			for (let index = items.length - 1; index >= 0; index--) {
 				const beforeBlock = index + 1 < items.length ? ordered[index + 1]! : null;
-				const before = beforeBlock?.firstId ?? null;
+				const site = slot as LynxBlockProgramRangeSite;
+				const before = beforeBlock?.firstId ?? site[3];
 				const survivor = survivors[index];
 				if (survivor === null) {
 					const block = mountRun(
@@ -1121,7 +1151,6 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 					write(survivor, valueIndex, next[valueIndex]);
 				}
 				if (stable !== null && stable[index] !== -2) {
-					const site = slot as LynxBlockProgramRangeSite;
 					if (deltaProducer !== null) {
 						if (
 							survivor.instance === null ||
@@ -1137,7 +1166,16 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 						deltaProducer.move(
 							survivor.instance,
 							{ instance: site[1], slot: site[0] },
-							beforeBlock?.instance ?? null,
+							beforeBlock !== null
+								? { instance: beforeBlock.instance!, slot: 0 }
+								: site[2] === null
+									? null
+									: site[1] === null
+										? fail(
+												LYNX_BLOCK_CORE_DEVELOPMENT &&
+													'a direct MOVE static anchor requires an owning instance',
+											)
+										: { instance: site[1], slot: site[2] },
 						);
 						commandCount++;
 					} else {

@@ -5461,8 +5461,8 @@ function generatedExpressionFromSource(source, filename, origin) {
  * makes: the walk happens once per program at build time instead of once per
  * mount, and the chunk carries `ranges.length` small integers instead of the
  * parent table a consumer would need to redo the walk. `universalTemplate-
- * ProgramWithoutRanges` guarantees a range hole is the last child of its host,
- * so a range is emitted after that host's whole subtree.
+ * ProgramWithoutRanges` records the next static sibling, so ranges are emitted
+ * immediately before that child's subtree or after all children at the tail.
  */
 function lynxProgramRangeOrder(wire, ranges) {
 	const children = wire.nodes.map(() => []);
@@ -5479,8 +5479,16 @@ function lynxProgramRangeOrder(wire, ranges) {
 	let next = 0;
 	const visit = (index) => {
 		next++;
-		for (const child of children[index]) visit(child);
-		for (const range of pending.get(index) ?? []) order.set(range, next++);
+		const rangesAtNode = pending.get(index) ?? [];
+		for (const child of children[index]) {
+			for (const range of rangesAtNode) {
+				if (range.before === child) order.set(range, next++);
+			}
+			visit(child);
+		}
+		for (const range of rangesAtNode) {
+			if (range.before === null) order.set(range, next++);
+		}
 	};
 	if (wire.nodes.length !== 0) visit(0);
 	// A range whose node the walk never reached would silently lose its position
@@ -5543,6 +5551,7 @@ function programDigest(derived) {
 			derived.ranges.map((range) => ({
 				slot: range.slot,
 				node: range.node,
+				before: range.before,
 				id: order.get(range),
 			})),
 		)}`;
@@ -5775,6 +5784,7 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 					derived.ranges.map((range, index) => ({
 						slot: range.slot,
 						node: range.node,
+						before: range.before,
 						id: rangeOrder.get(range),
 						paintsText: emission.paintsText[index] === true,
 					})),

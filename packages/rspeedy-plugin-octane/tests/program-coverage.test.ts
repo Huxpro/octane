@@ -210,7 +210,7 @@ function completeProofs() {
 				column: 2,
 				empty: false,
 				nested: false,
-				lastChild: true,
+				lastChild: false,
 				row: { kind: 'local-component', name: 'Row', hooks: [] },
 			},
 		],
@@ -232,7 +232,7 @@ describe('Lynx application Block eligibility', () => {
 		expect(report).toEqual({
 			version: 1,
 			matrix: {
-				version: 10,
+				version: 11,
 				runtimeNames: [
 					'createContext',
 					'memo',
@@ -256,6 +256,7 @@ describe('Lynx application Block eligibility', () => {
 					empty: true,
 					nested: false,
 					lastChild: true,
+					nonTail: true,
 					rowKinds: ['inline-host', 'local-component'],
 					rowHooks: true,
 				},
@@ -424,13 +425,6 @@ describe('Lynx application Block eligibility', () => {
 				},
 				{
 					code: 'keyed-range-nested',
-					module: '/src/App.tsrx',
-					thread: 'background',
-					line: 10,
-					column: 2,
-				},
-				{
-					code: 'keyed-range-not-last-child',
 					module: '/src/App.tsrx',
 					thread: 'background',
 					line: 10,
@@ -947,7 +941,7 @@ describe('Lynx application resident-program coverage', () => {
 			},
 			[LYNX_BLOCK_SELECTION_ASSET_INFO]: {
 				version: 1,
-				matrix: { version: 10 },
+				matrix: { version: 11 },
 				eligible: true,
 				reasons: [],
 			},

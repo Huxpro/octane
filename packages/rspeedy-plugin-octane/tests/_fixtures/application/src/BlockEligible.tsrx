@@ -60,6 +60,7 @@ function BlockShell(props: {
 					<text>{'No rows: ' + props.selected as string}</text>
 				</view>
 			}
+			<text class="rows-tail">Rows ready</text>
 		</view>
 		<view class="if-region">
 			@if (props.selected === 'none') {

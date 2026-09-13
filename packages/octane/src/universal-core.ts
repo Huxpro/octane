@@ -207,6 +207,8 @@ export interface UniversalProgramRange {
 	readonly slot: number;
 	/** Emitted node its members are appended into. */
 	readonly node: number;
+	/** Next static child node in this program, or null when the range is last. */
+	readonly before?: number | null;
 	/**
 	 * Where the range sits in the program's own pre-order, counting the
 	 * program's nodes and its ranges and nothing else.

@@ -4,6 +4,7 @@ import type { UniversalHostBatch, UniversalHostProgramAddress } from 'octane/uni
 import {
 	encodeLynxDeltaMessage,
 	isLynxDeltaValue,
+	type LynxDeltaAnchor,
 	type LynxDeltaOperation,
 	type LynxDeltaTemplate,
 	type LynxDeltaValue,
@@ -21,7 +22,7 @@ const FIRST_INSTANCE = ROOT_INSTANCE + 1;
 export interface LynxBlockDeltaRun {
 	readonly address: UniversalHostProgramAddress;
 	readonly parent: LynxSlotAddress;
-	readonly before: number | null;
+	readonly before: LynxDeltaAnchor;
 	readonly count: number;
 	readonly values: readonly unknown[];
 }
@@ -40,7 +41,7 @@ export interface LynxBlockDeltaProducer {
 	hasPending(): boolean;
 	run(input: LynxBlockDeltaRun): number;
 	set(instance: number, slot: number, value: unknown): boolean;
-	move(instance: number, parent: LynxSlotAddress, before: number | null): void;
+	move(instance: number, parent: LynxSlotAddress, before: LynxDeltaAnchor): void;
 	remove(firstInstance: number, count: number): void;
 	clear(parent: LynxSlotAddress): void;
 	visibility(instance: number, visible: boolean): void;
@@ -238,10 +239,7 @@ export function createLynxBlockDeltaProducer(): LynxBlockDeltaProducer {
 				op: 'run',
 				templateId: templateFor(input.address),
 				parent: frozenSite(input.parent, 'RUN parent'),
-				before:
-					input.before === null
-						? null
-						: { instance: positiveInteger(input.before, 'RUN anchor'), slot: 0 },
+				before: input.before === null ? null : frozenSite(input.before, 'RUN anchor'),
 				firstInstance,
 				count: input.count,
 				values,
@@ -266,12 +264,11 @@ export function createLynxBlockDeltaProducer(): LynxBlockDeltaProducer {
 		},
 		move(instance, parent, before) {
 			positiveInteger(instance, 'MOVE instance');
-			if (before !== null) positiveInteger(before, 'MOVE anchor');
 			append({
 				op: 'move',
 				instance,
 				parent: frozenSite(parent, 'MOVE parent'),
-				before: before === null ? null : { instance: before, slot: 0 },
+				before: before === null ? null : frozenSite(before, 'MOVE anchor'),
 			});
 		},
 		remove(firstInstance, count) {

@@ -55,8 +55,6 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 	page: Node,
 ): LynxCompiledProgramAdoptionSource<Node> {
 	const pageId = papi.getUniqueId(page);
-	const append =
-		papi.append ?? ((parent: Node, child: Node): void => papi.insertBefore(parent, child, null));
 	const bound = new WeakMap<UniversalProgramPlan, ReturnType<UniversalProgramPlan['bind']>>();
 	const painted: PaintedRun<Node>[] = [];
 	const pageRoots: Node[] = [];
@@ -65,10 +63,14 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 	let nextListener = FIRST_LISTENER;
 	let attachedAny = false;
 
-	const paintNodes = (nodes: readonly CompiledFirstScreenResultNode[], parent: Node): void => {
+	const paintNodes = (
+		nodes: readonly CompiledFirstScreenResultNode[],
+		parent: Node,
+		before: Node | null = null,
+	): void => {
 		for (const node of nodes) {
 			if (node.kind === 'range') {
-				paintNodes(node.children, parent);
+				paintNodes(node.children, parent, before);
 				continue;
 			}
 			if (node.kind !== 'program') fail('received an unaddressed host node');
@@ -150,13 +152,16 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 			for (let range = plan.ranges.length - 1; range >= 0; range--) {
 				const start = end - spans[range]!;
 				if (start < 0) fail('program range spans exceed its children');
-				const rangeParent = created[plan.ranges[range]!.node];
+				const site = plan.ranges[range]!;
+				const rangeParent = created[site.node];
 				if (rangeParent === undefined) fail(`cannot resolve range ${range} parent`);
-				paintNodes(node.children.slice(start, end), rangeParent);
+				const rangeBefore = site.before == null ? null : created[site.before];
+				if (rangeBefore === undefined) fail(`cannot resolve range ${range} anchor`);
+				paintNodes(node.children.slice(start, end), rangeParent, rangeBefore);
 				end = start;
 			}
 			if (end !== 0) fail('program has children outside its declared ranges');
-			append(parent, created[0]);
+			papi.insertBefore(parent, created[0], before);
 			attachedAny = true;
 			if (papi.isEqual(parent, page)) pageRoots.push(created[0]);
 		}
