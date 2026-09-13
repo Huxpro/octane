@@ -3651,6 +3651,7 @@ function stableColumnComponent(): LynxComponent<TableProps> {
 
 describe('Lynx compiled component whose rows outlive the render', () => {
 	it('visits only old and new keys for a compiler-certified selection', async () => {
+		let keyCalls = 0;
 		let rangeCalls = 0;
 		let rowCalls = 0;
 		let visited: number[] = [];
@@ -3677,7 +3678,10 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 				return universalValue(TABLE_PLAN, [
 					universalFor(
 						props.rows,
-						(row: TableRow) => row.id,
+						(row: TableRow) => {
+							keyCalls++;
+							return row.id;
+						},
 						(row: TableRow, index: number) => {
 							rangeCalls++;
 							visited.push(row.id * 1000 + index);
@@ -3793,6 +3797,79 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 		// shifted descriptors survive without rebuilding their identical props.
 		expect(swappedStep.rowCalls).toBe(0);
 		expect(swappedStep.visited).toEqual([]);
+
+		// Deletion-only retention reuses the committed descriptor Map. Rejecting the
+		// structural frame must leave that Map intact: key 50 still has to be
+		// available to the following sparse selection against the accepted source.
+		const rejectedRemoval = swapped.filter((row) => row.id !== 50);
+		const beforeRejectedKeys = keyCalls;
+		const beforeRejectedRange = rangeCalls;
+		const beforeRejectedRows = rowCalls;
+		const rejected = block.background.renderAsync(
+			Listed as never,
+			{ rows: rejectedRemoval, selected: 25, onSelect } as never,
+		);
+		await flushMicrotasks();
+		block.main.reject(block.main.commits.at(-1)!, 'injected deletion-only rejection');
+		await expect(rejected).rejects.toThrow('injected deletion-only rejection');
+		expect(keyCalls).toBe(beforeRejectedKeys);
+		expect(rangeCalls).toBe(beforeRejectedRange);
+		expect(rowCalls).toBe(beforeRejectedRows);
+		const commitStep = async (selected: number | undefined, nextRows: readonly TableRow[]) => {
+			visited = [];
+			const beforeRange = rangeCalls;
+			const beforeRows = rowCalls;
+			const beforeCore = core.counters();
+			const rendering = block.background.renderAsync(
+				Listed as never,
+				{ rows: nextRows, selected, onSelect } as never,
+			);
+			await flushMicrotasks();
+			block.main.acknowledge(block.main.commits.at(-1)!);
+			await rendering;
+			const afterCore = core.counters();
+			return {
+				rangeCalls: rangeCalls - beforeRange,
+				rowCalls: rowCalls - beforeRows,
+				lookups: afterCore.blockLookups - beforeCore.blockLookups,
+				commands: afterCore.commands - beforeCore.commands,
+				visited,
+			};
+		};
+		expect(await commitStep(50, swapped)).toEqual({
+			rangeCalls: 2,
+			rowCalls: 2,
+			lookups: 2,
+			commands: 2,
+			visited: [25_024, 50_049],
+		});
+
+		const beforeRemovalKeys = keyCalls;
+		const removed = swapped.filter((row) => row.id !== 50);
+		expect(await commitStep(50, removed)).toEqual({
+			rangeCalls: 0,
+			rowCalls: 0,
+			lookups: 1,
+			commands: 6,
+			visited: [],
+		});
+		// The compiler proved an index-independent component row with stable
+		// captures. A strict item-identity subsequence therefore supplies both the
+		// retained descriptors and their committed keys without either producer.
+		expect(keyCalls - beforeRemovalKeys).toBe(0);
+
+		const beforeClearKeys = keyCalls;
+		expect(await commitStep(50, [])).toEqual({
+			rangeCalls: 0,
+			rowCalls: 0,
+			lookups: 0,
+			commands: 2,
+			visited: [],
+		});
+		// Emptying a compiler-certified range takes the ordinary empty-render path:
+		// it publishes a fresh descriptor Map after acknowledgement without asking
+		// either producer to describe rows that no longer exist.
+		expect(keyCalls - beforeClearKeys).toBe(0);
 	});
 
 	it('owns one external-store selector and publishes it only after host acknowledgement', async () => {
@@ -4110,6 +4187,82 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 		deliverTo(block, rowListener(block.main.commits, 3));
 		deliverTo(block, rowListener(block.main.commits, 0));
 		expect(taps).toEqual([4, 1]);
+	});
+
+	it('keeps retained listeners through structural changes and binds only changed rows', async () => {
+		interface EventRow {
+			readonly id: number;
+			readonly label: string;
+			readonly onTap: () => void;
+		}
+		const Row = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function EventRowComponent(props: { readonly row: EventRow }) {
+				return universalValue(ROW_PLAN, [
+					'row',
+					String(props.row.id),
+					props.row.onTap,
+					props.row.label,
+				]);
+			},
+		);
+		const Listed = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function EventRows(props: { readonly rows: readonly EventRow[] }) {
+				return universalValue(TABLE_PLAN, [
+					universalFor(
+						props.rows,
+						(row: EventRow) => row.id,
+						(row: EventRow) =>
+							universalComponent(
+								LYNX_TRANSPORT_RENDERER,
+								Row,
+								universalProps([['set', 'row', row]]),
+							),
+					),
+				]);
+			},
+		);
+		const taps: string[] = [];
+		const one: EventRow = { id: 1, label: 'one', onTap: () => taps.push('first one') };
+		const two: EventRow = { id: 2, label: 'two', onTap: () => taps.push('first two') };
+		const three: EventRow = { id: 3, label: 'three', onTap: () => taps.push('first three') };
+		const block = blockColumn<{ readonly rows: readonly EventRow[] }>();
+		await block.render(Listed as LynxComponent<{ readonly rows: readonly EventRow[] }>, {
+			rows: [one, two, three],
+		});
+		const [oneListener, twoListener, threeListener] = [0, 1, 2].map((index) =>
+			rowListener(block.main.commits, index),
+		);
+
+		const changedTwo: EventRow = {
+			id: 2,
+			label: 'two changed',
+			onTap: () => taps.push('second two'),
+		};
+		const four: EventRow = { id: 4, label: 'four', onTap: () => taps.push('new four') };
+		await block.render(Listed as LynxComponent<{ readonly rows: readonly EventRow[] }>, {
+			rows: [three, one, changedTwo, four],
+		});
+
+		// Moves retain each block's listener run. Rows three and one kept their
+		// complete descriptors, row two kept its host but published its new
+		// closure, and the inserted row received its first listener binding.
+		expect(rowListener(block.main.commits, 0).listener).toBe(threeListener!.listener);
+		expect(rowListener(block.main.commits, 1).listener).toBe(oneListener!.listener);
+		expect(rowListener(block.main.commits, 2).listener).toBe(twoListener!.listener);
+		deliverTo(block, threeListener!);
+		deliverTo(block, oneListener!);
+		deliverTo(block, twoListener!);
+		deliverTo(block, rowListener(block.main.commits, 3));
+		expect(taps).toEqual(['first three', 'first one', 'second two', 'new four']);
+
+		await block.render(Listed as LynxComponent<{ readonly rows: readonly EventRow[] }>, {
+			rows: [three, changedTwo, four],
+		});
+		expect(() => deliverTo(block, oneListener!)).toThrow(/listener/i);
+		deliverTo(block, threeListener!);
+		expect(taps.at(-1)).toBe('first three');
 	});
 
 	it('gives a re-rendered row this render’s handler rather than the one it kept', async () => {

@@ -223,7 +223,7 @@ export interface LynxBlock {
 	readonly instance: number | null;
 	readonly values: UniversalHostTemplateProgramValue[];
 	readonly key: unknown;
-	/** Committed position in the survivor list, maintained by `link`. */
+	/** Monotonic committed-order token, refreshed by `link`; deletions may leave gaps. */
 	index: number;
 	/** Survivor list, as in `runtime.ts` — the LIS operates over this order. */
 	prev: LynxBlock | null;
@@ -366,7 +366,9 @@ export interface LynxBlockCore {
 	 * Keyed reconcile with an LIS survivor pass, as `runtime.ts` does.
 	 * `departed` is invoked for every block that leaves the range, before its
 	 * run is destroyed — the window in which an owner must release the block's
-	 * listeners and any other per-block resources it holds.
+	 * listeners and any other per-block resources it holds. A compiler owner may
+	 * pass the ascending indices whose row values it recomputed; omitted retains
+	 * the conservative contract and compares every survivor value.
 	 */
 	reconcileForSlot<Item>(
 		slot: LynxBlockForSlot,
@@ -375,12 +377,23 @@ export interface LynxBlockCore {
 		key: (item: Item, index: number) => unknown,
 		values: (item: Item, index: number) => readonly UniversalHostTemplateProgramValue[],
 		departed?: (block: LynxBlock) => void,
+		changedIndices?: readonly number[],
 	): void;
 	/**
 	 * Tear down every member of a range site. `departed` fires per member
 	 * before destruction, with the same release obligation as reconcile.
 	 */
 	clearForSlot(slot: LynxBlockForSlot, departed?: (block: LynxBlock) => void): void;
+	/**
+	 * Remove compiler-proven departed keys without rediscovering every survivor.
+	 * During a render attempt the host commands are emitted immediately, while
+	 * logical membership is published only when that attempt is accepted.
+	 */
+	removeKeysForSlot(
+		slot: LynxBlockForSlot,
+		keys: readonly unknown[],
+		departed?: (block: LynxBlock) => void,
+	): void;
 	/**
 	 * Every slot of one row of a range, by key, in one visit.
 	 *
@@ -492,6 +505,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 	let attemptCapturedSlots: Set<LynxBlockForSlot> | null = null;
 	let attemptValues: ValueSnapshotPart[] | null = null;
 	let attemptCapturedValues: Map<LynxBlock, number | Set<number>> | null = null;
+	let attemptAccepts: (() => void)[] | null = null;
 
 	const captureSlot = (slot: LynxBlockForSlot): void => {
 		if (!attemptActive) return;
@@ -969,6 +983,58 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		slot.size = 0;
 	};
 
+	/**
+	 * Apply a proven deletion in O(number of departed blocks).
+	 *
+	 * The ordinary reconciler must snapshot and rediscover the whole range because
+	 * an arbitrary next item list may insert, move, or duplicate members. A
+	 * compiler owner that already proved a strict survivor subsequence has none of
+	 * those questions left. Its only draft work is the departed blocks themselves.
+	 * Keep the logical links and Map committed until ACK, so a rejected transport
+	 * drops this closure instead of paying an O(range size) rollback snapshot.
+	 */
+	const removeKeysForSlot = (
+		slot: LynxBlockForSlot,
+		keys: readonly unknown[],
+		departed?: (block: LynxBlock) => void,
+	): void => {
+		if (keys.length === 0) return;
+		const blocks: LynxBlock[] = new Array(keys.length);
+		const seen = new Set<LynxBlock>();
+		for (let index = 0; index < keys.length; index++) {
+			const block = slot.items.get(keys[index]);
+			blockLookups++;
+			if (block === undefined || seen.has(block)) {
+				fail(
+					LYNX_BLOCK_CORE_DEVELOPMENT &&
+						'a proven keyed deletion must name distinct members of the committed range',
+				);
+			}
+			seen.add(block);
+			blocks[index] = block;
+		}
+		for (const block of blocks) {
+			departed?.(block);
+			destroyBlock(slot.parent, block);
+		}
+		const publish = (): void => {
+			for (const block of blocks) {
+				const previous = block.prev;
+				const next = block.next;
+				if (previous === null) slot.head = next;
+				else previous.next = next;
+				if (next === null) slot.tail = previous;
+				else next.prev = previous;
+				slot.items.delete(block.key);
+				block.prev = null;
+				block.next = null;
+				slot.size--;
+			}
+		};
+		if (attemptActive) (attemptAccepts ??= []).push(publish);
+		else publish();
+	};
+
 	const core: LynxBlockCore = {
 		beginAttempt() {
 			if (attemptActive) fail(LYNX_BLOCK_CORE_DEVELOPMENT && 'a render attempt is already active');
@@ -985,10 +1051,13 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		acceptAttempt() {
 			deltaProducer?.acceptAttempt();
 			attemptActive = false;
+			const accepts = attemptAccepts;
+			attemptAccepts = null;
 			attemptSlots = null;
 			attemptCapturedSlots = null;
 			attemptValues = null;
 			attemptCapturedValues = null;
+			for (const accept of accepts ?? []) accept();
 		},
 
 		abortAttempt() {
@@ -1014,6 +1083,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			attemptCapturedSlots = null;
 			attemptValues = null;
 			attemptCapturedValues = null;
+			attemptAccepts = null;
 			return true;
 		},
 
@@ -1057,7 +1127,9 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 
 		clearForSlot,
 
-		reconcileForSlot(slot, template, items, key, values, departed) {
+		removeKeysForSlot,
+
+		reconcileForSlot(slot, template, items, key, values, departed, changedIndices) {
 			captureSlot(slot);
 			const previous = slot.items;
 			if (previous.size === 0) {
@@ -1071,6 +1143,15 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 				// there would still leak every listener of the last list it held.
 				clearForSlot(slot, departed);
 				return;
+			}
+			if (LYNX_BLOCK_CORE_DEVELOPMENT && changedIndices !== undefined) {
+				let previous = -1;
+				for (const index of changedIndices) {
+					if (!Number.isSafeInteger(index) || index <= previous || index >= items.length) {
+						fail('changed row indices must be unique, ascending, and inside the next range');
+					}
+					previous = index;
+				}
 			}
 			const keys: unknown[] = new Array(items.length);
 			const survivors: (LynxBlock | null)[] = new Array(items.length);
@@ -1116,8 +1197,12 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			// the subsequence that decides which instances stay put.
 			const stable = orderedSurvivors ? null : longestIncreasingSubsequence(sequence);
 			const ordered: LynxBlock[] = new Array(items.length);
+			let changedCursor = (changedIndices?.length ?? 0) - 1;
 			// Right to left, so the anchor is always a block already placed.
 			for (let index = items.length - 1; index >= 0; index--) {
+				const valuesChanged =
+					changedIndices === undefined || changedIndices[changedCursor] === index;
+				if (valuesChanged && changedIndices !== undefined) changedCursor--;
 				const beforeBlock = index + 1 < items.length ? ordered[index + 1]! : null;
 				const site = slot as LynxBlockProgramRangeSite;
 				const before = beforeBlock?.firstId ?? site[3];
@@ -1140,15 +1225,17 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 				// instance carries host-resident state (input value, scroll offset,
 				// selection) that a fresh `RUN` would destroy. This is the same
 				// requirement `runtime.ts:17389` states for the DOM host.
-				const next = values(items[index]!, index);
-				if (next.length !== template.valueCount) {
-					fail(
-						LYNX_BLOCK_CORE_DEVELOPMENT &&
-							`a row supplied ${next.length} values for a ${template.valueCount}-slot template`,
-					);
-				}
-				for (let valueIndex = 0; valueIndex < template.valueCount; valueIndex++) {
-					write(survivor, valueIndex, next[valueIndex]);
+				if (valuesChanged) {
+					const next = values(items[index]!, index);
+					if (next.length !== template.valueCount) {
+						fail(
+							LYNX_BLOCK_CORE_DEVELOPMENT &&
+								`a row supplied ${next.length} values for a ${template.valueCount}-slot template`,
+						);
+					}
+					for (let valueIndex = 0; valueIndex < template.valueCount; valueIndex++) {
+						write(survivor, valueIndex, next[valueIndex]);
+					}
 				}
 				if (stable !== null && stable[index] !== -2) {
 					if (deltaProducer !== null) {

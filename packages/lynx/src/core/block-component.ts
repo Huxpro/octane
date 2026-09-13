@@ -518,6 +518,11 @@ interface RangeRender {
 	readonly keys: readonly unknown[];
 	/** What the next render compares against, adopted only once this one applies. */
 	readonly retained: Map<unknown, RetainedRow | null>;
+	/**
+	 * Keys to remove from a reused retained map after acknowledgement. Non-null
+	 * only for the compiler-proven deletion-only shortcut.
+	 */
+	readonly removedRetainedKeys: readonly unknown[] | null;
 	readonly hasScopedRows: boolean;
 	/** Whether any block has to be mounted, removed, or moved. */
 	readonly structural: boolean;
@@ -1372,6 +1377,7 @@ export function lynxBlockProgramForComponent<Props>(
 					handlers: [listeners],
 					keys: EMPTY_RANGE_ITEMS,
 					retained,
+					removedRetainedKeys: null,
 					hasScopedRows: retainedRow !== null && retainedRow.scope !== null,
 					structural:
 						previousKeys === null ||
@@ -1411,6 +1417,7 @@ export function lynxBlockProgramForComponent<Props>(
 				handlers: [],
 				keys: previousKeys,
 				retained: previous,
+				removedRetainedKeys: null,
 				hasScopedRows: state.hasScopedRows,
 				structural: false,
 				rendered: [],
@@ -1490,6 +1497,7 @@ export function lynxBlockProgramForComponent<Props>(
 				keys: previousKeys,
 				retained: previous,
 				hasScopedRows: false,
+				removedRetainedKeys: null,
 				structural: false,
 				rendered: [],
 				source: list.items,
@@ -1501,6 +1509,87 @@ export function lynxBlockProgramForComponent<Props>(
 		}
 
 		const items = materializedItems ?? Array.from(list.items as Iterable<unknown>);
+		// A production keyed-selection proof says the row receives its item
+		// directly, every other capture is named in `deps`, and the final bit says
+		// it cannot observe its index. If those captures and the selection itself
+		// are unchanged, a strict subsequence of the committed item identities is
+		// therefore a non-empty deletion-only render: every survivor keeps the same key,
+		// props, values, and listeners. Match against committed descriptors rather
+		// than calling either producer over the entire surviving range again. An
+		// empty range deliberately takes the ordinary path below: its fresh empty
+		// Map can replace the committed descriptors after acknowledgement instead
+		// of allocating every old key and deleting them one by one.
+		if (
+			nextSelection !== null &&
+			contextsStable &&
+			!state.hasScopedRows &&
+			previousSelection !== null &&
+			previous !== null &&
+			previousKeys !== null &&
+			previousSelection[3] === true &&
+			nextSelection[3] === true &&
+			previousSelection[2] === nextSelection[2] &&
+			items.length !== 0 &&
+			items.length < previousKeys.length &&
+			Object.is(previousSelection[0], nextSelection[0]) &&
+			depsEqual(previousSelection[1], nextSelection[1])
+		) {
+			const rows: (readonly UniversalHostTemplateProgramValue[])[] = new Array(items.length);
+			const handlers: (readonly (LynxBlockListener | null)[])[] = new Array(items.length);
+			const keys: unknown[] = new Array(items.length);
+			const removedRetainedKeys: unknown[] = [];
+			let previousIndex = 0;
+			let reusable = true;
+			for (let index = 0; index < items.length; index++) {
+				let retainedRow: RetainedRow | null | undefined;
+				let itemKey: unknown;
+				while (previousIndex < previousKeys.length) {
+					itemKey = previousKeys[previousIndex++]!;
+					retainedRow = previous.get(itemKey);
+					if (
+						retainedRow != null &&
+						Object.is(
+							(retainedRow.props as Record<string, unknown>)[nextSelection[2]],
+							items[index],
+						)
+					) {
+						break;
+					}
+					removedRetainedKeys.push(itemKey);
+					retainedRow = undefined;
+				}
+				if (retainedRow == null) {
+					reusable = false;
+					break;
+				}
+				keys[index] = itemKey!;
+				rows[index] = retainedRow.values;
+				handlers[index] = retainedRow.listeners;
+			}
+			if (reusable) {
+				while (previousIndex < previousKeys.length) {
+					removedRetainedKeys.push(previousKeys[previousIndex++]!);
+				}
+				return {
+					state,
+					templateState: state.rowTemplate,
+					items,
+					rows,
+					handlers,
+					keys,
+					retained: previous,
+					removedRetainedKeys,
+					hasScopedRows: false,
+					structural: true,
+					rendered: [],
+					source: list.items,
+					keyedSelection: nextSelection,
+					componentRows: nextComponentRows,
+					contextValues,
+					sparse: null,
+				};
+			}
+		}
 		const rows: (readonly UniversalHostTemplateProgramValue[])[] = new Array(items.length);
 		const handlers: (readonly (LynxBlockListener | null)[])[] = new Array(items.length);
 		const keys: unknown[] = new Array(items.length);
@@ -1626,6 +1715,7 @@ export function lynxBlockProgramForComponent<Props>(
 			keys,
 			retained,
 			hasScopedRows,
+			removedRetainedKeys: null,
 			structural,
 			rendered,
 			source: list.items,
@@ -1662,6 +1752,7 @@ export function lynxBlockProgramForComponent<Props>(
 				handlers: EMPTY_HANDLER_ROWS,
 				keys: EMPTY_INDEXES,
 				retained,
+				removedRetainedKeys: null,
 				hasScopedRows: false,
 				structural: previousKeys !== null && previousKeys.length !== 0,
 				contextValues,
@@ -1796,6 +1887,7 @@ export function lynxBlockProgramForComponent<Props>(
 			handlers: [listeners],
 			keys: [branchState.key],
 			retained,
+			removedRetainedKeys: null,
 			hasScopedRows: retainedRow !== null && retainedRow.scope !== null,
 			structural:
 				previousKeys === null || previousKeys.length !== 1 || previousKeys[0] !== branchState.key,
@@ -1820,15 +1912,14 @@ export function lynxBlockProgramForComponent<Props>(
 	 * the render produced and differ only in how much they visit to do it,
 	 * which is why deleting the first changes no test — only counts.
 	 *
-	 * Through the reconciler, handlers are rebound over the range in final
-	 * order rather than only for the rows that arrived: a row's handlers close
-	 * over that row's item and this render's props, so a survivor that kept its
-	 * hosts still needs this render's closures. The linked list is already in
-	 * item order once the reconcile returns, so that costs a walk rather than a
-	 * lookup per row. The scoped path rebinds fewer rows because it knows more
-	 * about them: a row it did not call was retained on props this render found
-	 * equal, so the closures already bound reach the same functions and the
-	 * same item that fresh ones would.
+	 * On both paths, only rows this render actually called need their handlers
+	 * rebound. A retained row kept the complete descriptor — values and
+	 * listeners — after its props compared equal, and a move keeps the block's
+	 * listener-id run with its hosts. Rebinding every survivor after a structural
+	 * update would therefore replace a closure with the identical retained
+	 * closure while walking the whole range. Once the reconciler has installed
+	 * the final key map, the changed and newly mounted rows are reached directly
+	 * through the same ascending `rendered` proof used for their values.
 	 *
 	 * On either path, a row that has an empty hole this render is released
 	 * before it is rebound, for the reason `update` releases the block's own:
@@ -1866,6 +1957,9 @@ export function lynxBlockProgramForComponent<Props>(
 			return;
 		}
 		context.afterCommit(() => {
+			if (render.removedRetainedKeys !== null) {
+				for (const key of render.removedRetainedKeys) render.retained.delete(key);
+			}
 			// Reused descriptors still describe the same row, but a structural
 			// update may have changed that row's committed order. Stage that order
 			// on the completed render and publish it only after the core commit: an
@@ -1919,6 +2013,12 @@ export function lynxBlockProgramForComponent<Props>(
 			}
 			return;
 		}
+		if (render.removedRetainedKeys !== null) {
+			context.core.removeKeysForSlot(state.site!, render.removedRetainedKeys, (member) => {
+				context.root.releaseListeners(member);
+			});
+			return;
+		}
 		context.core.reconcileForSlot(
 			state.site!,
 			templateState.template,
@@ -1933,11 +2033,16 @@ export function lynxBlockProgramForComponent<Props>(
 			(member) => {
 				context.root.releaseListeners(member);
 			},
+			// `rendered` is appended during the forward item scan, so it is already
+			// the ascending proof the core needs. Survivors absent from it reused
+			// their complete descriptor; comparing every live slot again would only
+			// rediscover the identity the component layer already established.
+			render.rendered,
 		);
 		if (templateState.prepared!.events.length === 0) return;
-		let index = 0;
-		for (let member = state.site!.head; member !== null; member = member.next) {
-			const handlers = render.handlers[index++]!;
+		for (const index of render.rendered) {
+			const member = state.site!.items.get(render.keys[index])!;
+			const handlers = render.handlers[index]!;
 			if (handlers.includes(null)) context.root.releaseListeners(member);
 			context.root.bindListeners(member, handlers);
 		}

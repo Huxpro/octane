@@ -125,6 +125,10 @@ export function buildTableApp({
 	const src = path.join(root, 'app');
 	const stage = path.join(pluginDir, 'examples', STAGE_NAME);
 	const autoRows = Number(process.env.BENCH_AUTOROWS ?? '0') || 0;
+	const listRows = Number(process.env.BENCH_LIST_ROWS ?? '0') || 0;
+	if (autoRows > 0 && listRows > 0) {
+		throw new TypeError('BENCH_AUTOROWS and BENCH_LIST_ROWS are mutually exclusive.');
+	}
 	const profile = process.env.OCTANE_LYNX_PROFILE === '1';
 	const issue278Attribution = process.env.BENCH_ISSUE278_ATTRIBUTION === '1';
 	const issue278Counts = process.env.BENCH_ISSUE278_COUNTS === '1';
@@ -312,11 +316,13 @@ export function buildTableApp({
 	// the same source.
 	const distTag = tagFrom(process.env.BENCH_DIST_TAG);
 	const label =
-		(core === 'block'
-			? `octane table app (${core}/${blockMode})`
-			: core === 'automatic'
-				? 'octane table app (automatic product core)'
-				: 'octane table app') + (mtsProgram ? ' +mts-program' : '');
+		(listRows > 0
+			? `octane list app (${listRows} rows, ${core} core)`
+			: core === 'block'
+				? `octane table app (${core}/${blockMode})`
+				: core === 'automatic'
+					? 'octane table app (automatic product core)'
+					: 'octane table app') + (mtsProgram ? ' +mts-program' : '');
 	if (!silent) console.log(`[lynx-table] building ${label} (production)…`);
 	try {
 		execFileSync('npx', ['rspeedy', 'build', '--root', `examples/${STAGE_NAME}`], {
@@ -344,6 +350,7 @@ export function buildTableApp({
 		programSuffix +
 		distTag +
 		(autoRows > 0 ? `-rows${autoRows}` : '') +
+		(listRows > 0 ? `-list-rows${listRows}` : '') +
 		(issue278Attribution
 			? `-issue278-${issue278Validation}-${profile ? (issue278Counts ? 'counts' : 'timed') : issue278Timeline ? 'timeline' : 'control'}${issue278Scalar ? '-scalar' : ''}`
 			: '') +
