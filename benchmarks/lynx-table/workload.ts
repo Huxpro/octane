@@ -420,6 +420,10 @@ export function profileSnapshot(): {
 	denseReleaseHostCount: number;
 	firstTreeProgramOwnershipRuns: number;
 	firstTreeProgramOwnershipHosts: number;
+	programRunOwnedHosts: number;
+	programRunRetainedHostRefs: number;
+	programRunReleasedHostRefs: number;
+	programRunLiveRetainedHostRefs: number;
 } {
 	const profile = (globalThis as ProfileGlobals).__OCTANE_LYNX_PROF;
 	// Both fake threads share this realm, so the main-thread receiver also
@@ -456,6 +460,10 @@ export function profileSnapshot(): {
 		denseReleaseHostCount: profile?.denseReleaseHostCount ?? 0,
 		firstTreeProgramOwnershipRuns: profile?.firstTreeProgramOwnershipRuns ?? 0,
 		firstTreeProgramOwnershipHosts: profile?.firstTreeProgramOwnershipHosts ?? 0,
+		programRunOwnedHosts: profile?.programRunOwnedHosts ?? 0,
+		programRunRetainedHostRefs: profile?.programRunRetainedHostRefs ?? 0,
+		programRunReleasedHostRefs: profile?.programRunReleasedHostRefs ?? 0,
+		programRunLiveRetainedHostRefs: profile?.programRunLiveRetainedHostRefs ?? 0,
 	};
 }
 
@@ -699,6 +707,10 @@ export interface OpCounters {
 	readonly papiRemoveCount: number;
 	readonly denseReleaseHostCount: number;
 	readonly firstTreeProgramOwnershipRuns: number;
+	readonly programRunOwnedHosts: number;
+	readonly programRunRetainedHostRefs: number;
+	readonly programRunReleasedHostRefs: number;
+	readonly programRunLiveRetainedHostRefs: number;
 	readonly firstTreeProgramOwnershipHosts: number;
 }
 
@@ -836,6 +848,12 @@ export async function runTable(rows: number): Promise<TableRunResult> {
 					after.firstTreeProgramOwnershipRuns - before.firstTreeProgramOwnershipRuns,
 				firstTreeProgramOwnershipHosts:
 					after.firstTreeProgramOwnershipHosts - before.firstTreeProgramOwnershipHosts,
+				programRunOwnedHosts: after.programRunOwnedHosts - before.programRunOwnedHosts,
+				programRunRetainedHostRefs:
+					after.programRunRetainedHostRefs - before.programRunRetainedHostRefs,
+				programRunReleasedHostRefs:
+					after.programRunReleasedHostRefs - before.programRunReleasedHostRefs,
+				programRunLiveRetainedHostRefs: after.programRunLiveRetainedHostRefs,
 			};
 		};
 

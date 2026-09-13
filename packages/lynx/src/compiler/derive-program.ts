@@ -277,6 +277,27 @@ function universalHostPlanWithoutRefs(plan: UniversalHostPlan): HostRefReduction
  * describable but carries something the compiled create function would paint
  * differently, which is a build error naming what it was.
  */
+function residentNodeIndexes(
+	wire: UniversalHostTemplateProgram,
+	values: readonly { readonly node: number }[],
+	events: readonly { readonly node: number }[],
+	ranges: readonly { readonly node: number; readonly before?: number | null }[],
+	refs: readonly { readonly node: number }[],
+): readonly number[] {
+	const retained = new Set<number>([0]);
+	for (const value of values) retained.add(value.node);
+	for (const event of events) retained.add(event.node);
+	for (const range of ranges) {
+		retained.add(range.node);
+		if (range.before !== undefined && range.before !== null) retained.add(range.before);
+	}
+	for (const ref of refs) retained.add(ref.node);
+	for (let index = 0; index < wire.nodes.length; index++) {
+		if (wire.nodes[index]!.type === 'list') retained.add(index);
+	}
+	return Object.freeze([...retained].sort((left, right) => left - right));
+}
+
 export function deriveLynxProgramIR(plan: UniversalHostPlan): LynxProgramIR | null {
 	const encoder = buildTimeEncoder();
 	const refReduction = universalHostPlanWithoutRefs(plan);
@@ -291,6 +312,13 @@ export function deriveLynxProgramIR(plan: UniversalHostPlan): LynxProgramIR | nu
 	const derived = Object.freeze({
 		version: LYNX_PROGRAM_IR_VERSION,
 		wire: prepared.wire,
+		resident: residentNodeIndexes(
+			prepared.wire,
+			prepared.values,
+			prepared.events,
+			reduced.ranges,
+			refReduction.refs,
+		),
 		values: prepared.values,
 		events: prepared.events,
 		ranges: reduced.ranges,
@@ -311,6 +339,7 @@ export function deriveLynxProgramIR(plan: UniversalHostPlan): LynxProgramIR | nu
 	try {
 		emitLynxMainThreadProgram(derived.wire, {
 			name: 'octaneEligibilityProbe',
+			residentNodes: derived.resident,
 			ranges: derived.ranges,
 			slotUpdates: true,
 			structuralRuns: true,

@@ -38,6 +38,8 @@ export interface LynxProgramRef {
 export interface LynxProgramIR {
 	readonly version: typeof LYNX_PROGRAM_IR_VERSION;
 	readonly wire: UniversalHostTemplateProgram;
+	/** Sorted physical node indexes the resident run must retain after creation. */
+	readonly resident?: readonly number[];
 	readonly values: readonly PreparedUniversalTemplateProgramValue[];
 	readonly events: readonly PreparedUniversalTemplateProgramEvent[];
 	readonly ranges: readonly UniversalTemplateProgramRange[];

@@ -12,6 +12,10 @@ import { fileURLToPath } from 'node:url';
 import { JSDOM } from 'jsdom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+vi.hoisted(() => {
+	(globalThis as unknown as Record<string, unknown>).__OCTANE_LYNX_PROFILE__ = true;
+});
+
 vi.mock('../src/core/application-selection.js', () => ({
 	LYNX_COMPILED_PROGRAM_APPLICATION: true,
 }));
@@ -27,6 +31,7 @@ import { lynxBlockBackgroundRenderer, lynxMainThreadRenderer } from '../src/conf
 import { preparedLynxBlockDeltaBatch } from '../src/core/block-delta-producer.js';
 import { LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT } from '../src/core/compiled-program-wire.js';
 import type { LynxContextProxy, LynxContextProxyEvent } from '../src/core/protocol.js';
+import { lynxWireProfile } from '../src/core/profiling.js';
 import {
 	markFirstScreenSyncReady,
 	root as firstScreenRoot,
@@ -253,6 +258,7 @@ describe.sequential('@octanejs/lynx ordinary compiled-program product applicatio
 		const layers = await compileProductLayers();
 		expect(layers.backgroundCode).toContain('lynxProgram');
 		expect(layers.mainCode).toContain('universalPlan');
+		expect(layers.mainCode).toContain('resident');
 
 		dom = new JSDOM('<!doctype html><html><body></body></html>');
 		installLynxTestingEnv(globalThis, {
@@ -263,6 +269,11 @@ describe.sequential('@octanejs/lynx ordinary compiled-program product applicatio
 			firstScreen: true,
 			pageReady: true,
 		});
+		const profile = lynxWireProfile();
+		profile.programRunOwnedHosts = 0;
+		profile.programRunRetainedHostRefs = 0;
+		profile.programRunReleasedHostRefs = 0;
+		profile.programRunLiveRetainedHostRefs = 0;
 
 		const paintedRows: readonly ProductRow[] = [
 			{ id: 1, label: 'painted-one', image: 'painted-one.png' },
@@ -331,6 +342,12 @@ describe.sequential('@octanejs/lynx ordinary compiled-program product applicatio
 		expect(title!.textContent).toBe('adopted title');
 		expect(row1!.textContent).toContain('one:1');
 		expect(diagnostics).toEqual([]);
+		expect({
+			owned: profile.programRunOwnedHosts,
+			retained: profile.programRunRetainedHostRefs,
+			released: profile.programRunReleasedHostRefs,
+			live: profile.programRunLiveRetainedHostRefs,
+		}).toEqual({ owned: 21, retained: 15, released: 6, live: 15 });
 
 		const updated = await backgroundRoot.render(layers.background.CompiledProgramProductFixture, {
 			title: 'updated title',
@@ -350,6 +367,12 @@ describe.sequential('@octanejs/lynx ordinary compiled-program product applicatio
 		expect(dom.window.document.querySelector('#row-2')).toBeNull();
 		expect(dom.window.document.querySelector('#row-4')).not.toBeNull();
 		expect(row1!.textContent).toContain('one-edited:1');
+		expect({
+			owned: profile.programRunOwnedHosts,
+			retained: profile.programRunRetainedHostRefs,
+			released: profile.programRunReleasedHostRefs,
+			live: profile.programRunLiveRetainedHostRefs,
+		}).toEqual({ owned: 27, retained: 19, released: 8, live: 15 });
 
 		tap('#row-1');
 		await settle();
@@ -359,6 +382,7 @@ describe.sequential('@octanejs/lynx ordinary compiled-program product applicatio
 		await backgroundRoot.unmount();
 		backgroundRoot = null;
 		expect(dom.window.document.querySelector('#product-shell')).toBeNull();
+		expect(profile.programRunLiveRetainedHostRefs).toBe(0);
 		const late = new dom.window.Event('bindEvent:tap', { bubbles: true });
 		Object.defineProperty(late, 'type', { configurable: true, value: 'tap' });
 		row1!.dispatchEvent(late);

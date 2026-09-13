@@ -25,6 +25,9 @@ function ProductRow(props: {
 	};
 
 	<view class="product-row-shell">
+		<view class="product-static-frame">
+			<text>static</text>
+		</view>
 		<view id={'row-' + row.id} class={['product-row', 'taps-' + taps]} bindtap={onTap}>
 			<image id={'image-' + row.id} src={row.image} mode="aspectFill" />
 			<text class="product-label">{row.label + ':' + taps as string}</text>

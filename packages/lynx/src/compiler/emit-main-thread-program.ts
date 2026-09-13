@@ -795,6 +795,8 @@ export function emitLynxMainThreadProgram(
 	program: UniversalHostTemplateProgram,
 	options: {
 		readonly name: string;
+		/** Compiler-proved physical node indexes that remain addressable after a dense run. */
+		readonly residentNodes?: readonly number[];
 		/**
 		 * Also emit a direct value-slot setter on the returned create function.
 		 *
@@ -839,6 +841,19 @@ export function emitLynxMainThreadProgram(
 
 	const sites = bindingSites(program);
 	const valueCount = sites.length;
+	let resident: Set<number> | null = null;
+	if (options.residentNodes !== undefined) {
+		resident = new Set<number>();
+		let previous = -1;
+		for (const node of options.residentNodes) {
+			if (!Number.isSafeInteger(node) || node <= previous || node >= program.nodes.length) {
+				refuse('resident node indexes must be sorted, unique, and inside the program');
+			}
+			resident.add(node);
+			previous = node;
+		}
+		if (!resident.has(0)) refuse('a resident run must retain its root node');
+	}
 	const body: string[] = [];
 
 	for (let index = 0; index < program.nodes.length; index++) {
@@ -1045,6 +1060,23 @@ export function emitLynxMainThreadProgram(
 		);
 	}
 
+	if (resident !== null) {
+		const requireResident = (node: number, purpose: string): void => {
+			if (!resident!.has(node)) refuse('resident nodes omit ' + purpose + ' node ' + node);
+		};
+		for (const site of sites) requireResident(site.node, 'value');
+		for (const event of program.events) requireResident(event.node, 'event');
+		for (const range of ranges) {
+			requireResident(range.node, 'range-parent');
+			if (range.before !== undefined && range.before !== null) {
+				requireResident(range.before, 'range-anchor');
+			}
+		}
+		for (let index = 0; index < program.nodes.length; index++) {
+			if (program.nodes[index]!.type === 'list') requireResident(index, 'list');
+		}
+	}
+
 	const params = ['pageId'];
 	for (let index = 0; index < valueCount; index++) params.push(`v${index}`);
 	for (let index = 0; index < program.events.length; index++) params.push(`e${index}`);
@@ -1057,12 +1089,11 @@ export function emitLynxMainThreadProgram(
 		.map((_node, index) => `n${index}`)
 		.concat(ranges.map((_range, index) => (painted.has(index) ? `t${index}` : 'undefined')))
 		.join(', ');
-	// Publish each created host into the caller-owned output table immediately.
-	// A later PAPI write may throw, and an incremental command-path mount needs
-	// every already-created node to remain discoverable for fault cleanup. The
-	// old tail writes exposed nodes only after a whole instance completed. Moving
-	// the same writes beside creation changes no successful-path work and lets a
-	// failed driver retain the prefix it actually made.
+	// Publish each created host into the caller-owned dense table immediately.
+	// A later PAPI write may throw, and first-screen capture still needs every
+	// already-created node for logical identity. A resident consumer may compact
+	// this table only after creation succeeds; keeping that policy outside the
+	// emitter preserves the run ABI and one straight-line create implementation.
 	const driverBody = body.flatMap((line) => {
 		const created = /^\t\tvar n(\d+) =/.exec(line);
 		if (created === null) return [line];

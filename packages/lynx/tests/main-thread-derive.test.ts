@@ -221,11 +221,13 @@ describe('deriving the shared Lynx program IR from a plan', () => {
 	it('lowers a plan the way the run-time lowering lowers it', () => {
 		const derived = deriveLynxProgramIR(CARD_PLAN);
 		expect(derived).not.toBeNull();
-		const { version, addressable, ...lowered } = derived!;
+		const { version, addressable, resident, ...lowered } = derived!;
 		// No range holes in this plan, so both arms are told the same thing and
 		// the only variable left is the container the build-time driver lacks.
 		expect(version).toBe(1);
 		expect(addressable).toBe(true);
+		expect(resident).toEqual([0, 1, 2, 3, 5]);
+		expect(Object.isFrozen(resident)).toBe(true);
 		expect(lowered).toEqual(throughRuntimeLowering(CARD_PLAN, () => false));
 	});
 
@@ -263,13 +265,14 @@ describe('deriving the shared Lynx program IR from a plan', () => {
 	it('reads its keyed range holes off the plan rather than off a value', () => {
 		const derived = deriveLynxProgramIR(TABLE_PLAN);
 		expect(derived).not.toBeNull();
-		const { version, addressable, ...lowered } = derived!;
+		const { version, addressable, resident, ...lowered } = derived!;
 		// Slot 1 is the `kind: 'slot'` hole and slot 0 is the `kind: 'text'` one.
 		// A build that could not tell them apart would either mount the range as
 		// a stray empty text node or drop the caption.
 		expect(version).toBe(1);
 		expect(addressable).toBe(true);
 		expect(derived!.ranges).toEqual([{ slot: 1, node: 0, before: null }]);
+		expect(resident).toEqual([0, 2]);
 		expect(derived!.wire.nodes).toHaveLength(3);
 		expect(lowered).toEqual(throughRuntimeLowering(TABLE_PLAN, (slot) => slot === 1));
 	});
@@ -277,10 +280,11 @@ describe('deriving the shared Lynx program IR from a plan', () => {
 	it('records the next retained sibling for a non-tail keyed range', () => {
 		const derived = deriveLynxProgramIR(NON_TAIL_TABLE_PLAN);
 		expect(derived).not.toBeNull();
-		const { version, addressable, ...lowered } = derived!;
+		const { version, addressable, resident, ...lowered } = derived!;
 		expect(version).toBe(1);
 		expect(addressable).toBe(true);
 		expect(derived!.ranges).toEqual([{ slot: 0, node: 0, before: 1 }]);
+		expect(resident).toEqual([0, 1]);
 		expect(lowered).toEqual(throughRuntimeLowering(NON_TAIL_TABLE_PLAN, (slot) => slot === 0));
 	});
 

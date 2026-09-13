@@ -323,6 +323,8 @@ export interface UniversalProgramPlan {
 	readonly slots: readonly (UniversalSlotKind | null)[];
 	/** How many hosts the program creates. */
 	readonly nodes: number;
+	/** Physical node indexes retained after a dense run; absent means every node. */
+	readonly resident?: readonly number[];
 	/** Plan slot feeding each positional value parameter, in parameter order. */
 	readonly values: readonly number[];
 	/** Listener parameters in parameter order, one entry per event site. */

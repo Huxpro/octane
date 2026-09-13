@@ -297,13 +297,13 @@ describe('lynx-target native list, end to end', () => {
 		expectSameAcrossCells(FEED_SOURCE, 'Feed');
 	});
 
-	it('keeps a ref-held list, whose root stays a plan, identical across encodings', () => {
-		// The mixed module: one `ref` costs the root plan its lowering while the
-		// rows keep theirs, so the list is interpreted and its cells are not.
+	it('keeps a ref-held list compiled and identical across encodings', () => {
+		// Compiler-owned ref capture preserves the authored callback outside the
+		// create driver, so both the list root and its rows remain lowered.
 		const lynx = compileAt(HELD_SOURCE, '/src/Held.lynx.tsrx', 'lynx');
 		expect(lynx).toContain('.h("list-item")');
-		expect(lynx).not.toContain('.h("list")');
-		expect(lynx).toContain('"type": "list"');
+		expect(lynx).toContain('.h("list")');
+		expect(lynx).not.toContain('"type": "list"');
 
 		expectSameAcrossCells(HELD_SOURCE, 'Held');
 	});

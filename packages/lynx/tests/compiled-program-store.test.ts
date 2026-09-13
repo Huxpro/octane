@@ -3,10 +3,15 @@ import type {
 	UniversalProgramCreate,
 	UniversalProgramPlan,
 } from 'octane/universal/native';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.hoisted(() => {
+	(globalThis as unknown as Record<string, unknown>).__OCTANE_LYNX_PROFILE__ = true;
+});
 
 import { emitLynxMainThreadProgram } from '../src/compiler/emit-main-thread-program.js';
 import { createLynxCompiledProgramStore } from '../src/core/compiled-program-store.js';
+import { lynxWireProfile } from '../src/core/profiling.js';
 import {
 	decodeLynxNativeEventToken,
 	encodeLynxNativeEventToken,
@@ -63,10 +68,14 @@ const LIST_EVENT_ROW: UniversalHostTemplateProgram = {
 	events: [{ node: 0, type: 'bindtap', priority: 'discrete' }],
 };
 
-function emittedPlan(papi: LynxElementPAPI<FakeNode>): UniversalProgramPlan {
+function emittedPlan(
+	papi: LynxElementPAPI<FakeNode>,
+	resident?: readonly number[],
+): UniversalProgramPlan {
 	const emission = emitLynxMainThreadProgram(ROW, {
 		name: 'createCompactRow',
 		slotUpdates: true,
+		residentNodes: resident,
 	});
 	const bind = new Function(`return (${emission.source});`)() as (
 		host: unknown,
@@ -75,6 +84,7 @@ function emittedPlan(papi: LynxElementPAPI<FakeNode>): UniversalProgramPlan {
 		kind: 'program',
 		slots: ['p:id', 'p:class', 'c'],
 		nodes: ROW.nodes.length,
+		...(resident === undefined ? null : { resident }),
 		values: [0, 1, 2],
 		events: [],
 		ranges: [],
@@ -82,16 +92,18 @@ function emittedPlan(papi: LynxElementPAPI<FakeNode>): UniversalProgramPlan {
 	};
 }
 
-function emittedEventPlan(): UniversalProgramPlan {
+function emittedEventPlan(resident?: readonly number[]): UniversalProgramPlan {
 	const emission = emitLynxMainThreadProgram(EVENT_ROW, {
 		name: 'createCompactEventRow',
 		slotUpdates: true,
+		residentNodes: resident,
 	});
 	const bind = new Function(`return (${emission.source});`)() as UniversalProgramPlan['bind'];
 	return {
 		kind: 'program',
 		slots: ['p:id', 'p:class', 'c', 'e:bindtap'],
 		nodes: EVENT_ROW.nodes.length,
+		...(resident === undefined ? null : { resident }),
 		values: [0, 1, 2],
 		events: EVENT_ROW.events.map((event) => ({ ...event, slot: 3 })),
 		ranges: [],
@@ -104,18 +116,21 @@ function emittedListPlan(
 	slots: UniversalProgramPlan['slots'],
 	values: UniversalProgramPlan['values'],
 	ranges: UniversalProgramPlan['ranges'] = [],
+	resident?: readonly number[],
 ): UniversalProgramPlan {
 	const emission = emitLynxMainThreadProgram(program, {
 		name: program === LIST_SHELL ? 'createCompactList' : 'createCompactListRow',
 		slotUpdates: true,
 		structuralRuns: true,
 		ranges: ranges.map((range) => ({ node: range.node, before: range.before })),
+		residentNodes: resident,
 	});
 	const bind = new Function('return (' + emission.source + ');')() as UniversalProgramPlan['bind'];
 	return {
 		kind: 'program',
 		slots,
 		nodes: program.nodes.length,
+		...(resident === undefined ? null : { resident }),
 		values,
 		events: program.events.map((event, index) => ({ ...event, slot: values.length + index })),
 		ranges,
@@ -191,7 +206,19 @@ function paintAdoptableRows(
 			}),
 		),
 	).flat();
-	plan.bind(papi).run!(papi.getUniqueId(page), count, values, events, [], nodes);
+	const create = plan.bind(papi);
+	for (let row = 0; row < count; row++) {
+		const valueOffset = row * plan.values.length;
+		const eventOffset = row * plan.events.length;
+		const created = create(
+			papi.getUniqueId(page),
+			...values.slice(valueOffset, valueOffset + plan.values.length),
+			...events.slice(eventOffset, eventOffset + plan.events.length),
+		);
+		for (let index = 0; index < plan.nodes; index++) {
+			nodes[row * plan.nodes + index] = created[index] as FakeNode;
+		}
+	}
 	for (let row = 0; row < count; row++) {
 		papi.insertBefore(page, nodes[row * plan.nodes]!, null);
 	}
@@ -284,9 +311,10 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 			},
 		};
 		const page = papi.createPage('0', 0);
-		const plan = emittedEventPlan();
+		const plan = emittedEventPlan([0, 2]);
 		const values = ['row-10', 'cold', 'ten', 'row-14', 'cold', 'fourteen'];
 		const nodes = paintAdoptableRows(papi, page, plan, values, 10, 4, 1_000_000);
+		expect(nodes.every((node) => node !== undefined)).toBe(true);
 		const paintedTokens = page.children.map((node) => node.events.get('bindEvent:tap'));
 		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 47, 1_000_000);
 		hostWrites = 0;
@@ -303,6 +331,9 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 			stride: 4,
 			values,
 		});
+		expect(store.node(2, 0)).toBe(nodes[0]);
+		expect(store.node(2, 2)).toBe(nodes[2]);
+		expect(() => store.node(2, 1)).toThrow(/lost a static node/);
 		store.commit();
 		expect(hostWrites).toBe(0);
 		expect(store.size()).toBe(2);
@@ -445,6 +476,38 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		expect(page.children).toEqual([nodes[0]]);
 	});
 
+	it('rejects incomplete resident metadata before binding or mutating the host', () => {
+		const papi = emittedHost();
+		const page = papi.createPage('0', 0);
+		const emitted = emittedPlan(papi);
+		let binds = 0;
+		const plan: UniversalProgramPlan = {
+			...emitted,
+			resident: [0],
+			wire: ROW,
+			bind(host) {
+				binds++;
+				return emitted.bind(host);
+			},
+		};
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page));
+
+		store.begin();
+		expect(() =>
+			store.mount({
+				firstHandle: 1,
+				count: 1,
+				parent: page,
+				before: null,
+				plan,
+				values: ['row-1', 'cold', 'label-1'],
+			}),
+		).toThrow(/resident set omits bound node 2/);
+		expect(binds).toBe(0);
+		expect(page.children).toEqual([]);
+		store.rollback();
+	});
+
 	it('rejects an incoherent event plan before binding its driver or mutating the host', () => {
 		const papi = emittedHost();
 		const page = papi.createPage('0', 0);
@@ -513,6 +576,81 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		expect(store.set(2, 0, 'selected')).toBe(true);
 		store.commit();
 		expect(page.children.map((node) => node.id)).toEqual(['row-1', 'selected', 'row-3']);
+	});
+
+	it('retains only later-observable nodes across mount, update, move, and clear', () => {
+		const papi = emittedHost();
+		const page = papi.createPage('0', 0);
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page));
+		const plan = emittedPlan(papi, [0, 2]);
+		const profile = lynxWireProfile();
+		const ownedBefore = profile.programRunOwnedHosts;
+		const retainedBefore = profile.programRunRetainedHostRefs;
+		const releasedBefore = profile.programRunReleasedHostRefs;
+		const liveBefore = profile.programRunLiveRetainedHostRefs;
+
+		store.begin();
+		store.mount({
+			firstHandle: 1,
+			count: 2,
+			parent: page,
+			before: null,
+			plan,
+			values: ['row-1', 'cold', 'label-1', 'row-2', 'cold', 'label-2'],
+		});
+		expect(store.node(1, 0)).toBe(page.children[0]);
+		expect(store.node(1, 2).text).toBe('label-1');
+		expect(() => store.node(1, 1)).toThrow(/lost a static node/);
+		store.commit();
+		expect(page.children.map((node) => node.id)).toEqual(['row-1', 'row-2']);
+		expect(profile.programRunOwnedHosts - ownedBefore).toBe(6);
+		expect(profile.programRunRetainedHostRefs - retainedBefore).toBe(4);
+		expect(profile.programRunReleasedHostRefs - releasedBefore).toBe(2);
+		expect(profile.programRunLiveRetainedHostRefs - liveBefore).toBe(4);
+
+		store.begin();
+		expect(store.set(2, 2, 'updated')).toBe(true);
+		expect(store.move(1, page, null)).toBe(true);
+		store.commit();
+		expect(page.children.map((node) => node.id)).toEqual(['row-2', 'row-1']);
+		expect(page.children[0]!.children[0]!.children[0]!.text).toBe('updated');
+
+		store.begin();
+		store.clear(page);
+		store.commit();
+		expect(store.size()).toBe(0);
+		expect(page.children).toEqual([]);
+		expect(profile.programRunLiveRetainedHostRefs).toBe(liveBefore);
+	});
+
+	it.each([1, 1_000])('scales retained references with observable density at %i rows', (count) => {
+		const papi = emittedHost();
+		const page = papi.createPage('0', 0);
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page));
+		const plan = emittedPlan(papi, [0, 2]);
+		const values = Array.from({ length: count }, (_, row) => [
+			'row-' + row,
+			'cold',
+			'label-' + row,
+		]).flat();
+		const profile = lynxWireProfile();
+		const ownedBefore = profile.programRunOwnedHosts;
+		const retainedBefore = profile.programRunRetainedHostRefs;
+		const releasedBefore = profile.programRunReleasedHostRefs;
+		const liveBefore = profile.programRunLiveRetainedHostRefs;
+
+		store.begin();
+		store.mount({ firstHandle: 1, count, parent: page, before: null, plan, values });
+		store.commit();
+		expect(page.children).toHaveLength(count);
+		expect(profile.programRunOwnedHosts - ownedBefore).toBe(count * 3);
+		expect(profile.programRunRetainedHostRefs - retainedBefore).toBe(count * 2);
+		expect(profile.programRunReleasedHostRefs - releasedBefore).toBe(count);
+		expect(profile.programRunLiveRetainedHostRefs - liveBefore).toBe(count * 2);
+
+		store.dispose();
+		expect(page.children).toEqual([]);
+		expect(profile.programRunLiveRetainedHostRefs).toBe(liveBefore);
 	});
 
 	it('accepts an opaque non-object Element handle published by a native driver', () => {
@@ -1011,8 +1149,14 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		const papi = emittedHost(true);
 		const page = papi.createPage('0', 0);
 		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 47);
-		const shell = emittedListPlan(LIST_SHELL, ['r'], [], [{ slot: 0, node: 1, id: 1 }]);
-		const row = emittedListPlan(LIST_EVENT_ROW, ['p:item-key', 'c', 'e:bindtap'], [0, 1]);
+		const shell = emittedListPlan(LIST_SHELL, ['r'], [], [{ slot: 0, node: 1, id: 1 }], [0, 1]);
+		const row = emittedListPlan(
+			LIST_EVENT_ROW,
+			['p:item-key', 'c', 'e:bindtap'],
+			[0, 1],
+			[],
+			[0, 2],
+		);
 
 		store.begin();
 		store.mount({

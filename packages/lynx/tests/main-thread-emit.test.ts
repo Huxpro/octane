@@ -1580,6 +1580,42 @@ describe('Lynx main-thread program dense run driver', () => {
 		).toBe(false);
 	});
 
+	it('keeps dense run outputs while validating compiler-proved resident nodes', () => {
+		const resident = [0, 1, 2, 3, 5];
+		const emission = emitLynxMainThreadProgram(SLOT_UPDATES, {
+			name: 'createResidentRows',
+			residentNodes: resident,
+			slotUpdates: true,
+		});
+		const papi = createHost();
+		const page = papi.createPage('0', 0);
+		const create = new Function(`return (${emission.source});`)()(papi) as InstantiatedSlotCreate;
+		const values = ['first', 'ignored', 1, 'folded', 'raw'];
+		const stride = SLOT_UPDATES.nodes.length;
+		const outputs = new Array<unknown>(stride * 2);
+		create.run!(papi.getUniqueId(page), 2, [...values, ...values], [], [], outputs);
+
+		expect(outputs.filter((node) => node !== undefined)).toHaveLength(stride * 2);
+		expect(outputs[4]).toBeDefined();
+		expect(outputs[stride + 4]).toBeDefined();
+		papi.insertBefore(page, outputs[0] as never, null);
+		papi.insertBefore(page, outputs[stride] as never, null);
+		expect(page.children).toHaveLength(2);
+		expect((outputs[0] as { readonly children: readonly unknown[] }).children).toHaveLength(4);
+		expect(create.set(outputs, 4, 'updated', stride)).toBe(true);
+		expect(shape(outputs[stride + 5] as never)).toMatchObject({ text: 'updated' });
+	});
+
+	it('refuses a resident set that drops a later-observable node', () => {
+		expect(() =>
+			emitLynxMainThreadProgram(SLOT_UPDATES, {
+				name: 'createIncompleteResidentRows',
+				residentNodes: [0],
+				slotUpdates: true,
+			}),
+		).toThrow(/resident nodes omit value node/);
+	});
+
 	it('emits an explicit physical-stride driver for structural range outputs', () => {
 		const ranges = [{ node: 0 }, ...RANGED_ROW_SITES];
 		const emission = emitLynxMainThreadProgram(RANGED_ROW, {

@@ -1,6 +1,6 @@
 # Lynx Block semantic support
 
-Status: implementation contract for roadmap issues #378, #379, and #380. This document
+Status: implementation contract for roadmap issues #378, #379, #380, and #381. This document
 describes the current repository state; it is not a claim that every child issue or the
 Lynx roadmap is complete.
 
@@ -80,7 +80,44 @@ plan. Removing or replacing the identity disposes the active scope before the
 new identity is published. A non-tail structural range carries its
 compiler-selected static sibling through the program digest, first-screen plan,
 compact delta frame, and resident range store.
-and resident range store.
+
+## Resident host retention
+
+The compiler derives one sorted, immutable `resident` node set per program. It
+always contains the root and every value, event, range parent/anchor, authored
+ref, main-thread worklet target, and native `list` node. The set is optional so
+older or hand-written version-1 plans retain every node; when present it is part
+of the cross-layer program digest and both the emitter and development store
+validate the facts they can observe before binding a driver.
+
+Both `create()` and `run()` preserve their dense output ABI for synchronous
+first-screen capture and legacy consumers. After a successful driver call, the
+compiled-product store copies only resident positions into its caller-sized
+physical-stride ownership table; adoption performs the same compaction from its
+dense first-screen source. The unused positions are holes: offset arithmetic
+does not change, while static internal native controls remain linked below the
+retained root without a long-lived JavaScript reference. Native-list cell
+ownership copies and clears the same resident positions; list-node indexes
+are derived once per plan, and remove, rollback, clear, recycle, and terminal
+disposal release each owner once.
+
+Profile builds expose `programRunOwnedHosts`,
+`programRunRetainedHostRefs`, `programRunReleasedHostRefs`, and the live gauge
+`programRunLiveRetainedHostRefs`. The authored compiled-product lifecycle fixture
+creates 21 hosts at adoption, retains 15 references, omits 6 static references,
+keeps the live count at 15 while replacing a keyed row, and returns it to zero on
+unmount. The store density regression scales the same invariant from one to
+1,000 rows: `3N` native hosts, `2N` retained references, `N` released references,
+and zero live references after disposal.
+
+A same-machine production A/B against exact parent `887042796` attributes the
+shipping cost instead of the already-stale frozen absolute budget. Preview adds
+244 raw / 76 gzip bundle bytes (decoded MTS: 130 / 44); IFR adds 265 raw / 95
+gzip (decoded MTS: 151 / 72). The rows-0 inventory adds 680 raw / 370 gzip
+overall and 700 raw / 231 gzip on MTS, while BTS raw is unchanged and gzip is
+3 bytes smaller. The parent already fails the frozen preview-MTS ceiling at
+101,597 gzip bytes versus 82,070; this candidate reads 101,641. Both semantic
+checksums remain valid and all available relative ratio guards pass.
 
 ## Transactional publication rules
 

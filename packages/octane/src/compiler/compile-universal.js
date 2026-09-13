@@ -5191,11 +5191,7 @@ function lynxCompilerProgramRefFeatureAsts(state, origin = null) {
 	if (!hasLynxCompilerProgramRefs(state)) return [];
 	return [
 		inheritGeneratedOrigin(
-			{
-				type: 'ExpressionStatement',
-				expression: generatedCall(state.helpers.compilerProgramRefs, [], origin),
-				metadata: { path: [] },
-			},
+			b.stmt(generatedCall(state.helpers.compilerProgramRefs, [], origin)),
 			origin,
 		),
 	];
@@ -5595,6 +5591,7 @@ function programDigest(derived) {
 	if (derived.refs !== undefined && derived.refs.length !== 0) {
 		source += '\0' + canonicalDigestSource(derived.refs);
 	}
+	if (derived.resident !== undefined) source += '\0' + canonicalDigestSource(derived.resident);
 	let high = 0x811c9dc5;
 	let low = 0x9dc5811c;
 	for (let index = 0; index < source.length; index++) {
@@ -5741,6 +5738,7 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 	// every value and keeps its parameter without compiling anything.
 	const emission = backend.emitLynxMainThreadProgram(derived.wire, {
 		name,
+		residentNodes: derived.resident,
 		ranges: derived.ranges,
 		slotUpdates: true,
 		structuralRuns: true,
@@ -5778,6 +5776,15 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 			// nodes come back from `bind` in this order, so nothing walks anything to
 			// pair them up.
 			b.prop('init', b.literal('nodes', '"nodes"'), b.literal(derived.wire.nodes.length)),
+			...(derived.resident === undefined
+				? []
+				: [
+						b.prop(
+							'init',
+							b.literal('resident', '"resident"'),
+							jsonValueToAst(derived.resident, origin),
+						),
+					]),
 			// Still reduced to plan-slot indices. A value site also carries the node
 			// and prop name it was derived from, and neither has a reader until #163's
 			// C4 applies updates through them — the chunk whose size is the point does

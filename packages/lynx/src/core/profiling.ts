@@ -189,6 +189,14 @@ export interface LynxWireProfile {
 	programRunDriverRuns: number;
 	/** Main: row instances painted by resident straight-line run drivers. */
 	programRunDriverRows: number;
+	/** Main: physical hosts created by non-list compiled-program run attempts. */
+	programRunOwnedHosts: number;
+	/** Main: host references kept in those runs for later-observable nodes. */
+	programRunRetainedHostRefs: number;
+	/** Main: template-static host references omitted from long-lived run state. */
+	programRunReleasedHostRefs: number;
+	/** Main: retained host references still live in non-list compiled-program runs. */
+	programRunLiveRetainedHostRefs: number;
 	/** Main: eligible addressed runs that retained the descriptor interpreter. */
 	programRunDriverFallbacks: number;
 	/** Main: why the latest eligible addressed run retained the descriptor interpreter. */
@@ -262,6 +270,10 @@ export function lynxWireProfile(): LynxWireProfile {
 		denseReleaseHostCount: 0,
 		programRunDriverRuns: 0,
 		programRunDriverRows: 0,
+		programRunOwnedHosts: 0,
+		programRunRetainedHostRefs: 0,
+		programRunReleasedHostRefs: 0,
+		programRunLiveRetainedHostRefs: 0,
 		programRunDriverFallbacks: 0,
 		programRunDriverFallback: null,
 		listProgramCellRuns: 0,

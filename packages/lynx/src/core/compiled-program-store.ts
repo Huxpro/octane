@@ -7,6 +7,7 @@ import type { LynxHostAttachmentChange } from './protocol.js';
 import { requireLynxMainThreadWorkletFeature } from './main-thread-worklet-feature.js';
 import type { LynxCompiledProgramWorkletStore } from './compiled-program-worklets.js';
 import type { LynxMainThreadWorkletRegistry } from './worklets.js';
+import { LYNX_PROFILE, lynxWireProfile } from './profiling.js';
 import {
 	createLynxListItemDescriptor,
 	lynxListReuseKey,
@@ -304,6 +305,53 @@ function isSlotValue<Node extends LynxElementRef>(
 	return isScalar(value) || worklets?.validValue(plan, slot, value) === true;
 }
 
+function validateResidentNodes(plan: UniversalProgramPlan): void {
+	const resident = plan.resident;
+	if (resident === undefined) return;
+	if (!Array.isArray(resident) || resident.length === 0 || resident[0] !== 0) {
+		fail('requires resident node 0');
+	}
+	const retained = new Set<number>();
+	let previous = -1;
+	for (const node of resident) {
+		if (!Number.isSafeInteger(node) || node <= previous || node >= plan.nodes) {
+			fail('requires sorted unique resident node indexes');
+		}
+		retained.add(node);
+		previous = node;
+	}
+	const requireNode = (node: number, purpose: string): void => {
+		if (!retained.has(node)) fail('resident set omits ' + purpose + ' node ' + node);
+	};
+	for (const event of plan.events) requireNode(event.node, 'event');
+	for (const range of plan.ranges) {
+		requireNode(range.node, 'range-parent');
+		if (range.before !== undefined && range.before !== null)
+			requireNode(range.before, 'range-anchor');
+	}
+	for (const node of plan.refs ?? []) requireNode(node, 'ref');
+	for (let index = 0; index < (plan.wire?.nodes.length ?? 0); index++) {
+		const wire = plan.wire!.nodes[index]!;
+		if ((wire.bindings?.length ?? 0) !== 0 || wire.type === 'list') requireNode(index, 'bound');
+	}
+}
+
+function compactResidentNodes<Node extends LynxElementRef>(
+	plan: UniversalProgramPlan,
+	count: number,
+	stride: number,
+	source: readonly (Node | undefined)[],
+): (Node | undefined)[] | null {
+	const resident = plan.resident;
+	if (resident === undefined) return null;
+	const compact = new Array<Node | undefined>(stride * count);
+	for (let row = 0; row < count; row++) {
+		const offset = row * stride;
+		for (const node of resident) compact[offset + node] = source[offset + node];
+	}
+	return compact;
+}
+
 function cleanupRoot<Node extends LynxElementRef>(
 	papi: LynxElementPAPI<Node>,
 	root: Node | undefined,
@@ -362,6 +410,28 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	let closing = false;
 	let workletStore: LynxCompiledProgramWorkletStore<Node> | null = null;
 	const noWorkletPlans = new WeakSet<UniversalProgramPlan>();
+	const listNodeIndexes = new WeakMap<UniversalProgramPlan, readonly number[]>();
+	const retainedHostRefs = (plan: UniversalProgramPlan): number =>
+		plan.resident?.length ?? plan.nodes;
+	const publishInstance = (handle: number, instance: CompiledProgramInstance<Node>): void => {
+		instances.set(handle, instance);
+		if (LYNX_PROFILE && !instance.run.deferred) {
+			lynxWireProfile().programRunLiveRetainedHostRefs += retainedHostRefs(instance.run.plan);
+		}
+	};
+	const releaseInstance = (handle: number, instance: CompiledProgramInstance<Node>): void => {
+		if (!instances.delete(handle) || !LYNX_PROFILE || instance.run.deferred) return;
+		lynxWireProfile().programRunLiveRetainedHostRefs -= retainedHostRefs(instance.run.plan);
+	};
+	const profileRunOwnership = (plan: UniversalProgramPlan, count: number): void => {
+		if (!LYNX_PROFILE) return;
+		const owned = plan.nodes * count;
+		const retained = retainedHostRefs(plan) * count;
+		const profile = lynxWireProfile();
+		profile.programRunOwnedHosts += owned;
+		profile.programRunRetainedHostRefs += retained;
+		profile.programRunReleasedHostRefs += owned - retained;
+	};
 	const workletsFor = (
 		plan: UniversalProgramPlan,
 	): LynxCompiledProgramWorkletStore<Node> | null => {
@@ -527,7 +597,11 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		writeCellEvents(cell, cell.item, false);
 		const run = owner.run;
 		const offset = owner.index * run.stride;
-		for (let index = 0; index < run.stride; index++) run.nodes[offset + index] = undefined;
+		if (run.plan.resident === undefined) {
+			for (let index = 0; index < run.stride; index++) run.nodes[offset + index] = undefined;
+		} else {
+			for (const index of run.plan.resident) run.nodes[offset + index] = undefined;
+		}
 		cell.owner = null;
 	};
 	const destroyListCell = (
@@ -574,7 +648,12 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	): void => {
 		const run = item.instance.run;
 		const offset = item.instance.index * run.stride;
-		for (let index = 0; index < run.stride; index++) run.nodes[offset + index] = cell.nodes[index];
+		if (run.plan.resident === undefined) {
+			for (let index = 0; index < run.stride; index++)
+				run.nodes[offset + index] = cell.nodes[index];
+		} else {
+			for (const index of run.plan.resident) run.nodes[offset + index] = cell.nodes[index];
+		}
 		cell.item = item;
 		cell.owner = item.instance;
 		cell.awaitingEnqueue = false;
@@ -780,7 +859,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			() => {},
 		);
 		list.disposed = true;
-		for (const cell of [...list.cellsBySign.values()]) destroyListCell(list, cell);
+		for (const cell of list.cellsBySign.values()) destroyListCell(list, cell);
 		list.cellsBySign.clear();
 		list.attachedByHandle.clear();
 		list.retainedByHandle.clear();
@@ -792,10 +871,19 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	): CompiledProgramListState<Node>[] => {
 		if (lists === null) return [];
 		const output: CompiledProgramListState<Node>[] = [];
-		const wire = planWire(instance.run.plan);
+		const plan = instance.run.plan;
+		let indexes = listNodeIndexes.get(plan);
+		if (indexes === undefined) {
+			const found: number[] = [];
+			const wire = planWire(plan);
+			for (let index = 0; index < wire.nodes.length; index++) {
+				if (wire.nodes[index]!.type === 'list') found.push(index);
+			}
+			indexes = Object.freeze(found);
+			listNodeIndexes.set(plan, indexes);
+		}
 		const offset = instance.index * instance.run.stride;
-		for (let index = 0; index < wire.nodes.length; index++) {
-			if (wire.nodes[index]!.type !== 'list') continue;
+		for (const index of indexes) {
 			const node = instance.run.nodes[offset + index];
 			const list = node === undefined ? undefined : lists.get(node);
 			if (list !== undefined) output.push(list);
@@ -975,7 +1063,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 							cleanupRoot(papi, rootOf(instance));
 						}
 						unlink(instance, range);
-						instances.delete(handle);
+						releaseInstance(handle, instance);
 					}
 				} else if (opcode === JournalOpcode.Set) {
 					const previous = active.pop();
@@ -998,7 +1086,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 					const range = active.pop() as CompiledProgramRange<Node>;
 					const instance = active.pop() as CompiledProgramInstance<Node>;
 					const handle = active.pop() as number;
-					instances.set(handle, instance);
+					publishInstance(handle, instance);
 					relink(handle, instance, range);
 					if (instance.run.deferred) {
 						markListDirty(parent);
@@ -1169,7 +1257,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			const range = ranges.get(instance.parent);
 			if (range === undefined) fail(StoreFailure.RangeOrder);
 			unlink(instance, range);
-			instances.delete(handle);
+			releaseInstance(handle, instance);
 			markListDirty(instance.parent);
 			undo.push(handle, instance, range, instance.parent, null, JournalOpcode.Remove);
 			return;
@@ -1220,7 +1308,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		}
 		unlink(instance, range);
 		for (const list of listsInInstance(instance)) (pendingListDisposals ??= new Set()).add(list);
-		instances.delete(handle);
+		releaseInstance(handle, instance);
 		undo.push(handle, instance, range, parent, before, JournalOpcode.Remove);
 	};
 	const writeSet = (handle: number, slot: number, value: unknown): boolean => {
@@ -1418,6 +1506,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			// without re-validating that build-owned table in production; every value
 			// and identity arriving from the other thread remains checked.
 			if (typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__) {
+				validateResidentNodes(plan);
 				for (let site = 0; site < eventCount; site++) {
 					const event = plan.events[site]!;
 					if (
@@ -1455,10 +1544,11 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			}
 			nodes = new Array<Node | undefined>(nodeStride * input.count);
 		} else if (adoption) {
-			nodes = [...adopted.nodes];
-			if (nodes.length !== nodeStride * input.count) {
-				fail(StoreFailure.AdoptedArity);
-			}
+			const expectedNodes = nodeStride * input.count;
+			if (adopted.nodes.length !== expectedNodes) fail(StoreFailure.AdoptedArity);
+			nodes = compactResidentNodes(plan, input.count, nodeStride, adopted.nodes) ?? [
+				...adopted.nodes,
+			];
 		} else {
 			const preparedWorklets = directWorklets?.prepareMount(plan, input.count, values) ?? null;
 			const physicalValues = preparedWorklets?.values ?? values;
@@ -1479,9 +1569,11 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				}
 			}
 			const created = new Array<Node | undefined>(nodeStride * input.count);
+			let compact: (Node | undefined)[] | null = null;
 			try {
 				create.run(pageId, input.count, physicalValues, tokens, [], created);
 				preparedWorklets?.publish(created, nodeStride);
+				compact = compactResidentNodes(plan, input.count, nodeStride, created);
 				const before = next === null ? range.before : rootOf(instances.get(next)!);
 				for (let index = 0; index < input.count; index++) {
 					const node = created[index * nodeStride];
@@ -1508,7 +1600,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				}
 				throw error;
 			}
-			nodes = created;
+			nodes = compact ?? created;
 		}
 		if (eventCount !== 0) {
 			values.push(adoption ? adopted.firstId : 0, adoption ? adopted.stride : 0);
@@ -1525,6 +1617,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			refFirstId: null,
 			refStride: 0,
 		};
+		if (!deferred) profileRunOwnership(plan, input.count);
 		let runPrevious = previous;
 		for (let index = 0; index < input.count; index++) {
 			const handle = input.firstHandle + index;
@@ -1536,7 +1629,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				run,
 				visible: true,
 			};
-			instances.set(handle, instance);
+			publishInstance(handle, instance);
 			relink(handle, instance, range);
 			runPrevious = handle;
 		}
@@ -1753,7 +1846,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				}
 			}
 			if (lists !== null) {
-				for (const list of [...lists.values()]) {
+				for (const list of lists.values()) {
 					try {
 						disposeList(list);
 					} catch (error) {
@@ -1776,7 +1869,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 						errors.push(error);
 					}
 				}
-				if (rootReleased) instances.delete(handle);
+				if (rootReleased) releaseInstance(handle, instance);
 			}
 			try {
 				workletStore?.close();

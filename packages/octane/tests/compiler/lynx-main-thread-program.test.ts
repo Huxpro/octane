@@ -1761,6 +1761,7 @@ export function Card(props: { row: { id: number; label: string }; render: (id: n
 			'kind',
 			'nodes',
 			'ranges',
+			'resident',
 			'slots',
 			'values',
 			'version',
