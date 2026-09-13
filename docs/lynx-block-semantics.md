@@ -1,8 +1,9 @@
 # Lynx Block semantic support
 
-Status: implementation contract for roadmap issues #378, #379, #380, and #381. This document
-describes the current repository state; it is not a claim that every child issue or the
-Lynx roadmap is complete.
+Status: implementation contract through roadmap issue #382 (R10 release
+candidate). This document describes the current source/build state; it is not a
+claim that R11 native qualification, the default switch, or the full Lynx
+roadmap is complete.
 
 ## Reading the matrix
 
@@ -118,6 +119,44 @@ overall and 700 raw / 231 gzip on MTS, while BTS raw is unchanged and gzip is
 3 bytes smaller. The parent already fails the frozen preview-MTS ceiling at
 101,597 gzip bytes versus 82,070; this candidate reads 101,641. Both semantic
 checksums remain valid and all available relative ratio guards pass.
+
+The R10 production rows-0 inventory at `f63023d76` plus the working candidate
+measures 246,673 raw / 86,109 gzip / 74,684 Brotli bytes for the encoded Lynx
+bundle. Its decoded scripts are 82,464 / 25,621 / 22,620 bytes for MTS and
+159,748 / 46,231 / 40,454 bytes for BTS (raw / gzip / Brotli). Against exact
+parent `887042796`, the encoded artifact is +680 raw / +366 gzip, MTS is +700
+raw / +231 gzip, and BTS is unchanged raw and -7 gzip; the Web control is +700
+raw / +253 gzip. This distinguishes authored/emitted source, compressed script
+bytes, and the encoded TASM bundle. Actual engine bytecode, native load time,
+and native execution time are not observable in this Linux build receipt and
+remain R11 device evidence rather than inferred claims.
+
+Static creation source is guarded at 1, 8, 32, 128, and 256 hosts by a linear
+per-host ceiling, while the complex keyed-component and native-list products
+execute their resident programs through the JavaScript host acceptance suites.
+The packed consumer separately proves a content-hashed lazy chunk remains an
+independent artifact. These controls catch whole-template prefix duplication,
+runtime-graph transfer, and accidental lazy inlining; they are build/host
+execution evidence, not native latency measurements.
+
+## R10 toolchain boundary
+
+Plain `.ts` and `.js` custom hooks use the same main-thread render-only
+capability as `.tsrx` lowering. Effect arguments become `undefined` on MTS, and
+pure module-local function declarations or single function-valued declarators
+are removed only when all of their surviving reachability begins in those
+erased arguments. Helper chains and cycles are handled together. A helper also
+used by setup/render remains, and imports plus potentially effectful module
+initializers are left to the bundler. BTS remains unchanged.
+
+The clean packed-consumer matrix exercises production automatic selection,
+explicit whole-root Universal opt-out, development/HMR configuration, CSS and
+CSS Modules, referenced SVG assets, complex custom-hook semantics, native-list
+programs, and lazy code splitting. Automatic compact products are selected only
+after paired semantic, feature, program, ABI, and root-edge proof. A missing or
+mismatched proof fails closed for the complete entry; there is no dynamic
+mid-tree Universal fallback and no pair of full runtimes hidden in an eligible
+product.
 
 ## Transactional publication rules
 

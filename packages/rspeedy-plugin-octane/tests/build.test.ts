@@ -629,6 +629,127 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 			expect(mainProgram?.code).toContain('"kind": "program"');
 			expect(mainProgram?.code).toContain('"version": 1');
 			expect(mainProgram?.code).toContain('papi.createElement("image", pageId');
+			const decoded = await decodeNativeBundle(product);
+			expect(nativeScriptText(decoded['background-thread-script'])).toContain(
+				'octane-r10-background-selection',
+			);
+			expect(nativeScriptText(decoded['main-thread-script'])).not.toContain(
+				'octane-r10-background-selection',
+			);
+		} finally {
+			await result?.close();
+			rmSync(temporaryRoot, { recursive: true, force: true });
+		}
+	}, 120_000);
+
+	it('builds a fixed-shape native list as the compact production application', async () => {
+		const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-native-list-'));
+		const reports: unknown[] = [];
+		const moduleIdentifiers: string[] = [];
+		const retainedModuleIdentifiers: string[] = [];
+		const moduleSources: {
+			identifier: string;
+			layer?: string | null;
+			code: string;
+		}[] = [];
+		const rspeedy = await createRspeedy({
+			cwd: APPLICATION_FIXTURE,
+			loadEnv: false,
+			environment: ['lynx'],
+			rspeedyConfig: {
+				mode: 'production',
+				environments: { lynx: {} },
+				dev: { hmr: false, liveReload: false },
+				output: {
+					cleanDistPath: true,
+					dataUriLimit: 0,
+					distPath: { root: join(temporaryRoot, 'dist') },
+					filenameHash: false,
+					sourceMap: false,
+				},
+				source: { entry: { main: './src/native-list.ts' } },
+				splitChunks: false,
+				plugins: [
+					pluginOctane({ dev: false, hmr: false }),
+					programCoverageProbe(reports),
+					metadataProbe([], moduleIdentifiers, [], retainedModuleIdentifiers, moduleSources),
+				],
+			},
+		});
+		let result: Awaited<ReturnType<typeof rspeedy.build>> | undefined;
+		try {
+			result = await rspeedy.build();
+			expect(reports).toHaveLength(1);
+			expect(reports[0]).toMatchObject({
+				program: { version: 1, complete: true, reasons: [] },
+				semantic: { version: 1, paired: true, reasons: [] },
+				feature: {
+					version: 2,
+					paired: true,
+					modules: [
+						{
+							background: {
+								templateFeatures: expect.arrayContaining([
+									expect.objectContaining({ kind: 'native-list', name: 'list' }),
+									expect.objectContaining({ kind: 'native-list', name: 'list-item' }),
+								]),
+								keyedRanges: [
+									expect.objectContaining({
+										row: expect.objectContaining({
+											kind: 'local-component',
+											name: 'NativeListRow',
+										}),
+									}),
+								],
+							},
+						},
+					],
+					reasons: [],
+				},
+				selection: { version: 1, eligible: true, reasons: [] },
+				core: { version: 1, mode: 'automatic', selected: 'block', reasons: [] },
+				application: { version: 1, selected: 'compiled-program', reasons: [] },
+			});
+
+			const retained = retainedModuleIdentifiers.map((identifier) =>
+				identifier
+					.split('!')
+					.at(-1)!
+					.replace(/\|octane:(?:background|main-thread).*$/, '')
+					.split('?', 1)[0]
+					.replaceAll('\\\\', '/'),
+			);
+			for (const module of [
+				'core/application-selection.ts',
+				'core/client-driver.ts',
+				'core/compact-host-refs.ts',
+				'core/compiled-program-worklets.ts',
+				'main-worklets.ts',
+				'main-renderer.ts',
+				'core/main-thread-application-selection.ts',
+			]) {
+				expect(
+					retained.some((identifier) => identifier.endsWith(`/packages/lynx/src/${module}`)),
+					`${module}\n${retained.join('\n')}`,
+				).toBe(false);
+			}
+			const backgroundProgram = moduleSources
+				.filter((module) => module.layer === 'octane:background')
+				.map((module) => module.code)
+				.join('\n');
+			const mainProgram = moduleSources
+				.filter((module) => module.layer === 'octane:main-thread')
+				.map((module) => module.code)
+				.join('\n');
+			expect(backgroundProgram).toContain('"type": "list"');
+			expect(backgroundProgram).toContain('"type": "list-item"');
+			expect(mainProgram).toContain('papi.createElement("list", pageId');
+			expect(mainProgram).toContain('papi.createElement("list-item", pageId');
+
+			const product = readFileSync(join(temporaryRoot, 'dist/main.lynx.bundle'));
+			expect(product.includes('octane-lynx:compiled-program-background-to-main')).toBe(true);
+			expect(product.includes('octane-lynx:background-to-main')).toBe(false);
+			expect(readdirSync(join(temporaryRoot, 'dist/static/svg'))).toContain('badge.svg');
 		} finally {
 			await result?.close();
 			rmSync(temporaryRoot, { recursive: true, force: true });

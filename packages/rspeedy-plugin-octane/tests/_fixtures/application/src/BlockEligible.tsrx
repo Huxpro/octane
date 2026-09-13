@@ -3,6 +3,8 @@ import { createContext, memo, useContext, useState } from 'octane';
 import type { OctaneNode } from 'octane';
 import type { UniversalRenderable } from 'octane/universal/native';
 
+import { useBlockSelection } from './custom-hooks.js';
+
 const BlockTheme = createContext('default');
 
 interface BlockEligibleItem {
@@ -100,7 +102,7 @@ export function BlockEligible(props: {
 	items: readonly BlockEligibleItem[];
 	theme: string;
 }) @{
-	const [selected, setSelected] = useState('none');
+	const [selected, setSelected] = useBlockSelection('none');
 	<BlockTheme.Provider value={props.theme}>
 		<BlockFrame>
 			<BlockRenderFrame

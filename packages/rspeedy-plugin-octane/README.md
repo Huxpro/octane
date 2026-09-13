@@ -1,4 +1,4 @@
-# `@octanejs/rspeedy-plugin` (private Milestones 6–11 native application path)
+# `@octanejs/rspeedy-plugin` (private R10 native application release candidate)
 
 This private package turns an Octane Lynx application entry into the two
 programs required by a Lynx template:
@@ -149,7 +149,7 @@ pluginOctane({ thread: 'main-thread' });
 
 Application builds attach an `octane:lynx-block-selection` report to the
 generated main-thread asset metadata. Selection version 1 with support-matrix
-version 11 is eligible only when paired
+version 13 is eligible only when paired
 background/main-thread resident-program coverage is complete, semantic and
 feature facts cover the same module set, and the graph stays within this
 independently proven Block subset:
@@ -159,9 +159,10 @@ independently proven Block subset:
   `useSyncExternalStore`; opaque Octane module access is not eligible;
 - background/main-thread functions and `main-thread:*` props are supported;
 - the authored template may use compiler-proved local component boundaries,
-  inline render props, component holes, `@if`, and `@switch`; fragments, `@try`,
-  Activity, generic renderable holes, ordinary host refs, native
-  `list`/`list-item`, and template-root events are not eligible;
+  inline render props, component holes, `@if`, `@switch`, and fixed-shape keyed
+  rows below native `list`/`list-item`; fragments, `@try`, Activity, generic
+  renderable holes, ordinary host refs, and template-root events are not
+  eligible;
 - keyed ranges may have an `@empty` arm and one retained static sibling after
   them, but not a nested or second sibling range under the same host. Rows use
   an inline host or local component and may own the supported hooks above;
@@ -220,6 +221,24 @@ selection remains Universal by design; `core: 'block'` is the explicit
 development/benchmark override and is not reported as an automatic product
 decision.
 
+The fixture imports an ordinary TypeScript custom hook. Its background-owned
+effect and pure module-local helper chain are present in decoded BTS and absent
+from decoded MTS. The compiler preserves helpers that remain reachable from
+main-thread setup, module initializers, imports, worklets, and lazy chunks; this
+is a capability-scoped source transform, not a second minifier or an assumption
+that all setup is background-only.
+
+The packed external-consumer gate installs only generated package archives and
+then rebuilds production and development applications. It covers the complex
+Block fixture, a fixed-shape native list with extracted CSS/CSS Modules and an
+emitted SVG, a real content-hashed lazy bundle, explicit whole-root Universal
+opt-out, and HMR/live-reload configuration. The native-list product contains
+paired `list`/`list-item` resident programs and compact transport without the
+general Universal application renderer. The lazy fixture deliberately keeps
+the whole entry on the Universal compatibility product because its pending and
+resolved ownership is not yet in the Block support matrix; its async chunk is
+still emitted and is never silently folded into the main bundle.
+
 The
 `packages/lynx/tests/compiled-program-product-application.test.ts` suite joins
 those module contracts against the official JavaScript host without replacing
@@ -250,7 +269,7 @@ artifact, and JavaScript-host observations—not Explorer, Android, or iOS
 interaction/performance evidence.
 
 
-Milestone 9 covers two exact, indivisible source/build graphs. Registry
+R10 covers two exact, indivisible source/build graphs. Registry
 metadata was checked on 2026-07-23:
 
 | Component | Minimum | Current |

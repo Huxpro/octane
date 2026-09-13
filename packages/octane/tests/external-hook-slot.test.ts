@@ -154,6 +154,47 @@ describe('slotHooks surgical pass', () => {
 		// arguments remain unchanged until they can be analyzed as hook-free.
 		for (const source of sources) expect(slotHooks(source, 'nested-hook.ts')).toBeNull();
 	});
+
+	it('surgically removes main-thread-only effect helper chains from plain modules', () => {
+		const source = `import { useEffect, useState } from 'octane';
+function publish(value: string) {
+  console.info('background-effect-helper', value);
+}
+const publishChain = (value: string) => publish(value);
+function retained(value: string) {
+  return 'retained:' + value;
+}
+function shared(value: string) {
+  return 'shared:' + value;
+}
+export function useSelection(initialValue: string) {
+  const [value, setValue] = useState(initialValue);
+  useEffect(() => publishChain(shared(value)), [value]);
+  return [retained(shared(value)), setValue] as const;
+}
+`;
+		const renderer = {
+			target: 'lynx',
+			capabilities: ['main-thread-render-only'],
+		} as const;
+		const background = slotHooks(source, 'custom-hooks.ts', {
+			renderer,
+			universalRuntime: { runtime: 'lynx', thread: 'background' },
+		})!.code;
+		const mainThread = slotHooks(source, 'custom-hooks.ts', {
+			renderer,
+			universalRuntime: { runtime: 'lynx', thread: 'main-thread' },
+		})!.code;
+
+		expect(background).toContain('background-effect-helper');
+		expect(background).toContain('publishChain');
+		expect(mainThread).not.toContain('background-effect-helper');
+		expect(mainThread).not.toContain('publishChain');
+		expect(mainThread).toContain('function retained');
+		expect(mainThread).toContain('function shared');
+		expect(mainThread).toMatch(/useEffect\(undefined\s*, undefined, _h\$\d+\)/);
+		expect(mainThread.split('\n')).toHaveLength(source.split('\n').length + 4);
+	});
 });
 
 describe('vite plugin gate routing', () => {

@@ -1144,10 +1144,121 @@ function isStaticThreadImportSource(source) {
 	return source?.type === 'Literal' && typeof source.value === 'string';
 }
 
+/**
+ * Remove pure module-local function declarations whose only live path began in
+ * an erased background-effect argument.
+ *
+ * This is intentionally narrower than general dead-code elimination. A helper
+ * imported from another module can carry initialization side effects, and an
+ * arbitrary variable initializer can execute while the module loads, so those
+ * remain for the bundler to reason about. Function declarations and a single
+ * arrow/function declarator have no definition-time behavior; after the
+ * main-thread capability replaces every effect argument with `undefined`, they
+ * are safe to omit when no surviving statement can reach them. Following the
+ * small candidate dependency graph also removes helper chains and cycles
+ * without mutating the parser AST.
+ */
+function pruneMainThreadEffectHelpers(ast, state, lexicalAnalysis, erasedArguments) {
+	if (erasedArguments.length === 0) return [];
+	const { nodeScopes, resolveBinding, rootScope } = lexicalAnalysis;
+	const candidates = new Map();
+	const candidateByStatement = new Map();
+	for (const statement of ast.body ?? []) {
+		if (statement.type === 'FunctionDeclaration' && statement.id?.type === 'Identifier') {
+			const candidate = { name: statement.id.name, statement };
+			candidates.set(candidate.name, candidate);
+			candidateByStatement.set(statement, candidate);
+			continue;
+		}
+		if (
+			statement.type === 'VariableDeclaration' &&
+			statement.declare !== true &&
+			statement.declarations?.length === 1
+		) {
+			const declaration = statement.declarations[0];
+			if (
+				declaration.id?.type === 'Identifier' &&
+				(declaration.init?.type === 'ArrowFunctionExpression' ||
+					declaration.init?.type === 'FunctionExpression')
+			) {
+				const candidate = { name: declaration.id.name, statement };
+				candidates.set(candidate.name, candidate);
+				candidateByStatement.set(statement, candidate);
+			}
+		}
+	}
+	if (candidates.size === 0) return [];
+
+	const erased = new WeakSet(erasedArguments);
+	const references = (root, skipErased) => {
+		const output = new Set();
+		const seen = new WeakSet();
+		const visit = (node, parent = null, key = null) => {
+			if (!node || typeof node !== 'object' || seen.has(node)) return;
+			if (skipErased && erased.has(node)) return;
+			seen.add(node);
+			if (Array.isArray(node)) {
+				for (const child of node) visit(child, parent, key);
+				return;
+			}
+			if (node.type === 'Identifier' && isIdentifierReference(node, parent, key, lexicalAnalysis)) {
+				const candidate = candidates.get(node.name);
+				if (
+					candidate !== undefined &&
+					resolveBinding(nodeScopes.get(node) ?? rootScope, node.name)?.scope === rootScope
+				) {
+					output.add(candidate.name);
+				}
+			}
+			forEachRuntimeAstChild(node, (child, childKey) => visit(child, node, childKey));
+		};
+		visit(root);
+		return output;
+	};
+	const dependencies = new Map();
+	for (const candidate of candidates.values()) {
+		const refs = references(candidate.statement, true);
+		refs.delete(candidate.name);
+		dependencies.set(candidate.name, refs);
+	}
+	const expand = (roots) => {
+		const output = new Set(roots);
+		const pending = [...output];
+		for (let index = 0; index < pending.length; index++) {
+			for (const dependency of dependencies.get(pending[index]) ?? []) {
+				if (output.has(dependency)) continue;
+				output.add(dependency);
+				pending.push(dependency);
+			}
+		}
+		return output;
+	};
+	const erasedReachable = expand(
+		erasedArguments.flatMap((argument) => [...references(argument, false)]),
+	);
+	if (erasedReachable.size === 0) return [];
+	const liveRoots = new Set();
+	for (const statement of ast.body ?? []) {
+		if (candidateByStatement.has(statement)) continue;
+		for (const name of references(statement, true)) liveRoots.add(name);
+	}
+	const live = expand(liveRoots);
+	const pruned = [];
+	for (const name of erasedReachable) {
+		if (live.has(name)) continue;
+		const statement = candidates.get(name).statement;
+		state.astNodeReplacements.set(statement, null);
+		pruned.push(statement);
+	}
+	return pruned;
+}
+
 function prepareMainThreadRenderOnlyAstReplacements(ast, state) {
-	if (!isMainThreadRenderOnly(state)) return;
+	if (!isMainThreadRenderOnly(state)) return null;
 	state.astNodeReplacements ??= new WeakMap();
-	const { nodeScopes, resolveBinding, rootScope } = createLexicalAnalysis(ast);
+	const lexicalAnalysis = createLexicalAnalysis(ast);
+	const { nodeScopes, resolveBinding, rootScope } = lexicalAnalysis;
+	const erasedArguments = [];
 	const seen = new WeakSet();
 	const visit = (node) => {
 		if (!node || typeof node !== 'object' || seen.has(node)) return;
@@ -1165,6 +1276,7 @@ function prepareMainThreadRenderOnlyAstReplacements(ast, state) {
 		) {
 			for (const argument of node.arguments ?? []) {
 				if (argument && typeof argument === 'object') {
+					erasedArguments.push(argument);
 					state.astNodeReplacements.set(
 						argument,
 						inheritGeneratedOrigin(b.id('undefined'), argument),
@@ -1178,6 +1290,38 @@ function prepareMainThreadRenderOnlyAstReplacements(ast, state) {
 		}
 	};
 	visit(ast);
+	const prunedStatements = pruneMainThreadEffectHelpers(
+		ast,
+		state,
+		lexicalAnalysis,
+		erasedArguments,
+	);
+	return { erasedArguments, prunedStatements };
+}
+
+/**
+ * Source-range form of the main-thread pruning contract for surgical plain
+ * `.ts`/`.js` hook slotting. Universal template lowering consumes the same
+ * implementation through AST replacements below.
+ */
+export function collectMainThreadRenderOnlySourcePruning(ast, renderer, universalRuntime) {
+	const runtimeImports = new Map();
+	for (const statement of ast.body ?? []) {
+		if (statement.type !== 'ImportDeclaration' || statement.source?.value !== 'octane') continue;
+		for (const specifier of statement.specifiers ?? []) {
+			if (specifier.type !== 'ImportSpecifier' || specifier.importKind === 'type') continue;
+			const imported = specifier.imported?.name ?? specifier.imported?.value;
+			if (specifier.local?.name && typeof imported === 'string') {
+				runtimeImports.set(specifier.local.name, imported);
+			}
+		}
+	}
+	return prepareMainThreadRenderOnlyAstReplacements(ast, {
+		astNodeReplacements: new WeakMap(),
+		renderer,
+		runtimeImports,
+		universalRuntime,
+	});
 }
 
 function threadFunctionExpression(site) {

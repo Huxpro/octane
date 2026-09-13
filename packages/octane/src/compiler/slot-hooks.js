@@ -18,6 +18,7 @@ import { HOOK_NAMES, hookSlotHash } from './compile.js';
 import { METHOD_DEP_IMPORT, annotateHookCalls } from './hook-deps.js';
 import { inlinePlainHookMemos } from './plain-hook-memo.js';
 import { assertStrongMode } from './strong-mode.js';
+import { collectMainThreadRenderOnlySourcePruning } from './compile-universal.js';
 
 // Build a cheap import-presence gate. Precise call identity is annotated by the
 // lexical scope analysis in analyzeHookDependencies below; this gate only avoids
@@ -1005,7 +1006,7 @@ function walk(node, owner, st) {
  *
  * @param {string} source raw module text
  * @param {string} id     module id (embedded in the stable Symbol.for key)
- * @param {{ environment?: 'client' | 'server', strong?: boolean, hmr?: boolean, dev?: boolean, profile?: boolean, profileFilename?: string, inlineHookMemo?: boolean, manualSlots?: boolean, universalRuntime?: unknown, renderer?: { target?: string }, isVoidComponentImport?: (request: string, imported: string) => boolean }} [options] `hmr: true` (dev serve) emits
+ * @param {{ environment?: 'client' | 'server', strong?: boolean, hmr?: boolean, dev?: boolean, profile?: boolean, profileFilename?: string, inlineHookMemo?: boolean, manualSlots?: boolean, universalRuntime?: unknown, renderer?: { target?: string, capabilities?: readonly string[] }, isVoidComponentImport?: (request: string, imported: string) => boolean }} [options] `hmr: true` (dev serve) emits
  *   `Symbol.for(stableKey)` so a re-imported module resolves the same hook
  *   slots (state survives HMR); off (ordinary prod builds and SSR) emits
  *   runtime-ranged Symbols. Profiling retains short described Symbols because
@@ -1053,6 +1054,11 @@ export function slotHooks(source, id, options) {
 		inferred = annotated.inferred;
 	}
 	const getterCalls = importInfo.importsHook ? collectStateGetterCalls(ast) : new WeakSet();
+	const mainThreadPruning = collectMainThreadRenderOnlySourcePruning(
+		ast,
+		options?.renderer,
+		options?.universalRuntime,
+	);
 	if (
 		options?.inlineHookMemo === true &&
 		environment === 'client' &&
@@ -1103,6 +1109,36 @@ export function slotHooks(source, id, options) {
 	}
 	if (canSpecializeRoot) {
 		collectVoidRootEdits(ast, st, options.isVoidComponentImport);
+	}
+	if (mainThreadPruning !== null) {
+		const statementRanges = mainThreadPruning.prunedStatements.map((node) => ({
+			start: node.start,
+			end: node.end,
+		}));
+		const argumentRanges = mainThreadPruning.erasedArguments
+			.filter(
+				(node) =>
+					!statementRanges.some((range) => range.start <= node.start && node.end <= range.end),
+			)
+			.map((node) => ({ start: node.start, end: node.end }));
+		const replacedRanges = [...statementRanges, ...argumentRanges];
+		st.edits = st.edits.filter(
+			(edit) => !replacedRanges.some((range) => range.start <= edit.pos && edit.pos < range.end),
+		);
+		for (const range of statementRanges) {
+			st.edits.push({
+				pos: range.start,
+				end: range.end,
+				text: source.slice(range.start, range.end).replace(/[^\r\n]/g, ''),
+			});
+		}
+		for (const range of argumentRanges) {
+			st.edits.push({
+				pos: range.start,
+				end: range.end,
+				text: `undefined${source.slice(range.start, range.end).replace(/[^\r\n]/g, '')}`,
+			});
+		}
 	}
 	if (st.edits.length === 0) return null;
 

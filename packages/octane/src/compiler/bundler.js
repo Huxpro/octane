@@ -1335,6 +1335,8 @@ class OctaneBundlerCompiler {
 				dev,
 				profile,
 				profileFilename,
+				renderer,
+				...(universalRuntime === undefined ? null : { universalRuntime }),
 				inlineHookMemo: inlinePlainMemo,
 				...(manualSlots ? { manualSlots: true } : null),
 				...(strong ? { strong: true } : null),

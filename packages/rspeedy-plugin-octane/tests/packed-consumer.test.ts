@@ -52,6 +52,20 @@ function nativeScriptText(script: unknown): string {
 	return '';
 }
 
+function outputFiles(directory: string): string[] {
+	const files: string[] = [];
+	for (const entry of readdirSync(directory, { withFileTypes: true })) {
+		const filename = join(directory, entry.name);
+		if (entry.isDirectory()) files.push(...outputFiles(filename));
+		else files.push(filename);
+	}
+	return files;
+}
+
+function containsEncodedText(content: Buffer, value: string): boolean {
+	return content.includes(Buffer.from(value)) || content.includes(Buffer.from(value, 'utf16le'));
+}
+
 function isWithin(directory: string, target: string): boolean {
 	const path = relative(directory, target);
 	return path === '' || (!path.startsWith('..') && !isAbsolute(path));
@@ -102,6 +116,8 @@ describe('@octanejs/rspeedy-plugin packed consumer', () => {
 		const blockDevelopmentOutputRoot = join(consumerRoot, 'dist-block-development');
 		const eligibleOutputRoot = join(consumerRoot, 'dist-eligible');
 		const eligibleUniversalOutputRoot = join(consumerRoot, 'dist-eligible-universal');
+		const lazyOutputRoot = join(consumerRoot, 'dist-lazy');
+		const nativeListOutputRoot = join(consumerRoot, 'dist-native-list');
 		try {
 			const archives = packWorkspacePackages(join(temporaryRoot, 'archives'));
 			mkdirSync(consumerRoot, { recursive: true });
@@ -255,6 +271,55 @@ try {
 			expect(eligibleMainThread).toContain('src/BlockEligible.tsrx');
 			expect(eligibleBackground).toContain('src/BlockEligible.tsrx');
 			expect(eligibleBackground).toContain('Octane Lynx OL013');
+			expect(eligibleBackground).toContain('octane-r10-background-selection');
+			expect(eligibleMainThread).not.toContain('octane-r10-background-selection');
+
+			execFileSync(
+				process.execPath,
+				['build.mjs', 'production', nativeListOutputRoot, 'auto', './src/native-list.ts'],
+				{
+					cwd: consumerRoot,
+					encoding: 'utf8',
+					stdio: ['ignore', 'pipe', 'pipe'],
+					timeout: 120_000,
+				},
+			);
+			const nativeListDecoded = await decodeNativeBundle(
+				readFileSync(join(nativeListOutputRoot, 'main.lynx.bundle')),
+			);
+			const nativeListMainThread = nativeScriptText(nativeListDecoded['main-thread-script']);
+			const nativeListBackground = nativeScriptText(nativeListDecoded['background-thread-script']);
+			expect(nativeListMainThread).toContain('src/NativeListApp.tsrx');
+			expect(nativeListBackground).toContain('src/NativeListApp.tsrx');
+			expect(nativeListBackground).toContain('Octane Lynx OL013');
+			expect(nativeListBackground).toContain('release-candidate-native-list');
+			expect(readdirSync(join(nativeListOutputRoot, 'static/svg'))).toContain('badge.svg');
+
+			execFileSync(
+				process.execPath,
+				['build.mjs', 'production', lazyOutputRoot, 'auto', './src/lazy.ts'],
+				{
+					cwd: consumerRoot,
+					encoding: 'utf8',
+					stdio: ['ignore', 'pipe', 'pipe'],
+					timeout: 120_000,
+				},
+			);
+			const lazyDecoded = await decodeNativeBundle(
+				readFileSync(join(lazyOutputRoot, 'main.lynx.bundle')),
+			);
+			expect(nativeScriptText(lazyDecoded['main-thread-script'])).toContain(
+				'octane-m8-lazy-pending',
+			);
+			expect(nativeScriptText(lazyDecoded['background-thread-script'])).toContain(
+				'octane-m8-lazy-pending',
+			);
+			const lazyBundle = outputFiles(lazyOutputRoot).find(
+				(filename) =>
+					filename !== join(lazyOutputRoot, 'main.lynx.bundle') && filename.endsWith('.bundle'),
+			);
+			expect(lazyBundle).toBeDefined();
+			expect(containsEncodedText(readFileSync(lazyBundle!), 'octane-m8-lazy-chunk')).toBe(true);
 
 			execFileSync(
 				process.execPath,
@@ -367,5 +432,5 @@ try {
 		} finally {
 			rmSync(temporaryRoot, { recursive: true, force: true });
 		}
-	}, 240_000);
+	}, 360_000);
 });
