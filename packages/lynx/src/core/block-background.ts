@@ -56,6 +56,7 @@ import type {
 	UniversalTransportEventMessage,
 } from 'octane/universal/native';
 import type { LynxComponent } from '../intrinsics.js';
+import type { LynxHostAttachmentChange } from './protocol.js';
 import { lynxClientTemplateRunsNegotiated, type LynxClientContainer } from './client-driver.js';
 import { createLynxBlockCore, type LynxBlockCore } from './block-core.js';
 import { lynxBlockProgramForComponent } from './block-component.js';
@@ -83,6 +84,8 @@ export interface LynxBackgroundCore {
 	dispatchTransportEvent(message: UniversalTransportEventMessage): readonly unknown[];
 	/** Present on the Block facade selected with the compact native-event transport. */
 	acceptsNativeEvent?(listener: number, priority: UniversalEventPriority): boolean;
+	/** Present on the Block facade selected with the compact attachment wire. */
+	dispatchHostAttachments?(changes: readonly LynxHostAttachmentChange[]): void;
 }
 
 export interface LynxBlockBackgroundCoreOptions {
@@ -274,12 +277,13 @@ export function createLynxBlockBackgroundCore(
 		}
 		throw error;
 	};
-	const publishAndContinue = (): void => {
+	const publishAndContinue = (publishRefs: () => void): void => {
 		// ACK closes the submitted draft synchronously. Open the next one before
 		// lifecycle publication: main may drain a native event before `complete`,
 		// and a hand-written handler is allowed to mutate then call commit().
 		attemptActive = false;
 		beginAttempt();
+		afterCommitTasks.push(publishRefs);
 		publishAccepted();
 	};
 	const commitAccepted = async (): Promise<UniversalHostBatch | null> => {
@@ -436,6 +440,10 @@ export function createLynxBlockBackgroundCore(
 
 		dispatchTransportEvent(message: UniversalTransportEventMessage): readonly unknown[] {
 			return blockRoot.dispatchTransportEvent(message);
+		},
+
+		dispatchHostAttachments(changes: readonly LynxHostAttachmentChange[]): void {
+			blockRoot.dispatchHostAttachments(changes);
 		},
 
 		acceptsNativeEvent(listener: number, priority: UniversalEventPriority): boolean {

@@ -78,6 +78,8 @@ export interface LynxBlockTemplate {
 	 * decided — see `write()`.
 	 */
 	readonly mainThreadValues: readonly boolean[] | null;
+	/** Resident host-node indexes with authored background refs; absent on the hot path. */
+	readonly refs?: readonly number[];
 }
 
 function fail(message: string | false): never {
@@ -99,6 +101,7 @@ function fail(message: string | false): never {
 export function compileLynxBlockTemplate(
 	program: UniversalHostTemplateProgram,
 	address?: UniversalHostProgramAddress,
+	refs?: readonly number[],
 ): LynxBlockTemplate {
 	if (
 		address !== undefined &&
@@ -178,6 +181,27 @@ export function compileLynxBlockTemplate(
 		nodes: Object.freeze(nodes),
 		events: Object.freeze(program.events.map((event) => Object.freeze({ ...event }))),
 	});
+	let frozenRefs: readonly number[] | undefined;
+	if (refs !== undefined) {
+		if (!Array.isArray(refs) || refs.length === 0) {
+			fail(LYNX_BLOCK_CORE_DEVELOPMENT && 'host refs must be a non-empty node-index array');
+		}
+		const seen = new Set<number>();
+		for (const node of refs) {
+			if (
+				!Number.isSafeInteger(node) ||
+				node < 0 ||
+				node >= nodes.length ||
+				nodes[node]!.type === '#text' ||
+				nodes[node]!.type === 'raw-text' ||
+				seen.has(node)
+			) {
+				fail(LYNX_BLOCK_CORE_DEVELOPMENT && 'invalid host-ref node ' + String(node));
+			}
+			seen.add(node);
+		}
+		frozenRefs = Object.freeze([...refs]);
+	}
 	return Object.freeze({
 		program: frozen,
 		...(address === undefined
@@ -190,6 +214,7 @@ export function compileLynxBlockTemplate(
 		valueNames: Object.freeze(valueNames),
 		staticProps: Object.freeze(staticProps),
 		mainThreadValues: mainThreadValues === null ? null : Object.freeze(mainThreadValues),
+		...(frozenRefs === undefined ? null : { refs: frozenRefs }),
 	});
 }
 
@@ -215,6 +240,8 @@ export interface LynxBlock {
 	readonly firstListenerId: number | null;
 	/** Compact instance identity; absent on the general host-command path. */
 	readonly instance: number | null;
+	/** True while the instance is a logical native-list row without a physical cell. */
+	readonly deferred: boolean;
 	readonly values: UniversalHostTemplateProgramValue[];
 	readonly key: unknown;
 	/** Monotonic committed-order token, refreshed by `link`; deletions may leave gaps. */
@@ -250,6 +277,8 @@ type LynxBlockProgramRangeSite = LynxBlockForSlot & {
 	readonly 2: number | null;
 	/** Physical host id of that static sibling on the command path. */
 	readonly 3: number | null;
+	/** Descendants mounted here are physically deferred native-list rows. */
+	readonly 4: boolean;
 };
 
 /**
@@ -604,6 +633,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 				before: beforeSite,
 				count,
 				values,
+				...(template.refs === undefined ? null : { refs: { firstId, stride: template.hostCount } }),
 			});
 			commandCount++;
 		} else if (templateRunsAllowed()) {
@@ -637,6 +667,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 				template,
 				firstId: firstId + row * template.hostCount,
 				instance: firstInstance === null ? null : firstInstance + row,
+				deferred: rangeSite?.[4] === true,
 				// The listener run is dense in exactly the way the host run is, so a
 				// block's own base is its row offset into the run's base. This is the
 				// `firstListenerId + rowIndex * eventCount + siteIndex` derivation the
@@ -1110,6 +1141,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 				1: block.instance,
 				2: beforeNodeIndex,
 				3: beforeNodeIndex === null ? null : block.firstId + beforeNodeIndex,
+				4: block.deferred || block.template.program.nodes[nodeIndex]!.type === 'list',
 				items: new Map(),
 				head: null,
 				tail: null,

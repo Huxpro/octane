@@ -3,6 +3,7 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
 import type { UniversalProgramCreate, UniversalProgramPlan } from 'octane/universal/native';
 
 import { encodePrevalidatedLynxNativeEventToken } from './native-events.js';
+import type { LynxHostAttachmentChange } from './protocol.js';
 import {
 	createLynxListItemDescriptor,
 	lynxListReuseKey,
@@ -35,6 +36,9 @@ interface CompiledProgramRun<Node extends LynxElementRef> {
 	readonly plan: UniversalProgramPlan;
 	readonly stride: number;
 	readonly values: unknown[];
+	readonly count: number;
+	refFirstId: number | null;
+	refStride: number;
 }
 
 interface CompiledProgramInstance<Node extends LynxElementRef> {
@@ -241,6 +245,7 @@ export interface LynxCompiledProgramStore<Node extends LynxElementRef = LynxElem
 	remove(handle: number): void;
 	set(handle: number, slot: number, value: unknown): boolean;
 	visibility(handle: number, visible: boolean): boolean;
+	refs(firstHandle: number, firstId: number, stride: number): void;
 	size(): number;
 	isFaulted(): boolean;
 	dispose(): void;
@@ -320,6 +325,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	firstListener = 1,
 	seed?: LynxCompiledProgramAdoptionSeedResolver<Node>,
 	onCallbackFault?: (error: unknown) => void,
+	onAttachments?: (changes: readonly LynxHostAttachmentChange[]) => void,
 ): LynxCompiledProgramStore<Node> {
 	const instances = new Map<number, CompiledProgramInstance<Node>>();
 	const creates = new WeakMap<UniversalProgramPlan, CompiledProgramCreate>();
@@ -335,6 +341,8 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	let journal: unknown[] | null = null;
 	let journalFirstHandle = 0;
 	let lastHandle = 0;
+	let journalFirstRefHost = 0;
+	let lastRefHost = 0;
 	// The Block producer reserves one listener id for every compiled event site,
 	// bound handler or not. Its v2 RUN therefore needs no event payload: both
 	// threads advance this cursor over the same resident plan and run count.
@@ -357,6 +365,29 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		const rootNode = instance.run.nodes[instance.index * instance.run.stride];
 		if (rootNode === undefined) fail(StoreFailure.Detached);
 		return rootNode;
+	};
+	const refId = (run: CompiledProgramRun<Node>, index: number, node: number): number => {
+		if (run.refFirstId === null)
+			fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'ref run is not linked');
+		return run.refFirstId + index * run.refStride + node;
+	};
+	const updateCellRefs = (
+		cell: CompiledProgramListCell<Node>,
+		instance: CompiledProgramInstance<Node>,
+		attached: boolean,
+	): void => {
+		const refs = instance.run.plan.refs;
+		if (refs === undefined || instance.run.refFirstId === null) return;
+		const changes: LynxHostAttachmentChange[] = [];
+		for (const node of refs) {
+			const physical = cell.nodes[node];
+			if (physical === undefined)
+				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'lost a ref-bearing list node');
+			const id = refId(instance.run, instance.index, node);
+			papi.setRefSelector(physical, attached ? 'r' + String(root) + '-h' + id + '-g1' : '');
+			changes.push(Object.freeze({ id, generation: 1, attached }));
+		}
+		if (changes.length !== 0) onAttachments?.(Object.freeze(changes));
 	};
 	const requireInstance = (handle: number): CompiledProgramInstance<Node> => {
 		requireHandle(handle);
@@ -447,6 +478,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	const clearCellOwner = (cell: CompiledProgramListCell<Node>): void => {
 		const owner = cell.owner;
 		if (owner === null) return;
+		updateCellRefs(cell, owner, false);
 		writeCellEvents(cell, cell.item, false);
 		const run = owner.run;
 		const offset = owner.index * run.stride;
@@ -501,6 +533,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		cell.item = item;
 		cell.owner = item.instance;
 		cell.awaitingEnqueue = false;
+		updateCellRefs(cell, item.instance, true);
 	};
 	const materializeListItem = (
 		list: CompiledProgramListState<Node>,
@@ -908,6 +941,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			}
 		}
 		lastHandle = journalFirstHandle;
+		lastRefHost = journalFirstRefHost;
 		nextListener = journalFirstListener;
 		templates.length = journalFirstTemplates;
 		dirtyLists = null;
@@ -1181,6 +1215,20 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				}
 				slots.add(range.slot);
 			}
+			const refNodes = new Set<number>();
+			for (const node of plan.refs ?? []) {
+				if (
+					!Number.isSafeInteger(node) ||
+					node < 0 ||
+					node >= plan.nodes ||
+					plan.wire?.nodes[node]?.type === '#text' ||
+					plan.wire?.nodes[node]?.type === 'raw-text' ||
+					refNodes.has(node)
+				) {
+					fail(`received an invalid ref site ${String(node)}`);
+				}
+				refNodes.add(node);
+			}
 		}
 		const nodeStride = plan.nodes + plan.ranges.length;
 		const valueOffset = input.valueOffset ?? 0;
@@ -1365,11 +1413,14 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		const run: CompiledProgramRun<Node> = {
 			deferred,
 			create,
+			count: input.count,
 			listener: nextListener,
 			nodes,
 			plan,
 			stride: nodeStride,
 			values,
+			refFirstId: null,
+			refStride: 0,
 		};
 		let runPrevious = previous;
 		for (let index = 0; index < input.count; index++) {
@@ -1411,6 +1462,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			if (journal !== null) fail(StoreFailure.NestedFrame);
 			journal = [];
 			journalFirstHandle = lastHandle;
+			journalFirstRefHost = lastRefHost;
 			journalFirstListener = nextListener;
 			journalFirstTemplates = templates.length;
 			preparedLists = null;
@@ -1521,6 +1573,60 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		remove(handle) {
 			const undo = requireJournal();
 			removeInstance(handle, undo);
+		},
+		refs(firstHandle, firstId, stride) {
+			requireJournal();
+			requireHandle(firstHandle);
+			if (firstHandle <= journalFirstHandle) {
+				fail(
+					LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
+						'REF-RUN must follow a mount in the same frame',
+				);
+			}
+			const instance = requireInstance(firstHandle);
+			const run = instance.run;
+			const refs = run.plan.refs;
+			if (!Number.isSafeInteger(root) || (root as number) <= 0) {
+				fail(
+					LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'REF-RUN requires a positive root identity',
+				);
+			}
+			if (instance.index !== 0 || refs === undefined || refs.length === 0) {
+				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'REF-RUN requires a ref-bearing run root');
+			}
+			requireHandle(firstId);
+			if (!Number.isSafeInteger(stride) || stride !== run.plan.nodes) {
+				fail(
+					LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'REF-RUN stride disagrees with its program',
+				);
+			}
+			const lastHost = firstId + run.count * stride - 1;
+			if (!Number.isSafeInteger(lastHost)) {
+				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'REF-RUN exhausts logical host identity');
+			}
+			if (firstId <= lastRefHost) {
+				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'REF-RUN reuses logical host identity');
+			}
+			if (run.refFirstId !== null) {
+				if (run.refFirstId !== firstId || run.refStride !== stride) {
+					fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'REF-RUN changes an existing link');
+				}
+				return;
+			}
+			lastRefHost = lastHost;
+			run.refFirstId = firstId;
+			run.refStride = stride;
+			if (run.deferred) return;
+			for (let row = 0; row < run.count; row++) {
+				const offset = row * run.stride;
+				for (const node of refs) {
+					const physical = run.nodes[offset + node];
+					if (physical === undefined)
+						fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'lost a ref-bearing node');
+					const id = refId(run, row, node);
+					papi.setRefSelector(physical, 'r' + String(root) + '-h' + id + '-g1');
+				}
+			}
 		},
 		size() {
 			return instances.size;

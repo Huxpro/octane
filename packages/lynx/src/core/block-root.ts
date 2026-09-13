@@ -45,7 +45,14 @@ import {
 	type UniversalTransportIdentity,
 } from 'octane/universal/native';
 import { LYNX_TRANSPORT_RENDERER } from './transport-identity.js';
-import type { LynxClientContainer } from './client-driver.js';
+import {
+	activateLynxCompactPublicHandle,
+	applyLynxHostAttachments,
+	releaseLynxCompactPublicHandle,
+	type LynxClientContainer,
+	type LynxPublicHandle,
+} from './client-driver.js';
+import type { LynxHostAttachmentChange } from './protocol.js';
 import { createLynxBlockCore, type LynxBlock, type LynxBlockCore } from './block-core.js';
 
 const LYNX_BLOCK_ROOT_EVENT_SITE_ERROR = 'Octane Lynx OL019';
@@ -89,17 +96,24 @@ export interface LynxBlockRoot {
 	setListener(block: LynxBlock, site: number, listener: LynxBlockListener | null): void;
 	/** Drop every listener this block owns. Call before its run is destroyed. */
 	releaseListeners(block: LynxBlock): void;
+	/** Stage authored ref values in compiler node order for publication after ACK. */
+	bindRefs(block: LynxBlock, values: readonly unknown[]): void;
+	/** Stage logical retirement for every ref-bearing host in this block. */
+	releaseRefs(block: LynxBlock): void;
+	/** Apply a native-list cell attachment transition to accepted ref owners. */
+	dispatchHostAttachments(changes: readonly LynxHostAttachmentChange[]): void;
 	/** Inbound delivery path. Satisfies what `transport.bindRoot` requires. */
 	dispatchTransportEvent(message: UniversalTransportEventMessage): readonly unknown[];
 	/** Whether the currently published listener journal owns this native token. */
 	acceptsNativeEvent(listener: number, priority: UniversalEventPriority): boolean;
 	/**
 	 * Send whatever the core has accumulated as one transported commit, and
-	 * resolve once the host has acknowledged it. Resolves immediately with
-	 * `null` when the core has nothing to say — an update that changed nothing
-	 * sends no frame rather than an empty one the far side must still process.
+	 * resolve once the host has acknowledged it. The acceptance callback publishes
+	 * semantic state first, then invokes `publishRefs` before scheduling layout
+	 * work. Ignoring `publishRefs` is safe: the root invokes it as a fallback.
+	 * Resolves immediately with `null` when no host frame is required.
 	 */
-	commit(onAccept?: () => void): Promise<UniversalHostBatch | null>;
+	commit(onAccept?: (publishRefs: () => void) => void): Promise<UniversalHostBatch | null>;
 	/** Highest batch version this root has had acknowledged. */
 	acceptedVersion(): number;
 }
@@ -107,6 +121,22 @@ export interface LynxBlockRoot {
 interface BoundListener {
 	readonly priority: UniversalEventPriority;
 	readonly handler: LynxBlockListener;
+}
+
+interface BoundHostRef {
+	readonly id: number;
+	readonly type: string;
+	readonly handle: LynxPublicHandle;
+	value: unknown;
+	refAttached: boolean;
+	cleanup: (() => void) | null;
+}
+
+interface PendingHostRef {
+	readonly id: number;
+	readonly type: string;
+	readonly attached: boolean;
+	readonly value: unknown;
 }
 
 export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoot {
@@ -127,8 +157,10 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 	}
 	const core = options.core ?? createLynxBlockCore();
 	const listeners = new Map<number, BoundListener>();
+	const refs = new Map<number, BoundHostRef>();
 	let attemptActive = false;
 	let listenerWrites: Array<number | BoundListener | undefined> | null = null;
+	let refWrites: Map<number, PendingHostRef | null> | null = null;
 	let acceptedVersion = 0;
 	// Main can still deliver an event for the accepted tree while its next frame
 	// is in flight. Keep that tree's closures live until ACK, then publish the
@@ -141,10 +173,131 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 		if (listener === undefined) listeners.delete(id);
 		else listeners.set(id, listener);
 	};
-	const acceptAttempt = (): void => {
+	const runRefTasks = (tasks: readonly (() => void)[]): void => {
+		let hasError = false;
+		let firstError: unknown;
+		for (const task of tasks) {
+			try {
+				task();
+			} catch (error) {
+				if (!hasError) {
+					hasError = true;
+					firstError = error;
+				}
+			}
+		}
+		if (hasError) throw firstError;
+	};
+	const detachRef = (record: BoundHostRef): void => {
+		if (!record.refAttached) return;
+		record.refAttached = false;
+		const cleanup = record.cleanup;
+		record.cleanup = null;
+		if (cleanup !== null) {
+			cleanup();
+			return;
+		}
+		const tasks: (() => void)[] = [];
+		const collect = (value: unknown): void => {
+			if (Array.isArray(value)) for (const nested of value) collect(nested);
+			else if (typeof value === 'function') tasks.push(() => value(null));
+			else if (value !== null && typeof value === 'object') {
+				tasks.push(() => {
+					(value as { current: unknown }).current = null;
+				});
+			}
+		};
+		collect(record.value);
+		runRefTasks(tasks);
+	};
+	const attachRef = (record: BoundHostRef): void => {
+		if (record.refAttached || !record.handle.attached || record.value == null) return;
+		record.refAttached = true;
+		const cleanupTasks: (() => void)[] = [];
+		const attachTasks: (() => void)[] = [];
+		const collect = (value: unknown): void => {
+			if (Array.isArray(value)) for (const nested of value) collect(nested);
+			else if (typeof value === 'function') {
+				attachTasks.push(() => {
+					const index = cleanupTasks.length;
+					cleanupTasks.push(() => value(null));
+					const cleanup = value(record.handle);
+					if (typeof cleanup === 'function') cleanupTasks[index] = cleanup;
+				});
+			} else if (value !== null && typeof value === 'object') {
+				attachTasks.push(() => {
+					(value as { current: unknown }).current = record.handle;
+					cleanupTasks.push(() => {
+						(value as { current: unknown }).current = null;
+					});
+				});
+			}
+		};
+		collect(record.value);
+		record.cleanup = () => runRefTasks(cleanupTasks);
+		runRefTasks(attachTasks);
+	};
+	const applyRefWrites = (writes: Map<number, PendingHostRef | null> | null): void => {
+		if (writes === null) return;
+		let hasError = false;
+		let firstError: unknown;
+		const capture = (task: () => void): void => {
+			try {
+				task();
+			} catch (error) {
+				if (!hasError) {
+					hasError = true;
+					firstError = error;
+				}
+			}
+		};
+		for (const [id, next] of writes) {
+			let record = refs.get(id);
+			if (next === null) {
+				if (record === undefined) continue;
+				capture(() => detachRef(record!));
+				releaseLynxCompactPublicHandle(container, id);
+				refs.delete(id);
+				continue;
+			}
+			if (record === undefined) {
+				const handle = activateLynxCompactPublicHandle(container, {
+					root: transportRoot,
+					id,
+					type: next.type,
+					attached: next.attached,
+				});
+				record = {
+					id,
+					type: next.type,
+					handle,
+					value: next.value,
+					refAttached: false,
+					cleanup: null,
+				};
+				refs.set(id, record);
+				capture(() => attachRef(record!));
+				continue;
+			}
+			if (record.type !== next.type) {
+				capture(() => {
+					throw new Error('Octane Lynx Block ref changed host type.');
+				});
+				continue;
+			}
+			if (Object.is(record.value, next.value)) continue;
+			capture(() => detachRef(record!));
+			record.value = next.value;
+			capture(() => attachRef(record!));
+		}
+		if (hasError) throw firstError;
+	};
+	const acceptAttempt = (): (() => void) => {
 		attemptActive = false;
 		const writes = listenerWrites;
 		listenerWrites = null;
+		const acceptedRefWrites = refWrites;
+		refWrites = null;
 		for (let index = 0; index < (writes?.length ?? 0); index += 2) {
 			const id = writes![index] as number;
 			const listener = writes![index + 1] as BoundListener | undefined;
@@ -152,6 +305,18 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 			else listeners.set(id, listener);
 		}
 		core.acceptAttempt();
+		let published = false;
+		return () => {
+			if (published) return;
+			published = true;
+			applyRefWrites(acceptedRefWrites);
+		};
+	};
+	const finishAccepted = (onAccept?: (publishRefs: () => void) => void): void => {
+		const publishRefs = acceptAttempt();
+		runRefTasks(
+			onAccept === undefined ? [publishRefs] : [() => onAccept(publishRefs), publishRefs],
+		);
 	};
 
 	const listenerId = (block: LynxBlock, site: number): number => {
@@ -190,6 +355,7 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 			if (!attemptActive) return false;
 			attemptActive = false;
 			listenerWrites = null;
+			refWrites = null;
 			core.abortAttempt();
 			return true;
 		},
@@ -240,6 +406,57 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 				const id = block.firstListenerId + site;
 				writeListener(id, undefined);
 			}
+		},
+
+		bindRefs(block, values) {
+			const sites = block.template.refs;
+			if (sites === undefined || values.length !== sites.length) {
+				throw new Error('Octane Lynx Block ref values do not match their template sites.');
+			}
+			const writes = (refWrites ??= new Map());
+			for (let index = 0; index < sites.length; index++) {
+				const node = sites[index]!;
+				const id = block.firstId + node;
+				writes.set(id, {
+					id,
+					type: block.template.program.nodes[node]!.type,
+					attached: !block.deferred,
+					value: values[index],
+				});
+			}
+		},
+
+		releaseRefs(block) {
+			const sites = block.template.refs;
+			if (sites === undefined) return;
+			const writes = (refWrites ??= new Map());
+			for (const node of sites) writes.set(block.firstId + node, null);
+		},
+
+		dispatchHostAttachments(changes) {
+			const live: LynxHostAttachmentChange[] = [];
+			for (const change of changes) {
+				if (refs.has(change.id)) live.push(change);
+				else if (change.attached) {
+					throw new Error('Octane Lynx Block attachment lost its ref owner.');
+				}
+			}
+			if (live.length === 0) return;
+			const batch = applyLynxHostAttachments(container, live);
+			const tasks: (() => void)[] = [];
+			for (const id of batch.detached) {
+				const record = refs.get(id);
+				if (record === undefined)
+					throw new Error('Octane Lynx Block attachment lost its ref owner.');
+				tasks.push(() => detachRef(record));
+			}
+			for (const id of batch.attached) {
+				const record = refs.get(id);
+				if (record === undefined)
+					throw new Error('Octane Lynx Block attachment lost its ref owner.');
+				tasks.push(() => attachRef(record));
+			}
+			runRefTasks(tasks);
 		},
 
 		dispatchTransportEvent(message) {
@@ -327,8 +544,7 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 		async commit(onAccept) {
 			const batch = core.flush();
 			if (batch === null) {
-				acceptAttempt();
-				onAccept?.();
+				finishAccepted(onAccept);
 				return null;
 			}
 			// U1 §3: a commit is the unit of structural consistency and it is
@@ -369,9 +585,8 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 				}
 				acceptedVersion = batch.version;
 				acknowledged = true;
-				acceptAttempt();
 				try {
-					onAccept?.();
+					finishAccepted(onAccept);
 				} catch (error) {
 					hasAcceptedError = true;
 					acceptedError = error;

@@ -43,7 +43,12 @@ export interface LynxCompiledProgramBlockTransport extends UniversalAsyncCommitT
 	readonly mode: 'async';
 	readonly blockDeltaProducer: LynxBlockDeltaProducer;
 	readonly ready: Promise<void>;
-	bindRoot(root: Pick<LynxBlockRoot, 'acceptsNativeEvent' | 'dispatchTransportEvent'>): void;
+	bindRoot(
+		root: Pick<
+			LynxBlockRoot,
+			'acceptsNativeEvent' | 'dispatchTransportEvent' | 'dispatchHostAttachments'
+		>,
+	): void;
 	bindPageDestroy(handler: () => void | Promise<void>): void;
 	dispatchNativeEventBatch(deliveries: readonly LynxBackgroundNativeEventDelivery[]): void;
 	acceptedIdentity(): UniversalTransportIdentity | null;
@@ -129,6 +134,16 @@ export function createLynxCompiledProgramBlockTransport(
 		isPageDestroyed: options.isPageDestroyed,
 		onLifecycle: options.onLifecycle,
 		onPageDestroy: options.onPageDestroy,
+		onHostAttachments(changes) {
+			if (boundRoot === null) {
+				throw new Error(
+					BLOCK_TRANSPORT_DEVELOPMENT
+						? 'Octane Lynx compact transport received host attachments before root binding.'
+						: BLOCK_TRANSPORT_ERROR,
+				);
+			}
+			boundRoot.dispatchHostAttachments(changes);
+		},
 		onDiagnostic(error) {
 			reported.push(error);
 			try {
@@ -138,7 +153,10 @@ export function createLynxCompiledProgramBlockTransport(
 			}
 		},
 	});
-	let boundRoot: Pick<LynxBlockRoot, 'acceptsNativeEvent' | 'dispatchTransportEvent'> | null = null;
+	let boundRoot: Pick<
+		LynxBlockRoot,
+		'acceptsNativeEvent' | 'dispatchTransportEvent' | 'dispatchHostAttachments'
+	> | null = null;
 	let ownedRoot: number | null = null;
 	let accepted: UniversalTransportIdentity | null = null;
 	let commitPending = false;

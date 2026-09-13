@@ -296,6 +296,7 @@ function evaluate(code: string): EvaluatedModule {
 			return root;
 		},
 		universalValue: (plan: unknown, values: readonly unknown[]) => ({ plan, values }),
+		enableLynxCompilerProgramRefs: () => {},
 		lynxProgram: (_renderer: string, program: any) => {
 			roots.push(program);
 			addresses.push(program.address);
@@ -441,15 +442,15 @@ export function Card(props: { label: string; capture: (value: unknown) => void }
 `;
 		const module = 'src/RefCard.lynx.tsrx';
 		const main = evaluate(compiled(source, { backend: Backend, module }));
-		const background = evaluate(
-			compiled(source, {
-				target: 'universal',
-				thread: 'background',
-				backend: Backend,
-				module,
-				backgroundProgram: true,
-			}),
-		);
+		const backgroundCode = compiled(source, {
+			target: 'universal',
+			thread: 'background',
+			backend: Backend,
+			module,
+			backgroundProgram: true,
+		});
+		expect(backgroundCode).toContain('enableLynxCompilerProgramRefs');
+		const background = evaluate(backgroundCode);
 
 		expect(main.roots[0].refs).toEqual([0]);
 		expect(background.roots[0].refs).toEqual([{ node: 0, slot: 0 }]);
@@ -457,9 +458,12 @@ export function Card(props: { label: string; capture: (value: unknown) => void }
 		expect(background.roots[0].wire.nodes[0].bindings).toBeUndefined();
 		expect(main.addresses).toEqual(background.addresses);
 
-		const withoutRef = evaluate(
-			compiled(source.replace(' ref={props.capture}', ''), { backend: Backend, module }),
-		);
+		const withoutRefCode = compiled(source.replace(' ref={props.capture}', ''), {
+			backend: Backend,
+			module,
+		});
+		expect(withoutRefCode).not.toContain('enableLynxCompilerProgramRefs');
+		const withoutRef = evaluate(withoutRefCode);
 		expect(withoutRef.roots[0]).not.toHaveProperty('refs');
 		expect(withoutRef.addresses[0].digest).not.toBe(main.addresses[0].digest);
 	});

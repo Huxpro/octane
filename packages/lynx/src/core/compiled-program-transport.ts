@@ -12,6 +12,7 @@ import {
 	LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT,
 } from './compiled-program-wire.js';
 import type { LynxDataLifecycleMessage } from './lifecycle-types.js';
+import type { LynxHostAttachmentChange } from './protocol.js';
 import type { LynxContextProxy, LynxContextProxyEvent } from './protocol.js';
 import { LYNX_TRANSPORT_PROTOCOL_VERSION, LYNX_TRANSPORT_RENDERER } from './transport-identity.js';
 import {
@@ -81,6 +82,7 @@ export interface LynxCompiledProgramTransportOptions {
 	readonly onDiagnostic?: (error: Error) => void;
 	/** Product-owned page/global lifecycle data carried on this same compact wire. */
 	readonly onLifecycle?: (message: LynxDataLifecycleMessage) => void;
+	readonly onHostAttachments?: (changes: readonly LynxHostAttachmentChange[]) => void;
 	/** Records the native lifetime tombstone before this transport closes. */
 	readonly onPageDestroy?: () => void;
 	/** Native-lifetime tombstone for a background realm started after page destroy. */
@@ -262,6 +264,31 @@ export function createLynxCompiledProgramTransport(
 				options.onLifecycle?.(message);
 			} catch (error) {
 				report(error);
+			}
+			return;
+		}
+		if (message.type === 'host-attachment') {
+			const entry = pending.get(message.version);
+			const matchesPending =
+				entry !== undefined &&
+				entry.state === 'acknowledged' &&
+				message.root === entry.identity.root;
+			const matchesAccepted =
+				accepted !== null && message.root === accepted.root && message.version === accepted.version;
+			if (!matchesPending && !matchesAccepted) {
+				report(
+					new Error(
+						TRANSPORT_DEVELOPMENT
+							? 'Octane Lynx compact transport received a host attachment for an unaccepted frame.'
+							: TRANSPORT_ERROR,
+					),
+				);
+				return;
+			}
+			try {
+				options.onHostAttachments?.(message.changes);
+			} catch (error) {
+				fault(error);
 			}
 			return;
 		}

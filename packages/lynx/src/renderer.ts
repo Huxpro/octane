@@ -24,6 +24,7 @@ export {
 	type LynxCompilerProgramComputation,
 	type LynxCompilerProgramValue,
 } from './core/compiler-program.js';
+export { enableLynxCompilerProgramRefs } from './core/compact-host-refs.js';
 
 export {
 	attachThreadFunction,

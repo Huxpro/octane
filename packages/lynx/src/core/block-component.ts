@@ -481,6 +481,7 @@ interface RetainedRow {
 	readonly scoped: ScopedRowState | null;
 	readonly values: readonly UniversalHostTemplateProgramValue[];
 	readonly listeners: readonly (LynxBlockListener | null)[];
+	readonly refs: readonly unknown[];
 	/** Last committed list order, used to preserve old/new row evaluation order. */
 	index: number;
 }
@@ -495,6 +496,8 @@ const EMPTY_PROGRAM_ROWS: readonly (readonly UniversalHostTemplateProgramValue[]
 	[],
 );
 const EMPTY_HANDLER_ROWS: readonly (readonly (LynxBlockListener | null)[])[] = Object.freeze([]);
+const EMPTY_REF_VALUES: readonly unknown[] = Object.freeze([]);
+const EMPTY_REF_ROWS: readonly (readonly unknown[])[] = Object.freeze([]);
 const EMPTY_RANGE_KEY = Object.freeze({});
 const EMPTY_RANGE_ITEMS: readonly unknown[] = Object.freeze([EMPTY_RANGE_KEY]);
 
@@ -514,6 +517,7 @@ interface RangeRender {
 	readonly items: readonly unknown[];
 	readonly rows: readonly (readonly UniversalHostTemplateProgramValue[])[];
 	readonly handlers: readonly (readonly (LynxBlockListener | null)[])[];
+	readonly refs: readonly (readonly unknown[])[];
 	/** This render's keys, in order, so the write path needs no second pass. */
 	readonly keys: readonly unknown[];
 	/** What the next render compares against, adopted only once this one applies. */
@@ -1014,6 +1018,7 @@ export function lynxBlockProgramForComponent<Props>(
 		readonly scoped: ScopedRowState | null;
 		readonly values: readonly UniversalHostTemplateProgramValue[];
 		readonly listeners: readonly (LynxBlockListener | null)[];
+		readonly refs: readonly unknown[];
 	} => {
 		// Component rows own semantic cells independently of their host blocks.
 		// The key map retains the scope; the host acknowledgement publishes its
@@ -1105,6 +1110,7 @@ export function lynxBlockProgramForComponent<Props>(
 				templateState.template = compileLynxBlockTemplate(
 					rendered.plan.wire,
 					rendered.plan.address,
+					rendered.plan.refs?.map((ref) => ref.node),
 				);
 			} else {
 				const root = rendered.plan.root;
@@ -1161,6 +1167,10 @@ export function lynxBlockProgramForComponent<Props>(
 			scoped: component === null ? null : scoped,
 			values,
 			listeners: listenersAt(sites, rendered.values),
+			refs:
+				isLynxCompilerProgram(rendered.plan) && rendered.plan.refs !== undefined
+					? rendered.plan.refs.map((ref) => rendered.values[ref.slot])
+					: EMPTY_REF_VALUES,
 		};
 	};
 
@@ -1214,6 +1224,7 @@ export function lynxBlockProgramForComponent<Props>(
 			scoped: rendered.scoped,
 			values: rendered.values,
 			listeners: rendered.listeners,
+			refs: rendered.refs,
 			index: current.index,
 		};
 		const member = context.core.writeKeyedValues(state.site, owner.key, rendered.values);
@@ -1227,6 +1238,9 @@ export function lynxBlockProgramForComponent<Props>(
 		if (owner.templateState.prepared!.events.length !== 0) {
 			if (rendered.listeners.includes(null)) context.root.releaseListeners(member);
 			context.root.bindListeners(member, rendered.listeners);
+		}
+		if (owner.templateState.template!.refs !== undefined) {
+			context.root.bindRefs(member, rendered.refs);
 		}
 		publishScopedRow(context, state, owner.templateState, owner.key, next);
 	}
@@ -1324,6 +1338,7 @@ export function lynxBlockProgramForComponent<Props>(
 				const prior = previous?.get(EMPTY_RANGE_KEY) ?? null;
 				let values: readonly UniversalHostTemplateProgramValue[];
 				let listeners: readonly (LynxBlockListener | null)[];
+				let refValues: readonly unknown[];
 				let retainedRow: RetainedRow | null;
 				let rendered: readonly number[];
 				if (
@@ -1335,6 +1350,7 @@ export function lynxBlockProgramForComponent<Props>(
 				) {
 					values = prior.values;
 					listeners = prior.listeners;
+					refValues = prior.refs;
 					retainedRow = prior;
 					rendered = EMPTY_INDEXES;
 				} else {
@@ -1350,6 +1366,7 @@ export function lynxBlockProgramForComponent<Props>(
 					);
 					values = row.values;
 					listeners = row.listeners;
+					refValues = row.refs;
 					rendered = [0];
 					retainedRow =
 						component === null
@@ -1361,6 +1378,7 @@ export function lynxBlockProgramForComponent<Props>(
 									scoped: row.scoped,
 									values,
 									listeners,
+									refs: row.refs,
 									index: 0,
 								};
 					if (retainedRow !== null) {
@@ -1375,6 +1393,7 @@ export function lynxBlockProgramForComponent<Props>(
 					items: EMPTY_RANGE_ITEMS,
 					rows: [values],
 					handlers: [listeners],
+					refs: [refValues],
 					keys: EMPTY_RANGE_ITEMS,
 					retained,
 					removedRetainedKeys: null,
@@ -1415,6 +1434,7 @@ export function lynxBlockProgramForComponent<Props>(
 				items: [],
 				rows: [],
 				handlers: [],
+				refs: EMPTY_REF_ROWS,
 				keys: previousKeys,
 				retained: previous,
 				removedRetainedKeys: null,
@@ -1481,6 +1501,7 @@ export function lynxBlockProgramForComponent<Props>(
 							scoped: row.scoped,
 							values: row.values,
 							listeners: row.listeners,
+							refs: row.refs,
 							index: prior.index,
 						},
 					});
@@ -1494,6 +1515,7 @@ export function lynxBlockProgramForComponent<Props>(
 				items: [],
 				rows: [],
 				handlers: [],
+				refs: EMPTY_REF_ROWS,
 				keys: previousKeys,
 				retained: previous,
 				hasScopedRows: false,
@@ -1576,6 +1598,7 @@ export function lynxBlockProgramForComponent<Props>(
 					items,
 					rows,
 					handlers,
+					refs: EMPTY_REF_ROWS,
 					keys,
 					retained: previous,
 					removedRetainedKeys,
@@ -1592,6 +1615,7 @@ export function lynxBlockProgramForComponent<Props>(
 		}
 		const rows: (readonly UniversalHostTemplateProgramValue[])[] = new Array(items.length);
 		const handlers: (readonly (LynxBlockListener | null)[])[] = new Array(items.length);
+		const refs: (readonly unknown[])[] = new Array(items.length);
 		const keys: unknown[] = new Array(items.length);
 		const selectionRowsStable =
 			nextSelection !== null &&
@@ -1645,6 +1669,7 @@ export function lynxBlockProgramForComponent<Props>(
 				// shallow comparison reach the same conclusion.
 				rows[index] = prior.values;
 				handlers[index] = prior.listeners;
+				refs[index] = prior.refs;
 				retained.set(itemKey, prior);
 				continue;
 			}
@@ -1671,6 +1696,7 @@ export function lynxBlockProgramForComponent<Props>(
 					// functions and the same item as fresh ones would.
 					rows[index] = prior.values;
 					handlers[index] = prior.listeners;
+					refs[index] = prior.refs;
 					retained.set(itemKey, prior);
 					continue;
 				}
@@ -1688,6 +1714,7 @@ export function lynxBlockProgramForComponent<Props>(
 			if (row.scope !== null) hasScopedRows = true;
 			rows[index] = row.values;
 			handlers[index] = row.listeners;
+			refs[index] = row.refs;
 			rendered.push(index);
 			let retainedRow: RetainedRow | null = null;
 			if (component !== null) {
@@ -1698,6 +1725,7 @@ export function lynxBlockProgramForComponent<Props>(
 					scope: row.scope,
 					values: row.values,
 					listeners: row.listeners,
+					refs: row.refs,
 					index,
 				};
 				publishScopedRow(context, state, state.rowTemplate, itemKey, retainedRow);
@@ -1712,6 +1740,7 @@ export function lynxBlockProgramForComponent<Props>(
 			items,
 			rows,
 			handlers,
+			refs,
 			keys,
 			retained,
 			hasScopedRows,
@@ -1750,6 +1779,7 @@ export function lynxBlockProgramForComponent<Props>(
 				items: EMPTY_INDEXES,
 				rows: EMPTY_PROGRAM_ROWS,
 				handlers: EMPTY_HANDLER_ROWS,
+				refs: EMPTY_REF_ROWS,
 				keys: EMPTY_INDEXES,
 				retained,
 				removedRetainedKeys: null,
@@ -1834,6 +1864,7 @@ export function lynxBlockProgramForComponent<Props>(
 		const contextsStable = sameSemanticContexts(state.contextValues, contextValues);
 		let values: readonly UniversalHostTemplateProgramValue[];
 		let listeners: readonly (LynxBlockListener | null)[];
+		let refValues: readonly unknown[];
 		let retainedRow: RetainedRow | null;
 		let rendered: readonly number[];
 		if (
@@ -1845,6 +1876,7 @@ export function lynxBlockProgramForComponent<Props>(
 		) {
 			values = prior.values;
 			listeners = prior.listeners;
+			refValues = prior.refs;
 			retainedRow = prior;
 			rendered = EMPTY_INDEXES;
 		} else {
@@ -1860,6 +1892,7 @@ export function lynxBlockProgramForComponent<Props>(
 			);
 			values = row.values;
 			listeners = row.listeners;
+			refValues = row.refs;
 			rendered = [0];
 			retainedRow =
 				component === null
@@ -1871,6 +1904,7 @@ export function lynxBlockProgramForComponent<Props>(
 							scoped: row.scoped,
 							values,
 							listeners,
+							refs: row.refs,
 							index: 0,
 						};
 			if (retainedRow !== null) {
@@ -1885,6 +1919,7 @@ export function lynxBlockProgramForComponent<Props>(
 			items: [produced],
 			rows: [values],
 			handlers: [listeners],
+			refs: [refValues],
 			keys: [branchState.key],
 			retained,
 			removedRetainedKeys: null,
@@ -1942,9 +1977,14 @@ export function lynxBlockProgramForComponent<Props>(
 			}
 			for (const row of render.sparse) {
 				const member = context.core.writeKeyedValues(state.site!, row.key, row.retained.values);
-				if (templateState.prepared!.events.length === 0 || member === undefined) continue;
-				if (row.retained.listeners.includes(null)) context.root.releaseListeners(member);
-				context.root.bindListeners(member, row.retained.listeners);
+				if (member === undefined) continue;
+				if (templateState.prepared!.events.length !== 0) {
+					if (row.retained.listeners.includes(null)) context.root.releaseListeners(member);
+					context.root.bindListeners(member, row.retained.listeners);
+				}
+				if (templateState.template!.refs !== undefined) {
+					context.root.bindRefs(member, row.retained.refs);
+				}
 			}
 			context.afterCommit(() => {
 				state.source = render.source;
@@ -1985,6 +2025,7 @@ export function lynxBlockProgramForComponent<Props>(
 		if (templateState === null || templateState.template === null) {
 			context.core.clearForSlot(state.site!, (member) => {
 				context.root.releaseListeners(member);
+				context.root.releaseRefs(member);
 			});
 			return;
 		}
@@ -2006,16 +2047,22 @@ export function lynxBlockProgramForComponent<Props>(
 					render.keys[index],
 					render.rows[index]!,
 				);
-				if (!events || member === undefined) continue;
-				const handlers = render.handlers[index]!;
-				if (handlers.includes(null)) context.root.releaseListeners(member);
-				context.root.bindListeners(member, handlers);
+				if (member === undefined) continue;
+				if (events) {
+					const handlers = render.handlers[index]!;
+					if (handlers.includes(null)) context.root.releaseListeners(member);
+					context.root.bindListeners(member, handlers);
+				}
+				if (templateState.template!.refs !== undefined) {
+					context.root.bindRefs(member, render.refs[index]!);
+				}
 			}
 			return;
 		}
 		if (render.removedRetainedKeys !== null) {
 			context.core.removeKeysForSlot(state.site!, render.removedRetainedKeys, (member) => {
 				context.root.releaseListeners(member);
+				context.root.releaseRefs(member);
 			});
 			return;
 		}
@@ -2032,6 +2079,7 @@ export function lynxBlockProgramForComponent<Props>(
 			(_item, index) => render.rows[index]!,
 			(member) => {
 				context.root.releaseListeners(member);
+				context.root.releaseRefs(member);
 			},
 			// `rendered` is appended during the forward item scan, so it is already
 			// the ascending proof the core needs. Survivors absent from it reused
@@ -2039,12 +2087,17 @@ export function lynxBlockProgramForComponent<Props>(
 			// rediscover the identity the component layer already established.
 			render.rendered,
 		);
-		if (templateState.prepared!.events.length === 0) return;
+		const events = templateState.prepared!.events.length !== 0;
 		for (const index of render.rendered) {
 			const member = state.site!.items.get(render.keys[index])!;
-			const handlers = render.handlers[index]!;
-			if (handlers.includes(null)) context.root.releaseListeners(member);
-			context.root.bindListeners(member, handlers);
+			if (events) {
+				const handlers = render.handlers[index]!;
+				if (handlers.includes(null)) context.root.releaseListeners(member);
+				context.root.bindListeners(member, handlers);
+			}
+			if (templateState.template!.refs !== undefined) {
+				context.root.bindRefs(member, render.refs[index]!);
+			}
 		}
 	};
 
@@ -2221,6 +2274,12 @@ export function lynxBlockProgramForComponent<Props>(
 			// holds is what the core itself compares against.
 			const held = block!.values;
 			const worklets = block!.template.mainThreadValues;
+			if (isLynxCompilerProgram(rendered.plan) && rendered.plan.refs !== undefined) {
+				context.root.bindRefs(
+					block!,
+					rendered.plan.refs.map((ref) => rendered.values[ref.slot]),
+				);
+			}
 			for (let index = 0; index < values.length; index++) {
 				// The scoped write: only the slots a render moved reach the core, which
 				// is what keeps `blockLookups` a count of the change rather than of the
@@ -2362,6 +2421,9 @@ export function lynxBlockProgramForComponent<Props>(
 				const template: LynxBlockTemplate = compileLynxBlockTemplate(
 					wire.wire,
 					rendered.plan.address,
+					isLynxCompilerProgram(rendered.plan)
+						? rendered.plan.refs?.map((ref) => ref.node)
+						: undefined,
 				);
 				const values = valuesFor(context, rendered.values);
 				const rows = renderRanges(context, rendered.values, rendered.contextValues);
@@ -2369,6 +2431,12 @@ export function lynxBlockProgramForComponent<Props>(
 				// refuses. What can still throw below is a duplicate key, which the core
 				// is the authority on and rejects the same way for every caller.
 				block = context.core.mount(null, null, template, values);
+				if (isLynxCompilerProgram(rendered.plan) && rendered.plan.refs !== undefined) {
+					context.root.bindRefs(
+						block,
+						rendered.plan.refs.map((ref) => rendered.values[ref.slot]),
+					);
+				}
 				if (wire.events.length !== 0) {
 					context.root.bindListeners(block, listenersFor(rendered.values));
 				}
@@ -2403,11 +2471,13 @@ export function lynxBlockProgramForComponent<Props>(
 				if (range.site === null) continue;
 				context.core.clearForSlot(range.site, (member) => {
 					context.root.releaseListeners(member);
+					context.root.releaseRefs(member);
 				});
 			}
 			if (block !== null && prepared !== null && prepared.events.length !== 0) {
 				context.root.releaseListeners(block);
 			}
+			if (block !== null && block.template.refs !== undefined) context.root.releaseRefs(block);
 			if (block !== null) context.core.destroyRoot(block);
 			context.afterCommit(() => {
 				for (const row of scopedRows) {

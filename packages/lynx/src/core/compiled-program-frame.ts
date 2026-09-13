@@ -14,6 +14,7 @@ const enum Opcode {
 	Move = 5,
 	Visibility = 6,
 	Define = 7,
+	RefRun = 8,
 }
 
 const END_INSTANCE = 0;
@@ -223,6 +224,16 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 							LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'requires a hidden or visible VIS state',
 						);
 					store.visibility(input[cursor] as number, visible === 1);
+					break;
+				}
+				case Opcode.RefRun: {
+					if (arity !== 3)
+						fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'REF-RUN requires three fields');
+					store.refs(
+						input[cursor] as number,
+						input[cursor + 1] as number,
+						input[cursor + 2] as number,
+					);
 					break;
 				}
 				default:

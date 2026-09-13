@@ -329,6 +329,8 @@ export interface UniversalProgramPlan {
 	readonly events: readonly UniversalProgramEvent[];
 	/** The holes the program declares rather than compiling their members. */
 	readonly ranges: readonly UniversalProgramRange[];
+	/** Resident host-node indexes that carry authored background refs. */
+	readonly refs?: readonly number[];
 	/**
 	 * Take the host once; return the per-instance create.
 	 *

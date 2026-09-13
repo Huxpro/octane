@@ -34,6 +34,7 @@ const enum LynxDeltaOpcode {
 	Move = 5,
 	Vis = 6,
 	Define = 7,
+	RefRun = 8,
 }
 
 const enum LynxVisibilityState {
@@ -101,13 +102,22 @@ export interface LynxVisibilityDelta {
 	readonly state: 'hidden' | 'visible';
 }
 
+/** Logical host identity for the ref-bearing nodes of one dense instance run. */
+export interface LynxRefRunDelta {
+	readonly op: 'ref-run';
+	readonly firstInstance: number;
+	readonly firstId: number;
+	readonly stride: number;
+}
+
 export type LynxDeltaOperation =
 	| LynxRunDelta
 	| LynxSetDelta
 	| LynxRemoveDelta
 	| LynxClearDelta
 	| LynxMoveDelta
-	| LynxVisibilityDelta;
+	| LynxVisibilityDelta
+	| LynxRefRunDelta;
 
 export interface LynxDeltaMessage {
 	readonly version: typeof LYNX_DELTA_PROTOCOL_VERSION;
@@ -262,6 +272,13 @@ export function encodeLynxDeltaMessage(
 					operation.state === 'hidden' ? LynxVisibilityState.Hidden : LynxVisibilityState.Visible,
 				]);
 				break;
+			case 'ref-run':
+				pushFrame(encoded, LynxDeltaOpcode.RefRun, [
+					requireInstance(operation.firstInstance, 'REF-RUN first instance'),
+					requireInstance(operation.firstId, 'REF-RUN first host id'),
+					requirePositiveCount(operation.stride, 'REF-RUN stride'),
+				]);
+				break;
 		}
 	}
 	return encoded;
@@ -276,7 +293,7 @@ export function decodeLynxDeltaMessage(input: unknown): LynxDeltaMessage {
 	let cursor = 1;
 	while (cursor < input.length) {
 		const opcode = requirePositiveCount(input[cursor++], 'opcode');
-		if (opcode > LynxDeltaOpcode.Define) fail('opcode is outside the supported range');
+		if (opcode > LynxDeltaOpcode.RefRun) fail('opcode is outside the supported range');
 		const arity = requireIndex(input[cursor++], 'frame arity');
 		const end = cursor + arity;
 		if (end > input.length) fail('frame arity extends past the message');
@@ -366,6 +383,15 @@ export function decodeLynxDeltaMessage(input: unknown): LynxDeltaMessage {
 				});
 				break;
 			}
+			case LynxDeltaOpcode.RefRun:
+				if (arity !== 3) fail('REF-RUN requires exactly three fields');
+				operations.push({
+					op: 'ref-run',
+					firstInstance: requireInstance(input[cursor], 'REF-RUN first instance'),
+					firstId: requireInstance(input[cursor + 1], 'REF-RUN first host id'),
+					stride: requirePositiveCount(input[cursor + 2], 'REF-RUN stride'),
+				});
+				break;
 		}
 		cursor = end;
 	}

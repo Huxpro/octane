@@ -25,6 +25,8 @@ export interface LynxBlockDeltaRun {
 	readonly before: LynxDeltaAnchor;
 	readonly count: number;
 	readonly values: readonly unknown[];
+	/** Omitted for ref-free templates so their frame shape remains unchanged. */
+	readonly refs?: { readonly firstId: number; readonly stride: number };
 }
 
 /**
@@ -244,6 +246,14 @@ export function createLynxBlockDeltaProducer(): LynxBlockDeltaProducer {
 				count: input.count,
 				values,
 			});
+			if (input.refs !== undefined) {
+				append({
+					op: 'ref-run',
+					firstInstance,
+					firstId: positiveInteger(input.refs.firstId, 'REF-RUN first host id'),
+					stride: positiveInteger(input.refs.stride, 'REF-RUN stride'),
+				});
+			}
 			nextInstance = finalInstance + 1;
 			return firstInstance;
 		},

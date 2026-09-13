@@ -5110,6 +5110,13 @@ function threadHelperImportPairs(state) {
 		['invokeThreadFunction', state.helpers.invokeThreadFunction],
 	].filter(([, local]) => local !== undefined);
 }
+function hasLynxCompilerProgramRefs(state) {
+	if (!rendererHasCapability(state, 'compiler-program-ir')) return false;
+	return state.plans.some((plan) => {
+		if (!lynxBlockCompilerProgramEligible(state, plan.root)) return false;
+		return deriveLynxProgramIROnce(state, plan.root)?.refs !== undefined;
+	});
+}
 
 function universalHelperImportAsts(state, extraPairs = [], origin = null) {
 	const threadPairs = threadHelperImportPairs(state);
@@ -5118,6 +5125,7 @@ function universalHelperImportAsts(state, extraPairs = [], origin = null) {
 	const hasCompilerPrograms =
 		compilerPrograms &&
 		state.plans.some((plan) => lynxBlockCompilerProgramEligible(state, plan.root));
+	const hasCompilerProgramRefs = hasLynxCompilerProgramRefs(state);
 	const hasFallbackPlans =
 		compilerPrograms &&
 		state.plans.some((plan) => !lynxBlockCompilerProgramEligible(state, plan.root));
@@ -5142,6 +5150,9 @@ function universalHelperImportAsts(state, extraPairs = [], origin = null) {
 					['universalPlan', state.helpers.plan],
 					['universalValue', state.helpers.value],
 				]),
+		...(hasCompilerProgramRefs
+			? [['enableLynxCompilerProgramRefs', state.helpers.compilerProgramRefs]]
+			: []),
 		['universalComponent', state.helpers.nestedComponent],
 		...(state.helpers.hostComponentLeafPlan === undefined
 			? []
@@ -5174,6 +5185,20 @@ function universalHelperImportAsts(state, extraPairs = [], origin = null) {
 		imports.push(inheritGeneratedOrigin(b.imports(threadPairs, threadModule), origin));
 	}
 	return imports;
+}
+
+function lynxCompilerProgramRefFeatureAsts(state, origin = null) {
+	if (!hasLynxCompilerProgramRefs(state)) return [];
+	return [
+		inheritGeneratedOrigin(
+			{
+				type: 'ExpressionStatement',
+				expression: generatedCall(state.helpers.compilerProgramRefs, [], origin),
+				metadata: { path: [] },
+			},
+			origin,
+		),
+	];
 }
 
 function threeHostIntrinsicStatementsAst(state, origin = null) {
@@ -6216,6 +6241,7 @@ export function lowerUniversalRendererRegionAst(
 	if (rendererHasCapability(state, 'compiler-program-ir')) {
 		state.helpers.fallbackPlan = allocName(state, `${prefix}FallbackPlan`);
 		state.helpers.fallbackValue = allocName(state, `${prefix}FallbackValue`);
+		state.helpers.compilerProgramRefs = allocName(state, `${prefix}CompilerProgramRefs`);
 	}
 	state.helpers.nestedComponent = allocName(state, `${prefix}Component`);
 	state.helpers.props = allocName(state, `${prefix}Props`);
@@ -6462,6 +6488,7 @@ export function lowerUniversalRendererRegionAst(
 		}),
 		statements: Object.freeze([
 			...universalHelperImportAsts(state, helperImportPairs, origin),
+			...lynxCompilerProgramRefFeatureAsts(state, origin),
 			...threeHostIntrinsics.imports,
 			...(profileImport === null ? [] : [profileImport]),
 			...hmrBlocks.prelude,
@@ -6555,6 +6582,7 @@ export function compileUniversal(
 	if (rendererHasCapability(state, 'compiler-program-ir')) {
 		state.helpers.fallbackPlan = allocName(state, '__octaneUniversalFallbackPlan');
 		state.helpers.fallbackValue = allocName(state, '__octaneUniversalFallbackValue');
+		state.helpers.compilerProgramRefs = allocName(state, '__octaneCompilerProgramRefs');
 	}
 	state.helpers.nestedComponent = allocName(state, '__octaneUniversalComponent');
 	state.helpers.props = allocName(state, '__octaneUniversalProps');
@@ -6627,6 +6655,7 @@ export function compileUniversal(
 		...ast,
 		body: [
 			...universalHelperImportAsts(state, [], moduleOrigin),
+			...lynxCompilerProgramRefFeatureAsts(state, moduleOrigin),
 			...threeHostIntrinsics.imports,
 			...(profileImport === null ? [] : [profileImport]),
 			...hmrBlocks.prelude,

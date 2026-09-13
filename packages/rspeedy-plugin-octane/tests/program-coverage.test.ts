@@ -232,7 +232,7 @@ describe('Lynx application Block eligibility', () => {
 		expect(report).toEqual({
 			version: 1,
 			matrix: {
-				version: 12,
+				version: 13,
 				runtimeNames: [
 					'createContext',
 					'memo',
@@ -247,6 +247,7 @@ describe('Lynx application Block eligibility', () => {
 				mainThreadProps: true,
 				templateFeatures: [
 					'component-hole',
+					'host-ref',
 					'if',
 					'inline-render-prop',
 					'local-component',
@@ -447,15 +448,6 @@ describe('Lynx application Block eligibility', () => {
 					kind: 'component',
 					name: 'Panel',
 					line: 5,
-					column: 2,
-				},
-				{
-					code: 'unsupported-template-feature',
-					module: '/src/App.tsrx',
-					thread: 'background',
-					kind: 'host-ref',
-					name: 'view',
-					line: 7,
 					column: 2,
 				},
 				{
@@ -933,7 +925,7 @@ describe('Lynx application resident-program coverage', () => {
 			},
 			[LYNX_BLOCK_SELECTION_ASSET_INFO]: {
 				version: 1,
-				matrix: { version: 12 },
+				matrix: { version: 13 },
 				eligible: true,
 				reasons: [],
 			},

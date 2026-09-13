@@ -285,7 +285,7 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 	const context = resolveContext(target, options.context);
 	const scheduleMicrotask = resolveMicrotaskScheduler(target, options.scheduleMicrotask);
 	const general = LYNX_COMPILED_PROGRAM_APPLICATION ? null : createLynxGeneralBackgroundResources();
-	const createSelectorQuery = general === null ? undefined : target.lynx?.createSelectorQuery;
+	const createSelectorQuery = target.lynx?.createSelectorQuery;
 	const container = createLynxClientContainer({
 		createSelectorQuery:
 			typeof createSelectorQuery === 'function'
@@ -356,6 +356,7 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 			if (LYNX_COMPILED_PROGRAM_APPLICATION) {
 				const compactRoot = root as LynxBackgroundCore & {
 					acceptsNativeEvent: NonNullable<LynxBackgroundCore['acceptsNativeEvent']>;
+					dispatchHostAttachments: NonNullable<LynxBackgroundCore['dispatchHostAttachments']>;
 				};
 				(transport as LynxCompiledProgramBlockTransport).bindRoot(compactRoot);
 			} else {

@@ -19,6 +19,7 @@ import {
 	type LynxCompiledProgramStore,
 } from './compiled-program-store.js';
 import type { LynxElementPAPI, LynxElementRef } from './papi.js';
+import type { LynxHostAttachmentChange, LynxHostAttachmentMessage } from './protocol.js';
 
 const MAX_ABORT_TOMBSTONES = 128;
 const MAX_DISPOSED_ROOT_TOMBSTONES = 128;
@@ -42,6 +43,7 @@ export type LynxCompiledProgramControllerResponse =
 	| UniversalTransportRejectMessage
 	| UniversalTransportFaultMessage
 	| LynxCompiledProgramDisposeAcknowledgement
+	| LynxHostAttachmentMessage
 	| LynxCompiledProgramDisposeRetry;
 
 export interface LynxCompiledProgramControllerOptions<Node extends LynxElementRef> {
@@ -115,6 +117,7 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 	let faulted = false;
 	let closed = false;
 	let pendingAdoption = adoption;
+	let pendingAttachments: LynxHostAttachmentChange[] = [];
 
 	const report = (value: unknown, fallback = CONTROLLER_ERROR): Error => {
 		const error = normalizeLynxCompiledProgramError(value, fallback);
@@ -152,6 +155,25 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 			);
 			return false;
 		}
+	};
+
+	const onStoreAttachments = (changes: readonly LynxHostAttachmentChange[]): void => {
+		if (closed || faulted || changes.length === 0) return;
+		if (applying !== null) {
+			pendingAttachments.push(...changes);
+			return;
+		}
+		if (active === null) {
+			onStoreCallbackFault(
+				new Error(
+					CONTROLLER_DEVELOPMENT
+						? 'Octane Lynx compact receiver observed a host attachment without an active root.'
+						: CONTROLLER_ERROR,
+				),
+			);
+			return;
+		}
+		send({ ...active, type: 'host-attachment', changes: Object.freeze([...changes]) });
 	};
 
 	const onStoreCallbackFault = (value: unknown): void => {
@@ -266,8 +288,10 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 					pendingAdoption?.firstListener,
 					pendingAdoption?.resolveSeed,
 					onStoreCallbackFault,
+					onStoreAttachments,
 				);
 			applying = candidate;
+			pendingAttachments = [];
 			try {
 				applyLynxCompiledProgramFrame(candidateStore, page, resolveProgram, frame, () => {
 					if (closed) {
@@ -306,6 +330,7 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 				});
 			} catch (error) {
 				applying = null;
+				pendingAttachments = [];
 				let rollbackFlushError: unknown = null;
 				try {
 					// `applyLynxCompiledProgramFrame` has already replayed its journal.
@@ -346,6 +371,8 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 				reject(identity, error);
 				return;
 			}
+			const acceptedAttachments = Object.freeze(pendingAttachments);
+			pendingAttachments = [];
 			applying = null;
 			if (closed) {
 				releaseClosedStore(candidateStore);
@@ -359,6 +386,9 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 			store = candidateStore;
 			active = candidate;
 			if (!send({ ...candidate, type: 'ack' })) return;
+			if (acceptedAttachments.length !== 0) {
+				if (!send({ ...candidate, type: 'host-attachment', changes: acceptedAttachments })) return;
+			}
 			send({ ...candidate, type: 'complete' });
 		},
 

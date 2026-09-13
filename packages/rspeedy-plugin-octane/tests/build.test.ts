@@ -569,6 +569,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 				'core/block-background.ts',
 				'core/block-component.ts',
 				'core/client-driver.compiled-program.ts',
+				'core/compact-host-ref-feature.ts',
 				'first-screen.compiled-program.ts',
 				'core/compiled-program-block-transport.ts',
 				'core/compiled-program-first-screen.ts',
@@ -585,6 +586,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 			for (const module of [
 				'core/application-selection.ts',
 				'core/client-driver.ts',
+				'core/compact-host-refs.ts',
 				'main-renderer.ts',
 				'core/main-thread-application-selection.ts',
 			]) {
@@ -598,6 +600,15 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 			expect(product.includes('octane-lynx:compiled-program-main-to-background')).toBe(true);
 			expect(product.includes('octane-lynx:background-to-main')).toBe(false);
 			expect(product.includes('octane-lynx:main-to-background')).toBe(false);
+			expect(
+				moduleSources.some(
+					(module) =>
+						module.layer === 'octane:background' &&
+						module.identifier
+							.replaceAll(String.fromCharCode(92), '/')
+							.endsWith('/packages/lynx/src/core/nodes-ref.ts'),
+				),
+			).toBe(false);
 			const backgroundProgram = moduleSources.find(
 				(module) =>
 					module.layer === 'octane:background' &&
@@ -777,7 +788,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					selection: {
 						version: 1,
 						matrix: {
-							version: 12,
+							version: 13,
 							runtimeNames: [
 								'createContext',
 								'memo',
@@ -792,6 +803,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 							mainThreadProps: true,
 							templateFeatures: [
 								'component-hole',
+								'host-ref',
 								'if',
 								'inline-render-prop',
 								'local-component',

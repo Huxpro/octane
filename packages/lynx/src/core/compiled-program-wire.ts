@@ -15,6 +15,7 @@ import type {
 	LynxLifecycleDataRecord,
 	LynxPageDataMessage,
 } from './lifecycle-types.js';
+import type { LynxHostAttachmentChange } from './protocol.js';
 import type {
 	LynxCompiledProgramDisposeAcknowledgement,
 	LynxCompiledProgramDisposeRetry,
@@ -44,6 +45,7 @@ const enum WireOpcode {
 	PageUpdate = 15,
 	PageReset = 16,
 	GlobalProps = 17,
+	HostAttachment = 18,
 }
 
 export const LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT =
@@ -64,6 +66,11 @@ export interface LynxCompiledProgramReadyReply {
 /** Root-independent native page lifetime teardown broadcast. */
 export interface LynxCompiledProgramPageDestroyMessage {
 	readonly type: 'page-destroy';
+}
+
+export interface LynxCompiledProgramHostAttachmentMessage extends UniversalTransportIdentity {
+	readonly type: 'host-attachment';
+	readonly changes: readonly LynxHostAttachmentChange[];
 }
 
 export interface LynxCompiledProgramFrameMessage extends UniversalTransportIdentity {
@@ -88,6 +95,7 @@ export type LynxCompiledProgramBackgroundMessage =
 export type LynxCompiledProgramMainMessage =
 	| LynxCompiledProgramReadyReply
 	| LynxCompiledProgramPageDestroyMessage
+	| LynxCompiledProgramHostAttachmentMessage
 	| LynxDataLifecycleMessage
 	| UniversalTransportAcknowledgement
 	| UniversalTransportCompleteMessage
@@ -270,6 +278,27 @@ export function encodeLynxCompiledProgramMainMessage(
 	) {
 		fail('received a foreign identity');
 	}
+	if (message.type === 'host-attachment') {
+		if (message.changes.length === 0) fail('requires host attachment changes');
+		const output: unknown[] = [
+			LYNX_TRANSPORT_PROTOCOL_VERSION,
+			WireOpcode.HostAttachment,
+			safePositive(message.root, 'root'),
+			safePositive(message.version, 'frame version'),
+		];
+		for (const change of message.changes) {
+			output.push(
+				safePositive(change.id, 'host attachment id'),
+				safePositive(change.generation, 'host attachment generation'),
+				change.attached === true
+					? 1
+					: change.attached === false
+						? 0
+						: fail('requires a boolean host attachment state'),
+			);
+		}
+		return JSON.stringify(output);
+	}
 	const opcode =
 		message.type === 'ack'
 			? WireOpcode.Acknowledgement
@@ -334,6 +363,25 @@ export function decodeLynxCompiledProgramMainMessage(
 						: 'reset',
 			data,
 		}) as LynxPageDataMessage;
+	}
+	if (input[1] === WireOpcode.HostAttachment) {
+		if (input.length < 7 || (input.length - 4) % 3 !== 0) {
+			fail('received the wrong host-attachment field count');
+		}
+		const route = identity(input, input.length);
+		const changes: LynxHostAttachmentChange[] = [];
+		for (let index = 4; index < input.length; index += 3) {
+			const attached = input[index + 2];
+			if (attached !== 0 && attached !== 1) fail('received an invalid host attachment state');
+			changes.push(
+				Object.freeze({
+					id: safePositive(input[index], 'host attachment id'),
+					generation: safePositive(input[index + 1], 'host attachment generation'),
+					attached: attached === 1,
+				}),
+			);
+		}
+		return Object.freeze({ ...route, type: 'host-attachment', changes: Object.freeze(changes) });
 	}
 	const withError =
 		input[1] === WireOpcode.Reject ||
